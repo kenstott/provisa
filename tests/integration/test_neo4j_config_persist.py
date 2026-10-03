@@ -20,6 +20,8 @@ takes the same shape.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import os
 from pathlib import Path
 
@@ -154,13 +156,13 @@ async def test_persisted_endpoint_hydrates_and_serves_rows(pg_conn):
     from provisa.events.source_loader import make_openapi_loader
 
     await _load(pg_conn)
-    endpoints, sources = await load_api_sources(pg_conn, [], {}, [], {})
+    endpoints, sources = await load_api_sources(pg_conn, {})
     assert endpoints[_TABLE].query_template == _CYPHER
 
     class _Ref:
         def __init__(self, **kw):
             self.__dict__.update(kw)
 
-    fetch = make_openapi_loader(endpoints, sources)
+    fetch = make_openapi_loader(SimpleNamespace(api_endpoints=endpoints, api_sources=sources))
     rows = await fetch(_Ref(id=_SOURCE_ID), _Ref(table_name=_TABLE))
     assert [(r["adopter_id"], r["name"], r["city"]) for r in rows] == _SEED

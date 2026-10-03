@@ -132,6 +132,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     load_protected BOOLEAN,  -- REQ-1141: NULL = inherit source; overrides scheduled-refresh-only load protection
     off_peak_window TEXT,    -- REQ-1141: per-table "HH:MM-HH:MM" window override; NULL = inherit source
     off_peak_tz TEXT,        -- REQ-1141: per-table window zone override; NULL = inherit source
+    pagination  JSONB,       -- REQ-318: how the table is read page by page; NULL = not paged here
     gql_naming_convention TEXT,
     watermark_column TEXT,
     change_signal TEXT,  -- REQ-929: override source change signal; NULL = inherit
@@ -901,19 +902,6 @@ CREATE TABLE IF NOT EXISTS creation_requests (
 );
 ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS approvals JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS required_approvals INT NOT NULL DEFAULT 1;
-
-CREATE TABLE IF NOT EXISTS api_endpoint_candidates (
-    id              SERIAL PRIMARY KEY,
-    source_id       TEXT NOT NULL REFERENCES api_sources(id) ON DELETE CASCADE,
-    path            TEXT NOT NULL,
-    method          TEXT NOT NULL DEFAULT 'GET',
-    table_name      TEXT,
-    columns         JSONB NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'discovered'
-                    CHECK (status IN ('discovered', 'registered', 'rejected')),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (source_id, path, method)
-);
 
 -- Live Query Engine watermark state (Phase AM, Phase AY)
 CREATE TABLE IF NOT EXISTS live_query_state (

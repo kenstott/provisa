@@ -85,6 +85,7 @@ async def _db(
                 change_signal=table_signal,
                 cache_ttl=table_ttl,
                 role_ttl={"analyst": 360},
+                pagination={"max_rows": 50},  # REQ-318: saved through updateTablePaging
                 row_materialize=False,
                 replicate=table_replicate,
                 origin="admin",
@@ -104,6 +105,7 @@ async def _table_row(db: Database):
                 registered_tables.c.id,
                 registered_tables.c.cache_ttl,
                 registered_tables.c.role_ttl,
+                registered_tables.c.pagination,
                 registered_tables.c.change_signal,
             ).where(registered_tables.c.table_name == "orders")
         )
@@ -363,9 +365,10 @@ async def test_update_table_refuses_a_ttl_signal_with_no_cache_ttl(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_update_table_keeps_the_stored_cache_ttl_and_role_ttl(tmp_path):
-    """TableInput carries no cache_ttl / role_ttl / row_materialize; saving the table's other
-    fields must not reset them (they are saved through updateTableCache / updateTableRoleTtl)."""
+async def test_update_table_keeps_the_stored_cache_ttl_role_ttl_and_paging(tmp_path):
+    """TableInput carries no cache_ttl / role_ttl / row_materialize / pagination; saving the
+    table's other fields must not reset them (they are saved through updateTableCache /
+    updateTableRoleTtl / updateTablePaging)."""
     from contextlib import ExitStack
 
     from provisa.api.admin.schema_mutation import Mutation
@@ -379,6 +382,7 @@ async def test_update_table_keeps_the_stored_cache_ttl_and_role_ttl(tmp_path):
         row = await _table_row(db)
         assert row.cache_ttl == 60
         assert row.role_ttl == {"analyst": 360}
+        assert row.pagination == {"max_rows": 50}
 
 
 @pytest.mark.asyncio

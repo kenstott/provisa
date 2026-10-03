@@ -1014,9 +1014,9 @@ Hasura v2 migration tool (`provisa/hasura_v2/mapper.py`) maps Hasura Remote Sche
 
 **Use case:** Hasura Remote Schema migration removes GTM blocker — customers see supported sources instead of "NOT SUPPORTED" during migration path evaluation.
 
-**Code:** `provisa/hasura_v2/mapper.py`, `provisa/source_adapters/graphql_remote_adapter.py`, `provisa/api/admin/graphql_remote_router.py`
+**Code:** `provisa/hasura_v2/mapper.py`, `provisa/hasura_v2/remote_schema.py`, `provisa/graphql_remote/executor.py`, `provisa/api/admin/graphql_remote_router.py`
 
-**Tests:** `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_hasura_remote_schema.py`, `tests/unit/test_hasura_v2_comprehensive.py`, `tests/unit/test_import_shared.py`
+**Tests:** `tests/unit/test_hasura_remote_schema.py`, `tests/unit/test_hasura_v2_comprehensive.py`, `tests/unit/test_import_shared.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_graphql_remote_source.py`
 
 ### REQ-418 · Domain Model {#REQ-418}
 
@@ -1050,9 +1050,9 @@ A datasource may be associated with multiple domains. Any domain owner may regis
 
 **Use case:** Multi-domain with first-claim ownership prevents the same physical table from being registered multiple times while allowing flexible domain-to-source associations.
 
-**Code:** `provisa/core/`, `provisa-ui/src/pages/TablesPage`
+**Code:** `provisa/api/admin/schema_helpers.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/core/schema_org.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/pages/TablesPage.tsx`
 
-**Tests:** `tests/unit/test_dataset_uniqueness.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_dataset_uniqueness.py`
 
 ### REQ-434 · Registration & Governance {#REQ-434}
 
@@ -1396,13 +1396,13 @@ Remote GraphQL fields as tables. [SUPERSEDED by the 2026-10-02 REGISTRATION IS C
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-At query execution time, Provisa translates the incoming GraphQL request into a remote GraphQL query and forwards it to the remote endpoint. The response rows are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). Repeated calls within TTL are served from the Iceberg table via Trino — zero remote hops. The cache table is automatically dropped after TTL expires. (Amended 2026-10-02, PAGED READS) A connection table ([REQ-308](#REQ-308)) is read page by page, `graphql_remote.max_list_items` rows a page, following the remote's cursor until it reports no next page or `graphql_remote.max_rows` rows are read; a read that stops at that bound logs it. When the remote's gateway gives up on a page, the page is asked for again at half the size. When the remote answers that the caller is rate limited and names a wait of two minutes or less, the request is sent again after that wait, three times at most. A source may declare which of its remote's errors mean "this one field of this one row" and which mean "this page asks too much" ([REQ-1923](#REQ-1923)); every other error fails the read.
+At query execution time, Provisa translates the incoming GraphQL request into a remote GraphQL query and forwards it to the remote endpoint. [SUPERSEDED by [REQ-845](#REQ-845), 2026-10-03 -- the API cache is held in the engine's own store on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against it.] The response rows are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] Repeated calls within TTL are served from the Iceberg table via Trino — zero remote hops. The cache table is automatically dropped after TTL expires. (Amended 2026-10-02, PAGED READS) A connection table ([REQ-308](#REQ-308)) is read page by page, `graphql_remote.max_list_items` rows a page, following the remote's cursor until it reports no next page or `graphql_remote.max_rows` rows are read; a read that stops at that bound logs it. When the remote's gateway gives up on a page, the page is asked for again at half the size. When the remote answers that the caller is rate limited and names a wait of two minutes or less, the request is sent again after that wait, three times at most. A source may declare which of its remote's errors mean "this one field of this one row" and which mean "this page asks too much" ([REQ-1923](#REQ-1923)); every other error fails the read. (Amended 2026-10-03, THE API CACHE LIVES IN THE ENGINE'S STORE:) The rows a call returns are kept in the federation engine's own store, in the org's API cache schema, in one table per API table ([REQ-845](#REQ-845), [REQ-859](#REQ-859)). This holds on every engine. The cache key and the rule that a mutation is never cached are unchanged.
 
 **Use case:** S3/Iceberg materialization of remote schema results eliminates repeated network hops and enables federated SQL (WHERE/ORDER BY/LIMIT) over cached data.
 
-**Code:** `provisa/graphql_remote/`, `provisa/api_source/trino_cache.py`
+**Code:** `provisa/graphql_remote/executor.py`, `provisa/api_source/engine_cache.py`, `provisa/api/data/materialization.py`
 
-**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_api_cache.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
+**Tests:** `tests/unit/test_api_cache.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/integration/test_graphql_execution.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
 
 ### REQ-310 · GraphQL Remote Schema Connector (REQ-307–313) {#REQ-310}
 
@@ -1504,11 +1504,11 @@ OpenAPI write operations as commands. [SUPERSEDED by [REQ-1924](#REQ-1924), 2026
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-GET operation results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). The cache key is a SHA-256 hash of `source_id + operation path + native args`. Repeated calls within TTL hit Trino directly. The cache table is dropped after TTL expires. Mutations are never cached — they are side-effecting.
+[SUPERSEDED by [REQ-845](#REQ-845), 2026-10-03 -- the API cache is held in the engine's own store on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against it.] GET operation results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id + operation path + native args`. Repeated calls within TTL hit Trino directly. The cache table is dropped after TTL expires. Mutations are never cached — they are side-effecting. (Amended 2026-10-03, THE API CACHE LIVES IN THE ENGINE'S STORE:) The rows a call returns are kept in the federation engine's own store, in the org's API cache schema, in one table per API table ([REQ-845](#REQ-845), [REQ-859](#REQ-859)). This holds on every engine. The cache key and the rule that a mutation is never cached are unchanged.
 
 **Use case:** S3/Iceberg materialization of GET operation results prevents repeated upstream REST calls and enables Trino SQL filtering over cached rows.
 
-**Code:** `provisa/api_source/trino_cache.py`, `provisa/api_source/router_integration.py`
+**Code:** `provisa/api_source/engine_cache.py`, `provisa/api_source/router_integration.py`, `provisa/api_source/fill_cache.py`
 
 **Tests:** `tests/unit/test_api_cache.py`, `tests/integration/test_openapi_source.py`
 
@@ -1612,13 +1612,13 @@ Each mutation-classified gRPC method is exposed as a tracked function (mutation)
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Query method results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). The cache key is a SHA-256 hash of `source_id + method + native args`. Mutations are never cached — they are side-effecting. One `grpc.aio.Channel` is reused per registered source across requests, stored in `AppState.grpc_remote_channels`. The cache table is dropped after TTL expires.
+[SUPERSEDED by [REQ-845](#REQ-845), 2026-10-03 -- the API cache is held in the engine's own store on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against it.] Query method results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id + method + native args`. Mutations are never cached — they are side-effecting. One `grpc.aio.Channel` is reused per registered source across requests, stored in `AppState.grpc_remote_channels`. The cache table is dropped after TTL expires. (Amended 2026-10-03, THE API CACHE LIVES IN THE ENGINE'S STORE:) The rows a call returns are kept in the federation engine's own store, in the org's API cache schema, in one table per API table ([REQ-845](#REQ-845), [REQ-859](#REQ-859)). This holds on every engine. The cache key and the rule that a mutation is never cached are unchanged.
 
 **Use case:** S3/Iceberg materialization of gRPC query results enables Trino SQL filtering over cached rows and eliminates repeated remote calls. Channel reuse reduces connection overhead.
 
-**Code:** `provisa/grpc_remote/`, `provisa/api_source/trino_cache.py`
+**Code:** `provisa/grpc_remote/executor.py`, `provisa/api_source/engine_cache.py`, `provisa/source_adapters/grpc_remote_adapter.py`
 
-**Tests:** `tests/e2e/test_grpc_query.py`, `tests/integration/test_cache_store.py`, `tests/integration/test_grpc_execution.py`, `tests/unit/test_api_cache.py`, `tests/unit/test_cache_store.py`, `tests/unit/test_grpc_remote_cache.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
+**Tests:** `tests/unit/test_grpc_remote_cache.py`, `tests/unit/test_api_cache.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/integration/test_grpc_execution.py`, `tests/e2e/test_grpc_query.py`, `tests/unit/test_cache_store.py`, `tests/integration/test_cache_store.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
 
 ### REQ-328 · gRPC Remote Schema Connector (REQ-322–329) {#REQ-328}
 
@@ -1862,13 +1862,13 @@ A column may be declared as an embedding vector by setting `embedding: true` wit
 
 ### REQ-422 · Vector Search {#REQ-422}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Source capability auto-detection at registration time must identify native vector support: pgvector extension for PostgreSQL, Atlas Vector Search for MongoDB, Cortex for Snowflake. Sources without detected capability are flagged as requiring fallback.
 
 **Use case:** Early capability detection allows fallback materialization strategy to be planned at source registration.
 
-**Code:** `provisa/source_adapters/introspect.py`
+**Code:** `provisa/vector/capability.py`, `provisa/vector/support.py`
 
 **Tests:** `tests/unit/test_vector.py`
 
@@ -1958,15 +1958,15 @@ Once an embedding column is generated with a declared model, that model is locke
 
 ### REQ-430 · Vector Search {#REQ-430}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Query-time vectorization must be supported: when a similarity search is expressed with a text string rather than a raw vector, Provisa calls the declared embedding model to generate the query vector before executing the search. Both text input and raw vector input must be supported interfaces.
 
 **Use case:** Query-time vectorization enables natural text-based search without pre-vectorization ceremony.
 
-**Code:** `provisa/vector/query_vectorization.py`
+**Code:** `provisa/vector/query.py`, `provisa/vector/providers.py`
 
-**Tests:** `tests/unit/test_schema_visibility_filters.py`, `tests/unit/test_vector.py`
+**Tests:** `tests/unit/test_vector.py`
 
 ### REQ-431 · Vector Search {#REQ-431}
 
@@ -2658,7 +2658,7 @@ Cypher named parameters (`$param`) are translated to Trino positional parameters
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-WITHDRAWN (2026-06-19). Cross-source Cypher queries are allowed — Trino joins across catalogs natively, so a query whose labels resolve to tables on different sources translates and executes normally. No cross-source restriction is enforced. (Supersedes REQ-481.)
+WITHDRAWN (2026-06-19). Cross-source Cypher queries are allowed — Trino joins across catalogs natively, so a query whose labels resolve to tables on different sources translates and executes normally. No cross-source restriction is enforced. (Supersedes [REQ-481](#REQ-481).)
 
 **Use case:** Cross-source graph traversal is a core capability, not an error.
 
@@ -2990,33 +2990,37 @@ WITH clause CTEs are named _w0, _w1, ... using a positional index assigned withi
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
-### REQ-642 · Graph Analytics Pipeline {#REQ-642}
+## 10. UI & Admin Surfaces
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+### REQ-642 · Graph Analytics {#REQ-642}
 
-A POST /data/graph-analytics endpoint accepts a Cypher query and algorithm name, executes the query via the existing cypher_router pipeline, builds an in-memory NetworkX DiGraph from the resulting nodes and edges, runs the named algorithm, merges a `_analytics` dict into each node/edge, and returns the augmented nodes and edges as JSON with an `elapsed_ms` field.
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
-**Use case:** Server-side graph analytics endpoint lets the browser request algorithm output on any Cypher-defined subgraph without building the graph client-side.
+The Graph Explorer computes statistics for the graph on the canvas, in the browser and with no request to the server: node and edge counts, density, average and maximum degree, isolated nodes, connected components and the size of the largest, diameter, average path length, the top hubs by degree, and counts by node label and by edge type. Diameter and average path length are computed in the background so the panel stays responsive while they run.
 
-**Code:** `provisa/api/rest/graph_analytics_router.py`
+**Use case:** A user sees the shape of a query result at a glance, without choosing or running an algorithm.
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_graph_analytics_requirements.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Code:** `provisa-ui/src/components/graph/GraphStatsModal.tsx`, `provisa-ui/src/components/graph/GraphFrame.tsx`
 
-### REQ-643 · Graph Analytics Pipeline {#REQ-643}
+**Tests:** —
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+### REQ-643 · Graph Analytics {#REQ-643}
 
-The graph analytics response merges a `_analytics` dict into every node and edge in the result. The keys present in `_analytics` vary by algorithm: centrality algorithms produce `score`; community detection produces `cluster`; k-core produces `core_number`; degree centrality also produces `in_degree` and `out_degree`.
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
-**Use case:** Uniform _analytics key convention lets the UI apply visual encodings without algorithm-specific branching.
+Every node on the graph canvas carries its in-degree, out-degree, total degree and degree centrality, computed in the browser from the graph displayed. They are shown in the inspector with the node's other properties and can drive node size ([REQ-649](#REQ-649)).
 
-**Code:** `provisa/api/rest/graph_analytics_router.py`
+**Use case:** A user finds the most connected nodes of a result by reading or sizing on a value the explorer supplies on its own.
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_graph_analytics_requirements.py`
+**Code:** `provisa-ui/src/components/graph/frame/use-frame-derived-data.ts`, `provisa-ui/src/components/graph/GraphCanvas.tsx`, `provisa-ui/src/components/graph/Inspector.tsx`, `provisa-ui/src/components/graph/GraphSidebar.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/ui_requirements.test.ts`
+
+## 5. Query Languages, Compilation & Operations
 
 ### REQ-650 · Graph Analytics Pipeline {#REQ-650}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-642](#REQ-642) · **Priority:** MUST · **Type:** constraint
 
 The graph analytics endpoint enforces a configurable maximum graph size. When the input graph exceeds the configured limit (default: 10,000 nodes or 50,000 edges), the endpoint returns HTTP 413 before running any algorithm.
 
@@ -3024,11 +3028,11 @@ The graph analytics endpoint enforces a configurable maximum graph size. When th
 
 **Code:** `provisa/api/rest/graph_analytics_router.py`
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_graph_analytics_requirements.py`
+**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`
 
 ### REQ-651 · Graph Analytics Pipeline {#REQ-651}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-642](#REQ-642) · **Priority:** MUST · **Type:** constraint
 
 The Girvan-Newman community detection algorithm is restricted to graphs with fewer than 500 nodes. Requests for Girvan-Newman on larger graphs are rejected unless the caller supplies `force=true` in the params, making the computational risk explicit.
 
@@ -3036,7 +3040,7 @@ The Girvan-Newman community detection algorithm is restricted to graphs with few
 
 **Code:** `provisa/api/rest/graph_analytics_router.py`
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_graph_analytics_requirements.py`
+**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`
 
 ### REQ-653 · Compiler & Schema {#REQ-653}
 
@@ -3282,7 +3286,7 @@ Each registered RDBMS source maintains warm connection pool; min pool size confi
 
 **Status:** ✅ complete · **Priority:** MAY · **Type:** structural
 
-PgBouncer is the documented per-PostgreSQL-source opt-in via `use_pgbouncer` (default off); it is NOT forced on, because a default-on would require a running PgBouncer for every PG source. [SUPERSEDED by REQ-053, 2026-09-30 -- the direct PostgreSQL pool is psycopg 3 (psycopg_pool), not asyncpg; see the amendment below. Kept here for history; do not implement against it.] Default is direct asyncpg pooling ([REQ-052](#REQ-052)). [END SUPERSEDED BLOCK] (Amended 2026-09-30, psycopg 3 driver:) Default is direct pooling through the shared psycopg 3 pool ([REQ-052](#REQ-052)). A PgBouncer'd source never uses server-side prepared statements (`prepare_threshold=None`): a session-level prepared statement does not survive PgBouncer's per-transaction server binding (the asyncpg driver likewise ran it with `statement_cache_size=0`). It also cannot stream, since a server-side cursor outlives that binding.
+PgBouncer is the documented per-PostgreSQL-source opt-in via `use_pgbouncer` (default off); it is NOT forced on, because a default-on would require a running PgBouncer for every PG source. [SUPERSEDED by REQ-053 amendment, 2026-09-30 -- the direct PostgreSQL pool is psycopg 3 (psycopg_pool), not asyncpg; see the amendment below. Kept here for history; do not implement against it.] Default is direct asyncpg pooling ([REQ-052](#REQ-052)). [END SUPERSEDED BLOCK] (Amended 2026-09-30, psycopg 3 driver:) Default is direct pooling through the shared psycopg 3 pool ([REQ-052](#REQ-052)). A PgBouncer'd source never uses server-side prepared statements (`prepare_threshold=None`): a session-level prepared statement does not survive PgBouncer's per-transaction server binding (the asyncpg driver likewise ran it with `statement_cache_size=0`). It also cannot stream, since a server-side cursor outlives that binding.
 
 **Use case:** Optional PgBouncer per-source avoids mandatory sidecar infrastructure while offering connection pooling where needed.
 
@@ -4358,9 +4362,9 @@ pgwire enforces hard-coded timeouts: [SUPERSEDED by [REQ-1926](#REQ-1926), 2026-
 
 **Use case:** Hard-coded timeouts prevent long-running DDL or query operations from blocking pgwire handler threads indefinitely.
 
-**Code:** `provisa/pgwire/ddl_handler.py`, `provisa/pgwire/server.py`
+**Code:** `provisa/pgwire/server.py`, `provisa/pgwire/copy_handler.py`, `provisa/core/limits.py`
 
-**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/unit/test_pgwire_requirements.py`
+**Tests:** `tests/unit/test_pgwire_requirements.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/integration/test_pgwire_integration.py`
 
 ### REQ-606 · SQL & Multi-Protocol Client Access {#REQ-606}
 
@@ -4430,9 +4434,9 @@ The pgwire listener accepts only SQL statements. GraphQL and Cypher query string
 
 **Use case:** Capability-gated DDL and COPY lets power users perform schema operations via psql or DBeaver while protecting other roles from accidental destructive statements.
 
-**Code:** `provisa/pgwire/server.py`, `provisa/pgwire/ddl_handler.py`, `provisa/pgwire/copy_handler.py`
+**Code:** `provisa/pgwire/copy_handler.py`, `provisa/pgwire/_pipeline.py`, `provisa/pgwire/server.py`, `provisa/compiler/definitions.py`
 
-**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/unit/test_pgwire_requirements.py`
+**Tests:** `tests/unit/test_pgwire_requirements.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/integration/test_pgwire_integration.py`
 
 ### REQ-617 · gRPC {#REQ-617}
 
@@ -4762,7 +4766,7 @@ Creation-request queue: when a user lacks authority for a create operation (view
 
 **Tests:** `provisa-ui/e2e/no-domain-mode.spec.ts`, `provisa-ui/e2e/relationships-header.spec.ts`, `provisa-ui/src/__tests__/ui_requirements.test.ts`, `tests/unit/test_ui_role_requirements.py`
 
-### REQ-164 · Admin & Configuration {#REQ-164}
+### REQ-164 · Admin Configuration {#REQ-164}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
@@ -4774,7 +4778,7 @@ Creation-request queue: when a user lacks authority for a create operation (view
 
 **Tests:** `tests/e2e/test_admin_flow.py`, `tests/integration/test_admin_api.py`, `tests/unit/test_admin_mv.py`, `tests/unit/test_admin_requirements.py`, `tests/unit/test_config_reload.py`, `tests/unit/test_config_secrets.py`
 
-### REQ-165 · Admin & Configuration {#REQ-165}
+### REQ-165 · Admin Configuration {#REQ-165}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
@@ -4786,7 +4790,7 @@ Creation-request queue: when a user lacks authority for a create operation (view
 
 **Tests:** `tests/e2e/test_admin_flow.py`, `tests/integration/test_admin_api.py`, `tests/unit/test_admin_mv.py`, `tests/unit/test_admin_requirements.py`
 
-### REQ-166 · Admin & Configuration {#REQ-166}
+### REQ-166 · Admin Configuration {#REQ-166}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
@@ -4798,7 +4802,7 @@ Editable relationships page with materialize toggle, delete, and add form.
 
 **Tests:** `tests/e2e/test_admin_flow.py`, `tests/integration/test_admin_api.py`, `tests/unit/test_admin_mv.py`, `tests/unit/test_admin_requirements.py`
 
-### REQ-167 · Admin & Configuration {#REQ-167}
+### REQ-167 · Admin Configuration {#REQ-167}
 
 **Status:** ✅ complete · **Priority:** MAY · **Type:** ui
 
@@ -4890,7 +4894,7 @@ The PK designation must be configurable in the TablesPage UI via checkbox per co
 
 **Use case:** UI-based PK designation lets stewards configure keys without editing YAML files.
 
-**Code:** `provisa-ui/src/pages/TablesPage`, `provisa-ui/src/components/ColumnForm`
+**Code:** `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/pages/tables/TableEditForm.tsx`, `provisa-ui/src/pages/tables/TableReadView.tsx`, `provisa-ui/src/pages/TablesPage.tsx`
 
 **Tests:** `provisa-ui/e2e/tables-register.spec.ts`, `provisa-ui/src/__tests__/ui_requirements.test.ts`, `tests/unit/test_column_governance_requirements.py`
 
@@ -4902,9 +4906,9 @@ The graph node context menu "Exclude from query" option must be disabled (greyed
 
 **Use case:** Disabling exclusion without a PK prevents incomplete or ambiguous row-level filtering.
 
-**Code:** `provisa-ui/src/components/GraphContextMenu`
+**Code:** `provisa-ui/src/components/graph/NodeContextMenu.tsx`
 
-**Tests:** `provisa-ui/e2e/graph-query-panel-height.spec.ts`, `provisa-ui/e2e/graph-show-children.spec.ts`, `provisa-ui/src/__tests__/ui_requirements.test.ts`, `tests/unit/test_column_governance_requirements.py`
+**Tests:** `provisa-ui/src/__tests__/ui_requirements.test.ts`, `provisa-ui/e2e/graph-show-children.spec.ts`, `provisa-ui/e2e/graph-query-panel-height.spec.ts`, `tests/unit/test_column_governance_requirements.py`
 
 ### REQ-401 · UI & Frontend {#REQ-401}
 
@@ -4914,7 +4918,7 @@ Foreign key (FK) and alternate key (AK) badges surface as read-only indicators i
 
 **Use case:** FK/AK badges provide visual feedback on relationship column usage without allowing direct editing.
 
-**Code:** `provisa-ui/src/components/ColumnForm`, `provisa-ui/src/pages/TablesPage`
+**Code:** `provisa-ui/src/pages/tables/TableEditForm.tsx`, `provisa-ui/src/pages/tables/TableReadView.tsx`
 
 **Tests:** `provisa-ui/e2e/tables-register.spec.ts`, `provisa-ui/src/__tests__/ui_requirements.test.ts`, `tests/unit/test_column_governance_requirements.py`
 
@@ -4926,9 +4930,9 @@ Security page RLS form includes "Apply To" toggle: "Specific Table" or "Entire D
 
 **Use case:** UI toggle lets stewards choose rule scope without understanding the underlying schema design.
 
-**Code:** `provisa-ui/src/pages/SecurityPage`
+**Code:** `provisa-ui/src/pages/SecurityPage.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/ui_requirements.test.ts`, `tests/unit/test_column_governance_requirements.py`
+**Tests:** `tests/unit/test_column_governance_requirements.py`, `provisa-ui/src/__tests__/ui_requirements.test.ts`
 
 ### REQ-410 · UI & Frontend {#REQ-410}
 
@@ -4938,11 +4942,11 @@ GraphFrame Cypher WHERE clause generation must use single-quoted string literals
 
 **Use case:** Correct single-quote quoting prevents SQL identifier errors when filtering by string PK values in the graph view.
 
-**Code:** `provisa-ui/src/pages/GraphFrame.tsx`
+**Code:** `provisa-ui/src/components/graph/graph-model.ts`, `provisa-ui/src/components/graph/GraphFrame.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/ui_requirements.test.ts`, `tests/unit/test_column_governance_requirements.py`, `tests/unit/test_cypher_graph_fns.py`
+**Tests:** `provisa-ui/src/__tests__/ui_requirements.test.ts`, `provisa-ui/src/pages/__tests__/inject-exclusion.test.ts`, `tests/unit/test_column_governance_requirements.py`
 
-### REQ-533 · Admin & Configuration {#REQ-533}
+### REQ-533 · Admin Configuration {#REQ-533}
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
@@ -4954,7 +4958,7 @@ The admin GraphQL API is a Strawberry-based endpoint mounted at POST /admin/grap
 
 **Tests:** `tests/integration/test_admin_api.py`, `tests/unit/test_admin_mv.py`, `tests/unit/test_admin_requirements.py`
 
-### REQ-620 · Admin & Configuration {#REQ-620}
+### REQ-620 · Admin Configuration {#REQ-620}
 
 **Status:** ↪ superseded by [REQ-533](#REQ-533) · **Priority:** SHOULD · **Type:** structural
 
@@ -4966,7 +4970,7 @@ The admin GraphQL API is mounted at `/admin/graphql` on the backend server (defa
 
 **Tests:** `tests/integration/test_admin_api.py`, `tests/unit/test_admin_mv.py`, `tests/unit/test_admin_requirements.py`
 
-### REQ-622 · Admin & Configuration {#REQ-622}
+### REQ-622 · Admin Configuration {#REQ-622}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
@@ -5060,21 +5064,21 @@ Docker Compose for development/small-team: single command, Provisa + Trino coord
 
 **Use case:** Single-command Docker Compose setup lets developers run the full Provisa stack without manual configuration.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `docker-compose.core.yml`, `docker-compose.app.yml`, `start-ui.sh`, `docker/trino-engine.Dockerfile`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`
+**Tests:** `tests/unit/test_infra_requirements.py`, `tests/integration/test_infra.py`, `tests/e2e/test_health_checks.py`
 
 ### REQ-056 · Infrastructure {#REQ-056}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** infrastructure
 
 Helm chart for production Kubernetes: horizontal Trino worker scaling, resource groups, HPA autoscaling.
 
 **Use case:** Helm chart with HPA autoscaling lets production deployments scale Trino workers automatically under load.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `helm/provisa/Chart.yaml`, `helm/provisa/values.yaml`, `helm/provisa/templates/trino-worker.yaml`, `helm/provisa/templates/trino-coordinator.yaml`, `helm/provisa/templates/hpa-provisa.yaml`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/e2e/test_helm_minikube.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`
+**Tests:** `tests/unit/test_infra_requirements.py`, `tests/e2e/test_helm_minikube.py`
 
 ### REQ-057 · Infrastructure {#REQ-057}
 
@@ -5084,9 +5088,9 @@ Provisa container is stateless; deployment topology behind Trino endpoint is con
 
 **Use case:** Stateless Provisa container enables horizontal scaling and rolling deployments without session affinity concerns.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `docker-compose.app.yml`, `docker-compose.core.yml`, `helm/provisa/templates/provisa-deployment.yaml`, `helm/provisa/values.yaml`, `provisa/api/app.py`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`
+**Tests:** `tests/unit/test_infra_requirements.py`, `tests/integration/test_infra.py`, `tests/e2e/test_health_checks.py`
 
 ### REQ-064 · Error Handling & Reliability {#REQ-064}
 
@@ -5192,9 +5196,9 @@ Trino 480 with Iceberg results catalog (JDBC on PG, native S3 filesystem).
 
 **Use case:** Trino 480 with Iceberg results catalog provides modern open-table-format storage for all redirected results.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `docker-compose.core.yml`, `trino/catalog/results.properties`, `docker/trino-engine.Dockerfile`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`
+**Tests:** `tests/unit/test_infra_requirements.py`, `tests/integration/test_infra.py`, `tests/e2e/test_health_checks.py`
 
 ### REQ-170 · Infrastructure {#REQ-170}
 
@@ -5204,9 +5208,9 @@ Trino 480 with Iceberg results catalog (JDBC on PG, native S3 filesystem).
 
 **Use case:** reset-volumes flag gives developers a one-command recovery path after Docker volume corruption.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `start-ui.sh`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`
+**Tests:** `tests/unit/test_infra_requirements.py`
 
 ### REQ-171 · Infrastructure {#REQ-171}
 
@@ -5216,9 +5220,9 @@ Trino 480 with Iceberg results catalog (JDBC on PG, native S3 filesystem).
 
 **Use case:** MinIO bucket auto-creation at startup prevents first-run failures due to missing redirect storage.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `provisa/executor/redirect.py`, `provisa/federation/backend.py`, `docker-compose.core.yml`
 
-**Tests:** `tests/unit/test_redirect_bucket_lazy.py`, `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_redirect_bucket_lazy.py`, `tests/unit/test_infra_requirements.py`
 
 ### REQ-223 · Installer & Packaging {#REQ-223}
 
@@ -6154,7 +6158,7 @@ Client-owned KMS key model. Org master key is a CMK in the client's own cloud ac
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-All internal PostgreSQL tables (semantic metadata, non-SQL cache, audit log, materialized view definitions) are scoped to a per-org schema named org_<org_id>. The asyncpg connection pool sets search_path=org_<org_id> on every connection via the connection init hook. A default org_id of "default" is used when ORG_ID env var is not set, producing schema org_default. Existing single-org deployments are unaffected — they transparently use org_default.
+All internal PostgreSQL tables (semantic metadata, non-SQL cache, audit log, materialized view definitions) are scoped to a per-org schema named org_<org_id>. [SUPERSEDED by [REQ-828](#REQ-828), 2026-10-03 -- the control-plane pool is psycopg 3, not asyncpg. Kept here for history; do not implement against it.] The asyncpg connection pool sets search_path=org_<org_id> on every connection via the connection init hook. [END SUPERSEDED BLOCK] A default org_id of "default" is used when ORG_ID env var is not set, producing schema org_default. Existing single-org deployments are unaffected — they transparently use org_default. (Amended 2026-10-03, THE POOL IS PSYCOPG 3:) The control-plane store is reached through synchronous SQLAlchemy engines: psycopg 3 on PostgreSQL and pysqlite on SQLite ([REQ-828](#REQ-828)). The pool sets search_path to the org's schema on every connection.
 
 **Use case:** Schema-per-org provides structural isolation between tenants on a shared PostgreSQL instance. Accidental cross-tenant data access requires bypassing both the search_path and the role-level grants.
 
@@ -6166,7 +6170,7 @@ All internal PostgreSQL tables (semantic metadata, non-SQL cache, audit log, mat
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Platform tables (tenants, tenant_config) reside in a dedicated platform schema, never touched by org search_path. The platform schema has a separate asyncpg pool or uses fully-qualified queries (platform.tenants). Org schemas cannot reference or join to the platform schema.
+Platform tables (tenants, tenant_config) reside in a dedicated platform schema, never touched by org search_path. [SUPERSEDED by [REQ-828](#REQ-828), 2026-10-03 -- the control-plane pool is psycopg 3, not asyncpg. Kept here for history; do not implement against it.] The platform schema has a separate asyncpg pool or uses fully-qualified queries (platform.tenants). [END SUPERSEDED BLOCK] Org schemas cannot reference or join to the platform schema. (Amended 2026-10-03, THE POOL IS PSYCOPG 3:) The control-plane store is reached through synchronous SQLAlchemy engines: psycopg 3 on PostgreSQL and pysqlite on SQLite ([REQ-828](#REQ-828)). The platform schema has its own pool or is addressed by fully-qualified names.
 
 **Use case:** Tenant registry and billing data must not co-mingle with per-org application data. A compromised org connection cannot enumerate other tenants.
 
@@ -6190,13 +6194,13 @@ init_schema() in provisa/core/db.py accepts an org_id parameter. It creates the 
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-The Trino non-SQL cache schema is org-scoped. cache_location() in provisa/api_source/trino_cache.py accepts org_id and sets cache_schema=org_<org_id>_api_cache. All callers (endpoint.py, router_integration.py, cypher_router.py) pass org_id from request context. The provisa_admin Trino catalog requires no change as Trino uses fully-qualified catalog.schema.table references.
+The Trino non-SQL cache schema is org-scoped. [SUPERSEDED by [REQ-845](#REQ-845), 2026-10-03 -- provisa/api_source/trino_cache.py no longer exists; the org's API cache schema is resolved by org_cache_schema in provisa/api_source/engine_cache.py, for every engine. Kept here for history; do not implement against it.] cache_location() in provisa/api_source/trino_cache.py accepts org_id and sets cache_schema=org_<org_id>_api_cache. [END SUPERSEDED BLOCK] All callers (endpoint.py, router_integration.py, cypher_router.py) pass org_id from request context. The provisa_admin Trino catalog requires no change as Trino uses fully-qualified catalog.schema.table references. (Amended 2026-10-03, THE API CACHE SCHEMA IS ORG-SCOPED ON EVERY ENGINE:) The API cache schema is named for the org (and for the environment, where one is bound) on every federation engine, not only Trino.
 
 **Use case:** Non-SQL cached rows for different orgs land in separate PG schemas within the provisa_admin catalog. A Trino query for org A cannot reference org B cache tables without an explicit schema qualifier.
 
-**Code:** `provisa/api_source/trino_cache.py`, `provisa/api/data/endpoint.py`
+**Code:** `provisa/api_source/engine_cache.py`, `provisa/api_source/fill_cache.py`, `provisa/api/data/endpoint_executors.py`, `provisa/api/data/materialization.py`, `provisa/api/rest/cypher_exec.py`
 
-**Tests:** `tests/unit/test_catalog_cache.py`, `tests/unit/test_org_isolation.py`
+**Tests:** `tests/unit/test_org_isolation.py`, `tests/unit/test_catalog_cache.py`
 
 ### REQ-699 · Multi-Tenancy {#REQ-699}
 
@@ -6270,7 +6274,7 @@ adbc_connect() must accept an optional port parameter (default 8815) so callers 
 
 **Use case:** Operators who cannot run the Flight server on port 8815 (due to port conflicts or network policy) can connect via ADBC without falling back to DB-API or SQLAlchemy.
 
-**Code:** `provisa_client/adbc.py`
+**Code:** `provisa-client/provisa_client/adbc.py`
 
 **Tests:** `provisa-client/tests/test_adbc.py`
 
@@ -7040,7 +7044,7 @@ Graph Explorer Favorites panel persists and displays user-saved Cypher queries w
 
 **Use case:** Users need quick access to frequently-used Cypher queries without re-typing them.
 
-**Code:** `provisa-ui/src/components/graph-explorer`
+**Code:** `provisa-ui/src/pages/GraphPage.tsx`, `provisa-ui/src/components/graph/GraphSidebar.tsx`, `provisa-ui/src/components/graph/graph-persistence.ts`
 
 **Tests:** `provisa-ui/e2e/graph-favorites.spec.ts`
 
@@ -7052,7 +7056,7 @@ Graph Explorer Favorites: hovering over a favorite item reveals action buttons (
 
 **Use case:** Hover-reveal of action buttons keeps the favorites panel uncluttered while making operations discoverable.
 
-**Code:** `provisa-ui/src/components/graph-explorer`
+**Code:** `provisa-ui/src/components/graph/GraphSidebar.tsx`, `provisa-ui/src/pages/GraphPage.css`
 
 **Tests:** `provisa-ui/e2e/graph-favorites.spec.ts`
 
@@ -7064,7 +7068,7 @@ Graph Explorer Favorites: clicking a favorite's label loads the Cypher query int
 
 **Use case:** Users can quickly load and run a saved query or modify it before execution.
 
-**Code:** `provisa-ui/src/components/graph-explorer`
+**Code:** `provisa-ui/src/components/graph/GraphSidebar.tsx`, `provisa-ui/src/pages/GraphPage.tsx`
 
 **Tests:** `provisa-ui/e2e/graph-favorites.spec.ts`, `tests/unit/test_graph_explorer_favorites.py`
 
@@ -7076,7 +7080,7 @@ Graph Explorer Favorites: inline rename input allows editing a favorite's label 
 
 **Use case:** Users can update favorite labels to keep them organized and meaningful as their work evolves.
 
-**Code:** `provisa-ui/src/components/graph-explorer`
+**Code:** `provisa-ui/src/components/graph/GraphSidebar.tsx`, `provisa-ui/src/pages/GraphPage.tsx`
 
 **Tests:** `provisa-ui/e2e/graph-favorites.spec.ts`, `tests/unit/test_graph_explorer_favorites.py`
 
@@ -7088,7 +7092,7 @@ Graph Explorer Favorites: delete button removes a favorite from the panel and lo
 
 **Use case:** Users can clean up outdated or unwanted saved queries.
 
-**Code:** `provisa-ui/src/components/graph-explorer`
+**Code:** `provisa-ui/src/components/graph/GraphSidebar.tsx`, `provisa-ui/src/pages/GraphPage.tsx`
 
 **Tests:** `provisa-ui/e2e/graph-favorites.spec.ts`, `tests/unit/test_graph_explorer_favorites.py`
 
@@ -7134,15 +7138,15 @@ Impute-relationships endpoint accepts visible node set with stable integer ids a
 
 ### REQ-788 · File & Lake Sources {#REQ-788}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
 File connector sources accept a directory glob pattern to enumerate CSV files. Discovered files are introspected to extract schema (column names and types). Multiple CSV files matching the glob are consolidated into a single logical table when registered.
 
 **Use case:** File glob patterns enable users to query across multiple CSV files without manual discovery or registration of individual files.
 
-**Code:** `provisa/source_adapters/file_connector.py`
+**Code:** `provisa/federation/trino_connectors.py`, `provisa/federation/pgwire_replica.py`, `provisa/file_source/crawler.py`, `provisa/file_source/source.py`, `provisa/api/admin/schema_query.py`
 
-**Tests:** `provisa-ui/e2e/file-connector.spec.ts`, `tests/unit/test_file_lake_sources.py`
+**Tests:** `tests/unit/test_file_lake_sources.py`, `provisa-ui/e2e/file-connector.spec.ts`
 
 ### REQ-789 · File & Lake Sources {#REQ-789}
 
@@ -7152,7 +7156,7 @@ CSV column headers are automatically mapped to GraphQL field names using LINQ4J 
 
 **Use case:** Automatic header normalization allows CSV files with mixed naming conventions to produce consistent, queryable schemas without manual column mapping.
 
-**Code:** `provisa/source_adapters/file_connector.py`
+**Code:** `provisa/federation/pgwire_replica.py`, `provisa/federation/trino_connectors.py`, `provisa/file_source/source.py`, `provisa/compiler/naming.py`
 
 **Tests:** `provisa-ui/e2e/file-connector.spec.ts`, `tests/unit/test_file_lake_sources.py`
 
@@ -7164,7 +7168,7 @@ File connector table enumeration (via directory glob discovery) is accessible th
 
 **Use case:** UI-driven table enumeration allows users to discover and register file-based tables without knowledge of directory structure or manual schema definitions.
 
-**Code:** `provisa-ui/src/pages/tables`, `provisa/api/rest/tables_router.py`
+**Code:** `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa/api/admin/schema_query.py`, `provisa-ui/src/hooks/useAdminQueries.ts`
 
 **Tests:** `provisa-ui/e2e/file-connector.spec.ts`, `tests/unit/test_file_lake_sources.py`
 
@@ -7488,7 +7492,7 @@ Telemetry sink services (otel-collector, prometheus, tempo, grafana, otlp2parque
 
 **Use case:** Telemetry infrastructure is optional overhead for test and CI runs. Isolating telemetry sinks reduces startup time and resource consumption while ensuring app correctness does not depend on collector availability.
 
-**Code:** `docker-compose.core.yml`, `docker-compose.observability.yml`, `provisa/telemetry/exporter.py`
+**Code:** `docker-compose.core.yml`, `docker-compose.observability.yml`, `provisa/api/otel_setup.py`
 
 **Tests:** `tests/unit/test_infra_requirements.py`
 
@@ -7626,9 +7630,9 @@ Federation strategy and freshness management — the datasources → federation 
 
 **Use case:** Concentrates the real complexity of federation — strategy selection, residency, reload scheduling, and invalidation — in one stateful federate() operation, so any datasource (RDBMS, files, NoSQL, APIs) joins the engine's surface by the best available strategy with predictable freshness, independent of which engine is deployed.
 
-**Code:** `provisa/federation/strategy.py`, `provisa/federation/engine.py`, `provisa/executor/trino.py`, `provisa/transpiler/router.py`, `provisa/openapi/pg_cache.py`, `provisa/mv/registry.py`, `provisa/cache/warm_tables.py`, `provisa/cache/hot_tables.py`, `provisa/core/config_loader.py`, `provisa/core/operator_floor.py`
+**Code:** `provisa/federation/strategy.py`, `provisa/federation/engine.py`, `provisa/core/operator_floor.py`, `provisa/core/replicate.py`, `provisa/federation/replica_hot.py`, `provisa/federation/replica_routing.py`, `provisa/federation/promote.py`, `provisa/federation/materialization.py`, `provisa/api_source/engine_cache.py`, `provisa/core/models.py`, `provisa-ui/src/components/admin/ReplicateSelect.tsx`
 
-**Tests:** `tests/unit/test_federation_strategy.py`, `tests/unit/test_operator_floor_routing.py`, `tests/integration/test_operator_floor_e2e.py`
+**Tests:** `tests/unit/test_federation_strategy.py`, `tests/unit/test_operator_floor_routing.py`, `tests/integration/test_operator_floor_e2e.py`, `tests/unit/test_replica_hot_evaluation.py`, `tests/unit/test_floor_enforced_on_every_engine.py`
 
 ### REQ-827 · Execution & Routing {#REQ-827}
 
@@ -7650,7 +7654,7 @@ Pluggable admin/metadata store, decoupled from Postgres, selected via a SQLAlche
 
 **Use case:** Makes the full Provisa deployment — control plane and cache, not just the query engine — infra-free on a developer laptop, completing the develop-on-DuckDB / scale-out-in-prod model in [REQ-825](#REQ-825) without requiring Docker or an external Postgres.
 
-**Code:** `provisa/core/meta_rls.py`, `provisa/core/db.py`, `provisa/core/database.py`, `provisa/core/duckdb_store.py`, `provisa/core/repositories/source.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/api/app.py`, `provisa/openapi/pg_cache.py`
+**Code:** `provisa/core/meta_rls.py`, `provisa/core/db.py`, `provisa/core/database.py`, `provisa/core/duckdb_store.py`, `provisa/core/repositories/source.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/api/app.py`, `provisa/api/app_loaders.py`, `provisa/api_source/fill_cache.py`
 
 **Tests:** `tests/unit/test_admin_store.py`, `tests/unit/test_control_plane_shared_engine.py`
 
@@ -7670,11 +7674,11 @@ Pluggable Redis medium with a lightweight, code-identical embedded realization f
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
-Stateful-component topology. The four data-flow primitives (datasources -> federation engine -> semantic layer -> execution pipeline; [REQ-825](#REQ-825)) describe a STATELESS per-query flow. Orthogonal to them, a deployment holds FIVE PLUGGABLE STATEFUL COMPONENTS, each independently swappable and — except the platform registry — TENANT-ISOLATED: (1) PLATFORM CONTROL PLANE REGISTRY — platform-scoped, shared: tenant directory, federation-engine registry, platform-level governance ([REQ-041](#REQ-041)/[REQ-402](#REQ-402)), and per-tenant routing (which registry/caches/engine each tenant uses). (2) TENANT CONTROL PLANE REGISTRY — per-tenant: persists that tenant's datasource definitions and semantic layer (registered tables/columns, relationships, domains, RLS, masking, naming); the store [REQ-828](#REQ-828) makes pluggable. (3) TENANT MATERIALIZATION STORE — per-tenant durable store realizing the MATERIALIZED federation strategy ([REQ-826](#REQ-826)): API/GraphQL/gRPC result caches, warm tables, MVs; disk/object-backed. It is a real relation the federation engine reads, so materialized/MV data PARTICIPATES in federation (joinable/scannable like any source). (4) TENANT HOT CACHE — per-tenant fast tier realizing hot tables ([REQ-230](#REQ-230)): small, low-latency, ephemeral. STRICTLY a CTE-injection mechanism — its data is inlined as a VALUES CTE into the generated SQL at codegen and NEVER becomes an engine relation, so it does NOT participate in federation (cannot be joined or scanned by the engine as a table) and is orthogonal to the virtual|scan|materialized strategies. Tier exclusivity ([REQ-241](#REQ-241)) chooses it over the materialization store. (5) FEDERATION ENGINE — the execution substrate ([REQ-825](#REQ-825)); tenant-dedicated or shared. Each is independently pluggable: on a developer desktop components 1-4 collapse into one embedded engine (DuckDB/SQLite) and #5 is DuckDB (zero infra); in production they scale out independently (platform registry in Postgres, tenant registries sharded, materialization store in Iceberg/S3, hot cache in Redis, engine in Trino/Snowflake). Tenant isolation for components 2-5 MUST be enforced in the app layer ([REQ-828](#REQ-828)), not delegated to any single store's native RLS, so isolation holds across every medium.
+Stateful-component topology. The four data-flow primitives (datasources -> federation engine -> semantic layer -> execution pipeline; [REQ-825](#REQ-825)) describe a STATELESS per-query flow. Orthogonal to them, a deployment holds FIVE PLUGGABLE STATEFUL COMPONENTS, each independently swappable and — except the platform registry — TENANT-ISOLATED: (1) PLATFORM CONTROL PLANE REGISTRY — platform-scoped, shared: tenant directory, federation-engine registry, platform-level governance ([REQ-041](#REQ-041)/[REQ-402](#REQ-402)), and per-tenant routing (which registry/caches/engine each tenant uses). (2) TENANT CONTROL PLANE REGISTRY — per-tenant: persists that tenant's datasource definitions and semantic layer (registered tables/columns, relationships, domains, RLS, masking, naming); the store [REQ-828](#REQ-828) makes pluggable. (3) TENANT MATERIALIZATION STORE — per-tenant durable store realizing the MATERIALIZED federation strategy ([REQ-826](#REQ-826)): API/GraphQL/gRPC result caches, warm tables, MVs; disk/object-backed. It is a real relation the federation engine reads, so materialized/MV data PARTICIPATES in federation (joinable/scannable like any source). (4) TENANT HOT CACHE — per-tenant fast tier realizing hot tables ([REQ-230](#REQ-230)): small, low-latency, ephemeral. STRICTLY a CTE-injection mechanism — its data is inlined as a VALUES CTE into the generated SQL at codegen and NEVER becomes an engine relation, so it does NOT participate in federation (cannot be joined or scanned by the engine as a table) and is orthogonal to the virtual|scan|materialized strategies. Tier exclusivity ([REQ-241](#REQ-241)) chooses it over the materialization store. (5) FEDERATION ENGINE — the execution substrate ([REQ-825](#REQ-825)); tenant-dedicated or shared. Each is independently pluggable: on a developer desktop components 1-4 collapse into one embedded engine (DuckDB/SQLite) and #5 is DuckDB (zero infra); in production they scale out independently (platform registry in Postgres, tenant registries sharded, materialization store in Iceberg/S3, hot cache in Redis, engine in Trino/Snowflake). Tenant isolation for components 2-5 MUST be enforced in the app layer ([REQ-828](#REQ-828)), not delegated to any single store's native RLS, so isolation holds across every medium. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this text calls landed or materialized is a replica, and making one is replication ([REQ-826](#REQ-826), [REQ-1915](#REQ-1915)). A materialized view keeps its name.
 
 **Use case:** Names the stateful components multi-tenancy must isolate and deployment must place, separating them from the stateless execution pipeline, and makes each independently pluggable so the same platform collapses to zero-infra on a laptop and scales each tier independently in production with tenant isolation enforced uniformly in the app layer.
 
-**Code:** `provisa/api/app.py`, `provisa/core/db.py`, `provisa/core/repositories/source.py`, `provisa/openapi/pg_cache.py`, `provisa/cache/hot_tables.py`, `provisa/cache/warm_tables.py`, `provisa/mv/registry.py`
+**Code:** `provisa/api/app.py`, `provisa/core/db.py`, `provisa/core/repositories/source.py`, `provisa/api_source/fill_cache.py`, `provisa/cache/hot_tables.py`, `provisa/federation/data_replicator.py`, `provisa/federation/replica_state.py`, `provisa/federation/engine.py`, `provisa/mv/registry.py`, `provisa/core/meta_rls.py`
 
 **Tests:** `tests/unit/test_arch_invariants.py`
 
@@ -8018,7 +8022,7 @@ MV and the ad-hoc API/pg cache freshness checks (provisa/openapi/pg_cache.py) be
 
 **Use case:** Consistency: the same freshness semantics and strategies apply to every data path, and there is one place to change freshness policy instead of per-consumer copies.
 
-**Code:** `provisa/freshness/adapters.py`, `provisa/mv/models.py`, `provisa/openapi/pg_cache.py`
+**Code:** `provisa/freshness/adapters.py`, `provisa/mv/models.py`, `provisa/api_source/fill_cache.py`
 
 **Tests:** `tests/unit/test_freshness_adapters.py`
 
@@ -8200,13 +8204,13 @@ SUPERSEDED BY [REQ-874](#REQ-874). This requirement duplicated existing watermar
 
 ### REQ-874 · Materialization Store {#REQ-874}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Delta fetch for materialization_store REPLICA incremental refresh: an INCREMENTAL RELOAD strategy for datasets whose federation strategy is MATERIALIZED ([REQ-826](#REQ-826)) — data is landed/cached, so full re-pull is the cost delta avoids. Remote schemas (graphql_remote/ openapi/grpc) are the PRIMARY DRIVER but not the sole case; also RDB cached-for-latency, NoSQL, live APIs landed via MATERIALIZED. VIRTUAL and SCAN strategies EXCLUDED (always-fresh / read-in-place; nothing to delta-refresh per [REQ-826](#REQ-826)). KEY SIMPLIFICATION: PROBE == DELTA for monotonic entries. For a monotonic-cursor entry the DELTA QUERY IS THE FRESHNESS EVALUATION. Run the delta query: non-empty result ⇒ changed ⇒ apply the rows; empty ⇒ fresh ⇒ no-op. No separate watermark/probe query. No scalar_path. DEFINITION: ONE authored query (delta_query) — authored, source-native, fully-formed filter with two PLACEHOLDERS that Provisa substitutes: (a) watermark placeholder ($wm bind variable) bound to the stored CURSOR VALUE, (b) fields placeholder ({{fields}}) injected from the table's registered selection set. Provisa substitutes only; never parses the filter. CURSOR FIELD IMPLICIT: the cursor field is the field $wm filters on (single query, single field); after applying delta rows, the stored cursor advances to max(cursor-field) over returned rows (delta_query ordered by cursor field). Same-field alignment therefore trivially guaranteed; no separate field declaration required. Cursor and monotonicity are the registrant's responsibility; Provisa does no dedup or boundary-inclusivity logic. SOURCE-TYPE-SPECIFIC AUTHORING AND EXECUTION: delta_query is AUTHORED IN THE SOURCE'S NATIVE QUERY LANGUAGE, syntax and filter/cursor binding PER-SOURCE-TYPE: GraphQL `where: {field: {_gt: $wm}}` + `{{fields}}`; OpenAPI query-param `?updated_since=$wm` + selection headers; gRPC request-message filter + `$wm` + selection; SQL `WHERE field > $wm` + projection. Only $wm/{{fields}} placeholder substitution and cursor-advance logic are uniform across types. DELTA EXECUTION ROUTES THROUGH THE ADAPTER'S NATIVE CALLER, NOT THE FEDERATION ENGINE: GraphQL delta POSTs the native query to the source (predicate pushed down AT source) and lands rows into materialization_store; does NOT execute as Trino `WHERE field > x` scan over the federated relation. Native-pushdown path is the efficiency win and reason delta exists rather than relying on Trino watermark_column poll (which re-scans with no pushdown). Per source type: (1) delta template = native query syntax + filter/cursor binding (author-supplied, source-specific); (2) delta execution = routes through source type's existing native caller (GraphQL/HTTP/gRPC/SQL), bypassing federation engine. Pattern mirrors per-adapter mutation classification/suggestion ([REQ-869](#REQ-869)/871): uniform contract with per-source-type native implementation. APPLY: upsert returned rows on the replica's ALREADY-REGISTERED PRIMARY KEY (entity identity from table registration) to replace prior row state; degrades to plain insert for append-only/immutable sources. REPLICA-ONLY: VIEW/mv role is delta-ineligible—[REQ-844](#REQ-844) Iceberg overwrite-snapshot semantics (one clean snapshot per refresh) for time-travel/provenance/ bitemporal ([REQ-372](#REQ-372)/862) would be violated by upsert. Mutable relational substrate only. RELATIONSHIP TO FRESHNESS: Freshness ([REQ-855](#REQ-855)/856) is pure stale/fresh DECISION with no refresh semantics ([REQ-856](#REQ-856)). Delta is REFRESH ACTION under [REQ-826](#REQ-826)'s MATERIALIZED reload — incremental sibling of full re-pull. But for monotonic entries delta query serves as freshness evaluation, so [REQ-855](#REQ-855)'s opaque probe is NOT also run: PROBE (opaque token) and DELTA (monotonic cursor) are MUTUALLY EXCLUSIVE PER ENTRY, selected by token type. Opaque-token entries ⇒ [REQ-855](#REQ-855) probe + full re-pull, no delta. Monotonic entries ⇒ delta-as-probe, no separate probe. Validation gates: (a) delta_query contains both $wm and {{fields}} placeholders; (b) parses; (c) $wm bind-var type is orderable/monotonic-compatible; (d) injected selection valid against row type. DONE (2026-07): the UNIFORM part is implemented — provisa/federation/delta.py: delta_applies gates delta to MATERIALIZED (VIRTUAL/SCAN excluded); render_delta_fields substitutes {{fields}} textually (Provisa never parses the source-native filter) leaving $wm for native binding; has_wm_placeholder is the $wm validation gate; delta_is_fresh is PROBE==DELTA (empty result ⇒ fresh/no-op, non-empty ⇒ changed/apply); advance_cursor advances the stored cursor to max(cursor-field) over the returned rows (empty keeps it). REMAINING (kept in-progress): the per-source-type delta authoring + native execution (GraphQL/HTTP/gRPC/SQL callers, predicate pushed down at source), keyed-upsert apply on the replica, and the delta/opaque-probe mutual-exclusivity wiring with [REQ-855](#REQ-855).
 
 **Use case:** For REPLICAS (any MATERIALIZED-strategy dataset whose federation strategy lands data), full re-pull on every refresh is expensive and unnecessary. Delta fetch via monotonic watermark keeps replicas fresh with zero lag ([REQ-855](#REQ-855) probe) without repeated full upstream fetches. Primary use: remote-schema sources (graphql_remote/openapi/gRPC) avoid full-relation re-fetch and re-materialize. Also benefits RDB sources presently using watermark_column only for subscriptions ([REQ-260](#REQ-260)) — they gain incremental replica refresh: keyed upsert instead of full re-pull, no full-CTAS + mutation-triggered staleness cycle. Strategy-agnostic scope avoids VIRTUAL (live) and SCAN (in-place read) per [REQ-826](#REQ-826). Replicas in mutable stores absorb deltas; views cannot.
 
-**Code:** `provisa/federation/delta.py`, `provisa/subscriptions/`, `provisa/materialization/`, `provisa/materialization_store/`
+**Code:** `provisa/federation/delta.py`
 
 **Tests:** `tests/unit/test_delta.py`, `tests/integration/test_materialization_store_lifecycle_e2e.py`
 
@@ -8332,7 +8336,7 @@ Provisa's pgwire server must satisfy the capability set that DuckDB's `postgres`
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-All Provisa internal logs—starting with the query audit log ([REQ-074](#REQ-074)) and extending to any other operational/observability logs—must be materialized and exposed as first-class registered tables within a dedicated "ops" domain in Provisa's federated catalog.
+All Provisa internal logs—starting with the query audit log ([REQ-596](#REQ-596)) and extending to any other operational/observability logs—must be materialized and exposed as first-class registered tables within a dedicated "ops" domain in Provisa's federated catalog.
 
 **Use case:** Makes operational telemetry queryable through the governed pipeline (pgwire/SQL/GraphQL/Cypher) subject to role + domain access control, instead of only via the Python export path (export_audit_log) or raw control-plane JDBC access which bypass governance. Enables self-observability/dogfooding where an MCP/AI planner can read observability signals through the same governed surface as business data. Closes the gap that query_audit_log is not currently exposed in the federated pgwire catalog.
 
@@ -8350,9 +8354,9 @@ Generalize tracked functions ([REQ-205](#REQ-205)–208: source-resident stored 
 
 **Use case:** Enables diverse computation platforms (hosted scripts, external services, Python libraries) to act as governed data transformations, returning relations (not just scalar functions). Maintains config-as-truthful-model property with URI addressing and spec-driven discovery (OpenAPI/proto/ script-manifest). Preserves existing source-procedure tracked-function contract while extending to Provisa-hosted and external implementations.
 
-**Code:** `provisa/executor/function_dispatch.py`, `provisa/api/data/action_exec.py`, `provisa/api/app.py`, `provisa/core/models.py`, `provisa/core/repositories/function.py`, `provisa/core/schema_org.py`, `provisa/api/admin/actions_router.py`, `provisa-ui/src/pages/commands/CommandFormFields.tsx`, `provisa-ui/src/pages/commands/CommandsPage.tsx`, `provisa-ui/src/pages/commands/types.ts`, `provisa-ui/src/pages/commands/api/actions.ts`
+**Code:** `provisa/executor/function_dispatch.py`, `provisa/api/data/action_exec.py`, `provisa/api/app.py`, `provisa/core/models.py`, `provisa/core/repositories/function.py`, `provisa/core/schema_org.py`, `provisa/api/admin/actions_router.py`, `provisa-ui/src/pages/commands/CommandFormFields.tsx`, `provisa-ui/src/pages/commands/types.ts`, `provisa-ui/src/pages/CommandsPage.tsx`, `provisa-ui/src/api/actions.ts`
 
-**Tests:** `tests/unit/test_extensible_functions.py`
+**Tests:** `tests/unit/test_extensible_functions.py`, `provisa-ui/src/__tests__/CommandFormFields.test.tsx`
 
 ## 1. Access Governance & Security
 
@@ -8392,7 +8396,7 @@ Federation engine contract is wired into the live query path via EngineRuntime, 
 
 **Use case:** Mandatory EngineRuntime binding and capability-gating defines the defensible abstraction boundary for platform-specific escape hatches. Named, advertised capabilities prevent arbitrary injected connections and enforce consistent routing (DIRECT → native driver, ENGINE → federated execution) across all consumer paths (pgwire, GraphQL, Arrow Flight, COPY handler, NL executor).
 
-**Code:** `provisa/federation/runtime.py`, `provisa/api/graphql/`, `provisa/bolt/`, `provisa/arrow_flight/`, `provisa/query_helpers.py`
+**Code:** `provisa/federation/runtime.py`, `provisa/api/app.py`, `provisa/api/data/endpoint_executors.py`, `provisa/bolt/server.py`, `provisa/api/flight/server.py`, `provisa/api/_query_helpers.py`
 
 **Tests:** `tests/integration/test_engine_runtime_binding.py`, `tests/unit/test_engine_capabilities.py`
 
@@ -8416,7 +8420,7 @@ The metadata/config/roles store MUST be the embedded single source of truth in e
 
 **Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
-Pgwire auth must be a pluggable provider interface selected at launch (trust | local | oidc), superseding today's fixed MD5/cleartext wiring while keeping trust/cleartext as the baseline. (a) A local-accounts provider stores SCRAM-SHA-256 verifiers at rest (RFC 5802 — random salt, iterations, StoredKey/ServerKey; no cleartext stored or required on the wire, secure without TLS) with a CLI to add/remove/list users, and offers SCRAM-SHA-256 as a wire auth mechanism. (b) An external-token provider accepts an OIDC ID token (JWT) presented as the password and verifies it against the issuer's JWKS (signature, exp, aud, iss); issuer-generic (Firebase/Auth0/Google/Entra) via configured issuer URL + audience. (c) Every configured provider authenticates pgwire, not only oidc and simple. The startup packet carries a username and one cleartext secret and no scheme field, so the presentation is decided once from what the secret is — a personal access token by its prefix and a bearer/JWT provider''s secret are presented as `bearer` ([REQ-1263](#REQ-1263)), everything else as `basic` — and a credential the chosen validator refuses is never retried against another. Validators are submitted to the pgwire event loop rather than a private one, because the token store and DB-backed providers hold loop-bound handles. The session role is resolved from the validated identity via resolve_role against auth.default_role, which is required configuration; a provider that cannot be constructed answers FATAL 28P01 on the wire instead of dropping the connection.
+Pgwire auth must be a pluggable provider interface selected at launch (trust | local | oidc), superseding today's fixed MD5/cleartext wiring while keeping trust/cleartext as the baseline. (a) A local-accounts provider stores SCRAM-SHA-256 verifiers at rest (RFC 5802 — random salt, iterations, StoredKey/ServerKey; no cleartext stored or required on the wire, secure without TLS) with a CLI to add/remove/list users, and offers SCRAM-SHA-256 as a wire auth mechanism. (b) An external-token provider accepts an OIDC ID token (JWT) presented as the password and verifies it against the issuer's JWKS (signature, exp, aud, iss); issuer-generic (Firebase/Auth0/Google/Entra) via configured issuer URL + audience. (c) Every configured provider authenticates pgwire, not only oidc and simple. The startup packet carries a username and one cleartext secret and no scheme field, so the presentation is decided once from what the secret is — a personal access token by its prefix and a bearer/JWT provider''s secret are presented as `bearer` ([REQ-1263](#REQ-1263)), everything else as `basic` — and a credential the chosen validator refuses is never retried against another. [SUPERSEDED by [REQ-1882](#REQ-1882), 2026-10-03 -- Validators now run on the connection's own loop via run_on_connection_loop, and loop-bound handles are resolved per loop (provisa/pgwire/server.py:1704-1705, 1725-1728). Kept here for history; do not implement against it.] Validators are submitted to the pgwire event loop rather than a private one, because the token store and DB-backed providers hold loop-bound handles. [END SUPERSEDED BLOCK] The session role is resolved from the validated identity via resolve_role against auth.default_role, which is required configuration; a provider that cannot be constructed answers FATAL 28P01 on the wire instead of dropping the connection.
 
 **Use case:** Pgwire connections to Provisa today use MD5 or cleartext auth, neither of which meet enterprise security standards. SCRAM-SHA-256 (salted, iterated, server-side verification) secures local accounts without requiring TLS. OIDC integration allows enterprises to reuse their identity provider, eliminating separate credential management for database access.
 
@@ -8870,7 +8874,7 @@ The notification/inbound change signal is independent from the watermark column.
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Materialization is derived from federation-engine reachability, not a user knob. A source the engine cannot reach live is materialized/landed (mandatory). A reachable source is queried live, with optional perf-caching (TTL-based). First land of an unreachable source is unconditional; the change signal governs subsequent refresh.
+Materialization is derived from federation-engine reachability, not a user knob. A source the engine cannot reach live is materialized/landed (mandatory). A reachable source is queried live, with optional perf-caching (TTL-based). First land of an unreachable source is unconditional; the change signal governs subsequent refresh. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this text calls landed or materialized is a replica, and making one is replication ([REQ-826](#REQ-826), [REQ-1915](#REQ-1915)). A materialized view keeps its name.
 
 **Use case:** Materialization ensures correctness when live access is unavailable; it is driven by infrastructure capability, not user preference, eliminating misconfiguration.
 
@@ -8900,7 +8904,7 @@ The change_signal→landing-shape mapping (push→CDC upsert/tombstone by PK, po
 
 **Use case:** Eliminates redundant encoding of change-detection intent across three independent fields (`change_signal`, `freshness_mode`, `live.strategy`). Centralizes the authoritative source and clarifies orthogonal axes (detection method, append/replace mode, materialization).
 
-**Code:** `provisa/core/change_signal.py`, `api/app.py`, `api/admin/schema.py`, `api/data/subscribe.py`, `live/reconcile.py`, `core/config_loader.py`, `core/models.py`, `mv/refresh.py`
+**Code:** `provisa/core/change_signal.py`, `provisa/federation/store_writer.py`, `provisa/federation/materialize_exec.py`, `provisa/federation/store_connection.py`, `provisa/api/data/subscribe.py`, `provisa/live/reconcile.py`, `provisa/core/config_loader.py`, `provisa/core/models.py`
 
 **Tests:** `tests/unit/test_change_signal.py`, `tests/unit/test_materialize_landing.py`, `tests/unit/test_subscribe_publish.py`
 
@@ -9088,7 +9092,7 @@ engine.connectors (the unified connector registry per federation engine) must in
 
 **Use case:** engine.connectors must be complete — federatable ∪ Provisa-direct ∪ adapter-materializable — so that the source-creation dropdown dynamically reflects exactly what each federation engine can reach, whether through its native connectors, direct drivers, or adapters. Eliminates hardcoded source-type lists and parallel registry maps.
 
-**Code:** `provisa/federation/connector.py`, `provisa/federation/engine.py`, `provisa/events/source_loader.py`, `provisa/executor/drivers/registry.py`, `provisa/source_adapters/_ADAPTER_MAP`
+**Code:** `provisa/federation/connector.py`, `provisa/federation/connector_base.py`, `provisa/federation/engine.py`, `provisa/events/source_loader.py`, `provisa/executor/drivers/registry.py`, `provisa/source_adapters/registry.py`, `provisa/core/source_registry.py`, `provisa/federation/trino_connectors.py`
 
 **Tests:** `tests/unit/test_source_registry_contract.py`, `tests/unit/test_engine_reach_faces.py`
 
@@ -9386,7 +9390,7 @@ A derived node's store-table schema is DERIVED from its SQL SELECT (output colum
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-Column-level data masking MUST be expressed as semantic SQL projection expressions within the governed IR so that masking participates in expression/projection pushdown exactly as RLS predicates participate in predicate pushdown. Where a connector can evaluate the mask expression at the source, the mask MUST push down so the raw, unmasked column value never crosses the wire into the middle tier. Any mask that does NOT push down to the source MUST be evaluated in a bounded-memory streaming stage — either engine-side (the fed engine computes the mask expression and streams results) or per-event/per-batch in the middle tier (as the subscription path already does via _mask_row over an async event stream). It is FORBIDDEN to materialize the full unmasked relation in the middle tier to mask it (no fetchall()-style buffer-then-mask). This streaming constraint ensures masking correctness never depends on fed-engine pushdown capability — a capability gap must never become a data leak — and bounds middle-tier memory to O(batch), not O(relation), minimizing the amount of cleartext resident in the tier at any instant.
+Column-level data masking MUST be expressed as semantic SQL projection expressions within the governed IR so that masking participates in expression/projection pushdown exactly as RLS predicates participate in predicate pushdown. Where a connector can evaluate the mask expression at the source, the mask MUST push down so the raw, unmasked column value never crosses the wire into the middle tier. Any mask that does NOT push down to the source MUST be evaluated in a bounded-memory streaming stage — either engine-side (the fed engine computes the mask expression and streams results) or per-event/per-batch in the middle tier (as the subscription path already does via _mask_row over an async event stream). It is FORBIDDEN to materialize the full unmasked relation in the middle tier to mask it (no fetchall()-style buffer-then-mask). This streaming constraint ensures masking correctness never depends on fed-engine pushdown capability — a capability gap must never become a data leak — and bounds middle-tier memory to O(batch), not O(relation), minimizing the amount of cleartext resident in the tier at any instant. (Amended 2026-10-03, MASKS APPLY IN EVERY CLAUSE BUT WHERE AND HAVING:) A masked column is masked wherever a statement uses it: select-list expressions, ORDER BY, GROUP BY, JOIN ON, window definitions and nested SELECTs. WHERE and HAVING are the exception and are unchanged: a masked column there is refused before execution ([REQ-531](#REQ-531)).
 
 **Use case:** Masking today injects scalar SQL expressions (REGEXP_REPLACE, DATE_TRUNC, constant) into the governed SELECT projection after RLS injection. This works correctly but lacks first-class pushdown capability: the planner cannot reason about whether a mask pushed to the source, and no Capability flag tracks whether the source can evaluate the mask's functions. Without projection pushdown, the raw cleartext value must transit to the engine even if the source could mask it — a confidentiality gap analogous to forcing RLS evaluation server-side when the source supports it. The design must model masking as a pushdown-capable expression so confidentiality-aware masking (including a governance guard that acknowledges non-pushable masks) becomes explicit in the planner. For masks that cannot push down, the fallback must evaluate them in a streaming stage to prevent the middle tier from buffering the full unmasked relation into memory — rationale: masking correctness must never depend on pushdown capability (a gap is never a data leak), and the middle tier must bound memory to O(batch), not O(relation), with minimal cleartext residence time.
 
@@ -9498,7 +9502,7 @@ The native tier builds a Python VENV at first launch from PyPI (pinned to releas
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
-Add `json` as a first-class IR type so native JSON in source columns preserves through to materialized stores as native JSON where supported, instead of collapsing to `text`. The write face maps IR `json` to SQLAlchemy's generic JSON (native on Postgres/MySQL/DuckDB, TEXT-affinity on SQLite via the dialect compiler); the land path parses a JSON column's serialized-text value into a Python object before insert so the SQLAlchemy JSON column does not double-encode; and the read path converts an already-parsed dict/list consistently with the string path. Composite/array types (row/array/list/struct/map) remain collapsed to `text`.
+Add `json` as a first-class IR type so native JSON in source columns preserves through to materialized stores as native JSON where supported, instead of collapsing to `text`. The write face maps IR `json` to SQLAlchemy's generic JSON (native on Postgres/MySQL/DuckDB, TEXT-affinity on SQLite via the dialect compiler); the land path parses a JSON column's serialized-text value into a Python object before insert so the SQLAlchemy JSON column does not double-encode; and the read path converts an already-parsed dict/list consistently with the string path. Composite/array types (row/array/list/struct/map) remain collapsed to `text`. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this text calls landed or materialized is a replica, and making one is replication ([REQ-826](#REQ-826), [REQ-1915](#REQ-1915)). A materialized view keeps its name.
 
 **Use case:** Federation queries over JSON columns maintain type information and enable native JSON operations in target stores, rather than forcing serialization fallbacks.
 
@@ -9602,7 +9606,7 @@ Snowflake federation engine must be promoted from a source-only connector (feder
 
 **Use case:** Snowflake is an MPP warehouse with native Arrow support; exposing its columnar capabilities via Provisa's Arrow Flight server enables direct, efficient federated queries without row materialization and eliminates the current Trino-as-middleman routing. Matches architectural parity with Trino ([REQ-986](#REQ-986) ClickHouse parallel) and serves enterprises whose primary warehouse is Snowflake.
 
-**Code:** `provisa/federation/engine.py`, `provisa/federation/backend.py`, `provisa/api/flight/server.py`, `provisa/executor/trino_flight.py`, `provisa/transpiler/transpile.py`, `provisa/source_registry.py`, `provisa/source_connectors/snowflake_connector.py`
+**Code:** `provisa/federation/engine.py`, `provisa/federation/backend.py`, `provisa/federation/native_backend.py`, `provisa/federation/snowflake_backend.py`, `provisa/federation/snowflake_runtime.py`, `provisa/federation/snowflake_connectors.py`, `provisa/federation/snowflake_store.py`, `provisa/api/flight/server.py`, `provisa/executor/trino_flight.py`, `provisa/transpiler/transpile.py`, `provisa/core/source_registry.py`
 
 **Tests:** `tests/unit/test_engine_capabilities.py`, `tests/unit/test_transpiler.py`, `tests/integration/test_snowflake_federation_engine_e2e.py`
 
@@ -9612,11 +9616,11 @@ Snowflake federation engine must be promoted from a source-only connector (feder
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Zero-config default stack must be fully embedded and in-process with no external dependencies: default federation engine is duckdb (not trino), default materialize store is duckdb's native embedded store (not platform tenant DB via Postgres), and default control-plane store is sqlite (not embedded_pg). Desktop installers default to this stack via the `native` preset declared in config/capabilities.yaml (absorbs [REQ-972](#REQ-972)). External engines and stores (Trino, Postgres, ClickHouse, Snowflake, Databricks) remain selectable via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / control_plane_store overrides.
+Zero-config default stack must be fully embedded and in-process with no external dependencies: default federation engine is duckdb (not trino), default materialize store is duckdb's native embedded store (not platform tenant DB via Postgres), [SUPERSEDED by [REQ-1535](#REQ-1535), 2026-10-03 -- embedded PostgreSQL is the default control-plane store for the demo and native tiers; sqlite stays selectable. Kept here for history; do not implement against it.] and default control-plane store is sqlite (not embedded_pg) [END SUPERSEDED BLOCK]. Desktop installers default to this stack via the `native` preset declared in config/capabilities.yaml (absorbs [REQ-972](#REQ-972)). External engines and stores (Trino, Postgres, ClickHouse, Snowflake, Databricks) remain selectable via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / control_plane_store overrides. (Amended 2026-10-03, THE DEFAULT CONTROL PLANE IS EMBEDDED POSTGRESQL:) The zero-config stack's control-plane store is embedded PostgreSQL ([REQ-1535](#REQ-1535)), started in process with no external dependency. The default engine (duckdb) and the default materialization store (duckdb's own) are unchanged.
 
 **Use case:** Organizations and developers need instant local startup with zero Docker, no Trino cluster, no Postgres dependency — everything embedded for true out-of-the-box instant start. The zero-config path must serve as an approachable entry point while preserving full enterprise engine/store pluggability via configuration.
 
-**Code:** `provisa/federation/engine.py`, `provisa/core/desktop_profile.py`, `provisa/core/capabilities.yaml`
+**Code:** `provisa/federation/engine.py`, `provisa/core/desktop_profile.py`, `config/capabilities.yaml`
 
 **Tests:** `tests/unit/test_duckdb_store_native.py`, `tests/unit/test_federation_engine.py`
 
@@ -9712,7 +9716,7 @@ Support one-time physical data move expressed as standard SQL CREATE TABLE {sche
 
 **Tests:** `tests/unit/test_ctas.py`
 
-### REQ-997 · Execution Routing {#REQ-997}
+### REQ-997 · Execution & Routing {#REQ-997}
 
 **Status:** ↪ superseded by [REQ-1926](#REQ-1926) · **Priority:** MUST · **Type:** behavioral
 
@@ -10004,13 +10008,13 @@ The scripts/test-all runner auto-loads .env file before executing test lanes, wi
 
 **Use case:** Enables CI/CD pipelines to load external warehouse credentials from .env (not checked in) and run full warehouse integration tests. Caller-exported variables can still override .env values for CI/CD systems that inject credentials via environment.
 
-**Code:** `provisa/api/billing/router.py`, `provisa/api/billing/lemonsqueezy_client.py`, `provisa/api/billing/models.py`, `provisa/api/billing/tenant_db.py`, `provisa/core/schema_admin.py`
+**Code:** `tests/env_creds.py`, `tests/conftest.py`, `scripts/test-all`
 
-**Tests:** `tests/unit/test_billing_lemonsqueezy.py`, `tests/unit/test_org_isolation.py`
+**Tests:** `tests/unit/test_env_creds_loaded.py`
 
 ### REQ-1026 · First-Customer Deployment {#REQ-1026}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1279](#REQ-1279) · **Priority:** MUST · **Type:** infrastructure
 
 First-customer deployment target is a single GCP Compute Engine VM (e2-standard-4: 4 vCPU / 16GB, trimmable to e2-standard-2 / 8GB) running the core docker-compose stack. GCP chosen for colocation with Firebase auth (single vendor/single bill) and one-time $300 free-tier credit.
 
@@ -10034,7 +10038,7 @@ Object storage externalized to Cloudflare R2 (Trino exchange/spill and any objec
 
 ### REQ-1028 · First-Customer Deployment {#REQ-1028}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1279](#REQ-1279) · **Priority:** MUST · **Type:** infrastructure
 
 Trimmed first-customer runtime profile: single-node Trino (coordinator-only, no separate trino-worker; heap reduced to 3-4GB), R2 for exchange, no MinIO. Deliverable: docker-compose.first-customer.yml. The trino-worker service remains defined in compose (unused) for later multi-node scaling without re-architecture.
 
@@ -10046,7 +10050,7 @@ Trimmed first-customer runtime profile: single-node Trino (coordinator-only, no 
 
 ### REQ-1029 · First-Customer Deployment {#REQ-1029}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1279](#REQ-1279) · **Priority:** MUST · **Type:** infrastructure
 
 Postgres data persists on a separate GCP persistent disk, mounted into the VM, enabling VM resize/reattach without control-plane data loss.
 
@@ -10058,7 +10062,7 @@ Postgres data persists on a separate GCP persistent disk, mounted into the VM, e
 
 ### REQ-1030 · Email Delivery {#REQ-1030}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1330](#REQ-1330) · **Priority:** MUST · **Type:** infrastructure
 
 Email transport for first customer: AWS SES (or equivalent SMTP) at low volume, matching the SMTP-only EmailProvider ([REQ-1330](#REQ-1330)).
 
@@ -10072,7 +10076,7 @@ Email transport for first customer: AWS SES (or equivalent SMTP) at low volume, 
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** infrastructure
 
-Documented lift-and-shift portability to Vultr (flat pricing + bundled bandwidth) as the exit hatch when GCP steady-state cost is no longer preferred. Deployment is plain docker-compose on any VM; only the Firebase project is GCP-pinned, compute is host-agnostic.
+Documented lift-and-shift portability to Vultr (flat pricing + bundled bandwidth) as the exit hatch when GCP steady-state cost is no longer preferred. Deployment is plain docker-compose on any VM; [SUPERSEDED by [REQ-1279](#REQ-1279), 2026-10-03 -- The SaaS deployment is terraform/gcp-saas with a Cloud SQL control plane and a GKE engine cluster, both GCP services. Kept here for history; do not implement against it.] only the Firebase project is GCP-pinned, compute is host-agnostic [END SUPERSEDED BLOCK].
 
 **Use case:** Reduces vendor lock-in. Preserves operator freedom to migrate to lower-cost platforms as workload stabilizes and predictable costs justify optimization.
 
@@ -10084,7 +10088,7 @@ Documented lift-and-shift portability to Vultr (flat pricing + bundled bandwidth
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
 
-No cloud infrastructure is provisioned until a customer is signed; pre-customer sunk cost limited to a domain and a free Firebase project. Cold-start relies on [REQ-854](#REQ-854) OVA/Lima bundles for sub-hour spin-up.
+[SUPERSEDED by [REQ-1331](#REQ-1331), 2026-10-03 -- The SaaS front door VM, Cloud SQL and the coordinator are provisioned and running at cloud.provisa.dev with no signed customer. Kept here for history; do not implement against it.] No cloud infrastructure is provisioned until a customer is signed; pre-customer sunk cost limited to a domain and a free Firebase project. [END SUPERSEDED BLOCK] Cold-start relies on [REQ-854](#REQ-854) OVA/Lima bundles for sub-hour spin-up.
 
 **Use case:** Minimizes pre-revenue spending. Defers fixed infrastructure costs until revenue justifies them, reducing financial risk during customer acquisition.
 
@@ -10094,7 +10098,7 @@ No cloud infrastructure is provisioned until a customer is signed; pre-customer 
 
 ### REQ-1033 · Demo Tiers & Onboarding {#REQ-1033}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1598](#REQ-1598) · **Priority:** MUST · **Type:** infrastructure
 
 Provision two demo tiers on shared first-customer VM: (a) anonymous ephemeral sandbox requiring no signup; (b) persistent quota-limited free tier for Firebase-signed-up users. Both leverage schema-per-org tenancy on shared Trino/PG/Redis infrastructure; no per-user VMs provisioned.
 
@@ -10106,7 +10110,7 @@ Provision two demo tiers on shared first-customer VM: (a) anonymous ephemeral sa
 
 ### REQ-1034 · Demo Tiers & Onboarding {#REQ-1034}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1595](#REQ-1595) · **Priority:** MUST · **Type:** behavioral
 
 On ephemeral sandbox session start, clone a pre-seeded golden template schema (org_template, containing [REQ-414](#REQ-414) demo federated sources and sample data) into a session-scoped org schema (e.g. org_sandbox_<uid>) via the [REQ-697](#REQ-697) init_schema provisioning path.
 
@@ -10120,7 +10124,7 @@ On ephemeral sandbox session start, clone a pre-seeded golden template schema (o
 
 ### REQ-1035 · Demo Tiers & Onboarding {#REQ-1035}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✗ rejected · **Priority:** MUST · **Type:** behavioral
 
 Ephemeral sandbox sessions are scoped by Firebase anonymous auth ([REQ-121](#REQ-121)) without email collection. Prospects get a uid-based session identity with zero friction.
 
@@ -10134,7 +10138,7 @@ Ephemeral sandbox sessions are scoped by Firebase anonymous auth ([REQ-121](#REQ
 
 ### REQ-1036 · Demo Tiers & Onboarding {#REQ-1036}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1600](#REQ-1600) · **Priority:** MUST · **Type:** behavioral
 
 Ephemeral sandbox schemas are dropped on explicit logout OR after an idle-TTL of inactivity. Teardown is self-resetting; a reaper process periodically sweeps expired sandbox schemas.
 
@@ -10146,7 +10150,7 @@ Ephemeral sandbox schemas are dropped on explicit logout OR after an idle-TTL of
 
 ### REQ-1037 · Demo Tiers & Onboarding {#REQ-1037}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-1597](#REQ-1597) · **Priority:** MUST · **Type:** constraint
 
 Ephemeral sandbox sessions are subject to: (a) session-scoped TTL (e.g., 24h); (b) per-session query row limit and query cost caps; (c) data source registration restricted to bundled demo allowlist (no arbitrary outbound live sources). Platform-schema isolation ([REQ-696](#REQ-696)) already guarantees tenant isolation.
 
@@ -10158,7 +10162,7 @@ Ephemeral sandbox sessions are subject to: (a) session-scoped TTL (e.g., 24h); (
 
 ### REQ-1038 · Demo Tiers & Onboarding {#REQ-1038}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1455](#REQ-1455) · **Priority:** SHOULD · **Type:** behavioral
 
 Free tier orgs follow a reversible archive lifecycle to reclaim disk and Postgres resources without destructive loss: idle orgs are email-nudged ([REQ-1330](#REQ-1330)/1022) before any action; on continued inactivity, pg_dump'd to Cloudflare R2 ([REQ-1027](#REQ-1027)) and live schema dropped; restored on re-login from R2 archive; hard tombstone (delete R2 archive) only after long tail (e.g. 12 months) with final nudge.
 
@@ -10170,7 +10174,7 @@ Free tier orgs follow a reversible archive lifecycle to reclaim disk and Postgre
 
 ### REQ-1039 · Demo Tiers & Onboarding {#REQ-1039}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1598](#REQ-1598) · **Priority:** MUST · **Type:** behavioral
 
 Funnel routing policy: "just looking" traffic (cold-start landing page) is routed to anonymous ephemeral sandbox (self-reaping, zero abandonment debt); persistent free tier requires deliberate Firebase signup, minimizing abandoned-account volume on shared infrastructure.
 
@@ -10226,7 +10230,7 @@ Workload separation: interactive user queries and MV/batch-refresh workloads run
 
 ### REQ-1043 · Multi-Tenancy & Scaling {#REQ-1043}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1412](#REQ-1412) · **Priority:** SHOULD · **Type:** behavioral
 
 Tiered cluster routing for physical isolation: sandbox/free tenants route to a shared cluster with tight resource-group caps (best-effort); standard paid tenants route to a better-resourced shared cluster; whale/premium tenants route to a dedicated Trino cluster (or dedicated worker pool) pointed at that org's data sources. Routing is org-tier-aware.
 
@@ -10254,7 +10258,7 @@ Hard query-cost caps as a monetization gate: each org tier enforces ceilings on 
 
 ### REQ-1045 · Demo Tiers & Onboarding {#REQ-1045}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-1598](#REQ-1598) · **Priority:** MUST · **Type:** constraint
 
 Sandbox and free-tier orgs receive the tightest resource-group and query-cost ceilings, enforced via the same tier-cap mechanism ([REQ-1044](#REQ-1044)) mapped to sandbox/free entitlements. Caps are applied at session provisioning and validated on every query submission.
 
@@ -10268,7 +10272,7 @@ Sandbox and free-tier orgs receive the tightest resource-group and query-cost ce
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-Per-tier storage quotas: each org tier enforces a hard ceiling on the org's footprint in the platform's relational materialization store — the per-org schemas holding landed rows, MV outputs, and the API/GraphQL result caches. Redirect result objects are outside the ceiling: they are written under a per-query prefix and TTL-deleted, so they are a rate rather than an accumulation, and the egress meter ([REQ-1452](#REQ-1452)) prices them. Free tiers receive the tightest ceilings; paid tiers larger; enforced and metered per org.
+Per-tier storage quotas: each org tier enforces a hard ceiling on the org's footprint in the platform's relational materialization store — the per-org schemas holding landed rows, MV outputs, and the API/GraphQL result caches. Redirect result objects are outside the ceiling: they are written under a per-query prefix and TTL-deleted, so they are a rate rather than an accumulation, and the egress meter ([REQ-1452](#REQ-1452)) prices them. Free tiers receive the tightest ceilings; paid tiers larger; enforced and metered per org. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this text calls landed or materialized is a replica, and making one is replication ([REQ-826](#REQ-826), [REQ-1915](#REQ-1915)). A materialized view keeps its name.
 
 **Use case:** Tiered storage model parallels query-cost caps ([REQ-1044](#REQ-1044)) as a primary monetization and resource-isolation lever. Platform storage (Postgres schema data, materialized rows, MV outputs, R2 object bytes) is the metered resource; federation keeps most source data external. Free tiers get tight bounds to prevent abuse accumulation; premium tiers permit larger workloads. Storage must be explicitly capped and enforced at ingestion/materialization time, never silently evicted.
 
@@ -10280,7 +10284,7 @@ Per-tier storage quotas: each org tier enforces a hard ceiling on the org's foot
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Explicit rejection on storage-cap breach: operations that would push an org past its storage ceiling (MV materialization, landing/ingest, result persistence) are REJECTED with an explanatory error indicating a higher SKU or bring-your-own (BYO) storage is required — never silently truncated or evicted.
+Explicit rejection on storage-cap breach: operations that would push an org past its storage ceiling (MV materialization, landing/ingest, result persistence) are REJECTED with an explanatory error indicating a higher SKU or bring-your-own (BYO) storage is required — never silently truncated or evicted. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this text calls landed or materialized is a replica, and making one is replication ([REQ-826](#REQ-826), [REQ-1915](#REQ-1915)). A materialized view keeps its name.
 
 **Use case:** Mirrors [REQ-1044](#REQ-1044)'s monetization-gate semantics: hard rejection, not silent degradation. Prevents free-tier abuse and drives tier-upgrade conversion. Project rule (CRITICAL): enforcement must be explicit rejection, never a silent cap-and-continue. Error message guides customer toward upgrade path or BYO storage option.
 
@@ -10292,7 +10296,7 @@ Explicit rejection on storage-cap breach: operations that would push an org past
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
-Bring-your-own storage (BYO): an org may register its own materialization store (their cloud account, their bill), configured per org and stored encrypted at rest. Once registered it outranks the deployment's configured store for every MV output and landed table the org writes — a precedence, not a fallback. Their bytes never count against platform storage and are neither metered ([REQ-1049](#REQ-1049)) nor capped ([REQ-1046](#REQ-1046)). The org's store credentials are scoped to that org only and are never returned by any read surface.
+Bring-your-own storage (BYO): an org may register its own materialization store (their cloud account, their bill), configured per org and stored encrypted at rest. Once registered it outranks the deployment's configured store for every MV output and landed table the org writes — a precedence, not a fallback. Their bytes never count against platform storage and are neither metered ([REQ-1049](#REQ-1049)) nor capped ([REQ-1046](#REQ-1046)). The org's store credentials are scoped to that org only and are never returned by any read surface. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this text calls landed or materialized is a replica, and making one is replication ([REQ-826](#REQ-826), [REQ-1915](#REQ-1915)). A materialized view keeps its name.
 
 **Use case:** Enables premium customers with large or unpredictable storage needs to avoid platform quota limits by supplying their own cloud storage. Isolates security/compliance (customer controls bucket permissions, encryption, audit logging) and cost (customer's infrastructure bill, not platform cost). Reduces platform resource strain from whales/large enterprises.
 
@@ -10340,7 +10344,7 @@ Hosted documentation surface: product docs and API reference published on Cloudf
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Website-to-SaaS entry-point wiring: the marketing site's primary CTAs (calls-to-action) map to the specified onboarding paths — "Try it now" initiates an anonymous ephemeral sandbox session ([REQ-1034](#REQ-1034)/1036, no signup required); "Sign up free" routes to Firebase self-serve org provisioning ([REQ-1017](#REQ-1017)); "Contact sales" triggers SES/SMTP email delivery to sales ([REQ-1330](#REQ-1330)).
+Website-to-SaaS entry-point wiring: the marketing site's primary CTAs (calls-to-action) map to the specified onboarding paths — "Try it now" initiates an anonymous ephemeral sandbox session ([REQ-1034](#REQ-1034)/1036, no signup required); [SUPERSEDED by [REQ-1476](#REQ-1476), 2026-10-03 -- [REQ-1017](#REQ-1017) is superseded; on a deployment that sells the org, org creation waits at awaiting_checkout until a subscription pays for it. Kept here for history; do not implement against it.] "Sign up free" routes to Firebase self-serve org provisioning ([REQ-1017](#REQ-1017)) [END SUPERSEDED BLOCK]; "Contact sales" triggers SES/SMTP email delivery to sales ([REQ-1330](#REQ-1330)).
 
 **Use case:** Converts marketing interest into activation (sandbox demo, free-tier signup, sales engagement). Clear entry-point routing ensures users experience the intended onboarding flow without friction. Marketing messaging and product capability must align (e.g., "try now" genuinely allows zero-friction exploration; "sign up free" uses self-serve Firebase, not manual approval).
 
@@ -10350,7 +10354,7 @@ Website-to-SaaS entry-point wiring: the marketing site's primary CTAs (calls-to-
 
 ### REQ-1053 · Pricing & Tiering {#REQ-1053}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1511](#REQ-1511) · **Priority:** MUST · **Type:** behavioral
 
 Pricing page reflects tier entitlements: the public pricing table renders the free/standard/premium tier limits directly from the query-cost caps ([REQ-1044](#REQ-1044)) and storage caps ([REQ-1046](#REQ-1046)) — the same entitlement definitions that gate runtime enforcement drive the marketing pricing presentation, eliminating manual sync.
 
@@ -10362,9 +10366,9 @@ Pricing page reflects tier entitlements: the public pricing table renders the fr
 
 ### REQ-1054 · Multi-Tenancy & Routing {#REQ-1054}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1233](#REQ-1233) · **Priority:** MUST · **Type:** infrastructure
 
-Per-org wildcard subdomain routing: each org is addressable at {org}.provisa.io via a single wildcard DNS record (*.provisa.io) and wildcard TLS certificate, enabling zero-provisioning self-serve org creation ([REQ-1017](#REQ-1017)).
+Per-org wildcard subdomain routing: each org is addressable at [SUPERSEDED by [REQ-1233](#REQ-1233), 2026-10-03 -- The org subdomain is {org}.provisa.dev. Kept here for history; do not implement against it.] {org}.provisa.io via a single wildcard DNS record (*.provisa.io) [END SUPERSEDED BLOCK] and wildcard TLS certificate, enabling zero-provisioning self-serve org creation ([REQ-1017](#REQ-1017)).
 
 **Use case:** Eliminates per-org DNS and certificate provisioning overhead. Any newly created org is instantly reachable at its subdomain without manual infrastructure steps, reducing onboarding friction and operational toil.
 
@@ -10374,9 +10378,9 @@ Per-org wildcard subdomain routing: each org is addressable at {org}.provisa.io 
 
 ### REQ-1055 · Multi-Tenancy & Routing {#REQ-1055}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1234](#REQ-1234) · **Priority:** MUST · **Type:** infrastructure
 
-Fixed per-protocol ports shared across all orgs: HTTP 443 (GraphQL/REST/UI), pgwire 5439, Bolt 7687, Arrow Flight 8480 are shared across all orgs, never varying per org. Org resolution comes from connection parameters (hostname, database name, username, auth principal), not from port multiplexing.
+Fixed per-protocol ports shared across all orgs: HTTP 443 (GraphQL/REST/UI), pgwire 5439, Bolt 7687, [SUPERSEDED by [REQ-1253](#REQ-1253), 2026-10-03 -- Arrow Flight is served on 8815; 8480 is the zaychik proxy port. Kept here for history; do not implement against it.] Arrow Flight 8480 [END SUPERSEDED BLOCK] are shared across all orgs, never varying per org. Org resolution comes from connection parameters (hostname, database name, username, auth principal), not from port multiplexing.
 
 **Use case:** Simplifies port management and connection strings. Standard ports improve discoverability and reduce client configuration complexity. Org is a logical namespace, not a network multiplexing dimension.
 
@@ -10398,7 +10402,7 @@ Per-surface org resolution: HTTP surfaces resolve org from Host subdomain and/or
 
 ### REQ-1057 · Multi-Tenancy & Routing {#REQ-1057}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1240](#REQ-1240) · **Priority:** SHOULD · **Type:** infrastructure
 
 Cloudflare wildcard routing: HTTP traffic is proxied via Cloudflare (*.provisa.io -> VM:443); raw-TCP wire protocols are routed via Cloudflare Spectrum (TCP-by-SNI) or a wildcard A record, with org derived from connection parameters.
 
@@ -10450,9 +10454,9 @@ Hard caps on anonymous public traffic: unauthenticated published endpoints are i
 
 ### REQ-1061 · Multi-Tenancy & Branding {#REQ-1061}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1233](#REQ-1233) · **Priority:** SHOULD · **Type:** behavioral
 
-Subdomain-as-dedicated-channel value proposition: every org gets its own {org}.provisa.io endpoint, conveying dedicated tenancy and branding even though authenticated resolution does not require it.
+Subdomain-as-dedicated-channel value proposition: [SUPERSEDED by [REQ-1233](#REQ-1233), 2026-10-03 -- The org endpoint is {org}.provisa.dev. Kept here for history; do not implement against it.] every org gets its own {org}.provisa.io endpoint [END SUPERSEDED BLOCK], conveying dedicated tenancy and branding even though authenticated resolution does not require it.
 
 **Use case:** Improves perceived value and tenant isolation narrative. Org-branded subdomain increases engagement and data ownership perception. Leverages the wildcard infrastructure ([REQ-1054](#REQ-1054)) to provide this for zero per-org cost.
 
@@ -10460,13 +10464,13 @@ Subdomain-as-dedicated-channel value proposition: every org gets its own {org}.p
 
 **Tests:** —
 
-### REQ-1062 · Multi-Tenancy & Branding {#REQ-1062}
+### REQ-1062 · Org Branding {#REQ-1062}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
 
-Custom domain as a premium gate: premium/enterprise tiers may bind a custom domain (e.g. data.acme.com via CNAME) with custom TLS and white-label (no Provisa branding). Free/standard tiers use {org}.provisa.io only. Tier entitlements are surfaced on the pricing page ([REQ-1052](#REQ-1052)).
+An org building a data portal can brand the surfaces it would expose to the portal's readers, such as the glossary and Explore, as its own: on those surfaces the org's branding ([REQ-1486](#REQ-1486)) stands in place of the product's name and mark, and no reference to Provisa appears. The surfaces where the model is built and administered may keep the Provisa name.
 
-**Use case:** Provides a premium branding differentiator. Custom domain + white-label appeals to enterprises embedding data apps in customer-facing portals. Clear tier gate monetizes the feature and simplifies operations (no per-org cert management for premium tenants).
+**Use case:** An org builds a data portal for its analysts and read-only users on top of Provisa and presents it under its own name; the elements a portal typically exposes carry the org's brand, not the product's.
 
 **Code:** —
 
@@ -10474,7 +10478,7 @@ Custom domain as a premium gate: premium/enterprise tiers may bind a custom doma
 
 ### REQ-1063 · Pricing & Tiering {#REQ-1063}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1454](#REQ-1454) · **Priority:** SHOULD · **Type:** behavioral
 
 Usage-credit billing meter: metered consumption is billed as universal compute credits whose consumption is uniform across tiers, with the dollar price per credit rising by tier (bundling features/support) — the Starburst Galaxy model. Built on Stripe billing ([REQ-594](#REQ-594)).
 
@@ -10488,7 +10492,7 @@ Usage-credit billing meter: metered consumption is billed as universal compute c
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Credit-boxed + time-boxed enterprise trial: a fixed-duration trial (e.g. 30 days) grants a fixed compute-credit balance; on expiry or non-payment, the account auto-downgrades to free tier (never silent charge).
+Credit-boxed + time-boxed enterprise trial: a fixed-duration trial (e.g. 30 days) [SUPERSEDED by [REQ-1454](#REQ-1454), 2026-10-03 -- The billable unit is the active hour; no credit balance exists. Kept here for history; do not implement against it.] grants a fixed compute-credit balance [END SUPERSEDED BLOCK]; on expiry or non-payment, [SUPERSEDED by [REQ-1455](#REQ-1455), 2026-10-03 -- There is no free tier; the plan set is trial, starter and three Pro sizes. Kept here for history; do not implement against it.] the account auto-downgrades to free tier (never silent charge) [END SUPERSEDED BLOCK].
 
 **Use case:** Lowers barrier to enterprise evaluation. Fixed credit budget prevents runaway costs; explicit downgrade on expiry prevents surprise billing and maintains customer trust. Encourages pilot-to-production conversion.
 
@@ -10498,7 +10502,7 @@ Credit-boxed + time-boxed enterprise trial: a fixed-duration trial (e.g. 30 days
 
 ### REQ-1065 · Pricing & Tiering {#REQ-1065}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1455](#REQ-1455) · **Priority:** MAY · **Type:** behavioral
 
 Signup usage credit: a small usage-credit grant on signup (Apollo $50-style) provides a soft on-ramp to exploration without a time-boxed trial expiration.
 
@@ -10522,7 +10526,7 @@ Premium feature gates beyond compute: SSO/SAML + fine-grained access control (AB
 
 ### REQ-1067 · Pricing & Tiering {#REQ-1067}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1412](#REQ-1412) · **Priority:** SHOULD · **Type:** behavioral
 
 Bring-your-own compute / dedicated cluster as premium gate: premium tenants may run on a dedicated Trino cluster (extends tiered routing [REQ-1043](#REQ-1043)) and/or bring their own compute, complementing BYO storage ([REQ-1048](#REQ-1048)).
 
@@ -10534,63 +10538,63 @@ Bring-your-own compute / dedicated cluster as premium gate: premium tenants may 
 
 ### REQ-1068 · Data Catalog Integration {#REQ-1068}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
-Pluggable metadata export provider pattern: an abstract MetadataExport interface (mirroring AuthProvider/EmailProvider pattern) enables organizations to publish Provisa's governance metadata OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only — Provisa never ingests an external catalog as source of truth.
+Pluggable metadata export provider pattern: an abstract MetadataExport interface [SUPERSEDED by [REQ-1330](#REQ-1330), 2026-10-03 -- There is no EmailProvider; mail goes through the EmailSender port (provisa/core/mail.py:79). Kept here for history; do not implement against it.] (mirroring AuthProvider/EmailProvider pattern) [END SUPERSEDED BLOCK] enables organizations to publish Provisa's governance metadata OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only — Provisa never ingests an external catalog as source of truth.
 
 **Use case:** Allows Provisa to act as the authoritative upstream feeding customers' existing data-governance catalogs (OpenMetadata, Atlan, Collibra, DataHub, Apache Atlas), rather than competing with them. Keeps Provisa as runtime enforcement engine while projecting metadata to the customer's catalog of record.
 
-**Code:** `provisa/api/metadata_export/provider.py`
+**Code:** `provisa/api/metadata_export/provider.py`, `provisa/api/metadata_export/registry.py`, `provisa/core/models.py`, `provisa/core/org_settings.py`, `provisa/api/admin/metadata_export_router.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_metadata_export_provider.py`, `tests/unit/test_metadata_export_outbound.py`, `tests/unit/test_metadata_export_admin_surface.py`
 
 ### REQ-1069 · Data Catalog Integration {#REQ-1069}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
 Standards-first metadata core: the MetadataExport provider emits OpenLineage for lineage and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataExport using the same internal metadata model.
 
 **Use case:** Standards-based approach (OpenLineage, OpenMetadata) ensures portability and reduces vendor lock-in. First-class support for OpenMetadata reduces friction for OSS adopters; vendor adapters extend to enterprises already on Atlan or Collibra.
 
-**Code:** `provisa/api/metadata_export/openlineage.py`, `provisa/api/metadata_export/openmetadata.py`, `provisa/api/metadata_export/registry.py`
+**Code:** `provisa/api/metadata_export/openlineage.py`, `provisa/api/metadata_export/openmetadata.py`, `provisa/api/metadata_export/registry.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/collibra.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/model.py`
 
-**Tests:** `tests/unit/test_metadata_export_standards.py`, `tests/integration/test_metadata_export_openlineage_e2e.py`, `tests/integration/test_metadata_export_openmetadata_e2e.py`
+**Tests:** `tests/unit/test_metadata_export_standards.py`, `tests/unit/test_metadata_export_vendors.py`, `tests/integration/test_metadata_export_openlineage_e2e.py`, `tests/integration/test_metadata_export_openmetadata_e2e.py`, `tests/integration/test_metadata_export_atlas_e2e.py`
 
 ### REQ-1070 · Data Catalog Integration {#REQ-1070}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Published metadata payload includes datasets/tables/columns, domains, stewards and ownership ([REQ-609](#REQ-609)/020), approved relationships, and descriptions/aliases. Lineage is derived from actually-compiled queries and the MV DAG (provisa/lineage/, [REQ-939](#REQ-939)/942), providing column-level + MV-DAG lineage more accurate than scanner/agent-based ingestion.
 
 **Use case:** Provisa's query-compilation and DAG-based lineage is derived from actual execution, making it more authoritative than external scanners or agent-based metadata collection. Publishing this accuracy to external catalogs elevates DG team's source-of-truth quality.
 
-**Code:** `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`
+**Code:** `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`, `provisa/api/metadata_export/refs.py`, `provisa/lineage/graph.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_metadata_snapshot_builder.py`, `tests/unit/test_metadata_snapshot_lineage.py`, `tests/features/REQ-1070.feature`
 
 ### REQ-1071 · Data Catalog Integration {#REQ-1071}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Governance-signal projection: enforcement facts Provisa already computes (which columns/tables are masked, RLS-restricted, or visibility-restricted per [REQ-039](#REQ-039)/040) are projected outward as tags, classifications, or metadata properties on the corresponding assets in the target external catalog.
 
 **Use case:** Data-governance teams see Provisa's enforced governance policies reflected in their catalog of record, enabling data consumers to understand which data is restricted or transformed without context-switching to Provisa's UI. Strengthens audit and compliance narrative.
 
-**Code:** `provisa/api/metadata_export/governance.py`
+**Code:** `provisa/api/metadata_export/governance.py`, `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`
 
-**Tests:** `tests/unit/test_metadata_export_governance.py`
+**Tests:** `tests/unit/test_metadata_export_governance.py`, `tests/unit/test_metadata_export_vendors.py`, `tests/features/REQ-1071.feature`
 
 ### REQ-1072 · Data Catalog Integration {#REQ-1072}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Sync mechanism: metadata changes push to the external catalog event-driven via the [REQ-942](#REQ-942) event substrate. A scheduled full reconcile (using the existing scheduler, provisa/scheduler/jobs.py) periodically re-syncs the complete metadata projection. Per-org configuration and credentials, scoped to that org only.
 
 **Use case:** Event-driven sync ensures near-real-time metadata propagation for operational responsiveness; scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant isolation and per-customer credential management.
 
-**Code:** `provisa/api/metadata_export/publishing.py`
+**Code:** `provisa/api/metadata_export/publishing.py`, `provisa/api/app.py`, `provisa/api/app_startup.py`, `provisa/api/admin/metadata_export_router.py`, `provisa/cli.py`
 
-**Tests:** `tests/unit/test_metadata_export_publishing.py`, `tests/steps/steps_metadata_export_docs.py`
+**Tests:** `tests/unit/test_metadata_export_publishing.py`, `tests/unit/test_metadata_export_gate.py`, `tests/unit/test_cli_metadata_export.py`, `tests/features/REQ-1072.feature`
 
 ### REQ-1073 · Data Catalog Integration {#REQ-1073}
 
@@ -10622,7 +10626,7 @@ Metadata export admin surface: an Admin tab that configures the per-org export t
 
 ### REQ-1368 · Data Catalog Integration {#REQ-1368}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Metadata export user documentation: a published docs page (docs/metadata-export.md, navigated under Security & Governance) covering the supported targets, the YAML configuration, what the payload contains, how governance signals appear in the target catalog, and the event-driven vs scheduled-reconcile sync model. Outbound-only is stated explicitly so no reader expects a catalog-to-Provisa ingest path.
 
@@ -10630,7 +10634,7 @@ Metadata export user documentation: a published docs page (docs/metadata-export.
 
 **Code:** `docs/metadata-export.md`, `mkdocs.yml`
 
-**Tests:** `tests/steps/steps_metadata_export_docs.py`
+**Tests:** `tests/steps/steps_metadata_export_docs.py`, `tests/features/REQ-1368.feature`
 
 ## 10. UI & Admin Surfaces
 
@@ -10740,7 +10744,7 @@ AWS KMS encryption provider (envelope wrapping via KMS Encrypt/Decrypt) with sup
 
 **Use case:** Enterprises can use AWS-managed KMS keys without re-implementing envelope encryption logic. Private endpoint support enables airgapped deployments.
 
-**Code:** `provisa/encryption/providers/aws_kms.py`
+**Code:** `provisa/encryption/providers.py`, `provisa/encryption/registry.py`
 
 **Tests:** `tests/unit/test_encryption_providers.py`
 
@@ -10752,7 +10756,7 @@ HashiCorp Vault (Transit engine) encryption provider with auto-availability when
 
 **Use case:** Enterprises using Vault can leverage existing HSM or encryption backends without provisioning cloud KMS. Custom Vault endpoint supports private/airgapped deployments.
 
-**Code:** `provisa/encryption/providers/vault.py`
+**Code:** `provisa/encryption/providers.py`, `provisa/encryption/registry.py`
 
 **Tests:** `tests/unit/test_encryption_providers.py`
 
@@ -10764,7 +10768,7 @@ Azure Key Vault encryption provider (RSA-OAEP-256 key wrap) with auto-availabili
 
 **Use case:** Azure-native deployments can leverage customer-managed keys in Azure Key Vault without running separate KMS infrastructure.
 
-**Code:** `provisa/encryption/providers/azure_keyvault.py`
+**Code:** `provisa/encryption/providers.py`, `provisa/encryption/registry.py`
 
 **Tests:** `tests/unit/test_encryption_providers.py`
 
@@ -10848,7 +10852,7 @@ pg_catalog.pg_index is populated with one row per primary-key and UNIQUE constra
 
 ## 10. UI & Admin Surfaces
 
-### REQ-1096 · Admin & Configuration {#REQ-1096}
+### REQ-1096 · Admin Configuration {#REQ-1096}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
@@ -10892,7 +10896,7 @@ The native (DuckDB) tier exposes the tenant control-plane as the `provisa_admin`
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-The control-plane SQLite (platform + tenant) MUST run in WAL mode (journal_mode=WAL) with busy_timeout enabled. This is the concurrency guarantee that permits the native DuckDB engine to read the tenant DB READ_ONLY while aiosqlite writes config changes without transient "database is locked" errors.
+The control-plane SQLite (platform + tenant) MUST run in WAL mode (journal_mode=WAL) with busy_timeout enabled. This is the concurrency guarantee that permits the native DuckDB engine to read the tenant DB READ_ONLY while aiosqlite writes config changes without transient "database is locked" errors. (Amended 2026-10-03, THE WRITER IS PYSQLITE:) The control-plane store is reached through synchronous SQLAlchemy engines: psycopg 3 on PostgreSQL and pysqlite on SQLite ([REQ-828](#REQ-828)). What this text calls aiosqlite is that writer.
 
 **Use case:** Enables concurrent read-write access to the control-plane SQLite without lock contention or stalling queries. Required for safe multi-client scenarios where the UI (aiosqlite) updates config while the native engine queries system state.
 
@@ -11242,7 +11246,7 @@ A materialized view may only be published if all relationships it depends on are
 
 **Use case:** Ensures MVs cannot be published over unapproved relationships, preventing uncontrolled data lineage and access patterns. Distinguishes between users who can auto-provision (trusted data engineers) and those who must request approval (least-privilege roles).
 
-**Code:** `provisa/api/admin/mv_relationship_gate.py`, `provisa/api/admin/schema_mutation_ops.py`
+**Code:** `provisa/mv/relationship_gate.py`, `provisa/api/admin/schema_mutation_ops.py`
 
 **Tests:** `tests/unit/test_mv_relationship_gate.py`
 
@@ -11738,7 +11742,7 @@ The Linux first-launch installer persists all IdP-related environment variables 
 
 **Use case:** Cloud VMs running under systemd (not a user login shell) require environment variables to be persisted to a file readable by the systemd unit. This decouples the first-launch process from the long-running server.
 
-**Code:** `provisa/cli/linux_installer.py`, `provisa/api/setup_router.py`
+**Code:** `packaging/linux/first-launch.sh`, `provisa/api/setup_router.py`
 
 **Tests:** —
 
@@ -11750,7 +11754,7 @@ Non-interactive (cloud) Linux deployments automatically enable and start the Pro
 
 **Use case:** Cloud deployments are unattended and need the server running immediately. Automatic enable and start reduces the gap between terraform apply and service readiness, eliminating the need for post-deployment SSH commands.
 
-**Code:** `provisa/cli/linux_installer.py`
+**Code:** `packaging/linux/first-launch.sh`, `packaging/linux/AppRun`
 
 **Tests:** —
 
@@ -11776,9 +11780,9 @@ pgwire ENGINE route streams the engine's result set lazily instead of materializ
 
 **Use case:** Streaming prevents OOM on large result sets by deferring row materialization to the client's consumption rate. SaaS deployments with resource-constrained pods require all user-facing query results to stream unbounded data.
 
-**Code:** `provisa/pgwire/session.py`, `provisa/executor/`
+**Code:** `provisa/pgwire/server.py`, `provisa/pgwire/_pipeline.py`, `provisa/pgwire/result_shape.py`, `provisa/federation/runtime.py`
 
-**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`, `tests/unit/test_pgwire_lazy_result.py`
+**Tests:** `tests/unit/test_pgwire_lazy_result.py`, `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`
 
 ### REQ-1187 · Result Handling & Streaming {#REQ-1187}
 
@@ -11800,7 +11804,7 @@ execute_engine_sync and backend execute_sync implementations accept a session_hi
 
 **Use case:** Trino session properties control engine behavior per query (e.g., retry_policy for Kafka sources). Without session_hints on the sync path, properties set at plan-governance time are silently dropped, causing non-deterministic behavior between async and sync execution paths.
 
-**Code:** `provisa/backends/`, `provisa/executor/`
+**Code:** `provisa/federation/runtime.py`, `provisa/federation/backend.py`, `provisa/federation/native_backend.py`
 
 **Tests:** `tests/unit/test_trino_session_hints.py`
 
@@ -11824,9 +11828,9 @@ DIRECT routes must stream for user-data scans via the source's own server-side c
 
 **Use case:** A DIRECT single-reachable-source passthrough (e.g., SELECT * FROM one_source) can be unbounded and must not materialize in Provisa RAM. Only bounded metadata queries (catalog, schema metadata, govdata, admin endpoints) benefit from materialization. Streaming the source's native cursor prevents OOM on large user-data scans.
 
-**Code:** `provisa/executor/`, `provisa/graphql/`
+**Code:** `provisa/executor/direct.py`, `provisa/federation/runtime.py`, `provisa/pgwire/server.py`, `provisa/api/flight/server.py`, `provisa/api/airport/query.py`, `provisa/grpc/server.py`
 
-**Tests:** `tests/integration/test_catalog_integration.py`, `tests/integration/test_governance_integration.py`, `provisa-ui/e2e/governance-core.spec.ts`, `tests/unit/test_airport_streaming_terminal.py`
+**Tests:** `tests/unit/test_airport_streaming_terminal.py`, `tests/integration/test_governance_integration.py`, `provisa-ui/e2e/governance-core.spec.ts`
 
 ## 7. Result Delivery
 
@@ -11868,7 +11872,7 @@ Age-based reaping of local redirect files. Locally-materialized files are reaped
 
 ### REQ-1194 · Large Result Redirect & CTAS {#REQ-1194}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
 
 Extend engine-native ctas_redirect beyond Trino to all object-store-capable engines. Databricks uses INSERT OVERWRITE DIRECTORY / CTAS to external volume; Snowflake uses COPY INTO <stage> FROM (query); ClickHouse uses INSERT INTO FUNCTION s3(...) SELECT ...; DuckDB uses COPY (query) TO 's3://...' via httpfs. Each engine implements its native result-to-object-store write and returns only the resulting URI; Provisa stays out of the data path. (Amended 2026-10-01, bound values.) The sink statement is executed with the statement's bound values. run_materialize, EngineRuntime.ctas_redirect and the backend's ctas_redirect take them as a required argument and the Trino CTAS binds them as the row terminal does (placeholders in occurrence order). Before, the engine was handed the statement text alone with its placeholders unbound (issue 132).
 
@@ -11892,15 +11896,15 @@ Sink-tier selection rule. ctas_redirect targets the engine's native object-store
 
 ### REQ-1196 · Large Result Redirect & CTAS {#REQ-1196}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** constraint
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** constraint
 
 Design decision — no Provisa-side byte-metering (Arrow buffer counting) and no compile-time cartesian product-budget control. Once materialization is engine-native, a cartesian/large-result blowup is bounded by the engine's own resource governors, the existing wall-time timeout, and engine-native CTAS, with Provisa never in the data path. The embedded in-process engine is desktop-dev / single-tenant only, so its lack of isolation is acceptable. The existing default row cap (100 rows unless full_results capability) remains the primary cheap safeguard against accidental full pulls.
 
 **Use case:** Deferring cartesian blowup control to engine-side governors (memory, CPU, concurrency limits) and timeouts keeps the Provisa result path stateless and avoids redundant metering. The default row cap provides sufficient protection for typical usage patterns.
 
-**Code:** —
+**Code:** `provisa/compiler/stage2.py`, `provisa/core/settings_catalog.py`, `provisa/security/rights.py`, `provisa/executor/redirect.py`
 
-**Tests:** —
+**Tests:** `tests/integration/test_governance_integration.py`, `tests/unit/test_sampling_rls.py`
 
 ### REQ-1197 · JSON:API Pagination {#REQ-1197}
 
@@ -12122,7 +12126,7 @@ Every transport (gRPC, Arrow Flight, airport, GraphQL, JSON:API, Bolt, pgwire) r
 
 **Use case:** Centralizing routing through one pipeline ensures uniform governance (RLS, masking, audit), prevents per-transport SQL branches, and allows streaming transports to drain engine terminals directly while keeping buffered transports format-aware.
 
-**Code:** `provisa/executor/_pipeline.py`
+**Code:** `provisa/pgwire/_pipeline.py`
 
 **Tests:** `tests/unit/test_governed_chokepoint.py`, `tests/integration/test_grpc_execution.py`
 
@@ -12148,7 +12152,7 @@ Arrow Flight SQL do_get ENGINE route streams via execute_engine_stream. All Flig
 
 **Use case:** Streaming via execute_engine_stream replaces full materialization with lazy per-batch pulls, enabling large result sets over Flight. Engine capability declarations must be honest: only declare ARROW_STREAM when the terminal is genuinely lazy via the driver's server-side chunk API.
 
-**Code:** `provisa/api/flight/server.py`, `provisa/executor/_engine_executor.py`
+**Code:** `provisa/api/flight/server.py`, `provisa/federation/runtime.py`, `provisa/federation/native_backend.py`, `provisa/federation/databricks_runtime.py`, `provisa/federation/bigquery_runtime.py`, `provisa/federation/mssql_warehouse_runtime.py`, `provisa/federation/snowflake_runtime.py`
 
 **Tests:** `tests/unit/test_flight_modes.py`, `tests/integration/test_arrow_flight_integration.py`
 
@@ -12162,7 +12166,7 @@ Per-engine Arrow streaming terminals (execute_engine_stream) and run_sync must b
 
 **Use case:** Genuinely lazy per-batch pulls prevent materializing full result sets in memory and allow the consumer to stop early without forcing the engine to compute remaining batches. Only server-side chunk APIs honor this for warehouse engines; materializing then rebatching violates the design.
 
-**Code:** `provisa/executor/_engine_executor.py`
+**Code:** `provisa/federation/runtime.py`, `provisa/federation/runtime_support.py`, `provisa/federation/duckdb_runtime.py`, `provisa/federation/snowflake_runtime.py`, `provisa/federation/databricks_runtime.py`, `provisa/federation/bigquery_runtime.py`, `provisa/federation/mssql_warehouse_runtime.py`
 
 **Tests:** `tests/unit/test_duckdb_stream_terminal.py`, `tests/integration/test_preflight_streaming.py`
 
@@ -12396,7 +12400,7 @@ For wire protocols, the credential is org-scoped (per [REQ-1232](#REQ-1232)), so
 
 **Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
 
-OIDC/social identity is person-scoped; Provisa mints the org-scoped session. Google/OIDC providers (e.g., provisa/auth/providers/oauth.py:74-76, keycloak.py:68-70) return `AuthIdentity(user_id=sub, email=…)` with NO `active_org_id` — the IdP proves the person, never the org. After IdP auth completes, Provisa mints its OWN org-scoped session (sets `active_org_id`) gated by a membership check. The subdomain selects the org pre-auth, so no org-picker screen is needed: land on `acme.provisa.dev` → OIDC login → membership check on `acme` → acme-scoped session returned.
+OIDC/social identity is person-scoped; Provisa mints the org-scoped session. Google/OIDC providers (e.g., provisa/auth/providers/oauth.py:74-76, keycloak.py:68-70) return `AuthIdentity(user_id=sub, email=…)` with NO `active_org_id` — the IdP proves the person, never the org. [SUPERSEDED by [REQ-1276](#REQ-1276), 2026-10-03 -- No org-scoped session is minted; [REQ-1276](#REQ-1276) replaced the active_org token claim with the per-request Host subdomain / x-org-provisa header, membership-checked on every request (provisa/auth/middleware.py:710-717, 891). Kept here for history; do not implement against it.] After IdP auth completes, Provisa mints its OWN org-scoped session (sets `active_org_id`) gated by a membership check. [END SUPERSEDED BLOCK] [SUPERSEDED by [REQ-1348](#REQ-1348), 2026-10-03 -- [REQ-1348](#REQ-1348) (complete) forbids sign-in on an org subdomain; the subdomain acquires the person-scoped bearer from cloud.<base> through the auth relay (provisa-ui/src/lib/crossSubdomainAuth.ts:11-25). Kept here for history; do not implement against it.] The subdomain selects the org pre-auth, so no org-picker screen is needed: land on `acme.provisa.dev` → OIDC login → membership check on `acme` → acme-scoped session returned. [END SUPERSEDED BLOCK]
 
 **Use case:** Person-scoped IdP identity + Provisa-minted org-scoped session separates authentication (IdP: who am I?) from authorization (Provisa: which orgs can I access?). Enables subdomain-driven org selection without extra UI screens.
 
@@ -12406,7 +12410,7 @@ OIDC/social identity is person-scoped; Provisa mints the org-scoped session. Goo
 
 ### REQ-1238 · Org Identity & Subdomain Addressing {#REQ-1238}
 
-**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-1276](#REQ-1276) · **Priority:** MUST · **Type:** constraint
 
 The `x-org-id` header path in provisa/auth/middleware.py:252-253 currently passes the header without checking `user_org_memberships` — a user could pass any org_id and gain cross-org access. This is the interactive org-switcher lane for a person-scoped session with no subdomain (e.g., POST to /api/switch-org with x-org-id). The passed org MUST be validated against membership; reject if not a member. This corrects a defect that was previously masked by single-org deployments.
 
@@ -12432,7 +12436,7 @@ Wildcard TLS for `*.provisa.dev` via ACME DNS-01. Obtain a true wildcard `*.prov
 
 **Status:** ✓ accepted · **Priority:** MUST · **Type:** infrastructure
 
-Cloudflare DNS split: Zone `provisa.dev` stays on Cloudflare. `provisa.dev` + `www.provisa.dev` remain Cloudflare-proxied (orange) for the marketing site. `cloud.provisa.dev` and `*.provisa.dev` are DNS-only (grey-cloud) records pointing at the GCP L4 LB IPs, so raw TCP reaches the LB and in-container TLS terminates. Cloudflare proxy carries only HTTP(S) and would terminate TLS itself, breaking wire protocols. No GCP Cloud DNS zone needed; DNS-01 ACME uses the Cloudflare token.
+Cloudflare DNS split: Zone `provisa.dev` stays on Cloudflare. `provisa.dev` + `www.provisa.dev` remain Cloudflare-proxied (orange) for the marketing site. `cloud.provisa.dev` and `*.provisa.dev` are DNS-only (grey-cloud) records [SUPERSEDED by [REQ-1331](#REQ-1331), 2026-10-03 -- The front door VM replaced the load balancer; both records point at the shared front-door address (terraform/gcp-saas/dns.tf:50, 66). Kept here for history; do not implement against it.] pointing at the GCP L4 LB IPs, so raw TCP reaches the LB and in-container TLS terminates [END SUPERSEDED BLOCK]. Cloudflare proxy carries only HTTP(S) and would terminate TLS itself, breaking wire protocols. No GCP Cloud DNS zone needed; DNS-01 ACME uses the Cloudflare token.
 
 **Use case:** DNS-only records for app subdomains allow wire protocols (pgwire, bolt, Arrow Flight, gRPC, MCP) to reach the load balancer with raw TCP, where in-container TLS terminates per-port. Cloudflare proxy on marketing site keeps SEO and CDN benefits without interfering with protocol servers.
 
@@ -12444,7 +12448,7 @@ Cloudflare DNS split: Zone `provisa.dev` stays on Cloudflare. `provisa.dev` + `w
 
 **Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
 
-A session is always scoped to exactly one org and therefore one federation engine. `state.federation_engine` is a per-process singleton built once at startup (provisa/api/app.py:270), read with no org parameter at provisa/api/_query_helpers.py:126, so one process serves one engine. Subdomain-pinned single-org sessions (per [REQ-1235](#REQ-1235)) enforce this invariant: each org gets its own Provisa instance (or process) with its own federation engine binding. Until per-org engine routing is built ([REQ-1244](#REQ-1244)), sessions cannot switch engines without re-launching the process.
+A session is always scoped to exactly one org and therefore one federation engine. [SUPERSEDED by [REQ-1427](#REQ-1427), 2026-10-03 -- federation_engine is now a routed property resolved per org through the current_org context; an isolated org has its own EngineRuntime in the same process (provisa/api/app.py:156-158, 378-396, 1490-1515), the routing [REQ-1244](#REQ-1244) describes. Kept here for history; do not implement against it.] `state.federation_engine` is a per-process singleton built once at startup (provisa/api/app.py:270), read with no org parameter at provisa/api/_query_helpers.py:126, so one process serves one engine. [END SUPERSEDED BLOCK] [SUPERSEDED by [REQ-1427](#REQ-1427), 2026-10-03 -- One process serves many orgs, each bound to the shared engine or its own (provisa/api/app.py:378-386). Kept here for history; do not implement against it.] Subdomain-pinned single-org sessions (per [REQ-1235](#REQ-1235)) enforce this invariant: each org gets its own Provisa instance (or process) with its own federation engine binding. [END SUPERSEDED BLOCK] [SUPERSEDED by [REQ-1427](#REQ-1427), 2026-10-03 -- Per-org engine routing is built (provisa/api/app.py:156-158, comment cites [REQ-1244](#REQ-1244)). Kept here for history; do not implement against it.] Until per-org engine routing is built ([REQ-1244](#REQ-1244)), sessions cannot switch engines without re-launching the process. [END SUPERSEDED BLOCK]
 
 **Use case:** Single-engine-per-session is a hard invariant that simplifies caching, planning, and freshness logic. Processes are stateless and can be scaled horizontally per-org or per-engine-instance. Cross-engine session switching requires building an org→engine registry and replacing the singleton (future work, [REQ-1244](#REQ-1244)).
 
@@ -12456,7 +12460,7 @@ A session is always scoped to exactly one org and therefore one federation engin
 
 **Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
-In-session org switch (e.g., click "switch to acme" in UI) tears down the org-scoped session and mints a new one for the target org (membership-checked), REUSING the already-proven IdP identity (no password/IdP round-trip required), then redirects to `{org}.provisa.dev`. It is a scoped re-login, NOT a live cross-engine swap — it preserves the single-engine-per-session invariant ([REQ-1241](#REQ-1241)). Future work ([REQ-1244](#REQ-1244)) will enable live multi-engine switching without re-auth.
+In-session org switch (e.g., click "switch to acme" in UI) [SUPERSEDED by [REQ-1276](#REQ-1276), 2026-10-03 -- There is no org-scoped session; the org is named per request by Host subdomain or x-org-provisa and membership-checked each time (provisa/auth/middleware.py:710-717). Kept here for history; do not implement against it.] tears down the org-scoped session and mints a new one for the target org (membership-checked) [END SUPERSEDED BLOCK], REUSING the already-proven IdP identity (no password/IdP round-trip required), then redirects to `{org}.provisa.dev`. It is a scoped re-login, NOT a live cross-engine swap — it preserves the single-engine-per-session invariant ([REQ-1241](#REQ-1241)). Future work ([REQ-1244](#REQ-1244)) will enable live multi-engine switching without re-auth.
 
 **Use case:** Org-switch without IdP round-trip is ergonomic for multi-org users. Redirecting to the target subdomain re-establishes DNS and TLS SNI for clean cross-org addressing. Re-minting the session (not retaining it) respects the single-engine invariant until multi-engine routing is built.
 
@@ -12466,33 +12470,33 @@ In-session org switch (e.g., click "switch to acme" in UI) tears down the org-sc
 
 ### REQ-1243 · Deployment & Infrastructure {#REQ-1243}
 
-**Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Two isolation lanes coexist: (a) Pooled/shared Trino cluster — the free/small tier, "trino-level isolation," all orgs start here. (b) BYO (bring-your-own) cluster — a customer points Provisa at their OWN federation engine instance (e.g., Databricks, Snowflake); self-service, the customer may change their own fed-engine instance, billed separately. Both lanes route through the SAME _govern_and_route/_execute_plan pipeline; routing is org-specific at deployment time (which instance serves which org), not in-session switching ([REQ-1244](#REQ-1244) defers per-org dynamic engine selection).
+Two isolation lanes coexist: (a) Pooled/shared Trino cluster — the free/small tier, "trino-level isolation," all orgs start here. (b) BYO (bring-your-own) cluster — a customer points Provisa at their OWN federation engine instance (e.g., Databricks, Snowflake); self-service, the customer may change their own fed-engine instance, billed separately. Both lanes route through the SAME _govern_and_route/_execute_plan pipeline; [SUPERSEDED by [REQ-1412](#REQ-1412), 2026-10-03 -- The lane is now a per-org property resolved per request and changed at runtime from the Org Engine surface; it is no longer fixed at deployment time. Kept here for history; do not implement against it.] routing is org-specific at deployment time (which instance serves which org), not in-session switching ([REQ-1244](#REQ-1244) defers per-org dynamic engine selection). [END SUPERSEDED BLOCK]
 
 **Use case:** Dual-lane model serves free/small orgs economically on shared infrastructure while enabling enterprise customers to run on their own data warehouses. Unified pipeline means no code branching and shared planner/cache/freshness logic.
 
-**Code:** `provisa/api/app.py:270`, `provisa/compiler/_govern_and_route`, `provisa/federation/runtime.py`
+**Code:** `provisa/api/app.py`, `provisa/api/org_runtime.py`, `provisa/federation/runtime.py`, `.claude/commercial/provisa_commercial/org_engine_router.py`, `.claude/commercial/provisa_commercial/plan_lane.py`
 
-**Tests:** `tests/integration/test_pooled_lane.py`, `tests/integration/test_byo_lane.py`
+**Tests:** `tests/unit/test_isolated_engine_routing.py`, `tests/unit/test_org_engine_lane.py`, `.claude/commercial/tests/test_org_engine_lane.py`, `.claude/commercial/tests/test_plan_lane.py`
 
 ### REQ-1244 · Deployment & Infrastructure {#REQ-1244}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** constraint
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** constraint
 
-Per-org engine routing is deferred. In-session multi-engine switching requires replacing the per-process singleton (app.py:270 / _query_helpers.py:126) with an org→engine registry that feeds the SAME _govern_and_route/_execute_plan pipeline. Until built, heterogeneous engines are served via subdomain-pinned single-org/single-engine sessions ([REQ-1241](#REQ-1241)/1242). Future work: build org-scoped engine registry, keyed by org_id, read at query time to select the federation engine per-session org.
+[SUPERSEDED by [REQ-1412](#REQ-1412), 2026-10-03 -- The org-keyed engine registry this entry calls future work is built: federation_engine/engine_conn are routed properties resolved through the current org. Kept here for history; do not implement against it.] Per-org engine routing is deferred. [END SUPERSEDED BLOCK] In-session multi-engine switching requires replacing the per-process singleton (app.py:270 / _query_helpers.py:126) with an org→engine registry that feeds the SAME _govern_and_route/_execute_plan pipeline. Until built, heterogeneous engines are served via subdomain-pinned single-org/single-engine sessions ([REQ-1241](#REQ-1241)/1242). Future work: build org-scoped engine registry, keyed by org_id, read at query time to select the federation engine per-session org.
 
 **Use case:** Dynamic per-org engine routing (without re-auth) enables Provisa to serve one org with Trino, another with Snowflake, and a third with Databricks from the SAME deployment and process. Preserves the single-engine-per-session invariant while allowing org-to-engine mapping to change at deployment time.
 
-**Code:** `provisa/api/app.py:270`, `provisa/api/_query_helpers.py:126`, `provisa/federation/runtime.py`
+**Code:** `provisa/api/app.py`, `provisa/api/org_runtime.py`, `provisa/federation/runtime.py`, `provisa/federation/trino_lifecycle.py`, `provisa/federation/engine.py`, `.claude/commercial/provisa_commercial/org_engine_router.py`
 
-**Tests:** `tests/integration/test_per_org_engine_routing.py`
+**Tests:** `tests/unit/test_isolated_engine_routing.py`, `tests/unit/test_isolated_engine_provisioning.py`, `tests/unit/test_endpoint_executors.py`, `tests/integration/test_org_lifecycle.py`
 
 ### REQ-1245 · Deployment & Infrastructure {#REQ-1245}
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
 
-Control-plane persistence is required for multi-instance fleet deployments. The control_plane store is currently in-memory (provisa/control_plane/store.py:16, "V1: no DB persistence") — a blocker for running multiple Provisa instances behind a load balancer. Multiple instances cannot share state (sources, roles, registered tables, relationships, etc.) and cannot coordinate cache invalidation or governance updates. Persistence must use the same org-scoped control-plane backend (PostgreSQL/SQLite/MySQL) that holds platform state (orgs, users, memberships), ensuring each org's control plane is isolated and durable.
+Control-plane persistence is required for multi-instance fleet deployments. The control_plane store is currently in-memory (provisa/control_plane/store.py:16, "V1: no DB persistence") — a blocker for running multiple Provisa instances behind a load balancer. [SUPERSEDED by [REQ-1293](#REQ-1293), 2026-10-03 -- Sources, roles, tables and relationships are rows in the org's schema on the control-plane database (provisa/core/schema_org.py), never in ControlPlaneStore, and each process reloads its copy on a changed config stamp (provisa/core/config_watch.py, [REQ-1914](#REQ-1914)). Kept here for history; do not implement against it.] Multiple instances cannot share state (sources, roles, registered tables, relationships, etc.) and cannot coordinate cache invalidation or governance updates. [END SUPERSEDED BLOCK] Persistence must use the same org-scoped control-plane backend (PostgreSQL/SQLite/MySQL) that holds platform state (orgs, users, memberships), ensuring each org's control plane is isolated and durable.
 
 **Use case:** Persisted control plane enables horizontal scale-out of Provisa instances, load-balanced by subdomain org, each instance serving its own org's control-plane state from the shared backend. Required for production SaaS deployments with high availability.
 
@@ -12518,7 +12522,7 @@ First verified Firebase login provisions a user_profile record, decoupled from t
 
 ### REQ-1247 · Authentication {#REQ-1247}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** ui
+**Status:** ↪ superseded by [REQ-1289](#REQ-1289) · **Priority:** MUST · **Type:** ui
 
 Self-service signup landing on cloud.provisa.dev presents two options to a not-logged-in user: LOG IN or CREATE ACCOUNT. The choice routes to distinct flows: LOG IN → Firebase login (existing user or new self-registration via Firebase), CREATE ACCOUNT → signup flow including org membership selection ([REQ-1248](#REQ-1248) / [REQ-1249](#REQ-1249) / [REQ-1250](#REQ-1250)).
 
@@ -12532,27 +12536,27 @@ Self-service signup landing on cloud.provisa.dev presents two options to a not-l
 
 ### REQ-1248 · Org Membership {#REQ-1248}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 During account creation, a Firebase-authenticated user auto-joins an org if they hold a valid org_invites token (via invite URL or code). Provisioning reuses existing invite validation/consumption logic, upserting user_org_memberships at the inherited role from the invite record. If no invite is held, they proceed to [REQ-1249](#REQ-1249) or [REQ-1250](#REQ-1250) (create new org or request admission to existing org).
 
 **Use case:** Decouples Firebase signup from org membership: invited users skip org selection, while non-invited users choose between creating a new org or requesting membership in an existing one.
 
-**Code:** `provisa/api/auth_router.py`, `provisa/api/admin/invites_router.py`
+**Code:** `provisa/api/auth_router.py`, `provisa/api/admin/invites_router.py`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/src/pages/OnboardOrgPage.tsx`, `provisa-ui/src/api/admin.ts`
 
-**Tests:** `tests/integration/test_signup_with_invite.py`
+**Tests:** `tests/integration/test_redeem_invite.py`, `tests/integration/test_my_invites.py`, `tests/unit/test_invite_admission.py`, `tests/integration/test_multi_org_onboarding_flow.py`
 
 ### REQ-1249 · Org Membership {#REQ-1249}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 During account creation, a Firebase user without an org invite may CREATE A NEW ORG (self-service): inserts an orgs row with the user as owner/admin, inserts user_org_memberships at owner/admin role, provisions the per-org schema org_{id}, and registers a control-plane tenant initialized to the shared/pooled Trino cluster ([REQ-1243](#REQ-1243)/1244). The createOrg endpoint (currently admin-only /admin/orgs) becomes available as part of the signup flow.
 
 **Use case:** Enables self-service multi-org SaaS: new users can immediately spin up a workspace (org) without waiting for admin provisioning.
 
-**Code:** `provisa/api/auth_router.py`, `provisa/api/admin/orgs_router.py`, `provisa/core/schema_admin.py`
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/schema_admin.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`, `provisa-ui/src/api/admin.ts`
 
-**Tests:** `tests/integration/test_signup_create_org.py`
+**Tests:** `tests/integration/test_create_org_onboarding.py`, `tests/integration/test_multi_org_onboarding_flow.py`, `tests/unit/test_org_create_provisioning.py`, `provisa-ui/e2e/onboard-org.spec.ts`
 
 ### REQ-1250 · Org Membership {#REQ-1250}
 
@@ -12596,9 +12600,9 @@ Admin UI surface (extend OrgsTab.tsx / add admin router endpoint) to list pendin
 
 ### REQ-1253 · Cloud Load Balancing {#REQ-1253}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1331](#REQ-1331) · **Priority:** MUST · **Type:** infrastructure
 
-All protocol surfaces (API port 8000, UI port 3000, Arrow Flight 8815, pgwire 5439, Bolt 7687, MCP 8009, gRPC 50051) must be fronted by a single shared external passthrough load-balancer endpoint per cloud provider, not one LB per protocol. This is required by the subdomain-as-org model ([REQ-1233](#REQ-1233)): {org}.provisa.dev must resolve to one A record and reach every protocol by preserving the destination port to the backend node.
+All protocol surfaces (API port 8000, UI port 3000, Arrow Flight 8815, pgwire 5439, Bolt 7687, MCP 8009, gRPC 50051) [SUPERSEDED by [REQ-1331](#REQ-1331), 2026-10-03 -- On gcp-saas the front door TCP proxy replaced the passthrough NLB; only the self-hosted gcp, aws and azure modules still use a shared LB. Kept here for history; do not implement against it.] must be fronted by a single shared external passthrough load-balancer endpoint per cloud provider, not one LB per protocol [END SUPERSEDED BLOCK]. This is required by the subdomain-as-org model ([REQ-1233](#REQ-1233)): {org}.provisa.dev must resolve to one A record and reach every protocol by preserving the destination port to the backend node.
 
 **Use case:** Enables the subdomain-as-org identity model where a single DNS name and IP address serve all protocols. Cloud-specific realizations: GCP uses a backend-service passthrough NLB forwarding rule with all_ports=true on one static IP; AWS uses a single Network Load Balancer with one listener/target-group per protocol port sharing the NLB's endpoint; Azure uses a single Standard Load Balancer with one LB rule per protocol port on a single frontend public IP. Backend liveness is gated by the API HTTPS /health probe. Refs: [REQ-1233](#REQ-1233), [REQ-1239](#REQ-1239), [REQ-1240](#REQ-1240), [REQ-1226](#REQ-1226).
 
@@ -12614,7 +12618,7 @@ Web UI must be published on host port 443 across all cloud Terraform deployments
 
 **Use case:** The .dev gTLD is HSTS-preloaded in browsers, forcing http to https:443. Publishing the UI on port 443 allows cloud.provisa.dev and {org}.provisa.dev URLs to resolve without a port suffix, composing with the single shared passthrough LB ([REQ-1253](#REQ-1253)) which forwards all ports to the backend node preserving destination port.
 
-**Code:** `first-launch.sh`, `terraform/gcp/main.tf`, `terraform/aws/main.tf`, `terraform/azure/main.tf`, `docker-compose.yml`
+**Code:** `packaging/linux/first-launch.sh`, `packaging/macos/first-launch.sh`, `scripts/provisa`, `terraform/gcp/main.tf`, `terraform/aws/main.tf`, `terraform/azure/main.tf`, `docker-compose.app.yml`
 
 **Tests:** —
 
@@ -12622,15 +12626,15 @@ Web UI must be published on host port 443 across all cloud Terraform deployments
 
 ### REQ-1255 · Org Membership {#REQ-1255}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 During self-service org creation ([REQ-1249](#REQ-1249)), a Firebase user is offered an opt-in checkbox or toggle to seed the newly created org with the pre-federated demo configuration, including demo sources (GraphQL, OpenAPI petstore) and sample data tables with pre-registered relationships and governance policies.
 
 **Use case:** Reduces time-to-value for new orgs by providing immediate hands-on federation examples without requiring manual source registration or data import. Users can explore Provisa's query composition, relationship discovery, and governance features against real federated sources in seconds.
 
-**Code:** `provisa/api/auth_router.py`, `provisa/api/admin/orgs_router.py`, `provisa/core/schema_admin.py`, `provisa/demo/`
+**Code:** `provisa-ui/src/pages/OnboardOrgPage.tsx`, `provisa-ui/src/api/admin.ts`, `provisa/api/admin/orgs_router.py`, `provisa/api/app.py`, `provisa/core/schema_admin.py`
 
-**Tests:** —
+**Tests:** `provisa-ui/e2e/onboard-org.spec.ts`, `tests/integration/test_create_org_onboarding.py`, `tests/integration/test_org_demo_data_usable.py`, `tests/integration/test_org_demo_seed_visible.py`, `tests/unit/test_demo_config_org_admin_visibility.py`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -12746,7 +12750,7 @@ Platform super-admin is a seeded local break-glass account (username + bcrypt pa
 
 ### REQ-1265 · Helm Auth Configuration {#REQ-1265}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** infrastructure
 
 Helm chart deployment MUST NOT require Firebase. Operator specifies auth provider at install time via values.yaml (OIDC issuer URL, SAML metadata, LDAP server, or local break-glass). Provisa configures AuthProvider accordingly, decoupled from cloud Firebase bootstrap path. Enterprise identity providers (corporate OIDC/SAML/LDAP) are the primary target, not Google-only sign-in.
 
@@ -12760,7 +12764,7 @@ Helm chart deployment MUST NOT require Firebase. Operator specifies auth provide
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Firebase single-admin bootstrap is an optional convenience for cloud-appliance deployments (GCP cloud-init / Terraform). First Google-signed-in user becomes sole initial admin. This path is NOT required or supported by Helm/enterprise deployments and is NOT a fallback if OIDC/SAML/LDAP is misconfigured. Supersedes informal "[REQ-1259](#REQ-1259)" label; that requirement concerns TLS certificates, not authentication.
+Firebase single-admin bootstrap is an optional convenience for cloud-appliance deployments (GCP cloud-init / Terraform). [SUPERSEDED by [REQ-1290](#REQ-1290), 2026-10-03 -- The slot is no longer taken by signing in; it is taken by an explicit POST /auth/claim-bootstrap, and the Firebase page also offers GitHub, Microsoft and email/password. Kept here for history; do not implement against it.] First Google-signed-in user becomes sole initial admin. [END SUPERSEDED BLOCK] This path is NOT required or supported by Helm/enterprise deployments and is NOT a fallback if OIDC/SAML/LDAP is misconfigured. Supersedes informal "[REQ-1259](#REQ-1259)" label; that requirement concerns TLS certificates, not authentication.
 
 **Use case:** Cloud appliance deployments targeting individual users or small teams on GCP provide fastest time-to-value: zero auth config required, sign in with Google, immediate product access. Enterprises use Helm with their own OIDC/SAML/LDAP ([REQ-1265](#REQ-1265)) instead.
 
@@ -12770,15 +12774,15 @@ Firebase single-admin bootstrap is an optional convenience for cloud-appliance d
 
 ### REQ-1267 · Runtime Auth-Enforcement Gate {#REQ-1267}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 A single built image/wheel serves unsecured (demo/none), basic, or firebase/IdP deployments and can switch enforcement at runtime WITHOUT a process restart or rebuild. The API exposes /setup/status with auth_enabled flag and /auth/provider-type (returns "firebase"|"basic"|null) — both reachable before authentication. Auth middleware uses lazy provider resolver for deferred IdP boot and runtime reconfiguration. SPA login gate is driven by runtime signals, not build-time flags. This requirement supersedes the informal "[REQ-1259](#REQ-1259)" label used in auth-enforcement-gate code; the actual [REQ-1259](#REQ-1259) is Helm TLS certificate provisioning (unrelated).
 
 **Use case:** Enables a single production binary to serve multiple deployment scenarios (unsecured demo, enterprise IdP, basic auth) and dynamically switch authentication enforcement at runtime, eliminating build-per-deployment overhead and supporting auth migration without downtime.
 
-**Code:** —
+**Code:** `provisa/auth/middleware.py`, `provisa/api/setup_router.py`, `provisa/api/auth_router.py`, `provisa/api/app.py`, `provisa-ui/src/context/AuthContext.tsx`, `provisa-ui/src/lib/authFetch.ts`, `provisa-ui/src/api/setup.ts`, `provisa-ui/src/components/OnboardGate.tsx`
 
-**Tests:** —
+**Tests:** `tests/unit/test_setup_auth_enabled.py`, `tests/unit/test_auth_middleware.py`
 
 ## 13. Multi-Tenancy & Organizations
 
@@ -12790,7 +12794,7 @@ OrgRuntime dataclass encapsulates a single org's slice of AppState; OrgRegistry 
 
 **Use case:** Enables request-scoped multi-org isolation: each request runs against its designated org's isolated state, catalogs, and connection pools without global state mutation or cross-org leakage.
 
-**Code:** `provisa/app_state.py`, `provisa/multitenancy/org_runtime.py`
+**Code:** `provisa/api/org_runtime.py`, `provisa/api/app.py`, `provisa/core/request_context.py`
 
 **Tests:** `tests/unit/test_org_runtime.py`
 
@@ -12802,21 +12806,21 @@ org_prefixed_catalog(org_id, base, *, default_org) returns bare base name for de
 
 **Use case:** Avoids catalog name collisions in shared orchestrator environments (e.g., pooled Trino) when multiple orgs instantiate identical demo sources.
 
-**Code:** `provisa/multitenancy/catalog_naming.py`
+**Code:** `provisa/compiler/naming.py`
 
-**Tests:** `tests/unit/test_org_isolation.py`, `tests/integration/test_org_auto_join.py`
+**Tests:** `tests/unit/test_org_runtime.py`
 
 ### REQ-1270 · HTTP Org-Routing Middleware {#REQ-1270}
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-OrgRoutingMiddleware routes each HTTP request to the active org's runtime, built on-demand from persisted seeded_demo config, gated on multitenancy feature flag. Resolves current_org ContextVar before handlers execute.
+OrgRoutingMiddleware routes each HTTP request to the active org's runtime, built on-demand from persisted seeded_demo config[SUPERSEDED by [REQ-1355](#REQ-1355), 2026-10-03 -- the org routing middleware is registered unconditionally; the flag guard was a defect. Kept here for history; do not implement against it.] , gated on multitenancy feature flag [END SUPERSEDED BLOCK]. Resolves current_org ContextVar before handlers execute. (Amended 2026-10-03, THE MIDDLEWARE ALWAYS RUNS:) The org routing middleware is registered on every deployment, with or without multi-tenancy ([REQ-1355](#REQ-1355)): a single-tenant deployment routes every request to its one org through the same path.
 
 **Use case:** Ensures every request executes within its designated org's isolated AppState, enforcing tenant isolation at the HTTP boundary.
 
-**Code:** `provisa/middleware/org_routing.py`
+**Code:** `provisa/api/app.py`, `provisa/api/org_resolve.py`, `provisa/core/request_context.py`
 
-**Tests:** `tests/unit/test_org_isolation.py`
+**Tests:** `tests/unit/test_tenancy_requirements.py`, `tests/unit/test_http_trace_scope.py`, `tests/integration/test_invite_env_capture.py`
 
 ### REQ-1271 · Self-Service Org Creation {#REQ-1271}
 
@@ -12838,9 +12842,9 @@ POST /admin/orgs returns immediately with provisioning_state="provisioning"; a b
 
 **Use case:** Decouples org creation from slow provisioning operations (schema build, connection pool initialization), enabling responsive UI feedback during multi-org onboarding.
 
-**Code:** `provisa/api/admin/orgs_router.py`, `provisa/multitenancy/org_provisioning.py`
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/org_provisioning.py`, `provisa/core/schema_admin.py`
 
-**Tests:** `tests/integration/test_create_org_onboarding.py`, `tests/unit/test_org_create_provisioning.py`
+**Tests:** `tests/unit/test_org_create_provisioning.py`, `tests/integration/test_create_org_onboarding.py`
 
 ### REQ-1273 · Org Readiness Notification Seam {#REQ-1273}
 
@@ -12850,7 +12854,7 @@ notify_org_ready(org_id, user_id) stub called when async provisioning completes;
 
 **Use case:** Provides a seam to inject notifications (email, dashboard alerts) once an org is ready for use, supporting future multi-channel notification infrastructure.
 
-**Code:** `provisa/multitenancy/org_provisioning.py`
+**Code:** `provisa/core/org_membership.py`, `provisa/api/admin/orgs_router.py`
 
 **Tests:** —
 
@@ -12862,9 +12866,9 @@ _require_org_admin authorization handler allows platform admins any org, confine
 
 **Use case:** Prevents org admins from inviting users to orgs they do not own, enforcing multi-org isolation boundary at the authorization layer.
 
-**Code:** `provisa/api/admin/auth.py`, `provisa/api/admin/invites_router.py`
+**Code:** `provisa/api/admin/invites_router.py`
 
-**Tests:** `tests/unit/test_tenant_isolation_contract.py`
+**Tests:** `tests/unit/test_require_org_admin.py`, `tests/integration/test_invite_role_authz.py`
 
 ### REQ-1275 · UI Onboarding Flow {#REQ-1275}
 
@@ -12896,7 +12900,7 @@ HTTP request org is authoritative from Host subdomain (leftmost label of acme.pr
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-A newly authenticated user belonging to zero orgs is offered three onboarding paths: (1) join an existing org by entering its org id, (2) create a new org (existing behavior), or (3) auto-redirect to join if an existing org's id matches the user's email domain.
+A newly authenticated user belonging to zero orgs is offered three onboarding paths: (1) [SUPERSEDED by [REQ-1572](#REQ-1572), 2026-10-03 -- Joining is by invitation (a token, or a one-click pending invite per [REQ-1287](#REQ-1287)); the invitation is the admission decision and a bare org id admits nobody. Kept here for history; do not implement against it.] join an existing org by entering its org id [END SUPERSEDED BLOCK], (2) create a new org (existing behavior), or (3) [SUPERSEDED by [REQ-1568](#REQ-1568), 2026-10-03 -- Automatic joining is driven by the org's email rule with auto_join on, not by the org id matching a domain; one match joins at sign-in and several are put to the person as a choice. Kept here for history; do not implement against it.] auto-redirect to join if an existing org's id matches the user's email domain [END SUPERSEDED BLOCK].
 
 **Use case:** Extends [REQ-1266](#REQ-1266) by providing member-less users flexibility beyond org creation alone, reducing friction for users wanting to join existing teams or leveraging email domain matching for automatic org discovery.
 
@@ -12932,7 +12936,7 @@ New terraform/gcp-saas module enables fully-automated multi-tenant SaaS deployme
 
 ### REQ-1280 · Commercial Positioning {#REQ-1280}
 
-**Status:** ✓ accepted · **Priority:** MAY · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1454](#REQ-1454) · **Priority:** MAY · **Type:** infrastructure
 
 Provisa SaaS bills on two metered SKUs mapped to the existing gcp-saas topology ([REQ-1279](#REQ-1279)): (1) Serving lane — the "active-hour" SKU at $3.25/active-hr, metering warm coordinator uptime (the always-on Trino planner + persistent-protocol listeners: pgwire/bolt/Flight/gRPC/MCP). Any hour the endpoint is active bills a full hour. Margin ~87–97%. (2) Analytical lane — the "worker-hour" SKU at $2.50/worker-hr, metering Spot worker MIG uptime per query, scale-to-zero between queries. Margin ~97% Spot / ~89% on-demand. Egress is a cost-recovery passthrough across both lanes at Hasura parity ($0.13/GB vs $0.12 cost); only result bytes leaving GCP are Provisa's cost (source-cloud egress bills the source owner).
 
@@ -12996,15 +13000,15 @@ Organizations can define an optional email-address rule (regex pattern) for memb
 
 ### REQ-1285 · Organization Access Control {#REQ-1285}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Organizations may enable an "auto-join" flag with a configured default role (e.g., a low-privilege read-only role like "analyst"). When auto-join is enabled, any newly authenticated user whose email matches the org's email rule (or any user if no email rule exists) is automatically granted membership in that org with the default role — no explicit invite needed. When auto-join is disabled (the default), joining requires an explicit invite. Auto-join depends on the org email-rule feature ([REQ-1284](#REQ-1284)) to scope which accounts may self-join.
+Organizations may enable an "auto-join" flag with a configured default role (e.g., a low-privilege read-only role like "analyst"). When auto-join is enabled, any newly authenticated user whose email matches the org's email rule [SUPERSEDED by [REQ-1567](#REQ-1567), 2026-10-03 -- auto_join without an email rule is refused at save (unbounded_no_rule); a rule naming a domain is required. Kept here for history; do not implement against it.] (or any user if no email rule exists) [END SUPERSEDED BLOCK] [SUPERSEDED by [REQ-1568](#REQ-1568), 2026-10-03 -- Only a single matching org joins automatically; an address matching several auto-join orgs joins none and the person is asked to choose. Kept here for history; do not implement against it.] is automatically granted membership in that org with the default role [END SUPERSEDED BLOCK] — no explicit invite needed. When auto-join is disabled (the default), joining requires an explicit invite. Auto-join depends on the org email-rule feature ([REQ-1284](#REQ-1284)) to scope which accounts may self-join.
 
 **Use case:** Auto-join reduces friction for domain-scoped organizations by eliminating the need for explicit invites when email-based membership rules already verify eligibility. Users matching the email rule gain immediate access with a safe default role, speeding time-to-first-query.
 
-**Code:** `provisa/api/auth_router.py`, `provisa/core/schema_admin.py`
+**Code:** `provisa/core/schema_admin.py`, `provisa/core/org_membership.py`, `provisa/auth/middleware.py`, `provisa/api/auto_join.py`, `provisa/api/admin/orgs_router.py`, `provisa/api/auth_router.py`, `provisa-ui/src/components/OrgJoinSettings.tsx`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
 
-**Tests:** `tests/integration/test_redeem_invite.py`
+**Tests:** `tests/integration/test_org_auto_join.py`, `provisa-ui/src/__tests__/OnboardOrgAutoJoinRisk.test.tsx`
 
 ### REQ-1286 · Identity Resolution {#REQ-1286}
 
@@ -13148,27 +13152,27 @@ A claimed platform-admin slot lands the administrator in a populated deployment,
 
 ### REQ-1297 · Authorization {#REQ-1297}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Every org schema is seeded with exactly five default roles: platform_admin, org_admin, analyst, developer, modeler. These five ids are the whole vocabulary — there are no aliases. The role ids 'admin' and 'superadmin' are retired: they exist today as both seeded role rows and as the platform-bypass keywords in provisa/api/auth_router.py and the UI capability gates, and both uses are replaced by platform_admin. Existing assignments naming the retired ids are rewritten to platform_admin at seed time; nothing resolves them afterward. platform_admin is the deployment-wide control-plane administrator (the role the bootstrap claim grants), responsible for org lifecycle, infra/engine settings, and recovery operations. The platform-bypass (has_platform_bypass in provisa/security/rights.py) is scoped to control-plane surfaces only and does not bypass any data-plane capability check, even in root; platform_admin holds no standing data capabilities anywhere. org_admin administers data-plane operations in a single org — members, invites, sources, governance, querying — in every org including root. developer builds against the data — query development, view and relationship authoring, full results, write. analyst reads — usage and query development, no authoring or governance. modeler is the discovery role and the ONLY seeded role holding ignore_relationships, so it may join across relations the approved relationship catalog does not yet cover; that is how a model is DETERMINED. Every other governance check (column visibility, RLS, masking, domain access) still applies to it, and testing the result of a modelling change is done by querying as a role WITHOUT ignore_relationships, which ENFORCES the model. analyst deliberately does not hold it — the least-privileged default never breaks out of the model. The retired discovery_mode request flag on POST /data/sql, which let ANY caller waive the capability check, the domain check and the relationship guard at once from the request body, is DELETED — a break-out is a grant on a role, never a field a client sets on itself. All five are system roles (org_id NULL, identical capability sets in every org) and are not editable through the roles admin surface.
+[SUPERSEDED by [REQ-1597](#REQ-1597), 2026-10-03 -- A sixth system role, sandbox, is seeded in every org schema (schema.sql:1231-1243; test_system_roles_seed.py:81-89). Kept here for history; do not implement against it.] Every org schema is seeded with exactly five default roles: platform_admin, org_admin, analyst, developer, modeler. These five ids are the whole vocabulary — there are no aliases. [END SUPERSEDED BLOCK] The role ids 'admin' and 'superadmin' are retired: [SUPERSEDED by [REQ-1337](#REQ-1337), 2026-10-03 -- Describes the pre-implementation state; the keywords are gone and gates read the cross_org / platform_settings rights, not the platform_admin name. Kept here for history; do not implement against it.] they exist today as both seeded role rows and as the platform-bypass keywords in provisa/api/auth_router.py and the UI capability gates, and both uses are replaced by platform_admin [END SUPERSEDED BLOCK]. Existing assignments naming the retired ids are rewritten to platform_admin at seed time; nothing resolves them afterward. platform_admin is the deployment-wide control-plane administrator (the role the bootstrap claim grants), responsible for org lifecycle, infra/engine settings, and recovery operations. [SUPERSEDED by [REQ-1337](#REQ-1337), 2026-10-03 -- has_platform_bypass does not exist; the gate is can_act_cross_org on the cross_org right (orgs_router.py:42,63). Kept here for history; do not implement against it.] The platform-bypass (has_platform_bypass in provisa/security/rights.py) [END SUPERSEDED BLOCK] is scoped to control-plane surfaces only and does not bypass any data-plane capability check, even in root; platform_admin holds no standing data capabilities anywhere. org_admin administers data-plane operations in a single org — members, invites, sources, governance, querying — in every org including root. developer builds against the data — query development, view and relationship authoring, full results, write. analyst reads — usage and query development, no authoring or governance. modeler is the discovery role and the ONLY seeded role holding ignore_relationships, so it may join across relations the approved relationship catalog does not yet cover; that is how a model is DETERMINED. Every other governance check (column visibility, RLS, masking, domain access) still applies to it, and testing the result of a modelling change is done by querying as a role WITHOUT ignore_relationships, which ENFORCES the model. analyst deliberately does not hold it — the least-privileged default never breaks out of the model. The retired discovery_mode request flag on POST /data/sql, which let ANY caller waive the capability check, the domain check and the relationship guard at once from the request body, is DELETED — a break-out is a grant on a role, never a field a client sets on itself. [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- Six system roles ([REQ-1597](#REQ-1597)), and only org_admin and platform_admin are uneditable; analyst, developer and modeler are editable per environment (roles_router.py:35-47, 232-235). Kept here for history; do not implement against it.] All five are system roles (org_id NULL, identical capability sets in every org) and are not editable through the roles admin surface. [END SUPERSEDED BLOCK]
 
 **Use case:** The seeded catalog was ad hoc — 'admin' and 'analyst' existed by accident of the boot seed and 'org_admin' was added later for self-service org creation, leaving no role for a person who builds views and relationships but must not administer anything. A fixed four-role catalog gives every fresh org and every fresh deployment the same starting vocabulary. Separating platform_admin (control-plane, no data access) from org_admin (all data-plane administration, including in root) makes the platform/org administration split explicit in the role id and capability set, enabling auditable recovery and preventing silent data access.
 
-**Code:** `provisa/core/schema.sql`, `provisa/security/rights.py`, `provisa/auth/middleware.py`
+**Code:** `provisa/core/schema.sql`, `provisa/core/db.py`, `provisa/security/rights.py`, `provisa/auth/middleware.py`, `provisa/api/admin/roles_router.py`, `provisa/core/repositories/role.py`
 
-**Tests:** `tests/integration/test_first_login_bootstrap_admin.py`, `tests/integration/test_invite_role_authz.py`, `tests/integration/test_system_roles_seed.py`
+**Tests:** `tests/integration/test_system_roles_seed.py`, `tests/unit/test_platform_admin_no_data_rights.py`, `tests/integration/test_first_login_bootstrap_admin.py`, `tests/integration/test_role_delete_paths.py`
 
 ### REQ-1298 · Authorization {#REQ-1298}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 A backup platform_admin is made in two steps, never by a second bootstrap claim. An existing platform_admin invites the person into the root org, the person redeems the invite and becomes a member of root, and the platform_admin then assigns them the platform_admin role in root. The bootstrap slot stays claimed by its original holder and is never reopened; platform_admin is a role held in root, and holding it there is what confers deployment-wide administration.
 
 **Use case:** The bootstrap claim is first-writer-wins and single-use, so it cannot be the way a second administrator is created — yet a deployment whose only platform_admin loses their account is a deployment nobody can administer. Routing backups through root membership plus a role assignment reuses the invite and role-assignment surfaces that already exist, keeps the claim ceremony irreversible, and makes the set of platform administrators readable as the platform_admin assignments in one org rather than as a hidden singleton row.
 
-**Code:** `provisa/api/admin/invites_router.py`, `provisa/api/auth_router.py`, `provisa/core/org_membership.py`
+**Code:** `provisa/api/admin/invites_router.py`, `provisa/api/auth_router.py`, `provisa/api/admin/local_users_router.py`, `provisa/core/org_membership.py`, `provisa-ui/src/components/PlatformAdminWelcomeModal.tsx`
 
-**Tests:** `tests/integration/test_first_login_bootstrap_admin.py`, `tests/integration/test_invite_role_authz.py`
+**Tests:** `tests/integration/test_invite_role_authz.py`, `tests/unit/test_local_users_gate.py`, `tests/integration/test_first_login_bootstrap_admin.py`, `tests/integration/test_bootstrap_status.py`, `provisa-ui/src/__tests__/PlatformAdminWelcomeModal.test.tsx`
 
 ### REQ-1299 · Authorization {#REQ-1299}
 
@@ -13196,15 +13200,15 @@ An organization can be deleted. Deletion drops the org's tenant schema, its memb
 
 ### REQ-1301 · Authorization {#REQ-1301}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 The root org is a working org, not a placeholder. The platform_admin registers and governs whatever data assets they find useful there, alongside the demo assets it ships with ([REQ-1296](#REQ-1296)). Root additionally carries a registered view over the org registry - one row per organization with its id, name, provisioning state, creation time, and the contact details of each of its org_admins - so the deployment's own tenancy is queryable through the same surfaces as any other dataset. The view reads the control plane and is read-only; it is scoped to root and is not present in any other org.
 
 **Use case:** A platform_admin asked "who runs org acme, and when did it appear" has no answer inside the product - the org registry is control-plane state reachable only through admin endpoints, so the operator drops to SQL against the admin schema. Exposing it as a registered view in root makes the tenancy answerable by the query, graph, and API surfaces the platform already provides, and gives root a reason to exist beyond holding the demo.
 
-**Code:** `provisa/api/startup_seed.py`, `provisa/core/org_provisioning.py`
+**Code:** `provisa/core/org_registry_view.py`, `provisa/api/startup_seed.py`, `provisa/api/admin/orgs_router.py`
 
-**Tests:** `tests/integration/test_first_login_bootstrap_admin.py`
+**Tests:** `tests/integration/test_org_registry_view.py`, `tests/integration/test_create_org_onboarding.py`
 
 ### REQ-1302 · Authorization {#REQ-1302}
 
@@ -13246,7 +13250,7 @@ Pressing delete on an organization downloads that org's configuration before the
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Removing a person from an org is an org_admin operation and it removes them from both planes. Today DELETE /admin/orgs/{org_id}/members/{user_id} requires the platform bypass (the _require_superadmin guard, retired by [REQ-1297](#REQ-1297)) so an org_admin cannot offboard anyone from their own org, and it deletes only the control-plane user_org_memberships row - the tenant-plane user_role_assignments row written by grant_org_role/grant_org_admin survives in org_<id>, so re-adding the person silently restores the privileges they had before. Removal must be available to the org's own org_admin (and to a platform_admin for any org), and must delete the membership row, every user_role_assignments row for that user in that org schema, and any personal access token ([REQ-1263](#REQ-1263)) scoped to that org for that user, in one operation. Offboarding is the mirror of the invite flow ([REQ-1283](#REQ-1283)) and belongs on the same Team page.
+Removing a person from an org is an org_admin operation and it removes them from both planes. [SUPERSEDED by REQ-1305 amendment, 2026-10-03 -- Describes the pre-implementation state; the route is now org_admin-gated and removes both planes (orgs_router.py:1089-1095). Kept here for history; do not implement against it.] Today DELETE /admin/orgs/{org_id}/members/{user_id} requires the platform bypass (the _require_superadmin guard, retired by [REQ-1297](#REQ-1297)) so an org_admin cannot offboard anyone from their own org, and it deletes only the control-plane user_org_memberships row - the tenant-plane user_role_assignments row written by grant_org_role/grant_org_admin survives in org_<id>, so re-adding the person silently restores the privileges they had before. [END SUPERSEDED BLOCK] Removal must be available to the org's own org_admin (and to a platform_admin for any org), and must delete the membership row, every user_role_assignments row for that user in that org schema, and any personal access token ([REQ-1263](#REQ-1263)) scoped to that org for that user, in one operation. Offboarding is the mirror of the invite flow ([REQ-1283](#REQ-1283)) and belongs on the same Team page.
 
 **Use case:** An org_admin who can invite but cannot remove has half an administrative surface - the person who leaves the company stays a member until someone with deployment-wide authority is asked to act. The two-plane split makes the partial delete worse than an outright missing feature - the operator sees the member disappear from the Team page and reasonably concludes the access is gone, while the role grant that actually confers capability is still sitting in the tenant schema. A long-lived protocol token scoped to the org is the same failure at a longer horizon, since it authenticates without a browser session to invalidate.
 
@@ -13256,15 +13260,15 @@ Removing a person from an org is an org_admin operation and it removes them from
 
 ### REQ-1306 · Authorization {#REQ-1306}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 A user may leave an org on their own. Leaving performs the same two-plane removal as an org_admin offboarding them ([REQ-1305](#REQ-1305)) and additionally suppresses auto-join ([REQ-1285](#REQ-1285)) for that user and org, so a deliberate departure is not undone by the next sign-in matching the org's email rule. The last org_admin of an org cannot leave it - the last-admin invariant ([REQ-1302](#REQ-1302)) applies to departure as much as to revocation, and the paths out are to promote another org_admin first or to delete the org ([REQ-1300](#REQ-1300)). If the org the user leaves is their active_org_id, the next request resolves another membership; a user who leaves their only org returns to onboarding ([REQ-1287](#REQ-1287)) rather than to an error.
 
 **Use case:** Membership can currently only be granted, never given up - a person invited to the wrong org, or one who has finished a contract, has no way to detach themselves and must ask an administrator of an org they no longer want to be in. Auto-join makes the omission self-inflicting - without an exclusion, every removal is reversed on the removed person's next sign-in, so leaving would not stay done.
 
-**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/org_membership.py`, `provisa-ui/src/components/UserProfileModal.tsx`
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/org_membership.py`, `provisa/api/auto_join.py`, `provisa-ui/src/components/UserProfileModal.tsx`
 
-**Tests:** `tests/integration/test_org_lifecycle.py`
+**Tests:** `tests/integration/test_org_lifecycle.py`, `provisa-ui/src/__tests__/UserProfileOffboarding.test.tsx`
 
 ### REQ-1307 · Authorization {#REQ-1307}
 
@@ -13294,7 +13298,7 @@ A user can never change their own role in an org. Changing a member's role is an
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-An org id is validated on creation and immutable thereafter. It must match a conservative identifier pattern (lowercase letters and digits only - no hyphen, no underscore - starting with a letter, 2-40 characters), because the value becomes both the PostgreSQL schema name org_<id> and the Host subdomain ([REQ-1276](#REQ-1276)) - today CreateOrgBody.id is an unconstrained str whose only check is a duplicate lookup. Reserved ids are rejected - root ([REQ-1296](#REQ-1296)), default, public, admin, information_schema, and anything beginning pg_ - since each either collides with a real schema or with the deployment's own org. The id can never change afterward - renaming an org changes its display name only, leaving the schema, the subdomain and every bookmarked URL intact - and the rename UI states that.
+An org id is validated on creation and immutable thereafter. It must match a conservative identifier pattern (lowercase letters and digits only - no hyphen, no underscore - starting with a letter, 2-40 characters), because the value becomes both the PostgreSQL schema name org_<id> and the Host subdomain ([REQ-1276](#REQ-1276)) - [SUPERSEDED by REQ-1309 amendment, 2026-10-03 -- Describes the pre-implementation state; _validate_new_org_id now runs first (orgs_router.py:280-307, 482). Kept here for history; do not implement against it.] today CreateOrgBody.id is an unconstrained str whose only check is a duplicate lookup [END SUPERSEDED BLOCK]. Reserved ids are rejected - root ([REQ-1296](#REQ-1296)), default, public, admin, information_schema, and anything beginning pg_ - since each either collides with a real schema or with the deployment's own org. The id can never change afterward - renaming an org changes its display name only, leaving the schema, the subdomain and every bookmarked URL intact - and the rename UI states that.
 
 **Use case:** The org id is not a label, it is a schema name and a hostname, so an unvalidated value is a correctness problem before it is a security one - an id containing a quote, a dot, or mixed case produces a schema that DDL cannot address or a subdomain that does not resolve, and the failure appears during background provisioning rather than at the point of entry. Reserving the names is what keeps a self-service creation from colliding with root or with a PostgreSQL system schema. Immutability is the other half - once an org id is in DNS, in connection strings, and in the schema name, changing it is not a rename but a migration.
 
@@ -13304,19 +13308,19 @@ An org id is validated on creation and immutable thereafter. It must match a con
 
 ### REQ-1310 · Authorization {#REQ-1310}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-An invitation addressed to an email address is delivered to that address. Today create_invite stores the invitee email but nothing sends anything - there is no SMTP or mail-provider code in the codebase - so the only way to see an invitation is GET /auth/my-invites after signing in, which requires the invited person to independently discover the deployment and create an account unprompted. The message names the org, who invited them, the role they will hold, the expiry, and a link that carries them into the redemption flow. Mail delivery is configured like every other backing service, and tests exercise it against a local SMTP server the harness starts - the test asserts on the captured message, never on a stub or a log line. A link invitation with no email address is unchanged - the org_admin distributes it themselves.
+[SUPERSEDED by [REQ-1330](#REQ-1330), 2026-10-03 -- Delivery exists only in SaaS (multitenancy) mode; a self-hosted deployment returns delivery 'saas_only' and sends nothing (invites_router.py:366-367). Kept here for history; do not implement against it.] An invitation addressed to an email address is delivered to that address. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-1310 amendment, 2026-10-03 -- Describes the pre-implementation state; provisa/core/mail.py and _deliver_invite now send it. Kept here for history; do not implement against it.] Today create_invite stores the invitee email but nothing sends anything - there is no SMTP or mail-provider code in the codebase - so the only way to see an invitation is GET /auth/my-invites after signing in, which requires the invited person to independently discover the deployment and create an account unprompted. [END SUPERSEDED BLOCK] The message names the org, who invited them, the role they will hold, the expiry, and a link that carries them into the redemption flow. Mail delivery is configured like every other backing service, and tests exercise it against a local SMTP server the harness starts - the test asserts on the captured message, never on a stub or a log line. A link invitation with no email address is unchanged - the org_admin distributes it themselves.
 
 **Use case:** Invitation is one of the three onboarding questions ([REQ-1287](#REQ-1287)) and it is the only one whose answer currently depends on the invitee already knowing to look. An invite that exists in a table but reaches nobody is the same as no invite for every user who was not told out of band, and it makes the expiry (7 days by default) run against a clock the invitee cannot see. Testing against a real local SMTP server rather than a mock is what makes the assertion meaningful - a mocked send proves the call was made, not that a message a person could act on was produced.
 
-**Code:** `provisa/api/admin/invites_router.py`, `provisa/core/mail.py`
+**Code:** `provisa/api/admin/invites_router.py`, `provisa/core/mail.py`, `provisa/core/mail_registry.py`, `provisa/api/admin/mail_router.py`, `provisa-ui/src/pages/TeamPage.tsx`
 
-**Tests:** `tests/integration/test_invite_delivery.py`
+**Tests:** `tests/integration/test_invite_delivery.py`, `tests/unit/test_mail_port.py`, `provisa-ui/src/__tests__/TeamPageInviteEmail.test.tsx`
 
 ### REQ-1311 · Authorization {#REQ-1311}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A single user may create at most 100 organizations. The cap is a backstop against runaway or automated creation, not a product tier - every org provisions a schema and optionally seeds demo data, and nothing currently bounds how many one account can trigger. Orgs the user has deleted ([REQ-1300](#REQ-1300)) do not count against it. Reaching the cap returns a clear refusal naming the limit.
 
@@ -13340,9 +13344,9 @@ Deletion scrubs personal data while preserving the record that the deletion happ
 
 ### REQ-1313 · Authorization {#REQ-1313}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-An invitation may only confer a role the inviter is entitled to confer, and the role must exist in the target org. Today CreateInviteBody.role_id is an unvalidated str stored verbatim and passed straight into grant_org_role at redemption, which upserts whatever string it is given - org_invites.role_id is a plain Text column with no foreign key, since it references the per-org roles table. The invitation must be rejected at creation when the named role does not exist in that org's schema, and platform_admin may be named only in an invitation into root ([REQ-1298](#REQ-1298)) - an org_admin cannot confer it in their own org. Redemption revalidates rather than trusting the stored value, since a role can be removed between creation and redemption.
+An invitation may only confer a role the inviter is entitled to confer, and the role must exist in the target org. [SUPERSEDED by REQ-1313 amendment, 2026-10-03 -- Describes the pre-implementation state; the role is validated at creation and at redemption, and grant_org_role itself refuses an unknown role (org_membership.py:235-239). Kept here for history; do not implement against it.] Today CreateInviteBody.role_id is an unvalidated str stored verbatim and passed straight into grant_org_role at redemption, which upserts whatever string it is given [END SUPERSEDED BLOCK] - org_invites.role_id is a plain Text column with no foreign key, since it references the per-org roles table. The invitation must be rejected at creation when the named role does not exist in that org's schema, and platform_admin may be named only in an invitation into root ([REQ-1298](#REQ-1298)) - an org_admin cannot confer it in their own org. Redemption revalidates rather than trusting the stored value, since a role can be removed between creation and redemption.
 
 **Use case:** This is an escalation path that [REQ-1297](#REQ-1297) arms. Capability resolution reads the global roles map by role id without regard to which org the assignment lives in, so a tenant-plane assignment of platform_admin resolves deployment-wide capabilities. Once [REQ-1297](#REQ-1297) seeds all four default roles into every org schema, an org_admin can invite an accomplice as platform_admin in their own org and produce a platform administrator without ever touching root - which is exactly what [REQ-1298](#REQ-1298) declares to be the only path, and which nothing currently enforces. Validating at creation also turns a redemption-time failure the invitee cannot act on into a refusal the inviter sees immediately.
 
@@ -13352,21 +13356,21 @@ An invitation may only confer a role the inviter is entitled to confer, and the 
 
 ### REQ-1314 · Authorization {#REQ-1314}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-An invitation that names no role confers analyst, the least-privileged of the four default roles ([REQ-1297](#REQ-1297)). CreateInviteBody.role_id currently defaults to None and redemption passes it unconditionally into the user_role_assignments upsert, so a link invitation created without a role produces a null assignment rather than a member who can do anything. The default is applied when the invitation is created, so the stored row always names a concrete role and the invitee is told which one before redeeming.
+An invitation that names no role confers analyst, [SUPERSEDED by [REQ-1297](#REQ-1297), 2026-10-03 -- [REQ-1297](#REQ-1297) names five default roles and [REQ-1597](#REQ-1597) added a sixth (sandbox); analyst is still the least-privileged. Kept here for history; do not implement against it.] the least-privileged of the four default roles ([REQ-1297](#REQ-1297)) [END SUPERSEDED BLOCK]. [SUPERSEDED by REQ-1314 amendment, 2026-10-03 -- Describes the pre-implementation state; the default is applied at creation (invites_router.py:189, 274-276). Kept here for history; do not implement against it.] CreateInviteBody.role_id currently defaults to None and redemption passes it unconditionally into the user_role_assignments upsert, so a link invitation created without a role produces a null assignment rather than a member who can do anything. [END SUPERSEDED BLOCK] The default is applied when the invitation is created, so the stored row always names a concrete role and the invitee is told which one before redeeming.
 
 **Use case:** A link invitation is the shareable path an org_admin distributes themselves, and it is exactly the case where naming a role per invitee is inconvenient - so it is the case most likely to be created without one. Defaulting to the lowest-privilege role is the only safe direction, and resolving it at creation rather than at redemption means the invitation, the delivered message ([REQ-1310](#REQ-1310)) and the redemption all agree on what is being offered.
 
-**Code:** `provisa/api/admin/invites_router.py`
+**Code:** `provisa/api/admin/invites_router.py`, `provisa-ui/src/components/admin/OrgsTab.tsx`
 
 **Tests:** `tests/integration/test_invite_role_authz.py`
 
 ### REQ-1315 · Authorization {#REQ-1315}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-An org whose provisioning failed is recoverable, not abandoned. Background provisioning records provisioning_state=failed with the error, and there is currently no way forward - no retry endpoint exists, the registry row and whatever partial schema the failure left behind persist, and the org counts against the creator's cap ([REQ-1311](#REQ-1311)). The creator or a platform_admin may retry provisioning, which drops any partial schema and runs the build again from the beginning; a failed org may also be deleted ([REQ-1300](#REQ-1300)) without the confirmation ceremony a provisioned org requires, since it holds no data anyone could lose. A failed org does not count against the creation cap.
+An org whose provisioning failed is recoverable, not abandoned. Background provisioning records provisioning_state=failed with the error, and [SUPERSEDED by REQ-1315 amendment, 2026-10-03 -- Before-state narrative; the retry endpoint exists and failed orgs are excluded from the cap count. Kept here for history; do not implement against it.] there is currently no way forward - no retry endpoint exists, the registry row and whatever partial schema the failure left behind persist, and the org counts against the creator's cap ([REQ-1311](#REQ-1311)) [END SUPERSEDED BLOCK]. The creator or a platform_admin may retry provisioning, which drops any partial schema and runs the build again from the beginning; a failed org may also be deleted ([REQ-1300](#REQ-1300)) without the confirmation ceremony a provisioned org requires, since it holds no data anyone could lose. A failed org does not count against the creation cap.
 
 **Use case:** Provisioning builds a schema, seeds roles and optionally loads demo assets, so it can fail on anything from a transient connection loss to a bad demo asset - and the state it leaves is a half-built schema the user cannot see and cannot address. Without a retry the only recovery is to create a second org under a different id, which leaves the first one occupying its id permanently, since ids are immutable and reserved by existence ([REQ-1309](#REQ-1309)). Making the retry idempotent from a clean slate is what keeps a second failure from compounding the first.
 
@@ -13822,7 +13826,7 @@ Org-scoped admin rights define two new capabilities: `org_settings` (surfaces wh
 
 **Use case:** Org admins need independent control over their org's configuration (AI models, NL providers, domains, tasks) and observability without access to platform-level or cross-org settings. Request-time resolution of org config (resolve_org_config) allows configuration changes to take effect immediately on the next query without restart.
 
-**Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/org_settings.py`, `provisa/api/admin_router.py`, `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+**Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/org_settings.py`, `provisa/api/admin/_platform_guard.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/email_router.py`, `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
 
 **Tests:** `tests/unit/test_org_scoped_admin_rights.py`, `tests/integration/test_tenancy_role_grants.py`, `tests/integration/test_org_settings_overrides.py`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`, `tests/unit/test_mcp_org_scoped_config.py`
 
@@ -14006,7 +14010,7 @@ In demo mode, all application page chunks must be preloaded and compiled before 
 
 **Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
 
-Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressing, and access control layers.
+Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressing, and access control layers. (Amended 2026-10-03, THE USE CASE IS A BUSINESS UNIT AND ITS ORGANIZATIONS:) A parent domain represents a business unit and its child domains represent the organizations within that business unit. A role granted the business unit's domain reaches every organization's domain under it, including one added later, without the role being edited. (Amended 2026-10-03, GRANTS, ROW FILTERS AND STEWARDS ACROSS THE TREE:) A role granted a parent domain reaches every domain under it. Row filters across the tree all apply together: a table's rows are filtered by its own domain's filter and by the filter of every ancestor domain, so a child domain can only narrow what its ancestors allow. A child domain with no steward inherits the steward of its nearest ancestor that has one.
 
 **Use case:** Enable organizations to structure domains hierarchically for governance metadata and organization, while maintaining a single flat execution model and addressing scheme.
 
@@ -14018,7 +14022,7 @@ Add hierarchical domain structure via parent_domain_id to Domain model, with fla
 
 ### REQ-1364 · Config Export {#REQ-1364}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
 
 Config exports carry JSON Pointer refs for internal cross-references plus composed physical resourcePath URIs for data elements, enabling external validators and interchange converters (Ossie/DDN) to resolve semantic and physical locations without second passes.
 
@@ -14080,7 +14084,7 @@ Standardize "metadata export" terminology: module path provisa/api/metadata_expo
 
 **Use case:** Consistent naming across code, config, API, and UI reduces cognitive load and improves discoverability for users and maintainers.
 
-**Code:** `provisa/api/metadata_export/`, `provisa/api/admin/metadata_export_router.py`, `provisa-ui/src/tabs/MetadataExportTab.tsx`, `docs/metadata-export.md`
+**Code:** `provisa/api/metadata_export/`, `provisa/api/admin/metadata_export_router.py`, `provisa/control_plane/entitlements.py`, `provisa-ui/src/components/admin/MetadataExportTab.tsx`, `docs/metadata-export.md`
 
 **Tests:** —
 
@@ -14092,7 +14096,7 @@ Demo mode exemption for tier entitlement gating: when PROVISA_DEMO=1 (set via `p
 
 **Use case:** Demo mode needs to showcase all features without enterprise license checks, enabling quick product evaluation and internal testing without mock entitlement infrastructure.
 
-**Code:** `provisa/core/demo.py`, `provisa/control_plane/entitlements.py`, `provisa/cli/setup_router.py`
+**Code:** `provisa/core/demo.py`, `provisa/control_plane/entitlements.py`, `provisa/api/setup_router.py`
 
 **Tests:** —
 
@@ -14164,15 +14168,15 @@ System tags are predefined and immutable: exactly three system tags with fixed s
 
 ### REQ-1376 · Data Governance {#REQ-1376}
 
-**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
 Tag assignment is human-only, never automatic. UI may suggest likely-technical columns, but suggestion requires explicit steward acceptance before recorded. No silent behavior.
 
 **Use case:** Keeps governance decisions explicit and auditable; prevents silent mis-tagging that could incorrectly exclude data or mis-classify sensitive information.
 
-**Code:** —
+**Code:** `provisa/api/admin/schema_mutation.py`, `provisa/core/repositories/tag.py`, `provisa/core/config_loader.py`, `provisa-ui/src/components/TagControl.tsx`
 
-**Tests:** —
+**Tests:** `provisa-ui/src/__tests__/TagControl.test.tsx`, `tests/unit/test_derived_tags.py`, `tests/unit/test_config_loader_tag_assignment_ref.py`
 
 ### REQ-1377 · Data Governance {#REQ-1377}
 
@@ -14230,15 +14234,15 @@ Tables list shows PRODUCT pill (indigo Badge) on rows whose registration has dat
 
 ### REQ-1381 · Data Governance {#REQ-1381}
 
-**Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-User attributes for ABAC are a SEPARATE concept from the object-tag registry ([REQ-1373](#REQ-1373)): object tags are exported governance metadata on sources/tables/columns/relationships; user attributes are authorization inputs feeding the `user.<attr>` namespace in RLS filter expressions. `user` is NOT an appliesTo scope of the tag registry, and user attributes are never included in metadata export.
+User attributes for ABAC are a SEPARATE concept from the object-tag registry ([REQ-1373](#REQ-1373)): object tags are exported governance metadata on sources/tables/columns/relationships; user attributes are authorization inputs [SUPERSEDED by [REQ-1682](#REQ-1682), 2026-10-03 -- The namespace RLS predicates read is current_setting('provisa.<var>') bound from the identity's claims; no user.<attr> syntax exists in the compiler. Kept here for history; do not implement against it.] feeding the `user.<attr>` namespace in RLS filter expressions [END SUPERSEDED BLOCK]. `user` is NOT an appliesTo scope of the tag registry, and user attributes are never included in metadata export.
 
 **Use case:** Keeps access-control-bearing data out of a registry whose contract is annotation-and-export; a steward's tag edit can never silently change row visibility, and user attributes never ship to external catalogs.
 
-**Code:** —
+**Code:** `provisa/core/models.py`, `provisa/auth/middleware.py`, `provisa/core/request_context.py`, `provisa/api/metadata_export/builder.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_request_session_vars.py`, `tests/unit/test_metadata_export_model_tags.py`
 
 ### REQ-1382 · Data Governance {#REQ-1382}
 
@@ -14428,7 +14432,7 @@ In a multi-tenant SaaS deployment, org admins can select the AI model their org 
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-The REST `?includeNodes=` parameter (introduced in REQ-1401) now accepts a field-level projection in addition to `true`/`false`—either a JSON array or comma-separated list of dot-notated paths to select specific scalar fields and relationship traversals, at arbitrary depth, from the nodes row-detail.
+The REST `?includeNodes=` parameter (introduced in [REQ-1401](#REQ-1401)) now accepts a field-level projection in addition to `true`/`false`—either a JSON array or comma-separated list of dot-notated paths to select specific scalar fields and relationship traversals, at arbitrary depth, from the nodes row-detail.
 
 **Use case:** Clients can request only the specific fields they need from nodes detail rows instead of requesting all available fields, reducing payload size and allowing selective field hydration in group-by aggregate responses.
 
@@ -14574,15 +14578,15 @@ An org administrator moves the acting org between three federation-engine lanes 
 
 ### REQ-1413 · Tag Registry {#REQ-1413}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Two semantic-content tags join the code-defined system tag set ([REQ-1375](#REQ-1375), SYSTEM_TAGS in provisa/core/models.py) rather than being seeded as rows: `entity` marks a column holding names of real-world things, and `natural_language` marks a column holding language a person wrote, whose contents are unreachable by relational predicates and require regex, ILIKE, or semantic search to extract. Both are column-only, reason_policy and expires_policy hidden — they are states, not countdowns. Being intrinsics they are present in every install with no migration and no seed path, and are immutable by construction: there is no row to edit or delete, and the existing mutation guards (schema_mutation.py SYSTEM_TAG_IDS, config_loader.py) already refuse them. `natural_language` is chosen over `prose`/`unstructured` because it is a positive, testable claim about content, which makes the exclusion definitional rather than a caveat: serialized formats (JSON, XML, log lines, base64) are parseable, not written, so they do not qualify and never enter a text corpus. Entity TYPE is not a tag — the dimension table names it (`customers.name` tagged `entity` is a customer entity); neither is the join key, which is the table's PK. Combined with the [REQ-1320](#REQ-1320) modeling role, `[dimension, entity]` on a column reads as the canonical name of a modeled entity.
+Two semantic-content tags join the code-defined system tag set ([REQ-1375](#REQ-1375), SYSTEM_TAGS in provisa/core/models.py) rather than being seeded as rows: `entity` marks a column holding names of real-world things, and `natural_language` marks a column holding language a person wrote, whose contents are unreachable by relational predicates and require regex, ILIKE, or semantic search to extract. Both are column-only, reason_policy and expires_policy hidden — they are states, not countdowns. Being intrinsics they are present in every install with no migration and no seed path, and are immutable by construction: there is no row to edit or delete, and the existing mutation guards (schema_mutation.py SYSTEM_TAG_IDS, config_loader.py) already refuse them. `natural_language` is chosen over `prose`/`unstructured` because it is a positive, testable claim about content, which makes the exclusion definitional rather than a caveat: serialized formats (JSON, XML, log lines, base64) are parseable, not written, so they do not qualify and never enter a text corpus. Entity TYPE is not a tag — [SUPERSEDED by [REQ-1467](#REQ-1467), 2026-10-03 -- The entity type is now a required parameter of the tag assignment (entity:customer); a bare entity assignment is not legal and the table no longer names the type. Kept here for history; do not implement against it.] the dimension table names it (`customers.name` tagged `entity` is a customer entity) [END SUPERSEDED BLOCK]; neither is the join key, which is the table's PK. Combined with the [REQ-1320](#REQ-1320) modeling role, `[dimension, entity]` on a column reads as the canonical name of a modeled entity.
 
 **Use case:** Consumers that must distinguish language from codes get it from the catalog instead of guessing: NL schema matching prefers entity columns when a question contains a proper noun, catalog search can answer "where does 'Acme' live", vector generation knows which columns are worth embedding, and masking review sees that entity columns are usually the join between pii and non-pii data. A downstream retrieval or chunking service can discover the same facts without a Provisa-specific client.
 
-**Code:** `provisa/core/models.py`, `provisa/core/repositories/tag.py`, `provisa/api/admin/schema_mutation.py`
+**Code:** `provisa/core/models.py`, `provisa/core/repositories/tag.py`, `provisa/api/admin/schema_mutation.py`, `provisa/core/config_loader.py`, `provisa/api/_meta_views.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_tag_params.py`, `tests/unit/test_derived_tags.py`
 
 ### REQ-1414 · Tag Registry {#REQ-1414}
 
@@ -14598,7 +14602,7 @@ Tag assignments are readable as a queryable relation, not only through the admin
 
 ### REQ-1415 · Tag Registry {#REQ-1415}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** MAY · **Type:** behavioral
 
 Tag IDs are emitted into the bracketed comment suffix alongside the modeling role, so a catalog surface shows `[dimension, entity, natural_language]` where it shows `[fact, scd2]` today (append_modeling_tag, provisa/core/modeling_tags.py, [REQ-1320](#REQ-1320)) — reaching pg_description, GraphQL introspection and the Flight/MCP catalog description through the one shared formatter. The comment channel is a HUMAN-FACING MIRROR and is explicitly not the machine contract: the [REQ-1414](#REQ-1414) view is authoritative, and nothing derives behavior by parsing the comment. To keep the mirror unambiguous the constraint is enforced upstream at tag creation rather than at render time — user tag IDs are restricted to a slug charset ([a-z0-9_-]), so a tag can never contain a comma or bracket and no surface needs escaping rules that would drift between the three.
 
@@ -14804,7 +14808,7 @@ The rule between the report list and the report on the admin Reports tab is a gr
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Tracing is enabled per subsystem, under observability.subsystem_traces. The switches are named for what each subsystem is in this product - HTTP API, outbound HTTP calls, catalog database, result cache, document sources, search sources, gRPC services - not for the instrumentation library behind it. The catalog database is off by default: every catalog read and metadata write is an asyncpg call, and instrumenting them buries the query spans the live trace panel exists to show. Each switch gates one instrumentor inside setup_otel, since an instrumentor patches its driver globally and cannot be undone later. An unknown subsystem name is rejected rather than written to the config file. The admin Observability tab carries the same switches.
+Tracing is enabled per subsystem, under observability.subsystem_traces. The switches are named for what each subsystem is in this product - HTTP API, outbound HTTP calls, catalog database, result cache, document sources, search sources, gRPC services - not for the instrumentation library behind it. The catalog database is off by default: every catalog read and metadata write is an asyncpg call, and instrumenting them buries the query spans the live trace panel exists to show. Each switch gates one instrumentor inside setup_otel, since an instrumentor patches its driver globally and cannot be undone later. An unknown subsystem name is rejected rather than written to the config file. The admin Observability tab carries the same switches. (Amended 2026-10-03, THE CATALOG CALLS ARE PSYCOPG CALLS:) The control-plane store is reached through synchronous SQLAlchemy engines: psycopg 3 on PostgreSQL and pysqlite on SQLite ([REQ-828](#REQ-828)). What this text calls an asyncpg call is a psycopg call.
 
 **Use case:** An operator opens the live trace panel, sees it filled with driver-level Postgres spans, and turns off the subsystems they do not care about from the Observability tab.
 
@@ -15002,7 +15006,7 @@ Readiness for a tour step means both halves: the destination's code chunk is com
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-SaaS runs ONE engine architecture on one GKE cluster. Shared ([REQ-1243](#REQ-1243)) and isolated ([REQ-1043](#REQ-1043), [REQ-1412](#REQ-1412)) are the same Trino deployment from the same manifests and the same image, differing only in tenancy and in which node pool they schedule onto: the shared instance hosts every Starter org on a pool that grows as customers sign up, and an isolated instance hosts one org on a pool tainted to that org alone. There is no second engine kind, no second provisioning path, and no isolated-only configuration -- provisioning takes tenancy and size and is otherwise one code path. This replaces two unrelated systems: the shared engine is today a google_compute_instance coordinator plus a regional MIG and autoscaler for workers (terraform/gcp-saas/main.tf:297,401,421) with the app in compose on that VM, while isolated engines are containers created through the Docker Engine API on that same VM's socket (PROVISA_ISOLATED_ENGINE_DOCKER_SOCKET), joined to PROVISA_ISOLATED_ENGINE_NETWORK. That co-tenancy is why an isolated org can currently degrade everyone: HostConfig bounds Memory but never NanoCpus, and the generated config sets node-scheduler.include-coordinator=true so the container EXECUTES scans on the shared node where the SaaS coordinator only plans. Under scheduler placement the contention is structurally absent rather than policed -- a dedicated node pool is the bound, and requests==limits (Guaranteed QoS) makes the CPU cap idiomatic instead of an omission. Unifying also removes the divergence the isolated path was forced into: _JVM_CONFIG deliberately forgoes the shared cluster's jvm.config because that one loads the OpenTelemetry javaagent from /etc/trino/otel, a path only the compose mount provides and whose absence aborts the JVM before Trino logs anything; one image plus a ConfigMap ends that split. Kubernetes also supplies the cluster lifecycle SaaS would otherwise author -- per-node config with unique node.id, partial-provision reconciliation, cascading teardown, and a readiness gate on readyReplicas rather than today's _wait_until_ready poll of /v1/info starting==false, which returns as soon as the coordinator answers and would release queries onto a partially registered cluster. The control plane holds scoped k8s RBAC instead of a mounted Docker socket, a materially narrower grant than handing the app process a container runtime. provisioning_available() already draws the seam and names Kubernetes as the anticipated out-of-band case: PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE resolves WHERE an engine lives independently of whether this process can create one, so routing, status, and catalog reissue are unchanged. The one GKE cluster is a single failure domain covering both lanes; this is not a regression, since both lanes today share one VM.
+SaaS runs ONE engine architecture on one GKE cluster. Shared ([REQ-1243](#REQ-1243)) and isolated ([REQ-1043](#REQ-1043), [REQ-1412](#REQ-1412)) are the same Trino deployment from the same manifests and the same image, differing only in tenancy and in which node pool they schedule onto: the shared instance hosts every Starter org on a pool that grows as customers sign up, and [SUPERSEDED by [REQ-1464](#REQ-1464), 2026-10-03 -- The launch topology is Autopilot, which has no node pools or taints; the pod carries only a zone selector there, and a tainted per-shard pool exists only in standard mode (provisa/federation/k8s_provisioner.py:194-206). Kept here for history; do not implement against it.] an isolated instance hosts one org on a pool tainted to that org alone [END SUPERSEDED BLOCK]. There is no second engine kind, no second provisioning path, and no isolated-only configuration -- provisioning takes tenancy and size and is otherwise one code path. This replaces two unrelated systems: the shared engine is today a google_compute_instance coordinator plus a regional MIG and autoscaler for workers (terraform/gcp-saas/main.tf:297,401,421) with the app in compose on that VM, while isolated engines are containers created through the Docker Engine API on that same VM's socket (PROVISA_ISOLATED_ENGINE_DOCKER_SOCKET), joined to PROVISA_ISOLATED_ENGINE_NETWORK. That co-tenancy is why an isolated org can currently degrade everyone: HostConfig bounds Memory but never NanoCpus, and the generated config sets node-scheduler.include-coordinator=true so the container EXECUTES scans on the shared node where the SaaS coordinator only plans. Under scheduler placement the contention is structurally absent rather than policed -- a dedicated node pool is the bound, and requests==limits (Guaranteed QoS) makes the CPU cap idiomatic instead of an omission. Unifying also removes the divergence the isolated path was forced into: _JVM_CONFIG deliberately forgoes the shared cluster's jvm.config because that one loads the OpenTelemetry javaagent from /etc/trino/otel, a path only the compose mount provides and whose absence aborts the JVM before Trino logs anything; one image plus a ConfigMap ends that split. Kubernetes also supplies the cluster lifecycle SaaS would otherwise author -- per-node config with unique node.id, partial-provision reconciliation, cascading teardown, and a readiness gate on readyReplicas rather than today's _wait_until_ready poll of /v1/info starting==false, which returns as soon as the coordinator answers and would release queries onto a partially registered cluster. The control plane holds scoped k8s RBAC instead of a mounted Docker socket, a materially narrower grant than handing the app process a container runtime. provisioning_available() already draws the seam and names Kubernetes as the anticipated out-of-band case: PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE resolves WHERE an engine lives independently of whether this process can create one, so routing, status, and catalog reissue are unchanged. The one GKE cluster is a single failure domain covering both lanes; this is not a regression, since both lanes today share one VM.
 
 **Use case:** An org on the isolated lane gets the same engine the shared lane runs, on hardware it alone occupies, and a query that saturates it leaves every other org untouched.
 
@@ -15014,7 +15018,7 @@ SaaS runs ONE engine architecture on one GKE cluster. Shared ([REQ-1243](#REQ-12
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-An isolated engine idles to zero and wakes on traffic, so the org pays for compute it uses rather than 730 node-hours a month. Today neither half exists: provision_isolated_engine is reached only from admin routes (org_engine_router.py, orgs_router.py), never from a query path, and no reaper stops an idle engine -- the container even carries RestartPolicy unless-stopped. Idling scales the org's node pool to zero, not merely its pods: a node with zero pods still bills in full, whereas an empty node pool costs nothing, which beats the stopped-VM floor of a retained boot disk. Wake therefore pays a node provision of roughly 90-120s, deliberately accepted over keeping warm capacity per org, and well inside the tier's competitive envelope where Databricks classic SQL warehouses cold-start in minutes. The query path holds for it rather than timing out. The shared engine never idles; only isolated pools scale to zero. Waking is NOT merely scheduling the pods. An engine holds no data and its catalogs are issued from the org's config every time its runtime is built, booting with catalog.management=dynamic -- so a resumed engine answers /v1/info with zero catalogs, and a query released against it fails. Wake is therefore coupled steps under the registry lock: scale the pool up, await readyReplicas rather than the coordinator merely answering, force the org runtime rebuild that reissues CREATE CATALOG, and only then release the waiting query. Scaling IN must drain: terminating a worker mid-query kills its tasks, so terminationGracePeriodSeconds must exceed the longest permitted query and rely on Trino's SHUTTING_DOWN drain. Keeping an engine warm 24x7 is the org's choice, expressed as traffic, and is billed as the compute it is.  (Amended 2026-10-01, KNOWN DEFECT - THE IDLE REAPER IS WRONG FOR MORE THAN ONE WORKER PROCESS) the reaper measures idleness from the last activity recorded in ITS OWN process (engine_wake._last_activity). Under uvicorn --workers N, and across several control-plane instances, every process runs a reaper over its own share of the traffic - a process that served no query for the idle window scales the shard to zero while its siblings are still querying it, and the next query in any process pays a cold start. Running the deployment's scheduled work in one holder ([REQ-1900](#REQ-1900)) does not correct this - the holder's activity map is still only its own. PRECONDITION for running a provisioning deployment (the cloud node) with more than one worker process - the last-activity record must be shared by every process (the control plane), and the reaper must judge idleness from the shared record. Not yet built. Until it is, such a deployment runs one worker process.
+An isolated engine idles to zero and wakes on traffic, so the org pays for compute it uses rather than 730 node-hours a month. Today neither half exists: provision_isolated_engine is reached only from admin routes (org_engine_router.py, orgs_router.py), never from a query path, and no reaper stops an idle engine -- the container even carries RestartPolicy unless-stopped. [SUPERSEDED by [REQ-1464](#REQ-1464), 2026-10-03 -- Idle-to-zero is a Deployment replica count on Autopilot; scale_shard_to_zero patches replicas to 0 and never sizes a pool (provisa/federation/k8s_provisioner.py:884-939). Kept here for history; do not implement against it.] Idling scales the org's node pool to zero, not merely its pods [END SUPERSEDED BLOCK]: a node with zero pods still bills in full, whereas an empty node pool costs nothing, which beats the stopped-VM floor of a retained boot disk. Wake therefore pays a node provision of roughly 90-120s, deliberately accepted over keeping warm capacity per org, and well inside the tier's competitive envelope where Databricks classic SQL warehouses cold-start in minutes. The query path holds for it rather than timing out. [SUPERSEDED by [REQ-1463](#REQ-1463), 2026-10-03 -- The reaper scales any idle shard to zero, the shared boot shard included; its activity clock is seeded at start so it is released one window later (provisa/federation/engine_wake.py:753-776, 810-822). [REQ-1450](#REQ-1450)'s amended text says the same. Kept here for history; do not implement against it.] The shared engine never idles; only isolated pools scale to zero. [END SUPERSEDED BLOCK] Waking is NOT merely scheduling the pods. An engine holds no data and its catalogs are issued from the org's config every time its runtime is built, booting with catalog.management=dynamic -- so a resumed engine answers /v1/info with zero catalogs, and a query released against it fails. Wake is therefore coupled steps under the registry lock: scale the pool up, await readyReplicas rather than the coordinator merely answering, force the org runtime rebuild that reissues CREATE CATALOG, and only then release the waiting query. Scaling IN must drain: terminating a worker mid-query kills its tasks, so terminationGracePeriodSeconds must exceed the longest permitted query and rely on Trino's SHUTTING_DOWN drain. Keeping an engine warm 24x7 is the org's choice, expressed as traffic, and is billed as the compute it is.  (Amended 2026-10-01, KNOWN DEFECT - THE IDLE REAPER IS WRONG FOR MORE THAN ONE WORKER PROCESS) the reaper measures idleness from the last activity recorded in ITS OWN process (engine_wake._last_activity). Under uvicorn --workers N, and across several control-plane instances, every process runs a reaper over its own share of the traffic - a process that served no query for the idle window scales the shard to zero while its siblings are still querying it, and the next query in any process pays a cold start. Running the deployment's scheduled work in one holder ([REQ-1900](#REQ-1900)) does not correct this - the holder's activity map is still only its own. PRECONDITION for running a provisioning deployment (the cloud node) with more than one worker process - the last-activity record must be shared by every process (the control plane), and the reaper must judge idleness from the shared record. Not yet built. Until it is, such a deployment runs one worker process.
 
 **Use case:** An org that queries for two hours a day pays for two hours of engine time, and an org that wants a permanently warm engine keeps it awake by using it and pays accordingly.
 
@@ -15028,7 +15032,7 @@ An isolated engine idles to zero and wakes on traffic, so the org pays for compu
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Pro is sold as three fixed sizes -- S (4 vCPU / 32GB), M (8/64), L (16/128) -- expressed as the node pool machine type and the pod requests/limits of the org's engine ([REQ-1447](#REQ-1447)), each a plan-fixed constant rather than a control the org adjusts, since each plan is a fixed setting and orgs do not tune their own entitlements. Sizes are carried per plan in the entitlements table rather than derived from a machine family, so a later size may change family (c3-highcpu for a CPU-bound profile) without a schema change. The ladder is vertical because GCE pricing is linear per vCPU and GB, making scale-up cost-neutral against scale-out at equal capacity while avoiding network exchange between pods; it stops at L well inside the practical single-JVM ceiling, since jvm.config sets MaxRAMPercentage=70 with G1 and pause times grow with heap and live-set, so useful single-JVM scale ends near 200-300GB heap. Past that the same substrate carries the org further by splitting the engine into more worker pods with modest heaps rather than one large one, trading in-JVM reference passing for exchange serialization -- worth paying only above that heap threshold, which is why S/M/L do not do it. Workloads exceeding what one node pool serves are met by the external lane ([REQ-1412](#REQ-1412)) or a self-hosted multi-node deployment sized at apply time (terraform/gcp node_count, worker_machine_type). Dedicated placement ([REQ-1447](#REQ-1447)) also makes the lane's charges directly meterable, which is the metering path [REQ-1281](#REQ-1281) lacked. Engine-hours accrue only while the org's node pool is scaled up, read from the platform rather than inferred, and egress is attributable because the pool serves one org -- neither is derivable for a container sharing a node. The derived query.max-memory and query.max-memory-per-node follow from the size rather than the deployment-wide PROVISA_ISOLATED_ENGINE_MEMORY; on a single-pod engine the per-node bound must not sit below the cluster bound, as today's 30%/60% split does, since both name the same pool and the lower value kills queries at half the stated budget. Because the isolated lane cannot degrade other tenants once placement is dedicated, it carries no query concurrency or duration limits -- the size is the only limit, and the org pays for what it runs.
+Pro is sold as three fixed sizes -- S (4 vCPU / 32GB), M (8/64), L (16/128) -- expressed as the node pool machine type and the pod requests/limits of the org's engine ([REQ-1447](#REQ-1447)), each a plan-fixed constant rather than a control the org adjusts, since each plan is a fixed setting and orgs do not tune their own entitlements. Sizes are carried per plan in the entitlements table rather than derived from a machine family, so a later size may change family (c3-highcpu for a CPU-bound profile) without a schema change. The ladder is vertical because GCE pricing is linear per vCPU and GB, making scale-up cost-neutral against scale-out at equal capacity while avoiding network exchange between pods; it stops at L well inside the practical single-JVM ceiling, since jvm.config sets MaxRAMPercentage=70 with G1 and pause times grow with heap and live-set, so useful single-JVM scale ends near 200-300GB heap. Past that the same substrate carries the org further by splitting the engine into more worker pods with modest heaps rather than one large one, trading in-JVM reference passing for exchange serialization -- worth paying only above that heap threshold, which is why S/M/L do not do it. Workloads exceeding what one node pool serves are met by the external lane ([REQ-1412](#REQ-1412)) or a self-hosted multi-node deployment sized at apply time (terraform/gcp node_count, worker_machine_type). Dedicated placement ([REQ-1447](#REQ-1447)) also makes the lane's charges directly meterable, which is the metering path [REQ-1281](#REQ-1281) lacked. Engine-hours accrue only while the org's node pool is scaled up, read from the platform rather than inferred, and egress is attributable because the pool serves one org -- neither is derivable for a container sharing a node. The derived query.max-memory and query.max-memory-per-node follow from the size rather than the deployment-wide PROVISA_ISOLATED_ENGINE_MEMORY; on a single-pod engine the per-node bound must not sit below the cluster bound, [SUPERSEDED by REQ-1449 amendment, 2026-10-03 -- The split was removed when this was implemented; both bounds are now the same value (provisa/federation/isolated_provisioner.py:138-150). Kept here for history; do not implement against it.] as today's 30%/60% split does [END SUPERSEDED BLOCK], since both name the same pool and the lower value kills queries at half the stated budget. Because the isolated lane cannot degrade other tenants once placement is dedicated, it carries no query concurrency or duration limits -- the size is the only limit, and the org pays for what it runs.
 
 **Use case:** An org picks one of three Pro sizes and is invoiced engine-hours at that size's rate plus measured egress, on hardware it exclusively occupies.
 
@@ -15042,7 +15046,7 @@ Pro is sold as three fixed sizes -- S (4 vCPU / 32GB), M (8/64), L (16/128) -- e
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-The shared engine ([REQ-1243](#REQ-1243)) is one multi-tenant Trino deployment on the GKE cluster ([REQ-1447](#REQ-1447)), serving every Starter org from a single cluster whose node pool grows as customers sign up. Tenants are separated INSIDE that Trino -- by resource group and by the catalog set the org's runtime issues -- not by pod or node, which is exactly what distinguishes it from the isolated lane running the identical manifests for one org. Fairness therefore stays the resource manager's job: trino/etc/resource-groups.json (templated at provisa/api/trino_setup.py) becomes a ConfigMap, its per-tenant `tenant-${USER}` subgroup unchanged, and the per-query caps of [REQ-1044](#REQ-1044) remain the Starter-side limit since one org's query CAN degrade its neighbours here. Operators must know that ConfigMap updates reach pods on the kubelet sync interval, roughly 60s, rather than on Trino's file-watch interval, so resource-group changes propagate more slowly than they do today. Amended: a ConfigMap key is mounted by subPath so that mounting it cannot hide the rest of /etc/trino, and a subPath mount is never refreshed by the kubelet at all -- so the pod template carries a digest of the rendered config and a resource-group change takes effect by rolling the pod, not by waiting out a sync interval. Amended: a shard is ONE pod that both coordinates and executes, not a coordinator plus an HPA-scaled worker set. Trino's include-coordinator inverts on a dedicated node pool -- it was a co-tenancy hazard only because the Docker provisioner ran the container on the control plane's own host, and with it false a single-pod shard has no node willing to take a split, so every query queues forever. Capacity is therefore added by shards, which this requirement already names as the answer past one coordinator, and the worker HPA is deferred to the Pro sizes where a shard serves one org and its size is a purchased entitlement. Scale-in must drain per [REQ-1448](#REQ-1448). The shared pool scales to zero when no org is active on the shard, on the same node-pool mechanism and wake path the isolated lane uses ([REQ-1448](#REQ-1448)); it is not exempt from idle-to-zero, it simply reaches that state far less often, because the idle window has to be quiet for EVERY org on the shard at once rather than for one. The distinction matters most at the two ends. Before the first paying org the shard has no tenant at all, and a pool pinned above zero there is the platform's single largest idle line -- one n2-highmem-8 held 24x7 is roughly $383/mo against a zero-customer floor near $19/mo, so pinning it would multiply the floor twentyfold to serve nobody. Once a shard carries real traffic the pool effectively never reaches zero on its own, which is the correct outcome to arrive at by observation rather than by configuration. The Starter wake cost is the [REQ-1448](#REQ-1448) node-provision latency on a cold first query, which is acceptable on the entry tier and is the same latency the isolated lane already accepts. Idle policy is therefore a per-shard setting -- minimum node count and idle window -- not a property of the lane. This deployment replaces the google_compute_instance coordinator plus worker MIG. Capacity is added by growing the worker node pool on the SAME cluster, keeping one coordinator; workers in a separate cluster could join over flat VPC-native networking but would put a cluster boundary in every exchange for no gain. That path ends at the coordinator, not the workers: a single Trino coordinator plans, schedules, and assembles results for every concurrent query, and open-source Trino has no multi-coordinator mode, so beyond some concurrency more workers stop helping. The answer then is a SECOND shared cluster with its own coordinator and Starter orgs assigned across them -- sharding, not scaling -- which reuses the endpoint resolution the lanes already share rather than introducing a new mechanism. Shards are named shared_1, shared_2, and so on, with the org row naming the shard it belongs to. Starter fairness is two mechanisms, not one. The per-query caps of [REQ-1044](#REQ-1044) are the hard bound, and metered compute is the soft one: because Starter pays for the hours it consumes, an org has an incentive not to crowd its neighbours even while staying inside every cap -- which is the failure a limit alone cannot reach. Metering the shared lane therefore CANNOT read infrastructure uptime the way the isolated lane does ([REQ-1449](#REQ-1449)), since the nodes host every Starter org at once; attribution must come from Trino itself, summing per-query CPU time and peak memory per org from the event listener. That is a distinct integration from the node-pool uptime read, and it is the half of [REQ-1281](#REQ-1281) the shared lane needs.
+The shared engine ([REQ-1243](#REQ-1243)) is one multi-tenant Trino deployment on the GKE cluster ([REQ-1447](#REQ-1447)), serving every Starter org from a single cluster whose node pool grows as customers sign up. Tenants are separated INSIDE that Trino -- by resource group and by the catalog set the org's runtime issues -- not by pod or node, which is exactly what distinguishes it from the isolated lane running the identical manifests for one org. Fairness therefore stays the resource manager's job: trino/etc/resource-groups.json (templated at provisa/api/trino_setup.py) becomes a ConfigMap, its per-tenant `tenant-${USER}` subgroup unchanged, and the per-query caps of [REQ-1044](#REQ-1044) remain the Starter-side limit since one org's query CAN degrade its neighbours here. Operators must know that [SUPERSEDED by REQ-1450 amendment, 2026-10-03 -- The entry's own amendment replaces it: config files are subPath mounts that the kubelet never refreshes, and a change rolls the pod through a config-revision digest (provisa/federation/k8s_provisioner.py:552-560). Kept here for history; do not implement against it.] ConfigMap updates reach pods on the kubelet sync interval, roughly 60s [END SUPERSEDED BLOCK], rather than on Trino's file-watch interval, so resource-group changes propagate more slowly than they do today. Amended: a ConfigMap key is mounted by subPath so that mounting it cannot hide the rest of /etc/trino, and a subPath mount is never refreshed by the kubelet at all -- so the pod template carries a digest of the rendered config and a resource-group change takes effect by rolling the pod, not by waiting out a sync interval. Amended: a shard is ONE pod that both coordinates and executes, not a coordinator plus an HPA-scaled worker set. Trino's include-coordinator inverts on a dedicated node pool -- it was a co-tenancy hazard only because the Docker provisioner ran the container on the control plane's own host, and with it false a single-pod shard has no node willing to take a split, so every query queues forever. Capacity is therefore added by shards, which this requirement already names as the answer past one coordinator, and the worker HPA is deferred to the Pro sizes where a shard serves one org and its size is a purchased entitlement. Scale-in must drain per [REQ-1448](#REQ-1448). The shared pool scales to zero when no org is active on the shard, on the same node-pool mechanism and wake path the isolated lane uses ([REQ-1448](#REQ-1448)); it is not exempt from idle-to-zero, it simply reaches that state far less often, because the idle window has to be quiet for EVERY org on the shard at once rather than for one. The distinction matters most at the two ends. Before the first paying org the shard has no tenant at all, and a pool pinned above zero there is the platform's single largest idle line -- one n2-highmem-8 held 24x7 is roughly $383/mo against a zero-customer floor near $19/mo, so pinning it would multiply the floor twentyfold to serve nobody. Once a shard carries real traffic the pool effectively never reaches zero on its own, which is the correct outcome to arrive at by observation rather than by configuration. The Starter wake cost is the [REQ-1448](#REQ-1448) node-provision latency on a cold first query, which is acceptable on the entry tier and is the same latency the isolated lane already accepts. Idle policy is therefore a per-shard setting -- minimum node count and idle window -- not a property of the lane. This deployment replaces the google_compute_instance coordinator plus worker MIG. [SUPERSEDED by REQ-1450 amendment, 2026-10-03 -- The entry's own amendment replaces it: a shard is one pod that coordinates and executes, and capacity is added by shards (provisa/federation/k8s_provisioner.py:64-77). Kept here for history; do not implement against it.] Capacity is added by growing the worker node pool on the SAME cluster, keeping one coordinator [END SUPERSEDED BLOCK]; workers in a separate cluster could join over flat VPC-native networking but would put a cluster boundary in every exchange for no gain. That path ends at the coordinator, not the workers: a single Trino coordinator plans, schedules, and assembles results for every concurrent query, and open-source Trino has no multi-coordinator mode, so beyond some concurrency more workers stop helping. The answer then is a SECOND shared cluster with its own coordinator and Starter orgs assigned across them -- sharding, not scaling -- which reuses the endpoint resolution the lanes already share rather than introducing a new mechanism. Shards are named shared_1, shared_2, and so on, with the org row naming the shard it belongs to. Starter fairness is two mechanisms, not one. The per-query caps of [REQ-1044](#REQ-1044) are the hard bound, and metered compute is the soft one: because Starter pays for the hours it consumes, an org has an incentive not to crowd its neighbours even while staying inside every cap -- which is the failure a limit alone cannot reach. Metering the shared lane therefore CANNOT read infrastructure uptime the way the isolated lane does ([REQ-1449](#REQ-1449)), since the nodes host every Starter org at once; [SUPERSEDED by [REQ-1454](#REQ-1454), 2026-10-03 -- The Starter meter is the active hour, attributed at Provisa's audit seam and explicitly not a Trino event listener. Kept here for history; do not implement against it.] attribution must come from Trino itself, summing per-query CPU time and peak memory per org from the event listener [END SUPERSEDED BLOCK]. That is a distinct integration from the node-pool uptime read, and it is the half of [REQ-1281](#REQ-1281) the shared lane needs.
 
 **Use case:** Every Starter org queries one shared Trino whose capacity grows with signups, with resource groups keeping any one org from starving the others.
 
@@ -15054,21 +15058,21 @@ The shared engine ([REQ-1243](#REQ-1243)) is one multi-tenant Trino deployment o
 
 ### REQ-1451 · Deployment Topology {#REQ-1451}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
 
-The GKE cluster ([REQ-1447](#REQ-1447)) hosts Trino and nothing else. The control plane -- the Provisa API, UI, and background workers -- stays on its own VM as today, with Cloud SQL holding the admin database, and is deliberately NOT moved into Kubernetes. Two reasons make the split correct rather than merely expedient. First, OrgRegistry serializes runtime rebuilds on an in-process asyncio.Lock (provisa/api/org_runtime.py:144-151), and the per-process federation engine is a settled invariant ([REQ-1241](#REQ-1241)), so more than one replica would let concurrent rebuilds for the same org race; a single-VM control plane keeps that lock meaningful. Second, the engine tier is the part with elastic, per-tenant, scale-to-zero lifecycle, and the control plane is not -- hosting it on the same substrate would buy orchestration it has no use for. The app reaches the cluster through the Kubernetes API authenticated by the VM's attached service account, so no key material is exported and the mounted Docker socket (PROVISA_ISOLATED_ENGINE_DOCKER_SOCKET) is retired -- a narrower grant than handing the app process a container runtime, and the reason isolated engines can no longer land on the control plane's own host. Engine endpoints stay resolved by PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE, now naming in-cluster services, so routing is unchanged by the substrate move.
+The GKE cluster ([REQ-1447](#REQ-1447)) hosts Trino and nothing else. The control plane -- the Provisa API, UI, and background workers -- stays on its own VM as today, with Cloud SQL holding the admin database, and is deliberately NOT moved into Kubernetes. Two reasons make the split correct rather than merely expedient. First, OrgRegistry serializes runtime rebuilds on an in-process asyncio.Lock (provisa/api/org_runtime.py:144-151), and the per-process federation engine is a settled invariant ([REQ-1241](#REQ-1241)), so more than one replica would let concurrent rebuilds for the same org race; a single-VM control plane keeps that lock meaningful. Second, the engine tier is the part with elastic, per-tenant, scale-to-zero lifecycle, and the control plane is not -- hosting it on the same substrate would buy orchestration it has no use for. The app reaches the cluster through the Kubernetes API authenticated by the VM's attached service account, so no key material is exported and the mounted Docker socket (PROVISA_ISOLATED_ENGINE_DOCKER_SOCKET) is retired -- a narrower grant than handing the app process a container runtime, and the reason isolated engines can no longer land on the control plane's own host. [SUPERSEDED by [REQ-1510](#REQ-1510), 2026-10-03 -- On a cluster deployment the endpoint is the ready pod's IP read from the Kubernetes API, with no template (provisa/federation/engine.py:1663-1666; k8s_provisioner.py:383-394). Kept here for history; do not implement against it.] Engine endpoints stay resolved by PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE, now naming in-cluster services, so routing is unchanged by the substrate move. [END SUPERSEDED BLOCK]
 
 **Use case:** Operators run one Kubernetes cluster for query engines and one VM for the control plane, each sized and scaled for what it actually does.
 
-**Code:** `provisa/federation/isolated_provisioner.py`, `provisa/api/org_runtime.py`, `terraform/gcp-saas/main.tf`
+**Code:** `provisa/federation/k8s_provisioner.py`, `provisa/federation/engine.py`, `provisa/api/org_runtime.py`, `terraform/gcp-saas/gke.tf`, `terraform/gcp-saas/main.tf`, `scripts/deploy-cloud.sh`
 
-**Tests:** —
+**Tests:** `tests/unit/test_k8s_engine_provisioner.py`
 
 ### REQ-1452 · Pricing & Tiering {#REQ-1452}
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-The published price list is set by the comparables, not derived from cost. Starter bills $1.30 per ACTIVE HOUR with a $25/mo minimum and 25 GB of included egress -- the same rate AND the same meter shape as Hasura Cloud v2 Professional, which charges $1.30 per hour in which the project served at least one request and carries no base fee. Pro bills per ENGINE HOUR at three sizes: Pro S (4 vCPU / 32 GB) $1.50 with a $99/mo minimum and 50 GB included, Pro M (8/64) $2.75 with $199 and 100 GB, Pro L (16/128) $5.50 with $399 and 200 GB. The Pro anchor is Starburst Galaxy Pro at 6 credits x $0.50 = $3.00 per WORKER hour; because Galaxy bills per worker and its worker is about 8 vCPU, the like-for-like anchor is scaled to the size's vCPU (Galaxy-equivalent $1.50 / $3.00 / $6.00), which puts Provisa at parity on Pro S and 8% under on Pro M and Pro L. Enterprise (BYO engine) bills $75 per vCPU-MONTH of the capacity the CUSTOMER operates, with a $999/mo minimum and 100 GB included. It is deliberately not a flat platform fee: removing our compute cost does not remove the scale of what we govern, since a 500-vCPU bank runs every query through the same compiler, governance, catalog and event-listener path as an 8-vCPU team, so a flat fee would price the largest customer the platform will ever have identically to the smallest. The comp here is Starburst ENTERPRISE -- self-managed, licensed per vCPU of the customer's own cluster -- not Galaxy, which prices compute Provisa would be supplying. The rate is 30% of Pro's implied capacity price ($251/vCPU-mo at the Pro M rate): the discount IS the compute the customer brings, sized so that BYO is not the arbitrage every Pro customer takes. Capacity is READ from the customer's coordinator, never self-declared. Egress beyond a tier's included allowance is $0.48/GB, charged ON TOP OF the tier minimum rather than absorbed by it. The minimum floors the COMPUTE line only: a month whose compute falls under the minimum still pays for every gigabyte past the allowance, because the allowance is already the concession and letting the minimum swallow the overage would give away the one line with a real per-unit cost behind it. The allowance exists because Hasura's $0.13/GB parity rate clears only 8% against GCP's own $0.12/GB egress: matching the comp INSIDE the allowance keeps the published number credible while keeping the tier's blended margin intact, and $0.48 is the four-times markup that satisfies [REQ-1453](#REQ-1453) outside it. A minimum is charged on every tier even though neither comp has a base fee, because a signed-up org holds a share of the fixed floor whether or not it queries; the minimum, not the rate, is what makes an idle tenant carry its own weight.
+The published price list is set by the comparables, not derived from cost. Starter bills $1.30 per ACTIVE HOUR with a $25/mo minimum and 25 GB of included egress -- the same rate AND the same meter shape as Hasura Cloud v2 Professional, which charges $1.30 per hour in which the project served at least one request and carries no base fee. [SUPERSEDED by [REQ-1509](#REQ-1509), 2026-10-03 -- [REQ-1509](#REQ-1509) (complete) rules the plan variant carries the active hour on all four orderable plans; code posts active hours for Pro too. Kept here for history; do not implement against it.] Pro bills per ENGINE HOUR at three sizes [END SUPERSEDED BLOCK]: Pro S (4 vCPU / 32 GB) $1.50 with a $99/mo minimum and 50 GB included, Pro M (8/64) $2.75 with $199 and 100 GB, Pro L (16/128) $5.50 with $399 and 200 GB. The Pro anchor is Starburst Galaxy Pro at 6 credits x $0.50 = $3.00 per WORKER hour; because Galaxy bills per worker and its worker is about 8 vCPU, the like-for-like anchor is scaled to the size's vCPU (Galaxy-equivalent $1.50 / $3.00 / $6.00), which puts Provisa at parity on Pro S and 8% under on Pro M and Pro L. Enterprise (BYO engine) bills $75 per vCPU-MONTH of the capacity the CUSTOMER operates, with a $999/mo minimum and 100 GB included. It is deliberately not a flat platform fee: removing our compute cost does not remove the scale of what we govern, since a 500-vCPU bank runs every query through the same compiler, governance, catalog and event-listener path as an 8-vCPU team, so a flat fee would price the largest customer the platform will ever have identically to the smallest. The comp here is Starburst ENTERPRISE -- self-managed, licensed per vCPU of the customer's own cluster -- not Galaxy, which prices compute Provisa would be supplying. The rate is 30% of Pro's implied capacity price ($251/vCPU-mo at the Pro M rate): the discount IS the compute the customer brings, sized so that BYO is not the arbitrage every Pro customer takes. Capacity is READ from the customer's coordinator, never self-declared. Egress beyond a tier's included allowance is $0.48/GB, charged ON TOP OF the tier minimum rather than absorbed by it. The minimum floors the COMPUTE line only: a month whose compute falls under the minimum still pays for every gigabyte past the allowance, because the allowance is already the concession and letting the minimum swallow the overage would give away the one line with a real per-unit cost behind it. The allowance exists because Hasura's $0.13/GB parity rate clears only 8% against GCP's own $0.12/GB egress: matching the comp INSIDE the allowance keeps the published number credible while keeping the tier's blended margin intact, and $0.48 is the four-times markup that satisfies [REQ-1453](#REQ-1453) outside it. A minimum is charged on every tier even though neither comp has a base fee, because a signed-up org holds a share of the fixed floor whether or not it queries; the minimum, not the rate, is what makes an idle tenant carry its own weight.
 
 **Use case:** A prospect comparing Provisa against Hasura or Starburst finds the same meter shape at the same or a lower rate, and cannot argue the platform is priced above its category.
 
@@ -15102,15 +15106,15 @@ Starter's billable unit is the ACTIVE HOUR: any clock hour in which the org subm
 
 ### REQ-1455 · Pricing & Tiering {#REQ-1455}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Starter opens with a free evaluation period bounded on BOTH axes: 14 days, 40 active hours, and 25 GB of egress, whichever is reached first. Two bounds rather than one because either alone is open-ended in the other dimension -- a time box with no usage cap subsidises a load test, and a usage cap with no clock leaves a dormant trial holding a floor share indefinitely. The trial runs on the shared lane only; it never provisions an isolated engine. Worst-case acquisition cost is therefore a known number, $23.96 at density 1 falling to $5.62 at density 8, repaid by roughly four days of gross profit at density 4. A payment card is required AT SIGNUP, captured with a zero-dollar authorisation, and the trial ENDS BY CONVERTING to paid Starter rather than by suspending -- the Neon shape. The customer is warned at 80% of either cap and three days before expiry, and may cancel at any point before conversion. This is the opposite of [REQ-1064](#REQ-1064)'s enterprise trial, which auto-downgrades on expiry; the difference is deliberate, because a self-serve tier whose default outcome is suspension trains the customer to treat the platform as disposable. Billing consequence: because the subscription is created WITH a trial period at signup rather than at a deferred checkout, subscription_created fires before any revenue exists. Entitlement must key off subscription STATUS, never off a landed payment, or every trialling org reads as unpaid. All THREE bounds are enforced. The egress one reads org_usage_hour.egress_bytes, which is fed from the TRANSPORT write seams (provisa.core.egress) rather than from the audit seam the active-hour meter fires at: a streaming result is finalized before it is drained, so a byte count taken where the statement completes describes rows the client may never receive. What left the socket is observable only where the write happens, so each protocol reports its own writes into an in-memory buffer that a scheduled drain folds into the meter. HTTP, pgwire and Bolt report exact byte counts; Arrow Flight and gRPC report the payload size they can see before handing off to a C writer (Table/RecordBatch.nbytes, Message.ByteSize()), which misses framing -- approximate is accepted for those two, and stated rather than hidden. A process that dies with a buffer loses those bytes, which under-counts and so never over-bills. Precedence when more than one bound falls in the same sweep: days, then active hours, then egress. The conversion notice names the active hour over egress because that is the unit the customer is quoted a rate for. The clock is Provisa's, not the provider's: Lemon Squeezy can express 14 days and nothing else, and the active-hour bound is a fact only the [REQ-1454](#REQ-1454) meter can see. Conversion is forced on the provider by moving its trial_ends_at to now, which is what makes it charge the first period. The provider is moved FIRST -- an org recorded as converted whose merchant of record never billed it is a paying customer who is never invoiced.
 
 **Use case:** A prospect can complete real due diligence on live data without a purchase order, and becomes a paying customer at the end of it without a second decision.
 
-**Code:** `pricing_model.py`, `provisa_commercial/trial.py`, `provisa_commercial/usage.py`, `provisa_commercial/lemonsqueezy_client.py`, `provisa_commercial/router.py`, `provisa/core/egress.py`
+**Code:** `.claude/commercial/provisa_commercial/trial.py`, `.claude/commercial/provisa_commercial/usage.py`, `.claude/commercial/provisa_commercial/lemonsqueezy_client.py`, `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/models.py`, `.claude/commercial/provisa_commercial/plan_lane.py`, `.claude/commercial/provisa_commercial/__init__.py`, `provisa/core/egress.py`, `provisa-ui/src/components/admin/BillingTab.tsx`, `pricing_model.py`
 
-**Tests:** —
+**Tests:** `.claude/commercial/tests/test_trial_lifecycle.py`, `.claude/commercial/tests/test_trial_eligibility.py`, `.claude/commercial/tests/test_billing_lemonsqueezy.py`, `tests/unit/test_egress_meter.py`, `provisa-ui/src/__tests__/BillingTab.test.tsx`
 
 ### REQ-1473 · Pricing & Tiering {#REQ-1473}
 
@@ -15120,7 +15124,7 @@ Plans, tier ceilings, the active-hour meter and the merchant-of-record integrati
 
 **Use case:** An open-source or demo install runs the whole product unmetered and unbilled, and the hosted deployment is the only build that carries how Provisa charges.
 
-**Code:** `provisa/core/commerce.py`, `provisa/core/control_plane.py`, `provisa_commercial/__init__.py`, `provisa_commercial/schema.py`
+**Code:** `provisa/core/commerce.py`, `provisa/core/control_plane.py`, `.claude/commercial/provisa_commercial/__init__.py`, `.claude/commercial/provisa_commercial/schema.py`
 
 **Tests:** —
 
@@ -15128,7 +15132,7 @@ Plans, tier ceilings, the active-hour meter and the merchant-of-record integrati
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Launch ships the SHARED lane and Starter alone. Pro and Enterprise are designed, priced and published, but presented as forthcoming: the marketing site and the in-product plan picker name both tiers with their [REQ-1452](#REQ-1452) rates and state that they are coming, and neither is orderable. Publishing the unshipped rates is the point rather than an oversight -- a lone entry tier with no visible ceiling reads as a toy, and a prospect who can see the isolated and BYO tiers priced at or under Starburst can size their own future spend before committing to Starter. The sequencing follows the cost structure: the shared lane is the only lane whose margin improves with each signup ([REQ-1453](#REQ-1453)), so it is the correct lane to carry the fixed floor first, and it is the lane the isolated tiers are built on top of rather than beside. An interest signal on either forthcoming tier routes to the sales inbox on the [REQ-1052](#REQ-1052) path; it must never provision, because the isolated node pool it implies does not exist at launch.
+[SUPERSEDED by [REQ-1509](#REQ-1509), 2026-10-03 -- [REQ-1509](#REQ-1509) and [REQ-1511](#REQ-1511) (both complete) make Starter, Pro S, Pro M and Pro L all orderable from the Billing page, and [REQ-1510](#REQ-1510) provisions the isolated lane for Pro. Kept here for history; do not implement against it.] Launch ships the SHARED lane and Starter alone. [END SUPERSEDED BLOCK] Pro and Enterprise are designed, priced and published, but presented as forthcoming: the marketing site and the in-product plan picker name both tiers with their [REQ-1452](#REQ-1452) rates and state that they are coming, [SUPERSEDED by [REQ-1509](#REQ-1509), 2026-10-03 -- Pro is orderable in code: PLAN_ORDER = starter, pro_s, pro_m, pro_l and POST /billing/plan and /billing/plan/checkout accept them. Kept here for history; do not implement against it.] and neither is orderable [END SUPERSEDED BLOCK]. Publishing the unshipped rates is the point rather than an oversight -- a lone entry tier with no visible ceiling reads as a toy, and a prospect who can see the isolated and BYO tiers priced at or under Starburst can size their own future spend before committing to Starter. The sequencing follows the cost structure: the shared lane is the only lane whose margin improves with each signup ([REQ-1453](#REQ-1453)), so it is the correct lane to carry the fixed floor first, and it is the lane the isolated tiers are built on top of rather than beside. An interest signal on either forthcoming tier routes to the sales inbox on the [REQ-1052](#REQ-1052) path; it must never provision, because the isolated node pool it implies does not exist at launch.
 
 **Use case:** A launch visitor sees the whole ladder, buys the one rung that exists, and registers interest in the rungs that do not.
 
@@ -15138,15 +15142,15 @@ Launch ships the SHARED lane and Starter alone. Pro and Enterprise are designed,
 
 ### REQ-1457 · Deployment Topology {#REQ-1457}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
 Every engine Provisa runs is the SAME container image. A shared shard's coordinator and workers ([REQ-1450](#REQ-1450)), a Pro org's dedicated coordinator at any of the three sizes ([REQ-1452](#REQ-1452)), and the engine an Enterprise customer operates themselves ([REQ-1412](#REQ-1412)) are one build, and the tiers are distinguished by pod count, machine size and configuration -- never by a different artifact. The permitted axes of variation are exactly three: the ROLE the process takes (coordinator versus worker, already the only difference between trino/etc/config.properties and trino/etc/worker/config.properties), the SIZE it is given (heap percentage and the query memory limits derived from it), and the DISCOVERY address it registers against. Anything that would require a second build -- a tier-only plugin, a tier-only patch, a fork for BYO -- is out of bounds, because the moment two images exist the tiers acquire independent release, upgrade and CVE timelines and a customer's engine can be behind the shared one in ways nobody planned. This is what lets [REQ-1452](#REQ-1452) price a linear ladder: n2 bills per vCPU and per GB, so Pro S, M and L cost exactly 1x, 2x and 4x, which is only true while the three sizes are one engine scaled by machine rather than three products. It is also what lets [REQ-1456](#REQ-1456) publish Pro before shipping it -- the engine already exists and runs in production on the shared lane; what does not exist yet is a node pool. One divergence exists today and must be closed by the move to GKE rather than preserved. The isolated provisioner's _JVM_CONFIG (provisa/federation/isolated_provisioner.py) deliberately omits the OpenTelemetry javaagent that trino/etc/jvm.config loads, because the jar reaches the shared cluster on a compose mount at /etc/trino/otel and a missing -javaagent jar aborts the JVM before Trino logs anything. That is a mount artifact, not a design difference: on GKE the agent ships INSIDE the image and the existing -Dotel.javaagent.enabled flag becomes the per-lane switch, so the two lanes stop differing in their JVM at all. Configuration divergence that remains must be deliberate and stated -- the shared cluster's fault-tolerant execution settings (retry-policy=TASK and the killer policy) are absent from a provisioned isolated coordinator, and each such gap is either a decision or a defect, never an accident of two files drifting. Memory limits in particular must be derived from the pod's OWN size and the pool's shape: query.max-memory-per-node fixed at a fraction of heap is wrong on a single-pod engine, where that one node IS the cluster, and the error grows with the size sold.
 
 **Use case:** An operator upgrades Trino once and every tier moves together, and a customer running the BYO engine is running the same binary the platform runs.
 
-**Code:** `provisa/federation/isolated_provisioner.py`, `trino/etc/config.properties`, `trino/etc/worker/config.properties`, `trino/etc/jvm.config`
+**Code:** `provisa/federation/k8s_provisioner.py`, `docker/trino-engine.Dockerfile`, `provisa/federation/isolated_provisioner.py`, `trino/etc/config.properties`, `trino/etc/worker/config.properties`, `trino/etc/jvm.config`, `terraform/gcp-saas/main.tf`
 
-**Tests:** —
+**Tests:** `tests/unit/test_k8s_engine_provisioner.py`, `.claude/commercial/tests/test_pro_sizes.py`
 
 ### REQ-1458 · Pricing & Tiering {#REQ-1458}
 
@@ -15292,13 +15296,13 @@ A packaged demo deploy ships every upstream the demo config names, not only the 
 
 ### REQ-1469 · SaaS Billing {#REQ-1469}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
 
 A Starter org signs itself up with a credit card and can answer, without asking anyone, what it owes right now and when the card will be charged. Three surfaces, all of them org-scoped and all reading the same numbers the invoice will carry. (1) SIGN-UP: an org with no subscription is sent to the Lemon Squeezy hosted checkout of [REQ-1075](#REQ-1075) -- the card is entered at the merchant of record and never reaches Provisa, which is the whole reason the MoR is there -- and the subscription is linked to the org by the webhook, not by the browser's return trip, so a closed tab still lands the plan. (2) CURRENT BILL: the org sees its month-to-date charge broken into the plan's fixed monthly fee and whatever metered usage has accrued against it, dated so it is clear which period is being shown. A bill assembled from Provisa's own meter rather than from the MoR would disagree with the invoice the customer receives, so the fixed component comes from the subscription and the metered component from the usage records Provisa has already posted -- never from an estimate computed a third way. (3) NEXT CHARGE: the renewal date and the amount expected on it are stated explicitly, because the complaint a card charge generates is always that it was a surprise. Cancelled and past-due subscriptions say so on the same panel rather than showing a next charge that will not happen. Payment method changes, invoice history and cancellation are handed to the Lemon Squeezy customer portal instead of rebuilt. The entry point is the account (person) menu, not the Admin group: the Admin group holds the operational settings of the org, whereas the plan, the running bill and the next charge are the commercial relationship behind the account. The route stays /admin/billing and keeps org_settings; the menu item is shown only where the deployment mounts the billing routes (billing on /auth/me) and only to the right that owns the subscription. Each endpoint names its subject with an org_id the caller supplies, so each one checks it: the org_settings RIGHT in the org being acted in ([REQ-1337](#REQ-1337) -- never a role name), or cross_org for a control-plane caller. The checkout paths also admit the account that reserved the org, because an org awaiting checkout is not bindable ([REQ-1476](#REQ-1476)) and its creator would otherwise be locked out of the checkout that makes it real.
 
 **Use case:** A Starter customer signs up at $18/mo with a card, opens Billing a fortnight later, sees the month-to-date amount and the date the card renews, and needs no support ticket to learn either.
 
-**Code:** `provisa-ui/src/components/admin/BillingTab.tsx`, `provisa-ui/src/api/billing.ts`, `provisa-ui/src/components/NavBar.tsx`, `provisa_commercial/router.py`, `provisa_commercial/access.py`, `provisa_commercial/lemonsqueezy_client.py`, `provisa/api/auth_router.py`
+**Code:** `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/access.py`, `.claude/commercial/provisa_commercial/lemonsqueezy_client.py`, `.claude/commercial/provisa_commercial/usage.py`, `provisa-ui/src/components/admin/BillingTab.tsx`, `provisa-ui/src/api/billing.ts`, `provisa-ui/src/components/NavBar.tsx`, `provisa/api/auth_router.py`
 
 **Tests:** `.claude/commercial/tests/test_billing_summary.py`, `.claude/commercial/tests/test_billing_access.py`, `provisa-ui/src/__tests__/BillingTab.test.tsx`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`, `tests/unit/test_auth_me_billing_flag.py`
 
@@ -15306,15 +15310,15 @@ A Starter org signs itself up with a credit card and can answer, without asking 
 
 ### REQ-1471 · Federation Engine {#REQ-1471}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 A shard that has idled to zero begins its cold start at SIGN-IN, not at the first query. The node provision [REQ-1448](#REQ-1448) accepts is roughly 90-120s, and charging it to the first query puts the whole of it inside a request the operator is watching. Sign-in is the earliest moment the platform knows which shard the session will use, and it is followed by however long the operator spends reading a screen and composing a question -- time the wake can run in. The IdP owns login, so there is no server-side login POST; the sign-in seam is the first authenticated call of the session, GET /auth/me, and the org it reports is the org to warm. The prewarm must not block that call: /auth/me returns while the wake runs behind it, so a session over a shard the user never queries costs nothing but a scheduled pod. A query arriving mid-warm waits on the wake already in flight rather than starting a second one, and a prewarm that fails is reported where the query path can act on it rather than failing a sign-in over an engine the user has not yet asked for.
 
 **Use case:** An operator signs in, spends a minute reading the schema browser, runs a query and gets an answer without waiting on a node that has been coming up the whole time.
 
-**Code:** `provisa/federation/engine_wake.py`, `provisa/api/auth_router.py`
+**Code:** `provisa/federation/engine_wake.py`, `provisa/api/auth_router.py`, `provisa/api/data/endpoint_dev.py`, `provisa-ui/src/lib/engineWake.ts`
 
-**Tests:** —
+**Tests:** `tests/unit/test_engine_wake.py`
 
 ## 2. Authentication & Identity
 
@@ -15322,7 +15326,7 @@ A shard that has idled to zero begins its cold start at SIGN-IN, not at the firs
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-The break-glass superuser of [REQ-125](#REQ-125) can sign in from a browser under any auth provider. The credential is a username and password, but a deployment fronted by an external IdP -- Firebase requires an email address as the username, and issues no token for an account it does not hold -- has no path by which that account reaches the UI, so the operator's only recourse when the IdP is misconfigured is the very console the misconfiguration locks them out of. POST /auth/superuser-login is mounted for every provider and exchanges the configured credentials for a session token signed with auth.jwt_secret, carrying a type claim that distinguishes it from a user session the basic provider signed with the same key. The middleware checks that token ahead of the configured provider and falls through to the provider when the bearer is not one of ours, so an IdP token keeps working unchanged. Without auth.jwt_secret there is no signing key and the exchange refuses with 503 rather than issuing a token under a default key. The login page offers the operator path as a secondary affordance, which is also the sign-in an end-to-end suite uses when it runs against a deployment whose provider is an external IdP.
+The break-glass superuser of [REQ-1264](#REQ-1264) can sign in from a browser under any auth provider. The credential is a username and password, but a deployment fronted by an external IdP -- Firebase requires an email address as the username, and issues no token for an account it does not hold -- has no path by which that account reaches the UI, so the operator's only recourse when the IdP is misconfigured is the very console the misconfiguration locks them out of. POST /auth/superuser-login is mounted for every provider and exchanges the configured credentials for a session token signed with auth.jwt_secret, carrying a type claim that distinguishes it from a user session the basic provider signed with the same key. The middleware checks that token ahead of the configured provider and falls through to the provider when the bearer is not one of ours, so an IdP token keeps working unchanged. Without auth.jwt_secret there is no signing key and the exchange refuses with 503 rather than issuing a token under a default key. The login page offers the operator path as a secondary affordance, which is also the sign-in an end-to-end suite uses when it runs against a deployment whose provider is an external IdP.
 
 **Use case:** An operator whose Firebase tenant is misconfigured signs in to the console with the break-glass account and repairs it; a Playwright run against the cloud deployment authenticates the same way.
 
@@ -15340,7 +15344,7 @@ The [REQ-1455](#REQ-1455) free evaluation period is offered once per PERSON, and
 
 **Use case:** A customer whose trial ended deletes their org and signs up again; they get the Starter plan they were going to be billed for, not another free evaluation period.
 
-**Code:** `provisa_commercial/trial_eligibility.py`, `provisa_commercial/trial.py`, `provisa_commercial/router.py`, `provisa_commercial/schema.py`, `provisa/core/commerce.py`, `provisa/api/auth_router.py`, `provisa/auth/middleware.py`
+**Code:** `.claude/commercial/provisa_commercial/trial_eligibility.py`, `.claude/commercial/provisa_commercial/trial.py`, `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/schema.py`, `provisa/core/commerce.py`, `provisa/api/auth_router.py`, `provisa/api/auto_join.py`, `provisa/auth/middleware.py`
 
 **Tests:** `.claude/commercial/tests/test_trial_eligibility.py`
 
@@ -15350,7 +15354,7 @@ The [REQ-1455](#REQ-1455) free evaluation period is offered once per PERSON, and
 
 A Lemon Squeezy store sells more than one product, and it delivers EVERY subscription event to EVERY webhook configured on it, each one signed with that webhook's own secret. A sibling product's subscription therefore reaches POST /billing/webhook with a signature that verifies, and the payload carries no marker saying which product it belongs to except the variant id. The variant is the test: plan_for_variant_id resolves only the variants this deployment sells, so an event naming a variant it does not recognise is not Provisa's and is answered 200 with {"received": true, "ignored": "foreign_variant"} before any org is resolved or any row written. The no-op is a SUCCESS rather than a rejection because Lemon Squeezy records a 4xx as a failed delivery, retries it, and disables a webhook whose failures persist -- so refusing the other product's traffic would eventually take Provisa's own events down with it. Answering 200 also keeps the remaining 400s meaning what they should: a Provisa subscription with a broken payload, not routine cross-product noise. An event carrying no variant id at all is deliberately NOT filtered here, because that is a payload this deployment cannot interpret rather than one it can attribute elsewhere, and billing.webhook_missing_variant still refuses it.
 
-**Code:** `provisa_commercial/router.py`, `provisa_commercial/models.py`
+**Code:** `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/models.py`
 
 **Tests:** `.claude/commercial/tests/test_billing_lemonsqueezy.py`
 
@@ -15360,7 +15364,7 @@ A Lemon Squeezy store sells more than one product, and it delivers EVERY subscri
 
 On a deployment that sells the org, an org is not built until a subscription pays for it. POST /admin/orgs registers the row in provisioning_state awaiting_checkout, grants the creator membership and spawns nothing: between create and checkout the row is a RESERVATION -- a claimed id and nothing else, with no schema, no engine and no data. The subscription_created webhook is the only path out of that state, flipping the row to provisioning and starting the build (begin_provisioning, which returns False on a redelivery so a repeated webhook builds nothing twice). Because the row is not an org anyone can work in, awaiting_checkout is excluded from bindable memberships, from the active-org resolution and from auto-join. A reservation holds its id for 30 minutes and is then deleted, releasing both the name and the slot it held against the per-user org cap; a creator returning inside that window gets their own reservation back rather than a 409, so the UI resumes the checkout they abandoned. If the webhook never lands, POST /billing/checkout/reconcile recovers on the return trip: Lemon Squeezy carries no custom data on the subscription, so the buyer email is the only key back, and a candidate must be a variant this deployment sells, created after the reservation, and bound to no org -- ambiguity is refused (409) rather than guessed. The reservation policy lives in the commercial plugin; a self-hosted deployment has nothing to charge for and provisions on create as before.
 
-**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/commerce.py`, `provisa/core/org_membership.py`, `provisa_commercial/reservations.py`, `provisa_commercial/router.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/commerce.py`, `provisa/core/org_membership.py`, `provisa/core/schema_admin.py`, `.claude/commercial/provisa_commercial/reservations.py`, `.claude/commercial/provisa_commercial/router.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
 
 **Tests:** `tests/unit/test_org_create_provisioning.py`, `.claude/commercial/tests/test_org_reservations.py`
 
@@ -15370,7 +15374,7 @@ On a deployment that sells the org, an org is not built until a subscription pay
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Auto-join ([REQ-1269](#REQ-1269)) treats a matching email address as proof that the person belongs to the org, which only holds for a domain the org controls. A consumer mailbox provider -- gmail.com, outlook.com, yahoo.com, icloud.com, proton.me and the rest of the set -- issues addresses to anyone who asks, so a rule matching one would hand membership of an org, with its data and its default role, to any stranger who signs up at that provider. An org policy that turns auto_join on is therefore rejected with orgs.auto_join_public_domain when its email_rule admits a consumer domain, including the case of no rule at all (which admits every address). The rule is probed by matching it against a sample address at each domain rather than by reading the regex, so it reaches the same verdict here as it will at sign-in, and an unanchored or over-broad rule is caught as surely as one naming the domain outright. The same check runs again in resolve_auto_join_orgs, so a row written before the rule existed or edited straight into the table admits nobody. A public-domain email_rule remains legal with auto_join off: it bounds who may redeem an invite, and an invite is still a human decision.
+Auto-join ([REQ-1285](#REQ-1285)) treats a matching email address as proof that the person belongs to the org, which only holds for a domain the org controls. A consumer mailbox provider -- gmail.com, outlook.com, yahoo.com, icloud.com, proton.me and the rest of the set -- issues addresses to anyone who asks, so a rule matching one would hand membership of an org, with its data and its default role, to any stranger who signs up at that provider. An org policy that turns auto_join on is therefore rejected with orgs.auto_join_public_domain when its email_rule admits a consumer domain, including the case of no rule at all (which admits every address). The rule is probed by matching it against a sample address at each domain rather than by reading the regex, so it reaches the same verdict here as it will at sign-in, and an unanchored or over-broad rule is caught as surely as one naming the domain outright. The same check runs again in resolve_auto_join_orgs, so a row written before the rule existed or edited straight into the table admits nobody. A public-domain email_rule remains legal with auto_join off: it bounds who may redeem an invite, and an invite is still a human decision.
 
 **Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/org_membership.py`
 
@@ -15380,7 +15384,7 @@ Auto-join ([REQ-1269](#REQ-1269)) treats a matching email address as proof that 
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-A person can end up in an org without doing anything: an email-rule match auto-joins them at sign-in ([REQ-1269](#REQ-1269)), or an administrator adds them. Either way an org they never asked for appears in their switcher with no explanation of where it came from. Each membership therefore records how it came about -- joined_via is created, invite, auto_join or admin -- and whether the member has been told, in acknowledged_at. Both columns are nullable, so add_missing_columns reconciles existing registries; a NULL joined_via predates the column and explains nothing, so it announces nothing. A membership born of the user's own act (creating the org) is written already acknowledged and is never announced. Every membership write site routes through membership_values/grant_membership so the provenance is recorded once per path, and a re-grant leaves the first way in -- and its acknowledgement -- standing, so an admin re-adding a member does not resurrect a notice already dismissed. /auth/me returns joined_via and acknowledged with each membership; the UI raises a one-time notice above the app shell naming the org and how it was joined, with POST /auth/acknowledge-join to dismiss it. A membership the user did not ask for (auto_join, admin) also offers the exit -- the existing leave route, which records the auto-join opt-out ([REQ-1306](#REQ-1306)) -- while an invitation, which they chose to accept, is explained without one.
+A person can end up in an org without doing anything: an email-rule match auto-joins them at sign-in ([REQ-1285](#REQ-1285)), or an administrator adds them. Either way an org they never asked for appears in their switcher with no explanation of where it came from. Each membership therefore records how it came about -- joined_via is created, invite, auto_join or admin -- and whether the member has been told, in acknowledged_at. Both columns are nullable, so add_missing_columns reconciles existing registries; a NULL joined_via predates the column and explains nothing, so it announces nothing. A membership born of the user's own act (creating the org) is written already acknowledged and is never announced. Every membership write site routes through membership_values/grant_membership so the provenance is recorded once per path, and a re-grant leaves the first way in -- and its acknowledgement -- standing, so an admin re-adding a member does not resurrect a notice already dismissed. /auth/me returns joined_via and acknowledged with each membership; the UI raises a one-time notice above the app shell naming the org and how it was joined, with POST /auth/acknowledge-join to dismiss it. A membership the user did not ask for (auto_join, admin) also offers the exit -- the existing leave route, which records the auto-join opt-out ([REQ-1306](#REQ-1306)) -- while an invitation, which they chose to accept, is explained without one.
 
 **Code:** `provisa/core/schema_admin.py`, `provisa/core/org_membership.py`, `provisa/api/auth_router.py`, `provisa/api/admin/orgs_router.py`, `provisa/auth/middleware.py`, `provisa-ui/src/components/JoinNotice.tsx`
 
@@ -15460,7 +15464,7 @@ An org admin puts their organization's own light branding on the surfaces its pe
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-An organization runs its governed model in more than one environment -- a dev environment, a test environment, a staging environment, whatever it names -- without becoming more than one organization. An environment is a named copy of the org's governed model; the name is the org's to choose, and one environment named prod exists from the organization's creation and cannot be deleted or renamed, so there is always an environment the address resolves to. Identity, membership, branding, subscription tier and the org's address stay at the org: environments multiply the model, never the tenant. An environment is not a hostname label -- [REQ-1276](#REQ-1276) gives the leftmost label to the org and [REQ-1348](#REQ-1348) rejects a deeper one as hostile -- so the selected environment travels as an x-provisa-env request header, mirroring x-org-provisa, with the selection persisted per user. A request naming an environment the org does not have is refused; a request naming none is served by prod, which is the only environment every org is guaranteed to have.
+An organization runs its governed model in more than one environment -- a dev environment, a test environment, a staging environment, whatever it names -- without becoming more than one organization. An environment is a named copy of the org's governed model; the name is the org's to choose, and one environment named prod exists from the organization's creation and cannot be deleted or renamed, so there is always an environment the address resolves to. Identity, membership, branding, subscription tier and the org's address stay at the org: environments multiply the model, never the tenant. An environment is not a hostname label -- [REQ-1276](#REQ-1276) gives the leftmost label to the org and [REQ-1348](#REQ-1348) rejects a deeper one as hostile -- so the selected environment travels as an x-provisa-env request header, mirroring x-org-provisa, [SUPERSEDED by [REQ-1532](#REQ-1532), 2026-10-03 -- The selection is per-browser, kept in localStorage under provisa_env (provisa-ui/src/lib/authFetch.ts:46-52); nothing stores it per user on the server. Note [REQ-1532](#REQ-1532) is itself status proposed. Kept here for history; do not implement against it.] with the selection persisted per user [END SUPERSEDED BLOCK]. A request naming an environment the org does not have is refused; [SUPERSEDED by [REQ-1596](#REQ-1596), 2026-10-03 -- A membership pinned to an environment that names none is served the pin, not prod (provisa/api/env_routing.py:113-120); [REQ-1618](#REQ-1618) likewise has a sandbox visitor auto-selected into ephemeral_<hash> (env_routing.py:170-174). Kept here for history; do not implement against it.] a request naming none is served by prod [END SUPERSEDED BLOCK], which is the only environment every org is guaranteed to have.
 
 **Use case:** A team develops a change against its dev environment and runs its suite against its test environment, both inside the one organization its people, invoices and address belong to.
 
@@ -15472,7 +15476,7 @@ An organization runs its governed model in more than one environment -- a dev en
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-An environment is physically a schema of its own. An org's governed model already lives in one Postgres schema reached by SET search_path TO org_<org_id>; an environment extends that name rather than adding a discriminator column to forty tables, so every existing repository query is correct in a environment without being rewritten and an environment's state cannot leak into another environment's reads by a forgotten predicate. The org's default environment keeps the existing schema name so an organization that never creates an environment is unchanged. Environment creation, deletion and renaming are org_admin acts recorded in the org's admin audit log; deleting an environment drops its schema and its store, and prod is refused. (Amended 2026-08-21:) An environment is created BY loading a model into a name, not by a ceremony of its own. There is no create-then-populate step and no state in which an environment exists and holds nothing: loading a build, a config, a set of files or a sha into a name that has none creates that environment, provisions its schema and its stores, and writes its registry row in one act. The row is what the schema cannot hold -- the plan ceiling and expiry of [REQ-1523](#REQ-1523), protected ([REQ-1504](#REQ-1504)), per-source boundness ([REQ-1491](#REQ-1491)), the environment a credential addresses ([REQ-1503](#REQ-1503)), drifted ([REQ-1524](#REQ-1524)) -- so creation is implicit and the record of it is explicit. The name is validated before anything is provisioned, and the environment is unbound when the load finishes, whatever it was loaded from.  (Amended 2026-08-21:) because each environment is a separate runtime, invalidating an org invalidates its branches with it: an org is deleted or re-provisioned as a whole, and a branch runtime left behind would hold pools and compiled schemas for a schema that no longer exists.
+An environment is physically a schema of its own. An org's governed model already lives in one Postgres schema reached by SET search_path TO org_<org_id>; an environment extends that name rather than adding a discriminator column to forty tables, so every existing repository query is correct in a environment without being rewritten and an environment's state cannot leak into another environment's reads by a forgotten predicate. The org's default environment keeps the existing schema name so an organization that never creates an environment is unchanged. [SUPERSEDED by [REQ-1573](#REQ-1573), 2026-10-03 -- Creation is gated on the environment_management right, not org_admin (deletion stays org_admin); the router creates an inheriting environment under _member(MANAGE_CAPABILITY). Kept here for history; do not implement against it.] Environment creation, deletion and renaming are org_admin acts recorded in the org's admin audit log [END SUPERSEDED BLOCK]; deleting an environment drops its schema and its store, and prod is refused. (Amended 2026-08-21:) An environment is created BY loading a model into a name, not by a ceremony of its own. There is no create-then-populate step and no state in which an environment exists and holds nothing: loading a build, a config, a set of files or a sha into a name that has none creates that environment, provisions its schema and its stores, and writes its registry row in one act. The row is what the schema cannot hold -- the plan ceiling and expiry of [REQ-1523](#REQ-1523), protected ([REQ-1504](#REQ-1504)), per-source boundness ([REQ-1491](#REQ-1491)), the environment a credential addresses ([REQ-1503](#REQ-1503)), drifted ([REQ-1524](#REQ-1524)) -- so creation is implicit and the record of it is explicit. The name is validated before anything is provisioned, and the environment is unbound when the load finishes, whatever it was loaded from.  (Amended 2026-08-21:) because each environment is a separate runtime, invalidating an org invalidates its branches with it: an org is deleted or re-provisioned as a whole, and a branch runtime left behind would hold pools and compiled schemas for a schema that no longer exists.
 
 **Use case:** An organization adds a dev environment and every governed read in it is scoped by the same search_path mechanism that already isolates orgs, with no query rewritten.
 
@@ -15484,7 +15488,7 @@ An environment is physically a schema of its own. An org's governed model alread
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Copying an environment carries the governed model and nothing else, and what it carries is stated as an allow-list rather than an exclusion list, so a table added to the org schema later does not travel by default. Every table in the org schema falls in exactly one of four classes. CARRIED -- the governed model: domains, naming_rules, registered_tables, table_columns, relationships, metrics, roles, rls_rules, tags, tag_param_values, tag_assignments, glossary terms and their refs, edges and experts, materialized_views, calendars, kafka_topics, api_endpoints, tracked_functions, tracked_webhooks, table_meta_links. IDENTITY ONLY -- sources, api_sources, kafka_sources and kafka_sinks carry their id, type and governance fields while their connection values stay behind ([REQ-1491](#REQ-1491)). NEVER -- org_secrets, user_directory, user_role_assignments, and the org_settings keys that name an external target or a per-environment runtime (metadata_export, redirect, cache). NEVER -- the runtime and evidence tables, which belong to the environment that produced them: mv_refresh_log, mv_delta_ledger, relationship_candidates, creation_requests, api_endpoint_candidates, live_query_state, file_source_mtimes, node_ids, rel_ids, query_audit_log, query_sla_log, source_catalog_cache, events, event_status, node_freshness_state, preserved_snapshots, admin_audit_log, and catalog_bindings, whose vendor_ref and physical_key address another environment's external catalog. A test enumerates every table declared in schema_org.py and fails on any name carrying no classification, so the failure mode for a forgotten table is a red test rather than a copied secret. (Amended 2026-08-21:) A source's mapping is a per-connector JSON bag rather than a column set, and it demonstrably holds both credentials and instance identity -- credentials_json, certificate_path, certificate_password ([REQ-729](#REQ-729)), storage_config, storage_type, disable_ssl_validation -- so classifying sources by column alone would carry a service account into a dev environment. mapping is therefore classified PER KEY, not per column, by the connector that owns it: each connector class declares the mapping keys that are BINDINGS, and every other key is governance and travels. The declaration is default-deny -- a key the connector does not name is a binding and stays behind -- so a connector added later cannot leak by omission, and a connector that declares nothing carries no mapping at all. The same classification test enumerates the connector registry and fails on a connector whose mapping keys carry no declaration.
+Copying an environment carries the governed model and nothing else, and what it carries is stated as an allow-list rather than an exclusion list, so a table added to the org schema later does not travel by default. Every table in the org schema falls in exactly one of four classes. CARRIED -- the governed model: domains, naming_rules, registered_tables, table_columns, relationships, metrics, roles, rls_rules, tags, tag_param_values, tag_assignments, glossary terms and their refs, edges and experts, materialized_views, calendars, kafka_topics, api_endpoints, tracked_functions, tracked_webhooks, table_meta_links. IDENTITY ONLY -- sources, api_sources, kafka_sources and kafka_sinks carry their id, type and governance fields while their connection values stay behind ([REQ-1491](#REQ-1491)). [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- user_role_assignments is a CARRIED class (seeded at creation); only org_secrets and user_directory stay NEVER_SENSITIVE. Kept here for history; do not implement against it.] NEVER -- org_secrets, user_directory, user_role_assignments, and the org_settings keys that name an external target or a per-environment runtime (metadata_export, redirect, cache). [END SUPERSEDED BLOCK] NEVER -- the runtime and evidence tables, which belong to the environment that produced them: mv_refresh_log, mv_delta_ledger, relationship_candidates, creation_requests, api_endpoint_candidates, live_query_state, file_source_mtimes, node_ids, rel_ids, query_audit_log, query_sla_log, source_catalog_cache, events, event_status, node_freshness_state, preserved_snapshots, admin_audit_log, and catalog_bindings, whose vendor_ref and physical_key address another environment's external catalog. A test enumerates every table declared in schema_org.py and fails on any name carrying no classification, so the failure mode for a forgotten table is a red test rather than a copied secret. (Amended 2026-08-21:) A source's mapping is a per-connector JSON bag rather than a column set, and it demonstrably holds both credentials and instance identity -- credentials_json, certificate_path, certificate_password ([REQ-729](#REQ-729)), storage_config, storage_type, disable_ssl_validation -- so classifying sources by column alone would carry a service account into a dev environment. mapping is therefore classified PER KEY, not per column, by the connector that owns it: each connector class declares the mapping keys that are BINDINGS, and every other key is governance and travels. The declaration is default-deny -- a key the connector does not name is a binding and stays behind -- so a connector added later cannot leak by omission, and a connector that declares nothing carries no mapping at all. The same classification test enumerates the connector registry and fails on a connector whose mapping keys carry no declaration. (Amended 2026-10-03, API ENDPOINT CANDIDATES ARE GONE:) The list of runtime and evidence tables above names `api_endpoint_candidates`. That table no longer exists: the candidate and accept path for API endpoints is removed, since a remote table or operation is registered one at a time by a steward ([REQ-1924](#REQ-1924)). The list is otherwise unchanged.
 
 **Use case:** A platform team adds a table to the org schema and learns from a failing test that they must say whether it belongs to an environment copy, instead of discovering months later that it carried credentials into a dev environment.
 
@@ -15508,7 +15512,7 @@ Copying into an environment that already exists is a merge, not a replacement. T
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Where an environment points is a per-environment fact that no copy ever supplies. A source row travels between environments because registered_tables references it and dropping it would cascade the model away, but its host, port, database, username, path and federation_hints do not, and neither do an api_source's base URL and encrypted auth, a kafka_source's bootstrap servers or a kafka_sink's target. A source that has not been bound in an environment is marked unbound rather than left blank: an empty host is not an absent one, and the connection builder reads it as localhost:5432, so a blanked copy would connect a dev environment to whatever database is local to the node. The query path checks boundness before it builds any connection and refuses a query naming an unbound source, naming the source and the environment. Secret references are per-environment for the same reason -- one ${env:...} reference resolves identically in every environment of a process, so a carried reference is a carried credential; a environment's bindings resolve through that environment's own secret keys. (Amended 2026-08-21:) mapping is stripped by the same rule and for the same reason: the keys the owning connector declares as bindings -- an object store's endpoint and bucket, a certificate path and its password, an inline credentials document, a TLS-verification override -- are per-environment facts and stay behind with host and port, while the governance keys in the same bag travel. A source whose connector declares bindings is unbound in the new environment until every declared binding key has been supplied there, so partial binding is unbound, not half-connected. (Amended 2026-08-21, creation:) CREATING an environment ALWAYS strips bindings, whatever it was created from. This is absolute and takes no argument: a build of another environment, a config an operator uploads, a set of exported files ([REQ-1502](#REQ-1502)) and a repository sha ([REQ-1524](#REQ-1524)) all produce an environment in which every source is unbound. A config an operator brings carries connection values and carrying them is ordinarily its purpose, but at creation they are dropped and the operator binds afterwards -- one extra act, in exchange for the guarantee that NO SINGLE ACTION CAN CREATE A BOUND ENVIRONMENT, so no action can accidentally create one bound to production. Making the behaviour depend on where the model came from would put the guarantee behind a judgement about provenance, and the case that gets it wrong is the case that matters. Binding is therefore always a second, deliberate act against an environment that already exists, and [REQ-1499](#REQ-1499) is the only way credentials ever arrive by copy. (Amended 2026-08-21, checkout keeps bindings:) Loading a different branch or sha into an environment that ALREADY EXISTS is a checkout, and it is not the creation of [REQ-1488](#REQ-1488): it replaces the carried classes wholesale -- not a merge by identity, since a checkout is what the operator asked for -- and it KEEPS the environment's bindings, secrets, members and grants untouched. That follows from the tree never having held them: there is nothing in the incoming tree to overwrite them with. It is also the point of the whole arrangement -- switch to a colleague's branch and keep pointing at your own database -- and it is why creation strips unconditionally while checkout strips nothing: creation has no bindings to preserve, and a checkout's bindings were established by the deliberate act this requirement demands. A source that arrives in the incoming tree and has no binding in this environment is unbound in the marked sense above, not broken. (Amended 2026-08-21:) The second act this requirement demands does not have to be a form: [REQ-1529](#REQ-1529)'s binding profiles make it a single click on a target an org_admin authored, which keeps the guarantee while removing the reason to avoid branching. (Amended 2026-08-21, WHERE the model came from decides whether bindings are stripped:) The unconditional strip above is narrowed to what it was actually protecting against -- a model arriving from OUTSIDE this organization's control plane. An uploaded config, an exported file set ([REQ-1502](#REQ-1502)), a foreign repository sha and any other import produce an environment in which every source is unbound, absolutely and with no argument, because the connection values in them were authored elsewhere and nobody here vouched for what they point at. A branch taken from the organization's OWN environment inside the same control plane is not that case: the credentials never leave the org, are never disclosed to the brancher, and were already reachable by whoever could read that environment. Such a branch INHERITS its parent's bindings, and the developer types nothing. TWO CONDITIONS MAKE THAT SAFE, and both are structural. First, an inherited binding is a REFERENCE to the parent environment's binding and never a copy of it: no host, username or secret key is materialized in the branch, so a branch discloses nothing, rotating the parent's credential re-points the branch in the same act, and revoking it revokes the branch's reach. Second, an inherited binding is READ-ONLY -- a write through one is refused whatever rights the writer holds, including the environment authority of [REQ-1528](#REQ-1528). That is precisely [REQ-1492](#REQ-1492)'s compound failure taken apart: the branch inherits where its parent points but never the ability to write there, so a branch of prod can read prod-shaped data and cannot damage prod. Writing needs a binding the environment established for itself -- a [REQ-1529](#REQ-1529) profile an org_admin authored, or a credential an org_admin issued ([REQ-1503](#REQ-1503)) -- which is the deliberate second act this requirement has always demanded, now demanded only where a write is actually wanted. A branch therefore reaches exactly what its creator could already reach, in exactly the mode they could already reach it, and no single action still creates an environment that can WRITE to production. (Amended 2026-08-21, the mode is the BASE's:) whether an inherited binding is read-only is not fixed at read-only for every branch -- it is the branch policy [REQ-1529](#REQ-1529) puts on the base the branch came from, defaulting to read-only. A branch of a base bound to a dev database may write to it if the org_admin marked that base branch-writable; a branch of a base bound to production may not, because nobody marked it so. The guarantee is unchanged in the case it exists for: no member action produces an environment that can write where an org_admin did not say branches may write. (Amended 2026-08-22, THE BRANCH POLICY IS WITHDRAWN, [REQ-1539](#REQ-1539):) the read-only-by-default mode and the branch-writable flag that widened it are both removed. They answered the wrong question. What a person may do to DATA is what their ROLES say, in a branch exactly as in the org, and an environment is a namespace for the MODEL rather than a second permission system layered over the one that already answers it. The compound failure this requirement names is still taken apart, but at the half that actually caused it: the authority [REQ-1528](#REQ-1528) confers on whoever creates an environment no longer includes write, full_results or usage, so no member action produces write authority over data anywhere. What survives on the write path is REQ-1491 alone -- a write through a source unbound here and in everything it inherited from is refused, because there is no established target to write to.
+Where an environment points is a per-environment fact that no copy ever supplies. A source row travels between environments because registered_tables references it and dropping it would cascade the model away, but its host, port, database, username, path and federation_hints do not, and neither do an api_source's base URL and encrypted auth, a kafka_source's bootstrap servers or a kafka_sink's target. A source that has not been bound in an environment is marked unbound rather than left blank: an empty host is not an absent one, and the connection builder reads it as localhost:5432, so a blanked copy would connect a dev environment to whatever database is local to the node. The query path checks boundness before it builds any connection and refuses a query naming an unbound source, naming the source and the environment. Secret references are per-environment for the same reason -- one ${env:...} reference resolves identically in every environment of a process, so a carried reference is a carried credential; a environment's bindings resolve through that environment's own secret keys. (Amended 2026-08-21:) mapping is stripped by the same rule and for the same reason: the keys the owning connector declares as bindings -- an object store's endpoint and bucket, a certificate path and its password, an inline credentials document, a TLS-verification override -- are per-environment facts and stay behind with host and port, while the governance keys in the same bag travel. A source whose connector declares bindings is unbound in the new environment until every declared binding key has been supplied there, so partial binding is unbound, not half-connected. (Amended 2026-08-21, creation:) [SUPERSEDED by [REQ-1602](#REQ-1602), 2026-10-03 -- The same requirement's later amendment narrows it to models from outside the org, and [REQ-1602](#REQ-1602) (complete) creates sandbox visitor environments with strip_identities=False (provisa/api/invite_env.py:148). Kept here for history; do not implement against it.] CREATING an environment ALWAYS strips bindings, whatever it was created from. This is absolute and takes no argument: [END SUPERSEDED BLOCK] a build of another environment, a config an operator uploads, a set of exported files ([REQ-1502](#REQ-1502)) and a repository sha ([REQ-1524](#REQ-1524)) all produce an environment in which every source is unbound. A config an operator brings carries connection values and carrying them is ordinarily its purpose, but at creation they are dropped and the operator binds afterwards -- one extra act, in exchange for the guarantee that NO SINGLE ACTION CAN CREATE A BOUND ENVIRONMENT, so no action can accidentally create one bound to production. Making the behaviour depend on where the model came from would put the guarantee behind a judgement about provenance, and the case that gets it wrong is the case that matters. Binding is therefore always a second, deliberate act against an environment that already exists, [SUPERSEDED by REQ-1491 amendment, 2026-10-03 -- [REQ-1499](#REQ-1499) (replicating an environment whole) is rejected as out of V1 scope, so no copy carries credentials. Kept here for history; do not implement against it.] and [REQ-1499](#REQ-1499) is the only way credentials ever arrive by copy [END SUPERSEDED BLOCK]. (Amended 2026-08-21, checkout keeps bindings:) Loading a different branch or sha into an environment that ALREADY EXISTS is a checkout, and it is not the creation of [REQ-1488](#REQ-1488): it replaces the carried classes wholesale -- not a merge by identity, since a checkout is what the operator asked for -- and it KEEPS the environment's bindings, secrets, members and grants untouched. That follows from the tree never having held them: there is nothing in the incoming tree to overwrite them with. It is also the point of the whole arrangement -- switch to a colleague's branch and keep pointing at your own database -- and it is why creation strips unconditionally while checkout strips nothing: creation has no bindings to preserve, and a checkout's bindings were established by the deliberate act this requirement demands. A source that arrives in the incoming tree and has no binding in this environment is unbound in the marked sense above, not broken. (Amended 2026-08-21:) The second act this requirement demands does not have to be a form: [REQ-1529](#REQ-1529)'s binding profiles make it a single click on a target an org_admin authored, which keeps the guarantee while removing the reason to avoid branching. (Amended 2026-08-21, WHERE the model came from decides whether bindings are stripped:) The unconditional strip above is narrowed to what it was actually protecting against -- a model arriving from OUTSIDE this organization's control plane. An uploaded config, an exported file set ([REQ-1502](#REQ-1502)), a foreign repository sha and any other import produce an environment in which every source is unbound, absolutely and with no argument, because the connection values in them were authored elsewhere and nobody here vouched for what they point at. A branch taken from the organization's OWN environment inside the same control plane is not that case: the credentials never leave the org, are never disclosed to the brancher, and were already reachable by whoever could read that environment. Such a branch INHERITS its parent's bindings, and the developer types nothing. TWO CONDITIONS MAKE THAT SAFE, and both are structural. First, an inherited binding is a REFERENCE to the parent environment's binding and never a copy of it: no host, username or secret key is materialized in the branch, so a branch discloses nothing, rotating the parent's credential re-points the branch in the same act, and revoking it revokes the branch's reach. [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- [REQ-1539](#REQ-1539) (and this requirement's own 2026-08-22 amendment) withdrew the read-only mode; the block is not tagged SUPERSEDED. The scenario line 'it is refused whatever rights they hold, because an inherited binding is read-only' is stale for the same reason. Kept here for history; do not implement against it.] Second, an inherited binding is READ-ONLY -- a write through one is refused whatever rights the writer holds, including the environment authority of [REQ-1528](#REQ-1528). [END SUPERSEDED BLOCK] That is precisely [REQ-1492](#REQ-1492)'s compound failure taken apart: [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- Write permission is the roles' answer; an inherited binding is writable (tests/unit/test_env_binding_writes.py:55-63). Kept here for history; do not implement against it.] the branch inherits where its parent points but never the ability to write there, so a branch of prod can read prod-shaped data and cannot damage prod. [END SUPERSEDED BLOCK] Writing needs a binding the environment established for itself -- a [REQ-1529](#REQ-1529) profile an org_admin authored, or a credential an org_admin issued ([REQ-1503](#REQ-1503)) -- which is the deliberate second act this requirement has always demanded, now demanded only where a write is actually wanted. A branch therefore reaches exactly what its creator could already reach, in exactly the mode they could already reach it, and no single action still creates an environment that can WRITE to production. (Amended 2026-08-21, the mode is the BASE's:) [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- branch_writable and the branch policy were removed; no such flag exists in code. Kept here for history; do not implement against it.] whether an inherited binding is read-only is not fixed at read-only for every branch -- it is the branch policy [REQ-1529](#REQ-1529) puts on the base the branch came from, defaulting to read-only. A branch of a base bound to a dev database may write to it if the org_admin marked that base branch-writable; a branch of a base bound to production may not, because nobody marked it so. [END SUPERSEDED BLOCK] The guarantee is unchanged in the case it exists for: no member action produces an environment that can write where an org_admin did not say branches may write. (Amended 2026-08-22, THE BRANCH POLICY IS WITHDRAWN, [REQ-1539](#REQ-1539):) the read-only-by-default mode and the branch-writable flag that widened it are both removed. They answered the wrong question. What a person may do to DATA is what their ROLES say, in a branch exactly as in the org, and an environment is a namespace for the MODEL rather than a second permission system layered over the one that already answers it. The compound failure this requirement names is still taken apart, but at the half that actually caused it: the authority [REQ-1528](#REQ-1528) confers on whoever creates an environment no longer includes write, full_results or usage, so no member action produces write authority over data anywhere. What survives on the write path is REQ-1491 alone -- a write through a source unbound here and in everything it inherited from is refused, because there is no established target to write to.
 
 **Use case:** A newly created dev environment is inert until an administrator says what it reaches, and cannot reach production by inheriting a connection or a credential reference.
 
@@ -15520,7 +15524,7 @@ Where an environment points is a per-environment fact that no copy ever supplies
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Write authority is granted into an environment and never carried between environments. Provisa executes mutations against sources -- compiled INSERT, UPDATE and DELETE, OpenAPI POST/PUT/PATCH/DELETE, gRPC methods that declare side effects, Hasura mutations, ingest DDL -- so a copied environment is a writer, not a reader, and inheriting where it points together with permission to write there is the compound failure. An environment copy therefore resets table_columns.writable_by to empty and carries no user_role_assignments, which restores the default-deny of [REQ-867](#REQ-867) and [REQ-868](#REQ-868) in the new environment. Role definitions do travel, because rls_rules and writable_by reference roles by id and an environment whose RLS points at absent roles states a governance model it does not have. Restoring write in an environment is an act recorded in that environment's admin audit log, and promotion toward prod can never confer it: rights in a target environment come only from grants made in that environment. (Amended 2026-08-21:) [REQ-1491](#REQ-1491) now takes this compound apart at the binding rather than at the copy: a branch of the org's own environment inherits where its parent points, by reference, and an inherited binding refuses writes. Inherited reach without inherited write authority is not this failure.
+Write authority is granted into an environment and never carried between environments. Provisa executes mutations against sources -- compiled INSERT, UPDATE and DELETE, OpenAPI POST/PUT/PATCH/DELETE, gRPC methods that declare side effects, Hasura mutations, ingest DDL -- so a copied environment is a writer, not a reader, and inheriting where it points together with permission to write there is the compound failure. [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- [REQ-1539](#REQ-1539) makes roles and user_role_assignments CARRIED (seeded at creation), and [REQ-1529](#REQ-1529)'s 2026-08-21 amendment makes column grants a carried class; the code carries both and resets nothing. Kept here for history; do not implement against it.] An environment copy therefore resets table_columns.writable_by to empty and carries no user_role_assignments, which restores the default-deny of [REQ-867](#REQ-867) and [REQ-868](#REQ-868) in the new environment. [END SUPERSEDED BLOCK] Role definitions do travel, because rls_rules and writable_by reference roles by id and an environment whose RLS points at absent roles states a governance model it does not have. Restoring write in an environment is an act recorded in that environment's admin audit log, and [SUPERSEDED by [REQ-1529](#REQ-1529), 2026-10-03 -- Holds for roles and assignments (never merged), but [REQ-1529](#REQ-1529)'s ALL GOVERNANCE STATE IS RETAINED amendment has a merge carry column grants, so table_columns.writable_by travels on a merge. Kept here for history; do not implement against it.] promotion toward prod can never confer it: rights in a target environment come only from grants made in that environment. [END SUPERSEDED BLOCK] (Amended 2026-08-21:) [REQ-1491](#REQ-1491) now takes this compound apart at the binding rather than at the copy: a branch of the org's own environment inherits where its parent points, by reference, and [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- [REQ-1539](#REQ-1539) removed branch_writable and the write-time check; the write path now refuses only an unbound or unregistered target. Kept here for history; do not implement against it.] an inherited binding refuses writes [END SUPERSEDED BLOCK]. Inherited reach without inherited write authority is not this failure.
 
 **Use case:** A developer with write rights in dev acquires none in prod when the model is promoted, and an environment cloned from prod cannot mutate anything until someone grants it.
 
@@ -15540,17 +15544,21 @@ Every environment owns a writable store, because a non-prod environment needs da
 
 **Tests:** `tests/integration/test_env_store.py`
 
-### REQ-1494 · Environments {#REQ-1494}
+## 1. Access Governance & Security
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+### REQ-1494 · Column-Level Masking {#REQ-1494}
 
-Masking gains a deterministic form so a masked extract stays usable. Column masking today is redaction -- regex, constant or truncate -- which is correct for a rendered value and destroys a key: constant-masking a customer id collapses every row onto one value, and every join through that column in the receiving environment is wrong. A keyed deterministic mask maps a value to a stable surrogate, so equal inputs mask equal, unequal inputs mask unequal, and joins and cardinality survive the extract while the original value does not. The key is per-org and per-environment-pair, held with the org's secrets and never carried by an environment copy, so a surrogate cannot be reversed by anyone holding only the extract, and two extracts taken for different environments do not correlate.
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
 
-**Use case:** A developer joins a masked customer table to a masked orders table in a dev environment and gets the same row counts production would give, without either table holding a real identifier.
+Masking has a consistent form. A column masked this way shows a surrogate in place of each real value: the same real value always shows the same surrogate and different real values show different surrogates, so joins, grouping and distinct counts through the column give the results they would give on the real values, while the real value is never shown. A surrogate is a random anonymous value; it is not computed from the real value and cannot be turned back into it. The mask names the kind of fake value to show (a person's name, an email address, a phone number, a street address, an identifier and so on), and the surrogate is a realistic generated value of that kind, so masked data keeps the look of the real data. [SUPERSEDED by REQ-1494 amendment, 2026-10-03 -- the mapping is platform-wide, durable platform data in the platform's shared store, not per-org state. Kept here for history; do not implement against it.] The surrogates are kept in a table of the state store ([REQ-1920](#REQ-1920)) [END SUPERSEDED BLOCK] that holds, for each real value met, a one-way transform of the value (a hash, or any reasonable one-way transform with few collisions) and the surrogate generated for it, and never the real value itself, so no personal data is kept in the state store: when a value is met again its surrogate is reused, and a value met for the first time is given a new one. Columns joined by a relationship share one set of surrogates, so a join between two masked columns still matches. (Amended 2026-10-03, MASKED DATA IS A PLATFORM CONCERN: ONE MAPPING FOR THE WHOLE PLATFORM:) The mapping from a value to its surrogate, and the key of its one-way transform, are platform-wide. The same real value shows the same surrogate in every org and every region of the deployment. The mapping is therefore held in the platform's shared store, not in a per-org or per-region state store, and it is durable platform data: it is not state that can be discarded and rebuilt ([REQ-1920](#REQ-1920)), since losing it would change every surrogate. The transform is keyed, and the key is a platform key. Only transformed values and generated surrogates cross regions, never real values ([REQ-1921](#REQ-1921), [REQ-1922](#REQ-1922)). (Amended 2026-10-03, THE MAPPING LIVES IN THE PLATFORM STATE STORE:) The platform's shared store that holds the mapping is the platform state store ([REQ-1932](#REQ-1932)).
 
-**Code:** `provisa/security/masking.py`, `provisa/core/schema_org.py`, `provisa/core/env_extract.py`
+**Use case:** A data scientist, or an LLM acting under its own identity, works on masked data that behaves like the real data (joins match, counts are right, values look real) without any personal data reaching them. An analyst joins a masked customer table to a masked orders table and gets the row counts the real data would give.
 
-**Tests:** `tests/unit/test_masking_deterministic.py`
+**Code:** `provisa/security/masking.py`, `provisa/compiler/mask_inject.py`
+
+**Tests:** —
+
+## 13. Multi-Tenancy & Organizations
 
 ### REQ-1495 · Environments {#REQ-1495}
 
@@ -15568,7 +15576,7 @@ An environment populates a table from its own model when no source holds one. A 
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-An environment's governed model is versioned as immutable builds, which is what makes promotion and reversal the same operation with a different argument. Every change to an environment's carried classes advances that environment's build, identified and addressable; a build records what the model was, never the excluded classes, so a build is safe to hold and safe to show. Promoting is merging a named build of one environment into another under [REQ-1490](#REQ-1490), and reverting is merging that environment's previous build into itself, so an environment can be returned to a state it held without anyone reconstructing it by hand. A build's diff against another build is readable before it is applied. This is metadata only: no data moves between environments when a build is applied. (Amended 2026-08-21:) A build is physically a COMMIT in the environment's repository ([REQ-1524](#REQ-1524)), and the build identifier is that commit. Immutability, addressability, parentage and the readable diff between two builds are then properties of the storage rather than machinery Provisa writes and must itself prove correct. The previous build an environment reverts to is the commit's parent, and a build safe to hold and safe to show is one whose tree holds only the carried classes of [REQ-1489](#REQ-1489). What does NOT follow from the storage is the merge: [REQ-1490](#REQ-1490)'s merge is semantic and is computed against the tenant control plane, then written through -- git's textual three-way would resolve two edits into a model that parses and does not hold, a relationship whose other side was dropped on the branch it merged with. The repository stores the result of a merge; it never computes one. (Amended 2026-08-21, reverting:) A revert is a merge of the earlier build WITH REMOVALS, never without. [REQ-1490](#REQ-1490) makes removal a separate confirmation because a merge must not silently empty an environment, and that default is right for a promotion -- prod does not lose what dev never had -- but wrong for a revert, where an object added after the build being returned to is exactly what the revert exists to take away. A revert offered without removals is not a partial revert; it is one that keeps the change being reverted. The removals a revert would perform are therefore named first in its report, and a revert of a protected environment takes the approval of [REQ-1504](#REQ-1504) like any other merge into one. (Amended 2026-08-21, the load is the gate:) The earlier refusal here -- that git must never compute a merge, because a textual three-way would produce a model that parses and does not hold -- is narrowed rather than kept. Merging happens in the organization's forge and CI ([REQ-1524](#REQ-1524)), so git does compute three-way merges of the serialized model, and the protection moves to where it belongs: a TREE IS NOT A MODEL UNTIL A LOAD ACCEPTS IT. Loading validates the whole tree -- every reference resolving, every carried class coherent with the others -- and applies it whole or not at all, so a merge that produced something that parses and does not hold fails at the load, before any schema holds it, and fails naming what does not hold. That failure is an ordinary broken build belonging to whoever merged, discovered where they are already looking, and it is a better place for the check than a prohibition that would have required Provisa to own the merge. (Amended 2026-08-22:) LOADING A TREE IS AN AUTHORED CHANGE, not a read. The repository is a projection and never an authority ([REQ-1524](#REQ-1524)), so nothing a person hand-edits in a working copy reaches the control plane until a LOAD applies it -- but a load applies it whole, and the tree carries ``roles``, so a load into a base is capable of rewriting who may do what there. Two things bound that and both are the org's own to set. On the git side, a base's branch is protected by the host's own rules: prod requiring a pull request approved by named people means no tree reaches prod's branch unreviewed, and hand-editing a working copy produces a proposal rather than a change. On the Provisa side, a load into a protected environment is decided the way [REQ-1504](#REQ-1504) decides a merge into one -- a request, a report of what it would change, and an approval by someone other than the requester. Neither substitutes for the other: git protects the branch, Provisa protects the schema, and a load is the one door between them. (Amended 2026-08-22, the load is performed WHERE IT LANDS:) There is no push. A load is not something dev does to prod; it is something a person does while signed in to the control plane that will hold the result. Whoever loads prod's branch is signed in to the production control plane, holding a production identity, and is answerable to production's own capability checks at the moment of the load -- the same checks any other authored change there passes. This is why the branch being readable to everyone costs nothing: a branch is a proposal until someone with the standing to accept it, in the place that would hold it, accepts it. It also settles the cross-instance question by removing it, since no control plane ever writes to another and a build travels between them only as a tree that a person on the far side chooses to load. NOTHING LOADS ITSELF: Provisa runs no watcher, webhook, poller or CI step that applies a merged branch to the environment it names. A merge into prod's branch produces a tree and changes no schema, and prod holds what it held until someone loads. An automatic load would hand the forge the authority the projection rule denies it, and would make the reviewers of a pull request -- who reviewed text -- the people who applied a model to production without ever seeing the report of what it would change. (Amended 2026-08-22, the CLI:) The load is available as a command -- ``provisa env deploy`` -- so that a deployment pipeline can perform it, and this does not reopen what the paragraph above closed. The rule is not that a machine may never load; it is that a load is always an INVOCATION CARRYING AN IDENTITY against a NAMED control plane, never something the control plane does to itself on noticing a commit. The command is a thin client of the same endpoint the UI calls, with the same target, the same capability check and the same report; CI holding a credential that passes that check is the organization delegating its own standing, which is the org's decision to make and is revocable as any other credential is. What Provisa does not ship is the other thing: a listener inside the deployment that turns somebody else's merge into a change here. (Amended 2026-08-22, the private control plane:) The same rule is what makes a DESKTOP control plane ([REQ-1126](#REQ-1126), [REQ-1128](#REQ-1128)) a first-class place to work. A developer runs their own Provisa, loads the branch they are working on into it, and has the whole model live in a control plane that is theirs -- real schemas, real validation, real queries against sources they bound themselves -- while nothing they do is visible to anyone else, because a control plane never writes to another one. What leaves the desktop is a branch pushed to the org's repository, which is a proposal; what arrives is a branch fetched, which changes nothing until they load it. The blast radius of working this way is exactly one machine, and the review path is the same one every other change takes. (Amended 2026-08-22, what an approver approves:) A load into a protected environment PINS THE COMMIT at the moment it is requested. The caller names a ref, that ref is resolved once, and the sha it resolved to is what the report describes, what the request stores and what applying later applies -- the ref is kept beside it only because a person recognises a branch name. An approval that re-resolved the branch would be an approval of a NAME: the branch moves, and the tree that gets applied is one nobody read. Staleness is derived the other way round for a load than for a merge, because the tree cannot move: what can have changed is the TARGET, so the pinned tree is re-planned against the environment as it now stands, and a report that no longer describes what would happen makes the request stale rather than approvable. A load and a merge are the same kind of proposal and are held in one table, one listing and one decision path: a row names either a source environment or a source ref, never both and never neither. Whether the load SEEDS -- [REQ-1539](#REQ-1539)'s creation-only classes -- is part of what is proposed, because it changes what applying does. (Amended 2026-08-22, a proposal is not a deployment:) When ``provisa env deploy`` produces a request rather than a change, it exits NON-ZERO. A pipeline that read a pending approval as success would report a release that has not happened, and the point of [REQ-1504](#REQ-1504) is that the release has not happened. (Amended 2026-08-22, WHERE THE LOAD SITS IN THE GIT PROCESS:) Stated plainly, because the rest of this requirement states it at length: the git process is the ordinary one -- branch, commit, pull request, review, merge -- and the LOAD is its final step. Merging is the end of the REVIEW; the load is the DEPLOY. Everything up to the merge decides what the model should be and changes no schema; the load is the act that moves the merged tree into a runtime. Whatever verb an org already uses for that step -- deploy, release, activate, provision -- names this one, and there is exactly one of it. It is not an addition to git flow but its last stage made explicit, and the only reason it is a separate act at all is that a merge writes text and a runtime holds a schema. (Amended 2026-08-22, THE VERB IS DEPLOY:) that step is named DEPLOY throughout -- the CLI is ``provisa env deploy``, the endpoint is ``POST /admin/orgs/{org}/environments/{env}/deploy``, the audit actions are ``environment.deploy`` and ``environment.deploy_requested``, and the code that performs it is ``provisa/core/env_deploy.py``. ``load`` described the mechanism (a tree read into a schema) and left every reader to work out what the act MEANT; ``deploy`` is the word every engineering organization already uses for the step that moves a merged change into a runtime, and the naming should not make people learn a second one.
+An environment's governed model is versioned as immutable builds, which is what makes promotion and reversal the same operation with a different argument. Every change to an environment's carried classes advances that environment's build, identified and addressable; a build records what the model was, never the excluded classes, so a build is safe to hold and safe to show. Promoting is merging a named build of one environment into another under [REQ-1490](#REQ-1490), and [SUPERSEDED by [REQ-1543](#REQ-1543), 2026-10-03 -- A revert is undo: the parent commit's whole tree is deployed through deploy_tree (environments_router.py:960-979), not a [REQ-1490](#REQ-1490) merge. Note [REQ-1543](#REQ-1543) is status proposed. Kept here for history; do not implement against it.] reverting is merging that environment's previous build into itself [END SUPERSEDED BLOCK], so an environment can be returned to a state it held without anyone reconstructing it by hand. A build's diff against another build is readable before it is applied. This is metadata only: no data moves between environments when a build is applied. (Amended 2026-08-21:) A build is physically a COMMIT in the environment's repository ([REQ-1524](#REQ-1524)), and the build identifier is that commit. Immutability, addressability, parentage and the readable diff between two builds are then properties of the storage rather than machinery Provisa writes and must itself prove correct. The previous build an environment reverts to is the commit's parent, and a build safe to hold and safe to show is one whose tree holds only the carried classes of [REQ-1489](#REQ-1489). What does NOT follow from the storage is the merge: [REQ-1490](#REQ-1490)'s merge is semantic and is computed against the tenant control plane, then written through -- git's textual three-way would resolve two edits into a model that parses and does not hold, a relationship whose other side was dropped on the branch it merged with. [SUPERSEDED by [REQ-1524](#REQ-1524), 2026-10-03 -- REQ-1496's own later amendment (2026-08-21, the load is the gate) narrows it: merging happens in the org's forge ([REQ-1524](#REQ-1524)), so git does compute three-way merges and the deploy is the gate. Kept here for history; do not implement against it.] The repository stores the result of a merge; it never computes one. [END SUPERSEDED BLOCK] (Amended 2026-08-21, reverting:) A revert is a merge of the earlier build WITH REMOVALS, never without. [REQ-1490](#REQ-1490) makes removal a separate confirmation because a merge must not silently empty an environment, and that default is right for a promotion -- prod does not lose what dev never had -- but wrong for a revert, where an object added after the build being returned to is exactly what the revert exists to take away. A revert offered without removals is not a partial revert; it is one that keeps the change being reverted. The removals a revert would perform are therefore named first in its report, and a revert of a protected environment takes the approval of [REQ-1504](#REQ-1504) like any other merge into one. (Amended 2026-08-21, the load is the gate:) The earlier refusal here -- that git must never compute a merge, because a textual three-way would produce a model that parses and does not hold -- is narrowed rather than kept. Merging happens in the organization's forge and CI ([REQ-1524](#REQ-1524)), so git does compute three-way merges of the serialized model, and the protection moves to where it belongs: a TREE IS NOT A MODEL UNTIL A LOAD ACCEPTS IT. Loading validates the whole tree -- every reference resolving, every carried class coherent with the others -- and applies it whole or not at all, so a merge that produced something that parses and does not hold fails at the load, before any schema holds it, and fails naming what does not hold. That failure is an ordinary broken build belonging to whoever merged, discovered where they are already looking, and it is a better place for the check than a prohibition that would have required Provisa to own the merge. (Amended 2026-08-22:) LOADING A TREE IS AN AUTHORED CHANGE, not a read. The repository is a projection and never an authority ([REQ-1524](#REQ-1524)), so nothing a person hand-edits in a working copy reaches the control plane until a LOAD applies it -- but a load applies it whole, and the tree carries ``roles``, so a load into a base is capable of rewriting who may do what there. Two things bound that and both are the org's own to set. On the git side, a base's branch is protected by the host's own rules: prod requiring a pull request approved by named people means no tree reaches prod's branch unreviewed, and hand-editing a working copy produces a proposal rather than a change. On the Provisa side, a load into a protected environment is decided the way [REQ-1504](#REQ-1504) decides a merge into one -- a request, a report of what it would change, and an approval by someone other than the requester. Neither substitutes for the other: git protects the branch, Provisa protects the schema, and a load is the one door between them. (Amended 2026-08-22, the load is performed WHERE IT LANDS:) There is no push. A load is not something dev does to prod; it is something a person does while signed in to the control plane that will hold the result. Whoever loads prod's branch is signed in to the production control plane, holding a production identity, and is answerable to production's own capability checks at the moment of the load -- the same checks any other authored change there passes. This is why the branch being readable to everyone costs nothing: a branch is a proposal until someone with the standing to accept it, in the place that would hold it, accepts it. It also settles the cross-instance question by removing it, since no control plane ever writes to another and a build travels between them only as a tree that a person on the far side chooses to load. NOTHING LOADS ITSELF: Provisa runs no watcher, webhook, poller or CI step that applies a merged branch to the environment it names. A merge into prod's branch produces a tree and changes no schema, and prod holds what it held until someone loads. An automatic load would hand the forge the authority the projection rule denies it, and would make the reviewers of a pull request -- who reviewed text -- the people who applied a model to production without ever seeing the report of what it would change. (Amended 2026-08-22, the CLI:) The load is available as a command -- ``provisa env deploy`` -- so that a deployment pipeline can perform it, and this does not reopen what the paragraph above closed. The rule is not that a machine may never load; it is that a load is always an INVOCATION CARRYING AN IDENTITY against a NAMED control plane, never something the control plane does to itself on noticing a commit. The command is a thin client of the same endpoint the UI calls, with the same target, the same capability check and the same report; CI holding a credential that passes that check is the organization delegating its own standing, which is the org's decision to make and is revocable as any other credential is. What Provisa does not ship is the other thing: a listener inside the deployment that turns somebody else's merge into a change here. (Amended 2026-08-22, the private control plane:) The same rule is what makes a DESKTOP control plane ([REQ-1126](#REQ-1126), [REQ-1128](#REQ-1128)) a first-class place to work. A developer runs their own Provisa, loads the branch they are working on into it, and has the whole model live in a control plane that is theirs -- real schemas, real validation, real queries against sources they bound themselves -- while nothing they do is visible to anyone else, because a control plane never writes to another one. What leaves the desktop is a branch pushed to the org's repository, which is a proposal; what arrives is a branch fetched, which changes nothing until they load it. The blast radius of working this way is exactly one machine, and the review path is the same one every other change takes. (Amended 2026-08-22, what an approver approves:) A load into a protected environment PINS THE COMMIT at the moment it is requested. The caller names a ref, that ref is resolved once, and the sha it resolved to is what the report describes, what the request stores and what applying later applies -- the ref is kept beside it only because a person recognises a branch name. An approval that re-resolved the branch would be an approval of a NAME: the branch moves, and the tree that gets applied is one nobody read. Staleness is derived the other way round for a load than for a merge, because the tree cannot move: what can have changed is the TARGET, so the pinned tree is re-planned against the environment as it now stands, and a report that no longer describes what would happen makes the request stale rather than approvable. A load and a merge are the same kind of proposal and are held in one table, one listing and one decision path: a row names either a source environment or a source ref, never both and never neither. Whether the load SEEDS -- [REQ-1539](#REQ-1539)'s creation-only classes -- is part of what is proposed, because it changes what applying does. (Amended 2026-08-22, a proposal is not a deployment:) When ``provisa env deploy`` produces a request rather than a change, it exits NON-ZERO. A pipeline that read a pending approval as success would report a release that has not happened, and the point of [REQ-1504](#REQ-1504) is that the release has not happened. (Amended 2026-08-22, WHERE THE LOAD SITS IN THE GIT PROCESS:) Stated plainly, because the rest of this requirement states it at length: the git process is the ordinary one -- branch, commit, pull request, review, merge -- and the LOAD is its final step. Merging is the end of the REVIEW; the load is the DEPLOY. Everything up to the merge decides what the model should be and changes no schema; the load is the act that moves the merged tree into a runtime. Whatever verb an org already uses for that step -- deploy, release, activate, provision -- names this one, and there is exactly one of it. It is not an addition to git flow but its last stage made explicit, and the only reason it is a separate act at all is that a merge writes text and a runtime holds a schema. (Amended 2026-08-22, THE VERB IS DEPLOY:) that step is named DEPLOY throughout -- the CLI is ``provisa env deploy``, the endpoint is ``POST /admin/orgs/{org}/environments/{env}/deploy``, the audit actions are ``environment.deploy`` and ``environment.deploy_requested``, and the code that performs it is ``provisa/core/env_deploy.py``. ``load`` described the mechanism (a tree read into a schema) and left every reader to work out what the act MEANT; ``deploy`` is the word every engineering organization already uses for the step that moves a merged change into a runtime, and the naming should not make people learn a second one.
 
 **Use case:** An administrator promotes a reviewed dev build into prod, sees a regression, and returns prod to its previous build without reconstructing anything by hand.
 
@@ -15590,7 +15598,7 @@ Creating an organization tells its administrator the two things about it that th
 
 ### REQ-1498 · Environments {#REQ-1498}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
 
 Every environment operation is available from the provisa command line, because an environment change is rarely the only thing happening: it lands beside a schema change in a source, a deployment, a data load or a test run, and those are scripted. The environment subcommands cover the whole lifecycle -- listing environments, creating and deleting one, binding its sources, showing an environment's current build, diffing two builds, merging one environment or build into another, and reverting an environment to a previous build. Each runs the same code the API runs, so the allow-list of [REQ-1489](#REQ-1489), the merge and removal rules of [REQ-1490](#REQ-1490) and the binding and write-authority rules of [REQ-1491](#REQ-1491) and [REQ-1492](#REQ-1492) hold identically however the operation was invoked; a command line that could copy what the API refuses to copy would be the way secrets leave an environment. Every command reports as text for a person and as JSON for a script, exits non-zero when it refuses and says which rule refused it, and accepts a dry run that prints the merge report -- what would be added, changed, removed and left alone -- without applying it, so a pipeline can gate on the report before it applies anything.
 
@@ -15628,7 +15636,7 @@ A non-prod environment can be exported as a configuration a desktop Provisa load
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Environments take their shape from two exemplars, and which one governs is decided per half of the design rather than argued case by case. Structure follows Hasura: the governed model is a metadata artifact that is exported, diffed and applied, versioned as a build, and moved between environments by an explicit apply rather than by editing the target -- so an environment's model is reproducible from something a person can read and a pipeline can hold. Per-environment state follows LaunchDarkly: what an environment points at, what it may write, who is in it, what it has materialized and which keys address it are environment-scoped facts that a promotion never carries, so promoting a change into production changes what production means and nothing about what production reaches. The two meet at one rule: an object arriving in an environment by merge arrives inert -- present in the model, unbound, writable by no role and materializing nothing -- which is the analogue of a flag that exists in every environment and is on in one. Absence and inertness are different states and are reported differently.
+Environments take their shape from two exemplars, and which one governs is decided per half of the design rather than argued case by case. Structure follows Hasura: the governed model is a metadata artifact that is exported, diffed and applied, versioned as a build, and moved between environments by an explicit apply rather than by editing the target -- so an environment's model is reproducible from something a person can read and a pipeline can hold. Per-environment state follows LaunchDarkly: what an environment points at, what it may write, who is in it, what it has materialized and which keys address it are environment-scoped facts that a promotion never carries, so promoting a change into production changes what production means and nothing about what production reaches. The two meet at one rule: an object arriving in an environment by merge arrives inert -- present in the model, unbound, [SUPERSEDED by [REQ-1529](#REQ-1529), 2026-10-03 -- [REQ-1529](#REQ-1529)'s 2026-08-21 amendment makes column grants a carried class that a merge carries with the model; the code copies table_columns.writable_by verbatim. Kept here for history; do not implement against it.] writable by no role [END SUPERSEDED BLOCK] and materializing nothing -- which is the analogue of a flag that exists in every environment and is on in one. Absence and inertness are different states and are reported differently.
 
 **Use case:** A team reasons about environments with two familiar mental models instead of one novel one, and can predict which facts travel with a promotion before they run it.
 
@@ -15640,7 +15648,7 @@ Environments take their shape from two exemplars, and which one governs is decid
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-An environment's governed model can be exported to files, held in version control and applied back, which is what makes an environment reproducible rather than merely copyable. Export writes the carried classes of [REQ-1489](#REQ-1489) as readable files whose ordering is stable, so two exports of the same model are the same bytes and a review sees the change and not the serializer. Apply takes those files and brings an environment to what they describe under the merge rules of [REQ-1490](#REQ-1490), and diff shows what an apply would do without doing it. An apply that would leave an object unusable -- a relationship whose other side is absent, an RLS rule naming a role that is not there, a metric over a column no longer registered -- reports every such object and applies nothing; a model that is inconsistent in a file is inconsistent in an environment, and finding out at query time is finding out too late. (Amended 2026-08-21:) Export is not an operation an administrator remembers to run: the files exist continuously, because [REQ-1524](#REQ-1524) writes them through on every change. Exporting is therefore reading the environment's repository at a build, and holding the model in version control is what the environment already does rather than something done to it afterwards. Stable ordering stops being a courtesy to reviewers and becomes required -- an unstable serializer would make every commit a diff of itself and bury the change nobody could then find. Apply keeps its meaning unchanged: files describe a model, the merge rules of [REQ-1490](#REQ-1490) bring an environment to it, and the consistency check refuses the whole apply rather than landing part of one.
+An environment's governed model can be exported to files, held in version control and applied back, which is what makes an environment reproducible rather than merely copyable. Export writes the carried classes of [REQ-1489](#REQ-1489) as readable files whose ordering is stable, so two exports of the same model are the same bytes and a review sees the change and not the serializer. [SUPERSEDED by [REQ-1526](#REQ-1526), 2026-10-03 -- [REQ-1526](#REQ-1526) (Amended 2026-08-23) states a load applies the tree whole and deletes what the tree lacks; removal is not a separate confirmation on an apply. Kept here for history; do not implement against it.] Apply takes those files and brings an environment to what they describe under the merge rules of [REQ-1490](#REQ-1490) [END SUPERSEDED BLOCK], and diff shows what an apply would do without doing it. An apply that would leave an object unusable -- a relationship whose other side is absent, an RLS rule naming a role that is not there, a metric over a column no longer registered -- reports every such object and applies nothing; a model that is inconsistent in a file is inconsistent in an environment, and finding out at query time is finding out too late. (Amended 2026-08-21:) Export is not an operation an administrator remembers to run: the files exist continuously, because [REQ-1524](#REQ-1524) writes them through on every change. Exporting is therefore reading the environment's repository at a build, and holding the model in version control is what the environment already does rather than something done to it afterwards. Stable ordering stops being a courtesy to reviewers and becomes required -- an unstable serializer would make every commit a diff of itself and bury the change nobody could then find. Apply keeps its meaning unchanged: files describe a model, the merge rules of [REQ-1490](#REQ-1490) bring an environment to it, and the consistency check refuses the whole apply rather than landing part of one.
 
 **Use case:** A team reviews a model change as a diff in a pull request and applies the merged result to an environment from the same files.
 
@@ -15650,7 +15658,7 @@ An environment's governed model can be exported to files, held in version contro
 
 ### REQ-1503 · Environments {#REQ-1503}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
 
 A credential addresses exactly one environment. API keys, service tokens and any other non-interactive credential are issued into an environment and carry it, so a key cannot be pointed at another environment by changing a header: a request whose credential names one environment and whose x-provisa-env header names another is refused rather than resolved in favour of either. This is what makes an environment safe to hand out -- an application configured with a dev environment's key reaches dev whatever it sends -- and it is why keys are never carried by a copy or a merge. Rotating or revoking an environment's keys affects that environment alone, and deleting an environment revokes its keys with it.
 
@@ -15674,19 +15682,19 @@ An environment can be protected, and a merge into a protected environment waits 
 
 ### REQ-1505 · Environments {#REQ-1505}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Every environment keeps a change history, and any two environments can be compared for one object. The history records what changed in that environment's governed model, who changed it and when, and whether the change was made in the environment or arrived by a merge, naming the source environment and build when it did -- so the question a production incident asks, what changed here and where did it come from, is answered without reconstructing it from builds. Comparison answers the other question: for one table, metric or rule, what does dev say and what does prod say, shown as a difference rather than as two documents to read side by side.
 
 **Use case:** An administrator investigating a production behaviour sees the change that introduced it, which environment it came from and how prod's version of that object differs from dev's.
 
-**Code:** `provisa/core/env_history.py`, `provisa/core/env_builds.py`, `provisa-ui/src/components/EnvironmentHistory.tsx`, `provisa-ui/src/components/EnvironmentCompare.tsx`
+**Code:** `provisa/core/env_repo.py`, `provisa/api/admin/model_commit.py`, `provisa/api/admin/environments_router.py`, `provisa-ui/src/components/admin/RepoBrowser.tsx`, `provisa-ui/src/components/admin/ConfigDiffView.tsx`, `provisa-ui/src/api/environments.ts`
 
-**Tests:** `tests/unit/test_env_history.py`
+**Tests:** `tests/unit/test_env_repo.py`, `tests/unit/test_env_repo_browse_endpoints.py`, `tests/unit/test_env_merge_request_endpoints.py`, `provisa-ui/src/__tests__/RepoBrowser.test.tsx`
 
 ### REQ-1506 · Environments {#REQ-1506}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
 A merge can be scoped to part of a model. Promoting one corrected metric should not require promoting every other change the source environment has accumulated, so a merge accepts a selection of objects and carries them alone. The selection closes over what the chosen objects require: a metric brought without the column it reads, or a relationship without the table on its other side, would land inconsistent, so the merge report names the objects pulled in by the selection and the merge either carries them or refuses. A scoped merge is a merge in every other respect -- the same exclusions, the same untouched target state, the same all-or-nothing application, the same approval where the target is protected.
 
@@ -15698,7 +15706,7 @@ A merge can be scoped to part of a model. Promoting one corrected metric should 
 
 ### REQ-1507 · Environments {#REQ-1507}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
 Environments are gated by an entitlement feature, not by a product name. The gate is a Feature in provisa/control_plane/entitlements.py with a minimum Tier, checked by require_feature the same way every other gated capability is; which packaged product carries that tier is a price-list decision recorded in [REQ-1452](#REQ-1452) and may change without touching this gate. The minimum tier is premium, because the tiers describe different customers rather than different sizes of the same one. The standard tier is bought by a reporting team, an analytics group, a data-science team -- people who model and query what already exists, for whom one governed model and its history is the whole need. The premium tier is bought by a business whose systems depend on this one: a model change there is a change to something in production, so it is developed somewhere else, reviewed and promoted, which is exactly what an environment is for. An org below the minimum tier has prod and cannot create another environment; the environment API and the environment CLI refuse naming the tier the feature requires rather than failing obscurely, and the in-product plan picker names environments as what the upgrade buys, using whatever the current product name for that tier is. A developer below the gate is not left without a local copy: the file export of [REQ-1502](#REQ-1502) carries the model to a desktop install, where they bind their own sources, so the model travels and no credential does. When an org that has environments moves below the minimum tier, its non-prod environments are frozen rather than deleted -- no queries run in them and nothing merges out of them, while their models stay readable and exportable until the org deletes them or is entitled again. Billing changes may not destroy a customer's work.
 
@@ -15730,7 +15738,7 @@ An organization changes its own plan from the Billing page, in either direction,
 
 **Use case:** An organization that has outgrown Starter moves itself to Pro M from the Billing page and has the larger engine within the same session, with no sales contact and no second card entry; one that over-bought moves back down and sees the credit on its next invoice.
 
-**Code:** `provisa_commercial/router.py`, `provisa_commercial/usage.py`, `provisa_commercial/lemonsqueezy_client.py`, `provisa_commercial/models.py`, `provisa_commercial/org_db.py`, `provisa-ui/src/components/admin/BillingTab.tsx`
+**Code:** `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/usage.py`, `.claude/commercial/provisa_commercial/lemonsqueezy_client.py`, `.claude/commercial/provisa_commercial/models.py`, `.claude/commercial/provisa_commercial/org_db.py`, `.claude/commercial/provisa_commercial/plan_lane.py`, `provisa-ui/src/components/admin/BillingTab.tsx`
 
 **Tests:** `.claude/commercial/tests/test_plan_change.py`, `.claude/commercial/tests/test_plan_lane.py`, `provisa-ui/src/__tests__/BillingTab.test.tsx`
 
@@ -15742,7 +15750,7 @@ On a hosted deployment an organization's engine lane and its engine size are DER
 
 **Use case:** An organization that upgrades to Pro M is running on a dedicated engine of that size within the same session, and one that returns to Starter is back on the shared shard it started from with its dedicated engine released -- neither having chosen a lane, and neither able to end up paying for one thing while running on another.
 
-**Code:** `provisa/federation/k8s_provisioner.py`, `provisa/federation/engine_wake.py`, `provisa/federation/engine.py`, `provisa_commercial/entitlements.py`, `provisa_commercial/org_engine_router.py`
+**Code:** `provisa/federation/k8s_provisioner.py`, `provisa/federation/engine_wake.py`, `provisa/federation/engine.py`, `.claude/commercial/provisa_commercial/plan_lane.py`, `.claude/commercial/provisa_commercial/entitlements.py`, `.claude/commercial/provisa_commercial/org_engine_router.py`
 
 **Tests:** `tests/unit/test_engine_wake.py`, `.claude/commercial/tests/test_plan_lane.py`
 
@@ -15754,7 +15762,7 @@ The Billing page is where an organization changes its plan. It shows the four or
 
 **Use case:** An administrator comparing Pro sizes sees the machine and the price of each, changes to the one they want, is told what will be charged now, and watches their new engine come up -- without leaving the product, contacting sales, or entering a card a second time.
 
-**Code:** `provisa-ui/src/components/admin/BillingTab.tsx`, `provisa-ui/src/api/billing.ts`, `provisa_commercial/router.py`
+**Code:** `provisa-ui/src/components/admin/BillingTab.tsx`, `provisa-ui/src/api/billing.ts`, `.claude/commercial/provisa_commercial/router.py`
 
 **Tests:** `provisa-ui/src/__tests__/BillingTab.test.tsx`
 
@@ -15766,7 +15774,7 @@ On a hosted deployment the engine an organization runs on is reported, not chose
 
 **Use case:** A hosted organization's administrator opening the engine page learns which engine their queries run on and whether it is up, and is sent to Billing to change it -- never faced with a lane or an engine kind their plan does not sell, and never able to put their organization on a lane it is not paying for.
 
-**Code:** `provisa-ui/src/components/admin/OrgEngineTab.tsx`, `provisa-ui/src/components/admin/FederationEngineTab.tsx`, `provisa-ui/src/components/navGroups.ts`, `provisa_commercial/org_engine_router.py`
+**Code:** `provisa-ui/src/components/admin/OrgEngineTab.tsx`, `provisa-ui/src/components/admin/FederationEngineTab.tsx`, `provisa-ui/src/components/navGroups.ts`, `.claude/commercial/provisa_commercial/org_engine_router.py`
 
 **Tests:** `provisa-ui/src/__tests__/OrgEngineTab.test.tsx`, `provisa-ui/src/__tests__/navEntryItem.test.ts`, `.claude/commercial/tests/test_plan_lane.py`
 
@@ -15778,9 +15786,9 @@ The source ceiling a plan sells is enforced where sources are created, not only 
 
 **Use case:** An administrator of a hosted Starter organization registering an eleventh data source is told how many of the ten their plan admits are already in use and is sent to Billing, rather than finding the eleventh source registered and the plan card's promise meaningless.
 
-**Code:** `provisa/core/models.py`, `provisa/core/repositories/source.py`, `provisa/core/commerce.py`, `provisa/api/admin/schema_mutation.py`, `provisa_commercial/entitlements.py`, `provisa_commercial/router.py`, `provisa-ui/src/i18n/locales/en/serverErrors.json`
+**Code:** `provisa/core/models.py`, `provisa/core/repositories/source.py`, `provisa/core/commerce.py`, `provisa/api/admin/schema_mutation.py`, `.claude/commercial/provisa_commercial/entitlements.py`, `.claude/commercial/provisa_commercial/router.py`, `provisa-ui/src/i18n/locales/en/serverErrors.json`
 
-**Tests:** `tests/unit/test_source_limit.py`, `.claude/commercial/tests/test_plan_change.py`
+**Tests:** `tests/unit/test_source_limit.py`, `.claude/commercial/tests/test_source_limit_entitlement.py`, `.claude/commercial/tests/test_plan_change.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -15836,7 +15844,7 @@ A raw-SQL statement must account for itself the way a GraphQL query does. The Gr
 
 ## 13. Multi-Tenancy & Organizations
 
-### REQ-1518 · Multi-tenancy {#REQ-1518}
+### REQ-1518 · Multi-Tenancy {#REQ-1518}
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
@@ -15908,7 +15916,7 @@ An analyzed plan must carry the row and cost estimates the target engine already
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-An environment name is bounded, and so is the number of them. [REQ-1488](#REQ-1488) makes an environment a schema of its own, so a free-form name is a schema name and an unbounded count is unbounded schemas: the short-lived per-developer environments an org actually creates -- dev-alice, dev-1482-refund-fix -- accumulate until nothing reaps them. A name is therefore lowercase letters, digits and underscores, starting with a letter, two to thirty-two characters, and unique within the org. Hyphens are excluded for the reason [REQ-1309](#REQ-1309) excludes them from an org id -- the name is interpolated unquoted into schema DDL, where a hyphen is a syntax error raised during background provisioning -- and an environment loses nothing by it, because [REQ-1487](#REQ-1487) carries the selection in a header rather than a DNS label, so dev_alice is the spelling of dev-alice. Thirty-two is the cap the name may reach, not the one it always has: the environment's schema is org_<id>_env_<name> and its caches suffix that, so the real cap is whatever PostgreSQL's 63-byte identifier limit leaves after THIS org's id, computed against the actual id at creation and refused with both lengths named. PostgreSQL truncates a long identifier instead of refusing it, so an unchecked name would silently point two environments at one schema. The separator is _env_ rather than the __ the compiler spends on catalog names, and because [REQ-1309](#REQ-1309) forbids an underscore in an org id the first _env_ after the prefix always splits the schema into exactly one org and one environment; prod is reserved by [REQ-1487](#REQ-1487) and the platform's own prefixes are refused rather than truncated, because the name reaches a schema identifier. The count of environments an org may hold is a limit on its plan, enforced where an environment is created rather than only where a plan is downgraded, in the manner [REQ-1513](#REQ-1513) already uses for the source ceiling. An environment may carry an expiry chosen at creation, after which it is deleted with its schema and its store; prod can carry none. Expiry is opt-in and its absence means permanent -- an environment is never reaped for being idle, because a quiet pre-prod is not an abandoned one. An org_admin is told which environments expire and when, and may extend or clear an expiry at any time before it fires.
+An environment name is bounded, and so is the number of them. [REQ-1488](#REQ-1488) makes an environment a schema of its own, so a free-form name is a schema name and an unbounded count is unbounded schemas: the short-lived per-developer environments an org actually creates -- dev-alice, dev-1482-refund-fix -- accumulate until nothing reaps them. A name is therefore lowercase letters, digits and underscores, starting with a letter, two to thirty-two characters, and unique within the org. Hyphens are excluded for the reason [REQ-1309](#REQ-1309) excludes them from an org id -- the name is interpolated unquoted into schema DDL, where a hyphen is a syntax error raised during background provisioning -- and an environment loses nothing by it, because [REQ-1487](#REQ-1487) carries the selection in a header rather than a DNS label, so dev_alice is the spelling of dev-alice. Thirty-two is the cap the name may reach, not the one it always has: the environment's schema is org_<id>_env_<name> and its caches suffix that, so the real cap is whatever PostgreSQL's 63-byte identifier limit leaves after THIS org's id, computed against the actual id at creation and refused with both lengths named. PostgreSQL truncates a long identifier instead of refusing it, so an unchecked name would silently point two environments at one schema. The separator is _env_ rather than the __ the compiler spends on catalog names, and because [REQ-1309](#REQ-1309) forbids an underscore in an org id the first _env_ after the prefix always splits the schema into exactly one org and one environment; prod is reserved by [REQ-1487](#REQ-1487) and the platform's own prefixes are refused rather than truncated, because the name reaches a schema identifier. The count of environments an org may hold is a limit on its plan, enforced where an environment is created rather than only where a plan is downgraded, in the manner [REQ-1513](#REQ-1513) already uses for the source ceiling. An environment may carry an expiry chosen at creation, [SUPERSEDED by [REQ-1918](#REQ-1918), 2026-10-03 -- An expired environment that a pinned membership, an invitation or a branch still refers to is kept, not deleted (provisa/core/env_reaper.py:116-121); note [REQ-1918](#REQ-1918) is itself still proposed. Kept here for history; do not implement against it.] after which it is deleted with its schema and its store [END SUPERSEDED BLOCK]; prod can carry none. Expiry is opt-in and its absence means permanent -- [SUPERSEDED by [REQ-1600](#REQ-1600), 2026-10-03 -- [REQ-1600](#REQ-1600) (complete) adds environments.idle_ttl_seconds: an environment carrying one IS reaped after that long unused (provisa/core/env_store.py:175-197). Kept here for history; do not implement against it.] an environment is never reaped for being idle, because a quiet pre-prod is not an abandoned one. [END SUPERSEDED BLOCK] An org_admin is told which environments expire and when, and may extend or clear an expiry at any time before it fires.
 
 **Use case:** A developer creates dev-1482-refund-fix for a two-week change and gives it a two-week expiry, and the org is not left holding forty dev schemas a year later.
 
@@ -15920,7 +15928,7 @@ An environment name is bounded, and so is the number of them. [REQ-1488](#REQ-14
 
 **Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
-Every environment has a repository, and the repository is a PROJECTION of the environment, never an authority over it. The governed model lives in the tenant control plane and is read from there by every query ([REQ-1488](#REQ-1488)); each change to a carried class of [REQ-1489](#REQ-1489) additionally serializes that class to files and commits them, so an environment's history, its builds ([REQ-1496](#REQ-1496)) and its export ([REQ-1502](#REQ-1502)) are one artifact instead of three mechanisms. The commit carries the acting user as its author and names what changed, which is where [REQ-1505](#REQ-1505)'s history comes from without a second ledger. Because the repository is derived, a failed commit MUST NOT fail the change it observes -- a model edit that succeeded is not undone by a disk that would not take a projection of it, which is the [REQ-1515](#REQ-1515) rule applied to a different observer -- and the environment is instead marked as having drifted. Drift is repairable by construction and the repair ships with the write-through rather than after it: rebuilding re-serializes every carried class from the control plane and commits the result, which is correct however far behind the tree had fallen. The tree holds the carried classes and nothing else; no binding, secret, grant or runtime table is ever written to it, so the [REQ-1489](#REQ-1489) exclusion becomes something a person can see in a file listing rather than only something a test asserts. The repository is EMBEDDED -- a bare repository per environment, held by the deployment beside the org's own storage -- because [REQ-294](#REQ-294) makes the distribution airgap-capable and an external forge cannot be a dependency of editing a model; the git implementation is therefore pure Python with no native library to build. The repository is a normal one on disk, so an organization that wants it on a forge adds a remote and pushes with ordinary git; Provisa configures no remote, holds no push credential and performs no push, which keeps a credential out of the control plane and keeps Provisa out of a business -- remote state, conflicts, rejected pushes -- it has no reason to enter. (Amended 2026-08-21, one repository per ORGANIZATION:) The bare repository is per organization and an environment is a BRANCH within it, not a repository of its own. The boundary is not a packaging convenience -- a repository is exactly the set of refs that can branch from one another and merge back into one another, and that set is the org: an environment is always created from another environment of the same org or a sha of one, and always merges back into one, while a branch or merge across orgs is never a legal operation. Two environments in separate repositories share no object graph, so a pull request between them cannot be expressed at all, which would leave [REQ-1504](#REQ-1504)'s review-as-a-pull-request unbuildable. A single deployment-wide repository with refs namespaced per org is refused for the opposite reason: git objects are content-addressed and shared across refs, so one object store holding every tenant would let an org fetch another org's model objects by hash. Per-org is therefore the same isolation boundary as the org schema of [REQ-1488](#REQ-1488), drawn where git already draws one, and it is provisioned with the schema, the role and the stores at org creation. Creating an environment from a sha is branching that sha and loading its tree into the new environment's schema; the branch is named for the environment. (Amended 2026-08-21, three verbs and automatic commits:) Provisa's git surface is BRANCH, BROWSE and LOAD, and nothing else. A branch can be created, the repository's branches and history can be browsed, and any branch or sha can be loaded into an environment. Committing is not a verb: the write-through above commits every change as it happens, which is what makes UNDO free rather than a feature -- undoing is loading an earlier sha, and it works for any change ever made rather than for the ones somebody remembered to mark. The cost is a history of generated messages, and a person who wants a legible one squashes it afterwards with ordinary git, which is a better trade than asking everyone to name their work at the moment they are least inclined to. Everything else -- pushing, fetching, merging, rebasing, promotion, CI -- is done with ordinary git against this repository by whoever wants to do it, and Provisa neither performs those operations nor polices them. It is a normal repository, so normal tools work on it; a product that reimplemented them would be reimplementing git badly, and one that restricted them would be preventing the workflows the organization already has. The consequence is accepted deliberately: a branch may move underneath an environment, and that is not an error state Provisa tracks. What protects the model is not control over the repository but [REQ-1496](#REQ-1496) -- a tree is not a model until a load validates it and applies it whole or not at all. (Amended 2026-08-21, BROWSE is a REF browser and the library is pure Python:) The load sources are a ref in the org's repository -- a branch or a sha -- and a set of files the operator brings; there is no third one, and in particular there is no server filesystem for a tenant to pick a path out of. The config file on disk is the DEPLOYMENT's boot seed ([REQ-164](#REQ-164)), not a tenant load source, so a browser that showed directories would be offering the operator a machine they do not own. BROWSE therefore lists branches, their history and the commits within it, and selecting a commit is selecting what LOAD will apply -- the tree is shown as the files at that commit, which [REQ-1526](#REQ-1526) makes readable, but it is browsed by ref and never by path. The implementation is dulwich: it is pure Python, so it satisfies the no-native-library rule above and needs no git binary on the host, which GitPython would (it shells out, so an image without git silently loses history) and pygit2 would not satisfy at all (libgit2 is a native build, and [REQ-294](#REQ-294)'s airgap distribution cannot carry a compiler). (Amended 2026-08-21, the repository exists from the first moment there is a model, and its location is the org's to choose:) The repository is not created lazily by the first change. A deployment launched with --demo has a model before anyone edits anything, and that model is committed as the demo repository's first commit, so the demo opens on a history rather than on an empty one and every verb -- BRANCH, BROWSE, LOAD -- works on it before a single edit. A deployment launched without the demo has no model, and the act that produces one -- creating the org, whose prod environment [REQ-1487](#REQ-1487) gives it at creation -- creates the bare repository beside it, in the same act and with the same failure semantics as its schema. There is no state in which an environment holds a model and has no repository to project it into. WHERE the repository lives is configurable the way every other developer tool makes it configurable: the default is embedded, a bare repository the deployment holds ([REQ-294](#REQ-294)'s airgap rule makes that the only default that can always work), and an organization may instead point the projection at a local path it already keeps or at a remote it already uses. Pointing at a remote makes Provisa push, which is the part REQ-1524 originally refused, so it is admitted only on the terms [REQ-1525](#REQ-1525) already sets for every other credential: the authentication is a REFERENCE resolved at use time (${env:VAR} through provisa/core/secrets.py), never a literal in the control plane, and an org that supplies none gets the embedded default rather than a broken push. A push that fails is a projection that did not land -- it marks the environment drifted and never fails the change it observes, which is the same rule the local commit already obeys. (Amended 2026-08-21, the local store is mandatory and the environment IS the working copy:) A configured remote is a PUSH MIRROR and never the store. The embedded bare repository is always written first and is always what BROWSE and LOAD read; nothing serving a page ever fetches from a remote. That is precisely what makes the remote optional -- an org that configures none, or whose remote is unreachable, loses a mirror and never loses a verb. There is NO per-developer git storage, no server-side clone and no working directory allocated to a user. A developer's working copy is the ENVIRONMENT, which [REQ-1488](#REQ-1488) already makes a schema: creating a branch is creating an environment, and that developer's undo history is that environment's branch in the org's one repository, written by the write-through above. The quota on this is the plan's environment ceiling ([REQ-1488](#REQ-1488)), already counted and already enforced, rather than a second per-user storage quota to allocate, meter and garbage-collect. The consequence is that the SaaS deployment and the single-tenant deployment differ in NOTHING here -- there is no mechanism in one that is absent from the other, no per-seat storage tier and no hosted-only path -- which is the reason to prefer this shape over server-side clones even before the operational cost is counted. Provisa's git UI is the three verbs and no more: browse a ref, diff two refs per file, merge with a report. Rebase, cherry-pick, force-push and textual conflict resolution are absent by construction rather than by omission, because [REQ-1490](#REQ-1490)'s merge matches by OBJECT IDENTITY and therefore has no textual conflict to resolve; a product that reimplemented those verbs would be reimplementing git badly on top of a merge that does not need them. (Amended 2026-08-22, WHERE THE COMMIT IS TRIGGERED AND WHEN THE REPOSITORY IS CREATED:) The write-through has ONE trigger: a strawberry SchemaExtension registered on the admin GraphQL schema, which after every mutation that completed without errors projects the environment's schema and commits the result. It is one place rather than fifty resolvers because a rule that must be remembered at fifty call sites is a rule that will be missed at the fifty-first, and a mutation added later is projected without anyone adding a line for it. It projects the WHOLE model rather than the rows a mutation appears to touch: a resolver does not report what it wrote, and a change set inferred from what it seems to write would be a second, weaker model of the model. Projection is deterministic ([REQ-1526](#REQ-1526)), so an unchanged model produces a byte- identical tree and NO commit is written -- the filter is the tree comparison, which cannot be wrong about what changed. It runs AFTER the operation and never before, because a commit records what the model is and not what somebody asked it to become; an operation whose result carries errors is skipped for the same reason. The organization's repository is created by the act that produces the organization, in the same provisioning path that writes prod's registry row, and with the same failure semantics as the schema: creating it raises, so an org whose repository could not be created never reaches ready. Prod's FIRST commit is written there too, once the org already holds its seeded model (and its demo model when --demo asked for one), which is what makes the first user edit read as a diff instead of the whole model appearing at once. The environment whose branch receives a commit is the one the request is bound to ([REQ-1487](#REQ-1487)): an unbound request is the default org's prod, which is the routing rule read back rather than a default invented at the commit point. (Amended 2026-10-03, EVERY MODEL CHANGE COMMITS:) Every change to the model commits to the environment's branch. The write-through sits in the model store's connection ([REQ-1919](#REQ-1919)) and makes one commit per request, load, import, reaper run or boot. Environment create, merge, deploy, undo and redo keep their own commits. A projection that fails marks the environment drifted.
+Every environment has a repository, and the repository is a PROJECTION of the environment, never an authority over it. The governed model lives in the tenant control plane and is read from there by every query ([REQ-1488](#REQ-1488)); each change to a carried class of [REQ-1489](#REQ-1489) additionally serializes that class to files and commits them, so an environment's history, its builds ([REQ-1496](#REQ-1496)) and its export ([REQ-1502](#REQ-1502)) are one artifact instead of three mechanisms. The commit carries the acting user as its author and names what changed, which is where [REQ-1505](#REQ-1505)'s history comes from without a second ledger. Because the repository is derived, a failed commit MUST NOT fail the change it observes -- a model edit that succeeded is not undone by a disk that would not take a projection of it, which is the [REQ-1515](#REQ-1515) rule applied to a different observer -- and the environment is instead marked as having drifted. Drift is repairable by construction and the repair ships with the write-through rather than after it: rebuilding re-serializes every carried class from the control plane and commits the result, which is correct however far behind the tree had fallen. The tree holds the carried classes and nothing else; no binding, secret, grant or runtime table is ever written to it, so the [REQ-1489](#REQ-1489) exclusion becomes something a person can see in a file listing rather than only something a test asserts. [SUPERSEDED by REQ-1524 amendment, 2026-10-03 -- Its own 2026-08-21 amendment makes the repository per organization with an environment a branch in it. Kept here for history; do not implement against it.] The repository is EMBEDDED -- a bare repository per environment, held by the deployment beside the org's own storage [END SUPERSEDED BLOCK] -- because [REQ-294](#REQ-294) makes the distribution airgap-capable and an external forge cannot be a dependency of editing a model; the git implementation is therefore pure Python with no native library to build. The repository is a normal one on disk, so an organization that wants it on a forge adds a remote and pushes with ordinary git; [SUPERSEDED by [REQ-1527](#REQ-1527), 2026-10-03 -- The org's remote is stored on the orgs row and Provisa pushes to it after every commit (and on request, [REQ-1546](#REQ-1546)). Kept here for history; do not implement against it.] Provisa configures no remote, holds no push credential and performs no push, which keeps a credential out of the control plane and keeps Provisa out of a business -- remote state, conflicts, rejected pushes -- it has no reason to enter. [END SUPERSEDED BLOCK] (Amended 2026-08-21, one repository per ORGANIZATION:) The bare repository is per organization and an environment is a BRANCH within it, not a repository of its own. The boundary is not a packaging convenience -- a repository is exactly the set of refs that can branch from one another and merge back into one another, and that set is the org: an environment is always created from another environment of the same org or a sha of one, and always merges back into one, while a branch or merge across orgs is never a legal operation. Two environments in separate repositories share no object graph, so a pull request between them cannot be expressed at all, which would leave [REQ-1504](#REQ-1504)'s review-as-a-pull-request unbuildable. A single deployment-wide repository with refs namespaced per org is refused for the opposite reason: git objects are content-addressed and shared across refs, so one object store holding every tenant would let an org fetch another org's model objects by hash. Per-org is therefore the same isolation boundary as the org schema of [REQ-1488](#REQ-1488), drawn where git already draws one, and it is provisioned with the schema, the role and the stores at org creation. Creating an environment from a sha is branching that sha and loading its tree into the new environment's schema; the branch is named for the environment. (Amended 2026-08-21, three verbs and automatic commits:) Provisa's git surface is BRANCH, BROWSE and LOAD, and nothing else. A branch can be created, the repository's branches and history can be browsed, and any branch or sha can be loaded into an environment. Committing is not a verb: the write-through above commits every change as it happens, which is what makes UNDO free rather than a feature -- undoing is loading an earlier sha, and it works for any change ever made rather than for the ones somebody remembered to mark. The cost is a history of generated messages, and a person who wants a legible one squashes it afterwards with ordinary git, which is a better trade than asking everyone to name their work at the moment they are least inclined to. [SUPERSEDED by [REQ-1546](#REQ-1546), 2026-10-03 -- Provisa performs push ([REQ-1546](#REQ-1546)), fetch and pull ([REQ-1541](#REQ-1541)) and merge ([REQ-1490](#REQ-1490)) itself; all four are router endpoints. Kept here for history; do not implement against it.] Everything else -- pushing, fetching, merging, rebasing, promotion, CI -- is done with ordinary git against this repository by whoever wants to do it, and Provisa neither performs those operations nor polices them. [END SUPERSEDED BLOCK] It is a normal repository, so normal tools work on it; a product that reimplemented them would be reimplementing git badly, and one that restricted them would be preventing the workflows the organization already has. The consequence is accepted deliberately: a branch may move underneath an environment, and that is not an error state Provisa tracks. What protects the model is not control over the repository but [REQ-1496](#REQ-1496) -- a tree is not a model until a load validates it and applies it whole or not at all. (Amended 2026-08-21, BROWSE is a REF browser and the library is pure Python:) The load sources are a ref in the org's repository -- a branch or a sha -- and a set of files the operator brings; there is no third one, and in particular there is no server filesystem for a tenant to pick a path out of. The config file on disk is the DEPLOYMENT's boot seed ([REQ-164](#REQ-164)), not a tenant load source, so a browser that showed directories would be offering the operator a machine they do not own. BROWSE therefore lists branches, their history and the commits within it, and selecting a commit is selecting what LOAD will apply -- the tree is shown as the files at that commit, which [REQ-1526](#REQ-1526) makes readable, but it is browsed by ref and never by path. The implementation is dulwich: it is pure Python, so it satisfies the no-native-library rule above and needs no git binary on the host, which GitPython would (it shells out, so an image without git silently loses history) and pygit2 would not satisfy at all (libgit2 is a native build, and [REQ-294](#REQ-294)'s airgap distribution cannot carry a compiler). (Amended 2026-08-21, the repository exists from the first moment there is a model, and its location is the org's to choose:) The repository is not created lazily by the first change. A deployment launched with --demo has a model before anyone edits anything, and that model is committed as the demo repository's first commit, so the demo opens on a history rather than on an empty one and every verb -- BRANCH, BROWSE, LOAD -- works on it before a single edit. A deployment launched without the demo has no model, and the act that produces one -- creating the org, whose prod environment [REQ-1487](#REQ-1487) gives it at creation -- creates the bare repository beside it, in the same act and with the same failure semantics as its schema. There is no state in which an environment holds a model and has no repository to project it into. WHERE the repository lives is configurable the way every other developer tool makes it configurable: the default is embedded, a bare repository the deployment holds ([REQ-294](#REQ-294)'s airgap rule makes that the only default that can always work), and an organization may instead point the projection at a local path it already keeps or at a remote it already uses. Pointing at a remote makes Provisa push, which is the part REQ-1524 originally refused, so it is admitted only on the terms [REQ-1525](#REQ-1525) already sets for every other credential: the authentication is a REFERENCE resolved at use time (${env:VAR} through provisa/core/secrets.py), never a literal in the control plane, and an org that supplies none gets the embedded default rather than a broken push. [SUPERSEDED by [REQ-1546](#REQ-1546), 2026-10-03 -- A failed mirror is recorded as the branch's sync state (ahead of the remote) and repaired by an explicit push; the code logs a failed push and does not set drifted (provisa/core/env_ci.py:228-229). Kept here for history; do not implement against it.] A push that fails is a projection that did not land -- it marks the environment drifted and never fails the change it observes, which is the same rule the local commit already obeys. [END SUPERSEDED BLOCK] (Amended 2026-08-21, the local store is mandatory and the environment IS the working copy:) A configured remote is a PUSH MIRROR and never the store. The embedded bare repository is always written first and is always what BROWSE and LOAD read; nothing serving a page ever fetches from a remote. That is precisely what makes the remote optional -- an org that configures none, or whose remote is unreachable, loses a mirror and never loses a verb. There is NO per-developer git storage, no server-side clone and no working directory allocated to a user. A developer's working copy is the ENVIRONMENT, which [REQ-1488](#REQ-1488) already makes a schema: creating a branch is creating an environment, and that developer's undo history is that environment's branch in the org's one repository, written by the write-through above. The quota on this is the plan's environment ceiling ([REQ-1488](#REQ-1488)), already counted and already enforced, rather than a second per-user storage quota to allocate, meter and garbage-collect. The consequence is that the SaaS deployment and the single-tenant deployment differ in NOTHING here -- there is no mechanism in one that is absent from the other, no per-seat storage tier and no hosted-only path -- which is the reason to prefer this shape over server-side clones even before the operational cost is counted. Provisa's git UI is the three verbs and no more: browse a ref, diff two refs per file, merge with a report. Rebase, cherry-pick, force-push and textual conflict resolution are absent by construction rather than by omission, because [REQ-1490](#REQ-1490)'s merge matches by OBJECT IDENTITY and therefore has no textual conflict to resolve; a product that reimplemented those verbs would be reimplementing git badly on top of a merge that does not need them. (Amended 2026-08-22, WHERE THE COMMIT IS TRIGGERED AND WHEN THE REPOSITORY IS CREATED:) [SUPERSEDED by [REQ-1919](#REQ-1919), 2026-10-03 -- The 2026-10-03 amendment moves the write-through into the model store's connection, one commit per request, load, import, reaper run or boot. Kept here for history; do not implement against it.] The write-through has ONE trigger: a strawberry SchemaExtension registered on the admin GraphQL schema, which after every mutation that completed without errors projects the environment's schema and commits the result. [END SUPERSEDED BLOCK] It is one place rather than fifty resolvers because a rule that must be remembered at fifty call sites is a rule that will be missed at the fifty-first, and a mutation added later is projected without anyone adding a line for it. It projects the WHOLE model rather than the rows a mutation appears to touch: a resolver does not report what it wrote, and a change set inferred from what it seems to write would be a second, weaker model of the model. Projection is deterministic ([REQ-1526](#REQ-1526)), so an unchanged model produces a byte- identical tree and NO commit is written -- the filter is the tree comparison, which cannot be wrong about what changed. It runs AFTER the operation and never before, because a commit records what the model is and not what somebody asked it to become; an operation whose result carries errors is skipped for the same reason. The organization's repository is created by the act that produces the organization, in the same provisioning path that writes prod's registry row, and with the same failure semantics as the schema: creating it raises, so an org whose repository could not be created never reaches ready. Prod's FIRST commit is written there too, once the org already holds its seeded model (and its demo model when --demo asked for one), which is what makes the first user edit read as a diff instead of the whole model appearing at once. The environment whose branch receives a commit is the one the request is bound to ([REQ-1487](#REQ-1487)): an unbound request is the default org's prod, which is the routing rule read back rather than a default invented at the commit point. (Amended 2026-10-03, EVERY MODEL CHANGE COMMITS:) Every change to the model commits to the environment's branch. The write-through sits in the model store's connection ([REQ-1919](#REQ-1919)) and makes one commit per request, load, import, reaper run or boot. Environment create, merge, deploy, undo and redo keep their own commits. A projection that fails marks the environment drifted.
 
 **Use case:** An org_admin asks what changed in prod last Tuesday and who changed it, and reads it from the environment's history; the same organization reviews a dev-to-prod promotion as a pull request in its own GitHub, because the builds are already there.
 
@@ -15954,21 +15962,21 @@ The serialized model is a DIRECTORY OF FILES, one file per entity, and never a s
 
 ### REQ-1527 · Environments {#REQ-1527}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Provisa does not run CI; it integrates with the CI the organization already has, and the integration point is the remote of [REQ-1524](#REQ-1524) rather than anything Provisa hosts. Pushing the projection to the org's own remote puts real files in front of their existing pipeline, which is the shape every comparable hosted product uses -- the vendor holds the environment, the customer's git and CI hold the pipeline -- and it is the only shape that works for an org whose review policy, secrets and runners already live there. Building a CI runner inside Provisa would be building a second, weaker one beside the one they trust, and it would be unavailable to the airgapped distribution [REQ-294](#REQ-294) describes for exactly the deployments most likely to require a gate. Provisa's side of the integration is therefore two things and no more. First, an outbound status: a webhook fired when an environment's projection lands or fails to land, carrying the environment, the sha and whether the environment is drifted, so the pipeline is triggered by the change rather than by polling. Second, an inbound gate that CI can actually assert against -- the dry run of [REQ-1490](#REQ-1490) (plan_copy) against the intended target, which answers what merging this ref into that environment WOULD do without doing any of it. That answer is what a pipeline check reads: a job fails when the report shows removals nobody asked for, or a role or policy changed that the org's rules protect. The dry run is the same code path the merge itself runs, so a check that passes describes the merge that follows rather than an approximation of it. The gate is advisory to Provisa and authoritative to the organization: [REQ-1504](#REQ-1504)'s approval is what actually holds a merge, and a CI check is evidence an approver reads, because a deployment whose git host is unreachable must still be able to promote a model. (Amended 2026-08-22, WHERE THE TWO HALVES LIVE:) the remote and the status receiver are per ORGANISATION and live on the registry's orgs row (repo_remote, repo_status_webhook) rather than in the org's settings, because the org's settings live in the schema an environment IS -- storing them there would let one branch mirror somewhere the next branch does not, and would make the mirror a thing a copy carries. Both are NULL by default and independent: an org may push without reporting, report without pushing, or -- the airgapped deployment of [REQ-294](#REQ-294) and every org that never asked for this -- do neither and still commit, request, approve and apply exactly as before. The remote is stored VERBATIM with its secret references intact and resolved through [REQ-125](#REQ-125)'s provider at push time only, so the token a push needs never enters the control plane, which is the same rule [REQ-1525](#REQ-1525) holds over the model's own carried fields. The announcement runs inside write_through under [REQ-1524](#REQ-1524)'s law: an unreachable remote or a receiver returning 500 is logged and never fails the edit it reports, and the push is attempted before the status is posted so a pipeline reading a sha finds a remote that already holds it. An UNCHANGED model announces nothing -- write_through returns no sha when the tree matched, and a status stream that fired on every mutation touching no carried class would make the pipeline run on nothing. The inbound gate is a GET (/{name}/merge-preview) rather than only the existing dry_run flag on POST /merge: the same plan_copy answers both, but a runner that got the flag wrong would APPLY the merge it meant to inspect, and a method that cannot write is the one to hand a CI job.
 
 **Use case:** An organization's existing GitHub Actions pipeline runs on every push of its Provisa model and fails the check when a proposed dev-to-prod merge would delete an RLS rule -- using the same dry run the merge itself would perform, and without Provisa running any pipeline of its own.
 
-**Code:** `provisa/core/env_ci.py`, `provisa/core/env_copy.py`, `provisa/core/env_repo.py`, `provisa/core/schema_admin.py`, `provisa/api/admin/environments_router.py`
+**Code:** `provisa/core/env_ci.py`, `provisa/core/env_repo.py`, `provisa/core/env_copy.py`, `provisa/core/schema_admin.py`, `provisa/api/admin/environments_router.py`, `provisa-ui/src/components/admin/RepoIntegrationPanel.tsx`
 
-**Tests:** `tests/unit/test_env_ci.py`, `tests/unit/test_env_merge_request_endpoints.py`, `tests/integration/test_env_ci.py`
+**Tests:** `tests/unit/test_env_ci.py`, `tests/integration/test_env_ci.py`, `tests/unit/test_env_merge_request_endpoints.py`, `provisa-ui/src/__tests__/RepoIntegrationPanel.test.tsx`
 
 ### REQ-1528 · Environments {#REQ-1528}
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Authority over a model is scoped to an ENVIRONMENT, and the ordinary way to acquire it is to create one. A member who holds no model-editing rights in an organization can still create an environment ([REQ-1488](#REQ-1488) creates it by loading a model into a name), and within the environment they created they hold the model-editing rights of an org_admin: they can add and change domains, tables, relationships, metrics, roles, policies and glossary -- every carried class of [REQ-1489](#REQ-1489) -- without holding those rights anywhere else in the org. This is the reason a read-only developer needs no special grant to work: they branch, they own what they branched, and they propose it back through [REQ-1504](#REQ-1504). The rights are the CREATOR's and are anchored on environments.created_by, which already exists; they are not inherited by everyone who can see the environment, and they end where the environment ends. WHAT THE GRANT IS NOT. It is model-editing rights and nothing adjacent: not user management, not invites, not billing, not platform settings, not the ability to protect or unprotect an environment, not the ability to grant this same authority to somebody else, and not the ability to approve a merge -- including a merge out of the environment they own, which [REQ-1504](#REQ-1504) already forbids the requester from approving. An owner is the author of a proposal, never its reviewer. WHY THIS IS SAFE IS AN INTERLOCK AND NOT A JUDGEMENT CALL. The compound failure [REQ-1492](#REQ-1492) names is write authority TOGETHER WITH an inherited binding: a copied environment that both points at production and may be written to. Here the two halves cannot meet, because [REQ-1491](#REQ-1491) strips the bindings from every environment a copy creates and marks the rows unbound. The owner therefore has full authority over a model that addresses NOTHING until the environment is bound, and binding is not theirs to do -- it needs a credential scoped to that environment ([REQ-1503](#REQ-1503)), which an org_admin issues. Authority over the model and authority over what the model points at are separated by construction, and the environment grant hands out only the first. The grant is therefore a consequence of ownership rather than a row somebody administers: it is derived from created_by at authorization time, so it cannot drift from the environment it describes, and deleting the environment removes it in the same act. (Amended 2026-08-21, this is the ONLY path:) Creating an environment is not one way among several to acquire model-editing authority -- it is the only way. There is no request-elevation, no temporary grant, no break-glass, and no administrator action that hands a member model-editing rights in prod directly; a member either holds them from their role or acquires them by creating an environment and owning it. This is what makes the audit trail complete rather than merely thorough: every model change that was not made by someone who already held the right in the org was made inside an environment that names its creator, was reported by [REQ-1490](#REQ-1490), and entered a protected environment only through a [REQ-1504](#REQ-1504) request somebody else approved. There is no fourth way in, so there is nothing to reconcile against. It also means privilege escalation and change proposal are THE SAME ACT rather than two: the thing a developer does to get authority is the thing that scopes it, records it, and guarantees a review before it reaches anywhere protected. (Amended 2026-08-21, why the escalation is worthless:) The reason creating an environment can be left open to any member is not that the authority is small -- it is org_admin's model-editing authority in full -- but that the authority is USELESS to an attacker. An environment arrives with its bindings stripped ([REQ-1491](#REQ-1491)) and its secrets not copied at all ([REQ-1489](#REQ-1489) classes org_secrets NEVER_SENSITIVE), so to make the model reach any data at all the creator must reconstruct the source URIs and supply the credentials themselves. Someone who can already do that gained nothing by creating the environment; someone who cannot has escalated into a model that queries nothing. The privilege that matters -- reaching the organization's data -- is held by the credential and not by the rights, and the credential is the one thing the act does not hand over. That is what makes this path safe to leave open rather than merely audited. (Amended 2026-08-21, and this is what makes the rule usable rather than merely safe:) an org_admin ordinarily does NOT grant model-editing rights on a base environment ([REQ-1529](#REQ-1529)) -- not even on dev. Membership in a base buys a developer reading and querying it; it does not buy them editing it. The rights to change a model are obtained the one way this requirement admits, by branching the base, and they exist only inside the branch the developer owns. Nobody edits dev directly, so dev is never in a state nobody proposed; every change to it arrives through a branch and a merge request ([REQ-1504](#REQ-1504)), which is the same path production changes take and therefore the same audit trail. The arrangement costs the developer one click -- the branch needs no credentials, because it inherits the base's -- and it costs the org nothing, because an org_admin who grants no editing rights anywhere has not blocked any work; they have routed all of it through review. (Amended 2026-08-21, WHAT THE GRANT ACTUALLY IS:) the authority branching confers is the seeded ``developer`` role, not org_admin's rights less a withheld list. That is a smaller grant reached by a shorter argument: developer already exists, already means "may build the model and query it", and already excludes the surfaces an org_admin keeps -- registering sources and tables, masking, column grants, view governance, access config and org settings. The withheld-list construction had to name every right that must not travel, and would have silently handed over any right added to org_admin afterwards; naming the role instead means a right reaches a branch owner only because somebody decided a developer should hold it. It also answers, with no new authorization axis, the worry that a branch owner can change anything: they can change what a developer may change. And it bounds the escalation argument above under [REQ-1529](#REQ-1529), where a branch does reach its base's data through the inherited binding -- what its owner may do to that data is a developer's write of the MODEL. (Amended 2026-08-22, THE GRANT CARRIES NO DATA RIGHT, [REQ-1539](#REQ-1539):) the authority is the seeded developer role LESS write, full_results and usage. Creating an environment is a model-authoring act and confers model-authoring rights; it confers nothing over data, which is the roles' answer and stays the roles' answer. This is where the escalation [REQ-1492](#REQ-1492) worried about is bounded -- at its source, rather than by a policy flag on the base compensating downstream for a right that should never have been handed out. (Amended 2026-08-22, AND ROLES ARE NOT AMONG THEM:) the opening list of carried classes a branch owner may edit names ``roles``, and that is withdrawn -- it predates the grant being defined as the seeded ``developer`` role, which holds no ``user_management``, and every role endpoint requires it. A branch owner inherits their environment's role definitions and may not rewrite them, there or anywhere; changing what a role means in a lane is an org_admin's act inside that lane ([REQ-1539](#REQ-1539)). This is the interlock stated once more at the level of rights: the branch owner has full authority over a model that addresses nothing, and no authority at all over who may do what.
+Authority over a model is scoped to an ENVIRONMENT, and the ordinary way to acquire it is to create one. A member who holds no model-editing rights in an organization can still create an environment ([REQ-1488](#REQ-1488) creates it by loading a model into a name), and within the environment they created they hold the model-editing rights of an org_admin: they can add and change domains, tables, relationships, metrics, roles, policies and glossary -- every carried class of [REQ-1489](#REQ-1489) -- without holding those rights anywhere else in the org. This is the reason a read-only developer needs no special grant to work: they branch, they own what they branched, and they propose it back through [REQ-1504](#REQ-1504). The rights are the CREATOR's and are anchored on environments.created_by, which already exists; they are not inherited by everyone who can see the environment, and they end where the environment ends. WHAT THE GRANT IS NOT. It is model-editing rights and nothing adjacent: not user management, not invites, not billing, not platform settings, not the ability to protect or unprotect an environment, not the ability to grant this same authority to somebody else, and not the ability to approve a merge -- including a merge out of the environment they own, which [REQ-1504](#REQ-1504) already forbids the requester from approving. An owner is the author of a proposal, never its reviewer. WHY THIS IS SAFE IS AN INTERLOCK AND NOT A JUDGEMENT CALL. The compound failure [REQ-1492](#REQ-1492) names is write authority TOGETHER WITH an inherited binding: a copied environment that both points at production and may be written to. Here the two halves cannot meet, because [REQ-1491](#REQ-1491) strips the bindings from every environment a copy creates and marks the rows unbound. The owner therefore has full authority over a model that addresses NOTHING until the environment is bound, and binding is not theirs to do -- it needs a credential scoped to that environment ([REQ-1503](#REQ-1503)), which an org_admin issues. Authority over the model and authority over what the model points at are separated by construction, and the environment grant hands out only the first. The grant is therefore a consequence of ownership rather than a row somebody administers: it is derived from created_by at authorization time, so it cannot drift from the environment it describes, and deleting the environment removes it in the same act. (Amended 2026-08-21, this is the ONLY path:) Creating an environment is not one way among several to acquire model-editing authority -- it is the only way. There is no request-elevation, no temporary grant, no break-glass, and no administrator action that hands a member model-editing rights in prod directly; a member either holds them from their role or acquires them by creating an environment and owning it. This is what makes the audit trail complete rather than merely thorough: every model change that was not made by someone who already held the right in the org was made inside an environment that names its creator, was reported by [REQ-1490](#REQ-1490), and entered a protected environment only through a [REQ-1504](#REQ-1504) request somebody else approved. There is no fourth way in, so there is nothing to reconcile against. It also means privilege escalation and change proposal are THE SAME ACT rather than two: the thing a developer does to get authority is the thing that scopes it, records it, and guarantees a review before it reaches anywhere protected. (Amended 2026-08-21, why the escalation is worthless:) [SUPERSEDED by [REQ-1573](#REQ-1573), 2026-10-03 -- Creation is not open to any member: it needs the environment_management capability (branch) or org_admin (base) -- environments_router.py:446-450. The authority is also no longer org_admin's in full (own later amendments). Kept here for history; do not implement against it.] The reason creating an environment can be left open to any member is not that the authority is small -- it is org_admin's model-editing authority in full -- but that the authority is USELESS to an attacker. [END SUPERSEDED BLOCK] An environment arrives with its bindings stripped ([REQ-1491](#REQ-1491)) and its secrets not copied at all ([REQ-1489](#REQ-1489) classes org_secrets NEVER_SENSITIVE), so to make the model reach any data at all the creator must reconstruct the source URIs and supply the credentials themselves. Someone who can already do that gained nothing by creating the environment; someone who cannot has escalated into a model that queries nothing. The privilege that matters -- reaching the organization's data -- is held by the credential and not by the rights, and the credential is the one thing the act does not hand over. That is what makes this path safe to leave open rather than merely audited. (Amended 2026-08-21, and this is what makes the rule usable rather than merely safe:) an org_admin ordinarily does NOT grant model-editing rights on a base environment ([REQ-1529](#REQ-1529)) -- not even on dev. Membership in a base buys a developer reading and querying it; it does not buy them editing it. The rights to change a model are obtained the one way this requirement admits, by branching the base, and they exist only inside the branch the developer owns. Nobody edits dev directly, so dev is never in a state nobody proposed; every change to it arrives through a branch and a merge request ([REQ-1504](#REQ-1504)), which is the same path production changes take and therefore the same audit trail. The arrangement costs the developer one click -- the branch needs no credentials, because it inherits the base's -- and it costs the org nothing, because an org_admin who grants no editing rights anywhere has not blocked any work; they have routed all of it through review. (Amended 2026-08-21, WHAT THE GRANT ACTUALLY IS:) the authority branching confers is the seeded ``developer`` role, not org_admin's rights less a withheld list. That is a smaller grant reached by a shorter argument: developer already exists, already means "may build the model and query it", and already excludes the surfaces an org_admin keeps -- registering sources and tables, masking, column grants, view governance, access config and org settings. The withheld-list construction had to name every right that must not travel, and would have silently handed over any right added to org_admin afterwards; naming the role instead means a right reaches a branch owner only because somebody decided a developer should hold it. It also answers, with no new authorization axis, the worry that a branch owner can change anything: they can change what a developer may change. And it bounds the escalation argument above under [REQ-1529](#REQ-1529), where a branch does reach its base's data through the inherited binding -- [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- Sits in the amendment that defines the grant as the full developer role; [REQ-1539](#REQ-1539) removed write, full_results and usage from it (provisa/core/env_authority.py:74-77). Kept here for history; do not implement against it.] what its owner may do to that data is a developer's write of the MODEL. [END SUPERSEDED BLOCK] (Amended 2026-08-22, THE GRANT CARRIES NO DATA RIGHT, [REQ-1539](#REQ-1539):) the authority is the seeded developer role LESS write, full_results and usage. Creating an environment is a model-authoring act and confers model-authoring rights; it confers nothing over data, which is the roles' answer and stays the roles' answer. This is where the escalation [REQ-1492](#REQ-1492) worried about is bounded -- at its source, rather than by a policy flag on the base compensating downstream for a right that should never have been handed out. (Amended 2026-08-22, AND ROLES ARE NOT AMONG THEM:) the opening list of carried classes a branch owner may edit names ``roles``, and that is withdrawn -- it predates the grant being defined as the seeded ``developer`` role, which holds no ``user_management``, and every role endpoint requires it. A branch owner inherits their environment's role definitions and may not rewrite them, there or anywhere; changing what a role means in a lane is an org_admin's act inside that lane ([REQ-1539](#REQ-1539)). This is the interlock stated once more at the level of rights: the branch owner has full authority over a model that addresses nothing, and no authority at all over who may do what.
 
 **Use case:** A developer with read-only rights in the org creates a dev environment, rebuilds half the governed model inside it, and proposes it to prod for review -- without anyone granting them org_admin, and without their environment being able to write to a production database, because it is not bound to one.
 
@@ -15980,7 +15988,7 @@ Authority over a model is scoped to an ENVIRONMENT, and the ordinary way to acqu
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-An organization's environments come in TWO KINDS, and the difference is who made them. A BASE environment -- dev, staging, prod, whatever the org calls them -- is created by an org_admin, bound with its own credentials, and carries its own members and grants: it is the org's statement of where a class of work points and who may do it. A BRANCH is created by a member FROM a base, and it inherits that base's bindings by reference ([REQ-1491](#REQ-1491)) rather than asking its creator for credentials. That is the whole answer to the friction of branching: nobody retypes a database URI to fix a metric definition, because the credentials were authored once, by the person who should author them, on the base the branch came from. It also removes the need for a separate profile object -- the base environment IS the profile, which is one concept instead of two and one that already has members, grants and an audit trail. WHAT A BRANCH MAY DO THROUGH AN INHERITED BINDING is a property the org_admin sets on the BASE, not on the branch, and it defaults to READ-ONLY. A base bound to a dev database is ordinarily marked branch-writable, so branching dev gives a developer somewhere to write; a base bound to production is ordinarily left read-only, so branching prod gives a developer prod-shaped reads and no way to damage prod. The default is read-only because the case that gets it wrong is the case that matters: an org_admin who does nothing has branches that cannot write anywhere. A branch never widens what it inherited -- it cannot mark itself writable, rebind to another target, or branch a base it could not read -- so a chain of branches converges on the reach of the base at its root and never exceeds it. Branching a branch is branching that base. AND THE GRANTS TRAVEL THE SAME WAY: a member may branch only a base they are a member of, and their branch carries no membership or grant of its own ([REQ-1489](#REQ-1489) classes those NEVER_SENSITIVE) beyond the environment authority its creator holds by owning it ([REQ-1528](#REQ-1528)). A base is deletable only when no branch still inherits from it, because deleting it would leave those branches pointing at a binding that no longer exists. THE SECRETS BELONG TO THE BASE, TOO. An org_admin authoring a base environment authors the secrets that base's bindings need -- the password behind its username, the token behind its API source -- and every branch taken from that base reaches them through the inherited binding without ever reading one. That is why [REQ-1489](#REQ-1489) can class org_secrets NEVER_SENSITIVE and lose nothing: a branch does not need a copy of a secret it resolves by reference, and a secret that is never copied is a secret that cannot leak into a branch, an export, or a repository. The credential surface of the whole org is therefore as many secret sets as there are bases, not as many as there are branches, and rotating one is one edit on one base that every branch of it picks up on its next query. (Amended 2026-08-21, ALL GOVERNANCE STATE IS RETAINED:) a branch carries the org's governance with it, whole. Roles, RLS rules, masking and column grants, tags and tag parameters, domain assignments, the glossary and its edges, naming rules, metrics, relationships and registered tables are all CARRIED classes ([REQ-1489](#REQ-1489)), so a branch is governed exactly as its base is rather than being an ungoverned scratch copy that behaves like the real thing only until it is merged. Three things follow, and they are the reason this matters more than the credential convenience. A developer's query in a branch returns what the same query returns in the base -- same row filters, same masked columns, same denied columns -- so a model built in a branch is built against the governance it will actually run under, and "it worked in dev" stops being a different statement from "it works in prod". A governance change is itself a modelled object, so tightening an RLS rule is proposed, reviewed and merged by the same [REQ-1504](#REQ-1504) path as adding a table, with the same before-and-after report -- there is no second, unreviewed channel by which access rules change. And nothing has to be re-applied on the way back: a merge carries governance in the same act it carries the model, so a branch can never land a table that arrives ungoverned because somebody forgot to copy the policy that covered it. What is deliberately NOT retained is the identity behind the governance -- user_directory and user_role_assignments are NEVER_SENSITIVE -- so a branch holds the org's rules without holding the org's people. (Amended 2026-08-21, A LOGICAL VIEW IS PORTABLE AND ITS HISTORY IS PROVENANCE:) every view Provisa holds is a logical object -- a definition in the model rather than a CREATE VIEW executed against some source -- and two properties follow that a physical view cannot have. It is portable: a view travels between environments as a row like any other carried object, so it reaches a branch and later reaches prod by the same reviewed path, with nobody re-running DDL against a database or reconciling which server holds which definition. And its evolution is available: each change to a definition is a change to a modelled object proposed and merged through [REQ-1504](#REQ-1504), so the sequence of those merges IS the view's history, with the reviewer, the date and the before-and-after report attached to every step. Together those answer a question a warehouse usually cannot -- what did this number mean on the day it was reported. A figure produced last quarter can be read against the definition in force last quarter rather than the one in force now, and the reason it changed is the merge request that changed it. Provenance at a point in time is therefore not a second lineage system to build; it is what environments and reviewed merges already record.  (Amended 2026-08-21, HOW THE BINDING IS ENFORCED:) the environment is part of the IDENTITY of a runtime and not a variation within one, so an org's prod and each of its branches hold separate runtimes -- separate pools, compiled schemas and catalogs -- keyed by (org, environment), with prod keyed on the bare org id so an org that never created an environment is registered exactly where it always was. The environment reaching that runtime travels in a second request-scoped variable beside the org, because the two are bound by different authorities: the org comes from the authenticated identity, the environment from the x-provisa-env header, which is a selection inside an org the caller already proved membership of. The name on that header is CHECKED against the org's registry before anything is bound to it -- an unchecked name reaches the schema initializer, which CREATES the schema it is given, so a typo would silently provision and serve a nameless empty environment -- and an unknown name is refused rather than quietly falling back to prod, because a caller who believed they were writing to a branch would otherwise write to production and be told it succeeded. For the same reason a request naming an environment whose runtime was never built is refused rather than served by the default one. Where a branch's sources actually point is resolved ONCE per runtime build, at the single seam between the sources rows and the runtime that reads them, and each resolved source records WHICH environment supplied its binding; a source no environment in the chain bound is left exactly as its row has it, unbound, because an empty host is not an absent one. The write check then reads that record on the ONE governed pipeline every raw-SQL surface funnels through, and refuses an INSERT, UPDATE, DELETE or MERGE whose target is reached through a binding its supplier does not admit writes from -- as it refuses one whose target is unbound, or whose target is not a registered table and so cannot be attributed to a binding at all.  (Amended 2026-08-21, THE CHAIN IS WALKED ONCE AND GUARDED:) the lineage walk refuses a cyclic branched_from chain by name -- saying which environment closed the ring -- rather than leaving the depth limit to catch it, because a ring reported as a chain deeper than the limit describes a tree no organization has and sends the reader looking for one. branched_from is written once, at branch time, against an environment that already exists, so a repeat is a corrupted registry; the guard is still carried because the walk runs on every binding resolution and an unguarded ring would hold an admin-plane connection forever. (Amended 2026-08-21, THE ENGINE CATALOG IS NAMESPACED BY ENVIRONMENT:) a source's physical catalog name on the federation engine carries the environment as well as the organization, as org_<id>_env_<env>__<catalog>. The coordinator's catalog namespace is shared across every runtime, and a branch resolves its own bindings -- so the same source id in a branch may reach a different host than it does in the base. Registered under the base's name a branch would not shadow the base's catalog, it would REPLACE it, and the base would afterwards be querying the branch's database. prod keeps the pre-environment name, including the default organization's bare one, so an organization holding only prod is byte-identical; a branch is prefixed even in the default organization, because the bare-name exemption belongs to prod and not to the organization.  (Amended 2026-08-22, THE BRANCH POLICY IS WITHDRAWN AND ROLES ANSWER INSTEAD, [REQ-1539](#REQ-1539):) "what a branch may DO through an inherited binding" is no longer a property of the base. It was a conflation of two different writes -- writing the semantic model and writing the underlying data -- and only the first was ever an environment's business. Data rights are the roles', and roles are a CARRIED class, so each environment holds its own copy: developer can be unrestricted in dev and hold nothing at all in prod, which is the same statement the flag was reaching for, made where an org already states who may do what. user_role_assignments is CARRIED with them -- otherwise a member would arrive in the new environment holding no role and the per-environment role definitions would have nobody to apply to. What is still NEVER_SENSITIVE is user_directory: a branch holds the org's rules and who holds which of them, not a copy of the org's people. Inheriting a binding is now purely about WHERE a source points; permission is a question asked and answered elsewhere. (Amended 2026-08-22, WHY THE BINDING KEEPS ITS OWN MECHANISM:) The same fall-through could be had by scoping secret references per environment, which would delete this inheritance, [REQ-1491](#REQ-1491)'s strip and [REQ-1489](#REQ-1489)'s allow-list in one stroke -- and it is deliberately NOT the design. It would be right only for a shop that already keeps a clean secret per environment, and most do not: what they have is one set of credentials somebody authored once. Inheritance by reference asks that shop for nothing -- an org_admin binds a base and every branch of it already points somewhere -- while per-environment references would ask them to build the per-environment secret story FIRST, before anyone could branch at all. The mechanism is kept because it is the one that works before a customer has worked anything out.
+An organization's environments come in TWO KINDS, and the difference is who made them. A BASE environment -- dev, staging, prod, whatever the org calls them -- is created by an org_admin, bound with its own credentials, and carries its own members and grants: it is the org's statement of where a class of work points and who may do it. A BRANCH is created by a member FROM a base, and it inherits that base's bindings by reference ([REQ-1491](#REQ-1491)) rather than asking its creator for credentials. That is the whole answer to the friction of branching: nobody retypes a database URI to fix a metric definition, because the credentials were authored once, by the person who should author them, on the base the branch came from. It also removes the need for a separate profile object -- the base environment IS the profile, which is one concept instead of two and one that already has members, grants and an audit trail. [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- [REQ-1539](#REQ-1539) removed branch_writable; the requirement's own 2026-08-22 amendment withdraws the branch policy. Kept here for history; do not implement against it.] WHAT A BRANCH MAY DO THROUGH AN INHERITED BINDING is a property the org_admin sets on the BASE, not on the branch, and it defaults to READ-ONLY. [END SUPERSEDED BLOCK] [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- There is no branch-writable marking; data rights are each environment's own roles. Kept here for history; do not implement against it.] A base bound to a dev database is ordinarily marked branch-writable, so branching dev gives a developer somewhere to write; a base bound to production is ordinarily left read-only, so branching prod gives a developer prod-shaped reads and no way to damage prod. [END SUPERSEDED BLOCK] [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- No read-only default exists once the flag is removed. Kept here for history; do not implement against it.] The default is read-only because the case that gets it wrong is the case that matters: an org_admin who does nothing has branches that cannot write anywhere. [END SUPERSEDED BLOCK] A branch never widens what it inherited -- [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- There is no writable marking for a branch to set. Kept here for history; do not implement against it.] it cannot mark itself writable [END SUPERSEDED BLOCK], rebind to another target, or branch a base it could not read -- so a chain of branches converges on the reach of the base at its root and never exceeds it. Branching a branch is branching that base. AND THE GRANTS TRAVEL THE SAME WAY: a member may branch only a base they are a member of, and [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- user_role_assignments is CARRIED and seeded into a new environment at creation. Kept here for history; do not implement against it.] their branch carries no membership or grant of its own ([REQ-1489](#REQ-1489) classes those NEVER_SENSITIVE) [END SUPERSEDED BLOCK] beyond the environment authority its creator holds by owning it ([REQ-1528](#REQ-1528)). A base is deletable only when no branch still inherits from it, because deleting it would leave those branches pointing at a binding that no longer exists. THE SECRETS BELONG TO THE BASE, TOO. An org_admin authoring a base environment authors the secrets that base's bindings need -- the password behind its username, the token behind its API source -- and every branch taken from that base reaches them through the inherited binding without ever reading one. That is why [REQ-1489](#REQ-1489) can class org_secrets NEVER_SENSITIVE and lose nothing: a branch does not need a copy of a secret it resolves by reference, and a secret that is never copied is a secret that cannot leak into a branch, an export, or a repository. The credential surface of the whole org is therefore as many secret sets as there are bases, not as many as there are branches, and rotating one is one edit on one base that every branch of it picks up on its next query. (Amended 2026-08-21, ALL GOVERNANCE STATE IS RETAINED:) a branch carries the org's governance with it, whole. Roles, RLS rules, masking and column grants, tags and tag parameters, domain assignments, the glossary and its edges, naming rules, metrics, relationships and registered tables are all CARRIED classes ([REQ-1489](#REQ-1489)), so a branch is governed exactly as its base is rather than being an ungoverned scratch copy that behaves like the real thing only until it is merged. Three things follow, and they are the reason this matters more than the credential convenience. A developer's query in a branch returns what the same query returns in the base -- same row filters, same masked columns, same denied columns -- so a model built in a branch is built against the governance it will actually run under, and "it worked in dev" stops being a different statement from "it works in prod". A governance change is itself a modelled object, so tightening an RLS rule is proposed, reviewed and merged by the same [REQ-1504](#REQ-1504) path as adding a table, with the same before-and-after report -- there is no second, unreviewed channel by which access rules change. And nothing has to be re-applied on the way back: a merge carries governance in the same act it carries the model, so a branch can never land a table that arrives ungoverned because somebody forgot to copy the policy that covered it. What is deliberately NOT retained is the identity behind the governance -- [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- Only user_directory and org_secrets remain NEVER_SENSITIVE; user_role_assignments is carried. Kept here for history; do not implement against it.] user_directory and user_role_assignments are NEVER_SENSITIVE [END SUPERSEDED BLOCK] -- so a branch holds the org's rules without holding the org's people. (Amended 2026-08-21, A LOGICAL VIEW IS PORTABLE AND ITS HISTORY IS PROVENANCE:) every view Provisa holds is a logical object -- a definition in the model rather than a CREATE VIEW executed against some source -- and two properties follow that a physical view cannot have. It is portable: a view travels between environments as a row like any other carried object, so it reaches a branch and later reaches prod by the same reviewed path, with nobody re-running DDL against a database or reconciling which server holds which definition. And its evolution is available: each change to a definition is a change to a modelled object proposed and merged through [REQ-1504](#REQ-1504), so the sequence of those merges IS the view's history, with the reviewer, the date and the before-and-after report attached to every step. Together those answer a question a warehouse usually cannot -- what did this number mean on the day it was reported. A figure produced last quarter can be read against the definition in force last quarter rather than the one in force now, and the reason it changed is the merge request that changed it. Provenance at a point in time is therefore not a second lineage system to build; it is what environments and reviewed merges already record.  (Amended 2026-08-21, HOW THE BINDING IS ENFORCED:) the environment is part of the IDENTITY of a runtime and not a variation within one, so an org's prod and each of its branches hold separate runtimes -- separate pools, compiled schemas and catalogs -- keyed by (org, environment), with prod keyed on the bare org id so an org that never created an environment is registered exactly where it always was. The environment reaching that runtime travels in a second request-scoped variable beside the org, because the two are bound by different authorities: the org comes from the authenticated identity, the environment from the x-provisa-env header, which is a selection inside an org the caller already proved membership of. The name on that header is CHECKED against the org's registry before anything is bound to it -- an unchecked name reaches the schema initializer, which CREATES the schema it is given, so a typo would silently provision and serve a nameless empty environment -- and an unknown name is refused rather than quietly falling back to prod, because a caller who believed they were writing to a branch would otherwise write to production and be told it succeeded. For the same reason a request naming an environment whose runtime was never built is refused rather than served by the default one. Where a branch's sources actually point is resolved ONCE per runtime build, at the single seam between the sources rows and the runtime that reads them, and each resolved source records WHICH environment supplied its binding; a source no environment in the chain bound is left exactly as its row has it, unbound, because an empty host is not an absent one. The write check then reads that record on the ONE governed pipeline every raw-SQL surface funnels through, and [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- The supplier-admits-writes check was removed; only the unbound and unregistered refusals remain. Kept here for history; do not implement against it.] refuses an INSERT, UPDATE, DELETE or MERGE whose target is reached through a binding its supplier does not admit writes from [END SUPERSEDED BLOCK] -- as it refuses one whose target is unbound, or whose target is not a registered table and so cannot be attributed to a binding at all.  (Amended 2026-08-21, THE CHAIN IS WALKED ONCE AND GUARDED:) the lineage walk refuses a cyclic branched_from chain by name -- saying which environment closed the ring -- rather than leaving the depth limit to catch it, because a ring reported as a chain deeper than the limit describes a tree no organization has and sends the reader looking for one. branched_from is written once, at branch time, against an environment that already exists, so a repeat is a corrupted registry; the guard is still carried because the walk runs on every binding resolution and an unguarded ring would hold an admin-plane connection forever. (Amended 2026-08-21, THE ENGINE CATALOG IS NAMESPACED BY ENVIRONMENT:) a source's physical catalog name on the federation engine carries the environment as well as the organization, as org_<id>_env_<env>__<catalog>. The coordinator's catalog namespace is shared across every runtime, and a branch resolves its own bindings -- so the same source id in a branch may reach a different host than it does in the base. Registered under the base's name a branch would not shadow the base's catalog, it would REPLACE it, and the base would afterwards be querying the branch's database. prod keeps the pre-environment name, including the default organization's bare one, so an organization holding only prod is byte-identical; a branch is prefixed even in the default organization, because the bare-name exemption belongs to prod and not to the organization.  (Amended 2026-08-22, THE BRANCH POLICY IS WITHDRAWN AND ROLES ANSWER INSTEAD, [REQ-1539](#REQ-1539):) "what a branch may DO through an inherited binding" is no longer a property of the base. It was a conflation of two different writes -- writing the semantic model and writing the underlying data -- and only the first was ever an environment's business. Data rights are the roles', and roles are a CARRIED class, so each environment holds its own copy: developer can be unrestricted in dev and hold nothing at all in prod, which is the same statement the flag was reaching for, made where an org already states who may do what. user_role_assignments is CARRIED with them -- otherwise a member would arrive in the new environment holding no role and the per-environment role definitions would have nobody to apply to. What is still NEVER_SENSITIVE is user_directory: a branch holds the org's rules and who holds which of them, not a copy of the org's people. Inheriting a binding is now purely about WHERE a source points; permission is a question asked and answered elsewhere. (Amended 2026-08-22, WHY THE BINDING KEEPS ITS OWN MECHANISM:) The same fall-through could be had by scoping secret references per environment, which would delete this inheritance, [REQ-1491](#REQ-1491)'s strip and [REQ-1489](#REQ-1489)'s allow-list in one stroke -- and it is deliberately NOT the design. It would be right only for a shop that already keeps a clean secret per environment, and most do not: what they have is one set of credentials somebody authored once. Inheritance by reference asks that shop for nothing -- an org_admin binds a base and every branch of it already points somewhere -- while per-environment references would ask them to build the per-environment secret story FIRST, before anyone could branch at all. The mechanism is kept because it is the one that works before a customer has worked anything out.
 
 **Use case:** An org_admin sets up dev, staging and prod once, each with its own credentials and its own members; a developer branches dev to fix a metric, is querying real-shaped data immediately without seeing a credential, and their branch can write to dev and to nothing else.
 
@@ -16004,7 +16012,7 @@ A DEVELOPER IS ALWAYS LIMITED BY DOMAIN MEMBERSHIP. The role says what kind of a
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-EVERY MUTATION THAT NAMES A DOMAIN MUST BE GATED ON IT, AND EVERY MUTATION THAT OUGHT TO NAME ONE MUST NAME ONE. [REQ-1530](#REQ-1530) makes a role's domain_access the limit on what a member may change; a limit is only real where it is checked, and today the check runs in two places. ``require_capability(info, cap, domain_id=...)`` already exists and already answers correctly -- registering a table and updating a table pass it -- so this is about the ops that never call it and the ops that have no domain to pass. WHAT IS ALREADY GATED: register_table on the non-view path, and update_table. WHAT NAMES A DOMAIN AND IS NOT GATED: delete_table (no capability check at all), upsert_rls_rule and delete_rls_rule (no check at all, and domain_id is already in the input -- a domain-level RLS rule IS the governance of somebody else's domain), upsert_metric and delete_metric (gated on table_registration with no domain; a metric's domain is the domain of the table it measures), tracked_functions and tracked_webhooks (both carry domain_id), and tag assignment (the domain is the assignment target's). WHAT HAS NO DOMAIN OF ITS OWN AND NEEDS ONE DERIVED: a VIEW. Registering a view carries the domain it is registered into, which gates one half; the other half is the SQL, because free-hand view_sql names its tables directly. Without a second check a developer on sales writes a view selecting from a finance table and registers it into sales, and the finance data arrives inside a domain finance does not own. Both halves are required: the domain being registered into must be one of theirs, and every table the view reads must be one they may read. The dependency parse that the materialized-view relationship gate already performs yields exactly that table set. Creating a FACT or a DIMENSION is the same shape -- both are registrations over existing tables, so both are permitted only over tables within the caller's domains, and the dimension links a fact creates are relationships subject to the rule below. RELATIONSHIPS ARE OWNED BY DIRECTION. A relationship row is source_table_id -> target_table_id with its alias unique on the source, so the edge hangs off the SOURCE table and the source table's domain owns it. The target is referenced rather than changed, and traversing to it is reading -- the target's own RLS and masking still apply at query time -- so creating an edge requires the source's domain and does not require the target's. What a cross-domain edge does do is make another team's table reachable from your part of the graph, which its owner should see: such an edge lands needs_review, a column relationships already carries. WHAT A DEVELOPER MUST NOT DO AT ANY DOMAIN, because these are escalation rather than scope: create_role and delete_role (a role carries domain_access, so minting a role with ``*`` is minting yourself out of the limit -- neither has any check today), create_domain and delete_domain (creating a domain is not an act inside one, and deleting one CASCADEs the registered_tables and rls_rules that belong to it -- neither has any check today), and update_source_allowed_domains (widening a source's allowed list reaches into a domain through the back door). Source registration itself needs no new rule: a developer does not hold source_registration ([REQ-1528](#REQ-1528)). TWO PROPERTIES OF THE GATE ITSELF. It lives in the GraphQL resolver layer, so a guard added there is a guard on one surface -- config loading, the environments router and any REST admin router writing these tables go around it, and the check belongs low enough that they cannot. And it returns early for an anonymous identity and when the org is in single-domain mode, both correct, both meaning the whole scheme is inert until an org actually uses domains. FINALLY, AN OUT-OF-DOMAIN EDIT SHOULD QUEUE RATHER THAN ERROR: the queue-a-creation-request path already exists for the missing-capability case, and [REQ-1530](#REQ-1530) already routes such a request to the domain's owners, so the developer's work becomes a proposal instead of a refusal. (Amended 2026-08-21, WHAT THE BUILD SETTLED:) The domain half of the gate is now a function of its own, ``capabilities.require_domain(info, domain_id)``, because an act can be permitted by more than one right — registering a view is allowed to a holder of create_view OR query_development — while the question of which domains it may touch has a single answer regardless of which right carried the caller in; ``require_capability``'s domain argument now calls it, so the three exemptions (dev/no-auth, the platform bypass, single-domain mode) are written once. The scope it reads is ``rights.domain_access_for_claims``, the companion of capabilities_for_claims, which resolves claims to ``roles.domain_access`` and never to the claim's ``:domain`` suffix — the previous implementation read the suffix, which contradicted [REQ-1530](#REQ-1530). ``*`` is interpreted in one place only, ``env_authority.domains_within``. THE CAPABILITY EACH UNGATED MUTATION NOW NAMES: create_domain and delete_domain take org_settings (the org's domain vocabulary is the org_admin's; a member scoped to sales must not answer their own scoping by minting a domain, and there is no domain to be a member of yet, so membership does not apply); create_role and delete_role take user_management (a role carries both capabilities and domain_access, so minting one is how a member would widen their own scope); upsert_rls_rule and delete_rls_rule take masking_config plus the domain the rule lands in — named directly for a domain-level rule, looked up from the table for a table-level one; delete_table takes table_registration plus the domain that holds the table, looked up from the id; update_source_allowed_domains takes source_registration and is NOT gated by membership in the domains being listed, because widening the list is granting reach rather than exercising it. A fact and a dim need no gate of their own: both lower to register_table, which is gated. THE VIEW'S TWO HALVES are both applied at the free-hand path in register_table — the domain registered into, and every table the SQL reads, resolved through ``domain_guard.view_read_domains``; CTE names are excluded because a CTE is defined in the statement rather than read from the model, and unparseable SQL raises rather than returning an empty set. THE RELATIONSHIP asks about the SOURCE table's domain, and when the target lives in another domain the row is written with ``needs_review`` re-asserted AFTER the upsert — rel_repo's upsert clears that flag on conflict because [REQ-020](#REQ-020) treats a save as an explicit re-review, and a cross-domain edge is not the source steward's to clear. Both the view and the relationship queue a creation request on an out-of-domain edit rather than raising, matching what a missing right already does; the mutations that delete or administer raise.
+EVERY MUTATION THAT NAMES A DOMAIN MUST BE GATED ON IT, AND EVERY MUTATION THAT OUGHT TO NAME ONE MUST NAME ONE. [REQ-1530](#REQ-1530) makes a role's domain_access the limit on what a member may change; a limit is only real where it is checked, and today the check runs in two places. ``require_capability(info, cap, domain_id=...)`` already exists and already answers correctly -- registering a table and updating a table pass it -- so this is about the ops that never call it and the ops that have no domain to pass. WHAT IS ALREADY GATED: register_table on the non-view path, and update_table. WHAT NAMES A DOMAIN AND IS NOT GATED: delete_table (no capability check at all), upsert_rls_rule and delete_rls_rule (no check at all, and domain_id is already in the input -- a domain-level RLS rule IS the governance of somebody else's domain), upsert_metric and delete_metric (gated on table_registration with no domain; a metric's domain is the domain of the table it measures), tracked_functions and tracked_webhooks (both carry domain_id), and tag assignment (the domain is the assignment target's). WHAT HAS NO DOMAIN OF ITS OWN AND NEEDS ONE DERIVED: a VIEW. Registering a view carries the domain it is registered into, which gates one half; the other half is the SQL, because free-hand view_sql names its tables directly. Without a second check a developer on sales writes a view selecting from a finance table and registers it into sales, and the finance data arrives inside a domain finance does not own. Both halves are required: the domain being registered into must be one of theirs, and every table the view reads must be one they may read. The dependency parse that the materialized-view relationship gate already performs yields exactly that table set. Creating a FACT or a DIMENSION is the same shape -- both are registrations over existing tables, so both are permitted only over tables within the caller's domains, and the dimension links a fact creates are relationships subject to the rule below. RELATIONSHIPS ARE OWNED BY DIRECTION. A relationship row is source_table_id -> target_table_id with its alias unique on the source, so the edge hangs off the SOURCE table and the source table's domain owns it. The target is referenced rather than changed, and traversing to it is reading -- the target's own RLS and masking still apply at query time -- so creating an edge requires the source's domain and does not require the target's. What a cross-domain edge does do is make another team's table reachable from your part of the graph, which its owner should see: such an edge lands needs_review, a column relationships already carries. WHAT A DEVELOPER MUST NOT DO AT ANY DOMAIN, because these are escalation rather than scope: create_role and delete_role (a role carries domain_access, so minting a role with ``*`` is minting yourself out of the limit -- neither has any check today), create_domain and delete_domain (creating a domain is not an act inside one, and deleting one CASCADEs the registered_tables and rls_rules that belong to it -- neither has any check today), and update_source_allowed_domains (widening a source's allowed list reaches into a domain through the back door). Source registration itself needs no new rule: a developer does not hold source_registration ([REQ-1528](#REQ-1528)). TWO PROPERTIES OF THE GATE ITSELF. It lives in the GraphQL resolver layer, so a guard added there is a guard on one surface -- config loading, the environments router and any REST admin router writing these tables go around it, and the check belongs low enough that they cannot. And it returns early for an anonymous identity and when the org is in single-domain mode, both correct, both meaning the whole scheme is inert until an org actually uses domains. FINALLY, AN OUT-OF-DOMAIN EDIT SHOULD QUEUE RATHER THAN ERROR: the queue-a-creation-request path already exists for the missing-capability case, and [REQ-1530](#REQ-1530) already routes such a request to the domain's owners, so the developer's work becomes a proposal instead of a refusal. (Amended 2026-08-21, WHAT THE BUILD SETTLED:) The domain half of the gate is now a function of its own, ``capabilities.require_domain(info, domain_id)``, because an act can be permitted by more than one right — registering a view is allowed to a holder of create_view OR query_development — while the question of which domains it may touch has a single answer regardless of which right carried the caller in; ``require_capability``'s domain argument now calls it, [SUPERSEDED by [REQ-1327](#REQ-1327), 2026-10-03 -- platform_admin holds zero data capabilities, so there is no platform bypass: require_domain has two exemptions (provisa/api/admin/capabilities.py:145-148) and tests/unit/test_domain_guard.py:94-98 asserts the platform administrator is scoped like anyone else. Kept here for history; do not implement against it.] so the three exemptions (dev/no-auth, the platform bypass, single-domain mode) are written once [END SUPERSEDED BLOCK]. The scope it reads is ``rights.domain_access_for_claims``, the companion of capabilities_for_claims, which resolves claims to ``roles.domain_access`` and never to the claim's ``:domain`` suffix — the previous implementation read the suffix, which contradicted [REQ-1530](#REQ-1530). ``*`` is interpreted in one place only, ``env_authority.domains_within``. THE CAPABILITY EACH UNGATED MUTATION NOW NAMES: create_domain and delete_domain take org_settings (the org's domain vocabulary is the org_admin's; a member scoped to sales must not answer their own scoping by minting a domain, and there is no domain to be a member of yet, so membership does not apply); create_role and delete_role take user_management (a role carries both capabilities and domain_access, so minting one is how a member would widen their own scope); upsert_rls_rule and delete_rls_rule take masking_config plus the domain the rule lands in — named directly for a domain-level rule, looked up from the table for a table-level one; delete_table takes table_registration plus the domain that holds the table, looked up from the id; update_source_allowed_domains takes source_registration and is NOT gated by membership in the domains being listed, because widening the list is granting reach rather than exercising it. A fact and a dim need no gate of their own: both lower to register_table, which is gated. THE VIEW'S TWO HALVES are both applied at the free-hand path in register_table — the domain registered into, and every table the SQL reads, resolved through ``domain_guard.view_read_domains``; CTE names are excluded because a CTE is defined in the statement rather than read from the model, and unparseable SQL raises rather than returning an empty set. THE RELATIONSHIP asks about the SOURCE table's domain, and when the target lives in another domain the row is written with ``needs_review`` re-asserted AFTER the upsert — rel_repo's upsert clears that flag on conflict because [REQ-020](#REQ-020) treats a save as an explicit re-review, and a cross-domain edge is not the source steward's to clear. Both the view and the relationship queue a creation request on an out-of-domain edit rather than raising, matching what a missing right already does; the mutations that delete or administer raise.
 
 **Use case:** A developer on the sales domain writes a view over a finance table and registers it into sales; the registration is refused because the view reads a table outside their domains, and what they get back is a request awaiting the finance owner rather than an error.
 
@@ -16016,7 +16024,7 @@ EVERY MUTATION THAT NAMES A DOMAIN MUST BE GATED ON IT, AND EVERY MUTATION THAT 
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-THE BROWSER MUST BE ABLE TO SAY WHICH ENVIRONMENT IT IS READING, AND EVERY REQUEST IT MAKES MUST SAY THE SAME ONE. [REQ-1487](#REQ-1487) makes the environment a request-scoped choice carried in ``x-provisa-env``; until now nothing in the UI set it, so every screen read prod and the branch was reachable only from curl. The selection is per-browser, kept beside the active org in localStorage under ``provisa_env``, and a switcher sits next to the org switcher in the NavBar because the two are the same kind of act -- which model am I looking at. THE HEADER RIDES ON ONE INTERCEPTOR, NOT ON CALL SITES: ``installAuthFetch`` already attaches the bearer and the org to every same-origin request, and the environment is attached there for the same reason -- around a hundred REST call sites, none of which should know about this. GraphQL does not pass through that path, so Apollo's link attaches it too; a query left without it would read prod's model while the REST surface beside it read the branch. UNLIKE THE ORG, IT IS ATTACHED WITH OR WITHOUT A BEARER: a deployment with auth disabled branches its model exactly as an authenticated one does, and gating this on a token would pin every such deployment to prod with no way to say otherwise. AN UNSELECTED ENVIRONMENT SENDS NO HEADER rather than sending ``prod``: the server serves prod to a request naming none, so clearing the selection is deleting the key. SWITCHING RELOADS THE DOCUMENT rather than re-rendering, because the Apollo cache holds the previous environment's domains, tables and roles and a re-render would keep serving them. A SELECTION THE ORG NO LONGER HAS IS REPAIRED, NOT FALLEN BACK FROM: the switcher drops a stored name absent from the org's list and reloads -- the server's own answer to an unknown environment is a 404 and never prod, and the two must not disagree.
+THE BROWSER MUST BE ABLE TO SAY WHICH ENVIRONMENT IT IS READING, AND EVERY REQUEST IT MAKES MUST SAY THE SAME ONE. [REQ-1487](#REQ-1487) makes the environment a request-scoped choice carried in ``x-provisa-env``; until now nothing in the UI set it, so every screen read prod and the branch was reachable only from curl. The selection is per-browser, kept beside the active org in localStorage under ``provisa_env``, and a switcher sits next to the org switcher in the NavBar because the two are the same kind of act -- which model am I looking at. THE HEADER RIDES ON ONE INTERCEPTOR, NOT ON CALL SITES: ``installAuthFetch`` already attaches the bearer and the org to every same-origin request, and the environment is attached there for the same reason -- around a hundred REST call sites, none of which should know about this. GraphQL does not pass through that path, so Apollo's link attaches it too; a query left without it would read prod's model while the REST surface beside it read the branch. UNLIKE THE ORG, IT IS ATTACHED WITH OR WITHOUT A BEARER: a deployment with auth disabled branches its model exactly as an authenticated one does, and gating this on a token would pin every such deployment to prod with no way to say otherwise. AN UNSELECTED ENVIRONMENT SENDS NO HEADER rather than sending ``prod``: the server serves prod to a request naming none, so clearing the selection is deleting the key. [SUPERSEDED by REQ-1532 amendment, 2026-10-03 -- switching does not reload the document; it resets the client's cached model. Kept here for history; do not implement against it.] SWITCHING RELOADS THE DOCUMENT rather than re-rendering, because the Apollo cache holds the previous environment's domains, tables and roles and a re-render would keep serving them. [END SUPERSEDED BLOCK] A SELECTION THE ORG NO LONGER HAS IS REPAIRED, NOT FALLEN BACK FROM: the switcher drops a stored name absent from the org's list and reloads -- the server's own answer to an unknown environment is a 404 and never prod, and the two must not disagree. (Amended 2026-10-03, SWITCHING DOES NOT RELOAD THE DOCUMENT:) Switching environments keeps the document and discards what the client holds of the previous environment's model: the Apollo store is reset and the persisted cache dropped, so nothing of the previous environment's domains, tables or roles is served. A stored selection the org no longer has is still dropped and the page reloaded.
 
 **Use case:** A modeler picks `dev` from the switcher beside the org name; the page reloads and every screen -- REST and GraphQL alike -- is reading the dev branch of the model until they pick prod again.
 
@@ -16028,7 +16036,7 @@ THE BROWSER MUST BE ABLE TO SAY WHICH ENVIRONMENT IT IS READING, AND EVERY REQUE
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-THE ORG'S ENVIRONMENTS MUST BE ADMINISTRABLE FROM THE ADMIN UI, AND ITS REPOSITORY MUST BE READABLE THERE. Everything [REQ-1487](#REQ-1487)..[REQ-1531](#REQ-1531) built was API-only. This adds one admin page at ``/admin/environments``, gated on org_settings like every other org-scoped section, with four panels. ENVIRONMENTS: the list with its derived facts -- drifted, protected, branch_writable, what it was branched from -- plus create (naming what to branch from, and whether it is a BASE per [REQ-1529](#REQ-1529)), delete, protect, and the branch-write policy. Delete is withheld for prod rather than offered and refused. MERGE: a modal naming the source, whether removals are carried, and a PREVIEW that is a separate act from the merge it describes -- the preview endpoint is a GET so a CI runner cannot apply by accident ([REQ-1527](#REQ-1527)). Against a protected target the button says Propose, because [REQ-1504](#REQ-1504) turns that merge into a request rather than refusing it, and the message field appears with it. REQUESTS: the open proposals with the report each was filed with -- that report is what an approver agrees to, so it is shown rather than recomputed -- and approve/reject with a note, offered only on a request that is still open and only to somebody who may decide it. A state of ``stale`` is the server's derivation at read time, never a column. REPOSITORY ([REQ-1524](#REQ-1524) BROWSE): branches, a branch's commits, the paths at a ref and one file's text, with an optional read-only diff against a second ref. THE BRANCH LIST IS NOT THE ENVIRONMENT LIST -- a ref outlives the environment that wrote it, which is the whole reason an earlier state is loadable -- and a commit sha is a ref like any other. Paths and text are two calls because a single call carrying every definition would download the org's model to draw a sidebar, and the file list is held together with the ref it was read at so that a ref change never asks for the previous ref's path. The diff withholds the editable side and the revert arrows: both sides are history, and an edit there would have nowhere to go -- changing the model is the model surface, and undo is loading an earlier sha. INTEGRATION ([REQ-1527](#REQ-1527)): the remote and the status webhook, in plain text inputs rather than password ones, because what belongs in them is a secret REFERENCE resolved at push time and masking one would imply the opposite. A cleared field is sent as null -- the org saying it no longer mirrors anywhere.
+THE ORG'S ENVIRONMENTS MUST BE ADMINISTRABLE FROM THE ADMIN UI, AND ITS REPOSITORY MUST BE READABLE THERE. Everything [REQ-1487](#REQ-1487)..[REQ-1531](#REQ-1531) built was API-only. This adds one admin page at ``/admin/environments``, [SUPERSEDED by [REQ-1573](#REQ-1573), 2026-10-03 -- The page and its nav entry are gated on environment_management (provisa-ui/src/components/navGroups.ts:131-137, provisa-ui/src/App.tsx:548). Kept here for history; do not implement against it.] gated on org_settings like every other org-scoped section [END SUPERSEDED BLOCK], with four panels. ENVIRONMENTS: the list with its derived facts -- [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- branch_writable is removed: the column, the policy endpoint and the switch. Kept here for history; do not implement against it.] drifted, protected, branch_writable, what it was branched from [END SUPERSEDED BLOCK] -- plus create (naming what to branch from, [SUPERSEDED by [REQ-1538](#REQ-1538), 2026-10-03 -- The choice is presented as 'Inherit connections', off by default (wire field inherit_connections). Kept here for history; do not implement against it.] and whether it is a BASE per [REQ-1529](#REQ-1529) [END SUPERSEDED BLOCK]), [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- There is no branch-write policy; data rights are the roles'. Kept here for history; do not implement against it.] delete, protect, and the branch-write policy [END SUPERSEDED BLOCK]. Delete is withheld for prod rather than offered and refused. MERGE: a modal naming the source, whether removals are carried, and a PREVIEW that is a separate act from the merge it describes -- the preview endpoint is a GET so a CI runner cannot apply by accident ([REQ-1527](#REQ-1527)). Against a protected target the button says Propose, because [REQ-1504](#REQ-1504) turns that merge into a request rather than refusing it, [SUPERSEDED by [REQ-1550](#REQ-1550), 2026-10-03 -- The comment is required on every merge, so the field is always shown, not only for a protected target. Kept here for history; do not implement against it.] and the message field appears with it [END SUPERSEDED BLOCK]. REQUESTS: the open proposals with the report each was filed with -- that report is what an approver agrees to, so it is shown rather than recomputed -- and approve/reject with a note, offered only on a request that is still open and only to somebody who may decide it. A state of ``stale`` is the server's derivation at read time, never a column. REPOSITORY ([REQ-1524](#REQ-1524) BROWSE): branches, a branch's commits, the paths at a ref and one file's text, with an optional read-only diff against a second ref. THE BRANCH LIST IS NOT THE ENVIRONMENT LIST -- a ref outlives the environment that wrote it, which is the whole reason an earlier state is loadable -- and a commit sha is a ref like any other. Paths and text are two calls because a single call carrying every definition would download the org's model to draw a sidebar, and the file list is held together with the ref it was read at so that a ref change never asks for the previous ref's path. The diff withholds the editable side and the revert arrows: both sides are history, and an edit there would have nowhere to go -- changing the model is the model surface, and undo is loading an earlier sha. INTEGRATION ([REQ-1527](#REQ-1527)): the remote and the status webhook, in plain text inputs rather than password ones, because what belongs in them is a secret REFERENCE resolved at push time and masking one would imply the opposite. A cleared field is sent as null -- the org saying it no longer mirrors anywhere.
 
 **Use case:** An org_admin opens Environments, branches `dev` from prod, merges it back with a preview first, reads the commit the merge wrote in the repository panel, and points the org''s remote at a GitHub URL carrying a secret reference rather than a token.
 
@@ -16038,35 +16046,35 @@ THE ORG'S ENVIRONMENTS MUST BE ADMINISTRABLE FROM THE ADMIN UI, AND ITS REPOSITO
 
 ### REQ-1534 · Environments {#REQ-1534}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 AN ENVIRONMENT BEYOND prod MUST BE REFUSED ON A CONTROL PLANE THAT HAS NO SCHEMAS, AND NO SCHEMA DDL MAY BE EMITTED THERE. [REQ-1488](#REQ-1488) makes an environment physically a schema, which is what keeps one environment's rows out of another's read. SQLite -- the store the desktop tier ran before [REQ-1535](#REQ-1535) made embedded PostgreSQL the default, and one an operator may still select -- has no schema concept at all: init_schema's portable bootstrap ignores the env argument entirely and creates the tables in the backend's one namespace. Provisioning an environment there therefore reported success while writing the new environment's model on top of prod's. The creation is refused instead, at the endpoint before the name is reserved (409 environments.plane_unsupported) and again in provision_org for every other caller (EnvironmentPlaneError), so the org holds prod and nothing else. Separately, DROP SCHEMA ... CASCADE is PostgreSQL-only DDL and does not parse on such a backend: both deprovision_org and provision_org's compensating rollback now emit it only where schemas exist. Emitting it there was worse than useless -- the rollback raised a syntax error of its own, which replaced the failure it was compensating for and was the only thing the caller ever saw.
 
 **Use case:** A maintainer running the SQLite demo tries to branch `dev` from prod and is told plainly that environments need a PostgreSQL control plane, instead of receiving a sqlite3 syntax error raised by a rollback.
 
-**Code:** `provisa/core/environments.py`, `provisa/core/org_provisioning.py`, `provisa/api/admin/environments_router.py`, `tests/unit/test_org_isolation.py`
+**Code:** `provisa/core/environments.py`, `provisa/core/org_provisioning.py`, `provisa/api/admin/environments_router.py`, `provisa/core/env_create.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_org_isolation.py`, `tests/integration/test_control_plane_env_capability.py`
 
 ## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1535 · Control Plane {#REQ-1535}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** structural
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
 EMBEDDED POSTGRESQL MUST BE THE DEFAULT CONTROL-PLANE STORE IN EVERY SELF-CONTAINED TIER (demo and native), REPLACING SQLITE. [REQ-1488](#REQ-1488) makes an environment a schema and [REQ-1534](#REQ-1534) refuses one on a plane without schemas, so a SQLite desktop can hold prod and nothing else -- the demo would be unable to show the feature it exists to demonstrate, and a native install would differ from the hosted tier in what it can express rather than only in scale. The bundled instance is pgserver, a real PostgreSQL with a data directory: the profile resolver starts it (persistent and idempotent, so resolving the profile is what brings the plane up) and reads the socket directory and port BACK from the started server rather than assuming a port, because a guessed port names a socket path that does not exist. There is no in-memory form -- an ephemeral profile asking for this store is refused and told to pick sqlite, which then holds only prod. Demo and native keep separate data directories so a demo reset cannot touch a native install's plane. A pristine demo start drops the database instead of deleting files (V1 has no migrations, so pristine means rebuilt at the current schema), retaining org_settings across the wipe by pg_dump and restore.
 
 **Use case:** A maintainer runs the desktop demo and branches `dev` from prod, because the demo plane is the same PostgreSQL the hosted tier runs.
 
-**Code:** `config/capabilities.yaml`, `provisa/core/desktop_profile.py`, `provisa/core/control_plane_pg.py`, `start-ui-install.sh`
+**Code:** `config/capabilities.yaml`, `provisa/core/desktop_profile.py`, `provisa/core/control_plane_pg.py`, `provisa/cli.py`, `start-ui-install.sh`, `provisa/federation/native_backend.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_desktop_profile.py`, `tests/unit/test_native_control_plane_dsn.py`, `tests/unit/test_arch_invariants.py`, `tests/e2e/test_pypi_packaging.py`
 
 ### REQ-1536 · Control Plane {#REQ-1536}
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-EVERY CONTROL-PLANE STORE THE CAPABILITY CATALOG OFFERS MUST BE OPENABLE, AND THE ENVIRONMENT SUPPORT OF EACH MUST BE ESTABLISHED BY PROBING THE LIVE BACKEND RATHER THAN ASSERTED. config/capabilities.yaml offers sqlserver and oracle as control-plane stores, but _ADMIN_ASYNC_DRIVER lists only postgresql, sqlite, duckdb, mysql and mariadb -- so selecting either yields "unsupported control-plane store backend" at engine construction, an option the wizard offers and the loader refuses. The probe suite settles the separate question [REQ-1534](#REQ-1534) raises, per backend and against the real server: whether the STORE can hold two same-named tables in two namespaces (postgresql, mysql/mariadb, sqlserver and oracle all can; sqlite cannot), and whether PROVISA can enter one of them via Capabilities.enter_org_sql (postgresql, mysql/mariadb and oracle can; sqlserver has no dialect branch at all and so reports no schemas). The two facts are reported apart because they fail apart: a store with namespaces and no scoping statement is a missing dialect entry, not a limit of the backend, and recording it as the latter would make a five-line fix look like an unsupported store. (Amended 2026-09-29, driver table rename — [REQ-828](#REQ-828)/[REQ-1882](#REQ-1882):) The control-plane driver table is now _ADMIN_DRIVER (sync drivers: psycopg2, pysqlite, PyMySQL, duckdb+provisa) and its refusal reads "unsupported store backend"; it still lists only postgresql, sqlite, duckdb, mysql and mariadb, so the gap this requirement records is unchanged.
+EVERY CONTROL-PLANE STORE THE CAPABILITY CATALOG OFFERS MUST BE OPENABLE, AND THE ENVIRONMENT SUPPORT OF EACH MUST BE ESTABLISHED BY PROBING THE LIVE BACKEND RATHER THAN ASSERTED. config/capabilities.yaml offers sqlserver and oracle as control-plane stores, but _ADMIN_ASYNC_DRIVER lists only postgresql, sqlite, duckdb, mysql and mariadb -- so selecting either yields "unsupported control-plane store backend" at engine construction, an option the wizard offers and the loader refuses. The probe suite settles the separate question [REQ-1534](#REQ-1534) raises, per backend and against the real server: whether the STORE can hold two same-named tables in two namespaces (postgresql, mysql/mariadb, sqlserver and oracle all can; sqlite cannot), and whether PROVISA can enter one of them via Capabilities.enter_org_sql (postgresql, mysql/mariadb and oracle can; sqlserver has no dialect branch at all and so reports no schemas). The two facts are reported apart because they fail apart: a store with namespaces and no scoping statement is a missing dialect entry, not a limit of the backend, and recording it as the latter would make a five-line fix look like an unsupported store. (Amended 2026-09-29, driver table rename — [REQ-828](#REQ-828)/[REQ-1882](#REQ-1882):) [SUPERSEDED by [REQ-828](#REQ-828), 2026-10-03 -- the PostgreSQL driver in _ADMIN_DRIVER is psycopg (psycopg 3), not psycopg2. Kept here for history; do not implement against it.] The control-plane driver table is now _ADMIN_DRIVER (sync drivers: psycopg2, pysqlite, PyMySQL, duckdb+provisa) [END SUPERSEDED BLOCK] and its refusal reads "unsupported store backend"; it still lists only postgresql, sqlite, duckdb, mysql and mariadb, so the gap this requirement records is unchanged.
 
 **Use case:** A maintainer choosing a control-plane store is told which ones can hold environments on evidence from the backend itself, and any store the catalog offers can actually be opened.
 
@@ -16076,7 +16084,7 @@ EVERY CONTROL-PLANE STORE THE CAPABILITY CATALOG OFFERS MUST BE OPENABLE, AND TH
 
 ### REQ-1537 · Control Plane {#REQ-1537}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 CONFIGURING A REPOSITORY REMOTE MUST PROBE IT, AND OFFER TO CREATE IT WHEN IT IS NOT THERE -- NEVER CREATE IT SILENTLY. [REQ-1527](#REQ-1527) pushes each model change to the org's own remote, and a remote that does not exist turns every commit into a drift the operator discovers later from a badge. The probe runs when the remote is CONFIGURED, which is the moment the operator is present to answer. A local path is a repository when it holds HEAD, directly or under .git; a hosted URL is one when its refs are reachable. Creation is offered for a missing local path always, and for a missing github.com or gitlab.com repository when the stored remote carries a credential -- the credential is read from the remote itself and from nowhere else, because [REQ-125](#REQ-125) and [REQ-1525](#REQ-1525) keep the token out of the control plane and leave the ${env:} reference as the only place it lives. Anything else -- an unknown host, or a hosted URL with no credential -- is reported as missing and not offered, because creating it needs an API this does not have or an authorization nobody gave. Creation is a separate act with its own audit entry; a probe never writes.
 
@@ -16084,7 +16092,7 @@ CONFIGURING A REPOSITORY REMOTE MUST PROBE IT, AND OFFER TO CREATE IT WHEN IT IS
 
 **Code:** `provisa/core/env_remote.py`, `provisa/api/admin/environments_router.py`, `provisa-ui/src/api/environments.ts`, `provisa-ui/src/components/admin/RepoIntegrationPanel.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/RepoIntegrationPanel.test.tsx`, `tests/unit/test_env_remote.py`
+**Tests:** `tests/unit/test_env_remote.py`, `provisa-ui/src/__tests__/RepoIntegrationPanel.test.tsx`
 
 ## 13. Multi-Tenancy & Organizations
 
@@ -16116,7 +16124,7 @@ What a person may do to DATA inside an environment is what their ROLES say, and 
 
 ### REQ-1540 · Admin UI {#REQ-1540}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A single-tenant deployment shows no organization in the navbar. The org switcher is a multi-tenancy control: it names the active org so a person who belongs to several knows which one they are looking at, and lets them change it. With multi-tenancy off there is exactly one org, so the name answers a question nobody can ask and offers a change nobody can make -- it is a permanent label consuming navbar space. The component renders nothing when ``multitenancy`` is false, ahead of every other condition, including the ``cross_org`` right: seeing every org is still one org here.
 
@@ -16130,7 +16138,7 @@ A single-tenant deployment shows no organization in the navbar. The org switcher
 
 ### REQ-1541 · Environments {#REQ-1541}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 The mirror runs BOTH WAYS. [REQ-1527](#REQ-1527) pushes an environment's projection to the org's own git host; this brings back what that host holds, so the review that happened there can reach a runtime here. Without it the loop is open: a pull request merges on GitHub and nothing in Provisa can name the merged branch, because the only refs in the org's repository are the ones its own write-through wrote. FETCH is an ACT, never a poll -- ``POST /admin/orgs/{org}/environments/-/repo-integration/fetch`` and ``provisa env fetch``, both carrying an identity. Provisa dials somebody else's git host with somebody else's credential, and doing that on a timer would mean an unbounded number of authenticated calls nobody asked for, and would make the answer to "what does origin/main point at" depend on when a tick last fired rather than on when a person last asked. What arrives lands in a SEPARATE namespace, ``refs/remotes/origin/*``: an environment's branch is written by the write-through and by nothing else, so a fetch onto ``refs/heads`` would let a remote reposition an environment behind the control plane's back. A fetched branch is therefore a tree somebody MAY deploy and never a model: ``origin/main`` resolves as a deploy ref ([REQ-1496](#REQ-1496)), and the deploy pins it to a sha exactly as it pins a local branch. The fetch PRUNES -- a tracking ref the fetch did not name is deleted, because the branch is gone from the remote and a stale ref would offer a deploy of a tree the org has retired. ``GET .../repo-integration/remote-branches`` reads refs and never the network, so listing costs nothing and an empty list means "nothing fetched yet" rather than "the remote is empty". The credential rule of [REQ-125](#REQ-125) survives: the remote is stored verbatim with its secret reference, resolved only at the moment of the call, and the refs are imported by Provisa rather than by configuring a git remote -- which would write the resolved URL, token and all, into a config file on disk.
 
@@ -16138,7 +16146,7 @@ The mirror runs BOTH WAYS. [REQ-1527](#REQ-1527) pushes an environment's project
 
 **Code:** `provisa/core/env_ci.py`, `provisa/core/env_repo.py`, `provisa/api/admin/environments_router.py`, `provisa/cli.py`
 
-**Tests:** `tests/unit/test_env_remote_tracking.py`
+**Tests:** `tests/unit/test_env_remote_tracking.py`, `tests/unit/test_cli_env_deploy.py`
 
 ### REQ-1542 · Environments {#REQ-1542}
 
@@ -16166,27 +16174,27 @@ Because every model change commits ([REQ-1524](#REQ-1524)), an environment can b
 
 ### REQ-1544 · Environments {#REQ-1544}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A deploy refreshes ONLY WHAT IT CHANGED. Each environment already has its own runtime, keyed ``{org}_env_{name}``, so serving a different environment has never restarted anything shared -- the cost a person perceives on a switch is the FIRST build of that environment's runtime, and the second switch to it is a cache hit. What was missing is the other half: a deploy changed the model rows and left the cached runtime compiling from the old ones, so an environment could serve a model it no longer held. The delta decides the refresh. ``DeployDelta`` already names every added, changed and removed path, and every path maps to the table that owns it; if no path in the delta belongs to ``sources``, then nothing about CONNECTIVITY changed and the compiled schema and catalog map are rebuilt while the source pools are kept. A delta that does touch ``sources`` rebuilds the environment's runtime, because a pool pointed at the old connection is not a stale cache but a connection to the wrong database. This is what makes undo and redo ([REQ-1543](#REQ-1543)) cheap by construction rather than by a special case: moving along the history of a model whose sources nobody edited costs a schema recompile. The rule is derived from the delta and never from the kind of call -- an undo, a merge and a pipeline deploy that change the same paths refresh identically.
 
 **Use case:** An editor undoes a column rename and the environment serves the earlier model without a runtime rebuild.
 
-**Code:** `provisa/core/env_deploy.py`, `provisa/api/admin/environments_router.py`, `provisa/api/org_runtime.py`
+**Code:** `provisa/core/env_deploy.py`, `provisa/core/env_copy.py`, `provisa/api/admin/environments_router.py`, `provisa/api/org_runtime.py`
 
 **Tests:** `tests/unit/test_env_deploy_refresh.py`
 
 ### REQ-1545 · Environments {#REQ-1545}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-A MERGE LANDS AS ONE COMMIT on the target's branch -- the source's line squashed FROM ITS CURRENT SHA BACK to where the two branches parted. The merge of [REQ-1490](#REQ-1490) copies a model by identity rather than replaying a history, so what the target gains is a single new state, and the only projection that matches it is a single commit. Until now the merge wrote model rows and committed nothing, which left the target holding a model its branch did not describe: the very drift the write-through of [REQ-1524](#REQ-1524) exists to prevent. The squash carries the provenance a reader needs and nothing it cannot honour -- the message names the source environment and the sha it was at, which is the one end of the range the target took; the other end is the merge base and is derivable from the two branches. THE SOURCE IS NOT REWRITTEN. Its commits stay in the object store, stay reachable by sha and stay deployable, so a squash adds a state to the target rather than removing one from anywhere. The same single commit lands whether the merge was direct or approved ([REQ-1504](#REQ-1504)), because what an approver approved was the state and not a history, and it records the target's position ([REQ-1543](#REQ-1543)) so an undo steps back from the merge rather than through it.
+A MERGE LANDS AS ONE COMMIT on the target's branch -- the source's line squashed FROM ITS CURRENT SHA BACK to where the two branches parted. [SUPERSEDED by [REQ-1548](#REQ-1548), 2026-10-03 -- the landing half of a merge goes through the one deploy path, not a row copy between schemas. Kept here for history; do not implement against it.] The merge of [REQ-1490](#REQ-1490) copies a model by identity rather than replaying a history, so what the target gains is a single new state, and the only projection that matches it is a single commit. [END SUPERSEDED BLOCK] Until now the merge wrote model rows and committed nothing, which left the target holding a model its branch did not describe: the very drift the write-through of [REQ-1524](#REQ-1524) exists to prevent. The squash carries the provenance a reader needs and nothing it cannot honour -- the message names the source environment and the sha it was at, which is the one end of the range the target took; the other end is the merge base and is derivable from the two branches. THE SOURCE IS NOT REWRITTEN. Its commits stay in the object store, stay reachable by sha and stay deployable, so a squash adds a state to the target rather than removing one from anywhere. The same single commit lands whether the merge was direct or approved ([REQ-1504](#REQ-1504)), because what an approver approved was the state and not a history, and it records the target's position ([REQ-1543](#REQ-1543)) so an undo steps back from the merge rather than through it. (Amended 2026-10-03, THE MERGE LANDS THROUGH THE ONE DEPLOY PATH:) The landing half of a merge is the one deploy path ([REQ-1548](#REQ-1548)): the merged tree is applied to the target as a deploy applies any tree, and that apply produces the one commit this requirement describes. There is no separate row copy between the two schemas.
 
 **Use case:** A feature environment is merged into staging and staging's branch gains one commit naming the source and its sha.
 
-**Code:** `provisa/api/admin/environments_router.py`, `provisa/core/env_repo.py`
+**Code:** `provisa/api/admin/environments_router.py`, `provisa/core/env_repo.py`, `provisa/core/env_store.py`
 
-**Tests:** `tests/unit/test_env_undo_redo.py`
+**Tests:** `tests/unit/test_env_merge_request_endpoints.py`, `tests/integration/test_env_repo_write_through.py`
 
 ### REQ-1546 · Environments {#REQ-1546}
 
@@ -16226,27 +16234,27 @@ THERE IS ONE VERB AND IT IS "APPLY A SHA". A control plane instance holds one mo
 
 ### REQ-1549 · Environments {#REQ-1549}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-A MERGE GOES BACK WHERE THE BRANCH CAME FROM, squashed from where the source now IS. The environment a branch was created from is recorded (``branched_from``), so the target of its merge is known without anybody choosing it, and that environment is the default the interface offers; naming a different one is possible and is an explicit act. What lands is one commit ([REQ-1545](#REQ-1545)), and the state it holds is the source's CURRENT POSITION rather than its branch tip -- which matters exactly when the source has stepped back ([REQ-1543](#REQ-1543)), because an environment that undid its last two commits means to merge what it is showing, not what it abandoned. This needs no special case: the merge copies the model the source HOLDS, and after an undo the model it holds is the tree at the undo point. Two options ride the merge and both are off by default. ``retire_source`` ends the source once its work has landed -- its schemas, its row, its branch. ``retire_remote`` also deletes the branch on the org's git host, and is separate because the remote copy is what survives a lost volume ([REQ-1546](#REQ-1546)): ending an environment here never implies ending it there. Both ride the approval row when the target is protected, because an approver approves a specific operation and "merge this", "merge this and end the branch" and "merge this and end it everywhere" are three of them.
+A MERGE GOES BACK WHERE THE BRANCH CAME FROM, squashed from where the source now IS. The environment a branch was created from is recorded (``branched_from``), so the target of its merge is known without anybody choosing it, and that environment is the default the interface offers; naming a different one is possible and is an explicit act. What lands is one commit ([REQ-1545](#REQ-1545)), and the state it holds is the source's CURRENT POSITION rather than its branch tip -- which matters exactly when the source has stepped back ([REQ-1543](#REQ-1543)), because an environment that undid its last two commits means to merge what it is showing, not what it abandoned. [SUPERSEDED by [REQ-1548](#REQ-1548), 2026-10-03 -- the merge applies the tree at the source's current position through the one deploy path, not a row copy. Kept here for history; do not implement against it.] This needs no special case: the merge copies the model the source HOLDS, and after an undo the model it holds is the tree at the undo point. [END SUPERSEDED BLOCK] Two options ride the merge and both are off by default. ``retire_source`` ends the source once its work has landed -- its schemas, its row, its branch. ``retire_remote`` also deletes the branch on the org's git host, and is separate because the remote copy is what survives a lost volume ([REQ-1546](#REQ-1546)): ending an environment here never implies ending it there. Both ride the approval row when the target is protected, because an approver approves a specific operation and "merge this", "merge this and end the branch" and "merge this and end it everywhere" are three of them. (Amended 2026-10-03, WHAT LANDS IS THE SOURCE'S CURRENT TREE, THROUGH THE ONE DEPLOY PATH:) The merge takes the tree at the source's current position, which after an undo is the tree at the undo point, and lands it on the target through the one deploy path ([REQ-1548](#REQ-1548)).
 
 **Use case:** A finished feature environment merges back into the environment it branched from and is removed locally and on the git host in the same act.
 
-**Code:** `provisa/api/admin/environments_router.py`, `provisa/core/env_approvals.py`, `provisa/core/schema_admin.py`
+**Code:** `provisa/api/admin/environments_router.py`, `provisa/core/env_approvals.py`, `provisa/core/env_retire.py`, `provisa/core/env_store.py`, `provisa/core/schema_admin.py`, `provisa-ui/src/components/admin/EnvironmentsTab.tsx`
 
-**Tests:** `tests/unit/test_env_merge_request_endpoints.py`
+**Tests:** `tests/unit/test_env_merge_request_endpoints.py`, `tests/unit/test_env_review_request.py`, `provisa-ui/src/__tests__/EnvironmentsTab.test.tsx`
 
 ### REQ-1550 · Environments {#REQ-1550}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A MERGE IS CONFIRMED IN A DIALOG THAT REQUIRES A COMMENT. The comment is not bookkeeping: the merge lands as one squashed commit ([REQ-1545](#REQ-1545)), so the range of work it stands for is unreadable from the history afterwards, and this sentence is the only account of what the range was. The generated provenance -- source environment and the sha it was at -- cannot say it, because it records where the work came from and not what the work does; the commit subject is therefore the operator's sentence with the provenance in parentheses after it. An empty comment is refused (``environments.message_required``) rather than defaulted, on both the direct merge and the proposal, and when the target is protected the comment travels on the request row so an approver reads what the requester wrote. Beneath the comment the dialog offers deleting the source branch, and only when THAT is checked does deleting the remote branch appear as an option under it: the remote copy is what survives a lost volume ([REQ-1546](#REQ-1546)), so an interface never offers deleting it while leaving the environment standing, and the API refuses that combination (``environments.remote_without_local``).
 
 **Use case:** A merge dialog makes the operator say what they are merging, and nests the two destructive options so the more final one cannot be chosen alone.
 
-**Code:** `provisa/api/admin/environments_router.py`
+**Code:** `provisa/api/admin/environments_router.py`, `provisa/core/env_approvals.py`, `provisa-ui/src/components/admin/EnvironmentsTab.tsx`, `provisa-ui/src/api/environments.ts`
 
-**Tests:** `tests/unit/test_env_merge_request_endpoints.py`
+**Tests:** `tests/unit/test_env_merge_request_endpoints.py`, `tests/unit/test_env_review_request.py`, `provisa-ui/src/__tests__/EnvironmentsTab.test.tsx`
 
 ### REQ-1551 · Environments {#REQ-1551}
 
@@ -16262,25 +16270,25 @@ WHEN THE TARGET BRANCH IS GOVERNED BY PULL REQUESTS, REVIEW IS ASKED FOR ON THE 
 
 ### REQ-1552 · Environments {#REQ-1552}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 THE STATE OF THE BRANCH BEING WORKED IN IS SHOWN WHERE THE WORK HAPPENS, NOT ONLY ON THE ADMIN PAGE. Somebody editing the model is not on the administration page, so the environment switcher that is on every screen carries what the admin page carries: how far the environment stands from the remote ([REQ-1546](#REQ-1546)), and the way back through its own history ([REQ-1543](#REQ-1543)). Two consequences follow. The sync read is a MEMBER read, not an org_admin one -- a member who owns an environment may push it, and the person who made the change cannot be the one person who cannot see that a push is owed. And WHETHER THERE IS A REMOTE AT ALL travels with the counts, because an org that has never configured one otherwise reads exactly like an org in sync; it is said plainly, once, rather than drawn as an empty badge. WHERE each thing is said follows from what it is about: how far a branch stands from the remote is about the branch, so it rides the switcher on every screen, and stepping that branch's history is offered there too, beside the name of the environment the change was made in and nowhere else. Whether the org mirrors anywhere at all is about the ORG, so it is said once, above the tabs of the environments page, and the prose behind it folds away -- a working surface is not a place to re-read an explanation. The remote URL itself does not travel with any of it: it carries secret references and stays behind the org_admin read ([REQ-1525](#REQ-1525)).
 
 **Use case:** A member changes the model in a branch environment and sees, without leaving the screen, that the change is theirs alone and has reached no remote.
 
-**Code:** `provisa/api/admin/environments_router.py`, `provisa-ui/src/components/EnvSwitcher.tsx`, `provisa-ui/src/components/admin/EnvironmentsTab.tsx`
+**Code:** `provisa/api/admin/environments_router.py`, `provisa/core/env_repo.py`, `provisa-ui/src/components/EnvSwitcher.tsx`, `provisa-ui/src/components/admin/EnvironmentsTab.tsx`, `provisa-ui/src/api/environments.ts`
 
-**Tests:** `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`, `provisa-ui/src/__tests__/EnvironmentsTab.test.tsx`, `tests/unit/test_env_sync.py`
+**Tests:** `tests/unit/test_env_sync.py`, `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`, `provisa-ui/src/__tests__/EnvironmentsTab.test.tsx`
 
 ### REQ-1553 · Environments {#REQ-1553}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 NEITHER END OF THE HISTORY IS OFFERED INTO A REFUSAL. Undo and redo are refused at the ends of the line -- at the first commit there is nothing behind, and where the environment has not stepped back from anything there is nothing ahead ([REQ-1543](#REQ-1543)) -- and a control that is offered whatever the cursor holds tells the person only by being pressed. So the environment answers with both directions: the cursor it stands at is in the control plane and the line it stands on is in git, so neither is derivable by a client, and the read that lists environments carries whether each way is open. The refusals stay: the answer is a claim about the moment it was read, and the server, not the disabled button, is what makes an impossible step impossible.
 
 **Use case:** An environment sitting at the first commit of its history offers no undo, instead of offering one that fails.
 
-**Code:** `provisa/api/admin/environments_router.py`, `provisa-ui/src/components/EnvSwitcher.tsx`
+**Code:** `provisa/api/admin/environments_router.py`, `provisa/core/env_repo.py`, `provisa-ui/src/components/EnvSwitcher.tsx`, `provisa-ui/src/api/environments.ts`
 
 **Tests:** `tests/unit/test_env_undo_redo.py`, `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`
 
@@ -16310,15 +16318,15 @@ A MERGE THAT OVERWRITES SOMEBODY ELSE'S WORK SAYS SO. Provisa merges by identity
 
 ### REQ-1554 · Environments {#REQ-1554}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 AN ENVIRONMENT IS STATE; A BRANCH IS THAT STATE'S HISTORY. The two are paired one to one and are still not the same object, and every surface says so in those terms. An environment is the control plane's state filtered by environment name -- what is live, and where bindings, secrets and grants sit; a branch is the line of committed versions of exactly one environment's model. A branch is never shared between environments and is never reassigned to another; work crosses from one environment to another by MERGE into the target's own branch ([REQ-1490](#REQ-1490)), which is why the excluded classes survive it. Deploying is the one control plane ingesting one sha, and choosing the environment is the whole of that act: no branch is named, no remote ref is chosen and no second dialog is opened, because there is exactly one branch the choice could have meant. THE PAIRING IS PROVISA'S RULE, NOT THE REPOSITORY'S. The repository on disk is ordinary git ([REQ-1502](#REQ-1502)), so a branch with no environment, or a branch moved under one, can exist and is not corruption: Provisa's own surfaces refuse to create one and report what they find rather than inventing a pairing for it or reading it as damage. What protects the model from either remains [REQ-1496](#REQ-1496) -- a tree is not a model until a load validates it and applies it whole. (Amended 2026-08-22, THE DEPLOYMENT CONTROL PROCESS IS NOT PROVISA'S:) There are many control planes and one remote, so a person editing the model in their own control plane is editing a working copy and can wreck it without reaching anybody. What may reach a branch is decided by the org's git host -- pull request requirements, reviews, checks -- which Provisa neither performs nor polices, and Provisa adds no second deployment-control mechanism of its own beyond the approval [REQ-1504](#REQ-1504) already holds. The seam is an INVOCATION: `provisa env deploy --org --env --ref --api --token` tells one named control plane to ingest one sha, and it is the pipeline that watched the git host's rules pass which runs it. The exit code is that pipeline's whole contract: a deploy that became a proposal against a protected environment exits non-zero, because a release that has not happened must not be reported as one.
 
 **Use case:** A reader of any environments surface can say what is live, what its history is, and what a deploy did, without the three collapsing into one word.
 
-**Code:** `provisa/core/env_repo.py`, `provisa/core/env_store.py`, `provisa/api/admin/environments_router.py`, `provisa/cli.py`, `provisa-ui/src/components/EnvSwitcher.tsx`
+**Code:** `provisa/core/env_repo.py`, `provisa/core/env_store.py`, `provisa/core/env_create.py`, `provisa/api/admin/environments_router.py`, `provisa/cli.py`, `provisa-ui/src/components/EnvSwitcher.tsx`
 
-**Tests:** `tests/unit/test_env_sync.py`, `tests/unit/test_cli_env_deploy.py`
+**Tests:** `tests/unit/test_env_sync.py`, `tests/unit/test_cli_env_deploy.py`, `tests/unit/test_env_create_baseline.py`, `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`
 
 ## 1. Access Governance & Security
 
@@ -16326,7 +16334,7 @@ AN ENVIRONMENT IS STATE; A BRANCH IS THAT STATE'S HISTORY. The two are paired on
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** structural
 
-A SECRETS SERVICE, WITH PROVISA'S OWN STORE AS THE ONE THAT IS ALWAYS THERE. ${provider:reference} ([REQ-125](#REQ-125), [REQ-557](#REQ-557)) already names a provider, and a registry already exists to hold more than one -- but only ``env`` was ever registered, and ``register_provider`` has no callers, so in practice a secret can only be an environment variable of the server process. THAT MAKES A SECRET SOMETHING ONLY THE OPERATOR OF THE HOST CAN SET: a hosted org cannot put its own git token, warehouse password or API key anywhere, because it does not own the process environment. The provider set therefore becomes a registry in the shape the encryption providers already use (provisa/encryption/registry.py): a named spec with a label, a description, the config fields it needs and an availability probe, so a deployment wired to HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager or Azure Key Vault reads its secrets from there. WHEN NOTHING CENTRAL IS CONNECTED PROVISA IS ITS OWN SECRETS SERVICE: a built-in per-org store in the control plane, each value encrypted through the configured encryption service ([REQ-684](#REQ-684), [REQ-685](#REQ-685)) so the plaintext never rests in a column, and never reachable across orgs. It is the default, not the degraded case. AN UNKNOWN PROVIDER, AN UNSET NAME AND AN UNCONFIGURED BACKEND ALL RAISE -- a secret that cannot be resolved is never an empty string and never falls through to another provider. WHAT AUTHORIZES A READ. The built-in store needs no key of its own: the row IS envelope ciphertext, so the authority to read it is the encryption master key ([REQ-684](#REQ-684)) the process already holds, and a control-plane database copied without that key yields nothing. An EXTERNAL provider does need a credential -- a Vault token, an AWS role -- and that credential is PROCESS CONFIGURATION resolved through ${env:...} alone, never an org secret: a store whose own credential lives inside the store cannot be opened, so the chain of trust terminates in the host environment by design. Every read and write is scoped to ONE org: a name is looked up only in the namespace of the org the request is bound to, so two orgs holding GIT_TOKEN hold two unrelated secrets and neither can name the other's.
+A SECRETS SERVICE, WITH PROVISA'S OWN STORE AS THE ONE THAT IS ALWAYS THERE. ${provider:reference} ([REQ-557](#REQ-557)) already names a provider, and a registry already exists to hold more than one -- [SUPERSEDED by REQ-1557 amendment, 2026-10-03 -- Before-state narrative; the secrets registry now registers five backends and ${secret:...} resolves through the configured one. Kept here for history; do not implement against it.] but only ``env`` was ever registered, and ``register_provider`` has no callers, so in practice a secret can only be an environment variable of the server process [END SUPERSEDED BLOCK]. THAT MAKES A SECRET SOMETHING ONLY THE OPERATOR OF THE HOST CAN SET: a hosted org cannot put its own git token, warehouse password or API key anywhere, because it does not own the process environment. The provider set therefore becomes a registry in the shape the encryption providers already use (provisa/encryption/registry.py): a named spec with a label, a description, the config fields it needs and an availability probe, so a deployment wired to HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager or Azure Key Vault reads its secrets from there. WHEN NOTHING CENTRAL IS CONNECTED PROVISA IS ITS OWN SECRETS SERVICE: a built-in per-org store in the control plane, each value encrypted through the configured encryption service ([REQ-684](#REQ-684), [REQ-685](#REQ-685)) so the plaintext never rests in a column, and never reachable across orgs. It is the default, not the degraded case. AN UNKNOWN PROVIDER, AN UNSET NAME AND AN UNCONFIGURED BACKEND ALL RAISE -- a secret that cannot be resolved is never an empty string and never falls through to another provider. WHAT AUTHORIZES A READ. The built-in store needs no key of its own: the row IS envelope ciphertext, so the authority to read it is the encryption master key ([REQ-684](#REQ-684)) the process already holds, and a control-plane database copied without that key yields nothing. An EXTERNAL provider does need a credential -- a Vault token, an AWS role -- and that credential is PROCESS CONFIGURATION resolved through ${env:...} alone, never an org secret: a store whose own credential lives inside the store cannot be opened, so the chain of trust terminates in the host environment by design. Every read and write is scoped to ONE org: a name is looked up only in the namespace of the org the request is bound to, so two orgs holding GIT_TOKEN hold two unrelated secrets and neither can name the other's.
 
 **Use case:** An org running on hosted Provisa can store its own git token or warehouse password without owning the server's environment, and an enterprise with Vault or AWS Secrets Manager reads the same references out of the service it already runs.
 
@@ -16338,7 +16346,7 @@ A SECRETS SERVICE, WITH PROVISA'S OWN STORE AS THE ONE THAT IS ALWAYS THERE. ${p
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-ADMIN / SECRETS: NAMES GO IN, VALUES NEVER COME BACK OUT. An org admin creates a secret by giving it a name and a value, and from then on the screen, the API and the audit record speak only in names -- the list says what exists, who last set it and when, and the reference to paste (${secret:NAME}); no endpoint returns a stored value, to anyone, ever. THERE IS NO "SHOW" BUTTON, because a value that can be read back through the API is a credential the browser has already leaked; a person who has lost a secret replaces it rather than reading it. A secret may be REPLACED (same name, new value) and DELETED, [SUPERSEDED by [REQ-1918](#REQ-1918), 2026-10-03 -- an org secret is deleted only when no stored value names it; the refusal lists what does. Kept here for history; do not implement against it.] and deleting one that a stored reference still names is allowed and reported -- the reference is text, its resolution is checked when it is used, and Provisa does not hold a secret hostage to a config that mentions it [END SUPERSEDED BLOCK]. Secrets are the ORG'S, managed by org_admin: a platform admin operates the control plane and has no read of any org's secret values ([REQ-1361](#REQ-1361)). The page also names which secrets provider the deployment is using, so an org can tell Provisa's own store from a central service it is expected to file the secret in instead. WHERE IT LIVES: Admin / Security / Secrets, a sub-tab beside posture, encryption, authentication and local users, reached at /admin/secrets. Sharing the section does not mean sharing its right: the other four sub-tabs describe the DEPLOYMENT and answer to platform_settings, Secrets is the ORG'S and answers to org_settings, and each person is shown only the sub-tabs their capability carries -- a platform admin sees the four and no secrets, an org admin sees Secrets and none of the four. A deep link to a sub-tab the person may not open lands on one they may. THE PAGE ALSO LISTS EVERY SECRETS PROVIDER THE BUILD KNOWS AND LETS THE DEPLOYMENT CHANGE WHICH ONE IS IN USE. Each registered backend is shown with its label and description, the one this deployment is wired to is marked as selected, and a backend whose client library is not installed is shown GREYED OUT, unselectable, and annotated "(requires <library> import)" rather than hidden. Hiding it would leave an operator guessing whether Provisa supports their secrets manager at all; showing it unavailable answers both questions at once -- it is supported, and the one thing missing is a pip install. Selecting a backend writes secrets.provider and its config block to provisa.yaml and rebinds the running process, and the backend's own credential is typed as a ${env:...} reference, never a literal, because a credential that opens the secrets store cannot come out of it ([REQ-1557](#REQ-1557)). Selection is fail-closed: an unavailable or unregistered backend is refused with the reason, never silently replaced by another. The service panel is COLLAPSIBLE and starts COLLAPSED -- choosing the backend is a once-a- deployment act while reading the names is the daily one, so the daily thing is what the page opens on -- and its expanded/collapsed state is remembered per browser and restored on the next visit. WHO MAY DO WHICH: the secrets SERVICE is the deployment's and answers to platform_settings; the secret NAMES are the org's and answer to org_settings. Both live on this one sub-tab and each person sees only their half -- a platform admin chooses the provider and never sees an org's names, an org admin sees the names and reads which service holds them without being able to change it. SECRETS OWNS NO NAV ENTRY OF ITS OWN: it is reached through Admin / Security, whose rail entry already stands for the section, and /admin/secrets stays a working deep link. A second entry for one sub-tab of a section the rail already lists is a duplicate that tells a reader the two are different places.
+ADMIN / SECRETS: NAMES GO IN, VALUES NEVER COME BACK OUT. An org admin creates a secret by giving it a name and a value, and from then on the screen, the API and the audit record speak only in names -- the list says what exists, who last set it and when, and the reference to paste (${secret:NAME}); no endpoint returns a stored value, to anyone, ever. THERE IS NO "SHOW" BUTTON, because a value that can be read back through the API is a credential the browser has already leaked; a person who has lost a secret replaces it rather than reading it. A secret may be REPLACED (same name, new value) and DELETED, [SUPERSEDED by [REQ-1918](#REQ-1918), 2026-10-03 -- an org secret is deleted only when no stored value names it; the refusal lists what does. Kept here for history; do not implement against it.] and deleting one that a stored reference still names is allowed and reported -- the reference is text, its resolution is checked when it is used, and Provisa does not hold a secret hostage to a config that mentions it [END SUPERSEDED BLOCK]. Secrets are the ORG'S, managed by org_admin: a platform admin operates the control plane and has no read of any org's secret values ([REQ-1327](#REQ-1327)). The page also names which secrets provider the deployment is using, so an org can tell Provisa's own store from a central service it is expected to file the secret in instead. [SUPERSEDED by [REQ-1560](#REQ-1560), 2026-10-03 -- [REQ-1560](#REQ-1560) moved secrets out of Security into two surfaces of their own (/admin/secrets and /admin/my-secrets). Kept here for history; do not implement against it.] WHERE IT LIVES: Admin / Security / Secrets, a sub-tab beside posture, encryption, authentication and local users, reached at /admin/secrets. [END SUPERSEDED BLOCK] Sharing the section does not mean sharing its right: the other four sub-tabs describe the DEPLOYMENT and answer to platform_settings, Secrets is the ORG'S and answers to org_settings, and each person is shown only the sub-tabs their capability carries -- [SUPERSEDED by [REQ-1560](#REQ-1560), 2026-10-03 -- Secrets is no longer a Security sub-tab; a platform admin reaches /admin/secrets for the service chooser, labelled Platform Secrets. Kept here for history; do not implement against it.] a platform admin sees the four and no secrets, an org admin sees Secrets and none of the four. A deep link to a sub-tab the person may not open lands on one they may. [END SUPERSEDED BLOCK] THE PAGE ALSO LISTS EVERY SECRETS PROVIDER THE BUILD KNOWS AND LETS THE DEPLOYMENT CHANGE WHICH ONE IS IN USE. Each registered backend is shown with its label and description, the one this deployment is wired to is marked as selected, and a backend whose client library is not installed is shown GREYED OUT, unselectable, and annotated "(requires <library> import)" rather than hidden. Hiding it would leave an operator guessing whether Provisa supports their secrets manager at all; showing it unavailable answers both questions at once -- it is supported, and the one thing missing is a pip install. Selecting a backend writes secrets.provider and its config block to provisa.yaml and rebinds the running process, and the backend's own credential is typed as a ${env:...} reference, never a literal, because a credential that opens the secrets store cannot come out of it ([REQ-1557](#REQ-1557)). Selection is fail-closed: an unavailable or unregistered backend is refused with the reason, never silently replaced by another. The service panel is COLLAPSIBLE and starts COLLAPSED -- choosing the backend is a once-a- deployment act while reading the names is the daily one, so the daily thing is what the page opens on -- and its expanded/collapsed state is remembered per browser and restored on the next visit. WHO MAY DO WHICH: the secrets SERVICE is the deployment's and answers to platform_settings; the secret NAMES are the org's and answer to org_settings. Both live on this one sub-tab and each person sees only their half -- a platform admin chooses the provider and never sees an org's names, an org admin sees the names and reads which service holds them without being able to change it. [SUPERSEDED by [REQ-1560](#REQ-1560), 2026-10-03 -- [REQ-1560](#REQ-1560) gives both vaults a nav entry of their own (provisa-ui/src/components/navGroups.ts:178-185). Kept here for history; do not implement against it.] SECRETS OWNS NO NAV ENTRY OF ITS OWN: it is reached through Admin / Security, whose rail entry already stands for the section, and /admin/secrets stays a working deep link. [END SUPERSEDED BLOCK] A second entry for one sub-tab of a section the rail already lists is a duplicate that tells a reader the two are different places.
 
 **Use case:** An org admin can add the git token an environment remote references, rotate it when it expires, and see at a glance which secrets exist without any screen or response ever carrying a secret value.
 
@@ -16350,7 +16358,7 @@ ADMIN / SECRETS: NAMES GO IN, VALUES NEVER COME BACK OUT. An org admin creates a
 
 ### REQ-1559 · UI {#REQ-1559}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 ADMIN NAVIGATES DOWN A LEFT-HAND RAIL, NOT ACROSS A TOP BAR. Every other section of the product carries a handful of surfaces and reads comfortably as a horizontal sub-bar; Admin carries two dozen, which that bar can only crowd, truncate or wrap. So on an admin route the section's entries render as a VERTICAL RAIL down the left edge of the page, the page content taking the remaining width, and the horizontal sub-bar is not drawn for that section at all -- one navigation, in one place, never both. The rail is the same entry list, gated on the same rights and filtered by the same commercial/installed rules as the bar it replaces, so a person sees exactly the surfaces they may reach and no link leads to a permission error. The rail scrolls on its own when it is taller than the viewport, so the page content is never pushed off-screen by the length of the menu, and the entry for the surface being viewed is marked current. Being visually different is the point as much as the fit: Admin is where the deployment is changed, and it should not look like the page a query is written on.
 
@@ -16358,7 +16366,7 @@ ADMIN NAVIGATES DOWN A LEFT-HAND RAIL, NOT ACROSS A TOP BAR. Every other section
 
 **Code:** `provisa-ui/src/components/AdminRail.tsx`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/components/navGroups.ts`, `provisa-ui/src/App.tsx`, `provisa-ui/src/App.css`
 
-**Tests:** —
+**Tests:** `provisa-ui/src/__tests__/AdminRail.test.tsx`
 
 ## 1. Access Governance & Security
 
@@ -16366,7 +16374,7 @@ ADMIN NAVIGATES DOWN A LEFT-HAND RAIL, NOT ACROSS A TOP BAR. Every other section
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-A SECRET BELONGS TO SOMEONE, AND WHO IT BELONGS TO IS PART OF ITS ADDRESS. A developer needs credentials of their own -- their git token, their warehouse login -- and holding them in the one shared org store means any other developer can write ${secret:GIT_TOKEN} into a config and push as them. Provisa refuses that by making the OWNER part of the reference rather than a permission checked around it. THERE ARE TWO SECRET SCOPES, and the reference grammar names which one it means: ${secret:NAME} is an ORG secret, one value that every member of the org resolves to the same thing; ${user:NAME} is a PERSONAL secret, resolved against WHOEVER IS ACTING, so the same reference in the same config yields each person their own credential and yields nothing at all for someone who has not stored one. Impersonation is impossible not because a check forbids it but because there is no way to write down "someone else's secret" -- the personal namespace has no addressable owner. ONE SECRETS SERVICE, TWO VAULTS. The scopes are not two backends: the deployment is wired to exactly one secrets service ([REQ-1557](#REQ-1557)) and both vaults live inside it, the org vault addressed by the org and each personal vault by its owner -- in Provisa's own store the owner is a column of the key, in a central service it is a distinct path under the same mount. Choosing the service stays one deployment-wide decision; nobody configures a second one to hold their own credentials. THERE IS NO PRECEDENCE AND NO SHADOWING between the two: ${secret:X} never resolves to a personal secret and ${user:X} never resolves to an org one, so the same name may exist in both scopes and neither silently answers for the other. An unset personal reference is a fail-closed error naming the scope, never a fall-through to the org value. WHO MAY WRITE WHICH. A personal secret is the person's own: any member of the acting org may create, replace and delete their own, and NOBODY -- not another member, not the org admin, not the platform admin, not cross_org -- may list, replace or delete another person's, because the API takes the owner from the authenticated identity and never from the request. An ORG secret is the org's: creating, replacing and deleting one is org_settings, held by org_admin, and it is the org_admin's act of storing it in the org scope that makes a credential shared. A platform admin holds neither over any org -- cross_org confers org LIFECYCLE, not a read of the names an org keeps, and the platform-bypass wildcard does not satisfy either gate ([REQ-1361](#REQ-1361), [REQ-1558](#REQ-1558)). TWO SURFACES, NAMED FOR WHOSE THEY ARE. Admin carries "Org Secrets" (org_settings) and "Your Secrets" (any member), each listing only its own scope, each showing the reference to paste in the grammar of that scope, and each obeying names-go-in-values-never-come-back-out exactly as [REQ-1558](#REQ-1558) requires. Separate surfaces rather than one filtered list, because whose a secret is decides who can break what by rotating it, and a person should never have to read a column to find that out. This supersedes [REQ-1558](#REQ-1558)'s single Secrets sub-tab under Security: the org scope keeps /admin/secrets, the personal scope is /admin/my-secrets, and both take a nav entry of their own -- Security answers to platform_settings, so a multitenant org admin could not reach a secrets tab nested under it. Every write is audited by name, scope and actor; the audit record of a personal secret names its owner as the actor and no one else can read it. A MENU ENTRY IS A CLAIM ABOUT WHOSE THE SURFACE IS. The client's capability check let the platform-bypass wildcard answer every gate, so a platform admin was shown "Org Secrets" -- a link that names an org's vault as theirs to open -- and the page behind it withheld the org half exactly as the server does, leaving a heading and nothing under it. The client says what the server says: the org vault's gate is STRICT, satisfied only by a literal org_settings and never by the wildcard. The entry does not disappear, because /admin/secrets carries a second thing gated differently -- the DEPLOYMENT's choice of secrets service ([REQ-1557](#REQ-1557), platform_settings) -- so the entry survives on that right and is RENAMED for what it opens: "Platform Secrets" for the caller who reaches only the deployment's half, "Org Secrets" for the administrator of the org, and the page heading says the same. Naming a surface for a half the caller cannot reach is the defect; hiding a half they can is the other one.
+A SECRET BELONGS TO SOMEONE, AND WHO IT BELONGS TO IS PART OF ITS ADDRESS. A developer needs credentials of their own -- their git token, their warehouse login -- and holding them in the one shared org store means any other developer can write ${secret:GIT_TOKEN} into a config and push as them. Provisa refuses that by making the OWNER part of the reference rather than a permission checked around it. THERE ARE TWO SECRET SCOPES, and the reference grammar names which one it means: ${secret:NAME} is an ORG secret, one value that every member of the org resolves to the same thing; ${user:NAME} is a PERSONAL secret, resolved against WHOEVER IS ACTING, so the same reference in the same config yields each person their own credential and yields nothing at all for someone who has not stored one. Impersonation is impossible not because a check forbids it but because there is no way to write down "someone else's secret" -- the personal namespace has no addressable owner. ONE SECRETS SERVICE, TWO VAULTS. The scopes are not two backends: the deployment is wired to exactly one secrets service ([REQ-1557](#REQ-1557)) and both vaults live inside it, the org vault addressed by the org and each personal vault by its owner -- in Provisa's own store the owner is a column of the key, in a central service it is a distinct path under the same mount. Choosing the service stays one deployment-wide decision; nobody configures a second one to hold their own credentials. THERE IS NO PRECEDENCE AND NO SHADOWING between the two: ${secret:X} never resolves to a personal secret and ${user:X} never resolves to an org one, so the same name may exist in both scopes and neither silently answers for the other. An unset personal reference is a fail-closed error naming the scope, never a fall-through to the org value. WHO MAY WRITE WHICH. A personal secret is the person's own: any member of the acting org may create, replace and delete their own, and NOBODY -- not another member, not the org admin, not the platform admin, not cross_org -- may list, replace or delete another person's, because the API takes the owner from the authenticated identity and never from the request. An ORG secret is the org's: creating, replacing and deleting one is org_settings, held by org_admin, and it is the org_admin's act of storing it in the org scope that makes a credential shared. A platform admin holds neither over any org -- cross_org confers org LIFECYCLE, not a read of the names an org keeps, and the platform-bypass wildcard does not satisfy either gate ([REQ-1327](#REQ-1327), [REQ-1558](#REQ-1558)). TWO SURFACES, NAMED FOR WHOSE THEY ARE. Admin carries "Org Secrets" (org_settings) and "Your Secrets" (any member), each listing only its own scope, each showing the reference to paste in the grammar of that scope, and each obeying names-go-in-values-never-come-back-out exactly as [REQ-1558](#REQ-1558) requires. Separate surfaces rather than one filtered list, because whose a secret is decides who can break what by rotating it, and a person should never have to read a column to find that out. This supersedes [REQ-1558](#REQ-1558)'s single Secrets sub-tab under Security: the org scope keeps /admin/secrets, the personal scope is /admin/my-secrets, and both take a nav entry of their own -- Security answers to platform_settings, so a multitenant org admin could not reach a secrets tab nested under it. Every write is audited by name, scope and actor; the audit record of a personal secret names its owner as the actor and no one else can read it. A MENU ENTRY IS A CLAIM ABOUT WHOSE THE SURFACE IS. The client's capability check let the platform-bypass wildcard answer every gate, so a platform admin was shown "Org Secrets" -- a link that names an org's vault as theirs to open -- and the page behind it withheld the org half exactly as the server does, leaving a heading and nothing under it. The client says what the server says: the org vault's gate is STRICT, satisfied only by a literal org_settings and never by the wildcard. The entry does not disappear, because /admin/secrets carries a second thing gated differently -- the DEPLOYMENT's choice of secrets service ([REQ-1557](#REQ-1557), platform_settings) -- so the entry survives on that right and is RENAMED for what it opens: "Platform Secrets" for the caller who reaches only the deployment's half, "Org Secrets" for the administrator of the org, and the page heading says the same. Naming a surface for a half the caller cannot reach is the defect; hiding a half they can is the other one.
 
 **Use case:** A developer stores their own git token as ${user:GIT_TOKEN} and uses it in a source config, and no other developer in the org can resolve, replace or read it.
 
@@ -16428,27 +16436,27 @@ THE BILLING KEY IS ASSERTED FOR THE STORE THE DEPLOYMENT ACTUALLY TRANSACTS AGAI
 
 ### REQ-1565 · Pricing & Tiering {#REQ-1565}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 THE TRIAL RESET THE REFUSAL PROMISES IS AN ENDPOINT, NOT A HAND-WRITTEN UPDATE. [REQ-1474](#REQ-1474) refuses a second free trial and tells the person refused to write in and have it reset -- copy that commits the platform to an action it had no way to perform, leaving support to edit trial_grants by hand on a production control plane. A named operation replaces that: DELETE /billing/trial/grants names the person by email address and releases their grant. It is gated by cross_org ([REQ-1337](#REQ-1337)), the right that lets the control plane act in an org it is not a member of, because the person being reset belongs to somebody else's org. The whole grant is released, not the one key that was named: a grant is recorded under BOTH identities [REQ-1474](#REQ-1474) tracks -- the normalized address and the Lemon Squeezy customer id -- so deleting only the address leaves the merchant-side key to refuse the same person the moment they return to checkout. Releasing a grant is logged with the operator who released it and the org it was spent on. It reports how many keys it released, and releasing a grant that is not held is a 404 rather than a silent success, so support can tell "reset" from "there was nothing there".
 
 **Use case:** A prospect refused a trial they never knowingly used writes to the address the refusal names, and support clears them in one call instead of opening a psql session on the control plane.
 
-**Code:** `provisa_commercial/router.py`, `provisa_commercial/trial_eligibility.py`
+**Code:** `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/trial_eligibility.py`, `.claude/commercial/provisa_commercial/access.py`
 
-**Tests:** —
+**Tests:** `.claude/commercial/tests/test_billing_access.py`, `.claude/commercial/tests/test_trial_eligibility.py`
 
 ### REQ-1566 · Pricing & Tiering {#REQ-1566}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 STARTER IS ORDERABLE WITHOUT A TRIAL. Signup routes Starter through the trial checkout because Starter is the plan the trial converts to, so the [REQ-1474](#REQ-1474) refusal -- one free evaluation per person -- ended the road: someone who had already spent their grant could not order Starter at all, which is the plan they were trying to PAY for. The refusal copy already told them otherwise, offering exactly this. So the trial is a property of the checkout, not a condition of it: when the buyer is still owed an evaluation the Starter checkout carries the variant's free-trial period, and when they are not it is opened with the trial skipped and bills from the first invoice. The plan, its limits, and its variant are identical either way -- only the trial period differs -- and the response says which was opened so the client can name it before the buyer leaves for the checkout. Asking for a TRIAL explicitly, at /trial/start, is still refused with the [REQ-1474](#REQ-1474) message; it is the paid road that must never be closed. Two conditions remain hard refusals on both roads, because neither is about the trial: an org that already started one holds a subscription, and a request carrying no signed-in address identifies no person to be held to "once". The signup page is told the same fact BEFORE the buyer chooses: the plan catalog reports whether the signed-in account is still owed an evaluation, and when it is not the page stops advertising a free trial on Starter -- offering fourteen free days to someone the checkout will bill on day one is the version of this the buyer discovers with their card already entered.
 
 **Use case:** A prospect whose grant was spent inside an org they were invited to picks Starter at signup and reaches a checkout that bills immediately, instead of an error they cannot get past.
 
-**Code:** `provisa_commercial/router.py`, `provisa_commercial/lemonsqueezy_client.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
+**Code:** `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/lemonsqueezy_client.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`, `provisa-ui/src/api/billing.ts`
 
-**Tests:** —
+**Tests:** `.claude/commercial/tests/test_billing_access.py`, `provisa-ui/src/__tests__/OnboardOrgSignup.test.tsx`
 
 ## 13. Multi-Tenancy & Organizations
 
@@ -16520,7 +16528,7 @@ SIGN-IN AND REGISTRATION RENDER WITHOUT THE APP SHELL, CENTERED. /login and /reg
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-AN INVITATION IS ITSELF THE ADMISSION DECISION, AND THE ORG EMAIL RULE DOES NOT GATE REDEEMING ONE. The email rule ([REQ-1268](#REQ-1268)) decides who may join an org on their own initiative -- it is the guard on auto-join and on self-service. An invitation is different in kind: an org admin named a person, it is single-use, and it expires. Applying the rule to redemption refused exactly the people an admin deliberately reached outside their own domain -- a contractor, an auditor, someone whose IdP account carries a different address than their work one -- with an error the invitee could do nothing about, and it did so only under bearer identity providers: /register on the basic provider never applied the rule to an invite. Redemption now admits any valid, unused, unexpired invitation regardless of the rule, under both providers.
+AN INVITATION IS ITSELF THE ADMISSION DECISION, AND THE ORG EMAIL RULE DOES NOT GATE REDEEMING ONE. The email rule ([REQ-1284](#REQ-1284)) decides who may join an org on their own initiative -- it is the guard on auto-join and on self-service. An invitation is different in kind: an org admin named a person, it is single-use, and it expires. Applying the rule to redemption refused exactly the people an admin deliberately reached outside their own domain -- a contractor, an auditor, someone whose IdP account carries a different address than their work one -- with an error the invitee could do nothing about, and it did so only under bearer identity providers: /register on the basic provider never applied the rule to an invite. Redemption now admits any valid, unused, unexpired invitation regardless of the rule, under both providers.
 
 **Use case:** An org whose rule admits only its own domain invites an outside contractor, and the contractor's invitation link works.
 
@@ -16546,7 +16554,7 @@ ENVIRONMENTS ARE GOVERNED BY TWO RIGHTS, AND NEITHER IS AN ANALYST'S BY DEFAULT.
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-AN ORG SETS ITS OWN ENCRYPTION KEY, CHANGES IT, AND NEVER SEES IT. The key an org's data is wrapped under is settable by an org_admin -- generated by the server or supplied as 32 raw bytes base64 -- and rotatable at any time, and there is NO PATH BY WHICH ITS VALUE COMES BACK OUT: no GET returns it, no export carries it, no log line records it, and there is no "show" control in the UI. This is the ``secrets_store`` rule ([REQ-1557](#REQ-1557), [REQ-1558](#REQ-1558)) applied to the key those secrets are wrapped under: names and metadata go in and out, values only go in. What a reader IS shown is a FINGERPRINT -- the first 16 hex of the SHA-256 of the raw key -- which answers the only question an operator has to be able to answer about a key they cannot see (is the key I just set the key I meant to set, and is this org still on the key I gave it) and discloses nothing about the key itself, the same trade ssh makes. THE KEY IS A RING, NOT A SLOT. Setting a key retires the current one rather than replacing it; retired entries stay so that a payload written under one still decrypts. Rotation is therefore cheap and immediate -- it changes which key new writes wrap under -- and is NOT re-encryption of what is already stored. Envelope blobs carry the id of the key that wrapped them (format version 2, [REQ-685](#REQ-685)) so the ring resolves the right entry per blob and never guesses. ROTATION IS THEREFORE NOT REVOCATION, and V1 says so plainly rather than implying otherwise: a retired key keeps working because it is the only thing that reads what it wrote. Making a retired key stop working means re-wrapping every payload it holds and then dropping the entry -- a re-key pass V1 does not ship. Until it does, no surface offers to delete a ring entry, because the only way to delete one today is to lose the data under it. THE KEY MATERIAL IS NEVER STORED IN THE CLEAR: the ring row holds the org key wrapped by the DEPLOYMENT's encryption service, so a copy of the control plane without the deployment master key yields nothing -- exactly the argument [REQ-1557](#REQ-1557) makes for secrets_store. SELECTION IS BY BOUND ORG AND FAILS CLOSED. ``encryption_service()`` resolves the org on ``current_org``: an org that has set a key is served that org's service, an org that has not is served the deployment's -- unset is not unconfigured. An org whose ring is KNOWN to exist but could not be loaded RAISES; it is never quietly served the deployment key, because that would write the org's next payload under a key the org did not choose. AUTHORITY IS THE ORG'S. Setting and rotating are org_admin acts on the data plane, so a platform_admin -- who holds no data capability anywhere ([REQ-1337](#REQ-1337)) -- can neither set an org's key nor rotate it. THE DEPLOYMENT KEY OBEYS THE SAME RULE: POST /admin/encryption/generate-key stops returning key material. When it has nowhere to store the key it refuses rather than printing it, and says to generate one out of band and set PROVISA_ENCRYPTION_KEY -- amending REQ-918, whose one-time display was the last place a key was ever shown. (Amended 2026-08-24, WHERE IT LIVES:) the org key is not a nav entry of its own. It is a collapsible panel at the TOP OF ORG SECRETS, above the names, because it is the key those names are wrapped under and it is held by the same right, org_settings -- one page answers both halves of the same question. Collapsed by default and mounted only when opened, so a reader who came for the names neither sees nor fetches the key state, and a surface that cannot hold the org's secrets (the platform wildcard, a personal vault) does not offer the panel at all.
+AN ORG SETS ITS OWN ENCRYPTION KEY, CHANGES IT, AND NEVER SEES IT. The key an org's data is wrapped under is settable by an org_admin -- generated by the server or supplied as 32 raw bytes base64 -- and rotatable at any time, and there is NO PATH BY WHICH ITS VALUE COMES BACK OUT: no GET returns it, no export carries it, no log line records it, and there is no "show" control in the UI. This is the ``secrets_store`` rule ([REQ-1557](#REQ-1557), [REQ-1558](#REQ-1558)) applied to the key those secrets are wrapped under: names and metadata go in and out, values only go in. What a reader IS shown is a FINGERPRINT -- the first 16 hex of the SHA-256 of the raw key -- which answers the only question an operator has to be able to answer about a key they cannot see (is the key I just set the key I meant to set, and is this org still on the key I gave it) and discloses nothing about the key itself, the same trade ssh makes. THE KEY IS A RING, NOT A SLOT. Setting a key retires the current one rather than replacing it; retired entries stay so that a payload written under one still decrypts. Rotation is therefore cheap and immediate -- it changes which key new writes wrap under -- and is NOT re-encryption of what is already stored. Envelope blobs carry the id of the key that wrapped them (format version 2, [REQ-685](#REQ-685)) so the ring resolves the right entry per blob and never guesses. ROTATION IS THEREFORE NOT REVOCATION, and V1 says so plainly rather than implying otherwise: a retired key keeps working because it is the only thing that reads what it wrote. Making a retired key stop working means re-wrapping every payload it holds and then dropping the entry -- a re-key pass V1 does not ship. Until it does, no surface offers to delete a ring entry, because the only way to delete one today is to lose the data under it. THE KEY MATERIAL IS NEVER STORED IN THE CLEAR: the ring row holds the org key wrapped by the DEPLOYMENT's encryption service, so a copy of the control plane without the deployment master key yields nothing -- exactly the argument [REQ-1557](#REQ-1557) makes for secrets_store. SELECTION IS BY BOUND ORG AND FAILS CLOSED. ``encryption_service()`` resolves the org on ``current_org``: an org that has set a key is served that org's service, an org that has not is served the deployment's -- unset is not unconfigured. An org whose ring is KNOWN to exist but could not be loaded RAISES; it is never quietly served the deployment key, because that would write the org's next payload under a key the org did not choose. AUTHORITY IS THE ORG'S. Setting and rotating are org_admin acts on the data plane, so a platform_admin -- who holds no data capability anywhere ([REQ-1337](#REQ-1337)) -- can neither set an org's key nor rotate it. THE DEPLOYMENT KEY OBEYS THE SAME RULE: POST /admin/encryption/generate-key stops returning key material. When it has nowhere to store the key it refuses rather than printing it, and says to generate one out of band and set PROVISA_ENCRYPTION_KEY -- amending [REQ-918](#REQ-918), whose one-time display was the last place a key was ever shown. (Amended 2026-08-24, WHERE IT LIVES:) the org key is not a nav entry of its own. It is a collapsible panel at the TOP OF ORG SECRETS, above the names, because it is the key those names are wrapped under and it is held by the same right, org_settings -- one page answers both halves of the same question. Collapsed by default and mounted only when opened, so a reader who came for the names neither sees nor fetches the key state, and a surface that cannot hold the org's secrets (the platform wildcard, a personal vault) does not offer the panel at all.
 
 **Use case:** An org under a data-residency contract sets its own encryption key at onboarding and rotates it quarterly; the platform operator, its own admins, and a stolen control-plane dump can none of them read the key back.
 
@@ -16736,7 +16744,7 @@ The Lemon Squeezy checkout is dressed from how the buyer is reading the app: the
 
 **Code:** `.claude/commercial/provisa_commercial/lemonsqueezy_client.py`, `.claude/commercial/provisa_commercial/router.py`, `provisa-ui/src/api/checkoutAppearance.ts`, `provisa-ui/src/api/billing.ts`
 
-**Tests:** `.claude/commercial/tests/test_billing_lemonsqueezy.py::TestCheckoutAppearance`, `.claude/commercial/tests/test_billing_lemonsqueezy.py::TestCheckoutBody`
+**Tests:** `.claude/commercial/tests/test_billing_lemonsqueezy.py`
 
 ## 1. Access Governance & Security
 
@@ -16892,7 +16900,7 @@ SIGNING OUT ENDS THE SESSION WHERE THE SESSION LIVES. An org subdomain holds no 
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-AN INVITE LISTING IS SCOPED TO THE ACTIVE ORG, FOR EVERY CALLER. An invitation token is a live credential: it hands whoever holds it an account and a role in the org that issued it. Listing and revoking are therefore bounded by the org the request is bound to -- the org named by the Host or the org header -- and not by how much authority the caller has. cross_org ([REQ-1318](#REQ-1318)) is the right to act in any org one at a time, never a right to read every org's invitations at once; read that way it put one tenant's live tokens on the page of the tenant the operator had selected. A caller bound to no org at all (the platform plane, before an org is chosen) is scoped to nothing rather than to everything, and a caller without user_management is refused as before.
+AN INVITE LISTING IS SCOPED TO THE ACTIVE ORG, FOR EVERY CALLER. An invitation token is a live credential: it hands whoever holds it an account and a role in the org that issued it. Listing and revoking are therefore bounded by the org the request is bound to -- the org named by the Host or the org header -- and not by how much authority the caller has. cross_org ([REQ-1337](#REQ-1337)) is the right to act in any org one at a time, never a right to read every org's invitations at once; read that way it put one tenant's live tokens on the page of the tenant the operator had selected. A caller bound to no org at all (the platform plane, before an org is chosen) is scoped to nothing rather than to everything, and a caller without user_management is refused as before.
 
 **Code:** `provisa/api/admin/invites_router.py`
 
@@ -16902,7 +16910,7 @@ AN INVITE LISTING IS SCOPED TO THE ACTIVE ORG, FOR EVERY CALLER. An invitation t
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-PLATFORM_ADMIN MAY ACT ACROSS ORGS BUT MAY NOT READ AN ORG'S DATA AT REST WITHOUT ITS OWN MEMBERSHIP THERE. cross_org ([REQ-1318](#REQ-1318)/1337) is authority to act in any org for support and recovery -- issue an invite, add or remove a member, reset a policy. It is not a grant to browse who is in an org, its join policy, its branding, or its full config export; those are that org's data, and platform_admin sees them only where it also holds a real org-scoped assignment in that org (seeded, the sandbox org, or a [REQ-1303](#REQ-1303) recovery grant taken there) -- the same gate every other caller already passes. Reading them via the bare cross_org right, with no membership anywhere in the target org, is refused.
+PLATFORM_ADMIN MAY ACT ACROSS ORGS BUT MAY NOT READ AN ORG'S DATA AT REST WITHOUT ITS OWN MEMBERSHIP THERE. cross_org ([REQ-1337](#REQ-1337)) is authority to act in any org for support and recovery -- issue an invite, add or remove a member, reset a policy. It is not a grant to browse who is in an org, its join policy, its branding, or its full config export; those are that org's data, and platform_admin sees them only where it also holds a real org-scoped assignment in that org (seeded, the sandbox org, or a [REQ-1303](#REQ-1303) recovery grant taken there) -- the same gate every other caller already passes. Reading them via the bare cross_org right, with no membership anywhere in the target org, is refused.
 
 **Code:** `provisa/api/admin/invites_router.py`, `provisa/api/admin/orgs_router.py`
 
@@ -16942,7 +16950,7 @@ During schema rebuild, _rebuild_schemas() must call state.federation_engine.reco
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-The sandbox role grants read-only access to normally-restricted admin surfaces and ops domain data to illustrate admin capabilities in ephemeral per-visitor environments. Most admin features are exposed as READ-ONLY; mutation-dangerous features (team member management) are explicitly BLOCKED. Every admin page shown to a sandbox-role user displays a modal or banner stating these features are illustrative only and not functional in sandbox mode.
+The sandbox role grants read-only access to normally-restricted admin surfaces and ops domain data to illustrate admin capabilities in ephemeral per-visitor environments. [SUPERSEDED by [REQ-1597](#REQ-1597), 2026-10-03 -- The sandbox role is org_admin's capability list minus a four-right denylist, so it holds org_settings, observability and the rest for real and those surfaces are functional, not read-only. Kept here for history; do not implement against it.] Most admin features are exposed as READ-ONLY; [END SUPERSEDED BLOCK] mutation-dangerous features (team member management) are explicitly BLOCKED. [SUPERSEDED by [REQ-1602](#REQ-1602), 2026-10-03 -- Only surfaces of the role's DEMONSTRATED rights (environment_management, environment_switch, org_glossary_rw) are rendered inert with a 'Production feature' banner; other admin pages carry no banner because they work. Kept here for history; do not implement against it.] Every admin page shown to a sandbox-role user displays a modal or banner stating these features are illustrative only and not functional in sandbox mode. [END SUPERSEDED BLOCK]
 
 **Use case:** Sandbox visitors need to see what administrative capabilities look like without granting actual mutation capability or long-lived access. This requires special treatment: sandbox role reads ops domain (normally locked down per [REQ-1133](#REQ-1133)), sees read-only views of admin pages, and understands that they are in an illustrative context.
 
@@ -17196,15 +17204,15 @@ A shard is never left running by the departure of the process that would have sc
 
 ### REQ-1630 · Graph Metadata & Relationships {#REQ-1630}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** structural
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Every graph node representing a data-instance row from a registered table carries `_name` and `_domain` meta properties identifying its source table and domain. The graph-sync layer auto-generates relationship edges connecting each data-instance node to its corresponding `RegisteredTables` meta node.
+Every row of a registered table is traceable in the graph to its table and domain. Each registered table outside the meta domain has a HAS_TABLE relationship to the node that represents it among the meta domain's registered tables, and a row's table and domain are read by following that relationship. HAS_TABLE is left out of variable-length paths unless the query names it.
 
-**Use case:** Data-instance nodes must be traceable to their source table and domain for proper data lineage, governance, and relationship enforcement in federated graph queries.
+**Use case:** A graph user can go from a data row to the metadata of the table it came from (domain, description, tags, steward) in one query.
 
-**Code:** `provisa/cypher/label_map.py`, `provisa/api/_meta_seed.py`
+**Code:** `provisa/compiler/context.py`, `provisa/cypher/label_map.py`, `provisa/cypher/path_functions.py`, `provisa/cypher/graph_rewriter.py`, `provisa/api/admin/schema_query.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_sql_to_cypher.py`, `tests/unit/test_graph_has_table_synthetic.py`, `tests/integration/test_graph_has_table_synthetic_e2e.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -17236,15 +17244,15 @@ Boot-time eager landing for MATERIALIZED sources must create schema-only (zero-r
 
 ### REQ-1633 · Federation Engine Native Landing Terminals {#REQ-1633}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Every federation engine runtime must implement `attach_landed_source` (DDL-only zero-row reconcile, dispatched from native_backend.py's reconcile_landed_tables()) so [REQ-1632](#REQ-1632)'s eager boot-time/post-edit landing works uniformly regardless of which engine is configured, AND `land_table` (the event-queue-triggered full-data landing terminal dispatched from land_source_table() via `hasattr(runtime, "land_table")`), so a MATERIALIZE_ONLY source's rows land in that engine's own store rather than silently falling back to the generic store_writer DSN path against the platform database ([REQ-1730](#REQ-1730)). As of 2026-09-21: DuckDBFederationRuntime, SnowflakeFederationRuntime, BigQueryFederationRuntime, DatabricksFederationRuntime, PgFederationRuntime, and SqlAlchemyFederationRuntime implement both `land_table` and `attach_landed_source` (Databricks' `land_table` adapts to its own `materialize_source` signature, same pattern as BigQuery's — verified live via the engine-swap harness, a redis source rebooted into Databricks queried 0 rows with no error before this). ClickHouseFederationRuntime and MssqlWarehouseRuntime (backing both fabric and synapse) implement none of the three terminals — for these, NativeEngineBackend.reconcile_landed_tables() (native_backend.py:315-316) silently returns an empty list with no error, so [REQ-1632](#REQ-1632)'s zero-row replica never appears in that engine's own catalog, and land_source_table() falls back to the generic store_writer DSN path. Trino is NOT affected by this gap: TrinoBackend overrides reconcile_landed_tables() independently (provisa/federation/backend.py:634) via store_writer.reconcile_table(), which already performs the same DDL-only zero-row convergence against Trino's own materialize store. (Amended 2026-09-30, T-SQL reserved schema names:) On Fabric/Synapse a table lands and attaches at its registered schema, but `public` (every Postgres-derived source's default schema) is a T-SQL fixed database role and cannot be a schema (CREATE SCHEMA [public] fails 2714). The registered schema stays `public`; its physical T-SQL name is `provisa_public`, from ONE mapping (transpiler.transpile.tsql_physical_schema) used both by MssqlWarehouseRuntime._phys_parts for DDL/landing and by the tsql transpile for every query, so the object is created and read under the same name. A warehouse attach failure (pyodbc error) makes only that table unqueryable, as on the DuckDB/PG backends (native_backend._attach_errors), never every query on the engine.
+[SUPERSEDED by [REQ-1912](#REQ-1912), 2026-10-03 -- attach_landed_source no longer exists anywhere in provisa/; commit cf0bd1df2 ([REQ-1912](#REQ-1912), 2026-10-02) replaced it with reconcile_replica, which converges the table at its replica address and creates nothing at the registered name (native_backend.py:420,433). Kept here for history; do not implement against it.] Every federation engine runtime must implement `attach_landed_source` (DDL-only zero-row reconcile, dispatched from native_backend.py's reconcile_landed_tables()) [END SUPERSEDED BLOCK] so [REQ-1632](#REQ-1632)'s eager boot-time/post-edit landing works uniformly regardless of which engine is configured, AND `land_table` (the event-queue-triggered full-data landing terminal dispatched from land_source_table() via `hasattr(runtime, "land_table")`), so a MATERIALIZE_ONLY source's rows land in that engine's own store rather than silently falling back to the generic store_writer DSN path against the platform database ([REQ-1730](#REQ-1730)). As of 2026-09-21: DuckDBFederationRuntime, SnowflakeFederationRuntime, BigQueryFederationRuntime, DatabricksFederationRuntime, PgFederationRuntime, and SqlAlchemyFederationRuntime [SUPERSEDED by [REQ-1912](#REQ-1912), 2026-10-03 -- Same rename: the eight runtimes implement land_table and reconcile_replica; attach_landed_source is gone. Kept here for history; do not implement against it.] implement both `land_table` and `attach_landed_source` [END SUPERSEDED BLOCK] (Databricks' `land_table` adapts to its own `materialize_source` signature, same pattern as BigQuery's — verified live via the engine-swap harness, a redis source rebooted into Databricks queried 0 rows with no error before this). [SUPERSEDED by REQ-1633 amendment, 2026-10-03 -- Both runtimes now implement the reconcile and land terminals (clickhouse_runtime.py:468,490; mssql_warehouse_runtime.py:287,326; commits fc3c72db0 and 7d866ba02, 2026-09-21). Kept here for history; do not implement against it.] ClickHouseFederationRuntime and MssqlWarehouseRuntime (backing both fabric and synapse) implement none of the three terminals — for these, NativeEngineBackend.reconcile_landed_tables() (native_backend.py:315-316) silently returns an empty list with no error, so [REQ-1632](#REQ-1632)'s zero-row replica never appears in that engine's own catalog, and land_source_table() falls back to the generic store_writer DSN path. [END SUPERSEDED BLOCK] Trino is NOT affected by this gap: TrinoBackend overrides reconcile_landed_tables() independently (provisa/federation/backend.py:634) via store_writer.reconcile_table(), which already performs the same DDL-only zero-row convergence against Trino's own materialize store. (Amended 2026-09-30, T-SQL reserved schema names:) [SUPERSEDED by [REQ-1912](#REQ-1912), 2026-10-03 -- A replica now lands in the replicas schema (mssql_warehouse_runtime.py:287-295 docstring, _store_parts at :278); only the attach of an external link uses the registered schema (_phys_parts :171). The public -> provisa_public mapping still applies to both. Kept here for history; do not implement against it.] On Fabric/Synapse a table lands and attaches at its registered schema [END SUPERSEDED BLOCK], but `public` (every Postgres-derived source's default schema) is a T-SQL fixed database role and cannot be a schema (CREATE SCHEMA [public] fails 2714). The registered schema stays `public`; its physical T-SQL name is `provisa_public`, from ONE mapping (transpiler.transpile.tsql_physical_schema) used both by MssqlWarehouseRuntime._phys_parts for DDL/landing and by the tsql transpile for every query, so the object is created and read under the same name. A warehouse attach failure (pyodbc error) makes only that table unqueryable, as on the DuckDB/PG backends (native_backend._attach_errors), never every query on the engine.
 
 **Use case:** Uniform native landing terminals let every federation engine participate in boot-time eager landing ([REQ-1632](#REQ-1632)) and post-edit replica reconciliation, so MATERIALIZED sources land native, zero-row-then-refreshed replicas visible in that engine's own catalog product (Snowflake Horizon Catalog, BigQuery Dataplex, Databricks Unity Catalog, etc.) consistently across every supported engine, not only the ones exercised by existing tests.
 
-**Code:** `provisa/federation/mssql_warehouse_backend.py`, `provisa/transpiler/transpile.py`, `provisa/federation/native_backend.py`, `provisa/federation/backend.py`, `provisa/federation/duckdb_runtime.py`, `provisa/federation/databricks_runtime.py`, `provisa/federation/bigquery_runtime.py`, `provisa/federation/snowflake_runtime.py`, `provisa/federation/clickhouse_runtime.py`, `provisa/federation/pg_runtime.py`, `provisa/federation/sqlalchemy_runtime.py`, `provisa/federation/mssql_warehouse_runtime.py`, `provisa/federation/store_connection.py`
+**Code:** `provisa/federation/native_backend.py`, `provisa/federation/backend.py`, `provisa/federation/duckdb_runtime.py`, `provisa/federation/pg_runtime.py`, `provisa/federation/sqlalchemy_runtime.py`, `provisa/federation/snowflake_runtime.py`, `provisa/federation/bigquery_runtime.py`, `provisa/federation/databricks_runtime.py`, `provisa/federation/clickhouse_runtime.py`, `provisa/federation/clickhouse_store.py`, `provisa/federation/mssql_warehouse_runtime.py`, `provisa/federation/mssql_warehouse_backend.py`, `provisa/transpiler/transpile.py`
 
-**Tests:** `tests/unit/test_mssql_warehouse_attach_errors.py`, `tests/integration/test_snowflake_federation_engine_e2e.py — exercises Snowflake-as-engine query/RLS round trip only, via manually-seeded raw DDL/INSERT against the account; never calls land_table/attach_landed_source/materialize_source (none exist), so it provides no coverage of this requirement and is also skipped in this environment (no Snowflake creds/driver installed) — no engine besides DuckDB has empirical landing-terminal test coverage today.`
+**Tests:** `tests/unit/federation/test_land_on_request_thread.py`, `tests/unit/test_reconcile_landed.py`, `tests/unit/test_mssql_warehouse_attach_errors.py`, `tests/unit/test_floor_enforced_on_every_engine.py`, `tests/integration/test_fabric_federation_engine_e2e.py`
 
 ## 1. Access Governance & Security
 
@@ -17252,7 +17260,7 @@ Every federation engine runtime must implement `attach_landed_source` (DDL-only 
 
 **Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
-New DataProduct entity, domain-scoped: id, domain_id (required FK — a data product has exactly one owning domain), name, owner (person accountable for this product, distinct from Domain.steward), description. Table gains product_id: str | None (FK -> DataProduct.id), replacing the boolean data_product flag ([REQ-1372](#REQ-1372)) as the signal that a table is a data-product member — membership is product_id being set, not a separate flag. A DataProduct's member tables must all share its domain_id; a table cannot reference a DataProduct in a different domain. A data product needing data from another domain is composed via a view defined within the owning domain that sources from the other domain, and that view (not the foreign table) is given product_id. MetadataSnapshot (provisa/api/metadata_export/model.py) gains a data_products: list[DataProductAsset] section — one entry per DataProduct with name, owner, and description as top-level fields, plus its member TableAssets' refs — replacing the per-table data_product: bool field [REQ-1372](#REQ-1372) added to TableAsset. build_snapshot (builder.py) populates this from the new DataProduct entity instead of the boolean filter. Each vendor adapter (openmetadata.py, atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — [REQ-1069](#REQ-1069)) maps DataProductAsset to that catalog's native product/collection construct (e.g. OpenMetadata's Data Product entity, Collibra's Data Product asset type) so owner and description register as first-class attributes there, not just an inferred flag on each member table. The table-edit UI (TableEditForm.tsx, replacing the dataProduct checkbox at TableEditForm.tsx:411-421) presents a product_id picker scoped to DataProducts whose domain_id matches the table's own domain_id — a table in domain "marketing" is never offered a DataProduct owned by domain "sales" as a choice, enforcing the domain-alignment constraint at selection time, not only as a save-time rejection.
+New DataProduct entity, domain-scoped: id, domain_id (required FK — a data product has exactly one owning domain), name, owner (person accountable for this product, distinct from Domain.steward), description. Table gains product_id: str | None (FK -> DataProduct.id), replacing the boolean data_product flag ([REQ-1372](#REQ-1372)) as the signal that a table is a data-product member — membership is product_id being set, not a separate flag. A DataProduct's member tables must all share its domain_id; a table cannot reference a DataProduct in a different domain. A data product needing data from another domain is composed via a view defined within the owning domain that sources from the other domain, and that view (not the foreign table) is given product_id. MetadataSnapshot (provisa/api/metadata_export/model.py) gains a data_products: list[DataProductAsset] section — one entry per DataProduct with name, owner, and description as top-level fields, plus its member TableAssets' refs — [SUPERSEDED by [REQ-1592](#REQ-1592), 2026-10-03 -- TableAsset keeps data_product: bool, derived from product_id, because the model workbook reports it as a column (provisa/api/metadata_export/model.py:102-105). Kept here for history; do not implement against it.] replacing the per-table data_product: bool field [REQ-1372](#REQ-1372) added to TableAsset [END SUPERSEDED BLOCK]. build_snapshot (builder.py) populates this from the new DataProduct entity instead of the boolean filter. Each vendor adapter (openmetadata.py, atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — [REQ-1069](#REQ-1069)) maps DataProductAsset to that catalog's native product/collection construct (e.g. OpenMetadata's Data Product entity, Collibra's Data Product asset type) so owner and description register as first-class attributes there, not just an inferred flag on each member table. The table-edit UI (TableEditForm.tsx, replacing the dataProduct checkbox at TableEditForm.tsx:411-421) presents a product_id picker scoped to DataProducts whose domain_id matches the table's own domain_id — a table in domain "marketing" is never offered a DataProduct owned by domain "sales" as a choice, enforcing the domain-alignment constraint at selection time, not only as a save-time rejection.
 
 **Use case:** Lets a domain create named, owned data products bundling one or more datasets for publication (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data Products, and data-mesh implementations like Nextdata), with per-product ownership distinct from domain-level stewardship, while keeping every data product aligned to exactly one owning domain.
 
@@ -17262,15 +17270,15 @@ New DataProduct entity, domain-scoped: id, domain_id (required FK — a data pro
 
 ### REQ-1635 · Data Catalog Integration {#REQ-1635}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 New engine-native MetadataExport adapter(s), alongside the vendor-neutral ones (openmetadata.py, atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — [REQ-1069](#REQ-1069)), that populate a warehouse engine's own native catalog/data-product construct from MetadataSnapshot's data_products section ([REQ-1634](#REQ-1634)): snowflake_horizon.py populates Snowflake Horizon Catalog and registers each DataProduct as a Snowflake Data Product / Marketplace listing (backed by a share over the product's member tables). Unlike the vendor-neutral adapters, this adapter is engine-aware: it resolves each member TableAsset's semantic_uri/AssetRef to its actual landed Snowflake object identity (database.schema.table in that account) via provisa/federation/snowflake_runtime.py before calling Horizon's catalog API — vendor-neutral adapters need no such resolution since they only emit portable metadata. Runs only when Snowflake is the configured engine and [REQ-1633](#REQ-1633)'s Snowflake landing terminal exists for the member tables being published; otherwise the adapter has nothing to resolve against and is skipped. A parallel bigquery_dataplex.py adapter for BigQuery Analytics Hub listings follows the same pattern if pursued.
 
 **Use case:** Lets a data product declared in Provisa also show up as a first-class, consumable listing inside the engine's own catalog/marketplace surface (Snowflake Horizon Catalog + Marketplace, BigQuery Dataplex + Analytics Hub) via the same metadata-export pipeline that already populates external metadata tools, instead of a separate native-terminal mechanism.
 
-**Code:** `provisa/api/metadata_export/snowflake_horizon.py`, `provisa/api/metadata_export/builder.py`, `provisa/federation/snowflake_runtime.py`
+**Code:** `provisa/api/metadata_export/snowflake_horizon.py`, `provisa/api/metadata_export/publishing.py`, `provisa/api/metadata_export/builder.py`, `provisa/federation/snowflake_runtime.py`
 
-**Tests:** `tests/steps/steps_data_products.py`
+**Tests:** `tests/unit/test_snowflake_horizon_export.py`, `tests/steps/steps_data_products.py`
 
 ### REQ-1636 · Data Catalog Integration {#REQ-1636}
 
@@ -17302,15 +17310,15 @@ For any warehouse engine, all data source types that the engine cannot natively/
 
 ### REQ-1638 · Capability Model {#REQ-1638}
 
-**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Data Products get their own dedicated capability pair, data_product_read / data_product_rw, replacing the blanket org_settings gate previously used for the nav link, the /data-products route, both create/delete GraphQL mutations, and the data_products query field (which previously had no capability check at all). Mirrors the glossary_read/glossary_rw pair ([REQ-1590](#REQ-1590)): data_product_read opens the read surface and is seeded to org_admin, analyst, developer, and modeler; data_product_rw gates create/delete and is seeded to org_admin only, matching table_registration's precedent rather than glossary_rw's broader (org_admin+modeler) scope, since no ownerless-content edge case analogous to glossary's enterprise-scoped/ author-abandoned terms was identified. DataProductsPage.tsx additionally hides its New/Edit/ Delete controls and disables the table-picker for a caller holding only data_product_read, following GlossaryTab.tsx's canEdit pattern.
+Data Products get their own dedicated capability pair, data_product_read / data_product_rw, replacing the blanket org_settings gate previously used for the nav link, the /data-products route, both create/delete GraphQL mutations, and the data_products query field (which previously had no capability check at all). Mirrors the glossary_read/glossary_rw pair ([REQ-1590](#REQ-1590)): data_product_read opens the read surface and is seeded to org_admin, analyst, developer, and modeler; [SUPERSEDED by [REQ-1597](#REQ-1597), 2026-10-03 -- The sandbox role is org_admin minus a denylist, so it is also seeded with data_product_rw (provisa/core/schema.sql:1235, provisa/core/db.py:192). Kept here for history; do not implement against it.] data_product_rw gates create/delete and is seeded to org_admin only [END SUPERSEDED BLOCK], matching table_registration's precedent rather than glossary_rw's broader (org_admin+modeler) scope, since no ownerless-content edge case analogous to glossary's enterprise-scoped/ author-abandoned terms was identified. DataProductsPage.tsx additionally hides its New/Edit/ Delete controls and disables the table-picker for a caller holding only data_product_read, following GlossaryTab.tsx's canEdit pattern.
 
 **Use case:** Lets an analyst/developer/modeler browse what data products a domain publishes without being granted org_settings (which also opens unrelated org-admin surfaces), while keeping product creation and deletion restricted to org_admin as catalog curation.
 
-**Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_query.py`, `provisa-ui/src/types/auth.ts`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/App.tsx`, `provisa-ui/src/pages/DataProductsPage.tsx`
+**Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_query.py`, `provisa/api/mcp/tools.py`, `provisa-ui/src/types/auth.ts`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/App.tsx`, `provisa-ui/src/pages/DataProductsPage.tsx`, `provisa-ui/src/pages/data-products/DataProductDetailPanel.tsx`
 
-**Tests:** —
+**Tests:** `tests/integration/test_system_roles_seed.py`, `tests/integration/test_tenancy_role_grants.py`, `tests/unit/test_mcp_server.py`, `tests/unit/test_admin_routes_gated.py`
 
 ### REQ-1639 · Data Catalog Integration {#REQ-1639}
 
@@ -17328,7 +17336,7 @@ The Data Product detail panel shows a computed, read-only "Related Tables" secti
 
 **Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
-The Data Product detail panel shows a computed, read-only "Lineage" section rendering the same interactive LineageDag graph visualization used on the Lineage page ("model / lineage"), scoped to a subgraph of the whole federation-wide column lineage graph (GET /admin/lineage/federation, no domains filter, so cross-domain ancestor chains are never severed): the product's member tables plus every node one relation-hop upstream or downstream of them, matched via each node's relation string (<sql_domain>.<table>, using the domainToSqlName TS mirror of domain_to_sql_name). The graph opens dataset-collapsed by default (one node per relation), same as the Lineage page's Complete Lineage view ([REQ-1627](#REQ-1627)), with per-relation expand/collapse. Gated independently on the view_governance capability — separate from data_product_read/data_product_rw — and hidden entirely (not merely disabled) for a caller lacking it, since Data Product access does not imply lineage/governance visibility. Purely informational, mirrors the Related Tables panel's non-stored, computed-at-render pattern.
+The Data Product detail panel shows a computed, read-only "Lineage" section rendering the same interactive LineageDag graph visualization used on the Lineage page ("model / lineage"), scoped to a subgraph of the whole federation-wide column lineage graph (GET /admin/lineage/federation, no domains filter, so cross-domain ancestor chains are never severed): [SUPERSEDED by [REQ-1667](#REQ-1667), 2026-10-03 -- [REQ-1667](#REQ-1667) draws contributors in lanes -1, -2... by longest upstream path, so the subgraph is the full upstream ancestry plus one hop downstream. Kept here for history; do not implement against it.] the product's member tables plus every node one relation-hop upstream or downstream of them [END SUPERSEDED BLOCK], matched via each node's relation string (<sql_domain>.<table>, using the domainToSqlName TS mirror of domain_to_sql_name). The graph opens dataset-collapsed by default (one node per relation), same as the Lineage page's Complete Lineage view ([REQ-1627](#REQ-1627)), with per-relation expand/collapse. Gated independently on the view_governance capability — separate from data_product_read/data_product_rw — and hidden entirely (not merely disabled) for a caller lacking it, since Data Product access does not imply lineage/governance visibility. Purely informational, mirrors the Related Tables panel's non-stored, computed-at-render pattern.
 
 **Use case:** Lets a data product owner or consumer see, without leaving the product's detail view, which tables feed the product's data and which tables consume it, without requiring a separate trip to the Lineage page or knowledge of the underlying SQL views.
 
@@ -17418,15 +17426,15 @@ Snowflake Horizon Catalog export can optionally create a `_provisa` database con
 
 ### REQ-1647 · Snowflake Horizon Catalog Export {#REQ-1647}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Descriptions from the `_landing` physical table/config must propagate to the corresponding per-source SECURE VIEW (at the original db.schema.table address) via COMMENT ON VIEW/TABLE, alongside the existing tag propagation already performed by tag_statements() in snowflake_horizon.py. Currently the description field is only used in share_statements/listing_statements (Marketplace share/listing text) and is never emitted as an object-level comment, so the per-source view's comment stays empty even though the underlying `_landing` physical table has a populated comment.
+Descriptions from the `_landing` physical table/config must propagate to the corresponding per-source SECURE VIEW [SUPERSEDED by [REQ-1912](#REQ-1912), 2026-10-03 -- Comments are set at the table's published address: the export view in the landing database's export schema, not the registered address (provisa/federation/snowflake_store.py:20-24; provisa/api/metadata_export/snowflake_horizon.py:115-119; asserted at tests/unit/test_snowflake_horizon_export.py:365-371). Kept here for history; do not implement against it.] (at the original db.schema.table address) [END SUPERSEDED BLOCK] via COMMENT ON VIEW/TABLE, [SUPERSEDED by [REQ-1652](#REQ-1652), 2026-10-03 -- No tag_statements() exists in snowflake_horizon.py any more (the only definition is provisa/federation/databricks_store.py:537). Attributing this to [REQ-1652](#REQ-1652) (keys mirrored as tags by the landing reconcile) is my reading, not verified. Kept here for history; do not implement against it.] alongside the existing tag propagation already performed by tag_statements() in snowflake_horizon.py [END SUPERSEDED BLOCK]. [SUPERSEDED by REQ-1647 amendment, 2026-10-03 -- Describes the state before this requirement was built; comment_statements now emits object and column comments. Kept here for history; do not implement against it.] Currently the description field is only used in share_statements/listing_statements (Marketplace share/listing text) and is never emitted as an object-level comment, so the per-source view's comment stays empty even though the underlying `_landing` physical table has a populated comment. [END SUPERSEDED BLOCK]
 
 **Use case:** Consumers browsing the per-source view directly in Snowflake (outside of a share/listing) should see the same governed description that already reaches the view as tags, so the view is self-describing without relying on Marketplace metadata.
 
 **Code:** `provisa/api/metadata_export/snowflake_horizon.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_snowflake_horizon_export.py`
 
 ## 1. Access Governance & Security
 
@@ -17606,11 +17614,11 @@ Before the execute terminal runs a plan, each MATERIALIZED source the plan reads
 
 **Use case:** API-backed and other unreachable sources materialize lazily: a query that arrives before the event loop has landed a table, or after it went stale, is served fresh rows rather than an empty or stale replica. materialize_pending existed on the native backends with no caller since 2026-07.
 
-**Code:** `provisa/federation/query_residency.py`, `provisa/federation/backend.py`, `provisa/federation/node_freshness_view.py`, `provisa/pgwire/_pipeline.py`, `provisa/events/land_lock.py`, `provisa/federation/snowflake_store.py`, `provisa/grpc/server.py`, `provisa/api/airport/query.py`, `provisa/api/data/endpoint_executors.py`, `provisa/api/data/materialization.py`, `provisa/subscriptions/rss_provider.py`, `provisa/compiler/nf_extractor.py`
+**Code:** `provisa/federation/query_residency.py`, `provisa/federation/backend.py`, `provisa/federation/replica_state_view.py`, `provisa/pgwire/_pipeline.py`, `provisa/events/land_lock.py`, `provisa/federation/snowflake_store.py`, `provisa/grpc/server.py`, `provisa/api/airport/query.py`, `provisa/api/data/endpoint_executors.py`, `provisa/api/data/materialization.py`, `provisa/api/flight/server.py`, `provisa/api/rest/cypher_router.py`, `provisa/subscriptions/rss_provider.py`, `provisa/compiler/nf_extractor.py`
 
 **Tests:** `tests/unit/test_query_residency.py`, `tests/unit/test_residency.py`, `tests/unit/test_source_loader.py`, `tests/unit/test_materialization_api.py`, `tests/integration/test_failed_land_fails_query_e2e.py`, `tests/integration/test_failed_remote_branch_fails_union_e2e.py`
 
-### REQ-1662 · Live Data Events {#REQ-1662}
+### REQ-1662 · Live Data & Events {#REQ-1662}
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
@@ -17640,7 +17648,7 @@ Registering a table on a data-quality checker source (soda, great_expectations) 
 
 ### REQ-1664 · Data Quality Sources {#REQ-1664}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** MAY · **Type:** behavioral
 
 A Great Expectations check can be extended with a Python function registered through the Commands surface under a new implementation kind (gx_check), bound the way a python command is (module:attr callable, or inline source under the MV preprocess sandbox). The function takes the check's arguments and returns the SQL predicate selecting the UNEXPECTED rows; at scan time the worker resolves the contract's type to that function, calls it with the expectation's kwargs and emits GX's UnexpectedRowsExpectation, so results land in the shipped envelope unchanged. The check catalog derives the builder's CheckKind from the function's signature — a `column` parameter means column scope, the remaining parameters become params typed from their annotations and defaults — so the panel offers the new type and its args with no UI change. A gx_check is never exposed as a GraphQL mutation or query; function dispatch refuses it. Row-level checks only; aggregate checks (a scalar expression plus a comparator) are a later shape.
 
@@ -17724,7 +17732,7 @@ Register Table on a neo4j source. A neo4j source has no tables to list, so the R
 
 **Use case:** Before this the UI could register a neo4j source but no table on it: introspection listed an empty schema and there was no Cypher input, so a steward had to hand-write config or call the REST router.
 
-**Code:** `provisa/api/admin/_neo4j_registration.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/api/admin/schema_query.py`, `provisa/api/admin/types.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/hooks/useNeo4jPreview.ts`
+**Code:** `provisa/api/admin/_neo4j_registration.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/api/admin/schema_query.py`, `provisa/api/admin/types.py`, `provisa/api/admin/neo4j_router.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/hooks/useQueryPreview.ts`, `provisa-ui/src/hooks/admin.graphql`
 
 **Tests:** `tests/unit/test_neo4j_registration.py`, `tests/integration/test_neo4j_register_table.py`, `provisa-ui/src/pages/tables/__tests__/RegisterTableForm.neo4j.test.tsx`
 
@@ -17870,7 +17878,7 @@ A Hasura v2 object relationship declared as `foreign_key_constraint_on: <column>
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-A Hasura v2 remote schema is landed, not proxied. The importer maps it to a graphql_remote source ([REQ-417](#REQ-417)) AND registers one table per Query root field found in the remote schema's role permissions SDL: the table is the root field, its columns are the returned object type's scalar and enum fields typed by GraphQL scalar (Int -> integer, Float -> double, String/ID -> varchar, Boolean -> boolean, enum -> varchar), a column's visible_to is every role whose SDL exposes that field, and each non-null root-field argument becomes a `_nf_<arg>` native-filter column (query_param) so the argument is passed through at query time. Nested object and list fields are not landed and are named in one `[remote_schemas]` warning per table. A remote schema with no role permissions yields no tables and a warning that says so, since without introspection the importer cannot know the schema. The tables take the domain the domain map assigns to the remote schema's name, else the import default.
+A Hasura v2 remote schema is landed, not proxied. The importer maps it to a graphql_remote source ([REQ-417](#REQ-417)) AND registers one table per Query root field found in the remote schema's role permissions SDL: the table is the root field, its columns are the returned object type's scalar and enum fields typed by GraphQL scalar (Int -> integer, Float -> double, String/ID -> varchar, Boolean -> boolean, enum -> varchar), a column's visible_to is every role whose SDL exposes that field, and each non-null root-field argument becomes a `_nf_<arg>` native-filter column (query_param) so the argument is passed through at query time. Nested object and list fields are not landed and are named in one `[remote_schemas]` warning per table. A remote schema with no role permissions yields no tables and a warning that says so, since without introspection the importer cannot know the schema. The tables take the domain the domain map assigns to the remote schema's name, else the import default. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this text calls landed or materialized is a replica, and making one is replication ([REQ-826](#REQ-826), [REQ-1915](#REQ-1915)). A materialized view keeps its name.
 
 **Use case:** A remote schema mapped to a source with no tables is unqueryable after import, and the per-role SDL Hasura used for permissions was dropped without a warning. Landing the root fields as tables puts the remote data on the replica path, where Provisa's RLS, masking and visibility apply; Hasura offered only SDL subsetting.
 
@@ -18128,7 +18136,7 @@ THE EXPLORE/SQL PAGE'S METRICS/FACTS/DIMENSIONS GROUPS HONOR THE SAME CHECKED-DO
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** ui
 
-THE GRAPH EXPLORER'S CANVAS TRACKS ITS CONTAINER'S SIZE, NOT JUST ITS SIZE AT MOUNT. The `.gf-canvas` element is `width/height:100%` — the CSS layout is already responsive — but Cytoscape reads its own canvas pixel dimensions once when the instance is created and never again on its own. Without something to tell it otherwise, the rendered graph keeps whatever size it was born with as the browser window resizes or the surrounding panel reflows, clipping or floating in dead space. A `ResizeObserver` on the canvas container calls `cy.resize()` on every size change, the same pattern the lineage DAG (REQ-1401 area) already used and the Graph/Cypher explorer never had.
+THE GRAPH EXPLORER'S CANVAS TRACKS ITS CONTAINER'S SIZE, NOT JUST ITS SIZE AT MOUNT. The `.gf-canvas` element is `width/height:100%` — the CSS layout is already responsive — but Cytoscape reads its own canvas pixel dimensions once when the instance is created and never again on its own. Without something to tell it otherwise, the rendered graph keeps whatever size it was born with as the browser window resizes or the surrounding panel reflows, clipping or floating in dead space. A `ResizeObserver` on the canvas container calls `cy.resize()` on every size change, the same pattern the lineage DAG ([REQ-1401](#REQ-1401) area) already used and the Graph/Cypher explorer never had.
 
 **Use case:** Browsing the site — switching tabs, resizing the browser window — left the Graph/Cypher explorer's canvas stuck at its original size, no longer tracking the window.
 
@@ -18356,7 +18364,7 @@ OLAP/lakehouse SourceType coverage fanout (pinot, druid, exasol, hive, hive_s3, 
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-New e2e coverage (provisa-ui/e2e/source-to-query-special-cases.spec.ts) for five SourceTypes that don't fit the plain register-a-table-and-SELECT shape well enough to share source-to-query.spec.ts: google_sheets, govdata, grpc_remote, soda, great_expectations. Each was investigated before writing a test. Several real, previously-undetected bugs were found and fixed along the way — every one of them blocked EVERY real invocation of the affected path, not just this test. None of the five tests is currently passing through the browser; all are `test.skip(true, "<reason>")`'d with the reason recorded in the test file itself. This entry documents exactly what was proved vs. what remains a genuine gap. google_sheets — THREE real bugs fixed in DuckDBGsheetsConnector (connector_duckdb.py) and introspect.py's native_schemas/native_tables: (1) the connector read `source.federation_hints["spreadsheet_id"]`, a key nothing anywhere ever populated (guaranteed KeyError on attach) — fixed to read `source.database` (the Sources form's real "Metadata Sheet ID" field, matching what TrinoGsheetsConnector already reads); (2) it built no `secret_ddl` at all, so DuckDB's `gsheets` extension had no credentials even for a service-account-shared sheet (confirmed empirically in tests/integration/test_google_sheets_source_e2e.py that a secret is required even for a public sheet) — fixed to build one from `source.mapping["credentials_json"]`; (3) native_schemas/native_tables had no google_sheets case at all, so the Register Table form's schema picker was always empty for this type — fixed by adding a "main"/source-id branch mirroring the existing csv/parquet SCAN-mechanism pattern. Despite all three fixes, the one full Playwright run that reached the UI flow (attaching a LIVE google_sheets source via the real durable fixture sheet, gsheets-e2e-fixture project memory) crashed the shared single-worker backend process outright, ~29s into registration, with no further diagnostic captured before this session's time budget was called — every subsequent request in that run then failed with ERR_CONNECTION_REFUSED, which is why govdata/ grpc_remote/soda/great_expectations below also show no browser-verified result from that same run. Root cause NOT isolated. Remaining gap: reproduce with the backend run in the foreground (not via playwright's webServer, which swallows the crash's own stack trace) to get a real traceback. govdata — the askamerica connection itself is real and independently confirmed working (outside Playwright): `fetch_tables`/`fetch_columns` against a `GovDataSource` scoped to the "weather" schema returned real NOAA/NWS tables (nws_stations, cdo_stations, ghcnd_daily, etc.) and correctly typed columns, in ~19s cold (JVM start + catalog-credential fetch from api.askamerica.ai) then near-instant on a warm cache. The browser-driven Register Table flow itself is NOT independently confirmed — the run that reached this test came after the google_sheets crash above. grpc_remote — TWO real bugs fixed, both blocking every real grpc_remote registration in this environment, not just this test: (1) provisa/grpc_remote/loader.py's compile_proto_stubs imported `pkg_resources`, which setuptools >= 81 no longer installs by default (ModuleNotFoundError on every proto compile) — fixed to resolve grpc_tools' bundled well-known protos from the module's own `__file__` location instead; (2) EVERY handler in provisa/api/admin/grpc_remote_router.py read `request.app.state` (Starlette's bare per-request state object, which has none of provisa's attributes) instead of provisa's own app-state singleton (`from provisa.api.app import state` — the pattern every sibling router, e.g. graphql_remote_router.py, already uses) — register/refresh/list/get-proto/put-proto could never have completed ('State' object has no attribute 'catalog_for'). Fixed across all 5 handlers. A new minimal proto-based demo fixture was added (demo/grpc_remote_server/{animal_catalog.proto,server.py} — a genuine .proto + a grpc.aio server compiled via the SAME grpc_tools path the connector itself uses, unlike the pre-existing demo/grpc_server/server.py, which is deliberately proto-less and cannot exercise this connector at all). The full proto -> compile -> register -> query pipeline was verified end to end via a standalone Python script driving provisa.grpc_remote.{loader,mapper,executor} directly against the new demo server: real typed columns (name text, species text, avg_lifespan_years integer) and the 3 seeded rows came back correctly. The browser-driven flow itself is NOT independently confirmed — the run that reached this test also came after the google_sheets crash above. soda / great_expectations — investigation finding: these are DATA-QUALITY CHECKERS (provisa/dq/contract.py CHECKERS), not conventional data sources. A checker "source" has no remote table of its own to register-and-SELECT from; RegisterTableForm.tsx's `isChecker` branch and DataQualityPanel.tsx instead attach a contract to an ALREADY-governed table (picked by that same panel) and a dry-run button runs the checker for real, returning per-check pass/fail outcomes. That dry run — not a SELECT — is judged to be this SourceType's genuine "create a datasource, register a table, run my data" analog; a forced SELECT would not reflect what these SourceTypes actually do. tables-register-dq.spec.ts already covers a narrower slice of this same shape (using the shipped dq-checker/dq-soda baked sources, no dry run); this entry's tests add the two pieces that one doesn't cover — creating the checker SOURCE itself via the Sources form, and actually running the dry-run scan against pet-store-sqlite's `vets` table — but neither was independently re-verified through the browser: the run that reached them also came after the google_sheets crash above. (Amended 2026-09-17, GRPC-REMOTE ENGINE-SWAP: the reachability question for any source type under Trino reduces to two cases — does Trino have a native connector for it (and is that connector correctly instantiated), or, if not, is Provisa correctly landing its rows into the Postgres-backed materialize store Trino reads (`provisa_admin` catalog)? grpc_remote has no Trino connector, so it's the second case — the same landing path graphql_remote/openapi already use, which [REQ-1730](#REQ-1730)'s bug 3 fix (Trino `ensure_cache_schema` NOT_SUPPORTED) made work. engine-swap.spec.ts now spawns this entry's demo/grpc_remote_server/server.py fixture itself (same subprocess-and-waitForPort pattern as this REQ's own special-cases.spec.ts case) and adds grpc_remote to the DuckDB->Trino swap harness — see [REQ-1730](#REQ-1730)'s own code list and source-e2e-coverage-audit memory for the harness-wide status. This is additive test coverage of the SAME fixture and connector this REQ already covers, not a new investigation.)
+New e2e coverage (provisa-ui/e2e/source-to-query-special-cases.spec.ts) for five SourceTypes that don't fit the plain register-a-table-and-SELECT shape well enough to share source-to-query.spec.ts: google_sheets, govdata, grpc_remote, soda, great_expectations. Each was investigated before writing a test. Several real, previously-undetected bugs were found and fixed along the way — every one of them blocked EVERY real invocation of the affected path, not just this test. [SUPERSEDED by REQ-1742 amendment, 2026-10-03 -- No later requirement; the spec itself was un-skipped 2026-09-15 (source-to-query-special-cases.spec.ts:117-120,161-165,223-225,274-276). Only credential-gated skips remain (lines 103, 152). Kept here for history; do not implement against it.] None of the five tests is currently passing through the browser; all are `test.skip(true, "<reason>")`'d with the reason recorded in the test file itself. [END SUPERSEDED BLOCK] This entry documents exactly what was proved vs. what remains a genuine gap. google_sheets — THREE real bugs fixed in DuckDBGsheetsConnector (connector_duckdb.py) and introspect.py's native_schemas/native_tables: (1) the connector read `source.federation_hints["spreadsheet_id"]`, a key nothing anywhere ever populated (guaranteed KeyError on attach) — fixed to read `source.database` (the Sources form's real "Metadata Sheet ID" field, matching what TrinoGsheetsConnector already reads); (2) it built no `secret_ddl` at all, so DuckDB's `gsheets` extension had no credentials even for a service-account-shared sheet (confirmed empirically in tests/integration/test_google_sheets_source_e2e.py that a secret is required even for a public sheet) — fixed to build one from `source.mapping["credentials_json"]`; (3) native_schemas/native_tables had no google_sheets case at all, so the Register Table form's schema picker was always empty for this type — fixed by adding a "main"/source-id branch mirroring the existing csv/parquet SCAN-mechanism pattern. Despite all three fixes, the one full Playwright run that reached the UI flow (attaching a LIVE google_sheets source via the real durable fixture sheet, gsheets-e2e-fixture project memory) crashed the shared single-worker backend process outright, ~29s into registration, with no further diagnostic captured before this session's time budget was called — every subsequent request in that run then failed with ERR_CONNECTION_REFUSED, which is why govdata/ grpc_remote/soda/great_expectations below also show no browser-verified result from that same run. [SUPERSEDED by REQ-1742 amendment, 2026-10-03 -- The spec records the google_sheets crash as root-caused and fixed (source-to-query-special-cases.spec.ts:161-165: attach_source's view_ddl branch never loaded the scanner extension; native_backend merges dropped source.mapping). Kept here for history; do not implement against it.] Root cause NOT isolated. [END SUPERSEDED BLOCK] Remaining gap: reproduce with the backend run in the foreground (not via playwright's webServer, which swallows the crash's own stack trace) to get a real traceback. govdata — the askamerica connection itself is real and independently confirmed working (outside Playwright): `fetch_tables`/`fetch_columns` against a `GovDataSource` scoped to the "weather" schema returned real NOAA/NWS tables (nws_stations, cdo_stations, ghcnd_daily, etc.) and correctly typed columns, in ~19s cold (JVM start + catalog-credential fetch from api.askamerica.ai) then near-instant on a warm cache. The browser-driven Register Table flow itself is NOT independently confirmed — the run that reached this test came after the google_sheets crash above. grpc_remote — TWO real bugs fixed, both blocking every real grpc_remote registration in this environment, not just this test: (1) provisa/grpc_remote/loader.py's compile_proto_stubs imported `pkg_resources`, which setuptools >= 81 no longer installs by default (ModuleNotFoundError on every proto compile) — fixed to resolve grpc_tools' bundled well-known protos from the module's own `__file__` location instead; (2) EVERY handler in provisa/api/admin/grpc_remote_router.py read `request.app.state` (Starlette's bare per-request state object, which has none of provisa's attributes) instead of provisa's own app-state singleton (`from provisa.api.app import state` — the pattern every sibling router, e.g. graphql_remote_router.py, already uses) — register/refresh/list/get-proto/put-proto could never have completed ('State' object has no attribute 'catalog_for'). Fixed across all 5 handlers. A new minimal proto-based demo fixture was added (demo/grpc_remote_server/{animal_catalog.proto,server.py} — a genuine .proto + a grpc.aio server compiled via the SAME grpc_tools path the connector itself uses, unlike the pre-existing demo/grpc_server/server.py, which is deliberately proto-less and cannot exercise this connector at all). The full proto -> compile -> register -> query pipeline was verified end to end via a standalone Python script driving provisa.grpc_remote.{loader,mapper,executor} directly against the new demo server: real typed columns (name text, species text, avg_lifespan_years integer) and the 3 seeded rows came back correctly. The browser-driven flow itself is NOT independently confirmed — the run that reached this test also came after the google_sheets crash above. soda / great_expectations — investigation finding: these are DATA-QUALITY CHECKERS (provisa/dq/contract.py CHECKERS), not conventional data sources. A checker "source" has no remote table of its own to register-and-SELECT from; RegisterTableForm.tsx's `isChecker` branch and DataQualityPanel.tsx instead attach a contract to an ALREADY-governed table (picked by that same panel) and a dry-run button runs the checker for real, returning per-check pass/fail outcomes. That dry run — not a SELECT — is judged to be this SourceType's genuine "create a datasource, register a table, run my data" analog; a forced SELECT would not reflect what these SourceTypes actually do. tables-register-dq.spec.ts already covers a narrower slice of this same shape (using the shipped dq-checker/dq-soda baked sources, no dry run); this entry's tests add the two pieces that one doesn't cover — creating the checker SOURCE itself via the Sources form, and actually running the dry-run scan against pet-store-sqlite's `vets` table — but neither was independently re-verified through the browser: the run that reached them also came after the google_sheets crash above. (Amended 2026-09-17, GRPC-REMOTE ENGINE-SWAP: the reachability question for any source type under Trino reduces to two cases — does Trino have a native connector for it (and is that connector correctly instantiated), or, if not, is Provisa correctly landing its rows into the Postgres-backed materialize store Trino reads (`provisa_admin` catalog)? grpc_remote has no Trino connector, so it's the second case — the same landing path graphql_remote/openapi already use, which [REQ-1730](#REQ-1730)'s bug 3 fix (Trino `ensure_cache_schema` NOT_SUPPORTED) made work. engine-swap.spec.ts now spawns this entry's demo/grpc_remote_server/server.py fixture itself (same subprocess-and-waitForPort pattern as this REQ's own special-cases.spec.ts case) and adds grpc_remote to the DuckDB->Trino swap harness — see [REQ-1730](#REQ-1730)'s own code list and source-e2e-coverage-audit memory for the harness-wide status. This is additive test coverage of the SAME fixture and connector this REQ already covers, not a new investigation.)
 
 **Use case:** User asked for e2e coverage proving google_sheets, govdata, grpc_remote, soda, and great_expectations work end to end through the real UI against the DuckDB federation engine, with an explicit instruction to investigate feasibility per-type first and document honest gaps rather than force artificial passes.
 
@@ -18390,27 +18398,27 @@ Adds live source-to-query e2e coverage ([REQ-1671](#REQ-1671)) for eight SIMPLE_
 
 ### REQ-1745 · Streaming {#REQ-1745}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-[REQ-1739](#REQ-1739) added kafka/websocket/rss/ingest to the Sources form dropdown, but none of the four had ever been driven through the real UI end to end (source create -> Register Table -> SELECT on the SQL page). Attempting it for rss/websocket/ingest found the Register Table form's schema/table pickers were PERMANENTLY EMPTY for all three: `native_schemas`/`native_tables` (provisa/api/admin/introspect.py) had no dispatch branch for them, so `available_schemas`/ `available_tables` (schema_query.py) fell through to an engine-catalog fallback that cannot resolve before any table is registered — the exact chicken-and-egg gap elasticsearch/redis/ prometheus/csv/parquet already have a fixed pattern for (a synthetic "default" schema, or one table named after the source id). Added the same pattern for rss/websocket/ingest. Column introspection had the identical gap (`resolve_available_columns_metadata`) — added rss's real item shape (id/title/link/description/published, matching `rss_provider.py`'s `parse_feed` exactly) and a documented placeholder shape for websocket/ingest (id-or-ext_id/value; "ext_id" rather than "id" for ingest specifically, since `provisa/ingest/ddl.py`'s `generate_create_table` always injects its own `id SERIAL PRIMARY KEY` and a steward-declared "id" column would collide with it). A genuine "define your own columns" input (mirroring the neo4j/sparql custom-projection mode) is the real long-term fix for ingest/websocket's arbitrary per-source shape; this is a placeholder that at least makes ONE table registrable, not that. Separately found the runtime never re-wires a source/table registered against an ALREADY-RUNNING server: `_init_ingest_engines()` (provisa/api/app_loaders.py) and `wire_push_listeners()`/`wire_event_loop()` (provisa/events/push_wiring.py, app_wiring.py) were each called only once, from the full-boot sequence or from `register_runtime`'s per-org runtime build — never from `_rebuild_schemas()`, which is what registerTable's mutation actually calls on the default/single-tenant runtime this whole exercise targets. A UI- registered ingest source's `state.ingest_tables`/`state.ingest_engines` entries, and a kafka/websocket table's CDC-landing listener, were therefore NEVER created outside a full server restart or a fresh per-org runtime build. Fixed by calling `wire_push_listeners()` and `_init_ingest_engines()` again (both best-effort/idempotent by design) at the end of `_rebuild_schemas_impl`. Also separately fixed `_init_ingest_engines` defaulting a NO_CONNECTION ingest source to the literal `localhost:5432` with an empty database/username — wrong on the e2e harness's docker-assigned ephemeral control-plane port, and on any real deployment whose control-plane postgres isn't on the machine default; it now defaults to `state.tenant_db`'s own engine URL (the only sensible target for a source with no connection fields of its own). rss's poll-side re-wire (calling `wire_event_loop(..., seed=False)` from `_rebuild_schemas_impl` too, alongside a new `make_rss_loader` registered in `build_adapter_loaders` — rss was in `_ADAPTER_FETCH_ONLY` with no adapter loader at all, so every poll raised `UnsupportedSourceFetch` and nothing ever landed) was implemented and code-reviewed, but reverted after it broke an unrelated, already-registered sqlite demo source's live queries in testing ("'types.SimpleNamespace' object has no attribute 'base_url'" — an introspection seam object built for a different source type reaching a code path expecting a real Source), because `wire_event_loop` re-derives every registered source's adapter loader and poll-job registration on every call, not just the new node's. Left as a documented, scoped-out gap (status: partial) rather than risk that regression; the correct fix scopes the re-wire to only the newly-registered node, the way `wire_push_listeners` already does via `state.push_listener_disconnects`. provisa-ui/e2e/source-to-query-streaming.spec.ts (new file) exercises all four types through the real UI per the source-to-query.spec.ts pattern. kafka is `test.skip` — no demo/sources/ kafka fixture exists yet and the only kafka broker this repo provisions (docker-compose.e2e.yml/test.yml) belongs to the separate pytest e2e/integration harnesses, not the provisa-ui Playwright "core" project. rss is `test.skip` for the poll-landing gap described above (registration itself is fixed and was manually exercised while developing the test). ingest and websocket's registration-flow and re-wire fixes are implemented and statically reviewed (tsc/eslint clean) but NOT CONFIRMED PASSING by an actual green Playwright run within this task's time budget — every real invocation in this session was consumed by shared e2e infrastructure contention across 6 concurrent agents targeting the same docker-compose "provisa-e2e" project (containers evicted mid-boot, a venv sync that transiently dropped cassandra-driver, stale orphaned dev-server processes from repeated port-isolation retries). Both are `test.skip` with the body left intact for a follow-up run to confirm and un-skip.
+[REQ-1739](#REQ-1739) added kafka/websocket/rss/ingest to the Sources form dropdown, but none of the four had ever been driven through the real UI end to end (source create -> Register Table -> SELECT on the SQL page). Attempting it for rss/websocket/ingest found the Register Table form's schema/table pickers were PERMANENTLY EMPTY for all three: `native_schemas`/`native_tables` (provisa/api/admin/introspect.py) had no dispatch branch for them, so `available_schemas`/ `available_tables` (schema_query.py) fell through to an engine-catalog fallback that cannot resolve before any table is registered — the exact chicken-and-egg gap elasticsearch/redis/ prometheus/csv/parquet already have a fixed pattern for (a synthetic "default" schema, or one table named after the source id). Added the same pattern for rss/websocket/ingest. Column introspection had the identical gap (`resolve_available_columns_metadata`) — added rss's real item shape (id/title/link/description/published, matching `rss_provider.py`'s `parse_feed` exactly) and a documented placeholder shape for websocket/ingest (id-or-ext_id/value; "ext_id" rather than "id" for ingest specifically, since `provisa/ingest/ddl.py`'s `generate_create_table` always injects its own `id SERIAL PRIMARY KEY` and a steward-declared "id" column would collide with it). A genuine "define your own columns" input (mirroring the neo4j/sparql custom-projection mode) is the real long-term fix for ingest/websocket's arbitrary per-source shape; this is a placeholder that at least makes ONE table registrable, not that. Separately found the runtime never re-wires a source/table registered against an ALREADY-RUNNING server: `_init_ingest_engines()` (provisa/api/app_loaders.py) and `wire_push_listeners()`/`wire_event_loop()` (provisa/events/push_wiring.py, app_wiring.py) were each called only once, from the full-boot sequence or from `register_runtime`'s per-org runtime build — never from `_rebuild_schemas()`, which is what registerTable's mutation actually calls on the default/single-tenant runtime this whole exercise targets. A UI- registered ingest source's `state.ingest_tables`/`state.ingest_engines` entries, and a kafka/websocket table's CDC-landing listener, were therefore NEVER created outside a full server restart or a fresh per-org runtime build. Fixed by calling `wire_push_listeners()` and `_init_ingest_engines()` again (both best-effort/idempotent by design) at the end of `_rebuild_schemas_impl`. Also separately fixed `_init_ingest_engines` defaulting a NO_CONNECTION ingest source to the literal `localhost:5432` with an empty database/username — wrong on the e2e harness's docker-assigned ephemeral control-plane port, and on any real deployment whose control-plane postgres isn't on the machine default; it now defaults to `state.tenant_db`'s own engine URL (the only sensible target for a source with no connection fields of its own). rss's poll-side re-wire (calling `wire_event_loop(..., seed=False)` from `_rebuild_schemas_impl` too, alongside a new `make_rss_loader` registered in `build_adapter_loaders` — rss was in `_ADAPTER_FETCH_ONLY` with no adapter loader at all, so every poll raised `UnsupportedSourceFetch` and nothing ever landed) was implemented and code-reviewed, but reverted after it broke an unrelated, already-registered sqlite demo source's live queries in testing ("'types.SimpleNamespace' object has no attribute 'base_url'" — an introspection seam object built for a different source type reaching a code path expecting a real Source), because `wire_event_loop` re-derives every registered source's adapter loader and poll-job registration on every call, not just the new node's. [SUPERSEDED by [REQ-1770](#REQ-1770), 2026-10-03 -- The rss poll re-wire is built: make_rss_loader is registered (provisa/events/app_wiring.py:199) and wire_new_poll_jobs runs per node on every rebuild (provisa/api/app.py:2155-2171). Kept here for history; do not implement against it.] Left as a documented, scoped-out gap (status: partial) rather than risk that regression [END SUPERSEDED BLOCK]; the correct fix scopes the re-wire to only the newly-registered node, the way `wire_push_listeners` already does via `state.push_listener_disconnects`. provisa-ui/e2e/source-to-query-streaming.spec.ts (new file) exercises all four types through the real UI per the source-to-query.spec.ts pattern. [SUPERSEDED by [REQ-1766](#REQ-1766), 2026-10-03 -- Three kafka tests exist and are not skipped (provisa-ui/e2e/source-to-query-streaming.spec.ts:465, 557, 695). Kept here for history; do not implement against it.] kafka is `test.skip` [END SUPERSEDED BLOCK] — no demo/sources/ kafka fixture exists yet and the only kafka broker this repo provisions (docker-compose.e2e.yml/test.yml) belongs to the separate pytest e2e/integration harnesses, not the provisa-ui Playwright "core" project. [SUPERSEDED by [REQ-1770](#REQ-1770), 2026-10-03 -- The rss test is not skipped (provisa-ui/e2e/source-to-query-streaming.spec.ts:291; the file has no test.skip). Kept here for history; do not implement against it.] rss is `test.skip` for the poll-landing gap described above [END SUPERSEDED BLOCK] (registration itself is fixed and was manually exercised while developing the test). ingest and websocket's registration-flow and re-wire fixes are implemented and statically reviewed (tsc/eslint clean) but NOT CONFIRMED PASSING by an actual green Playwright run within this task's time budget — every real invocation in this session was consumed by shared e2e infrastructure contention across 6 concurrent agents targeting the same docker-compose "provisa-e2e" project (containers evicted mid-boot, a venv sync that transiently dropped cassandra-driver, stale orphaned dev-server processes from repeated port-isolation retries). [SUPERSEDED by REQ-1745 amendment, 2026-10-03 -- No later requirement; the ingest and websocket tests are not skipped in the spec (source-to-query-streaming.spec.ts:194, 370). Kept here for history; do not implement against it.] Both are `test.skip` with the body left intact for a follow-up run to confirm and un-skip. [END SUPERSEDED BLOCK]
 
 **Use case:** Prove kafka/websocket/rss/ingest ([REQ-1733](#REQ-1733)/[REQ-1734](#REQ-1734)/[REQ-1739](#REQ-1739)'s SourceTypes) actually work end-to-end through the real UI against the DuckDB federation engine, the way every other SourceType already has an e2e test doing (source-to-query.spec.ts). None had ever been driven through the Sources form + Register Table form + SQL page by an automated test before.
 
 **Code:** `provisa/api/admin/introspect.py`, `provisa/api/admin/schema_query.py`, `provisa/events/source_loader.py`, `provisa/events/app_wiring.py`, `provisa/api/app.py`, `provisa/api/app_loaders.py`
 
-**Tests:** `provisa-ui/e2e/source-to-query-streaming.spec.ts`
+**Tests:** `provisa-ui/e2e/source-to-query-streaming.spec.ts`, `tests/unit/test_push_wiring_orchestration.py`
 
 ### REQ-1746 · Correctness {#REQ-1746}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-New e2e coverage (provisa-ui/e2e/source-to-query-community-ext.spec.ts, the same three-screen shape as [REQ-1671](#REQ-1671)/[REQ-1730](#REQ-1730): Sources form -> Register Table form -> SQL page) for the four DuckDB-ATTACH-mechanism SourceTypes engine-swap.spec.ts had only ever proven as one leg of a cross-engine harness (firebird/airport), never proven standalone, plus singlestore (gated on SINGLESTORE_LICENSE + amd64, same as engine-swap.spec.ts) and duckdb-as-a-source (no prior e2e precedent at all: ATTACHing a second local .duckdb file as a SOURCE, distinct from DuckDB as Provisa's own federation engine). Writing this surfaced two real, previously-undetected bugs, both fixed: 1. duckdb-as-a-source had no working path to a query at all. SourcesPage.tsx's submit path routed the shared "File Path" input's value (form.database) into `path` only for `form.type === "firebird"` ([REQ-1736](#REQ-1736)'s fix) — duckdb needed the identical routing (its DuckDBDuckdbConnector.details(), connector_duckdb.py, ATTACHes `source.path`, but introspect.py's native_schemas/native_tables "duckdb" branch reads `source.database` via the DIRECT DuckDBDriver) and was missing it, so the query-time engine ATTACHed `None`. Fixed by adding "duckdb" alongside "firebird" to that ternary. 2. Once (1) was fixed, a second bug surfaced: introspect.py's native_schemas/native_tables "duckdb" branches queried information_schema.schemata/tables with no catalog filter. A DuckDBDriver connection opened DIRECTLY against an attached .duckdb file always also carries "system" and "temp" catalogs, each with their own "main" schema — so an unfiltered query returned "main" three times (verified live: `SELECT catalog_name, schema_name FROM information_schema.schemata` against a fresh file returns system/main, temp/main, and <file>/main), which the Register Table schema picker rendered as three duplicate `<option value="main">` elements (a React key collision, and the wrong element could bind on select). Fixed by scoping both queries to `catalog_name = current_database()` / `table_catalog = current_database()`. A third, unrelated bug was found while investigating an airport-source query failure: `NativeEngineBackend._attach_tbl`'s merged `SimpleNamespace` (provisa/federation/ native_backend.py, the runtime_sources/dynamically-registered-source attach path) omitted `base_url`, which `DuckDBAirportConnector.details()` reads directly (`source.base_url or f"grpc://{host}:{port}"`, no `getattr`) — raising `AttributeError` at attach time, surfaced to the UI as a generic SQL-run 400. `NativeEngineBackend._merged_source` (the OTHER merge path, used for config-declared sources) already carries `base_url` for exactly this reason ([REQ-1693](#REQ-1693)'s comment on that line describes the identical failure mode); `_attach_tbl`'s merge needed the same field, both where it is built from a runtime_sources DB-row dict and where it re-merges from the resulting object. Status: the three fixes are made and each was verified independently outside the UI harness (direct duckdb.connect() queries reproducing introspect.py's exact SQL; the exact ATTACH DSN DuckDBFirebirdConnector builds, run live against the firebird demo container). The new spec's four tests are NOT yet confirmed green end-to-end through the UI: every playwright run this session either reused another concurrently-running agent's webServer process on playwright.config.ts's shared default ports (`reuseExistingServer: !process.env.CI` plus fixed 8901/3901/8907/8908 defaults — a distinct, separately-worth-fixing bug: parallel e2e runs silently test each other's code) rather than this worktree's own, or hit a stale shared demo-source-containers.ts splunk fixture failing in global-setup before any test in the new file ran. firebird/airport/duckdb are `test.skip`'d with these reasons pending a clean isolated re-run; singlestore's skip is the pre-existing license/arch gate.
+New e2e coverage (provisa-ui/e2e/source-to-query-community-ext.spec.ts, the same three-screen shape as [REQ-1671](#REQ-1671)/[REQ-1730](#REQ-1730): Sources form -> Register Table form -> SQL page) for the four DuckDB-ATTACH-mechanism SourceTypes engine-swap.spec.ts had only ever proven as one leg of a cross-engine harness (firebird/airport), never proven standalone, plus [SUPERSEDED by REQ-1746 amendment, 2026-10-03 -- No later requirement; the test now targets a live SingleStore Cloud workspace and is gated on SINGLESTORE_HOST, with no license or arch gate (source-to-query-community-ext.spec.ts:227-234). Kept here for history; do not implement against it.] singlestore (gated on SINGLESTORE_LICENSE + amd64, same as engine-swap.spec.ts) [END SUPERSEDED BLOCK] and duckdb-as-a-source (no prior e2e precedent at all: ATTACHing a second local .duckdb file as a SOURCE, distinct from DuckDB as Provisa's own federation engine). Writing this surfaced two real, previously-undetected bugs, both fixed: 1. duckdb-as-a-source had no working path to a query at all. SourcesPage.tsx's submit path routed the shared "File Path" input's value (form.database) into `path` only for `form.type === "firebird"` ([REQ-1736](#REQ-1736)'s fix) — duckdb needed the identical routing (its DuckDBDuckdbConnector.details(), connector_duckdb.py, ATTACHes `source.path`, but introspect.py's native_schemas/native_tables "duckdb" branch reads `source.database` via the DIRECT DuckDBDriver) and was missing it, so the query-time engine ATTACHed `None`. Fixed by adding "duckdb" alongside "firebird" to that ternary. 2. Once (1) was fixed, a second bug surfaced: introspect.py's native_schemas/native_tables "duckdb" branches queried information_schema.schemata/tables with no catalog filter. A DuckDBDriver connection opened DIRECTLY against an attached .duckdb file always also carries "system" and "temp" catalogs, each with their own "main" schema — so an unfiltered query returned "main" three times (verified live: `SELECT catalog_name, schema_name FROM information_schema.schemata` against a fresh file returns system/main, temp/main, and <file>/main), which the Register Table schema picker rendered as three duplicate `<option value="main">` elements (a React key collision, and the wrong element could bind on select). Fixed by scoping both queries to `catalog_name = current_database()` / `table_catalog = current_database()`. A third, unrelated bug was found while investigating an airport-source query failure: `NativeEngineBackend._attach_tbl`'s merged `SimpleNamespace` (provisa/federation/ native_backend.py, the runtime_sources/dynamically-registered-source attach path) omitted `base_url`, which `DuckDBAirportConnector.details()` reads directly (`source.base_url or f"grpc://{host}:{port}"`, no `getattr`) — raising `AttributeError` at attach time, surfaced to the UI as a generic SQL-run 400. `NativeEngineBackend._merged_source` (the OTHER merge path, used for config-declared sources) already carries `base_url` for exactly this reason ([REQ-1693](#REQ-1693)'s comment on that line describes the identical failure mode); `_attach_tbl`'s merge needed the same field, both where it is built from a runtime_sources DB-row dict and where it re-merges from the resulting object. Status: the three fixes are made and each was verified independently outside the UI harness (direct duckdb.connect() queries reproducing introspect.py's exact SQL; the exact ATTACH DSN DuckDBFirebirdConnector builds, run live against the firebird demo container). The new spec's four tests are NOT yet confirmed green end-to-end through the UI: every playwright run this session either reused another concurrently-running agent's webServer process on playwright.config.ts's shared default ports (`reuseExistingServer: !process.env.CI` plus fixed 8901/3901/8907/8908 defaults — a distinct, separately-worth-fixing bug: parallel e2e runs silently test each other's code) rather than this worktree's own, or hit a stale shared demo-source-containers.ts splunk fixture failing in global-setup before any test in the new file ran. [SUPERSEDED by REQ-1746 amendment, 2026-10-03 -- No later requirement; the spec has one skip only, singlestore gated on SINGLESTORE_HOST credentials (provisa-ui/e2e/source-to-query-community-ext.spec.ts:231-234); firebird/airport/duckdb run (lines 121, 181, 269). Kept here for history; do not implement against it.] firebird/airport/duckdb are `test.skip`'d with these reasons pending a clean isolated re-run; singlestore's skip is the pre-existing license/arch gate. [END SUPERSEDED BLOCK]
 
 **Use case:** User asked to write and verify Playwright e2e tests proving firebird/airport/singlestore/ duckdb work end-to-end through the real UI against the DuckDB federation engine, reusing engine-swap.spec.ts's registration code and demo/sources fixtures.
 
 **Code:** `provisa-ui/src/pages/SourcesPage.tsx`, `provisa/api/admin/introspect.py`, `provisa/federation/native_backend.py`, `demo/files/create_demo_files.py`, `scripts/resolve_firebird_client_lib.py`
 
-**Tests:** `provisa-ui/e2e/source-to-query-community-ext.spec.ts`
+**Tests:** `provisa-ui/e2e/source-to-query-community-ext.spec.ts`, `tests/unit/test_native_introspect.py`
 
 ### REQ-1747 · Correctness {#REQ-1747}
 
@@ -18636,15 +18644,15 @@ Fixed the real root cause of "pushed websocket events never land" (source-to-que
 
 ### REQ-1765 · Bug Fix {#REQ-1765}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Root-caused and fixed the real bug behind "POST /data/ingest 404s 'source not found' immediately after successful registration" (source-to-query-streaming.spec.ts's ingest test, previously test.skip(true, ...)). Two independent bugs, both fixed; a third, separate, unimplemented gap remains and keeps the test skipped: (1) `provisa/ingest/engine.py`'s `_build_url` unconditionally raised `ValueError("ingest DB password is required")` for an empty password. A trust/peer-auth control-plane Postgres (docker-assigned test instances) and any SQLite control plane both legitimately have no password, so this raised for EVERY ingest source on such a deployment. `_init_ingest_engines` (`provisa/api/app_loaders.py`) calls `get_engine` inside `with tolerate_startup_failure(...)`, which logs-and-skips the exception — aborting that function's per-source loop BEFORE `state.ingest_tables`/`state.ingest_engines` were ever populated for the source. Every POST to `/data/ingest` then 404'd "source not found" no matter how many times the schema rebuilt afterward — not a race, 100% reproducible, confirmed live via the swallowed traceback. Fixed: a missing password no longer pre-emptively rejects the URL; a DB that genuinely requires one still fails, from the driver's own auth error at connect time. (2) Once (1) stopped masking it, a second bug surfaced live: [REQ-1745](#REQ-1745)'s "mirror state.tenant_db" NO_CONNECTION default decomposed the tenant engine's URL into host/port/username/password and opened a SEPARATE engine with `get_engine` — correct for Postgres, but wrong for SQLite (no host/port to decompose; the `else` branch fell back to a hardcoded, unreachable `localhost:5432`), and even pointed at the real file, a second engine connecting to the SAME SQLite file the control plane is writing deadlocks/misbehaves (DuckDB's sqlite extension corrupts a file a second connection concurrently writes — see `duckdb_runtime.py`'s `_refresh_control_plane_snapshot` — and SQLAlchemy's default rollback-journal pool has neither the WAL pragma nor the busy_timeout `_on_sqlite_connect` sets on `state.tenant_db`'s own engine). Reproduced live as an indefinite hang on the POST. Fixed: the SQLite/embedded case now reuses `state.tenant_db.engine` directly instead of opening a second engine onto the same file at all — "the SAME tenant database" taken literally. The Postgres mirroring path is unchanged (still a separate pool, as before). REMAINING GAP (test stays `test.skip`, not a regression from this fix — a separate, unimplemented feature): with (1) and (2) fixed, the POST now succeeds and the row lands in the tenant SQLite file, but the SQL page's `SELECT ... FROM pet_store.<table>` never resolves it. `catalog_name_for_source` (`provisa/api/app_loaders.py`) gives every DuckDB-native source (the "core" e2e lane's engine) its own per-source-id ATTACH catalog for physical resolution, but nothing in `native_backend.py`/`duckdb_runtime.py` (grepped for "ingest": no hits) ever attaches or maps an ingest source's physical table into a catalog the compiler can reach — only the ingest WRITE side ([REQ-1745](#REQ-1745)'s `_init_ingest_engines` default) was ever wired: there is no corresponding READ side for the DuckDB-native engine. The tenant SQLite file is already exposed read-only, per-table, as `provisa_admin.<org_schema>.<table>` by `duckdb_runtime.py`'s `_rebuild_control_plane` (built for the control plane's own admin tables); the likely fix is teaching `catalog_name_for_source` to route ingest (DuckDB-native, no live connector) to that same `provisa_admin` catalog, the way it already routes Trino's MATERIALIZE_ONLY sources to Trino's own materialize-store catalog. Needs its own task/REQ.
+Root-caused and fixed the real bug behind "POST /data/ingest 404s 'source not found' immediately after successful registration" (source-to-query-streaming.spec.ts's ingest test, previously test.skip(true, ...)). Two independent bugs, both fixed; [SUPERSEDED by [REQ-1771](#REQ-1771), 2026-10-03 -- [REQ-1771](#REQ-1771) (complete) built the read side; the e2e ingest test is no longer skipped (provisa-ui/e2e/source-to-query-streaming.spec.ts:194). Kept here for history; do not implement against it.] a third, separate, unimplemented gap remains and keeps the test skipped [END SUPERSEDED BLOCK]: (1) `provisa/ingest/engine.py`'s `_build_url` unconditionally raised `ValueError("ingest DB password is required")` for an empty password. A trust/peer-auth control-plane Postgres (docker-assigned test instances) and any SQLite control plane both legitimately have no password, so this raised for EVERY ingest source on such a deployment. `_init_ingest_engines` (`provisa/api/app_loaders.py`) calls `get_engine` inside `with tolerate_startup_failure(...)`, which logs-and-skips the exception — aborting that function's per-source loop BEFORE `state.ingest_tables`/`state.ingest_engines` were ever populated for the source. Every POST to `/data/ingest` then 404'd "source not found" no matter how many times the schema rebuilt afterward — not a race, 100% reproducible, confirmed live via the swallowed traceback. Fixed: a missing password no longer pre-emptively rejects the URL; a DB that genuinely requires one still fails, from the driver's own auth error at connect time. (2) Once (1) stopped masking it, a second bug surfaced live: [REQ-1745](#REQ-1745)'s "mirror state.tenant_db" NO_CONNECTION default decomposed the tenant engine's URL into host/port/username/password and opened a SEPARATE engine with `get_engine` — correct for Postgres, but wrong for SQLite (no host/port to decompose; the `else` branch fell back to a hardcoded, unreachable `localhost:5432`), and even pointed at the real file, a second engine connecting to the SAME SQLite file the control plane is writing deadlocks/misbehaves (DuckDB's sqlite extension corrupts a file a second connection concurrently writes — see `duckdb_runtime.py`'s `_refresh_control_plane_snapshot` — and SQLAlchemy's default rollback-journal pool has neither the WAL pragma nor the busy_timeout `_on_sqlite_connect` sets on `state.tenant_db`'s own engine). Reproduced live as an indefinite hang on the POST. Fixed: the SQLite/embedded case now reuses `state.tenant_db.engine` directly instead of opening a second engine onto the same file at all — "the SAME tenant database" taken literally. The Postgres mirroring path is unchanged (still a separate pool, as before). [SUPERSEDED by [REQ-1771](#REQ-1771), 2026-10-03 -- catalog_name_for_source now routes ingest to provisa_admin (provisa/api/app_loaders.py:316-325); the test runs and asserts the queried row (spec :278-288). Kept here for history; do not implement against it.] REMAINING GAP (test stays `test.skip`, not a regression from this fix — a separate, unimplemented feature) [END SUPERSEDED BLOCK]: with (1) and (2) fixed, the POST now succeeds and the row lands in the tenant SQLite file, but the SQL page's `SELECT ... FROM pet_store.<table>` never resolves it. `catalog_name_for_source` (`provisa/api/app_loaders.py`) gives every DuckDB-native source (the "core" e2e lane's engine) its own per-source-id ATTACH catalog for physical resolution, but nothing in `native_backend.py`/`duckdb_runtime.py` (grepped for "ingest": no hits) ever attaches or maps an ingest source's physical table into a catalog the compiler can reach — only the ingest WRITE side ([REQ-1745](#REQ-1745)'s `_init_ingest_engines` default) was ever wired: [SUPERSEDED by [REQ-1771](#REQ-1771), 2026-10-03 -- The read side exists: provisa/api/app_loaders.py:316-325 returns the provisa_admin catalog for ingest sources. Kept here for history; do not implement against it.] there is no corresponding READ side for the DuckDB-native engine [END SUPERSEDED BLOCK]. The tenant SQLite file is already exposed read-only, per-table, as `provisa_admin.<org_schema>.<table>` by `duckdb_runtime.py`'s `_rebuild_control_plane` (built for the control plane's own admin tables); the likely fix is teaching `catalog_name_for_source` to route ingest (DuckDB-native, no live connector) to that same `provisa_admin` catalog, the way it already routes Trino's MATERIALIZE_ONLY sources to Trino's own materialize-store catalog. [SUPERSEDED by [REQ-1771](#REQ-1771), 2026-10-03 -- That requirement is [REQ-1771](#REQ-1771) and it is complete. Kept here for history; do not implement against it.] Needs its own task/REQ. [END SUPERSEDED BLOCK]
 
 **Use case:** Registering an ingest source and table through the real UI/API, then POSTing a row to the governed HTTP push receiver, must actually accept and land the row — 404ing "source not found" on every attempt on any deployment whose control-plane DB has no password (every docker-assigned test instance, every SQLite control plane) makes the ingest source type entirely unusable outside a narrow set of deployments that happen to have a Postgres password configured.
 
 **Code:** `provisa/ingest/engine.py`, `provisa/ingest/ddl.py`, `provisa/ingest/router.py`, `provisa/api/app_loaders.py`
 
-**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `provisa-ui/e2e/source-to-query-streaming.spec.ts`
+**Tests:** `provisa-ui/e2e/source-to-query-streaming.spec.ts`, `tests/unit/test_ingest_engine_prepared.py`, `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`
 
 ### REQ-1766 · Bug Fix {#REQ-1766}
 
@@ -18662,7 +18670,7 @@ kafka was in none of the Sources form's three field-group sets (SIMPLE_RDBMS/HOS
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-provisa/kafka/schema_registry.py's SchemaRegistryClient (REQ-116/147/150) — a complete, functional Confluent Schema Registry HTTP client (fetch a subject's Avro/JSON/Protobuf schema, map it to KafkaColumn definitions) — had ZERO callers anywhere in the codebase; built, never wired to any mutation, loader, or UI entry point. Wired into the SAME discover/edit/register flow mongodb/elasticsearch/cassandra/prometheus already use (SourcesPage's "Discover" button -> SchemaDiscovery.tsx, DISCOVERABLE_TYPES) rather than inventing a new one: added "kafka" to DISCOVERABLE_TYPES and source_adapters/registry.py's _ADAPTER_MAP; discovery_schema.py's _call_discover (made async — the first adapter branch here whose real fetch is genuinely async) gets a kafka branch taking topic/value_format/schema_registry_url hints and calling discover_topic_columns(); provisa/kafka/source.py gets a discover_schema() adapter-contract function mapping KafkaColumn -> the generic discovery dict shape; SchemaDiscovery.tsx gets a kafka DiscoverHints branch (topic + optional registry URL, falling back to the source's own federation_hints.schema_registry_url); demo/sources/kafka/compose.yml gets a schema-registry service (confluentinc/cp-schema-registry, same shape as docker-compose.test.yml's own). While verifying this live, found and fixed a genuine, SEPARATE, cross-cutting bug affecting EVERY type that uses the Discover flow, not just kafka: SchemaDiscovery.tsx's handleRegister hardcoded visibleTo: ["*"] on every registered column. Two independent visibility-enforcement layers disagree on what "unrestricted" means and NEITHER treats "*" as a wildcard: schema_gen.py's compile-time _build_visible_tables treats a falsy (empty-list) visible_to as unrestricted, so a table registered with ["*"] was excluded from EVERY compiled GraphQL/SQL/ Cypher schema for every role at compile time (its own `if table_id not in si.column_types: skip` branch fired, since no role's column set ever included a column visible only to the literal non-existent role "*"). Setting visible_to to an empty list `[]` fixes THAT layer but not query-time authorization: stage2.py's V003 gate checks `visible_to is None` specifically (not falsy) to mean unrestricted, so `[]` still reads there as "granted to nobody" — live- traced as "[V003] Column 'id' is not visible to this role" at query time even once the table became compile-visible. The row always existed in the database; it was silently unqueryable and absent from every schema, for every role, permanently, for every Discover-flow registration ever made (mongodb/elasticsearch/cassandra/prometheus included) until this fix. Fixed by passing the real current role-id list (via the existing useRoles() hook) instead of either ambiguous sentinel — the same convention RegisterTableForm's own column-selection UI already uses successfully, satisfying both enforcement layers unambiguously rather than depending on either file's specific empty/null special-casing. Two related, smaller gaps intentionally NOT addressed here, left as follow-ups: (a) provisa.kafka.source.sample_topic_records (SchemaSource.SAMPLE — infer columns by consuming live messages instead of querying the registry) remains unwired, the same way the registry path was before this task; (b) SchemaDiscovery.tsx's column editor has no primary-key selection UI at all (unlike RegisterTableForm's register-table-col-pk-<name> checkboxes), so a table registered through Discover can never satisfy push_wiring.py's CDC-landing requirement for a declared PK — Discover-flow tables are real and queryable but never receive live CDC data regardless of source type; only column-shape discovery is covered here.
+provisa/kafka/schema_registry.py's SchemaRegistryClient ([REQ-116](#REQ-116)/147/150) — a complete, functional Confluent Schema Registry HTTP client (fetch a subject's Avro/JSON/Protobuf schema, map it to KafkaColumn definitions) — had ZERO callers anywhere in the codebase; built, never wired to any mutation, loader, or UI entry point. Wired into the SAME discover/edit/register flow mongodb/elasticsearch/cassandra/prometheus already use (SourcesPage's "Discover" button -> SchemaDiscovery.tsx, DISCOVERABLE_TYPES) rather than inventing a new one: added "kafka" to DISCOVERABLE_TYPES and source_adapters/registry.py's _ADAPTER_MAP; discovery_schema.py's _call_discover (made async — the first adapter branch here whose real fetch is genuinely async) gets a kafka branch taking topic/value_format/schema_registry_url hints and calling discover_topic_columns(); provisa/kafka/source.py gets a discover_schema() adapter-contract function mapping KafkaColumn -> the generic discovery dict shape; SchemaDiscovery.tsx gets a kafka DiscoverHints branch (topic + optional registry URL, falling back to the source's own federation_hints.schema_registry_url); demo/sources/kafka/compose.yml gets a schema-registry service (confluentinc/cp-schema-registry, same shape as docker-compose.test.yml's own). While verifying this live, found and fixed a genuine, SEPARATE, cross-cutting bug affecting EVERY type that uses the Discover flow, not just kafka: SchemaDiscovery.tsx's handleRegister hardcoded visibleTo: ["*"] on every registered column. Two independent visibility-enforcement layers disagree on what "unrestricted" means and NEITHER treats "*" as a wildcard: schema_gen.py's compile-time _build_visible_tables treats a falsy (empty-list) visible_to as unrestricted, so a table registered with ["*"] was excluded from EVERY compiled GraphQL/SQL/ Cypher schema for every role at compile time (its own `if table_id not in si.column_types: skip` branch fired, since no role's column set ever included a column visible only to the literal non-existent role "*"). Setting visible_to to an empty list `[]` fixes THAT layer but not query-time authorization: stage2.py's V003 gate checks `visible_to is None` specifically (not falsy) to mean unrestricted, so `[]` still reads there as "granted to nobody" — live- traced as "[V003] Column 'id' is not visible to this role" at query time even once the table became compile-visible. The row always existed in the database; it was silently unqueryable and absent from every schema, for every role, permanently, for every Discover-flow registration ever made (mongodb/elasticsearch/cassandra/prometheus included) until this fix. Fixed by passing the real current role-id list (via the existing useRoles() hook) instead of either ambiguous sentinel — the same convention RegisterTableForm's own column-selection UI already uses successfully, satisfying both enforcement layers unambiguously rather than depending on either file's specific empty/null special-casing. Two related, smaller gaps intentionally NOT addressed here, left as follow-ups: (a) provisa.kafka.source.sample_topic_records (SchemaSource.SAMPLE — infer columns by consuming live messages instead of querying the registry) remains unwired, the same way the registry path was before this task; (b) SchemaDiscovery.tsx's column editor has no primary-key selection UI at all (unlike RegisterTableForm's register-table-col-pk-<name> checkboxes), so a table registered through Discover can never satisfy push_wiring.py's CDC-landing requirement for a declared PK — Discover-flow tables are real and queryable but never receive live CDC data regardless of source type; only column-shape discovery is covered here.
 
 **Use case:** "wire in the kafka schema registry client and test it e2e" — closing the gap between a fully- built, zero-caller Confluent Schema Registry client and any actual product surface that uses it, discovered while extending kafka's e2e coverage ([REQ-1766](#REQ-1766)).
 
@@ -18764,7 +18772,7 @@ provisa/compiler/type_map.py's column_type_to_graphql and provisa/grpc/proto_gen
 
 **Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
-The fabric e2e test (provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts) was skipped on a "[28000] ... system update ... (18456)" pyodbc error reproduced repeatedly against this account's Fabric SQL warehouse. That failure is consistent with the underlying Microsoft Fabric capacity (a paused-by-default, billable F-SKU compute unit) being Paused/Suspended rather than an actual credentials or code defect: a SQL warehouse built on a non-Active capacity rejects the connection outright, the same class of problem tests/integration/databricks_warehouse.py's ensure_warehouse_running() already solves for a suspended Databricks serverless warehouse. Added tests/integration/fabric_capacity.py with ensure_capacity_resumed() (resumes the capacity via the ARM control-plane API — Microsoft.Fabric/capacities resume/get, api-version 2023-11-01 — polling until properties.state is Active, retrying a resume call on 4xx while the capacity is still settling out of a prior transition, mirroring ensure_warehouse_running()'s retry-on-4xx shape) and suspend_capacity() (best-effort resume of the paused state on teardown — a suspend failure is logged, never raised, since leaving a capacity briefly running is a cost concern, not a correctness one). Both read FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME from the environment (the subscription id is resolved from the active `az login` session via `az account show`, the same lookup tests/integration/synapse_provision.py already uses for its own ARM calls -- no separate subscription-id env var) and raise a clear error if either is missing (no silent fallback, per this repo's CLAUDE.md). Auth is DefaultAzureCredential (az login / managed identity) against the https://management.azure.com/.default ARM scope — a different scope from fabric_shortcuts.py's own https://api.fabric.microsoft.com/.default data-plane Fabric API scope used for OneLake shortcut provisioning, since capacity management is a control-plane operation on a different resource. Wired into provisa-ui/e2e/cloud_warehouse_seed.py's _fabric(): ensure_capacity_resumed() runs before MssqlWarehouseRuntime connects on the "up" path, suspend_capacity() runs after teardown on the "down" path, mirroring exactly where _databricks() calls ensure_warehouse_running(). The e2e test's OLD "18456 system update" skip was removed; a NEW skip was added instead, gated on FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME being configured — neither exists in this environment yet (no Fabric capacity has been created), so the test still skips cleanly today with a message pointing at fabric_capacity.py's docstring, which documents the one-time `az fabric capacity create` command for whoever creates the capacity. Live verification of ensure_capacity_resumed()/suspend_capacity() against a real capacity is therefore pending that one-time manual step — not performed here, since creating billable Azure infrastructure is a subscription-owner decision, not this task's to make. (Amended 2026-09-30, the engine resumes its own capacity:) Resuming the capacity is a product behavior, not only a test-lane step. provisa/federation/fabric_capacity.py resumes the Fabric capacity through the ARM control plane and waits for Active; MssqlWarehouseRuntime calls it before every connect on the Fabric engine (not Synapse, whose serverless pool auto-resumes). Opt-in by configuration: FABRIC_CAPACITY_NAME + FABRIC_RESOURCE_GROUP name the capacity; both unset means the capacity is managed externally and nothing is resumed; exactly one set raises as a misconfiguration. The subscription is located by listing the subscriptions the engine's DefaultAzureCredential can read (no az CLI, no subscription-id setting), so a managed identity works. tests/integration/fabric_capacity.py now delegates to it.
+The fabric e2e test (provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts) was skipped on a "[28000] ... system update ... (18456)" pyodbc error reproduced repeatedly against this account's Fabric SQL warehouse. That failure is consistent with the underlying Microsoft Fabric capacity (a paused-by-default, billable F-SKU compute unit) being Paused/Suspended rather than an actual credentials or code defect: a SQL warehouse built on a non-Active capacity rejects the connection outright, the same class of problem tests/integration/databricks_warehouse.py's ensure_warehouse_running() already solves for a suspended Databricks serverless warehouse. Added tests/integration/fabric_capacity.py with ensure_capacity_resumed() (resumes the capacity via the ARM control-plane API — Microsoft.Fabric/capacities resume/get, api-version 2023-11-01 — polling until properties.state is Active, retrying a resume call on 4xx while the capacity is still settling out of a prior transition, mirroring ensure_warehouse_running()'s retry-on-4xx shape) and suspend_capacity() (best-effort resume of the paused state on teardown — a suspend failure is logged, never raised, since leaving a capacity briefly running is a cost concern, not a correctness one). Both read FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME from the environment [SUPERSEDED by REQ-1775 amendment, 2026-10-03 -- The 2026-09-30 amendment replaced this: the subscription is found by listing the subscriptions the credential can read, no az CLI (provisa/federation/fabric_capacity.py:69-93). The entry's scenario still says `az account show` too. Kept here for history; do not implement against it.] (the subscription id is resolved from the active `az login` session via `az account show`, the same lookup tests/integration/synapse_provision.py already uses for its own ARM calls -- no separate subscription-id env var) [END SUPERSEDED BLOCK] and raise a clear error if either is missing (no silent fallback, per this repo's CLAUDE.md). Auth is DefaultAzureCredential (az login / managed identity) against the https://management.azure.com/.default ARM scope — a different scope from fabric_shortcuts.py's own https://api.fabric.microsoft.com/.default data-plane Fabric API scope used for OneLake shortcut provisioning, since capacity management is a control-plane operation on a different resource. Wired into provisa-ui/e2e/cloud_warehouse_seed.py's _fabric(): ensure_capacity_resumed() runs before MssqlWarehouseRuntime connects on the "up" path, suspend_capacity() runs after teardown on the "down" path, mirroring exactly where _databricks() calls ensure_warehouse_running(). The e2e test's OLD "18456 system update" skip was removed; a NEW skip was added instead, gated on FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME being configured — [SUPERSEDED by REQ-1775 amendment, 2026-10-03 -- Environment narrative that no longer holds: the repo .env now defines both FABRIC_CAPACITY_NAME and FABRIC_RESOURCE_GROUP (key presence checked, values not read). Kept here for history; do not implement against it.] neither exists in this environment yet (no Fabric capacity has been created) [END SUPERSEDED BLOCK], so the test still skips cleanly today with a message pointing at fabric_capacity.py's docstring, which documents the one-time `az fabric capacity create` command for whoever creates the capacity. Live verification of ensure_capacity_resumed()/suspend_capacity() against a real capacity is therefore pending that one-time manual step — not performed here, since creating billable Azure infrastructure is a subscription-owner decision, not this task's to make. (Amended 2026-09-30, the engine resumes its own capacity:) Resuming the capacity is a product behavior, not only a test-lane step. provisa/federation/fabric_capacity.py resumes the Fabric capacity through the ARM control plane and waits for Active; MssqlWarehouseRuntime calls it before every connect on the Fabric engine (not Synapse, whose serverless pool auto-resumes). Opt-in by configuration: FABRIC_CAPACITY_NAME + FABRIC_RESOURCE_GROUP name the capacity; both unset means the capacity is managed externally and nothing is resumed; exactly one set raises as a misconfiguration. The subscription is located by listing the subscriptions the engine's DefaultAzureCredential can read (no az CLI, no subscription-id setting), so a managed identity works. tests/integration/fabric_capacity.py now delegates to it.
 
 **Use case:** Run the fabric e2e lane against a real Microsoft Fabric capacity without a human manually resuming it in the Fabric portal beforehand, and without leaving billable compute running between runs.
 
@@ -18830,7 +18838,7 @@ The front-door proxy (terraform/gcp-saas/front-door/proxy.py, the always-on e2-m
 
 ### REQ-1780 · Feature {#REQ-1780}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 [SUPERSEDED by the 2026-09-19 "one files Source" amendment below: "...each file registers as a plain csv/parquet Source, ATTACHed live by the existing TrinoCsvConnector/TrinoParquetConnector..." — kept here for history; do not implement against it.] (Amended 2026-09-19, FINAL DESIGN — no bespoke Connector/SourceType:) Kaggle is not a live query engine and not its own federation SourceType. A dataset bundle is downloaded and unzipped server-side (provisa/kaggle/downloader.py), its CSV/Parquet members discovered via the EXISTING provisa/file_source/crawler.py, and each file registers as a plain csv/parquet Source, ATTACHed live by the existing TrinoCsvConnector/TrinoParquetConnector — zero changes to federation/trino_connectors.py, strategy.py, source_loader.py, app_wiring.py, source_adapters/registry.py, or core/models.py. A dataset bundle containing a .sqlite/.db file is rejected whole (UnsupportedKaggleDataset) — v1 scope is CSV/Parquet only. [SUPERSEDED by this amendment: the original TrinoKaggleConnector/Mechanism.FETCH/land_replace design below was reverted before implementation — never built.] (Amended 2026-09-19, one `files` Source per dataset:) a staged bundle now registers as exactly ONE `files`-type Source (path = the staged directory), not one plain csv/parquet Source per file. This session's other work ([REQ-1690](#REQ-1690)) made the `files`/pgwire-file connector discover every file in a directory as its own table, recursively, single- or multi-file alike — the per-file-Source design above predates that capability and became strictly worse once it existed: confirmed live, an 11-file Chinook dataset produced 11 separate raw `csv`-typed rows in the Sources list (`d_Album`, `d_Artist`, ...) needing 11 separate Register Table trips, instead of one `files` source whose Register Table screen lists all 11 tables at once. See [REQ-1781](#REQ-1781)'s matching amendment for the table-level consequence.
 
@@ -18842,7 +18850,7 @@ The front-door proxy (terraform/gcp-saas/front-door/proxy.py, the always-on e2-m
 
 ### REQ-1781 · Feature {#REQ-1781}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 [SUPERSEDED by the 2026-09-19 "one files Source" amendment below: "...each CSV/Parquet file ... becomes an independent Provisa csv/parquet Source" — kept here for history; do not implement against it.] (Amended 2026-09-19, FINAL DESIGN:) Source-level config for a Kaggle source is one Kaggle dataset bundle (owner/ref). Table-level config is one file within that bundle. A bundle's files carry no declared relational metadata, so each CSV/Parquet file discovered via datasets/list/{owner}/{ref} (NOT datasets/view, which always returns an empty file list — verified live) becomes an independent Provisa csv/parquet Source. A bundle containing a .sqlite/.db file is rejected whole by provisa/kaggle/downloader.py's stage_dataset (UnsupportedKaggleDataset) — v1 scope cut, not implemented. [SUPERSEDED by this amendment: the original "SQLite-bundle maps to internal Provisa tables" exception below was never built — scope-cut to CSV/Parquet only before implementation.] (Amended 2026-09-19, one `files` Source per dataset — see [REQ-1780](#REQ-1780)'s matching amendment for the source-level rationale:) table-level config is no longer per-file at all. The whole staged directory registers as one `files` Source, and each of its files becomes its own table via the pgwire-file connector's own directory discovery ([REQ-1690](#REQ-1690)) — the same mechanism any other multi-file `files` source uses, not a Kaggle-specific enumeration. stage_kaggle_dataset (schema_mutation.py) no longer crawls the directory or returns per-file column previews; it only stages the bundle and returns the directory path.
 
@@ -18882,7 +18890,7 @@ Kaggle registers under the admin UI's "Subscriptions" source category (provisa-u
 
 **Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
 
-Provisa shall document and expose the HTML crawler capability from the underlying Calcite file adapter (org.apache.calcite.adapter.file.converters.HtmlCrawler) as a first-class, general-purpose source-discovery method for registering sources that expose only HTML index pages with linked data files (CSV, Parquet, etc.). This capability shall support crawling HTML pages to discover and automatically register linked files as tables, distinct from the Python file_source/crawler.py which only performs fsspec directory walks on local/S3/FTP/SFTP paths. (Amended 2026-09-19, ALREADY WIRED VIA FSSPEC:) Verified live: `http`/`https` are registered fsspec protocols (`fsspec.implementations.http.HTTPFileSystem`), and `requests`/`aiohttp` (its runtime deps) are already installed in this repo. `HTTPFileSystem.ls()` performs real HTML link-parsing to enumerate files at a URL. `provisa/file_source/crawler.py`'s existing `_is_fsspec_uri`/`_walk_fsspec` path already matches and routes `http://`/`https://` URIs through this behavior with zero code changes required — `_is_fsspec_uri` only excludes `file://`. The prior claim that this needs a bespoke Calcite/pgwire bridge is superseded: this requirement is now DOCUMENTATION + verification/test coverage of the existing fsspec http path through `crawl_directory`, not new integration code. The Calcite `HtmlCrawler`/pgwire_replica.py path remains the SharePoint/Splunk-specific mechanism and is unrelated to this general-purpose case. (Amended 2026-09-19, HTTP CRAWL SETTINGS GAP:) Verified live: depth control already works protocol-agnostically (`crawl_directory`'s `depth`/`recursive` params thread through `_walk_fsspec_recursive` regardless of scheme). But link-following control does not exist yet and is needed specifically for `http(s)://` roots: (1) `HTTPFileSystem`'s `simple_links` constructor option (default True regex-matches any http(s) URL string in the page, not just real `<a href>` anchors — noisy on real-world catalog pages) is never passed through by `_walk_fsspec`, which calls `fsspec.core.url_to_fs(root)` with no storage options at all; (2) `same_scheme` (http<->https link-following) is similarly not exposed; (3) `crawl_directory` has only a positive include `pattern` (fnmatch on basename), no exclude/deny-list and no same-domain restriction — `_ls_real` marks any linked URL ending in "/" as type "directory" to recurse into up to `max_depth`, so an unrestricted HTML crawl can wander into off-target subpaths/domains in a way a local/S3/FTP walk structurally cannot. Required: add `simple_links`, a same-domain (or explicit allow-list) restriction, and an exclude pattern as new `crawl_directory` parameters, threaded into `_walk_fsspec`'s `fsspec.core.url_to_fs` call. This will require a corresponding admin UI tweak: the file-connector datasource form needs additional optional fields (exposed only when the configured path is `http(s)://`) for these new crawl settings, alongside depth and the existing include pattern.
+Provisa shall document and expose the HTML crawler capability from the underlying Calcite file adapter (org.apache.calcite.adapter.file.converters.HtmlCrawler) as a first-class, general-purpose source-discovery method for registering sources that expose only HTML index pages with linked data files (CSV, Parquet, etc.). This capability shall support crawling HTML pages to [SUPERSEDED by [REQ-1923](#REQ-1923), 2026-10-03 -- Registration is curation: nothing a source offers is registered automatically. crawl_directory only returns descriptors (provisa/file_source/crawler.py:216-290) and crawlSource is a preview (provisa/api/admin/schema_query.py:782-795). Kept here for history; do not implement against it.] discover and automatically register linked files as tables [END SUPERSEDED BLOCK], distinct from the Python file_source/crawler.py which only performs fsspec directory walks on local/S3/FTP/SFTP paths. (Amended 2026-09-19, ALREADY WIRED VIA FSSPEC:) Verified live: `http`/`https` are registered fsspec protocols (`fsspec.implementations.http.HTTPFileSystem`), and `requests`/`aiohttp` (its runtime deps) are already installed in this repo. `HTTPFileSystem.ls()` performs real HTML link-parsing to enumerate files at a URL. `provisa/file_source/crawler.py`'s existing `_is_fsspec_uri`/`_walk_fsspec` path already matches and routes `http://`/`https://` URIs through this behavior with zero code changes required — `_is_fsspec_uri` only excludes `file://`. The prior claim that this needs a bespoke Calcite/pgwire bridge is superseded: this requirement is now DOCUMENTATION + verification/test coverage of the existing fsspec http path through `crawl_directory`, not new integration code. The Calcite `HtmlCrawler`/pgwire_replica.py path remains the SharePoint/Splunk-specific mechanism and is unrelated to this general-purpose case. (Amended 2026-09-19, HTTP CRAWL SETTINGS GAP:) Verified live: depth control already works protocol-agnostically (`crawl_directory`'s `depth`/`recursive` params thread through `_walk_fsspec_recursive` regardless of scheme). But link-following control does not exist yet and is needed specifically for `http(s)://` roots: (1) `HTTPFileSystem`'s `simple_links` constructor option (default True regex-matches any http(s) URL string in the page, not just real `<a href>` anchors — noisy on real-world catalog pages) [SUPERSEDED by [REQ-1785](#REQ-1785), 2026-10-03 -- _walk_fsspec now calls fsspec.core.url_to_fs(root, simple_links=simple_links) (provisa/file_source/crawler.py:99). Kept here for history; do not implement against it.] is never passed through by `_walk_fsspec`, which calls `fsspec.core.url_to_fs(root)` with no storage options at all [END SUPERSEDED BLOCK]; (2) `same_scheme` (http<->https link-following) is similarly not exposed; (3) [SUPERSEDED by [REQ-1785](#REQ-1785), 2026-10-03 -- crawl_directory now takes same_domain and exclude_pattern (provisa/file_source/crawler.py:222-224, enforced at 140-143). Kept here for history; do not implement against it.] `crawl_directory` has only a positive include `pattern` (fnmatch on basename), no exclude/deny-list and no same-domain restriction [END SUPERSEDED BLOCK] — `_ls_real` marks any linked URL ending in "/" as type "directory" to recurse into up to `max_depth`, so an unrestricted HTML crawl can wander into off-target subpaths/domains in a way a local/S3/FTP walk structurally cannot. Required: add `simple_links`, a same-domain (or explicit allow-list) restriction, and an exclude pattern as new `crawl_directory` parameters, threaded into `_walk_fsspec`'s `fsspec.core.url_to_fs` call. This will require a corresponding admin UI tweak: the file-connector datasource form needs additional optional fields (exposed only when the configured path is `http(s)://`) for these new crawl settings, alongside depth and the existing include pattern.
 
 **Use case:** Future source types that have no REST/API access and only expose HTML directory listings of linked data files (similar to how SharePoint and Splunk are currently handled internally via [REQ-954](#REQ-954)/955/956) can be registered using the HTML crawler without requiring source-type-specific connectors.
 
@@ -18904,9 +18912,9 @@ Provisa shall document and expose the HTML crawler capability from the underlyin
 
 ### REQ-1786 · Data Discovery {#REQ-1786}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** ui
 
-The create_source mutation (provisa/api/admin/schema_mutation.py) shall support an opt-in discover_tables_now flag that, when true, triggers an automatic background crawl_directory call immediately after source creation succeeds. The crawled table/file list is cached and presented to the admin on the source's Tables page as a pre-populated "discovered, not-yet-registered" state, eliminating blank-state friction of manually invoking crawl_directory per source. The flag defaults to false (disabled) to avoid unrequested remote fetch/schema-inference passes on every source creation, which could be slow or noisy for large HTTP-crawled directories ([REQ-1784](#REQ-1784)/1785). The source-creation form (SourceFormFields.tsx) shall conditionally render a "Discover tables now" checkbox for file-connector sources (csv/parquet/sqlite) that, when checked, passes discover_tables_now: true to the mutation.
+The create_source mutation (provisa/api/admin/schema_mutation.py) shall support an opt-in discover_tables_now flag that, when true, triggers an automatic background crawl_directory call immediately after source creation succeeds. The crawled table/file list is cached and presented to the admin on the source's Tables page as a pre-populated "discovered, not-yet-registered" state, eliminating blank-state friction of manually invoking crawl_directory per source. The flag defaults to false (disabled) to avoid unrequested remote fetch/schema-inference passes on every source creation, which could be slow or noisy for large HTTP-crawled directories ([REQ-1784](#REQ-1784)/1785). The source-creation form (SourceFormFields.tsx) shall conditionally render a "Discover tables now" checkbox for file-connector sources (csv/parquet/sqlite) that, when checked, passes discover_tables_now: true to the mutation. (Amended 2026-10-03, THIS IS A PERFORMANCE AID:) Discovery at source creation exists to make the later table registration faster: the list of a source's tables is already to hand when the steward opens Register Table. It adds no capability, since registration discovers tables on demand today.
 
 **Use case:** Admins registering file-connector sources (especially HTTP-crawled ones per [REQ-1784](#REQ-1784)) should not face a blank Tables page requiring a manual discovery step; opt-in automatic discovery provides convenience without imposing latency or unexpected remote fetches on all source creations.
 
@@ -18970,7 +18978,7 @@ Provisa supports configuring custom AI/LLM endpoints reachable over either the O
 
 ### REQ-1791 · Licensing {#REQ-1791}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** ui
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
 A persistent "Unregistered" indicator appears in the web UI footer whenever the deployment is not licensed, regardless of trial status. This is distinct from [REQ-1137](#REQ-1137) (the post-trial license nag, which only fires after trial expiry via server logs and protocol-level notices, never touching the UI).
 
@@ -19398,7 +19406,7 @@ During multi-step tool-call sequences (search → present_choice → propose_sou
 
 **Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
 
-### REQ-1824 · Federation Engines {#REQ-1824}
+### REQ-1824 · Federation Engine {#REQ-1824}
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
@@ -19850,7 +19858,7 @@ The perf benchmark tooling should produce results in a format suitable for publi
 
 ### REQ-1861 · Source Connectors {#REQ-1861}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** MAY · **Type:** behavioral
 
 MongoDB sources can optionally use MongoDB's native change streams ($changeStream) to achieve near-real-time freshness for materialized and cached data, instead of relying solely on TTL-based polling refresh. (Amended 2026-09-24, DEPLOYMENT PATH CONFIRMED:) Change streams require Mongo to run as a replica set — a bare standalone instance cannot serve them. Confirmed workable as a single-node replica set (no extra containers): `command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]` plus a self-initiating healthcheck (`rs.status()`, falling back to `rs.initiate()` on first run) — see demo/named/perf/docker-compose.yml's mongodb service, now our standard approach for every Mongo service in a named demo, not just this one. One real gotcha: the replica-set member is registered under a hostname only resolvable on the same Docker network (the Compose service name), so any consumer connecting from outside it (a host-machine driver via the published port, or Provisa's own connector under --native) must set directConnection=true to skip topology discovery — see generate_mongo.py's MongoClient call for the pattern. Whether Provisa's own mongodb connector needs the same directConnection flag to reach a replica-set-backed source is unverified — flag if sources register but queries against them fail to connect (see fragment.yaml's bench-mongodb comment).
 
@@ -19904,7 +19912,7 @@ When routing a single-source Neo4j query whose pattern is translatable to native
 
 **Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
-A registered table may opt in (row_materialize, per-table, never a global engine mode) to a row-level, query-driven cache: an individual row is fetched from the live source and upserted into a landed replica strictly when a query's compiled plan resolves a concrete primary-key equality/IN bound against that table — never eagerly, never a background pre-fetch of a key nothing has queried. The table must declare at least one is_primary_key column and resolve a cache_ttl (own or inherited from its source); each cached row carries its own _row_cached_at/_row_expires_at freshness clock, independent of every other row's, driven by that same cache_ttl duration. A query whose predicate does not resolve to a bounded PK set [SUPERSEDED by [REQ-1915](#REQ-1915), 2026-10-01 -- a row-level table has no whole-table fallback; an unfiltered read is refused at planning and a filtered read replicates the rows its filter matches. Kept here for history; do not implement against it.] falls back to the table's ordinary whole-table materialize/live resolution unchanged. [END SUPERSEDED BLOCK] For a push change_signal source, an incoming CDC event for a key already present in the row cache triggers an out-of-band background refresh (queued, not inline); a key not already cached is dropped, never triggering an insert. A key the source no longer returns is tombstoned (deleted) from the cache synchronously. A periodic out-of-band reaper deletes rows expired past an operator-configured reap_grace_period. row_materialize is mutually exclusive with the view_sql-CTAS materialize flag. A declared primary key is trusted, never runtime-verified for uniqueness against the live source. (Amended 2026-09-30, row_materialize applies only where the engine cannot attach:) The choice is made from the bound engine's DECLARED capability. When the engine declares it can direct-attach the table's source type (strategy.engine_attaches -- its connector reads in place), the engine attaches and reads the source live and row_materialize is ignored for that engine, by design (row_materialize is the reach for a source the engine cannot attach, not an alternative to an attach). If that attach fails, the failure is an error -- it is never routed through the row cache or a landed replica instead. row_materialize applies only when the engine declares it cannot direct-attach the source. Every row-materialize consumer (bound extraction, key pushdown, row fetch, background refresh/reap wiring) selects its tables through query_residency.active_row_materialize_tables, so an attach-capable engine never pays a probe query, a keyed fetch or a cache land it would not read -- confirmed live on the perf bench: the DuckDB engine (which attaches MongoDB) ran the key-pushdown probe and landed order_docs rows for large_federated_join while its query read the live MONGO_SCAN. (Amended 2026-09-30, key pushdown fails loudly and lands at scale:) A key-pushdown probe or keyed fetch that fails raises; it is never logged and skipped, which left the table unlanded and the query answered from whatever the row cache already held -- confirmed live, large_federated_join returned 3030 rows instead of ~3.03M because ClickHouse rejected the 1..1M order_id IN list ("Max query size exceeded") and the failure was swallowed. A keyed fetch names its keys in predicates that each fit the source's statement-size limit (ClickHouse: max_query_size, 262144 bytes by default), together naming every key once: a run of three or more consecutive integers of a single-column key is one BETWEEN (exact over integers), the rest are IN batches. The row-cache freshness read joins the candidate keys as a registered frame, never a bound IN list, and reports a key repeated in the cache at its earliest expiry. A key-pushdown fetch lands columnar: SourceRowLoader. load_keys_arrow returns one Arrow table (ClickHouse fetches it natively via query_arrow; a type without an Arrow fetch converts its rows), the _row_cached_at/_row_expires_at stamps are added as Arrow columns (naive UTC), and the DuckDB store upserts it through the broker in one DELETE of the carried keys and one INSERT ... SELECT -- no per-row Python objects. ClickHouse's Arrow output encodes DateTime as uint32 seconds and Date as uint16 days; a column the registry declares temporal is re-typed to the Arrow timestamp/date it encodes. A DuckDB-store cache land applies its batch set-based -- each key ends at its last event in stream order (one DELETE of every touched key, one bulk INSERT of the keys whose last event is an upsert) -- never one DELETE/INSERT per row, which held the store lock for over ten minutes landing ~3M rows. (Amended 2026-09-30, no request bypass:) A route=direct request hint never reaches a row_materialize source live: decide_route never makes a VIRTUAL source (neo4j included, though a driver is registered for it) direct on a hint ([REQ-030](#REQ-030)). (Amended 2026-10-01, bound resolution reads the in-memory registry:) Resolving a statement's PK bounds (`_resolve_pk_bounds`) runs for every governed statement on every surface, so it reads no control plane: the row_materialize tables come from the registry `_rebuild_schemas` publishes in memory (`state.tables`), selected and keyed exactly as `row_materialized_tables_by_name` does (flag set, engine cannot direct-attach the source type; bare table name and alias). A statement that touches no such table pays a list scan.
+A registered table may opt in (row_materialize, per-table, never a global engine mode) to a row-level, query-driven cache: an individual row is fetched from the live source and upserted into a landed replica strictly when a query's compiled plan resolves a concrete primary-key equality/IN bound against that table — never eagerly, never a background pre-fetch of a key nothing has queried. The table must declare at least one is_primary_key column and resolve a cache_ttl (own or inherited from its source); [SUPERSEDED by [REQ-1907](#REQ-1907), 2026-10-03 -- Freshness is now judged per reader from _row_cached_at against max(cache_ttl, role_ttl(role)); _row_expires_at is only the reaper horizon, stamped with the longest TTL any reader accepts (query_residency.py:61-73, 1021-1034), and a push-fed table's rows are never stale on the clock (:569-574). Kept here for history; do not implement against it.] each cached row carries its own _row_cached_at/_row_expires_at freshness clock, independent of every other row's, driven by that same cache_ttl duration [END SUPERSEDED BLOCK]. A query whose predicate does not resolve to a bounded PK set [SUPERSEDED by [REQ-1915](#REQ-1915), 2026-10-01 -- a row-level table has no whole-table fallback; an unfiltered read is refused at planning and a filtered read replicates the rows its filter matches. Kept here for history; do not implement against it.] falls back to the table's ordinary whole-table materialize/live resolution unchanged. [END SUPERSEDED BLOCK] For a push change_signal source, an incoming CDC event for a key already present in the row cache triggers an out-of-band background refresh (queued, not inline); a key not already cached is dropped, never triggering an insert. A key the source no longer returns is tombstoned (deleted) from the cache synchronously. A periodic out-of-band reaper deletes rows expired past an operator-configured reap_grace_period. row_materialize is mutually exclusive with the view_sql-CTAS materialize flag. A declared primary key is trusted, never runtime-verified for uniqueness against the live source. (Amended 2026-09-30, row_materialize applies only where the engine cannot attach:) The choice is made from the bound engine's DECLARED capability. When the engine declares it can direct-attach the table's source type (strategy.engine_attaches -- its connector reads in place), the engine attaches and reads the source live and row_materialize is ignored for that engine, by design (row_materialize is the reach for a source the engine cannot attach, not an alternative to an attach). If that attach fails, the failure is an error -- it is never routed through the row cache or a landed replica instead. row_materialize applies only when the engine declares it cannot direct-attach the source. Every row-materialize consumer (bound extraction, key pushdown, row fetch, background refresh/reap wiring) selects its tables through query_residency.active_row_materialize_tables, so an attach-capable engine never pays a probe query, a keyed fetch or a cache land it would not read -- confirmed live on the perf bench: the DuckDB engine (which attaches MongoDB) ran the key-pushdown probe and landed order_docs rows for large_federated_join while its query read the live MONGO_SCAN. (Amended 2026-09-30, key pushdown fails loudly and lands at scale:) A key-pushdown probe or keyed fetch that fails raises; it is never logged and skipped, which left the table unlanded and the query answered from whatever the row cache already held -- confirmed live, large_federated_join returned 3030 rows instead of ~3.03M because ClickHouse rejected the 1..1M order_id IN list ("Max query size exceeded") and the failure was swallowed. A keyed fetch names its keys in predicates that each fit the source's statement-size limit (ClickHouse: max_query_size, 262144 bytes by default), together naming every key once: a run of three or more consecutive integers of a single-column key is one BETWEEN (exact over integers), the rest are IN batches. The row-cache freshness read joins the candidate keys as a registered frame, never a bound IN list, [SUPERSEDED by [REQ-1907](#REQ-1907), 2026-10-03 -- The freshness read returns min(_row_cached_at) per key, the oldest landed-at stamp, not an expiry (store_connection.py:411-415; query_residency.py:540-566). Kept here for history; do not implement against it.] and reports a key repeated in the cache at its earliest expiry [END SUPERSEDED BLOCK]. A key-pushdown fetch lands columnar: SourceRowLoader. load_keys_arrow returns one Arrow table (ClickHouse fetches it natively via query_arrow; a type without an Arrow fetch converts its rows), the _row_cached_at/_row_expires_at stamps are added as Arrow columns (naive UTC), and the DuckDB store upserts it through the broker in one DELETE of the carried keys and one INSERT ... SELECT -- no per-row Python objects. ClickHouse's Arrow output encodes DateTime as uint32 seconds and Date as uint16 days; a column the registry declares temporal is re-typed to the Arrow timestamp/date it encodes. A DuckDB-store cache land applies its batch set-based -- each key ends at its last event in stream order (one DELETE of every touched key, one bulk INSERT of the keys whose last event is an upsert) -- never one DELETE/INSERT per row, which held the store lock for over ten minutes landing ~3M rows. (Amended 2026-09-30, no request bypass:) A route=direct request hint never reaches a row_materialize source live: decide_route never makes a VIRTUAL source (neo4j included, though a driver is registered for it) direct on a hint ([REQ-030](#REQ-030)). (Amended 2026-10-01, bound resolution reads the in-memory registry:) Resolving a statement's PK bounds (`_resolve_pk_bounds`) runs for every governed statement on every surface, so it reads no control plane: the row_materialize tables come from the registry `_rebuild_schemas` publishes in memory (`state.tables`), selected and keyed exactly as `row_materialized_tables_by_name` does (flag set, engine cannot direct-attach the source type; bare table name and alias). A statement that touches no such table pays a list scan.
 
 **Use case:** A large, expensive-to-fully-land source table (e.g. a multi-million-row Neo4j query_template scan) can serve point-lookup queries in milliseconds via a per-row cache instead of paying a 60-120s full re-land for a handful of rows, without ever pre-warming keys nothing has asked for.
 
@@ -19930,7 +19938,7 @@ Raw-SQL-text surfaces (pgwire, Flight SQL, HTTP Cypher-to-SQL, Bolt) should cach
 
 **Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
 
-The pg engine's snowflake/databricks/bigquery source types should be reachable as a live, zero-copy ATTACH_R via each warehouse's Iceberg REST catalog (Snowflake Iceberg Tables' catalog integration or SYSTEM$GET_ICEBERG_TABLE_INFORMATION, Databricks Unity Catalog's Iceberg REST endpoint / UniForm, BigQuery BigLake Metastore), instead of only Mechanism.DIRECT (native driver, materialize-required). PgDuckdbIcebergConnector (provisa/federation/connector_duckdb.py) already reads an Iceberg table in place via iceberg_scan, but only from a bare storage path (source.path) — it has no REST-catalog client, credential/token handling, or table discovery. This closes that gap: resolve the warehouse's current metadata.json location via its catalog API, then hand the resolved path to the existing scan connector unchanged.
+The pg engine's snowflake/databricks/bigquery source types should be reachable as a live, zero-copy ATTACH_R via each warehouse's Iceberg REST catalog (Snowflake Iceberg Tables' catalog integration or SYSTEM$GET_ICEBERG_TABLE_INFORMATION, Databricks Unity Catalog's Iceberg REST endpoint / UniForm, BigQuery BigLake Metastore), instead of only Mechanism.DIRECT (native driver, materialize-required). PgDuckdbIcebergConnector (provisa/federation/connector_duckdb.py) already reads an Iceberg table in place via iceberg_scan, but only from a bare storage path (source.path) — [SUPERSEDED by REQ-1867 amendment, 2026-10-03 -- Status is proposed and the text reads as future work, but the three catalog-resolving connectors and their resolvers already exist (provisa/federation/connector_duckdb.py:1151-1352). Kept here for history; do not implement against it.] it has no REST-catalog client, credential/token handling, or table discovery. This closes that gap [END SUPERSEDED BLOCK]: resolve the warehouse's current metadata.json location via its catalog API, then hand the resolved path to the existing scan connector unchanged.
 
 **Use case:** Snowflake/Databricks/BigQuery sources attached to the pg engine currently require a full materialized replica even when the underlying table is already Iceberg-format and could be scanned live — closing this gap removes that replica lag/cost for customers who already use Iceberg-backed warehouse tables.
 
@@ -19942,7 +19950,7 @@ The pg engine's snowflake/databricks/bigquery source types should be reachable a
 
 **Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
 
-The pg engine should gain a PgDuckdbMotherDuckConnector (Mechanism.ATTACH_RW) using pg_duckdb's own FOREIGN DATA WRAPPER duckdb TYPE 'motherduck' SERVER + USER MAPPING (token) mechanism, confirmed present in pg_duckdb's own source (src/pgduckdb_fdw.cpp's FdwType::MD, test/pycheck/motherduck_test.py) — pg_duckdb can live-attach a MotherDuck-hosted DuckDB database today, but no Provisa connector wires this up for the pg engine. This is distinct from, and does NOT cover, attaching an arbitrary standalone local/remote .duckdb file: pg_duckdb's FDW only exposes SERVER TYPEs motherduck/s3/gcs — s3/gcs are credential servers for the existing scan connectors, not a general foreign-duckdb-file attach — so the pg engine's plain `duckdb` source type correctly stays Mechanism.DIRECT (native driver, materialize) for anything that isn't MotherDuck.
+The pg engine should gain a PgDuckdbMotherDuckConnector (Mechanism.ATTACH_RW) using pg_duckdb's own FOREIGN DATA WRAPPER duckdb TYPE 'motherduck' SERVER + USER MAPPING (token) mechanism, confirmed present in pg_duckdb's own source (src/pgduckdb_fdw.cpp's FdwType::MD, test/pycheck/motherduck_test.py) — pg_duckdb can live-attach a MotherDuck-hosted DuckDB database today, [SUPERSEDED by REQ-1868 amendment, 2026-10-03 -- PgDuckdbMotherDuckConnector exists and is registered (provisa/federation/connector_duckdb.py:713-772, provisa/federation/engine.py:698). Kept here for history; do not implement against it.] but no Provisa connector wires this up for the pg engine [END SUPERSEDED BLOCK]. This is distinct from, and does NOT cover, attaching an arbitrary standalone local/remote .duckdb file: pg_duckdb's FDW only exposes SERVER TYPEs motherduck/s3/gcs — s3/gcs are credential servers for the existing scan connectors, not a general foreign-duckdb-file attach — so the pg engine's plain `duckdb` source type correctly stays Mechanism.DIRECT (native driver, materialize) for anything that isn't MotherDuck.
 
 **Use case:** Orgs with a MotherDuck-hosted DuckDB database currently get only a materialized replica via the pg engine even though pg_duckdb can attach it live — closing this gap gives them zero-copy access the same way postgres/mysql/oracle/sqlite sources already get.
 
@@ -19964,15 +19972,15 @@ The pg engine should gain a PgDuckdbMotherDuckConnector (Mechanism.ATTACH_RW) us
 
 ### REQ-1870 · Federation {#REQ-1870}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 (Amended 2026-09-28, LIVE-VERIFIED WORKING:) The pg engine's clickhouse source type should be reachable as a live ATTACH via ClickHouse's own official pg_clickhouse extension (FDW name `clickhouse_fdw`, github.com/ClickHouse/pg_clickhouse), added to provisa_pg_ext's bundled FDW set, instead of only Mechanism.DIRECT (native driver, materialize-required). No apt/PGDG package exists (confirmed) — provisa_pg_ext bundling it is the correct path per the solid-redistribution-point rule (contrast [REQ-1869](#REQ-1869)/mongo_fdw). Built and tested LIVE against ClickHouse 24.3 (v0.10.0 release source, github.com/ClickHouse/pg_clickhouse/releases, `make && make install` against postgresql-server-dev-16 + libcurl/libssl/liblz4/libzstd/uuid dev headers — clean build, no errors): CREATE SERVER (driver 'binary') + CREATE USER MAPPING + IMPORT FOREIGN SCHEMA auto-generated the full correctly-typed 22-column schema for a real ~60M-row table; `SELECT count(*)` returned the exact live row count (59,989,933); a filtered query (`WHERE order_id = 1`) showed via EXPLAIN VERBOSE that the ENTIRE predicate and aggregate pushed down as remote SQL executed by ClickHouse itself, not locally. Genuinely solid — recommend prioritizing this over the other [REQ-186](#REQ-186)x/187x Iceberg-catalog gaps given it's already proven working end to end, not just theoretically feasible.
 
 **Use case:** ClickHouse sources currently require a full materialized replica on every pg-engine query — live-verified this closes the gap correctly with real predicate/aggregate pushdown, not just a naive full-table pull. Unlike mongo_fdw ([REQ-1869](#REQ-1869), rejected — non-functional), this one is ready to bundle as soon as [REQ-1873](#REQ-1873)'s install-script work lands.
 
-**Code:** `scripts/ci/build_pg_extensions.sh`, `provisa/federation/connector_duckdb.py`, `provisa/federation/engine.py`
+**Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/engine.py`, `provisa/federation/pg_runtime.py`, `scripts/ci/build_pg_extensions.sh`
 
-**Tests:** —
+**Tests:** `tests/unit/test_pg_clickhouse_fdw_connector.py`
 
 ### REQ-1871 · Federation {#REQ-1871}
 
@@ -19990,7 +19998,7 @@ The pg engine should gain a PgDuckdbMotherDuckConnector (Mechanism.ATTACH_RW) us
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-FederationEngine.discover() (provisa/federation/engine.py:401-426) already probes every candidate connector's functional availability against the live engine connection (each Connector.probe() already checks pg_available_extensions/pg_extension/ pg_foreign_data_wrapper) and prunes engine.connectors to the active set — but it is NEVER CALLED anywhere in the application (confirmed live: grepping the full ``provisa/`` tree for ``.discover(`` outside test files finds zero call sites — only a comment mentioning it). engine.__init__ instead populates engine.connectors OPTIMISTICALLY from every candidate (own comment: "Optimistic until discover() probes them"), so the pg engine believes every FDW/extension it knows how to attach is available, whether or not it actually is, for the life of the process. Wire discover() into app startup (provisa/api/app.py, around the "engine-connect" phase mark, once state.federation_engine's terminal is actually connected) with a fetch(sql) adapter over that live connection, so an external/BYO Postgres the operator points PROVISA_ENGINE_URL at gets its ACTUAL installed FDW set probed and reflected, instead of every source type being assumed reachable until a query hard-fails. BLOCKING CORRECTNESS FIX REQUIRED before this can be wired in safely, found while implementing [REQ-1870](#REQ-1870)/1871: FederationEngine.complete_reach() only adds its own dependency-free DIRECT/FETCH fallback connector (WarehouseNativeConnector) for a source_type with NO connector already occupying that slot (`if source_type in self.connectors: continue`). Every dual-reach connector this session added (PgClickHouseFdwConnector, PgWrappersMongoDbConnector, and the three earlier Iceberg connectors — PgDuckdbSnowflakeIcebergConnector/DatabricksIcebergConnector/BigQueryIcebergConnector) is ONE connector OBJECT declaring `mechanisms={ATTACH_*, DIRECT/FETCH}`, occupying that slot at __init__ time — so complete_reach() never generates the fallback for clickhouse/mongodb/ snowflake/databricks/bigquery at all. discover()'s own probe() is all-or-nothing PER CONNECTOR OBJECT: if the extension-dependent mechanism's dependency (pg_clickhouse/wrappers/ etc.) is missing, probe() returns unavailable and discover() drops the WHOLE connector from engine.connectors — including the dependency-free DIRECT/FETCH mechanism that should always survive. Today this is silent because discover() is never called, so nothing gets pruned; the moment it IS wired in (this REQ), those 5 source types regress from "gracefully materializes" to "genuinely unreachable" whenever their extension isn't installed — the opposite of this REQ's own goal. Fix options to evaluate: (a) make probe()/discover() mechanism-aware instead of connector-object-aware, so a failed ATTACH probe narrows a connector's active mechanisms rather than removing it outright, or (b) have complete_reach() re-run (or run its per-mechanism check) AFTER discover(), keyed on which mechanisms survived rather than slot occupancy. Must land together with the startup wiring, not as a follow-up — wiring discover() in without this fix is a regression, not an improvement.
+FederationEngine.discover() [SUPERSEDED by REQ-1872 amendment, 2026-10-03 -- Line reference drifted: discover() is now at provisa/federation/engine.py:417-442. Kept here for history; do not implement against it.] (provisa/federation/engine.py:401-426) [END SUPERSEDED BLOCK] already probes every candidate connector's functional availability against the live engine connection (each Connector.probe() already checks pg_available_extensions/pg_extension/ pg_foreign_data_wrapper) and prunes engine.connectors to the active set — but it is NEVER CALLED anywhere in the application (confirmed live: grepping the full ``provisa/`` tree for ``.discover(`` outside test files finds zero call sites — only a comment mentioning it). engine.__init__ instead populates engine.connectors OPTIMISTICALLY from every candidate (own comment: "Optimistic until discover() probes them"), so the pg engine believes every FDW/extension it knows how to attach is available, whether or not it actually is, for the life of the process. Wire discover() into app startup (provisa/api/app.py, around the "engine-connect" phase mark, once state.federation_engine's terminal is actually connected) with a fetch(sql) adapter over that live connection, so an external/BYO Postgres the operator points PROVISA_ENGINE_URL at gets its ACTUAL installed FDW set probed and reflected, instead of every source type being assumed reachable until a query hard-fails. BLOCKING CORRECTNESS FIX REQUIRED before this can be wired in safely, found while implementing [REQ-1870](#REQ-1870)/1871: FederationEngine.complete_reach() only adds its own dependency-free DIRECT/FETCH fallback connector (WarehouseNativeConnector) for a source_type with NO connector already occupying that slot (`if source_type in self.connectors: continue`). [SUPERSEDED by [REQ-1871](#REQ-1871), 2026-10-03 -- PgWrappersMongoDbConnector was deleted by [REQ-1871](#REQ-1871)'s 2026-09-29 amendment; four dual-reach connectors remain, and mongodb is no longer one of the affected types. Kept here for history; do not implement against it.] Every dual-reach connector this session added (PgClickHouseFdwConnector, PgWrappersMongoDbConnector, and the three earlier Iceberg connectors [END SUPERSEDED BLOCK] — PgDuckdbSnowflakeIcebergConnector/DatabricksIcebergConnector/BigQueryIcebergConnector) is ONE connector OBJECT declaring `mechanisms={ATTACH_*, DIRECT/FETCH}`, occupying that slot at __init__ time — so complete_reach() never generates the fallback for clickhouse/mongodb/ snowflake/databricks/bigquery at all. discover()'s own probe() is all-or-nothing PER CONNECTOR OBJECT: if the extension-dependent mechanism's dependency (pg_clickhouse/wrappers/ etc.) is missing, probe() returns unavailable and discover() drops the WHOLE connector from engine.connectors — including the dependency-free DIRECT/FETCH mechanism that should always survive. Today this is silent because discover() is never called, so nothing gets pruned; the moment it IS wired in (this REQ), those 5 source types regress from "gracefully materializes" to "genuinely unreachable" whenever their extension isn't installed — the opposite of this REQ's own goal. Fix options to evaluate: (a) make probe()/discover() mechanism-aware instead of connector-object-aware, so a failed ATTACH probe narrows a connector's active mechanisms rather than removing it outright, or (b) have complete_reach() re-run (or run its per-mechanism check) AFTER discover(), keyed on which mechanisms survived rather than slot occupancy. Must land together with the startup wiring, not as a follow-up — wiring discover() in without this fix is a regression, not an improvement.
 
 **Use case:** Confirmed live this session: pointing PROVISA_ENGINE_URL at a real external Postgres with no FDWs installed produced no startup warning at all — the pg engine reported every candidate connector as usable, and the gap only surfaced as a raw "relation does not exist" error deep in query execution. A startup probe would report this immediately and let the planner route around it (materialize instead of attempting a dead attach), instead of failing at query time.
 
@@ -20002,7 +20010,7 @@ FederationEngine.discover() (provisa/federation/engine.py:401-426) already probe
 
 ### REQ-1873 · Feature {#REQ-1873}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** infrastructure
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** infrastructure
 
 An end-user-facing script (scripts/install-pg-ext.sh or similar) that stages provisa_pg_ext's bundled FDW/extension binaries into an OPERATOR-SUPPLIED, external Postgres instance — the same manual sequence performed live this session (pip install provisa-pg-ext; docker cp the platform-matched lib/*.so + share/extension/* files into the target's pg_config --pkglibdir/--sharedir; ALTER SYSTEM SET shared_preload_libraries for pg_duckdb; restart; CREATE EXTENSION). Today _stage_bundled_extensions() (provisa/core/control_plane_pg.py:47) only stages into Provisa's OWN embedded pgserver instance — there is no equivalent path for a customer's own Postgres (Docker, RDS-with-filesystem-access, bare-metal, etc.), which is the common real-world "point Provisa at your existing Postgres" deployment shape.
 
@@ -20016,7 +20024,7 @@ An end-user-facing script (scripts/install-pg-ext.sh or similar) that stages pro
 
 ### REQ-1874 · Federation {#REQ-1874}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** structural
+**Status:** ✓ accepted · **Priority:** MAY · **Type:** structural
 
 (Amended 2026-09-28, scope widened to include mongodb — see [REQ-1871](#REQ-1871)'s policy decision) A captive-Postgres pattern for source types reached via Supabase `wrappers`: SaaS-API types (Stripe, HubSpot, Airtable, Notion, Auth0, etc.) AND mongodb specifically — run a small dedicated Postgres+wrappers container per such source, with `wrappers`' relevant FDW attaching the remote system live inside it, then register that captive instance with Provisa as an ordinary `postgresql` source type — reached through the EXISTING PostgresFdwConnector/native postgres driver, no new pg-engine connector code needed. Policy: this pattern is specifically for `wrappers` (a generalized multi-source Rust framework, no macOS build, one confirmed upstream-adjacent crash-bug class found this session via mongo_fdw) — pg_clickhouse ([REQ-1870](#REQ-1870)), an official single-purpose vendor-maintained C extension, correctly stays bundled directly in the engine and is NOT part of this pattern's scope. This is the SAME shape Provisa already uses for files/sharepoint/splunk ([REQ-954](#REQ-954)/955/956, provisa/federation/pgwire_replica.py) — a bundled server speaking the Postgres wire protocol that the engine reaches as a generic PostgreSQL endpoint — just substituting a real Postgres+wrappers container for the existing Calcite-JVM-bundle mechanism. ISOLATION IS REQUIRED, NOT OPTIONAL: one captive Postgres+wrappers instance PER WRAPPED SOURCE — never shared across two sources (e.g. Stripe and HubSpot each get their own container, not one container running both foreign servers). `wrappers` is a single shared `.so` per Postgres backend process; sharing one captive instance across sources would mean a crash or resource issue tied to ONE source's connection can take down every OTHER source sharing that same process too — defeating the entire point of isolating `wrappers` out of the engine in the first place. Migration note: `PgWrappersMongoDbConnector` (implemented this session, live-verified working, bundled directly in the engine) should be superseded by this pattern for mongodb once it exists — not removed until the captive path is available. (Amended 2026-09-28, simplified — follow the splunk/sharepoint model, full stop, no separate SaaS-vs-CE split:) reuse provisa/federation/pgwire_replica.py's EXACT existing mechanism ([REQ-954](#REQ-954)/955/956) uniformly across every tier — resolve+cache the bundle, configure it from the Source's own config, start it on a unique port, health-check it, land/attach, stop it on demand. No new GKE-specific provisioning path and no docker-compose-specific path as separate requirements; the SAME lifecycle code already running files/sharepoint/splunk in both SaaS and self-hosted deployments today handles this too. An operator MAY still run their own captive instance independently and register it as a plain `postgresql` source (Provisa then only PROBES it, per [REQ-1872](#REQ-1872)) — that is the existing BYO option every `postgresql`-type source already has, not a second mechanism to build. TWO REAL GAPS, not free with the SourceType stubs added for the full wrappers catalog (provisa/core/models.py, 2026-09-28 — airtable/auth0/aws_cognito/dynamodb/firebase/logflare/ s3/s3_vectors/stripe/calcom/calendly/clerk/cloudflare_d1/gravatar/hubspot/infura/notion/orb/ paddle/shopify/slack): (1) NO UI SURFACE YET — config/capabilities.yaml's `source.options` list (the desktop installer wizard's manifest, models.py:136: "every capabilities.yaml source option id maps 1:1 to a SourceType") and the admin "Add Source" form/dropdown both need an entry per type before any of these are selectable/registerable at all; the enum stubs alone are backend-only and invisible in every UI today. (2) DOCKER PRECONDITION ON MACOS/WINDOWS — the captive container is always Linux (`wrappers` has no macOS/Windows build), so on a macOS/Windows desktop install this capability needs Docker (Desktop or equivalent) declared as a `provisioning: platform_feature` prereq in capabilities.yaml, the same shape already used for pg_duckdb's Windows-needs-WSL2 badge (capabilities.yaml:50 area) — not assumed present. UX CONSTRAINT, applies to all copy/labels/errors for this whole pattern: the implementation mechanism (Supabase `wrappers`, the captive Postgres instance, FDW internals) is an implementation detail and MUST NEVER be surfaced to the end user anywhere — not in the source picker, not in prereq/badge text, not in error messages, not in docs written for end users. A user configuring a Stripe source sees "Stripe" as an ordinary source type, the same as configuring Postgres or MongoDB; they never see "wrappers," "FDW," or "captive instance." The Docker prereq badge (above) needs end-user-appropriate wording ("requires a local container runtime" or similar), not an internals-revealing one. Internal code/comments/requirements can and should keep naming the real mechanism (as this REQ does) — the constraint is user-facing surfaces only. (Amended 2026-10-02, SCOPE NARROWED) This pattern is no longer the default route for the `wrappers` catalog. A system whose vendor publishes a usable OpenAPI spec is reached as a branded preset over the OpenAPI source ([REQ-1923](#REQ-1923)), and a system better reached through its own SDK or protocol gets a direct loader. The captive instance is kept for a system with neither. Each system is investigated on its own and given one verdict; the use_case list below is superseded by those verdicts. The `s3` SourceType stub named above is removed -- S3 objects are already reached by csv and parquet (s3:// paths) and by files (mapping.storage_type "s3").
 
@@ -20044,7 +20052,7 @@ Known schemas for well-known public GraphQL APIs. [SUPERSEDED by [REQ-1923](#REQ
 
 ### REQ-1876 · Compilation Caching {#REQ-1876}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1880](#REQ-1880) · **Priority:** SHOULD · **Type:** behavioral
 
 A compiler-level SQL rewrite that propagates a literal/constant WHERE predicate across an equi-join onto the joined table's own join column as an additional literal predicate — e.g. "A JOIN B ON A.col = B.col WHERE A.col = 5" becomes "... WHERE A.col = 5 AND B.col = 5" — so an ATTACH-mechanism connector with literal-only pushdown (predicate_pushdown=True, join_pushdown=False: no GetForeignPaths-style parameterized-path support) gets a chance to push the filter down instead of full-scanning the far side. Applies only to genuine equality joins with a true literal/constant predicate (no subqueries, no correlated references, no volatile functions) and only for INNER JOIN — LEFT/RIGHT/FULL OUTER JOIN must NOT propagate, since it would incorrectly filter out preserved-side NULL-extended rows. Gated on the target connector's declared Capability, not on source type. (Amended 2026-09-28, IMPLEMENTED AS [REQ-1880](#REQ-1880):) This backlog entry was implemented the same day as [REQ-1880](#REQ-1880), which carries the final shape (predicate forms covered: =, IN (...), BETWEEN, top-level-AND combinations; wiring at provisa/pgwire/_pipeline.py's ENGINE route) and the test suite. See [REQ-1880](#REQ-1880) for the authoritative description; this entry is kept for the connector-landscape survey in its use_case, not duplicated there.
 
@@ -20064,7 +20072,7 @@ Per-organization, in-memory, TTL-evicted cache of governance-pipeline outcomes (
 
 **Code:** `provisa/compiler/compiled_query_cache.py`, `provisa/api/org_runtime.py`, `provisa/api/app.py`, `provisa/pgwire/_pipeline.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/data/materialization.py`, `provisa/api/data/graphql_plan.py`, `provisa/api/data/endpoint.py`, `provisa/compiler/naming.py`, `provisa/cache/key.py`
 
-**Tests:** `tests/integration/test_pgwire_single_pass.py - tests/unit/test_compiled_query_cache.py - tests/unit/test_routing_cache.py - tests/unit/test_graphql_plan_cache.py`
+**Tests:** `tests/integration/test_pgwire_single_pass.py`, `tests/unit/test_compiled_query_cache.py`, `tests/unit/test_routing_cache.py`, `tests/unit/test_graphql_plan_cache.py`
 
 ## 4. Source Connectors
 
@@ -20124,15 +20132,15 @@ A single expensive concurrent query (e.g. a full-table GROUP BY aggregation) ser
 
 ### REQ-1884 · gRPC Row Streaming {#REQ-1884}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-A 2,000,000-row unfiltered scan (`large_scan`, provisa/grpc/server.py's ENGINE-route `_handle_query` loop, `yield msg_cls(**_kwargs_for(...))` once per row) took ~225s over gRPC vs ~16s over Arrow Flight for the IDENTICAL query against IDENTICAL data (~14x), live- benchmarked this session — a distinct issue from [REQ-1883](#REQ-1883) (wrong aggregate-column-selection cost, already fixed) and from [REQ-1882](#REQ-1882) (single-event-loop governance serialization, which affects concurrent throughput, not single-request row-streaming cost). Two per-row costs in the ENGINE-route loop were confirmed and fixed: (1) `_proto_value` ran `from datetime import date, datetime` and `from google.protobuf.descriptor import FieldDescriptor` on every call — once per (row, column), i.e. tens of millions of times for a 2M-row/16-col scan; even with the module already in `sys.modules`, the repeated import statement still pays a dict lookup + attribute bind every time. (2) `_kwargs_for`'s `descriptor.fields_by_name.get(col)` re-ran per row though `out_cols` is fixed for the life of a result set. Local in-process benchmark (no network, no VM — isolates `_kwargs_for` + `msg_cls(**kwargs)` + `SerializeToString()` from DB fetch/governance/network) against a REAL protoc-compiled message class (built via `provisa.grpc.schema_gen.compile_proto`, matching perf-bench's 16-column `order_items` table, 500,000 rows): current code 105,160 rows/s vs fixed code 217,911 rows/s — a 2.07x serialization-path speedup from these two changes alone (script: /private/tmp/claude-501/-Volumes-main-Users-kennethstott-PycharmProjects-provisa/ 0273a341-8c58-4f02-9c36-9741aca6430c/scratchpad/bench_grpc_row_stream.py, not committed — scratchpad only). This does NOT close the 14x live gap by itself: 2x on the isolated serialization slice is a modest fraction of 14x on the full RPC, so the dominant cost is elsewhere (DB fetch/executor-thread hops, gRPC's own per-message framing on the wire, or the per-row `yield` crossing the `grpc.aio` async-generator boundary 2,000,000 times) — not verified further this session per the no-live-VM constraint. Also corrected during investigation: the originating task description assumed `msg_cls` is a dynamically-generated `message_factory` class (documented as slower to construct than `protoc`-compiled classes). Verified false by reading provisa/grpc/schema_gen.py's `compile_proto` (calls real `grpc_tools.protoc`) and server.py's `_load_module` (importlib-loads the resulting `_pb2.py` file per role). The classes ARE real protoc-compiled classes, dynamically LOADED (importlib) per role's own compiled schema, not dynamically GENERATED (message_factory) message types — the role-specific-schema design is preserved either way, and there is no message_factory construction cost to mitigate. Flagged, NOT implemented (bigger architectural decisions needing the maintainer's call): (a) Batching multiple rows into fewer, larger stream messages (a `repeated` sub-message field, or a columnar encoding) instead of one message per row — would cut per-message gRPC framing overhead 2,000,000x down to (row_count / batch_size)x, but changes the RPC response shape any real client depends on (one `{Type}` message per stream item today) — a wire-protocol-breaking change, out of scope here. (b) Response compression (gzip or another codec) is not enabled anywhere in provisa/grpc/server.py's `grpc.aio.server(...)` construction today (verified: no `compression=` argument, no `options=` with compression keys) — untested here per the no- live-VM constraint; for compact scalar rows compression could cut wire bytes or could simply add CPU cost for little size win, and needs a real measurement, not a guess. (c) Reusing/ caching message instances instead of constructing a new `msg_cls(**kwargs)` per row was considered and NOT pursued — protobuf messages aren't designed for a clear/reuse cycle in the generator-yield pattern used here, and the constructor cost was not shown to dominate versus the import/lookup fixes actually made.
+A 2,000,000-row unfiltered scan (`large_scan`, provisa/grpc/server.py's ENGINE-route `_handle_query` loop, `yield msg_cls(**_kwargs_for(...))` once per row) took ~225s over gRPC vs ~16s over Arrow Flight for the IDENTICAL query against IDENTICAL data (~14x), live- benchmarked this session — a distinct issue from [REQ-1883](#REQ-1883) (wrong aggregate-column-selection cost, already fixed) and from [REQ-1882](#REQ-1882) (single-event-loop governance serialization, which affects concurrent throughput, not single-request row-streaming cost). Two per-row costs in the ENGINE-route loop were confirmed and fixed: (1) `_proto_value` ran `from datetime import date, datetime` and `from google.protobuf.descriptor import FieldDescriptor` on every call — once per (row, column), i.e. tens of millions of times for a 2M-row/16-col scan; even with the module already in `sys.modules`, the repeated import statement still pays a dict lookup + attribute bind every time. (2) `_kwargs_for`'s `descriptor.fields_by_name.get(col)` re-ran per row though `out_cols` is fixed for the life of a result set. Local in-process benchmark (no network, no VM — isolates `_kwargs_for` + `msg_cls(**kwargs)` + `SerializeToString()` from DB fetch/governance/network) against a REAL protoc-compiled message class (built via `provisa.grpc.schema_gen.compile_proto`, matching perf-bench's 16-column `order_items` table, 500,000 rows): current code 105,160 rows/s vs fixed code 217,911 rows/s — a 2.07x serialization-path speedup from these two changes alone (script: /private/tmp/claude-501/-Volumes-main-Users-kennethstott-PycharmProjects-provisa/ 0273a341-8c58-4f02-9c36-9741aca6430c/scratchpad/bench_grpc_row_stream.py, not committed — scratchpad only). This does NOT close the 14x live gap by itself: 2x on the isolated serialization slice is a modest fraction of 14x on the full RPC, so the dominant cost is elsewhere (DB fetch/executor-thread hops, gRPC's own per-message framing on the wire, or the per-row `yield` crossing the `grpc.aio` async-generator boundary 2,000,000 times) — not verified further this session per the no-live-VM constraint. Also corrected during investigation: the originating task description assumed `msg_cls` is a dynamically-generated `message_factory` class (documented as slower to construct than `protoc`-compiled classes). Verified false by reading provisa/grpc/schema_gen.py's `compile_proto` (calls real `grpc_tools.protoc`) and server.py's `_load_module` (importlib-loads the resulting `_pb2.py` file per role). The classes ARE real protoc-compiled classes, dynamically LOADED (importlib) per role's own compiled schema, not dynamically GENERATED (message_factory) message types — the role-specific-schema design is preserved either way, and there is no message_factory construction cost to mitigate. Flagged, NOT implemented (bigger architectural decisions needing the maintainer's call): [SUPERSEDED by [REQ-1899](#REQ-1899), 2026-10-03 -- Batched streaming was built as an additive Query{Type}Batch RPC with a client batch_rows option (provisa/grpc/server.py:43,337-340,538-578), so the sentence's 'NOT implemented' status is false; the per-row Query{Type} shape is unchanged. Kept here for history; do not implement against it.] (a) Batching multiple rows into fewer, larger stream messages (a `repeated` sub-message field, or a columnar encoding) instead of one message per row — would cut per-message gRPC framing overhead 2,000,000x down to (row_count / batch_size)x, but changes the RPC response shape any real client depends on (one `{Type}` message per stream item today) — a wire-protocol-breaking change, out of scope here. [END SUPERSEDED BLOCK] (b) Response compression (gzip or another codec) is not enabled anywhere in provisa/grpc/server.py's `grpc.aio.server(...)` construction today (verified: no `compression=` argument, no `options=` with compression keys) — untested here per the no- live-VM constraint; for compact scalar rows compression could cut wire bytes or could simply add CPU cost for little size win, and needs a real measurement, not a guess. (c) Reusing/ caching message instances instead of constructing a new `msg_cls(**kwargs)` per row was considered and NOT pursued — protobuf messages aren't designed for a clear/reuse cycle in the generator-yield pattern used here, and the constructor cost was not shown to dominate versus the import/lookup fixes actually made.
 
 **Use case:** Exploratory task this session: investigate gRPC row-streaming throughput vs the ~14x-faster Flight transport for the same query, implement safe/contained/verified fixes, flag bigger wire-protocol changes rather than implementing them. No live VM/SSH/network access was available or used — all verification is local (pytest + an isolated in-process benchmark).
 
 **Code:** `provisa/grpc/server.py`
 
-**Tests:** `tests/unit/test_grpc_server.py`, `tests/unit/test_grpc_aggregates.py`, `tests/unit/test_grpc_requirements.py`, `tests/unit/test_grpc_proxy_translation.py`
+**Tests:** `tests/unit/test_grpc_server.py`, `tests/unit/test_grpc_aggregates.py`, `tests/unit/test_grpc_requirements.py`, `tests/unit/test_grpc_proxy_translation.py`, `tests/unit/test_interval_bytea_types.py`
 
 ### REQ-1893 · Row-Cursor Streaming Batch Size {#REQ-1893}
 
@@ -20244,7 +20252,7 @@ gRPC's `point_lookup`-shaped DIRECT-route queries (`provisa/grpc/server.py:397-5
 
 **Code:** `provisa/grpc/server.py`, `provisa/pgwire/_pipeline.py`
 
-**Tests:** `tests/unit/test_grpc_server.py::TestHandleQuery::test_direct_route_takes_fast_path`, `tests/unit/test_grpc_server.py::TestHandleQuery::test_request_to_sql_to_result_cache_route`, `tests/unit/test_grpc_requirements.py::TestREQ617RoleSelectionViaMetadata::test_streaming_query_emits_one_message_per_row`
+**Tests:** `tests/unit/test_grpc_server.py`, `tests/unit/test_grpc_requirements.py`
 
 ### REQ-1892 · Concurrency {#REQ-1892}
 
@@ -20406,7 +20414,7 @@ The PostgreSQL federation runtime's async `run()` method (executed via `run_in_e
 
 **Code:** `provisa/federation/pg_runtime.py`
 
-**Tests:** `tests/unit/federation/test_pg_runtime_pool.py::test_run_borrows_from_pool_not_self_con`, `tests/unit/federation/test_pg_runtime_pool.py::test_run_reuses_pooled_connection_across_calls`, `tests/unit/federation/test_pg_runtime_pool.py::test_run_discards_connection_on_failure`
+**Tests:** `tests/unit/federation/test_pg_runtime_pool.py`
 
 ### REQ-1907 · Cache {#REQ-1907}
 
@@ -20424,7 +20432,7 @@ Per-user-class staleness tolerance as a table attribute. A table carries a keyed
 
 ### REQ-1908 · Temporal types in GraphQL {#REQ-1908}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Temporal fields -- date, time, time with time zone (timetz), timestamp, timestamp with time zone (timestamptz) and interval -- surface in GraphQL as ISO 8601 text in every output and accept ISO 8601 text in every input, whatever the column's physical storage. Outputs: a date/time value is never a number in a GraphQL response. Driver values render with isoformat() (Date and DateTime scalars; a T separator, never str()'s space); an interval is its ISO 8601 duration (P3DT4.000005S) through a GraphQL Interval scalar with an ordered IntervalFilter, and the same duration text on JSON results and gRPC string fields (ir_types.iso8601_duration). A column registered as temporal whose values are physically stored as numbers (e.g. an epoch integer) is translated to the temporal type in the SQL the compiler emits, so the value reaches the response as a temporal and renders as ISO text; the scalars refuse a raw number rather than pass or stringify it. Inputs: every argument and filter operand on a temporal field (eq, neq, in, gt, gte, lt, lte, mutation values) accepts ISO 8601 text, and for a number-stored column the emitted SQL translates the ISO operand to the physical representation (or the column to the temporal) so the comparison is exact. INTERVAL is an IR type (ir_types, SQLAlchemy Interval); timetz and timestamptz resolve on the IR, GraphQL and proto faces. A raw bytea value in a JSON result renders as Postgres's own hex text (\x0001ff, ir_types.bytea_hex) instead of failing the response; bytea stays String-typed.  (Amended 2026-09-30, epoch-stored temporals as built:) A column declares its epoch storage with Column.epoch_unit ("s" | "ms" | "us"; persisted in table_columns, round-tripped by the admin API), valid only on a timestamp, timestamptz or date data_type -- never inferred, since seconds and milliseconds overlap for plausible values. build_context records every such column by physical (schema, table) under both its physical and SQL-exposed names, for all registered tables regardless of the role's visibility (RLS may read a column the role cannot select). Both physical rewrites (rewrite_semantic_to_physical and rewrite_semantic_to_catalog_physical), which every surface passes through, and compile_mutation (whose SQL is physical as built) call sql_rewrite.translate_epoch_temporal_columns, one idempotent AST pass. A read yields the temporal (UnixToTime, transpiled per engine; timestamp -> AT TIME ZONE 'UTC', date -> CAST AS DATE), aliased to the column's own name in a select list or RETURNING. A comparison, IN or BETWEEN against only ISO literals (including the GraphQL filter's TIMESTAMP '<date> <time> UTC' form) folds each literal to its exact epoch number at compile time and keeps the column bare, so a source index applies. A bound value is cast to the registered temporal and compared with the column read as the temporal (a SQL-side epoch conversion loses the offset on Trino). ORDER BY, GROUP BY and IS NULL keep the bare column (monotonic, one-to-one). INSERT/UPDATE store an ISO value as its epoch number. ISO text without an offset is read as UTC (epoch storage is a UTC instant; reads render in UTC); a value finer than the unit is refused, never truncated. Scope: live reads and writes. Landing such a table is refused in residency.resolve_landing_args, the step every landing path shares, naming the column, since no landing path converts values; converting at landing is not built.
 
@@ -20508,7 +20516,7 @@ A model or governance change reaches every worker and every instance. A change m
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Replication is bounded, single and survivable. Replicating a table never holds the table in a worker's memory: where the engine can reach the source, the copy runs inside the engine and no row passes through the server process; otherwise rows move from a cursor on the source into the store in bounded batches. Memory used by a replication does not grow with the size of the table. A refresh writes into a fresh table and swaps it in only when complete, so a reader never sees an empty or half-filled replica and a process that dies mid-copy leaves the previous replica intact. At most one copy of a table runs at a time across every worker and instance, coordinated by a lock the store or control plane guarantees. A copy is started by the read that finds no usable replica, and it continues after that request ends. The request waits for it up to its own deadline; if the replica is not ready by then the request fails with an error that names the table, says its replica is still being built, and gives the progress so far. Later requests join the copy that is running and never start another. Progress (rows copied) is recorded per table. A statement that reads a table replicated row by row without binding its key, on an engine that cannot attach the source, is refused at planning with an error naming the table and its key, on every surface alike; it is never answered from whatever rows happen to be replicated, and it never triggers a copy of the whole table. Before this requirement a whole-table copy was read into the worker three times over and written one row at a time, each worker started its own copy, and some surfaces answered an unfiltered read of a row-level table from a partial replica. (Amended 2026-10-01, replicas are built eagerly, not on the first query:) A replica starts building when the decision to replicate takes effect, in the background, without waiting for a read. [SUPERSEDED by REQ-1915 amendment, 2026-10-03 -- there are no save triggers; one convergence step at the end of every model build requests and retires builds. Kept here for history; do not implement against it.] Three things start it: an operator saving a table or source as always replicated or load-protected; a boot that finds a table set to always replicated with no replica; and a table crossing its Hot threshold, where the promotion itself is the trigger. [END SUPERSEDED BLOCK] It is the same single copy job described above, run under the single scheduler holder. While a replica is being built, a table under a Hot threshold is read live and switches to the replica when it is ready, so no read waits and none fails; a table that is always replicated or load-protected may not be read live, so a read waits up to its deadline and then gets the still-being-built error with the progress. A replica is also refreshed ahead of time: the scheduler starts the refresh when the TTL passes ([REQ-1907](#REQ-1907)), so a read waits for a refresh only when the replica is older than its maximum age. A read that finds no replica and no build in progress still starts one; that is the backstop for a failed build or a wiped store, not the normal path. The Load Management and Timeliness panel shows the state of the replica of a table: not built, building with the rows copied so far, ready with its age, or failed with the error, and lets the operator start a build or refresh. (Amended 2026-10-01, central state and central scheduling:) The state of every replica is held in one place, the control plane: for each replicated table, whether it is not built, building, ready or failed, the rows copied so far, when it was last completed, when its next refresh is due, the last error, and which process holds the build. Every worker and instance reads that one record; none keeps its own view of whether a replica exists or is fresh. The triggers are managed centrally as well: the single scheduler holder decides, from that record and the operator settings, when a build or a refresh starts, and it is the only thing that starts one, including the builds requested by a saved setting, a boot, a Hot threshold crossing, an operator action or the read backstop, which all enqueue a request in the central record and do not copy anything themselves. Row-level replication does not use this path: a table replicated row by row is filled by the keyed reads that ask for its rows, on the request that needs them, and has no whole-table build, schedule or build state. (Amended 2026-10-01, guidance for large tables:) A whole-table replica is the wrong tool for a large table. The recommendation, stated in the operator documentation, in the sizing and tuning guide ([REQ-1911](#REQ-1911)) and in the Load Management and Timeliness panel, is to use row-level replication, so only the rows that are asked for are copied, and/or scheduled materialized views that hold the enriched or aggregated subset that is actually queried, refreshed on a schedule. When an operator sets a table to always replicated and its size is above the automatic-promotion size guard, the panel says so and names these two alternatives; it does not refuse, because an explicit Always is the operator's decision. (Amended 2026-10-01, replication always streams:) Replication is always a stream. No replication path, whole-table or refresh, on any engine or store, reads a result into memory and then writes it. Where rows pass through the server process they move in bounded batches from the source's streaming read to the store's bulk write: ideally as Arrow record batches, the same buffers the Flight path carries, and otherwise through a cursor on the source that is fetched a bounded batch at a time. Either way the whole result is never held, and rows are never written one statement at a time. A source driver that offers neither an Arrow stream nor a cursor is given one before it may be replicated from; a store that cannot take a bulk write of a batch is given one. A copy that runs inside the engine (the engine reading the source and writing the replica itself) is a stream by construction and is preferred where the engine can reach the source. (Amended 2026-10-01, the engine always performs the copy:) The engine always performs the copy and the coordinator ([REQ-1916](#REQ-1916)) only orchestrates it: it submits the work to the engine, records the engine's job or statement identifier in the central record, follows its status, and updates the record. When the engine can reach the source, the copy is a job or statement on the engine (an asynchronous job where the engine has a job service, otherwise a statement the coordinator runs on it) and no row passes through any Provisa process. The single exception is a source the engine cannot reach: the coordinator extracts it as a stream (Arrow batches or a cursor, as above) into the engine's own bulk loader, or to a stage the engine can read from which the engine then loads, so the engine still performs the write and Provisa is only the extract. No Provisa process writes replica rows into a store itself. The schedule stays with Provisa: the coordinator triggers every build and refresh from the central record and the operator settings; an engine-owned schedule (an object the engine refreshes by itself) is not used unless an operator chooses it explicitly for a table. Each engine backend declares what it offers (an asynchronous job service, a statement-level copy, a bulk loader, a stage), and the coordinator uses the first of those that applies. A coordinator that restarts or takes over resumes following a recorded job; it does not start another. Row-level replication is the one exception to all of this paragraph: a table replicated row by row is not copied by the engine and has no job. The request that needs a row fetches it from the source by key and writes it into the row-level replica itself, in the query node, as part of answering that request, and only for the keys the request binds. (Amended 2026-10-01, the data replicator:) Every whole-table copy is produced by one component, the data replicator. It takes the capabilities of the three parties (what the source can do: be reached by the engine, stream Arrow batches, be read through a cursor, export to a stage; what the target store can do: take a statement-level copy, a bulk load of a stream, a load from a stage, an atomic swap of a finished table; what the engine can do: reach this source, run an asynchronous job, run a statement-level copy) and produces the correct job for that combination: an engine job, an engine statement, a streamed extract into the bulk loader, or an extract to a stage followed by an engine load. The choice is a pure decision from declared capabilities, so it is testable as a table of every source, store and engine combination without running any of them, and the same table is the documentation of what a replica of a given source on a given engine costs and how it is built. A combination for which no job can be produced is refused at config validation, naming what is missing. Each kind of job has one executor, which the coordinator runs and follows. Capabilities are declared by each source driver, store and engine backend in one place each; nothing else in the code decides how a copy is made. Replica builds and refreshes use this tool, and so does every other whole-table write Provisa makes into a store. Row-level replication does not. (Amended 2026-10-01, what counts as binding the key:) The refusal is decided once, where the pipeline resolves key bounds, before the response cache is read and before a route is chosen, so every surface refuses the same statements and a cached answer never stands in for it. It is decided per reference to the table, not per statement. A reference is bound when the SELECT that names it carries, as a top-level AND term of its own WHERE or of one of its JOIN ON conditions, a predicate that gives concrete values for the primary key. That is key equals value, key IN a list of values, or an OR made only of such equalities on the one key column, each value a literal or a bound parameter. A composite key needs exactly one value per column. A reference is also bound when a join pushes the key down, which holds when the statement is a SELECT, the reference is the target of a JOIN, that JOIN is the only one naming the table, its ON condition is a single equality between one column of the table and a column of another relation, and the primary key is a single column. Nothing else binds it. No predicate, a predicate on another column, a range on the key, a key predicate in an enclosing or nested query, a second join to the same table and a join inside a UNION are all refused. The table an INSERT, UPDATE, DELETE or MERGE writes is not a read of it. The error is HTTP 400 with code data.row_level_key_required and params table and key, and the wire protocols report the same message as text. The whole-table path for a row-level table is removed from the read path. A source whose tables are all row-level is never landed by a read. (Amended 2026-10-01, a row-level table needs a filter, not a key:) Requiring a read by key is too limiting. The rule for a table replicated row by row, on an engine that cannot attach its source, is that the statement must FILTER that table: any predicate on its columns, or a join that supplies its key, counts. A statement that reads it with no filter at all is still refused at planning, and the error says why -- the table is replicated row by row because it is large, so it is not read whole; add a filter. For a filtered read the request pushes the filter to the source, fetches the rows that match in bounded batches and within its deadline, writes them into the row-level replica, and is answered from it; the filter and the time it was fetched are recorded, so the same filter is served from the replica until its TTL passes, as the parameter sets of an API source already are. A key filter stays the cheapest case and keeps its per-row freshness. A filter can be written to match most of a table, and that is accepted -- it is bounded in memory and by the request deadline like any other read, and it is the choice of whoever wrote it. Until this is built the earlier rule stands in the code -- a read is accepted only when it binds the key or a join supplies it -- and the block above describing what binds a key describes that interim behaviour. (Amended 2026-10-03, ATOMIC REPLACE, IDENTITY KEPT:) A reader sees the whole old copy or the whole new copy, and the replica keeps its key, its grants and its comment across a rebuild. The swap is a rename only where the store keeps identity across it (PostgreSQL, SQL Server, the MySQL and MariaDB paired rename, DuckDB, ClickHouse EXCHANGE). Snowflake and Databricks use INSERT OVERWRITE, BigQuery one MERGE, and Fabric and any other transactional dialect DELETE followed by INSERT ... SELECT in one transaction. A store that offers neither is refused. (Amended 2026-10-03, THE LOAD METHOD IS A DECLARED CAPABILITY OF THE STORE:) Each store declares whether it is loaded by bulk stream or by row copy. SQL Server, MySQL and MariaDB stores use row copy, which works within limits and is not suited to very large datasets; this is guidance and no build is refused for size. Oracle uses direct path load and PostgreSQL uses COPY. (Amended 2026-10-03, A SOURCE THAT CANNOT BE READ BY ROW IS SPOOLED:) A source that cannot be read by row or by cursor (the single-document kinds) is spooled to a temporary file while it is replicated, always, for the kinds that can be. The spool is bounded by `replication.spool_max_bytes` (2 GiB, node-wide); a build that would exceed it fails with an error naming the limit. Spooling is marked as not optimal. Provisa writes no other data files to its own disk. (Amended 2026-10-03, CONVERGENCE REPLACES TRIGGERS:) There are no save triggers and no delete calls. One step at the end of every model build, on every coordinator-capable node, compares the model with replica state: it requests a build for each replica that is missing or whose definition changed, and retires each replica whose table is gone or no longer replicated. A retired replica is dropped after the grace period, and a node drops one only when the model stamp it has loaded is at least the stamp on the retirement record. A failed build is retried after `replication.retry_interval`. (Amended 2026-10-03, A REPLICA IS NEVER CUT SHORT:) A build that reaches an API endpoint's `max_pages`, or a GraphQL connection's `max_rows`, while the remote still has more, fails with an error naming the limit (`replication.page_limit_reached`, `replication.row_limit_reached`). A replica never holds a truncated copy. (Amended 2026-10-03, NO WHOLE COPY, NO WHOLE BUILD:) A table that has no whole copy (parameterized or row-level) is never built whole, by convergence, by the runner or by the read backstop. Its parameter-set fills live in the store's API cache schema, not in the control plane, and call the remote through `call_api`.
+Replication is bounded, single and survivable. Replicating a table never holds the table in a worker's memory: where the engine can reach the source, the copy runs inside the engine and no row passes through the server process; otherwise rows move from a cursor on the source into the store in bounded batches. Memory used by a replication does not grow with the size of the table. A refresh writes into a fresh table and swaps it in only when complete, so a reader never sees an empty or half-filled replica and a process that dies mid-copy leaves the previous replica intact. At most one copy of a table runs at a time across every worker and instance, coordinated by a lock the store or control plane guarantees. A copy is started by the read that finds no usable replica, and it continues after that request ends. The request waits for it up to its own deadline; if the replica is not ready by then the request fails with an error that names the table, says its replica is still being built, and gives the progress so far. Later requests join the copy that is running and never start another. Progress (rows copied) is recorded per table. A statement that reads a table replicated row by row without binding its key, on an engine that cannot attach the source, is refused at planning with an error naming the table and its key, on every surface alike; it is never answered from whatever rows happen to be replicated, and it never triggers a copy of the whole table. Before this requirement a whole-table copy was read into the worker three times over and written one row at a time, each worker started its own copy, and some surfaces answered an unfiltered read of a row-level table from a partial replica. (Amended 2026-10-01, replicas are built eagerly, not on the first query:) A replica starts building when the decision to replicate takes effect, in the background, without waiting for a read. [SUPERSEDED by REQ-1915 amendment, 2026-10-03 -- there are no save triggers; one convergence step at the end of every model build requests and retires builds. Kept here for history; do not implement against it.] Three things start it: an operator saving a table or source as always replicated or load-protected; a boot that finds a table set to always replicated with no replica; and a table crossing its Hot threshold, where the promotion itself is the trigger. [END SUPERSEDED BLOCK] It is the same single copy job described above, run under the single scheduler holder. While a replica is being built, a table under a Hot threshold is read live and switches to the replica when it is ready, so no read waits and none fails; a table that is always replicated or load-protected may not be read live, so a read waits up to its deadline and then gets the still-being-built error with the progress. A replica is also refreshed ahead of time: the scheduler starts the refresh when the TTL passes ([REQ-1907](#REQ-1907)), so a read waits for a refresh only when the replica is older than its maximum age. A read that finds no replica and no build in progress still starts one; that is the backstop for a failed build or a wiped store, not the normal path. The Load Management and Timeliness panel shows the state of the replica of a table: not built, building with the rows copied so far, ready with its age, or failed with the error, and lets the operator start a build or refresh. (Amended 2026-10-01, central state and central scheduling:) The state of every replica is held in one place, the control plane: for each replicated table, whether it is not built, building, ready or failed, the rows copied so far, when it was last completed, when its next refresh is due, the last error, and which process holds the build. [SUPERSEDED by [REQ-1661](#REQ-1661), 2026-10-03 -- [REQ-1661](#REQ-1661) (amended 2026-10-01, staleness decided in memory) gives each process a copy of the record: provisa/federation/replica_state_view.py:10-25, read first at provisa/federation/query_residency.py:381-384. Kept here for history; do not implement against it.] Every worker and instance reads that one record; none keeps its own view of whether a replica exists or is fresh. [END SUPERSEDED BLOCK] The triggers are managed centrally as well: the single scheduler holder decides, from that record and the operator settings, when a build or a refresh starts, and it is the only thing that starts one, including the builds requested by a saved setting, a boot, a Hot threshold crossing, an operator action or the read backstop, which all enqueue a request in the central record and do not copy anything themselves. Row-level replication does not use this path: a table replicated row by row is filled by the keyed reads that ask for its rows, on the request that needs them, and has no whole-table build, schedule or build state. (Amended 2026-10-01, guidance for large tables:) A whole-table replica is the wrong tool for a large table. The recommendation, stated in the operator documentation, in the sizing and tuning guide ([REQ-1911](#REQ-1911)) and in the Load Management and Timeliness panel, is to use row-level replication, so only the rows that are asked for are copied, and/or scheduled materialized views that hold the enriched or aggregated subset that is actually queried, refreshed on a schedule. When an operator sets a table to always replicated and its size is above the automatic-promotion size guard, the panel says so and names these two alternatives; it does not refuse, because an explicit Always is the operator's decision. (Amended 2026-10-01, replication always streams:) Replication is always a stream. No replication path, whole-table or refresh, on any engine or store, reads a result into memory and then writes it. Where rows pass through the server process they move in bounded batches from the source's streaming read to the store's bulk write: ideally as Arrow record batches, the same buffers the Flight path carries, and otherwise through a cursor on the source that is fetched a bounded batch at a time. Either way the whole result is never held, and rows are never written one statement at a time. A source driver that offers neither an Arrow stream nor a cursor is given one before it may be replicated from; a store that cannot take a bulk write of a batch is given one. A copy that runs inside the engine (the engine reading the source and writing the replica itself) is a stream by construction and is preferred where the engine can reach the source. (Amended 2026-10-01, the engine always performs the copy:) The engine always performs the copy and the coordinator ([REQ-1916](#REQ-1916)) only orchestrates it: it submits the work to the engine, records the engine's job or statement identifier in the central record, follows its status, and updates the record. When the engine can reach the source, the copy is a job or statement on the engine (an asynchronous job where the engine has a job service, otherwise a statement the coordinator runs on it) and no row passes through any Provisa process. The single exception is a source the engine cannot reach: the coordinator extracts it as a stream (Arrow batches or a cursor, as above) into the engine's own bulk loader, or to a stage the engine can read from which the engine then loads, so the engine still performs the write and Provisa is only the extract. No Provisa process writes replica rows into a store itself. The schedule stays with Provisa: the coordinator triggers every build and refresh from the central record and the operator settings; an engine-owned schedule (an object the engine refreshes by itself) is not used unless an operator chooses it explicitly for a table. Each engine backend declares what it offers (an asynchronous job service, a statement-level copy, a bulk loader, a stage), and the coordinator uses the first of those that applies. A coordinator that restarts or takes over resumes following a recorded job; it does not start another. Row-level replication is the one exception to all of this paragraph: a table replicated row by row is not copied by the engine and has no job. The request that needs a row fetches it from the source by key and writes it into the row-level replica itself, in the query node, as part of answering that request, and only for the keys the request binds. (Amended 2026-10-01, the data replicator:) Every whole-table copy is produced by one component, the data replicator. It takes the capabilities of the three parties (what the source can do: be reached by the engine, stream Arrow batches, be read through a cursor, export to a stage; what the target store can do: take a statement-level copy, a bulk load of a stream, a load from a stage, an atomic swap of a finished table; what the engine can do: reach this source, run an asynchronous job, run a statement-level copy) and produces the correct job for that combination: an engine job, an engine statement, a streamed extract into the bulk loader, or an extract to a stage followed by an engine load. The choice is a pure decision from declared capabilities, so it is testable as a table of every source, store and engine combination without running any of them, and the same table is the documentation of what a replica of a given source on a given engine costs and how it is built. A combination for which no job can be produced is refused at config validation, naming what is missing. Each kind of job has one executor, which the coordinator runs and follows. Capabilities are declared by each source driver, store and engine backend in one place each; nothing else in the code decides how a copy is made. Replica builds and refreshes use this tool, and so does every other whole-table write Provisa makes into a store. Row-level replication does not. (Amended 2026-10-01, what counts as binding the key:) The refusal is decided once, where the pipeline resolves key bounds, before the response cache is read and before a route is chosen, so every surface refuses the same statements and a cached answer never stands in for it. It is decided per reference to the table, not per statement. A reference is bound when the SELECT that names it carries, as a top-level AND term of its own WHERE or of one of its JOIN ON conditions, a predicate that gives concrete values for the primary key. That is key equals value, key IN a list of values, or an OR made only of such equalities on the one key column, each value a literal or a bound parameter. A composite key needs exactly one value per column. A reference is also bound when a join pushes the key down, which holds when the statement is a SELECT, the reference is the target of a JOIN, that JOIN is the only one naming the table, its ON condition is a single equality between one column of the table and a column of another relation, and the primary key is a single column. Nothing else binds it. No predicate, a predicate on another column, a range on the key, a key predicate in an enclosing or nested query, a second join to the same table and a join inside a UNION are all refused. The table an INSERT, UPDATE, DELETE or MERGE writes is not a read of it. The error is HTTP 400 with code data.row_level_key_required and params table and key, and the wire protocols report the same message as text. The whole-table path for a row-level table is removed from the read path. A source whose tables are all row-level is never landed by a read. (Amended 2026-10-01, a row-level table needs a filter, not a key:) Requiring a read by key is too limiting. The rule for a table replicated row by row, on an engine that cannot attach its source, is that the statement must FILTER that table: any predicate on its columns, or a join that supplies its key, counts. A statement that reads it with no filter at all is still refused at planning, and the error says why -- the table is replicated row by row because it is large, so it is not read whole; add a filter. For a filtered read the request pushes the filter to the source, fetches the rows that match in bounded batches and within its deadline, writes them into the row-level replica, and is answered from it; the filter and the time it was fetched are recorded, so the same filter is served from the replica until its TTL passes, as the parameter sets of an API source already are. A key filter stays the cheapest case and keeps its per-row freshness. A filter can be written to match most of a table, and that is accepted -- it is bounded in memory and by the request deadline like any other read, and it is the choice of whoever wrote it. Until this is built the earlier rule stands in the code -- a read is accepted only when it binds the key or a join supplies it -- and the block above describing what binds a key describes that interim behaviour. (Amended 2026-10-03, ATOMIC REPLACE, IDENTITY KEPT:) A reader sees the whole old copy or the whole new copy, and the replica keeps its key, its grants and its comment across a rebuild. The swap is a rename only where the store keeps identity across it (PostgreSQL, SQL Server, the MySQL and MariaDB paired rename, DuckDB, ClickHouse EXCHANGE). Snowflake and Databricks use INSERT OVERWRITE, BigQuery one MERGE, and Fabric and any other transactional dialect DELETE followed by INSERT ... SELECT in one transaction. A store that offers neither is refused. (Amended 2026-10-03, THE LOAD METHOD IS A DECLARED CAPABILITY OF THE STORE:) Each store declares whether it is loaded by bulk stream or by row copy. SQL Server, MySQL and MariaDB stores use row copy, which works within limits and is not suited to very large datasets; this is guidance and no build is refused for size. Oracle uses direct path load and PostgreSQL uses COPY. (Amended 2026-10-03, A SOURCE THAT CANNOT BE READ BY ROW IS SPOOLED:) A source that cannot be read by row or by cursor (the single-document kinds) is spooled to a temporary file while it is replicated, always, for the kinds that can be. The spool is bounded by `replication.spool_max_bytes` (2 GiB, node-wide); a build that would exceed it fails with an error naming the limit. Spooling is marked as not optimal. Provisa writes no other data files to its own disk. (Amended 2026-10-03, CONVERGENCE REPLACES TRIGGERS:) There are no save triggers and no delete calls. One step at the end of every model build, on every coordinator-capable node, compares the model with replica state: it requests a build for each replica that is missing or whose definition changed, and retires each replica whose table is gone or no longer replicated. A retired replica is dropped after the grace period, and a node drops one only when the model stamp it has loaded is at least the stamp on the retirement record. A failed build is retried after `replication.retry_interval`. (Amended 2026-10-03, A REPLICA IS NEVER CUT SHORT:) A build that reaches an API endpoint's `max_pages`, or a GraphQL connection's `max_rows`, while the remote still has more, fails with an error naming the limit (`replication.page_limit_reached`, `replication.row_limit_reached`). A replica never holds a truncated copy. (Amended 2026-10-03, NO WHOLE COPY, NO WHOLE BUILD:) A table that has no whole copy (parameterized or row-level) is never built whole, by convergence, by the runner or by the read backstop. Its parameter-set fills live in the store's API cache schema, not in the control plane, and call the remote through `call_api`.
 
 **Use case:** An operator can set a large table to be replicated without taking the server down, and a reader either gets a complete answer from the replica or a clear statement that it is not ready yet.
 
@@ -20520,9 +20528,9 @@ Replication is bounded, single and survivable. Replicating a table never holds t
 
 ### REQ-1916 · Process Roles {#REQ-1916}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** structural
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
 
-Process roles. A deployment runs the same code in two roles, chosen when a process is started. A query node serves requests on every transport and does nothing else: it never runs a replication copy, a scheduled refresh or any other background job. A coordinator serves no data requests and does the central work: it holds the central replica record and decides and runs every replica build and refresh ([REQ-1915](#REQ-1915)), and it runs the scheduled and single-holder background work (materialized view refresh and cleanup, hot-table refresh, scheduled triggers, and the like) that query nodes used to elect one of themselves to run. Query nodes enqueue requests in the central record and read state from it; the coordinator is the only thing that acts on them. Both roles are the same image and the same entry point with a role argument, read the same control plane, and are told of changes by the same propagation ([REQ-1914](#REQ-1914)). [SUPERSEDED by the 2026-10-02 amendment below -- the default is now the every mode, one process doing both. Kept here for history; do not implement against it.] By default the launcher starts one coordinator on the same host next to the query nodes, so a small install needs no extra setup; [END SUPERSEDED BLOCK] a larger deployment runs the coordinator on its own server with its own memory and network budget, close to the store and the sources. [SUPERSEDED by the 2026-10-02 amendment below -- several coordinators work at once, each on different jobs. Kept here for history; do not implement against it.] More than one coordinator may run for availability, and a lock the control plane guarantees lets exactly one of them act at a time, with another taking over when it stops. [END SUPERSEDED BLOCK] The health endpoint and the admin pages show the coordinator, whether it is running, and what it is doing, because when no coordinator runs nothing is replicated or refreshed; a query node reports that state on reads that need a replica instead of doing the work itself. The role is a launch setting shown in the deployment settings ([REQ-1913](#REQ-1913)). (Amended 2026-10-02, THREE MODES:) A process starts in one of three modes -- every, query or coordinator. every is the default and needs no flag -- the process serves requests on every transport and also does the coordinator work, so a small install is one kind of process with nothing to choose. query and coordinator are chosen by a startup command-line flag. A query process serves requests and runs no replica build, view refresh or other background job. A coordinator process serves no data requests and does the background work. The mode is fixed for the life of the process and is shown read-only with the other launch settings. (Amended 2026-10-02, EVERY COORDINATOR BUILDS:) Background capacity grows by adding processes that do coordinator work (coordinator or every mode). Each such process claims requested replica builds, and later view refreshes, one job at a time per claim -- a lock the control plane guarantees per replica or view keeps each job to one builder, so several coordinators work at once on different jobs. Three operator limits bound the total -- builds per node, background jobs per engine across all nodes, and reads per source ([REQ-1915](#REQ-1915), [REQ-1909](#REQ-1909)). Work that must fire exactly once per deployment, such as deciding that a refresh is due or running a scheduled trigger, still goes to one holder at a time, taken over by another when it stops. (Amended 2026-10-02, SCALING AND MEMBERSHIP:) Capacity is added in either of two ways, and the operator chooses by workload. The simple way is to add more every-mode nodes -- each adds request capacity and background capacity together. The designed way is to run some number of query nodes and some number of coordinator nodes, sized separately for request load and for replication and refresh load. Both may be mixed in one cluster. A cluster is the set of processes started against one control plane. A node joins by starting against that control plane and leaves by stopping -- no other node is restarted or reconfigured, and nothing is registered by hand, so capacity is added and removed while the cluster serves. A joining node loads the current configuration ([REQ-1914](#REQ-1914)) and must hold the deployment encryption key ([REQ-684](#REQ-684)) before it serves. A leaving query node finishes or times out the requests it holds. A leaving coordinator releases the jobs it holds -- the control plane frees its locks when its session ends, and another node claims and restarts those jobs ([REQ-1915](#REQ-1915)). The admin pages and the health endpoint list the nodes now in the cluster with each one mode, so an operator sees what capacity is present and whether any node is doing coordinator work.
+Process roles. A deployment runs the same code in two roles, chosen when a process is started. A query node serves requests on every transport and does nothing else: it never runs a replication copy, a scheduled refresh or any other background job. A coordinator serves no data requests and does the central work: it holds the central replica record and decides and runs every replica build and refresh ([REQ-1915](#REQ-1915)), and it runs the scheduled and single-holder background work (materialized view refresh and cleanup, hot-table refresh, scheduled triggers, and the like) that query nodes used to elect one of themselves to run. Query nodes enqueue requests in the central record and read state from it; the coordinator is the only thing that acts on them. Both roles are the same image and the same entry point with a role argument, read the same control plane, and are told of changes by the same propagation ([REQ-1914](#REQ-1914)). [SUPERSEDED by the 2026-10-02 amendment below -- the default is now the every mode, one process doing both. Kept here for history; do not implement against it.] By default the launcher starts one coordinator on the same host next to the query nodes, so a small install needs no extra setup; [END SUPERSEDED BLOCK] a larger deployment runs the coordinator on its own server with its own memory and network budget, close to the store and the sources. [SUPERSEDED by the 2026-10-02 amendment below -- several coordinators work at once, each on different jobs. Kept here for history; do not implement against it.] More than one coordinator may run for availability, and a lock the control plane guarantees lets exactly one of them act at a time, with another taking over when it stops. [END SUPERSEDED BLOCK] The health endpoint and the admin pages show the coordinator, whether it is running, and what it is doing, because when no coordinator runs nothing is replicated or refreshed; a query node reports that state on reads that need a replica instead of doing the work itself. The role is a launch setting shown in the deployment settings ([REQ-1913](#REQ-1913)). (Amended 2026-10-02, THREE MODES:) A process starts in one of three modes -- every, query or coordinator. every is the default and needs no flag -- the process serves requests on every transport and also does the coordinator work, so a small install is one kind of process with nothing to choose. query and coordinator are chosen by a startup command-line flag. A query process serves requests and runs no replica build, view refresh or other background job. A coordinator process serves no data requests and does the background work. The mode is fixed for the life of the process and is shown read-only with the other launch settings. (Amended 2026-10-02, EVERY COORDINATOR BUILDS:) Background capacity grows by adding processes that do coordinator work (coordinator or every mode). Each such process claims requested replica builds, and later view refreshes, one job at a time per claim -- a lock the control plane guarantees per replica or view keeps each job to one builder, so several coordinators work at once on different jobs. Three operator limits bound the total -- builds per node, background jobs per engine across all nodes, and reads per source ([REQ-1915](#REQ-1915), [REQ-1909](#REQ-1909)). Work that must fire exactly once per deployment, such as deciding that a refresh is due or running a scheduled trigger, still goes to one holder at a time, taken over by another when it stops. (Amended 2026-10-02, SCALING AND MEMBERSHIP:) Capacity is added in either of two ways, and the operator chooses by workload. The simple way is to add more every-mode nodes -- each adds request capacity and background capacity together. The designed way is to run some number of query nodes and some number of coordinator nodes, sized separately for request load and for replication and refresh load. Both may be mixed in one cluster. A cluster is the set of processes started against one control plane. A node joins by starting against that control plane and leaves by stopping -- no other node is restarted or reconfigured, and nothing is registered by hand, so capacity is added and removed while the cluster serves. A joining node loads the current configuration ([REQ-1914](#REQ-1914)) and must hold the deployment encryption key ([REQ-684](#REQ-684)) before it serves. A leaving query node finishes or times out the requests it holds. A leaving coordinator releases the jobs it holds -- the control plane frees its locks when its session ends, and another node claims and restarts those jobs ([REQ-1915](#REQ-1915)). The admin pages and the health endpoint list the nodes now in the cluster with each one mode, so an operator sees what capacity is present and whether any node is doing coordinator work. (Amended 2026-10-03, THE NODE LIST LIVES IN THE PLATFORM STATE STORE:) The node heartbeat and the cluster node list are held in the platform state store ([REQ-1932](#REQ-1932)).
 
 **Use case:** Copying data and serving queries compete for the same memory and CPU. Giving the copying to its own process, on its own server when the deployment is large, keeps a replication from slowing or crashing query serving and lets each be sized on its own.
 
@@ -20588,7 +20596,7 @@ The state store. Provisa keeps three kinds of data in its control plane and trea
 
 **Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
-Data residency (the rule in force is the SIMPLE RULE amendment at the end). [SUPERSEDED by the SIMPLE RULE amendment below, 2026-10-02 -- the maintainer reduced residency to regions, the row and column rules, and a region on a table for whole-table copies. Kept here for history; do not implement against it.] A source, or a single table of it, can be declared resident -- its data is subject to rules about where it may be held. Two things then hold. First, a reader gets only what the rules allow -- row filters and column rules written on user attributes, such as the country a user is in, decide what each request may see, exactly as for any other table, and the statement sent to the source already carries them, so nothing a reader may not see is read. Second, a resident table takes no part in anything that keeps a copy automatically -- it is never replicated, whatever the replicate setting says ([REQ-826](#REQ-826)); a response read from it is never kept in the response cache, even when the request asks for caching ([REQ-544](#REQ-544)); it is never kept as a hot table; and no per-request cache table is kept for it. It is always read live. A setting that would require a copy of a resident table -- replicate Always or a hot threshold, load protection -- is refused when saved, naming the conflict, and an engine that cannot read the source in place cannot serve the table at all rather than copying it. Readers outside the country are served the same way, live, and receive what the rules allow them. Where live reads are not fast enough, the operator builds a materialized view over the resident table that holds only what may be kept where the view is stored -- that view is a deliberate declaration in the model, its compliance is the operator's responsibility, and it is the only way a copy of resident data comes to exist. The declaration is inherited by a table from its source unless the table says otherwise, is shown in the admin pages beside the replicate setting, and the record of each request notes that resident data was read ([REQ-1920](#REQ-1920)). [SUPERSEDED by [REQ-1922](#REQ-1922), 2026-10-02 -- regions are separate clusters on one shared model. Kept here for history; do not implement against it.] Further steps -- nodes, stores and caches that declare the region they are in, so that a copy may be kept where a reader in that place could see it, and traffic directed to an in-country address -- are possible later and are not part of this requirement. [END SUPERSEDED BLOCK] (Amended 2026-10-02, HOME REGION) Where a deployment runs more than one cluster on one shared model ([REQ-1922](#REQ-1922)), a resident table names the region that is its home. In the cluster of its home region it behaves as any other table -- it may be replicated, cached and kept hot, because that cluster's engine, storage and cache are in the region. In every other cluster the rule above applies -- it is read live, readers get what the rules allow, and no copy is kept there unless the operator declares a materialized view for the purpose. In a deployment with a single cluster the rule above applies as written. [END SUPERSEDED BLOCK] (Amended 2026-10-02, SIMPLE RULE) Residency is three things and no more. First, regions ([REQ-1922](#REQ-1922)) -- one shared model store, and every other store (engine, replica and view storage, cache, state store, record) belongs to a region; a node is launched in a region by a command line flag. Second, the row and column rules keep data where it is -- rules written on user attributes decide what each reader gets, the statement sent to the source already carries them, so a response, and anything kept from a response such as a response-cache entry, holds only what that reader was allowed. There is no separate resident declaration and no restriction on the response cache. Third, whole-table copies -- a replica or a hot table is a copy of the table itself, made before any reader's rules apply, so the operator controls it in two ways. The operator may disallow it, with the replicate setting Never ([REQ-826](#REQ-826)). Or a table, or its source for all its tables, may name a region, and whole-table copies of it are then allowed only in that region -- the cluster of that region builds and refreshes the replica and may keep the table hot, and no other cluster builds one. A reader who connects through another region is served from the home region's replica -- the other region's engine reads it in place, at the address the model gives (the home region's replica storage, [REQ-1922](#REQ-1922), and the replica's name, [REQ-1912](#REQ-1912)), with the reader's row and column rules in the statement, so the filtering is done in the home region and only what the reader is allowed crosses. The source itself is not read from outside the table's region, so a source that is replicated to protect it stays protected. When the replica has not been built or the home region cannot be reached, the request is refused, naming the home region; the source is not read live in its place. A table that names a region and is not replicated (replicate Never, or a setting that calls for no copy yet) is read live from its source by every region, as any unreplicated table is. A table that names no region is replicated, when its replicate setting calls for it, in the region of the node the reader connected to, like any other table. No setting is ever satisfied by building a copy outside the table's region. A materialized view is built in every region, and each region's copy is right for that region. Each region's coordinator builds and refreshes its own copy in its own view storage, on the view's schedule, and the statement that builds it is governed -- it is run under the identity of the organisation's administrator, and an identity processing within a node carries that node's region as its region attribute, so the same row and column rules apply to the build as to any request from that region. The build may reach sources and copies in any region, as any node may ([REQ-1922](#REQ-1922)); what it cannot do is land data that people in its own region are not allowed to see. So a copy holds exactly what an administrator in that region may see -- the copy in a country's region includes what may be held in the country, and the copy elsewhere leaves it out. No view declares a region and none is inferred from its tables; a copy resides in the view storage of the region that built it, and what it holds follows from the rules. A reader is served from the copy in the region they connected to, with their own rules applied on top. A view whose definition aggregates therefore gives each region the aggregate over what that region may hold, and the same view can return different figures in different regions -- that is the rule working, and the admin pages say which region's copy a figure came from. (Amended 2026-10-02, ROW-LEVEL REPLICATION) Row-level replication follows the same rule as a materialized view. The rows a request causes to be fetched from a source and kept are moved by the organisation's administrator taken to be in the region of the node doing the fetch, so the fetch carries that region's row and column rules and only what the region may hold is kept there. The kept rows are one shared copy per region, not a copy per role; each reader's own rules are applied afterwards, when the statement runs over the kept rows, as they are today. So a reader outside a country cannot cause a row that must stay in the country to be kept in their region. (Amended 2026-10-03, HOT COUNTS ARE THE HOME REGION'S:) A table's Hot count ([REQ-239](#REQ-239)) is the traffic of its home region only.
+Data residency (the rule in force is the SIMPLE RULE amendment at the end). [SUPERSEDED by the SIMPLE RULE amendment below, 2026-10-02 -- the maintainer reduced residency to regions, the row and column rules, and a region on a table for whole-table copies. Kept here for history; do not implement against it.] A source, or a single table of it, can be declared resident -- its data is subject to rules about where it may be held. Two things then hold. First, a reader gets only what the rules allow -- row filters and column rules written on user attributes, such as the country a user is in, decide what each request may see, exactly as for any other table, and the statement sent to the source already carries them, so nothing a reader may not see is read. Second, a resident table takes no part in anything that keeps a copy automatically -- it is never replicated, whatever the replicate setting says ([REQ-826](#REQ-826)); a response read from it is never kept in the response cache, even when the request asks for caching ([REQ-544](#REQ-544)); it is never kept as a hot table; and no per-request cache table is kept for it. It is always read live. A setting that would require a copy of a resident table -- replicate Always or a hot threshold, load protection -- is refused when saved, naming the conflict, and an engine that cannot read the source in place cannot serve the table at all rather than copying it. Readers outside the country are served the same way, live, and receive what the rules allow them. Where live reads are not fast enough, the operator builds a materialized view over the resident table that holds only what may be kept where the view is stored -- that view is a deliberate declaration in the model, its compliance is the operator's responsibility, and it is the only way a copy of resident data comes to exist. The declaration is inherited by a table from its source unless the table says otherwise, is shown in the admin pages beside the replicate setting, and the record of each request notes that resident data was read ([REQ-1920](#REQ-1920)). [SUPERSEDED by [REQ-1922](#REQ-1922), 2026-10-02 -- regions are separate clusters on one shared model. Kept here for history; do not implement against it.] Further steps -- nodes, stores and caches that declare the region they are in, so that a copy may be kept where a reader in that place could see it, and traffic directed to an in-country address -- are possible later and are not part of this requirement. [END SUPERSEDED BLOCK] (Amended 2026-10-02, HOME REGION) Where a deployment runs more than one cluster on one shared model ([REQ-1922](#REQ-1922)), a resident table names the region that is its home. In the cluster of its home region it behaves as any other table -- it may be replicated, cached and kept hot, because that cluster's engine, storage and cache are in the region. In every other cluster the rule above applies -- it is read live, readers get what the rules allow, and no copy is kept there unless the operator declares a materialized view for the purpose. In a deployment with a single cluster the rule above applies as written. [END SUPERSEDED BLOCK] (Amended 2026-10-02, SIMPLE RULE) Residency is three things and no more. First, regions ([REQ-1922](#REQ-1922)) -- one shared model store, and every other store (engine, replica and view storage, cache, state store, record) belongs to a region; a node is launched in a region by a command line flag. Second, the row and column rules keep data where it is -- rules written on user attributes decide what each reader gets, the statement sent to the source already carries them, so a response, and anything kept from a response such as a response-cache entry, holds only what that reader was allowed. There is no separate resident declaration and no restriction on the response cache. Third, whole-table copies -- a replica or a hot table is a copy of the table itself, made before any reader's rules apply, so the operator controls it in two ways. The operator may disallow it, with the replicate setting Never ([REQ-826](#REQ-826)). Or a table, or its source for all its tables, may name a region, and whole-table copies of it are then allowed only in that region -- the cluster of that region builds and refreshes the replica and may keep the table hot, and no other cluster builds one. A reader who connects through another region is served from the home region's replica -- the other region's engine reads it in place, at the address the model gives (the home region's replica storage, [REQ-1922](#REQ-1922), and the replica's name, [REQ-1912](#REQ-1912)), with the reader's row and column rules in the statement, so the filtering is done in the home region and only what the reader is allowed crosses. The source itself is not read from outside the table's region, so a source that is replicated to protect it stays protected. When the replica has not been built or the home region cannot be reached, the request is refused, naming the home region; the source is not read live in its place. A table that names a region and is not replicated (replicate Never, or a setting that calls for no copy yet) is read live from its source by every region, as any unreplicated table is. A table that names no region is replicated, when its replicate setting calls for it, in the region of the node the reader connected to, like any other table. No setting is ever satisfied by building a copy outside the table's region. A materialized view is built in every region, and each region's copy is right for that region. Each region's coordinator builds and refreshes its own copy in its own view storage, on the view's schedule, and the statement that builds it is governed -- it is run under the identity of the organisation's administrator, and an identity processing within a node carries that node's region as its region attribute, so the same row and column rules apply to the build as to any request from that region. The build may reach sources and copies in any region, as any node may ([REQ-1922](#REQ-1922)); what it cannot do is land data that people in its own region are not allowed to see. So a copy holds exactly what an administrator in that region may see -- the copy in a country's region includes what may be held in the country, and the copy elsewhere leaves it out. No view declares a region and none is inferred from its tables; a copy resides in the view storage of the region that built it, and what it holds follows from the rules. A reader is served from the copy in the region they connected to, with their own rules applied on top. A view whose definition aggregates therefore gives each region the aggregate over what that region may hold, and the same view can return different figures in different regions -- that is the rule working, and the admin pages say which region's copy a figure came from. (Amended 2026-10-02, ROW-LEVEL REPLICATION) Row-level replication follows the same rule as a materialized view. The rows a request causes to be fetched from a source and kept are moved by the organisation's administrator taken to be in the region of the node doing the fetch, so the fetch carries that region's row and column rules and only what the region may hold is kept there. The kept rows are one shared copy per region, not a copy per role; each reader's own rules are applied afterwards, when the statement runs over the kept rows, as they are today. So a reader outside a country cannot cause a row that must stay in the country to be kept in their region. (Amended 2026-10-03, HOT COUNTS ARE THE HOME REGION'S:) A table's Hot count ([REQ-239](#REQ-239)) is the traffic of its home region only. (Amended 2026-10-03, A TABLE'S REGION IS ONE OF ITS ORG'S REGIONS:) The region a table or source names as its home must be one of the regions its org has selected ([REQ-1922](#REQ-1922)). Any other is refused at save and at load, with an error naming the org's regions.
 
 **Use case:** A regulated enterprise holds data that must stay in a country but still wants one governed layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes already limit who sees what; what was missing was a guarantee that the platform itself never quietly places a copy of restricted data somewhere it may not be.
 
@@ -20602,7 +20610,7 @@ Data residency (the rule in force is the SIMPLE RULE amendment at the end). [SUP
 
 **Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
 
-Regions -- separate clusters on one shared model. A deployment may run more than one Provisa cluster off a single model store ([REQ-1919](#REQ-1919)). The model -- every source, table, relationship, role, rule, view, freshness setting and limit -- is declared once and is the same for every cluster, so definitions cannot diverge between regions. Everything else belongs to a cluster. Each cluster is in one region and has its own nodes ([REQ-1916](#REQ-1916)), its own engine, its own storage for replicas and materialized views, its own cache, its own state store ([REQ-1920](#REQ-1920)), its own record, and its own address. A node is started for one cluster and region. Clients connect to a region by its address. What a reader may see is decided by the model's rules on the reader's attributes, the same in every region; where the work is done and where anything is kept is decided by the cluster the reader connected to. A reader in a country who connects to that country's address is served by nodes, an engine, storage and a cache that are all in the country; a reader elsewhere is served by another cluster and receives what the rules allow. Reach is not what separates regions. Every source of every region, and every region's stores, are declared in the one model, so any node can reach any of them; the rules say what it may do with them -- the row and column rules decide what a reader gets, and a table's region decides where whole-table copies of it are built ([REQ-1921](#REQ-1921)). So a table that names a region is served to readers in other regions from that region's replica, read in place under the reader's rules. What is per cluster is the work and what it leaves -- each cluster builds and refreshes only its own replicas and views, writes only its own cache, state store and record, which stay in its region, and applies the limits on background work ([REQ-1915](#REQ-1915)) to itself. A change to the model reaches every cluster by the same stamp ([REQ-1914](#REQ-1914)); each cluster then converges on its own. The model declares the regions and, for each, its engine, storage, cache and address, and may declare for a source or table which region is its home ([REQ-1921](#REQ-1921)). A cluster that cannot reach the model store keeps serving the model it last loaded and reports that it is behind. A deployment with one cluster is the ordinary case and needs none of this declared. (Amended 2026-10-02, REGION FLAG) A node is launched in a region by a command line flag, beside its mode ([REQ-1916](#REQ-1916)). A node started with no region belongs to the deployment's single cluster. The additions to the model are few -- the list of regions with each one's engine, storage, cache, state store, record and address, and an optional region on a source or table that says where whole-table copies of it are allowed ([REQ-1921](#REQ-1921)). (Amended 2026-10-02, HOW LITTLE CHANGES) A node does what it does today. It is launched in a region and reads from the one model which engine, replica and view storage, cache, state store and record belong to that region; from then on it addresses them exactly as a node in a deployment with a single cluster does, and no address gains a region. The changes are these and no others. To the model -- the list of regions, each with its stores and its address, and an optional region on a source or table. To the run time -- two rules. One, an identity processing within a node carries the node's region as its region attribute, so a build such as a materialized view's is governed for the region it is built in ([REQ-1921](#REQ-1921)). Two, a table that names a region is replicated only by that region's nodes, and a node of another region reads that replica in the named region's storage, which it finds from the model. (Amended 2026-10-03, A NODE MUST NAME ITS REGION, AND STATE IS PER REGION FROM THE FIRST VERSION:) A node started without `--region` while the model declares regions refuses to start and prints the regions available. The per-region split of the state store and the record is part of the first version: in a region the model store holds the connection to the shared model database and `tenant_db` is the region's own database, and model reads that bypass the model store move into it.
+Regions -- separate clusters on one shared model. A deployment may run more than one Provisa cluster off a single model store ([REQ-1919](#REQ-1919)). The model -- every source, table, relationship, role, rule, view, freshness setting and limit -- is declared once and is the same for every cluster, so definitions cannot diverge between regions. Everything else belongs to a cluster. Each cluster is in one region and has its own nodes ([REQ-1916](#REQ-1916)), its own engine, its own storage for replicas and materialized views, its own cache, its own state store ([REQ-1920](#REQ-1920)), its own record, and its own address. A node is started for one cluster and region. Clients connect to a region by its address. What a reader may see is decided by the model's rules on the reader's attributes, the same in every region; where the work is done and where anything is kept is decided by the cluster the reader connected to. A reader in a country who connects to that country's address is served by nodes, an engine, storage and a cache that are all in the country; a reader elsewhere is served by another cluster and receives what the rules allow. Reach is not what separates regions. Every source of every region, and every region's stores, are declared in the one model, so any node can reach any of them; the rules say what it may do with them -- the row and column rules decide what a reader gets, and a table's region decides where whole-table copies of it are built ([REQ-1921](#REQ-1921)). So a table that names a region is served to readers in other regions from that region's replica, read in place under the reader's rules. What is per cluster is the work and what it leaves -- each cluster builds and refreshes only its own replicas and views, writes only its own cache, state store and record, which stay in its region, and applies the limits on background work ([REQ-1915](#REQ-1915)) to itself. A change to the model reaches every cluster by the same stamp ([REQ-1914](#REQ-1914)); each cluster then converges on its own. [SUPERSEDED by REQ-1922 amendment, 2026-10-03 -- the platform declares the physical regions; each org's model selects the regions it uses and declares its own stores in each. Kept here for history; do not implement against it.] The model declares the regions and, for each, its engine, storage, cache and address, and may declare for a source or table which region is its home ([REQ-1921](#REQ-1921)). [END SUPERSEDED BLOCK] A cluster that cannot reach the model store keeps serving the model it last loaded and reports that it is behind. A deployment with one cluster is the ordinary case and needs none of this declared. (Amended 2026-10-02, REGION FLAG) A node is launched in a region by a command line flag, beside its mode ([REQ-1916](#REQ-1916)). A node started with no region belongs to the deployment's single cluster. The additions to the model are few -- the list of regions with each one's engine, storage, cache, state store, record and address, and an optional region on a source or table that says where whole-table copies of it are allowed ([REQ-1921](#REQ-1921)). (Amended 2026-10-02, HOW LITTLE CHANGES) A node does what it does today. It is launched in a region and reads from the one model which engine, replica and view storage, cache, state store and record belong to that region; from then on it addresses them exactly as a node in a deployment with a single cluster does, and no address gains a region. The changes are these and no others. To the model -- the list of regions, each with its stores and its address, and an optional region on a source or table. To the run time -- two rules. One, an identity processing within a node carries the node's region as its region attribute, so a build such as a materialized view's is governed for the region it is built in ([REQ-1921](#REQ-1921)). Two, a table that names a region is replicated only by that region's nodes, and a node of another region reads that replica in the named region's storage, which it finds from the model. (Amended 2026-10-03, A NODE MUST NAME ITS REGION, AND STATE IS PER REGION FROM THE FIRST VERSION:) A node started without `--region` while the model declares regions refuses to start and prints the regions available. The per-region split of the state store and the record is part of the first version: in a region the model store holds the connection to the shared model database and `tenant_db` is the region's own database, and model reads that bypass the model store move into it. (Amended 2026-10-03, AN ORG IS A COLLECTION OF REGIONS:) The platform declares the physical regions its nodes run in (for example eu and us), and a node is started with `--region` naming one of them. Each org's model selects which platform regions the org uses and declares the org's own stores in each: engine, replica and view storage, cache, state store, record and address. A node started in a region serves that region of every org that uses it. An org that does not use the region is not served by that node, and a request for it there is refused with an error naming the org and the region. Each org has one model store, shared by all its regions; its state store and its record are per org and region. The rule that a node started without `--region` refuses to start and prints the regions available applies when the platform declares regions, and the regions printed are the platform's. The region of a table or a source must be one of its org's selected regions; any other is refused when the object is saved and when a configuration is loaded, with an error naming the org's regions. (Amended 2026-10-03, WITH NO REGIONS DECLARED THERE IS ONE IMPLICIT REGION, AND NO USER SEES IT:) When the platform declares no regions there is one implicit region, held as an internal default value, as a single-tenant install has one implicit org. Region is then not a concept anywhere a user sees: the admin UI shows no region field, column, badge or setting; a node needs no `--region` flag; a source or table carries no region, and a configuration that sets one is refused with an error saying the platform declares no regions; and the record's visible columns carry no region. Every per-region store is simply the org's store. The UI shows regions only when the platform declares them. This implicit region is a default this requirement mandates, not a fallback.
 
 **Use case:** A regulated enterprise needs some data processed and kept inside a country, with the rest of the estate readable from anywhere, under one set of definitions. Two independent deployments would each need their own definitions, which could diverge. Two clusters on one shared model give each region its own engine, storage and cache while the governance is declared once.
 
@@ -20711,6 +20719,1440 @@ Command calls take bind parameters and column references as arguments. Today a r
 GraphQL is the canonical API, and gRPC, JSON:API and OpenAPI are derived from it. Everything a surface offers a role -- tables, columns, relationships, aggregates, filter arguments and commands -- comes from that role's compiled GraphQL schema: each role's gRPC .proto, its OpenAPI spec with the REST routes it describes, and its JSON:API resources are generated from that schema, as REST already is ([REQ-256](#REQ-256)). The decision of what a role is offered (assignment, domain, kind, name, column visibility) is made once, in the role's GraphQL schema. No surface keeps visibility or naming logic of its own: whatever GraphQL offers a role, every other surface offers under its own wire conventions, and nothing more. COMMANDS: the other surfaces derive their command operations from the role's GraphQL command fields, never from the raw command list ([REQ-1156](#REQ-1156)). A field on Query, a query-kind command, is a read: REST `GET` with the same where, order_by, limit and offset parameters tables take; a gRPC RPC returning rows; a JSON:API read under its conventions for non-resource operations. A field on Mutation is a write: REST `POST`, a gRPC RPC, and a JSON:API write. Arguments and return types follow the GraphQL field. A command a role's GraphQL schema does not offer is not offered on any other surface. Every call is still checked by the one command admission in the executor, as defence in depth. NAMES follow each API's own conventions. GraphQL names are translated by one deterministic function per surface: proto3 style for gRPC (PascalCase messages, services and RPCs; snake_case fields), JSON:API's member-name conventions, and the REST surface's path and parameter conventions for OpenAPI. Two GraphQL names that would collide after translation are refused at schema build, with an error naming both. gRPC field numbers stay stable across regenerations ([REQ-1903](#REQ-1903)). (Amended 2026-10-03, THE DERIVATION IS THE CONTRACT, NOT NECESSARILY THE EXECUTION PATH:) gRPC, JSON:API and OpenAPI are derived from GraphQL in what they offer, in their names and in their shapes. A surface may compile a request straight to semantic SQL as an optimization, as gRPC table reads do, provided it produces the same semantic SQL as the equivalent GraphQL request would, and so the same governed result. That equivalence is held by a test for each optimized path, which compares the two lowerings.
 
 **Use case:** An operator who assigns a command to a role, hides a column, or moves an object to another domain changes what every API offers in one place, and no surface can offer what another surface hides.
+
+**Code:** —
+
+**Tests:** —
+
+## 9. Live Data & Events
+
+### REQ-569 · Subscriptions {#REQ-569}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Provisa GraphQL mutations automatically fire `NOTIFY` on the corresponding `provisa_{table}` channel by virtue of the installed database trigger. Any INSERT, UPDATE, or DELETE that goes through Provisa or direct SQL is picked up.
+
+**Use case:** Automatic NOTIFY on Provisa mutations means subscription clients receive events for all writes, including those from external tools that bypass the API.
+
+**Code:** `provisa/subscriptions/pg_triggers.py`
+
+**Tests:** `tests/unit/test_pg_notify_trigger_sql.py`, `tests/integration/test_pg_notify_payload_limit.py`, `tests/integration/test_sse_subscriptions.py`
+
+## 8. Client Access & Protocols
+
+### REQ-570 · API & Integration {#REQ-570}
+
+**Status:** ↪ superseded by [REQ-812](#REQ-812) · **Priority:** SHOULD · **Type:** behavioral
+
+Any GraphQL subscription sent to `POST /data/graphql` with an `X-Provisa-Sink: kafka://[broker:port]/topic` header is redirected to a Kafka topic instead of streaming back to the client. The server responds `202 Accepted` immediately and starts a background task publishing each re-executed query result as a JSON Kafka message. If `broker:port` is omitted, `KAFKA_BOOTSTRAP_SERVERS` env var is used (default: `localhost:9092`).
+
+**Use case:** Header-based Kafka sink redirect lets ad-hoc consumers redirect any subscription to a Kafka topic without pre-configuring a sink in provisa.yaml.
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-435 · Security {#REQ-435}
+
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+
+RLS rule enforcement and column-level masking both become meaningfully scoped only after identity propagation is implemented (identities assigned domain-role pairs).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-436 · Security {#REQ-436}
+
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+
+An identity is granted a set of (role, domain) pairs. All access decisions — table access, column visibility, column masking — are derived solely from those pairs. No separate per-table grants exist.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-437 · Security {#REQ-437}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Table access: an identity can access a table if they [SUPERSEDED by [REQ-808](#REQ-808), 2026-10-03 -- domain comes from the role's domain_access list, not an identity (role, domain) pair. Kept here for history; do not implement against it.] hold a (role, domain) pair where domain matches the table's domain_id [END SUPERSEDED BLOCK] AND the role appears in visible_to on at least one column of that table.
+
+**Code:** `provisa/security/visibility.py`, `provisa/compiler/sql_validator.py`
+
+**Tests:** `tests/unit/test_visibility.py`, `tests/unit/test_empty_domain_access_reaches_nothing.py`
+
+### REQ-438 · Security {#REQ-438}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Column visibility is determined by visible_to on each column, [SUPERSEDED by [REQ-808](#REQ-808), 2026-10-03 -- checked against the role; domain gating is the role's domain_access. Kept here for history; do not implement against it.] checked against the identity's role for the matching domain [END SUPERSEDED BLOCK].
+
+**Code:** `provisa/security/visibility.py`
+
+**Tests:** `tests/unit/test_visibility.py`, `tests/unit/test_schema_visibility_filters.py`
+
+### REQ-439 · Security {#REQ-439}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Column masking is determined by unmasked_to on each column, [SUPERSEDED by [REQ-808](#REQ-808), 2026-10-03 -- checked against the role only; domain scoping is role.domain_access. Kept here for history; do not implement against it.] checked against the identity's role for the matching domain [END SUPERSEDED BLOCK]. Role proliferation is the accepted trade-off for keeping visible_to/unmasked_to as plain role ID lists (no domain-role pair syntax in column config).
+
+**Code:** `provisa/security/masking.py`, `provisa/compiler/mask_inject.py`
+
+**Tests:** `tests/e2e/test_masking.py`, `tests/unit/test_inherited_roles.py`
+
+### REQ-440 · Security {#REQ-440}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Domain boundaries are permission gates. Within a domain a role can query any table freely. To access data in another domain, the query must traverse a registered relationship — [SUPERSEDED by [REQ-367](#REQ-367), 2026-10-03 -- cross-domain data may also enter a domain through an intradomain view. Kept here for history; do not implement against it.] there is no other path [END SUPERSEDED BLOCK].
+
+**Code:** `provisa/compiler/sql_validator.py`, `provisa/compiler/schema_gen.py`
+
+**Tests:** `tests/unit/test_sql_endpoint_governance.py`, `tests/unit/test_domain_views.py`
+
+### REQ-441 · Security {#REQ-441}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+GraphQL enforces cross-domain access control by not exposing cross-domain tables as root types; they are only reachable as nested fields via registered relationships.
+
+**Code:** `provisa/compiler/schema_gen.py`
+
+**Tests:** `tests/unit/test_visibility.py`, `tests/unit/test_requested_domain_narrows.py`
+
+### REQ-442 · Security {#REQ-442}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Cypher enforces cross-domain access control at translator/parse time: starting node labels must map to a domain in the role's domain_access; cross-domain hops must follow a registered relationship. Direct MATCH on a node label outside the role's domain_access is rejected.
+
+**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator.py`, `provisa/cypher/translator_union.py`
+
+**Tests:** `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_label_map.py`
+
+### REQ-443 · Security {#REQ-443}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+SQL enforces cross-domain access control at query-validation/parse time using the SQLGlot AST: any cross-domain table reference must be connected to an in-domain table via a JOIN whose column pair matches a registered relationship's source_column/target_column. Unapproved cross-domain references are rejected.
+
+**Code:** `provisa/compiler/sql_validator.py`
+
+**Tests:** `tests/unit/test_sql_endpoint_governance.py`, `tests/unit/test_sql_validator_bypass.py`
+
+### REQ-444 · Security {#REQ-444}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The registered relationships table is the single authority for what cross-domain connections are permitted across all three interfaces (GraphQL, Cypher, SQL). The enforcement logic is designed for reuse across interfaces.
+
+**Code:** `provisa/compiler/sql_validator.py`, `provisa/cypher/label_map.py`, `provisa/compiler/schema_gen.py`
+
+**Tests:** `tests/unit/test_sql_endpoint_governance.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_visibility.py`
+
+### REQ-445 · Security {#REQ-445}
+
+**Status:** ↪ superseded by [REQ-366](#REQ-366) · **Priority:** SHOULD · **Type:** behavioral
+
+Views feature (domain SQL views) must validate that all foreign tables referenced are connected to the domain via registered relationships. At view save time: for every table outside the role's domain_access, an approved relationship must exist (matching source_column/target_column in the relationships registry) that links it—directly or transitively—back to an owned-domain table. Any foreign table reachable only through unregistered joins is rejected. Order and direction of the join condition are irrelevant; only graph reachability via registered edges matters. This validation applies to Views only, not to general query execution.
+
+**Code:** —
+
+**Tests:** —
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-446 · Graph Analytics Pipeline {#REQ-446}
+
+**Status:** ↪ superseded by [REQ-642](#REQ-642) · **Priority:** SHOULD · **Type:** behavioral
+
+Graph analytics over a query result are provided by the Graph Explorer in the browser, automatically: the statistics panel ([REQ-642](#REQ-642)) and the degree values each node carries ([REQ-643](#REQ-643)).
+
+**Code:** —
+
+**Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-447 · API & Integration {#REQ-447}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** SHOULD · **Type:** behavioral
+
+Originally defined an Arrow Flight approved-queries listing path with a `limit`. Removed — there are no approved queries to list; Flight exposes registered tables/views governed by rights.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-448 · API & Integration {#REQ-448}
+
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+
+GraphQL synthetic ops traversal fields including `_queries` and `_traces` must accept a `limit` argument in SDL and apply it when compiling the traversal SQL.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-449 · API & Integration {#REQ-449}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+GraphQL DB-backed fields used as nested paths must expose root-query controls (`limit`, `offset`, `where`, `order_by`, `distinct_on`) and apply them during SQL compilation.
+
+**Code:** `provisa/compiler/schema_gen.py`, `provisa/compiler/sql_gen.py`, `provisa/compiler/sql_selection.py`
+
+**Tests:** —
+
+### REQ-450 · API & Integration {#REQ-450}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+Every GraphQL one-to-many nested path must expose the same query arguments as the related target table's root query field.
+
+**Code:** `provisa/compiler/schema_gen.py`
+
+**Tests:** —
+
+### REQ-451 · API & Integration {#REQ-451}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+GraphQL object relationship paths (`many-to-one` and `one-to-one`) must not expose collection query arguments such as `limit`, `offset`, `where`, `order_by`, or `distinct_on`; this follows Hasura v2 object relationship behavior.
+
+**Code:** `provisa/compiler/schema_gen.py`
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-452 · API & Integration {#REQ-452}
+
+**Status:** ↪ superseded by [REQ-1443](#REQ-1443) · **Priority:** SHOULD · **Type:** ui
+
+A top-level Data Quality page (peer to Tables, Sources, etc.) OR a tab within registered tables—user preference TBD. Enables stewards to configure periodic data quality checks per table (configurable schedule, check types), stores and displays most recent check results. Builds on existing per-table Profile button (TABLESAMPLE-based column profiling). Aggregate DQ dashboard view by domain is a follow-on feature. Status: deferred.
+
+**Code:** —
+
+**Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-453 · API & Integration {#REQ-453}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+For all remote schema adapters (GraphQL, gRPC, OpenAPI), a root query/GET operation whose return type is a scalar (not an object or message) MUST be registered as a tracked function with `return_schema [{"name": "value", "type": <scalar_type>}]`, not as a virtual table. Object-returning operations are registered as virtual tables; scalar-returning operations are registered as tracked functions.
+
+**Code:** `provisa/graphql_remote/mapper.py`, `provisa/openapi/mapper.py`
+
+**Tests:** `tests/unit/test_graphql_remote_mapper.py`
+
+### REQ-454 · API & Integration {#REQ-454}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+All infrastructure and classification decisions around representing remote schemas (scalar vs. object detection, virtual-table vs. tracked-function registration, return_schema derivation) MUST be implemented identically across all remote schema adapter types (GraphQL, gRPC, OpenAPI). No adapter-specific divergence in classification logic is permitted.
+
+**Code:** `provisa/graphql_remote/mapper.py`, `provisa/openapi/mapper.py`, `provisa/grpc/proto_gen.py`
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-455 · Security {#REQ-455}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** SHOULD · **Type:** constraint
+
+Originally defined an `ad_hoc_query` right gating free-query vs governed-query-by-ID execution. Reversed — governed-query-by-ID and the `ad_hoc_query` right are removed. All access is governed solely by table/view + relationship rights ([REQ-001](#REQ-001)).
+
+**Code:** —
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-456 · Multi-Tenancy {#REQ-456}
+
+**Status:** ↪ superseded by [REQ-695](#REQ-695) · **Priority:** SHOULD · **Type:** structural
+
+SaaS multi-tenancy model: all ProvisaConfig entities (Source, Table, Relationship, Role, RLSRule, etc.) are stored in a shared admin database with a tenant_id foreign key on every entity. Config is loaded per-request from the database, not from a YAML file.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-457 · SaaS Billing {#REQ-457}
+
+**Status:** ↪ superseded by [REQ-1075](#REQ-1075) · **Priority:** SHOULD · **Type:** structural
+
+Tenant model with fields: id (PK), stripe_customer_id, plan (trial/starter/pro enum), created_at timestamp, source_limit (integer). A tenant is created before or during payment signup.
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-458 · Encryption {#REQ-458}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+Provisa-managed KMS envelope encryption: [SUPERSEDED by [REQ-1087](#REQ-1087), 2026-10-03 -- KMS is one pluggable provider; isolation unit is the org, not tenant. Kept here for history; do not implement against it.] one AWS KMS key per tenant [END SUPERSEDED BLOCK]. All tenant config data in the admin database is encrypted at rest. The encryption key is fetched from KMS at config load time; plaintext config is held only for the duration of the request.
+
+**Code:** `provisa/core/org_config_db.py`, `provisa/encryption/providers.py`, `provisa/encryption/registry.py`
+
+**Tests:** `tests/unit/test_org_encryption_ring.py`, `tests/unit/test_encryption_providers.py`
+
+### REQ-459 · Security {#REQ-459}
+
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+
+Trial mode enforcement: plan='trial' is enforced when a new source is registered. Trial plan has a source limit (exact limit TBD). Trial mode is zero cost.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-460 · SaaS Billing {#REQ-460}
+
+**Status:** ↪ superseded by [REQ-1075](#REQ-1075) · **Priority:** SHOULD · **Type:** behavioral
+
+Stripe integration: Stripe Checkout and webhook events gate plan tier transitions. Webhook events update the tenant's plan field in the admin database. Tenant record is created before payment is processed (during trial signup).
+
+**Code:** —
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-461 · Multi-Tenancy {#REQ-461}
+
+**Status:** ↪ superseded by [REQ-1269](#REQ-1269) · **Priority:** SHOULD · **Type:** constraint
+
+Trino catalog naming in multi-tenant mode must follow the pattern {tenant_id}_{source_id} to prevent cross-tenant catalog collisions.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-462 · Multi-Tenancy {#REQ-462}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+Config cache with TTL: decrypted tenant config is cached in memory with a short TTL (5 minutes) [SUPERSEDED by [REQ-1268](#REQ-1268), 2026-10-03 -- per-org runtime registry now holds org state. Kept here for history; do not implement against it.] to avoid KMS latency on every request [END SUPERSEDED BLOCK]. The cache must support invalidation when config is changed.
+
+**Code:** `provisa/core/tenant_context.py`
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-463 · Security {#REQ-463}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The `ignore_relationships` capability allows a role to execute joins between tables that have no registered relationship. A role without this capability is restricted to joins that follow registered relationship edges (the relationship guard). The capability does not bypass any other governance control — RLS, column visibility, masking, and domain access rules all apply normally. [SUPERSEDED by [REQ-1176](#REQ-1176), 2026-10-03 -- enforcement is in the one shared pipeline; endpoint_dev.py does not reference the capability. Kept here for history; do not implement against it.] Enforcement is in `provisa/pgwire/_pipeline.py`, `provisa/api/data/endpoint_dev.py`. [END SUPERSEDED BLOCK] The `relationship_guard: bool` role flag plus SQL comment opt-out remains as a backward-compatible alternative mechanism.
+
+**Code:** `provisa/security/rights.py`, `provisa/pgwire/_pipeline.py`
+
+**Tests:** `tests/unit/test_high_security_relationship_guard.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1930 · Multi-Tenancy {#REQ-1930}
+
+**Status:** ↪ superseded by [REQ-695](#REQ-695) · **Priority:** SHOULD · **Type:** structural
+
+Materialized and cached data isolation via per-tenant S3 prefixes: DuckDB, Parquet, and Arrow caches for each tenant are stored under s3://bucket/{tenant_id}/.... Cross-tenant prefix reads are prohibited.
+
+**Code:** —
+
+**Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-464 · Registration & Governance {#REQ-464}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+NL-assisted table candidate discovery for registration. When a registered source has a large schema (hundreds or thousands of tables), stewards search across registered source schemas — table names, column names, descriptions — using natural language ("customer invoicing and payment tables"). A two-pass approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides semantic ranking with confidence scores. Steward judgment is required — feature surfaces candidates, does not claim them. Implementation in admin API and unclaimed tables UI.
+
+**Code:** `provisa/discovery/table_search.py`, `provisa/api/admin/table_search_router.py`, `provisa/discovery/catalog_cache.py`
+
+**Tests:** `tests/unit/test_table_search.py`
+
+### REQ-465 · Naming Convention {#REQ-465}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+Dataset name normalization must be centralized. Dataset names may be normalized to a semantic standard (e.g., snake_case) and may carry aliases. Name comparison for registry membership, alias lookups, duplicate detection, and cross-source name matching must always use a canonical centralized normalization function — never inline equality checks or ad-hoc transforms. [SUPERSEDED by [REQ-194](#REQ-194), 2026-10-03 -- comparator now lives in provisa-ui/src/naming.ts, naming authority is [REQ-194](#REQ-194). Kept here for history; do not implement against it.] UI canonical comparator: `toSnakeCase` from TablesPage.tsx. [END SUPERSEDED BLOCK] Backend equivalent: use the same canonical function for all name comparisons. This applies to: isRegistered checks, alias lookups, duplicate detection, cross-source relationship name matching.
+
+**Code:** `provisa-ui/src/naming.ts`, `provisa/compiler/naming.py`
+
+**Tests:** `tests/unit/test_naming.py`
+
+### REQ-466 · Naming Convention {#REQ-466}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Dataset identity resolution requires centralized service. Every registered dataset has two identity forms — physical (native source name, e.g. `findPetsByStatus`) and semantic (domainId + tableName alias). Code comparing two dataset references must resolve both through a centralized identity service. Backend: `provisa.core.dataset_identity` exposes `resolve(ref) -> DatasetIdentity` and `same_dataset(ref_a, ref_b) -> bool`. Frontend: shared utility, no per-component name-matching logic. Cross-form comparison resolves both sides to `(sourceId, normalizedName)` tuple first. Documented in docs/arch/dataset-handling-standards.md under "Dataset Identity".
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-467 · Naming Convention {#REQ-467}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Query-language dataset name resolution via centralized identity service (extends [REQ-466](#REQ-466)). Any dataset name in SQL, Cypher, or GraphQL queries must resolve to a physical dataset through the identity service, accounting for each language's canonical form (SQL=snake_case schema.table, Cypher=PascalCase label, GraphQL=camelCase field). The active naming convention (registered_tables → domains → sources → global default) may override canonical defaults. `provisa.core.dataset_identity.resolve(ref, lang)` accepts query-language names and denormalizes them before lookup; `to_query_name(identity, lang)` produces the correct form for a given language. All inline normalization (e.g., `_normalize_op_id` in config_loader.py:104) must be replaced by this service. Documented in docs/arch/dataset-handling-standards.md under "Query-language representations".
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-468 · Execution Integrity {#REQ-468}
+
+**Status:** ↪ superseded by [REQ-1176](#REQ-1176) · **Priority:** SHOULD · **Type:** constraint
+
+Transpilation is a compiler responsibility, never a transport responsibility. Regardless of transport (pgwire, Arrow Flight, REST, GraphQL), all incoming queries go through a single shared pipeline: name resolution (front-end SQL/GQL/CQL names → physical), governance enforcement, dialect transpilation, and routing. Transports receive the output of this pipeline — they do not implement any part of it. No transport performs its own name rewriting, dialect conversion, or governance logic.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-469 · Registration & Governance {#REQ-469}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+Catalog preparation is centralized per query language. SQL catalog (pg_catalog served via pgwire/DBeaver), GraphQL SDL (schema introspection), and Cypher catalog (Nodes/Relationships schema) are each the responsibility of a single dedicated module. No transport implements catalog logic directly — transports consume the output of the centralized catalog module for their language.
+
+**Code:** `provisa/pgwire/catalog.py`, `provisa/cypher/label_map.py`, `provisa/bolt/session.py`
+
+**Tests:** —
+
+### REQ-470 · Naming & Schema {#REQ-470}
+
+**Status:** ↪ superseded by [REQ-640](#REQ-640) · **Priority:** SHOULD · **Type:** constraint
+
+Heuristic name matching is never permitted. All name conversions and lookups must be deterministic: the canonical form (e.g. `sql_name`) is computed once at registration time and stored. Lookup code uses exact equality on the pre-computed canonical form — no runtime normalization, no multi-predicate fallback chains, no `to_snake_case` inline at call sites. Any code path that computes a canonical form at lookup time rather than at registration time is a violation. Extends [REQ-465](#REQ-465), [REQ-466](#REQ-466), [REQ-467](#REQ-467).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-472 · Domain Model {#REQ-472}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+`naming.default_domain` configuration (str, default "default", must be non-empty valid identifier) sets the fallback domain for tables/functions/webhooks when use_domains=false. Falsy domain_id values ("" / None) coerce to default_domain at registration time.
+
+**Code:** `provisa/core/domain_policy.py`, `provisa/core/config_loader.py`, `provisa/core/models.py`
+
+**Tests:** `tests/unit/test_domain_policy.py`
+
+### REQ-473 · Domain Model {#REQ-473}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** constraint
+
+Registering any table/function/webhook with an explicit non-default, non-empty domain_id while use_domains=false is a hard error — no silent coercion or fallback. Error message names the offending registration and states the policy violation.
+
+**Code:** `provisa/core/domain_policy.py`, `provisa/core/config_loader.py`, `provisa/core/models.py`
+
+**Tests:** `tests/unit/test_domain_policy.py`
+
+### REQ-474 · Domain Model {#REQ-474}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** constraint
+
+use_domains=false with a non-empty `domains:` config list is a hard error (mutually exclusive policy). Error surfaces at startup during config validation.
+
+**Code:** `provisa/core/models.py`
+
+**Tests:** `tests/unit/test_domain_policy.py`
+
+### REQ-475 · Domain Model {#REQ-475}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** constraint
+
+`naming.default_domain` must be non-empty. Empty default_domain is rejected at startup config validation with a hard error.
+
+**Code:** `provisa/core/models.py`
+
+**Tests:** `tests/unit/test_domain_policy.py`
+
+### REQ-476 · Domain Model {#REQ-476}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+[SUPERSEDED by [REQ-1349](#REQ-1349), 2026-10-03 -- settings_router explicitly excludes them (settings_router.py:498); the policy is set per org via POST /admin/domain-policy, which is refused while the org has a catalog (set_domain_policy, settings_router.py:661-720), not a reload that validates tables. Kept here for history; do not implement against it.] use_domains and default_domain are runtime-editable via settings_router and trigger a full rebuild (_load_and_build). [END SUPERSEDED BLOCK] On reload, existing registered_tables are validated: dynamically-registered tables whose domain_id violates the new policy raise a hard error naming the offenders. No silent rewrite; offenders must be re-registered. This is an accepted consequential decision.
+
+**Code:** `provisa/core/config_loader.py`, `provisa/api/admin/settings_router.py`
+
+**Tests:** `tests/unit/test_domain_policy_switch_refused.py`, `tests/unit/test_domain_policy.py`
+
+### REQ-477 · Domain Model {#REQ-477}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+When use_domains=false, domain_prefix is forced off (internally overridden to false) and domain-based access gating is bypassed entirely.
+
+**Code:** `provisa/api/app_schema_build.py`, `provisa/security/rights.py`
+
+**Tests:** `tests/unit/test_empty_domain_access_reaches_nothing.py`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-479 · Compiler & Schema {#REQ-479}
+
+**Status:** ↪ superseded by [REQ-653](#REQ-653) · **Priority:** SHOULD · **Type:** behavioral
+
+Per-role aggregate gating is enforced via the existing role `capabilities` array — a role carrying the "no_aggregations" capability has its `<table>_aggregate` root fields suppressed in provisa/compiler/schema_gen.py. Default is allow. Chosen over a new roles.allow_aggregations column to honor the V1 "never add migrations" rule (a new column breaks existing databases).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-480 · Tracked Functions & Custom Mutations {#REQ-480}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Webhook mutations are exposed only after steward approval, tracked entirely through the existing creation_requests queue — a webhook is exposed when its most recent "webhook"-type creation_request has status 'executed'. Registering or editing a webhook (provisa/api/admin/actions_router.py) enqueues a fresh pending "webhook_registration" request, which resets approval. No `approved` column on tracked_webhooks (V1 no-migration).
+
+**Code:** `provisa/api/admin/actions_router.py`, `provisa/api/app_loaders.py`, `provisa/core/repositories/creation_request.py`
+
+**Tests:** `tests/unit/test_creation_requests.py`, `tests/unit/test_actions.py`
+
+### REQ-481 · Cypher Query Frontend (Phase AU) {#REQ-481}
+
+**Status:** ↪ superseded by [REQ-353](#REQ-353) · **Priority:** SHOULD · **Type:** behavioral
+
+**WITHDRAWN same day.** Cross-source Cypher rejection was removed at the user's direction — Trino joins across catalogs natively and cross-source graph traversal is a supported capability. The translator no longer raises CypherCrossSourceError; the error class remains declared but unused. See [REQ-353](#REQ-353).
+
+**Code:** —
+
+**Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-482 · Registration & Governance {#REQ-482}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+register_table(discover=true) auto-infers columns from the live source via the adapter discover_schema dispatch; explicitly-provided columns take precedence (provisa/discovery/column_inference.py:merge_discovered_columns). Elasticsearch uses a live GET /<index>/_mapping bridge. Discovery raises on failure rather than registering an empty schema; Cassandra discovery raises (no live CQL session is maintained).
+
+**Code:** `provisa/discovery/column_inference.py`, `provisa/api/admin/_table_ops.py`, `provisa/elasticsearch/source.py`, `provisa/cassandra/source.py`
+
+**Tests:** `tests/unit/test_discover_inference.py`
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-483 · Output & Delivery {#REQ-483}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Materialized-view freshness is TTL-aware — MVDefinition.is_fresh_at(now) and registry.get_fresh() exclude a FRESH MV whose last refresh is older than its refresh_interval, so queries fall back to the live source instead of serving stale data. materialized_views.default_ttl config sets the default refresh interval. Materialization is opt-in (per-table/relationship materialize flag); there is no cost-based auto-materialization.
+
+**Code:** `provisa/mv/models.py`, `provisa/mv/registry.py`, `provisa/core/models.py`
+
+**Tests:** `tests/unit/test_mv_registry.py`
+
+## 7. Result Delivery
+
+### REQ-484 · Output & Delivery {#REQ-484}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Normalized result delivery ([REQ-049](#REQ-049)/050) is an IR-level decomposition, not a serializer transform, and is a per-request client choice via the X-Provisa-Normalized header (denormalized single-file output stays the default). provisa/compiler/normalize.py shreds a nested query into one relational table per projected entity type; each table is produced by its own scoped SELECT DISTINCT pushed to the engine so the denormalized join product never forms (the point at 1M×1M→1B scale). Real PK/FK keys are preserved — source_column lives on the parent table, target_column on the child — and auto-included when not projected, so a consumer can load the small tables into a BI tool and replay the same query to reconstruct the denormalized view locally. Each per-table query is governed identically to the normal path (_prepare_compiled) and [SUPERSEDED by [REQ-840](#REQ-840), 2026-10-03 -- _handle_normalized calls state.federation_engine.ctas_redirect (endpoint.py:203), the engine abstraction, not a Trino-specific CTAS. Kept here for history; do not implement against it.] written to S3 via execute_ctas_redirect (Trino CTAS) [END SUPERSEDED BLOCK]; the endpoint returns a manifest of {table, path, url, rowCount}. A relationship whose join is computed (source_expr/source_constant/source_json_key) has no key column and cannot be normalized — such queries are rejected with HTTP 400.
+
+**Code:** `provisa/compiler/normalize.py`, `provisa/api/data/endpoint.py`
+
+**Tests:** `tests/unit/test_normalized_endpoint.py`, `tests/unit/test_normalize.py`
+
+### REQ-485 · Arrow Flight {#REQ-485}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+**[REQ-146](#REQ-146) WITHDRAWN.** The Arrow Flight Trino route hard-requires the Zaychik Flight SQL proxy; its absence or outage is a hard failure, not a Trino-REST fallback. There is no "Zaychik disabled" configuration (startup always dials ZAYCHIK_HOST defaulting to localhost:8480 and create_flight_connection raises on failure), so flight_client is None means a failed connection — a REST fallback would silently mask an outage, violating the no-silent-fallback rule.
+
+**Code:** `provisa/federation/backend.py`
+
+**Tests:** `tests/unit/test_engine_runtime.py`
+
+## 8. Client Access & Protocols
+
+### REQ-486 · Client Access & Protocols {#REQ-486}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Role selection is server-validated, not client-trusted ([REQ-273](#REQ-273)). The protocol clients (DB-API, ADBC, SQLAlchemy) no longer carry a connection `mode` and no longer assume a role: there is no `admin` default and [SUPERSEDED by REQ-486 amendment, 2026-10-03 -- the sentence holds for server-side authentication only; the client default is intended. Kept here for history; do not implement against it.] no username-as-role fallback on failed auth [END SUPERSEDED BLOCK]. A client may *request* a role via the `X-Provisa-Role` header (or Flight ticket `role`), and the auth middleware honors it only when that role is among the authenticated token's assignments — otherwise it returns 403. When no auth provider is configured (unsecured deployment), the middleware honors any supplied role by design (no identity to validate against). provisa/auth/middleware.py. (Amended 2026-10-03, THE SERVER NEVER FALLS BACK; THE CLIENT HAS A DEFAULT:) On the server, a failed authentication never falls back to the username as a role. In the protocol clients (DB-API, ADBC), when the caller gives no role the client sends the username as the requested role. That client default is intended, and the server still honors the requested role only when it is among the authenticated identity's assignments.
+
+**Code:** `provisa/auth/middleware.py`, `provisa-client/provisa_client/dbapi.py`
+
+**Tests:** `tests/unit/test_path_role_is_held.py`, `tests/unit/test_auth_middleware_multitenancy.py`, `tests/unit/test_protocol_clients.py`
+
+### REQ-487 · Query Development Tools {#REQ-487}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A compile-only REST route `POST /data/compile` ([REQ-161](#REQ-161)) exposes the Stage-1 compiler without execution, wrapping provisa.api.admin.dev_queries.compile_query. The role is derived from auth (`request.state.role`) or the `X-Provisa-Role` header — never client-trusted; an unknown role returns 403 and a compile ValueError returns 400. provisa/api/data/endpoint.py.
+
+**Code:** `provisa/api/data/endpoint.py`, `provisa/api/admin/dev_queries.py`
+
+**Tests:** `tests/unit/test_compile_route.py`
+
+### REQ-488 · Client Access & Protocols {#REQ-488}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+APQ (automatic persisted queries) TTL is bound to the `apq.ttl` config key with a `PROVISA_APQ_TTL` env override (default 86400s), and the APQ Redis cache reuses the shared `redis_url` rather than a separate `REDIS_URL` env var. provisa/api/app.py.
+
+**Code:** `provisa/api/app.py`, `provisa/api/app_startup.py`, `provisa/apq/cache.py`, `provisa/core/settings_catalog.py`
+
+**Tests:** `tests/unit/test_cache_requirements.py`, `tests/unit/test_settings_readers.py`
+
+### REQ-489 · JDBC/ODBC Integration {#REQ-489}
+
+**Status:** ↪ superseded by [REQ-129](#REQ-129) · **Priority:** SHOULD · **Type:** behavioral
+
+**[REQ-129](#REQ-129) amended.** The JDBC driver's result transport is Arrow IPC over Flight, not Parquet. Parquet was never an implemented contract; the requirement is restated to Arrow IPC.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-490 · JDBC/ODBC Integration {#REQ-490}
+
+**Status:** ↪ superseded by [REQ-132](#REQ-132) · **Priority:** SHOULD · **Type:** structural
+
+**[REQ-132](#REQ-132) amended** to "self-contained shaded JAR." The fat JAR cannot drop Gson (no JDK-native JSON; used in four driver classes), so maven-shade `<relocations>` move com.google.{gson,protobuf,common} under io.provisa.shaded.* to prevent host-classpath collisions. Apache Arrow Flight (gRPC/Netty) is acknowledged as a deliberate transport dependency rather than a violation. jdbc-driver/pom.xml.
+
+**Code:** —
+
+**Tests:** —
+
+## 4. Source Connectors
+
+### REQ-491 · Source Connectors {#REQ-491}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+Google Sheets source adapter (`provisa/google_sheets/`): registered via `POST /admin/sources/google_sheets`. Authenticates via service account JSON key or OAuth2. Columns inferred from sheet header row. Multiple sheets per spreadsheet each register as a separate table. Refresh interval configurable (default: 5 minutes). Read-only; no mutations. `tests/unit/test_google_sheets_source.py`
+
+**Code:** `provisa/google_sheets/source.py`, `provisa/federation/connector_duckdb.py`
+
+**Tests:** `tests/unit/test_gsheets_trino_connector.py`, `tests/integration/test_google_sheets_source_e2e.py`
+
+### REQ-492 · Source Connectors {#REQ-492}
+
+**Status:** ↪ superseded by [REQ-540](#REQ-540) · **Priority:** SHOULD · **Type:** behavioral
+
+GovData source adapter (`provisa/govdata/`): registers US Government Open Data (data.gov) datasets via CKAN API. Discovers available datasets/resources, infers column schema from CKAN datastore field definitions. Paginated fetch via CKAN datastore_search. Read-only. `tests/unit/test_govdata_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-493 · Source Connectors {#REQ-493}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+Apache Accumulo source adapter (`provisa/accumulo/`): exposes Accumulo tables as relational via Trino's Accumulo connector. Column family/qualifier mapping DSL required (per [REQ-251](#REQ-251)). Read-only; no mutations (NoSQL, non-relational). `tests/unit/test_accumulo_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-494 · Source Connectors {#REQ-494}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Apache Cassandra source adapter (`provisa/cassandra/`): [SUPERSEDED by [REQ-951](#REQ-951), 2026-10-03 -- reach is engine-relative; engines without the connector read natively over CQL and replicate. Kept here for history; do not implement against it.] exposes Cassandra keyspace/tables via Trino's Cassandra connector [END SUPERSEDED BLOCK]. CQL type mapping to SQL types. Partition key designated as primary key. Read-only; no mutations. [SUPERSEDED by [REQ-1672](#REQ-1672), 2026-10-03 -- provisa/cassandra/fetch.py:11-14 is a native cassandra-driver reader that opens a session for keyspace/table/column discovery. Kept here for history; do not implement against it.] Discovery raises (no live CQL session maintained; per [REQ-482](#REQ-482)) [END SUPERSEDED BLOCK]. `tests/unit/test_cassandra.py`
+
+**Code:** `provisa/cassandra/source.py`, `provisa/cassandra/fetch.py`
+
+**Tests:** `tests/unit/test_cassandra_fetch.py`, `tests/integration/test_cassandra_native_fetch.py`, `tests/integration/test_cassandra_source_e2e.py`
+
+### REQ-495 · Source Connectors {#REQ-495}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Elasticsearch source adapter (`provisa/elasticsearch/`): [SUPERSEDED by [REQ-1672](#REQ-1672), 2026-10-03 -- engines without a connector read the index over HTTP and replicate. Kept here for history; do not implement against it.] exposes ES indices as tables via Trino's Elasticsearch connector [END SUPERSEDED BLOCK]. Schema inference via `GET /<index>/_mapping` (per [REQ-482](#REQ-482)). Nested field paths flattened to columns per mapping DSL (per [REQ-251](#REQ-251)). Read-only; no mutations. `tests/unit/test_elasticsearch_source.py`
+
+**Code:** `provisa/elasticsearch/source.py`, `provisa/elasticsearch/fetch.py`
+
+**Tests:** `tests/unit/test_elasticsearch_fetch.py`, `tests/integration/test_elasticsearch_introspect.py`, `tests/integration/test_elasticsearch_native_fetch.py`
+
+### REQ-496 · Source Connectors {#REQ-496}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+MongoDB source adapter (`provisa/mongodb/`): [SUPERSEDED by [REQ-1730](#REQ-1730), 2026-10-03 -- a mongodb source registered once is also read natively over pymongo on engines without the connector. Kept here for history; do not implement against it.] exposes MongoDB collections as tables via Trino's MongoDB connector [END SUPERSEDED BLOCK]. Document schema inferred from a configurable sample size (default: 1000 documents). Nested documents and arrays flattened per mapping DSL (per [REQ-251](#REQ-251)). Read-only; no mutations. `tests/unit/test_mongodb_source.py`
+
+**Code:** `provisa/mongodb/source.py`, `provisa/mongodb/fetch.py`
+
+**Tests:** `tests/unit/test_mongodb_discovery.py`, `tests/integration/test_mongodb_pipeline_e2e.py`
+
+### REQ-497 · Source Connectors {#REQ-497}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Redis source adapter (`provisa/redis/`): [SUPERSEDED by [REQ-1675](#REQ-1675), 2026-10-03 -- engines without the Trino connector read through redis-py and replicate. Kept here for history; do not implement against it.] exposes Redis keys as relational rows via Trino's Redis connector [END SUPERSEDED BLOCK]. Key pattern and hash field → column mapping DSL required (per [REQ-251](#REQ-251)). Read-only; no mutations. Distinct from Redis-as-cache-store ([REQ-230](#REQ-230)–237) and Redis-as-rate-limit-store ([REQ-371](#REQ-371)). `tests/unit/test_redis_source.py`
+
+**Code:** `provisa/redis/source.py`, `provisa/redis/fetch.py`
+
+**Tests:** `tests/unit/test_redis_source.py`, `tests/unit/test_redis_fetch.py`, `tests/integration/test_redis_native_fetch.py`
+
+### REQ-498 · Source Connectors {#REQ-498}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Prometheus metrics source adapter (`provisa/prometheus/`): exposes Prometheus instant query results as relational rows. Metric name maps to table; label names map to columns; value and timestamp are fixed columns. [SUPERSEDED by [REQ-1689](#REQ-1689), 2026-10-03 -- the mapping keys are metric, labels_as_columns, value_column (provisa/prometheus/source.py:33,87; fetch.py:101). Kept here for history; do not implement against it.] Mapping DSL: `metric_name`, `label_columns`, `value_column`. [END SUPERSEDED BLOCK] Read-only; no mutations. [SUPERSEDED by [REQ-1689](#REQ-1689), 2026-10-03 -- the reader issues a ranged read (start/end/step) plus label/series/metadata calls (fetch.py:73-114), not only instant query. Kept here for history; do not implement against it.] Queries execute via Prometheus HTTP API (`/api/v1/query`). [END SUPERSEDED BLOCK] `tests/unit/test_prometheus_source.py`
+
+**Code:** `provisa/prometheus/source.py`, `provisa/prometheus/fetch.py`
+
+**Tests:** `tests/unit/test_prometheus_source.py`, `tests/unit/test_prometheus_fetch.py`, `tests/integration/test_prometheus_native_fetch.py`
+
+### REQ-499 · Source Connectors {#REQ-499}
+
+**Status:** ↪ superseded by [REQ-826](#REQ-826) · **Priority:** SHOULD · **Type:** behavioral
+
+File source pipeline (`provisa/file_source/`): shared lazy-cache pipeline for non-Trino-connectable file sources (CSV, Parquet, Excel). Implements the design from [REQ-423](#REQ-423) (lazy cache on first query). Provides a common `FileSourceAdapter` base that CSV, Parquet, and Excel adapters inherit. Integrates with the file change watcher ([REQ-424](#REQ-424)–426). `tests/unit/test_file_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-500 · Source Connectors {#REQ-500}
+
+**Status:** ↪ superseded by [REQ-431](#REQ-431) · **Priority:** SHOULD · **Type:** behavioral
+
+Vector embedding source adapter (`provisa/vector/`): registers a vector store (e.g., pgvector table, Chroma, Qdrant) as a Provisa table. Columns include the embedding vector, a configurable text/metadata column set, and an ID column. Supports vector similarity search as a special filter operator (`_vector_near`). Governed via standard RLS and visibility rules. `tests/unit/test_vector_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-501 · Source Connectors {#REQ-501}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+ClickHouse source adapter: [SUPERSEDED by [REQ-840](#REQ-840), 2026-10-03 -- reach is engine-relative; native engines attach or scan ClickHouse directly ([REQ-951](#REQ-951)). Kept here for history; do not implement against it.] connects via Trino ClickHouse connector [END SUPERSEDED BLOCK]. Supports ClickHouse-specific types (LowCardinality, Nullable, FixedString). Read-only; mutations not supported. `tests/unit/test_clickhouse_source.py`
+
+**Code:** `provisa/federation/clickhouse_http_scan.py`, `provisa/federation/connector_duckdb.py`
+
+**Tests:** `tests/integration/test_clickhouse_source_e2e.py`, `tests/unit/test_clickhouse_connectors.py`
+
+### REQ-502 · Source Connectors {#REQ-502}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Snowflake source adapter: [SUPERSEDED by [REQ-840](#REQ-840), 2026-10-03 -- reach is engine-relative. Kept here for history; do not implement against it.] connects via Trino Snowflake connector [END SUPERSEDED BLOCK]. Warehouse, database, schema, and role configurable per source registration. Read-only by default; [SUPERSEDED by [REQ-664](#REQ-664), 2026-10-03 -- no allow_mutations flag exists (grep of provisa/ finds none); writability is the connector's declared write capability. Kept here for history; do not implement against it.] mutations supported if `allow_mutations: true` [END SUPERSEDED BLOCK]. `tests/unit/test_snowflake_source.py`
+
+**Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/connector_base.py`
+
+**Tests:** `tests/unit/test_snowflake_connectors.py`, `tests/integration/test_snowflake_source_e2e.py`
+
+### REQ-503 · Source Connectors {#REQ-503}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+BigQuery source adapter: [SUPERSEDED by [REQ-840](#REQ-840), 2026-10-03 -- reach is engine-relative. Kept here for history; do not implement against it.] connects via Trino BigQuery connector [END SUPERSEDED BLOCK]. Project, dataset, and credentials (service account JSON) configurable per source registration. Read-only; no mutations (BigQuery is analytical). `tests/unit/test_bigquery_source.py`
+
+**Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/connector_base.py`
+
+**Tests:** `tests/unit/test_bigquery_connectors.py`, `tests/integration/test_bigquery_federation_engine_e2e.py`
+
+### REQ-504 · Source Connectors {#REQ-504}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+DuckDB source adapter: connects via in-process DuckDB (direct, not Trino). [SUPERSEDED by [REQ-900](#REQ-900), 2026-10-03 -- a duckdb source is a standalone .duckdb file attached by the DuckDB engine only; no :memory: option exists. Kept here for history; do not implement against it.] Database file path or `:memory:` configurable. [END SUPERSEDED BLOCK] Read-only by default. Suitable for local development and analytical queries over Parquet/CSV files via DuckDB's native scan functions. `tests/unit/test_duckdb_source.py`
+
+**Code:** `provisa/federation/connector_duckdb.py`
+
+**Tests:** —
+
+### REQ-505 · Source Connectors {#REQ-505}
+
+**Status:** ↪ superseded by [REQ-1660](#REQ-1660) · **Priority:** SHOULD · **Type:** behavioral
+
+SQLite source adapter: ingested into the lazy-cache pipeline ([REQ-499](#REQ-499)) rather than a live Trino connector (no Trino SQLite connector exists). Database file registered by path; schema inferred at ingest time. Read-only. Change watcher ([REQ-424](#REQ-424)) monitors mtime. `tests/unit/test_sqlite_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-506 · Control Plane & Deployment {#REQ-506}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+Control plane module (`provisa/control_plane/`): manages SLA monitoring, quota enforcement, and cluster health aggregation across multi-tenant deployments. Exposes health metrics via Prometheus endpoint. Integrates with OTel traces ([REQ-302](#REQ-302)) for latency SLA tracking. Configuration: `control_plane.enabled`, `control_plane.sla_p99_ms` thresholds per role. `tests/unit/test_control_plane.py` (Amended 2026-10-03, SERVICE-LEVEL LIMITS ARE CONFIGURABLE AND THE RESULTS ARE STORED:) The service-level limits (the latency percentile limit and the availability floor) are operator settings, each with its admin UI surface, not constants in code. Every served query's latency and outcome is recorded, and so is every breach, so that the summary and the breach history are read from stored data and survive a restart. (Amended 2026-10-03, QUOTAS ARE THE PLAN CEILINGS:) Quota enforcement is not a separate mechanism of this requirement. It is the plan ceilings already required elsewhere: the per-query ceilings on rows, bytes scanned, memory and time ([REQ-1044](#REQ-1044)), the storage ceiling ([REQ-1046](#REQ-1046), [REQ-1047](#REQ-1047)) and the limit on sources. This requirement adds the service-level monitoring beside them.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-507 · Control Plane & Deployment {#REQ-507}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** infrastructure
+
+Helm chart (`helm/`): Kubernetes deployment via Helm chart. Values schema (`values.schema.json`) validates all configurable values at `helm install` time. Chart includes: provisa-api, trino, postgresql, redis, minio deployments; optional observability stack (otel-collector, grafana, tempo, prometheus) via `observability.enabled` flag. `tests/e2e/test_helm_deploy.py`
+
+**Code:** `helm/provisa/Chart.yaml`, `helm/provisa/values.yaml`, `helm/provisa/templates/provisa-deployment.yaml`, `helm/provisa/templates/trino-coordinator.yaml`, `helm/provisa/templates/postgresql.yaml`, `helm/provisa/templates/redis.yaml`, `helm/provisa/templates/minio.yaml`, `helm/provisa/templates/grafana.yaml`
+
+**Tests:** `tests/e2e/test_helm_minikube.py`, `tests/integration/test_helm_master_key.py`, `tests/unit/test_infra_requirements.py`
+
+### REQ-508 · Control Plane & Deployment {#REQ-508}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+
+Docker Compose service catalog: multiple compose file variants cover different deployment profiles. `docker-compose.core.yml`: provisa-api + trino + postgresql + redis + minio. `docker-compose.app.yml`: [SUPERSEDED by [REQ-815](#REQ-815), 2026-10-03 -- docker-compose.app.yml defines only provisa and provisa-ui; minio lives in core and there is no pgAdmin in any compose file. Kept here for history; do not implement against it.] adds MinIO console and pgAdmin [END SUPERSEDED BLOCK]. `docker-compose.observability.yml`: adds OTel Collector, Grafana, Tempo, Prometheus (per [REQ-330](#REQ-330)). `docker-compose.airgap.yml`: all images bundled, no pull at startup (per [REQ-294](#REQ-294)). `docker-compose.dev.yml`: development mode with hot-reload.
+
+**Code:** `docker-compose.core.yml`, `docker-compose.app.yml`, `docker-compose.observability.yml`, `docker-compose.airgap.yml`, `docker-compose.dev.yml`
+
+**Tests:** `tests/unit/test_infra_requirements.py`
+
+### REQ-509 · Control Plane & Deployment {#REQ-509}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** infrastructure
+
+WSL2 Windows deployment: `start-ui.sh` and install scripts detect WSL2 environment and adjust host network bindings accordingly. Docker socket path defaults to `/var/run/docker.sock` on Linux/WSL2; detected at startup via `uname -r | grep -i microsoft`. Documented in deployment guide. `tests/e2e/test_wsl2_install.py`
+
+**Code:** `start-ui-install.sh`
+
+**Tests:** —
+
+### REQ-510 · Control Plane & Deployment {#REQ-510}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+Schema clustering (`provisa/schema_clusters.py`): uses networkx Louvain community detection to group registered tables into semantic clusters (l1/l2/l3 cluster labels). Cluster labels are stored in `registered_tables` and exposed via the graph-schema endpoint ([REQ-398](#REQ-398)) as `scl1`/`scl2`/`scl3` fields per node label. Clustering runs at schema build time and is re-run when tables are added/removed. Enables the graph UI to group and color nodes by cluster. `tests/unit/test_schema_clusters.py`
+
+**Code:** `provisa/schema_clusters.py`, `provisa/api/startup_seed.py`, `provisa/api/admin/settings_router.py`, `provisa/api/rest/cypher_router.py`
+
+**Tests:** `tests/integration/test_settings_router_api.py`, `tests/unit/test_graph_grouping_requirements.py`
+
+## 4. Source Connectors
+
+### REQ-511 · SharePoint Connector {#REQ-511}
+
+**Status:** ↪ superseded by [REQ-726](#REQ-726) · **Priority:** SHOULD · **Type:** behavioral
+
+SharePoint source adapter (`provisa/sharepoint/`): registered via `POST /admin/sources/sharepoint`. Authenticates via Microsoft Entra ID (OAuth2 client credentials or delegated flow). Exposes SharePoint Lists as relational tables — list columns map directly to relational columns; choice/lookup/person fields mapped to their text representation. Supports SharePoint Online (Graph API: `GET /sites/{site}/lists/{list}/items`) and SharePoint Server (REST API). Paginates via `@odata.nextLink`. Read-only; no mutations. Refresh interval configurable (default: 15 minutes). `provisa/sharepoint/source.py`, `tests/unit/test_sharepoint_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-512 · Splunk Connector {#REQ-512}
+
+**Status:** ↪ superseded by [REQ-721](#REQ-721) · **Priority:** SHOULD · **Type:** behavioral
+
+Splunk source adapter (`provisa/splunk/`): registered via `POST /admin/sources/splunk`. Authenticates via Splunk token or username/password (Splunk REST API). Executes Splunk Search Processing Language (SPL) queries via `POST /services/search/jobs` (async job) or `GET /services/search/jobs/export` (streaming). Query result fields map to columns; `_time`, `_raw`, `host`, `source`, `sourcetype` are always included when present. Registered table stores the SPL query template; native filter columns (`_nf_` prefix) map to SPL search terms appended to the base query. Read-only; no mutations. `provisa/splunk/source.py`, `tests/unit/test_splunk_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-513 · Data Isolation {#REQ-513}
+
+**Status:** ↪ superseded by [REQ-1293](#REQ-1293) · **Priority:** MUST · **Type:** constraint
+
+All backend data queries and mutations must be scoped to the user's active organization, enforced at the GraphQL API layer and every backend router. Every query and mutation compiles to SQL that includes `WHERE org_id = $org_id` via Stage 2 governance. Non-superadmin users can only access data belonging to their organization; superadmin users access the active organization context set via the org switcher. | Server-side org scoping prevents users from accessing data outside their assigned organization. | provisa/api/, provisa/compiler/stage2.py, provisa/security/ | tests/unit/test_org_scoping.py, tests/integration/test_org_isolation.py
+
+**Code:** —
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-514 · Admin UI {#REQ-514}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+[SUPERSEDED by [REQ-1605](#REQ-1605), 2026-10-03 -- The switcher lists only orgs the caller holds a membership in, for any member; platform_admin gets no extra orgs. Kept here for history; do not implement against it.] Superadmin org switcher component in NavBar [END SUPERSEDED BLOCK], styled identically to the existing role selector. Displays current active organization and dropdown to select a different org from the user's membership list. [SUPERSEDED by [REQ-1276](#REQ-1276), 2026-10-03 -- The org is carried by the x-org-provisa header or subdomain; X-Org-Id was replaced. Kept here for history; do not implement against it.] Active org stored in X-Org-Id header on all subsequent API requests. [END SUPERSEDED BLOCK] Non-superadmin users see only their single org name (read-only, no dropdown). | Superadmin org switcher enables context switching for testing and administration across multiple organizations. | provisa-ui/src/components/NavBar.tsx, provisa-ui/src/hooks/useOrgSelection.ts | tests/e2e/test_org_switcher.py
+
+**Code:** `provisa-ui/src/components/OrgSwitcher.tsx`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/lib/authFetch.ts`
+
+**Tests:** `provisa-ui/src/__tests__/OrgSwitcher.test.tsx`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-515 · Subdomain-based Org Resolution {#REQ-515}
+
+**Status:** ↪ superseded by [REQ-1276](#REQ-1276) · **Priority:** MUST · **Type:** behavioral
+
+Every backend HTTP router and GraphQL mutation handler validates X-Org-Id header and enforces that the authenticated user is a member of that organization before processing the request. Requests with missing, invalid, or unauthorized X-Org-Id header are rejected with HTTP 403. | Header validation prevents unauthorized access attempts and ensures every request respects org boundaries. | provisa/api/middleware/, provisa/security/org_enforcement.py | tests/unit/test_org_header_validation.py, tests/integration/test_org_enforcement.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-516 · Org Invitations {#REQ-516}
+
+**Status:** ↪ superseded by [REQ-1287](#REQ-1287) · **Priority:** SHOULD · **Type:** behavioral
+
+Invite links (existing infrastructure) automatically register new users into the specific organization associated with the invite. User is assigned a default role in that organization. First-time login via an invite link completes org membership enrollment. | Invite-based onboarding assigns new users directly to their organization without manual admin intervention. | provisa/auth/, provisa/core/repositories/org.py | tests/unit/test_invite_onboarding.py, tests/integration/test_invite_flow.py
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-517 · Access Control {#REQ-517}
+
+**Status:** ↪ superseded by [REQ-1337](#REQ-1337) · **Priority:** MUST · **Type:** constraint
+
+The Admin/Orgs page is superadmin-only, enforced by an `isSuperAdmin` gate that checks the user's global superadmin status regardless of active org context. Non-superadmin users cannot access this page; navigation entry is hidden, direct URL access rejected with a 403 permission error. | Superadmin-only enforcement of the Orgs admin page prevents non-admins from viewing or managing organizations. | provisa-ui/src/pages/AdminOrgsPage.tsx, provisa/api/admin/orgs_router.py | tests/unit/test_orgs_page_access.py, tests/e2e/test_admin_orgs_guard.py
+
+**Code:** —
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-518 · Admin UI {#REQ-518}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** ui
+
+ERD modal: The Entity Relationship Diagram is presented as a modal dialog (not an inline panel or separate page), rendering a Cytoscape-based visualization of all registered tables and their relationships. Modal is self-contained, no new backend endpoints required; data sourced from existing `useTables`, `useRelationships`, and `useDomains` hooks. ERD modal is reachable via a toolbar button on both the Tables page (`provisa-ui/src/pages/TablesPage.tsx`) and the Relationships page (`provisa-ui/src/pages/RelationshipsPage.tsx`). | Toolbar-accessible ERD modal lets stewards explore table schemas and relationships without context-switching. | provisa-ui/src/components/graph/CytoscapeErd.tsx, provisa-ui/src/pages/TablesPage.tsx, provisa-ui/src/pages/RelationshipsPage.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** `provisa-ui/src/components/erd/ErdModal.tsx`, `provisa-ui/src/components/erd/ErdPanel.tsx`, `provisa-ui/src/pages/TablesPage.tsx`, `provisa-ui/src/pages/RelationshipsPage.tsx`
+
+**Tests:** —
+
+### REQ-519 · Admin UI {#REQ-519}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+Tables in the ERD are grouped into compound nodes (domain clusters) by domain; each domain becomes a visually distinct parent node containing all its registered tables as child nodes. Domain grouping preserves the `RegisteredTable` and `Relationship` types from `provisa-ui/src/types/admin.ts`. | Domain clustering in the ERD organizes tables semantically without requiring new data types. | provisa-ui/src/components/graph/CytoscapeErd.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** `provisa-ui/src/components/erd/erd-model.ts`, `provisa-ui/src/components/erd/ErdPanel.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/erd-model.test.ts`
+
+### REQ-520 · Admin UI {#REQ-520}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+Domain groups in the ERD support collapse/expand toggling to hide/show their child tables. Toggling a domain updates the Cytoscape graph layout without re-fetching data. State of collapsed domains is transient (not persisted). | Collapse/expand domain grouping prevents visual overload in large ERDs. | provisa-ui/src/components/graph/CytoscapeErd.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** `provisa-ui/src/components/erd/erd-model.ts`, `provisa-ui/src/components/erd/ErdPanel.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/erd-model.test.ts`
+
+### REQ-521 · Admin UI {#REQ-521}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The ERD includes a column-detail toggle with three levels: show all columns, show only key columns (PK/FK marked via `is_primary_key` / `is_foreign_key`), or show no columns. Toggle updates the graph display without re-fetching data. | Multi-level column detail reduces visual noise while preserving access to column-level relationships. | provisa-ui/src/components/graph/CytoscapeErd.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** `provisa-ui/src/components/erd/erd-model.ts`, `provisa-ui/src/components/erd/ErdPanel.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/erd-model.test.ts`
+
+### REQ-522 · Admin UI {#REQ-522}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** ui
+
+Hover tooltips on domain groups, table nodes, and column items display their descriptions. Descriptions are sourced from `domain.description`, `table.description`, and `column.description` fields from registered metadata. Missing descriptions fall back to empty. | Hover tooltips provide in-context documentation without cluttering the diagram. | provisa-ui/src/components/graph/CytoscapeErd.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** `provisa-ui/src/components/erd/erd-model.ts`, `provisa-ui/src/components/erd/ErdPanel.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/erd-model.test.ts`
+
+### REQ-523 · Admin UI {#REQ-523}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The ERD respects the currently selected domain filter on the Tables/Relationships page (if any). If a domain filter is active, the ERD displays only tables and relationships within that domain. If no filter is active, all domains and tables are shown. Filter state is read from the page context and updates reactively. | Domain-filtered ERD view keeps visualization focused on the steward's current domain context. | provisa-ui/src/components/graph/CytoscapeErd.tsx, provisa-ui/src/pages/TablesPage.tsx, provisa-ui/src/pages/RelationshipsPage.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** `provisa-ui/src/components/erd/erd-model.ts`, `provisa-ui/src/components/erd/ErdPanel.tsx`, `provisa-ui/src/pages/TablesPage.tsx`, `provisa-ui/src/pages/RelationshipsPage.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/erd-model.test.ts`
+
+### REQ-524 · Admin UI {#REQ-524}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** ui
+
+The ERD modal provides download buttons for exporting the current diagram as SVG, PNG, or JSON. The export functions reuse existing utilities from `provisa-ui/src/components/graph/graph-export.ts` (`downloadGraphSvg`, `compositeGraphDownload`, `downloadBlob`). | Export buttons let stewards save ERD visualizations for documentation, sharing, and offline reference. | provisa-ui/src/components/graph/CytoscapeErd.tsx, provisa-ui/src/components/graph/graph-export.ts | tests/e2e/test_erd_modal.py
+
+**Code:** `provisa-ui/src/components/erd/ErdPanel.tsx`, `provisa-ui/src/components/graph/graph-export.ts`
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-1019 · Access Control {#REQ-1019}
+
+**Status:** ↪ superseded by [REQ-1337](#REQ-1337) · **Priority:** MUST · **Type:** structural
+
+user_org_memberships carries an org-scoped role: admin (governance/grants), developer (modify queries), or analyst (read-only). Only admin may mint invites, approve creation requests, and grant or change other members' roles.
+
+**Use case:** Delegates org governance to admins without requiring platform-wide superadmin involvement. Establishes role hierarchy within a single org with clear permission boundaries.
+
+**Code:** —
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1021 · Email Delivery {#REQ-1021}
+
+**Status:** ↪ superseded by [REQ-1330](#REQ-1330) · **Priority:** MUST · **Type:** behavioral
+
+When an admin mints an org invite, a templated email is sent via EmailProvider containing the accept link and expiry; supports resend. Send is enqueued through the [REQ-942](#REQ-942) outbox (atomic with org_invites row insert) and retried on transient SMTP failure.
+
+**Use case:** Ensures invitees are notified and provides the accept mechanism. Transactional outbox pattern guarantees delivery retry without manual intervention or duplicate emails.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1022 · Email Delivery {#REQ-1022}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+When a creation or approval request is raised, admin approvers for the org are notified by email with approve/deny links, [SUPERSEDED by [REQ-1330](#REQ-1330), 2026-10-03 -- Mail is sent through the EmailSender port; no EmailProvider or [REQ-942](#REQ-942) outbox path exists for it. Kept here for history; do not implement against it.] delivered via the same EmailProvider + outbox path [END SUPERSEDED BLOCK].
+
+**Use case:** Alerts approvers to pending org-governance decisions. Provides direct approve/deny action links to avoid portal navigation.
+
+**Code:** `provisa/api/admin/creation_requests_router.py`, `provisa/core/mail.py`
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-087 · Column-Level Masking {#REQ-087}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Per-column, per-role data masking at the SQL level. Masked columns return transformed values — raw data never reaches the client. Masking is per-column, per-role. Same column can have different masks for different roles. Masking is applied at SQL level — the mask expression replaces the column in the SELECT projection. The DB engine performs the transformation. A column can be both visible AND masked — the user sees the column exists and [SUPERSEDED by [REQ-531](#REQ-531), 2026-10-03 -- masked columns are rejected from WHERE and HAVING (V005, sql_validator.py:15). Kept here for history; do not implement against it.] can filter/sort on it [END SUPERSEDED BLOCK], but the returned values are masked.
+
+**Code:** `provisa/security/masking.py`, `provisa/compiler/mask_inject.py`
+
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`, `tests/unit/test_inherited_roles.py`
+
+### REQ-088 · Column-Level Masking {#REQ-088}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+`regex` masking (string columns): `REGEXP_REPLACE("col", 'pattern', 'replace')` — works in both PG and Trino.
+
+**Code:** `provisa/security/masking.py`
+
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+
+### REQ-089 · Column-Level Masking {#REQ-089}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+`constant` masking (any type): replace column with literal value. Options: `NULL` (if nullable), `0`, `-1`, custom value, `MAX`, `MIN` (resolved to type bounds at compile time, e.g., integer MAX → 2147483647).
+
+**Code:** `provisa/security/masking.py`
+
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+
+### REQ-090 · Column-Level Masking {#REQ-090}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+`truncate` masking (date/timestamp): `DATE_TRUNC('precision', "col")` — e.g., precision=year turns 2025-03-31 → 2025-01-01.
+
+**Code:** `provisa/security/masking.py`
+
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+
+### REQ-091 · Column-Level Masking {#REQ-091}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Type validation: regex masking only allowed on string types (varchar, char, text); numeric types reject regex rules at config load time. Attempting to configure regex on a numeric/boolean/date column raises a validation error at config load time. `NULL` replacement only allowed on nullable columns — if column is NOT NULL, config validation rejects `value: NULL`.
+
+**Code:** `provisa/security/masking.py`
+
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+
+## 4. Source Connectors
+
+### REQ-116 · Kafka Sources & Sink {#REQ-116}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+Schema Registry integration: fetch Avro/Protobuf/JSON Schema from Confluent Schema Registry. Auto-map schema fields to column definitions (same primitive/JSONB rules). Schema evolution: detect changes, flag affected registered tables for re-review.
+
+**Code:** `provisa/kafka/schema_registry.py`
+
+**Tests:** `tests/unit/test_kafka_schema.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-916 · Admin Configuration {#REQ-916}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The federation engine is selectable from a registry. The registry lists every selectable engine with a label, a description and a config schema; each config field names the platform-config key it persists to and declares a type of string, number, boolean or select. Embedded (Provisa-managed) and bring-your-own variants of an engine are separate entries: the embedded Trino entry carries node role and execution tuning, the bring-your-own entry carries only the connection. An administrator with platform-settings rights reads the persisted selection, the running engine, any environment pin and the registry from GET /admin/federation-engine, and persists a selection with PUT /admin/federation-engine, which rejects a key not in the registry and stores only the fields the chosen engine declares, resetting keys declared only by other engines. The change takes effect at the next service restart, because the engine is bound once at boot. The admin UI renders the selector and the selected engine's fields generically from the registry.
+
+**Use case:** A platform administrator picks DuckDB, Trino or a warehouse as the deployment's federation engine and enters its connection settings from the admin UI without editing config files.
+
+**Code:** `provisa/federation/engine.py`, `provisa/api/trino_setup.py`, `provisa/api/admin/settings_router.py`, `provisa-ui/src/components/admin/FederationEngineTab.tsx`, `provisa-ui/src/api/admin.ts`
+
+**Tests:** `tests/unit/test_federation_engine.py`, `tests/unit/test_admin_config_tabs.py`
+
+## 1. Access Governance & Security
+
+### REQ-918 · Encryption {#REQ-918}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Encryption is configured from the admin UI. The registry of encryption providers is shown with each provider's label, description, availability and config fields; a provider whose runtime is not installed is shown but cannot be saved, so selection fails closed. An administrator with platform-settings rights reads the selected provider, the key id and whether a local master key is present, and saves a provider with its own config fields; the provider binds at startup, so a provider change takes effect on restart. A fresh AES-256 master key can be provisioned into the OS keychain, or the host file keystore, under a key id; provisioning takes effect immediately, without a restart, by rebuilding the live encryption service on the same provider. The key is never returned: when no keystore can hold it, provisioning refuses and the operator supplies the key out of band through PROVISA_ENCRYPTION_KEY.
+
+**Use case:** A platform administrator selects an encryption provider and provisions its master key, and sees whether a key is present, without the key ever being shown.
+
+**Code:** `provisa/encryption/providers.py`, `provisa/api/admin/settings_router.py`, `provisa-ui/src/components/admin/EncryptionTab.tsx`, `provisa-ui/src/api/admin.ts`
+
+**Tests:** `tests/unit/test_encryption_providers.py`, `tests/unit/test_admin_config_tabs.py`
+
+## 2. Authentication & Identity
+
+### REQ-919 · Authentication {#REQ-919}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The authentication provider is configured from the admin UI. The registry lists the providers none, firebase, keycloak, oauth/OIDC and simple, each with its config fields, secret fields marked. An administrator with platform-settings rights reads the selected provider, the per-provider config and the common role settings (default role, assignments source, trust upstream, allow simple auth) from GET /admin/auth, and saves them with PUT /admin/auth. An unknown provider is rejected with a 400, and only the config keys the chosen provider declares are persisted. The provider binds at startup, so a change takes effect after a service restart. Secret fields, the simple provider's JWT signing secret and client secrets, are write-only: the GET returns a bit saying whether a value is set, never the value.
+
+**Use case:** A platform administrator switches the deployment from open access to an OIDC or Firebase provider and sets the default role from the admin UI.
+
+**Code:** `provisa/api/admin/settings_router.py`, `provisa-ui/src/components/admin/AuthTab.tsx`, `provisa-ui/src/api/admin.ts`
+
+**Tests:** `tests/integration/test_settings_router_api.py`, `tests/unit/test_deployment_endpoints_gate.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1398 · Org AI Model Configuration {#REQ-1398}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+An organization may hold its own API key for each LLM vendor whose provider takes a plain api key; the set is anthropic, openai, cohere, groq, mistral, xai, deepseek, together, fireworks, nebius, sambanova and inception, plus a separate Jev key. The keys are org secrets, encrypted at rest, and an administrator sets, replaces or clears them on Admin / AI Models; a blank value clears a vendor's key. The keys are write-only: the surface reports only which vendors have a key set, never a value. When the org's LLM calls, model listing and natural-language queries build a client, they use the org's key for the role's vendor; a vendor with no org key falls through to the deployment's environment credential. Vendors whose auth needs more than a key, and keyless local endpoints, are not offered. A stored value may be a ${secret:NAME} reference to the org vault, resolved when the client is built ([REQ-1580](#REQ-1580)).
+
+**Use case:** An organization uses its own Anthropic or OpenAI account for the model-backed features instead of the deployment's shared credential.
+
+**Code:** `provisa/llm/vendor_models.py`, `provisa/llm/client.py`, `provisa/core/org_secrets.py`, `provisa/nl/runner.py`, `provisa/api/admin/ai_models_router.py`, `provisa/api/admin/discovery.py`, `provisa/api/admin/schema_helpers.py`, `provisa-ui/src/components/admin/AiModelsTab.tsx`, `provisa-ui/src/api/aiModels.ts`
+
+**Tests:** `tests/integration/test_org_secrets.py`, `tests/unit/test_llm_client_endpoints.py`, `tests/unit/test_admin_config_tabs.py`
+
+## 8. Client Access & Protocols
+
+### REQ-1401 · REST API {#REQ-1401}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A grouped or aggregate result may carry the underlying rows of each group. On REST and JSON:API the includeNodes query parameter, and on gRPC the include_nodes request field, append a nodes sub-selection of the base table's scalar columns to each group of the group-by result; without it only the group key and aggregates are returned. The natural-language executor and the gRPC Explorer proxy pass the same parameter through. The result is the same rows GraphQL's group-by row returns under its nodes field, shaped into each surface's own envelope. The REST parameter is declared in the generated OpenAPI spec so that the explorer renders an input for it.
+
+**Use case:** A client that groups orders by customer also receives each customer's order rows in the same response.
+
+**Code:** `provisa/grpc/query_ir.py`, `provisa/nl/executor.py`, `provisa/api/jsonapi/generator.py`, `provisa/api/rest/generator.py`, `provisa/api/rest/openapi_spec.py`, `provisa/api/data/endpoint_grpc_proxy.py`, `provisa/compiler/schema_gen.py`
+
+**Tests:** `tests/unit/test_rest_aggregates.py`, `tests/unit/test_grpc_aggregates.py`, `tests/unit/test_nl_aggregation_routing.py`, `tests/unit/test_openapi_spec.py`, `tests/unit/test_group_by.py`, `tests/integration/test_grpc_proxy.py`
+
+## 1. Access Governance & Security
+
+### REQ-022 · Query Governance {#REQ-022}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** MUST · **Type:** behavioral
+
+Submission: full query text, compiled SQL, target tables, parameter schema, permitted output types, developer identity (REQ-022). [Persisted query registry, Phase H.]
+
+**Code:** —
+
+**Tests:** `tests/unit/test_registry_removed.py`
+
+### REQ-026 · Query Governance {#REQ-026}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** MUST · **Type:** behavioral
+
+Deprecation with replacement pointer (REQ-026) - deprecated queries return clear error directing to replacement. [Persisted query registry, Phase H.]
+
+**Code:** —
+
+**Tests:** `tests/unit/test_registry_removed.py`
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-077 · Query Result Cache {#REQ-077}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Query results are cached in a Redis-backed application-layer cache behind a CacheStore interface: get, set with TTL, invalidate by key pattern, invalidate by table id. Cache check runs before execution and store after, transparently; a miss executes normally. Redis is optional at startup: with no Redis URL a no-op store is used and caching is disabled. (Cache control per source/table is Phase Z; per-request opt-in is amended into [REQ-544](#REQ-544).)
+
+**Code:** `provisa/cache/store.py`, `provisa/cache/middleware.py`
+
+**Tests:** `tests/unit/test_cache_store.py`, `tests/integration/test_cache_store.py`
+
+### REQ-079 · Query Result Cache {#REQ-079}
+
+**Status:** ✗ rejected · **Priority:** MUST · **Type:** behavioral
+
+Registration model changes ([REQ-025](#REQ-025)) trigger invalidation of affected cache entries by query ID.
+
+**Code:** `provisa/cache/tenancy.py`
+
+**Tests:** `tests/unit/test_cache_scope_follows_model.py`
+
+### REQ-080 · Query Result Cache {#REQ-080}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Provisa mutations (INSERT/UPDATE/DELETE) invalidate cache entries that reference the mutated table.
+
+**Code:** `provisa/api/data/table_written.py`, `provisa/cache/tenancy.py`, `provisa/cache/store.py`
+
+**Tests:** `tests/unit/test_cache_tenant_invalidation.py`
+
+### REQ-081 · Materialized View Optimization {#REQ-081}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Materialized views are invisible in the GraphQL SDL by default: users query the same schema and the optimization is transparent. An MV registry stores definitions, last refresh time, target table, row count and status (fresh, stale, refreshing, disabled), and the steward controls MV lifecycle (create, refresh schedule, enable/disable, drop).
+
+**Code:** `provisa/mv/models.py`, `provisa/mv/registry.py`, `provisa/mv/refresh.py`, `provisa/mv/rewriter.py`
+
+**Tests:** `tests/unit/test_mv_registry.py`, `tests/unit/test_mv_lifecycle.py`, `tests/unit/test_mv_tenant_isolation.py`, `tests/e2e/test_mv_optimization.py`
+
+### REQ-084 · Materialized View Optimization {#REQ-084}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Mutations on source tables mark affected materialized views as stale; a stale view is not used for rewrite and the original SQL executes.
+
+**Code:** `provisa/mv/registry.py`, `provisa/api/data/table_written.py`
+
+**Tests:** `tests/e2e/test_mv_optimization.py`, `tests/unit/test_refresh_mv_mutation.py`, `tests/unit/test_mv_registry.py`
+
+## 1. Access Governance & Security
+
+### REQ-085 · Materialized View Optimization {#REQ-085}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+RLS is applied after the MV rewrite: the rewritten query keeps the WHERE clauses and parameters injected for row-level security, because RLS is enforced at the SQL level regardless of the underlying table.
+
+**Code:** `provisa/mv/rewriter.py`
+
+**Tests:** `tests/e2e/test_mv_optimization.py`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-086 · Materialized View Optimization {#REQ-086}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A steward may set expose_in_sdl: true on an MV definition. The MV target table is then registered as a table with its own columns, domain and visibility rules and appears as a queryable type in the schema, under the same governance (RLS, column visibility) as any registered table.
+
+**Code:** `provisa/api/app_loaders.py`, `provisa/mv/models.py`
+
+**Tests:** `tests/e2e/test_mv_optimization.py`
+
+## 4. Source Connectors
+
+### REQ-114 · Kafka Sources & Sink {#REQ-114}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Kafka topic registration as data source: register a Kafka cluster (bootstrap servers, auth); each topic + schema becomes a registered table, schema from Schema Registry, manual JSON schema, or sample message inference; the engine Kafka connector handles reads; primitives become native columns, complex nested values become JSONB; complex objects are not filterable and carry no relationships.
+
+**Code:** `provisa/kafka/source.py`
+
+**Tests:** `tests/unit/test_kafka_schema.py`, `tests/integration/test_kafka_source.py`
+
+## 9. Live Data & Events
+
+### REQ-115 · Kafka Sources & Sink {#REQ-115}
+
+**Status:** ↪ superseded by [REQ-176](#REQ-176) · **Priority:** SHOULD · **Type:** behavioral
+
+publish query results to Kafka topics: new output format (Accept: application/x-kafka or approved query config output: kafka); after query execution serialize result rows as JSON messages and produce to the configured topic; topic + key config per approved query: { topic, key_column }; async production - fire-and-forget with delivery callback.
+
+**Code:** `provisa/kafka/sink.py`
+
+**Tests:** `tests/unit/test_kafka_sink.py`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-388 · Relationship Alias {#REQ-388}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+The Relationship model accepts an optional alias field, a relationship type name (for example WORKS_FOR) that defaults to None. The alias is persisted with the relationship row and exposed to the Cypher label map.
+
+**Code:** `provisa/core/models.py`, `provisa/core/repositories/relationship.py`, `provisa/cypher/label_map.py`
+
+**Tests:** `tests/unit/test_relationship_alias.py`
+
+### REQ-389 · Relationship Alias {#REQ-389}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A relationship alias is unique per source table. Saving a second relationship with the same alias on the same source table fails with a ValueError naming the alias and the source table.
+
+**Code:** `provisa/core/repositories/relationship.py`, `provisa/core/schema_org.py`
+
+**Tests:** `tests/unit/test_relationship_alias.py`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-390 · Relationship Alias {#REQ-390}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+CypherLabelMap indexes relationships by alias so a Cypher relationship type written as the alias resolves to the mapped source and target tables. RelationshipMapping carries the alias, defaulting to None, and a wrong arrow direction or unknown type yields an empty result.
+
+**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator_rel.py`
+
+**Tests:** `tests/unit/test_relationship_alias.py`, `tests/unit/test_cypher_translator.py`
+
+### REQ-391 · Relationship Alias {#REQ-391}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+When several source/target pairs share one relationship alias, the aliases index stores every mapping under that alias and the Cypher translator emits a UNION ALL across them.
+
+**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator_rel.py`
+
+**Tests:** `tests/unit/test_relationship_alias.py`, `tests/unit/test_cypher_translator.py`
+
+## 4. Source Connectors
+
+### REQ-735 · Cassandra Connector {#REQ-735}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Cassandra source adapter maps CQL data types to engine types (text to VARCHAR, bigint to BIGINT, timestamp to TIMESTAMP, uuid to UUID, ...). Schema discovery from keyspace metadata annotates partition and clustering key columns; collection types are mapped by their base type, and unmapped types or missing metadata raise an error. (Full original text is truncated in the feature comment.)
+
+**Code:** `provisa/cassandra/source.py`
+
+**Tests:** `tests/steps/steps_cassandra_connector.py`, `tests/unit/test_cassandra_fetch.py`
+
+### REQ-736 · File & Lake Sources {#REQ-736}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+File source adapter supports SQLite, CSV and Parquet formats. SQLite uses native type mapping (INTEGER to BIGINT, REAL to DOUBLE, ...); discovery returns column definitions and queries return results as row dicts. (Full original text is truncated in the feature comment.)
+
+**Code:** `provisa/file_source/source.py`
+
+**Tests:** `tests/steps/steps_file_lake_sources.py`
+
+### REQ-738 · NoSQL Adapters {#REQ-738}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+MongoDB and Elasticsearch source adapters support live connections to running services. The MongoDB adapter queries a collection with filter criteria and returns matching documents; the Elasticsearch adapter reads index mappings and documents. (Full original text is truncated in the feature comment.)
+
+**Code:** `provisa/mongodb/fetch.py`, `provisa/elasticsearch/fetch.py`, `provisa/elasticsearch/source.py`
+
+**Tests:** `tests/steps/steps_nosql_adapters.py`, `tests/unit/test_elasticsearch_fetch.py`, `tests/unit/test_mongodb_discovery.py`
+
+### REQ-739 · API & Integration {#REQ-739}
+
+**Status:** ↪ superseded by [REQ-1924](#REQ-1924) · **Priority:** SHOULD · **Type:** behavioral
+
+API source discovery endpoint introspects OpenAPI specs and stores discovered endpoint candidates (operation_id, path, method, ...), queryable via the admin API; stewards accept or reject each candidate. (Full original text is truncated in the feature comment.)
+
+**Code:** `provisa/api_source/introspect.py`, `provisa/api_source/candidates.py`, `provisa/api/admin/api_discovery.py`
+
+**Tests:** `tests/steps/steps_openapi_auto_registration_connector.py`
+
+## 8. Client Access & Protocols
+
+### REQ-1155 · Protocol Support {#REQ-1155}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Registered commands (tracked functions and webhooks) appear as POST paths /{domain}/commands/{name} in the REST OpenAPI spec, filtered by domain and by the role's visible_to, with argument types mapped to OpenAPI schemas and one path per command despite prefixed aliases. The POST endpoint invokes the command through the shared governed executor and returns 404 for an unknown command or domain.
+
+**Code:** `provisa/api/rest/openapi_spec.py`, `provisa/api/rest/generator.py`
+
+**Tests:** `tests/unit/test_openapi_spec.py`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-1400 · Natural Language Queries {#REQ-1400}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Natural-language jobs and /nl-to-sql take a strict flag. Strict mode runs one NL to GraphQL to SQL to Cypher chain, schema-validated, shared by the graphql, sql and cypher branches, so join reachability and aggregate shape come from the schema's relationships. Non-strict generates SQL and GraphQL directly and independently from the LLM and derives Cypher from the SQL result. grpc, jsonapi and openapi are unaffected. Defaults: /nl-to-sql True, NL job and nl_router False.
+
+**Code:** `provisa/nl/runner.py`, `provisa/nl/job.py`, `provisa/api/rest/nl_router.py`, `provisa/api/data/endpoint_dev.py`
+
+**Tests:** `tests/unit/test_nl_runner.py`
+
+## 1. Access Governance & Security
+
+### REQ-023 · Query Governance {#REQ-023}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** SHOULD · **Type:** behavioral
+
+Persisted query storage: stable identifier on approval. Production mode: query text never transmitted in production — only stable ID.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-024 · Query Governance {#REQ-024}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** SHOULD · **Type:** behavioral
+
+Persisted query storage: record of who defined, who approved, when, output types, routing hint, registration model version.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-025 · Query Governance {#REQ-025}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** SHOULD · **Type:** behavioral
+
+Approval workflow: registration changes flag affected entries for re-review.
+
+**Code:** —
+
+**Tests:** —
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1931 · Multi-Tenancy & Organizations {#REQ-1931}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A sandbox visitor's account is deleted when the visitor leaves the sandbox. Signing out of the sandbox org asks the visitor to confirm, and on confirmation the visitor's sign-in identity at the identity provider, their sandbox membership and role assignments, and their profile are removed. The deletion is refused unless the sandbox is the caller's only org membership, so an account that also belongs to another org is never deleted this way. The identity provider's record is deleted first, so a failure there leaves the rest in place.
+
+**Use case:** A visitor who tried the sandbox leaves nothing behind, and a person who also holds a real org membership cannot lose their account by leaving the sandbox.
+
+**Code:** `provisa/api/auth_router.py`, `provisa/auth/providers/firebase.py`, `provisa/core/org_membership.py`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/api/admin.ts`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1932 · State Store {#REQ-1932}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
+
+The platform state store. The control plane has three stores. The model store ([REQ-1919](#REQ-1919)) holds the model, per org, shared by all the org's regions, and projected to git. The state store ([REQ-1920](#REQ-1920)) holds operating state and the request record, per org and region. The platform state store holds platform-level operating state: there is one per deployment, in the platform database. What it holds is never part of a model, never projected to git, and never copied, exported or deployed with an environment. Its first members are the node heartbeat and cluster node list ([REQ-1916](#REQ-1916)) and the consistent-masking surrogate mapping ([REQ-1494](#REQ-1494)); the mapping is durable and cannot be rebuilt, so a member of this store is not assumed to be discardable the way state in the state store is. platform_admin has no data access here either ([REQ-1327](#REQ-1327)): the store's contents are readable through an admin API only as far as each member's own requirement says.
+
+**Use case:** State that belongs to the deployment as a whole, not to one org or region, has one place to live, with the same single-writer discipline as the other two stores.
 
 **Code:** —
 

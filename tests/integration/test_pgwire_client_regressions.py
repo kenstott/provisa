@@ -55,6 +55,7 @@ from provisa.pgwire import _pipeline as _pl  # noqa: E402
 from provisa.pgwire.server import ProvisaConnection, ProvisaServer  # noqa: E402
 import provisa.pgwire.server as _srv  # noqa: E402
 from tests.pgwire_describe_parity import describes_as  # noqa: E402
+from tests.integration.conftest import no_replica_routes  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +77,7 @@ def _make_mock_state(role: str = "admin", provider: str = "none") -> MagicMock:
     ctx = MagicMock()
     ctx.tables = {}
     ctx.joins = {}
-    state = MagicMock()
+    state = no_replica_routes(MagicMock())
     state.contexts = {role: ctx}
     state.rls_contexts = {role: RLSContext.empty()}
     state.roles = {role: {"id": role, "capabilities": [], "domain_access": ["*"]}}

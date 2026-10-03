@@ -39,6 +39,7 @@ from provisa.pgwire.catalog_populate import (
     _build_catalog_index,
     _populate_is_columns,
 )
+from tests.integration.conftest import no_replica_routes
 
 pytestmark = [pytest.mark.integration]
 
@@ -86,7 +87,7 @@ def _make_state(ctx: Any, col_types: dict) -> Any:
     integration: mock-justified — state is a protocol duck-type; only .contexts
     and .schema_build_cache are accessed by _build_catalog_db and answer().
     """
-    state = MagicMock()
+    state = no_replica_routes(MagicMock())
     state.contexts = {ctx._role_id: ctx} if hasattr(ctx, "_role_id") else {}
     state.schema_build_cache = {"column_types": col_types, "tables": [], "domains": []}
     state.engine_conn = None
@@ -231,7 +232,7 @@ class TestJDBCGetColumnsRoleVisibility:
         si = _make_si(_TABLES, _COL_TYPES, role_id="analyst")
         ctx = build_context(si)
 
-        state = MagicMock()
+        state = no_replica_routes(MagicMock())
         state.contexts = {"analyst": ctx}
         state.schema_build_cache = {
             "column_types": _COL_TYPES,

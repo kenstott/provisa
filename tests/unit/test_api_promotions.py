@@ -179,26 +179,3 @@ def test_table_config_parses_promotions():
         ],
     )
     assert t.promotions[0]["target_column"] == "city"
-
-
-def test_register_api_columns_includes_promoted_columns():
-    # REQ-119: promoted columns are registered as first-class schema columns.
-    from provisa.api_source.models import ApiEndpoint
-    from provisa.api_source.schema_integration import register_api_columns
-
-    ep = ApiEndpoint(id=1, source_id="s", path="/x", table_name="people", columns=[])
-    tables: list[dict] = []
-    col_types: dict = {}
-    promotions_map = {
-        "people": [
-            PromotionConfig(
-                jsonb_column="data", field="addr.city", target_column="city", target_type="text"
-            )
-        ]
-    }
-    register_api_columns(
-        tables, col_types, [ep], domain_id="api", role_ids=["admin"], promotions_map=promotions_map
-    )
-    assert len(tables) == 1
-    col_names = [c["column_name"] for c in tables[0]["columns"]]
-    assert "city" in col_names

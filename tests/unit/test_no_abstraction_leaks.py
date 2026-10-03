@@ -140,7 +140,6 @@ OWNERS: dict[str, set[str]] = {
         # registration — a distinct concern from the structured pb2 execution path
         # above; both are legitimate owners of raw grpc usage, not duplicates.
         "provisa/api_source/caller.py",
-        "provisa/api_source/introspect.py",
         # Provisa's own served gRPC protocol (not a remote-source client) — same
         # "listening" pattern as bolt/pgwire/flight/MCP — plus its internal client.
         "provisa/grpc/reflection.py",

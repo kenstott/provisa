@@ -90,7 +90,14 @@ def operator_floor(state: Any, table_ids: Iterable[int]) -> dict[str, str]:  # R
     its direct route even when its source has other replicated tables. Read from the floored
     tables published with the replica routes at schema build, the same registry read the
     replicas are reconciled from, so routing and replication never disagree about a table."""
-    floored = state.replica_routes.floored
+    from provisa.federation.replica_address import ReplicaRoutes
+
+    # Published by the schema build on every runtime; a stand-in (a bare mock state) is refused
+    # by name rather than unpacked into a confusing error deep in routing.
+    routes = state.replica_routes
+    if not isinstance(routes, ReplicaRoutes):
+        raise TypeError(f"replica_routes is a {type(routes).__name__}, not ReplicaRoutes")
+    floored = routes.floored
     floor: dict[str, str] = {}
     for table_id in table_ids:
         entry = floored.get(table_id)

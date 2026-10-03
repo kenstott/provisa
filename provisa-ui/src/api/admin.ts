@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import type { Role, RoleAssignment, OrgMembership } from "../types/auth";
+import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
@@ -471,6 +472,11 @@ export async function profileTable(
 export interface TableMetadata {
   name: string;
   comment: string | null;
+  // REQ-318: what would read the table page by page once registered, the paging its source
+  // suggests, and (a connection table) the operator's row bound.
+  pagingKind?: PagingKind | null;
+  pagination?: Paging | null;
+  pagingCeilingRows?: number | null;
 }
 
 export interface ColumnMetadata {

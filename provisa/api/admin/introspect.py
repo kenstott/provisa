@@ -177,7 +177,6 @@ PROVISA_INTERNAL_TABLES: frozenset[str] = frozenset(
         "kafka_sinks",
         "api_sources",
         "api_endpoints",
-        "api_endpoint_candidates",
         "live_query_state",
         "tracked_functions",
         "tracked_webhooks",
@@ -566,8 +565,16 @@ async def _native_tables_openapi(  # REQ-314, REQ-316
     from provisa.openapi.mapper import parse_spec
 
     queries, _ = parse_spec(spec_info["spec"])
+    from provisa.api.admin._table_paging import paging_type
+    from provisa.core.paging import ENDPOINT, paging_row
+
     return [
-        AvailableTableType(name=q.operation_id, comment=q.summary)
+        AvailableTableType(
+            name=q.operation_id,
+            comment=q.summary,
+            paging_kind=ENDPOINT,  # REQ-318: with the paging the operation suggests
+            pagination=paging_type(paging_row(q.pagination)),
+        )
         for q in queries
         if _openapi_is_table(q)
     ]
@@ -590,7 +597,13 @@ async def _native_tables_graphql(  # REQ-307, REQ-308, REQ-1923
     if offered is None:
         return []
     return [
-        AvailableTableType(name=t["name"], comment=t["description"])
+        AvailableTableType(
+            name=t["name"],
+            comment=t["description"],
+            # REQ-318: a connection table may set its own row bound when it is registered.
+            paging_kind="connection" if t["connection"] else None,
+            paging_ceiling_rows=state.config.graphql_remote.max_rows if t["connection"] else None,
+        )
         for t in offered_tables(*offered)
     ]
 
