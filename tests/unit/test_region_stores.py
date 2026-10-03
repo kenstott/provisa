@@ -166,10 +166,10 @@ def test_a_regions_engine_is_its_engine_store():
 
     process_region.bind_launch(_PLATFORM, requested="eu")
     assert region_lane("acme", _engine_region("eu-trino"), _ENGINE_STORES) == RegionLane(
-        "trino-byo", ("coordinator.eu", 8443), None, "postgresql://eu/db"
+        "trino-byo", ("coordinator.eu", 8443), None, "postgresql://eu/db", "postgresql://eu/db"
     )
     assert region_lane("acme", _engine_region("eu-snow"), _ENGINE_STORES) == RegionLane(
-        "snowflake", None, "snowflake://acct/db", "postgresql://eu/db"
+        "snowflake", None, "snowflake://acct/db", "postgresql://eu/db", "postgresql://eu/db"
     )
 
 
@@ -243,3 +243,50 @@ def test_with_no_platform_regions_the_boot_engine_is_left_as_it_is(monkeypatch):
     process_region.bind_launch({}, requested=None)
     app_mod._bind_boot_engine({})
     assert state.federation_engine is before and not state._active_runtime().isolated_engine
+
+
+def test_an_org_without_its_own_cache_is_served_the_deployments(monkeypatch):
+    """REQ-1922: with no platform regions no runtime holds a cache of its own."""
+    from provisa.api import app as app_mod
+    from provisa.api.org_runtime import OrgRuntime
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    state = app_mod.AppState()
+    deployment = object()
+    state.response_cache_store = deployment
+    state.org_registry.set("acme", OrgRuntime(org_id="acme"))
+    token = set_current_org("acme")
+    try:
+        assert state.response_cache_store is deployment
+        own = object()
+        state._active_runtime().response_cache_store = own
+        assert state.response_cache_store is own
+    finally:
+        reset_current_org(token)
+    assert state.response_cache_store is deployment
+
+
+async def test_in_a_region_an_org_keeps_its_cache_on_the_store_its_region_names(
+    monkeypatch, control_plane, tmp_path
+):
+    from provisa.api import app as app_mod
+    from provisa.core.database import Database
+
+    state = app_mod.AppState()
+    monkeypatch.setattr(app_mod, "state", state)
+    monkeypatch.setattr(app_mod, "_region_caches", {})
+    monkeypatch.setattr("provisa.core.settings_registry.value", lambda key: True)
+    process_region.bind_launch(_PLATFORM, requested="eu")
+    state.model_db = Database(
+        control_plane, "org-model", search_path=None, model=None, holds="model"
+    )
+    await _declare(state.model_db, tmp_path)
+    async with state.model_db.acquire() as conn:
+        await upsert_store(
+            conn, StoreConfig(id="eu-state", url="rediss://cache.eu:6379/0"), origin="config"
+        )
+    await app_mod._bind_region_cache("acme")
+    rt = state._active_runtime()
+    assert rt.response_cache_store is not None and rt.hot_counts is not None
+    assert app_mod._region_caches.keys() == {"rediss://cache.eu:6379/0"}
+    assert state.response_cache_store is rt.response_cache_store
