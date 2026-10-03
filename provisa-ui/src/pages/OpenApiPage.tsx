@@ -10,7 +10,7 @@
 // permission from the copyright holder.
 
 import { useRef, useCallback, useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
 import { useComputedColorScheme } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
@@ -19,7 +19,6 @@ import "./OpenApiPage.css";
 
 export function OpenApiPage() {
   const { t } = useTranslation();
-  const location = useLocation();
   // Computed, not the raw setting: the raw value is "auto" when the user follows the system, and
   // "auto" is not "light", so the docs frame rendered dark on a light app.
   const colorScheme = useComputedColorScheme("light");
@@ -35,9 +34,18 @@ export function OpenApiPage() {
   const query = params.toString();
   const src = `/data/rest/docs${query ? "?" + query : ""}`;
 
-  const navState = location.state as { openApiUrl?: string; autoRun?: boolean } | null;
-  const openApiUrl = navState?.openApiUrl ?? "";
-  const autoRun = navState?.autoRun === true;
+  // A call handed to the page (NL "Open in OpenAPI", Polly), whether the page was just opened or
+  // already open. Each hand-off has its own sequence number and is driven in the docs once, as soon
+  // as the docs frame has loaded.
+  const [handoff, setHandoff] = useState<{ url: string; seq: number } | null>(null);
+  useNavPayload<{ openApiUrl?: string; autoRun?: boolean }>((payload) => {
+    if (!payload.openApiUrl || payload.autoRun !== true) return;
+    const url = payload.openApiUrl;
+    setHandoff((prev) => ({ url, seq: (prev?.seq ?? 0) + 1 }));
+  });
+  // The document the frame has loaded (its key), so a hand-off waits for the current frame.
+  const [frameLoaded, setFrameLoaded] = useState<string | null>(null);
+  const drivenSeqRef = useRef<number | null>(null);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -101,99 +109,107 @@ export function OpenApiPage() {
     [],
   );
 
-  const handleIframeLoad = useCallback(() => {
-    if (!autoRun || !openApiUrl) return;
+  const drive = useCallback(
+    (openApiUrl: string) => {
+      const parts = openApiUrl.trim().split(/\s+/);
+      if (parts.length < 2) return;
+      const method = parts[0].toLowerCase();
+      const [fullPath, fullQuery = ""] = parts[1].split("?");
+      const navParams = new URLSearchParams(fullQuery);
 
-    const parts = openApiUrl.trim().split(/\s+/);
-    if (parts.length < 2) return;
-    const method = parts[0].toLowerCase();
-    const [fullPath, fullQuery = ""] = parts[1].split("?");
-    const navParams = new URLSearchParams(fullQuery);
+      void (async () => {
+        const doc = iframeRef.current?.contentDocument;
+        if (!doc) return;
 
-    void (async () => {
-      const doc = iframeRef.current?.contentDocument;
-      if (!doc) return;
+        // data-path is relative to the server base (e.g. /pet-store/inquiries),
+        // but NL gives the full path (/data/rest/pet-store/inquiries) — use endsWith.
+        // REQ-1359: fullPath must have its querystring stripped first, or it never matches.
+        const findBlock = () =>
+          Array.from(doc.querySelectorAll(".opblock")).find((b) => {
+            const m = b.querySelector(".opblock-summary-method")?.textContent?.toLowerCase();
+            const dataPath = b.querySelector("[data-path]")?.getAttribute("data-path") ?? "";
+            return m === method && fullPath.endsWith(dataPath);
+          }) as HTMLElement | undefined;
 
-      // data-path is relative to the server base (e.g. /pet-store/inquiries),
-      // but NL gives the full path (/data/rest/pet-store/inquiries) — use endsWith.
-      // REQ-1359: fullPath must have its querystring stripped first, or it never matches.
-      const findBlock = () =>
-        Array.from(doc.querySelectorAll(".opblock")).find((b) => {
-          const m = b.querySelector(".opblock-summary-method")?.textContent?.toLowerCase();
-          const dataPath = b.querySelector("[data-path]")?.getAttribute("data-path") ?? "";
-          return m === method && fullPath.endsWith(dataPath);
-        }) as HTMLElement | undefined;
+        await waitFor(() => !!findBlock());
+        const block = findBlock();
+        if (!block) return;
 
-      await waitFor(() => !!findBlock());
-      const block = findBlock();
-      if (!block) return;
+        block.scrollIntoView({ behavior: "smooth", block: "start" });
 
-      block.scrollIntoView({ behavior: "smooth", block: "start" });
+        // Clicking .opblock-summary-control expands AND auto-activates try-it-out
+        if (!block.classList.contains("is-open")) {
+          (block.querySelector(".opblock-summary-control") as HTMLElement)?.click();
+        }
 
-      // Clicking .opblock-summary-control expands AND auto-activates try-it-out
-      if (!block.classList.contains("is-open")) {
-        (block.querySelector(".opblock-summary-control") as HTMLElement)?.click();
-      }
-
-      const paramKeys = [...navParams.keys()];
-      await waitFor(() =>
-        paramKeys.every(
-          (key) =>
-            !!block.querySelector(
-              `tr[data-param-name="${key}"] input, tr[data-param-name="${key}"] select, tr[data-param-name="${key}"] textarea`,
-            ),
-        ),
-      );
-
-      // REQ-1359: populate the try-it-out param inputs (e.g. aggregate/groupBy) from the
-      // NL-forwarded querystring before executing, so the replicated call matches the NL query.
-      navParams.forEach((value, key) => {
-        const row = block.querySelector(`tr[data-param-name="${key}"]`);
-        const input = row?.querySelector("input, select, textarea") as
-          | HTMLInputElement
-          | HTMLSelectElement
-          | HTMLTextAreaElement
-          | null;
-        if (!input) return;
-        const setter = Object.getOwnPropertyDescriptor(
-          input.tagName === "SELECT"
-            ? window.HTMLSelectElement.prototype
-            : window.HTMLInputElement.prototype,
-          "value",
-        )?.set;
-        setter?.call(input, value);
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        input.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-
-      // The native-setter + dispatchEvent hack updates the DOM input immediately, but the actual
-      // request Swagger UI builds on execute is driven by its own Redux store, which only picks
-      // up the change a render cycle later. The live curl preview reflects that same store, so
-      // wait for it to show every param before executing — otherwise execute can fire against
-      // the pre-update state even though the inputs already display the right values.
-      await waitFor(() => {
-        const curlText =
-          block.querySelector(".curl-command, .opblock-body pre.curl, .curl")?.textContent ?? "";
-        return [...navParams.entries()].every(([key, value]) =>
-          curlText.includes(`${key}=${encodeURIComponent(value)}`),
-        );
-      });
-
-      await waitFor(() => !!block.querySelector(".btn.execute.opblock-control__btn"));
-      (block.querySelector(".btn.execute.opblock-control__btn") as HTMLElement | null)?.click();
-
-      await waitFor(
-        () =>
-          !!block.querySelector(
-            ".responses-wrapper .live-responses-table, .responses-wrapper .microlight",
+        const paramKeys = [...navParams.keys()];
+        await waitFor(() =>
+          paramKeys.every(
+            (key) =>
+              !!block.querySelector(
+                `tr[data-param-name="${key}"] input, tr[data-param-name="${key}"] select, tr[data-param-name="${key}"] textarea`,
+              ),
           ),
-      );
-      (block.querySelector(".responses-wrapper") as HTMLElement | null)?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    })();
-  }, [autoRun, openApiUrl, waitFor]);
+        );
+
+        // REQ-1359: populate the try-it-out param inputs (e.g. aggregate/groupBy) from the
+        // NL-forwarded querystring before executing, so the replicated call matches the NL query.
+        navParams.forEach((value, key) => {
+          const row = block.querySelector(`tr[data-param-name="${key}"]`);
+          const input = row?.querySelector("input, select, textarea") as
+            | HTMLInputElement
+            | HTMLSelectElement
+            | HTMLTextAreaElement
+            | null;
+          if (!input) return;
+          const setter = Object.getOwnPropertyDescriptor(
+            input.tagName === "SELECT"
+              ? window.HTMLSelectElement.prototype
+              : window.HTMLInputElement.prototype,
+            "value",
+          )?.set;
+          setter?.call(input, value);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+
+        // The native-setter + dispatchEvent hack updates the DOM input immediately, but the actual
+        // request Swagger UI builds on execute is driven by its own Redux store, which only picks
+        // up the change a render cycle later. The live curl preview reflects that same store, so
+        // wait for it to show every param before executing — otherwise execute can fire against
+        // the pre-update state even though the inputs already display the right values.
+        await waitFor(() => {
+          const curlText =
+            block.querySelector(".curl-command, .opblock-body pre.curl, .curl")?.textContent ?? "";
+          return [...navParams.entries()].every(([key, value]) =>
+            curlText.includes(`${key}=${encodeURIComponent(value)}`),
+          );
+        });
+
+        await waitFor(() => !!block.querySelector(".btn.execute.opblock-control__btn"));
+        (block.querySelector(".btn.execute.opblock-control__btn") as HTMLElement | null)?.click();
+
+        await waitFor(
+          () =>
+            !!block.querySelector(
+              ".responses-wrapper .live-responses-table, .responses-wrapper .microlight",
+            ),
+        );
+        (block.querySelector(".responses-wrapper") as HTMLElement | null)?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      })();
+    },
+    [waitFor],
+  );
+
+  const frameKey = `${roleId}:${domainsParam}:${theme}`;
+  useEffect(() => {
+    if (!handoff || frameLoaded !== frameKey || drivenSeqRef.current === handoff.seq) return;
+    drivenSeqRef.current = handoff.seq;
+    drive(handoff.url);
+  }, [handoff, frameLoaded, frameKey, drive]);
 
   return (
     <div className="openapi-page page">
@@ -203,12 +219,12 @@ export function OpenApiPage() {
       {html !== null && (
         <iframe
           ref={iframeRef}
-          key={`${roleId}:${domainsParam}:${theme}`}
+          key={frameKey}
           srcDoc={html}
           className="openapi-frame"
           title={t("openApiPage.frameTitle")}
           sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups"
-          onLoad={handleIframeLoad}
+          onLoad={() => setFrameLoaded(frameKey)}
         />
       )}
     </div>

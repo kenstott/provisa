@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useLocation } from "react-router-dom";
+import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
 import { Trash2, Pencil, Check, X } from "lucide-react";
 import {
@@ -571,7 +571,6 @@ export function SecurityRolesPage() {
 
 export function SecurityRlsPage() {
   const { t } = useTranslation();
-  const location = useLocation();
   const { selectedDomain, setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
   const { roles, loading: rolesLoading } = useRoles();
   const { rlsRules: rules, loading: rulesLoading, refetch: refetchRules } = useRLSRules();
@@ -589,9 +588,12 @@ export function SecurityRlsPage() {
   const [actions, setActions] = useState<{ name: string; domainId: string }[]>([]);
   const [expandedRule, setExpandedRule] = useState<number | null>(null);
   const [editingRuleInRow, setEditingRuleInRow] = useState<number | null>(null);
-  const [ruleSearch, setRuleSearch] = useState(
-    (location.state as { tableFilter?: string } | null)?.tableFilter ?? "",
-  );
+  const [ruleSearch, setRuleSearch] = useState("");
+  // A table handed to the page ("rules for this table") filters the rules list, whether the page
+  // was just opened or already open.
+  useNavPayload<{ tableFilter?: string }>((payload) => {
+    if (payload.tableFilter != null) setRuleSearch(payload.tableFilter);
+  });
 
   const reload = useCallback(async () => {
     await Promise.all([refetchRules(), refetchTables(), refetchDomains()]);

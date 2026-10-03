@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -378,19 +378,12 @@ export function McpExplorePage() {
     }
   };
 
-  // Arriving from the NL page's "MCP Chat ›" button: take the carried question and run it once.
-  // react-router `state` doesn't survive a reload, so there's no resend on refresh; the ref guards
-  // against re-firing on re-render within this mount.
-  const location = useLocation();
-  const incoming = (location.state as { mcpQuestion?: string } | null)?.mcpQuestion;
-  const autoSentRef = useRef(false);
-  useEffect(() => {
-    if (incoming && !autoSentRef.current) {
-      autoSentRef.current = true;
-      void send(incoming);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once for the carried question
-  }, [incoming]);
+  // A question handed to the page (NL "MCP Chat ›", Polly) is sent once, whether the page was just
+  // opened or already open. The hand-off is removed from the history entry once handled, so a
+  // refresh does not send it again.
+  useNavPayload<{ mcpQuestion?: string }>((payload) => {
+    if (payload.mcpQuestion) void send(payload.mcpQuestion);
+  });
 
   return (
     <div
