@@ -7138,7 +7138,7 @@ Impute-relationships endpoint accepts visible node set with stable integer ids a
 
 ### REQ-788 · File & Lake Sources {#REQ-788}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
 
 File connector sources accept a directory glob pattern to enumerate CSV files. Discovered files are introspected to extract schema (column names and types). Multiple CSV files matching the glob are consolidated into a single logical table when registered.
 

@@ -5927,7 +5927,7 @@
     registration and nothing flags a source as requiring fallback. native_vector_capability / supports_native_vectors
     / has_pgvector (provisa/vector/capability.py:26,31,35) and check_native_vector_support (provisa/vector/support.py:20)
     have no caller outside provisa/vector/; no registration path (provisa/api/admin, provisa/core) references
-    them.'
+    them. Maintainer 2026-10-03: finish it; accepted for build.'
 - id: REQ-423
   status: complete
   group: 4. Source Connectors
@@ -6216,7 +6216,8 @@
     but no similarity-search query path calls it: resolve_query_vector (provisa/vector/query.py:82) and
     cosine_similarity_sql (provisa/vector/query.py:36) have no caller outside provisa/vector/ and tests.
     The only production use of vectorize_text is MCP catalog search (provisa/api/mcp/search.py:179), which
-    is not a similarity search over a declared embedding column.'
+    is not a similarity search over a declared embedding column. Maintainer 2026-10-03: finish it; accepted
+    for build.'
 - id: REQ-431
   status: complete
   group: 4. Source Connectors
@@ -16105,7 +16106,8 @@
     in the Helm chart. A case-insensitive search of helm/provisa for ''resource-groups''/''resourceGroups''/''group''
     (excluding apiGroup/fsGroup) returns nothing; trino-configmap.yaml ships no resource-groups.properties/json.
     Resource groups exist only for Docker Compose (docker-compose.core.yml:97-98 mounting trino/etc/resource-groups.json
-    and .properties). Worker scaling and HPA are present.'
+    and .properties). Worker scaling and HPA are present. Maintainer 2026-10-03: finish it; accepted for
+    build.'
 - id: REQ-057
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -22039,7 +22041,7 @@
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
 - id: REQ-788
-  status: in-progress
+  status: rejected
   group: 4. Source Connectors
   category: File & Lake Sources
   priority: SHOULD
@@ -22078,6 +22080,8 @@
   notes: 'Audit 2026-10-03: was marked complete; partly built. Missing: Consolidation of multiple glob-matched
     CSV files into a single logical table is not built: each file becomes its own table (provisa/federation/trino_connectors.py:536-539
     ''one table per glob-matched file''; provisa/file_source/crawler.py:281-291 builds one entry per file).'
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found the consolidation of matched files
+    into one table not built; each matched file is its own table.
 - id: REQ-789
   status: complete
   group: 4. Source Connectors
@@ -25556,7 +25560,8 @@
     at registration, and no delta/opaque-probe mutual-exclusivity wiring with REQ-855. The requirement''s
     own text lists these as REMAINING (kept in-progress). provisa/materialization/ and provisa/materialization_store/
     do not exist. What exists instead is watermark_column incremental refresh through the engine (provisa/core/models.py:981-984),
-    which the requirement says delta is meant to replace for pushdown.'
+    which the requirement says delta is meant to replace for pushdown. Maintainer 2026-10-03: finish it;
+    accepted for build.'
 - id: REQ-875
   status: complete
   since: 2026-07
@@ -47506,7 +47511,7 @@
     from the usage records posted to the merchant of record — the docstring at .claude/commercial/provisa_commercial/router.py:408-413
     says so and test_metered_usage_is_quantities_only (test_billing_summary.py:261) pins it. The next
     charge shows the renewal date plus ''at least $X'' / ''$X plus metered usage'' (BillingTab.tsx:510-517),
-    not an expected amount.'
+    not an expected amount. Maintainer 2026-10-03: finish it; accepted for build.'
 - id: REQ-1471
   status: complete
   group: 13. Multi-Tenancy & Organizations
