@@ -26348,11 +26348,14 @@
     packet carries a username and one cleartext secret and no scheme field, so the presentation is decided
     once from what the secret is — a personal access token by its prefix and a bearer/JWT provider''s
     secret are presented as `bearer` (REQ-1263), everything else as `basic` — and a credential the chosen
-    validator refuses is never retried against another. Validators are submitted to the pgwire event loop
-    rather than a private one, because the token store and DB-backed providers hold loop-bound handles.
-    The session role is resolved from the validated identity via resolve_role against auth.default_role,
-    which is required configuration; a provider that cannot be constructed answers FATAL 28P01 on the
-    wire instead of dropping the connection.
+    validator refuses is never retried against another. [SUPERSEDED by REQ-1882, 2026-10-03 -- Validators
+    now run on the connection's own loop via run_on_connection_loop, and loop-bound handles are resolved
+    per loop (provisa/pgwire/server.py:1704-1705, 1725-1728). Kept here for history; do not implement
+    against it.] Validators are submitted to the pgwire event loop rather than a private one, because
+    the token store and DB-backed providers hold loop-bound handles. [END SUPERSEDED BLOCK] The session
+    role is resolved from the validated identity via resolve_role against auth.default_role, which is
+    required configuration; a provider that cannot be constructed answers FATAL 28P01 on the wire instead
+    of dropping the connection.
   use_case: Pgwire connections to Provisa today use MD5 or cleartext auth, neither of which meet enterprise
     security standards. SCRAM-SHA-256 (salted, iterated, server-side verification) secures local accounts
     without requiring TLS. OIDC integration allows enterprises to reuse their identity provider, eliminating
@@ -38389,10 +38392,12 @@
   type: behavioral
   target: 2026-Q4
   description: Firebase single-admin bootstrap is an optional convenience for cloud-appliance deployments
-    (GCP cloud-init / Terraform). First Google-signed-in user becomes sole initial admin. This path is
-    NOT required or supported by Helm/enterprise deployments and is NOT a fallback if OIDC/SAML/LDAP is
-    misconfigured. Supersedes informal "REQ-1259" label; that requirement concerns TLS certificates, not
-    authentication.
+    (GCP cloud-init / Terraform). [SUPERSEDED by REQ-1290, 2026-10-03 -- The slot is no longer taken by
+    signing in; it is taken by an explicit POST /auth/claim-bootstrap, and the Firebase page also offers
+    GitHub, Microsoft and email/password. Kept here for history; do not implement against it.] First Google-signed-in
+    user becomes sole initial admin. [END SUPERSEDED BLOCK] This path is NOT required or supported by
+    Helm/enterprise deployments and is NOT a fallback if OIDC/SAML/LDAP is misconfigured. Supersedes informal
+    "REQ-1259" label; that requirement concerns TLS certificates, not authentication.
   use_case: 'Cloud appliance deployments targeting individual users or small teams on GCP provide fastest
     time-to-value: zero auth config required, sign in with Google, immediate product access. Enterprises
     use Helm with their own OIDC/SAML/LDAP (REQ-1265) instead.'
@@ -38427,12 +38432,11 @@
   - tests/integration/test_org_creator_role_request.py
   - tests/unit/test_source_catalog_refresh.py
 - id: REQ-1267
-  status: proposed
+  status: complete
   group: 2. Authentication & Identity
   category: Runtime Auth-Enforcement Gate
   priority: MUST
   type: behavioral
-  target: 2026-Q4
   description: A single built image/wheel serves unsecured (demo/none), basic, or firebase/IdP deployments
     and can switch enforcement at runtime WITHOUT a process restart or rebuild. The API exposes /setup/status
     with auth_enabled flag and /auth/provider-type (returns "firebase"|"basic"|null) — both reachable
@@ -38484,6 +38488,19 @@
   - REQ-120
   - REQ-1265
   - REQ-1266
+  since: 2026-07
+  code:
+  - provisa/auth/middleware.py
+  - provisa/api/setup_router.py
+  - provisa/api/auth_router.py
+  - provisa/api/app.py
+  - provisa-ui/src/context/AuthContext.tsx
+  - provisa-ui/src/lib/authFetch.ts
+  - provisa-ui/src/api/setup.ts
+  - provisa-ui/src/components/OnboardGate.tsx
+  tests:
+  - tests/unit/test_setup_auth_enabled.py
+  - tests/unit/test_auth_middleware.py
 - id: REQ-1268
   status: complete
   group: 13. Multi-Tenancy & Organizations
@@ -38788,8 +38805,14 @@
   priority: SHOULD
   type: behavioral
   description: 'A newly authenticated user belonging to zero orgs is offered three onboarding paths: (1)
-    join an existing org by entering its org id, (2) create a new org (existing behavior), or (3) auto-redirect
-    to join if an existing org''s id matches the user''s email domain.'
+    [SUPERSEDED by REQ-1572, 2026-10-03 -- Joining is by invitation (a token, or a one-click pending invite
+    per REQ-1287); the invitation is the admission decision and a bare org id admits nobody. Kept here
+    for history; do not implement against it.] join an existing org by entering its org id [END SUPERSEDED
+    BLOCK], (2) create a new org (existing behavior), or (3) [SUPERSEDED by REQ-1568, 2026-10-03 -- Automatic
+    joining is driven by the org''s email rule with auto_join on, not by the org id matching a domain;
+    one match joins at sign-in and several are put to the person as a choice. Kept here for history; do
+    not implement against it.] auto-redirect to join if an existing org''s id matches the user''s email
+    domain [END SUPERSEDED BLOCK].'
   use_case: Extends REQ-1266 by providing member-less users flexibility beyond org creation alone, reducing
     friction for users wanting to join existing teams or leveraging email domain matching for automatic
     org discovery.
@@ -39096,26 +39119,37 @@
       platforms (Slack, GitHub, Atlassian). Provisa offers the same capability, allowing orgs to enforce
       membership policies at the email domain level.
 - id: REQ-1285
-  status: proposed
+  status: complete
   group: 2. Authentication & Identity
   category: Organization Access Control
   priority: SHOULD
   type: behavioral
-  target: 2026-Q4
   description: Organizations may enable an "auto-join" flag with a configured default role (e.g., a low-privilege
     read-only role like "analyst"). When auto-join is enabled, any newly authenticated user whose email
-    matches the org's email rule (or any user if no email rule exists) is automatically granted membership
-    in that org with the default role — no explicit invite needed. When auto-join is disabled (the default),
-    joining requires an explicit invite. Auto-join depends on the org email-rule feature (REQ-1284) to
-    scope which accounts may self-join.
+    matches the org's email rule [SUPERSEDED by REQ-1567, 2026-10-03 -- auto_join without an email rule
+    is refused at save (unbounded_no_rule); a rule naming a domain is required. Kept here for history;
+    do not implement against it.] (or any user if no email rule exists) [END SUPERSEDED BLOCK] [SUPERSEDED
+    by REQ-1568, 2026-10-03 -- Only a single matching org joins automatically; an address matching several
+    auto-join orgs joins none and the person is asked to choose. Kept here for history; do not implement
+    against it.] is automatically granted membership in that org with the default role [END SUPERSEDED
+    BLOCK] — no explicit invite needed. When auto-join is disabled (the default), joining requires an
+    explicit invite. Auto-join depends on the org email-rule feature (REQ-1284) to scope which accounts
+    may self-join.
   use_case: Auto-join reduces friction for domain-scoped organizations by eliminating the need for explicit
     invites when email-based membership rules already verify eligibility. Users matching the email rule
     gain immediate access with a safe default role, speeding time-to-first-query.
   code:
-  - provisa/api/auth_router.py
   - provisa/core/schema_admin.py
+  - provisa/core/org_membership.py
+  - provisa/auth/middleware.py
+  - provisa/api/auto_join.py
+  - provisa/api/admin/orgs_router.py
+  - provisa/api/auth_router.py
+  - provisa-ui/src/components/OrgJoinSettings.tsx
+  - provisa-ui/src/pages/OnboardOrgPage.tsx
   tests:
-  - tests/integration/test_redeem_invite.py
+  - tests/integration/test_org_auto_join.py
+  - provisa-ui/src/__tests__/OnboardOrgAutoJoinRisk.test.tsx
   scenario: 'Given an organization with auto_join=true and auto_join_role="analyst"
 
     When a newly authenticated user with email "user@acme.com" first signs in
@@ -39167,6 +39201,7 @@
     rationale: Auto-join with email domain scoping is standard in multi-tenant SaaS (Slack Teams, GitHub
       org auto-add). Provisa offers comparable convenience while maintaining email-rule-based governance
       control.
+  since: 2026-07
 - id: REQ-1286
   status: complete
   group: 2. Authentication & Identity
@@ -44458,8 +44493,7 @@
 
     '
 - id: REQ-1413
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 3. Source Registration & Data Modeling
   category: Tag Registry
   priority: SHOULD
@@ -44474,10 +44508,13 @@
     SYSTEM_TAG_IDS, config_loader.py) already refuse them. `natural_language` is chosen over `prose`/`unstructured`
     because it is a positive, testable claim about content, which makes the exclusion definitional rather
     than a caveat: serialized formats (JSON, XML, log lines, base64) are parseable, not written, so they
-    do not qualify and never enter a text corpus. Entity TYPE is not a tag — the dimension table names
-    it (`customers.name` tagged `entity` is a customer entity); neither is the join key, which is the
-    table''s PK. Combined with the REQ-1320 modeling role, `[dimension, entity]` on a column reads as
-    the canonical name of a modeled entity.'
+    do not qualify and never enter a text corpus. Entity TYPE is not a tag — [SUPERSEDED by REQ-1467,
+    2026-10-03 -- The entity type is now a required parameter of the tag assignment (entity:customer);
+    a bare entity assignment is not legal and the table no longer names the type. Kept here for history;
+    do not implement against it.] the dimension table names it (`customers.name` tagged `entity` is a
+    customer entity) [END SUPERSEDED BLOCK]; neither is the join key, which is the table''s PK. Combined
+    with the REQ-1320 modeling role, `[dimension, entity]` on a column reads as the canonical name of
+    a modeled entity.'
   use_case: 'Consumers that must distinguish language from codes get it from the catalog instead of guessing:
     NL schema matching prefers entity columns when a question contains a proper noun, catalog search can
     answer "where does ''Acme'' live", vector generation knows which columns are worth embedding, and
@@ -44487,6 +44524,8 @@
   - provisa/core/models.py
   - provisa/core/repositories/tag.py
   - provisa/api/admin/schema_mutation.py
+  - provisa/core/config_loader.py
+  - provisa/api/_meta_views.py
   scenario: 'Given an install whose tags table holds only user tags
 
     When the tag registry is read
@@ -44503,6 +44542,10 @@
   - REQ-1373
   - REQ-1375
   - REQ-1377
+  since: 2026-08
+  tests:
+  - tests/unit/test_tag_params.py
+  - tests/unit/test_derived_tags.py
 - id: REQ-1414
   status: proposed
   target: 2026-Q4
@@ -59784,10 +59827,12 @@
     that don''t fit the plain register-a-table-and-SELECT shape well enough to share source-to-query.spec.ts:
     google_sheets, govdata, grpc_remote, soda, great_expectations. Each was investigated before writing
     a test. Several real, previously-undetected bugs were found and fixed along the way — every one of
-    them blocked EVERY real invocation of the affected path, not just this test. None of the five tests
-    is currently passing through the browser; all are `test.skip(true, "<reason>")`''d with the reason
-    recorded in the test file itself. This entry documents exactly what was proved vs. what remains a
-    genuine gap.
+    them blocked EVERY real invocation of the affected path, not just this test. [SUPERSEDED by REQ-1742
+    amendment, 2026-10-03 -- No later requirement; the spec itself was un-skipped 2026-09-15 (source-to-query-special-cases.spec.ts:117-120,161-165,223-225,274-276).
+    Only credential-gated skips remain (lines 103, 152). Kept here for history; do not implement against
+    it.] None of the five tests is currently passing through the browser; all are `test.skip(true, "<reason>")`''d
+    with the reason recorded in the test file itself. [END SUPERSEDED BLOCK] This entry documents exactly
+    what was proved vs. what remains a genuine gap.
 
     google_sheets — THREE real bugs fixed in DuckDBGsheetsConnector (connector_duckdb.py) and introspect.py''s
     native_schemas/native_tables: (1) the connector read `source.federation_hints["spreadsheet_id"]`,
@@ -59803,9 +59848,12 @@
     project memory) crashed the shared single-worker backend process outright, ~29s into registration,
     with no further diagnostic captured before this session''s time budget was called — every subsequent
     request in that run then failed with ERR_CONNECTION_REFUSED, which is why govdata/ grpc_remote/soda/great_expectations
-    below also show no browser-verified result from that same run. Root cause NOT isolated. Remaining
-    gap: reproduce with the backend run in the foreground (not via playwright''s webServer, which swallows
-    the crash''s own stack trace) to get a real traceback.
+    below also show no browser-verified result from that same run. [SUPERSEDED by REQ-1742 amendment,
+    2026-10-03 -- The spec records the google_sheets crash as root-caused and fixed (source-to-query-special-cases.spec.ts:161-165:
+    attach_source''s view_ddl branch never loaded the scanner extension; native_backend merges dropped
+    source.mapping). Kept here for history; do not implement against it.] Root cause NOT isolated. [END
+    SUPERSEDED BLOCK] Remaining gap: reproduce with the backend run in the foreground (not via playwright''s
+    webServer, which swallows the crash''s own stack trace) to get a real traceback.
 
     govdata — the askamerica connection itself is real and independently confirmed working (outside Playwright):
     `fetch_tables`/`fetch_columns` against a `GovDataSource` scoped to the "weather" schema returned real
@@ -60036,7 +60084,7 @@
 
     '
 - id: REQ-1745
-  status: in-progress
+  status: complete
   since: 2026-09
   group: 3. Source Registration & Data Modeling
   category: Streaming
@@ -60081,22 +60129,32 @@
     demo source''s live queries in testing ("''types.SimpleNamespace'' object has no attribute ''base_url''"
     — an introspection seam object built for a different source type reaching a code path expecting a
     real Source), because `wire_event_loop` re-derives every registered source''s adapter loader and poll-job
-    registration on every call, not just the new node''s. Left as a documented, scoped-out gap (status:
-    partial) rather than risk that regression; the correct fix scopes the re-wire to only the newly-registered
-    node, the way `wire_push_listeners` already does via `state.push_listener_disconnects`.
+    registration on every call, not just the new node''s. [SUPERSEDED by REQ-1770, 2026-10-03 -- The rss
+    poll re-wire is built: make_rss_loader is registered (provisa/events/app_wiring.py:199) and wire_new_poll_jobs
+    runs per node on every rebuild (provisa/api/app.py:2155-2171). Kept here for history; do not implement
+    against it.] Left as a documented, scoped-out gap (status: partial) rather than risk that regression
+    [END SUPERSEDED BLOCK]; the correct fix scopes the re-wire to only the newly-registered node, the
+    way `wire_push_listeners` already does via `state.push_listener_disconnects`.
 
     provisa-ui/e2e/source-to-query-streaming.spec.ts (new file) exercises all four types through the real
-    UI per the source-to-query.spec.ts pattern. kafka is `test.skip` — no demo/sources/ kafka fixture
-    exists yet and the only kafka broker this repo provisions (docker-compose.e2e.yml/test.yml) belongs
-    to the separate pytest e2e/integration harnesses, not the provisa-ui Playwright "core" project. rss
-    is `test.skip` for the poll-landing gap described above (registration itself is fixed and was manually
-    exercised while developing the test). ingest and websocket''s registration-flow and re-wire fixes
-    are implemented and statically reviewed (tsc/eslint clean) but NOT CONFIRMED PASSING by an actual
+    UI per the source-to-query.spec.ts pattern. [SUPERSEDED by REQ-1766, 2026-10-03 -- Three kafka tests
+    exist and are not skipped (provisa-ui/e2e/source-to-query-streaming.spec.ts:465, 557, 695). Kept here
+    for history; do not implement against it.] kafka is `test.skip` [END SUPERSEDED BLOCK] — no demo/sources/
+    kafka fixture exists yet and the only kafka broker this repo provisions (docker-compose.e2e.yml/test.yml)
+    belongs to the separate pytest e2e/integration harnesses, not the provisa-ui Playwright "core" project.
+    [SUPERSEDED by REQ-1770, 2026-10-03 -- The rss test is not skipped (provisa-ui/e2e/source-to-query-streaming.spec.ts:291;
+    the file has no test.skip). Kept here for history; do not implement against it.] rss is `test.skip`
+    for the poll-landing gap described above [END SUPERSEDED BLOCK] (registration itself is fixed and
+    was manually exercised while developing the test). ingest and websocket''s registration-flow and re-wire
+    fixes are implemented and statically reviewed (tsc/eslint clean) but NOT CONFIRMED PASSING by an actual
     green Playwright run within this task''s time budget — every real invocation in this session was consumed
     by shared e2e infrastructure contention across 6 concurrent agents targeting the same docker-compose
     "provisa-e2e" project (containers evicted mid-boot, a venv sync that transiently dropped cassandra-driver,
-    stale orphaned dev-server processes from repeated port-isolation retries). Both are `test.skip` with
-    the body left intact for a follow-up run to confirm and un-skip.'
+    stale orphaned dev-server processes from repeated port-isolation retries). [SUPERSEDED by REQ-1745
+    amendment, 2026-10-03 -- No later requirement; the ingest and websocket tests are not skipped in the
+    spec (source-to-query-streaming.spec.ts:194, 370). Kept here for history; do not implement against
+    it.] Both are `test.skip` with the body left intact for a follow-up run to confirm and un-skip. [END
+    SUPERSEDED BLOCK]'
   code:
   - provisa/api/admin/introspect.py
   - provisa/api/admin/schema_query.py
@@ -60106,6 +60164,7 @@
   - provisa/api/app_loaders.py
   tests:
   - provisa-ui/e2e/source-to-query-streaming.spec.ts
+  - tests/unit/test_push_wiring_orchestration.py
   use_case: Prove kafka/websocket/rss/ingest (REQ-1733/REQ-1734/REQ-1739's SourceTypes) actually work
     end-to-end through the real UI against the DuckDB federation engine, the way every other SourceType
     already has an e2e test doing (source-to-query.spec.ts). None had ever been driven through the Sources
@@ -60132,7 +60191,7 @@
 
     '
 - id: REQ-1746
-  status: in-progress
+  status: complete
   since: 2026-09
   group: 3. Source Registration & Data Modeling
   category: Correctness
@@ -60141,9 +60200,12 @@
   description: 'New e2e coverage (provisa-ui/e2e/source-to-query-community-ext.spec.ts, the same three-screen
     shape as REQ-1671/REQ-1730: Sources form -> Register Table form -> SQL page) for the four DuckDB-ATTACH-mechanism
     SourceTypes engine-swap.spec.ts had only ever proven as one leg of a cross-engine harness (firebird/airport),
-    never proven standalone, plus singlestore (gated on SINGLESTORE_LICENSE + amd64, same as engine-swap.spec.ts)
-    and duckdb-as-a-source (no prior e2e precedent at all: ATTACHing a second local .duckdb file as a
-    SOURCE, distinct from DuckDB as Provisa''s own federation engine).
+    never proven standalone, plus [SUPERSEDED by REQ-1746 amendment, 2026-10-03 -- No later requirement;
+    the test now targets a live SingleStore Cloud workspace and is gated on SINGLESTORE_HOST, with no
+    license or arch gate (source-to-query-community-ext.spec.ts:227-234). Kept here for history; do not
+    implement against it.] singlestore (gated on SINGLESTORE_LICENSE + amd64, same as engine-swap.spec.ts)
+    [END SUPERSEDED BLOCK] and duckdb-as-a-source (no prior e2e precedent at all: ATTACHing a second local
+    .duckdb file as a SOURCE, distinct from DuckDB as Provisa''s own federation engine).
 
     Writing this surfaced two real, previously-undetected bugs, both fixed:
 
@@ -60181,8 +60243,11 @@
     !process.env.CI` plus fixed 8901/3901/8907/8908 defaults — a distinct, separately-worth-fixing bug:
     parallel e2e runs silently test each other''s code) rather than this worktree''s own, or hit a stale
     shared demo-source-containers.ts splunk fixture failing in global-setup before any test in the new
-    file ran. firebird/airport/duckdb are `test.skip`''d with these reasons pending a clean isolated re-run;
-    singlestore''s skip is the pre-existing license/arch gate.'
+    file ran. [SUPERSEDED by REQ-1746 amendment, 2026-10-03 -- No later requirement; the spec has one
+    skip only, singlestore gated on SINGLESTORE_HOST credentials (provisa-ui/e2e/source-to-query-community-ext.spec.ts:231-234);
+    firebird/airport/duckdb run (lines 121, 181, 269). Kept here for history; do not implement against
+    it.] firebird/airport/duckdb are `test.skip`''d with these reasons pending a clean isolated re-run;
+    singlestore''s skip is the pre-existing license/arch gate. [END SUPERSEDED BLOCK]'
   code:
   - provisa-ui/src/pages/SourcesPage.tsx
   - provisa/api/admin/introspect.py
@@ -60191,6 +60256,7 @@
   - scripts/resolve_firebird_client_lib.py
   tests:
   - provisa-ui/e2e/source-to-query-community-ext.spec.ts
+  - tests/unit/test_native_introspect.py
   use_case: User asked to write and verify Playwright e2e tests proving firebird/airport/singlestore/
     duckdb work end-to-end through the real UI against the DuckDB federation engine, reusing engine-swap.spec.ts's
     registration code and demo/sources fixtures.
@@ -61204,7 +61270,7 @@
 
     '
 - id: REQ-1765
-  status: in-progress
+  status: complete
   since: 2026-09
   group: 4. Source Connectors
   category: Bug Fix
@@ -61213,8 +61279,10 @@
   unit_test: true
   description: 'Root-caused and fixed the real bug behind "POST /data/ingest 404s ''source not found''
     immediately after successful registration" (source-to-query-streaming.spec.ts''s ingest test, previously
-    test.skip(true, ...)). Two independent bugs, both fixed; a third, separate, unimplemented gap remains
-    and keeps the test skipped:
+    test.skip(true, ...)). Two independent bugs, both fixed; [SUPERSEDED by REQ-1771, 2026-10-03 -- REQ-1771
+    (complete) built the read side; the e2e ingest test is no longer skipped (provisa-ui/e2e/source-to-query-streaming.spec.ts:194).
+    Kept here for history; do not implement against it.] a third, separate, unimplemented gap remains
+    and keeps the test skipped [END SUPERSEDED BLOCK]:
 
     (1) `provisa/ingest/engine.py`''s `_build_url` unconditionally raised `ValueError("ingest DB password
     is required")` for an empty password. A trust/peer-auth control-plane Postgres (docker-assigned test
@@ -61240,28 +61308,35 @@
     file at all — "the SAME tenant database" taken literally. The Postgres mirroring path is unchanged
     (still a separate pool, as before).
 
-    REMAINING GAP (test stays `test.skip`, not a regression from this fix — a separate, unimplemented
-    feature): with (1) and (2) fixed, the POST now succeeds and the row lands in the tenant SQLite file,
-    but the SQL page''s `SELECT ... FROM pet_store.<table>` never resolves it. `catalog_name_for_source`
-    (`provisa/api/app_loaders.py`) gives every DuckDB-native source (the "core" e2e lane''s engine) its
-    own per-source-id ATTACH catalog for physical resolution, but nothing in `native_backend.py`/`duckdb_runtime.py`
-    (grepped for "ingest": no hits) ever attaches or maps an ingest source''s physical table into a catalog
-    the compiler can reach — only the ingest WRITE side (REQ-1745''s `_init_ingest_engines` default) was
-    ever wired: there is no corresponding READ side for the DuckDB-native engine. The tenant SQLite file
-    is already exposed read-only, per-table, as `provisa_admin.<org_schema>.<table>` by `duckdb_runtime.py`''s
-    `_rebuild_control_plane` (built for the control plane''s own admin tables); the likely fix is teaching
-    `catalog_name_for_source` to route ingest (DuckDB-native, no live connector) to that same `provisa_admin`
-    catalog, the way it already routes Trino''s MATERIALIZE_ONLY sources to Trino''s own materialize-store
-    catalog. Needs its own task/REQ.'
+    [SUPERSEDED by REQ-1771, 2026-10-03 -- catalog_name_for_source now routes ingest to provisa_admin
+    (provisa/api/app_loaders.py:316-325); the test runs and asserts the queried row (spec :278-288). Kept
+    here for history; do not implement against it.] REMAINING GAP (test stays `test.skip`, not a regression
+    from this fix — a separate, unimplemented feature) [END SUPERSEDED BLOCK]: with (1) and (2) fixed,
+    the POST now succeeds and the row lands in the tenant SQLite file, but the SQL page''s `SELECT ...
+    FROM pet_store.<table>` never resolves it. `catalog_name_for_source` (`provisa/api/app_loaders.py`)
+    gives every DuckDB-native source (the "core" e2e lane''s engine) its own per-source-id ATTACH catalog
+    for physical resolution, but nothing in `native_backend.py`/`duckdb_runtime.py` (grepped for "ingest":
+    no hits) ever attaches or maps an ingest source''s physical table into a catalog the compiler can
+    reach — only the ingest WRITE side (REQ-1745''s `_init_ingest_engines` default) was ever wired: [SUPERSEDED
+    by REQ-1771, 2026-10-03 -- The read side exists: provisa/api/app_loaders.py:316-325 returns the provisa_admin
+    catalog for ingest sources. Kept here for history; do not implement against it.] there is no corresponding
+    READ side for the DuckDB-native engine [END SUPERSEDED BLOCK]. The tenant SQLite file is already exposed
+    read-only, per-table, as `provisa_admin.<org_schema>.<table>` by `duckdb_runtime.py`''s `_rebuild_control_plane`
+    (built for the control plane''s own admin tables); the likely fix is teaching `catalog_name_for_source`
+    to route ingest (DuckDB-native, no live connector) to that same `provisa_admin` catalog, the way it
+    already routes Trino''s MATERIALIZE_ONLY sources to Trino''s own materialize-store catalog. [SUPERSEDED
+    by REQ-1771, 2026-10-03 -- That requirement is REQ-1771 and it is complete. Kept here for history;
+    do not implement against it.] Needs its own task/REQ. [END SUPERSEDED BLOCK]'
   code:
   - provisa/ingest/engine.py
   - provisa/ingest/ddl.py
   - provisa/ingest/router.py
   - provisa/api/app_loaders.py
   tests:
+  - provisa-ui/e2e/source-to-query-streaming.spec.ts
+  - tests/unit/test_ingest_engine_prepared.py
   - tests/unit/test_ingest_ddl.py
   - tests/unit/test_ingest_router.py
-  - provisa-ui/e2e/source-to-query-streaming.spec.ts
   use_case: Registering an ingest source and table through the real UI/API, then POSTing a row to the
     governed HTTP push receiver, must actually accept and land the row — 404ing "source not found" on
     every attempt on any deployment whose control-plane DB has no password (every docker-assigned test
@@ -61863,22 +61938,29 @@
     retry-on-4xx shape) and suspend_capacity() (best-effort resume of the paused state on teardown — a
     suspend failure is logged, never raised, since leaving a capacity briefly running is a cost concern,
     not a correctness one). Both read FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME from the environment
-    (the subscription id is resolved from the active `az login` session via `az account show`, the same
-    lookup tests/integration/synapse_provision.py already uses for its own ARM calls -- no separate subscription-id
-    env var) and raise a clear error if either is missing (no silent fallback, per this repo''s CLAUDE.md).
-    Auth is DefaultAzureCredential (az login / managed identity) against the https://management.azure.com/.default
-    ARM scope — a different scope from fabric_shortcuts.py''s own https://api.fabric.microsoft.com/.default
-    data-plane Fabric API scope used for OneLake shortcut provisioning, since capacity management is a
-    control-plane operation on a different resource. Wired into provisa-ui/e2e/cloud_warehouse_seed.py''s
-    _fabric(): ensure_capacity_resumed() runs before MssqlWarehouseRuntime connects on the "up" path,
-    suspend_capacity() runs after teardown on the "down" path, mirroring exactly where _databricks() calls
-    ensure_warehouse_running(). The e2e test''s OLD "18456 system update" skip was removed; a NEW skip
-    was added instead, gated on FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME being configured — neither
-    exists in this environment yet (no Fabric capacity has been created), so the test still skips cleanly
-    today with a message pointing at fabric_capacity.py''s docstring, which documents the one-time `az
-    fabric capacity create` command for whoever creates the capacity. Live verification of ensure_capacity_resumed()/suspend_capacity()
-    against a real capacity is therefore pending that one-time manual step — not performed here, since
-    creating billable Azure infrastructure is a subscription-owner decision, not this task''s to make.
+    [SUPERSEDED by REQ-1775 amendment, 2026-10-03 -- The 2026-09-30 amendment replaced this: the subscription
+    is found by listing the subscriptions the credential can read, no az CLI (provisa/federation/fabric_capacity.py:69-93).
+    The entry''s scenario still says `az account show` too. Kept here for history; do not implement against
+    it.] (the subscription id is resolved from the active `az login` session via `az account show`, the
+    same lookup tests/integration/synapse_provision.py already uses for its own ARM calls -- no separate
+    subscription-id env var) [END SUPERSEDED BLOCK] and raise a clear error if either is missing (no silent
+    fallback, per this repo''s CLAUDE.md). Auth is DefaultAzureCredential (az login / managed identity)
+    against the https://management.azure.com/.default ARM scope — a different scope from fabric_shortcuts.py''s
+    own https://api.fabric.microsoft.com/.default data-plane Fabric API scope used for OneLake shortcut
+    provisioning, since capacity management is a control-plane operation on a different resource. Wired
+    into provisa-ui/e2e/cloud_warehouse_seed.py''s _fabric(): ensure_capacity_resumed() runs before MssqlWarehouseRuntime
+    connects on the "up" path, suspend_capacity() runs after teardown on the "down" path, mirroring exactly
+    where _databricks() calls ensure_warehouse_running(). The e2e test''s OLD "18456 system update" skip
+    was removed; a NEW skip was added instead, gated on FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME being
+    configured — [SUPERSEDED by REQ-1775 amendment, 2026-10-03 -- Environment narrative that no longer
+    holds: the repo .env now defines both FABRIC_CAPACITY_NAME and FABRIC_RESOURCE_GROUP (key presence
+    checked, values not read). Kept here for history; do not implement against it.] neither exists in
+    this environment yet (no Fabric capacity has been created) [END SUPERSEDED BLOCK], so the test still
+    skips cleanly today with a message pointing at fabric_capacity.py''s docstring, which documents the
+    one-time `az fabric capacity create` command for whoever creates the capacity. Live verification of
+    ensure_capacity_resumed()/suspend_capacity() against a real capacity is therefore pending that one-time
+    manual step — not performed here, since creating billable Azure infrastructure is a subscription-owner
+    decision, not this task''s to make.
 
     (Amended 2026-09-30, the engine resumes its own capacity:) Resuming the capacity is a product behavior,
     not only a test-lane step. provisa/federation/fabric_capacity.py resumes the Fabric capacity through
@@ -62187,7 +62269,7 @@
     a throwaway project before applying it to provisa-test-473, since a broken stateful-IP config reproduces
     exactly the failure this requirement exists to prevent.'
 - id: REQ-1780
-  status: in-progress
+  status: complete
   since: 2026-09
   group: 4. Source Connectors
   category: Feature
@@ -62237,7 +62319,7 @@
 
     '
 - id: REQ-1781
-  status: in-progress
+  status: complete
   since: 2026-09
   group: 4. Source Connectors
   category: Feature
@@ -62388,8 +62470,11 @@
   description: 'Provisa shall document and expose the HTML crawler capability from the underlying Calcite
     file adapter (org.apache.calcite.adapter.file.converters.HtmlCrawler) as a first-class, general-purpose
     source-discovery method for registering sources that expose only HTML index pages with linked data
-    files (CSV, Parquet, etc.). This capability shall support crawling HTML pages to discover and automatically
-    register linked files as tables, distinct from the Python file_source/crawler.py which only performs
+    files (CSV, Parquet, etc.). This capability shall support crawling HTML pages to [SUPERSEDED by REQ-1923,
+    2026-10-03 -- Registration is curation: nothing a source offers is registered automatically. crawl_directory
+    only returns descriptors (provisa/file_source/crawler.py:216-290) and crawlSource is a preview (provisa/api/admin/schema_query.py:782-795).
+    Kept here for history; do not implement against it.] discover and automatically register linked files
+    as tables [END SUPERSEDED BLOCK], distinct from the Python file_source/crawler.py which only performs
     fsspec directory walks on local/S3/FTP/SFTP paths. (Amended 2026-09-19, ALREADY WIRED VIA FSSPEC:)
     Verified live: `http`/`https` are registered fsspec protocols (`fsspec.implementations.http.HTTPFileSystem`),
     and `requests`/`aiohttp` (its runtime deps) are already installed in this repo. `HTTPFileSystem.ls()`
@@ -62404,17 +62489,21 @@
     params thread through `_walk_fsspec_recursive` regardless of scheme). But link-following control does
     not exist yet and is needed specifically for `http(s)://` roots: (1) `HTTPFileSystem`''s `simple_links`
     constructor option (default True regex-matches any http(s) URL string in the page, not just real `<a
-    href>` anchors — noisy on real-world catalog pages) is never passed through by `_walk_fsspec`, which
-    calls `fsspec.core.url_to_fs(root)` with no storage options at all; (2) `same_scheme` (http<->https
-    link-following) is similarly not exposed; (3) `crawl_directory` has only a positive include `pattern`
-    (fnmatch on basename), no exclude/deny-list and no same-domain restriction — `_ls_real` marks any
-    linked URL ending in "/" as type "directory" to recurse into up to `max_depth`, so an unrestricted
-    HTML crawl can wander into off-target subpaths/domains in a way a local/S3/FTP walk structurally cannot.
-    Required: add `simple_links`, a same-domain (or explicit allow-list) restriction, and an exclude pattern
-    as new `crawl_directory` parameters, threaded into `_walk_fsspec`''s `fsspec.core.url_to_fs` call.
-    This will require a corresponding admin UI tweak: the file-connector datasource form needs additional
-    optional fields (exposed only when the configured path is `http(s)://`) for these new crawl settings,
-    alongside depth and the existing include pattern.'
+    href>` anchors — noisy on real-world catalog pages) [SUPERSEDED by REQ-1785, 2026-10-03 -- _walk_fsspec
+    now calls fsspec.core.url_to_fs(root, simple_links=simple_links) (provisa/file_source/crawler.py:99).
+    Kept here for history; do not implement against it.] is never passed through by `_walk_fsspec`, which
+    calls `fsspec.core.url_to_fs(root)` with no storage options at all [END SUPERSEDED BLOCK]; (2) `same_scheme`
+    (http<->https link-following) is similarly not exposed; (3) [SUPERSEDED by REQ-1785, 2026-10-03 --
+    crawl_directory now takes same_domain and exclude_pattern (provisa/file_source/crawler.py:222-224,
+    enforced at 140-143). Kept here for history; do not implement against it.] `crawl_directory` has only
+    a positive include `pattern` (fnmatch on basename), no exclude/deny-list and no same-domain restriction
+    [END SUPERSEDED BLOCK] — `_ls_real` marks any linked URL ending in "/" as type "directory" to recurse
+    into up to `max_depth`, so an unrestricted HTML crawl can wander into off-target subpaths/domains
+    in a way a local/S3/FTP walk structurally cannot. Required: add `simple_links`, a same-domain (or
+    explicit allow-list) restriction, and an exclude pattern as new `crawl_directory` parameters, threaded
+    into `_walk_fsspec`''s `fsspec.core.url_to_fs` call. This will require a corresponding admin UI tweak:
+    the file-connector datasource form needs additional optional fields (exposed only when the configured
+    path is `http(s)://`) for these new crawl settings, alongside depth and the existing include pattern.'
   use_case: Future source types that have no REST/API access and only expose HTML directory listings of
     linked data files (similar to how SharePoint and Splunk are currently handled internally via REQ-954/955/956)
     can be registered using the HTML crawler without requiring source-type-specific connectors.
@@ -65778,8 +65867,11 @@
     integration or SYSTEM$GET_ICEBERG_TABLE_INFORMATION, Databricks Unity Catalog''s Iceberg REST endpoint
     / UniForm, BigQuery BigLake Metastore), instead of only Mechanism.DIRECT (native driver, materialize-required).
     PgDuckdbIcebergConnector (provisa/federation/connector_duckdb.py) already reads an Iceberg table in
-    place via iceberg_scan, but only from a bare storage path (source.path) — it has no REST-catalog client,
-    credential/token handling, or table discovery. This closes that gap: resolve the warehouse''s current
+    place via iceberg_scan, but only from a bare storage path (source.path) — [SUPERSEDED by REQ-1867
+    amendment, 2026-10-03 -- Status is proposed and the text reads as future work, but the three catalog-resolving
+    connectors and their resolvers already exist (provisa/federation/connector_duckdb.py:1151-1352). Kept
+    here for history; do not implement against it.] it has no REST-catalog client, credential/token handling,
+    or table discovery. This closes that gap [END SUPERSEDED BLOCK]: resolve the warehouse''s current
     metadata.json location via its catalog API, then hand the resolved path to the existing scan connector
     unchanged.'
   use_case: Snowflake/Databricks/BigQuery sources attached to the pg engine currently require a full materialized
@@ -65798,12 +65890,14 @@
   description: 'The pg engine should gain a PgDuckdbMotherDuckConnector (Mechanism.ATTACH_RW) using pg_duckdb''s
     own FOREIGN DATA WRAPPER duckdb TYPE ''motherduck'' SERVER + USER MAPPING (token) mechanism, confirmed
     present in pg_duckdb''s own source (src/pgduckdb_fdw.cpp''s FdwType::MD, test/pycheck/motherduck_test.py)
-    — pg_duckdb can live-attach a MotherDuck-hosted DuckDB database today, but no Provisa connector wires
-    this up for the pg engine. This is distinct from, and does NOT cover, attaching an arbitrary standalone
-    local/remote .duckdb file: pg_duckdb''s FDW only exposes SERVER TYPEs motherduck/s3/gcs — s3/gcs are
-    credential servers for the existing scan connectors, not a general foreign-duckdb-file attach — so
-    the pg engine''s plain `duckdb` source type correctly stays Mechanism.DIRECT (native driver, materialize)
-    for anything that isn''t MotherDuck.'
+    — pg_duckdb can live-attach a MotherDuck-hosted DuckDB database today, [SUPERSEDED by REQ-1868 amendment,
+    2026-10-03 -- PgDuckdbMotherDuckConnector exists and is registered (provisa/federation/connector_duckdb.py:713-772,
+    provisa/federation/engine.py:698). Kept here for history; do not implement against it.] but no Provisa
+    connector wires this up for the pg engine [END SUPERSEDED BLOCK]. This is distinct from, and does
+    NOT cover, attaching an arbitrary standalone local/remote .duckdb file: pg_duckdb''s FDW only exposes
+    SERVER TYPEs motherduck/s3/gcs — s3/gcs are credential servers for the existing scan connectors, not
+    a general foreign-duckdb-file attach — so the pg engine''s plain `duckdb` source type correctly stays
+    Mechanism.DIRECT (native driver, materialize) for anything that isn''t MotherDuck.'
   use_case: Orgs with a MotherDuck-hosted DuckDB database currently get only a materialized replica via
     the pg engine even though pg_duckdb can attach it live — closing this gap gives them zero-copy access
     the same way postgres/mysql/oracle/sqlite sources already get.
@@ -65856,7 +65950,7 @@
     showing the scan never issues a real query to the server — non-functional as shipped.'
   target: 2027-Q4
 - id: REQ-1870
-  status: proposed
+  status: complete
   group: 4. Source Connectors
   category: Federation
   priority: SHOULD
@@ -65879,10 +65973,22 @@
     full-table pull. Unlike mongo_fdw (REQ-1869, rejected — non-functional), this one is ready to bundle
     as soon as REQ-1873's install-script work lands.
   code:
-  - scripts/ci/build_pg_extensions.sh
   - provisa/federation/connector_duckdb.py
   - provisa/federation/engine.py
-  target: 2027-Q2
+  - provisa/federation/pg_runtime.py
+  - scripts/ci/build_pg_extensions.sh
+  since: 2026-09
+  scenario: 'Given a Postgres federation engine with the pg_clickhouse extension available
+
+    When a clickhouse source''s table is attached
+
+    Then the engine issues CREATE EXTENSION pg_clickhouse, CREATE SERVER ... FOREIGN DATA WRAPPER clickhouse_fdw
+    with driver ''binary'', a user mapping and IMPORT FOREIGN SCHEMA, and the table is read live through
+    the foreign table with predicates and aggregates pushed to ClickHouse
+
+    '
+  tests:
+  - tests/unit/test_pg_clickhouse_fdw_connector.py
 - id: REQ-1871
   status: proposed
   group: 4. Source Connectors
@@ -65954,8 +66060,10 @@
   category: Federation
   priority: SHOULD
   type: behavioral
-  description: 'FederationEngine.discover() (provisa/federation/engine.py:401-426) already probes every
-    candidate connector''s functional availability against the live engine connection (each Connector.probe()
+  description: 'FederationEngine.discover() [SUPERSEDED by REQ-1872 amendment, 2026-10-03 -- Line reference
+    drifted: discover() is now at provisa/federation/engine.py:417-442. Kept here for history; do not
+    implement against it.] (provisa/federation/engine.py:401-426) [END SUPERSEDED BLOCK] already probes
+    every candidate connector''s functional availability against the live engine connection (each Connector.probe()
     already checks pg_available_extensions/pg_extension/ pg_foreign_data_wrapper) and prunes engine.connectors
     to the active set — but it is NEVER CALLED anywhere in the application (confirmed live: grepping the
     full ``provisa/`` tree for ``.discover(`` outside test files finds zero call sites — only a comment
@@ -65970,8 +66078,11 @@
     BLOCKING CORRECTNESS FIX REQUIRED before this can be wired in safely, found while implementing REQ-1870/1871:
     FederationEngine.complete_reach() only adds its own dependency-free DIRECT/FETCH fallback connector
     (WarehouseNativeConnector) for a source_type with NO connector already occupying that slot (`if source_type
-    in self.connectors: continue`). Every dual-reach connector this session added (PgClickHouseFdwConnector,
-    PgWrappersMongoDbConnector, and the three earlier Iceberg connectors — PgDuckdbSnowflakeIcebergConnector/DatabricksIcebergConnector/BigQueryIcebergConnector)
+    in self.connectors: continue`). [SUPERSEDED by REQ-1871, 2026-10-03 -- PgWrappersMongoDbConnector
+    was deleted by REQ-1871''s 2026-09-29 amendment; four dual-reach connectors remain, and mongodb is
+    no longer one of the affected types. Kept here for history; do not implement against it.] Every dual-reach
+    connector this session added (PgClickHouseFdwConnector, PgWrappersMongoDbConnector, and the three
+    earlier Iceberg connectors [END SUPERSEDED BLOCK] — PgDuckdbSnowflakeIcebergConnector/DatabricksIcebergConnector/BigQueryIcebergConnector)
     is ONE connector OBJECT declaring `mechanisms={ATTACH_*, DIRECT/FETCH}`, occupying that slot at __init__
     time — so complete_reach() never generates the fallback for clickhouse/mongodb/ snowflake/databricks/bigquery
     at all. discover()''s own probe() is all-or-nothing PER CONNECTOR OBJECT: if the extension-dependent
@@ -69742,7 +69853,7 @@
 
     '
 - id: REQ-1908
-  status: in-progress
+  status: complete
   group: 5. Query Languages, Compilation & Operations
   category: Temporal types in GraphQL
   priority: MUST
