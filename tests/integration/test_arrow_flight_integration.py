@@ -396,6 +396,8 @@ class TestFlightDoGetWithRealData:
 
         asyncio.run_coroutine_threadsafe(_create_org_schema(), main_loop).result(timeout=60)
         state.tenant_db = audit_db
+        state.record_db = state.tenant_db
+        state.model_db = state.tenant_db
         # The audit row's tenant_id is `current_org.get() or state.org_id`; nothing binds the
         # ContextVar on this single-org server, so the org id is the string naming that schema.
         state.org_id = audit_org

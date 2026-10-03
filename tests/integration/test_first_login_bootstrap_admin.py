@@ -101,6 +101,8 @@ def planes(monkeypatch):
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
     monkeypatch.setattr(app_state, "org_id", _ORG, raising=False)
     # /auth/bootstrap-status and /auth/claim-bootstrap read the SAME dict the middleware resolves
     # its own flag from, so the endpoint can never disagree with the grant it warns about.

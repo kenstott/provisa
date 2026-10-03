@@ -373,6 +373,8 @@ class TestRestEndpointsHTTP:
         app_state.source_dialects = {"test-pg": "postgres"}
         app_state.masking_rules = {}
         app_state.tenant_db = rest_tenant_db
+        app_state.record_db = app_state.tenant_db
+        app_state.model_db = app_state.tenant_db
         # REST routes are domain-scoped (/data/rest/{domain_id}/{table_name}); the handler resolves
         # the GraphQL field via this path map (REQ-256).
         app_state.table_path_maps = {

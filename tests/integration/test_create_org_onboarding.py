@@ -107,6 +107,8 @@ def planes(monkeypatch):
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
 
     # Stub the data-plane build: this test isolates the control-plane onboarding contract. The
     # background task must still flip the row to "ready" and record the grant call.
@@ -133,7 +135,9 @@ def planes(monkeypatch):
     ):
         import types as _types
 
-        return _types.SimpleNamespace(model_db=admin_db, tenant_db=admin_db, org_id=org_id)
+        return _types.SimpleNamespace(
+            model_db=admin_db, record_db=admin_db, tenant_db=admin_db, org_id=org_id
+        )
 
     async def _fake_grant_org_role(_tenant_db, user_id, role_id, *, granter_capabilities):
         grants.append((user_id, role_id))

@@ -568,6 +568,8 @@ def pgwire_pg_backend(docker_postgres):
         timeout=30
     )
     state.tenant_db = tenant_db
+    state.record_db = state.tenant_db
+    state.model_db = state.tenant_db
     # The audit row's tenant_id is `current_org.get() or state.org_id`, and nothing binds the
     # ContextVar on this transport — so the org id has to be a real string here, or asyncpg is
     # handed a MagicMock for a VARCHAR parameter. It is the org whose schema the row lands in.
