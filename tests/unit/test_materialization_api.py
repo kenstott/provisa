@@ -1343,9 +1343,11 @@ class TestMatGqlRemoteTableCut:
             patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_gql_remote_table(
-                "pets", _gql_reg(), _gql_tbl(), state, hot_mgr, 500, {}, first
+                "pets", _gql_reg(), _gql_tbl(), state, _statement_hot(hot_mgr), 500, {}, first
             )
-            await _mat_gql_remote_table("pets", _gql_reg(), _gql_tbl(), state, hot_mgr, 500, {}, {})
+            await _mat_gql_remote_table(
+                "pets", _gql_reg(), _gql_tbl(), state, _statement_hot(hot_mgr), 500, {}, {}
+            )
         assert len(set(landed)) == 2  # each cut statement lands its own, found by no other
         assert hot_mgr._hot_tables == {}
         assert first["pets"].rows == [{"id": 1, "name": "Fido"}]  # this statement reads it
