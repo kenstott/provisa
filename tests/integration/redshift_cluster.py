@@ -50,7 +50,6 @@ import string
 import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
 import boto3
@@ -59,8 +58,9 @@ import pytest
 from botocore.exceptions import ClientError
 from dotenv import dotenv_values
 
-_REPO = Path(__file__).resolve().parent.parent.parent
-_ENV_FILE = _REPO / ".env"
+from tests.env_creds import env_file
+
+_ENV_FILE = env_file()
 
 _PREFIX = "provisa-e2e"
 _DB = "dev"
@@ -95,7 +95,8 @@ def _conf() -> dict[str, str | None]:
     The override direction lets a rotated key be tried without editing the file; ``.env`` is the
     normal source.
     """
-    return {**dotenv_values(_ENV_FILE), **os.environ}
+    # No .env at all is a process whose credentials are exported (CI): the environment alone.
+    return {**(dotenv_values(_ENV_FILE) if _ENV_FILE is not None else {}), **os.environ}
 
 
 def have_aws_creds() -> bool:
