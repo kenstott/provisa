@@ -606,7 +606,7 @@ class TestExecuteEngineStandard:
             execute_engine=AsyncMock(return_value=engine_result),
             engine=SimpleNamespace(catalog_qualified=True),
         )
-        hot_mgr = SimpleNamespace(maybe_promote=AsyncMock())
+        hot_mgr = SimpleNamespace(promote_on_read=AsyncMock())
         state = SimpleNamespace(
             federation_engine=engine,
             source_types={"pg": "postgresql"},
@@ -630,8 +630,9 @@ class TestExecuteEngineStandard:
             import asyncio
 
             await asyncio.sleep(0)
-        hot_mgr.maybe_promote.assert_called_once()
-        assert hot_mgr.maybe_promote.call_args.args[0] == 1  # the root table's id (pets)
+        # The read is the cue; the table (the root's id, pets) is loaded whole, not from the
+        # read's own rows.
+        hot_mgr.promote_on_read.assert_called_once_with(engine, 1)
 
 
 # ---------------------------------------------------------------------------

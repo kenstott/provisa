@@ -302,6 +302,7 @@ class TestMatStoreRows:
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                whole=True,
             )
             mock_insert.assert_called_once()
 
@@ -336,6 +337,7 @@ class TestMatStoreRows:
                 {},
                 values_cte_entries,
                 all_ep_col_names=["id", "photo_urls"],
+                whole=True,
             )
 
         entry = values_cte_entries["pets"]
@@ -369,6 +371,7 @@ class TestMatStoreRows:
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                whole=True,
             )
 
         assert values_cte_entries == {}
@@ -401,9 +404,40 @@ class TestMatStoreRows:
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                whole=True,
             )
 
         assert PETS in hot_mgr._hot_tables
+
+    async def test_rows_of_a_parameterized_endpoint_are_not_held(self):
+        """An endpoint with a parameter is a function of its arguments: its rows are inlined for
+        this statement but never held as the table's hot rows."""
+        engine = MagicMock()
+        engine.isolated_sync = _fake_isolated_sync
+        values_cte_entries: dict = {}
+        hot_mgr = _hot_manager()
+        with (
+            patch("provisa.api_source.engine_cache.create_and_insert"),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
+        ):
+            _mat_store_rows(
+                "pets",
+                [{"id": 1}],
+                ["id"],
+                CacheLocation("cat", "sch", "relational"),
+                "r_abc",
+                500,
+                _statement_hot(hot_mgr),
+                [_col("id")],
+                engine,
+                300,
+                MagicMock(),
+                {},
+                values_cte_entries,
+                whole=False,
+            )
+        assert values_cte_entries["pets"].rows == [{"id": 1}]
+        assert hot_mgr._hot_tables == {}
 
 
 # ---------------------------------------------------------------------------

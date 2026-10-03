@@ -67,10 +67,14 @@ class _StatementHot:
         pk_column: str,
         rows: list[dict],
         column_names: list[str],
+        whole: bool,
     ) -> Any:
         """The rows to substitute for ``tn`` in this statement, held for the next one when
-        :meth:`holds`."""
-        if not self.holds(tn):
+        :meth:`holds` and ``whole`` — the rows are all of the table's rows, fetched with no
+        arguments. Rows fetched with arguments (a parameterized fetch, a filter pushed to the
+        source) answer this statement only: held as the table's rows they would be served to a
+        statement that asked for other ones."""
+        if not (whole and self.holds(tn)):
             return InlineRows(rows, column_names)
         from provisa.cache.hot_tables import HotTableEntry
 
@@ -195,6 +199,7 @@ async def _promote_joined_from_fills(
                 pk_column=col_names[0] if col_names else "id",
                 rows=rows,
                 column_names=col_names,
+                whole=True,
             )
             log.warning(
                 "[MAT] promoted %s → hot tier (%d rows) for next-request Values CTE", tn, len(rows)
@@ -407,6 +412,7 @@ async def _mat_gql_remote_table(
             pk_column=col_names[0] if col_names else "id",
             rows=gql_rows,
             column_names=col_names,
+            whole=not variables,
         )
         values_cte_entries[tn] = entry
         log.warning("[GQL REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(gql_rows))
@@ -520,6 +526,7 @@ async def _mat_grpc_remote_table(
             pk_column=col_names[0] if col_names else "id",
             rows=rows,
             column_names=col_names,
+            whole=not nf_args,
         )
         values_cte_entries[tn] = entry
         log.warning("[GRPC REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(rows))
@@ -639,6 +646,7 @@ async def _mat_openapi_table(
             pk_column=col_names[0] if col_names else "id",
             rows=rows,
             column_names=col_names,
+            whole=not nf_args,
         )
         values_cte_entries[tn] = hot_entry
         log.warning("[OPENAPI] VALUES CTE inline for %s (%d rows)", tn, len(rows))
@@ -727,6 +735,8 @@ def _mat_store_rows(
     cache_rewrites: dict,
     values_cte_entries: dict,
     all_ep_col_names: list | None = None,
+    *,
+    whole: bool,
 ) -> None:
     """ALWAYS persist rows to the materialization store (the durable source of truth), then inline a
     small table as a VALUES CTE for this query — the hot cache is a rebuildable projection of the
@@ -762,6 +772,7 @@ def _mat_store_rows(
             # names are snake_case. Raw camelCase keys would silently inline NULL.
             rows=_snake_rows,
             column_names=hot_col_names,
+            whole=whole,
         )
         values_cte_entries[tn] = entry
         log.warning("[MAT] + hot VALUES CTE inline for %s (%d rows)", tn, len(rows))
@@ -810,6 +821,9 @@ async def _mat_api_ep_table(
     col_names = [c.name for c in response_cols]
     all_ep_col_names = [apply_sql_name(c.name) for c in ep.columns]
     redirect_config = RedirectConfig.from_env()
+    # An endpoint with a parameter is a function of its arguments: what its fills or a fetch hold
+    # is the rows for some arguments, never the table's whole rows, so none of it is held hot.
+    whole = not any(c.param_type for c in ep.columns)
 
     if not response_cols:
         log.warning("[MAT] %s has no response columns — skipping", tn)
@@ -825,7 +839,7 @@ async def _mat_api_ep_table(
             cache_tbl,
         )
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
-        if hot.holds(tn):
+        if whole and hot.holds(tn):
             spawn_background(
                 _promote_joined_from_fills(
                     state, ep, tn, hot, col_names, _META_COLS, _cache_loc, _hot_threshold
@@ -845,7 +859,7 @@ async def _mat_api_ep_table(
             cache_tbl,
         )
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
-        if hot.holds(tn):
+        if whole and hot.holds(tn):
             spawn_background(
                 _promote_joined_from_fills(
                     state, ep, tn, hot, col_names, _META_COLS, _cache_loc, _hot_threshold
@@ -907,6 +921,7 @@ async def _mat_api_ep_table(
         cache_rewrites,
         values_cte_entries,
         all_ep_col_names=all_ep_col_names,
+        whole=whole,
     )
 
 

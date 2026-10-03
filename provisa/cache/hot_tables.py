@@ -94,6 +94,9 @@ class _Place:
     stamp: int | None
     tables: dict[int, HotTableEntry] = field(default_factory=dict)
     candidates: dict[int, HotTableCandidate] = field(default_factory=dict)
+    # Candidates counted above the auto threshold under this model: not counted again until
+    # the model changes.
+    too_large: set[int] = field(default_factory=set)
 
 
 class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, REQ-241
@@ -144,6 +147,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             place = self._places[where] = _Place(stamp)
         elif place.stamp != stamp:
             place.tables.clear()
+            place.too_large.clear()
             place.stamp = stamp
         return place
 
@@ -422,18 +426,35 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         """Register a table as an auto-promotion candidate."""
         self._candidates[candidate.table_id] = candidate
 
-    async def maybe_promote(
-        self,
-        table_id: int,
-        rows: list[tuple],
-        column_names: list[str],
-    ) -> None:  # REQ-236
-        """Promote a table to the hot cache if it is a candidate and ``rows`` — all of its rows —
-        are few enough."""
-        await self.maybe_promote_dicts(table_id, [dict(zip(column_names, row)) for row in rows])
+    async def promote_on_read(self, engine, table_id: int) -> None:  # REQ-236
+        """A statement read candidate ``table_id``: make it hot when the whole table is small
+        enough. What the statement read is never the hot rows — it may be filtered, limited or
+        projected — so the table is counted and, when at or below the auto threshold, loaded
+        whole. A table counted above it is not counted again under this model."""
+        if self.is_hot(table_id):
+            return
+        place = self._place()
+        candidate = place.candidates.get(table_id)
+        if candidate is None or table_id in place.too_large:
+            return
+        count = await count_table_rows(
+            engine, candidate.table_name, candidate.schema, candidate.catalog
+        )
+        if count > self._auto_threshold:
+            place.too_large.add(table_id)
+            return
+        await self.load_table(
+            engine,
+            table_id,
+            candidate.table_name,
+            candidate.schema,
+            candidate.catalog,
+            candidate.pk_column,
+        )
 
     async def maybe_promote_dicts(self, table_id: int, rows: list[dict]) -> None:  # REQ-236
-        """Promote a table to the hot cache from already-fetched dict rows — all of its rows."""
+        """Promote a table to the hot cache from rows a caller fetched — which must be all of
+        the table's rows (an API resource fetched with no arguments)."""
         if self.is_hot(table_id):
             return
         candidate = self._candidates.get(table_id)

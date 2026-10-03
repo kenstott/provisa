@@ -273,7 +273,8 @@ async def _execute_with_api(
             schedule_drop(state.federation_engine, _cache_loc, cache_tbl, ttl, redirect_config)
 
             promoted = hot.table_id(table_name)
-            if hot_mgr is not None and promoted is not None and result.rows:
+            # Only a fetch with no arguments returned the resource's whole rows.
+            if hot_mgr is not None and promoted is not None and result.rows and not url_params:
                 spawn_background(hot_mgr.maybe_promote_dicts(promoted, result.rows))
         else:
             log.info("[API CACHE] hit — %s", cache_tbl)

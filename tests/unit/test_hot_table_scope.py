@@ -83,6 +83,25 @@ async def _keys(mgr: HotTableManager) -> list[str]:
     return sorted(await mgr._redis.keys(HOT_PREFIX + "*"))
 
 
+class _Counted:
+    """An engine whose table holds ``count`` rows, of which a whole-table read returns
+    ``rows``; it records the statements it was sent."""
+
+    def __init__(self, count: int, rows: list[tuple], columns: list[str]) -> None:
+        self.count, self.rows, self.columns, self.sent = count, rows, columns, []
+
+    def engine_physical(self, sql: str) -> str:
+        return sql
+
+    async def execute_engine(self, sql: str, *args, **kwargs):
+        from provisa.executor.result import QueryResult
+
+        self.sent.append(sql)
+        if sql.startswith("SELECT COUNT(*)"):
+            return QueryResult(rows=[(self.count,)], column_names=["count"])
+        return QueryResult(rows=self.rows, column_names=self.columns)
+
+
 # --- two orgs ------------------------------------------------------------------------------------
 
 
@@ -146,10 +165,9 @@ async def test_a_table_pointed_elsewhere_does_not_serve_the_old_rows(manager, ac
     assert not manager.is_hot(CUSTOMERS)
     assert manager.get_entry(CUSTOMERS) is None
     assert await manager.get_rows(CUSTOMERS) == []
-    # It is still a candidate, so the next small read of it makes it hot again with the rows
-    # that read returned.
+    # It is still a candidate, so the next read of it loads it whole and hot again.
     assert CUSTOMERS in manager.managed_tables()
-    await manager.maybe_promote(CUSTOMERS, [(1, "current row")], ["id", "name"])
+    await manager.promote_on_read(_Counted(1, [(1, "current row")], ["id", "name"]), CUSTOMERS)
     assert await manager.get_rows(CUSTOMERS) == [{"id": 1, "name": "current row"}]
 
 
@@ -361,9 +379,55 @@ def test_a_statement_holds_fetched_rows_under_the_table_it_reads(acting):
     kw = {"catalog": "c", "schema": "s", "pk_column": "id", "column_names": ["id"]}
 
     one = _StatementHot(manager, state, [OTHER_CUSTOMERS])
-    one.hold("customers", rows=GLOBEX_ROWS, **kw)
+    one.hold("customers", rows=GLOBEX_ROWS, whole=True, **kw)
     assert list(held) == [OTHER_CUSTOMERS] and held[OTHER_CUSTOMERS].rows == GLOBEX_ROWS
 
     both = _StatementHot(manager, state, [CUSTOMERS, OTHER_CUSTOMERS])
-    assert isinstance(both.hold("customers", rows=ACME_ROWS, **kw), InlineRows)
+    assert isinstance(both.hold("customers", rows=ACME_ROWS, whole=True, **kw), InlineRows)
     assert list(held) == [OTHER_CUSTOMERS]
+
+
+async def test_a_filtered_read_makes_the_table_hot_with_all_of_its_rows(manager, acting):
+    """A statement reads one row of a small candidate table: the table is loaded whole — its
+    hot rows are never the statement's own (filtered) result."""
+    manager.register_candidate(HotTableCandidate(CUSTOMERS, "customers", "id", "pg", "public"))
+    whole = [(1, "a"), (2, "b"), (3, "c")]
+    engine = _Counted(3, whole, ["id", "name"])
+    await manager.promote_on_read(engine, CUSTOMERS)
+    assert engine.sent == [
+        'SELECT COUNT(*) FROM "pg"."public"."customers"',
+        'SELECT * FROM "pg"."public"."customers"',
+    ]
+    assert await manager.get_rows(CUSTOMERS) == [dict(zip(["id", "name"], r)) for r in whole]
+
+
+async def test_a_candidate_too_large_is_counted_once_per_model(manager, acting):
+    manager.register_candidate(HotTableCandidate(CUSTOMERS, "customers", "id", "pg", "public"))
+    engine = _Counted(101, [], ["id"])  # the manager's auto threshold is 100
+    await manager.promote_on_read(engine, CUSTOMERS)
+    await manager.promote_on_read(engine, CUSTOMERS)
+    assert not manager.is_hot(CUSTOMERS)
+    assert engine.sent == ['SELECT COUNT(*) FROM "pg"."public"."customers"']
+    acting.stamp = 8  # a new model: the table may have shrunk
+    await manager.promote_on_read(engine, CUSTOMERS)
+    assert len(engine.sent) == 2
+
+
+def test_rows_fetched_with_arguments_are_never_held(acting):
+    """Rows a statement fetched with arguments (a parameterized fetch) answer it alone."""
+    from types import SimpleNamespace
+
+    from provisa.api.data.materialization import _StatementHot
+    from provisa.cache.values_cte import InlineRows
+
+    held: dict = {}
+    manager = SimpleNamespace(
+        hold=lambda e: held.__setitem__(e.table_id, e), entries_for=lambda _ids: {}
+    )
+    state = SimpleNamespace(tables=[{"id": CUSTOMERS, "table_name": "customers"}])
+    hot = _StatementHot(manager, state, [CUSTOMERS])
+    kw = {"catalog": "c", "schema": "s", "pk_column": "id", "column_names": ["id"]}
+    assert isinstance(hot.hold("customers", rows=ACME_ROWS, whole=False, **kw), InlineRows)
+    assert held == {}
+    hot.hold("customers", rows=ACME_ROWS, whole=True, **kw)
+    assert list(held) == [CUSTOMERS]

@@ -218,7 +218,8 @@ async def _execute_api_source(
                 len(result.rows),
                 cache_tbl,
             )
-            if hot_mgr is not None and table_meta is not None and result.rows:
+            # Only a fetch with no arguments returned the resource's whole rows.
+            if hot_mgr is not None and table_meta is not None and result.rows and not url_params:
                 spawn_background(hot_mgr.maybe_promote_dicts(table_meta.table_id, result.rows))
         phase1_ms = (_time.perf_counter() - _t_phase1) * 1000
 
@@ -598,9 +599,8 @@ async def _execute_engine_standard(
     # Lazy hot-table promotion
     _hot_mgr = getattr(state, "hot_manager", None)
     if _hot_mgr is not None and _root_meta is not None:
-        spawn_background(
-            _hot_mgr.maybe_promote(_root_meta.table_id, result.rows, result.column_names)
-        )
+        # REQ-236: the read is the cue, not the rows — the table is loaded whole if it is small.
+        spawn_background(_hot_mgr.promote_on_read(state.federation_engine, _root_meta.table_id))
 
     return (
         result,
