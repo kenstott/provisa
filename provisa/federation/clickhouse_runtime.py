@@ -63,22 +63,76 @@ from provisa.federation.runtime_support import (
 from provisa.transpiler.transpile import transpile
 
 
+def _parameter_type(value: Any) -> str:
+    """The ClickHouse type a bound value is sent as (``{pN:Type}``)."""
+    import datetime as _dt
+    from decimal import Decimal
+
+    if value is None:
+        return "Nullable(String)"
+    if isinstance(value, bool):  # before int: a bool is an int
+        return "Bool"
+    if isinstance(value, int):
+        return "Int64"
+    if isinstance(value, float):
+        return "Float64"
+    if isinstance(value, Decimal):
+        exponent = value.as_tuple().exponent
+        scale = -exponent if isinstance(exponent, int) and exponent < 0 else 0
+        return f"Decimal(38, {scale})"
+    if isinstance(value, _dt.datetime):  # before date: a datetime is a date
+        return "DateTime64(6)"
+    if isinstance(value, _dt.date):
+        return "Date"
+    if isinstance(value, str):
+        return "String"
+    raise TypeError(f"ClickHouse cannot bind a value of type {type(value).__name__!r}")
+
+
+def bind_parameters(sql: str, params: list | None) -> tuple[str, dict[str, Any]]:
+    """``sql`` with each ``@N``/``$N`` placeholder replaced by a typed ClickHouse server-side
+    parameter (``{pN:Type}``), and the values by name. A value is never written into the SQL
+    text: ClickHouse receives it as data, whatever it holds (REQ-1194). A repeated placeholder
+    names its one value each time."""
+    from provisa.compiler.params import substitute_positional_placeholders
+
+    if not params:
+        return sql, {}
+    values = list(params)
+    bound = substitute_positional_placeholders(
+        sql, values, lambda i: f"{{p{i}:{_parameter_type(values[i - 1])}}}"
+    )
+    return bound, {f"p{i}": value for i, value in enumerate(values, start=1)}
+
+
+def _server_text(params: dict | None) -> dict[str, str] | None:
+    """``params`` as the escaped text the server reads a parameter value from."""
+    from clickhouse_connect.driver.binding import format_bind_value
+
+    if not params:
+        return None
+    return {name: format_bind_value(value, top_level=True) for name, value in params.items()}
+
+
 class _CHBackend(Protocol):
     """The minimal execute seam shared by the server and embedded ClickHouse backends."""
 
-    def command(self, sql: str) -> None:
-        """Run a statement for its effect (DDL/INSERT); no result is returned."""
+    def command(self, sql: str, params: dict | None = None) -> None:
+        """Run a statement for its effect (DDL/INSERT); no result is returned. ``params`` are
+        its server-side parameters by name (``bind_parameters``)."""
         ...
 
-    def query(self, sql: str) -> tuple[list[tuple], list[str]]:
+    def query(self, sql: str, params: dict | None = None) -> tuple[list[tuple], list[str]]:
         """Run a query, returning ``(rows, column_names)``."""
         ...
 
-    def query_arrow(self, sql: str) -> pa.Table:
+    def query_arrow(self, sql: str, params: dict | None = None) -> pa.Table:
         """Run a query, returning a materialized Arrow table (REQ-986)."""
         ...
 
-    def query_arrow_stream(self, sql: str) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
+    def query_arrow_stream(
+        self, sql: str, params: dict | None = None
+    ) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
         """Run a query, returning ``(schema, lazy RecordBatch iterator)`` (REQ-986)."""
         ...
 
@@ -112,23 +166,29 @@ class _ServerBackend:
         finally:
             killer.close()
 
-    def command(self, sql: str) -> None:
-        self._client.command(sql)
+    # Values travel as the server's typed query parameters ({pN:Type}, bind_parameters):
+    # clickhouse-connect sends them as param_pN, never in the SQL text.
+    def command(self, sql: str, params: dict | None = None) -> None:
+        self._client.command(sql, parameters=params or None)
 
-    def query(self, sql: str) -> tuple[list[tuple], list[str]]:
+    def query(self, sql: str, params: dict | None = None) -> tuple[list[tuple], list[str]]:
         qid = str(uuid.uuid4())
         with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
-            res = self._client.query(sql, settings={"query_id": qid})
+            res = self._client.query(sql, parameters=params or None, settings={"query_id": qid})
         return [tuple(r) for r in res.result_rows], list(res.column_names)
 
-    def query_arrow(self, sql: str) -> pa.Table:
+    def query_arrow(self, sql: str, params: dict | None = None) -> pa.Table:
         # clickhouse-connect requests FORMAT Arrow and returns a native pyarrow Table — no row
         # materialization (REQ-986). use_strings maps ClickHouse String to Arrow utf8, not binary.
         qid = str(uuid.uuid4())
         with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
-            return self._client.query_arrow(sql, settings={"query_id": qid}, use_strings=True)
+            return self._client.query_arrow(
+                sql, parameters=params or None, settings={"query_id": qid}, use_strings=True
+            )
 
-    def query_arrow_stream(self, sql: str) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
+    def query_arrow_stream(
+        self, sql: str, params: dict | None = None
+    ) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
         # FORMAT ArrowStream: the server streams IPC blocks and clickhouse-connect wraps them in a
         # StreamContext over a pyarrow RecordBatchStreamReader. The context must stay open for the
         # lifetime of the iterator, so the generator owns enter/exit (REQ-986).
@@ -137,7 +197,7 @@ class _ServerBackend:
         qid = str(uuid.uuid4())
         with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
             stream_ctx = self._client.query_arrow_stream(
-                sql, settings={"query_id": qid}, use_strings=True
+                sql, parameters=params or None, settings={"query_id": qid}, use_strings=True
             )
             reader: Any = stream_ctx.gen  # the pyarrow RecordBatchStreamReader the context wraps
             schema = reader.schema  # available before consumption; GeneratorStream needs it
@@ -180,7 +240,9 @@ class _NativeBackend:
         from clickhouse_driver import Client
 
         self._conn_args = {"host": host, "port": port, "user": username, "password": password}
-        self._client = Client(**self._conn_args)
+        # server_side_params: the driver sends {pN:Type} values to the server as typed query
+        # parameters instead of formatting them into the SQL text itself.
+        self._client = Client(**self._conn_args, settings={"server_side_params": True})
 
     def _kill(self, query_id: str) -> None:
         # Request-deadline cancel (REQ-1882): the query's own TCP connection is busy, so the KILL
@@ -193,25 +255,27 @@ class _NativeBackend:
         finally:
             killer.disconnect()
 
-    def command(self, sql: str) -> None:
-        self._client.execute(sql)
+    def command(self, sql: str, params: dict | None = None) -> None:
+        self._client.execute(sql, params or None)
 
-    def query(self, sql: str) -> tuple[list[tuple], list[str]]:
+    def query(self, sql: str, params: dict | None = None) -> tuple[list[tuple], list[str]]:
         # with_column_types=True → (rows, [(name, type), ...]); the driver stub types execute() as a
         # union (row-count int for DDL), so narrow it explicitly.
         qid = str(uuid.uuid4())
         with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
-            result = self._client.execute(sql, with_column_types=True, query_id=qid)
+            result = self._client.execute(sql, params or None, with_column_types=True, query_id=qid)
         rows, cols = cast("tuple[list[tuple], list[tuple[str, str]]]", result)
         return [tuple(r) for r in rows], [c[0] for c in cols]
 
-    def query_arrow(self, sql: str) -> pa.Table:
+    def query_arrow(self, sql: str, params: dict | None = None) -> pa.Table:
         raise NotImplementedError(
             "the ClickHouse native TCP transport (clickhouse-driver) has no Arrow format; "
             "use clickhouse:// (HTTP) or chdb:// for the Arrow Flight ENGINE path (REQ-986)"
         )
 
-    def query_arrow_stream(self, sql: str) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
+    def query_arrow_stream(
+        self, sql: str, params: dict | None = None
+    ) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
         raise NotImplementedError(
             "the ClickHouse native TCP transport (clickhouse-driver) has no Arrow format; "
             "use clickhouse:// (HTTP) or chdb:// for the Arrow Flight ENGINE path (REQ-986)"
@@ -246,17 +310,21 @@ class _EmbeddedBackend:
         # chdb reads results in a named format; ArrowStream round-trips through pyarrow losslessly.
         self._session = session.Session(path) if path else session.Session()
 
-    def command(self, sql: str) -> None:
-        self._session.query(sql)
+    # chdb binds {pN:Type} values as the server's typed query parameters (Session.query params).
+    # It passes each value's text to the server as given, and the server reads parameter text in
+    # its escaped form, so each value is formatted the way clickhouse-connect formats one for the
+    # server (a backslash or a tab in a string survives as itself).
+    def command(self, sql: str, params: dict | None = None) -> None:
+        self._session.query(sql, params=_server_text(params))
 
     # chdb runs the query in-process inside one blocking C call and exposes no cancel/interrupt API
     # (chdb/session/state.py: query/send_query only), so the request deadline cannot pre-empt it.
-    def query(self, sql: str) -> tuple[list[tuple], list[str]]:
+    def query(self, sql: str, params: dict | None = None) -> tuple[list[tuple], list[str]]:
         import io
 
         import pyarrow as pa
 
-        raw = self._session.query(sql, "ArrowStream").bytes()
+        raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             return [], []
         table = pa.ipc.open_stream(io.BytesIO(raw)).read_all()
@@ -264,17 +332,19 @@ class _EmbeddedBackend:
         rows = [tuple(d[c] for c in cols) for d in table.to_pylist()]
         return rows, list(cols)
 
-    def query_arrow(self, sql: str) -> pa.Table:
+    def query_arrow(self, sql: str, params: dict | None = None) -> pa.Table:
         import io
 
         import pyarrow as pa
 
-        raw = self._session.query(sql, "ArrowStream").bytes()
+        raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             return pa.table({})
         return pa.ipc.open_stream(io.BytesIO(raw)).read_all()
 
-    def query_arrow_stream(self, sql: str) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
+    def query_arrow_stream(
+        self, sql: str, params: dict | None = None
+    ) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
         # chdb hands back the whole ArrowStream buffer at once, so this is pseudo-streaming: the
         # result is already materialized in-process. We still expose it as a batch iterator so the
         # Flight ARROW_STREAM transport is uniform across backends (REQ-986).
@@ -282,7 +352,7 @@ class _EmbeddedBackend:
 
         import pyarrow as pa
 
-        raw = self._session.query(sql, "ArrowStream").bytes()
+        raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             empty = pa.table({})
             return empty.schema, iter(())
@@ -553,22 +623,25 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
         Built on the lazy ``query_arrow_stream`` terminal (``run_arrow_stream``) so the pgwire ENGINE
         route stays memory-bounded — no full ``QueryResult`` materialization (REQ-1217, Defect 3)."""
-        del params  # SQL arrives fully substituted from the governed pipeline
-        schema, batches = self.run_arrow_stream(sql)
+        schema, batches = self.run_arrow_stream(sql, params)
         return stream_rows_from_arrow(schema, batches)
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
         return await run_async_materialized(self.run_sync, sql, params)
 
-    def run_arrow(self, sql: str) -> pa.Table:
+    def run_arrow(self, sql: str, params: list | None = None) -> pa.Table:
         """Execute ClickHouse-dialect SQL and return a native Arrow table — the ENGINE ARROW terminal
         the Flight server calls (REQ-986). Mirrors run_sync but keeps results columnar end-to-end."""
-        return self._backend.query_arrow(sql)
+        bound, named = bind_parameters(sql, params)
+        return self._backend.query_arrow(bound, named)
 
-    def run_arrow_stream(self, sql: str) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
+    def run_arrow_stream(
+        self, sql: str, params: list | None = None
+    ) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
         """Execute ClickHouse-dialect SQL and return ``(schema, lazy RecordBatch iterator)`` — the
         ENGINE ARROW_STREAM terminal for the Flight server (REQ-986)."""
-        return self._backend.query_arrow_stream(sql)
+        bound, named = bind_parameters(sql, params)
+        return self._backend.query_arrow_stream(bound, named)
 
     @property
     def connection(self):
