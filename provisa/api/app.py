@@ -840,9 +840,11 @@ async def _load_and_build(
     from provisa.core import process_region
 
     _launch_config = Path(config_path)
-    process_region.bind_from_environment(
-        read_config_with_includes(_launch_config) if _launch_config.exists() else {}
-    )
+    _launch_raw = read_config_with_includes(_launch_config) if _launch_config.exists() else {}
+    process_region.bind_from_environment(_launch_raw)
+    # REQ-1922: in a region deployment the boot org's engine is the one its region names, bound
+    # before anything below wakes, seeds or attaches an engine.
+    _bind_boot_engine(_launch_raw)
 
     # Use uvicorn's console logger — the root logger's only handler is the OTLP
     # exporter, so provisa.* logs never reach the console / backend.log.
@@ -1203,6 +1205,7 @@ async def _load_and_build(
     _mark("source-pools+ingest+remote")
 
     await _require_org_serves_here(state.org_id)  # REQ-1922
+    await _refuse_boot_lane_conflict()
     await _bind_region_stores(state.org_id, PROD, initialise=apply)
 
     await _rebuild_schemas(raw_config)
@@ -1398,20 +1401,123 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
             if _row is None:
                 raise KeyError(f"organization {org_id!r} has no environment {env!r}")
             _ephemeral = _row["expires_at"] is not None
+        external_engine, engine_kind, engine_url, storage_url = (
+            lane.external_engine,
+            lane.engine_kind,
+            lane.engine_url,
+            lane.storage_url,
+        )
+        # REQ-1922: in a region deployment the org's region names its engine and its materialize
+        # store, in its model; the admin-plane row may not name others (refuse_lane_conflict).
+        bound = await _region_lane_of(org_id, env or PROD)
+        if bound is not None:
+            from provisa.core.region_stores import refuse_lane_conflict
+
+            refuse_lane_conflict(
+                org_id,
+                engine_kind=lane.engine_kind,
+                engine_url=lane.engine_url,
+                external_engine=lane.external_engine,
+                storage_url=lane.storage_url,
+            )
+            external_engine, engine_kind, engine_url = bound.endpoint, bound.kind, bound.url
+            storage_url = bound.materialize_url
         return await build_org_runtime(
             org_id,
             env=env or PROD,
             ephemeral=_ephemeral,
             include_demo=lane.seeded_demo,
             isolated_engine=lane.isolated_engine,
-            external_engine=lane.external_engine,
-            engine_kind=lane.engine_kind,
-            engine_url=lane.engine_url,
+            external_engine=external_engine,
+            engine_kind=engine_kind,
+            engine_url=engine_url,
             shard=lane.shard,
-            storage_url=lane.storage_url,
+            storage_url=storage_url,
         )
 
     return await state.org_registry.get_or_build(runtime_key(org_id, env), _builder)
+
+
+def _bind_boot_engine(raw_config: dict) -> None:
+    """REQ-1922: bind the boot org's engine to the engine store its region names in the config
+    file, the same external-engine lane every other org in a region deployment is built on
+    (``ensure_org_runtime``). A no-op with no platform regions: the deployment's engine serves it
+    as today."""
+    from provisa.core.region_stores import region_lane
+    from provisa.core.regions import OrgRegion, StoreConfig
+
+    bound = region_lane(
+        "the boot org",
+        [OrgRegion.model_validate(r) for r in raw_config.get("regions") or []],
+        [StoreConfig.model_validate(s) for s in raw_config.get("stores") or []],
+    )
+    if bound is None:
+        return
+    from provisa.federation.engine import build_engine
+    from provisa.federation.runtime import EngineRuntime
+
+    rt = state._active_runtime()
+    rt.isolated_engine = True
+    rt.engine_endpoint = bound.endpoint
+    rt.engine_kind = bound.kind
+    rt.engine_url = bound.url
+    # REQ-1048 precedence: the org's own store first (provisa/storage/byo.py).
+    rt.storage_url = bound.materialize_url
+    rt.federation_engine = EngineRuntime(build_engine(bound.kind), state)
+    rt.federation_engine.bind_terminal()
+
+
+async def _refuse_boot_lane_conflict() -> None:
+    """REQ-1922: the boot org's admin-plane row may not name an engine or store beside its
+    region (read once the platform plane is up)."""
+    from provisa.core import process_region
+    from provisa.core.region_stores import refuse_lane_conflict
+    from provisa.core.regions import DEFAULT_REGION
+
+    if process_region.region() == DEFAULT_REGION:
+        return
+    lane = await _read_org_flags(state.org_id)
+    refuse_lane_conflict(
+        state.org_id,
+        engine_kind=lane.engine_kind,
+        engine_url=lane.engine_url,
+        external_engine=lane.external_engine,
+        storage_url=lane.storage_url,
+    )
+
+
+async def _region_lane_of(org_id: str, env: str):
+    """REQ-1922: the engine and materialize store the org's model names for this node's region,
+    read from its model store before its runtime (and so its engine) is built. None with no
+    platform regions."""
+    from provisa.core import process_region
+    from provisa.core.config_loader import load_control_plane
+    from provisa.core.database import Capabilities, create_engine_from_url
+    from provisa.core.environments import org_schema
+    from provisa.core.region_stores import region_lane
+    from provisa.core.regions import DEFAULT_REGION
+    from provisa.core.repositories.region import list_regions, list_stores
+
+    if process_region.region() == DEFAULT_REGION:
+        # REQ-1922 amendment: the one implicit region names no engine; the lane decides as today.
+        return None
+    shared = state.tenant_engine
+    assert shared is not None, "tenant engine not built; _init_control_planes must run first"
+    # A not-schema-capable backend keeps each org in its own file (see build_org_runtime).
+    owned = None
+    if not Capabilities.for_dialect(shared.dialect.name).schemas:
+        cp = load_control_plane(config_path_str())
+        owned = create_engine_from_url(cp.resolved_tenant_url(), pool_size=1, max_overflow=0)
+    try:
+        model_db = Database(
+            owned or shared, name="org-model", search_path=org_schema(org_id, env), holds="model"
+        )
+        async with model_db.acquire() as conn:
+            regions, stores = await list_regions(conn), await list_stores(conn)
+    finally:
+        if owned is not None:
+            owned.dispose()
+    return region_lane(org_id, regions, stores)
 
 
 async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> None:
