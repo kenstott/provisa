@@ -33,7 +33,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Any
 
 from provisa.audit.context import current_audit_identity
@@ -58,6 +58,10 @@ class PendingAudit:
     # the audit writer's thread when resolving costs a parse the request thread should not pay.
     table_ids: "list[int] | Callable[[], tuple[int, ...]]"
     started: float
+    # Provenance (provisa/audit/provenance.py), taken where the statement was governed: the model
+    # stamp in force, and what was enforced — or a resolver the writer thread calls.
+    model_stamp: int | None
+    enforced: "dict[str, Any] | Callable[[], dict[str, Any]]"
 
 
 def resolve_table_ids(tree: "exp.Expr", gov_ctx: "GovernanceContext") -> list[int]:
@@ -86,7 +90,11 @@ def resolve_table_ids(tree: "exp.Expr", gov_ctx: "GovernanceContext") -> list[in
 
 
 def begin_audit(
-    query_text: str, role_id: str, tree: "exp.Expr", gov_ctx: "GovernanceContext"
+    query_text: str,
+    role_id: str,
+    tree: "exp.Expr",
+    gov_ctx: "GovernanceContext",
+    model_stamp: int | None,
 ) -> PendingAudit | None:
     """Open an audit record for a statement, or None when nothing user-initiated is running.
 
@@ -97,13 +105,18 @@ def begin_audit(
     identity = current_audit_identity()
     if identity is None:
         return None
+    from provisa.audit.provenance import enforced_summary
+
+    table_ids = resolve_table_ids(tree, gov_ctx)
     return PendingAudit(
         user_id=identity.user_id,
         surface=identity.surface,
         role_id=role_id,
         query_text=query_text,
-        table_ids=resolve_table_ids(tree, gov_ctx),
+        table_ids=table_ids,
         started=time.monotonic(),
+        model_stamp=model_stamp,
+        enforced=enforced_summary(gov_ctx, table_ids, tree),
     )
 
 
@@ -114,12 +127,24 @@ async def write_audit(
     *,
     route: str | None = None,
     row_count: int | None = None,
+    route_reason: str | None = None,
+    sources: "Iterable[str]" = (),
+    data_age: dict[str, Any] | None = None,
 ) -> None:
     """Record ``pending``'s row with its outcome. A None record is a statement with no acting
     principal (see :func:`begin_audit`) and writes nothing.
 
     Awaitable for its callers' sake; it does not wait on the database — see :func:`enqueue_audit`."""
-    enqueue_audit(pending, status_code, state, route=route, row_count=row_count)
+    enqueue_audit(
+        pending,
+        status_code,
+        state,
+        route=route,
+        row_count=row_count,
+        route_reason=route_reason,
+        sources=sources,
+        data_age=data_age,
+    )
 
 
 def enqueue_audit(
@@ -129,11 +154,23 @@ def enqueue_audit(
     *,
     route: str | None = None,
     row_count: int | None = None,
+    route_reason: str | None = None,
+    sources: "Iterable[str]" = (),
+    data_age: dict[str, Any] | None = None,
 ) -> None:
     """Hand ``pending``'s finished row to the audit writer (:mod:`provisa.audit.writer`) and
     return: the INSERT, and the active-hour meter that rides the same seam (REQ-1454), happen on
     the writer's thread."""
-    record = build_audit_record(pending, status_code, state, route=route, row_count=row_count)
+    record = build_audit_record(
+        pending,
+        status_code,
+        state,
+        route=route,
+        row_count=row_count,
+        route_reason=route_reason,
+        sources=sources,
+        data_age=data_age,
+    )
     if record is not None:
         from provisa.audit.writer import audit_writer
 
@@ -168,6 +205,9 @@ def build_audit_record(
     *,
     route: str | None = None,
     row_count: int | None = None,
+    route_reason: str | None = None,
+    sources: "Iterable[str]" = (),
+    data_age: dict[str, Any] | None = None,
 ) -> Any:
     """``pending``'s audit record, or None when there is no acting principal. Everything that
     depends on the request's context — the org, its tenant database, its encryption key, the UDF
@@ -183,7 +223,7 @@ def build_audit_record(
     from datetime import datetime, timezone
 
     from provisa.audit.writer import AuditRecord
-    from provisa.core.request_context import current_org
+    from provisa.core.request_context import active_env, current_org
     from provisa.encryption.runtime import encryption_service
     from provisa.otel_compat import current_udf_correlation_id
 
@@ -217,8 +257,14 @@ def build_audit_record(
         # plane (single-tenant / desktop) = no org registry, no subscription, nothing to meter.
         meter_pool=state.admin_db,
         meter_org=org_id,
+        model_env=active_env(),
         route=route,
         row_count=row_count,
+        model_stamp=pending.model_stamp,
+        enforced=pending.enforced,
+        route_reason=route_reason,
+        sources=tuple(sources),
+        data_age=data_age,
     )
 
 
@@ -239,6 +285,8 @@ async def write_denial(
     if identity is None:
         return
     table_ids = resolve_table_ids(tree, gov_ctx) if tree is not None and gov_ctx is not None else []
+    if state is None:
+        from provisa.api.app import state  # type: ignore[assignment]
     await write_audit(
         PendingAudit(
             user_id=identity.user_id,
@@ -247,6 +295,9 @@ async def write_denial(
             query_text=query_text,
             table_ids=table_ids,
             started=time.monotonic(),
+            model_stamp=state.model_stamp,
+            # A refused statement had nothing enforced on its rows: it was given none.
+            enforced={},
         ),
         403,
         state,

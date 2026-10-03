@@ -57,6 +57,7 @@ def _state(**over) -> SimpleNamespace:
         roles={"analyst": _ROLE},
         masking_rules={},
         tables=[],
+        model_stamp=1,
     )
     base.update(over)
     return SimpleNamespace(**base)
@@ -290,6 +291,7 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
         kafka_table_configs={},
         source_types={"sales-pg": "postgresql"},
         settings_overrides={},
+        model_stamp=1,
     )
     monkeypatch.setattr(app_module, "state", state)
     monkeypatch.setattr(endpoint, "parse_query", _parse)

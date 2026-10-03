@@ -106,6 +106,8 @@ def _plan(**kw) -> _Plan:
         query_text="SELECT id FROM t",
         table_ids=[7],
         started=time.time(),
+        model_stamp=1,
+        enforced={},
     )
     return _Plan(
         route=Route.ENGINE,

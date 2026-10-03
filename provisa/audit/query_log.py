@@ -41,6 +41,12 @@ CREATE TABLE IF NOT EXISTS query_audit_log (
     route TEXT,
     row_count INT,
     trace_id TEXT,
+    model_stamp BIGINT,
+    model_commit TEXT,
+    enforced JSONB,
+    route_reason TEXT,
+    sources JSONB,
+    data_age JSONB,
     logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

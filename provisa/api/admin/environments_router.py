@@ -894,7 +894,11 @@ async def deploy_into_environment(
         await _audit(org_id, actor, "environment.deploy", name, report.as_dict())
         # REQ-1543: a deploy is where the environment now IS, and it ends any run of undos --
         # applying a chosen tree is the environment choosing a future, not resuming the old one.
-        await set_position(_admin_pool(), org_id, name, deployed_sha=sha, redo_sha=None)
+        # No stamp: the stamp the applied model stands at is not known exactly here, so no audit
+        # row names this commit until a write-through confirms the model equals it.
+        await set_position(
+            _admin_pool(), org_id, name, deployed_sha=sha, deployed_stamp=None, redo_sha=None
+        )
         refreshed = await _refresh(org_id, name, connectivity=report.delta.touches_connectivity)
     return {
         "report": report.as_dict(),
@@ -946,7 +950,15 @@ async def _move(request: Request, org_id: str, name: str, forward: bool) -> dict
         if target is None:
             # The run of undos was abandoned by a later edit, so there is no line forward to walk.
             # The cursor is cleared rather than pointed at a commit off this environment's line.
-            await set_position(_admin_pool(), org_id, name, deployed_sha=here, redo_sha=None)
+            # The position does not move, so the stamp that names it stands.
+            await set_position(
+                _admin_pool(),
+                org_id,
+                name,
+                deployed_sha=here,
+                deployed_stamp=row["deployed_stamp"],
+                redo_sha=None,
+            )
             raise ApiError(
                 409,
                 "environments.redo_abandoned",
@@ -981,7 +993,10 @@ async def _move(request: Request, org_id: str, name: str, forward: bool) -> dict
         raise ApiError(
             422, "environments.tree_does_not_hold", str(exc), org=org_id, env=name, ref=target
         ) from exc
-    await set_position(_admin_pool(), org_id, name, deployed_sha=target, redo_sha=cursor)
+    # An undo or redo applies an earlier tree; the stamp it stands at is not known exactly here.
+    await set_position(
+        _admin_pool(), org_id, name, deployed_sha=target, deployed_stamp=None, redo_sha=cursor
+    )
     action = "environment.redo" if forward else "environment.undo"
     await _audit(org_id, actor, action, name, {"from": here, "to": target, **report.as_dict()})
     refreshed = await _refresh(org_id, name, connectivity=report.delta.touches_connectivity)
@@ -1119,6 +1134,7 @@ async def decide_merge_request(
                 org_id,
                 decided["target_env"],
                 deployed_sha=decided["source_sha"],
+                deployed_stamp=None,  # a deploy: not known exactly (see the direct deploy)
                 redo_sha=None,
             )
         # REQ-1544: an approved request is applied by ``env_approvals``, so the target's cached
@@ -1575,7 +1591,9 @@ async def pull_environment(request: Request, org_id: str, name: str) -> dict:
         raise ApiError(
             422, "environments.tree_does_not_hold", str(exc), org=org_id, env=name, ref=sha
         ) from exc
-    await set_position(_admin_pool(), org_id, name, deployed_sha=sha, redo_sha=None)
+    await set_position(
+        _admin_pool(), org_id, name, deployed_sha=sha, deployed_stamp=None, redo_sha=None
+    )
     await _audit(org_id, actor, "environment.repo_pull", name, {"sha": sha, **report.as_dict()})
     refreshed = await _refresh(org_id, name, connectivity=report.delta.touches_connectivity)
     return {

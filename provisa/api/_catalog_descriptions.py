@@ -362,6 +362,16 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "status_code": "How the statement ended — 200 success, 403 denied by governance",
         "duration_ms": "Wall-clock milliseconds the statement took",
         "logged_at": "When the row was written",
+        "route": "How the statement was answered — cache, direct (one source) or engine",
+        "row_count": "Rows the statement delivered",
+        "route_reason": "Why the statement took its route",
+        "sources": "Sources the statement read",
+        "data_age": "How old the rows it was answered with were — a cache entry's age, or the "
+        "time it was read as of; empty when read live",
+        "model_stamp": "The model version (stamp) the statement was governed under",
+        "model_commit": "The environment repository commit that model equals, when proven",
+        "enforced": "What was enforced on it — row filters (with the names of the session "
+        "variables they read), masks by kind, row caps, and for a write its table and columns",
     },
     "usage_ranking": {
         "id": "The registered table this row ranks",

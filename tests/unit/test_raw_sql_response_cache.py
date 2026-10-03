@@ -60,6 +60,8 @@ def _plan(sql: str = "SELECT id, amount, ts FROM t", *, params=None, role="analy
         query_text=sql,
         table_ids=[7, 8],
         started=time.time(),
+        model_stamp=1,
+        enforced={},
     )
     return _Plan(
         route=Route.ENGINE,

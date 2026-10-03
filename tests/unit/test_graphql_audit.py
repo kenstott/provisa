@@ -77,6 +77,13 @@ def audited(monkeypatch):
 
     monkeypatch.setattr("provisa.audit.query_log.log_queries", _log_queries)
     monkeypatch.setattr("provisa.encryption.runtime.encryption_service", NullEncryption)
+    # The harness's compilation context and row-filter context are opaque stand-ins, so what the
+    # role's governance enforced is stood in for too — as the tables it was asked about, which is
+    # what this file checks the row carries (tests/unit/test_audit_provenance.py builds it for real).
+    monkeypatch.setattr(
+        "provisa.audit.provenance.enforced_for_request",
+        lambda _state, _role, _ctx: lambda table_ids: {"tables": list(table_ids)},
+    )
     harness = _endpoint_harness(monkeypatch)
     harness.state.tenant_db = object()
     harness.state.org_id = "acme"
@@ -195,7 +202,9 @@ def test_an_action_field_request_is_one_row_the_actions_governed_statement(audit
 
     async def _action_request(*args, **kwargs):
         # What action_governance._audit does when the action's governed statement has run.
-        pending = PendingAudit("alice", "http", "analyst", "SELECT * FROM send_invoice", [], 0.0)
+        pending = PendingAudit(
+            "alice", "http", "analyst", "SELECT * FROM send_invoice", [], 0.0, 1, {}
+        )
         await write_audit(pending, 200, audited.harness.state, route="engine", row_count=2)
         note_statement_audited()
         return JSONResponse({"data": {"send_invoice": [{"ok": True}, {"ok": True}]}})

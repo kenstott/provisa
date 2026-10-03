@@ -271,6 +271,18 @@ def _admit_new_values(
         )
 
 
+def written_columns(tree: exp.Expression, gov: "GovernanceContext", table_id: int) -> list[str]:
+    """The columns a write writes: an INSERT the columns it lists (all of the table's when it
+    lists none), an UPDATE the columns it sets, a DELETE or MERGE every column (whole rows)."""
+    every_column = [c for c, _ in gov.all_columns.get(table_id, [])]
+    if isinstance(tree, exp.Insert):
+        listed = _target(tree)[1]
+        return listed if listed is not None else every_column
+    if isinstance(tree, exp.Update):
+        return [a.this.name for a in tree.expressions if isinstance(a, exp.EQ)]
+    return every_column
+
+
 def written_table_id(tree: exp.Expression, gov: "GovernanceContext") -> int:
     """The registered table a write targets — what the steps after a successful write act on
     (its cached reads dropped, its views marked stale, its change event and sinks)."""
@@ -297,14 +309,7 @@ def admit_write(
             f"{kind} on {table.name!r}: role {gov.role_id!r} does not hold the 'write' right"
         )
 
-    every_column = [c for c, _ in gov.all_columns.get(table_id, [])]
-    if isinstance(tree, exp.Insert):
-        written = listed if listed is not None else every_column
-    elif isinstance(tree, exp.Update):
-        written = [a.this.name for a in tree.expressions if isinstance(a, exp.EQ)]
-    else:
-        written = every_column  # DELETE and MERGE act on whole rows
-    _require_columns(gov, table_id, written)
+    _require_columns(gov, table_id, written_columns(tree, gov, table_id))
 
     if table_id not in gov.rls_rules:
         return tree

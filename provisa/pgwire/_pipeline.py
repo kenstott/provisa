@@ -1281,7 +1281,7 @@ async def route_governed(
 
     # REQ-074/REQ-1386: open the audit record for this execution of the governed statement. The
     # terminal finalizes it with the real status and duration.
-    _audit = begin_audit(sql, role_id, _parsed_input, gov_ctx)
+    _audit = begin_audit(sql, role_id, _parsed_input, gov_ctx, state.model_stamp)
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     # Lower the ONE accepted reference model — the semantic domain.table the catalog
@@ -1940,9 +1940,13 @@ async def finalize_audit(
     state: Any | None = None,
     *,
     cache_hit: bool = False,
+    cache_entry: Any = None,
     defer_to_drain: bool = False,
 ) -> None:
     """Write ``plan``'s audit row (REQ-074/REQ-1386). Idempotent per plan.
+
+    ``cache_entry``: the response-cache entry a hit was served from — its age is the age of the
+    rows the statement was answered with.
 
     The row records the route the statement was answered by (``cache`` for a response-cache hit,
     else the plan's) and ``plan.row_count``, which a terminal sets before it finalizes.
@@ -1966,12 +1970,34 @@ async def finalize_audit(
     observe_plan(plan, status_code, cache_hit=cache_hit)
 
     _route = "cache" if cache_hit else cast("Route", plan.route).name.lower()
+    if cache_hit and cache_entry is None:
+        raise RuntimeError(
+            "a statement answered from the response cache was finalized without the entry it was "
+            "served from: its audit row could not say how old the rows were"
+        )
+    from provisa.audit.provenance import data_age
+
+    # Provenance (provisa/audit/provenance.py): why the plan took its route, what it read, and
+    # how old the rows it was answered with are — decided by now, recorded here.
+    _outcome = {
+        "route_reason": plan.route_reason,
+        "sources": plan.sources,
+        "data_age": (
+            data_age(plan, cache_entry if cache_hit else None)
+            if status_code == 200  # noqa: PLR2004 - HTTP OK
+            else None
+        ),
+    }
     if defer_to_drain and status_code == 200:  # noqa: PLR2004 - HTTP OK
         from provisa.audit.pipeline import build_audit_record
 
-        plan.audit_deferred = build_audit_record(plan.audit, status_code, state, route=_route)
+        plan.audit_deferred = build_audit_record(
+            plan.audit, status_code, state, route=_route, **_outcome
+        )
     else:
-        await write_audit(plan.audit, status_code, state, route=_route, row_count=plan.row_count)
+        await write_audit(
+            plan.audit, status_code, state, route=_route, row_count=plan.row_count, **_outcome
+        )
     # REQ-1897: every terminal finalizes here, so the steps after a successful write run once,
     # whichever surface ran it.
     if plan.writes_tables and status_code == 200:
@@ -2417,11 +2443,11 @@ async def _account_cache_hit(
     try:
         result = _apply_output_cap(plan, result)
     except Exception:
-        await finalize_audit(plan, 402, state, cache_hit=True)
+        await finalize_audit(plan, 402, state, cache_hit=True, cache_entry=stored)
         raise
     result.cache_entry = stored
     plan.row_count = len(result.rows)
-    await finalize_audit(plan, 200, state, cache_hit=True)
+    await finalize_audit(plan, 200, state, cache_hit=True, cache_entry=stored)
     return result
 
 
@@ -2980,7 +3006,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     _table_ids, governed_sql = _governed.table_ids, _governed.governed_sql
     # REQ-1910: request entry on the compiled path (GraphQL over Flight, Cypher, gRPC, MCP, REST).
     await resolve_trace_scope(state, role_id, hint=cache_hint.debug_trace)
-    _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx)
+    _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx, state.model_stamp)
 
     # REQ-1897 (amended 2026-10-01): the cache before the route (see route_governed). A sink
     # delivery returns a handle, not rows, and is never answered from it.

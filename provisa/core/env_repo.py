@@ -264,9 +264,17 @@ async def write_through(
     from provisa.core.env_ci import announce
     from provisa.core.env_store import set_drifted, set_position
 
+    from provisa.core.env_project import model_stamp
+
     try:
+        # The stamp is read before and after the tree: equal, nothing changed the model while it
+        # was read, so the commit holds exactly the model at that stamp. Unequal, the commit is
+        # recorded without a stamp and no statement's audit row will name it.
+        before = await model_stamp(conn, schema)
         files = dump(await project(conn, schema))
-        sha = commit_files(ensure_repo(org_id), env, files, message, actor)
+        exact_stamp = before if await model_stamp(conn, schema) == before else None
+        repo = ensure_repo(org_id)
+        sha = commit_files(repo, env, files, message, actor)
     except Exception:  # noqa: BLE001 — REQ-1524: the projection never fails the change it observes
         import logging
 
@@ -281,11 +289,22 @@ async def write_through(
         # REQ-1543: the model now equals THIS commit, so this is where an undo starts from. The
         # redo cursor is cleared in the same write: an edit made after an undo is the environment
         # choosing a different future, and the one it stepped back from is no longer ahead of it.
-        await set_position(admin_db, org_id, env, deployed_sha=sha, redo_sha=None)
+        await set_position(
+            admin_db, org_id, env, deployed_sha=sha, deployed_stamp=exact_stamp, redo_sha=None
+        )
         # REQ-1527: an unchanged model is not an event. ``sha is None`` here means the tree matched
         # what the branch already held, so there is nothing for a pipeline to run against and
         # nothing to mirror -- announcing it would make the status stream noise.
         await announce(admin_db, org_id, env, sha, False)
+    elif exact_stamp is not None:
+        # Unchanged: the model at this stamp is the tree the branch already holds. If that tip is
+        # where the environment stands, the stamp now names it too.
+        from provisa.core.env_store import get_env, set_deployed_stamp
+
+        row = await get_env(admin_db, org_id, env)
+        tip = repo.refs[_branch_ref(env)].decode() if has_branch(repo, env) else None
+        if row is not None and tip is not None and row["deployed_sha"] == tip:
+            await set_deployed_stamp(admin_db, org_id, env, exact_stamp)
     return sha
 
 

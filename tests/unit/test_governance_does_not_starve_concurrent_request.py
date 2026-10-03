@@ -71,6 +71,7 @@ def _ctx() -> CompilationContext:
 
 def _fake_state():
     return SimpleNamespace(
+        model_stamp=1,  # REQ-1914: the stamp the model was built at; audit rows record it
         admin_db=None,  # as AppState without a control plane: no debug-trace settings
         contexts={"analyst": _ctx()},
         rls_contexts={},

@@ -50,6 +50,15 @@ class _Ctx:
     table_map: dict[str, int]
 
 
+def _gov(table_map: dict[str, int]):
+    """A governance context resolving ``table_map``, enforcing nothing."""
+    from provisa.compiler.stage2 import GovernanceContext
+
+    gov = GovernanceContext()
+    gov.table_map = dict(table_map)
+    return gov
+
+
 class _CapturingState:
     """An AppState stand-in whose tenant_db records the audit insert."""
 
@@ -60,6 +69,7 @@ class _CapturingState:
         # single-tenant/desktop shape — no org registry, so nothing to meter — which is what these
         # tests exercise; the metering itself has its own suite.
         self.admin_db = None
+        self.model_stamp = 1
 
 
 @pytest.fixture
@@ -118,16 +128,17 @@ def test_begin_audit_returns_none_without_an_acting_principal():
     """Startup seeding and materialization refreshes are not user queries: no identity is
     bound, so no row is opened — the pipeline must not invent a principal."""
     tree = sqlglot.parse_one("SELECT 1")
-    assert begin_audit("SELECT 1", "analyst", tree, _Ctx(table_map={})) is None
+    assert begin_audit("SELECT 1", "analyst", tree, _gov({}), 1) is None
 
 
 def test_begin_audit_records_the_bound_principal_and_surface():
     tree = sqlglot.parse_one("SELECT * FROM sales.orders")
     with audit_identity_scope("alice", "pgwire"):
-        pending = begin_audit("SELECT * FROM sales.orders", "analyst", tree, _Ctx({"orders": 7}))
+        pending = begin_audit("SELECT * FROM sales.orders", "analyst", tree, _gov({"orders": 7}), 4)
     assert pending is not None
     assert (pending.user_id, pending.surface, pending.role_id) == ("alice", "pgwire", "analyst")
     assert pending.table_ids == [7]
+    assert pending.model_stamp == 4  # the stamp of the model it was governed under
 
 
 def test_audit_identity_scope_restores_the_previous_binding():
@@ -179,6 +190,8 @@ def test_write_audit_appends_the_completed_statement(captured):
         query_text="SELECT * FROM sales.orders",
         table_ids=[7],
         started=0.0,
+        model_stamp=1,
+        enforced={},
     )
     _audited(write_audit(pending, 200, _CapturingState()))
     assert len(captured) == 1
@@ -201,7 +214,7 @@ def test_the_recorded_tenant_is_the_org_that_owns_the_row(captured):
     try:
         _audited(
             write_audit(
-                PendingAudit("alice", "http", "org_admin", "SELECT 1", [], 0.0),
+                PendingAudit("alice", "http", "org_admin", "SELECT 1", [], 0.0, 1, {}),
                 200,
                 _CapturingState(org_id="default"),
             )
@@ -224,7 +237,7 @@ def test_write_audit_refuses_to_run_without_a_tenant_database(captured):
         tenant_db = None
         org_id = "default"
 
-    pending = PendingAudit("alice", "pgwire", "analyst", "SELECT 1", [], 0.0)
+    pending = PendingAudit("alice", "pgwire", "analyst", "SELECT 1", [], 0.0, 1, {})
     with pytest.raises(RuntimeError, match="tenant database"):
         _audited(write_audit(pending, 200, _NoTenant()))
     assert captured == []
@@ -281,7 +294,7 @@ def test_finalize_audit_writes_once_per_plan(captured):
     _execute_plan must not produce a second row."""
     from provisa.pgwire._pipeline import finalize_audit
 
-    plan = _plan_with_audit(PendingAudit("alice", "flight", "analyst", "SELECT 1", [], 0.0))
+    plan = _plan_with_audit(PendingAudit("alice", "flight", "analyst", "SELECT 1", [], 0.0, 1, {}))
 
     async def _main():
         await finalize_audit(plan, 200, _CapturingState())

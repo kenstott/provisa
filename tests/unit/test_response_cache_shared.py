@@ -88,6 +88,8 @@ def _make_plan(sql: str = "SELECT id FROM t", role_id: str = "role-1") -> _Plan:
         query_text=sql,
         table_ids=[42],
         started=time.time(),
+        model_stamp=1,
+        enforced={},
     )
     return _Plan(
         route=Route.ENGINE,
