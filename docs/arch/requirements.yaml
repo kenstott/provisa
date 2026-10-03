@@ -31840,22 +31840,33 @@
 - id: REQ-1062
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
-  category: Multi-Tenancy & Branding
+  category: Org Branding
   priority: SHOULD
-  type: behavioral
+  type: ui
   target: 2026-Q4
-  description: 'Custom domain as a premium gate: premium/enterprise tiers may bind a custom domain (e.g.
-    data.acme.com via CNAME) with custom TLS and white-label (no Provisa branding). Free/standard tiers
-    use {org}.provisa.io only. [SUPERSEDED by REQ-1511, 2026-10-03 -- REQ-1052 is CTA wiring, not a pricing
-    page; plans are shown on the Billing page. Kept here for history; do not implement against it.] Tier
-    entitlements are surfaced on the pricing page (REQ-1052) [END SUPERSEDED BLOCK].'
-  use_case: Provides a premium branding differentiator. Custom domain + white-label appeals to enterprises
-    embedding data apps in customer-facing portals. Clear tier gate monetizes the feature and simplifies
-    operations (no per-org cert management for premium tenants).
-  relates_to:
-  - REQ-1052
-  - REQ-1019
-  - REQ-1054
+  description: An org can remove every reference to Provisa from the surfaces meant for analysts and read-only
+    users, such as the glossary and Explore. On those surfaces the org's own branding (REQ-1486) stands
+    in place of the product's name and mark. The surfaces where the model is built and administered may
+    keep the Provisa name.
+  use_case: An org presents its governed data to its own analysts and readers under its own name, without
+    the product's name appearing to them.
+  scenario: 'Given an org that has set its branding and turned off the product name for readers
+
+    When an analyst opens the glossary or Explore
+
+    Then no reference to Provisa appears on the page
+
+    And an administrator opening the modeling and admin pages may still see it
+
+    '
+  related_reqs:
+  - REQ-1486
+  notes: 'Rewritten 2026-10-03 at the maintainer''s direction. The earlier text asked for a per-customer
+    custom domain with custom TLS and a premium tier gate; the maintainer removed those: org subdomains,
+    the wildcard certificate (REQ-1239) and per-org branding (REQ-1486) cover that need. What remains
+    is the rule above. Audit 2026-10-03: not built; the product name appears in the navigation bar, the
+    tour and other reader-facing strings (provisa-ui/src/i18n/locales/en/navBar.json, tour.json), and
+    no setting removes it.'
 - id: REQ-1063
   status: superseded
   group: 11. Platform, Infrastructure & Delivery

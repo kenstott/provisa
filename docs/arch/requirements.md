@@ -10460,13 +10460,13 @@ Subdomain-as-dedicated-channel value proposition: [SUPERSEDED by [REQ-1233](#REQ
 
 **Tests:** —
 
-### REQ-1062 · Multi-Tenancy & Branding {#REQ-1062}
+### REQ-1062 · Org Branding {#REQ-1062}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
 
-Custom domain as a premium gate: premium/enterprise tiers may bind a custom domain (e.g. data.acme.com via CNAME) with custom TLS and white-label (no Provisa branding). Free/standard tiers use {org}.provisa.io only. [SUPERSEDED by [REQ-1511](#REQ-1511), 2026-10-03 -- [REQ-1052](#REQ-1052) is CTA wiring, not a pricing page; plans are shown on the Billing page. Kept here for history; do not implement against it.] Tier entitlements are surfaced on the pricing page ([REQ-1052](#REQ-1052)) [END SUPERSEDED BLOCK].
+An org can remove every reference to Provisa from the surfaces meant for analysts and read-only users, such as the glossary and Explore. On those surfaces the org's own branding ([REQ-1486](#REQ-1486)) stands in place of the product's name and mark. The surfaces where the model is built and administered may keep the Provisa name.
 
-**Use case:** Provides a premium branding differentiator. Custom domain + white-label appeals to enterprises embedding data apps in customer-facing portals. Clear tier gate monetizes the feature and simplifies operations (no per-org cert management for premium tenants).
+**Use case:** An org presents its governed data to its own analysts and readers under its own name, without the product's name appearing to them.
 
 **Code:** —
 
