@@ -3224,6 +3224,11 @@ def create_app() -> FastAPI:
 
     app.add_middleware(ModelChangeMiddleware)
     app.add_middleware(_RequestTransportMiddleware)
+    # REQ-1916: a coordinator answers every /data request with its refusal, before the request
+    # transport opens a deadline for it.
+    from provisa.api.coordinator_gate import CoordinatorDataGate
+
+    app.add_middleware(CoordinatorDataGate)
 
     from provisa.core.request_thread import RequestThreadMiddleware
 
