@@ -1274,6 +1274,12 @@ replica_state = Table(
     # down: since when, and the server's own reason. NULL once the listener is watching again.
     Column("feed_down_since", DateTime(timezone=True)),
     Column("feed_error", Text),
+    Column(
+        "delta_cursor", JSON
+    ),  # REQ-874: the stored delta cursor (max cursor-field of the last applied delta)
+    Column(
+        "delta_skipped", Text
+    ),  # REQ-874: why the last build was a whole rebuild, not a delta; NULL = delta applied
     CheckConstraint(
         "build_state IN ('idle','requested','building','failed')",
         name="replica_state_build_state_check",

@@ -1449,6 +1449,8 @@ CREATE TABLE IF NOT EXISTS replica_state (
     waiting_on       TEXT,          -- why a requested build did not start on the last pass (a code)
     feed_down_since  TIMESTAMPTZ,    -- REQ-1861: since when the change-feed listener is down; NULL = watching
     feed_error       TEXT,           -- REQ-1861: the server's reason while the listener is down
+    delta_cursor     JSONB,          -- REQ-874: the stored delta cursor
+    delta_skipped    TEXT,           -- REQ-874: why the last build was a whole rebuild, not a delta
     PRIMARY KEY (source_id, schema_name, table_name)
 );
 

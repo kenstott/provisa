@@ -77,3 +77,44 @@ def advance_cursor(
     if not values:
         return current
     return max(values)
+
+
+# Why a delta reload falls back to a whole rebuild, by declared rule (REQ-874). Shown on the
+# replica status as "whole rebuild: <reason>"; never a silent rebuild.
+SKIP_NO_DELTA = "no_delta_declared"
+SKIP_FIRST_BUILD = "first_build"  # no replica or no stored cursor yet
+SKIP_DEFINITION = "definition_changed"  # columns/key/address changed, or reason model/definition
+SKIP_OPERATOR = "operator_requested"  # an operator start-build
+SKIP_REBUILD_EVERY = "rebuild_interval_elapsed"
+SKIP_STORE = "store_cannot_apply_delta"
+
+
+def delta_build_reason(
+    *,
+    has_delta: bool,
+    has_cursor: bool,
+    reason: str,
+    definition_changed: bool,
+    store_applies_delta: bool,
+    rebuild_due: bool,
+) -> str | None:
+    """None when this build applies a delta; otherwise the declared ``delta_skipped`` code for
+    why it falls back to a whole rebuild (REQ-874). The order is the rule's: no delta declared,
+    then the cases that force a whole copy (first build, a definition change or a model/
+    definition/operator request, the rebuild interval), then a store that cannot apply a delta.
+    A delta read or apply that FAILS is a failed build, never routed here."""
+    from provisa.federation import replica_state as rs
+
+    if not has_delta:
+        return SKIP_NO_DELTA
+    if not has_cursor:
+        return SKIP_FIRST_BUILD
+    if definition_changed or reason in (rs.REASON_MODEL, rs.REASON_DEFINITION):
+        return SKIP_DEFINITION
+    if reason == rs.REASON_OPERATOR:
+        return SKIP_OPERATOR
+    if rebuild_due:
+        return SKIP_REBUILD_EVERY
+    if not store_applies_delta:
+        return SKIP_STORE
+    return None
