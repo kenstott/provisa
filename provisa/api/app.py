@@ -811,6 +811,16 @@ async def _load_and_build(
     if config_path is None:
         config_path = config_path_str()
 
+    # REQ-1916/1922: the launch's mode and region, checked against the platform's regions before
+    # any store is opened — a node the platform cannot place does not start. A first start with no
+    # config file yet declares nothing, as the build below treats it (it returns at that point).
+    from provisa.core import process_region
+
+    _launch_config = Path(config_path)
+    process_region.bind_from_environment(
+        read_config_with_includes(_launch_config) if _launch_config.exists() else {}
+    )
+
     # Use uvicorn's console logger — the root logger's only handler is the OTLP
     # exporter, so provisa.* logs never reach the console / backend.log.
     _startup_log = logging.getLogger("uvicorn.error")

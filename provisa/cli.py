@@ -626,6 +626,19 @@ def main(argv: list[str] | None = None) -> int:
         default=str(_DEFAULT_DATA_DIR),
         help=f"State directory for the SQLite control plane (default: {_DEFAULT_DATA_DIR})",
     )
+    run.add_argument(
+        "--mode",
+        choices=("every", "query", "coordinator"),
+        default=None,
+        help="Process mode (REQ-1916): every (default) serves requests and does the background "
+        "work; query only serves requests; coordinator only does the background work",
+    )
+    run.add_argument(
+        "--region",
+        default=None,
+        help="The platform region this node serves (REQ-1922); required when the platform "
+        "declares regions, refused when it declares none",
+    )
     run.set_defaults(func=_cmd_run)
 
     # REQ-1139: offline license application + status.
@@ -768,6 +781,13 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     args = parser.parse_args(argv)
+    if args.command == "run":
+        # REQ-1916/1922: the mode and region reach the process the command starts (and any worker
+        # it spawns) the same way a launch that bypasses the command gives them: the environment.
+        if args.mode is not None:
+            os.environ["PROVISA_MODE"] = args.mode
+        if args.region is not None:
+            os.environ["PROVISA_REGION"] = args.region
     return args.func(args)
 
 
