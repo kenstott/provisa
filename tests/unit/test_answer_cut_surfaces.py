@@ -28,6 +28,12 @@ import pytest
 
 from provisa.core.statement_warnings import ServerWarning, warn
 
+# What a governed plan's statement carries to the engine (REQ-1760); these tests call the Cypher
+# helpers below the pipeline, so they hand one in themselves.
+from provisa.federation.execution_auth import system_auth  # noqa: E402
+
+_AUTH = system_auth("test: a governed plan's statement")
+
 
 def _cut(message: str = "the answer for pets was cut at max_pages=1 (2 rows)") -> ServerWarning:
     return ServerWarning(
@@ -256,7 +262,7 @@ async def test_a_cypher_statement_reads_a_cut_answer_from_its_own_table_and_neve
         patch.object(engine_cache, "cache_table_name", lambda *a: "pets_whole"),
     ):
         rows = await cypher_exec._execute_with_api(
-            "SELECT id FROM pets", [], {}, state, table_ids=[5]
+            "SELECT id FROM pets", [], {}, state, table_ids=[5], authorization=_AUTH
         )
     assert rows == [{"id": 1}]
     (sql,) = read
@@ -325,6 +331,8 @@ async def test_a_cypher_statement_lands_a_remote_graphql_answer_cut_at_max_rows_
         patch.object(cypher_exec, "spawn_background", lambda coro: None),
     ):
         for _ in range(2):
-            await cypher_exec._execute_with_gql_remote("SELECT id FROM issues", [], {}, state)
+            await cypher_exec._execute_with_gql_remote(
+                "SELECT id FROM issues", [], {}, state, authorization=_AUTH
+            )
     assert len(set(created)) == 2  # each cut statement landed its own; neither found the other's
     assert [f'"{name}"' in sql for name, sql in zip(created, read)] == [True, True]

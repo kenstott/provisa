@@ -29,6 +29,8 @@ import re
 import sys
 from datetime import date, datetime, timedelta
 
+from provisa.federation.execution_auth import plan_authorization
+
 import concurrent.futures
 
 from starlette.exceptions import HTTPException
@@ -774,7 +776,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
             permits = acquire_plan_permits(state, plan)
             try:
                 stream = state.federation_engine.execute_engine_sync(
-                    plan.physical_sql, plan.exec_params, session_hints=plan.session_hints
+                    plan.physical_sql,
+                    plan.exec_params,
+                    session_hints=plan.session_hints,
+                    authorization=plan_authorization(plan),
                 )
             except BaseException:
                 permits.release()

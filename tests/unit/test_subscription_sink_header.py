@@ -309,3 +309,22 @@ class TestKafkaSubscriptionBrokers:
             _build_provider_config(
                 "kafka", "events-src", "t", None, SimpleNamespace(kafka_bootstrap={})
             )
+
+
+class TestStreamSourcesMustBeLoaded:
+    """A subscription to an RSS or WebSocket table whose source is not loaded is refused by name,
+    never handed an empty provider configuration."""
+
+    @pytest.mark.parametrize(
+        "source_type, attribute",
+        [("rss", "rss_sources"), ("websocket", "websocket_sources")],
+    )
+    def test_an_unloaded_source_is_refused(self, source_type, attribute):
+        from types import SimpleNamespace
+
+        from provisa.api.data.subscribe import _build_provider_config
+
+        with pytest.raises(ValueError, match="'feed-src' is not loaded"):
+            _build_provider_config(
+                source_type, "feed-src", "t", None, SimpleNamespace(**{attribute: {}})
+            )

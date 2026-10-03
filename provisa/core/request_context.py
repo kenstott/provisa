@@ -149,6 +149,12 @@ def reset_role_claims(token: Token[tuple[str, ...] | None]) -> None:
     current_role_claims.reset(token)
 
 
+# The role the request acts as (request.state.role), bound by the surfaces that authenticate a
+# caller. Read where something done on the caller's behalf records who acted (REQ-1760: catalog
+# SQL an admin handler runs under the system's authorization).
+current_acting_role: ContextVar[str | None] = ContextVar("current_acting_role", default=None)
+
+
 # --- providers the API layer registers so lower layers never import it (REQ-1678) ---
 
 _active_engine_url_provider: Callable[[], str | None] | None = None

@@ -17,6 +17,8 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, Optional, cast
 
+from provisa.api.admin.engine_auth import run_admin_catalog_sql
+
 import strawberry
 from sqlalchemy import select, update
 from strawberry.types.info import Info as StrawberryInfo
@@ -3886,7 +3888,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         catalog=r_catalog, schema=r_schema, table=r_table
                     )
                 else:
-                    await engine.execute_engine(f"ANALYZE {full_name}")
+                    await run_admin_catalog_sql(
+                        state, engine, f"ANALYZE {full_name}", "source statistics"
+                    )
                 analyzed.append(full_name)
             except Exception as exc:
                 logging.getLogger(__name__).exception("ANALYZE %s failed", full_name)

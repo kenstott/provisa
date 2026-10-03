@@ -25,6 +25,8 @@ from __future__ import annotations
 
 # Requirements: REQ-345, REQ-346, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-392, REQ-398
 
+from provisa.federation.execution_auth import ExecutionAuthorization, plan_authorization
+
 import logging
 import time as _time
 from collections.abc import Awaitable, Callable, Iterable
@@ -264,6 +266,7 @@ async def _dispatch_execution(
     span_attrs: dict[str, str],
     *,
     table_ids: Iterable[int],
+    authorization: "ExecutionAuthorization",
     prepare: Callable[[], Awaitable[None]] | None = None,
 ) -> list[dict] | Response:
     """Stage 5: route to the correct executor based on table backing. Returns rows or error Response.
@@ -310,7 +313,12 @@ async def _dispatch_execution(
             if _has_gql_remote:
                 rows = await _asyncio.wait_for(
                     _execute_with_gql_remote(
-                        clean_exec_sql, clean_params, nf_args, state, span_attrs
+                        clean_exec_sql,
+                        clean_params,
+                        nf_args,
+                        state,
+                        span_attrs,
+                        authorization=authorization,
                     ),
                     timeout=_timeout,
                 )
@@ -323,12 +331,19 @@ async def _dispatch_execution(
                         state,
                         span_attrs,
                         table_ids=table_ids,
+                        authorization=authorization,
                     ),
                     timeout=_timeout,
                 )
             else:
                 rows = await _asyncio.wait_for(
-                    _execute(physical_sql, resolved_params, state, span_attrs),
+                    _execute(
+                        physical_sql,
+                        resolved_params,
+                        state,
+                        span_attrs,
+                        authorization=authorization,
+                    ),
                     timeout=_timeout,
                 )
     except _asyncio.TimeoutError:
@@ -820,6 +835,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
                 state,
                 span_attrs,
                 table_ids=plan.table_ids,
+                authorization=plan_authorization(plan),
                 prepare=_land_sources,
             )
     except Exception:
@@ -1024,6 +1040,7 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
                         state,
                         {},
                         table_ids=plan.table_ids,
+                        authorization=plan_authorization(plan),
                     )
             except Exception:
                 await finalize_audit(plan, 500, state)  # REQ-074/REQ-1386

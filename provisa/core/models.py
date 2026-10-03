@@ -1485,7 +1485,20 @@ class Webhook(BaseModel):  # REQ-209, REQ-210, REQ-211
     domain_id: str = ""
     description: str | None = None
     kind: str = "mutation"  # "mutation" or "query"
-    governance: str | None = None  # e.g. "requires_approval" (REQ-209)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_approval_yet(cls, data: Any) -> Any:
+        """A webhook does not yet run through an approval (REQ-209 is not built for webhooks). A
+        configuration asking for one is refused by name, never accepted and ignored."""
+        if isinstance(data, dict):
+            for key in ("governance", "requires_approval"):
+                if key in data:
+                    raise ValueError(
+                        f"webhook {data.get('name')!r}: {key!r} is not supported on a webhook "
+                        "yet — a webhook call is not put to an approval"
+                    )
+        return data
 
 
 class ScheduledTrigger(BaseModel):

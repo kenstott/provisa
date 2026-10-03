@@ -747,10 +747,14 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
         # request; the pipeline's terminals write the audit row.
         from provisa.audit.context import audit_identity_scope
 
+        from provisa.core.request_context import current_acting_role
+
+        acting_reset = current_acting_role.set(role)
         try:
             with audit_identity_scope(identity.user_id, "mcp"):
                 await app(scope, receive, send)
         finally:
+            current_acting_role.reset(acting_reset)
             _request_role.reset(reset)
             _request_identity.reset(identity_reset)
             _request_org_id.reset(org_id_reset)

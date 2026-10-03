@@ -29,6 +29,8 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import aclosing
 
+from provisa.federation.execution_auth import system_auth
+
 from typing import Any
 
 # Source types whose "current rows" are fetched by calling the adapter, not by an engine SQL scan.
@@ -92,7 +94,9 @@ async def engine_table_rows(engine: Any, source: Any, table: Any) -> list[dict]:
 
     catalog = source_to_catalog(source.id)
     ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
-    result = await engine.execute_engine(f"SELECT * FROM {ref}")
+    result = await engine.execute_engine(
+        f"SELECT * FROM {ref}", authorization=system_auth("source row load")
+    )
     return [dict(zip(result.column_names, row)) for row in result.rows]
 
 
@@ -259,7 +263,9 @@ class SourceRowLoader:
         catalog = source_to_catalog(source.id)
         ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
         where = _pk_in_clause(pk_columns, keys)
-        result = await self._engine.execute_engine(f"SELECT * FROM {ref} WHERE {where}")
+        result = await self._engine.execute_engine(
+            f"SELECT * FROM {ref} WHERE {where}", authorization=system_auth("source row load")
+        )
         return [dict(zip(result.column_names, row)) for row in result.rows]
 
     async def load_keys_arrow(

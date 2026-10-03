@@ -136,7 +136,7 @@ Rows of an existing registered table are written through pgwire as on every othe
 3. **The rows it may touch.** The role's row filter, the same predicate its reads carry, is added to the `WHERE` of an `UPDATE` or `DELETE`.
 4. **The rows it leaves behind.** A filtered role may only write rows it could then read: an `INSERT`'s rows, and the new values of an `UPDATE` that sets a column the filter reads, are checked against the filter before anything is sent to the source.
 
-Whatever cannot be decided is refused by name rather than admitted on doubt (an `INSERT … SELECT`, a value that is neither a literal nor a bound parameter, a filter that reads a column the statement does not supply). [inferred: pgwire's admission of data writes is being changed to this; see the write admission module for the rules]
+Whatever cannot be decided is refused by name rather than admitted on doubt (an `INSERT … SELECT`, a value that is neither a literal nor a bound parameter, a filter that reads a column the statement does not supply). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
 ### COPY
 

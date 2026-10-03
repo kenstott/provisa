@@ -92,7 +92,14 @@ async def test_execute_plan_accepts_pipeline_minted_plan():
         def address_replicas(self, sql):
             return sql  # this stand-in's tables are all read where the statement names them
 
-        async def execute_engine(self, sql, params=None, session_hints=None, span_attrs=None):
+        async def execute_engine(
+            self, sql, params=None, session_hints=None, span_attrs=None, authorization=None
+        ):
+            # REQ-1760: the engine call carries the plan's own authorization, its stamp.
+            from provisa.federation.execution_auth import verify_execution_authorization
+
+            assert authorization is not None and authorization.stamp == plan.stamp
+            verify_execution_authorization(authorization, sql)
             return QueryResult(rows=[(1,)], column_names=["n"])
 
     class _FakeState:

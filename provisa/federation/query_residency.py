@@ -47,6 +47,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from provisa.federation.execution_auth import system_auth
+
 if TYPE_CHECKING:
     from provisa.federation.replica_state import ReplicaKey
 
@@ -751,7 +753,9 @@ async def pushdown_row_materialize(
 
         # A failed probe propagates, same as a failed keyed fetch below: breaking out left every
         # pending table unlanded with no error surfaced.
-        result = await engine.execute_engine(pass_tree.sql(dialect=dialect), params)
+        result = await engine.execute_engine(
+            pass_tree.sql(dialect=dialect), params, authorization=system_auth("row replication")
+        )
 
         made_progress = False
         for name in list(still_pending):

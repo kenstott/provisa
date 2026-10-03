@@ -33,6 +33,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
+from provisa.federation.execution_auth import plan_authorization
+
 from provisa.audit.pipeline import PendingAudit
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -2807,7 +2809,10 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
 
         def _drain() -> tuple[list[str], list[str] | None, list[tuple], bool]:
             stream = engine.execute_engine_sync(
-                physical_sql, params=plan.exec_params, session_hints=plan.session_hints
+                physical_sql,
+                params=plan.exec_params,
+                session_hints=plan.session_hints,
+                authorization=plan_authorization(plan),
             )
             it = stream.iter_rows()
             buffered_rows: list[tuple] = []
@@ -2837,6 +2842,7 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
             params=plan.exec_params,
             session_hints=plan.session_hints,
             span_attrs=plan.span_attrs,
+            authorization=plan_authorization(plan),
         )
     elif getattr(state, "source_types", {}).get(plan.source_id) == "govdata":
         # GovData sources execute via the GovData/Calcite bridge, not a native pool or the engine.

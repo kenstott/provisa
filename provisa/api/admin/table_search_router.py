@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, Request
 
+from provisa.api.admin.engine_auth import run_admin_catalog_sql
+
 from provisa.discovery.table_search import TableCandidate, search_tables
 from provisa.api.admin.capabilities import require_capability_request
 
@@ -73,10 +75,13 @@ async def _candidates_live(
         # scaled from zero this read is the one that answers CATALOG_NOT_FOUND, and swallowing it in
         # place rendered the search as "this source has no tables" with nothing in the log.
         with discovery_fallback(f"engine tables for {source_id!r}.{schema_name}"):
-            res = await state.federation_engine.execute_engine(
+            res = await run_admin_catalog_sql(
+                state,
+                state.federation_engine,
                 f'SELECT table_name FROM "{catalog}".information_schema.tables '
                 f"WHERE table_schema = '{schema_name}' "
-                f"AND table_type = 'BASE TABLE' ORDER BY table_name"
+                f"AND table_type = 'BASE TABLE' ORDER BY table_name",
+                "table search",
             )
             raw_tables_list = [row[0] for row in res.rows]
         candidates = [
@@ -109,10 +114,13 @@ async def _candidates_live(
             continue  # no driver listing and no engine catalog: the names stay unenriched
         catalog = state.catalog_for(source_id)
         with discovery_fallback(f"engine columns for {source_id!r}.{schema_name}.{c.name}"):
-            res = await state.federation_engine.execute_engine(
+            res = await run_admin_catalog_sql(
+                state,
+                state.federation_engine,
                 f'SELECT column_name FROM "{catalog}".information_schema.columns '
                 f"WHERE table_schema = '{schema_name}' AND table_name = '{c.name}' "
-                f"ORDER BY ordinal_position"
+                f"ORDER BY ordinal_position",
+                "table search",
             )
             c.columns = [row[0] for row in res.rows]
 

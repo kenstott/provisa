@@ -17,6 +17,8 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from provisa.federation.execution_auth import system_auth
+
 from provisa.compiler.naming import source_to_catalog
 from provisa.otel_compat import get_tracer as _get_tracer
 
@@ -62,7 +64,7 @@ async def _try_engine_rows(engine: Any, sql: str) -> list | None:
     can't answer (e.g. no constraint metadata, table not sampleable). One catch point
     so callers stay blind-except-free."""
     try:
-        return (await engine.execute_engine(sql)).rows
+        return (await engine.execute_engine(sql, authorization=system_auth("discovery"))).rows
     except Exception:
         return None
 
@@ -92,7 +94,8 @@ async def _fetch_column_types(engine: Any, catalog: str, schema: str, table: str
         f"SELECT column_name, data_type "
         f"FROM {prefix}information_schema.columns "
         f"WHERE {extra_where}table_schema = '{schema}' AND table_name = '{table}' "
-        f"ORDER BY ordinal_position"
+        f"ORDER BY ordinal_position",
+        authorization=system_auth("discovery"),
     )
     return [{"name": row[0], "type": row[1].lower()} for row in res.rows]
 

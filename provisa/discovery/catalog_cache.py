@@ -22,6 +22,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from provisa.federation.execution_auth import system_auth
+
 from sqlalchemy import delete as _delete, func, select
 
 from provisa.core.schema_org import source_catalog_cache
@@ -156,7 +158,8 @@ async def index_source(
         try:
             res = await engine.execute_engine(
                 f'SELECT schema_name FROM "{catalog}".information_schema.schemata '
-                f"ORDER BY schema_name"
+                f"ORDER BY schema_name",
+                authorization=system_auth("catalog index"),
             )
             schemas = [row[0] for row in res.rows]
         except Exception as exc:
@@ -186,7 +189,8 @@ async def index_source(
                 res = await engine.execute_engine(
                     f'SELECT table_name FROM "{catalog}".information_schema.tables '
                     f"WHERE table_schema = '{schema}' AND table_type = 'BASE TABLE' "
-                    f"ORDER BY table_name"
+                    f"ORDER BY table_name",
+                    authorization=system_auth("catalog index"),
                 )
                 table_names = [row[0] for row in res.rows]
                 tables_with_cols = [
@@ -226,7 +230,8 @@ async def index_source(
                 res = await engine.execute_engine(
                     f'SELECT column_name FROM "{catalog}".information_schema.columns '
                     f"WHERE table_schema = '{schema}' AND table_name = '{cached.table_name}' "
-                    f"ORDER BY ordinal_position"
+                    f"ORDER BY ordinal_position",
+                    authorization=system_auth("catalog index"),
                 )
                 cached.column_names = [row[0] for row in res.rows]
             except Exception as exc:

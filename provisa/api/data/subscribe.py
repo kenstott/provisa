@@ -117,9 +117,9 @@ def _build_rss_feed_url(rss_src, hints: dict) -> str:
 
 
 def _build_rss_config(state, source_id: str) -> dict:  # REQ-342, REQ-344
-    rss_src = state.rss_sources.get(source_id) if state.rss_sources else None
+    rss_src = (state.rss_sources or {}).get(source_id)
     if not rss_src:
-        return {}
+        raise ValueError(f"RSS source {source_id!r} is not loaded; no feed to subscribe to")
     hints = getattr(rss_src, "federation_hints", {}) or {}
     config: dict = {"url": _build_rss_feed_url(rss_src, hints)}
     if hints.get("poll_interval"):
@@ -137,9 +137,9 @@ def _parse_ws_subscribe_payload(raw_payload: str) -> dict | None:
 
 
 def _build_websocket_config(state, source_id: str) -> dict:  # REQ-338, REQ-341
-    ws_src = state.websocket_sources.get(source_id) if state.websocket_sources else None
+    ws_src = (state.websocket_sources or {}).get(source_id)
     if not ws_src:
-        return {}
+        raise ValueError(f"WebSocket source {source_id!r} is not loaded; no stream to subscribe to")
     hints = getattr(ws_src, "federation_hints", {}) or {}
     use_ssl = hints.get("use_ssl", "false").lower() == "true"
     scheme = "wss" if use_ssl else "ws"
