@@ -53,6 +53,8 @@ def _registry_row(table_id: int, name: str) -> SimpleNamespace:
             "load_protected": None,
             "change_signal": None,
             "cache_ttl": None,
+            "columns": [SimpleNamespace(name="id", native_filter_type=None)],
+            "row_materialize": False,
         }
     )
 
@@ -161,7 +163,7 @@ class World:
 
         async def _go() -> tuple[frozenset, frozenset]:
             async with self.db.acquire() as conn:
-                return await replica_state.promotion(conn, STORE)
+                return await replica_state.promotion(conn, lambda: STORE)
 
         return asyncio.run(_go())
 

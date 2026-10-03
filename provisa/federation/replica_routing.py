@@ -215,7 +215,7 @@ async def _registry(state: Any) -> _Registry:
     async with tdb.acquire() as conn:
         registered = await fetch_tables(conn)
         sources = {s.id: s for s in await registered_sources(state, conn)}
-        promoted, serving = await promotion(conn, store_identity(state))
+        promoted, serving = await promotion(conn, lambda: store_identity(state))
     return _Registry(registered, sources, serving, promoted)
 
 

@@ -60,6 +60,8 @@ from provisa.core import config_stamp
 from provisa.core.schema_org import replica_state
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from provisa.core.database import Connection
 
 #: A replica's key: the registered identity of its table.
@@ -107,7 +109,7 @@ async def promoted_keys(conn: "Connection") -> frozenset[ReplicaKey]:
 
 
 async def promotion(
-    conn: "Connection", store: str
+    conn: "Connection", store: "Callable[[], str]"
 ) -> tuple[frozenset[ReplicaKey], frozenset[ReplicaKey]]:
     """``(promoted, serving)``: the tables that passed their Hot threshold (REQ-826), and those
     of them whose replica exists in the store ``store`` identifies
@@ -124,15 +126,20 @@ async def promotion(
         ).where(replica_state.c.promoted.is_(True))
     )
     rows = result.fetchall()
+    built = [r for r in rows if r[3] is not None]
+    # ``store`` is asked only when a promoted table has a completed build to place: a deployment
+    # with nothing promoted needs no store, and may have none (an engine that is not its own
+    # store, with none configured) — its registry is read all the same.
+    here = store() if built else None
     return (
         frozenset((r[0], r[1], r[2]) for r in rows),
-        frozenset((r[0], r[1], r[2]) for r in rows if r[3] is not None and r[4] == store),
+        frozenset((r[0], r[1], r[2]) for r in built if r[4] == here),
     )
 
 
 async def serving_keys(conn: "Connection", store: str) -> frozenset[ReplicaKey]:
     """The promoted tables served from their replica in ``store`` (see :func:`promotion`)."""
-    return (await promotion(conn, store))[1]
+    return (await promotion(conn, lambda: store))[1]
 
 
 async def mark_first_completion(conn: "Connection", key: ReplicaKey, store: str) -> bool:

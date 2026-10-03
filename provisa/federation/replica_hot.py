@@ -188,6 +188,7 @@ DEMOTE = "demote"
 NO_CLOCK = "no_clock"  # its change signal is TTL-based and no cache_ttl is declared (REQ-1907)
 TOO_LARGE = "too_large"  # it holds more rows than replication.hot_max_rows
 HOT_TIER = "hot_tier"  # the Redis hot tier manages it: a table lives in one tier (REQ-241)
+NOT_WHOLE = "not_whole"  # it has no whole copy to build (replica_converge.whole_copy)
 
 
 @dataclass(frozen=True)
@@ -236,6 +237,7 @@ def hot_candidates(
     so this is the one place it can be missing. A table the Redis hot tier manages
     (``hot_tier``: ``HotTableManager.managed_tables()``) is not judged either: a table lives in
     at most one tier, and the hot tier wins (REQ-241)."""
+    from provisa.federation.replica_converge import whole_copy
     from provisa.federation.replica_routing import has_live_attach
     from provisa.federation.role_ttl import missing_landing_ttl
 
@@ -256,6 +258,12 @@ def hot_candidates(
         key = (reg.source_id, reg.schema_name, reg.table_name)
         if reg.table_name in hot_tier:
             skipped[key] = HOT_TIER
+            continue
+        # The one rule for what a build may copy whole (convergence, the read backstop and the
+        # build ask it too): a table with a parameter column, or one replicated row by row, has
+        # no whole copy, so it is never promoted to one.
+        if not whole_copy(source, reg, engine):
+            skipped[key] = NOT_WHOLE
             continue
         if (
             missing_landing_ttl(
@@ -326,6 +334,7 @@ def hot_view(state: Any, source: Any, table: Any) -> "HotView":
     from provisa.core.environments import PROD
     from provisa.core.request_context import current_env, current_org
     from provisa.federation.policy_summary import HotView
+    from provisa.federation.replica_converge import whole_copy
     from provisa.federation.role_ttl import missing_landing_ttl
 
     interval = settings_registry.value("replication.hot_interval")
@@ -337,6 +346,8 @@ def hot_view(state: Any, source: Any, table: Any) -> "HotView":
         scope = count_scope(current_org.get() or state.org_id, current_env.get() or PROD)
         if table.table_name in hot_tier_tables(state):
             skipped = HOT_TIER
+        elif not whole_copy(source, table, state.federation_engine):
+            skipped = NOT_WHOLE
         elif (
             missing_landing_ttl(
                 table.change_signal, source.change_signal, table.cache_ttl, source.cache_ttl
@@ -464,7 +475,6 @@ async def evaluate(state: Any, *, workers: int) -> Evaluation:
                 continue
             promote.append(candidate)
 
-    store = store_identity(state)
     async with state.tenant_db.acquire() as conn:
         for candidate in promote:
             # The flag and the build request are one transaction: a table is never promoted with
@@ -475,7 +485,9 @@ async def evaluate(state: Any, *, workers: int) -> Evaluation:
             async with conn.transaction():
                 await replica_state.set_promoted(conn, candidate.key, True)
                 record = await replica_state.read(conn, candidate.key)
-                standing = record is not None and record.exists_in(store)
+                # The store a standing replica would be in — asked only when a table is
+                # promoted: a deployment with nothing to promote needs no store.
+                standing = record is not None and record.exists_in(store_identity(state))
                 if not standing:
                     await replica_state.request_build(conn, candidate.key, replica_state.REASON_HOT)
             log.info(

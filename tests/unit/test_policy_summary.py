@@ -182,6 +182,15 @@ def test_a_table_the_hot_tier_manages_says_it_is_not_also_replicated_when_busy()
     assert "the hot tier keeps it in Redis, and a table lives in one tier" in r.text
 
 
+def test_a_table_with_no_whole_copy_says_why_it_is_not_replicated_when_busy():
+    from provisa.federation.replica_hot import NOT_WHOLE
+
+    s = _src("pg", SourceType.postgresql, cache_ttl=300)
+    r = _describe(s, _tbl("pg"), build_trino_engine(), skipped=NOT_WHOLE)
+    assert r.serving is Serving.LIVE
+    assert "it is read by its parameters or row by row, so it has no whole copy" in r.text
+
+
 def test_an_odd_threshold_states_its_half_exactly():
     s = _src("pg", SourceType.postgresql, cache_ttl=300)
     r = _describe(s, _tbl("pg", replicate=25), build_trino_engine())

@@ -165,7 +165,7 @@ async def test_demoting_a_table_that_was_never_promoted_changes_nothing(conn):
 async def test_a_promoted_table_serves_once_its_first_build_completes_in_this_store(conn):
     await set_promoted(conn, KEY, True)
     await build_state.request_build(conn, KEY, build_state.REASON_HOT)
-    assert await promotion(conn, "store-a") == (frozenset({KEY}), frozenset())
+    assert await promotion(conn, lambda: "store-a") == (frozenset({KEY}), frozenset())
     promoted_at = await _stamp(conn)
     await _complete(conn, KEY)
     # the completion that makes the replica readable is announced with it
@@ -210,7 +210,7 @@ async def test_demotion_takes_the_table_out_of_the_serving_set_at_once(conn):
     await set_promoted(conn, KEY, True)
     await _complete(conn, KEY)
     await set_promoted(conn, KEY, False)
-    assert await promotion(conn, "store-a") == (frozenset(), frozenset())
+    assert await promotion(conn, lambda: "store-a") == (frozenset(), frozenset())
     # its replica is left standing for the replicator to retire
     assert (await build_state.read(conn, KEY)).exists_in("store-a")
 
@@ -240,3 +240,18 @@ async def test_advancing_a_stamp_that_has_no_row_is_refused(tmp_path):
 async def test_an_unknown_reason_is_refused(conn):
     with pytest.raises(ValueError, match="unknown build reason"):
         await build_state.request_build(conn, KEY, "because")
+
+
+async def test_with_nothing_promoted_and_built_no_store_is_asked_for(conn):
+    """A deployment with nothing replicated for being busy may have no store at all (an engine
+    that is not its own store, with none configured). Reading the promoted and serving sets must
+    not ask which store it is; only a completed build of a promoted table has a store to match."""
+
+    def _no_store() -> str:
+        raise AssertionError("the store was asked for with nothing built to place in it")
+
+    assert await promotion(conn, _no_store) == (frozenset(), frozenset())
+    await set_promoted(conn, KEY, True)  # promoted, no build yet
+    assert await promotion(conn, _no_store) == (frozenset({KEY}), frozenset())
+    await _complete(conn, KEY)
+    assert await promotion(conn, lambda: "store-a") == (frozenset({KEY}), frozenset({KEY}))

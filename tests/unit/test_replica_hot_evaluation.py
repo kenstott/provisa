@@ -69,6 +69,8 @@ def _reg(table_id: int, name: str, **settings) -> SimpleNamespace:
         "load_protected": None,
         "change_signal": None,
         "cache_ttl": None,
+        "columns": [SimpleNamespace(name="id", native_filter_type=None)],
+        "row_materialize": False,
     }
     row.update(settings)
     return SimpleNamespace(**row)

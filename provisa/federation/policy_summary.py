@@ -68,7 +68,8 @@ class HotView:  # REQ-826
     runs: bool = True
     promoted: bool = False  # it passed its threshold
     serving: bool = False  # ...and its replica exists: reads come from it
-    # Why it is not replicated however busy: replica_hot.HOT_TIER / NO_CLOCK / TOO_LARGE.
+    # Why it is not replicated however busy: replica_hot.HOT_TIER / NOT_WHOLE / NO_CLOCK /
+    # TOO_LARGE.
     skipped: str | None = None
 
 
@@ -80,7 +81,7 @@ def _describe_live_under_threshold(
     threshold: int, hot: HotView, *, explicit: bool
 ) -> PolicySummary:
     """A table read live that is replicated once busy (Default, or Hot-N when ``explicit``)."""
-    from provisa.federation.replica_hot import HOT_TIER, NO_CLOCK, TOO_LARGE
+    from provisa.federation.replica_hot import HOT_TIER, NO_CLOCK, NOT_WHOLE, TOO_LARGE
 
     per = f"{threshold} governed statements per {_fmt_cadence(hot.interval)}"
     reason: str | None = None
@@ -93,6 +94,11 @@ def _describe_live_under_threshold(
         reason = (
             "It is not replicated when busy: the hot tier keeps it in Redis, and a table lives "
             "in one tier."
+        )
+    elif hot.skipped == NOT_WHOLE:
+        reason = (
+            "It is not replicated when busy: it is read by its parameters or row by row, so it "
+            "has no whole copy to build."
         )
     elif hot.skipped == NO_CLOCK:
         reason = (

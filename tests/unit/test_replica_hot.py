@@ -205,6 +205,8 @@ def _reg(table_id: int, name: str, source_id: str = "pg", **settings) -> SimpleN
         "load_protected": None,
         "change_signal": None,
         "cache_ttl": None,
+        "columns": [SimpleNamespace(name="id", native_filter_type=None)],
+        "row_materialize": False,
     }
     row.update(settings)
     return SimpleNamespace(**row)
@@ -337,3 +339,20 @@ def test_candidates_are_read_from_rows_as_the_registry_view_builds_them():
         HotCandidate(("pg", "public", "items"), 2, _DEFAULT, False),
     ]
     assert skipped == {}
+
+
+def test_a_table_with_no_whole_copy_to_build_is_not_judged_and_the_reason_is_kept():
+    """The one rule for what a build may copy whole (``replica_converge.whole_copy``): a table
+    read by a parameter column is a function of its arguments, with no whole to replicate."""
+    from provisa.federation.replica_hot import NOT_WHOLE
+
+    by_parameter = _reg(1, "pet_by_id")
+    by_parameter.columns = [
+        SimpleNamespace(name="id", native_filter_type=None),
+        SimpleNamespace(name="petId", native_filter_type="path"),
+    ]
+    candidates, skipped = hot_candidates(
+        [by_parameter, _reg(2, "orders")], {"pg": _pg()}, frozenset(), _ENGINE, _DEFAULT
+    )
+    assert [c.table_id for c in candidates] == [2]
+    assert skipped == {("pg", "public", "pet_by_id"): NOT_WHOLE}
