@@ -23,6 +23,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
     SecretStr,
     field_validator,
     model_validator,
@@ -1926,6 +1927,18 @@ class SecurityConfig(BaseModel):  # REQ-693
 
 
 class ProvisaConfig(BaseModel):
+    # The config as its file wrote it (config_loader.parse_config_dict): the same model with each
+    # text value that the file gave as a reference (``${env:...}``, ``${secret:...}``) still that
+    # reference. The fields below hold the RESOLVED values, for the running process; what is
+    # stored in the control plane is taken from ``written``, so a credential's value is never
+    # stored where its reference was written.
+    _written: "ProvisaConfig | None" = PrivateAttr(default=None)
+
+    @property
+    def written(self) -> "ProvisaConfig":
+        """The config as written. A config built in code is what it was built with."""
+        return self if self._written is None else self._written
+
     server: ServerConfig = Field(default_factory=ServerConfig)
     control_plane: ControlPlaneConfig = Field(default_factory=ControlPlaneConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)  # REQ-693

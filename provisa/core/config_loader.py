@@ -18,6 +18,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 
+from pydantic import AliasChoices, BaseModel
+
 import yaml
 from sqlalchemy import delete as _delete
 from sqlalchemy import insert, or_, select, tuple_, update
@@ -187,7 +189,63 @@ def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250
     """
     from provisa.core.secrets import resolve_secrets_in_dict
 
-    return ProvisaConfig.model_validate(resolve_secrets_in_dict(data))
+    config = ProvisaConfig.model_validate(resolve_secrets_in_dict(data))
+    # What is STORED is the config as written: a credential stays the reference the file gave,
+    # and its value is resolved where it is used.
+    config._written = _as_written(config, data)
+    return config
+
+
+_REFERENCE = "${"
+
+
+def _raw_of(raw: dict, model: BaseModel, name: str) -> Any:
+    """The value a config dict gave the model field ``name`` (under its name or an alias)."""
+    field = type(model).model_fields[name]
+    keys = [name]
+    if field.alias:
+        keys.append(field.alias)
+    if isinstance(field.validation_alias, str):
+        keys.append(field.validation_alias)
+    elif isinstance(field.validation_alias, AliasChoices):
+        keys += [c for c in field.validation_alias.choices if isinstance(c, str)]
+    for key in keys:
+        if key in raw:
+            return raw[key]
+    return None
+
+
+def _as_written(resolved: Any, raw: Any) -> Any:
+    """``resolved`` (a validated config value) with every text value the file gave as a reference
+    put back as that reference. ``raw`` is the same value in the file's own, unresolved, form.
+
+    A value that is not text (a port given as ``${env:PG_PORT}``) stays resolved: it has no
+    text form to store. A list the two forms disagree on in length cannot be paired, and is
+    refused rather than stored resolved."""
+    if isinstance(resolved, str):
+        return raw if isinstance(raw, str) and _REFERENCE in raw else resolved
+    if isinstance(resolved, BaseModel):
+        if not isinstance(raw, dict):
+            return resolved
+        update = {
+            name: _as_written(getattr(resolved, name), _raw_of(raw, resolved, name))
+            for name in type(resolved).model_fields
+        }
+        return resolved.model_copy(update=update)
+    if isinstance(resolved, dict):
+        if not isinstance(raw, dict):
+            return resolved
+        return {key: _as_written(value, raw.get(key)) for key, value in resolved.items()}
+    if isinstance(resolved, list):
+        if not isinstance(raw, list):
+            return resolved
+        if len(raw) != len(resolved):
+            raise ValueError(
+                "the config as written and as validated disagree on a list's length; its "
+                "references cannot be kept, so it is not loaded"
+            )
+        return [_as_written(value, raw[i]) for i, value in enumerate(resolved)]
+    return resolved
 
 
 _SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", DERIVED_SOURCE_ID]
@@ -270,9 +328,12 @@ async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266, REQ-1730
     # catalog and every later query 404d with CATALOG_NOT_FOUND. A YAML source's password is
     # typically a literal or ${env:...} (persist_source_password never touches config.sources), so
     # that loop rarely needs the binding — wrapping both here anyway costs nothing when unneeded.
+    written = {s.id: s for s in config.written.sources}
     async with bound_to_request_org():
         for src in config.sources:
-            await source_repo.upsert(conn, src)
+            # Stored as written: a credential's reference, never its value. The engine below is
+            # given the resolved source.
+            await source_repo.upsert(conn, written[src.id])
             # Provision the source on the bound engine through the abstraction (the engine makes
             # a catalog; native engines attach lazily). No direct the engine reference here.
             # REQ-1266: catalog_names supplies the org-prefixed physical catalog name for a
@@ -412,13 +473,13 @@ async def _register_api_endpoint(
     tbl: Table,
     src: Source,
     match: OpenAPIQuery,
-    resolved_base_url: str,
+    base_url: str,  # as written: a reference is resolved at each call
     default_params: dict,
     api_columns: list[dict],
 ) -> None:
     await conn.upsert(
         api_sources,
-        {"id": src.id, "type": "openapi", "base_url": resolved_base_url, "auth": None},
+        {"id": src.id, "type": "openapi", "base_url": base_url, "auth": None},
         index_elements=["id"],
         update_columns=["base_url"],
     )
@@ -468,6 +529,8 @@ async def _handle_openapi_table(
     from provisa.openapi.pg_cache import cache_openapi_table
 
     assert src.base_url is not None
+    # ``src`` is the source as written. The fetch below calls the resolved address; the
+    # api_sources row stores the address as written, resolved at each call (api_source.caller).
     resolved_base_url = resolve_secrets(src.base_url)
     queries, _ = parse_spec(spec)
     match = next(
@@ -504,7 +567,7 @@ async def _handle_openapi_table(
     try:
         api_columns, _ = _build_api_columns(match)
         await _register_api_endpoint(
-            conn, tbl, src, match, resolved_base_url, default_params, api_columns
+            conn, tbl, src, match, src.base_url, default_params, api_columns
         )
     except Exception as _e:
         log.warning(
@@ -562,7 +625,7 @@ async def _handle_neo4j_table(conn: "Connection", tbl: Table, src: Source) -> No
         host=src.host,
         port=src.port,
         database=src.database,
-        base_url=resolve_secrets(src.base_url) if src.base_url else None,
+        base_url=src.base_url or None,  # as written; resolved at each call
         table_name=tbl.table_name,
         query_template=tbl.query_template,
         columns=tbl.columns,
@@ -578,7 +641,7 @@ async def _handle_sparql_table(conn: "Connection", tbl: Table, src: Source) -> N
     await persist_sparql_table(
         conn,
         source_id=src.id,
-        endpoint_url=resolve_secrets(src.host),
+        endpoint_url=src.host,  # as written; resolved at each call
         table_name=tbl.table_name,
         query_template=tbl.query_template,
         columns=tbl.columns,
@@ -725,11 +788,13 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     openapi_specs: dict[str, dict],
     catalog_names: dict[str, str] | None = None,
 ) -> None:
-    sources_by_id = {src.id: src for src in config.sources}
     _expand_view_metrics(config)
 
+    # The rows a table's source-specific step writes (its API source and endpoint) are stored
+    # from the source as written: a credential in its address stays a reference.
+    written_by_id = {src.id: src for src in config.written.sources}
     for tbl in config.tables:
-        src = sources_by_id.get(tbl.source_id)
+        src = written_by_id.get(tbl.source_id)
         await _upsert_single_table(conn, engine, tbl, src, openapi_specs)
 
     await _purge_removed_tables(conn, config)
@@ -941,7 +1006,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # app_loaders would silently exclude it from GraphQL forever (DB functions load ungated).
     from provisa.core.repositories import creation_request as cr_repo
 
-    for wh in config.webhooks:
+    for wh in config.written.webhooks:  # as written: a credential in its URL stays a reference
         await function_repo.upsert_webhook(conn, wh)
         await cr_repo.ensure_executed(conn, "webhook", wh.name, "config")
 

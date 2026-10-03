@@ -349,10 +349,17 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
     bounds the whole call's wall-clock time, including every paginated page, so a response that
     streams continuously without ever idling still fails explicitly instead of outrunning a
     caller's own external deadline (see module docstring on ``_DEFAULT_TOTAL_TIMEOUT``)."""
+    from provisa.core.secrets import resolve_secrets
+
     url, query_params, headers, body = _build_request_parts(endpoint, resolved_params)
 
-    # Prepend base_url if path is relative
-    if not url.startswith("http"):
+    # A source's address is stored as it was written; a credential reference in it is resolved
+    # here, at the call, as the auth's are below.
+    base_url = resolve_secrets(base_url)
+    if not url:
+        url = base_url  # the endpoint IS the source's address (it declares no path of its own)
+    elif not url.startswith("http"):
+        # Prepend base_url if path is relative
         url = base_url.rstrip("/") + "/" + url.lstrip("/")
 
     _apply_auth(auth, headers, query_params)
