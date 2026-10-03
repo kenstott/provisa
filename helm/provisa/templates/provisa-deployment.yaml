@@ -199,6 +199,8 @@ spec:
             - name: {{ $key }}
               value: "{{ $val }}"
             {{- end }}
+            {{- /* REQ-1265: the auth credentials, each from the operator's own Secret. */}}
+            {{- include "provisa.authEnv" . | nindent 12 }}
             {{- if .Values.redis.enabled }}
             - name: REDIS_HOST
               value: {{ if .Values.redis.host }}{{ .Values.redis.host }}{{ else }}{{ .Release.Name }}-redis{{ end }}

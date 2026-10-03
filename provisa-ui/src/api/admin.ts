@@ -1197,7 +1197,8 @@ export async function generateEncryptionKey(body: {
 export interface AuthProviderField {
   config_key: string;
   label: string;
-  type: "string";
+  /** REQ-1265: "boolean" is a true/false setting, shown as a checkbox and saved as a boolean. */
+  type: "string" | "boolean";
   required: boolean;
   secret?: boolean;
   placeholder?: string;
@@ -1222,6 +1223,8 @@ export interface AuthConfigState {
     assignments_source: string;
     trust_upstream: boolean;
     allow_simple_auth: boolean;
+    /** REQ-1265: whether /auth/register creates local accounts (basic provider). */
+    allow_registration: boolean;
   };
   restart_required_note: string;
 }

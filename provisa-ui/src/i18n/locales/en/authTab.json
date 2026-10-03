@@ -15,6 +15,7 @@
     "saved": "Saved.",
     "savedRestartRequired": "Saved. Restart the service to apply.",
     "secretOnFile": "Stored — leave blank to keep it",
-    "secretNotSet": "Not set"
+    "secretNotSet": "Not set",
+    "allowRegistration": "Let people create their own accounts"
   }
 }

@@ -15,6 +15,7 @@
     "saved": "Opgeslagen.",
     "savedRestartRequired": "Opgeslagen. Herstart de service om toe te passen.",
     "secretOnFile": "Opgeslagen — leeg laten om te behouden",
-    "secretNotSet": "Niet ingesteld"
+    "secretNotSet": "Niet ingesteld",
+    "allowRegistration": "Mensen zelf een account laten aanmaken"
   }
 }

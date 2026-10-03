@@ -118,6 +118,12 @@ _SKIP_PATHS = {
     # for every provider, which is what gives the operator account a browser sign-in on a
     # deployment fronted by an IdP.
     "/auth/superuser-login",
+    # REQ-1265: the SAML sign-in round trip. Like /auth/login these PRODUCE the session token:
+    # the browser is sent to the IdP, the IdP posts back, and the SP's own metadata is fetched
+    # by the IdP's operator. None of them can carry a bearer.
+    "/auth/saml/login",
+    "/auth/saml/acs",
+    "/auth/saml/metadata",
     # REQ-1267: the login page fetches this BEFORE the user has a token, to decide which
     # sign-in UI to render (firebase Google button vs. basic form). It only reveals the
     # configured provider name — public info — so it must bypass the bearer gate.

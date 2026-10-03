@@ -153,3 +153,4 @@ data:
       - table_id: orders
         role_id: analyst
         filter: "region = current_setting('provisa.user_region')"
+    {{- include "provisa.auth" . | nindent 4 }}

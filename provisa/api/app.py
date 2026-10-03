@@ -2878,8 +2878,11 @@ def create_app() -> FastAPI:
     # REQ-124/REQ-1265: the password sign-in exchange. Mounted unconditionally; it answers for
     # whatever provider the lifespan binds (bind_auth_config), and 404s where there is none.
     from provisa.auth.login_router import router as login_router
+    from provisa.auth.providers.saml import router as saml_router
 
     app.include_router(login_router)
+    # REQ-1265: SAML sign-in; 404s unless the bound provider is saml.
+    app.include_router(saml_router)
 
     # REQ-1452/REQ-1455: the egress byte meter. Registered LAST so it is the OUTERMOST middleware —
     # every response body, including the ones auth itself produces, passes through its `send`. It

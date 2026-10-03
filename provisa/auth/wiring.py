@@ -107,7 +107,53 @@ def _construct_provider(auth_config: dict, admin_pool) -> AuthProvider:
             audience=oa.get("audience"),
             role_claim=oa.get("role_claim", "roles"),
         )
+    if provider_name == "ldap":  # REQ-1265
+        from provisa.auth.providers.ldap import LdapAuthProvider, LdapSettings
+
+        ldap = _provider_block(auth_config, "ldap")
+        if "bind_password" in ldap:
+            ldap["bind_password"] = resolve_secrets(ldap["bind_password"])
+        return LdapAuthProvider(
+            _settings(LdapSettings, ldap, "ldap"), session_secret=_session_secret(auth_config)
+        )
+    if provider_name == "saml":  # REQ-1265
+        from provisa.auth.providers.saml import SamlAuthProvider, SamlSettings
+
+        secret = _session_secret(auth_config)
+        if not secret:
+            raise ValueError("auth.jwt_secret is required for provider 'saml'")
+        return SamlAuthProvider(
+            _settings(SamlSettings, _provider_block(auth_config, "saml"), "saml"),
+            session_secret=secret,
+        )
     raise ValueError(f"Unknown auth provider: {provider_name!r}")
+
+
+def _provider_block(auth_config: dict, name: str) -> dict:  # REQ-1265
+    """The provider's own config block. A provider selected without one cannot be built, which
+    is a ValueError: every surface turns that into a refusal rather than a server fault."""
+    block = auth_config.get(name)
+    if not block:
+        raise ValueError(f"auth.{name} is required for provider {name!r}")
+    return dict(block)
+
+
+def _settings(settings_type, block: dict, name: str):  # REQ-1265
+    """``block`` as the provider's settings; a missing or unknown key is named in a ValueError."""
+    try:
+        return settings_type(**block)
+    except TypeError as exc:
+        raise ValueError(f"auth.{name}: {exc}") from exc
+
+
+def _session_secret(auth_config: dict) -> str | None:  # REQ-1265
+    """The browser-session signing key, or None when ``auth.jwt_secret`` is unset.
+
+    Unset is not a defect here: API clients still present their own credential, and the
+    session exchange answers 503 instead of signing with a guessable key.
+    """
+    secret = auth_config.get("jwt_secret")
+    return resolve_secrets(secret) if secret else None
 
 
 def bind_auth_config(state, raw_auth: dict | None) -> None:  # REQ-120, REQ-1267

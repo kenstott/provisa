@@ -112,6 +112,10 @@ class TestAuthMiddlewareSkipPaths:
             # REQ-1472: the break-glass credential exchange. Like /auth/login it PRODUCES a token,
             # so it cannot sit behind the bearer gate it is meant to fill.
             "/auth/superuser-login",
+            # REQ-1265: the SAML round trip produces the session; nothing on it can carry a bearer.
+            "/auth/saml/login",
+            "/auth/saml/acs",
+            "/auth/saml/metadata",
             "/auth/provider-type",
             "/auth/bootstrap-status",
             "/setup/status",

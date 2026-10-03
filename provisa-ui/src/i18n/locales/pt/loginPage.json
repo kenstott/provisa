@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "Falha no login com Firebase",
     "operatorSignIn": "Acesso do operador",
     "operatorSignInTitle": "Acesso do operador",
-    "backToSignIn": "Voltar ao login"
+    "backToSignIn": "Voltar ao login",
+    "signInWithSso": "Entrar com login único (SSO)",
+    "samlSignInFailed": "O login único (SSO) não foi concluído. Tente novamente ou fale com o administrador."
   }
 }
