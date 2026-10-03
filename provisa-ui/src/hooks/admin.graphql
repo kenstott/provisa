@@ -695,6 +695,8 @@ query ReplicaBuilds {
       failedAttempts
       waitingOn
       waitingOnCode
+      feedDownSince
+      feedError
     }
     convergenceError
     convergenceErrorAt

@@ -16,6 +16,7 @@
     "loadKind": {
       "bulk_stream": "Bulk-Stream",
       "row_copy": "Zeilenkopie"
-    }
+    },
+    "feedDown": "Änderungs-Feed seit {{since}} unterbrochen; das Replikat wird erst nach der Wiederverbindung aktualisiert: {{error}}"
   }
 }

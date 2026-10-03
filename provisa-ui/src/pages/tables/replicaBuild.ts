@@ -70,3 +70,17 @@ export function replicaBuildLine(
         : t("replicaBuild.none");
   }
 }
+
+/** REQ-1861: the line for a change-feed table whose listener is down; null while it is
+ * watching (or the table follows no change feed). */
+export function replicaFeedLine(
+  build: ReplicaBuild | undefined,
+  t: Translate,
+  formatWhen: (iso: string) => string,
+): string | null {
+  if (!build?.feedDownSince) return null;
+  return t("replicaBuild.feedDown", {
+    since: formatWhen(build.feedDownSince),
+    error: build.feedError ?? "",
+  });
+}

@@ -1250,6 +1250,10 @@ class ReplicaBuildType:  # REQ-1915
     # Why a requested build has not started: English text and its code.
     waiting_on: str | None
     waiting_on_code: str | None
+    # REQ-1861: a table that follows its source's change feed, while the listener is down:
+    # since when (ISO 8601, UTC) and the server's own reason. None while it is watching.
+    feed_down_since: str | None
+    feed_error: str | None
 
 
 @strawberry.type

@@ -1497,6 +1497,9 @@ export interface ReplicaBuild {
   /** Why a requested build has not started: English text and its code. */
   waitingOn: string | null;
   waitingOnCode: string | null;
+  /** REQ-1861: while a change-feed table's listener is down, since when and the server's reason. */
+  feedDownSince: string | null;
+  feedError: string | null;
 }
 
 export interface ReplicaBuilds {

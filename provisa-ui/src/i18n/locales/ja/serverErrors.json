@@ -341,7 +341,8 @@
       "view_spans_sources": "ビューが複数のソースにまたがっています：{{sources}}",
       "webhook_approved": "Webhook「{{webhook}}」を承認しました",
       "webhook_name_required": "Webhook トリガーには webhook_name が必要です",
-      "webhook_not_found": "Webhook「{{webhook}}」が見つかりません"
+      "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
+      "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。"
     },
     "secrets": {
       "still_referenced": "{{secret}} は、この組織に保存されている {{count}} 件の値からまだ参照されています。それぞれを変更または削除してから、もう一度削除してください。"

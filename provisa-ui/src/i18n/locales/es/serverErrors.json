@@ -341,7 +341,8 @@
       "view_spans_sources": "la vista abarca varios orígenes: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' aprobado",
       "webhook_name_required": "webhook_name es obligatorio para un desencadenador de webhook",
-      "webhook_not_found": "No se encontró el webhook '{{webhook}}'"
+      "webhook_not_found": "No se encontró el webhook '{{webhook}}'",
+      "change_streams_unavailable": "El origen '{{source}}' es un servidor MongoDB independiente, que no ofrece change streams: la señal de cambio native requiere un replica set o un clúster fragmentado. Ejecútelo como replica set o use la señal de cambio poll."
     },
     "secrets": {
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."

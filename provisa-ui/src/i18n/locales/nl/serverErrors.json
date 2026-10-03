@@ -341,7 +341,8 @@
       "view_spans_sources": "view omvat meerdere bronnen: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' goedgekeurd",
       "webhook_name_required": "webhook_name is vereist voor een webhooktrigger",
-      "webhook_not_found": "Webhook '{{webhook}}' niet gevonden"
+      "webhook_not_found": "Webhook '{{webhook}}' niet gevonden",
+      "change_streams_unavailable": "Bron '{{source}}' is een zelfstandige MongoDB-server, die geen change streams levert: het native wijzigingssignaal vereist een replica set of een sharded cluster. Draai hem als replica set, of gebruik het wijzigingssignaal poll."
     },
     "secrets": {
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."

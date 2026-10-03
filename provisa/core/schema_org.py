@@ -1234,6 +1234,10 @@ replica_state = Table(
     # (``replica_errors.WAITING``: the engine at its job cap, the source at its live-read
     # cap); NULL once it starts.
     Column("waiting_on", Text),
+    # REQ-1861: a table that follows its source's change feed, while the feed's listener is
+    # down: since when, and the server's own reason. NULL once the listener is watching again.
+    Column("feed_down_since", DateTime(timezone=True)),
+    Column("feed_error", Text),
     CheckConstraint(
         "build_state IN ('idle','requested','building','failed')",
         name="replica_state_build_state_check",

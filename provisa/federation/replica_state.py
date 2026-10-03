@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, case, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from provisa.core import config_stamp
@@ -224,6 +224,8 @@ class ReplicaRecord:
     last_error_code: str | None = None
     last_error_params: dict | None = None
     failed_attempts: int = 0
+    feed_down_since: datetime | None = None
+    feed_error: str | None = None
 
     @property
     def exists(self) -> bool:
@@ -263,6 +265,8 @@ _COLUMNS = (
     _t.last_error_code,
     _t.last_error_params,
     _t.failed_attempts,
+    _t.feed_down_since,
+    _t.feed_error,
 )
 
 
@@ -299,6 +303,8 @@ def _record(row: Any) -> ReplicaRecord:
         last_error_code=row[22],
         last_error_params=row[23],
         failed_attempts=row[24],
+        feed_down_since=_aware(row[25]),
+        feed_error=row[26],
     )
 
 
@@ -479,6 +485,20 @@ async def set_waiting(conn: "Connection", keys: list[ReplicaKey], *, waiting_on:
             .where(_is(key), _t.build_state == REQUESTED)
             .values(waiting_on=waiting_on)
         )
+
+
+async def record_feed(
+    conn: "Connection", key: ReplicaKey, *, error: str | None, now: datetime
+) -> None:
+    """The state of the change-feed listener of the replica ``key``'s table (REQ-1861): down
+    with the server's ``error`` (the time it went down is kept while it stays down), or watching
+    (``error`` None). A replica with no record yet has none to show; convergence creates it."""
+    values: dict[str, Any] = (
+        {"feed_down_since": None, "feed_error": None}
+        if error is None
+        else {"feed_down_since": func.coalesce(_t.feed_down_since, now), "feed_error": error}
+    )
+    await conn.execute_core(update(replica_state).where(_is(key)).values(**values))
 
 
 async def record_progress(conn: "Connection", key: ReplicaKey, *, rows_copied: int) -> None:

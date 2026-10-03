@@ -341,7 +341,8 @@
       "view_spans_sources": "представление охватывает несколько источников: {{sources}}",
       "webhook_approved": "Вебхук '{{webhook}}' одобрен",
       "webhook_name_required": "для триггера-вебхука требуется webhook_name",
-      "webhook_not_found": "Вебхук '{{webhook}}' не найден"
+      "webhook_not_found": "Вебхук '{{webhook}}' не найден",
+      "change_streams_unavailable": "Источник '{{source}}' — автономный сервер MongoDB, который не поддерживает change streams: сигнал изменений native требует набора реплик или шардированного кластера. Запустите его как набор реплик или используйте сигнал изменений poll."
     },
     "secrets": {
       "still_referenced": "{{secret}} всё ещё называют сохранённые значения в этой организации: {{count}}. Измените или удалите каждое и повторите удаление."
