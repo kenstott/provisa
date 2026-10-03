@@ -932,6 +932,7 @@ class TestExecCtasRoute:
         engine = SimpleNamespace(
             transpile_physical=lambda s: s,
             dialect="postgres",
+            writes_result=lambda fmt: True,
             ctas_redirect=lambda sql, fmt, params: {"s3_prefix": "s3://bucket/x", "row_count": 5},
         )
         state = SimpleNamespace(federation_engine=engine, engine_conn=object())
@@ -967,6 +968,7 @@ class TestExecCtasRoute:
         engine = SimpleNamespace(
             transpile_physical=lambda s: s,
             dialect="postgres",
+            writes_result=lambda fmt: True,
             ctas_redirect=lambda sql, fmt, params: {"s3_prefix": "s3://bucket/x", "row_count": 0},
         )
         state = SimpleNamespace(federation_engine=engine, engine_conn=object())

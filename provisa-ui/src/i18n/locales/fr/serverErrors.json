@@ -92,7 +92,8 @@
       "table_not_found": "Table « {{table}} » introuvable",
       "unknown_action_field": "Champ d'action inconnu : « {{field}} »",
       "unknown_command": "Commande « {{name}} » inconnue",
-      "write_not_admitted": "Le rôle '{{role}}' ne peut pas effectuer cette écriture : une écriture exige le droit d'écriture, l'accès en écriture à chaque colonne écrite et des lignes admises par le filtre de lignes du rôle."
+      "write_not_admitted": "Le rôle '{{role}}' ne peut pas effectuer cette écriture : une écriture exige le droit d'écriture, l'accès en écriture à chaque colonne écrite et des lignes admises par le filtre de lignes du rôle.",
+      "redirect_failed": "Le résultat n'a pas pu être écrit dans le magasin de résultats : {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",

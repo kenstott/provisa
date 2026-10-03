@@ -92,7 +92,8 @@
       "table_not_found": "テーブル「{{table}}」が見つかりません",
       "unknown_action_field": "不明なアクションフィールド：「{{field}}」",
       "unknown_command": "不明なコマンド「{{name}}」です",
-      "write_not_admitted": "ロール '{{role}}' はこの書き込みを実行できません。書き込みには、書き込み権限、書き込む各列への書き込みアクセス、およびロールの行フィルターが許可する行が必要です。"
+      "write_not_admitted": "ロール '{{role}}' はこの書き込みを実行できません。書き込みには、書き込み権限、書き込む各列への書き込みアクセス、およびロールの行フィルターが許可する行が必要です。",
+      "redirect_failed": "結果を結果ストアに書き込めませんでした: {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",

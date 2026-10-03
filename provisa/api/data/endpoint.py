@@ -706,7 +706,6 @@ async def _execute_one_field(
     Returns (root_field, field_rows, redirect_info_or_None, cache_key, cached_entry_or_None).
     """
     from provisa.executor.redirect import upload_and_presign
-    from provisa.executor.redirect import is_engine_native_format
 
     root_field = compiled.root_field
     _t0 = _time.perf_counter()
@@ -797,11 +796,7 @@ async def _execute_one_field(
                 role_id=role_id,
             )
 
-        if (
-            force_redirect
-            and is_engine_native_format(effective_redirect_format)
-            and state.engine_conn is not None
-        ):
+        if force_redirect and state.federation_engine.writes_result(effective_redirect_format):
             try:
                 redirect_info = await _exec_ctas_route(
                     compiled, ctx, state, effective_redirect_format, redirect_config
@@ -815,8 +810,18 @@ async def _execute_one_field(
                     state,
                 )
                 return root_field, None, redirect_info, ck, None
-            except Exception:
-                log.exception("CTAS redirect failed for %s, falling back", root_field)
+            except (asyncio.TimeoutError, HTTPException):
+                raise  # a timeout or an already-shaped error is not a redirect failure
+            except Exception as failed:
+                # REQ-1194: the caller asked for the result in the results store. A redirect that
+                # fails is that request failing, by name -- never an inline answer in its place
+                # (the rows it asked not to receive, with no word that the redirect failed).
+                raise ApiError(
+                    502,
+                    "data.redirect_failed",
+                    f"The result could not be written to the results store: {failed}",
+                    error=str(failed),
+                ) from failed
 
         # Standard execution
         session_hints: dict[str, str] = {}

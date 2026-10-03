@@ -36,6 +36,26 @@ class DatabricksBackend(NativeEngineBackend):
             raise RuntimeError("databricks engine requires a URL ($PROVISA_ENGINE_URL)")
         return DatabricksFederationRuntime(url=url)
 
+    result_formats = frozenset({"parquet"})
+
+    def ctas_redirect(
+        self, state: Any, physical_sql: str, output_format: str, params: list | None
+    ) -> dict:
+        """REQ-1194: Databricks runs the statement and writes its result to the results bucket
+        itself (``INSERT OVERWRITE DIRECTORY 's3://...'``); the rows written are counted from the
+        files it wrote."""
+        from provisa.executor import redirect
+        from provisa.federation import result_sink
+
+        result_sink.require_format(self.engine.name, output_format, self.result_formats)
+        config = redirect.RedirectConfig.from_env()
+        redirect.ensure_results_bucket_sync(config)
+        target = result_sink.new_target(config)
+        runtime = self._runtime_for(state)
+        _ = runtime.run_sync(result_sink.databricks_insert(physical_sql, target), params).rows
+        counted = runtime.run_sync(result_sink.databricks_count(target), None).rows
+        return {"s3_prefix": target.s3_prefix, "row_count": int(counted[0][0])}
+
     def replica_target(self, state: Any, *, address: Any, args: Any, engine: Any) -> Any:
         """A replica in this engine's own Unity Catalog: Parquet batches streamed to a volume of
         the replicas schema, then the replica overwritten from them in one commit (REQ-1915)."""
