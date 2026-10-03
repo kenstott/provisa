@@ -136,7 +136,9 @@ def _make_config(spec_path: str) -> dict:
 
 
 @pytest_asyncio.fixture(scope="module")
-async def pg_conn(tenant_db):
+async def pg_conn(tenant_db, platform_admin_db):
+    # platform_admin_db: load_config binds the org vault (REQ-1580/REQ-1730), read off
+    # state.admin_db — this module brings its own rather than inheriting another module's.
     # load_config runs against the control-plane Database shim (advisory_xact_lock,
     # execute_core), scoped to org_default — the same connection the app uses.
     # tenant_db itself leaves search_path unset (public), per tests/conftest.py's
