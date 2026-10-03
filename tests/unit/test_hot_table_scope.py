@@ -431,3 +431,34 @@ def test_rows_fetched_with_arguments_are_never_held(acting):
     assert held == {}
     hot.hold("customers", rows=ACME_ROWS, whole=True, **kw)
     assert list(held) == [CUSTOMERS]
+
+
+async def test_boot_finds_a_table_registered_under_its_settled_name(monkeypatch, acting):
+    """REQ-471: a table on a source the engine cannot attach is registered under its SQL name
+    (``animalBreeds`` → ``animal_breeds``); the config still declares it as written."""
+    _hot_settings(monkeypatch)
+    raw = {
+        "sources": [{"id": "gql", "type": "graphql_remote"}],
+        "tables": [{"source_id": "gql", "schema": "graphql", "table": "animalBreeds"}],
+        "relationships": [
+            {
+                "source_table_id": "pets",
+                "target_table_id": "animalBreeds",
+                "cardinality": "many-to-one",
+            }
+        ],
+    }
+    registered = [
+        {
+            "id": CUSTOMERS,
+            "source_id": "gql",
+            "schema_name": "graphql",
+            "table_name": "animal_breeds",
+        }
+    ]
+    mgr = await hot_tables.init_hot_tables(raw, _Engine([], []), registered)
+    try:
+        (candidate,) = mgr.snapshot()
+        assert (candidate["table_id"], candidate["table_name"]) == (CUSTOMERS, "animal_breeds")
+    finally:
+        await mgr.close()

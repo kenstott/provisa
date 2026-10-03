@@ -728,16 +728,26 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         for row in registered
     }
 
+    from provisa.compiler.naming import apply_sql_name
+
     for tbl_cfg in raw_config.get("tables", []):
-        tbl_name = tbl_cfg.get("table") or tbl_cfg.get("table_name")
+        declared = tbl_cfg.get("table") or tbl_cfg.get("table_name")
         schema_name = tbl_cfg.get("schema") or tbl_cfg.get("schema_name")
         source_id = tbl_cfg["source_id"]
-        identity = (source_id, schema_name, tbl_name)
-        if identity not in ids:
+        # REQ-471: a table on a source the engine cannot attach is registered under its settled
+        # SQL name (config_loader._settle_table_names); an attached one under the name declared.
+        found = [
+            name
+            for name in dict.fromkeys((declared, apply_sql_name(declared)))
+            if (source_id, schema_name, name) in ids
+        ]
+        if len(found) != 1:
             raise ValueError(
-                f"hot tables: config table {source_id}/{schema_name}.{tbl_name} is not registered"
+                f"hot tables: config table {source_id}/{schema_name}.{declared} is "
+                + ("not registered" if not found else f"registered twice ({', '.join(found)})")
             )
-        table_id = ids[identity]
+        tbl_name = found[0]
+        table_id = ids[(source_id, schema_name, tbl_name)]
         source_cfg = source_cfgs.get(source_id, {})
         source_type = source_cfg.get("type", "")
         pk_col = (
@@ -773,7 +783,7 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         if override is False:
             continue
         # Auto-detected: a many-to-one target, promoted on its first small read.
-        if detect_hot_tables([tbl_cfg], rels_list, {tbl_name: override}):
+        if detect_hot_tables([tbl_cfg], rels_list, {declared: override}):
             hot_mgr.register_candidate(candidate)
             log.debug("Registered hot table candidate %s (lazy promotion on first query)", tbl_name)
             continue
