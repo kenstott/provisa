@@ -26,6 +26,8 @@ import bcrypt
 import pytest
 from fastapi import FastAPI
 
+from tests.platform_plane import platform_db
+
 pytestmark = [pytest.mark.integration, pytest.mark.e2e]
 
 _PASSWORD = "pw-login-test"
@@ -68,6 +70,8 @@ def login_server(monkeypatch):
             },
         },
     )
+    # The simple provider keeps its users' ids on the platform plane.
+    monkeypatch.setattr(state, "admin_db", platform_db())
     app = FastAPI()
     app.include_router(login_router)
 

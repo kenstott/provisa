@@ -39,6 +39,7 @@ from provisa.auth.throttle import (
     subject_key,
     throttled,
 )
+from tests.platform_plane import platform_db
 
 _SECRET = "throttle-test-signing-key-at-least-32-bytes"
 _USERNAME = "alice"
@@ -272,7 +273,8 @@ def _state(auth_config: dict) -> SimpleNamespace:
         auth_config=auth_config,
         auth_middleware_active=True,
         multitenancy=False,
-        admin_db=None,
+        # The simple provider keeps its users' ids on the platform plane.
+        admin_db=platform_db(),
     )
 
 
@@ -332,7 +334,7 @@ def _http_client(auth_config: dict):
 
     app.add_middleware(
         AuthMiddleware,
-        provider=build_auth_provider(auth_config),
+        provider=build_auth_provider(auth_config, admin_pool=platform_db()),
         mapping_rules=[],
         default_role="analyst",
         db_pool=None,
@@ -397,7 +399,8 @@ def test_a_good_password_still_authenticates_under_the_throttle(pgwire_loop):
     assert _pgwire_attempt(auth_config, _PASSWORD) == []
     identity = asyncio.run(_bolt_attempt(auth_config, _PASSWORD))
     assert identity is not None
-    assert identity.user_id == _USERNAME
+    # The simple provider names a user by a stored id, shown under the username.
+    assert identity.display_name == _USERNAME
 
 
 def test_the_login_route_counts_into_the_same_store():
@@ -421,7 +424,10 @@ def test_the_login_route_counts_into_the_same_store():
 
         return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
-    with patch.object(state, "auth_config", auth_config), patch.object(state, "admin_db", None):
+    with (
+        patch.object(state, "auth_config", auth_config),
+        patch.object(state, "admin_db", platform_db()),
+    ):
         client = TestClient(app)
         body = {"username": _USERNAME, "password": "wrong"}
         for _ in range(3):

@@ -22,6 +22,7 @@ from pytest_bdd import given, when, then, parsers, scenarios
 
 from provisa.auth.models import AuthIdentity
 from provisa.core.egress import CountingWriter
+from tests.platform_plane import platform_db
 
 _SECRET = "test-signing-key-at-least-32-bytes-long"
 
@@ -250,7 +251,8 @@ def _authenticate529(shared_data: dict, *, user: str = "alice") -> None:
         auth_config=shared_data.get("auth_config"),
         auth_middleware_active=shared_data.get("auth_middleware_active", True),
         multitenancy=False,
-        admin_db=None,
+        # The simple provider keeps its users' ids on the platform plane.
+        admin_db=platform_db(),
     )
     handler = _handler529(shared_data)
     ctx = cast(Any, _Ctx529(user))

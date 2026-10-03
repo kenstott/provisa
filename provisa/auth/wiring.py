@@ -79,9 +79,15 @@ def _construct_provider(auth_config: dict, admin_pool) -> AuthProvider:
         if jwt_secret.startswith("${env:"):
             env_key = jwt_secret[6:-1]
             jwt_secret = os.environ[env_key]
+        if admin_pool is None:
+            # The users' ids live on the platform plane; without it there is nowhere to keep them.
+            raise ValueError("auth.provider 'simple' needs the platform control plane")
+        from provisa.auth.simple_user_ids import SimpleUserIds
+
         return SimpleAuthProvider(
             users=simple_cfg.get("users", []),
             jwt_secret=jwt_secret,
+            user_ids=SimpleUserIds(admin_pool),
         )
     if provider_name == "firebase":
         from provisa.auth.providers.firebase import FirebaseAuthProvider

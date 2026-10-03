@@ -15,6 +15,7 @@ from provisa.core.egress import CountingWriter
 
 import jwt
 import pytest
+from tests.platform_plane import platform_db
 
 
 # ---------------------------------------------------------------------------
@@ -350,7 +351,8 @@ class TestPgwireBasicAndPat:
         fake_state.auth_config = auth_config
         fake_state.auth_middleware_active = True
         fake_state.multitenancy = False
-        fake_state.admin_db = None
+        # The simple provider keeps its users' ids on the platform plane.
+        fake_state.admin_db = platform_db()
         return fake_state
 
     def _simple_config(self):
