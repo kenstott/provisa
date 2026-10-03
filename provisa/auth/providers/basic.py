@@ -30,8 +30,6 @@ import datetime
 
 import bcrypt
 import jwt
-from fastapi import APIRouter
-from pydantic import BaseModel
 from sqlalchemy import select
 
 from provisa.api.errors import ApiError
@@ -43,36 +41,6 @@ from provisa.core.schema_admin import local_users
 # The browser session's lifetime. Short because the token is a bearer credential sitting in
 # localStorage; the SPA re-authenticates when it expires.
 _SESSION_TTL = datetime.timedelta(hours=8)
-
-router = APIRouter(prefix="/auth", tags=["auth"])
-
-# Set by wiring.wire_auth when provider=basic — the same module-level handoff the simple
-# provider's router uses.
-_provider_instance: "BasicAuthProvider | None" = None
-
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-
-@router.post("/login")
-async def login(body: LoginRequest):  # REQ-124, REQ-1393
-    """Exchange username+password for a session JWT."""
-    if _provider_instance is None:
-        raise ApiError(
-            503, "auth.basic_provider_not_configured", "Basic auth provider not configured"
-        )
-    from provisa.auth.throttle import LockedOut, login_attempt
-
-    try:
-        with login_attempt(body.username, body.password):
-            token = await _provider_instance.issue_session_token(body.username, body.password)
-    except LockedOut as locked:
-        raise ApiError(429, "auth.too_many_attempts", str(locked))
-    except ValueError as exc:
-        raise ApiError(401, "auth.invalid_credentials", str(exc))
-    return {"access_token": token, "token_type": "bearer"}
 
 
 class BasicAuthProvider(AuthProvider):  # REQ-124
@@ -155,6 +123,10 @@ class BasicAuthProvider(AuthProvider):  # REQ-124
             "exp": now + _SESSION_TTL,
         }
         return jwt.encode(payload, self._session_secret, algorithm="HS256")
+
+    async def password_login(self, username: str, password: str) -> str:  # REQ-124
+        """The ``POST /auth/login`` exchange (provisa/auth/login_router.py)."""
+        return await self.issue_session_token(username, password)
 
     async def validate_session_token(self, token: str) -> AuthIdentity:  # REQ-124
         """Validate a session JWT minted by ``issue_session_token``.
