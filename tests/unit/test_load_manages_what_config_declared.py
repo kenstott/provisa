@@ -252,7 +252,9 @@ async def test_a_file_that_declares_an_admin_made_object_takes_it_over(db, caplo
         "orders": "config",
         "scratch": "admin",
     }
-    assert sorted(r.getMessage().split(",")[0] for r in caplog.records) == [
+    # Only this logger's records: another module's background thread may log while this runs.
+    origin_records = [r for r in caplog.records if r.name == "provisa.core.repositories.origin"]
+    assert sorted(r.getMessage().split(",")[0] for r in origin_records) == [
         "config load takes over domain 'lab'",
         "config load takes over role 'tester'",
         "config load takes over source 'mine'",
@@ -561,7 +563,11 @@ async def test_a_row_filter_the_file_drops_is_removed_loudly(db, caplog):
         await _load(db, _file())
 
     assert await _rows(db, "rls_rules", "id") == []
-    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    warnings = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "WARNING" and r.name.startswith("provisa.core")
+    ]
     assert warnings == [
         f"config load removes row filter {rule_id} (seller on table orders): the config no "
         "longer declares it, so role 'seller' now reads what it filtered"
@@ -669,7 +675,11 @@ async def test_a_seeded_role_the_file_stops_declaring_goes_back_to_the_seed(db, 
     assert analyst["domain_access"] == ["*"]
     assert "analytics" not in await _origins(db, "domains")
     assert await _rows(db, "seed_redefinitions", "kind", "object_id") == []
-    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    warnings = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "WARNING" and r.name.startswith("provisa.core")
+    ]
     assert warnings == [
         "config load puts seeded role 'analyst' back to the seed's definition: the config no "
         "longer declares it, so it no longer has rights write"

@@ -1028,6 +1028,7 @@ class TestPgwireCopyFrom:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
+                "write_ops": ["delete", "insert", "update"],
                 "columns": [
                     {
                         "column_name": name,
