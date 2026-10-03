@@ -313,11 +313,11 @@ def _whole(source: Any, table: Any, rows: list[dict], cut: Any) -> list[dict]:
     raise PageLimitReached(f"{source.id}.{table.table_name}", cut.max_pages, cut.rows)
 
 
-def make_openapi_loader(
-    endpoints_by_table: dict[str, Any], sources_by_id: dict[str, Any]
-) -> AdapterLoader:
+def make_openapi_loader(state: Any) -> AdapterLoader:
     """Build the openapi adapter row-fetch (REQ-941/846): resolve the table's registered
-    ``ApiEndpoint`` and its ``ApiSource`` (base_url + auth) from live state, call the operation with
+    ``ApiEndpoint`` and its ``ApiSource`` (base_url + auth) from ``state`` at each read (a schema
+    rebuild replaces both maps, and a table registered after startup is in the new ones), call
+    the operation with
     its default params, and flatten the response pages into row dicts — the same call_api → flatten
     chain the API-cache path uses. The engine never touches this; the write face lands the result.
 
@@ -325,8 +325,8 @@ def make_openapi_loader(
     :class:`UnsupportedSourceFetch` (explicit — never a silent empty snapshot)."""
 
     def _registered(source: Any, table: Any) -> tuple[Any, Any]:
-        endpoint = endpoints_by_table.get(table.table_name)
-        api_source = sources_by_id.get(source.id)
+        endpoint = state.api_endpoints.get(table.table_name)
+        api_source = state.api_sources.get(source.id)
         if endpoint is None or api_source is None:
             raise UnsupportedSourceFetch(
                 f"openapi source {source.id!r} table {table.table_name!r}: no registered endpoint "
@@ -364,9 +364,7 @@ def make_openapi_loader(
     return _load
 
 
-def make_neo4j_keyed_loader(
-    endpoints_by_table: dict[str, Any], sources_by_id: dict[str, Any]
-) -> AdapterKeyedLoader:
+def make_neo4j_keyed_loader(state: Any) -> AdapterKeyedLoader:
     """Build the neo4j keyed row-fetch (REQ-1865): wrap the table's registered ``query_template``
     with a ``WHERE <projected_pk_property> IN $keys`` filter (single-column PK only --
     ``provisa/cypher/query_template_filter.py`` raises loud on a composite one) and run it through
@@ -380,8 +378,8 @@ def make_neo4j_keyed_loader(
         from provisa.api_source.caller import answer_rows, call_api
         from provisa.cypher.query_template_filter import inject_keys_filter
 
-        endpoint = endpoints_by_table.get(table.table_name)
-        api_source = sources_by_id.get(source.id)
+        endpoint = state.api_endpoints.get(table.table_name)
+        api_source = state.api_sources.get(source.id)
         if endpoint is None or api_source is None:
             raise UnsupportedSourceFetch(
                 f"neo4j source {source.id!r} table {table.table_name!r}: no registered endpoint "

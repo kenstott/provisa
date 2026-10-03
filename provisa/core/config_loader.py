@@ -11,17 +11,16 @@
 """Config loader: YAML → validate → resolve secrets → upsert PG → create the engine catalogs."""
 
 # Requirements: REQ-012, REQ-013, REQ-016, REQ-250, REQ-251, REQ-275, REQ-282, REQ-283, REQ-285
-# complexity-gate: allow-ble=6 reason="per-source config registration is best-effort: source-driver register, OpenAPI spec load, SQLite migration post-step, OpenAPI cache, api_endpoints register, and CBO analyze each log their own failure and continue, so one bad source never fails the whole config load"
+# complexity-gate: allow-ble=5 reason="per-source config registration is best-effort: source-driver register, OpenAPI spec load, SQLite migration post-step, OpenAPI cache, and CBO analyze each log their own failure and continue, so one bad source never fails the whole config load"
 
 import logging
 import os
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 
 import yaml
 from sqlalchemy import delete as _delete
-from sqlalchemy import insert, select, update
+from sqlalchemy import insert, select
 
 from provisa.core.models import (
     ControlPlaneConfig,
@@ -34,8 +33,6 @@ from provisa.core.models import (
 from provisa.core import domain_policy
 from provisa.core.schema_org import (
     admin_audit_log,
-    api_endpoints,
-    api_sources,
     data_products as data_products_table,
     domains as domains_table,
     glossary_terms,
@@ -48,15 +45,13 @@ from provisa.core.schema_org import (
     roles as roles_table,
     sources,
     stores as stores_table,
-    table_columns,
     tag_assignments as tag_assignments_table,
     tags as tags_table,
     tracked_functions,
     tracked_webhooks,
 )
-from provisa.core.paging import paging_row
+from provisa.api_source.openapi_endpoint import normalize_op_id
 from provisa.core.secrets import resolve_secrets
-from provisa.openapi.mapper import OpenAPIQuery
 from provisa.security.rights import SYSTEM_ROLE_IDS
 from provisa.core.repositories.integrity import Dependent, ObjectRef, discard, guard, wholes_of
 from provisa.core.repositories.origin import CONFIG, SEED
@@ -79,38 +74,6 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 log = logging.getLogger(__name__)
-
-
-def _normalize_op_id(s: str) -> str:
-    return re.sub(r"[_-]", "", s).lower()
-
-
-def _default_params_from_spec(spec: dict, path: str) -> dict:
-    """Extract enum/default values for GET query params at path for pre-population."""
-    path_item = spec.get("paths", {}).get(path, {})
-    raw_params = list(path_item.get("parameters", []))
-    op = path_item.get("get", {})
-    if op:
-        raw_params = raw_params + list(op.get("parameters", []))
-    defaults: dict = {}
-    for p in raw_params:
-        if "$ref" in p:
-            ref_parts = p["$ref"].lstrip("#/").split("/")
-            node = spec
-            for part in ref_parts:
-                node = node.get(part, {})
-            p = node
-        if p.get("in") != "query":
-            continue
-        name = p.get("name", "")
-        if not name:
-            continue
-        schema = p.get("schema") or {}
-        if "enum" in schema:
-            defaults[name] = schema["enum"]
-        elif "default" in schema:
-            defaults[name] = schema["default"]
-    return defaults
 
 
 def _merge_fragment(base: dict, fragment: dict, fragment_path: Path) -> None:  # REQ-1669
@@ -360,11 +323,7 @@ def _enrich_openapi_table_columns(
 
     queries, _ = parse_spec(spec)
     match = next(
-        (
-            q
-            for q in queries
-            if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)
-        ),
+        (q for q in queries if normalize_op_id(q.operation_id) == normalize_op_id(tbl.table_name)),
         None,
     )
     if not match:
@@ -375,155 +334,24 @@ def _enrich_openapi_table_columns(
             col.description = spec_col_map[col.name].get("description")
 
 
-def _build_api_columns(match: OpenAPIQuery) -> tuple[list[dict], set[str]]:
-    """Build the api_columns list and resp_col_names set for an OpenAPI match."""
-    from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
-
-    resp_col_names: set[str] = {c["name"] for c in _schema_to_columns(match.response_schema)}
-    api_columns: list[dict] = [
-        {
-            "name": c["name"],
-            "type": c["type"],
-            "filterable": True,
-            **({"object_fields": c["object_fields"]} if c.get("object_fields") else {}),
-        }
-        for c in _schema_to_columns(match.response_schema)
-    ]
-    for p in match.path_params:
-        api_columns.append(
-            {
-                "name": p["name"],
-                "type": _openapi_to_provisa_type(p.get("type")),
-                "filterable": False,
-                "param_type": "path",
-                "param_name": p["name"],
-                "param_only": True,
-            }
-        )
-    for p in match.query_params:
-        if p["name"] in resp_col_names:
-            for col in api_columns:
-                if col["name"] == p["name"]:
-                    col["param_type"] = "query"
-                    col["param_name"] = p["name"]
-                    break
-        else:
-            api_columns.append(
-                {
-                    "name": p["name"],
-                    "type": _openapi_to_provisa_type(p.get("type")),
-                    "filterable": False,
-                    "param_type": "query",
-                    "param_name": p["name"],
-                    "param_only": True,
-                }
-            )
-    return api_columns, resp_col_names
-
-
-async def _register_api_endpoint(
-    conn: "Connection",
-    tbl: Table,
-    src: Source,
-    match: OpenAPIQuery,
-    resolved_base_url: str,
-    default_params: dict,
-    api_columns: list[dict],
-) -> None:
-    await conn.upsert(
-        api_sources,
-        {"id": src.id, "type": "openapi", "base_url": resolved_base_url, "auth": None},
-        index_elements=["id"],
-        update_columns=["base_url"],
-    )
-    await conn.upsert(
-        api_endpoints,
-        {
-            "source_id": src.id,
-            "path": match.path,
-            "method": "GET",
-            "table_name": tbl.table_name,
-            "columns": api_columns,
-            "ttl": src.cache_ttl or 300,
-            "default_params": default_params if default_params else None,
-            "promotions": getattr(tbl, "promotions", []) or [],
-            # REQ-318: a copy of the table's own paging, the one place it is authored.
-            "pagination": paging_row(tbl.pagination),
-        },
-        index_elements=["table_name"],
-        update_columns=[
-            "source_id",
-            "path",
-            "columns",
-            "ttl",
-            "default_params",
-            "promotions",
-            "pagination",
-        ],
-    )
-    for col_data in api_columns:
-        if col_data.get("object_fields"):
-            await conn.execute_core(
-                update(table_columns)
-                .where(
-                    table_columns.c.table_id
-                    == select(registered_tables.c.id)
-                    .where(
-                        registered_tables.c.source_id == tbl.source_id,
-                        registered_tables.c.table_name == tbl.table_name,
-                    )
-                    .scalar_subquery(),
-                    table_columns.c.column_name == col_data["name"],
-                )
-                .values(object_fields=col_data["object_fields"])
-            )
-    # Persist column data_type from the spec. OpenAPI tables are
-    # REQ-1426: nothing types a column here. data_type is design-time metadata the config carries;
-    # the cached response and the spec are runtime artifacts and neither may set one.
-
-
 async def _handle_openapi_table(
     conn: "Connection",
     tbl: Table,
     src: Source,
     spec: dict,
 ) -> None:
-    from provisa.openapi.mapper import parse_spec
+    """The endpoint a config-declared OpenAPI table is served from, derived by the same function
+    the admin registration uses (REQ-316, REQ-318). REQ-1915: nothing is fetched here. A table
+    whose spec has no operation of its name fails the load: it would have nothing to be read
+    from. The config's source carries no auth for the caller."""
+    from provisa.api_source.openapi_endpoint import (
+        register_openapi_endpoint,
+        register_openapi_source,
+    )
 
     assert src.base_url is not None
-    resolved_base_url = resolve_secrets(src.base_url)
-    queries, _ = parse_spec(spec)
-    match = next(
-        (
-            q
-            for q in queries
-            if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)
-        ),
-        None,
-    )
-    if not match:
-        log.warning(
-            "No matching OpenAPI operation for table %s (source %s)",
-            tbl.table_name,
-            tbl.source_id,
-        )
-        return
-    default_params = _default_params_from_spec(spec, match.path)
-    # REQ-1915: nothing is fetched here. The collection's rows are its replica's, built by the
-    # runner; a request's calls are fills in the store's API cache (api_source.fill_cache).
-    # Register in api_sources + api_endpoints for runtime hydration
-    try:
-        api_columns, _ = _build_api_columns(match)
-        await _register_api_endpoint(
-            conn, tbl, src, match, resolved_base_url, default_params, api_columns
-        )
-    except Exception as _e:
-        log.warning(
-            "api_endpoints registration failed for %s.%s: %s",
-            src.id,
-            tbl.table_name,
-            _e,
-        )
+    await register_openapi_source(conn, src.id, resolve_secrets(src.base_url))
+    await register_openapi_endpoint(conn, tbl, spec=spec, ttl=src.cache_ttl or 300)
 
 
 _QUERY_API_TYPES = frozenset({"neo4j", "sparql"})  # REQ-1668, REQ-1683

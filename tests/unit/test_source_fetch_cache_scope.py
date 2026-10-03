@@ -10,25 +10,22 @@
 
 """A source call's cached rows belong to one org, one environment and one model (REQ-318, REQ-327, REQ-595).
 
-The gRPC-remote and OpenAPI adapters keep the rows a call returned in the response-cache store,
-under a key made of the source id, the operation, the arguments and the role. They read and
-wrote it with no scope, so the entry sat at the same key for every org and environment: a call
-in one was answered with rows fetched for another whenever the source id, operation, arguments
-and role name matched. Both now read and write under the scope every other cache uses.
+The gRPC-remote adapter keeps the rows a call returned in the response-cache store, under a key
+made of the source id, the operation, the arguments and the role. It read and wrote it with no
+scope, so the entry sat at the same key for every org and environment: a call in one was
+answered with rows fetched for another whenever the source id, operation, arguments and role
+name matched. It now reads and writes under the scope every other cache uses. (An OpenAPI table
+is read through the API caller, whose cache is the store's API cache schema of the org.)
 """
 
 # Requirements: REQ-318, REQ-327, REQ-595, REQ-1914, REQ-1529
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 
-import httpx
 import pytest
-import respx
 
 from provisa.cache import tenancy
-from provisa.openapi import executor as openapi_executor
 from provisa.source_adapters import grpc_remote_adapter
 from tests.unit.test_response_cache_shared import FakeCacheStore
 
@@ -81,50 +78,6 @@ async def test_grpc_the_same_call_elsewhere_is_not_served_these_rows(scope, grpc
     assert await _grpc(store) == [{"id": 2}]  # fetched again, for this org / environment / model
     scope["scope"] = "acme:m7"
     assert await _grpc(store) == [{"id": 1}]
-
-
-# --- OpenAPI -------------------------------------------------------------------------------------
-
-
-def _query() -> SimpleNamespace:
-    return SimpleNamespace(operation_id="listCustomers", path="/customers", path_params=[])
-
-
-async def _openapi(store) -> list[dict]:
-    return await openapi_executor.fetch(
-        BASE,
-        _query(),  # type: ignore[arg-type]
-        {"page": 1},
-        None,
-        store,
-        "crm",
-        role="analyst",
-    )
-
-
-@respx.mock
-async def test_openapi_a_repeated_call_in_one_place_is_served_from_the_cache(scope):
-    route = respx.get(f"{BASE}/customers").mock(return_value=httpx.Response(200, json=[{"id": 1}]))
-    store = FakeCacheStore()
-    assert await _openapi(store) == [{"id": 1}]
-    assert await _openapi(store) == [{"id": 1}]
-    assert route.call_count == 1
-
-
-@pytest.mark.parametrize("other", ["globex:m7", "acme_env_staging:m7", "acme:m8"])
-@respx.mock
-async def test_openapi_the_same_call_elsewhere_is_not_served_these_rows(scope, other):
-    route = respx.get(f"{BASE}/customers").mock(
-        side_effect=[
-            httpx.Response(200, json=[{"id": "acme"}]),
-            httpx.Response(200, json=[{"id": "elsewhere"}]),
-        ]
-    )
-    store = FakeCacheStore()
-    assert await _openapi(store) == [{"id": "acme"}]
-    scope["scope"] = other
-    assert await _openapi(store) == [{"id": "elsewhere"}]
-    assert route.call_count == 2
 
 
 def test_the_acting_scope_is_the_one_every_cache_uses():

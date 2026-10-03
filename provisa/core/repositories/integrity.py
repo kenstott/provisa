@@ -294,7 +294,6 @@ REFERENCES: tuple[Reference, ...] = (
     _part("tag_assignments", "base_tag_id", "tag"),
     # --- to a remote source registration, and runtime rows -------------------------------------
     _part("api_endpoints", "source_id", "api_source"),
-    _part("api_endpoint_candidates", "source_id", "api_source"),
     _part("kafka_topics", "source_id", "kafka_source"),
     _part("event_status", "event_id", "event"),
 )

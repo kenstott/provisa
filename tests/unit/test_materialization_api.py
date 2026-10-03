@@ -1283,27 +1283,18 @@ class TestMaterializeApiToEngineCache:
         assert rewrites == {}
         assert ctes == {}
 
-    @pytest.mark.parametrize(
-        ("lookup", "materialize", "reg"),
-        [
-            (
-                "_lookup_grpc_remote_table",
-                "_mat_grpc_remote_table",
-                ("grpcsrc", object(), object()),
-            ),
-            ("_lookup_openapi_table", "_mat_openapi_table", ("oasrc", object(), object())),
-        ],
-    )
-    async def test_a_failed_grpc_or_openapi_branch_fails_the_query(self, lookup, materialize, reg):
-        """REQ-1661 (amended 2026-09-30): a failed gRPC / OpenAPI remote fetch fails the query
-        instead of dropping its UNION branch."""
+    async def test_a_failed_grpc_branch_fails_the_query(self):
+        """REQ-1661 (amended 2026-09-30): a failed gRPC remote fetch fails the query instead of
+        dropping its UNION branch. (An OpenAPI table is an API endpoint: the endpoint tests.)"""
         state = SimpleNamespace(hot_manager=None, api_endpoints={}, graphql_remote_sources={})
         m = "provisa.api.data.materialization"
+        reg = ("grpcsrc", object(), object())
         with (
-            patch(f"{m}._lookup_grpc_remote_table", return_value=(None, None, None)),
-            patch(f"{m}._lookup_openapi_table", return_value=(None, None, None)),
-            patch(f"{m}.{lookup}", return_value=reg),
-            patch(f"{m}.{materialize}", new=AsyncMock(side_effect=ConnectionError("remote 500"))),
+            patch(f"{m}._lookup_grpc_remote_table", return_value=reg),
+            patch(
+                f"{m}._mat_grpc_remote_table",
+                new=AsyncMock(side_effect=ConnectionError("remote 500")),
+            ),
             pytest.raises(ConnectionError, match="remote 500"),
         ):
             await _materialize_api_to_engine_cache(

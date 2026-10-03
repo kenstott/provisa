@@ -106,7 +106,6 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "mv_delta_ledger",
         "relationship_candidates",
         "creation_requests",
-        "api_endpoint_candidates",
         "live_query_state",
         "file_source_mtimes",
         "node_ids",

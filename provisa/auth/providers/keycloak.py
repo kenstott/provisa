@@ -37,7 +37,10 @@ class KeycloakAuthProvider(AuthProvider):  # REQ-120, REQ-122
         self._realm = realm
         self._client_id = client_id
         self._client_secret = client_secret
-        self._jwks_uri = f"{self._server_url}/realms/{realm}/protocol/openid-connect/certs"
+        # REQ-122: the realm is the issuer; a token minted by another realm of the same server
+        # is signed by a different key set and names a different issuer.
+        self._issuer = f"{self._server_url}/realms/{realm}"
+        self._jwks_uri = f"{self._issuer}/protocol/openid-connect/certs"
         self._jwks_client: jwt.PyJWKClient | None = None
         self._jwks_fetched_at: float = 0.0
         self._jwks_ttl: float = 3600.0
@@ -57,6 +60,8 @@ class KeycloakAuthProvider(AuthProvider):  # REQ-120, REQ-122
             signing_key.key,
             algorithms=["RS256"],
             audience=self._client_id,
+            issuer=self._issuer,
+            options={"require": ["exp", "iss", "aud"]},
         )
         # REQ-122: map both realm roles (realm_access.roles) and this client's
         # roles (resource_access.<client_id>.roles). Realm roles first, then client
