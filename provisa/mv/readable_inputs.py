@@ -163,11 +163,12 @@ def unresolved_inputs(mv: MVDefinition, state: Any) -> list[UnreadableInput]:
     """Those of ``mv``'s inputs the model cannot resolve to exactly one registered table or
     materialized view (``provisa.mv.view_inputs`` — the same resolution the event graph's edges
     are built from). Empty when every input resolves."""
-    from provisa.mv.view_inputs import InputUnresolved, ModelIndex, view_refs  # noqa: PLC0415
+    from provisa.mv.view_inputs import InputUnresolved, ModelIndex, table_refs  # noqa: PLC0415
 
     index = ModelIndex(state)
+    refs = table_refs(mv.sql) if mv.sql else [(name,) for name in mv.source_tables]
     found: list[UnreadableInput] = []
-    for parts in view_refs(mv):
+    for parts in refs:
         try:
             index.resolve(mv.id, parts)
         except InputUnresolved as unresolved:
@@ -231,55 +232,6 @@ def config_table_views(state: Any, raw_config: dict) -> list[MVDefinition]:
             )
         views.append(mv)
     return views
-
-
-class TableMakesViewAmbiguous(ValueError):
-    """Registering a table would give a name a materialized view reads a second meaning."""
-
-    def __init__(self, table: str, reads: list[tuple[str, str]]) -> None:
-        self.table = table
-        self.reads = reads
-        named = "; ".join(f"view {view!r} reads {ref!r}" for view, ref in reads)
-        super().__init__(
-            f"table {table!r} cannot be registered: {named}, and that name would then name "
-            "more than one table or view. Qualify the view's reference first."
-        )
-
-
-def require_no_view_made_ambiguous(state: Any, table: Any) -> None:
-    """Refuse registering ``table`` when a name a materialized view reads would then answer to
-    it as well as to what it names now (REQ-939: a view's inputs resolve to exactly one table or
-    view, checked when the view is declared — and kept true when a table joins the model, so an
-    accepted view never meets an ambiguous input at wiring). Re-registering a table under its own
-    identity is not a new meaning."""
-    from provisa.mv.view_inputs import ModelIndex, row_spellings, view_refs  # noqa: PLC0415
-
-    identity = (table.source_id, table.schema_name, table.table_name)
-    own = {
-        ("table", int(row["id"]))
-        for row in state.tables
-        if (row["source_id"], row["schema_name"], row["table_name"]) == identity
-    }
-    spellings = row_spellings(
-        {
-            "table_name": table.table_name,
-            "schema_name": table.schema_name,
-            "domain_id": getattr(table, "domain_id", None),
-            "alias": getattr(table, "alias", None),
-        },
-        state.source_catalogs.get(table.source_id),
-    )
-    index = ModelIndex(state)
-    reads: list[tuple[str, str]] = []
-    for mv in state.mv_registry.get_enabled():
-        for parts in view_refs(mv):
-            if ".".join(p.lower() for p in parts) not in spellings:
-                continue
-            named = index.answering(parts)
-            if named and named != own:
-                reads.append((mv.id, ".".join(parts)))
-    if reads:
-        raise TableMakesViewAmbiguous(table.table_name, reads)
 
 
 class ViewsReadTable(ValueError):
