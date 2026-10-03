@@ -337,6 +337,43 @@ async def test_a_load_dropping_a_table_with_its_relationship_succeeds(db):
     assert await _rows(db, "table_columns", "column_name") == [("id",)]
 
 
+async def test_a_load_dropping_a_column_with_the_relationship_keyed_on_it_succeeds(db):
+    """REQ-1918/1919: a column the file drops along with every object that refers to it is not
+    refused for those referrers — they go in the same load, judged against the model it makes."""
+    with_ref = {
+        "columns": [
+            {"name": "id", "data_type": "integer", "visible_to": ["seller"]},
+            {"name": "customer_id", "data_type": "integer", "visible_to": ["seller"]},
+        ]
+    }
+    keyed = {**_ORDERS_TO_CUSTOMERS, "source_column": "customer_id"}
+    both = [_table("orders", **with_ref), _table("customers")]
+    await _load(db, _file(tables=both, relationships=[keyed]))
+    assert await _rows(db, "relationships", "id") == [("orders-to-customers",)]
+
+    await _load(db, _file(tables=[_table("orders"), _table("customers")]))
+
+    assert await _rows(db, "relationships", "id") == []
+    assert ("customer_id",) not in await _rows(db, "table_columns", "column_name")
+
+
+async def test_a_load_dropping_a_column_a_kept_relationship_is_keyed_on_is_refused(db):
+    with_ref = {
+        "columns": [
+            {"name": "id", "data_type": "integer", "visible_to": ["seller"]},
+            {"name": "customer_id", "data_type": "integer", "visible_to": ["seller"]},
+        ]
+    }
+    keyed = {**_ORDERS_TO_CUSTOMERS, "source_column": "customer_id"}
+    await _load(
+        db, _file(tables=[_table("orders", **with_ref), _table("customers")], relationships=[keyed])
+    )
+    with pytest.raises(table_repo.ColumnDropRefused, match="customer_id"):
+        await _load(
+            db, _file(tables=[_table("orders"), _table("customers")], relationships=[keyed])
+        )
+
+
 async def test_a_load_dropping_a_table_a_remaining_view_reads_fails_naming_the_view(db):
     view = _view("big_orders", "SELECT id FROM orders")
     await _load(db, _file(tables=[_table("orders"), view]))

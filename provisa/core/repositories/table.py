@@ -368,12 +368,17 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
     # naming them; the transaction around this call undoes the table row's update. A dropped
     # column's tag assignments are its parts and go with it.
     _dropped = sorted(set(_existing_types) - {col.name for col in table.columns})
+    _deferred = _DEFERRED_COLUMN_DROPS.get()
     _referred: dict[str, list[Dependent]] = {}
     for _column in _dropped:
         _dependents = await column_dependents(conn, table_id, _column)
         if _dependents:
             _referred[_column] = _dependents
-    if _referred:
+    if _referred and _deferred is not None:
+        # A config load: what refers to these columns may be dropped by the same file; judged
+        # at the end of the load (settle_deferred_column_drops).
+        _deferred.append((table.table_name, table_id, sorted(_referred)))
+    elif _referred:
         raise ColumnDropRefused(table.table_name, _referred)
     if _dropped:
         await conn.execute_core(
@@ -486,6 +491,40 @@ async def get_by_name(
 _LEAVING: ContextVar[frozenset[int]] = ContextVar(
     "tables_leaving_with_this_load", default=frozenset()
 )
+
+
+#: REQ-1918/1919: inside a config load, a column the file drops is not refused at its table's
+#: upsert — the referrers the file drops with it go only at the end of the load. The drop is
+#: recorded here, and :func:`settle_deferred_column_drops` judges it against the model the load
+#: produced; a column something still refers to then refuses the whole load (its transaction).
+_DEFERRED_COLUMN_DROPS: ContextVar[list[tuple[str, int, list[str]]] | None] = ContextVar(
+    "column_drops_judged_at_the_end_of_this_load", default=None
+)
+
+
+@contextmanager
+def deferring_column_drops():
+    """For the length of the block (one config load), column drops are judged at its end."""
+    token = _DEFERRED_COLUMN_DROPS.set([])
+    try:
+        yield
+    finally:
+        _DEFERRED_COLUMN_DROPS.reset(token)
+
+
+async def settle_deferred_column_drops(conn: "Connection") -> None:
+    """Refuse the load if a column it dropped is still referred to by what the load kept."""
+    for table_name, table_id, columns in _DEFERRED_COLUMN_DROPS.get() or []:
+        referred: dict[str, list[Dependent]] = {}
+        for column in columns:
+            try:
+                dependents = await column_dependents(conn, table_id, column)
+            except LookupError:
+                break  # the load removed the table itself, and every column with it
+            if dependents:
+                referred[column] = dependents
+        if referred:
+            raise ColumnDropRefused(table_name, referred)
 
 
 @contextmanager

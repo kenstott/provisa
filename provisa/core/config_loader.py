@@ -13,6 +13,7 @@
 # Requirements: REQ-012, REQ-013, REQ-016, REQ-250, REQ-251, REQ-275, REQ-282, REQ-283, REQ-285
 # complexity-gate: allow-ble=6 reason="per-source config registration is best-effort: source-driver register, OpenAPI spec load, SQLite migration post-step, OpenAPI cache, a MongoDB change-stream check (an unreachable server), and CBO analyze each log their own failure and continue, so one bad source never fails the whole config load"
 
+import contextlib
 import logging
 import os
 from pathlib import Path
@@ -1166,6 +1167,8 @@ async def _load_after_tables(  # REQ-1919
     # adds and updates, and what it does not mention is not its to remove.
     if origin == CONFIG and is_primary_worker(os.environ):
         await _remove_what_the_config_dropped(conn, config)
+        # REQ-1918: the columns this load dropped, judged against the model it produced.
+        await table_repo.settle_deferred_column_drops(conn)
 
     await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
 
@@ -1265,6 +1268,36 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_replicate(config)
     _validate_landing_ttl(config)
     failed_catalogs += await _check_change_feeds(config)
+    # REQ-1918/1919: only the primary's load of the deployment's file removes what the file
+    # dropped, so only it judges a dropped column at the end (settle_deferred_column_drops); any
+    # other load refuses the drop at the table.
+    removes = origin == CONFIG and is_primary_worker(os.environ)
+    with contextlib.ExitStack() as judged_at_the_end:
+        if removes:
+            judged_at_the_end.enter_context(table_repo.deferring_column_drops())
+        await _load_tables_and_after(
+            conn,
+            engine,
+            config,
+            openapi_specs,
+            catalog_names=catalog_names,
+            origin=origin,
+            domains_before=domains_before,
+        )
+
+    return failed_catalogs
+
+
+async def _load_tables_and_after(
+    conn: "Connection",
+    engine: Any,
+    config: ProvisaConfig,
+    openapi_specs: dict[str, dict],
+    *,
+    catalog_names: dict[str, str] | None,
+    origin: str,
+    domains_before: Any,
+) -> None:
     await _upsert_tables(
         conn, engine, config, openapi_specs, catalog_names=catalog_names, origin=origin
     )
@@ -1277,8 +1310,6 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
         leaving = frozenset(ref.id for ref, _name in await _tables_dropped(conn, config))
     with table_repo.leaving(leaving):
         await _load_after_tables(conn, config, origin=origin, domains_before=domains_before)
-
-    return failed_catalogs
 
 
 def _validate_table_kafka_sinks(config) -> None:
