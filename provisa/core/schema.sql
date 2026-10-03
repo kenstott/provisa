@@ -951,7 +951,6 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
     returns       TEXT NOT NULL DEFAULT '',
     arguments     JSONB NOT NULL DEFAULT '[]',
     visible_to    JSONB NOT NULL DEFAULT '[]',
-    writable_by   JSONB NOT NULL DEFAULT '[]',
     domain_id     TEXT NOT NULL DEFAULT '',
     description   TEXT,
     output_columns JSONB,  -- REQ-1159: canonical IR-typed output dataset contract [{name,type}]

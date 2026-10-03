@@ -891,7 +891,6 @@ tracked_functions = Table(
     Column("returns", Text, nullable=False, server_default=""),
     Column("arguments", JSON, nullable=False, default=list, server_default="[]"),
     Column("visible_to", JSON, nullable=False, default=list, server_default="[]"),
-    Column("writable_by", JSON, nullable=False, default=list, server_default="[]"),
     Column("domain_id", Text, nullable=False, server_default=""),
     Column("description", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
