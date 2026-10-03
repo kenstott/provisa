@@ -47,7 +47,7 @@
       itself. Competitors like Hasura and Denodo still use protocol-specific access control lists or query
       whitelists that must be managed per-endpoint.
 - id: REQ-002
-  status: complete
+  status: superseded
   superseded_by: REQ-266
   group: 1. Access Governance & Security
   category: Query Governance
@@ -83,7 +83,7 @@
       Hasura enforce governance at query execution time per connector, leaving compile-time bypass vectors
       open in some edge cases.
 - id: REQ-003
-  status: complete
+  status: superseded
   superseded_by: REQ-001
   group: 1. Access Governance & Security
   category: Query Governance
@@ -381,7 +381,7 @@
       like Trino require source-specific row filter plugins; Denodo uses source-native policies that don't
       unify across heterogeneous sources.
 - id: REQ-042
-  status: complete
+  status: superseded
   superseded_by: REQ-746
   group: 1. Access Governance & Security
   category: Security
@@ -1335,7 +1335,7 @@
       not validate JOIN conditions against a registered relationship registry; Denodo's relationship model
       is advisory rather than enforced at compile time.
 - id: REQ-613
-  status: complete
+  status: superseded
   superseded_by: REQ-596
   group: 1. Access Governance & Security
   category: Query Governance
@@ -1576,7 +1576,7 @@
     status: neutral
     rationale: ''
 - id: REQ-125
-  status: complete
+  status: superseded
   superseded_by: REQ-1264
   group: 2. Authentication & Identity
   category: Authentication
@@ -1614,7 +1614,7 @@
     status: neutral
     rationale: ''
 - id: REQ-535
-  status: complete
+  status: superseded
   superseded_by: REQ-1327
   group: 2. Authentication & Identity
   category: Authentication
@@ -7272,7 +7272,7 @@
     rationale: Per-role aggregate gating matches Hasura v2's allow_aggregations permission flag exactly.
       Denodo also supports role-based query capability restrictions.
 - id: REQ-198
-  status: complete
+  status: superseded
   superseded_by: REQ-882
   group: 5. Query Languages, Compilation & Operations
   category: Aggregates
@@ -8106,7 +8106,7 @@
       on a data federation platform is unique — no competitor (Trino, Hasura, Denodo, Dremio) supports
       Cypher as a query frontend over federated relational data with automatic governance enforcement.
 - id: REQ-346
-  status: rejected
+  status: superseded
   superseded_by: REQ-818
   rejection_reason: 'Superseded by REQ-818. Cypher is no longer read-only: CREATE/DELETE/SET now execute
     as governed direct table writes through the mutation pipeline. The still-true parts — MERGE/ DETACH/REMOVE
@@ -8265,7 +8265,7 @@
       governance passes is a unique output model for graph results from relational data; competitors that
       support any graph query (none over federated relational data) do not apply governed SQL-layer wrapping.
 - id: REQ-350
-  status: complete
+  status: superseded
   superseded_by: REQ-750
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Query Frontend (Phase AU)
@@ -9770,7 +9770,7 @@
       governed Cypher writes over federated relational data either, but this is a planned capability gap
       until implementation is complete.
 - id: REQ-662
-  status: complete
+  status: superseded
   superseded_by: REQ-661
   since: 2026-07
   group: 5. Query Languages, Compilation & Operations
@@ -11621,7 +11621,7 @@
   - app-developer
   - data-engineer
 - id: REQ-051
-  status: complete
+  status: superseded
   superseded_by: REQ-045
   group: 7. Result Delivery
   category: Output & Delivery
@@ -12058,7 +12058,7 @@
   stakeholders:
   - app-developer
 - id: REQ-044
-  status: complete
+  status: superseded
   superseded_by: REQ-029
   group: 8. Client Access & Protocols
   category: API & Integration
@@ -12281,7 +12281,7 @@
       is not offered by Trino or Dremio JDBC — they stream JDBC ResultSets without inline masking applied
       at driver transport time.
 - id: REQ-130
-  status: complete
+  status: superseded
   superseded_by: REQ-272
   group: 8. Client Access & Protocols
   category: JDBC/ODBC Integration
@@ -13031,7 +13031,7 @@
       protocols, not Arrow Flight. This gives Provisa's JDBC driver zero-copy streaming capability unique
       in the space.
 - id: REQ-398
-  status: complete
+  status: superseded
   superseded_by: REQ-392
   group: 8. Client Access & Protocols
   category: API & Integration
@@ -14022,7 +14022,7 @@
       errors are standard client library design; Hasura, Apollo Client, and similar clients all distinguish
       these layers.
 - id: REQ-608
-  status: complete
+  status: superseded
   superseded_by: REQ-711
   group: 8. Client Access & Protocols
   category: SQL & Multi-Protocol Client Access
@@ -14599,7 +14599,7 @@
       loop avoids duplicated delivery infrastructure — more efficient than Hasura's separate subscription
       and event trigger systems.
 - id: REQ-283
-  status: complete
+  status: superseded
   superseded_by: REQ-260
   group: 9. Live Data & Events
   category: Live Query Engine (Unified Subscription & Sink Delivery)
@@ -14629,7 +14629,7 @@
     status: neutral
     rationale: ''
 - id: REQ-285
-  status: complete
+  status: superseded
   superseded_by: REQ-813
   group: 9. Live Data & Events
   category: Live Query Engine (Unified Subscription & Sink Delivery)
@@ -15658,7 +15658,7 @@
     status: neutral
     rationale: ''
 - id: REQ-620
-  status: complete
+  status: superseded
   superseded_by: REQ-533
   group: 10. UI & Admin Surfaces
   category: Admin & Configuration
@@ -16202,7 +16202,7 @@
     rationale: Open-core model (OSS core + SaaS/Enterprise tiers) is the standard commercial model for
       Hasura, Trino (Starburst), and Dremio.
 - id: REQ-073
-  status: complete
+  status: superseded
   superseded_by: REQ-1243
   group: 11. Platform, Infrastructure & Delivery
   category: Commercial Positioning
@@ -16788,7 +16788,7 @@
     status: neutral
     rationale: ''
 - id: REQ-330
-  status: complete
+  status: superseded
   superseded_by: REQ-815
   group: 11. Platform, Infrastructure & Delivery
   category: Infrastructure & Observability
@@ -17074,7 +17074,7 @@
     status: neutral
     rationale: ''
 - id: REQ-558
-  status: complete
+  status: superseded
   superseded_by: REQ-618
   group: 11. Platform, Infrastructure & Delivery
   category: Infrastructure
@@ -17221,7 +17221,7 @@
     rationale: Multi-node AppImage deployment with stateless secondary API nodes and singleton services
       on primary node is a production HA pattern not available in Hasura's self-hosted model without Kubernetes.
 - id: REQ-562
-  status: complete
+  status: superseded
   superseded_by: REQ-1229
   group: 11. Platform, Infrastructure & Delivery
   category: Installer & Packaging
@@ -17328,7 +17328,7 @@
     rationale: Terraform AWS deployment with VPC, EC2, ALB, and NLB is standard IaC for enterprise SaaS
       platforms.
 - id: REQ-592
-  status: complete
+  status: superseded
   superseded_by: REQ-695
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
@@ -18403,7 +18403,7 @@
     status: parity
     rationale: Cursor-based pagination (edges/pageInfo/Relay spec) is standard in Hasura and Apollo Federation.
 - id: REQ-219
-  status: complete
+  status: superseded
   superseded_by: REQ-258
   group: 12. Migration & Compatibility (Hasura)
   category: 'Hasura v2 Parity: Medium-Complexity Features'
@@ -18527,7 +18527,7 @@
     status: parity
     rationale: PostgreSQL enum auto-detection and GraphQL enum type generation is available in Hasura.
 - id: REQ-222
-  status: complete
+  status: superseded
   superseded_by: REQ-256
   group: 12. Migration & Compatibility (Hasura)
   category: 'Hasura v2 Parity: Medium-Complexity Features'
@@ -19659,7 +19659,7 @@
   tests:
   - provisa-client/tests/test_adbc.py
 - id: REQ-712
-  status: complete
+  status: superseded
   superseded_by: REQ-595
   group: 6. Execution, Routing, Caching & Performance
   category: Cache
@@ -20413,7 +20413,7 @@
     status: neutral
     rationale: ''
 - id: REQ-744
-  status: complete
+  status: superseded
   superseded_by: REQ-740
   group: 1. Access Governance & Security
   category: Security
@@ -20790,7 +20790,7 @@
     status: parity
     rationale: Path objects are standard in graph databases; Provisa matches Neo4j wire format.
 - id: REQ-754
-  status: complete
+  status: superseded
   superseded_by: REQ-573
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Query Frontend (Phase AU)
@@ -20931,7 +20931,7 @@
     status: neutral
     rationale: Map projections are a Neo4j feature; translation to Trino MAP is the unique aspect.
 - id: REQ-758
-  status: complete
+  status: superseded
   superseded_by: REQ-575
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Query Frontend (Phase AU)
@@ -21415,7 +21415,7 @@
     status: neutral
     rationale: Variable-length edge deserialization is internal framework work.
 - id: REQ-772
-  status: complete
+  status: superseded
   superseded_by: REQ-349
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Query Frontend (Phase AU)
@@ -22263,7 +22263,7 @@
   - app-developer
   - data-engineer
 - id: REQ-798
-  status: complete
+  status: superseded
   superseded_by: REQ-818
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
@@ -25190,7 +25190,7 @@
   - REQ-867
   - REQ-870
 - id: REQ-872
-  status: complete
+  status: superseded
   superseded_by: REQ-1156
   since: 2026-07
   group: 2. Authentication & Identity
@@ -26820,7 +26820,7 @@
   - REQ-900
   - REQ-896
 - id: REQ-903
-  status: complete
+  status: superseded
   superseded_by: REQ-904
   since: 2026-07
   group: 4. Source Connectors
@@ -27473,7 +27473,7 @@
   - tests/unit/test_injector.py
   related_reqs: []
 - id: REQ-927
-  status: complete
+  status: superseded
   superseded_by: REQ-926
   since: 2026-07
   group: 9. Live Data & Events
@@ -29179,7 +29179,7 @@
   - REQ-673
   - REQ-875
 - id: REQ-972
-  status: complete
+  status: superseded
   superseded_by: REQ-989
   since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
@@ -30654,7 +30654,7 @@
   - REQ-1012
   - REQ-1014
 - id: REQ-1017
-  status: proposed
+  status: superseded
   superseded_by: REQ-1271
   group: 11. Platform, Infrastructure & Delivery
   category: Self-Service Provisioning
@@ -31470,7 +31470,7 @@
   relates_to:
   - REQ-1054
 - id: REQ-1056
-  status: proposed
+  status: superseded
   superseded_by: REQ-1234
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Routing
@@ -35828,8 +35828,8 @@
 
     '
 - id: REQ-1205
-  status: complete
-  superseded_by: REQ-1253
+  status: superseded
+  superseded_by: REQ-1331
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Protocol Exposure (GCP)
   priority: MUST
@@ -36203,7 +36203,7 @@
 
     '
 - id: REQ-1218
-  status: complete
+  status: superseded
   superseded_by: REQ-1231
   group: 7. Result Delivery
   category: Protocol-Specific Result Handling
@@ -36837,7 +36837,7 @@
 
     '
 - id: REQ-1232
-  status: complete
+  status: superseded
   superseded_by: REQ-1276
   group: 13. Multi-Tenancy & Organizations
   category: Authentication
@@ -37019,7 +37019,7 @@
 
     '
 - id: REQ-1236
-  status: accepted
+  status: superseded
   superseded_by: REQ-1235
   group: 13. Multi-Tenancy & Organizations
   category: Org Identity & Subdomain Addressing
