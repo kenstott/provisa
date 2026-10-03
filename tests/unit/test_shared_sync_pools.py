@@ -32,6 +32,7 @@ class _FakeCursor:
     def __init__(self, conn: "_FakeConn") -> None:
         self._conn = conn
         self.description: list[Any] | None = None
+        self._rows: list[tuple] = [(1,)]
 
     def __enter__(self) -> "_FakeCursor":
         return self
@@ -46,8 +47,10 @@ class _FakeCursor:
         self._conn.cancel_registered.append(dl is not None and bool(dl._cancels))
         self.description = [("id",)]
 
-    def fetchall(self) -> list[tuple]:
-        return [(1,)]
+    def fetchmany(self, size: int) -> list[tuple]:
+        # The drivers read a result in chunks (cursor_stream.fetch_chunked): one row, then none.
+        rows, self._rows = self._rows, []
+        return rows
 
     def cancel(self) -> None:
         self._conn.cancelled += 1
