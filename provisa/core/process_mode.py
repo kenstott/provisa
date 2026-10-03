@@ -44,6 +44,27 @@ def mode() -> str:
     return _mode
 
 
+class CoordinatorServesNoData(RuntimeError):
+    """A data request reached a coordinator (REQ-1916), which serves none."""
+
+    code = "node.coordinator_serves_no_data"
+
+    def __init__(self, transport: str) -> None:
+        self.transport = transport
+        super().__init__(
+            f"this node runs in coordinator mode and serves no data requests ({transport}); "
+            "send them to a node in query or every mode"
+        )
+
+
+def refuse_data_request(transport: str) -> None:
+    """Refuse a data request arriving on ``transport`` when this process is a coordinator. Called
+    at each transport's request boundary (request_deadline.open_request, the Flight request
+    budget, the HTTP ``/data`` gate), before anything is read."""
+    if _mode == COORDINATOR:
+        raise CoordinatorServesNoData(transport)
+
+
 def runs_background_work() -> bool:
     """Whether this process does the coordinator's background work: replica builds, and the
     scheduled work a coordinator runs. True for ``every`` and ``coordinator``."""

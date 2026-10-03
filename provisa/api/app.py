@@ -811,6 +811,16 @@ async def _load_and_build(
     if config_path is None:
         config_path = config_path_str()
 
+    # REQ-1916/1922: the launch's mode and region, checked against the platform's regions before
+    # any store is opened — a node the platform cannot place does not start. A first start with no
+    # config file yet declares nothing, as the build below treats it (it returns at that point).
+    from provisa.core import process_region
+
+    _launch_config = Path(config_path)
+    process_region.bind_from_environment(
+        read_config_with_includes(_launch_config) if _launch_config.exists() else {}
+    )
+
     # Use uvicorn's console logger — the root logger's only handler is the OTLP
     # exporter, so provisa.* logs never reach the console / backend.log.
     _startup_log = logging.getLogger("uvicorn.error")
@@ -1172,6 +1182,8 @@ async def _load_and_build(
 
     _mark("source-pools+ingest+remote")
 
+    await _require_org_serves_here(state.org_id)  # REQ-1922
+
     await _rebuild_schemas(raw_config)
 
     # A config view that reads an input the engine cannot read whole fails the load, naming the
@@ -1379,6 +1391,18 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
         )
 
     return await state.org_registry.get_or_build(runtime_key(org_id, env), _builder)
+
+
+async def _require_org_serves_here(org_id: str) -> None:
+    """REQ-1922: a node serves its region of every org that selects it; an org whose model does
+    not select this node's region is refused here, by name, before its schemas are built."""
+    from provisa.core import process_region
+    from provisa.core.repositories.region import require_serves_here
+
+    # Both callers run after the org's control plane is up and its model loaded into it.
+    assert state.tenant_db is not None
+    async with state.tenant_db.acquire() as conn:
+        await require_serves_here(conn, org_id, process_region.region())
 
 
 async def build_org_runtime(
@@ -1615,6 +1639,8 @@ async def build_org_runtime(
                 )
             await _build_source_pools_and_enums(config)
             await _resolve_pk_from_sources()
+
+        await _require_org_serves_here(org_id)  # REQ-1922
 
         # REQ-1266: the org's own domain mode, applied AFTER load_config — which configures the
         # scope from the DEPLOYMENT's naming block — and BEFORE _rebuild_schemas, which reads the
@@ -2398,6 +2424,16 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         await register_ready_worker(state.admin_db, _launch)
 
+    # REQ-1916: this node is in the cluster's node list (the platform state store) while it serves,
+    # with its mode and region, beating so a node that dies without stopping drops off.
+    assert state.admin_db is not None  # brought up with the control planes, at the top of boot
+    from provisa.core.platform_state import nodes as _cluster_nodes
+
+    await _cluster_nodes.register(state.admin_db)
+    _node_heartbeat = spawn_long_lived(
+        _cluster_nodes.heartbeat_loop(state.admin_db), name="node-heartbeat"
+    )
+
     # REQ-1882/REQ-1905: while serving, a stop signal ends in-flight requests (their statements
     # are cancelled through the driver) before the server's own shutdown waits for them.
     from provisa.core.request_deadline import expire_on_stop_signals
@@ -2415,6 +2451,9 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         from provisa.core.boot_lock import unregister_worker
 
         await unregister_worker(state.admin_db, _launch)
+
+    _node_heartbeat.cancel()
+    await _cluster_nodes.unregister(state.admin_db)  # REQ-1916: this node leaves the list
 
     # REQ-1629: the engine idle reaper lives in this process, so a shard still up when the control
     # plane goes away has nothing left that can scale it down and bills until somebody notices.
@@ -3198,6 +3237,11 @@ def create_app() -> FastAPI:
 
     app.add_middleware(ModelChangeMiddleware)
     app.add_middleware(_RequestTransportMiddleware)
+    # REQ-1916: a coordinator answers every /data request with its refusal, before the request
+    # transport opens a deadline for it.
+    from provisa.api.coordinator_gate import CoordinatorDataGate
+
+    app.add_middleware(CoordinatorDataGate)
 
     from provisa.core.request_thread import RequestThreadMiddleware
 

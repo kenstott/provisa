@@ -229,3 +229,23 @@ async def test_a_region_a_source_names_and_a_store_a_region_names_are_held(model
         assert {d.ref for d in await guard(conn, ObjectRef("store", "eu-pg"))} == {
             ObjectRef("region", "eu")
         }
+
+
+async def test_a_node_serves_an_org_only_in_a_region_the_org_selects(model):
+    """A node runs in one platform region and serves that region of every org that selects it;
+    an org that does not select it is refused there by name."""
+    from provisa.core.regions import DEFAULT_REGION, OrgRegion, StoreConfig
+    from provisa.core.repositories import region as region_repo
+
+    async with model.acquire() as conn:
+        for s in _STORES[:3]:
+            await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
+        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")), origin="admin")
+        await region_repo.require_serves_here(conn, "acme", "eu")
+        with pytest.raises(region_repo.OrgNotInRegion) as refused:
+            await region_repo.require_serves_here(conn, "acme", "us")
+        assert str(refused.value) == (
+            "org 'acme' does not select region 'us', which this node serves (it selects eu)"
+        )
+        # The one implicit region: every org is served, none selects anything.
+        await region_repo.require_serves_here(conn, "acme", DEFAULT_REGION)

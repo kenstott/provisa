@@ -1206,6 +1206,21 @@ class CacheTableStatType:
 
 
 @strawberry.type
+class ClusterNodeType:  # REQ-1916
+    """A node now in the cluster (the platform state store's node list)."""
+
+    node_id: str
+    host: str
+    pid: int
+    mode: str  # every | query | coordinator
+    # REQ-1922: the platform region the node serves; null when the platform declares none (and
+    # the admin then shows no region at all).
+    region: str | None
+    started_at: str
+    last_seen: str
+
+
+@strawberry.type
 class HotTableStatType:
     table_name: str
     catalog: str
