@@ -156,7 +156,7 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
             exec_sql = build_values_cte_sql(exec_sql, table_name, entry)
         if cache_rewrites:
             exec_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
-        physical = _expand_views(exec_sql, app_state)
+        physical = _expand_views(exec_sql, app_state, gov_ctx)
         physical = engine.transpile_physical(physical)
         result = await engine.execute_engine(physical, cq.params)
 
@@ -176,7 +176,7 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
                 nodes_exec_sql = build_values_cte_sql(nodes_exec_sql, table_name, entry)
             if nodes_cache_rewrites:
                 nodes_exec_sql = rewrite_all_from_cache(nodes_exec_sql, nodes_cache_rewrites)
-            physical_nodes = _expand_views(nodes_exec_sql, app_state)
+            physical_nodes = _expand_views(nodes_exec_sql, app_state, gov_ctx)
             physical_nodes = engine.transpile_physical(physical_nodes)
             nodes_result = await engine.execute_engine(physical_nodes, cq.nodes_params)
         out.append((cq, result, nodes_result))
@@ -534,7 +534,7 @@ async def _execute_domain_table_aggregate(
     return {"data": agg_payload}
 
 
-def _expand_views(sql: str, app_state: Any) -> str:
+def _expand_views(sql: str, app_state: Any, gov_ctx: Any) -> str:
     """Inline-expand __derived__ view refs before transpile/execute (REQ-135/REQ-1163).
 
     Mirrors the pgwire SQL path (provisa/pgwire/_pipeline.py) and the REST/GraphQL
@@ -547,7 +547,10 @@ def _expand_views(sql: str, app_state: Any) -> str:
         return sql
     from provisa.compiler.view_expand import expand_view_refs
 
-    return expand_view_refs(sql, view_sql_map)
+    from provisa.mv.view_read import view_bodies
+
+    # Each view reference becomes what THIS reader may read of it (mv/view_read.py).
+    return expand_view_refs(sql, view_bodies(sql, view_sql_map, app_state, gov_ctx))
 
 
 def _get_ctx(app_state: Any, role: str) -> Any:
