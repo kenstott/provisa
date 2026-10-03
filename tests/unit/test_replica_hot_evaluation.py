@@ -85,8 +85,9 @@ class _Engine:
         self.rows = rows
         self.sent: list[str] = []
 
-    async def read_ref(self, table_name: str) -> str:
-        return f'"pg"."public"."{table_name}"'
+    async def read_ref(self, table) -> str:
+        """The registered table (its identity) at its address on this engine."""
+        return f'"{table.source_id}"."{table.schema_name}"."{table.table_name}"'
 
     async def execute_engine(self, sql: str, *_a, **_k):
         self.sent.append(sql)

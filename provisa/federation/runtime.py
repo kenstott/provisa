@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from provisa.executor.result import QueryResult, ResultStream
     from provisa.federation.engine import FederationEngine
     from provisa.federation.execution_auth import ExecutionAuthorization
+    from provisa.mv.models import TableIdentity
     from provisa.transpiler.router import RouteDecision
 
 log = logging.getLogger(__name__)
@@ -150,20 +151,20 @@ class EngineRuntime:  # REQ-825, REQ-840
         key = (catalog, schema, table)
         return key if routes is None else read_address(key, routes)
 
-    async def registered_key(self, table_name: str) -> tuple[str | None, str, str]:
-        """The catalog-physical name the bound engine gives the table registered as
-        ``table_name`` (``replica_routing.registered_table_key``): its registered address, before
-        the address seam. Refused for an unknown name and for one two sources register."""
+    async def registered_key(self, table: "TableIdentity") -> tuple[str | None, str, str]:
+        """The catalog-physical name the bound engine gives the registered ``table``
+        (``replica_routing.registered_table_key``): its registered address, before the address
+        seam. Refused for a table that is not registered."""
         from provisa.federation.replica_routing import registered_table_key
 
-        return await registered_table_key(self.engine, self._state, table_name)
+        return await registered_table_key(self.engine, self._state, table)
 
-    async def read_ref(self, table_name: str) -> str:
-        """The quoted engine name a statement reads the table registered as ``table_name`` by:
-        its registered address resolved from the registry, then the address seam — its replica's
-        address when it is served from its replica (REQ-1912). For a statement built from
-        registered table names rather than lowered by the query pipeline."""
-        address = self.read_address(*await self.registered_key(table_name))
+    async def read_ref(self, table: "TableIdentity") -> str:
+        """The quoted engine name a statement reads the registered ``table`` by: its registered
+        address resolved from the registry, then the address seam — its replica's address when it
+        is served from its replica (REQ-1912). For a statement built from registered tables
+        rather than lowered by the query pipeline."""
+        address = self.read_address(*await self.registered_key(table))
         return quoted_name(address)
 
     def engine_physical(self, pg_sql: str) -> str:

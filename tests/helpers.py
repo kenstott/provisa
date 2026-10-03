@@ -47,9 +47,10 @@ def _normalize_sql(sql: str) -> str:
 
 
 class RegisteredNames:
-    """The address face of an engine stand-in whose registered tables all live in one source
-    (``src``, schema ``public``) and are all read live: a registered name resolves to
-    ``"src"."public"."<name>"`` and the address seam leaves every statement as written."""
+    """The address face of an engine stand-in whose registered tables are all read live: a
+    registered table (its identity) resolves to ``"<source>"."<schema>"."<table>"`` and the
+    address seam leaves every statement as written. The tests bind their tables to source
+    ``src``, schema ``public`` (:func:`src_table`)."""
 
     def address_replicas(self, sql: str) -> str:
         return sql
@@ -57,11 +58,19 @@ class RegisteredNames:
     def read_address(self, catalog, schema: str, table: str):
         return (catalog, schema, table)
 
-    async def registered_key(self, table_name: str):
-        return ("src", "public", table_name)
+    async def registered_key(self, table):
+        return (table.source_id, table.schema_name, table.table_name)
 
-    async def read_ref(self, table_name: str) -> str:
-        return f'"src"."public"."{table_name}"'
+    async def read_ref(self, table) -> str:
+        return f'"{table.source_id}"."{table.schema_name}"."{table.table_name}"'
+
+
+def src_table(name: str):
+    """The registered table ``name`` on source ``src``, schema ``public`` — where
+    :class:`RegisteredNames` stand-ins keep their tables."""
+    from provisa.mv.models import TableIdentity
+
+    return TableIdentity("src", "public", name)
 
 
 def no_engine_store(_state) -> str:

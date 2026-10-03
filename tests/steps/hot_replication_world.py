@@ -66,8 +66,9 @@ class _Engine:
         self.engine = build_engine("trino")
         self.sent: list[str] = []
 
-    async def read_ref(self, table_name: str) -> str:
-        return f'"pg"."public"."{table_name}"'
+    async def read_ref(self, table: Any) -> str:
+        """The registered table (its identity) at its address on this engine."""
+        return f'"{table.source_id}"."{table.schema_name}"."{table.table_name}"'
 
     async def execute_engine(self, sql: str, *_a: Any, **_k: Any) -> Any:
         self.sent.append(sql)

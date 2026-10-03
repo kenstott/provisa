@@ -566,10 +566,21 @@ def _bind_join_inputs(
 ) -> list[TableIdentity]:
     """A join-pattern view's inputs, bound when it is declared (REQ-939): each table it joins is
     the one config table of that name. A name no table, or more than one, answers to is refused,
-    naming the view — it would not say which table the view reads."""
+    naming the view — it would not say which table the view reads. A name may be written
+    qualified, ``source_id/schema.table`` (as an export of the view writes it), to say which."""
+    known = {i for found in identities.values() for i in found}
     bound = []
     for name in names:
-        found = identities.get(name, [])
+        if "/" in name:
+            source_id, _, rest = name.partition("/")
+            schema, _, table = rest.partition(".")
+            found = [
+                i
+                for i in known
+                if (i.source_id, i.schema_name, i.table_name) == (source_id, schema, table)
+            ]
+        else:
+            found = identities.get(name, [])
         if len(found) != 1:
             why = (
                 "no table has that name"
@@ -581,6 +592,16 @@ def _bind_join_inputs(
             raise ValueError(f"materialized view {view_id!r} joins {name!r}: {why}")
         bound.append(found[0])
     return bound
+
+
+def _joined_names(listed: list[str], jp: Any) -> list[str]:
+    """The tables a join-pattern view reads: those it lists, then any its pattern joins that the
+    list leaves out (a listed name may be qualified, ``source_id/schema.table``)."""
+    if jp is None:
+        return list(listed)
+    bare = {name.partition("/")[2].partition(".")[2] if "/" in name else name for name in listed}
+    joined = [jp.left_table, jp.right_table] + ([jp.via_table] if jp.via_table else [])
+    return list(listed) + [t for t in joined if t not in bare]
 
 
 def _load_mv_and_views_config(
@@ -658,15 +679,21 @@ def _load_mv_and_views_config(
         # Default the target to the store the ACTIVE engine materializes into (DuckDB → mat_store,
         # not postgresql); an explicit config value still wins.
         _def_cat, _def_schema = state.federation_engine.materialize_store_target(state.org_id)
+        # A view with SQL names its inputs in it; a join-pattern view's are bound here — the
+        # tables it lists and any its pattern joins that the list leaves out.
+        inputs = (
+            []
+            if mvc.get("sql")
+            else _bind_join_inputs(
+                mvc["id"], _joined_names(mvc.get("source_tables", []), jp), identities
+            )
+        )
         mv = MVDefinition(
             id=mvc["id"],
-            source_tables=mvc.get("source_tables", []),
-            # A view with SQL names its inputs in it; a join-pattern view's are bound here.
-            inputs=(
-                []
-                if mvc.get("sql")
-                else _bind_join_inputs(mvc["id"], mvc.get("source_tables", []), identities)
+            source_tables=(
+                [i.table_name for i in inputs] if inputs else mvc.get("source_tables", [])
             ),
+            inputs=inputs,
             target_catalog=mvc.get("target_catalog", _def_cat),
             target_schema=mvc.get("target_schema", _def_schema),
             target_table=mvc.get("target_table"),

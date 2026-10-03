@@ -25,7 +25,7 @@ import pytest
 
 from provisa.compiler.sql_gen import CompiledQuery
 from provisa.executor.result import QueryResult
-from tests.helpers import RegisteredNames
+from tests.helpers import RegisteredNames, src_table
 from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
 from provisa.mv.refresh import _build_refresh_sql
 from provisa.mv.rewriter import rewrite_if_mv_match
@@ -64,6 +64,7 @@ def _junction_mv(type_value: str | None = "bonded pair") -> MVDefinition:
     mv = MVDefinition(
         id="auto-mv-pets-bonded-pair",
         source_tables=["pets", "pet_companions", "pets"],
+        inputs=[src_table(t) for t in ("pets", "pet_companions", "pets")],
         target_catalog="iceberg",
         target_schema="mv",
         target_table="mv_bonded_pair",

@@ -324,15 +324,22 @@ async def _build_refresh_sql(
             raise ValueError(f"MV {mv.id}: engine required to introspect right-table columns")
 
         # A join pattern names its tables by registered name, which is no engine address. Each
-        # is resolved to where the bound engine reads it — its catalog-physical name from the
-        # registry, then the address seam, so a table served from its replica is read there
+        # is the registered table the view was bound to when it was declared (``mv.inputs``,
+        # REQ-939), resolved to where the bound engine reads it — its catalog-physical name from
+        # the registry, then the address seam, so a table served from its replica is read there
         # (REQ-1912) — and aliased to its registered name, which is what the columns below and
         # the "{table}__{col}" convention are written against.
+        bound = dict(zip(mv.source_tables, mv.inputs, strict=True))
         refs: dict[str, str] = {}
 
         async def _from(table: str) -> str:
             if table not in refs:
-                refs[table] = await engine.read_ref(table)
+                if table not in bound:
+                    raise RuntimeError(
+                        f"MV {mv.id}: its join pattern names {table!r}, which is not one of the "
+                        f"tables it was bound to ({', '.join(sorted(bound))})"
+                    )
+                refs[table] = await engine.read_ref(bound[table])
             return f'{refs[table]} AS "{table}"'
 
         async def _columns_of(table: str) -> list[str]:
@@ -544,8 +551,11 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
 
     # Input signals are gathered up front: the input token is both the REQ-881 probe key and
     # the REQ-879 claim dedup key (the REQ-862 stamp of the source state being materialized).
-    input_signals = await gather_input_signals(engine, mv.source_tables)  # REQ-862
-    target_token = input_token(input_signals, mv.source_tables)
+    from provisa.mv.view_inputs import read_tables  # noqa: PLC0415
+
+    inputs = read_tables(mv, state)
+    input_signals = await gather_input_signals(engine, inputs)  # REQ-862
+    target_token = input_token(input_signals, inputs)
 
     if coordinated:
         assert store is not None and writer is not None  # coordinated ⇒ both set (see above)

@@ -308,3 +308,70 @@ def test_a_config_join_pattern_view_is_bound_to_the_one_table_of_each_name():
         _bind_join_inputs("jp", ["orders"], identities)
     with pytest.raises(ValueError, match=r"'jp' joins 'ghost': no table has that name"):
         _bind_join_inputs("jp", ["ghost"], identities)
+
+
+def test_a_qualified_name_binds_the_table_it_names():
+    """An export writes a join-pattern view's tables qualified, ``source/schema.table``; read back,
+    each binds to that table even when another source's table has the same name."""
+    from provisa.api.app_loaders import _bind_join_inputs, _config_identities, _joined_names
+    from provisa.mv.models import JoinPattern, TableIdentity
+
+    raw = {
+        "tables": [
+            {"source_id": "crm", "schema": "public", "table": "orders"},
+            {"source_id": "sales", "schema": "public", "table": "orders"},
+            {"source_id": "sales", "schema": "public", "table": "lines"},
+        ]
+    }
+    identities = _config_identities(raw)
+    assert _bind_join_inputs("jp", ["sales/public.orders"], identities) == [
+        TableIdentity("sales", "public", "orders")
+    ]
+    # A table the pattern joins but the list leaves out is bound too.
+    jp = JoinPattern(
+        left_table="orders", left_column="id", right_table="lines", right_column="order_id"
+    )
+    names = _joined_names(["sales/public.orders"], jp)
+    assert names == ["sales/public.orders", "lines"]
+    assert _bind_join_inputs("jp", names, identities) == [
+        TableIdentity("sales", "public", "orders"),
+        TableIdentity("sales", "public", "lines"),
+    ]
+
+
+async def test_the_refresh_record_names_the_tables_a_join_pattern_view_is_bound_to(tmp_path):
+    """The control-plane record of a view (what an environment export writes out) names its
+    bound tables qualified, so reading it back binds the same tables."""
+    from sqlalchemy import select
+
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_org import materialized_views, metadata
+    from provisa.mv.coordination import ensure_mv_row
+    from provisa.mv.models import JoinPattern, MVDefinition, TableIdentity
+
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
+    with engine.begin() as c:
+        metadata.create_all(c, tables=[materialized_views])
+    store = Database(engine, name="cp")
+    mv = MVDefinition(
+        id="jp",
+        source_tables=["orders", "lines"],
+        inputs=[
+            TableIdentity("sales", "public", "orders"),
+            TableIdentity("sales", "public", "lines"),
+        ],
+        target_catalog="store",
+        target_schema="mv",
+        target_table="jp",
+        join_pattern=JoinPattern(
+            left_table="orders", left_column="id", right_table="lines", right_column="order_id"
+        ),
+    )
+    await ensure_mv_row(store, mv)
+    async with store.acquire() as conn:
+        row = (
+            await conn.execute_core(
+                select(materialized_views.c.source_tables).where(materialized_views.c.id == "jp")
+            )
+        ).fetchone()
+    assert row[0] == ["sales/public.orders", "sales/public.lines"]

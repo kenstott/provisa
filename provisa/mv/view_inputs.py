@@ -179,3 +179,23 @@ def resolve_view_inputs(mv: Any, state: Any, index: ModelIndex | None = None) ->
     :class:`InputUnresolved` for the first reference that names nothing or several things."""
     index = index if index is not None else ModelIndex(state)
     return [index.resolve(mv.id, ref) for ref in view_refs(mv)]
+
+
+def read_tables(mv: Any, state: Any) -> list[TableIdentity]:
+    """The registered source tables ``mv`` reads directly, by identity — what its refresh asks
+    for input-version signals (REQ-862). A join-pattern view's are its bound inputs; a view with
+    SQL has its references resolved against the model. Another view, or a view held as a table,
+    is not a source table and is left out."""
+    from provisa.core.models import DERIVED_SOURCE_ID
+
+    if not mv.sql:
+        return [i for i in view_refs(mv) if isinstance(i, TableIdentity)]
+    index = ModelIndex(state)
+    out: list[TableIdentity] = []
+    for resolved in resolve_view_inputs(mv, state, index):
+        if resolved.table_id is None:
+            continue
+        row = index.row(resolved.table_id)
+        if row["source_id"] != DERIVED_SOURCE_ID:
+            out.append(TableIdentity(row["source_id"], row["schema_name"], row["table_name"]))
+    return out

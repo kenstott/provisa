@@ -419,9 +419,12 @@ class _SizeChecks:
 _size_checks = _SizeChecks()
 
 
-async def _row_count(state: Any, table_name: str) -> int:
-    """How many rows the table holds, counted through the engine where it reads the table now."""
-    ref = await state.federation_engine.read_ref(table_name)
+async def _row_count(state: Any, key: tuple[str, str, str]) -> int:
+    """How many rows the table ``key`` (source, schema, table) holds, counted through the engine
+    where it reads the table now."""
+    from provisa.mv.models import TableIdentity
+
+    ref = await state.federation_engine.read_ref(TableIdentity(*key))
     result = await state.federation_engine.execute_engine(f"SELECT COUNT(*) FROM {ref}")
     return int(result.rows[0][0])
 
@@ -474,7 +477,7 @@ async def evaluate(state: Any, *, workers: int) -> Evaluation:
             demote.append(candidate.key)
         elif verdict == PROMOTE:
             try:
-                rows = await _row_count(state, candidate.key[2])
+                rows = await _row_count(state, candidate.key)
             except Exception as exc:  # allow-ble: an engine or driver error of any type IS this table's size-check outcome — it is recorded and logged by _size_checks, the table stays live, and the other tables are still judged
                 _size_checks.failed(scope, candidate.key, exc)
                 continue

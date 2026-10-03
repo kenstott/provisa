@@ -22,6 +22,8 @@ from __future__ import annotations
 import pyarrow as pa
 import pytest
 
+from tests.helpers import hold_registered_tables
+
 from provisa.executor.result import QueryResult
 from provisa.federation.runtime import EngineCapability, UnsupportedCapabilityError
 from provisa.mv.models import MVDefinition, MVStatus
@@ -80,6 +82,12 @@ class _Engine:
 
     def execute_engine_arrow(self, sql, *a, **k) -> pa.Table:
         return pa.Table.from_pylist(self.arrow_rows)
+
+
+@pytest.fixture(autouse=True)
+def _model_holds_orders(monkeypatch):
+    """The registered table these views read (a view's inputs resolve against the model)."""
+    hold_registered_tables(monkeypatch, "orders")
 
 
 def _mv(mv_id="mv-x", preprocess=None):
