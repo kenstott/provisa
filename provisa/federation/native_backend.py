@@ -151,12 +151,25 @@ class NativeEngineBackend(EngineBackend):
 
     def _runtime_for(self, state: Any) -> Any:
         """The persistent runtime with every registered table attached (idempotent, lazy)."""
+        runtime = self._store_runtime()
+        self._attach_registered(state)
+        return runtime
+
+    def _store_runtime(self) -> Any:
+        """The persistent runtime, built if this process has none yet, with no source attached by
+        this call: for what is answered from the engine and its store alone."""
         if self._runtime is None:
             with self._walk_lock:
                 if self._runtime is None:
                     self._runtime = self._new_runtime()
-        self._attach_registered(state)
         return self._runtime
+
+    def _store_catalog(self, state: Any, org_id: str) -> str:
+        """The catalog the store is read under, from the runtime's store attach alone (REQ-1912):
+        where a replica is read is a property of the engine and its store, so no registered source
+        is dialed for it (the attach walk is not run)."""
+        del state, org_id  # the store's catalog is the runtime's, whichever org is served
+        return self._store_runtime().ensure_materialize_attached()
 
     def _attach_registered(self, state: Any) -> None:
         """ATTACH every registered table into the runtime: one walk per registry state, not one per

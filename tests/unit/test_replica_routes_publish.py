@@ -12,6 +12,7 @@ event loop while anything slow happens: every request on that worker would wait 
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from types import SimpleNamespace
 
@@ -115,4 +116,22 @@ async def test_routes_publish_with_no_org_bound_for_a_source_whose_credential_is
     routes = await replica_routing.replica_routes(_state(monkeypatch, runtime))
     (route,) = set(routes.routes.values())
     assert route.target[0] == "mat_store"
-    assert runtime.dialed == ["pw"]  # the walk dials it with its own credential
+    assert runtime.dialed == []  # where a replica is read needs no source dialed
+
+
+async def test_a_routes_publish_never_holds_the_event_loop_while_it_waits_on_a_host(monkeypatch):
+    """REQ-1882: a publish waiting on a slow source or store must not stall a concurrent request
+    on the same worker. The request here is what releases the wait: on a held loop it never
+    runs, and the wait runs out."""
+    release = threading.Event()
+    runtime = _Runtime(release)
+    state = _state(monkeypatch, runtime)
+
+    async def request() -> None:
+        await asyncio.sleep(0)
+        release.set()
+
+    publish = asyncio.create_task(replica_routing.replica_routes(state))
+    await asyncio.gather(publish, request())
+    assert runtime.blocked == []
+    assert runtime.dialed == []  # where a replica is read needs no source dialed
