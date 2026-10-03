@@ -15544,17 +15544,21 @@ Every environment owns a writable store, because a non-prod environment needs da
 
 **Tests:** `tests/integration/test_env_store.py`
 
-### REQ-1494 · Environments {#REQ-1494}
+## 1. Access Governance & Security
 
-**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+### REQ-1494 · Column-Level Masking {#REQ-1494}
 
-Masking gains a deterministic form so a masked extract stays usable. Column masking today is redaction -- regex, constant or truncate -- which is correct for a rendered value and destroys a key: constant-masking a customer id collapses every row onto one value, and every join through that column in the receiving environment is wrong. A keyed deterministic mask maps a value to a stable surrogate, so equal inputs mask equal, unequal inputs mask unequal, and joins and cardinality survive the extract while the original value does not. The key is per-org and per-environment-pair, held with the org's secrets and never carried by an environment copy, so a surrogate cannot be reversed by anyone holding only the extract, and two extracts taken for different environments do not correlate.
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
 
-**Use case:** A developer joins a masked customer table to a masked orders table in a dev environment and gets the same row counts production would give, without either table holding a real identifier.
+Masking has a consistent form. A column masked this way shows a surrogate in place of each real value: the same real value always shows the same surrogate and different real values show different surrogates, so joins, grouping and distinct counts through the column give the results they would give on the real values, while the real value is never shown. A surrogate is a random anonymous value; it is not computed from the real value and cannot be turned back into it. The surrogates are kept in a table of the state store ([REQ-1920](#REQ-1920)) that holds, for each real value met, the surrogate generated for it: when a value is met again its surrogate is reused, and a value met for the first time is given a new one. Columns joined by a relationship share one set of surrogates, so a join between two masked columns still matches.
 
-**Code:** `provisa/security/masking.py`, `provisa/core/schema_org.py`, `provisa/core/env_extract.py`
+**Use case:** An analyst joins a masked customer table to a masked orders table and gets the row counts the real data would give, without either table showing a real identifier.
 
-**Tests:** `tests/unit/test_masking_deterministic.py`
+**Code:** `provisa/security/masking.py`, `provisa/compiler/mask_inject.py`
+
+**Tests:** —
+
+## 13. Multi-Tenancy & Organizations
 
 ### REQ-1495 · Environments {#REQ-1495}
 

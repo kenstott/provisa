@@ -48476,42 +48476,58 @@
   - REQ-1495
   rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-1494
-  status: rejected
-  group: 13. Multi-Tenancy & Organizations
-  category: Environments
-  priority: SHOULD
+  status: accepted
+  group: 1. Access Governance & Security
+  category: Column-Level Masking
+  priority: MUST
   type: behavioral
-  description: 'Masking gains a deterministic form so a masked extract stays usable. Column masking today
-    is redaction -- regex, constant or truncate -- which is correct for a rendered value and destroys
-    a key: constant-masking a customer id collapses every row onto one value, and every join through that
-    column in the receiving environment is wrong. A keyed deterministic mask maps a value to a stable
-    surrogate, so equal inputs mask equal, unequal inputs mask unequal, and joins and cardinality survive
-    the extract while the original value does not. The key is per-org and per-environment-pair, held with
-    the org''s secrets and never carried by an environment copy, so a surrogate cannot be reversed by
-    anyone holding only the extract, and two extracts taken for different environments do not correlate.'
-  use_case: A developer joins a masked customer table to a masked orders table in a dev environment and
-    gets the same row counts production would give, without either table holding a real identifier.
+  description: 'Masking has a consistent form. A column masked this way shows a surrogate in place of
+    each real value: the same real value always shows the same surrogate and different real values show
+    different surrogates, so joins, grouping and distinct counts through the column give the results they
+    would give on the real values, while the real value is never shown. A surrogate is a random anonymous
+    value; it is not computed from the real value and cannot be turned back into it. The surrogates are
+    kept in a table of the state store (REQ-1920) that holds, for each real value met, the surrogate generated
+    for it: when a value is met again its surrogate is reused, and a value met for the first time is given
+    a new one. Columns joined by a relationship share one set of surrogates, so a join between two masked
+    columns still matches.'
+  use_case: An analyst joins a masked customer table to a masked orders table and gets the row counts
+    the real data would give, without either table showing a real identifier.
   code:
   - provisa/security/masking.py
-  - provisa/core/schema_org.py
-  - provisa/core/env_extract.py
-  tests:
-  - tests/unit/test_masking_deterministic.py
-  scenario: 'Given a column masked deterministically and referenced by a relationship
+  - provisa/compiler/mask_inject.py
+  scenario: 'Given a column masked consistently
 
-    When an extract is landed into another environment
+    When two rows hold the same real value and a third holds a different one
 
-    Then equal source values carry equal surrogates and unequal values carry unequal ones
+    Then the first two show the same surrogate and the third shows a different one
 
-    And a join through that column returns the cardinality the source join would
+    And the same real value shows the same surrogate on a later query
 
-    And the surrogate cannot be reversed without the key, which the environment copy did not carry
+
+    Given two columns joined by a relationship and both masked consistently
+
+    When a masked role joins through them
+
+    Then the join returns the rows the real values would join
+
+    And no real value is shown
 
     '
   related_reqs:
-  - REQ-1493
-  - REQ-1489
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  - REQ-087
+  - REQ-971
+  - REQ-531
+  - REQ-1920
+  target: 2026-Q4
+  notes: 'Reopened and rewritten 2026-10-03 by the maintainer, who called it very important and gave the
+    design: a table of values and their masked values, kept in the state store, reused whenever a value
+    is met again; the masked value may therefore be random. The earlier text (a keyed deterministic function
+    with a key per org and per environment pair, written for extracts between environments) is replaced;
+    it had been rejected with REQ-1493. Audit 2026-10-03: not built; MaskType is regex, constant and truncate
+    only (provisa/security/masking.py:29-32). Two points for the design: (1) REQ-1920 says state can be
+    discarded and rebuilt from the model and the estate; this table cannot be, since losing it would give
+    every value a new random surrogate, so it needs to be kept durably. (2) The table pairs real values
+    with their surrogates, so it is as sensitive as the columns it serves.'
 - id: REQ-1495
   status: rejected
   group: 13. Multi-Tenancy & Organizations
