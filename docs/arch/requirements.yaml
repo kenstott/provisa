@@ -31026,7 +31026,9 @@
   target: 2026-Q3
   description: Documented lift-and-shift portability to Vultr (flat pricing + bundled bandwidth) as the
     exit hatch when GCP steady-state cost is no longer preferred. Deployment is plain docker-compose on
-    any VM; only the Firebase project is GCP-pinned, compute is host-agnostic.
+    any VM; [SUPERSEDED by REQ-1279, 2026-10-03 -- The SaaS deployment is terraform/gcp-saas with a Cloud
+    SQL control plane and a GKE engine cluster, both GCP services. Kept here for history; do not implement
+    against it.] only the Firebase project is GCP-pinned, compute is host-agnostic [END SUPERSEDED BLOCK].
   use_case: Reduces vendor lock-in. Preserves operator freedom to migrate to lower-cost platforms as workload
     stabilizes and predictable costs justify optimization.
   relates_to:
@@ -31039,16 +31041,18 @@
   priority: MUST
   type: constraint
   target: 2026-Q3
-  description: No cloud infrastructure is provisioned until a customer is signed; pre-customer sunk cost
-    limited to a domain and a free Firebase project. Cold-start relies on REQ-854 OVA/Lima bundles for
-    sub-hour spin-up.
+  description: '[SUPERSEDED by REQ-1331, 2026-10-03 -- The SaaS front door VM, Cloud SQL and the coordinator
+    are provisioned and running at cloud.provisa.dev with no signed customer. Kept here for history; do
+    not implement against it.] No cloud infrastructure is provisioned until a customer is signed; pre-customer
+    sunk cost limited to a domain and a free Firebase project. [END SUPERSEDED BLOCK] Cold-start relies
+    on REQ-854 OVA/Lima bundles for sub-hour spin-up.'
   use_case: Minimizes pre-revenue spending. Defers fixed infrastructure costs until revenue justifies
     them, reducing financial risk during customer acquisition.
   relates_to:
   - REQ-854
   - REQ-121
 - id: REQ-1033
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
@@ -31065,8 +31069,9 @@
   - REQ-697
   - REQ-1017
   - REQ-1026
+  superseded_by: REQ-1598
 - id: REQ-1034
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
@@ -31093,6 +31098,7 @@
   - REQ-696
   - REQ-697
   - REQ-121
+  superseded_by: REQ-1595
 - id: REQ-1035
   status: proposed
   group: 2. Authentication & Identity
@@ -31118,7 +31124,7 @@
   - REQ-121
   - REQ-1033
 - id: REQ-1036
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
@@ -31144,8 +31150,9 @@
     '
   relates_to:
   - REQ-1034
+  superseded_by: REQ-1600
 - id: REQ-1037
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
@@ -31160,8 +31167,9 @@
   relates_to:
   - REQ-696
   - REQ-1034
+  superseded_by: REQ-1597
 - id: REQ-1038
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: SHOULD
@@ -31196,8 +31204,9 @@
   - REQ-1022
   - REQ-1027
   - REQ-696
+  superseded_by: REQ-1455
 - id: REQ-1039
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
@@ -31226,6 +31235,7 @@
   - REQ-1034
   - REQ-1035
   - REQ-1017
+  superseded_by: REQ-1598
 - id: REQ-1040
   status: proposed
   group: 5. Query Languages, Compilation & Operations
@@ -31277,7 +31287,7 @@
   - REQ-942
   - REQ-966
 - id: REQ-1043
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Scaling
   priority: SHOULD
@@ -31293,6 +31303,7 @@
   relates_to:
   - REQ-1017
   - REQ-696
+  superseded_by: REQ-1412
 - id: REQ-1044
   status: proposed
   group: 5. Query Languages, Compilation & Operations
@@ -31333,7 +31344,7 @@
   - REQ-1452
   - REQ-1454
 - id: REQ-1045
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
@@ -31352,6 +31363,7 @@
   - REQ-1035
   - REQ-1036
   - REQ-1044
+  superseded_by: REQ-1598
 - id: REQ-1046
   status: complete
   since: 2026-08
@@ -31527,8 +31539,11 @@
   target: 2026-Q3
   description: 'Website-to-SaaS entry-point wiring: the marketing site''s primary CTAs (calls-to-action)
     map to the specified onboarding paths — "Try it now" initiates an anonymous ephemeral sandbox session
-    (REQ-1034/1036, no signup required); "Sign up free" routes to Firebase self-serve org provisioning
-    (REQ-1017); "Contact sales" triggers SES/SMTP email delivery to sales (REQ-1330).'
+    (REQ-1034/1036, no signup required); [SUPERSEDED by REQ-1476, 2026-10-03 -- REQ-1017 is superseded;
+    on a deployment that sells the org, org creation waits at awaiting_checkout until a subscription pays
+    for it. Kept here for history; do not implement against it.] "Sign up free" routes to Firebase self-serve
+    org provisioning (REQ-1017) [END SUPERSEDED BLOCK]; "Contact sales" triggers SES/SMTP email delivery
+    to sales (REQ-1330).'
   use_case: Converts marketing interest into activation (sandbox demo, free-tier signup, sales engagement).
     Clear entry-point routing ensures users experience the intended onboarding flow without friction.
     Marketing messaging and product capability must align (e.g., "try now" genuinely allows zero-friction
@@ -31565,7 +31580,7 @@
   e2e_reason: Entry-point routing requires a live marketing site pointing to live app/sandbox infrastructure;
     clicking CTAs and verifying downstream provisioning is only testable end-to-end.
 - id: REQ-1053
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Pricing & Tiering
   priority: MUST
@@ -31603,37 +31618,43 @@
     execution.
   tests:
   - tests/unit/test_entitlements.py
+  superseded_by: REQ-1511
 - id: REQ-1054
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Routing
   priority: MUST
   type: infrastructure
   target: 2026-Q4
-  description: 'Per-org wildcard subdomain routing: each org is addressable at {org}.provisa.io via a
-    single wildcard DNS record (*.provisa.io) and wildcard TLS certificate, enabling zero-provisioning
-    self-serve org creation (REQ-1017).'
+  description: 'Per-org wildcard subdomain routing: each org is addressable at [SUPERSEDED by REQ-1233,
+    2026-10-03 -- The org subdomain is {org}.provisa.dev. Kept here for history; do not implement against
+    it.] {org}.provisa.io via a single wildcard DNS record (*.provisa.io) [END SUPERSEDED BLOCK] and wildcard
+    TLS certificate, enabling zero-provisioning self-serve org creation (REQ-1017).'
   use_case: Eliminates per-org DNS and certificate provisioning overhead. Any newly created org is instantly
     reachable at its subdomain without manual infrastructure steps, reducing onboarding friction and operational
     toil.
   relates_to:
   - REQ-1017
   - REQ-594
+  superseded_by: REQ-1233
 - id: REQ-1055
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Routing
   priority: MUST
   type: infrastructure
   target: 2026-Q4
   description: 'Fixed per-protocol ports shared across all orgs: HTTP 443 (GraphQL/REST/UI), pgwire 5439,
-    Bolt 7687, Arrow Flight 8480 are shared across all orgs, never varying per org. Org resolution comes
-    from connection parameters (hostname, database name, username, auth principal), not from port multiplexing.'
+    Bolt 7687, [SUPERSEDED by REQ-1253, 2026-10-03 -- Arrow Flight is served on 8815; 8480 is the zaychik
+    proxy port. Kept here for history; do not implement against it.] Arrow Flight 8480 [END SUPERSEDED
+    BLOCK] are shared across all orgs, never varying per org. Org resolution comes from connection parameters
+    (hostname, database name, username, auth principal), not from port multiplexing.'
   use_case: Simplifies port management and connection strings. Standard ports improve discoverability
     and reduce client configuration complexity. Org is a logical namespace, not a network multiplexing
     dimension.
   relates_to:
   - REQ-1054
+  superseded_by: REQ-1234
 - id: REQ-1056
   status: superseded
   superseded_by: REQ-1234
@@ -31672,7 +31693,7 @@
   - REQ-594
   - REQ-1055
 - id: REQ-1057
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Routing
   priority: SHOULD
@@ -31688,6 +31709,7 @@
   - REQ-1054
   - REQ-1055
   - REQ-1056
+  superseded_by: REQ-1240
 - id: REQ-1058
   status: proposed
   group: 1. Access Governance & Security
@@ -31767,21 +31789,23 @@
   - REQ-1045
   - REQ-1058
 - id: REQ-1061
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Branding
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: 'Subdomain-as-dedicated-channel value proposition: every org gets its own {org}.provisa.io
-    endpoint, conveying dedicated tenancy and branding even though authenticated resolution does not require
-    it.'
+  description: 'Subdomain-as-dedicated-channel value proposition: [SUPERSEDED by REQ-1233, 2026-10-03
+    -- The org endpoint is {org}.provisa.dev. Kept here for history; do not implement against it.] every
+    org gets its own {org}.provisa.io endpoint [END SUPERSEDED BLOCK], conveying dedicated tenancy and
+    branding even though authenticated resolution does not require it.'
   use_case: Improves perceived value and tenant isolation narrative. Org-branded subdomain increases engagement
     and data ownership perception. Leverages the wildcard infrastructure (REQ-1054) to provide this for
     zero per-org cost.
   relates_to:
   - REQ-1054
   - REQ-1019
+  superseded_by: REQ-1233
 - id: REQ-1062
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -31791,7 +31815,9 @@
   target: 2026-Q4
   description: 'Custom domain as a premium gate: premium/enterprise tiers may bind a custom domain (e.g.
     data.acme.com via CNAME) with custom TLS and white-label (no Provisa branding). Free/standard tiers
-    use {org}.provisa.io only. Tier entitlements are surfaced on the pricing page (REQ-1052).'
+    use {org}.provisa.io only. [SUPERSEDED by REQ-1511, 2026-10-03 -- REQ-1052 is CTA wiring, not a pricing
+    page; plans are shown on the Billing page. Kept here for history; do not implement against it.] Tier
+    entitlements are surfaced on the pricing page (REQ-1052) [END SUPERSEDED BLOCK].'
   use_case: Provides a premium branding differentiator. Custom domain + white-label appeals to enterprises
     embedding data apps in customer-facing portals. Clear tier gate monetizes the feature and simplifies
     operations (no per-org cert management for premium tenants).
@@ -31800,7 +31826,7 @@
   - REQ-1019
   - REQ-1054
 - id: REQ-1063
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Pricing & Tiering
   priority: SHOULD
@@ -31817,6 +31843,7 @@
   - REQ-594
   - REQ-1044
   - REQ-1046
+  superseded_by: REQ-1454
 - id: REQ-1064
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -31824,9 +31851,12 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: 'Credit-boxed + time-boxed enterprise trial: a fixed-duration trial (e.g. 30 days) grants
-    a fixed compute-credit balance; on expiry or non-payment, the account auto-downgrades to free tier
-    (never silent charge).'
+  description: 'Credit-boxed + time-boxed enterprise trial: a fixed-duration trial (e.g. 30 days) [SUPERSEDED
+    by REQ-1454, 2026-10-03 -- The billable unit is the active hour; no credit balance exists. Kept here
+    for history; do not implement against it.] grants a fixed compute-credit balance [END SUPERSEDED BLOCK];
+    on expiry or non-payment, [SUPERSEDED by REQ-1455, 2026-10-03 -- There is no free tier; the plan set
+    is trial, starter and three Pro sizes. Kept here for history; do not implement against it.] the account
+    auto-downgrades to free tier (never silent charge) [END SUPERSEDED BLOCK].'
   use_case: Lowers barrier to enterprise evaluation. Fixed credit budget prevents runaway costs; explicit
     downgrade on expiry prevents surprise billing and maintains customer trust. Encourages pilot-to-production
     conversion.
@@ -31848,7 +31878,7 @@
   - REQ-1063
   - REQ-594
 - id: REQ-1065
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Pricing & Tiering
   priority: MAY
@@ -31876,6 +31906,7 @@
   relates_to:
   - REQ-1063
   - REQ-1017
+  superseded_by: REQ-1455
 - id: REQ-1066
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -31898,7 +31929,7 @@
   tests:
   - tests/unit/test_entitlements.py
 - id: REQ-1067
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Pricing & Tiering
   priority: SHOULD
@@ -31915,34 +31946,44 @@
   - REQ-1043
   - REQ-1048
   - REQ-1063
+  superseded_by: REQ-1412
 - id: REQ-1068
-  status: accepted
+  status: complete
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
   type: structural
-  target: 2026-Q4
-  description: 'Pluggable metadata export provider pattern: an abstract MetadataExport interface (mirroring
-    AuthProvider/EmailProvider pattern) enables organizations to publish Provisa''s governance metadata
-    OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound
-    only — Provisa never ingests an external catalog as source of truth.'
+  description: 'Pluggable metadata export provider pattern: an abstract MetadataExport interface [SUPERSEDED
+    by REQ-1330, 2026-10-03 -- There is no EmailProvider; mail goes through the EmailSender port (provisa/core/mail.py:79).
+    Kept here for history; do not implement against it.] (mirroring AuthProvider/EmailProvider pattern)
+    [END SUPERSEDED BLOCK] enables organizations to publish Provisa''s governance metadata OUTBOUND to
+    external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only
+    — Provisa never ingests an external catalog as source of truth.'
   use_case: Allows Provisa to act as the authoritative upstream feeding customers' existing data-governance
     catalogs (OpenMetadata, Atlan, Collibra, DataHub, Apache Atlas), rather than competing with them.
     Keeps Provisa as runtime enforcement engine while projecting metadata to the customer's catalog of
     record.
   code:
   - provisa/api/metadata_export/provider.py
+  - provisa/api/metadata_export/registry.py
+  - provisa/core/models.py
+  - provisa/core/org_settings.py
+  - provisa/api/admin/metadata_export_router.py
   relates_to:
   - REQ-120
   - REQ-1330
   - REQ-1066
+  since: 2026-08
+  tests:
+  - tests/unit/test_metadata_export_provider.py
+  - tests/unit/test_metadata_export_outbound.py
+  - tests/unit/test_metadata_export_admin_surface.py
 - id: REQ-1069
-  status: accepted
+  status: complete
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
   type: structural
-  target: 2026-Q4
   description: 'Standards-first metadata core: the MetadataExport provider emits OpenLineage for lineage
     and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters
     (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataExport
@@ -31954,19 +31995,26 @@
   - provisa/api/metadata_export/openlineage.py
   - provisa/api/metadata_export/openmetadata.py
   - provisa/api/metadata_export/registry.py
+  - provisa/api/metadata_export/atlas.py
+  - provisa/api/metadata_export/atlan.py
+  - provisa/api/metadata_export/collibra.py
+  - provisa/api/metadata_export/datahub.py
+  - provisa/api/metadata_export/model.py
   tests:
   - tests/unit/test_metadata_export_standards.py
+  - tests/unit/test_metadata_export_vendors.py
   - tests/integration/test_metadata_export_openlineage_e2e.py
   - tests/integration/test_metadata_export_openmetadata_e2e.py
+  - tests/integration/test_metadata_export_atlas_e2e.py
   relates_to:
   - REQ-1068
+  since: 2026-08
 - id: REQ-1070
-  status: accepted
+  status: complete
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
   type: behavioral
-  target: 2026-Q4
   description: Published metadata payload includes datasets/tables/columns, domains, stewards and ownership
     (REQ-609/020), approved relationships, and descriptions/aliases. Lineage is derived from actually-compiled
     queries and the MV DAG (provisa/lineage/, REQ-939/942), providing column-level + MV-DAG lineage more
@@ -31986,6 +32034,8 @@
   code:
   - provisa/api/metadata_export/model.py
   - provisa/api/metadata_export/builder.py
+  - provisa/api/metadata_export/refs.py
+  - provisa/lineage/graph.py
   scenario: 'Given a governed config with a stewarded domain, a table with described columns, an approved
 
     relationship, and a view derived from that table
@@ -32001,13 +32051,17 @@
     And a domain with no designated steward is published as pending rather than omitted
 
     '
+  since: 2026-08
+  tests:
+  - tests/unit/test_metadata_snapshot_builder.py
+  - tests/unit/test_metadata_snapshot_lineage.py
+  - tests/features/REQ-1070.feature
 - id: REQ-1071
-  status: accepted
+  status: complete
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
   type: behavioral
-  target: 2026-Q4
   description: 'Governance-signal projection: enforcement facts Provisa already computes (which columns/tables
     are masked, RLS-restricted, or visibility-restricted per REQ-039/040) are projected outward as tags,
     classifications, or metadata properties on the corresponding assets in the target external catalog.'
@@ -32021,8 +32075,12 @@
   - REQ-1070
   code:
   - provisa/api/metadata_export/governance.py
+  - provisa/api/metadata_export/model.py
+  - provisa/api/metadata_export/builder.py
   tests:
   - tests/unit/test_metadata_export_governance.py
+  - tests/unit/test_metadata_export_vendors.py
+  - tests/features/REQ-1071.feature
   scenario: 'Given a governed config with a masked column, a column hidden from one role, and an RLS rule
 
     When a metadata snapshot is built for the org
@@ -32034,13 +32092,13 @@
     And no mask pattern or RLS predicate appears anywhere in the snapshot
 
     '
+  since: 2026-08
 - id: REQ-1072
-  status: accepted
+  status: complete
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
   type: behavioral
-  target: 2026-Q4
   description: 'Sync mechanism: metadata changes push to the external catalog event-driven via the REQ-942
     event substrate. A scheduled full reconcile (using the existing scheduler, provisa/scheduler/jobs.py)
     periodically re-syncs the complete metadata projection. Per-org configuration and credentials, scoped
@@ -32054,9 +32112,15 @@
   - REQ-1070
   code:
   - provisa/api/metadata_export/publishing.py
+  - provisa/api/app.py
+  - provisa/api/app_startup.py
+  - provisa/api/admin/metadata_export_router.py
+  - provisa/cli.py
   tests:
   - tests/unit/test_metadata_export_publishing.py
-  - tests/steps/steps_metadata_export_docs.py
+  - tests/unit/test_metadata_export_gate.py
+  - tests/unit/test_cli_metadata_export.py
+  - tests/features/REQ-1072.feature
   scenario: 'Given an org whose metadata export target is configured and entitled
 
     When the governed model changes
@@ -32070,6 +32134,7 @@
     And the org''s scheduled reconcile republishes the full snapshot on its own cron
 
     '
+  since: 2026-08
 - id: REQ-1073
   status: accepted
   group: 11. Platform, Infrastructure & Delivery
@@ -32124,12 +32189,11 @@
   - REQ-1072
   - REQ-1073
 - id: REQ-1368
-  status: accepted
+  status: complete
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
   type: behavioral
-  target: 2026-Q4
   description: 'Metadata export user documentation: a published docs page (docs/metadata-export.md, navigated
     under Security & Governance) covering the supported targets, the YAML configuration, what the payload
     contains, how governance signals appear in the target catalog, and the event-driven vs scheduled-reconcile
@@ -32141,6 +32205,7 @@
   - mkdocs.yml
   tests:
   - tests/steps/steps_metadata_export_docs.py
+  - tests/features/REQ-1368.feature
   scenario: 'Given the published documentation set
 
     When a reader looks for how to publish metadata to an external catalog
@@ -32162,6 +32227,7 @@
   - REQ-1070
   - REQ-1071
   - REQ-1072
+  since: 2026-08
 - id: REQ-1079
   status: complete
   tests:
@@ -37913,23 +37979,26 @@
 
     '
 - id: REQ-1253
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Cloud Load Balancing
   priority: MUST
   type: infrastructure
   target: 2026-Q4
   description: 'All protocol surfaces (API port 8000, UI port 3000, Arrow Flight 8815, pgwire 5439, Bolt
-    7687, MCP 8009, gRPC 50051) must be fronted by a single shared external passthrough load-balancer
-    endpoint per cloud provider, not one LB per protocol. This is required by the subdomain-as-org model
-    (REQ-1233): {org}.provisa.dev must resolve to one A record and reach every protocol by preserving
-    the destination port to the backend node.'
+    7687, MCP 8009, gRPC 50051) [SUPERSEDED by REQ-1331, 2026-10-03 -- On gcp-saas the front door TCP
+    proxy replaced the passthrough NLB; only the self-hosted gcp, aws and azure modules still use a shared
+    LB. Kept here for history; do not implement against it.] must be fronted by a single shared external
+    passthrough load-balancer endpoint per cloud provider, not one LB per protocol [END SUPERSEDED BLOCK].
+    This is required by the subdomain-as-org model (REQ-1233): {org}.provisa.dev must resolve to one A
+    record and reach every protocol by preserving the destination port to the backend node.'
   use_case: 'Enables the subdomain-as-org identity model where a single DNS name and IP address serve
     all protocols. Cloud-specific realizations: GCP uses a backend-service passthrough NLB forwarding
     rule with all_ports=true on one static IP; AWS uses a single Network Load Balancer with one listener/target-group
     per protocol port sharing the NLB''s endpoint; Azure uses a single Standard Load Balancer with one
     LB rule per protocol port on a single frontend public IP. Backend liveness is gated by the API HTTPS
     /health probe. Refs: REQ-1233, REQ-1239, REQ-1240, REQ-1226.'
+  superseded_by: REQ-1331
 - id: REQ-1254
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -38933,7 +39002,7 @@
   - packaging/linux/first-launch.sh
   since: 2026-07
 - id: REQ-1280
-  status: accepted
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Commercial Positioning
   priority: MAY
@@ -38959,6 +39028,7 @@
     rationale: Metered active-hour (Hasura v2 $3.00/active-hr advanced source) and worker-hour (Starburst
       Galaxy Pro $3.00/worker-hr) are the established billing units in each respective market; Provisa's
       two-SKU model captures both by pricing $3.25/active-hr and $2.50/worker-hr respectively.
+  superseded_by: REQ-1454
 - id: REQ-1281
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -46210,10 +46280,12 @@
     egress is attributable because the pool serves one org -- neither is derivable for a container sharing
     a node. The derived query.max-memory and query.max-memory-per-node follow from the size rather than
     the deployment-wide PROVISA_ISOLATED_ENGINE_MEMORY; on a single-pod engine the per-node bound must
-    not sit below the cluster bound, as today's 30%/60% split does, since both name the same pool and
-    the lower value kills queries at half the stated budget. Because the isolated lane cannot degrade
-    other tenants once placement is dedicated, it carries no query concurrency or duration limits -- the
-    size is the only limit, and the org pays for what it runs.
+    not sit below the cluster bound, [SUPERSEDED by REQ-1449 amendment, 2026-10-03 -- The split was removed
+    when this was implemented; both bounds are now the same value (provisa/federation/isolated_provisioner.py:138-150).
+    Kept here for history; do not implement against it.] as today's 30%/60% split does [END SUPERSEDED
+    BLOCK], since both name the same pool and the lower value kills queries at half the stated budget.
+    Because the isolated lane cannot degrade other tenants once placement is dedicated, it carries no
+    query concurrency or duration limits -- the size is the only limit, and the org pays for what it runs.
   use_case: An org picks one of three Pro sizes and is invoiced engine-hours at that size's rate plus
     measured egress, on hardware it exclusively occupies.
   related_reqs:

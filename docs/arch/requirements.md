@@ -10072,7 +10072,7 @@ Email transport for first customer: AWS SES (or equivalent SMTP) at low volume, 
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** infrastructure
 
-Documented lift-and-shift portability to Vultr (flat pricing + bundled bandwidth) as the exit hatch when GCP steady-state cost is no longer preferred. Deployment is plain docker-compose on any VM; only the Firebase project is GCP-pinned, compute is host-agnostic.
+Documented lift-and-shift portability to Vultr (flat pricing + bundled bandwidth) as the exit hatch when GCP steady-state cost is no longer preferred. Deployment is plain docker-compose on any VM; [SUPERSEDED by [REQ-1279](#REQ-1279), 2026-10-03 -- The SaaS deployment is terraform/gcp-saas with a Cloud SQL control plane and a GKE engine cluster, both GCP services. Kept here for history; do not implement against it.] only the Firebase project is GCP-pinned, compute is host-agnostic [END SUPERSEDED BLOCK].
 
 **Use case:** Reduces vendor lock-in. Preserves operator freedom to migrate to lower-cost platforms as workload stabilizes and predictable costs justify optimization.
 
@@ -10084,7 +10084,7 @@ Documented lift-and-shift portability to Vultr (flat pricing + bundled bandwidth
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
 
-No cloud infrastructure is provisioned until a customer is signed; pre-customer sunk cost limited to a domain and a free Firebase project. Cold-start relies on [REQ-854](#REQ-854) OVA/Lima bundles for sub-hour spin-up.
+[SUPERSEDED by [REQ-1331](#REQ-1331), 2026-10-03 -- The SaaS front door VM, Cloud SQL and the coordinator are provisioned and running at cloud.provisa.dev with no signed customer. Kept here for history; do not implement against it.] No cloud infrastructure is provisioned until a customer is signed; pre-customer sunk cost limited to a domain and a free Firebase project. [END SUPERSEDED BLOCK] Cold-start relies on [REQ-854](#REQ-854) OVA/Lima bundles for sub-hour spin-up.
 
 **Use case:** Minimizes pre-revenue spending. Defers fixed infrastructure costs until revenue justifies them, reducing financial risk during customer acquisition.
 
@@ -10094,7 +10094,7 @@ No cloud infrastructure is provisioned until a customer is signed; pre-customer 
 
 ### REQ-1033 · Demo Tiers & Onboarding {#REQ-1033}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1598](#REQ-1598) · **Priority:** MUST · **Type:** infrastructure
 
 Provision two demo tiers on shared first-customer VM: (a) anonymous ephemeral sandbox requiring no signup; (b) persistent quota-limited free tier for Firebase-signed-up users. Both leverage schema-per-org tenancy on shared Trino/PG/Redis infrastructure; no per-user VMs provisioned.
 
@@ -10106,7 +10106,7 @@ Provision two demo tiers on shared first-customer VM: (a) anonymous ephemeral sa
 
 ### REQ-1034 · Demo Tiers & Onboarding {#REQ-1034}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1595](#REQ-1595) · **Priority:** MUST · **Type:** behavioral
 
 On ephemeral sandbox session start, clone a pre-seeded golden template schema (org_template, containing [REQ-414](#REQ-414) demo federated sources and sample data) into a session-scoped org schema (e.g. org_sandbox_<uid>) via the [REQ-697](#REQ-697) init_schema provisioning path.
 
@@ -10134,7 +10134,7 @@ Ephemeral sandbox sessions are scoped by Firebase anonymous auth ([REQ-121](#REQ
 
 ### REQ-1036 · Demo Tiers & Onboarding {#REQ-1036}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1600](#REQ-1600) · **Priority:** MUST · **Type:** behavioral
 
 Ephemeral sandbox schemas are dropped on explicit logout OR after an idle-TTL of inactivity. Teardown is self-resetting; a reaper process periodically sweeps expired sandbox schemas.
 
@@ -10146,7 +10146,7 @@ Ephemeral sandbox schemas are dropped on explicit logout OR after an idle-TTL of
 
 ### REQ-1037 · Demo Tiers & Onboarding {#REQ-1037}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-1597](#REQ-1597) · **Priority:** MUST · **Type:** constraint
 
 Ephemeral sandbox sessions are subject to: (a) session-scoped TTL (e.g., 24h); (b) per-session query row limit and query cost caps; (c) data source registration restricted to bundled demo allowlist (no arbitrary outbound live sources). Platform-schema isolation ([REQ-696](#REQ-696)) already guarantees tenant isolation.
 
@@ -10158,7 +10158,7 @@ Ephemeral sandbox sessions are subject to: (a) session-scoped TTL (e.g., 24h); (
 
 ### REQ-1038 · Demo Tiers & Onboarding {#REQ-1038}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1455](#REQ-1455) · **Priority:** SHOULD · **Type:** behavioral
 
 Free tier orgs follow a reversible archive lifecycle to reclaim disk and Postgres resources without destructive loss: idle orgs are email-nudged ([REQ-1330](#REQ-1330)/1022) before any action; on continued inactivity, pg_dump'd to Cloudflare R2 ([REQ-1027](#REQ-1027)) and live schema dropped; restored on re-login from R2 archive; hard tombstone (delete R2 archive) only after long tail (e.g. 12 months) with final nudge.
 
@@ -10170,7 +10170,7 @@ Free tier orgs follow a reversible archive lifecycle to reclaim disk and Postgre
 
 ### REQ-1039 · Demo Tiers & Onboarding {#REQ-1039}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1598](#REQ-1598) · **Priority:** MUST · **Type:** behavioral
 
 Funnel routing policy: "just looking" traffic (cold-start landing page) is routed to anonymous ephemeral sandbox (self-reaping, zero abandonment debt); persistent free tier requires deliberate Firebase signup, minimizing abandoned-account volume on shared infrastructure.
 
@@ -10226,7 +10226,7 @@ Workload separation: interactive user queries and MV/batch-refresh workloads run
 
 ### REQ-1043 · Multi-Tenancy & Scaling {#REQ-1043}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1412](#REQ-1412) · **Priority:** SHOULD · **Type:** behavioral
 
 Tiered cluster routing for physical isolation: sandbox/free tenants route to a shared cluster with tight resource-group caps (best-effort); standard paid tenants route to a better-resourced shared cluster; whale/premium tenants route to a dedicated Trino cluster (or dedicated worker pool) pointed at that org's data sources. Routing is org-tier-aware.
 
@@ -10254,7 +10254,7 @@ Hard query-cost caps as a monetization gate: each org tier enforces ceilings on 
 
 ### REQ-1045 · Demo Tiers & Onboarding {#REQ-1045}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-1598](#REQ-1598) · **Priority:** MUST · **Type:** constraint
 
 Sandbox and free-tier orgs receive the tightest resource-group and query-cost ceilings, enforced via the same tier-cap mechanism ([REQ-1044](#REQ-1044)) mapped to sandbox/free entitlements. Caps are applied at session provisioning and validated on every query submission.
 
@@ -10340,7 +10340,7 @@ Hosted documentation surface: product docs and API reference published on Cloudf
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Website-to-SaaS entry-point wiring: the marketing site's primary CTAs (calls-to-action) map to the specified onboarding paths — "Try it now" initiates an anonymous ephemeral sandbox session ([REQ-1034](#REQ-1034)/1036, no signup required); "Sign up free" routes to Firebase self-serve org provisioning ([REQ-1017](#REQ-1017)); "Contact sales" triggers SES/SMTP email delivery to sales ([REQ-1330](#REQ-1330)).
+Website-to-SaaS entry-point wiring: the marketing site's primary CTAs (calls-to-action) map to the specified onboarding paths — "Try it now" initiates an anonymous ephemeral sandbox session ([REQ-1034](#REQ-1034)/1036, no signup required); [SUPERSEDED by [REQ-1476](#REQ-1476), 2026-10-03 -- [REQ-1017](#REQ-1017) is superseded; on a deployment that sells the org, org creation waits at awaiting_checkout until a subscription pays for it. Kept here for history; do not implement against it.] "Sign up free" routes to Firebase self-serve org provisioning ([REQ-1017](#REQ-1017)) [END SUPERSEDED BLOCK]; "Contact sales" triggers SES/SMTP email delivery to sales ([REQ-1330](#REQ-1330)).
 
 **Use case:** Converts marketing interest into activation (sandbox demo, free-tier signup, sales engagement). Clear entry-point routing ensures users experience the intended onboarding flow without friction. Marketing messaging and product capability must align (e.g., "try now" genuinely allows zero-friction exploration; "sign up free" uses self-serve Firebase, not manual approval).
 
@@ -10350,7 +10350,7 @@ Website-to-SaaS entry-point wiring: the marketing site's primary CTAs (calls-to-
 
 ### REQ-1053 · Pricing & Tiering {#REQ-1053}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1511](#REQ-1511) · **Priority:** MUST · **Type:** behavioral
 
 Pricing page reflects tier entitlements: the public pricing table renders the free/standard/premium tier limits directly from the query-cost caps ([REQ-1044](#REQ-1044)) and storage caps ([REQ-1046](#REQ-1046)) — the same entitlement definitions that gate runtime enforcement drive the marketing pricing presentation, eliminating manual sync.
 
@@ -10362,9 +10362,9 @@ Pricing page reflects tier entitlements: the public pricing table renders the fr
 
 ### REQ-1054 · Multi-Tenancy & Routing {#REQ-1054}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1233](#REQ-1233) · **Priority:** MUST · **Type:** infrastructure
 
-Per-org wildcard subdomain routing: each org is addressable at {org}.provisa.io via a single wildcard DNS record (*.provisa.io) and wildcard TLS certificate, enabling zero-provisioning self-serve org creation ([REQ-1017](#REQ-1017)).
+Per-org wildcard subdomain routing: each org is addressable at [SUPERSEDED by [REQ-1233](#REQ-1233), 2026-10-03 -- The org subdomain is {org}.provisa.dev. Kept here for history; do not implement against it.] {org}.provisa.io via a single wildcard DNS record (*.provisa.io) [END SUPERSEDED BLOCK] and wildcard TLS certificate, enabling zero-provisioning self-serve org creation ([REQ-1017](#REQ-1017)).
 
 **Use case:** Eliminates per-org DNS and certificate provisioning overhead. Any newly created org is instantly reachable at its subdomain without manual infrastructure steps, reducing onboarding friction and operational toil.
 
@@ -10374,9 +10374,9 @@ Per-org wildcard subdomain routing: each org is addressable at {org}.provisa.io 
 
 ### REQ-1055 · Multi-Tenancy & Routing {#REQ-1055}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1234](#REQ-1234) · **Priority:** MUST · **Type:** infrastructure
 
-Fixed per-protocol ports shared across all orgs: HTTP 443 (GraphQL/REST/UI), pgwire 5439, Bolt 7687, Arrow Flight 8480 are shared across all orgs, never varying per org. Org resolution comes from connection parameters (hostname, database name, username, auth principal), not from port multiplexing.
+Fixed per-protocol ports shared across all orgs: HTTP 443 (GraphQL/REST/UI), pgwire 5439, Bolt 7687, [SUPERSEDED by [REQ-1253](#REQ-1253), 2026-10-03 -- Arrow Flight is served on 8815; 8480 is the zaychik proxy port. Kept here for history; do not implement against it.] Arrow Flight 8480 [END SUPERSEDED BLOCK] are shared across all orgs, never varying per org. Org resolution comes from connection parameters (hostname, database name, username, auth principal), not from port multiplexing.
 
 **Use case:** Simplifies port management and connection strings. Standard ports improve discoverability and reduce client configuration complexity. Org is a logical namespace, not a network multiplexing dimension.
 
@@ -10398,7 +10398,7 @@ Per-surface org resolution: HTTP surfaces resolve org from Host subdomain and/or
 
 ### REQ-1057 · Multi-Tenancy & Routing {#REQ-1057}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1240](#REQ-1240) · **Priority:** SHOULD · **Type:** infrastructure
 
 Cloudflare wildcard routing: HTTP traffic is proxied via Cloudflare (*.provisa.io -> VM:443); raw-TCP wire protocols are routed via Cloudflare Spectrum (TCP-by-SNI) or a wildcard A record, with org derived from connection parameters.
 
@@ -10450,9 +10450,9 @@ Hard caps on anonymous public traffic: unauthenticated published endpoints are i
 
 ### REQ-1061 · Multi-Tenancy & Branding {#REQ-1061}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1233](#REQ-1233) · **Priority:** SHOULD · **Type:** behavioral
 
-Subdomain-as-dedicated-channel value proposition: every org gets its own {org}.provisa.io endpoint, conveying dedicated tenancy and branding even though authenticated resolution does not require it.
+Subdomain-as-dedicated-channel value proposition: [SUPERSEDED by [REQ-1233](#REQ-1233), 2026-10-03 -- The org endpoint is {org}.provisa.dev. Kept here for history; do not implement against it.] every org gets its own {org}.provisa.io endpoint [END SUPERSEDED BLOCK], conveying dedicated tenancy and branding even though authenticated resolution does not require it.
 
 **Use case:** Improves perceived value and tenant isolation narrative. Org-branded subdomain increases engagement and data ownership perception. Leverages the wildcard infrastructure ([REQ-1054](#REQ-1054)) to provide this for zero per-org cost.
 
@@ -10464,7 +10464,7 @@ Subdomain-as-dedicated-channel value proposition: every org gets its own {org}.p
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Custom domain as a premium gate: premium/enterprise tiers may bind a custom domain (e.g. data.acme.com via CNAME) with custom TLS and white-label (no Provisa branding). Free/standard tiers use {org}.provisa.io only. Tier entitlements are surfaced on the pricing page ([REQ-1052](#REQ-1052)).
+Custom domain as a premium gate: premium/enterprise tiers may bind a custom domain (e.g. data.acme.com via CNAME) with custom TLS and white-label (no Provisa branding). Free/standard tiers use {org}.provisa.io only. [SUPERSEDED by [REQ-1511](#REQ-1511), 2026-10-03 -- [REQ-1052](#REQ-1052) is CTA wiring, not a pricing page; plans are shown on the Billing page. Kept here for history; do not implement against it.] Tier entitlements are surfaced on the pricing page ([REQ-1052](#REQ-1052)) [END SUPERSEDED BLOCK].
 
 **Use case:** Provides a premium branding differentiator. Custom domain + white-label appeals to enterprises embedding data apps in customer-facing portals. Clear tier gate monetizes the feature and simplifies operations (no per-org cert management for premium tenants).
 
@@ -10474,7 +10474,7 @@ Custom domain as a premium gate: premium/enterprise tiers may bind a custom doma
 
 ### REQ-1063 · Pricing & Tiering {#REQ-1063}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1454](#REQ-1454) · **Priority:** SHOULD · **Type:** behavioral
 
 Usage-credit billing meter: metered consumption is billed as universal compute credits whose consumption is uniform across tiers, with the dollar price per credit rising by tier (bundling features/support) — the Starburst Galaxy model. Built on Stripe billing ([REQ-594](#REQ-594)).
 
@@ -10488,7 +10488,7 @@ Usage-credit billing meter: metered consumption is billed as universal compute c
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Credit-boxed + time-boxed enterprise trial: a fixed-duration trial (e.g. 30 days) grants a fixed compute-credit balance; on expiry or non-payment, the account auto-downgrades to free tier (never silent charge).
+Credit-boxed + time-boxed enterprise trial: a fixed-duration trial (e.g. 30 days) [SUPERSEDED by [REQ-1454](#REQ-1454), 2026-10-03 -- The billable unit is the active hour; no credit balance exists. Kept here for history; do not implement against it.] grants a fixed compute-credit balance [END SUPERSEDED BLOCK]; on expiry or non-payment, [SUPERSEDED by [REQ-1455](#REQ-1455), 2026-10-03 -- There is no free tier; the plan set is trial, starter and three Pro sizes. Kept here for history; do not implement against it.] the account auto-downgrades to free tier (never silent charge) [END SUPERSEDED BLOCK].
 
 **Use case:** Lowers barrier to enterprise evaluation. Fixed credit budget prevents runaway costs; explicit downgrade on expiry prevents surprise billing and maintains customer trust. Encourages pilot-to-production conversion.
 
@@ -10498,7 +10498,7 @@ Credit-boxed + time-boxed enterprise trial: a fixed-duration trial (e.g. 30 days
 
 ### REQ-1065 · Pricing & Tiering {#REQ-1065}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1455](#REQ-1455) · **Priority:** MAY · **Type:** behavioral
 
 Signup usage credit: a small usage-credit grant on signup (Apollo $50-style) provides a soft on-ramp to exploration without a time-boxed trial expiration.
 
@@ -10522,7 +10522,7 @@ Premium feature gates beyond compute: SSO/SAML + fine-grained access control (AB
 
 ### REQ-1067 · Pricing & Tiering {#REQ-1067}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1412](#REQ-1412) · **Priority:** SHOULD · **Type:** behavioral
 
 Bring-your-own compute / dedicated cluster as premium gate: premium tenants may run on a dedicated Trino cluster (extends tiered routing [REQ-1043](#REQ-1043)) and/or bring their own compute, complementing BYO storage ([REQ-1048](#REQ-1048)).
 
@@ -10534,63 +10534,63 @@ Bring-your-own compute / dedicated cluster as premium gate: premium tenants may 
 
 ### REQ-1068 · Data Catalog Integration {#REQ-1068}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
-Pluggable metadata export provider pattern: an abstract MetadataExport interface (mirroring AuthProvider/EmailProvider pattern) enables organizations to publish Provisa's governance metadata OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only — Provisa never ingests an external catalog as source of truth.
+Pluggable metadata export provider pattern: an abstract MetadataExport interface [SUPERSEDED by [REQ-1330](#REQ-1330), 2026-10-03 -- There is no EmailProvider; mail goes through the EmailSender port (provisa/core/mail.py:79). Kept here for history; do not implement against it.] (mirroring AuthProvider/EmailProvider pattern) [END SUPERSEDED BLOCK] enables organizations to publish Provisa's governance metadata OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only — Provisa never ingests an external catalog as source of truth.
 
 **Use case:** Allows Provisa to act as the authoritative upstream feeding customers' existing data-governance catalogs (OpenMetadata, Atlan, Collibra, DataHub, Apache Atlas), rather than competing with them. Keeps Provisa as runtime enforcement engine while projecting metadata to the customer's catalog of record.
 
-**Code:** `provisa/api/metadata_export/provider.py`
+**Code:** `provisa/api/metadata_export/provider.py`, `provisa/api/metadata_export/registry.py`, `provisa/core/models.py`, `provisa/core/org_settings.py`, `provisa/api/admin/metadata_export_router.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_metadata_export_provider.py`, `tests/unit/test_metadata_export_outbound.py`, `tests/unit/test_metadata_export_admin_surface.py`
 
 ### REQ-1069 · Data Catalog Integration {#REQ-1069}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
 Standards-first metadata core: the MetadataExport provider emits OpenLineage for lineage and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataExport using the same internal metadata model.
 
 **Use case:** Standards-based approach (OpenLineage, OpenMetadata) ensures portability and reduces vendor lock-in. First-class support for OpenMetadata reduces friction for OSS adopters; vendor adapters extend to enterprises already on Atlan or Collibra.
 
-**Code:** `provisa/api/metadata_export/openlineage.py`, `provisa/api/metadata_export/openmetadata.py`, `provisa/api/metadata_export/registry.py`
+**Code:** `provisa/api/metadata_export/openlineage.py`, `provisa/api/metadata_export/openmetadata.py`, `provisa/api/metadata_export/registry.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/collibra.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/model.py`
 
-**Tests:** `tests/unit/test_metadata_export_standards.py`, `tests/integration/test_metadata_export_openlineage_e2e.py`, `tests/integration/test_metadata_export_openmetadata_e2e.py`
+**Tests:** `tests/unit/test_metadata_export_standards.py`, `tests/unit/test_metadata_export_vendors.py`, `tests/integration/test_metadata_export_openlineage_e2e.py`, `tests/integration/test_metadata_export_openmetadata_e2e.py`, `tests/integration/test_metadata_export_atlas_e2e.py`
 
 ### REQ-1070 · Data Catalog Integration {#REQ-1070}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Published metadata payload includes datasets/tables/columns, domains, stewards and ownership ([REQ-609](#REQ-609)/020), approved relationships, and descriptions/aliases. Lineage is derived from actually-compiled queries and the MV DAG (provisa/lineage/, [REQ-939](#REQ-939)/942), providing column-level + MV-DAG lineage more accurate than scanner/agent-based ingestion.
 
 **Use case:** Provisa's query-compilation and DAG-based lineage is derived from actual execution, making it more authoritative than external scanners or agent-based metadata collection. Publishing this accuracy to external catalogs elevates DG team's source-of-truth quality.
 
-**Code:** `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`
+**Code:** `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`, `provisa/api/metadata_export/refs.py`, `provisa/lineage/graph.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_metadata_snapshot_builder.py`, `tests/unit/test_metadata_snapshot_lineage.py`, `tests/features/REQ-1070.feature`
 
 ### REQ-1071 · Data Catalog Integration {#REQ-1071}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Governance-signal projection: enforcement facts Provisa already computes (which columns/tables are masked, RLS-restricted, or visibility-restricted per [REQ-039](#REQ-039)/040) are projected outward as tags, classifications, or metadata properties on the corresponding assets in the target external catalog.
 
 **Use case:** Data-governance teams see Provisa's enforced governance policies reflected in their catalog of record, enabling data consumers to understand which data is restricted or transformed without context-switching to Provisa's UI. Strengthens audit and compliance narrative.
 
-**Code:** `provisa/api/metadata_export/governance.py`
+**Code:** `provisa/api/metadata_export/governance.py`, `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`
 
-**Tests:** `tests/unit/test_metadata_export_governance.py`
+**Tests:** `tests/unit/test_metadata_export_governance.py`, `tests/unit/test_metadata_export_vendors.py`, `tests/features/REQ-1071.feature`
 
 ### REQ-1072 · Data Catalog Integration {#REQ-1072}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Sync mechanism: metadata changes push to the external catalog event-driven via the [REQ-942](#REQ-942) event substrate. A scheduled full reconcile (using the existing scheduler, provisa/scheduler/jobs.py) periodically re-syncs the complete metadata projection. Per-org configuration and credentials, scoped to that org only.
 
 **Use case:** Event-driven sync ensures near-real-time metadata propagation for operational responsiveness; scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant isolation and per-customer credential management.
 
-**Code:** `provisa/api/metadata_export/publishing.py`
+**Code:** `provisa/api/metadata_export/publishing.py`, `provisa/api/app.py`, `provisa/api/app_startup.py`, `provisa/api/admin/metadata_export_router.py`, `provisa/cli.py`
 
-**Tests:** `tests/unit/test_metadata_export_publishing.py`, `tests/steps/steps_metadata_export_docs.py`
+**Tests:** `tests/unit/test_metadata_export_publishing.py`, `tests/unit/test_metadata_export_gate.py`, `tests/unit/test_cli_metadata_export.py`, `tests/features/REQ-1072.feature`
 
 ### REQ-1073 · Data Catalog Integration {#REQ-1073}
 
@@ -10622,7 +10622,7 @@ Metadata export admin surface: an Admin tab that configures the per-org export t
 
 ### REQ-1368 · Data Catalog Integration {#REQ-1368}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Metadata export user documentation: a published docs page (docs/metadata-export.md, navigated under Security & Governance) covering the supported targets, the YAML configuration, what the payload contains, how governance signals appear in the target catalog, and the event-driven vs scheduled-reconcile sync model. Outbound-only is stated explicitly so no reader expects a catalog-to-Provisa ingest path.
 
@@ -10630,7 +10630,7 @@ Metadata export user documentation: a published docs page (docs/metadata-export.
 
 **Code:** `docs/metadata-export.md`, `mkdocs.yml`
 
-**Tests:** `tests/steps/steps_metadata_export_docs.py`
+**Tests:** `tests/steps/steps_metadata_export_docs.py`, `tests/features/REQ-1368.feature`
 
 ## 10. UI & Admin Surfaces
 
@@ -12596,9 +12596,9 @@ Admin UI surface (extend OrgsTab.tsx / add admin router endpoint) to list pendin
 
 ### REQ-1253 · Cloud Load Balancing {#REQ-1253}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1331](#REQ-1331) · **Priority:** MUST · **Type:** infrastructure
 
-All protocol surfaces (API port 8000, UI port 3000, Arrow Flight 8815, pgwire 5439, Bolt 7687, MCP 8009, gRPC 50051) must be fronted by a single shared external passthrough load-balancer endpoint per cloud provider, not one LB per protocol. This is required by the subdomain-as-org model ([REQ-1233](#REQ-1233)): {org}.provisa.dev must resolve to one A record and reach every protocol by preserving the destination port to the backend node.
+All protocol surfaces (API port 8000, UI port 3000, Arrow Flight 8815, pgwire 5439, Bolt 7687, MCP 8009, gRPC 50051) [SUPERSEDED by [REQ-1331](#REQ-1331), 2026-10-03 -- On gcp-saas the front door TCP proxy replaced the passthrough NLB; only the self-hosted gcp, aws and azure modules still use a shared LB. Kept here for history; do not implement against it.] must be fronted by a single shared external passthrough load-balancer endpoint per cloud provider, not one LB per protocol [END SUPERSEDED BLOCK]. This is required by the subdomain-as-org model ([REQ-1233](#REQ-1233)): {org}.provisa.dev must resolve to one A record and reach every protocol by preserving the destination port to the backend node.
 
 **Use case:** Enables the subdomain-as-org identity model where a single DNS name and IP address serve all protocols. Cloud-specific realizations: GCP uses a backend-service passthrough NLB forwarding rule with all_ports=true on one static IP; AWS uses a single Network Load Balancer with one listener/target-group per protocol port sharing the NLB's endpoint; Azure uses a single Standard Load Balancer with one LB rule per protocol port on a single frontend public IP. Backend liveness is gated by the API HTTPS /health probe. Refs: [REQ-1233](#REQ-1233), [REQ-1239](#REQ-1239), [REQ-1240](#REQ-1240), [REQ-1226](#REQ-1226).
 
@@ -12932,7 +12932,7 @@ New terraform/gcp-saas module enables fully-automated multi-tenant SaaS deployme
 
 ### REQ-1280 · Commercial Positioning {#REQ-1280}
 
-**Status:** ✓ accepted · **Priority:** MAY · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1454](#REQ-1454) · **Priority:** MAY · **Type:** infrastructure
 
 Provisa SaaS bills on two metered SKUs mapped to the existing gcp-saas topology ([REQ-1279](#REQ-1279)): (1) Serving lane — the "active-hour" SKU at $3.25/active-hr, metering warm coordinator uptime (the always-on Trino planner + persistent-protocol listeners: pgwire/bolt/Flight/gRPC/MCP). Any hour the endpoint is active bills a full hour. Margin ~87–97%. (2) Analytical lane — the "worker-hour" SKU at $2.50/worker-hr, metering Spot worker MIG uptime per query, scale-to-zero between queries. Margin ~97% Spot / ~89% on-demand. Egress is a cost-recovery passthrough across both lanes at Hasura parity ($0.13/GB vs $0.12 cost); only result bytes leaving GCP are Provisa's cost (source-cloud egress bills the source owner).
 
@@ -15028,7 +15028,7 @@ An isolated engine idles to zero and wakes on traffic, so the org pays for compu
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Pro is sold as three fixed sizes -- S (4 vCPU / 32GB), M (8/64), L (16/128) -- expressed as the node pool machine type and the pod requests/limits of the org's engine ([REQ-1447](#REQ-1447)), each a plan-fixed constant rather than a control the org adjusts, since each plan is a fixed setting and orgs do not tune their own entitlements. Sizes are carried per plan in the entitlements table rather than derived from a machine family, so a later size may change family (c3-highcpu for a CPU-bound profile) without a schema change. The ladder is vertical because GCE pricing is linear per vCPU and GB, making scale-up cost-neutral against scale-out at equal capacity while avoiding network exchange between pods; it stops at L well inside the practical single-JVM ceiling, since jvm.config sets MaxRAMPercentage=70 with G1 and pause times grow with heap and live-set, so useful single-JVM scale ends near 200-300GB heap. Past that the same substrate carries the org further by splitting the engine into more worker pods with modest heaps rather than one large one, trading in-JVM reference passing for exchange serialization -- worth paying only above that heap threshold, which is why S/M/L do not do it. Workloads exceeding what one node pool serves are met by the external lane ([REQ-1412](#REQ-1412)) or a self-hosted multi-node deployment sized at apply time (terraform/gcp node_count, worker_machine_type). Dedicated placement ([REQ-1447](#REQ-1447)) also makes the lane's charges directly meterable, which is the metering path [REQ-1281](#REQ-1281) lacked. Engine-hours accrue only while the org's node pool is scaled up, read from the platform rather than inferred, and egress is attributable because the pool serves one org -- neither is derivable for a container sharing a node. The derived query.max-memory and query.max-memory-per-node follow from the size rather than the deployment-wide PROVISA_ISOLATED_ENGINE_MEMORY; on a single-pod engine the per-node bound must not sit below the cluster bound, as today's 30%/60% split does, since both name the same pool and the lower value kills queries at half the stated budget. Because the isolated lane cannot degrade other tenants once placement is dedicated, it carries no query concurrency or duration limits -- the size is the only limit, and the org pays for what it runs.
+Pro is sold as three fixed sizes -- S (4 vCPU / 32GB), M (8/64), L (16/128) -- expressed as the node pool machine type and the pod requests/limits of the org's engine ([REQ-1447](#REQ-1447)), each a plan-fixed constant rather than a control the org adjusts, since each plan is a fixed setting and orgs do not tune their own entitlements. Sizes are carried per plan in the entitlements table rather than derived from a machine family, so a later size may change family (c3-highcpu for a CPU-bound profile) without a schema change. The ladder is vertical because GCE pricing is linear per vCPU and GB, making scale-up cost-neutral against scale-out at equal capacity while avoiding network exchange between pods; it stops at L well inside the practical single-JVM ceiling, since jvm.config sets MaxRAMPercentage=70 with G1 and pause times grow with heap and live-set, so useful single-JVM scale ends near 200-300GB heap. Past that the same substrate carries the org further by splitting the engine into more worker pods with modest heaps rather than one large one, trading in-JVM reference passing for exchange serialization -- worth paying only above that heap threshold, which is why S/M/L do not do it. Workloads exceeding what one node pool serves are met by the external lane ([REQ-1412](#REQ-1412)) or a self-hosted multi-node deployment sized at apply time (terraform/gcp node_count, worker_machine_type). Dedicated placement ([REQ-1447](#REQ-1447)) also makes the lane's charges directly meterable, which is the metering path [REQ-1281](#REQ-1281) lacked. Engine-hours accrue only while the org's node pool is scaled up, read from the platform rather than inferred, and egress is attributable because the pool serves one org -- neither is derivable for a container sharing a node. The derived query.max-memory and query.max-memory-per-node follow from the size rather than the deployment-wide PROVISA_ISOLATED_ENGINE_MEMORY; on a single-pod engine the per-node bound must not sit below the cluster bound, [SUPERSEDED by REQ-1449 amendment, 2026-10-03 -- The split was removed when this was implemented; both bounds are now the same value (provisa/federation/isolated_provisioner.py:138-150). Kept here for history; do not implement against it.] as today's 30%/60% split does [END SUPERSEDED BLOCK], since both name the same pool and the lower value kills queries at half the stated budget. Because the isolated lane cannot degrade other tenants once placement is dedicated, it carries no query concurrency or duration limits -- the size is the only limit, and the org pays for what it runs.
 
 **Use case:** An org picks one of three Pro sizes and is invoiced engine-hours at that size's rate plus measured egress, on hardware it exclusively occupies.
 
