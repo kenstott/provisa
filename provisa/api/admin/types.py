@@ -568,8 +568,7 @@ class RoleRateLimitType:  # REQ-1174
     """Per-role rate + query-complexity limits (None = unlimited on that dimension)."""
 
     requests_per_second: int | None = None
-    max_query_depth: int | None = None
-    max_query_nodes: int | None = None
+    max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
 
 
@@ -1107,8 +1106,7 @@ class MetricInput:  # REQ-1317
 @strawberry.input
 class RoleRateLimitInput:  # REQ-1174
     requests_per_second: int | None = None
-    max_query_depth: int | None = None
-    max_query_nodes: int | None = None
+    max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
 
 

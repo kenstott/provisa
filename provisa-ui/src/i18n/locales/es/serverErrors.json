@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "El endpoint de prueba está deshabilitado (establezca PROVISA_ENABLE_TEST_ENDPOINTS para habilitarlo fuera de producción).",
       "unknown_action_type": "actionType desconocido: '{{action_type}}'",
       "unknown_role": "Rol desconocido: '{{role}}'",
-      "webhook_not_found": "No se encontró el webhook '{{name}}'"
+      "webhook_not_found": "No se encontró el webhook '{{name}}'",
+      "written_table_not_registered": "'{{table}}' no es una tabla registrada del origen '{{source_id}}'"
     },
     "ai_models": {
       "vector_model_fields_required": "cada entrada de vector_models requiere id, provider y dimensions"
@@ -84,7 +85,8 @@
       "sql_generation_failed": "No se pudo generar SQL válido después de 3 intentos: {{error}}",
       "table_not_found": "No se encontró la tabla '{{table}}'",
       "unknown_action_field": "Campo de acción desconocido: '{{field}}'",
-      "unknown_command": "Comando desconocido: '{{name}}'"
+      "unknown_command": "Comando desconocido: '{{name}}'",
+      "query_too_complex": "La complejidad de la consulta ({{score}}) supera el límite de {{limit}} ({{limit_of}})."
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
@@ -108,18 +110,25 @@
       "coordinator_waking": "El entorno se está iniciando. Estará listo en unos dos minutos."
     },
     "functions": {
+      "approval_denied": "Aprobación denegada para '{{name}}': {{reason}}",
+      "approval_unavailable": "el comando '{{name}}' requiere aprobación y no hay ningún hook de aprobación configurado",
       "binding_missing_key": "al enlace de función para el kind '{{kind}}' le falta la clave obligatoria '{{key}}'",
       "egress_denied": "la salida hacia '{{endpoint}}' está denegada: el host no está en la lista de salida permitida de UDF (REQ-885, denegación por defecto). Agréguelo a udf_egress_allowlist para permitirlo.",
       "grpc_call_failed": "error en la llamada grpc {{target}}{{path}}: {{status}}: {{details}}",
       "grpc_method_invalid": "el método grpc '{{method}}' debe ser 'Service/Method' o 'pkg.Service.Method'",
+      "json_argument_invalid": "el argumento '{{argument}}' de '{{name}}' no es un literal JSON",
       "non_tabular_payload": "la función devolvió una carga no tabular: {{payload_type}}",
+      "not_a_remote_source": "El origen '{{source_id}}' no ofrece operaciones de escritura",
+      "operation_not_offered": "El origen '{{source_id}}' no ofrece la operación '{{operation}}'",
       "python_callable_invalid": "el invocable de python '{{spec}}' debe ser 'module:attr'",
+      "remote_refused": "{{source_id}} rechazó {{operation}}: {{answer}}",
       "result_set_ref_invalid": "la referencia de result_set '{{ref}}' debe ser source.schema.table",
       "rowwise_external": "la función '{{name}}' (kind={{impl_kind}}) es externa por fila: todos los argumentos son column_value escalares. Declare un argumento de relación table_ref/result_set para que las llamadas sean por conjunto y en lote (REQ-885).",
       "script_failed": "el script terminó con código {{returncode}}: {{stderr}}",
       "source_not_connected": "El origen '{{source_id}}' no está conectado",
       "unknown_arg_kind": "arg_kind desconocido '{{arg_kind}}' para '{{name}}'",
-      "unknown_impl_kind": "impl_kind de función desconocido: '{{impl_kind}}'"
+      "unknown_impl_kind": "impl_kind de función desconocido: '{{impl_kind}}'",
+      "written_table_missing": "el comando '{{name}}' escribe '{{table}}', que no está registrada"
     },
     "graphql_remote": {
       "introspection_failed": "Error en la introspección: {{error}}",
@@ -155,7 +164,6 @@
     },
     "openapi": {
       "database_not_connected": "Base de datos no conectada",
-      "domain_required": "El origen OpenAPI {{source}} declara {{commands}} comando(s) y no indica ningún dominio: un comando pertenece a un dominio, por lo que el registro necesita uno",
       "invalid_json": "JSON no válido: {{error}}",
       "refresh_failed": "Error al actualizar: {{error}}",
       "registration_failed": "Error en el registro: {{error}}",
@@ -312,7 +320,10 @@
       "webhook_name_required": "webhook_name es obligatorio para un desencadenador de webhook",
       "webhook_not_found": "No se encontró el webhook '{{webhook}}'",
       "replicate_invalid": "Replicar debe ser «Predeterminado», «Nunca», «Siempre» o un umbral superior a 0; se recibió {{value}}",
-      "replicate_contradicts_load_protected": "La protección de carga no puede combinarse con Replicar = «Nunca»: una tabla protegida contra carga nunca se lee en vivo"
+      "replicate_contradicts_load_protected": "La protección de carga no puede combinarse con Replicar = «Nunca»: una tabla protegida contra carga nunca se lee en vivo",
+      "table_registered_fields_omitted": "Tabla '{{table}}' registrada (id={{id}}). Se omitieron, porque la credencial del origen no puede leerlos: {{fields}}",
+      "table_not_readable": "La credencial de este origen no puede leer {{table}}: {{reason}}",
+      "table_too_complex": "La tabla '{{table}}' no se registró con las columnas seleccionadas: {{reason}}. Elija menos columnas."
     },
     "secrets": {
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."

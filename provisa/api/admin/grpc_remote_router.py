@@ -11,8 +11,9 @@
 """Admin routes for gRPC Remote Schema Connector (Phase AR).
 
 Endpoints:
-  POST /admin/grpc-remote/register         — compile stubs + auto-register tables/functions
-  POST /admin/grpc-remote/refresh/{id}     — re-compile + re-register
+  POST /admin/grpc-remote/register         — compile stubs, add the source; no table is registered
+                                             (REQ-322: each query method is a table on offer)
+  POST /admin/grpc-remote/refresh/{id}     — re-compile, bring the registered tables up to date
   GET  /admin/grpc-remote/list             — list registered gRPC sources
   GET  /admin/grpc-remote/{id}/proto       — return stored proto text
   PUT  /admin/grpc-remote/{id}/proto       — store new proto text + re-register
@@ -30,8 +31,9 @@ from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import domains, sources
-from provisa.grpc_remote.executor import open_channel
 from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.schema_common import remote_source_counts
+from provisa.grpc_remote.mapper import query_table_name
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/grpc-remote", tags=["admin", "grpc-remote"])
@@ -64,10 +66,10 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
     state,
     method_overrides: dict[str, str] | None = None,
     relationships: list[dict] | None = None,
-) -> tuple[str, int, int]:
+) -> tuple[str, dict[str, int]]:
     """Load proto, compile stubs, open channel, register tables/functions.
 
-    Returns (proto_text, n_tables, n_mutations).
+    Returns the proto text and what the source registered and offers (:func:`remote_source_counts`).
     """
     from provisa.grpc_remote.loader import load_proto, compile_proto_stubs
     from provisa.grpc_remote.mapper import map_proto
@@ -156,9 +158,17 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
                 update_columns=[],
             )
 
+    # REQ-322 (amended 2026-10-02): adding or refreshing the source registers no table. The
+    # tables already registered are brought up to date with the proto; every other query method
+    # is on offer to the Register Table picker.
     async with state.tenant_db.acquire() as conn:
-        n_tables, n_mutations = await _register_schema(
-            source_id, queries, mutations, conn, namespace, domain_id
+        n_tables = await _register_schema(
+            source_id,
+            queries,
+            conn,
+            namespace,
+            domain_id,
+            registered=await registered_query_tables(conn, source_id),
         )
 
     # Open gRPC channel and populate state.grpc_remote_sources BEFORE the rebuild/reconcile below
@@ -172,19 +182,10 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
     # so _rebuild_schemas() recursed straight back into _load_and_register for the SAME source_id
     # it was still in the middle of registering (verified live: registration hung past 60s, no
     # error, no row ever listed).
-    channel = open_channel(server_address, tls)
-
+    # No channel is opened here: a channel belongs to the event loop it is opened on, and each
+    # request that calls the source opens its own on its own loop (executor.channel_for).
     if not hasattr(state, "grpc_remote_sources"):
         state.grpc_remote_sources = {}
-
-    # Close previous channel if exists
-    existing = state.grpc_remote_sources.get(source_id, {})
-    old_channel = existing.get("channel")
-    if old_channel is not None:
-        try:
-            await old_channel.close()
-        except Exception:
-            pass
 
     state.grpc_remote_sources[source_id] = {
         "proto_path": proto_path,
@@ -201,7 +202,6 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
         "pb2_path": pb2_path,
         "pb2_grpc_path": pb2_grpc_path,
         "pb2": pb2,
-        "channel": channel,
         "queries": queries,
         "mutations": mutations,
     }
@@ -236,112 +236,139 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
 
         await _upsert_relationships_to_semantic_layer(relationships, state.tenant_db, state)
 
-    return proto_text, n_tables, n_mutations
+    return proto_text, remote_source_counts(n_tables, len(queries), len(mutations))
 
 
-async def _register_schema(  # REQ-325, REQ-326, REQ-599
+def query_columns(query) -> tuple[list, list]:
+    """A query method's columns as they are stored: its response fields, and one native-filter
+    column per request field (REQ-1426: each carries the type the proto resolves it to)."""
+    from provisa.core.models import Column, ObjectField
+
+    def _object_fields(defs):
+        return [
+            ObjectField(name=d.name, type=d.type, fields=_object_fields(d.object_fields))
+            for d in defs
+        ]
+
+    output_cols = [
+        Column(
+            name=c.name,
+            visible_to=[],
+            data_type=c.type,
+            object_fields=_object_fields(c.object_fields),
+        )
+        for c in query.columns
+    ]
+    nf_cols = [
+        Column(
+            name=f"_nf_{c.name}",
+            visible_to=[],
+            data_type=c.type,
+            native_filter_type="grpc_input",
+        )
+        for c in query.input_fields
+    ]
+    return output_cols, nf_cols
+
+
+async def record_query_registration(
+    conn, source_id: str, query, namespace: str, domain_id: str
+) -> None:
+    """Note that a query method's table is registered (the remote-registration record the
+    model store's integrity rules follow)."""
+    col_defs = ", ".join(f"{c.name} {c.type}" for c in query.columns) or "result jsonb"
+    await conn.execute(
+        """
+        INSERT INTO provisa_sources (source_id, source_type, table_name, column_defs,
+                                     namespace, domain_id, extra)
+        VALUES ($1, 'grpc_remote', $2, $3, $4, $5, $6)
+        ON CONFLICT (source_id, table_name) DO UPDATE
+          SET column_defs = EXCLUDED.column_defs,
+              namespace   = EXCLUDED.namespace,
+              domain_id   = EXCLUDED.domain_id,
+              extra       = EXCLUDED.extra
+        """,
+        source_id,
+        query_table_name(namespace, query),
+        col_defs,
+        namespace,
+        domain_id,
+        f"grpc_query:{query.full_method_path}",
+    )
+
+
+async def registered_query_tables(conn, source_id: str) -> dict[str, tuple[str, set[str]]]:
+    """The source's registered tables: each one's domain and the columns it is registered with."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import registered_tables, table_columns
+
+    rows = (
+        await conn.execute_core(
+            select(
+                registered_tables.c.table_name,
+                registered_tables.c.domain_id,
+                table_columns.c.column_name,
+            )
+            .select_from(
+                registered_tables.join(
+                    table_columns, table_columns.c.table_id == registered_tables.c.id
+                )
+            )
+            .where(
+                registered_tables.c.source_id == source_id,
+                registered_tables.c.schema_name == "grpc_remote",
+            )
+        )
+    ).fetchall()
+    registered: dict[str, tuple[str, set[str]]] = {}
+    for row in rows:
+        registered.setdefault(row.table_name, (row.domain_id or "", set()))[1].add(row.column_name)
+    return registered
+
+
+async def _register_schema(  # REQ-322, REQ-325, REQ-599
     source_id: str,
     queries,
-    mutations,
     conn,
     namespace: str,
     domain_id: str,
-) -> tuple[int, int]:
-    """Upsert virtual tables and tracked functions for discovered gRPC methods."""
-    from provisa.core.models import Column, Table
+    registered: dict[str, tuple[str, set[str]]] | None = None,
+) -> int:
+    """Bring the source's registered tables up to date with its proto; return how many.
+
+    ``registered`` is the source's registered tables (:func:`registered_query_tables`): only
+    those are written, each in the domain it was registered into and with the columns it was
+    registered with -- a query method that is not registered is on offer and stays unregistered
+    (REQ-322). None writes a table for every query method, which is what a caller that states
+    the whole set (a test of the stored shape) asks for.
+    """
+    from provisa.core.models import Table
     from provisa.core.repositories import table as table_repo
 
-    prefix = f"{namespace}__" if namespace else ""
-
-    # Virtual tables from query methods
+    written = 0
     for q in queries:
-        table_name = f"{prefix}{q.service}__{q.method}"
-        col_defs = ", ".join(f"{c.name} {c.type}" for c in q.columns) or "result jsonb"
-        await conn.execute(
-            """
-            INSERT INTO provisa_sources (source_id, source_type, table_name, column_defs,
-                                         namespace, domain_id, extra)
-            VALUES ($1, 'grpc_remote', $2, $3, $4, $5, $6)
-            ON CONFLICT (source_id, table_name) DO UPDATE
-              SET column_defs = EXCLUDED.column_defs,
-                  namespace   = EXCLUDED.namespace,
-                  domain_id   = EXCLUDED.domain_id,
-                  extra       = EXCLUDED.extra
-            """,
-            source_id,
-            table_name,
-            col_defs,
-            namespace,
-            domain_id,
-            f"grpc_query:{q.full_method_path}",
-        )
-        from provisa.core.models import ObjectField
-
-        def _col_def_to_object_fields(defs):
-            return [
-                ObjectField(
-                    name=d.name, type=d.type, fields=_col_def_to_object_fields(d.object_fields)
-                )
-                for d in defs
-            ]
-
-        # REQ-1426: ColumnDef.type is already the resolved SQL type (mapper._proto_field_to_sql
-        # maps every proto field, repeated or message included). Dropping it here wrote NULL
-        # data_type rows the catalog rendered as "unknown".
-        output_cols = [
-            Column(
-                name=c.name,
-                visible_to=[],
-                data_type=c.type,
-                object_fields=_col_def_to_object_fields(c.object_fields),
-            )
-            for c in q.columns
-        ]
-        nf_cols = [
-            Column(
-                name=f"_nf_{c.name}",
-                visible_to=[],
-                data_type=c.type,
-                native_filter_type="grpc_input",
-            )
-            for c in q.input_fields
-        ]
+        table_name = query_table_name(namespace, q)
+        table_domain, kept = domain_id, None
+        if registered is not None:
+            if table_name not in registered:
+                continue
+            table_domain, kept = registered[table_name]
+        await record_query_registration(conn, source_id, q, namespace, table_domain)
+        output_cols, nf_cols = query_columns(q)
+        if kept is not None:
+            output_cols = [c for c in output_cols if c.name in kept]
         tbl = Table(
             source_id=source_id,
-            domain_id=domain_id or "",
+            domain_id=table_domain or "",
             schema_name="grpc_remote",
             table_name=table_name,
             columns=output_cols + nf_cols,
         )
         await table_repo.upsert(conn, tbl, origin="admin")
+        written += 1
 
-    # Tracked functions from mutation methods
-    for m in mutations:
-        fn_name = f"{prefix}{m.service}__{m.method}"
-        arg_defs = ", ".join(f"{c.name} {c.type}" for c in m.input_fields)
-        return_cols = ", ".join(f"{c.name} {c.type}" for c in m.return_columns) or "result jsonb"
-        await conn.execute(
-            """
-            INSERT INTO provisa_functions (source_id, fn_name, arg_defs, return_schema,
-                                           namespace, domain_id, extra)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (source_id, fn_name) DO UPDATE
-              SET arg_defs      = EXCLUDED.arg_defs,
-                  return_schema = EXCLUDED.return_schema,
-                  namespace     = EXCLUDED.namespace,
-                  domain_id     = EXCLUDED.domain_id,
-                  extra         = EXCLUDED.extra
-            """,
-            source_id,
-            fn_name,
-            arg_defs,
-            return_cols,
-            namespace,
-            domain_id,
-            f"grpc_mutation:{m.full_method_path}",
-        )
-
-    return len(queries), len(mutations)
+    return written
 
 
 @router.post("/register")
@@ -349,7 +376,8 @@ async def register_grpc_remote_source(
     request: Request,
     body: GrpcRemoteRegisterRequest,
 ):  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, REQ-598
-    """Compile proto stubs and auto-register virtual tables + tracked functions."""
+    """Compile proto stubs and add the source. Its query methods are tables on offer; none is
+    registered here (REQ-322)."""
     require_capability_request(request, "source_registration")
     # REQ-1742: this handler used `request.app.state` (Starlette's per-request state, a bare
     # object with none of provisa's attributes) instead of provisa's own app-state singleton —
@@ -360,7 +388,7 @@ async def register_grpc_remote_source(
     from provisa.api.app import state
 
     try:
-        _, n_tables, n_mutations = await _load_and_register(
+        _, counts = await _load_and_register(
             body.source_id,
             body.proto_path,
             body.server_address,
@@ -383,13 +411,8 @@ async def register_grpc_remote_source(
             422, "grpc_remote.registration_failed", f"Registration failed: {exc}", error=str(exc)
         ) from exc
 
-    log.info(
-        "Registered gRPC remote source %s (%d tables, %d mutations)",
-        body.source_id,
-        n_tables,
-        n_mutations,
-    )
-    return {"source_id": body.source_id, "tables": n_tables, "mutations": n_mutations}
+    log.info("Added gRPC remote source %s (%s)", body.source_id, counts)
+    return {"source_id": body.source_id, **counts}
 
 
 @router.post("/refresh/{source_id}")
@@ -409,7 +432,7 @@ async def refresh_grpc_remote_source(request: Request, source_id: str):  # REQ-3
 
     reg = sources[source_id]
     try:
-        _, n_tables, n_mutations = await _load_and_register(
+        _, counts = await _load_and_register(
             source_id,
             reg["proto_path"],
             reg["server_address"],
@@ -430,13 +453,8 @@ async def refresh_grpc_remote_source(request: Request, source_id: str):  # REQ-3
             422, "grpc_remote.refresh_failed", f"Refresh failed: {exc}", error=str(exc)
         ) from exc
 
-    log.info(
-        "Refreshed gRPC remote source %s (%d tables, %d mutations)",
-        source_id,
-        n_tables,
-        n_mutations,
-    )
-    return {"source_id": source_id, "tables": n_tables, "mutations": n_mutations}
+    log.info("Refreshed gRPC remote source %s (%s)", source_id, counts)
+    return {"source_id": source_id, **counts}
 
 
 @router.get("/list")
@@ -459,8 +477,8 @@ async def list_grpc_remote_sources(request: Request):  # REQ-598
                 "import_paths": reg.get("import_paths", []),
                 "cache_ttl": reg.get("cache_ttl", 300),
                 "auth_config": reg.get("auth_config"),
-                "tables": len(reg.get("queries", [])),
-                "mutations": len(reg.get("mutations", [])),
+                "available_tables": len(reg.get("queries", [])),
+                "available_mutations": len(reg.get("mutations", [])),
             }
         )
     return result
@@ -538,13 +556,14 @@ async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
         raise ApiError(503, "grpc_remote.database_not_connected", "Database not connected")
 
     async with state.tenant_db.acquire() as conn:
-        n_tables, n_mutations = await _register_schema(
+        n_tables = await _register_schema(
             source_id,
             queries,
-            mutations,
             conn,
             reg.get("namespace", ""),
             reg.get("domain_id", ""),
+            # REQ-322: only the tables already registered are brought up to date.
+            registered=await registered_query_tables(conn, source_id),
         )
 
     sources[source_id].update(
@@ -558,10 +577,6 @@ async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
         }
     )
 
-    log.info(
-        "Updated proto for gRPC source %s (%d tables, %d mutations)",
-        source_id,
-        n_tables,
-        n_mutations,
-    )
-    return {"source_id": source_id, "tables": n_tables, "mutations": n_mutations}
+    counts = remote_source_counts(n_tables, len(queries), len(mutations))
+    log.info("Updated proto for gRPC source %s (%s)", source_id, counts)
+    return {"source_id": source_id, **counts}

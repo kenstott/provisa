@@ -183,6 +183,23 @@ NL 查詢服務（`POST /query/nl`）經 `nl.rate_limit`（每角色每分鐘請
 
 速率限制狀態以滑動視窗計數器的形式存放在 Redis（`cache.redis_url`）——沒有逐執行個體的狀態——因此限制在所有水平擴展的 Provisa 執行個體之間都成立。（REQ-371）
 
+## 查詢複雜度上限
+
+速率限制約束角色發送請求的數量；複雜度上限約束單一陳述式可以要求的內容。（REQ-1174）
+
+每個陳述式都有一個複雜度分數：它讀取的關聯、其聯結、所選的欄位（`*` 按它所代表的欄位數計算），以及其中巢狀的查詢。從遠端 API 來源（OpenAPI、遠端 GraphQL、遠端 gRPC）讀取的關聯計為 10，因為每次讀取都會消耗遠端系統為該來源所有使用者設定的額度。
+
+上限是角色 `rate_limit` 中的 `max_query_complexity`。全組織設定 `limits.max_query_complexity` 是每個角色的天花板：角色可設定較低的上限，較高的則不起作用。預設兩者皆未設定。
+
+```yaml
+roles:
+  - id: analyst
+    rate_limit:
+      max_query_complexity: 200
+```
+
+分數在請求完成剖析之後、進行治理或執行之前量度，因此同一上限適用於陳述式可到達的每個介面：GraphQL、HTTP 上的 SQL、pgwire、Arrow Flight、gRPC、Cypher、JSON:API 與 MCP。超過上限的陳述式會被拒絕，並附上其分數、上限及所要求的內容。HTTP 介面回應 413。該拒絕會記錄為政策拒絕。
+
 ## 身份驗證
 可插拔的驗證提供者：（REQ-120）
 
@@ -269,7 +286,7 @@ gRPC、Arrow Flight 與 MCP 把憑證交給不公開主機名稱回呼的程式�
 **驗證某個部署處於此模式：** 啟動記錄會指名它，一個不帶 KMS 金鑰的 `/data/sql` 請求會回 403 並附一則指名 REQ-693 的訊息，而 pgwire、Bolt 與 MCP 連接埠不在監聽。
 
 ## ABAC 批准掛鉤
-一個選用的外部政策掛鉤，在查詢執行之前觸發。（REQ-203）設定之後，Provisa 會帶著使用者身份、角色、表、欄位與操作，呼叫出去到你的政策引擎。回應決定該查詢是否繼續。（REQ-203）
+一個選用的外部政策掛鉤，在查詢執行之前觸發。（REQ-203）設定之後，Provisa 會帶著使用者身份、角色、表、欄位與操作，呼叫出去到你的政策引擎。回應決定該查詢是否繼續。（REQ-203）以 **需要審批** 註冊的命令，在每次呼叫前都會提交給同一個掛鉤；參見[命令呼叫](#command-calls)。（REQ-1924）
 
 ### 範圍界定
 掛鉤只在查詢觸及受範圍界定的表或數據來源時觸發——其餘一切零開銷。（REQ-204）
@@ -302,6 +319,9 @@ message ApprovalRequest {
   repeated string tables = 3;
   repeated string columns = 4;
   string operation = 5;
+  map<string, string> session_vars = 6;
+  string command = 7;         // a command call's name; empty for a query
+  string arguments_json = 8;  // a command call's arguments as a JSON object
 }
 
 message ApprovalResponse {
@@ -321,9 +341,34 @@ gRPC 通道是持續性的——每個 Provisa 執行個體一條通道，對該
 | `roles` | string[] | 使用者的 Provisa 角色 |
 | `tables` | string[] | 查詢中引用的表 ID |
 | `columns` | string[] | 查詢中選取的欄位 |
-| `operation` | string | `"query"` 或 `"mutation"` |
+| `operation` | string | `"query"` 或 `"mutation"`；命令呼叫為 `"command"` |
+| `command` | string | 命令呼叫時為命令名稱；查詢時為空 |
+| `arguments` | object | 呼叫命令時所用的引數；查詢時為空 |
 
-webhook 與 Unix socket 傳輸交換 JSON。回應必須包含 `approved`（bool），並可選填 `reason`（string）。（REQ-246）
+webhook 與 Unix socket 傳輸交換 JSON，以 `command` 和 `arguments` 為索引鍵。在 gRPC 上，引數以 JSON 文字 `arguments_json` 傳送。回應必須包含 `approved`（bool），並可選填 `reason`（string）。（REQ-246） [tool-verified: `provisa/auth/approval_hook.py` `ApprovalRequest`, `_request_to_dict`, `GrpcApprovalHook` (`arguments_json=json.dumps(request.arguments, default=str)`); `provisa/auth/approval.proto`]
+
+### 命令呼叫 {: #command-calls }
+
+設定了 `requires_approval` 的命令（命令表單上的 **需要審批** 開關）在每次呼叫前都會交給掛鉤，在所有介面上均如此。僅當掛鉤批准時才會執行。請求攜帶 `operation: "command"`、命令名稱及其引數；`tables` 和 `columns` 為空。（REQ-1924）[tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+
+```json
+{
+  "user": "analyst",
+  "roles": ["analyst"],
+  "tables": [],
+  "columns": [],
+  "operation": "command",
+  "command": "create_issue",
+  "arguments": {"input": {"title": "Crash on save"}}
+}
+```
+
+[inferred: the payload also carries `session_vars`; values shown are placeholders]
+
+兩種拒絕，均為 403 [tool-verified: `_require_approval`]：
+
+- `functions.approval_unavailable`: 未設定掛鉤。與查詢不同，需要批准的命令絕不會在沒有掛鉤的情況下放行。
+- `functions.approval_denied`: 掛鉤回應了 `approved: false`。原因見訊息。
 
 ### 逾時與退路
 ```yaml

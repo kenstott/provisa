@@ -51,6 +51,10 @@ export interface FormState {
   implKind: string;
   binding: Record<string, unknown>;
   materialize: boolean;
+  // REQ-1924: each call is approved by the deployment's approval hook before it runs.
+  requiresApproval: boolean;
+  // REQ-1924, REQ-871: "schema.table" of the registered table the command writes; "" when unknown.
+  writesTable: string;
   // REQ-1159: canonical IR-typed output dataset contract (returnSchema is its GraphQL projection).
   outputColumns: DatasetColumn[];
   // REQ-1634: optional data-product membership.
@@ -60,6 +64,9 @@ export interface FormState {
 // REQ-885: selectable implementation kinds for the function/command editor.
 export const IMPL_KINDS = [
   { value: "source_procedure", label: "Source procedure" },
+  // REQ-1924: a remote source's write operation, passed through as is. Chosen by picking a
+  // remote source; its arguments and answer follow from the operation.
+  { value: "source_operation", label: "Source operation" },
   { value: "script", label: "Script (local subprocess)" },
   { value: "http", label: "HTTP endpoint" },
   { value: "grpc", label: "gRPC service" },
@@ -116,6 +123,8 @@ export const EMPTY_FORM: FormState = {
   implKind: "source_procedure",
   binding: {},
   materialize: false,
+  requiresApproval: false,
+  writesTable: "",
   outputColumns: [],
   productId: "",
 };
@@ -179,3 +188,11 @@ export function columnsFromReturnSchema(
     type: jsonSchemaTypeToIr(v?.type ?? "string"),
   }));
 }
+
+// REQ-1924: the schema a remote source's write operations are offered and registered under, per
+// source type. A source of one of these types offers operations to pick, not functions to name.
+export const OPERATION_SCHEMA: Record<string, string> = {
+  openapi: "openapi",
+  graphql_remote: "graphql",
+  grpc_remote: "grpc_remote",
+};

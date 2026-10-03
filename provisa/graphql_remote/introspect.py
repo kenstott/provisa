@@ -25,7 +25,7 @@ query IntrospectionQuery {
         name description
         type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }
         args {
-          name description
+          name description defaultValue
           type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }
         }
       }

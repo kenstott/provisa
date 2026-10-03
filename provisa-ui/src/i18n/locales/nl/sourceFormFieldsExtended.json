@@ -98,6 +98,9 @@
     "maxLiveConcurrencyPlaceholder": "geen limiet",
     "maxLiveConcurrencyInvalid": "Voer een geheel getal van 1 of meer in, of laat leeg voor geen limiet.",
     "loadManagementFixErrors": "Corrigeer de instellingen voor Belastingbeheer en actualiteit voordat u opslaat.",
-    "cacheTtlRequiredForSignal": "Het wijzigingssignaal {{signal}} beoordeelt de actualiteit op basis van de Cache-TTL; stel dus een Cache-TTL in."
+    "cacheTtlRequiredForSignal": "Het wijzigingssignaal {{signal}} beoordeelt de actualiteit op basis van de Cache-TTL; stel dus een Cache-TTL in.",
+    "accessToken": "Toegangstoken",
+    "accessTokenHint": "Opgeslagen in de geheimenkluis. Een verwijzing ${secret:NAME} of ${env:NAME} wordt ook geaccepteerd.",
+    "brandNamespaceHint": "Voorvoegsel van de tabelnamen van deze bron. Laat leeg voor de standaardwaarde."
   }
 }

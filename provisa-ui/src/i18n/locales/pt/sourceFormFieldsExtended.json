@@ -98,6 +98,9 @@
     "maxLiveConcurrencyPlaceholder": "sem limite",
     "maxLiveConcurrencyInvalid": "Insira um número inteiro igual ou maior que 1, ou deixe vazio para sem limite.",
     "loadManagementFixErrors": "Corrija as configurações de Gestão de carga e atualidade antes de salvar.",
-    "cacheTtlRequiredForSignal": "O sinal de alteração {{signal}} avalia a atualidade pelo TTL do cache, então defina um TTL do cache."
+    "cacheTtlRequiredForSignal": "O sinal de alteração {{signal}} avalia a atualidade pelo TTL do cache, então defina um TTL do cache.",
+    "accessToken": "Token de acesso",
+    "accessTokenHint": "Armazenado no cofre de segredos. Também é aceita uma referência ${secret:NAME} ou ${env:NAME}.",
+    "brandNamespaceHint": "Prefixo dos nomes de tabela desta fonte. Deixe em branco para usar o padrão."
   }
 }

@@ -29,6 +29,7 @@ class Status(str, Enum):
     in_progress = "in-progress"
     complete = "complete"
     rejected = "rejected"
+    superseded = "superseded"
 
 
 class Priority(str, Enum):
@@ -99,6 +100,7 @@ class Requirement(BaseModel):
     since: Optional[str] = None
     target: Optional[str] = None
     rejection_reason: Optional[str] = None
+    superseded_by: Optional[str] = None
     competitive_position: Optional[CompetitivePosition] = None
 
     @field_validator("id")
@@ -106,6 +108,15 @@ class Requirement(BaseModel):
     def id_format(cls, v: str) -> str:
         if not v.startswith("REQ-") or not v[4:].isdigit():
             raise ValueError(f"id must be REQ-NNN, got {v!r}")
+        return v
+
+    @field_validator("superseded_by")
+    @classmethod
+    def superseded_by_format(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if not v.startswith("REQ-") or not v[4:].isdigit():
+            raise ValueError(f"superseded_by must be REQ-NNN, got {v!r}")
         return v
 
     @field_validator("group")
@@ -167,6 +178,12 @@ class Requirement(BaseModel):
         if self.unit_test is False and not self.unit_test_reason:
             errors.append("unit_test_reason required when unit_test is false")
 
+        if self.superseded_by == self.id:
+            errors.append("superseded_by must name a different requirement")
+
+        if (self.status == Status.superseded) != bool(self.superseded_by):
+            errors.append("status=superseded and superseded_by must be set together")
+
         if self.status == Status.complete and not self.since:
             errors.append("since required when status=complete")
 
@@ -193,6 +210,29 @@ class RequirementsFile(BaseModel):
             seen.add(req.id)
         if dupes:
             raise ValueError(f"Duplicate REQ IDs: {dupes}")
+        return self
+
+    @model_validator(mode="after")
+    def superseded_by_exists(self) -> RequirementsFile:
+        by_id = {r.id: r for r in self.requirements}
+        dangling = [
+            f"{r.id} -> {r.superseded_by}"
+            for r in self.requirements
+            if r.superseded_by and r.superseded_by not in by_id
+        ]
+        if dangling:
+            raise ValueError(f"superseded_by names a nonexistent requirement: {dangling}")
+        # A replacement that is itself not live cannot carry the superseded requirement's scope.
+        dead = {Status.proposed, Status.rejected, Status.superseded}
+        not_live = [
+            f"{r.id} -> {r.superseded_by} ({by_id[r.superseded_by].status.value})"
+            for r in self.requirements
+            if r.superseded_by and by_id[r.superseded_by].status in dead
+        ]
+        if not_live:
+            raise ValueError(
+                f"superseded_by names a proposed/rejected/superseded requirement: {not_live}"
+            )
         return self
 
     @classmethod

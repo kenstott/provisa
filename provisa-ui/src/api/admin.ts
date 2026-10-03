@@ -760,6 +760,7 @@ export interface PlatformSettings {
     max_object_depth: number;
     max_list_depth: number;
     max_list_items: number;
+    max_rows: number;
   };
   cdc?: {
     consumer_group_id: string;

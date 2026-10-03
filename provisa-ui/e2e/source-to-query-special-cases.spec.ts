@@ -34,7 +34,7 @@
 //   grpc_remote — the shipped demo/grpc_server/server.py is deliberately PROTO-LESS (a raw
 //     bytes-in/bytes-out bridge for the grpc-kind command dispatch), so it cannot exercise the
 //     gRPC Remote Schema Connector at all (that connector compiles a REAL .proto into stubs and
-//     auto-registers virtual tables from its service methods — provisa/grpc_remote/{loader,mapper,
+//     offers a table per query method of the service — provisa/grpc_remote/{loader,mapper,
 //     executor}.py). This suite adds a minimal proto-based demo server
 //     (demo/grpc_remote_server/{animal_catalog.proto,server.py}), spawned for the test only, and
 //     registers against it for real. Getting this far also required fixing a real bug:
@@ -69,7 +69,7 @@ import {
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
-  registeredTableNames,
+  registerOfferedTable,
   runSqlOnPage,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
@@ -205,7 +205,7 @@ test.describe("grpc_remote: source to query through the UI (REQ-1742)", () => {
     server?.kill();
   });
 
-  test("add the source, auto-register its table, query it on the SQL page", async ({ page }) => {
+  test("add the source, register one of its tables, query it on the SQL page", async ({ page }) => {
     // REQ-1742: two real bugs were found and fixed while building this test, both blocking EVERY
     // real grpc_remote registration in this environment, not just this test:
     //   - provisa/grpc_remote/loader.py's compile_proto_stubs imported `pkg_resources`, which
@@ -229,10 +229,8 @@ test.describe("grpc_remote: source to query through the UI (REQ-1742)", () => {
     const namespace = `e2e_grpc_${stamp}`;
     const protoPath = path.join(ROOT, "demo", "grpc_remote_server", "animal_catalog.proto");
 
-    // 1. Sources form — this type registers the source AND its table in one submit (compiles the
-    // proto, opens the channel, auto-registers every query method as a virtual table —
-    // grpc_remote_router.py's /admin/grpc-remote/register). No separate Register Table step, same
-    // as graphql_remote.
+    // 1. Sources form — adds the source (compiles the proto, opens the channel). No table is
+    // registered by it (REQ-322): every query method is on offer to Register Table.
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("grpc");
@@ -241,35 +239,12 @@ test.describe("grpc_remote: source to query through the UI (REQ-1742)", () => {
     await page.getByTestId("grpc-namespace-input").fill(namespace);
     await submitSourceAndExpectListed(page, sourceId);
 
-    // 2. The AnimalCatalog.ListBreeds table registered itself under this source — no Register
-    // Table screen. Its columns start with visible_to: [] (grpc_remote_router.py's
-    // _register_schema always writes a fresh grant, same zero-trust default every other
-    // auto-registering connector starts behind), so a grant is the missing step here.
-    const tableNames = await registeredTableNames(page, sourceId);
-    const breedTable = tableNames.find((n) => n.includes("ListBreeds"));
-    expect(breedTable, `no ListBreeds table registered for ${sourceId}`).toBeTruthy();
-    const grant = await page.request.post("/admin/graphql", {
-      data: {
-        query: `mutation($t: TableInput!) { updateTable(input: $t) { success message } }`,
-        variables: {
-          t: {
-            sourceId,
-            domainId: "",
-            schemaName: "grpc_remote",
-            tableName: breedTable,
-            columns: [
-              { name: "name", visibleTo: ["*"] },
-              { name: "species", visibleTo: ["*"] },
-              { name: "avg_lifespan_years", visibleTo: ["*"] },
-            ],
-          },
-        },
-      },
-    });
-    expect(grant.ok(), await grant.text()).toBeTruthy();
-    const grantJson = await grant.json();
-    expect(grantJson.errors, JSON.stringify(grantJson.errors)).toBeUndefined();
-    expect(grantJson.data.updateTable.success, grantJson.data.updateTable.message).toBeTruthy();
+    // 2. Register the one table wanted, with the columns wanted.
+    const breedTable = await registerOfferedTable(page, sourceId, "grpc_remote", "ListBreeds", [
+      "name",
+      "species",
+      "avg_lifespan_years",
+    ]);
 
     // 3. SQL page — the demo server's 3 deterministic breed rows
     const rows = await runSqlOnPage(

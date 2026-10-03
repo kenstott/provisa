@@ -98,6 +98,9 @@
     "maxLiveConcurrencyPlaceholder": "上限なし",
     "maxLiveConcurrencyInvalid": "1以上の整数を入力するか、上限なしの場合は空欄にしてください。",
     "loadManagementFixErrors": "保存する前に「負荷管理と鮮度」の設定を修正してください。",
-    "cacheTtlRequiredForSignal": "変更シグナル {{signal}} はキャッシュTTLで鮮度を判断するため、キャッシュTTLを設定してください。"
+    "cacheTtlRequiredForSignal": "変更シグナル {{signal}} はキャッシュTTLで鮮度を判断するため、キャッシュTTLを設定してください。",
+    "accessToken": "アクセストークン",
+    "accessTokenHint": "シークレットボールトに保存されます。${secret:NAME} または ${env:NAME} の参照も指定できます。",
+    "brandNamespaceHint": "このソースのテーブル名の接頭辞。既定値を使う場合は空欄のままにします。"
   }
 }

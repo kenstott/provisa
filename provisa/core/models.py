@@ -145,14 +145,15 @@ class SourceType(str, Enum):
     # Postgres and never sharing a captive instance across two of these types. Full catalog per
     # fdw.dev/catalog (2026-09-28): native wrappers already covered by an existing SourceType
     # (bigquery, clickhouse, duckdb, iceberg, mongodb, mysql, redis, sqlserver — snowflake is a
-    # Wasm wrapper in their catalog, also already covered) are NOT duplicated here.
+    # Wasm wrapper in their catalog, also already covered) are NOT duplicated here. Their `s3`
+    # wrapper (CSV/JSONL/Parquet objects) is likewise not duplicated: csv/parquet take s3:// paths
+    # and `files` takes mapping.storage_type "s3".
     airtable = "airtable"
     auth0 = "auth0"
     aws_cognito = "aws_cognito"
     dynamodb = "dynamodb"
     firebase = "firebase"
     logflare = "logflare"
-    s3 = "s3"  # generic S3 object access via wrappers — distinct from csv/parquet's own S3 paths
     s3_vectors = "s3_vectors"
     stripe = "stripe"
     calcom = "calcom"
@@ -1243,21 +1244,20 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
 
 
 class RoleRateLimit(BaseModel):
-    """Per-role rate limits (REQ-369) + query-complexity limits (REQ-1174, Hasura api_limits parity).
-    None = unlimited for that dimension.
+    """Per-role rate limits (REQ-369) and query limits (REQ-1174). None = unlimited for that
+    dimension.
 
-    ``requests_per_second`` throttles REQUEST VOLUME; the complexity limits below cap a SINGLE
-    query's cost — a guard rate limiting cannot provide (one deeply-nested / huge query is far more
-    damaging than volume). ``max_query_depth`` (AST selection nesting) and ``max_query_nodes``
-    (selected field count) are checked at the GraphQL→IR compile boundary; ``max_query_time_ms`` caps
-    execution wall-time per request for the role."""
+    ``requests_per_second`` throttles REQUEST VOLUME; the query limits cap a SINGLE statement,
+    which a rate limit cannot (one huge statement does more harm than many small ones).
+    ``max_query_complexity`` caps the statement's complexity score, measured on the semantic
+    statement before it is governed, so it holds on every surface
+    (provisa.compiler.complexity); the org's ``limits.max_query_complexity`` is the ceiling a
+    role may tighten. ``max_query_time_ms`` caps execution wall-time per request for the role."""
 
     requests_per_second: int | None = None
     max_sse_subscriptions: int | None = None
     max_flight_streams: int | None = None
-    # REQ-1174: per-role query-complexity limits (Hasura api_limits: depth_limit / node_limit / time).
-    max_query_depth: int | None = None
-    max_query_nodes: int | None = None
+    max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
 
 
@@ -1416,7 +1416,9 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # REQ-885: implementation-kind dimension. Addressing (name/function_name) is decoupled
     # from binding (transport + location, swappable). ``source_procedure`` is the existing
     # REQ-205–208 path; the others are Provisa-hosted / external implementations.
-    #   source_procedure | script | http | grpc | python
+    #   source_procedure | source_operation | script | http | grpc | python
+    # source_operation (REQ-1924): a write operation of a remote source (OpenAPI, GraphQL, gRPC),
+    # named by source_id and function_name and passed through as is.
     impl_kind: str = "source_procedure"
     # Per-kind transport+location. Never a fallback: dispatch fails loud when a hosted kind
     # is registered without the binding keys its transport requires (REQ-885).
@@ -1434,6 +1436,13 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # returns, symmetric with each input dataset arg's `columns`. Validated on the way out (fail-loud).
     # This is the source of truth; return_schema is its GraphQL projection. None ⇒ output unvalidated.
     output_columns: list[DatasetColumn] | None = None
+    # REQ-1924: each call is put to the deployment's approval hook (REQ-203) before it runs, and
+    # runs only when the hook approves it. With no hook configured the call is refused.
+    requires_approval: bool = False
+    # REQ-1924, REQ-871: the registered table of the same source this command writes, as
+    # "schema.table", where it is known. After a call, what is held of that table's rows stops
+    # being served, as after any write to it.
+    writes_table: str | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -1755,6 +1764,10 @@ class GraphQLRemoteConfig(BaseModel):
     max_object_depth: int = 5
     max_list_depth: int = 2
     max_list_items: int = 100
+    # The most rows one read of a Relay connection table takes, following its cursor page by
+    # page (max_list_items rows a page). A connection can hold more rows than a rate-limited
+    # remote will serve in one sitting; a read that reaches this bound stops and logs it.
+    max_rows: int = 10000
 
 
 class VectorModelConfig(BaseModel):  # REQ-500
@@ -2092,7 +2105,7 @@ class ProvisaConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _roles_state_their_domains(cls, data: object) -> object:
+    def _roles_state_their_domains(cls, data: Any) -> Any:
         """A role that omits ``domain_access`` fails the load BY NAME. There is no default: a
         missing list would have to be read as either every domain or none."""
         if isinstance(data, dict):

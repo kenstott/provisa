@@ -350,8 +350,8 @@ roles = Table(
     # absent feature demonstrates nothing. Disjoint from `capabilities` by construction.
     Column("demonstrated", JSON, nullable=False, default=list, server_default="[]"),
     Column("domain_access", JSON, nullable=False, default=list, server_default="[]"),
-    # REQ-1174: per-role rate + query-complexity limits {requests_per_second, max_query_depth,
-    # max_query_nodes, max_query_time_ms, ...}. None/absent = unlimited.
+    # REQ-1174: per-role rate + query limits {requests_per_second, max_query_complexity,
+    # max_query_time_ms, ...}. None/absent = unlimited.
     Column("rate_limit", JSON),
     Column("parent_role_id", Text, ForeignKey("roles.id")),
     # REQ-1597/REQ-1624: this role's capabilities are DERIVED from the named role's, in this schema
@@ -887,6 +887,10 @@ tracked_functions = Table(
     Column("impl_kind", Text, nullable=False, server_default="source_procedure"),
     Column("binding", JSON, nullable=False, default=dict, server_default="{}"),
     Column("materialize", Boolean, nullable=False, server_default=false()),
+    # REQ-1924: each call is approved by the approval hook before it runs.
+    Column("requires_approval", Boolean, nullable=False, server_default=false()),
+    # REQ-1924, REQ-871: "schema.table" of the registered table the command writes, when known.
+    Column("writes_table", Text),
 )
 
 tracked_webhooks = Table(

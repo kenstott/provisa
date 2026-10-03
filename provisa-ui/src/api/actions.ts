@@ -70,6 +70,10 @@ export interface TrackedFunction {
   implKind?: string;
   binding?: Record<string, unknown>;
   materialize?: boolean;
+  // REQ-1924: each call is approved by the deployment's approval hook before it runs.
+  requiresApproval?: boolean;
+  // REQ-1924, REQ-871: "schema.table" of the registered table it writes, where known.
+  writesTable?: string | null;
   // REQ-1634: optional data-product membership.
   productId?: string | null;
 }
@@ -117,6 +121,10 @@ export async function saveFunction(input: {
   implKind?: string;
   binding?: Record<string, unknown>;
   materialize?: boolean;
+  // REQ-1924: each call is approved by the deployment's approval hook before it runs.
+  requiresApproval?: boolean;
+  // REQ-1924, REQ-871: "schema.table" of the registered table it writes, where known.
+  writesTable?: string | null;
   productId?: string | null;
 }): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/functions`, {

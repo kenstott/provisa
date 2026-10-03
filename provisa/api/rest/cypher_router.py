@@ -68,6 +68,7 @@ from provisa.api.rest.cypher_exec import (
     _resolve_role_id,
 )
 from provisa.observability.span_attrs import span_attrs_from_semantic_sql
+from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
 
@@ -742,6 +743,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
             serve_cached=True,
         )
+    except ComplexityLimitExceeded:
+        raise  # REQ-1174: answered as 413 by the app's handler
     except PermissionError as exc:
         return JSONResponse(status_code=403, content={"error": str(exc)})
     except Exception as exc:

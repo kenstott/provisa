@@ -50,6 +50,7 @@ import type { Source } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { cdcTransportApplicable, sourceChangeSignals } from "../liveCapability";
 import {
+  BRAND_CARRIER,
   CATEGORIES,
   DB_DESCRIPTION_TYPES,
   DISCOVERABLE_TYPES,
@@ -64,6 +65,8 @@ import {
   parseFilesPath,
   reachInfoFor,
   reachSuffix,
+  sourceBrand,
+  sourceTypeLabel,
   uiType,
 } from "./sources/sourceHelpers";
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
@@ -427,7 +430,7 @@ export function SourcesPage() {
     }
     setForm({
       id: s.id,
-      type: uiType(s.type),
+      type: sourceBrand(s.federationHintsJson) ?? uiType(s.type),
       host: s.type === "graphql_remote" ? (s.path ?? "") : (s.host ?? ""),
       port: s.port ?? getDefaultPort(uiType(s.type)),
       database: s.database ?? "",
@@ -1146,22 +1149,33 @@ export function SourcesPage() {
       const resp = await fetch("/admin/sources/graphql-remote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source_id: form.id,
-          url: form.host,
-          namespace: gqlNamespace,
-          domain_id: "",
-          auth: authType !== "none" ? { type: authType, ...authFields } : null,
-          cache_ttl: parseInt(gqlCacheTtl, 10) || 300,
-          description: form.description,
-        }),
+        body: JSON.stringify(
+          form.type in BRAND_CARRIER
+            ? {
+                // REQ-1923: a branded source sends its brand and a credential; the endpoint
+                // is the brand's, and no tables are registered by adding it.
+                source_id: form.id,
+                brand: form.type,
+                namespace: gqlNamespace,
+                domain_id: "",
+                auth: { type: "bearer", token: authFields.token ?? "" },
+                description: form.description,
+              }
+            : {
+                source_id: form.id,
+                url: form.host,
+                namespace: gqlNamespace,
+                domain_id: "",
+                auth: authType !== "none" ? { type: authType, ...authFields } : null,
+                cache_ttl: parseInt(gqlCacheTtl, 10) || 300,
+                description: form.description,
+              },
+        ),
       });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
         throw new Error(serverMessage(body, requestFailed("GraphQL register", resp.status)));
       }
-      // REQ-1918: registering a source again keeps the tables something still refers to.
-      setKeptTables(keptTablesOf(await resp.json().catch(() => null)));
       const ttlValue = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
       if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
       const cacheResult = await updateSourceCache(form.id, form.cacheEnabled, ttlValue);
@@ -1343,7 +1357,7 @@ export function SourcesPage() {
               ? handleOpenapiRegister
               : form.type === "grpc"
                 ? handleGrpcRegister
-                : form.type === "graphql"
+                : form.type === "graphql" || form.type in BRAND_CARRIER
                   ? handleGraphqlRegister
                   : // REQ-1780/1783: kaggle registers per-file through KaggleFormSection's own
                     // "Add Dataset" button (each file needs its own createSource+registerTable
@@ -1469,7 +1483,7 @@ export function SourcesPage() {
                         </Group>
                       </Table.Td>
                       <Table.Td>
-                        {SOURCE_TYPES.find((st) => st.value === s.type)?.label ?? s.type}
+                        {sourceTypeLabel(s.type, s.federationHintsJson)}
                       </Table.Td>
                       <Table.Td>{s.host}</Table.Td>
                       <Table.Td>{s.port || "—"}</Table.Td>
@@ -1548,7 +1562,7 @@ export function SourcesPage() {
                                   ? handleOpenapiRegister
                                   : form.type === "grpc"
                                     ? handleGrpcRegister
-                                    : form.type === "graphql"
+                                    : form.type === "graphql" || form.type in BRAND_CARRIER
                                       ? handleGraphqlRegister
                                       : handleCreate
                               }

@@ -98,6 +98,9 @@
     "maxLiveConcurrencyPlaceholder": "keine Begrenzung",
     "maxLiveConcurrencyInvalid": "Geben Sie eine ganze Zahl ab 1 ein oder lassen Sie das Feld leer für keine Begrenzung.",
     "loadManagementFixErrors": "Korrigieren Sie die Einstellungen unter Laststeuerung und Aktualität vor dem Speichern.",
-    "cacheTtlRequiredForSignal": "Das Änderungssignal {{signal}} bewertet die Aktualität anhand der Cache-TTL. Legen Sie daher eine Cache-TTL fest."
+    "cacheTtlRequiredForSignal": "Das Änderungssignal {{signal}} bewertet die Aktualität anhand der Cache-TTL. Legen Sie daher eine Cache-TTL fest.",
+    "accessToken": "Zugriffstoken",
+    "accessTokenHint": "Wird im Secrets-Tresor gespeichert. Ein Verweis der Form ${secret:NAME} oder ${env:NAME} wird ebenfalls akzeptiert.",
+    "brandNamespaceHint": "Präfix der Tabellennamen dieser Quelle. Für den Standardwert leer lassen."
   }
 }

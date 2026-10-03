@@ -720,8 +720,8 @@ class Query:  # REQ-021, REQ-042
         Returns table names with comments from the physical database.
         Filters out Provisa admin/platform tables.
         For OpenAPI sources, returns GET operations whose response is array or pagination wrapper.
-        For GraphQL sources, returns query fields returning a list type.
-        For gRPC sources, returns server-streaming RPCs or RPCs with repeated response fields.
+        For GraphQL sources, returns every table the schema maps to, by its registered name.
+        For gRPC sources, returns one table per query method of the proto, by its registered name.
         """
         require_capability(info, "table_registration")
         from provisa.api.app import state
@@ -874,26 +874,20 @@ class Query:  # REQ-021, REQ-042
     async def available_functions(
         self, info: StrawberryInfo, source_id: str, schema_name: str = "openapi"
     ) -> list[AvailableTableType]:
-        """List available functions/mutations for a source.
-
-        For OpenAPI sources: returns non-GET operations (POST/PUT/PATCH/DELETE).
-        """
+        """The write operations a remote source offers, to be registered as commands one at a
+        time (REQ-1924): an OpenAPI source's operations that are not GETs, a remote GraphQL
+        source's mutations, a gRPC source's mutation methods. Listing them registers none."""
         require_capability(info, "table_registration")
         from provisa.api.app import state
+        from provisa.executor.source_operation import OPERATION_SCHEMA, offered_operations
 
-        if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
-            from provisa.openapi.mapper import parse_spec
-
-            spec = state.openapi_specs[source_id]["spec"]
-            _, mutations = parse_spec(spec)
-            return [
-                AvailableTableType(
-                    name=m.operation_id,
-                    comment=f"[{m.method}] {m.path}" + (f" — {m.summary}" if m.summary else ""),
-                )
-                for m in mutations
-            ]
-        return []
+        source_type = (getattr(state, "source_types", None) or {}).get(source_id, "")
+        if OPERATION_SCHEMA.get(source_type) != schema_name:
+            return []
+        if source_type == "openapi":
+            await _ensure_openapi_spec(source_id)
+        offered = await offered_operations(state, source_id)
+        return [AvailableTableType(name=op.name, comment=op.comment) for op in offered or []]
 
     @strawberry.field
     async def available_columns(
@@ -1724,6 +1718,76 @@ async def _elasticsearch_columns(source_id: str, table_name: str) -> list[Availa
     ]
 
 
+async def _remote_source_columns(
+    source_id: str, schema_name: str, table_name: str
+) -> list[AvailableColumnType]:
+    """A remote GraphQL / gRPC source table's columns: as registered, or -- for a table of a
+    branded source that is not registered yet -- as the brand's schema offers them."""
+    # REQ-1742: grpc_remote has the exact same gap graphql_remote already has this branch
+    # for — no physical SQL catalog in the engine, column types live only in table_columns
+    # (written at registration time by _register_schema/register_table, grpc_remote_router.py)
+    # — so an updateTable grant call (columns supplied without data_type, as the UI's own
+    # grant flow does) must read them back from there instead of falling through to engine
+    # introspection and finding nothing ("no data type could be resolved from the source").
+    # REQ-308/REQ-602: graphql_remote has no physical SQL catalog in the engine — its
+    # column types live exclusively in table_columns, written at registration time by
+    # _upsert_tables_to_semantic_layer. Read them back directly so that an updateTable
+    # grant call (columns supplied without data_type) can resolve types from the already-
+    # stored metadata rather than falling through to engine introspection and finding nothing.
+    from sqlalchemy import select as _select
+
+    from provisa.core.schema_org import registered_tables as _rt, table_columns as _tc
+
+    pool = await _get_pool()
+    async with pool.acquire() as _conn:
+        _res = await _conn.execute_core(
+            _select(_tc.c.column_name, _tc.c.data_type)
+            .select_from(_tc.join(_rt, _rt.c.id == _tc.c.table_id))
+            .where(
+                _rt.c.source_id == source_id,
+                _rt.c.schema_name == schema_name,
+                _rt.c.table_name == table_name,
+                _tc.c.data_type.is_not(None),
+            )
+        )
+        _stored = [
+            AvailableColumnType(name=r.column_name, data_type=r.data_type, comment=None)
+            for r in _res.fetchall()
+        ]
+    if _stored:
+        return _stored
+    # REQ-322: a gRPC source's table is not registered until the steward registers it, so before
+    # that its columns come from the source's proto.
+    from provisa.api.app import state as _state
+
+    _grpc = getattr(_state, "grpc_remote_sources", {}).get(source_id)
+    if _grpc is not None:
+        from provisa.grpc_remote.mapper import query_table_name
+
+        for _q in _grpc.get("queries") or []:
+            if query_table_name(_grpc.get("namespace", ""), _q) == table_name:
+                return [
+                    AvailableColumnType(name=c.name, data_type=c.type, comment=None)
+                    for c in _q.columns
+                ] + [
+                    AvailableColumnType(name=f"_nf_{c.name}", data_type=c.type, comment=None)
+                    for c in _q.input_fields
+                ]
+        return []
+    # REQ-308/REQ-1923: a remote GraphQL source's table is not registered until the steward
+    # registers it, so before that its columns come from the source's schema.
+    from provisa.api.admin._graphql_table_registration import offered_columns, source_offer
+    from provisa.api.app import state
+
+    _offered = await source_offer(state, source_id)
+    if _offered is None:
+        return []
+    return [
+        AvailableColumnType(name=name, data_type=data_type, comment=comment)
+        for name, data_type, comment in offered_columns(*_offered, table_name)
+    ]
+
+
 async def resolve_available_columns_metadata(
     source_id: str, schema_name: str, table_name: str
 ) -> list[AvailableColumnType]:
@@ -1738,37 +1802,7 @@ async def resolve_available_columns_metadata(
 
     source_type = state.source_types.get(source_id, "")
     if source_type in ("graphql_remote", "grpc_remote"):
-        # REQ-1742: grpc_remote has the exact same gap graphql_remote already has this branch
-        # for — no physical SQL catalog in the engine, column types live only in table_columns
-        # (written at registration time by _register_schema/register_table, grpc_remote_router.py)
-        # — so an updateTable grant call (columns supplied without data_type, as the UI's own
-        # grant flow does) must read them back from there instead of falling through to engine
-        # introspection and finding nothing ("no data type could be resolved from the source").
-        # REQ-308/REQ-602: graphql_remote has no physical SQL catalog in the engine — its
-        # column types live exclusively in table_columns, written at registration time by
-        # _upsert_tables_to_semantic_layer. Read them back directly so that an updateTable
-        # grant call (columns supplied without data_type) can resolve types from the already-
-        # stored metadata rather than falling through to engine introspection and finding nothing.
-        from sqlalchemy import select as _select
-
-        from provisa.core.schema_org import registered_tables as _rt, table_columns as _tc
-
-        pool = await _get_pool()
-        async with pool.acquire() as _conn:
-            _res = await _conn.execute_core(
-                _select(_tc.c.column_name, _tc.c.data_type)
-                .select_from(_tc.join(_rt, _rt.c.id == _tc.c.table_id))
-                .where(
-                    _rt.c.source_id == source_id,
-                    _rt.c.schema_name == schema_name,
-                    _rt.c.table_name == table_name,
-                    _tc.c.data_type.is_not(None),
-                )
-            )
-            return [
-                AvailableColumnType(name=r.column_name, data_type=r.data_type, comment=None)
-                for r in _res.fetchall()
-            ]
+        return await _remote_source_columns(source_id, schema_name, table_name)
     if source_type == "govdata":
         return await _govdata_columns(source_id, schema_name, table_name, None)
     # REQ-1672 (and the same engine-independent readers for the types below): the app's own native

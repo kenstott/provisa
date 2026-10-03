@@ -21,6 +21,9 @@ message ApprovalRequest {
   repeated string columns = 4;
   string operation = 5;
   map<string, string> session_vars = 6;
+  // REQ-1924: a command call's name, and its arguments as a JSON object; empty for a query.
+  string command = 7;
+  string arguments_json = 8;
 }
 
 message ApprovalResponse {
