@@ -1167,13 +1167,6 @@ class ReplicationConfig(BaseModel):  # REQ-826
     hot_max_rows: int = 10_000_000  # a table larger than this is not replicated for being busy
 
 
-class WarmTablesConfig(BaseModel):  # REQ-544
-    # REQ-238: the engine filesystem (SSD) read-cache settings.
-    fs_cache_enabled: bool = False  # REQ-238: emit fs.cache.* on the Iceberg catalog
-    fs_cache_directories: str = "/tmp/engine-cache"  # nosec B108 - engine-node cache dir, configurable
-    fs_cache_max_sizes: str = "10GB"
-
-
 class RowMaterializeConfig(BaseModel):  # REQ-1865
     """Operator-set tuning knobs for the row-level, query-driven materializer (design doc section
     6c): cold-row reap cadence/grace/batch, and the CDC-triggered background-refresh drain cadence.
@@ -2070,7 +2063,6 @@ class ProvisaConfig(BaseModel):
     # REQ-931: Provisa-level Kafka consumer group for inbound CDC (Debezium/Kafka). Receiver-side —
     # one consumer identity across all sources; a source's cdc.consumer_group_id overrides it.
     cdc_consumer_group_id: str = "provisa-debezium"
-    warm_tables: WarmTablesConfig = Field(default_factory=WarmTablesConfig)
     replication: ReplicationConfig = Field(default_factory=ReplicationConfig)  # REQ-826
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     row_materialize: RowMaterializeConfig = Field(default_factory=RowMaterializeConfig)  # REQ-1865

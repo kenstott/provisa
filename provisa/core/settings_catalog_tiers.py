@@ -9,15 +9,14 @@
 # permission from the copyright holder.
 
 """The cache tiers as operator settings (REQ-1913): hot tables, Hot replication (when a busy
-table is replicated, REQ-826), the engine's filesystem read cache and the materialized-view
-default TTL.
+table is replicated, REQ-826) and the materialized-view default TTL.
 
 Part of the settings declarations (``provisa/core/settings_catalog.py`` lists them all). The
 defaults are the config models' own. All of them are read when the tiers are started, so a change
 takes effect at the next start.
 """
 
-# Requirements: REQ-1913, REQ-230, REQ-231, REQ-238, REQ-543, REQ-544, REQ-826
+# Requirements: REQ-1913, REQ-230, REQ-231, REQ-543, REQ-544, REQ-826
 
 from __future__ import annotations
 
@@ -25,12 +24,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from provisa.core.models import (
-    HotTablesConfig,
-    MaterializedViewsConfig,
-    ReplicationConfig,
-    WarmTablesConfig,
-)
+from provisa.core.models import HotTablesConfig, MaterializedViewsConfig, ReplicationConfig
 from provisa.core.settings_registry import Setting
 
 
@@ -51,10 +45,6 @@ def _tier(block: str, model: type[BaseModel], field: str, type_: str, **more: An
 
 def _hot(field: str, type_: str, **more: Any) -> Setting:
     return _tier("hot_tables", HotTablesConfig, field, type_, **more)
-
-
-def _warm(field: str, type_: str, **more: Any) -> Setting:
-    return _tier("warm_tables", WarmTablesConfig, field, type_, **more)
 
 
 def _replication_hot(field: str, unit: str) -> Setting:
@@ -84,9 +74,6 @@ DECLARED: list[Setting] = [
     _replication_hot("hot_threshold", "statements"),
     _replication_hot("hot_interval", "seconds"),
     _replication_hot("hot_max_rows", "rows"),
-    _warm("fs_cache_enabled", "bool"),
-    _warm("fs_cache_directories", "str"),
-    _warm("fs_cache_max_sizes", "str"),
     _tier(
         "materialized_views", MaterializedViewsConfig, "default_ttl", "int", min=1, unit="seconds"
     ),

@@ -42,13 +42,7 @@ import { usePanelState } from "../../hooks/usePanelState";
 import { PlatformRequired } from "./PlatformRequired";
 import { isForbidden } from "./isForbidden";
 
-type StorageBlock =
-  | "cache"
-  | "hot_tables"
-  | "replication"
-  | "warm_tables"
-  | "materialized_views"
-  | "materialize";
+type StorageBlock = "cache" | "hot_tables" | "replication" | "materialized_views" | "materialize";
 
 /** Load the cache-storage config and save back only `blocks`. */
 function useCacheStorage(blocks: StorageBlock[]) {
@@ -226,15 +220,14 @@ export function ResponseCacheSettingsPanel({ platform }: { platform: boolean }) 
 }
 
 /**
- * Hot Tables → Settings: the hot tier's promotion thresholds, when a busy table is replicated
- * (REQ-826), and the engine's filesystem read cache (REQ-238).
+ * Hot Tables → Settings: the hot tier's promotion thresholds, and when a busy table is
+ * replicated (REQ-826).
  */
 export function HotTablesSettingsPanel() {
   const { t } = useTranslation();
   const { s, setS, save, saving, msg, error, forbidden } = useCacheStorage([
     "hot_tables",
     "replication",
-    "warm_tables",
   ]);
   if (forbidden) return <PlatformRequired />;
   if (!s) return error ? <Alert color="red">{error}</Alert> : null;
@@ -295,42 +288,6 @@ export function HotTablesSettingsPanel() {
         />
       </SimpleGrid>
 
-      <Title order={5}>{t("cacheStorageTab.fsCacheHeading")}</Title>
-      <Text c="dimmed" size="sm">
-        {t("cacheStorageTab.fsCacheIntro")}
-      </Text>
-      <Checkbox
-        label={t("cacheStorageTab.fsCacheEnabledLabel")}
-        checked={s.warm_tables.fs_cache_enabled}
-        onChange={(e) =>
-          setS({
-            ...s,
-            warm_tables: { ...s.warm_tables, fs_cache_enabled: e.currentTarget.checked },
-          })
-        }
-      />
-      <SimpleGrid cols={{ base: 1, sm: 2 }}>
-        <TextInput
-          label={t("cacheStorageTab.fsCacheDirsLabel")}
-          value={s.warm_tables.fs_cache_directories}
-          onChange={(e) =>
-            setS({
-              ...s,
-              warm_tables: { ...s.warm_tables, fs_cache_directories: e.currentTarget.value },
-            })
-          }
-        />
-        <TextInput
-          label={t("cacheStorageTab.fsCacheMaxSizesLabel")}
-          value={s.warm_tables.fs_cache_max_sizes}
-          onChange={(e) =>
-            setS({
-              ...s,
-              warm_tables: { ...s.warm_tables, fs_cache_max_sizes: e.currentTarget.value },
-            })
-          }
-        />
-      </SimpleGrid>
       <StorageSaveRow
         save={save}
         saving={saving}

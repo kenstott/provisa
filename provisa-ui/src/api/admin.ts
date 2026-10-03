@@ -1091,12 +1091,6 @@ export interface CacheStorageState {
   };
   // REQ-826: when a busy table is replicated (Default threshold, window, size ceiling).
   replication: { hot_threshold: number; hot_interval: number; hot_max_rows: number };
-  // REQ-238: the engine's filesystem read cache.
-  warm_tables: {
-    fs_cache_enabled: boolean;
-    fs_cache_directories: string;
-    fs_cache_max_sizes: string;
-  };
   materialized_views: { default_ttl: number | null };
   materialize: { store_url: string; default_store_url: string };
   restart_required_note: string;
@@ -1113,7 +1107,6 @@ export async function setCacheStorage(
     cache: Partial<CacheStorageState["cache"]>;
     hot_tables: Partial<CacheStorageState["hot_tables"]>;
     replication: Partial<CacheStorageState["replication"]>;
-    warm_tables: Partial<CacheStorageState["warm_tables"]>;
     materialized_views: Partial<CacheStorageState["materialized_views"]>;
     materialize: { store_url: string };
   }>,
