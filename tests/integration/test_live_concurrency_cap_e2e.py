@@ -112,14 +112,18 @@ def _read(base_url: str) -> tuple[float, float, dict]:
     return t0, t1, resp.json()
 
 
-def _permit_sampler(stop: threading.Event, peaks: list[int]) -> None:
+def _permit_sampler(stop: threading.Event, peaks: list[int], holders: set[str]) -> None:
+    """Every few milliseconds: how many unexpired leases the source's permit set holds
+    (``peaks``), and which leases were ever seen (``holders`` — one token per live read)."""
     r = redis.Redis.from_url(os.environ["REDIS_URL"], decode_responses=True)
     keys = [k for k in r.scan_iter(f"provisa:live_permits:*:{_SOURCE}")]
     while not stop.is_set():
         keys = keys or [k for k in r.scan_iter(f"provisa:live_permits:*:{_SOURCE}")]
         now_s, now_us = r.time()
         now = now_s + now_us / 1_000_000
-        peaks.append(sum(int(r.zcount(k, now, "+inf")) for k in keys))
+        held = [token for k in keys for token in r.zrangebyscore(k, now, "+inf")]
+        peaks.append(len(held))
+        holders.update(held)
         time.sleep(0.005)
 
 
@@ -134,7 +138,8 @@ def test_the_cap_holds_across_two_instances_and_every_read_completes(servers):
 
     stop = threading.Event()
     peaks: list[int] = []
-    sampler = threading.Thread(target=_permit_sampler, args=(stop, peaks), daemon=True)
+    holders: set[str] = set()
+    sampler = threading.Thread(target=_permit_sampler, args=(stop, peaks, holders), daemon=True)
     sampler.start()
     targets = [a.base_url, b.base_url] * 2  # four concurrent reads, two per instance
     t_start = time.monotonic()
@@ -149,8 +154,14 @@ def test_the_cap_holds_across_two_instances_and_every_read_completes(servers):
         assert n == expected
     assert peaks, "the sampler never read the permit set"
     assert max(peaks) == 1, f"more than one live read held a permit at once: max {max(peaks)}"
-    # Four reads through a cap of 1 run one after another, not side by side.
-    assert wall >= 3 * single_s, f"wall {wall:.2f}s vs single {single_s:.2f}s: reads overlapped"
+    # Every one of the four reads went through the cap: each held its own lease, one at a time.
+    # (Only the live read itself holds the permit; the rest of a request — governance, planning,
+    # serializing the answer — runs beside the other requests, so the wall time of four capped
+    # reads is not a multiple of one uncontended read's and is not what is asserted.)
+    assert len(holders) == len(targets), (
+        f"{len(holders)} lease(s) seen for {len(targets)} reads (wall {wall:.2f}s, "
+        f"single {single_s:.2f}s): a read was answered without taking the permit"
+    )
 
 
 _SOURCE_FIELDS = """

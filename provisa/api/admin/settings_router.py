@@ -887,14 +887,8 @@ async def set_federation_engine(request: Request):  # REQ-916
 _CACHE_STORAGE_SETTINGS = {
     "cache": ("enabled", "redis_url", "default_ttl"),
     "hot_tables": ("auto_threshold", "max_rows", "max_bytes", "refresh_interval"),
-    "warm_tables": (
-        "query_threshold",
-        "max_rows",
-        "refresh_interval",
-        "fs_cache_enabled",
-        "fs_cache_directories",
-        "fs_cache_max_sizes",
-    ),
+    "replication": ("hot_threshold", "hot_interval", "hot_max_rows"),
+    "warm_tables": ("fs_cache_enabled", "fs_cache_directories", "fs_cache_max_sizes"),
     "materialized_views": ("default_ttl",),
 }
 
@@ -934,14 +928,11 @@ async def get_cache_storage(request: Request):  # REQ-917
             "default_ttl": saved("cache.default_ttl").value,
         },
         "hot_tables": hot,
-        "warm_tables": _tier(  # REQ-240: tier-promotion thresholds + engine filesystem read-cache
-            "warm_tables",
-            "query_threshold",
-            "max_rows",
-            "refresh_interval",
-            "fs_cache_enabled",
-            "fs_cache_directories",
-            "fs_cache_max_sizes",
+        # REQ-826: when a busy table is replicated (Default threshold, window, size ceiling)
+        "replication": _tier("replication", "hot_threshold", "hot_interval", "hot_max_rows"),
+        # REQ-238: the engine's filesystem read cache
+        "warm_tables": _tier(
+            "warm_tables", "fs_cache_enabled", "fs_cache_directories", "fs_cache_max_sizes"
         ),
         # REQ-543: default MV refresh TTL for MVs without their own
         "materialized_views": _tier("materialized_views", "default_ttl"),

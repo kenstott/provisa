@@ -183,8 +183,10 @@ def build_audit_record(
     from datetime import datetime, timezone
 
     from provisa.audit.writer import AuditRecord
-    from provisa.core.request_context import current_org
+    from provisa.core.environments import PROD
+    from provisa.core.request_context import current_env, current_org
     from provisa.encryption.runtime import encryption_service
+    from provisa.federation.replica_hot import count_scope
     from provisa.otel_compat import current_udf_correlation_id
 
     tenant_db = state.tenant_db
@@ -217,6 +219,9 @@ def build_audit_record(
         # plane (single-tenant / desktop) = no org registry, no subscription, nothing to meter.
         meter_pool=state.admin_db,
         meter_org=org_id,
+        # REQ-826: the statement's tables count toward Hot replication in this org environment.
+        hot_counts=state.hot_counts,
+        hot_scope=count_scope(org_id, current_env.get() or PROD),
         route=route,
         row_count=row_count,
     )

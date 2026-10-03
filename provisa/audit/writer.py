@@ -109,6 +109,11 @@ class AuditRecord:
     # deployment without a control plane, which has nothing to meter.
     meter_pool: Any = None  # Any: the control-plane Database handle
     meter_org: str = ""
+    # REQ-826: where this statement's tables are counted toward Hot replication — the
+    # deployment's count store and the org environment the table ids belong to
+    # (federation/replica_hot.py). No store = a caller that counts nothing (a denial).
+    hot_counts: Any = None  # Any: replica_hot.HotCounts
+    hot_scope: str = ""
 
     def row(self) -> dict[str, Any]:
         """The ``query_audit_log`` row: query text encrypted (REQ-689), its plaintext hash kept."""
@@ -141,6 +146,20 @@ async def _meter(pool: Any, org_id: str) -> None:
     await meter_op(pool, org_id)
 
 
+def _count(records: "list[AuditRecord]") -> None:
+    """Add a landed batch to its tables' Hot counts (REQ-826), one round trip per count store."""
+    from provisa.core import settings_registry
+    from provisa.federation.replica_hot import batch_hits
+
+    interval = settings_registry.value("replication.hot_interval")
+    by_store: dict[int, list[AuditRecord]] = {}
+    for rec in records:
+        if rec.hot_counts is not None:
+            by_store.setdefault(id(rec.hot_counts), []).append(rec)
+    for group in by_store.values():
+        group[0].hot_counts.add(batch_hits(group), interval)
+
+
 class AuditWriter:
     """A bounded queue of finished audit records and the one thread that inserts them."""
 
@@ -153,6 +172,7 @@ class AuditWriter:
         retry_s: float = RETRY_INTERVAL_S,
         insert: Callable[[Any, list[dict[str, Any]]], Awaitable[None]] = _insert_rows,
         meter: Callable[[Any, str], Awaitable[None]] = _meter,
+        count: "Callable[[list[AuditRecord]], None]" = _count,
     ) -> None:
         self._queue: queue.Queue[AuditRecord] = queue.Queue(maxsize=capacity)
         self._batch_size = batch_size
@@ -160,6 +180,7 @@ class AuditWriter:
         self._retry_s = retry_s
         self._insert = insert
         self._meter = meter
+        self._count = count
         # Taken off the queue, not yet landed: rows whose insert failed, meters whose call failed.
         self._held_rows: list[AuditRecord] = []
         self._held_meters: list[tuple[Any, str]] = []
@@ -309,6 +330,7 @@ class AuditWriter:
                 continue
             landed = {id(rec) for rec in group}
             self._held_rows = [rec for rec in self._held_rows if id(rec) not in landed]
+            self._count_landed(group)
             self._held_meters.extend((rec.meter_pool, rec.meter_org) for rec in group)
         todo, self._held_meters = self._held_meters, []
         settled = 0
@@ -328,6 +350,23 @@ class AuditWriter:
             settled += 1
         self._settle(settled)
         return not self._held_rows and not self._held_meters
+
+    def _count_landed(self, group: list[AuditRecord]) -> None:
+        """Count a batch whose rows have landed toward Hot replication. Runs after the insert,
+        so nothing here can cost an audit row."""
+        from provisa.core.redis_factory import redis_error
+
+        try:
+            self._count(group)
+        except redis_error():
+            # REQ-826 / REQ-1920: Hot-N is best effort and the count is derived state — it may be
+            # lost without loss of information (the audit rows just landed are the record). The
+            # batch is not held or retried for it; the failure is logged with what it missed.
+            log.exception(
+                "Hot count not recorded for a batch of %d audit record(s); their statements are "
+                "not counted toward replication",
+                len(group),
+            )
 
     async def _run(self) -> None:
         try:

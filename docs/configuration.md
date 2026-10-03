@@ -981,6 +981,37 @@ Only Always is a guarantee. Never and the Hot values are best effort. `load_prot
 
 The floor is judged by the tables a statement reads. A statement that reads no replica-served table keeps its direct route even when its source has other replicated tables. [tool-verified: `provisa/federation/registry_view.py` `operator_floor`]
 
+### Hot replication
+
+A table whose `replicate` is not set, or is `N` above 0, is read live until it is busy.
+
+```yaml
+replication:
+  hot_threshold: 100       # statements per interval for a table left at Default
+  hot_interval: 60         # seconds: the window the count is taken over, and how often it is judged
+  hot_max_rows: 10000000   # a larger table is not replicated for being busy
+```
+
+| Setting | Environment variable | Default |
+| --- | --- | --- |
+| `replication.hot_threshold` | `PROVISA_REPLICATION_HOT_THRESHOLD` | 100 |
+| `replication.hot_interval` | `PROVISA_REPLICATION_HOT_INTERVAL` | 60 |
+| `replication.hot_max_rows` | `PROVISA_REPLICATION_HOT_MAX_ROWS` | 10000000 |
+
+All three are operator settings: the admin UI shows them under Hot Tables, and a saved value applies at the next evaluation.
+
+How a table is counted:
+
+- A governed statement counts each table it reads once, however many times it reads it.
+- A statement answered from the response cache does not count. It put no load on the source.
+- A statement governance refused does not count.
+
+A table is promoted when its count reaches its threshold (its own `N`, else its source's, else `hot_threshold`) and demoted when the count falls below half of it. Promotion requests a replica build; the table is read live until that build completes, then from the replica. Demotion returns reads to the source at once.
+
+A table is not promoted when it holds more rows than `hot_max_rows`, when its change signal is `ttl` or `ttl_probe` and neither it nor its source declares a `cache_ttl`, or when the Redis hot tier already manages it. The table's summary in the admin UI states which.
+
+The counts live in Redis. With a shared Redis (`cache.redis_url`) they cover every process of the deployment. With the embedded Redis they are per process, so promotion runs only when one worker serves requests; with several workers and no shared Redis nothing is promoted, and the summary says so. [tool-verified: `provisa/federation/replica_hot.py`]
+
 ## Authentication
 
 ```yaml

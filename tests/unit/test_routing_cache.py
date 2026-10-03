@@ -23,6 +23,8 @@ Covers the three invariants the addendum's own design doc requires:
 
 from __future__ import annotations
 
+import dataclasses
+
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -176,6 +178,32 @@ async def test_schema_version_bump_invalidates_routing_cache():
 
         # Simulate a schema/RLS/role mutation: _rebuild_schemas_impl bumps schema_version.
         state.schema_version += 1
+
+        await _optimize_and_route_cached(
+            sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
+        )
+        # A new generation's key misses the old entry and must recompute, not serve the stale
+        # generation's cached route.
+        assert m_opt.await_count == 2
+
+
+async def test_a_change_to_the_replica_served_tables_invalidates_the_routing_cache():
+    ctx = _ctx()
+    gov_ctx = _gov_ctx(ctx)
+    state = _state()
+    sql = "SELECT * FROM sales.orders"
+
+    with patch("provisa.pgwire._pipeline._optimize_and_route", wraps=_optimize_and_route) as m_opt:
+        await _optimize_and_route_cached(
+            sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
+        )
+        assert m_opt.await_count == 1
+
+        # REQ-826: a busy table was promoted or demoted, or its replica completed — the routes
+        # changed with no schema build (model_reload.publish_replica_routes).
+        state.replica_routes = dataclasses.replace(
+            state.replica_routes, generation=state.replica_routes.generation + 1
+        )
 
         await _optimize_and_route_cached(
             sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS

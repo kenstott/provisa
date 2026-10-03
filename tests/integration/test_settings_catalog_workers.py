@@ -114,13 +114,17 @@ def _one_connection_per_worker(port: int, workers: int) -> list[Worker]:
     return list(seen.values())
 
 
-@pytest.fixture(scope="module")
-def launch():
+# The boot org named "default" and a named one (ORG_ID): a reload of a named boot org once looked
+# for "default" and reloaded nothing (REQ-1914), which a launch on "default" alone cannot see.
+@pytest.fixture(
+    scope="module", params=["default", "acme"], ids=["boot-org-default", "boot-org-named"]
+)
+def launch(request):
     boot = WorkerBoot(
         _WORKERS,
         pg_host=_PG_HOST,
         pg_port=_PG_PORT,
-        env={"PROVISA_MCP_MAX_ROWS": str(_ENV_MCP_MAX_ROWS)},
+        env={"PROVISA_MCP_MAX_ROWS": str(_ENV_MCP_MAX_ROWS), "ORG_ID": request.param},
     )
     boot.create_database()
     try:
@@ -247,6 +251,7 @@ def test_a_restart_setting_is_pending_on_every_worker_and_in_force_after_the_res
         pg_port=_PG_PORT,
         database=launch.database,
         data_dir=launch.data_dir,
+        env={"ORG_ID": launch.org_id},
     )
     try:
         relaunched.start()

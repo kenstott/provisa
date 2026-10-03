@@ -33,7 +33,7 @@ from provisa.federation.engine import build_engine
 from provisa.federation.replica_address import address_replicas
 from provisa.federation.replica_routing import replica_routes
 from provisa.federation.strategy import Strategy, federate
-from tests.helpers import no_promoted_tables
+from tests.helpers import no_engine_store, no_promoted_tables
 
 _SOURCE_HOST = "orders-db.internal"
 _ORG = "acme"
@@ -95,7 +95,8 @@ def _state(monkeypatch, engine, source, registered: list[dict], *, catalog: str)
         return []
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
-    monkeypatch.setattr("provisa.federation.replica_state.promoted_keys", no_promoted_tables)
+    monkeypatch.setattr("provisa.federation.replica_state.promotion", no_promoted_tables)
+    monkeypatch.setattr("provisa.federation.replica_builds.store_identity", no_engine_store)
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
     return SimpleNamespace(
         org_id=_ORG,

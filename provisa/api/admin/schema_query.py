@@ -1220,11 +1220,12 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def hot_tables(self, info: StrawberryInfo) -> list[HotTableStatType]:
-        """Cached tables by tier: hot (mirrored for JOIN inlining) and warm (landed in Iceberg).
+        """The tables Provisa keeps a copy of because of how they are used: hot (mirrored in
+        Redis for JOIN inlining) and replicated because they are busy (REQ-826: past their Hot
+        threshold, served from a replica — or read live while that replica is built).
 
-        Both tiers answer the same admin question — which tables is Provisa keeping a copy of —
-        so they are one list with a tier on each row rather than two surfaces (REQ-241 keeps a
-        table in at most one of them).
+        Both answer the same admin question, so they are one list with a kind on each row rather
+        than two surfaces (REQ-241 keeps a table in at most one of them).
         """
         require_capability(info, "observability")
         from provisa.api.app import state
@@ -1234,7 +1235,12 @@ class Query:  # REQ-021, REQ-042
             (e, "hot" if e["loaded"] else "hot_candidate")
             for e in (hot.snapshot() if hot is not None else [])
         ]
-        entries += [(e, "warm") for e in state.warm_manager.snapshot()]
+        from provisa.federation.replica_hot import busy_replicas
+
+        entries += [
+            (e, "replica" if e["serving"] else "replica_building")
+            for e in await busy_replicas(state)
+        ]
         return [
             HotTableStatType(
                 table_name=e["table_name"],

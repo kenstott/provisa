@@ -975,9 +975,6 @@ class Table(
     off_peak_tz: str | None = None  # None = inherit source off_peak_tz
     gql_naming_convention: str | None = None  # overrides source; None = inherit
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
-    warm: bool | None = (
-        None  # REQ-240: None = auto by query frequency, True = force, False = opt out
-    )
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
     # REQ-924/926/927: the single watermark column (an existing column). Set → append landing +
@@ -1157,11 +1154,20 @@ class HotTablesConfig(BaseModel):  # REQ-544
     max_bytes: int = 10 * 1024 * 1024  # REQ-230: serialized-blob ceiling (10 MB)
 
 
+class ReplicationConfig(BaseModel):  # REQ-826
+    """When a table left at Default (or set to Hot-N) is replicated because it is busy."""
+
+    # The Default threshold: governed statements per ``hot_interval`` that read the table. A
+    # table set to Hot-N uses its own N. It goes back to live below half its threshold.
+    hot_threshold: int = 100
+    hot_interval: int = (
+        60  # seconds: the window the count is taken over, and how often it is judged
+    )
+    hot_max_rows: int = 10_000_000  # a table larger than this is not replicated for being busy
+
+
 class WarmTablesConfig(BaseModel):  # REQ-544
-    # REQ-240: tier promotion thresholds + the engine filesystem (SSD) read-cache settings.
-    query_threshold: int = 100  # promote a table after this many queries
-    max_rows: int = 10_000_000  # do not promote tables larger than this
-    refresh_interval: int = 60  # seconds between promotion/demotion sweeps
+    # REQ-238: the engine filesystem (SSD) read-cache settings.
     fs_cache_enabled: bool = False  # REQ-238: emit fs.cache.* on the Iceberg catalog
     fs_cache_directories: str = "/tmp/engine-cache"  # nosec B108 - engine-node cache dir, configurable
     fs_cache_max_sizes: str = "10GB"
@@ -2052,6 +2058,7 @@ class ProvisaConfig(BaseModel):
     # one consumer identity across all sources; a source's cdc.consumer_group_id overrides it.
     cdc_consumer_group_id: str = "provisa-debezium"
     warm_tables: WarmTablesConfig = Field(default_factory=WarmTablesConfig)
+    replication: ReplicationConfig = Field(default_factory=ReplicationConfig)  # REQ-826
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     row_materialize: RowMaterializeConfig = Field(default_factory=RowMaterializeConfig)  # REQ-1865
     observability: OtelConfig = Field(default_factory=OtelConfig)

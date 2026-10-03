@@ -121,7 +121,6 @@ from provisa.api.admin.db_queries import (
 )
 from provisa.api.otel_setup import setup_otel as _setup_otel, shutdown_otel as _shutdown_otel
 from provisa.mv.registry import MVRegistry
-from provisa.cache.warm_tables import WarmTableManager
 from provisa.apq.cache import APQCache, NoopAPQCache
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.models import ProvisaConfig  # noqa: F401
@@ -222,8 +221,7 @@ class AppState:
     api_sources: dict[str, Any] = {}  # source_id → ApiSource
     hot_manager: HotTableManager | None = None
     _hot_refresh_task: LongLived | None = None
-    warm_manager: WarmTableManager = WarmTableManager()
-    _warm_task: LongLived | None = None
+    _replica_hot_task: LongLived | None = None  # REQ-826: the Hot promotion evaluation
     # Readiness (REQ /ready): False until the boot warmup probe has primed the lazy per-request paths
     # (materialize-store attach + a warm engine terminal). /ready returns 503 while this is False so a
     # launcher/orchestrator holds traffic — and the browser open — until the first interaction is warm.
@@ -309,6 +307,10 @@ class AppState:
         from provisa.federation.live_concurrency import LivePermitStore
 
         self.live_permit_store = LivePermitStore(None)
+        # REQ-826: and with its Hot-count store, rebound to the deployment's Redis the same way.
+        from provisa.federation.replica_hot import HotCounts
+
+        self.hot_counts = HotCounts(None)
 
         # The registry must exist first: federation_engine is a routed property (REQ-1244) and
         # this assignment lands on the default-org runtime — the SHARED engine every org without
@@ -334,6 +336,10 @@ class AppState:
             return
         rt = self.org_registry.get(old)
         if rt is not None:
+            # The runtime says which org it serves: whoever binds a request context from it (the
+            # config watcher's reloads, the Hot promotion evaluation) must bind THIS id, the one
+            # requests bind and the one it is registered under — not the compile-time one.
+            rt.org_id = value
             self.org_registry.set(value, rt)
             self.org_registry.invalidate(old)
 
@@ -1028,6 +1034,10 @@ async def _load_and_build(
     from provisa.federation.live_concurrency import LivePermitStore
 
     state.live_permit_store = LivePermitStore(state.redis_url)
+    # REQ-826: Hot counts share it too — deployment-wide with a Redis, this process's own without.
+    from provisa.federation.replica_hot import HotCounts
+
+    state.hot_counts = HotCounts(state.redis_url)
     if settings_registry.value("cache.enabled"):
         # REQ-829: RedisCacheStore(None) transparently uses embedded fakeredis, so
         # desktop exercises the same result-cache code path as production.
@@ -1948,9 +1958,9 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # find column metadata for. DDL only, best-effort like the other two call sites.
         # REQ-1912: which tables are read from their replica, and where — published before the
         # reconcile and before any statement is lowered against this registry.
-        from provisa.federation.replica_routing import replica_routes as _replica_routes
+        from provisa.api.model_reload import publish_replica_routes
 
-        state.replica_routes = await _replica_routes(state)
+        await publish_replica_routes(_stamped_runtime)
         try:
             _landed = await state.federation_engine.reconcile_landed_tables()
             if _landed:
@@ -2416,10 +2426,6 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         _grpc_stopped = state._grpc_server.stop(grace=5)
         await asyncio.to_thread(_grpc_stopped.wait)
 
-    # Cancel warm-table task
-    if state._warm_task:
-        await _stop_long_lived(state._warm_task)
-
     # Cancel the readiness warmup probe (it may still be priming if shutdown raced boot)
     if state._warmup_task:
         await _stop_long_lived(state._warmup_task)
@@ -2427,6 +2433,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     # Cancel hot-table refresh task (Phase AD6)
     if state._hot_refresh_task:
         await _stop_long_lived(state._hot_refresh_task)
+
+    # Stop the Hot promotion evaluation (REQ-826)
+    if state._replica_hot_task:
+        await _stop_long_lived(state._replica_hot_task)
     if state.hot_manager is not None:
         from provisa.cache.hot_tables import HotTableManager
 

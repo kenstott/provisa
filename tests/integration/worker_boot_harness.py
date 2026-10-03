@@ -121,6 +121,10 @@ def _group_members(pgid: int) -> list[int]:
     return members
 
 
+# The boot org a launch serves unless its environment names another (ORG_ID).
+_BOOT_ORG = "default"
+
+
 class WorkerBoot:
     """One ``uvicorn --workers N`` launch on a fresh control-plane database."""
 
@@ -148,6 +152,9 @@ class WorkerBoot:
         self._extra_config = extra_config or {}
         # Extra environment for the server, applied last.
         self._extra_env = dict(env or {})
+        # The boot org the launch serves: the harness's own, unless the test's environment names
+        # another (it is applied after the harness's, see start()).
+        self.org_id = self._extra_env.get("ORG_ID", _BOOT_ORG)
         self._pg = (pg_host, pg_port, pg_user, pg_password)
         self._base = f"postgresql+psycopg://{pg_user}:{pg_password}@{pg_host}:{pg_port}"
         self._admin_url = f"{self._base}/{admin_database}"
@@ -204,7 +211,7 @@ class WorkerBoot:
             "PG_USER": user,
             "PG_PASSWORD": password,
             "PG_DATABASE": self.database,
-            "ORG_ID": "default",
+            "ORG_ID": _BOOT_ORG,
             "PROVISA_ENGINE": self._engine,
             "PROVISA_CONFIG": str(cfg_path),
             "PROVISA_CONFIG_REPLACE": "true",

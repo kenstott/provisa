@@ -1170,7 +1170,9 @@ class HotTableStatType:
     # What Provisa is keeping for this table, as one value rather than a tier/state pair:
     # "hot_candidate" (registered for promotion, nothing mirrored yet, so no row count),
     # "hot" (mirrored into the response store for JOIN inlining),
-    # "warm" (landed as an Iceberg copy). REQ-241 makes the tiers exclusive.
+    # "replica" (past its Hot threshold and served from its replica, REQ-826),
+    # "replica_building" (past its threshold, read live while its replica is built; no row
+    # count yet). REQ-241 makes the tiers exclusive.
     kind: str
 
 

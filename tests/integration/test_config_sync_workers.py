@@ -24,6 +24,12 @@ it serves:
   visibility, row filter, mask, relationship) shows every change on every worker, for one launch
   and for two.
 
+Each runs twice: with the boot org named "default", and with a named one (``ORG_ID``). The boot
+runtime is registered under the compile-time id and moved to ``ORG_ID`` when the control plane is
+read; a reload of a named boot org once checked for "default", found nothing and reloaded
+nothing, so a change through one worker never reached the others (REQ-1914). "default" alone
+cannot see that.
+
 The test instance only: its own database, org, data directory and leased ports
 (``tests/integration/worker_boot_harness.py``)."""
 
@@ -59,10 +65,14 @@ _ENV = {"PROVISA_CONFIG_RELOAD_INTERVAL": str(_INTERVAL_S)}
 _REPO_ROOT = Path(__file__).parents[2]
 
 
-@pytest.fixture(scope="module")
-def launches():
-    """Launch A (four workers) and launch B (one worker) on the same control plane."""
-    first = WorkerBoot(_WORKERS, pg_host=_PG_HOST, pg_port=_PG_PORT, env=_ENV)
+@pytest.fixture(
+    scope="module", params=["default", "acme"], ids=["boot-org-default", "boot-org-named"]
+)
+def launches(request):
+    """Launch A (four workers) and launch B (one worker) on the same control plane, both serving
+    the boot org ``request.param``."""
+    env = {**_ENV, "ORG_ID": request.param}
+    first = WorkerBoot(_WORKERS, pg_host=_PG_HOST, pg_port=_PG_PORT, env=env)
     first.create_database()
     own = sa.create_engine(first.url, isolation_level="AUTOCOMMIT")
     with own.connect() as conn:
@@ -79,7 +89,7 @@ def launches():
             pg_port=_PG_PORT,
             database=first.database,
             data_dir=first.data_dir,
-            env=_ENV,
+            env=env,
         )
         second.start()
         second.wait_all_ready(timeout=300)

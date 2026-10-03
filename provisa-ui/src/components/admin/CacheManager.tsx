@@ -353,25 +353,27 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
   );
 }
 
-function HotTablesTab({ platform }: { platform: boolean }) {
+/** Exported for its component test. */
+export function HotTablesTab({ platform }: { platform: boolean }) {
   const { t } = useTranslation();
   const unknown = t("cacheManager.hot.unknown");
   const { hotTables } = useHotTables();
   const loaded = hotTables.filter((h) => h.kind === "hot");
-  const warm = hotTables.filter((h) => h.kind === "warm");
+  // REQ-826: past their Hot threshold — served from a replica, or read live while it is built.
+  const busy = hotTables.filter((h) => h.kind === "replica" || h.kind === "replica_building");
   const candidates = hotTables.filter((h) => h.kind === "hot_candidate");
-  const totalRows = [...loaded, ...warm].reduce((n, h) => n + h.rowCount, 0);
+  const totalRows = [...loaded, ...busy].reduce((n, h) => n + h.rowCount, 0);
   return (
     <Stack gap="md">
       <Text size="sm" c="dimmed">
         {t("cacheManager.hot.description")}
       </Text>
       <Text size="sm" c="dimmed">
-        {t("cacheManager.hot.warmDescription")}
+        {t("cacheManager.hot.busyDescription")}
       </Text>
       <SimpleGrid cols={{ base: 2, sm: 4 }}>
         <StatCard value={loaded.length} label={t("cacheManager.hot.hotTables")} />
-        <StatCard value={warm.length} label={t("cacheManager.hot.warmTables")} />
+        <StatCard value={busy.length} label={t("cacheManager.hot.busyReplicas")} />
         <StatCard value={candidates.length} label={t("cacheManager.hot.hotCandidates")} />
         <StatCard value={totalRows} label={t("cacheManager.hot.cachedRows")} />
       </SimpleGrid>
@@ -394,8 +396,13 @@ function HotTablesTab({ platform }: { platform: boolean }) {
                 <Table.Td>{h.tableName}</Table.Td>
                 <Table.Td>{h.catalog}</Table.Td>
                 <Table.Td>{h.schemaName}</Table.Td>
-                {/* A candidate has nothing mirrored yet, so it has no row count to report. */}
-                <Table.Td>{h.kind === "hot_candidate" ? unknown : h.rowCount}</Table.Td>
+                {/* A candidate has nothing mirrored yet, and a replica still being built has
+                    nothing to read yet: neither has a row count to report. */}
+                <Table.Td>
+                  {h.kind === "hot_candidate" || h.kind === "replica_building"
+                    ? unknown
+                    : h.rowCount}
+                </Table.Td>
                 <Table.Td>{t(`cacheManager.hot.kind_${h.kind}`)}</Table.Td>
               </Table.Tr>
             ))}

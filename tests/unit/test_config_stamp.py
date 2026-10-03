@@ -76,8 +76,56 @@ def test_every_plane_table_named_for_a_stamp_exists():
         assert set(columns) <= set(schema_org.metadata.tables[table].columns.keys())
 
 
-def test_both_kinds_have_a_row_after_the_schema_is_created(tenant_db):
-    assert set(_stamps(tenant_db)) == {config_stamp.MODEL, config_stamp.SETTINGS}
+_TENANT_KINDS = {config_stamp.MODEL, config_stamp.SETTINGS, config_stamp.REPLICA}
+
+
+def test_every_kind_has_a_row_after_the_schema_is_created(tenant_db):
+    assert set(_stamps(tenant_db)) == _TENANT_KINDS
+
+
+def test_the_replica_stamp_has_no_trigger_and_moves_only_when_advanced(tenant_db):
+    """REQ-826 / REQ-1920: ``replica_state`` is state — written on every build request, progress
+    report and refresh. None of those moves a stamp; the state store advances the ``replica``
+    stamp itself, on the two changes that move a table between live and its replica."""
+    from datetime import UTC, datetime
+
+    from provisa.federation import replica_state
+
+    assert "replica_state" not in config_stamp.TENANT_TABLES
+    key = ("pg", "public", "orders")
+
+    async def _build_and_refresh() -> None:
+        async with tenant_db.acquire() as conn:
+            await replica_state.request_build(conn, key, replica_state.REASON_MODEL)
+            now = datetime.now(UTC)
+            await replica_state.claim(conn, key, holder="h:1", now=now, retry_interval=60)
+            await replica_state.record_progress(conn, key, rows_copied=10)
+            for _ in range(2):
+                await replica_state.record_completed(
+                    conn,
+                    key,
+                    rows_copied=10,
+                    method="stream_batches",
+                    content_hash="h",
+                    store="store-a",
+                    next_refresh_at=None,
+                    now=now,
+                )
+
+    before = _stamps(tenant_db)
+    asyncio.run(_build_and_refresh())
+    assert _stamps(tenant_db) == before
+
+    async def _promote() -> None:
+        async with tenant_db.acquire() as conn:
+            await replica_state.set_promoted(conn, key, True)
+
+    asyncio.run(_promote())
+    after = _stamps(tenant_db)
+    assert after[config_stamp.REPLICA] == before[config_stamp.REPLICA] + 1
+    # ...and it is not a change to the model: no worker rebuilds its schemas for it
+    assert after[config_stamp.MODEL] == before[config_stamp.MODEL]
+    assert after[config_stamp.SETTINGS] == before[config_stamp.SETTINGS]
 
 
 def test_insert_update_and_delete_each_advance_the_stamp(tenant_db):
@@ -182,7 +230,9 @@ def test_a_change_of_one_kind_does_not_move_the_other_kinds_stamp(tenant_db):
 def test_installing_twice_changes_nothing(tenant_db):
     before = _stamps(tenant_db)
     with tenant_db.engine.begin() as conn:
-        config_stamp.install(conn, config_stamp.TENANT_TABLES)
+        config_stamp.install(
+            conn, config_stamp.TENANT_TABLES, advanced=config_stamp.TENANT_ADVANCED
+        )
     assert _stamps(tenant_db) == before
     with tenant_db.engine.begin() as conn:
         conn.execute(sa.insert(schema_org.roles).values(id="risk_reviewer", origin="admin"))
@@ -196,7 +246,7 @@ def test_an_embedded_duckdb_plane_gets_the_rows_and_no_triggers(tmp_path):
     db = Database(engine, name="org")
     try:
         asyncio.run(init_schema(db, "", org_id="default"))
-        assert set(_stamps(db)) == {config_stamp.MODEL, config_stamp.SETTINGS}
+        assert set(_stamps(db)) == _TENANT_KINDS
     finally:
         engine.dispose()
 

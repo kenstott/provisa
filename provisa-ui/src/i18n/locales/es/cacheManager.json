@@ -40,11 +40,12 @@
       "rows": "Filas",
       "kind": "Tipo",
       "unknown": "—",
-      "warmTables": "Tablas templadas",
+      "busyReplicas": "Replicadas por actividad",
       "kind_hot": "caliente",
       "kind_hot_candidate": "candidata a caliente",
-      "kind_warm": "templada",
-      "warmDescription": "Las tablas templadas son tablas grandes consultadas con la frecuencia suficiente para obtener una copia Iceberg en el motor de federación; las consultas leen la copia, que se elimina cuando el tráfico cae por debajo del umbral."
+      "kind_replica": "replicada (activa)",
+      "kind_replica_building": "réplica en construcción",
+      "busyDescription": "Una tabla cuyo ajuste Replicar es «Predeterminado» o un umbral Hot se replica cuando las sentencias que la leen superan su umbral; las lecturas vienen entonces de la réplica y vuelven al origen cuando el tráfico cae por debajo de la mitad del umbral. Mientras se construye su primera réplica, la tabla se sigue leyendo en vivo."
     },
     "materialized": {
       "description": "Almacén duradero donde aterrizan los orígenes no adjuntables y se escriben las vistas materializadas. Distinto de la caché de respuestas y del nivel caliente; una consulta puede usar cualquier combinación de los tres.",

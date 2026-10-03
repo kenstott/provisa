@@ -214,31 +214,46 @@ class TestAiModels:
         assert r.status_code == 400
 
 
-# --- Cache-storage: warm tier + MV default TTL (REQ-240, REQ-543) ---------------
+# --- Cache-storage: Hot replication, fs read cache, MV default TTL (REQ-826, REQ-238, REQ-543) ---
 
 
 class TestCacheStorageWarmAndMv:
-    def test_put_warm_tables_and_mv_default_persist(self, client, settings_store):
+    def test_put_hot_replication_fs_cache_and_mv_default_persist(self, client, settings_store):
         r = client.put(
             "/admin/cache-storage",
             json={
-                "warm_tables": {
-                    "query_threshold": 250,
-                    "max_rows": 5_000_000,
-                    "fs_cache_enabled": True,
-                    "fs_cache_max_sizes": "20GB",
+                "replication": {
+                    "hot_threshold": 250,
+                    "hot_interval": 120,
+                    "hot_max_rows": 5_000_000,
                 },
+                "warm_tables": {"fs_cache_enabled": True, "fs_cache_max_sizes": "20GB"},
                 "materialized_views": {"default_ttl": 900},
             },
         )
         assert r.status_code == 200
         # REQ-1913: stored in the control plane; the node's config file is not written.
         stored = settings_store.resolve
-        assert stored("warm_tables.query_threshold") == (250, "stored")
+        assert stored("replication.hot_threshold") == (250, "stored")
+        assert stored("replication.hot_interval") == (120, "stored")
+        assert stored("replication.hot_max_rows") == (5_000_000, "stored")
         assert stored("warm_tables.fs_cache_enabled") == (True, "stored")
         assert stored("warm_tables.fs_cache_max_sizes") == ("20GB", "stored")
         assert stored("materialized_views.default_ttl") == (900, "stored")
         assert "warm_tables" not in read_config()
+        assert "replication" not in read_config()
+        # ...and the page reads them back
+        shown = client.get("/admin/cache-storage").json()
+        assert shown["replication"] == {
+            "hot_threshold": 250,
+            "hot_interval": 120,
+            "hot_max_rows": 5_000_000,
+        }
+        assert set(shown["warm_tables"]) == {
+            "fs_cache_enabled",
+            "fs_cache_directories",
+            "fs_cache_max_sizes",
+        }
 
 
 # --- Extended OTel tuning via _apply_otel (REQ-545) -----------------------------

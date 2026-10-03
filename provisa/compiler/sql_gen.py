@@ -38,7 +38,6 @@ from graphql import (
 )
 
 from provisa.compiler.params import ParamCollector
-from provisa.cache.warm_tables import QueryCounter
 from provisa.core.source_registry import TIME_TRAVEL_SOURCES
 
 from provisa.compiler.sql_types import (
@@ -77,10 +76,6 @@ _tracer = _get_tracer(__name__)
 # Hard cap on rows returned when the caller supplies no explicit LIMIT — REQ-1678: read from
 # core.limits, which the API layer publishes at config load, never from api.app.
 from provisa.core.limits import default_row_limit as _get_default_row_limit  # noqa: E402
-
-
-# Module-level query counter for warm-table tracking (REQ-AD5)
-query_counter = QueryCounter()
 
 
 def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-151, REQ-152, REQ-153, REQ-262, REQ-264, REQ-265, REQ-300, REQ-301, REQ-372, REQ-403, REQ-478
@@ -780,15 +775,6 @@ def compile_query(  # REQ-007, REQ-009, REQ-010, REQ-011, REQ-262, REQ-263, REQ-
                             flat=flat,
                         )
                     span.set_attribute("db.statement", compiled.sql[:1000])
-                # Track source tables for warm-table promotion (REQ-AD5)
-                table_meta = ctx.tables.get(field_name)
-                if table_meta:
-                    fqn = (
-                        f'"{table_meta.catalog_name}"'
-                        f'."{table_meta.schema_name}"'
-                        f'."{table_meta.table_name}"'
-                    )
-                    query_counter.increment(fqn)
                 results.append(compiled)
 
     return results

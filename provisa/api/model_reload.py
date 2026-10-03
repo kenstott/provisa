@@ -26,6 +26,8 @@ does not reload another.
 
 from __future__ import annotations
 
+import dataclasses
+
 import json
 import logging
 from types import SimpleNamespace
@@ -172,6 +174,52 @@ async def reload_model(rt: "OrgRuntime") -> None:
     await _bound(rt, _rebuild)
 
 
+async def publish_replica_routes(rt: "OrgRuntime") -> None:
+    """Read which tables ``rt``'s engine serves from a replica and publish it on ``rt`` (REQ-1912,
+    REQ-826). Called with ``rt``'s org and environment bound — by the schema build, and by the
+    watcher when the ``replica`` stamp moved.
+
+    The stamp is read BEFORE the registry, so a promotion that lands during the read is picked up
+    by the next check. The routes are replaced, and the generation the routing cache is keyed on
+    advances, only when what they say changed: a stamp can move for a table this engine does not
+    serve, or for a state this process already holds."""
+    from provisa.api.app import state
+    from provisa.federation.replica_routing import replica_routes
+
+    assert rt.tenant_db is not None, "an org's replica state lives in its tenant plane"
+    stamp = (await config_stamp.read(rt.tenant_db))[config_stamp.REPLICA]
+    routes = await replica_routes(state)
+    if routes != rt.replica_routes:
+        rt.replica_routes = dataclasses.replace(routes, generation=rt.replica_routes.generation + 1)
+    rt.replica_stamp = stamp
+
+
+async def reload_replicas(rt: "OrgRuntime") -> None:
+    """Republish ``rt``'s replica routes after the ``replica`` stamp moved: a busy table was
+    promoted or demoted, or a promoted table's first replica completed (REQ-826). Neither is a
+    change to the model: nothing is rebuilt, and every other cache stays as it is."""
+    if not _held(rt):
+        return
+
+    async def _publish() -> None:
+        from provisa.api.app import state
+        from provisa.core import process_mode
+        from provisa.core.connection_loop import spawn_background
+        from provisa.federation.replica_converge import converge_logged
+        from provisa.federation.replica_state_view import view_for
+
+        await publish_replica_routes(rt)
+        # This process's copies of replica records were taken before the change.
+        view_for(state).forget(rt.org_id)
+        # The replicator's set follows the promoted tables: a promoted table is built and kept,
+        # a demoted one retired and, after its grace, dropped — as after a model build, and in
+        # the same processes (those that do background work, REQ-1916).
+        if process_mode.runs_background_work():
+            spawn_background(converge_logged(state), name="replica-converge")
+
+    await _bound(rt, _publish)
+
+
 async def load_org_settings(rt: "OrgRuntime") -> None:
     """Read ``rt``'s org settings rows, recording the ``settings`` stamp they were read at."""
     from provisa.core.org_settings import read_org_overrides_stamped
@@ -248,6 +296,15 @@ def targets() -> list[Target]:
                 reload=lambda rt=rt: reload_org_settings(rt),
             )
         )
+        out.append(
+            Target(
+                name=f"org {key}: replicas",
+                db=rt.tenant_db,
+                kind=config_stamp.REPLICA,
+                loaded=lambda rt=rt: rt.replica_stamp,
+                reload=lambda rt=rt: reload_replicas(rt),
+            )
+        )
     return out
 
 
@@ -266,6 +323,7 @@ async def health() -> dict[str, dict[str, int | None]]:
             "loaded": rt.settings_stamp,
             "stored": stored[config_stamp.SETTINGS],
         }
+        out["replicas"] = {"loaded": rt.replica_stamp, "stored": stored[config_stamp.REPLICA]}
     if state.admin_db is not None:
         out["settings"] = {
             "loaded": deployment_settings.current_stamp(),
