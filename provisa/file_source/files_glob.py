@@ -117,3 +117,44 @@ def columns_of_file(path: str) -> list[str]:
         raise ValueError(f"file {path!r} has no supported file-source type (REQ-788)")
     cfg = FileSourceConfig(id="_glob", source_type=file_type, path=path)
     return [col["name"] for col in discover_schema(cfg)]
+
+
+#: File extensions DuckDB reads as one relation over a list, by reader function.
+_GLOB_READER = {"csv": "read_csv", "parquet": "read_parquet"}
+
+
+def _glob_reader_fn(files: list[str]) -> str:
+    """The DuckDB table function that reads ``files`` as one relation; raises when the matched
+    files are not one homogeneous readable kind (REQ-788)."""
+    import os
+
+    exts = {os.path.splitext(f)[1].lower().lstrip(".") for f in files}
+    kinds = {"csv": "csv", "tsv": "csv", "txt": "csv", "parquet": "parquet", "pq": "parquet"}
+    families = {kinds.get(e) for e in exts}
+    if families == {"csv"}:
+        return "read_csv"
+    if families == {"parquet"}:
+        return "read_parquet"
+    raise ValueError(
+        f"a files-glob table must match one readable kind (csv or parquet); matched {sorted(exts)}"
+    )
+
+
+def duckdb_glob_relation(
+    files: list[str], columns: list[str], source_file_column: str | None
+) -> tuple[str, list[str]]:
+    """The DuckDB ``SELECT`` that reads ``files`` as one relation, and its parameters. The
+    projection is the table's declared columns in order, plus ``source_file_column`` from
+    DuckDB's ``filename`` when declared — so the relation's shape is exactly the replica's. CSV
+    is read with ``union_by_name=false``: the column-set rule already holds, so a positional
+    union would hide a drift the validator refuses by name (REQ-788)."""
+    fn = _glob_reader_fn(files)
+    placeholders = ", ".join("?" for _ in files)
+    opts = "union_by_name=false, filename=true, header=true, auto_detect=true"
+    if fn == "read_parquet":
+        opts = "filename=true"
+    proj = ", ".join(f'"{c}"' for c in columns)
+    if source_file_column:
+        proj += f', filename AS "{source_file_column}"'
+    sql = f"SELECT {proj} FROM {fn}([{placeholders}], {opts})"
+    return sql, list(files)
