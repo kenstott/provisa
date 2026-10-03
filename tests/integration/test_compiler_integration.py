@@ -79,6 +79,7 @@ def _make_schema_input(
                 {"column_name": "status", "visible_to": ["admin"]},
                 {"column_name": "created_at", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
         {
             "id": 2,
@@ -92,6 +93,7 @@ def _make_schema_input(
                 {"column_name": "email", "visible_to": ["admin"]},
                 {"column_name": "region", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
     ]
     if extra_tables:
@@ -420,6 +422,7 @@ class TestAggregates:
                     {"column_name": "id", "visible_to": ["analyst"]},
                     {"column_name": "amount", "visible_to": ["analyst"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             }
         ]
         role_no_agg = {

@@ -157,6 +157,7 @@ def _si(customers_schema: str, orders_schema: str) -> SchemaInput:
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "first_name", "state")
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -168,6 +169,7 @@ def _si(customers_schema: str, orders_schema: str) -> SchemaInput:
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "customer_id", "amount")
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ],  # fmt: skip
         relationships=[

@@ -64,8 +64,8 @@ def test_ttl_expiry():
         ({"schema_boot_id": "boot-1"}, {"schema_boot_id": "boot-2"}),
         ({"schema_version": 1}, {"schema_version": 2}),
         ({"bypass_relationship_guard": False}, {"bypass_relationship_guard": True}),
-        # REQ-1620: the domain-access outcome holds for the acting-role set it was reached under
-        ({"acting_roles": ()}, {"acting_roles": ("analyst", "sales_reader")}),
+        # REQ-1620: a set of held roles acts as its meta-role, which is another role id
+        ({"role_id": "analyst"}, {"role_id": "meta:analyst+sales_reader"}),
     ],
 )
 def test_key_differentiates_by_component(kwargs_a, kwargs_b):

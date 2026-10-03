@@ -127,6 +127,7 @@ _TABLES = [
             # restricted to analyst only
             {"column_name": "region_code", "visible_to": ["analyst"]},
         ],
+        "write_ops": ["delete", "insert", "update"],
     }
 ]
 
