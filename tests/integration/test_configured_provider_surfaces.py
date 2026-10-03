@@ -40,6 +40,8 @@ async def server():
         engine="trino",
         enable_pgwire=True,
         enable_bolt=True,
+        await_flight=True,
+        await_grpc=True,
         config="tests/fixtures/sample_config.yaml",
         auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "default_role": "analyst"},
     )
@@ -105,3 +107,47 @@ class TestBolt:
                 driver.verify_connectivity()
         finally:
             driver.close()
+
+
+class TestFlight:
+    """Arrow Flight authenticates a bearer credential carried in the ticket."""
+
+    def _get(self, server, token: str | None):
+        import json
+
+        import pyarrow.flight as flight
+
+        ticket = {"query": "{ __typename }"}
+        if token is not None:
+            ticket["token"] = token
+        client = flight.connect(f"grpc://127.0.0.1:{server.flight_port}")
+        try:
+            client.do_get(flight.Ticket(json.dumps(ticket).encode())).read_all()
+        finally:
+            client.close()
+
+    @pytest.mark.parametrize("token", [None, "not-a-credential", "provisa_pat_not_issued"])
+    def test_an_unknown_credential_is_refused(self, server, token):
+        import pyarrow.flight as flight
+
+        with pytest.raises(flight.FlightUnauthenticatedError):
+            self._get(server, token)
+
+
+class TestGrpc:
+    """gRPC validates the bearer before any method runs. An unknown method answers
+    UNIMPLEMENTED only to a caller whose credential holds, so UNAUTHENTICATED here means the
+    credential itself was refused."""
+
+    @pytest.mark.parametrize("metadata", [[], [("authorization", "Bearer not-a-credential")]])
+    def test_an_unknown_credential_is_refused(self, server, metadata):
+        import grpc
+
+        channel = grpc.insecure_channel(f"127.0.0.1:{server.grpc_port}")
+        try:
+            call = channel.unary_unary("/provisa.Probe/Nothing")
+            with pytest.raises(grpc.RpcError) as refused:
+                call(b"", metadata=metadata, timeout=30)
+            assert refused.value.code() == grpc.StatusCode.UNAUTHENTICATED
+        finally:
+            channel.close()
