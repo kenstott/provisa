@@ -2992,7 +2992,7 @@ WITH clause CTEs are named _w0, _w1, ... using a positional index assigned withi
 
 ### REQ-642 · Graph Analytics Pipeline {#REQ-642}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
 A POST /data/graph-analytics endpoint accepts a Cypher query and algorithm name, executes the query via the existing cypher_router pipeline, builds an in-memory NetworkX DiGraph from the resulting nodes and edges, runs the named algorithm, merges a `_analytics` dict into each node/edge, and returns the augmented nodes and edges as JSON with an `elapsed_ms` field.
 
@@ -3004,7 +3004,7 @@ A POST /data/graph-analytics endpoint accepts a Cypher query and algorithm name,
 
 ### REQ-643 · Graph Analytics Pipeline {#REQ-643}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
 
 The graph analytics response merges a `_analytics` dict into every node and edge in the result. The keys present in `_analytics` vary by algorithm: centrality algorithms produce `score`; community detection produces `cluster`; k-core produces `core_number`; degree centrality also produces `in_degree` and `out_degree`.
 
@@ -3016,7 +3016,7 @@ The graph analytics response merges a `_analytics` dict into every node and edge
 
 ### REQ-650 · Graph Analytics Pipeline {#REQ-650}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
 
 The graph analytics endpoint enforces a configurable maximum graph size. When the input graph exceeds the configured limit (default: 10,000 nodes or 50,000 edges), the endpoint returns HTTP 413 before running any algorithm.
 
@@ -3028,7 +3028,7 @@ The graph analytics endpoint enforces a configurable maximum graph size. When th
 
 ### REQ-651 · Graph Analytics Pipeline {#REQ-651}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
 
 The Girvan-Newman community detection algorithm is restricted to graphs with fewer than 500 nodes. Requests for Girvan-Newman on larger graphs are rejected unless the caller supplies `force=true` in the params, making the computational risk explicit.
 
@@ -20924,7 +20924,7 @@ GraphQL object relationship paths (`many-to-one` and `one-to-one`) must not expo
 
 ### REQ-452 · API & Integration {#REQ-452}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+**Status:** ↪ superseded by [REQ-1443](#REQ-1443) · **Priority:** SHOULD · **Type:** ui
 
 A top-level Data Quality page (peer to Tables, Sources, etc.) OR a tab within registered tables—user preference TBD. Enables stewards to configure periodic data quality checks per table (configurable schedule, check types), stores and displays most recent check results. Builds on existing per-table Profile button (TABLESAMPLE-based column profiling). Aggregate DQ dashboard view by domain is a follow-on feature. Status: deferred.
 

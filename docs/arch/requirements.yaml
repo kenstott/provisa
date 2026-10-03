@@ -9484,7 +9484,7 @@
     status: neutral
     rationale: ''
 - id: REQ-642
-  status: complete
+  status: proposed
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: SHOULD
@@ -9503,7 +9503,6 @@
   - tests/unit/test_cypher_graph_fns.py
   - tests/unit/test_graph_analytics_requirements.py
   - provisa-ui/e2e/cypher-api.spec.ts
-  since: 2026-01
   scenario: 'Given a POST /data/graph-analytics request with a Cypher query and algorithm name
 
     When the endpoint processes it
@@ -9530,8 +9529,12 @@
       from federated relational data) is not available in Trino, Hasura, Denodo, or Dremio; competitors
       that offer graph analytics (Neo4j, TigerGraph) operate on native graph stores, not federated relational
       data.
+  notes: 'Audit 2026-10-03: was marked complete but is NOT built. Its only code path, provisa/api/rest/graph_analytics_router.py,
+    has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
+    says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
+    to proposed.'
 - id: REQ-643
-  status: complete
+  status: proposed
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: SHOULD
@@ -9548,7 +9551,6 @@
   - tests/e2e/test_query_pipeline.py
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_graph_analytics_requirements.py
-  since: 2026-01
   scenario: 'Given a graph analytics response from a centrality algorithm
 
     When the UI reads _analytics
@@ -9564,8 +9566,12 @@
     status: ahead
     rationale: In-query graph analytics (centrality, community detection) merged into node/edge results
       as _analytics fields is not available in Hasura, Trino, Dremio, or Snowflake without external tooling.
+  notes: 'Audit 2026-10-03: was marked complete but is NOT built. Its only code path, provisa/api/rest/graph_analytics_router.py,
+    has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
+    says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
+    to proposed.'
 - id: REQ-650
-  status: complete
+  status: proposed
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: MUST
@@ -9581,7 +9587,6 @@
   - tests/e2e/test_query_pipeline.py
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_graph_analytics_requirements.py
-  since: 2026-01
   scenario: 'Given a graph exceeding 10,000 nodes or 50,000 edges
 
     When submitted to POST /data/graph-analytics
@@ -9597,8 +9602,12 @@
   competitive_position:
     status: neutral
     rationale: ''
+  notes: 'Audit 2026-10-03: was marked complete but is NOT built. Its only code path, provisa/api/rest/graph_analytics_router.py,
+    has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
+    says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
+    to proposed.'
 - id: REQ-651
-  status: complete
+  status: proposed
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: MUST
@@ -9614,7 +9623,6 @@
   - tests/e2e/test_query_pipeline.py
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_graph_analytics_requirements.py
-  since: 2026-01
   scenario: 'Given a Girvan-Newman request on a graph with 500 or more nodes and force=false
 
     When submitted to the endpoint
@@ -9631,6 +9639,10 @@
   competitive_position:
     status: neutral
     rationale: ''
+  notes: 'Audit 2026-10-03: was marked complete but is NOT built. Its only code path, provisa/api/rest/graph_analytics_router.py,
+    has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
+    says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
+    to proposed.'
 - id: REQ-653
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -72405,7 +72417,7 @@
 
     '
 - id: REQ-452
-  status: proposed
+  status: superseded
   group: 10. UI & Admin Surfaces
   category: API & Integration
   priority: SHOULD
@@ -72419,7 +72431,11 @@
     written on 2026-05-05 under the heading ''API & Integration''; it was dropped when requirements.md
     became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Description
     itself says deferred; provisa/dq/ serves external DQ-checker sources (REQ-1443/REQ-1663), not a per-table
-    steward schedule page; no DQ page in provisa-ui/src/pages.'
+    steward schedule page; no DQ page in provisa-ui/src/pages. Re-check 2026-10-03: built under REQ-1443
+    and REQ-1663 as the Data Quality panel on the table register and edit forms (provisa-ui/src/pages/tables/DataQualityPanel.tsx),
+    with Soda and Great Expectations check types, scheduled scans and a scan-history table; a panel in
+    the table forms rather than a top-level page, which the text allows.'
+  superseded_by: REQ-1443
 - id: REQ-453
   status: in-progress
   group: 8. Client Access & Protocols
