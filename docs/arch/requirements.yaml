@@ -62981,11 +62981,11 @@
 
     '
 - id: REQ-1786
-  status: accepted
+  status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Data Discovery
-  priority: SHOULD
+  priority: MAY
   type: ui
   description: 'The create_source mutation (provisa/api/admin/schema_mutation.py) shall support an opt-in
     discover_tables_now flag that, when true, triggers an automatic background crawl_directory call immediately
@@ -62995,7 +62995,10 @@
     avoid unrequested remote fetch/schema-inference passes on every source creation, which could be slow
     or noisy for large HTTP-crawled directories (REQ-1784/1785). The source-creation form (SourceFormFields.tsx)
     shall conditionally render a "Discover tables now" checkbox for file-connector sources (csv/parquet/sqlite)
-    that, when checked, passes discover_tables_now: true to the mutation.'
+    that, when checked, passes discover_tables_now: true to the mutation. (Amended 2026-10-03, THIS IS
+    A PERFORMANCE AID:) Discovery at source creation exists to make the later table registration faster:
+    the list of a source''s tables is already to hand when the steward opens Register Table. It adds no
+    capability, since registration discovers tables on demand today.'
   use_case: Admins registering file-connector sources (especially HTTP-crawled ones per REQ-1784) should
     not face a blank Tables page requiring a manual discovery step; opt-in automatic discovery provides
     convenience without imposing latency or unexpected remote fetches on all source creations.
@@ -63006,7 +63009,9 @@
   e2e: true
   e2e_reason: Form checkbox interaction and the resulting background crawl behavior are only verifiable
     end-to-end through a full UI → API round-trip showing the discovery workflow.
-  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
+  notes: 'Maintainer 2026-10-03: registration works well enough today; an asynchronous discovery at source
+    creation would speed up table registration. This is a non-functional requirement about UX performance
+    and is lower priority, not part of the feature-complete line. Audit 2026-10-03: not built.'
 - id: REQ-1787
   status: accepted
   target: 2026-Q4
