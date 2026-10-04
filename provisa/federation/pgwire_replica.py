@@ -173,7 +173,23 @@ def _files_operand(source: Any) -> dict:
     # cwd (its bundle cache directory), not this process's — an unqualified "demo/files/northwind"
     # found nothing even with the glob already stripped. Absolute-ize against this process's cwd,
     # which is where a source's ``path`` is meant to be interpreted from everywhere else in Provisa.
-    operand["directory"] = str(Path(directory).resolve())
+    resolved_dir = str(Path(directory).resolve())
+    operand["directory"] = resolved_dir
+    # REQ-788: each file_glob table of this source is a glob-url table of the file adapter, which
+    # merges the matched files into one logical table (identical column sets, refused by name
+    # otherwise; the optional source-file column). The glob is relative to the source directory.
+    glob_tables = getattr(source, "file_glob_tables", None) or []
+    tables = []
+    for spec in glob_tables:
+        entry = {
+            "name": spec["name"],
+            "url": str(Path(resolved_dir) / spec["file_glob"]),
+        }
+        if spec.get("source_file_column"):
+            entry["sourceFileColumn"] = spec["source_file_column"]
+        tables.append(entry)
+    if tables:
+        operand["tables"] = tables
     return operand
 
 

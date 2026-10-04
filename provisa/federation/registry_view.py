@@ -61,7 +61,9 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
         return list(by_id.values())
     if conn is not None:
         rows = await source_repo.list_all(conn)
-        return _merge_source_rows(by_id, rows)
+        merged = _merge_source_rows(by_id, rows)
+        await _attach_file_glob_tables(merged, conn)
+        return merged
 
     generation = (
         current_org.get(None),
@@ -74,9 +76,36 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
         return cached
     async with db.acquire() as _conn:
         rows = await source_repo.list_all(_conn)
-    out = _merge_source_rows(by_id, rows)
+        out = _merge_source_rows(by_id, rows)
+        await _attach_file_glob_tables(out, _conn)
     rs_cache.put(generation, out)
     return out
+
+
+async def _attach_file_glob_tables(sources: list[Source], conn: Any) -> None:
+    """REQ-788 (option c): attach each files source's file_glob tables to its Source object, so
+    build_model_json can emit them as glob-url tables of the Calcite file adapter without the
+    pgwire path needing the registry. A no-op unless a files-type source is present (the tables
+    fetch is skipped otherwise)."""
+    files = [s for s in sources if getattr(s.type, "value", None) in ("files", "csv", "parquet")]
+    if not files:
+        return
+    from provisa.api.admin.db_queries import fetch_tables
+
+    rows = await fetch_tables(conn)
+    by_source: dict[str, list] = {}
+    for row in rows:
+        glob = row.get("file_glob")
+        if glob:
+            by_source.setdefault(row["source_id"], []).append(
+                {
+                    "name": row["table_name"],
+                    "file_glob": glob,
+                    "source_file_column": row.get("source_file_column"),
+                }
+            )
+    for src in files:
+        src.file_glob_tables = by_source.get(src.id, [])
 
 
 def operator_floor(state: Any, table_ids: Iterable[int]) -> dict[str, str]:  # REQ-030, REQ-826

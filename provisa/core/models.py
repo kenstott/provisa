@@ -233,6 +233,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     password: str = ""  # Secret reference e.g. ${env:PG_PASSWORD}
     path: str | None = None  # File path or URL for file-based sources (csv, parquet, sqlite)
     base_url: str | None = None  # Base URL for OpenAPI sources (e.g. https://api.example.com/v1)
+    # REQ-788: transient (never persisted) — the source's file_glob tables, attached by
+    # registry_view so build_model_json can emit each as a glob-url table of the file adapter.
+    # Each item: {"name", "file_glob", "source_file_column"}.
+    file_glob_tables: list = Field(default_factory=list, exclude=True, repr=False)
     pool_min: int = Field(default=1, alias="pool_min")
     pool_max: int = Field(default=5, alias="pool_max")
     # REQ-053: PgBouncer is opt-in per PostgreSQL source. Default is direct asyncpg pooling
