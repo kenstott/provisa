@@ -60,6 +60,10 @@ async def upsert_store(conn: "Connection", store: StoreConfig, *, origin: str) -
     """Create a store, or replace its URL."""
     model_change.name("upsert", "store", store.id)  # REQ-1524
     require_origin(origin)
+    # The save refuses what the load refuses: the data the org keeps in a region stays readable
+    # by its other regions with this store as it now is.
+    declared = {s.id: s for s in await list_stores(conn)}
+    await _require_named_readable(conn, await list_regions(conn), {**declared, store.id: store})
     await conn.upsert(
         stores,
         {"id": store.id, "url": store.url, "kind": store.kind, "origin": origin},
@@ -92,6 +96,8 @@ async def upsert_region(conn: "Connection", region: OrgRegion, *, origin: str) -
             )
     require_engine_kind(region.id, declared[region.engine])
     require_one_materialize_store(region)
+    regions = [r for r in await list_regions(conn) if r.id != region.id]
+    await _require_named_readable(conn, [*regions, region], declared)
     values = region.model_dump()
     await conn.upsert(
         org_regions,
@@ -131,9 +137,43 @@ async def require_selected(conn: "Connection", what: str, region: str | None) ->
     None — no region — is always allowed."""
     if region is None:
         return
-    selected = [r.id for r in await list_regions(conn)]
+    regions = await list_regions(conn)
+    selected = [r.id for r in regions]
     if region not in selected:
         raise RegionNotSelected(what, region, selected)
+    from provisa.core.regions import require_readable_elsewhere
+
+    declared = {s.id: s for s in await list_stores(conn)}
+    require_readable_elsewhere(what, region, regions, declared)
+
+
+async def _require_named_readable(
+    conn: "Connection", regions: list[OrgRegion], declared: dict[str, StoreConfig]
+) -> None:
+    """Refuse a change to the org's regions or stores that leaves a source or table naming a
+    region its other regions cannot read there (REQ-1922; ``regions.require_readable_elsewhere``)."""
+    from provisa.core.regions import require_readable_elsewhere
+    from provisa.core.schema_org import registered_tables, sources
+
+    if len(regions) < 2:
+        return
+    named = await conn.execute_core(
+        select(sources.c.id, sources.c.region).where(sources.c.region.isnot(None))
+    )
+    out = [(f"source {r.id}", r.region) for r in named.fetchall()]
+    t = registered_tables
+    named = await conn.execute_core(
+        select(t.c.source_id, t.c.schema_name, t.c.table_name, t.c.region).where(
+            t.c.region.isnot(None)
+        )
+    )
+    out += [
+        (f"table {r.source_id}/{r.schema_name}.{r.table_name}", r.region) for r in named.fetchall()
+    ]
+    selected = {r.id for r in regions}
+    for what, region in out:
+        if region in selected:  # a region no longer selected is held by the integrity guard
+            require_readable_elsewhere(what, region, regions, declared)
 
 
 async def require_serves_here(conn: "Connection", org_id: str, node_region: str) -> None:

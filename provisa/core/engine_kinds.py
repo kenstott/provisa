@@ -55,3 +55,10 @@ ENGINE_KINDS: frozenset[str] = frozenset(
         "yugabytedb",
     }
 )
+
+#: The engine kinds that read another region's replicas in place (REQ-1922): DuckDB ATTACHes that
+#: region's store, Trino registers a catalog of it, PostgreSQL imports its tables through
+#: postgres_fdw — each a PostgreSQL server store. Any other engine kind cannot, so a region on one
+#: may not serve an org that keeps data in another region. The engine layer's backends are the
+#: authority (``EngineBackend.reads_other_regions``); a test holds the two equal.
+REGION_READERS: frozenset[str] = frozenset({"duckdb", "pg", "trino", "trino-byo"})

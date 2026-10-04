@@ -60,6 +60,10 @@ class EngineBackend:
     raises until an engine wires it, rather than silently falling back to another engine.
     """
 
+    #: REQ-1922: whether this engine reads another region's replicas in place
+    #: (``region_read_address``). The model's ``engine_kinds.REGION_READERS`` is held equal to it.
+    reads_other_regions = False
+
     # `native_store` (engine.py's generic `_RDB_KINDS` loop) is the SQLAlchemy URL scheme name —
     # the identity used for landing/storage-backend comparisons (materialization.py,
     # query_residency.py) — which is not always SQLGlot's own dialect name for that same product
@@ -840,6 +844,8 @@ class EngineBackend:
 class TrinoBackend(EngineBackend):
     """The Trino engine's backend — the ONE backend that references Trino. Delegates to the Trino
     implementation modules (trino_lifecycle / core.catalog / compiler.introspect / executor.trino)."""
+
+    reads_other_regions = True  # REQ-1922: a catalog of that region's store
 
     @property
     def dialect(self) -> str:

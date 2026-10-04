@@ -123,17 +123,44 @@ def validate_regions(config: "ProvisaConfig") -> None:
                 f"{what} names region {region!r}, which the org does not select "
                 f"({', '.join(selected)})"
             )
-    # A table that names a region is read from that region's replica by the org's other regions:
-    # its replica store must be one their engines can attach.
-    if len(selected) > 1:
-        by_id = {r.id: r for r in config.regions}
-        for region in sorted({r for _, r in named}):
-            store = by_id[region].replicas
-            if _is_embedded_duckdb(stores[store].url):
-                raise ValueError(
-                    f"region {region!r} replicas store {store!r} is an embedded DuckDB file, "
-                    "which the org's other regions cannot read"
-                )
+    for what, region in named:
+        require_readable_elsewhere(what, region, config.regions, stores)
+
+
+def require_readable_elsewhere(
+    what: str, region: str, regions: "list[OrgRegion]", stores: "dict[str, StoreConfig]"
+) -> None:
+    """Refuse ``what`` keeping its data in ``region`` when the org's other regions cannot read it
+    there (REQ-1922): they read it from that region's replica, in place, so that region's
+    replicas store must be a PostgreSQL server store and every other region's engine one that
+    reads another region's store (``engine_kinds.REGION_READERS``). Loaded and saved alike."""
+    from provisa.core.engine_kinds import REGION_READERS
+
+    if len(regions) < 2:
+        return
+    home = next(r for r in regions if r.id == region)  # the caller refused an unselected one
+    store = stores[home.replicas]
+    if _is_embedded_duckdb(store.url):
+        raise ValueError(
+            f"region {region!r} replicas store {store.id!r} is an embedded DuckDB file, which "
+            f"the org's other regions cannot read; {what} keeps its data there"
+        )
+    if not _is_postgresql(store.url):
+        raise ValueError(
+            f"region {region!r} replicas store {store.id!r} is not a PostgreSQL store, the one "
+            f"kind the org's other regions read in place; {what} keeps its data there"
+        )
+    for other in regions:
+        kind = stores[other.engine].kind
+        if other.id != region and kind not in REGION_READERS:
+            raise ValueError(
+                f"region {other.id!r} runs the {kind} engine, which cannot read another region's "
+                f"replicas, and {what} keeps its data in region {region!r}"
+            )
+
+
+def _is_postgresql(url: str) -> bool:
+    return url.split(":", 1)[0].split("+", 1)[0].lower() in ("postgresql", "postgres")
 
 
 def require_one_materialize_store(region: "OrgRegion") -> None:
