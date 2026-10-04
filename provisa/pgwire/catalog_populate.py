@@ -868,6 +868,13 @@ def _populate_pg_tables_and_am(db, idx: CatalogIndex) -> None:
 
 _row_count_cache: dict[str, tuple[float, dict[int, float]]] = {}
 _ROW_COUNT_TTL = 300.0
+# REQ-1905: reltuples is a best-effort estimate for BI tools -- one SHOW STATS FOR engine round-trip
+# per visible table. A catalog reflection (SQLAlchemy get_columns, the hstore oid lookup) runs on the
+# connection thread inside the request deadline, so an estate with many tables (or a slow/hung stats
+# call) could consume the whole deadline and fail the reflection -- and, interrupted before its cache
+# write, re-fail every time. The row-count phase is capped here so it can never do that: once the
+# budget is spent the remaining tables keep reltuples 0 and the (partial) result is still cached.
+_ROW_COUNT_BUDGET_S = 2.0
 
 
 def _fetch_row_counts(ctx, idx: CatalogIndex, engine_conn) -> dict[int, float]:
@@ -878,7 +885,14 @@ def _fetch_row_counts(ctx, idx: CatalogIndex, engine_conn) -> dict[int, float]:
         tm.table_id: (tm.catalog_name, tm.schema_name, tm.table_name) for tm in ctx.tables.values()
     }
     result: dict[int, float] = {}
+    deadline = time.monotonic() + _ROW_COUNT_BUDGET_S
     for _, _, _, table_id, toid in idx.tables:
+        # Stop issuing engine round-trips once the best-effort budget is spent: the remaining tables
+        # keep reltuples 0 and the request deadline is left for the rest of the catalog build and the
+        # query. The whole result (partial or not) is cached by the caller, so this is paid at most
+        # once per role per TTL, never re-run to re-fail.
+        if time.monotonic() >= deadline:
+            break
         ref = table_id_to_meta.get(table_id)
         if not ref:
             continue
