@@ -325,9 +325,14 @@ async def test_the_compiled_pipeline_carries_the_hint_onto_the_plan(monkeypatch)
     sql = "SELECT o.id FROM sales.orders o"
     with patch.object(_pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_route)):
         hinted = await _pipeline._govern_and_route_compiled(
-            sql, "analyst", cache_hint=CacheHint(True, 30)
+            sql,
+            "analyst",
+            cache_hint=CacheHint(True, 30),
+            sdl_joins=True,
         )
-        plain = await _pipeline._govern_and_route_compiled(sql, "analyst", cache_hint=NO_CACHE_HINT)
+        plain = await _pipeline._govern_and_route_compiled(
+            sql, "analyst", cache_hint=NO_CACHE_HINT, sdl_joins=True
+        )
     assert (hinted.cache_opt_in, hinted.cache_ttl) == (True, 30)
     assert (plain.cache_opt_in, plain.cache_ttl) == (False, None)
 

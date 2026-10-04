@@ -614,8 +614,17 @@ class TestJSONAPIPaginationHTTP:
         # integration: mock-justified — pipeline execution is an external boundary;
         # real generator+serializer run against the stub rows below.
         async def _fake_govern(
-            sql, role_id, exec_params, state, deliver=None, buffered=False, cache_hint=None
+            sql,
+            role_id,
+            exec_params,
+            state,
+            deliver=None,
+            buffered=False,
+            cache_hint=None,
+            *,
+            sdl_joins,
         ):
+            assert sdl_joins is True  # a generated GraphQL document: the SDL's joins
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()
@@ -671,8 +680,17 @@ class TestJSONAPIPaginationHTTP:
         ]
 
         async def _fake_govern(
-            sql, role_id, exec_params, state, deliver=None, buffered=False, cache_hint=None
+            sql,
+            role_id,
+            exec_params,
+            state,
+            deliver=None,
+            buffered=False,
+            cache_hint=None,
+            *,
+            sdl_joins,
         ):
+            assert sdl_joins is True  # a generated GraphQL document: the SDL's joins
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()
@@ -733,8 +751,17 @@ class TestJSONAPIPaginationHTTP:
         stub_rows = [{"id": 1, "region": "US", "amount": 10.0, "created_at": "2026-01-01"}]
 
         async def _fake_govern(
-            sql, role_id, exec_params, state, deliver=None, buffered=False, cache_hint=None
+            sql,
+            role_id,
+            exec_params,
+            state,
+            deliver=None,
+            buffered=False,
+            cache_hint=None,
+            *,
+            sdl_joins,
         ):
+            assert sdl_joins is True  # a generated GraphQL document: the SDL's joins
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()
@@ -820,8 +847,17 @@ class TestJSONAPIPaginationHTTP:
         ]
 
         async def _fake_govern(
-            sql, role_id, exec_params, state, deliver=None, buffered=False, cache_hint=None
+            sql,
+            role_id,
+            exec_params,
+            state,
+            deliver=None,
+            buffered=False,
+            cache_hint=None,
+            *,
+            sdl_joins,
         ):
+            assert sdl_joins is True  # a generated GraphQL document: the SDL's joins
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()

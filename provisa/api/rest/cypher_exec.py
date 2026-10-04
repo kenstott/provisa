@@ -522,6 +522,7 @@ async def _execute_call_body(
         exec_params=resolved_params or None,
         # A CALL body is one fragment of a composed result, never a cache entry of its own.
         cache_hint=NO_CACHE_HINT,
+        sdl_joins=False,
     )
     from provisa.pgwire._pipeline import require_governed_plan
 

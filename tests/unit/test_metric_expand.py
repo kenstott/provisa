@@ -220,7 +220,11 @@ async def test_compiled_path_expands_metric_refs():
 
     with pytest.raises(ValueError, match="nope"):
         await _pipeline._govern_and_route_compiled(
-            "SELECT value FROM metrics.nope", "admin", state=_FakeState(), cache_hint=NO_CACHE_HINT
+            "SELECT value FROM metrics.nope",
+            "admin",
+            state=_FakeState(),
+            cache_hint=NO_CACHE_HINT,
+            sdl_joins=True,
         )
 
 

@@ -76,6 +76,10 @@ def _make_minimal_state():
     # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
     # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
     state.admin_db = None
+    # The compiled stage asks the approval hook (REQ-203) and windows Kafka reads (REQ-148) on
+    # every surface: a bare MagicMock reads as a configured hook and as Kafka-backed tables.
+    state.approval_hook = None
+    state.kafka_table_configs = {}
     # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which would put
     # this server behind the credential gate. Name it unsecured; the secured path has its own fixture.
     state.auth_config = None
@@ -326,6 +330,10 @@ class TestFlightDoGetWithRealData:
         # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
         # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
         state.admin_db = None
+        # The compiled stage asks the approval hook (REQ-203) and windows Kafka reads (REQ-148) on
+        # every surface: a bare MagicMock reads as a configured hook and as Kafka-backed tables.
+        state.approval_hook = None
+        state.kafka_table_configs = {}
         # REQ-1263: likewise, an unnamed auth_config reads as a configured provider and would put
         # this server behind the credential gate. This fixture exercises the data path, not auth.
         state.auth_config = None
@@ -540,6 +548,10 @@ def secured_flight_server():
     }
     state.auth_middleware_active = True
     state.admin_db = None
+    # The compiled stage asks the approval hook (REQ-203) and windows Kafka reads (REQ-148) on
+    # every surface: a bare MagicMock reads as a configured hook and as Kafka-backed tables.
+    state.approval_hook = None
+    state.kafka_table_configs = {}
     state.roles = {}
 
     server = ProvisaFlightServer(state, location=_SECURED_LOCATION)

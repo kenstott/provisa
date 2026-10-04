@@ -3062,8 +3062,14 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     steward_hint: str | None = None,
     session_props: dict[str, str] | None = None,
     extra_selections: dict | None = None,
+    sdl_joins: bool,
 ) -> _Plan:
     """Governance + routing for already-physical SQL, with the org's tier ceilings bound.
+
+    ``sdl_joins``: the statement was compiled from a GraphQL document (HTTP GraphQL, REST, JSON:API,
+    gRPC, NL's GraphQL-shaped targets, GraphQL over Flight), whose joins the SDL defines — the one
+    case the relationship guard is skipped. Every other compiled statement (Cypher over Bolt, HTTP
+    and Flight) has its joins checked against the approved relationships like a raw statement.
 
     ``compiled``: the compiler's ``CompiledQuery`` the SQL came from, when the caller has one —
     the prepare stage reads it (materialized-view rewrite, Kafka windows) and ``sql`` is then its
@@ -3084,7 +3090,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     await _wake_before_governing(state)
     with collecting() as found:
         if compiled is not None:
-            prepared = prepare_compiled_query(compiled, role_id, state)
+            prepared = _prepare_compiled_stage(compiled, role_id, state)
             sql, compiled = prepared.sql, prepared
             api_args = prepared.api_args or None
             extra_selections = prepared.gql_remote_extra_selections or None
@@ -3104,6 +3110,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
             columns=[c.column for c in compiled.columns] if compiled is not None else None,
             api_compiled=compiled,
             extra_selections=extra_selections,
+            sdl_joins=sdl_joins,
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
@@ -3126,6 +3133,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     columns: list[str] | None = None,
     api_compiled: Any | None = None,
     extra_selections: dict | None = None,
+    sdl_joins: bool,
 ) -> _Plan:
     """Governance + routing for already-physical SQL.
 
@@ -3149,10 +3157,13 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     # travel separately in ``exec_params`` — so it is kept like the raw-SQL stage's and the GraphQL
     # endpoint's (pgwire.governed_plan) and a repeat is not parsed or governed again.
     _session_vars = session_vars_for(state.roles.get(role_id))
-    _slot = PlanSlot(state, "compiled", role_id, sql, sorted(_session_vars.items()))
+    # The validation a plan was kept with depends on whether its joins were the SDL's.
+    _slot = PlanSlot(state, "compiled", role_id, sql, sorted(_session_vars.items()), sdl_joins)
     _governed = _slot.cached()
     if _governed is None:
-        _governed = await _govern_compiled(sql, role_id, state, _session_vars, exec_params)
+        _governed = await _govern_compiled(
+            sql, role_id, state, _session_vars, exec_params, sdl_joins=sdl_joins
+        )
         # A write is not kept: its admission checks (view writes, unbound branch writes) run per call.
         if not isinstance(
             _governed.parsed, (_sg_exp.Insert, _sg_exp.Update, _sg_exp.Delete, _sg_exp.Merge)
@@ -3232,10 +3243,17 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     )
 
 
-def prepare_compiled_query(compiled: Any, role_id: str, state: Any) -> Any:  # REQ-148, REQ-198
-    """The compiled stage's prepare step, before governance, for a statement the compiler built:
-    a fresh materialized view that answers it replaces its tables (REQ-198, REQ-882), and a read
-    of a Kafka-backed table gets its time window and discriminator (REQ-148)."""
+def _prepare_compiled_stage(compiled: Any, role_id: str, state: Any) -> Any:  # REQ-148, REQ-198
+    """The compiled stage's per-call prepare step, before governance, for a statement the compiler
+    built: a fresh materialized view that answers it replaces its tables (REQ-198, REQ-882), and a
+    read of a Kafka-backed table gets its time window and discriminator (REQ-148). Both depend on
+    the moment of the call, so they run on every call, on every compiled surface.
+
+    The rest of the compiled stage's preparation sits where its result can be kept: the V-rules
+    (``validate_sql``, with the relationship guard skipped only for ``sdl_joins``) and the role's
+    row cap (the sampling ceiling, in ``apply_governance``) are functions of the statement and the
+    role and are kept with the governed plan (:func:`_govern_compiled`); a request-level as-of
+    expands bitemporal views at routing (:func:`_route_compiled`), on the kept lowering."""
     from provisa.mv.rewriter import rewrite_if_mv_match
 
     compiled = rewrite_if_mv_match(compiled, state.mv_registry.get_fresh())
@@ -3330,9 +3348,11 @@ async def _govern_compiled(
     state: Any,
     session_vars: dict[str, str],
     exec_params: list | None = None,
+    *,
+    sdl_joins: bool,
 ) -> _GovernedCompiled:
     """The value-independent half of the compiled stage: parse, metric expansion, write admission,
-    governance."""
+    validation, governance. ``sdl_joins``: see :func:`_govern_and_route_compiled`."""
     import sqlglot as _sg
 
     from provisa.audit.pipeline import resolve_table_ids
@@ -3399,18 +3419,25 @@ async def _govern_compiled(
         engine=getattr(state, "federation_engine", None),
     )
     await _guard_complexity(sql, role_id, _compiled_tree, gov_ctx, ctx, state)
-    # The V-rules every statement meets (a masked column in a filter, a hidden column, …), on the
-    # compiled path too. Its joins are the model's own relationships — the compiler built them —
-    # so the relationship guard has nothing to check.
+    # The V-rules every statement meets (a masked column in a filter, a hidden column, an
+    # unapproved join, …), on the compiled path too. The relationship guard is skipped only where
+    # the GraphQL SDL defined the joins, or for a role granted ignore_relationships outside
+    # high-security mode (the raw-SQL stage's rule, REQ-693).
     from provisa.compiler.sql_validator import validate_sql
+    from provisa.security.rights import Capability, has_capability
 
+    _role = require_role(state.roles, role_id)
+    _bypass_guard = sdl_joins or (
+        has_capability(_role, Capability.IGNORE_RELATIONSHIPS)
+        and not getattr(state, "security_high", False)
+    )
     violations = validate_sql(
         sql,
         ctx,
         gov_ctx,
-        require_role(state.roles, role_id),
+        _role,
         getattr(state, "tables", []),
-        bypass_relationship_guard=True,
+        bypass_relationship_guard=_bypass_guard,
         bypass_uncovered_relationships=True,
     )
     if violations:

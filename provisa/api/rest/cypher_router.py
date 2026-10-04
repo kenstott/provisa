@@ -573,6 +573,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
                 exec_params=_write_params or None,
                 state=state,
                 cache_hint=_NO_CACHE,
+                sdl_joins=False,
             )
             _result = await _execute_write_plan(_plan, state)
         except PermissionError as exc:
@@ -743,6 +744,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             cache_hint=cache_hint_for("cypher", body.query),
             # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
             serve_cached=True,
+            sdl_joins=False,
         )
     except ComplexityLimitExceeded:
         raise  # REQ-1174: answered as 413 by the app's handler
@@ -955,8 +957,15 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
     )
 
 
-def _countable_labels(label_map, filtered_domains: set[str]) -> tuple[list[str], list[str]]:
+def _countable_labels(
+    label_map, filtered_domains: set[str], reads_domain
+) -> tuple[list[str], list[str]]:
     """The node labels and relationship types the schema-wide count sweep may safely count.
+
+    ``reads_domain(domain_id)``: whether the role reads that domain's tables directly. A count is a
+    direct read of the label's table, so a label the role reaches only by traversal (the meta
+    domain, for a role not granted it — REQ-1132) is not counted: its count statement is refused
+    (V001) on every surface, as a direct FROM of it is.
 
     A PARAMETERIZED node (native-filter columns) is a function f(args) -> rows with no snapshot:
     ``MATCH (n:Label) RETURN count(n)`` has no arg to satisfy, so it cannot be counted — exclude it
@@ -968,6 +977,7 @@ def _countable_labels(label_map, filtered_domains: set[str]) -> tuple[list[str],
         for nm in label_map.nodes.values()
         if (not filtered_domains or nm.domain_id in filtered_domains)
         and not nm.native_filter_columns
+        and reads_domain(nm.domain_id)
     ]
     seen: set[str] = set()
     rel_types: list[str] = []
@@ -980,6 +990,8 @@ def _countable_labels(label_map, filtered_domains: set[str]) -> tuple[list[str],
             continue
         if src_nm.native_filter_columns or tgt_nm.native_filter_columns:
             continue  # a rel to/from a parameterized node is uncountable without its arg
+        if not (reads_domain(src_nm.domain_id) and reads_domain(tgt_nm.domain_id)):
+            continue  # its count reads both ends' tables directly
         if rel.rel_type not in seen:
             seen.add(rel.rel_type)
             rel_types.append(rel.rel_type)
@@ -1019,7 +1031,7 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             sql_str, _, _ = result
             semantic_sql = make_semantic_sql(sql_str, ctx)
             plan = await _govern_and_route_compiled(
-                semantic_sql, role_id, exec_params=None, cache_hint=NO_CACHE_HINT
+                semantic_sql, role_id, exec_params=None, cache_hint=NO_CACHE_HINT, sdl_joins=False
             )
             from provisa.pgwire._pipeline import require_governed_plan
 
@@ -1056,7 +1068,14 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             # Swallowing here corrupts totals/pagination — propagate.
             raise
 
-    node_labels, rel_types = _countable_labels(label_map, filtered_domains)
+    from provisa.security.rights import reaches_all_domains
+
+    _domain_access = state.roles[role_id]["domain_access"]
+
+    def _reads_domain(domain_id: str | None) -> bool:
+        return not domain_id or reaches_all_domains(_domain_access) or domain_id in _domain_access
+
+    node_labels, rel_types = _countable_labels(label_map, filtered_domains, _reads_domain)
 
     # Counts run SEQUENTIALLY, not via asyncio.gather: a native engine (DuckDB) executes on ONE
     # connection whose ATTACH/cache state is not reentrant, so concurrent count queries race and

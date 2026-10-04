@@ -339,6 +339,7 @@ async def _handle_mutation(
                 exec_params=list(mutation.params) if mutation.params else None,
                 state=state,
                 cache_hint=NO_CACHE_HINT,
+                sdl_joins=True,
             )
         except PermissionError as exc:
             raise ApiError(403, "data.write_not_admitted", str(exc), role=role_id) from exc
