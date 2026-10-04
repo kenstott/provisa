@@ -249,38 +249,63 @@ def _create_database(server: str) -> None:
             rt.close()
 
 
-def _teardown(resource_group: str) -> None:
-    print(f"== teardown: resource group {resource_group} ==", flush=True)
-    try:
-        _az("group", "delete", "-n", resource_group, "--yes")
-    except (RuntimeError, subprocess.TimeoutExpired) as exc:
-        print(
-            f"resource group {resource_group} delete failed ({exc}) -- DELETE IT MANUALLY; "
-            "its storage account bills for as long as it exists",
-            file=sys.stderr,
-            flush=True,
-        )
-        return
-    print(f"== teardown done: {resource_group} ==", flush=True)
+def _teardown(lane: dict[str, str]) -> None:
+    """Delete what ``_provision`` created inside the resource group: the workspace, then the
+    storage account's role assignments and the account. The group itself is not this lane's."""
+    group, workspace, storage = lane["resource_group"], lane["workspace"], lane["storage"]
+    print(f"== teardown: {workspace} + {storage} in {group} ==", flush=True)
+    steps = [
+        ("synapse", "workspace", "delete", "-n", workspace, "-g", group, "--yes"),
+        ("role", "assignment", "delete", "--scope", lane["storage_scope"]),
+        ("storage", "account", "delete", "-n", storage, "-g", group, "--yes"),
+    ]
+    for step in steps:
+        if not lane.get("storage_scope") and step[0] == "role":
+            continue  # provisioning stopped before the account had an id to scope a role to
+        try:
+            _az(*step)
+        except (RuntimeError, subprocess.TimeoutExpired) as exc:
+            print(
+                f"teardown step `az {' '.join(step[:3])}` failed ({exc}) -- DELETE {workspace} "
+                f"AND {storage} IN {group} MANUALLY; the storage account bills while it exists",
+                file=sys.stderr,
+                flush=True,
+            )
+    print(f"== teardown done: {workspace} + {storage} ==", flush=True)
 
 
-def _provision() -> tuple[str, str, str, str]:
-    """Create a whole stamped lane and return ``(resource_group, sql_server, database,
-    adls_url)``. Split out of ``synapse_lane`` so a caller outside a single pytest generator's
-    lifetime -- ``scripts/synapse_e2e.py``'s CLI bridge, mirroring ``redshift_e2e.py``'s own split
-    of ``redshift_cluster.py`` -- can provision in one process and tear down in another, persisting
-    only ``resource_group`` (the one thing ``_teardown`` needs) to a state file in between."""
+def _signed_in_principal() -> tuple[str, str]:
+    """The object id and role-assignment principal type of whoever the Azure CLI is logged in as: a
+    developer (``az login``) or the CI lane's service principal (``az login --service-principal``),
+    for which ``az ad signed-in-user show`` is refused (it is a delegated-flow call)."""
+    kind = _az("account", "show", "--query", "user.type", "-o", "tsv")
+    if kind == "servicePrincipal":
+        app_id = _az("account", "show", "--query", "user.name", "-o", "tsv")
+        oid = _az("ad", "sp", "show", "--id", app_id, "--query", "id", "-o", "tsv", timeout=120)
+        return oid, "ServicePrincipal"
+    oid = _az("ad", "signed-in-user", "show", "--query", "id", "-o", "tsv", timeout=120)
+    return oid, "User"
+
+
+def _provision() -> tuple[dict[str, str], str, str, str]:
+    """Create a stamped lane inside the existing resource group ``FABRIC_RESOURCE_GROUP`` and
+    return ``(lane, sql_server, database, adls_url)``, ``lane`` naming what ``_teardown`` deletes.
+    The CI principal holds rights on that group only, not on the subscription, so the lane creates
+    no resource group of its own. Split out of ``synapse_lane`` so a caller outside one pytest
+    generator's lifetime -- ``scripts/synapse_e2e.py``'s CLI bridge, mirroring ``redshift_e2e.py``'s
+    split of ``redshift_cluster.py`` -- can provision in one process and tear down in another,
+    persisting ``lane`` to a state file in between."""
     stamp = datetime.now(timezone.utc).strftime("%y%m%d%H%M%S")
-    resource_group = f"provisa-syn-e2e-{stamp}"
+    resource_group = os.environ["FABRIC_RESOURCE_GROUP"]
     workspace = f"provisa-syn-e2e-{stamp}"
     storage = f"provisasyn{stamp}"  # 22 chars, lowercase alnum -- the storage naming rule
 
     _register_provider()
     location = _resolve_location()
-    user_oid = _az("ad", "signed-in-user", "show", "--query", "id", "-o", "tsv", timeout=120)
+    user_oid, principal_type = _signed_in_principal()
 
-    print(f"== provisioning {resource_group} in {location} ==", flush=True)
-    _az("group", "create", "-n", resource_group, "-l", location, "-o", "none")
+    lane = {"resource_group": resource_group, "workspace": workspace, "storage": storage}
+    print(f"== provisioning {workspace} in {resource_group} ({location}) ==", flush=True)
     try:
         # Hierarchical namespace is not optional: Synapse requires ADLS Gen2 for its primary account.
         _az(
@@ -367,6 +392,7 @@ def _provision() -> tuple[str, str, str, str]:
             "-o",
             "tsv",
         )
+        lane["storage_scope"] = storage_scope
         # Granted before the workspace is created so the ~5 minutes of workspace provisioning double
         # as RBAC propagation time.
         _az(
@@ -378,7 +404,7 @@ def _provision() -> tuple[str, str, str, str]:
             "--assignee-object-id",
             user_oid,
             "--assignee-principal-type",
-            "User",
+            principal_type,
             "--scope",
             storage_scope,
             "-o",
@@ -477,11 +503,11 @@ def _provision() -> tuple[str, str, str, str]:
         print(f"== synapse lane ready: {sql_server} ==", flush=True)
     except Exception:
         # A partial-provisioning failure must not leak -- there is no caller yet to hold a
-        # resource_group for a later `down` (the CLI bridge only learns it from THIS call's
-        # return, which an exception never produces), so this is the only place that can free it.
-        _teardown(resource_group)
+        # lane for a later `down` (the CLI bridge only learns it from THIS call's return, which
+        # an exception never produces), so this is the only place that can free it.
+        _teardown(lane)
         raise
-    return resource_group, sql_server, _DATABASE, adls_url
+    return lane, sql_server, _DATABASE, adls_url
 
 
 @contextmanager
@@ -496,8 +522,8 @@ def synapse_lane():
         yield pinned, os.environ["SYNAPSE_DATABASE"], os.environ["SYNAPSE_ADLS_URL"]
         return
 
-    resource_group, sql_server, database, adls_url = _provision()
+    lane, sql_server, database, adls_url = _provision()
     try:
         yield sql_server, database, adls_url
     finally:
-        _teardown(resource_group)
+        _teardown(lane)
