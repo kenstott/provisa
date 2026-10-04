@@ -29,11 +29,15 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, insert, text
 
+from sqlalchemy import select
+
 from provisa.api.auth_router import router as auth_router
+from provisa.auth.models import AuthIdentity
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES
+from provisa.core.schema_admin import local_users
 from provisa.core.schema_admin import metadata as admin_metadata
-from provisa.core.schema_admin import org_invites, orgs
+from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles
 
@@ -114,8 +118,24 @@ def planes(monkeypatch):
     sync_engine.dispose()
 
 
+def _install_api_error_handler(app: FastAPI) -> None:
+    # Mirror app.py's handler so a raised ApiError serialises its stable `code` (REQ-1350) rather
+    # than FastAPI's default {"detail": ...}.
+    from fastapi.responses import JSONResponse
+
+    from provisa.api.errors import ApiError
+
+    @app.exception_handler(ApiError)
+    async def _h(_req, exc: ApiError):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail, "code": exc.code, "params": exc.params},
+        )
+
+
 def _make_app() -> FastAPI:
     app = FastAPI()
+    _install_api_error_handler(app)
     app.include_router(auth_router)
     return app
 
@@ -142,3 +162,119 @@ def test_a_failed_environment_mint_fails_registration_instead_of_seating_prod(pl
     # The bug this guards against made this a 200 with pinned_env silently left None. Any success
     # response here means the swallow is back.
     assert resp.status_code >= 500, resp.text
+
+
+# --- REQ-124: a credential-less /auth/register may create an account ONLY with a valid invite, and
+# the invite is validated BEFORE any row is written. The router-only app below has no AuthMiddleware,
+# so request.state.identity is never set -- exactly the unauthenticated case the middleware forwards.
+
+
+def _make_app_authed(user_id: str = "existing-user") -> FastAPI:
+    """Router plus a shim that marks every request as an already-authenticated caller."""
+    app = FastAPI()
+    _install_api_error_handler(app)
+
+    @app.middleware("http")
+    async def _inject(request, call_next):
+        request.state.identity = AuthIdentity(
+            user_id=user_id, email=None, display_name=None, roles=[], raw_claims={}
+        )
+        return await call_next(request)
+
+    app.include_router(auth_router)
+    return app
+
+
+def _usernames(sync_engine) -> set[str]:
+    with sync_engine.begin() as conn:
+        conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
+        return {r[0] for r in conn.execute(select(local_users.c.username)).fetchall()}
+
+
+def test_register_without_an_invite_is_refused_and_writes_nothing(planes):
+    _admin_db, _tenant_db, sync_engine = planes
+    with TestClient(_make_app(), raise_server_exceptions=False) as client:
+        resp = client.post("/auth/register", json={"username": "noinvite", "password": "pw-pw-pw"})
+    assert resp.status_code == 401, resp.text
+    assert resp.json()["code"] == "auth.invite_required"
+    assert "noinvite" not in _usernames(sync_engine)
+
+
+def test_register_with_an_expired_invite_is_refused_and_writes_nothing(planes):
+    _admin_db, _tenant_db, sync_engine = planes
+    past = datetime.datetime.now(tz=timezone.utc) - datetime.timedelta(days=1)
+    with sync_engine.begin() as conn:
+        conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
+        conn.execute(
+            insert(org_invites).values(
+                token="invite-tok-expired",
+                org_id="sandbox",
+                role_id="org_admin",
+                env_policy="per_visitor",
+                env_ttl_seconds=3600,
+                created_by="super",
+                expires_at=past,
+            )
+        )
+    with TestClient(_make_app(), raise_server_exceptions=False) as client:
+        resp = client.post(
+            "/auth/register",
+            json={
+                "username": "expired",
+                "password": "pw-pw-pw",
+                "invite_token": "invite-tok-expired",
+            },
+        )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["code"] == "auth.invalid_invite_token"
+    assert "expired" not in _usernames(sync_engine)
+
+
+def test_an_authenticated_caller_may_register_without_an_invite(planes, monkeypatch):
+    _admin_db, _tenant_db, sync_engine = planes
+
+    async def _noop_verifier(*_a, **_k):
+        return None
+
+    monkeypatch.setattr("provisa.api.auth_router.write_verifier", _noop_verifier)
+    with TestClient(_make_app_authed(), raise_server_exceptions=False) as client:
+        resp = client.post("/auth/register", json={"username": "byadmin", "password": "pw-pw-pw"})
+    assert resp.status_code == 200, resp.text
+    assert "byadmin" in _usernames(sync_engine)
+
+
+def test_credential_less_register_with_a_valid_invite_creates_the_membership(planes, monkeypatch):
+    _admin_db, _tenant_db, sync_engine = planes
+    from types import SimpleNamespace
+
+    async def _env(_invite, _user_id):
+        return SimpleNamespace(name=None)  # pinned to prod (env=None)
+
+    async def _noop(*_a, **_k):
+        return None
+
+    monkeypatch.setattr("provisa.api.auth_router.redeem_env", _env)
+    monkeypatch.setattr("provisa.api.auth_router.seat_redeemed_roles", _noop)
+    monkeypatch.setattr("provisa.api.auth_router.write_verifier", _noop)
+    monkeypatch.setattr("provisa.api.sandbox_org.reseat_after_conferral", _noop)
+    monkeypatch.setattr("provisa.core.commerce.bind_member_to_org_trial", _noop)
+
+    with TestClient(_make_app(), raise_server_exceptions=False) as client:
+        resp = client.post(
+            "/auth/register",
+            json={"username": "redeemer", "password": "pw-pw-pw", "invite_token": _TOKEN},
+        )
+    assert resp.status_code == 200, resp.text
+    assert "redeemer" in _usernames(sync_engine)
+    user_id = resp.json()["user_id"]
+    with sync_engine.begin() as conn:
+        conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
+        orgs_joined = {
+            r[0]
+            for r in conn.execute(
+                select(user_org_memberships.c.org_id).where(
+                    user_org_memberships.c.user_id == user_id
+                )
+            ).fetchall()
+        }
+    assert "sandbox" in orgs_joined

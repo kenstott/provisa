@@ -595,7 +595,7 @@ class RegisterRequest(BaseModel):
 
 
 @router.post("/register")  # REQ-124
-async def register(body: RegisterRequest):
+async def register(body: RegisterRequest, request: Request):
     from provisa.api.app import state
 
     cfg = getattr(state, "config", None)
@@ -626,12 +626,40 @@ async def register(body: RegisterRequest):
     import bcrypt
     import uuid
 
-    password_hash = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    user_id = str(uuid.uuid4())
+    # REQ-124: a request that carries no validated credential reaches this handler only through the
+    # middleware's credential-less /auth/register relaxation (AuthMiddleware._process). Such a
+    # caller — a redeemer following an invite link, not signed in — may create an account ONLY by
+    # presenting a valid, unspent, unexpired invite, and that is checked BEFORE any row is written
+    # so a bad token writes nothing. An already-authenticated caller (identity resolved by the
+    # middleware) keeps the open behaviour.
+    identity = getattr(request.state, "identity", None)
+    authenticated = (
+        identity is not None and getattr(identity, "user_id", "anonymous") != "anonymous"
+    )
+
+    import datetime
+    from datetime import timezone
 
     # local_users/org_invites/user_org_memberships live in the platform control plane.
     admin_db = state.admin_db
     assert admin_db is not None
+
+    if not authenticated:
+        if not body.invite_token:
+            raise ApiError(401, "auth.invite_required", "An invite is required to register")
+        now = datetime.datetime.now(tz=timezone.utc)
+        async with admin_db.acquire() as conn:
+            result = await conn.execute_core(
+                select(*INVITE_REDEMPTION_COLUMNS).where(org_invites.c.token == body.invite_token)
+            )
+            fetched = result.fetchone()
+        precheck = dict(fetched._mapping) if fetched is not None else None
+        if precheck is None or is_spent(precheck) or precheck["expires_at"] < now:
+            raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
+
+    password_hash = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    user_id = str(uuid.uuid4())
+
     async with admin_db.acquire() as conn:
         result = await conn.execute_core(
             select(local_users.c.id).where(local_users.c.username == body.username)

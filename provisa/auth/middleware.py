@@ -660,6 +660,14 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         scheme, _, token = (auth_header or "").partition(" ")
         validator = validators.get(scheme.lower())
         if not token or validator is None:
+            # REQ-124: credential-less self-registration. A redeemer following an invite link is
+            # not signed in, and the UI (src/api/admin.ts registerAccount) posts with no
+            # Authorization header. Only a request that presents NO credential at all falls through
+            # — with no identity, exactly like a public path — and the handler then requires a
+            # valid, unspent invite before it writes anything. A PRESENTED-but-invalid credential
+            # is still refused here, so a bad token can never be laundered into an anonymous signup.
+            if request.url.path == "/auth/register" and not auth_header:
+                return None
             return _deny(request, 401, "Missing or invalid Authorization header")
 
         try:
