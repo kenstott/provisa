@@ -103,19 +103,22 @@ async def engine_table_rows(engine: Any, source: Any, table: Any) -> list[dict]:
 
 
 def make_floored_direct_loader(state: Any, engine: Any) -> AdapterLoader:  # REQ-030, REQ-1141
-    """The row fetch for a direct-driver source type: through the source's own direct pool when the
-    operator floors the source, else through the engine as for any engine-scannable source.
+    """The row fetch for a direct-driver source type: through the engine when the engine reads
+    the source in place and the operator does not floor it, else through the source's own direct
+    pool.
 
     A floored source (``core.operator_floor.floor_setting``) has no live relation on the engine —
     its catalog-physical name IS the landed copy, so reading it through the engine would land the
-    replica onto itself. The land is the one sanctioned pull from the source, so it reads the source
-    directly, on the refresh policy the operator set; queries never do."""
+    replica onto itself. A source the engine cannot attach (Trino as a source on DuckDB) has no
+    relation on the engine at all. The land is the one sanctioned pull from the source, so it reads
+    the source directly, on the refresh policy the operator set; queries never do."""
     import sqlglot.expressions as exp
 
     from provisa.core.operator_floor import floor_setting
+    from provisa.federation.strategy import engine_attaches
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        if floor_setting(source) is None:
+        if floor_setting(source) is None and engine_attaches(engine, _source_type(source)):
             return await engine_table_rows(engine, source, table)
         dialect = state.source_dialects[source.id] or None
         sql = (
