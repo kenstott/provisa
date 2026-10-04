@@ -108,15 +108,20 @@ def params_hash(params: dict) -> str:
 
 def source_cache_location(state: Any, source_id: str, api_source: Any) -> CacheLocation:
     """Where the acting org's API cache for ``source_id`` is, in the bound engine's terms: the
-    source's own cache catalog when it names one, else the catalog the engine reads the source
-    through (REQ-1730), in the org's API cache schema (REQ-1623)."""
-    catalog = (getattr(api_source, "cache_catalog", None) if api_source else None) or (
-        getattr(state, "source_catalogs", {}).get(source_id)
-    )
+    source's own cache catalog when it names one, else the engine's own cache catalog (a native
+    engine's attached store), else the catalog the engine reads the source through (REQ-1730), in
+    the org's API cache schema (REQ-1623)."""
+    catalog = getattr(api_source, "cache_catalog", None) if api_source else None
     default_schema = org_cache_schema(state)
     schema = getattr(api_source, "cache_schema", default_schema) if api_source else default_schema
     # Through the module, as router_integration resolves it: one binding of the location rule.
-    return engine_cache.cache_location(source_id, catalog, schema, engine=state.federation_engine)
+    return engine_cache.cache_location(
+        source_id,
+        catalog,
+        schema,
+        engine=state.federation_engine,
+        source_catalog=getattr(state, "source_catalogs", {}).get(source_id),
+    )
 
 
 def fill_table(state: Any, endpoint: ApiEndpoint, api_source: Any) -> FillTable:
