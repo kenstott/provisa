@@ -162,6 +162,22 @@ def make_source_land(
     return land
 
 
+def _answered_by_a_later_build(pending: list[dict], record: Any) -> bool:
+    """Whether every pending event is the boot seed (``payload.bootstrap``) and the replica's
+    current or last build started at or after the latest of them was posted."""
+    from datetime import UTC
+
+    if not pending or not all((e.get("payload") or {}).get("bootstrap") for e in pending):
+        return False
+    started = record.build_started_at
+    if started is None:
+        return False
+    posted = max(e["created_at"] for e in pending)
+    if posted.tzinfo is None:  # a control plane without a timezone-aware column (SQLite): UTC
+        posted = posted.replace(tzinfo=UTC)
+    return started >= posted
+
+
 def make_source_build(
     *,
     db: Any,
@@ -208,6 +224,13 @@ def make_source_build(
                     {"rows": record.rows_copied, "built": ".".join(key)},
                     record.content_hash,
                 )
+            if not forced and record is not None and _answered_by_a_later_build(pending, record):
+                # The boot seed asks for a build because what changed while nothing watched is
+                # unknown. A build that started after it was posted -- the model's own build of
+                # this launch -- reads the source's current rows, so it already answers the seed.
+                # Asking again marked a running build as read past a change and built the replica
+                # a second time.
+                return None
             reason = replica_state.REASON_OPERATOR if forced else replica_state.REASON_REFRESH
             await replica_state.request_build(conn, key, reason)
         kick()
