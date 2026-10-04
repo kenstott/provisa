@@ -105,14 +105,20 @@ PGPORT="$(printf '%s\n' "$_pgout" | sed -n 's/^PG_PORT=//p')"
 PG_URL="postgresql+psycopg://provisa:provisa@/provisa?host=$PGHOST&port=$PGPORT"
 
 # --- render the config template for this launch ---
-sed -e "s#@@EU_ADDRESS@@#http://127.0.0.1:$EU_UI#g" \
-    -e "s#@@US_ADDRESS@@#http://127.0.0.1:$US_UI#g" \
-    -e "s#@@EU_ENGINE_URL@@#duckdb:///$INSTANCE_DIR/eu/engine.duckdb#g" \
-    -e "s#@@US_ENGINE_URL@@#duckdb:///$INSTANCE_DIR/us/engine.duckdb#g" \
-    -e "s#@@PG_URL@@#$PG_URL#g" \
-    -e "s#@@REDIS_URL@@#$REDIS_URL#g" \
-    -e "s#@@DATA_CSV_DIR@@#$CSV_DIR#g" \
-    "$REPO/config/provisa-regions-demo.yaml.tmpl" >"$CONFIG_OUT"
+# Rendered in Python, not sed: the pg URL carries & ? = / which sed's replacement treats specially
+# (& inserts the matched token), and that mangled a store URL.
+EU_ADDRESS="http://127.0.0.1:$EU_UI" US_ADDRESS="http://127.0.0.1:$US_UI" \
+EU_ENGINE_URL="duckdb:///$INSTANCE_DIR/eu/engine.duckdb" \
+US_ENGINE_URL="duckdb:///$INSTANCE_DIR/us/engine.duckdb" \
+PG_URL="$PG_URL" REDIS_URL="$REDIS_URL" DATA_CSV_DIR="$CSV_DIR" \
+  "$PY" - "$REPO/config/provisa-regions-demo.yaml.tmpl" "$CONFIG_OUT" <<'PY'
+import os, sys
+src, out = sys.argv[1], sys.argv[2]
+text = open(src).read()
+for tok in ("EU_ADDRESS","US_ADDRESS","EU_ENGINE_URL","US_ENGINE_URL","PG_URL","REDIS_URL","DATA_CSV_DIR"):
+    text = text.replace(f"@@{tok}@@", os.environ[tok])
+open(out, "w").write(text)
+PY
 
 # --- launch a node per region, BOTH on the one shared model store and shared cache ---
 # PLATFORM/TENANT_DATABASE_URL and REDIS_URL are exported so the embedded profile (setdefault) keeps
@@ -126,7 +132,7 @@ launch_node() {
   REDIS_URL="$REDIS_URL" \
   PROVISA_CONFIG="$CONFIG_OUT" PROVISA_CONFIG_REPLACE="true" \
     $PROVISA run --region "$region" --api-port "$api" --ui-port "$ui" \
-      --data-dir "$datadir" \
+      --data-dir "$datadir" --no-browser \
       >"$INSTANCE_DIR/$region.log" 2>&1 &
   echo $! >>"$PIDS_FILE"
 }
