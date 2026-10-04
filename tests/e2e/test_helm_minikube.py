@@ -128,6 +128,35 @@ def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(_pin(cmd), capture_output=True, text=True, timeout=1260, **kwargs)
 
 
+def _why_not_ready() -> str:
+    """What a timed-out ``helm install --wait`` was waiting on: every pod's state, and for each pod
+    that is not Ready its events and the end of each container's log (the previous run's too, for
+    one that restarted). "context deadline exceeded" alone names nothing."""
+    pods = _kubectl("get", "pods", "-o", "wide")
+    lines = [f"=== pods\n{pods.stdout}{pods.stderr}"]
+    listed = _kubectl("get", "pods", "-o", "json")
+    if listed.returncode != 0:
+        lines.append(f"=== kubectl get pods -o json failed\n{listed.stderr}")
+        return "\n".join(lines)
+    for pod in json.loads(listed.stdout)["items"]:
+        ready = any(
+            c["type"] == "Ready" and c["status"] == "True"
+            for c in pod["status"].get("conditions", [])
+        )
+        if ready:
+            continue
+        name = pod["metadata"]["name"]
+        described = _kubectl("describe", "pod", name)
+        lines.append(f"=== describe {name}\n{described.stdout[-4000:]}")
+        for previous in (False, True):
+            flags = ["--previous"] if previous else []
+            logs = _kubectl("logs", name, "--all-containers", "--tail=80", *flags)
+            if logs.stdout.strip():
+                label = "previous logs" if previous else "logs"
+                lines.append(f"=== {label} {name}\n{logs.stdout}")
+    return "\n".join(lines)
+
+
 def _kubectl(*args: str) -> subprocess.CompletedProcess:
     return _run(["kubectl", f"--namespace={NAMESPACE}", *args])
 
@@ -320,7 +349,7 @@ def helm_install(request):
         ]
     )
     if result.returncode != 0:
-        pytest.fail(f"helm install failed:\n{result.stdout}\n{result.stderr}")
+        pytest.fail(f"helm install failed:\n{result.stdout}\n{result.stderr}\n{_why_not_ready()}")
 
     yield
 

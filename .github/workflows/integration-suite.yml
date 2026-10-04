@@ -89,6 +89,17 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
 
+      # First, before any step that can fail: the result upload and the image cache run on
+      # failure too, and read this step's names. Run after an install that failed, it never ran
+      # and they were named "lane-" and "images--".
+      - &lane-key
+        name: Lane cache key
+        id: key
+        run: |
+          name="${{ matrix.lane }}-${{ matrix.shard }}"
+          echo "lane=${name//\//of}" >> "$GITHUB_OUTPUT"
+          echo "compose=${{ hashFiles('docker-compose.core.yml', 'docker-compose.test.yml', 'docker-compose.e2e.yml') }}" >> "$GITHUB_OUTPUT"
+
       - &install-uv
         name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -103,7 +114,7 @@ jobs:
         name: Install Microsoft ODBC Driver 18 for SQL Server
         run: |
           curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
-            | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+            | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
           curl -fsSL "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
             | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
           sudo apt-get update -q
@@ -115,14 +126,6 @@ jobs:
         run: |
           uv sync --frozen --extra dev
           uv pip install -e "provisa-client/[dev]" -q
-
-      - &lane-key
-        name: Lane cache key
-        id: key
-        run: |
-          name="${{ matrix.lane }}-${{ matrix.shard }}"
-          echo "lane=${name//\//of}" >> "$GITHUB_OUTPUT"
-          echo "compose=${{ hashFiles('docker-compose.core.yml', 'docker-compose.test.yml', 'docker-compose.e2e.yml') }}" >> "$GITHUB_OUTPUT"
 
       # Images this lane pulled last time, so a run is not dominated by pulls. Keyed on the compose
       # files: a changed image tag is a new key.
