@@ -71,6 +71,8 @@ def test_a_view_is_served_by_polling_without_attempting_a_trigger(caplog) -> Non
     from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
     class _FakeConn:
+        dialect = "postgresql"
+
         def __init__(self, base: set[tuple[str, str]]) -> None:
             self._base = base
             self.executed: list[str] = []
@@ -105,3 +107,24 @@ def test_a_view_is_served_by_polling_without_attempting_a_trigger(caplog) -> Non
     assert len(conn.executed) == 1 and "org_default.orders" in conn.executed[0]
     # The view triggered no CREATE and no "failed ... fall back to polling" warning.
     assert not [r for r in caplog.records if "roles_domain_access" in r.getMessage()]
+
+
+def test_a_non_postgres_control_plane_installs_no_triggers_and_does_not_query_pg_catalog() -> None:
+    # REQ-258: LISTEN/NOTIFY is PostgreSQL-only. On a SQLite demo/dev control plane the walk must
+    # install nothing and must NOT run the PG-only pg_class probe (it would fail the whole walk).
+    import asyncio
+
+    from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
+
+    class _SqliteConn:
+        dialect = "sqlite"
+
+        async def fetch(self, *_a, **_k):  # noqa: ANN002, ANN003
+            raise AssertionError("pg_class probe must not run on a non-postgres control plane")
+
+        async def execute(self, *_a, **_k):  # noqa: ANN002, ANN003
+            raise AssertionError("no trigger DDL on a non-postgres control plane")
+
+    tables = [{"source_id": "cp", "schema_name": "org_default", "table_name": "orders"}]
+    installed = asyncio.run(ensure_pg_notify_triggers(_SqliteConn(), tables, {"cp": "postgresql"}))
+    assert installed == set()

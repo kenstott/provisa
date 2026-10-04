@@ -103,6 +103,12 @@ async def ensure_pg_notify_triggers(  # REQ-258
     CREATE TRIGGER. A base table whose install fails for another reason (e.g. insufficient
     privilege) is omitted too, and its caller likewise falls back to polling.
     """
+    # LISTEN/NOTIFY and the pg_class base-table probe are PostgreSQL-only: on any other control
+    # plane (e.g. a SQLite demo/dev plane) there are no notify triggers at all, so every table's
+    # subscription is served by polling. Returning early also keeps the PG-only catalog query in
+    # _base_tables from running against a non-PG plane (it would otherwise fail the whole walk).
+    if getattr(conn, "dialect", None) != "postgresql":
+        return set()
     pg_tables = [
         (tbl.get("schema_name", "public"), tbl["table_name"])
         for tbl in tables
