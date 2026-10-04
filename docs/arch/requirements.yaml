@@ -71686,9 +71686,9 @@
     to any request from that region. The build may reach sources and copies in any region, as any node
     may (REQ-1922); what it cannot do is land data that people in its own region are not allowed to see.
     So a copy holds exactly what an administrator in that region may see -- the copy in a country's region
-    includes what may be held in the country, and the copy elsewhere leaves it out. No view declares a
+    includes what may be held in the country, and the copy elsewhere leaves it out. [SUPERSEDED by REQ-1921 amendment, 2026-10-04 -- a view may name a region. Kept here for history; do not implement against it.] No view declares a
     region and none is inferred from its tables; a copy resides in the view storage of the region that
-    built it, and what it holds follows from the rules. A reader is served from the copy in the region
+    built it, and what it holds follows from the rules. [END SUPERSEDED BLOCK] A reader is served from the copy in the region
     they connected to, with their own rules applied on top. A view whose definition aggregates therefore
     gives each region the aggregate over what that region may hold, and the same view can return different
     figures in different regions -- that is the rule working, and the admin pages say which region's copy
@@ -71702,7 +71702,7 @@
     HOT COUNTS ARE THE HOME REGION'S:) A table's Hot count (REQ-239) is the traffic of its home region
     only. (Amended 2026-10-03, A TABLE'S REGION IS ONE OF ITS ORG'S REGIONS:) The region a table or source
     names as its home must be one of the regions its org has selected (REQ-1922). Any other is refused
-    at save and at load, with an error naming the org's regions.
+    at save and at load, with an error naming the org's regions. (Amended 2026-10-04, A VIEW MAY NAME A REGION:) A materialized view may name a region, one of its org's regions. A view that names a region is built and refreshed only by that region, governed as the organisation's administrator with that region as its region attribute, and kept in that region's view storage. A reader who connects through another region is served from that copy, read in place at the address the model gives with the reader's row and column rules on the view in the statement, exactly as a table that names a region is served from its home region's replica; when the copy has not been built or its region cannot be reached, the request is refused naming the region. The copy holds what an administrator in its region may see, so what other regions read from it, including aggregates over rows their own rules would exclude, is the operator's decision; keeping the view's rules consistent with the rules on its tables is the operator's responsibility, as the choice to name a region is. A view that names no region is built in every region as above. The record of each request names the region whose copy served it.
   use_case: A regulated enterprise holds data that must stay in a country but still wants one governed
     layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes
     already limit who sees what; what was missing was a guarantee that the platform itself never quietly
