@@ -516,8 +516,8 @@ def test_intra_source_relationship_detected():
 
     assert len(relationships) > 0
     rel_pairs = {(r["source_table_id"], r["target_table_id"]) for r in relationships}
-    # orders → products relationship should be detected
-    assert ("Shopify__orders", "Shopify__products") in rel_pairs
+    # orders → products relationship should be detected, each end named as it is registered
+    assert ("shopify__orders", "shopify__products") in rel_pairs
 
 
 def test_auto_detected_relationships_carry_remote_managed_flag():
@@ -537,7 +537,7 @@ def test_relationship_cardinality_many_to_one_for_object_field():
     orders_to_products = [
         r
         for r in relationships
-        if r["source_table_id"] == "Shopify__orders" and r["target_table_id"] == "Shopify__products"
+        if r["source_table_id"] == "shopify__orders" and r["target_table_id"] == "shopify__products"
     ]
     assert len(orders_to_products) == 1
     assert orders_to_products[0]["cardinality"] == "many-to-one"
