@@ -1285,6 +1285,9 @@ class HotTableStatType:
     # "replica_building" (past its threshold, read live while its replica is built; no row
     # count yet). REQ-241 makes the tiers exclusive.
     kind: str
+    # REQ-1922: the home region of the underlying table (null when none / no regions declared), so
+    # the admin hot-tables list carries a region column and filters by region like the other lists.
+    region: str | None = None
 
 
 @strawberry.type
@@ -1294,6 +1297,9 @@ class ReplicaBuildType:  # REQ-1915
     source_id: str
     schema_name: str
     table_name: str
+    # REQ-1922: the home region of this replica's table (null when none / no regions declared), so
+    # the replica-status list carries a region column and filters by region like the other lists.
+    region: str | None = None
     # idle (built, nothing pending) | requested | building | failed | retired (the model no
     # longer declares it; it is dropped after a grace period)
     state: str

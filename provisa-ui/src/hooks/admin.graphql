@@ -685,6 +685,7 @@ query HotTables {
     schemaName
     rowCount
     kind
+    region
   }
 }
 
@@ -694,6 +695,7 @@ query ReplicaBuilds {
       sourceId
       schemaName
       tableName
+      region
       state
       requestedReason
       method

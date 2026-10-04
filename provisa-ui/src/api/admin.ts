@@ -1482,6 +1482,8 @@ export interface ReplicaBuild {
   sourceId: string;
   schemaName: string;
   tableName: string;
+  /** REQ-1922: the table's home region; null when none / no regions declared. */
+  region: string | null;
   /** idle (built, nothing pending) | requested | building | failed | retired */
   state: string;
   requestedReason: string | null;
@@ -1532,6 +1534,8 @@ export interface HotTableStat {
   // from its replica ("replica", REQ-826), or one past its threshold whose replica is still
   // being built and which is read live meanwhile ("replica_building").
   kind: "hot_candidate" | "hot" | "replica" | "replica_building";
+  /** REQ-1922: the table's home region; null when none / no regions declared. */
+  region: string | null;
 }
 
 export interface MaterializeStoreInfo {
