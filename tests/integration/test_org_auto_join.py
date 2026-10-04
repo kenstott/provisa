@@ -87,6 +87,9 @@ def _planes(monkeypatch, *org_rows: dict):
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
+    # REQ-1919: an org's roles and role assignments are its model, kept in its model store (what
+    # /auth/me reads). This test's one schema holds both stores.
+    monkeypatch.setattr(app_state, "model_db", tenant_db, raising=False)
 
     # REQ-1269: the middleware binds the auto-join org's runtime (ensure_org_runtime) to grant the
     # tenant-plane role in that org's schema — here the tenant schema IS the org's schema, so

@@ -161,6 +161,9 @@ def planes(monkeypatch):
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     monkeypatch.setattr(app_state, "multitenancy", True, raising=False)
     monkeypatch.setattr(default_rt, "tenant_db", tenant_db)
+    # REQ-1919: an org's role assignments are its model, kept in its model store; the claim and the
+    # auth middleware both reach them through model_db. This test's one schema holds both stores.
+    monkeypatch.setattr(default_rt, "model_db", tenant_db)
     monkeypatch.setattr(
         default_rt,
         "roles",
