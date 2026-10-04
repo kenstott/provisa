@@ -62,7 +62,6 @@
     "detailInlineFields": "內嵌欄位",
     "inlineReturns": "內嵌（{{count}} 個欄位）",
     "testAsRole": "以此角色測試：",
-    "noGovernance": "（無治理）",
     "testResultHeading": "測試結果：{{name}}",
     "close": "關閉",
     "governanceApplied": "已套用治理",

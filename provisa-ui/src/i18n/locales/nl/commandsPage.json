@@ -62,7 +62,6 @@
     "detailInlineFields": "Inline velden",
     "inlineReturns": "inline ({{count}} velden)",
     "testAsRole": "Testen als rol:",
-    "noGovernance": "(geen governance)",
     "testResultHeading": "Testresultaat: {{name}}",
     "close": "Sluiten",
     "governanceApplied": "Governance toegepast",

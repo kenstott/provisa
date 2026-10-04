@@ -62,7 +62,6 @@
     "detailInlineFields": "इनलाइन फ़ील्ड",
     "inlineReturns": "इनलाइन ({{count}} फ़ील्ड)",
     "testAsRole": "इस भूमिका से परीक्षण करें:",
-    "noGovernance": "(कोई गवर्नेंस नहीं)",
     "testResultHeading": "परीक्षण परिणाम: {{name}}",
     "close": "बंद करें",
     "governanceApplied": "गवर्नेंस लागू",

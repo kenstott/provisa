@@ -62,7 +62,6 @@
     "detailInlineFields": "Inline-Felder",
     "inlineReturns": "inline ({{count}} Felder)",
     "testAsRole": "Als Rolle testen:",
-    "noGovernance": "(keine Governance)",
     "testResultHeading": "Testergebnis: {{name}}",
     "close": "Schließen",
     "governanceApplied": "Governance angewendet",

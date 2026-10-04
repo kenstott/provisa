@@ -62,7 +62,6 @@
     "detailInlineFields": "内联字段",
     "inlineReturns": "内联（{{count}} 个字段）",
     "testAsRole": "以角色测试：",
-    "noGovernance": "（无治理）",
     "testResultHeading": "测试结果：{{name}}",
     "close": "关闭",
     "governanceApplied": "已应用治理",
