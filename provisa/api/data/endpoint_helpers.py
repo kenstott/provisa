@@ -36,8 +36,6 @@ from provisa.executor import stats as _qs_mod
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.transpiler.router import Route
 
-import re as _re
-
 
 _ACCEPT_MAP = {
     "application/json": "json",
@@ -89,23 +87,6 @@ def _format_response(rows, columns, root_field, output_format, result_limit: int
         return Response(content=content, media_type="application/vnd.apache.arrow.stream")
 
     return serialize_rows(rows, columns, root_field, result_limit=result_limit)
-
-
-def _inject_probe_limit(sql: str, limit: int) -> str:
-    """Inject or tighten a LIMIT clause for threshold probing.
-
-    If the query already has a literal LIMIT, use the smaller of the two.
-    If the query already has a parameterized LIMIT ($N), leave it unchanged.
-    """
-    # Parameterized limit already present — user-supplied, leave as-is
-    if _re.search(r"\bLIMIT\s+\$\d+", sql, _re.IGNORECASE):
-        return sql
-    limit_match = _re.search(r"\bLIMIT\s+(\d+)", sql, _re.IGNORECASE)
-    if limit_match:
-        existing = int(limit_match.group(1))
-        effective = min(existing, limit)
-        return sql[: limit_match.start()] + f"LIMIT {effective}" + sql[limit_match.end() :]
-    return sql + f" LIMIT {limit}"
 
 
 def _check_role_capability(role, capability: Capability) -> None:

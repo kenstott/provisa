@@ -269,10 +269,11 @@ def test_normal_cached_graphql_request_exports_one_span(normal_server):
     # The statement's role, table and text live in its audit row (the ops `queries` report), not
     # on the span.
     assert not {"provisa.role", "provisa.table", "provisa.domain"} & set(attrs), attrs
-    # A hit on a plan the server has already compiled and governed: the stages that run are the
-    # route decision, the cache read and the response encoding.
-    for stage in ("route", "cache", "encode"):
+    # A hit on a plan the server has already compiled and governed is answered before routing
+    # (REQ-1897): the stages that run are the cache read and the response encoding.
+    for stage in ("cache", "encode"):
         assert attrs[f"stage.{stage}.ms"] >= 0, (stage, attrs)
+    assert "stage.route.ms" not in attrs, attrs
     assert _sql_text(spans) == []
 
 

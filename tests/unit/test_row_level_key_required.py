@@ -172,46 +172,36 @@ async def test_a_read_that_binds_the_key_is_planned_on_both_stages(planning, sql
     assert raw.pk_bounds and compiled.pk_bounds
 
 
-async def test_the_graphql_executors_entry_refuses_the_same_way(planning):
-    """/data/graphql executes its compiled fields itself and resolves key bounds through
-    ``_resolve_pk_bounds`` — the same decision point."""
-    with pytest.raises(RowLevelKeyRequired) as refused:
-        await _pipeline._resolve_pk_bounds('SELECT "o"."id" FROM "sales"."orders" AS "o"', planning)
-    _assert_names_table_and_key(refused.value)
-    bound = await _pipeline._resolve_pk_bounds(
-        'SELECT "o"."id" FROM "sales"."orders" AS "o" WHERE "o"."id" = $1', planning, [7]
-    )
-    assert bound
-
-
 async def test_a_graphql_field_is_refused_before_its_cache_and_its_route(planning, monkeypatch):
+    """/data/graphql reads each field through the compiled pipeline: the same decision point,
+    ahead of the cache read and the route."""
     from provisa.api.data import endpoint
+    from provisa.compiler.directives import CacheHint
+    from provisa.compiler.sql_types import ColumnRef, CompiledQuery
 
-    monkeypatch.setattr(_pipeline, "extend_trace_scope_to_sources", AsyncMock())
-    cache_read = AsyncMock(return_value=None)
-    routed = AsyncMock()
-    monkeypatch.setattr(endpoint, "check_cache", cache_read)
-    monkeypatch.setattr(endpoint, "decide_route", routed)
-    compiled = SimpleNamespace(
-        root_field="orders",
-        sources={"neo"},
+    planning.mv_registry = SimpleNamespace(get_fresh=lambda: [])
+    cache_read = AsyncMock(return_value=(None, ()))
+    monkeypatch.setattr(_pipeline, "_cached_before_routing", cache_read)
+    routed = _pipeline._optimize_and_route  # the fixture's stand-in, restored by the fixture
+    compiled = CompiledQuery(
         sql='SELECT "t0"."id" FROM "sales"."orders" AS "t0" LIMIT 100',
         params=[],
+        root_field="orders",
+        columns=[ColumnRef("t0", "id", "id", None)],
+        sources={"neo"},
     )
     with pytest.raises(RowLevelKeyRequired) as refused:
         await endpoint._execute_one_field(
             compiled,
             planning.contexts["analyst"],
-            planning.rls_contexts["analyst"],
             planning,
             "analyst",
             "json",
-            force_redirect=False,
-            redirect_config=None,
-            effective_redirect_format=None,
-            probe_limit=None,
-            response_cache_ttl=None,
-            cache_opt_in=True,
+            delivery=None,
+            as_of=None,
+            steward_hint=None,
+            query_session_props=None,
+            cache_hint=CacheHint(opt_in=True, ttl=None, debug_trace=False),
         )
     _assert_names_table_and_key(refused.value)
     cache_read.assert_not_awaited()

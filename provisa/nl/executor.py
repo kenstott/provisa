@@ -101,42 +101,23 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
 
 
 async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) -> list[tuple]:
-    """Run ``query`` through parse_query/compile_query/governance/physical-rewrite/execute_engine
-    and return the raw (compiled_query, result, nodes_result) tuples — the shared pipeline step
-    both ``_execute_graphql`` (GraphQL-shaped merge) and the gRPC/JSON:API/OpenAPI aggregate
-    branches (protocol-shaped envelopes, REQ-1359) build on, so there is exactly one place that
-    compiles/governs/executes GraphQL text."""
+    """Compile ``query`` and run each root field through the ONE compiled pipeline
+    (``_govern_and_route_compiled`` → ``_execute_plan``), returning the raw (compiled_query, result,
+    nodes_result) tuples — the step both ``_execute_graphql`` (GraphQL-shaped merge) and the
+    gRPC/JSON:API/OpenAPI aggregate branches (protocol-shaped envelopes, REQ-1359) build on.
+    Governance, API-table hydration, the response cache and the terminal are the pipeline's, exactly
+    as for REST and JSON:API reading the same compiled SQL."""
     from graphql import GraphQLSchema
-    from provisa.api.data.hydration import _hydrate_api_tables_before_engine
-    from provisa.api.data.materialization import _materialize_api_to_engine_cache
-    from provisa.cache.values_cte import build_values_cte_sql
-    from provisa.api_source.engine_cache import rewrite_all_from_cache
-    from provisa.compiler.nf_extractor import apply_dropped_tables
+
+    from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.compiler.parser import parse_query
     from provisa.compiler.sql_gen import compile_query
-    from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
-    from provisa.compiler.rls import RLSContext
+    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
     schema = app_state.schemas.get(role)
     if not isinstance(schema, GraphQLSchema):
         raise RuntimeError(f"No GraphQL schema for role: {role}")
-    # execute_engine guards its own connection — no direct engine-connection check.
-    engine = app_state.federation_engine
-
-    from provisa.security.rights import require_role
-
     ctx = _get_ctx(app_state, role)
-    rls = getattr(app_state, "rls_contexts", {}).get(role, RLSContext.empty())
-    gov_ctx = build_governance_context(
-        role,
-        rls,
-        getattr(app_state, "masking_rules", {}),
-        ctx,
-        getattr(app_state, "tables", []),
-        role=require_role(app_state.roles, role),
-    )
-
     document = parse_query(schema, query, {}, ctx=ctx)
     compiled_queries = compile_query(document, ctx, {})
     if not compiled_queries:
@@ -144,41 +125,20 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
 
     out: list[tuple] = []
     for cq in compiled_queries:
-        await _hydrate_api_tables_before_engine(cq, ctx, app_state)
-
-        governed = apply_governance(cq.sql, gov_ctx)
-        exec_sql = rewrite_semantic_to_catalog_physical(governed, ctx)
-        cache_rewrites, values_ctes, dropped = await _materialize_api_to_engine_cache(
-            exec_sql, app_state, cq.gql_remote_extra_selections, table_ids=cq.table_ids
+        plan = await _govern_and_route_compiled(
+            cq.sql, role, exec_params=cq.params or None, state=app_state, cache_hint=NO_CACHE_HINT
         )
-        exec_sql = apply_dropped_tables(exec_sql, dropped)
-        for table_name, entry in values_ctes.items():
-            exec_sql = build_values_cte_sql(exec_sql, table_name, entry)
-        if cache_rewrites:
-            exec_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
-        physical = _expand_views(exec_sql, app_state, gov_ctx)
-        physical = engine.transpile_physical(physical)
-        result = await engine.execute_engine(physical, cq.params)
-
+        result = await _execute_plan(plan, app_state)
         nodes_result = None
         if cq.nodes_sql is not None:
-            governed_nodes = apply_governance(cq.nodes_sql, gov_ctx)
-            nodes_exec_sql = rewrite_semantic_to_catalog_physical(governed_nodes, ctx)
-            (
-                nodes_cache_rewrites,
-                nodes_values_ctes,
-                nodes_dropped,
-            ) = await _materialize_api_to_engine_cache(
-                nodes_exec_sql, app_state, cq.gql_remote_extra_selections, table_ids=cq.table_ids
+            nodes_plan = await _govern_and_route_compiled(
+                cq.nodes_sql,
+                role,
+                exec_params=cq.nodes_params or None,
+                state=app_state,
+                cache_hint=NO_CACHE_HINT,
             )
-            nodes_exec_sql = apply_dropped_tables(nodes_exec_sql, nodes_dropped)
-            for table_name, entry in nodes_values_ctes.items():
-                nodes_exec_sql = build_values_cte_sql(nodes_exec_sql, table_name, entry)
-            if nodes_cache_rewrites:
-                nodes_exec_sql = rewrite_all_from_cache(nodes_exec_sql, nodes_cache_rewrites)
-            physical_nodes = _expand_views(nodes_exec_sql, app_state, gov_ctx)
-            physical_nodes = engine.transpile_physical(physical_nodes)
-            nodes_result = await engine.execute_engine(physical_nodes, cq.nodes_params)
+            nodes_result = await _execute_plan(nodes_plan, app_state)
         out.append((cq, result, nodes_result))
     return out
 
@@ -532,25 +492,6 @@ async def _execute_domain_table_aggregate(
     if protocol == "jsonapi":
         return {"data": None, "meta": {"aggregate": agg_payload}}
     return {"data": agg_payload}
-
-
-def _expand_views(sql: str, app_state: Any, gov_ctx: Any) -> str:
-    """Inline-expand __derived__ view refs before transpile/execute (REQ-135/REQ-1163).
-
-    Mirrors the pgwire SQL path (provisa/pgwire/_pipeline.py) and the REST/GraphQL
-    path (provisa/api/data/endpoint.py's _prepare_compiled) — without this, a
-    __derived__-sourced table survives rewrite_semantic_to_catalog_physical as a
-    literal "__derived__" catalog reference the engine has no such catalog for.
-    """
-    view_sql_map = getattr(app_state, "view_sql_map", None)
-    if not view_sql_map:
-        return sql
-    from provisa.compiler.view_expand import expand_view_refs
-
-    from provisa.mv.view_read import view_bodies
-
-    # Each view reference becomes what THIS reader may read of it (mv/view_read.py).
-    return expand_view_refs(sql, view_bodies(sql, view_sql_map, app_state, gov_ctx))
 
 
 def _get_ctx(app_state: Any, role: str) -> Any:

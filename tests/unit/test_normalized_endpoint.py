@@ -7,7 +7,8 @@
 """REQ-049 — endpoint wiring for normalized output (per-table CTAS → manifest)."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -31,13 +32,24 @@ def _ntable(name, path, sql):
     )
 
 
-def _state():
-    st = MagicMock()
-    st.mv_registry.get_fresh.return_value = []
-    st.engine_conn = MagicMock()
-    # The engine seam transpiles + runs CTAS; passthrough transpile so tests assert manifest logic.
-    st.federation_engine.transpile_physical.side_effect = lambda s: s
-    return st
+def _pipeline(handles):
+    """The one pipeline stood in: each plan records how it was asked for, and executing it answers
+    the next forced delivery's handle."""
+    asked: list[dict] = []
+    it = iter(handles)
+
+    async def _govern(sql, role_id, **kwargs):
+        asked.append({"sql": sql, "role_id": role_id, **kwargs})
+        return SimpleNamespace(sql=sql)
+
+    async def _execute(plan, state):
+        return SimpleNamespace(redirect=next(it))
+
+    return asked, _govern, _execute
+
+
+def _handle(url, rows):
+    return {"sink": "s3", "redirect_url": url, "row_count": rows, "expires_in": 60}
 
 
 @pytest.mark.asyncio
@@ -46,36 +58,18 @@ async def test_normalized_returns_manifest_of_tables():
         _ntable("orders", ("orders",), "SELECT DISTINCT id FROM orders"),
         _ntable("customers", ("orders", "customer"), "SELECT DISTINCT id FROM customers"),
     ]
-    ctas_results = iter(
-        [
-            {"table_name": "r_a", "s3_prefix": "s3a://b/results/a", "row_count": 10},
-            {"table_name": "r_b", "s3_prefix": "s3a://b/results/b", "row_count": 3},
-        ]
-    )
-    st = _state()
-    st.federation_engine.ctas_redirect.side_effect = lambda *_a, **_k: next(ctas_results)
+    asked, govern, execute = _pipeline([_handle("https://x/a", 10), _handle("https://x/b", 3)])
     with (
         patch("provisa.compiler.normalize.compile_normalized", return_value=ntables),
-        patch("provisa.api.data.endpoint._prepare_compiled", new=AsyncMock()),
-        patch(
-            "provisa.api.data.endpoint.rewrite_semantic_to_physical",
-            side_effect=lambda s, _c: s,
-        ),
-        patch(
-            "provisa.executor.redirect.presign_ctas_result",
-            new=AsyncMock(side_effect=lambda p, _c: f"https://x/{p[-1]}"),
-        ),
-        patch("provisa.executor.redirect.schedule_s3_cleanup", new=MagicMock()),
-        patch("provisa.executor.redirect.RedirectConfig.from_env", return_value=MagicMock()),
+        patch("provisa.pgwire._pipeline._govern_and_route_compiled", new=govern),
+        patch("provisa.pgwire._pipeline._execute_plan", new=execute),
     ):
         resp = await _handle_normalized(
             document=MagicMock(),
             ctx=MagicMock(),
-            rls=MagicMock(),
-            state=st,
+            state=MagicMock(),
             variables=None,
             role_id="admin",
-            role={"id": "admin"},
         )
 
     body = json.loads(bytes(resp.body))
@@ -83,44 +77,34 @@ async def test_normalized_returns_manifest_of_tables():
     assert [r["table"] for r in rows] == ["orders", "customers"]
     assert rows[0]["path"] == ["orders"]
     assert rows[1]["path"] == ["orders", "customer"]
-    assert rows[0]["rowCount"] == 10
-    assert rows[1]["rowCount"] == 3
-    assert all(r["url"].startswith("https://x/") for r in rows)
+    assert [r["rowCount"] for r in rows] == [10, 3]
+    assert [r["url"] for r in rows] == ["https://x/a", "https://x/b"]
 
 
 @pytest.mark.asyncio
-async def test_normalized_governs_each_table():
+async def test_each_table_is_a_governed_read_landed_by_a_forced_delivery():
+    """Every entity is read through the one pipeline, as the acting role, with its compiled
+    statement (the prepare and governance stages are the pipeline's) and a forced parquet
+    delivery: the materialize stage lands it."""
     ntables = [_ntable("orders", ("orders",), "SELECT DISTINCT id FROM orders")]
-    st = _state()
-    st.federation_engine.ctas_redirect.return_value = {
-        "table_name": "r",
-        "s3_prefix": "s3a://b/x",
-        "row_count": 1,
-    }
+    asked, govern, execute = _pipeline([_handle("https://x/u", 1)])
     with (
         patch("provisa.compiler.normalize.compile_normalized", return_value=ntables),
-        patch("provisa.api.data.endpoint._prepare_compiled", new=AsyncMock()) as prep,
-        patch(
-            "provisa.api.data.endpoint.rewrite_semantic_to_physical",
-            side_effect=lambda s, _c: s,
-        ),
-        patch(
-            "provisa.executor.redirect.presign_ctas_result",
-            new=AsyncMock(return_value="https://x/u"),
-        ),
-        patch("provisa.executor.redirect.schedule_s3_cleanup", new=MagicMock()),
-        patch("provisa.executor.redirect.RedirectConfig.from_env", return_value=MagicMock()),
+        patch("provisa.pgwire._pipeline._govern_and_route_compiled", new=govern),
+        patch("provisa.pgwire._pipeline._execute_plan", new=execute),
     ):
         await _handle_normalized(
             document=MagicMock(),
             ctx=MagicMock(),
-            rls=MagicMock(),
-            state=st,
+            state=MagicMock(),
             variables=None,
             role_id="admin",
-            role={"id": "admin"},
         )
-    assert prep.await_count == 1  # governance applied to the one table
+    assert len(asked) == 1
+    (call,) = asked
+    assert call["sql"] == "SELECT DISTINCT id FROM orders" and call["role_id"] == "admin"
+    assert call["compiled"] is ntables[0].compiled
+    assert call["deliver"] is not None and call["deliver"].output_format == "parquet"
 
 
 @pytest.mark.asyncio
@@ -130,16 +114,13 @@ async def test_non_normalizable_query_returns_400():
             "provisa.compiler.normalize.compile_normalized",
             side_effect=NormalizeError("relationship 'x' joins on a computed expression"),
         ),
-        patch("provisa.executor.redirect.RedirectConfig.from_env", return_value=MagicMock()),
     ):
         with pytest.raises(HTTPException) as ei:
             await _handle_normalized(
                 document=MagicMock(),
                 ctx=MagicMock(),
-                rls=MagicMock(),
-                state=_state(),
+                state=MagicMock(),
                 variables=None,
                 role_id="admin",
-                role={"id": "admin"},
             )
     assert ei.value.status_code == 400

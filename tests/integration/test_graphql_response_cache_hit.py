@@ -142,3 +142,43 @@ async def test_a_disabled_source_blocks_the_hint():
     finally:
         await store.invalidate_by_pattern("*")
         await store.close()
+
+
+async def test_a_read_under_another_alias_is_served_the_same_rows():
+    """REQ-544: two @cached reads of one field under different aliases compile to one statement;
+    the second is a HIT, answered under its own alias (the cache holds rows, not a response)."""
+    httpx = pytest.importorskip("httpx")
+    from fastapi import FastAPI
+
+    from provisa.api.data.endpoint import router as data_router
+    from provisa.cache.store import RedisCacheStore
+    from tests.integration.test_client_access_integration import _make_app_state_with_orders
+
+    state = _with_provisa_directives(_make_app_state_with_orders())
+    store = RedisCacheStore(os.environ["REDIS_URL"])
+    state.response_cache_store = store
+    try:
+        with patch("provisa.api.app.state", state):
+            app = FastAPI()
+            app.include_router(data_router)
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test", headers={"X-Provisa-Role": "admin"}
+            ) as client:
+                await store.invalidate_by_pattern("*")
+                first = await client.post(
+                    "/data/graphql",
+                    json={"query": "query @cached { a: orders { id region } }", "role": "admin"},
+                )
+                second = await client.post(
+                    "/data/graphql",
+                    json={"query": "query @cached { b: orders { id region } }", "role": "admin"},
+                )
+        assert first.headers["X-Provisa-Cache"] == "MISS"
+        assert second.headers["X-Provisa-Cache"] == "HIT"
+        assert first.json() == {"data": {"a": [{"id": 1, "region": "us-east"}]}}
+        assert second.json() == {"data": {"b": [{"id": 1, "region": "us-east"}]}}
+        assert state.source_pools.execute.await_count == 1
+    finally:
+        await store.invalidate_by_pattern("*")
+        await store.close()

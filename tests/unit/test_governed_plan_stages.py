@@ -277,6 +277,15 @@ async def test_the_compiled_stage_keeps_a_plan_per_role(pipeline):
     state = pipeline.state
     state.contexts["auditor"] = state.contexts["analyst"]
     state.roles["auditor"] = {"id": "auditor", "capabilities": [], "domain_access": ["*"]}
+    # The auditor reads what the analyst reads: granted the same columns (a column a role is not
+    # granted is refused on the compiled stage as on the raw one).
+    state.tables = [
+        {
+            **t,
+            "columns": [{**c, "visible_to": [*c["visible_to"], "auditor"]} for c in t["columns"]],
+        }
+        for t in state.tables
+    ]
     await _compiled(pipeline, role="analyst")
     await _compiled(pipeline, role="auditor")
     assert pipeline.calls["context"] == 2
@@ -417,6 +426,51 @@ async def test_a_repeated_engine_statement_on_the_compiled_stage_parses_once(eng
         assert again.exec_params == [value]
         assert again.stamp != first.stamp
     assert p.parses["n"] == 0, "a repeated ENGINE-route statement was parsed again"
+
+
+async def test_a_filter_the_approval_hook_adds_reaches_a_statement_already_kept(pipeline):
+    """REQ-203: the hook runs per call, after the kept governance; what the plan keeps (its
+    lowering and DIRECT form) was derived from the unfiltered text, so a filter the hook adds is
+    derived afresh and reaches the statement that runs."""
+    from provisa.auth.approval_hook import ApprovalHookConfig, ApprovalResponse
+
+    unfiltered = await _compiled(pipeline, params=[1])
+    assert "us-east" not in unfiltered.sql
+
+    class _Hook:
+        async def evaluate(self, request):
+            return ApprovalResponse(approved=True, additional_filter="o.region = 'us-east'")
+
+    pipeline.state.approval_hook = _Hook()
+    pipeline.state.approval_hook_config = ApprovalHookConfig(scope="all")
+    filtered = await _compiled(pipeline, params=[1])
+    assert "us-east" in filtered.sql
+    pipeline.state.approval_hook = None
+    again = await _compiled(pipeline, params=[1])
+    assert again.sql == unfiltered.sql
+
+
+async def test_a_repeated_direct_statement_on_the_compiled_stage_parses_once(pipeline, monkeypatch):
+    """REQ-1877: a DIRECT read's source SQL (semantic → physical naming, the dialect transpile)
+    is a function of the governed text and its destination — kept with the plan, so a repeated
+    GraphQL read is not parsed or regenerated again."""
+    import sqlglot.parser
+
+    parses = {"n": 0}
+    real_parse = sqlglot.parser.Parser.parse
+
+    def _counting(self, *args, **kwargs):
+        parses["n"] += 1
+        return real_parse(self, *args, **kwargs)
+
+    monkeypatch.setattr(sqlglot.parser.Parser, "parse", _counting)
+    first = await _compiled(pipeline, params=[1])
+    assert first.sql and parses["n"] > 0
+    parses["n"] = 0
+    for value in (2, 3, 4):
+        again = await _compiled(pipeline, params=[value])
+        assert again.sql == first.sql and again.exec_params == [value]
+    assert parses["n"] == 0, "a repeated DIRECT-route statement was parsed again"
 
 
 async def test_a_repeated_engine_statement_on_the_raw_stage_parses_once(engine_pipeline):

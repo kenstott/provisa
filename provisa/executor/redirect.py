@@ -617,6 +617,32 @@ class Delivery:  # REQ-1194, REQ-1195
     role: str | None = None
 
 
+class DeliveryFailed(RuntimeError):  # REQ-171, REQ-1194
+    """A result the request was to receive in the results store could not be written there.
+
+    ``forced``: the request asked for the delivery (``X-Provisa-Redirect`` and its equivalents);
+    otherwise the buffered threshold chose it (REQ-1224). ``cause`` is the sink's or the engine's
+    own error. A delivery that fails fails the request by name, never an inline answer instead."""
+
+    def __init__(self, cause: Exception, *, forced: bool) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.forced = forced
+
+
+async def deliver(
+    state, physical_sql: str, delivery: Delivery, params: list | None, *, forced: bool
+) -> dict:  # REQ-171, REQ-1194
+    """:func:`run_materialize`, with its failure named (:class:`DeliveryFailed`). The request's
+    deadline passing while the delivery runs is a timeout, not a delivery failure."""
+    try:
+        return await run_materialize(state, physical_sql, delivery, params)
+    except TimeoutError:
+        raise
+    except Exception as exc:
+        raise DeliveryFailed(exc, forced=forced) from exc
+
+
 class RedirectFloorViolation(OperatorFloorError):
     """A request's redirect threshold is above the operator's (REQ-029, amended 2026-09-30).
 

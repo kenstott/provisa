@@ -28,9 +28,10 @@ Mutations: parse -> compile_mutation -> RLS inject -> direct execute (never the 
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import time as _time
-from typing import Any
+from typing import Any, cast
 
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -42,53 +43,38 @@ from provisa.core import request_deadline
 from provisa.core.region_stores import HomeRegionUnavailable
 from provisa.core.statement_warnings import collecting
 from provisa.api.errors import ApiError
-from provisa.cache.key import cache_key, is_cacheable
-from provisa.cache.middleware import build_cache_headers, check_cache, decode_cached_result
+from provisa.cache.middleware import build_cache_headers
 from provisa.federation.replica_state import ReplicaBuilding
-from provisa.cache.store import CachedResult
-from provisa.cache.tenancy import cache_tenant
 from provisa.compiler.hints import extract_graphql_hints
 from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import compile_query
-from provisa.compiler.sql_rewrite import (
-    make_semantic_sql,
-    rewrite_semantic_to_catalog_physical,
-    rewrite_semantic_to_physical,
-)
 from provisa.executor import stats as _qs_mod
 from provisa.observability.request_facts import TimedJSONResponse as JSONResponse  # REQ-1910
 from provisa.audit.context import note_request_route, note_request_rows
-from provisa.observability.request_facts import observe_cache_hit
-from provisa.mv.rewriter import rewrite_if_mv_match
 from provisa.security.rights import Capability
-from provisa.transpiler.router import Route, decide_route
-from provisa.transpiler.transpile import transpile
+from provisa.transpiler.router import Route, RouteDecision
 from provisa.api.data.mutations import (
     _execute_action_field,
     _handle_mutation,
     _split_action_fields,
 )
+from provisa.executor.serialize import serialize_aggregate, serialize_group_by
 from provisa.api.data.endpoint_helpers import (
+    _format_response,
+    _append_mermaid,
     _build_directives_with_legacy,
     _build_redirect_params,
     _check_role_capability,
     _detect_introspection,
-    _inject_probe_limit,
     _inject_stats_into_response,
     _inject_warnings_into_response,
     _parse_accept,
     _record_per_source_stats,
 )
-from provisa.api.data.endpoint_executors import (
-    _exec_api_route,
-    _exec_ctas_route,
-    _exec_inline_result,
-    _exec_probe_redirect,
-    _execute_engine_standard,
-)
-from provisa.federation.engine_wake import ensure_engine_awake, readdress_lost_coordinator
-from provisa.federation.registry_view import operator_floor
+from provisa.federation.engine_wake import ensure_engine_awake
+from provisa.compiler.complexity import ComplexityLimitExceeded
+from provisa.core.operator_floor import OperatorFloorError
 
 
 log = logging.getLogger(__name__)
@@ -179,41 +165,46 @@ async def compile_endpoint(  # REQ-161, REQ-163
     return JSONResponse({"compiled": serializable_results})
 
 
-async def _handle_normalized(document, ctx, rls, state, variables, role_id, role):
-    """REQ-049: emit one governed, deduplicated relational table per entity via per-table CTAS.
+async def _handle_normalized(document, ctx, state, variables, role_id):
+    """REQ-049: emit one governed, deduplicated relational table per entity.
 
-    Each entity's scoped SELECT DISTINCT is governed identically to the normal path, written
-    to S3 by the engine CTAS (the denormalized product never forms), and returned as a manifest of
-    presigned URLs. A computed-join query that cannot be normalized returns 400.
+    Each entity's scoped SELECT DISTINCT is read through the one pipeline with a forced delivery:
+    governed as any read is, and landed by the pipeline's materialize stage (the denormalized
+    product never forms). The answer is a manifest of the delivered files. A computed-join query
+    that cannot be normalized returns 400.
     """
+    from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.compiler.normalize import NormalizeError, compile_normalized
-    from provisa.executor.redirect import RedirectConfig
-    from provisa.executor.redirect import presign_ctas_result, schedule_s3_cleanup
+    from provisa.executor.redirect import delivery_from_request
+    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
     try:
         ntables = compile_normalized(document, ctx, variables, use_catalog=True)
     except NormalizeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    redirect_config = RedirectConfig.from_env()
-    fresh_mvs = state.mv_registry.get_fresh()
     manifest: list[dict] = []
     for nt in ntables:
-        # Govern each per-table query exactly like the normal path (RLS/masking/visibility).
-        await _prepare_compiled(nt.compiled, ctx, rls, state, role_id, role, fresh_mvs)
-        exec_sql = rewrite_semantic_to_catalog_physical(nt.compiled.sql, ctx)
-        physical_sql = state.federation_engine.transpile_physical(exec_sql)
-        ctas = state.federation_engine.ctas_redirect(
-            physical_sql, "parquet", nt.compiled.params or None
+        delivery = delivery_from_request(
+            force_redirect=True, redirect_format="parquet", threshold=None, role=role_id
         )
-        url = await presign_ctas_result(ctas["s3_prefix"], redirect_config)
-        schedule_s3_cleanup(ctas["s3_prefix"], redirect_config)
+        plan = await _govern_and_route_compiled(
+            nt.compiled.sql,
+            role_id,
+            exec_params=nt.compiled.params or None,
+            state=state,
+            deliver=delivery,
+            cache_hint=NO_CACHE_HINT,
+            compiled=nt.compiled,
+        )
+        handle = (await _execute_plan(plan, state)).redirect
+        assert handle is not None, "a forced delivery answers with its handle"
         manifest.append(
             {
                 "table": nt.table_name,
                 "path": list(nt.path),
-                "url": url,
-                "rowCount": ctas["row_count"],
+                "url": handle["redirect_url"],
+                "rowCount": handle["row_count"],
             }
         )
     return JSONResponse({"normalized": manifest})
@@ -302,7 +293,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         query=request.query,
         variables=request.variables,
         as_of=x_provisa_as_of,
-        fresh_mvs=state.mv_registry.get_fresh(),
         eligible=(x_provisa_normalized or "").lower() != "true",
     )
     plan = plan_request.cached()
@@ -344,11 +334,8 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     from provisa.compiler.directives import debug_trace_from_header
     from provisa.pgwire._pipeline import resolve_trace_scope
 
-    await resolve_trace_scope(
-        state,
-        role_id,
-        hint=directives.debug_trace or debug_trace_from_header(x_provisa_trace),
-    )
+    trace_hint = directives.debug_trace or debug_trace_from_header(x_provisa_trace)
+    await resolve_trace_scope(state, role_id, hint=trace_hint)
 
     # REQ-1448: the wake belongs to every executing surface, not only the SQL pipeline's
     # _execute_plan. Introspection returned above without touching the engine; everything below
@@ -423,45 +410,56 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     # answers (an API answer cut at max_pages) goes into extensions.warnings below.
     with collecting() as _request_warnings:
         try:
-            if (x_provisa_normalized or "").lower() == "true" and not is_mut:
-                response = await _handle_normalized(
-                    document, ctx, rls, state, effective_variables, role_id, role
-                )
-            elif is_mut:
-                response = await _handle_mutation(
-                    document,
-                    ctx,
-                    state,
-                    effective_variables,
-                    role_id,
-                    raw_request,
-                )
-            else:
-                response = await _handle_query(
-                    document,
-                    ctx,
-                    rls,
-                    state,
-                    effective_variables,
-                    role,
-                    output_format,
-                    role_id,
-                    force_redirect=force_redirect,
-                    redirect_threshold=effective_threshold,
-                    redirect_format=redirect_format,
-                    as_of=_as_of,  # REQ-1163
-                    steward_hint=steward_hint,
-                    query_session_props=directives.to_session_props(),
-                    cache_ttl=directives.cache_ttl,
-                    cache_opt_in=directives.cache_opt_in,  # REQ-544 (amended): per-request opt-in
-                    query_text=request.query,
-                    # REQ-595: the response-cache tenant every surface shares (cache.tenancy) — the
-                    # one write paths invalidate under.
-                    org_id=cache_tenant(state),
-                    plan=plan,
-                    plan_request=plan_request,
-                    directives=directives,
-                )
+            try:
+                if (x_provisa_normalized or "").lower() == "true" and not is_mut:
+                    response = await _handle_normalized(
+                        document, ctx, state, effective_variables, role_id
+                    )
+                elif is_mut:
+                    response = await _handle_mutation(
+                        document,
+                        ctx,
+                        state,
+                        effective_variables,
+                        role_id,
+                        raw_request,
+                    )
+                else:
+                    response = await _handle_query(
+                        document,
+                        ctx,
+                        state,
+                        effective_variables,
+                        role,
+                        output_format,
+                        role_id,
+                        force_redirect=force_redirect,
+                        redirect_threshold=effective_threshold,
+                        redirect_format=redirect_format,
+                        as_of=_as_of,  # REQ-1163
+                        steward_hint=steward_hint,
+                        query_session_props=directives.to_session_props(),
+                        cache_ttl=directives.cache_ttl,
+                        cache_opt_in=directives.cache_opt_in,  # REQ-544 (amended): per-request opt-in
+                        # REQ-1910: the request's own trace hint, which each field's pipeline
+                        # entry resolves again with the request's org and role.
+                        debug_trace=trace_hint,
+                        plan=plan,
+                        plan_request=plan_request,
+                        directives=directives,
+                    )
+                if isinstance(response, dict):
+                    # A handler's dict body (a mutation's) is encoded by orjson here, never by
+                    # FastAPI's jsonable_encoder pass over a returned dict (REQ-1867).
+                    response = JSONResponse(content=response)
+            except PermissionError as exc:
+                # A read's refusal by the pipeline — validation, governance, the approval hook — is
+                # the caller's: 403, never the global handler's 500. A refusal the app answers
+                # itself (the complexity guard's 413, the operator floor's own code) and a
+                # mutation's keep their own answers.
+                if is_mut or isinstance(exc, (ComplexityLimitExceeded, OperatorFloorError)):
+                    raise
+                raise _forbidden(exc) from exc
         except Exception as exc:
             # The refusal or failure is the fact the row records (policy_denials reads the 403s).
             audit_graphql_request(
@@ -508,554 +506,166 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     return response
 
 
-async def _prepare_compiled(
-    compiled, ctx, rls, state, role_id, role, fresh_mvs, as_of=None
-):  # REQ-002, REQ-038, REQ-040, REQ-203, REQ-204, REQ-262, REQ-263, REQ-1163
-    """Apply governance, MV rewrite, Kafka filters, and sampling to a compiled query.
+def _forbidden(exc: PermissionError) -> Exception:
+    """The 403 a pipeline refusal answers: the approval hook's denial keeps its own code and
+    reason (REQ-203); any other refusal is named by its message."""
+    from provisa.pgwire._pipeline import ApprovalDenied
 
-    ``as_of`` (REQ-1163): a validated SQL timestamp literal. When set, bitemporal materialized views
-    in the query are read AS OF that system time — their inline-expansion entries are overlaid with an
-    as-of reconstruction over each one's append log (default, without it, reads current state)."""
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
+    if isinstance(exc, ApprovalDenied):
+        return ApiError(403, exc.code, str(exc), reason=exc.reason)
+    return HTTPException(status_code=403, detail=str(exc))
 
-    # The role's governance, built first: it decides what a view reference becomes (below) and
-    # then governs the whole statement.
-    gov_ctx = build_governance_context(
-        role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=role,
-        relationships=getattr(state, "relationships", None),
-    )
 
-    if state.view_sql_map:
-        from provisa.compiler.view_expand import expand_views
-        from provisa.mv.view_read import split_for_whole_statement_governance
-
-        _vmap = state.view_sql_map
-        if as_of and getattr(state, "bitemporal_view_reads", None):
-            from provisa.mv.bitemporal import as_of_view_map
-
-            _vmap = as_of_view_map(state.view_sql_map, state.bitemporal_view_reads, as_of)
-        # Each view reference becomes what THIS reader may read of it (mv/view_read.py): the
-        # view's SQL now — the statement's validation and governance below reach the tables
-        # inside — or, for a materialized view this reader may read whole, its stored rows,
-        # substituted once the statement has been validated and governed.
-        _views_now, _views_stored = split_for_whole_statement_governance(
-            compiled.sql, _vmap, state, gov_ctx
-        )
-        compiled = expand_views(compiled, _views_now)
-    else:
-        _views_stored = {}
-
-    original_sources = set(compiled.sources)
-    compiled = rewrite_if_mv_match(compiled, fresh_mvs)
-    mv_used = compiled.sources != original_sources
-    if mv_used:
-        log.info(
-            "[QUERY %s] MV optimization applied — sources changed: %s → %s",
-            compiled.root_field,
-            original_sources,
-            compiled.sources,
-        )
-    else:
-        log.debug(
-            "[QUERY %s] No MV match, using original sources: %s",
-            compiled.root_field,
-            compiled.sources,
-        )
-
-    if hasattr(state, "kafka_table_configs") and state.kafka_table_configs:
-        from provisa.kafka.window import inject_kafka_filters
-
-        compiled = inject_kafka_filters(
-            compiled,
-            ctx,
-            state.source_types,
-            state.kafka_table_configs,
-        )
-
-    # Governance: compile → semantic SQL → apply RLS/masking/visibility (gov_ctx built above)
-    # Validate semantic SQL — V002 (join relationship check) is always skipped for
-    # GraphQL because the SDL defines valid relationships by design.
-    from provisa.compiler.sql_validator import validate_sql
-
-    semantic_sql_for_validation = make_semantic_sql(compiled.sql, ctx)
-    _violations = validate_sql(
-        semantic_sql_for_validation,
-        ctx,
-        gov_ctx,
-        role,
-        getattr(state, "tables", []),
-        bypass_relationship_guard=True,
-    )
-    if _violations:
-        raise HTTPException(
-            status_code=403,
-            detail={"violations": [{"code": v.code, "message": v.message} for v in _violations]},
-        )
-
-    # REQ-1174: the complexity guard, on the semantic statement and before it is governed -- the
-    # same check the pipeline's other two governing stages make (pgwire._pipeline). 413: the
-    # query asks for too much, not for something the role may not see.
-    import sqlglot
-
-    from provisa.compiler.complexity import ComplexityLimitExceeded, guard_complexity
+async def _executed(plan, state, root_field: str):
+    """``_execute_plan`` with what its failure answers the caller: a delivery that fails is the
+    request failing by name (REQ-1194 / REQ-171, never an inline answer in its place); a resource
+    error is a 503; the request's deadline passing goes up as the timeout it is (REQ-1905); any
+    other failure is a 500 naming its cause. A refusal or an already-shaped error is unchanged."""
+    from provisa.executor.redirect import DeliveryFailed
+    from provisa.pgwire._pipeline import _execute_plan
 
     try:
-        guard_complexity(
-            sqlglot.parse_one(semantic_sql_for_validation, read="postgres"), gov_ctx, ctx, role
-        )
-    except ComplexityLimitExceeded as too_complex:
-        raise HTTPException(status_code=413, detail=str(too_complex)) from too_complex
-
-    compiled.sql = apply_governance(semantic_sql_for_validation, gov_ctx)
-    # REQ-1682: session-variable predicates resolve to the request's literals on every route —
-    # nothing SETs them on a direct Postgres connection, so a native current_setting would raise.
-    from provisa.core.request_context import session_vars_for as _session_vars_for
-    from provisa.pgwire._pipeline import _resolve_session_settings
-
-    compiled.sql = _resolve_session_settings(compiled.sql, _session_vars_for(role), "postgres")
-    if compiled.nodes_sql is not None:
-        compiled.nodes_sql = _resolve_session_settings(
-            apply_governance(make_semantic_sql(compiled.nodes_sql, ctx), gov_ctx),
-            _session_vars_for(role),
-            "postgres",
-        )
-    if _views_stored:
-        from provisa.compiler.view_expand import expand_view_refs
-
-        compiled.sql = expand_view_refs(compiled.sql, _views_stored)
-        if compiled.nodes_sql is not None:
-            compiled.nodes_sql = expand_view_refs(compiled.nodes_sql, _views_stored)
-
-    # ABAC approval hook (Phase AE, REQ-203) — evaluated AFTER RLS injection and
-    # BEFORE execution. May deny the operation or return an additional filter that is
-    # ANDed into the governed WHERE clause.
-    if getattr(state, "approval_hook", None) is not None:
-        from provisa.auth.approval_hook import ApprovalRequest, should_check
-        from provisa.core.request_context import session_vars_for
-        from provisa.compiler.rls import _inject_where
-
-        # Resolve the root table by its ctx.tables key. canonical_field is the pre-alias schema
-        # field; variant keys (…GroupBy/…_aggregate) are registered too. root_field/root_field
-        # alias would miss because meta.field_name is always the base field.
-        _root_meta = ctx.tables.get(compiled.canonical_field or compiled.root_field)
-        table_ids = {_root_meta.table_id} if _root_meta is not None else set()
-        if should_check(
-            list(table_ids),
-            list(original_sources),
-            state.approval_hook_config,
-            table_hooks=getattr(state, "table_approval_hooks", {}),
-            source_hooks=getattr(state, "source_approval_hooks", {}),
-        ):
-            req = ApprovalRequest(
-                user=role_id,
-                roles=[role_id] if role_id else [],
-                tables=sorted(str(t) for t in table_ids),
-                columns=[c.column for c in compiled.columns],
-                operation="query",
-                session_vars=session_vars_for(role),  # REQ-1682
-            )
-            resp = await state.approval_hook.evaluate(req)
-            if not resp.approved:
-                raise ApiError(
-                    403,
-                    "data.approval_denied",
-                    f"Approval denied: {resp.reason}",
-                    reason=str(resp.reason),
-                )
-            if resp.additional_filter:
-                compiled.sql = _inject_where(compiled.sql, f"({resp.additional_filter})")
-
-    return compiled, mv_used
+        return await _execute_plan(plan, state)
+    except DeliveryFailed as failed:
+        if failed.forced:
+            raise ApiError(
+                502,
+                "data.redirect_failed",
+                f"The result could not be written to the results store: {failed}",
+                error=str(failed),
+            ) from failed
+        raise ApiError(
+            502,
+            "data.redirect_upload_failed",
+            f"Redirect upload failed: {failed}",
+            error=str(failed),
+        ) from failed
+    except (HTTPException, PermissionError, ReplicaBuilding, HomeRegionUnavailable):
+        raise  # HomeRegionUnavailable (REQ-1922): refused by name; the app answers it (503)
+    except (MemoryError, ConnectionError) as exc:
+        log.error("Query resource error for %s: %s", root_field, exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        deadline = request_deadline.current()
+        if isinstance(exc, TimeoutError) and deadline is not None and deadline.fired:
+            raise
+        log.exception("Query execution failed for %s", root_field)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-def cached_field_rows(cached: CachedResult, compiled: Any) -> Any:  # REQ-544, REQ-1896
-    """The rows a GraphQL Route.CACHE hit serves for the field ``compiled`` reads. The MISS stored
-    the field's rows alias-free (``{"data": {<field>: rows}}``, ``response_cache_entry``) through
-    the typed codec: the key decides the rows (every alias below the root is in the SQL), so two
-    reads of one field under different aliases share the entry, and the caller places the rows
-    under its own alias. Indexed, not ``.get(..., [])``: a missing key is a writer/reader shape
-    mismatch, and defaulting it served an empty result for every hit."""
-    cached_data, _ = decode_cached_result(cached)  # REQ-1896: typed binary, not lossy JSON
-    return cached_data["data"][compiled.canonical_field]
-
-
-async def _execute_one_field(
+async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, REQ-196
     compiled,
     ctx,
-    rls,
     state,
     role_id,
     output_format,
     *,
-    force_redirect,
-    redirect_config,
-    effective_redirect_format,
-    probe_limit,
-    steward_hint: str | None = None,
-    query_session_props: dict | None = None,
-    response_cache_ttl: int | None,
-    cache_opt_in: bool,
-    query_text: str | None = None,
-    org_id: str | None = None,
-):  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, REQ-196
-    """Execute a single compiled query field through the full pipeline.
+    delivery,
+    as_of: str | None,
+    steward_hint: str | None,
+    query_session_props: dict | None,
+    cache_hint,
+):
+    """One root field through the ONE compiled pipeline (``_govern_and_route_compiled`` →
+    ``_execute_plan``): validation, governance, the approval hook, the response cache, routing,
+    API-table hydration, residency and the materialize stage are the pipeline's. This only shapes
+    the rows it gets back into the field's answer.
 
-    Returns (root_field, field_rows, redirect_info_or_None, cache_key, cached_entry_or_None).
+    Returns (root_field, field_rows, redirect_or_None, cache_hit_record_or_None).
     """
-    from provisa.executor.redirect import upload_and_presign
+    from provisa.pgwire._pipeline import _govern_and_route_compiled
 
     root_field = compiled.root_field
     _t0 = _time.perf_counter()
-
-    # REQ-1910: this field's sources are known — a debug-trace window on one of them covers it.
-    from provisa.pgwire._pipeline import extend_trace_scope_to_sources
-
-    await extend_trace_scope_to_sources(state, role_id, frozenset(compiled.sources))
-
-    # REQ-1915: a field that reads a row-level table without binding its key is refused here —
-    # before the cache and whichever route the field would take — by the pipeline's own decision
-    # point (``_pk_bounds``), as on every other surface.
-    from provisa.pgwire._pipeline import _resolve_pk_bounds
-
-    await _resolve_pk_bounds(compiled.sql, state, compiled.params)
-
-    # Cache check. REQ-544 (amended 2026-09-30): the response cache is per-request OPT-IN — no
-    # @cached / `-- @provisa cache` hint, no read and no write. REQ-866 fail-closed: when the
-    # identity is not fully resolved into the key (empty RLS filter, or a current_setting-dependent
-    # predicate), the query is not cacheable either, so a per-session value can't leak.
-    _rls = rls.rules if rls.has_rules() else {}
-    ck = cache_key(compiled.sql, compiled.params, role_id, _rls)
-    _cache_off = (
-        not cache_opt_in
-        or not state.response_cache_store.stores_results  # caching disabled: nothing to read
-        or force_redirect
-        or output_format != "json"
-        or not is_cacheable(compiled.sql, _rls)[0]
+    common = {
+        "state": state,
+        "cache_hint": cache_hint,
+        "serve_cached": delivery is None,
+        "as_of": as_of,
+        "steward_hint": steward_hint,
+        "session_props": query_session_props,
+    }
+    plan = await _govern_and_route_compiled(
+        compiled.sql,
+        role_id,
+        exec_params=compiled.params or None,
+        deliver=delivery,
+        # REQ-1224: a buffered transport — the terminal inlines a result under the threshold and
+        # lands one over it. An aggregate's answer is always small.
+        buffered=compiled.nodes_sql is None,
+        compiled=compiled,
+        **common,
     )
-    cached = None if _cache_off else await check_cache(state.response_cache_store, ck, org_id)
+    route = cast(Route, plan.route)
+    hit = plan.cache_hit[1] if route == Route.CACHE and plan.cache_hit else None
+    note_request_route(route.name.lower())  # REQ-074: the route this field is answered by
+    result = await _executed(plan, state, root_field)
+    if result.redirect is not None:
+        return root_field, None, result.redirect, hit
 
-    # Route decision — the result cache is the first candidate route (REQ-865),
-    # so a hit is served as Route.CACHE instead of a hidden pre-routing step.
-    decision = decide_route(
-        sources=compiled.sources,
-        source_types=state.source_types,
-        source_dialects=state.source_dialects,
-        steward_hint=steward_hint,
-        has_json_extract="->>" in compiled.sql,
-        source_dsns=state.source_dsns,
-        cache_hit=cached is not None,
-        cache_opt_in=not _cache_off,
-        operator_floor=operator_floor(state, compiled.table_ids),
-    )
-    # REQ-074: the route this field is answered by, for the request's audit row.
-    note_request_route(
-        "cache"
-        if decision.route == Route.CACHE and cached is not None
-        else decision.route.name.lower()
-    )
-    if decision.route == Route.CACHE and cached is not None:
-        field_rows = cached_field_rows(cached, compiled)
-        _qs_mod.record(
-            field=root_field,
-            source="cache",
-            strategy="cache",
-            elapsed_ms=(_time.perf_counter() - _t0) * 1000,
-            rows=len(field_rows) if isinstance(field_rows, list) else 0,
-            cache_hit=True,
+    nodes_rows = None
+    if compiled.nodes_sql is not None:
+        nodes_plan = await _govern_and_route_compiled(
+            compiled.nodes_sql,
+            role_id,
+            exec_params=compiled.nodes_params or None,
+            api_args=compiled.api_args or None,
+            extra_selections=compiled.gql_remote_extra_selections or None,
+            **common,
         )
-        observe_cache_hit(  # REQ-1910
-            sources=compiled.sources,
-            rows=len(field_rows) if isinstance(field_rows, list) else 0,
-            started=_t0,
+        nodes_rows = (await _executed(nodes_plan, state, root_field)).rows
+
+    if compiled.nodes_sql is not None and compiled.is_group_by:
+        response = serialize_group_by(
+            result.rows, compiled.columns, nodes_rows, compiled.nodes_columns, root_field
         )
-        return root_field, field_rows, None, ck, cached
-
-    # REQ-1909: a capped source this field reads live (DIRECT, an engine attach, or an API
-    # source's upstream) is held to its concurrency cap for everything below that touches it.
-    from provisa.federation.live_concurrency import acquire_for_route
-
-    _live_permits = await acquire_for_route(
-        state, decision.route, decision.source_id or "", compiled.sources, compiled.table_ids
-    )
-    try:
-        if decision.route == Route.API and decision.source_id:
-            return await _exec_api_route(
-                compiled,
-                ctx,
-                state,
-                decision,
-                root_field,
-                output_format,
-                ck,
-                response_cache_ttl,
-                cache_opt_in=not _cache_off,
-                org_id=org_id,
-                role_id=role_id,
-            )
-
-        if force_redirect and state.federation_engine.writes_result(effective_redirect_format):
-            try:
-                redirect_info = await _exec_ctas_route(
-                    compiled, ctx, state, effective_redirect_format, redirect_config
-                )
-                _record_per_source_stats(
-                    root_field,
-                    compiled.sources,
-                    (_time.perf_counter() - _t0) * 1000,
-                    redirect_info["row_count"],
-                    ctx,
-                    state,
-                )
-                return root_field, None, redirect_info, ck, None
-            except (asyncio.TimeoutError, HTTPException):
-                raise  # a timeout or an already-shaped error is not a redirect failure
-            except Exception as failed:
-                # REQ-1194: the caller asked for the result in the results store. A redirect that
-                # fails is that request failing, by name -- never an inline answer in its place
-                # (the rows it asked not to receive, with no word that the redirect failed).
-                raise ApiError(
-                    502,
-                    "data.redirect_failed",
-                    f"The result could not be written to the results store: {failed}",
-                    error=str(failed),
-                ) from failed
-
-        # Standard execution
-        session_hints: dict[str, str] = {}
-        _dataloader_srcs: set = set()
-        _hydration_rows: dict[str, int] = {}
-        _hydration_cache_hits: set = set()
-        _per_source_ms: dict[str, float] = {}
-        _engine_ms: float = 0.0
-        physical_sql: str = ""
-
-        async def _dispatch():
-            if (
-                decision.route == Route.DIRECT
-                and decision.source_id
-                and state.source_pools.has(decision.source_id)
-            ):
-                return (
-                    await state.federation_engine.execute_native(
-                        state.source_pools,
-                        decision.source_id,
-                        _direct_exec_sql(state, role_id, compiled.sql, ctx, decision, probe_limit),
-                        compiled.params,
-                    ),
-                    "",
-                    0.0,
-                    {},
-                    set(),
-                    {},
-                    set(),
-                    {},
-                )
-            (
-                _result,
-                _physical_sql,
-                _eng_ms,
-                _psms,
-                _dl_srcs,
-                _,
-                _hyd_rows,
-                _hyd_hits,
-                _hints,
-            ) = await _execute_engine_standard(
-                compiled,
-                ctx,
-                state,
-                role_id,
-                root_field,
-                probe_limit,
-                query_session_props,
-                query_text,
-            )
-            return (
-                _result,
-                _physical_sql,
-                _eng_ms,
-                _psms,
-                _dl_srcs,
-                _hyd_rows,
-                _hyd_hits,
-                _hints,
-            )
-
-        try:
-            try:
-                (
-                    result,
-                    physical_sql,
-                    _engine_ms,
-                    _per_source_ms,
-                    _dataloader_srcs,
-                    _hydration_rows,
-                    _hydration_cache_hits,
-                    session_hints,
-                ) = await _dispatch()
-            except Exception as exc:
-                # REQ-1448: the coordinator this query dialed may have been replaced while the wake's
-                # recheck window still recorded its address. Re-resolve; redispatch only if it moved.
-                if not await readdress_lost_coordinator(exc, state):
-                    raise
-                (
-                    result,
-                    physical_sql,
-                    _engine_ms,
-                    _per_source_ms,
-                    _dataloader_srcs,
-                    _hydration_rows,
-                    _hydration_cache_hits,
-                    session_hints,
-                ) = await _dispatch()
-        except HTTPException:
-            raise
-        except HomeRegionUnavailable:
-            raise  # REQ-1922: refused by name; the app answers it (503, its code and params)
-        except (MemoryError, ConnectionError) as e:
-            log.error("Query resource error for %s: %s", root_field, e)
-            raise HTTPException(status_code=503, detail=str(e))
-        except Exception as e:
-            # REQ-1905: the request's deadline passing mid-statement is the request timing out, not
-            # a server fault — it goes up as the timeout it is, and the caller's handler answers 504
-            # naming the transport and the setting. Any other timeout (a source's own) stays a 500.
-            _deadline = request_deadline.current()
-            if isinstance(e, TimeoutError) and _deadline is not None and _deadline.fired:
-                raise
-            log.exception("Query execution failed for %s", root_field)
-            raise HTTPException(status_code=500, detail=str(e))
-
-        if probe_limit is not None and len(result.rows) >= probe_limit:
-            log.info(
-                "[QUERY %s] Probe returned %d rows (threshold %d) — redirecting",
-                root_field,
-                len(result.rows),
-                redirect_config.threshold,
-            )
-            try:
-                redirect_info = await _exec_probe_redirect(
-                    compiled,
-                    ctx,
-                    state,
-                    decision,
-                    session_hints,
-                    effective_redirect_format,
-                    redirect_config,
-                    role_id,
-                )
-                _record_per_source_stats(
-                    root_field,
-                    compiled.sources,
-                    (_time.perf_counter() - _t0) * 1000,
-                    redirect_info.get("row_count", 0),
-                    ctx,
-                    state,
-                    decision,
-                )
-                return root_field, None, redirect_info, ck, None
-            except (asyncio.TimeoutError, HTTPException):
-                # The request's deadline passing while the redirect's query runs is a timeout, and an
-                # error already shaped for the client is that error: neither is a redirect failure.
-                raise
-            except Exception as e:
-                # A redirect that cannot be delivered fails the request (REQ-171), as the forced
-                # redirect below does — it does not fall through to an inline result.
-                raise ApiError(
-                    502, "data.redirect_upload_failed", f"Redirect upload failed: {e}", error=str(e)
-                ) from e
-
-        if force_redirect:
-            try:
-                redirect_info = await upload_and_presign(
-                    result,
-                    redirect_config,
-                    output_format=effective_redirect_format,
-                    columns=compiled.columns,
-                    role=role_id,
-                )
-                _record_per_source_stats(
-                    root_field,
-                    compiled.sources,
-                    (_time.perf_counter() - _t0) * 1000,
-                    redirect_info.get("row_count", 0),
-                    ctx,
-                    state,
-                    decision,
-                )
-                return root_field, None, redirect_info, ck, None
-            except (asyncio.TimeoutError, HTTPException):
-                raise  # a timeout or an already-shaped error is not a redirect failure (see above)
-            except Exception as e:
-                raise ApiError(
-                    502, "data.redirect_upload_failed", f"Redirect upload failed: {e}", error=str(e)
-                ) from e
-
-        return await _exec_inline_result(
-            compiled,
-            ctx,
-            state,
-            decision,
+    elif compiled.nodes_sql is not None:
+        response = serialize_aggregate(
+            result.rows,
+            compiled.columns,
+            nodes_rows,
+            compiled.nodes_columns,
             root_field,
-            result,
-            output_format,
-            ck,
-            response_cache_ttl,
-            not _cache_off,
-            _t0,
-            _dataloader_srcs,
-            _per_source_ms,
-            _engine_ms,
-            _hydration_rows,
-            _hydration_cache_hits,
-            physical_sql,
-            org_id=org_id,
+            agg_alias=compiled.agg_alias,
         )
-    finally:
-        _live_permits.release()
-
-
-def _direct_exec_sql(
-    state: Any, role_id: str, governed_sql: str, ctx: Any, decision: Any, probe_limit: int | None
-) -> str:
-    """The statement a DIRECT read sends to its source: the governed SQL lowered to the source's
-    physical names, probe-limited when asked, and transpiled to its dialect.
-
-    REQ-1877: that is a function of the governed text, the role's compilation context, the
-    destination (source, dialect) and the probe limit — not of the request — so it is kept with
-    the plans (``governed_plan.PlanSlot``: schema generation, role, acting-role set and the
-    governance objects' identity) and a repeated request re-derives nothing. Bound values travel
-    separately as parameters; a value inlined into the governed text is part of the key."""
-    from provisa.pgwire.governed_plan import PlanSlot
-
-    dialect = decision.dialect or "postgres"
-    # The key's body is everything the derived text depends on beyond what PlanSlot already keys
-    # (generation, role, acting-role set, governance objects). REQ-1912: the address a read is
-    # sent to — replica or live — joins this body when a statement's text comes to depend on it.
-    slot = PlanSlot(
-        state, "graphql.direct_sql", role_id, governed_sql, decision.source_id, dialect, probe_limit
+    else:
+        response = _format_response(
+            result.rows,
+            compiled.columns,
+            root_field,
+            output_format,
+            result_limit=compiled.result_limit,
+        )
+    field_rows = (
+        response.get("data", {}).get(root_field, []) if isinstance(response, dict) else response
     )
-    kept = slot.cached()
-    if kept is not None:
-        return kept
-    exec_sql = rewrite_semantic_to_physical(governed_sql, ctx)
-    if probe_limit is not None:
-        exec_sql = _inject_probe_limit(exec_sql, probe_limit)
-    exec_sql = transpile(exec_sql, dialect)
-    slot.keep(exec_sql)
-    return exec_sql
+    _elapsed_ms = (_time.perf_counter() - _t0) * 1000
+    _n_rows = len(field_rows) if isinstance(field_rows, list) else 0
+    _record_per_source_stats(
+        root_field,
+        set(plan.sources or ()),
+        _elapsed_ms,
+        _n_rows,
+        ctx,
+        state,
+        RouteDecision(
+            route=route,
+            source_id=plan.source_id or None,
+            dialect=plan.dialect,
+            reason=plan.route_reason or "",
+        ),
+        field_rows=field_rows if isinstance(field_rows, list) else None,
+        physical_sql=plan.sql,
+    )
+    qs = _qs_mod.current()
+    if qs is not None and compiled.sources:
+        _append_mermaid(qs, compiled, ctx, root_field, None, _elapsed_ms, _n_rows, None)
+    return root_field, field_rows, None, hit
 
 
-def _note_field_outcome(field_rows: Any, cached_entry: Any) -> None:
-    """Note one executed root field on the request's audit outcome (REQ-074): its rows, and the
-    cache route when it was served from the response cache (an executed field notes its own route
-    where it is decided, in ``_execute_one_field``)."""
-    if cached_entry is not None:
-        note_request_route("cache")
+def _note_field_outcome(field_rows: Any) -> None:
+    """Note one executed root field's rows on the request's audit outcome (REQ-074); its route,
+    the cache's included, is noted where the pipeline decides it, in ``_execute_one_field``."""
     if isinstance(field_rows, list):
         note_request_rows(len(field_rows))
 
@@ -1063,7 +673,6 @@ def _note_field_outcome(field_rows: Any, cached_entry: Any) -> None:
 async def _handle_query(
     document,
     ctx,
-    rls,
     state,
     variables,
     role,
@@ -1078,21 +687,19 @@ async def _handle_query(
     query_session_props: dict | None = None,
     cache_ttl: int | None,
     cache_opt_in: bool,
-    query_text: str | None = None,
-    org_id: str | None = None,
+    debug_trace: bool,
     plan=None,
     plan_request=None,
     directives=None,
 ):  # REQ-001, REQ-027, REQ-028, REQ-029, REQ-043, REQ-047, REQ-049, REQ-137, REQ-140, REQ-196
     """Handle a GraphQL query operation with content negotiation.
 
-    Pipeline per root field: compile → RLS → masking → MV rewrite → sampling
-      → cache check → route → transpile → execute → cache store → serialize.
-    Multiple root fields are executed independently and merged.
+    Each root field is compiled here and then read through the ONE compiled pipeline
+    (``_execute_one_field``); multiple root fields are executed one after another and merged.
 
-    ``plan`` (REQ-1877): the request's cached governed plan — its compiled fields are executed as
-    they are and the compile/governance stages are skipped. ``plan_request`` records the plan this
-    call builds when there was none; ``directives`` is recorded with it.
+    ``plan`` (REQ-1877): the request's kept compiled fields — compiling is skipped; governance is
+    the pipeline's, kept there. ``plan_request`` records the fields this call compiles when there
+    was none; ``directives`` is recorded with it.
     """
     # REQ-1174: cap execution wall-time at the tighter of this transport's request timeout
     # (REQ-1905: GraphQL's own value, else the default) and the role's max_query_time_ms (None →
@@ -1132,36 +739,37 @@ async def _handle_query(
                 "Cannot mix action fields with table queries",
             )
 
-        compiled_queries = compile_query(document, ctx, variables)
-        if not compiled_queries:
+        prepared = compile_query(document, ctx, variables)
+        if not prepared:
             raise ApiError(400, "data.no_query_fields", "No query fields found")
-
-        # The plan is keyed on the fresh-MV set the request looked it up with, so the same set
-        # drives the MV rewrite here.
-        fresh_mvs = (
-            plan_request.fresh_mvs if plan_request is not None else state.mv_registry.get_fresh()
-        )
-
-        # Prepare all compiled queries (RLS, masking, MV rewrite, sampling)
-        prepared = []
-        for cq in compiled_queries:
-            prepped, _ = await _prepare_compiled(
-                cq, ctx, rls, state, role_id, role, fresh_mvs, as_of=as_of
-            )
-            prepared.append(prepped)
         if plan_request is not None:
-            plan_request.record(directives, prepared)
+            plan_request.record(directives, copy.deepcopy(prepared))
 
-    # Determine redirect config
-    from provisa.executor.redirect import request_redirect_config
+    # REQ-1194/REQ-1224: the X-Provisa-Redirect* headers name a forced delivery, handled by the
+    # pipeline's materialize stage like every transport's; without one the field is read as a
+    # buffered result, inlined under the operator's threshold and landed over it. REQ-029: a
+    # request threshold may only lower the operator's (the platform's floor).
+    from provisa.compiler.directives import CacheHint
+    from provisa.executor.redirect import delivery_from_request
 
-    # REQ-029: a request threshold may only lower the operator's (the platform's floor).
-    redirect_config = request_redirect_config(redirect_threshold)
-    effective_redirect_format = redirect_format or redirect_config.default_format or "parquet"
-
-    probe_limit = None
-    if not force_redirect and redirect_config.enabled and redirect_config.threshold > 0:
-        probe_limit = redirect_config.threshold + 1
+    delivery = delivery_from_request(
+        force_redirect=force_redirect,
+        redirect_format=redirect_format,
+        threshold=redirect_threshold,
+        role=role_id,
+    )
+    _cache_hint = CacheHint(
+        opt_in=cache_opt_in,
+        ttl=cache_ttl,
+        debug_trace=debug_trace,
+    )
+    _field_args = {
+        "delivery": delivery,
+        "as_of": as_of,
+        "steward_hint": steward_hint,
+        "query_session_props": query_session_props,
+        "cache_hint": _cache_hint,
+    }
 
     # --- Single root field: preserve existing behavior for binary formats ---
     if len(prepared) == 1:
@@ -1169,24 +777,9 @@ async def _handle_query(
             # The deadline is bound for the work, as on the multi-field path below: without it
             # nothing under this call knows how long the request may wait (REQ-1882).
             with request_deadline.within(_role_timeout):
-                root_field, field_rows, redirect_info, _, cached_entry = await asyncio.wait_for(
+                root_field, field_rows, redirect_info, cached_entry = await asyncio.wait_for(
                     _execute_one_field(
-                        prepared[0],
-                        ctx,
-                        rls,
-                        state,
-                        role_id,
-                        output_format,
-                        force_redirect=force_redirect,
-                        redirect_config=redirect_config,
-                        effective_redirect_format=effective_redirect_format,
-                        probe_limit=probe_limit,
-                        steward_hint=steward_hint,
-                        query_session_props=query_session_props,
-                        response_cache_ttl=cache_ttl,
-                        cache_opt_in=cache_opt_in,
-                        query_text=query_text,
-                        org_id=org_id,
+                        prepared[0], ctx, state, role_id, output_format, **_field_args
                     ),
                     timeout=_role_timeout,
                 )
@@ -1202,7 +795,7 @@ async def _handle_query(
                 transport="graphql",
                 setting=_timeout_setting,
             )
-        _note_field_outcome(field_rows, cached_entry)  # REQ-074: the request's audit row
+        _note_field_outcome(field_rows)  # REQ-074: the request's audit row
         if cached_entry is not None:
             headers = build_cache_headers(cached_entry)
             return JSONResponse(
@@ -1210,7 +803,7 @@ async def _handle_query(
                 headers=headers,
             )
         if redirect_info is not None:
-            return {"data": {root_field: None}, "redirect": redirect_info}
+            return JSONResponse(content={"data": {root_field: None}, "redirect": redirect_info})
         # Binary format passthrough (parquet/arrow/csv single-field)
         if not isinstance(field_rows, list):
             return field_rows
@@ -1230,24 +823,8 @@ async def _handle_query(
 
     async def _execute_fields() -> list:
         return [
-            await _execute_one_field(
-                compiled,
-                ctx,
-                rls,
-                state,
-                role_id,
-                "json",  # multi-field always uses JSON
-                force_redirect=force_redirect,
-                redirect_config=redirect_config,
-                effective_redirect_format=effective_redirect_format,
-                probe_limit=probe_limit,
-                steward_hint=steward_hint,
-                query_session_props=query_session_props,
-                response_cache_ttl=cache_ttl,
-                cache_opt_in=cache_opt_in,
-                query_text=query_text,
-                org_id=org_id,
-            )
+            # multi-field always answers JSON
+            await _execute_one_field(compiled, ctx, state, role_id, "json", **_field_args)
             for compiled in prepared
         ]
 
@@ -1269,8 +846,8 @@ async def _handle_query(
             setting=_timeout_setting,
         )
 
-    for root_field, field_rows, redirect_info, _, cached_entry in results:
-        _note_field_outcome(field_rows, cached_entry)  # REQ-074: the request's audit row
+    for root_field, field_rows, redirect_info, cached_entry in results:
+        _note_field_outcome(field_rows)  # REQ-074: the request's audit row
         if redirect_info is not None:
             merged_data[root_field] = None
             merged_redirects[root_field] = redirect_info

@@ -203,47 +203,6 @@ class TestRedirectParams:
 
 
 # ---------------------------------------------------------------------------
-# REQ-397: Cache key / injection probe limit
-# ---------------------------------------------------------------------------
-
-
-class TestInjectProbeLimit:
-    async def test_inject_no_existing_limit(self):
-        # REQ-397: inject LIMIT when query has none
-        from provisa.api.data.endpoint_helpers import _inject_probe_limit
-
-        sql = 'SELECT "id" FROM "public"."orders"'
-        result = _inject_probe_limit(sql, 500)
-        assert "LIMIT 500" in result
-
-    async def test_inject_tightens_existing_literal_limit(self):
-        # REQ-397: probe limit tightens existing literal LIMIT
-        from provisa.api.data.endpoint_helpers import _inject_probe_limit
-
-        sql = 'SELECT "id" FROM "public"."orders" LIMIT 2000'
-        result = _inject_probe_limit(sql, 500)
-        assert "LIMIT 500" in result
-        assert "LIMIT 2000" not in result
-
-    async def test_inject_respects_smaller_existing_limit(self):
-        # REQ-397: probe limit leaves existing LIMIT when it is already smaller
-        from provisa.api.data.endpoint_helpers import _inject_probe_limit
-
-        sql = 'SELECT "id" FROM "public"."orders" LIMIT 100'
-        result = _inject_probe_limit(sql, 500)
-        assert "LIMIT 100" in result
-
-    async def test_inject_skips_parameterized_limit(self):
-        # REQ-397: parameterized LIMIT is user-supplied and must not be overridden
-        from provisa.api.data.endpoint_helpers import _inject_probe_limit
-
-        sql = 'SELECT "id" FROM "public"."orders" LIMIT $1'
-        result = _inject_probe_limit(sql, 500)
-        assert "LIMIT $1" in result
-        assert "LIMIT 500" not in result
-
-
-# ---------------------------------------------------------------------------
 # REQ-536: Cache headers (build_cache_headers)
 # ---------------------------------------------------------------------------
 

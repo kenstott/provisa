@@ -177,11 +177,11 @@ class TestHookPosition:
         """REQ-203: the approval hook must be evaluated AFTER RLS/governance, not before."""
         import inspect
 
-        from provisa.api.data import endpoint
+        from provisa.pgwire import _pipeline
 
-        src = inspect.getsource(endpoint._prepare_compiled)
-        gov_idx = src.index("apply_governance(semantic_sql_for_validation")
-        hook_idx = src.index("approval_hook.evaluate")
+        src = inspect.getsource(_pipeline._govern_and_route_compiled_planned)
+        gov_idx = src.index("_govern_compiled(")
+        hook_idx = src.index("_approval_stage(")
         assert gov_idx < hook_idx
 
 

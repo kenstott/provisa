@@ -229,3 +229,43 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
     assert m_handle.await_args.args[1] == {"petId": "1"}
     assert decision.route != Route.API
     assert state.source_pools.has(decision.source_id)
+
+
+def _pg_state(*, pooled: bool) -> SimpleNamespace:
+    return SimpleNamespace(
+        hot_manager=None,
+        api_endpoints={},
+        graphql_remote_sources={},
+        source_types={SOURCE_ID: "postgresql"},
+        source_dialects={SOURCE_ID: "postgres"},
+        source_dsns={},
+        source_pools=SimpleNamespace(source_ids={SOURCE_ID}, has=lambda _: pooled),
+        replica_routes=ReplicaRoutes(),
+    )
+
+
+async def _route_pets(state, *, is_mutation=False):
+    ctx = _ctx()
+    gov_ctx = build_governance_context(
+        "analyst", RLSContext.empty(), {}, ctx, tables=[], role=unscoped_role("analyst")
+    )
+    return await _optimize_and_route(
+        "SELECT id FROM pets",
+        "SELECT id FROM pets",
+        gov_ctx,
+        ctx,
+        state,
+        table_ids=(),
+        nf_args={},
+        is_mutation=is_mutation,
+    )
+
+
+async def test_a_read_of_a_source_with_no_connection_on_this_node_is_the_engines():
+    """The engine reaches the source through its own catalog; the DIRECT terminal would refuse
+    a source this node holds no connection for (data.no_direct_route)."""
+    _, pooled, *_ = await _route_pets(_pg_state(pooled=True))
+    assert pooled.route == Route.DIRECT and pooled.source_id == SOURCE_ID
+    _, unpooled, *_ = await _route_pets(_pg_state(pooled=False))
+    assert unpooled.route == Route.ENGINE
+    assert "no direct connection" in unpooled.reason

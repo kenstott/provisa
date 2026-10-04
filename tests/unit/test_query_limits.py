@@ -247,11 +247,13 @@ def test_both_governing_stages_of_the_pipeline_call_the_guard():
         assert source.index("_guard_complexity(") < governs.start(), stage.__name__
 
 
-def test_the_graphql_endpoint_makes_the_same_check_before_it_governs():
+def test_the_graphql_endpoint_is_governed_by_the_compiled_stage_that_makes_the_check():
+    """GraphQL has no governing stage of its own: every field goes to the compiled pipeline, whose
+    governing stage makes the check above; the app answers the refusal as 413."""
     import inspect
 
     from provisa.api.data import endpoint
 
-    source = inspect.getsource(endpoint._prepare_compiled)
-    assert source.index("guard_complexity(") < source.index("compiled.sql = apply_governance(")
-    assert "status_code=413" in source
+    assert "_govern_and_route_compiled(" in inspect.getsource(endpoint._execute_one_field)
+    assert "apply_governance" not in inspect.getsource(endpoint)
+    assert "guard_complexity" not in inspect.getsource(endpoint)

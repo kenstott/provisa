@@ -27,7 +27,6 @@ ROOT = Path(__file__).resolve().parents[2]
 REMOTE_PATH = [
     "provisa/api/data/hydration.py",
     "provisa/api/data/materialization.py",
-    "provisa/api/data/endpoint_executors.py",
     "provisa/nl/executor.py",
     *sorted(str(p.relative_to(ROOT)) for p in (ROOT / "provisa/api_source").glob("*.py")),
 ]

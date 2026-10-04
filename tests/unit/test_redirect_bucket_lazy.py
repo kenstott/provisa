@@ -253,8 +253,9 @@ def test_trino_boot_creates_no_results_schema():
 
 
 def test_a_failed_redirect_fails_the_request_on_both_endpoint_paths():
-    """The probe-redirect path used to log the failure and fall through to inline rows; it now
-    raises the same 502 the forced-redirect path raises."""
+    """The probe-redirect path used to log the failure and fall through to inline rows; a failed
+    delivery, forced or chosen by the threshold, now fails the request by name (the pipeline's
+    DeliveryFailed; tests/unit/test_forced_redirect_fails_by_name.py)."""
     import inspect
 
     from provisa.api.data import endpoint
@@ -262,7 +263,8 @@ def test_a_failed_redirect_fails_the_request_on_both_endpoint_paths():
     # The module's source, not the function object's: other tests replace the function.
     src = inspect.getsource(endpoint)
     assert "returning inline" not in src
-    assert src.count('"data.redirect_upload_failed"') == 2
+    assert src.count('"data.redirect_upload_failed"') == 1
+    assert src.count('"data.redirect_failed"') == 1
 
 
 # --- the telemetry bucket at Trino boot ---------------------------------------------------------

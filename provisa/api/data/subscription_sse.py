@@ -220,7 +220,6 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
         result = await _handle_query(
             q_doc,
             ctx,
-            rls,
             state,
             variables,
             role,
@@ -228,6 +227,7 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
             role_id,
             cache_ttl=None,
             cache_opt_in=False,  # REQ-544: a subscription poll never reads or writes the cache
+            debug_trace=False,  # a poll carries no trace hint of its own
         )
         # JSONResponse stores serialized bytes in .body
         if isinstance(result, JSONResponse):
@@ -411,7 +411,6 @@ async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
         result = await _handle_query(
             q_doc,
             ctx,
-            rls,
             state,
             variables,
             role,
@@ -419,6 +418,7 @@ async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
             role_id,
             cache_ttl=None,
             cache_opt_in=False,  # REQ-544: a subscription poll never reads or writes the cache
+            debug_trace=False,  # a poll carries no trace hint of its own
         )
         if isinstance(result, JSONResponse):
             body = result.body

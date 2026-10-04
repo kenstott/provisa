@@ -26,6 +26,7 @@ import pytest
 from fastapi.responses import JSONResponse
 
 from provisa.audit.context import audit_identity_scope
+from provisa.api.data.endpoint import _execute_one_field as _real_execute_one_field
 from provisa.audit.graphql import document_table_ids
 from provisa.compiler.sql_types import CompilationContext, JoinMeta, TableMeta
 from tests.unit.test_graphql_plan_cache import _endpoint_harness
@@ -229,13 +230,34 @@ def test_a_query_records_the_rows_it_returned(audited):
 
 
 def test_a_response_cache_hit_records_the_cache_route(audited, monkeypatch):
+    """The field's own executor, over a pipeline that answers it from the response cache."""
     from provisa.api.data import endpoint
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire import _pipeline
+    from provisa.transpiler.router import Route
 
-    async def _hit(compiled, *args, **kwargs):
-        entry = SimpleNamespace(age_seconds=1)  # a response-cache entry: the field was a HIT
-        return compiled.root_field, [{"orderId": 1}, {"orderId": 2}], None, "ck", entry
+    plan = SimpleNamespace(
+        route=Route.CACHE,
+        cache_hit=([], SimpleNamespace(age_seconds=1, cached_at=0.0, ttl=60)),
+        materialize=None,
+        sources=frozenset(),
+        source_id="",
+        dialect=None,
+        route_reason="",
+        sql="",
+    )
 
-    monkeypatch.setattr(endpoint, "_execute_one_field", _hit)
+    async def _govern(*args, **kwargs):
+        return plan
+
+    async def _execute(plan, state):
+        return QueryResult(rows=[(1,), (2,)], column_names=["order_id"])
+
+    monkeypatch.setattr(endpoint, "_execute_one_field", _real_execute_one_field)
+    monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)
+    monkeypatch.setattr(_pipeline, "_execute_plan", _execute)
+    monkeypatch.setattr(endpoint, "_record_per_source_stats", lambda *a, **k: None)
+    monkeypatch.setattr(endpoint, "build_cache_headers", lambda entry: {})
     audited.call(_QUERY)
     (row,) = audited.rows()
     assert (row["route"], row["row_count"]) == ("cache", 2)
@@ -263,11 +285,9 @@ def test_the_route_a_field_was_answered_by_is_noted_where_it_is_decided():
     from provisa.api.data import endpoint
 
     source = inspect.getsource(endpoint._execute_one_field)
-    decided = source.index("decision = decide_route(")
+    decided = source.index("plan = await _govern_and_route_compiled(")
     noted = source.index("note_request_route(")
-    assert (
-        decided < noted < source.index("if decision.route == Route.CACHE and cached is not None:")
-    )
+    assert decided < noted < source.index("await _executed(plan, state, root_field)")
 
 
 def test_the_response_does_not_wait_for_the_insert(audited):
