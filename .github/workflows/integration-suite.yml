@@ -276,6 +276,7 @@ jobs:
           # Nightly: the integration branch. On demand: the ref asked for.
           ref: ${{ github.event_name == 'schedule' && 'integration' || inputs.ref || github.sha }}
       - *install-uv
+      - *install-mssql-odbc  # Fabric's SQL endpoint is reached through ODBC Driver 18
       - *install-deps
 
       # Every credential the lane needs, checked before anything runs: a missing one fails the lane
