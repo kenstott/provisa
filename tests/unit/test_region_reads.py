@@ -185,3 +185,89 @@ async def test_a_table_kept_in_another_region_is_read_at_its_replica_there(monke
         'SELECT "o"."id" FROM "region_eu"."org_acme_replicas"."src__public__orders" AS "o"'
     )
     assert attached == ["eu"]
+
+
+# -- Trino: a store is a catalog of its own ------------------------------------------------------
+
+
+class _TrinoConn:
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    def cursor(self):
+        conn = self
+
+        class _Cursor:
+            def execute(self, sql: str) -> None:
+                conn.statements.append(sql)
+
+            def fetchall(self) -> list:
+                return []
+
+        return _Cursor()
+
+
+def _trino(monkeypatch):
+    import contextlib
+
+    from provisa.federation.engine import build_engine
+
+    engine = build_engine("trino")
+    conn = _TrinoConn()
+
+    @contextlib.contextmanager
+    def _registrar(url):  # the deployment's registration lock, taken on the control plane
+        conn.statements.append(f"-- lock {url}")
+        yield
+
+    monkeypatch.setattr("provisa.core.trino_system_catalogs.one_registrar", _registrar)
+    state = SimpleNamespace(
+        org_id="acme",
+        engine_conn=conn,
+        engine_conn_kwargs={},
+        tenant_engine=SimpleNamespace(url="postgresql://cp/db"),
+    )
+    return engine.backend, state, conn
+
+
+def test_trino_reads_another_regions_replicas_through_a_catalog_of_that_store(monkeypatch):
+    backend, state, conn = _trino(monkeypatch)
+    region = ForeignRegion("eu", "postgresql://reader:pw@eu-replicas:5433/replicas", None)  # type: ignore[arg-type]
+    assert backend.region_read_catalog(state, region) == "org_acme__region_eu"
+    assert backend.region_read_catalog(state, region) == "org_acme__region_eu"  # registered once
+    assert conn.statements == [
+        "-- lock postgresql://cp/db",
+        "DROP CATALOG IF EXISTS org_acme__region_eu",
+        "CREATE CATALOG org_acme__region_eu USING postgresql WITH ("
+        "\"connection-url\" = 'jdbc:postgresql://eu-replicas:5433/replicas', "
+        "\"connection-user\" = 'reader', \"connection-password\" = 'pw', "
+        "\"statistics.enabled\" = 'false')",
+    ]
+
+
+def test_trino_reads_an_orgs_own_store_through_its_catalog_not_the_control_planes(monkeypatch):
+    backend, state, conn = _trino(monkeypatch)
+    monkeypatch.setattr(
+        "provisa.storage.byo.org_store_dsn",
+        lambda org: "postgresql://u:p@eu-store/db" if org == "acme" else None,
+    )
+    catalog, schema = backend.materialize_store_target(state, "acme")
+    assert catalog == "org_acme__store" and schema.endswith("_mv_cache")
+    assert backend.materialize_store_target(state, "beta")[0] == "provisa_admin"
+
+
+def test_trino_refuses_a_store_it_cannot_read():
+    from provisa.core.trino_system_catalogs import store_catalog_spec
+
+    with pytest.raises(ValueError, match="postgresql connector; store 'region_eu' is 'mysql'"):
+        store_catalog_spec("region_eu", "mysql://u:p@eu/db")
+    with pytest.raises(ValueError, match="must name a host, a database and a user"):
+        store_catalog_spec("region_eu", "postgresql://eu/db")
+
+
+def test_trino_reaches_a_store_without_a_password_setting_none():
+    from provisa.core.trino_system_catalogs import store_catalog_spec
+
+    spec = store_catalog_spec("region_eu", "postgresql://reader@eu/db")
+    assert "connection-password" not in spec.properties
+    assert spec.properties["connection-url"] == "jdbc:postgresql://eu:5432/db"

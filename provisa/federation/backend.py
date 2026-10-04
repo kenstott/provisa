@@ -862,6 +862,41 @@ class TrinoBackend(EngineBackend):
             sql = rewrite_prometheus_labels_for_trino(sql, label_columns)
         return sql
 
+    def _store_catalog_named(self, state: Any, name: str, dsn: str) -> str:
+        """Register (once per process) and return the catalog Trino reads the store ``dsn`` under
+        (REQ-1048, REQ-1922): an org's own store, or another region's replicas store."""
+        import re
+
+        from provisa.core.trino_system_catalogs import (
+            one_registrar,
+            register_catalog,
+            store_catalog_spec,
+        )
+
+        name = re.sub(r"[^a-z0-9_]", "_", name.lower())
+        registered: dict[str, str] = self.__dict__.setdefault("_store_catalogs", {})
+        if registered.get(name) == dsn:
+            return name
+        with self._provisioning_conn(state) as conn:
+            if conn is None:
+                raise RuntimeError(
+                    f"no Trino terminal to register store catalog {name!r} on; the engine is "
+                    "not bound"
+                )
+            # One process of the deployment registers at a time (drop-then-create interleaves).
+            with one_registrar(state.tenant_engine.url):
+                register_catalog(conn, store_catalog_spec(name, dsn))
+        registered[name] = dsn
+        return name
+
+    def region_read_catalog(self, state: Any, region: Any) -> str:
+        """REQ-1922: another region's replicas store, as catalog ``org_<org>__region_<id>``."""
+        from provisa.federation.replica_address import active_org_id
+
+        return self._store_catalog_named(
+            state, f"org_{active_org_id(state)}__region_{region.id}", region.replicas_url
+        )
+
     def materialize_store_target(self, state: Any, org_id: str) -> tuple[str, str]:
         """Trino reaches its materialization store through the ``provisa_admin`` catalog.
 
@@ -875,6 +910,15 @@ class TrinoBackend(EngineBackend):
         from provisa.core.environments import active_org_schema  # REQ-1623
         from provisa.core.trino_system_catalogs import PROVISA_ADMIN_CATALOG
 
+        from provisa.storage.byo import org_store_dsn
+
+        # REQ-1048 / REQ-1922: an org with a store of its own (brought, or its region's) keeps its
+        # replicas and views there, where store_writer writes them (engine.materialize_store), so
+        # Trino reads them through that store's catalog, not the control plane's.
+        own = org_store_dsn(org_id)
+        if own is not None:
+            catalog = self._store_catalog_named(state, f"org_{org_id}__store", own)
+            return catalog, active_org_schema(org_id, "_mv_cache")
         return PROVISA_ADMIN_CATALOG, active_org_schema(org_id, "_mv_cache")
 
     # -- replicas --------------------------------------------------------------
