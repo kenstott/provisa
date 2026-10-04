@@ -323,7 +323,13 @@ def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
         uq_rows, next_oid = _build_unique_constraint_rows(ctx, idx, next_oid)  # REQ-1093
         constraint_rows.extend(uq_rows)
         fk_rows, _ = _build_fk_constraint_rows(ctx, idx, next_oid)
-        constraint_rows.extend(fk_rows)
+        # A PostgreSQL foreign key always references a primary or unique key of its target. A
+        # relationship whose target columns are no declared key of the target table is a
+        # semantic join, not a foreign key, so it is not published as one: clients reading the
+        # catalog (information_schema.referential_constraints, SQLAlchemy reflection) require
+        # every FK to name the key it references.
+        keys = _key_constraints(constraint_rows)
+        constraint_rows.extend(r for r in fk_rows if (r[11], frozenset(r[19])) in keys)
     if constraint_rows:
         db.executemany(
             f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 25)})",
@@ -458,34 +464,41 @@ def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex
         )
 
 
+def _key_constraints(constraint_rows: list[tuple]) -> dict[tuple[int, frozenset], tuple[str, int]]:
+    """(table oid, key attnums) -> (constraint name, namespace oid) for every primary and unique
+    key constraint: the keys a foreign key may reference."""
+    return {
+        (row[7], frozenset(row[18])): (row[1], row[2])
+        for row in constraint_rows
+        if row[3] in ("p", "u")
+    }
+
+
 def _build_referential_rows(
     constraint_rows: list[tuple],
     oid_to_ns: dict[int, str],
 ) -> list[tuple]:
     """One information_schema.referential_constraints row per FK constraint.
 
-    Joins each FK (confrelid) to the referenced table's primary-key constraint.
-    Fails loud if a referenced PK constraint cannot be resolved.
+    Joins each FK to the key constraint (primary or unique) on the referenced table whose columns
+    are the FK's referenced columns. Every published FK references one (_populate_pg_constraint
+    publishes no other), so a miss is a defect in the catalog build and fails loud.
     """
-    pk_by_relid: dict[int, tuple[str, str]] = {
-        con_row[7]: (con_row[1], oid_to_ns.get(con_row[2], "public"))
-        for con_row in constraint_rows
-        if con_row[3] == "p"
-    }
+    keys = _key_constraints(constraint_rows)
     rc_rows: list[tuple] = []
     for con_row in constraint_rows:
         if con_row[3] != "f":
             continue
         fk_name: str = con_row[1]
         fk_schema: str = oid_to_ns.get(con_row[2], "public")
-        confrelid: int = con_row[11]
-        referenced = pk_by_relid.get(confrelid)
+        referenced = keys.get((con_row[11], frozenset(con_row[19])))
         if referenced is None:
             raise ValueError(
                 f"referential_constraints: FK {fk_name!r} references table oid "
-                f"{confrelid} with no resolvable primary-key constraint"
+                f"{con_row[11]} columns {con_row[19]} that are no key of it"
             )
-        uniq_name, uniq_schema = referenced
+        uniq_name, ns_oid = referenced
+        uniq_schema = oid_to_ns.get(ns_oid, "public")
         rc_rows.append(
             (
                 "provisa",
