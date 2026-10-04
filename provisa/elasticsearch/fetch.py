@@ -29,6 +29,8 @@ from provisa.elasticsearch.source import discover_schema, extract_mapping_proper
 
 _SCROLL_KEEPALIVE = "2m"
 _PAGE_SIZE = 1000
+# Elasticsearch's default ``index.max_result_window``: a search ``size`` above it is refused (400).
+_RESULT_WINDOW = 10_000
 
 
 @dataclass(frozen=True)
@@ -101,12 +103,16 @@ def iter_row_batches(
     conn: ESConnection, index: str, columns: list[tuple[str, str]], batch_rows: int
 ) -> Iterator[list[dict]]:  # REQ-1915
     """The documents of ``index`` a scroll page at a time, each page of at most ``batch_rows``
-    rows: only one page is held."""
+    rows: only one page is held. A page never asks for more than the index's result window."""
     with conn._client() as c:
         resp = c.post(
             f"/{index}/_search",
             params={"scroll": _SCROLL_KEEPALIVE},
-            json={"size": batch_rows, "sort": ["_doc"], "query": {"match_all": {}}},
+            json={
+                "size": min(batch_rows, _RESULT_WINDOW),
+                "sort": ["_doc"],
+                "query": {"match_all": {}},
+            },
         )
         resp.raise_for_status()
         body = resp.json()

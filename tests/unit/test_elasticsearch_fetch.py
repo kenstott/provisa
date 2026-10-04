@@ -138,6 +138,31 @@ def test_fetch_rows_scrolls_every_page_and_releases_the_scroll():
     assert released.called
 
 
+@respx.mock
+def test_a_replica_batch_larger_than_the_result_window_reads_in_pages_the_index_accepts():
+    """The replica build asks for 65,536-row batches; Elasticsearch refuses a search ``size`` over
+    its result window (10,000 by default) with a 400. The scroll page stays within the window, and
+    each yielded batch still holds at most ``batch_rows`` rows."""
+
+    def _search(request: httpx.Request) -> httpx.Response:
+        import json
+
+        size = json.loads(request.content)["size"]
+        if size > 10_000:
+            return httpx.Response(400, json={"error": "Result window is too large"})
+        return httpx.Response(
+            200, json={"_scroll_id": "s1", "hits": {"hits": [{"_source": {"ticket_id": "T-1"}}]}}
+        )
+
+    respx.post(f"{_BASE}/tickets/_search").mock(side_effect=_search)
+    respx.post(f"{_BASE}/_search/scroll").mock(
+        return_value=httpx.Response(200, json={"_scroll_id": "s1", "hits": {"hits": []}})
+    )
+    respx.delete(f"{_BASE}/_search/scroll").mock(return_value=httpx.Response(200))
+    batches = list(es.iter_row_batches(_conn(), "tickets", [("ticket_id", "ticket_id")], 65_536))
+    assert batches == [[{"ticket_id": "T-1"}]]
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_loader_reads_the_registered_columns_of_the_index():

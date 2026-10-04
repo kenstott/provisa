@@ -42,6 +42,7 @@ import {
   registerOfferedTable,
   runSqlOnPage,
   submitRegisterAndExpectListed,
+  setSourceCacheTtl,
   submitSourceAndExpectListed,
 } from "./source-to-query-helpers";
 
@@ -172,6 +173,8 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByTestId("sources-type-select").selectOption("elasticsearch");
     await page.getByLabel(/^Host/).fill("localhost");
     await page.getByLabel(/^Port/).fill(String(E2E_ES_PORT));
+    // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form — the live indices list under "default"; columns come from the mapping
@@ -208,6 +211,8 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByLabel(/^Host/).fill("localhost");
     await page.getByLabel(/^Port/).fill(String(E2E_REDIS_PORT));
     await page.getByLabel(/^Database/).fill("0"); // the form requires one; Redis's db index
+    // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form — the key prefixes list under "default"; columns are the hash fields
@@ -244,6 +249,8 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByLabel(/^Host/).fill("localhost");
     await page.getByLabel(/^Port/).fill(String(E2E_CASSANDRA_PORT));
     await page.getByLabel(/^Database/).fill("shelter_ops"); // the form requires one; the keyspace
+    // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form — keyspaces are the schemas; columns come from the cluster metadata
@@ -323,6 +330,8 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("prometheus");
     await page.getByTestId("prometheus-url-input").fill(`http://localhost:${E2E_PROMETHEUS_PORT}`);
+    // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form — the metrics list under "default"; columns come from the labels
@@ -755,6 +764,8 @@ test.describe("source to query through the UI, extra RDBMS coverage (REQ-1732)",
     await page.getByLabel(/^Port/).fill(String(E2E_TRINO_SOURCE_PORT));
     await page.getByLabel(/^Username/).fill("provisa");
     await page.getByLabel(/^Database/).fill("tpch");
+    // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);

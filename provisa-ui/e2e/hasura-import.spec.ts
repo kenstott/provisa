@@ -88,7 +88,16 @@ test("import Hasura's sample through the tab, then query it as the sample's user
   const config = page.getByRole("textbox", { name: "Generated configuration" });
   const yaml = await config.inputValue();
   expect(yaml).toContain("${env:RS_ENV}");
-  await config.fill(yaml.replace("${env:RS_ENV}", COUNTRIES_URL));
+  // REQ-1907: the remote schema lands, so its source needs a landing clock — set beside its
+  // endpoint, at the same indentation, before applying.
+  await config.fill(
+    yaml.replace(
+      /^(\s*)(\S+:\s*)\$\{env:RS_ENV\}\s*$/m,
+      (_m, indent: string, key: string) => `${indent}${key}${COUNTRIES_URL}\n${indent}cache_ttl: 300`,
+    ),
+  );
+  expect(await config.inputValue()).toContain(COUNTRIES_URL);
+  expect(await config.inputValue()).toContain("cache_ttl: 300");
 
   await page.getByRole("button", { name: "Apply to this organization" }).click();
   await expect(page.getByText(/^Applied: /)).toBeVisible({ timeout: 120_000 });

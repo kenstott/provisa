@@ -961,6 +961,13 @@ export function SourcesPage() {
           createPayload as Parameters<typeof createSource>[0],
         );
         if (!createResult.success) throw new Error(createResult.message);
+        // REQ-1907: the cache and Replicate settings offered at create are saved with it.
+        const createTtl = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
+        if (createTtl !== null && isNaN(createTtl)) throw new Error("TTL must be a number");
+        const createCache = await updateSourceCache(form.id, form.cacheEnabled, createTtl);
+        if (!createCache.success) throw new Error(createCache.message);
+        const createReplicate = await updateSourceReplicate(form.id, form.replicate);
+        if (!createReplicate.success) throw new Error(createReplicate.message);
         if (form.loadProtected) {
           const lp = await updateSourceLoadProtection(
             form.id,

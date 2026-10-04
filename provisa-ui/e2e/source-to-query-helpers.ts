@@ -23,6 +23,15 @@ export async function openSourcesForm(page: Page) {
   await page.waitForSelector(".form-card", { timeout: 5000 });
 }
 
+/** Give a new source the cache TTL its tables need (REQ-1907): a source the engine serves from a
+ *  replica must have a landing clock before a table is registered. Set through the form's Load
+ *  Management and Timeliness panel, which the create form offers. */
+export async function setSourceCacheTtl(page: Page, seconds: number) {
+  const toggle = page.getByTestId("source-load-management-panel-toggle");
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await page.getByTestId("cache-ttl-input").fill(String(seconds));
+}
+
 export async function submitSourceAndExpectListed(page: Page, sourceId: string) {
   await page.getByTestId("sources-submit").click();
   await expect(page.locator(".data-table td").filter({ hasText: sourceId })).toBeVisible({
