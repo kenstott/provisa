@@ -172,6 +172,27 @@ async def _registered_result(
     )
 
 
+async def reprovision_source_after_registration(pool, state, source_id: str) -> None:
+    """Re-run the source's mapping-DSL synthesis and engine provisioning once a table of it is
+    registered (REQ-1730) — under the org's vault (REQ-1695), as createSource does: the source's
+    password is a ``${secret:...}`` reference into it, which resolves only while it is bound."""
+    from provisa.api.admin.schema_common import _synthesize_mapping_dsl_tables
+    from provisa.core.secrets import resolve_secrets
+    from provisa.core.secrets_store import bound_to_request_org
+    from provisa.federation.registry_view import registered_sources
+
+    model = next((s for s in await registered_sources(state) if s.id == source_id), None)
+    if model is None:
+        return
+    async with bound_to_request_org():
+        await _synthesize_mapping_dsl_tables(pool, model)
+        state.federation_engine.register_source(
+            model,
+            resolve_secrets(model.password) if model.password else "",
+            catalog_name=state.source_catalogs[source_id],
+        )
+
+
 async def register_table(
     info: StrawberryInfo, input: TableInput
 ) -> (
@@ -526,21 +547,9 @@ async def register_table(
     # for a native engine (register_source has nothing catalog-like to provision). Best-effort,
     # same posture as the reconcile above.
     try:
-        from provisa.api.admin.schema_common import _synthesize_mapping_dsl_tables
         from provisa.api.app import state as _mapping_state
-        from provisa.core.secrets import resolve_secrets
-        from provisa.federation.registry_view import registered_sources
 
-        _src_model = next(
-            (s for s in await registered_sources(_mapping_state) if s.id == input.source_id), None
-        )
-        if _src_model is not None:
-            await _synthesize_mapping_dsl_tables(pool, _src_model)
-            _mapping_state.federation_engine.register_source(
-                _src_model,
-                resolve_secrets(_src_model.password) if _src_model.password else "",
-                catalog_name=_mapping_state.source_catalogs[input.source_id],
-            )
+        await reprovision_source_after_registration(pool, _mapping_state, input.source_id)
     except Exception:
         logging.getLogger(__name__).exception(
             "mapping-DSL catalog refresh after registration failed for source %r",
