@@ -15,7 +15,7 @@ Deleting an org or an environment removes, in every region store the org declare
 of that environment (its state, record, replicas, views, caches and exports, under the
 region-qualified names — ``environments.org_schema``), the tables another region's engine imported
 from those replicas, every Redis key of its cache and Hot counts, and every catalog a region's Trino
-coordinator holds for it (its sources, its stores and the other regions' replicas: ``org_<org>_...``
+coordinator (with no platform regions, the deployment's own) holds for it (its sources, its stores and the other regions' replicas: ``org_<org>_...``
 — an org id has no underscore, REQ-1309, so the prefix names that org alone). The deleting node reaches
 each store through the model's declarations — the same reach cross-region reads use.
 
@@ -96,13 +96,6 @@ async def _plan(control_plane: "Database", org_id: str, envs: list[str]) -> _Pur
     from provisa.core.regions import DEFAULT_REGION
 
     plan = _Purge()
-    if process_region.region() == DEFAULT_REGION:
-        return plan  # no platform regions: nothing is kept under a region's name
-    if not Capabilities.for_dialect(control_plane.engine.dialect.name).schemas:
-        raise RuntimeError(
-            "regions are declared, so the control plane must hold each org in a schema of its own "
-            f"(it is {control_plane.engine.dialect.name})"
-        )
     # The org itself goes when its prod does (prod is deleted only with the org, REQ-1487): then
     # every catalog of the org, else each environment's own.
     catalog_prefixes = (
@@ -110,6 +103,22 @@ async def _plan(control_plane: "Database", org_id: str, envs: list[str]) -> _Pur
         if PROD in envs
         else {f"org_{org_id}_env_{env}__".lower() for env in envs}
     )
+    if process_region.region() == DEFAULT_REGION:
+        # No platform regions: nothing is kept under a region's name. A deployment running on
+        # Trino keeps the org's catalogs on its own coordinator — they go too.
+        from provisa.federation.engine import configured_engine_endpoint, configured_engine_kind
+
+        if configured_engine_kind() == "trino":
+            host, port = configured_engine_endpoint()
+            coordinator = f"trino://{host}:{port}"
+            plan.reach[coordinator] = (DEFAULT_REGION, "engine")
+            plan.catalogs[coordinator] = catalog_prefixes
+        return plan
+    if not Capabilities.for_dialect(control_plane.engine.dialect.name).schemas:
+        raise RuntimeError(
+            "regions are declared, so the control plane must hold each org in a schema of its own "
+            f"(it is {control_plane.engine.dialect.name})"
+        )
     for env in envs:
         if not await _schema_exists(control_plane, org_schema(org_id, env)):
             continue  # never provisioned (a failed org): it declared nothing

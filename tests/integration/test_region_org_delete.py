@@ -315,3 +315,82 @@ async def test_an_unreachable_region_store_refuses_the_delete_and_nothing_is_rem
         sorted(estate.keys_of(estate.org)),
         estate.catalogs_of(estate.org),
     ) == before
+
+
+# --- no platform regions: the deployment's own Trino coordinator ------------------------------
+
+
+@pytest.fixture
+def no_regions_on_trino(docker_postgres, monkeypatch):
+    """A deployment with no platform regions, running on the test stack's Trino; an org and a
+    bystander with catalogs on it."""
+    from provisa.core import process_region
+    from provisa.core.regions import DEFAULT_REGION
+
+    was = process_region._region
+    process_region._region = DEFAULT_REGION
+    monkeypatch.setenv("PROVISA_ENGINE", "trino")
+    estate = _Estate(docker_postgres, shared=True)
+    conn = estate.trino()
+    try:
+        for org in (estate.org, estate.bystander):
+            for name in (f"org_{org}__sales", f"org_{org}_env_dev__sales"):
+                _ddl(
+                    conn,
+                    f'CREATE CATALOG "{name}" USING postgresql WITH ('
+                    f"\"connection-url\" = 'jdbc:postgresql://postgres:5432/provisa', "
+                    "\"connection-user\" = 'provisa', \"connection-password\" = 'provisa')",
+                )
+    finally:
+        conn.close()
+    yield estate
+    process_region._region = was
+    conn = estate.trino()
+    try:
+        for org in (estate.org, estate.bystander):
+            for name in estate.catalogs_of(org):
+                _ddl(conn, f'DROP CATALOG IF EXISTS "{name}"')
+    finally:
+        conn.close()
+
+
+async def _purge_without_regions(estate: _Estate, envs: list[str]) -> None:
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.region_purge import purge_org_regions
+
+    control_plane = Database(create_engine_from_url(estate.url("provisa", "+psycopg")), "cp")
+    try:
+        await purge_org_regions(control_plane, estate.org, envs)
+    finally:
+        await control_plane.close()
+
+
+async def test_with_no_regions_an_org_delete_drops_its_catalogs_on_the_deployments_trino(
+    no_regions_on_trino,
+):
+    estate = no_regions_on_trino
+    bystander = estate.catalogs_of(estate.bystander)
+    assert len(estate.catalogs_of(estate.org)) == 2 and len(bystander) == 2
+
+    # An environment's delete takes its own catalogs only; the org's delete takes the rest.
+    await _purge_without_regions(estate, ["dev"])
+    assert estate.catalogs_of(estate.org) == {f"org_{estate.org}__sales"}
+    await _purge_without_regions(estate, ["prod", "dev"])
+    assert estate.catalogs_of(estate.org) == set()
+    assert estate.catalogs_of(estate.bystander) == bystander
+
+
+async def test_with_no_regions_an_unreachable_coordinator_refuses_the_delete(
+    no_regions_on_trino, monkeypatch
+):
+    from provisa.core.region_purge import RegionStoreUnreachable
+    from provisa.core.regions import DEFAULT_REGION
+
+    estate = no_regions_on_trino
+    before = estate.catalogs_of(estate.org)
+    monkeypatch.setenv("TRINO_PORT", "1")
+    with pytest.raises(RegionStoreUnreachable) as refused:
+        await _purge_without_regions(estate, ["prod", "dev"])
+    monkeypatch.setenv("TRINO_PORT", str(estate.trino_port))
+    assert refused.value.params["region"] == DEFAULT_REGION
+    assert estate.catalogs_of(estate.org) == before
