@@ -71798,7 +71798,7 @@
     and a configuration that sets one is refused with an error saying the platform declares no regions;
     and the record''s visible columns carry no region. Every per-region store is simply the org''s store.
     The UI shows regions only when the platform declares them. This implicit region is a default this
-    requirement mandates, not a fallback.'
+    requirement mandates, not a fallback. (Amended 2026-10-04, THE ADMIN LISTS ARE FILTERED BY REGION:) Every admin list of objects that can name a region -- sources, tables, materialized views, replica status and hot tables -- has one region selector, the same on every page. It starts at the region the operator is connected to, which shows the objects homed in that region together with the objects that name no region, since both are built or served there; the other choices are all regions, no region, and each other region of the org by name. The list says how many objects the selection hides, so nothing appears to be missing, and a search by name finds an object in any region and labels it with its region. Each row shows the object's region. The selection is remembered for the viewer. Like every region control, the selector is absent when the platform declares no regions.'
   use_case: A regulated enterprise needs some data processed and kept inside a country, with the rest
     of the estate readable from anywhere, under one set of definitions. Two independent deployments would
     each need their own definitions, which could diverge. Two clusters on one shared model give each region
