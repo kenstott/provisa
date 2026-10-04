@@ -103,14 +103,18 @@ def test_a_process_outside_a_launch_always_does_the_whole_boot(fresh_database):
     assert _boot_together(fresh_database, [None] * 3) == ["None"] * 3
 
 
-def test_a_file_control_plane_records_no_generation(tmp_path):
+def test_a_file_control_plane_records_the_generation_under_its_file_lock(tmp_path):
+    """A control plane that is a file on one host holds its boot lock as a file lock beside it
+    (REQ-1920), so it records the launch's generation like the PostgreSQL one: the next worker of
+    the launch skips the once-per-launch work, and another launch does it again."""
     url = f"sqlite+pysqlite:///{tmp_path / 'cp.db'}"
     generation = boot_generation("launch-a", config="c1")
     with control_plane_boot_lock(url) as lock:
         assert not lock.completed("default", generation)
         lock.mark_completed("default", generation)
     with control_plane_boot_lock(url) as lock:
-        assert not lock.completed("default", generation)
+        assert lock.completed("default", generation)
+        assert not lock.completed("default", boot_generation("launch-b", config="c1"))
 
 
 @pytest.fixture
