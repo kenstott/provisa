@@ -93,6 +93,12 @@
     "nlSearchNone": "このスキーマにその説明に一致するテーブルはありません。",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "登録済み",
-    "nlSearchUse": "使用"
+    "nlSearchUse": "使用",
+    "fileGlobLabel": "ファイルグロブ（複数ファイルを1つのテーブルに）",
+    "fileGlobHint": "任意 — 単一ファイルの場合は空欄",
+    "fileGlobPlaceholder": "例: orders/*.csv",
+    "sourceFileColumnLabel": "ソースファイル列",
+    "sourceFileColumnHint": "任意 — 各行のファイルパスを保持する列",
+    "sourceFileColumnPlaceholder": "例: _source_file"
   }
 }

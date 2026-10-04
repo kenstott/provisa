@@ -93,6 +93,12 @@
     "nlSearchNone": "Keine Tabelle in diesem Schema passt zu dieser Beschreibung.",
     "nlSearchConfidence": "{{percent}} %",
     "nlSearchRegistered": "Registriert",
-    "nlSearchUse": "Übernehmen"
+    "nlSearchUse": "Übernehmen",
+    "fileGlobLabel": "Datei-Glob (eine Tabelle über mehrere Dateien)",
+    "fileGlobHint": "optional — für eine einzelne Datei leer lassen",
+    "fileGlobPlaceholder": "z. B. orders/*.csv",
+    "sourceFileColumnLabel": "Quelldatei-Spalte",
+    "sourceFileColumnHint": "optional — eine Spalte mit dem Dateipfad jeder Zeile",
+    "sourceFileColumnPlaceholder": "z. B. _source_file"
   }
 }

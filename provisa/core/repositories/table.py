@@ -280,6 +280,9 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
         "row_materialize": getattr(table, "row_materialize", False),
         "file_glob": getattr(table, "file_glob", None),  # REQ-788
         "source_file_column": getattr(table, "source_file_column", None),  # REQ-788
+        "delta": _delta.model_dump()
+        if (_delta := getattr(table, "delta", None))
+        else None,  # REQ-874
         "cache_ttl": getattr(table, "cache_ttl", None),
         "role_ttl": dict(table.role_ttl),  # REQ-1907
         "pagination": paging_row(table.pagination),  # REQ-318
@@ -329,6 +332,7 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
         "row_materialize",  # REQ-1865
         "file_glob",  # REQ-788
         "source_file_column",  # REQ-788
+        "delta",  # REQ-874
         "cache_ttl",  # REQ-1865
         "role_ttl",  # REQ-1907
         "pagination",  # REQ-318

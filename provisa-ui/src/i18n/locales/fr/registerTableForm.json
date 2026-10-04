@@ -93,6 +93,12 @@
     "nlSearchNone": "Aucune table de ce schéma ne correspond à cette description.",
     "nlSearchConfidence": "{{percent}} %",
     "nlSearchRegistered": "Enregistrée",
-    "nlSearchUse": "Utiliser"
+    "nlSearchUse": "Utiliser",
+    "fileGlobLabel": "Glob de fichiers (une table sur plusieurs fichiers)",
+    "fileGlobHint": "facultatif — laissez vide pour un seul fichier",
+    "fileGlobPlaceholder": "p. ex. orders/*.csv",
+    "sourceFileColumnLabel": "Colonne du fichier source",
+    "sourceFileColumnHint": "facultatif — une colonne contenant le chemin de fichier de chaque ligne",
+    "sourceFileColumnPlaceholder": "p. ex. _source_file"
   }
 }

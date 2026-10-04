@@ -882,6 +882,29 @@ class LiveKafkaParams(BaseModel):  # REQ-813
     field_mapping: dict[str, str] = Field(default_factory=dict)  # kafka field → table column
 
 
+class DeltaConfig(BaseModel):  # REQ-874
+    """A replica's incremental-reload (delta) declaration. The replica is refreshed by applying
+    only the rows that changed since the stored cursor, not re-pulled whole.
+
+    - ``query``: the source-native delta query with the ``$wm`` (cursor) and ``{{fields}}``
+      (selection) placeholders Provisa substitutes but never parses. Omitted for a SQL source,
+      where Provisa generates ``SELECT {{fields}} FROM <table> WHERE <cursor> > $wm ORDER BY
+      <cursor>`` from the table's watermark_column.
+    - ``apply``: ``upsert`` (on the registered primary key) or ``append`` (immutable sources).
+    - ``deletes``: ``none`` (a whole rebuild on ``rebuild_every`` catches deletes) or
+      ``tombstone`` with ``tombstone_column`` (a returned row whose column is true deletes its key).
+    - ``rebuild_every``: seconds between whole rebuilds; None = never on a clock (model/definition
+      changes and the declared fallbacks still rebuild). The cursor field is the table's
+      watermark_column.
+    """
+
+    query: str | None = None
+    apply: str = "upsert"  # upsert | append
+    deletes: str = "none"  # none | tombstone
+    tombstone_column: str | None = None
+    rebuild_every: int | None = None
+
+
 class LiveDeliveryConfig(BaseModel):  # REQ-565, REQ-813
     """Unified live change-feed config attached to a table.
 
@@ -1053,6 +1076,8 @@ class Table(
     # REQ-788: when set, the name of a column carrying each row's matched file path. Opt-in — a
     # files-glob table has no such column unless it is declared.
     source_file_column: str | None = None
+    # REQ-874: incremental (delta) reload of this table's replica. None = whole rebuild only.
+    delta: "DeltaConfig | None" = None
     mv_refresh_interval: int = 300  # seconds between MV refreshes (only used when materialize=True)
     # REQ-963: live-MV debounce. deadline = min(last_change+quiet, first_change+max_delay). A burst
     # of upstream changes collapses into one recompute-to-current. quiet=0 disables debounce (pure
@@ -1146,6 +1171,42 @@ class Table(
         refused = contradiction(self.replicate, bool(self.load_protected))
         if refused is not None:
             raise ValueError(f"table {self.table_name!r}: {refused}")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_delta(self) -> "Table":  # REQ-874
+        # The table's own shape checks (its source is not visible here — the cross-table rules,
+        # replicate and the probe/delta exclusivity, live in config_loader._validate_delta).
+        if self.delta is None:
+            return self
+        d = self.delta
+        if d.apply not in ("upsert", "append"):
+            raise ValueError(f"table {self.table_name!r}: delta.apply must be upsert or append")
+        if d.deletes not in ("none", "tombstone"):
+            raise ValueError(f"table {self.table_name!r}: delta.deletes must be none or tombstone")
+        if d.deletes == "tombstone" and not d.tombstone_column:
+            raise ValueError(
+                f"table {self.table_name!r}: delta.deletes=tombstone needs a tombstone_column"
+            )
+        if d.apply == "upsert" and not any(c.is_primary_key for c in self.columns):
+            raise ValueError(
+                f"table {self.table_name!r}: delta.apply=upsert needs an is_primary_key column "
+                "to key the delete+insert on (REQ-874)"
+            )
+        if not self.watermark_column:
+            raise ValueError(
+                f"table {self.table_name!r}: delta needs watermark_column (the cursor field) "
+                "(REQ-874)"
+            )
+        if d.query is not None and ("$wm" not in d.query or "{{fields}}" not in d.query):
+            raise ValueError(
+                f"table {self.table_name!r}: delta.query must carry both $wm and {{{{fields}}}} "
+                "placeholders (REQ-874)"
+            )
+        if d.rebuild_every is not None and d.rebuild_every <= 0:
+            raise ValueError(
+                f"table {self.table_name!r}: delta.rebuild_every must be positive seconds"
+            )
         return self
 
     @model_validator(mode="after")

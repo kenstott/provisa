@@ -162,6 +162,23 @@ async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  
     return out
 
 
+def _delta_of(raw: Any) -> Any:
+    """Reconstruct a table's DeltaConfig from its stored dict (REQ-874); None when unset. A string
+    is JSON (a backend that stores JSONB as text); a dict is used directly."""
+    if not raw:
+        return None
+    import json
+
+    from provisa.core.models import DeltaConfig
+
+    # A JSON column stores Python None as the JSON string "null" (SQLAlchemy JSON type), and the
+    # raw-SQL fetch returns JSON as text — so normalize to a dict or treat as "no delta".
+    data = json.loads(raw) if isinstance(raw, str) else raw
+    if not isinstance(data, dict):
+        return None
+    return DeltaConfig(**data)
+
+
 def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
     """The SimpleNamespace-shaping loop `registered_tables` runs over `fetch_tables`' rows,
     factored out so both the cached (pool-acquire) and uncached (caller-supplied ``conn``) paths
@@ -233,6 +250,7 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                 row_materialize=bool(rt.get("row_materialize", False)),
                 file_glob=rt.get("file_glob"),  # REQ-788
                 source_file_column=rt.get("source_file_column"),  # REQ-788
+                delta=_delta_of(rt.get("delta")),  # REQ-874
                 # REQ-1865: row_materialized_tables_by_name keys on this (apply_sql_name(t.alias or
                 # t.table_name)) to match the SEMANTIC AST a query compiles to -- also never
                 # surfaced here before. Dead code until row_materialize (above) actually started

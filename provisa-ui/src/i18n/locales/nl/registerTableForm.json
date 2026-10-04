@@ -93,6 +93,12 @@
     "nlSearchNone": "Geen tabel in dit schema past bij die beschrijving.",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "Geregistreerd",
-    "nlSearchUse": "Gebruiken"
+    "nlSearchUse": "Gebruiken",
+    "fileGlobLabel": "Bestands-glob (één tabel over meerdere bestanden)",
+    "fileGlobHint": "optioneel — laat leeg voor één bestand",
+    "fileGlobPlaceholder": "bijv. orders/*.csv",
+    "sourceFileColumnLabel": "Bronbestand-kolom",
+    "sourceFileColumnHint": "optioneel — een kolom met het bestandspad van elke rij",
+    "sourceFileColumnPlaceholder": "bijv. _source_file"
   }
 }

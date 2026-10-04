@@ -78,6 +78,16 @@ COMMANDS_DIR = "commands"
 NAMING_PATH = "naming/rules.yaml"
 
 
+def _table_in(conn: "Connection", table: "SaTable", schema: str) -> "SaTable":
+    """``table`` addressed in ``schema`` on a schema-capable backend (PostgreSQL), or the
+    unqualified table on one without named schemas (SQLite/DuckDB control planes), where a
+    ``<schema>.<table>`` reference does not resolve (REQ-1526). The env's tables live in the one
+    default schema there, so the unqualified table is the environment."""
+    if not conn.capabilities.schemas:
+        return table
+    return _scoped(table, schema)
+
+
 async def _rows(conn: "Connection", table: "SaTable", schema: str) -> list[dict[str, Any]]:
     """Every row of ``table`` in ``schema``, as plain dicts with plain string keys.
 
@@ -85,7 +95,7 @@ async def _rows(conn: "Connection", table: "SaTable", schema: str) -> list[dict[
     SUBCLASS, and the YAML dumper refuses a type it was not taught -- so a key that reads as a
     string in every comparison here would fail at serialization time instead.
     """
-    result = await conn.execute_core(select(_scoped(table, schema)))
+    result = await conn.execute_core(select(_table_in(conn, table, schema)))
     return [{str(k): v for k, v in r._mapping.items()} for r in result.fetchall()]
 
 
@@ -93,7 +103,7 @@ async def model_stamp(conn: "Connection", schema: str) -> int:
     """The environment's model stamp (REQ-1914) as stored in ``schema``."""
     from provisa.core.config_stamp import MODEL
 
-    stamp_t = _scoped(org.config_stamp, schema)
+    stamp_t = _table_in(conn, org.config_stamp, schema)
     row = (
         await conn.execute_core(select(stamp_t.c.stamp).where(stamp_t.c.kind == MODEL))
     ).fetchone()

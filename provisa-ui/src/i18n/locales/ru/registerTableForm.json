@@ -93,6 +93,12 @@
     "nlSearchNone": "Ни одна таблица в этой схеме не соответствует описанию.",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "Зарегистрирована",
-    "nlSearchUse": "Выбрать"
+    "nlSearchUse": "Выбрать",
+    "fileGlobLabel": "Глоб файлов (одна таблица по нескольким файлам)",
+    "fileGlobHint": "необязательно — оставьте пустым для одного файла",
+    "fileGlobPlaceholder": "напр. orders/*.csv",
+    "sourceFileColumnLabel": "Столбец исходного файла",
+    "sourceFileColumnHint": "необязательно — столбец с путём к файлу каждой строки",
+    "sourceFileColumnPlaceholder": "напр. _source_file"
   }
 }

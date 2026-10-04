@@ -226,6 +226,8 @@ class ReplicaRecord:
     failed_attempts: int = 0
     feed_down_since: datetime | None = None
     feed_error: str | None = None
+    delta_cursor: Any = None
+    delta_skipped: str | None = None
 
     @property
     def exists(self) -> bool:
@@ -267,6 +269,8 @@ _COLUMNS = (
     _t.failed_attempts,
     _t.feed_down_since,
     _t.feed_error,
+    _t.delta_cursor,
+    _t.delta_skipped,
 )
 
 
@@ -305,6 +309,8 @@ def _record(row: Any) -> ReplicaRecord:
         failed_attempts=row[24],
         feed_down_since=_aware(row[25]),
         feed_error=row[26],
+        delta_cursor=row[27],
+        delta_skipped=row[28],
     )
 
 
@@ -498,6 +504,35 @@ async def record_feed(
         if error is None
         else {"feed_down_since": func.coalesce(_t.feed_down_since, now), "feed_error": error}
     )
+    await conn.execute_core(update(replica_state).where(_is(key)).values(**values))
+
+
+async def record_delta_applied(
+    conn: "Connection", key: ReplicaKey, *, cursor: Any
+) -> None:  # REQ-874
+    """Record that a delta was applied: store the advanced cursor and clear ``delta_skipped``
+    (this build was a delta, not a whole rebuild). ``cursor`` is max(cursor-field) over the
+    applied rows (unchanged when the delta was empty)."""
+    import json
+
+    await conn.execute_core(
+        update(replica_state)
+        .where(_is(key))
+        .values(delta_cursor=json.dumps(cursor, default=str), delta_skipped=None)
+    )
+
+
+async def record_whole_rebuild(
+    conn: "Connection", key: ReplicaKey, *, skipped: str, cursor: Any
+) -> None:  # REQ-874
+    """Record that this build was a whole rebuild, not a delta: ``skipped`` is the declared
+    reason (``delta.SKIP_*``, shown on the status line), and ``cursor`` sets the delta cursor to
+    the rebuilt data's max cursor-field so the next delta resumes from it (None leaves it)."""
+    import json
+
+    values: dict[str, Any] = {"delta_skipped": skipped}
+    if cursor is not None:
+        values["delta_cursor"] = json.dumps(cursor, default=str)
     await conn.execute_core(update(replica_state).where(_is(key)).values(**values))
 
 

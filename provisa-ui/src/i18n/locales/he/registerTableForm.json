@@ -93,6 +93,12 @@
     "nlSearchNone": "אין טבלה בסכמה זו התואמת את התיאור.",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "רשומה",
-    "nlSearchUse": "השתמש"
+    "nlSearchUse": "השתמש",
+    "fileGlobLabel": "תבנית קבצים (טבלה אחת על פני כמה קבצים)",
+    "fileGlobHint": "רשות — השאירו ריק לקובץ בודד",
+    "fileGlobPlaceholder": "לדוגמה orders/*.csv",
+    "sourceFileColumnLabel": "עמודת קובץ מקור",
+    "sourceFileColumnHint": "רשות — עמודה המכילה את נתיב הקובץ של כל שורה",
+    "sourceFileColumnPlaceholder": "לדוגמה _source_file"
   }
 }

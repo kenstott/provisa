@@ -261,6 +261,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS row_materialize BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-1865
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS file_glob TEXT;  -- REQ-788
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS source_file_column TEXT;  -- REQ-788
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS delta JSONB;  -- REQ-874
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_refresh_interval INTEGER NOT NULL DEFAULT 300;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_quiet DOUBLE PRECISION NOT NULL DEFAULT 0;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5;
@@ -1448,6 +1449,8 @@ CREATE TABLE IF NOT EXISTS replica_state (
     waiting_on       TEXT,          -- why a requested build did not start on the last pass (a code)
     feed_down_since  TIMESTAMPTZ,    -- REQ-1861: since when the change-feed listener is down; NULL = watching
     feed_error       TEXT,           -- REQ-1861: the server's reason while the listener is down
+    delta_cursor     JSONB,          -- REQ-874: the stored delta cursor
+    delta_skipped    TEXT,           -- REQ-874: why the last build was a whole rebuild, not a delta
     PRIMARY KEY (source_id, schema_name, table_name)
 );
 

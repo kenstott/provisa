@@ -93,6 +93,12 @@
     "nlSearchNone": "Nessuna tabella in questo schema corrisponde a quella descrizione.",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "Registrata",
-    "nlSearchUse": "Usa"
+    "nlSearchUse": "Usa",
+    "fileGlobLabel": "Glob di file (una tabella su più file)",
+    "fileGlobHint": "facoltativo — lasciare vuoto per un singolo file",
+    "fileGlobPlaceholder": "es. orders/*.csv",
+    "sourceFileColumnLabel": "Colonna del file di origine",
+    "sourceFileColumnHint": "facoltativo — una colonna con il percorso del file di ogni riga",
+    "sourceFileColumnPlaceholder": "es. _source_file"
   }
 }
