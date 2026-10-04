@@ -21,8 +21,8 @@ separate process invocations instead of one generator's two halves.
 
     python3 scripts/synapse_e2e.py up    # provisions, prints {"sql_server": ..., "database": ...,
                                           # "adls_url": ...} JSON, writes the same plus
-                                          # resource_group to the state file
-    python3 scripts/synapse_e2e.py down  # reads the state file, deletes the resource group
+                                          # the lane (group, workspace, storage) to the state file
+    python3 scripts/synapse_e2e.py down  # reads the state file, deletes the lane's resources
 
 State file location: $SYNAPSE_E2E_STATE_FILE, default /tmp/synapse_e2e_state.json. `down` is a
 no-op (not an error) if the state file is missing — makes it always safe to call from a test's
@@ -31,10 +31,10 @@ no-op (not an error) if the state file is missing — makes it always safe to ca
 Idempotency guard (REQ-1730): playwright.config.ts's global `retries: 1` re-invokes a failed
 test's `beforeAll` on a FRESH worker without ever calling the failed attempt's `afterAll` —
 reproduced live for `redshift_e2e.py`'s own lane this session, two full Serverless workgroups
-billing simultaneously from one retried test. The same shape applies here (a resource group is
-just as billable while standing), so `_up()` takes the identical precaution: a state file that
-survives across worker processes is checked FIRST, and its resource group's continued existence
-is verified against Azure (not just the file's presence) before reusing it.
+billing simultaneously from one retried test. The same shape applies here (a workspace and its
+storage account are just as billable while standing), so `_up()` takes the identical precaution: a
+state file that survives across worker processes is checked FIRST, and its workspace's continued
+existence is verified against Azure (not just the file's presence) before reusing it.
 """
 
 from __future__ import annotations
@@ -52,9 +52,12 @@ from tests.integration.synapse_provision import _az, _provision, _teardown  # no
 _STATE_FILE = Path(os.environ.get("SYNAPSE_E2E_STATE_FILE", "/tmp/synapse_e2e_state.json"))
 
 
-def _resource_group_exists(resource_group: str) -> bool:
+def _workspace_exists(lane: dict) -> bool:
     try:
-        _az("group", "show", "-n", resource_group, "-o", "none", timeout=60)
+        _az(
+            "synapse", "workspace", "show", "-n", lane["workspace"], "-g", lane["resource_group"],
+            "-o", "none", timeout=60,
+        )  # fmt: skip
     except Exception:
         return False
     return True
@@ -64,7 +67,7 @@ def _up() -> None:
     pinned = os.environ.get("SYNAPSE_SQL_SERVER")
     if pinned:
         state = {
-            "resource_group": None,
+            "lane": None,
             "sql_server": pinned,
             "database": os.environ["SYNAPSE_DATABASE"],
             "adls_url": os.environ["SYNAPSE_ADLS_URL"],
@@ -74,24 +77,24 @@ def _up() -> None:
 
     if _STATE_FILE.exists():
         state = json.loads(_STATE_FILE.read_text())
-        if state["resource_group"] and _resource_group_exists(state["resource_group"]):
+        if state["lane"] and _workspace_exists(state["lane"]):
             print(
-                f"== reusing already-provisioned {state['resource_group']} (retry) ==",
+                f"== reusing already-provisioned {state['lane']['workspace']} (retry) ==",
                 file=sys.stderr,
                 flush=True,
             )
             print(json.dumps(state))
             return
         print(
-            "== stale state file points at a gone/foreign resource group — discarding ==",
+            "== stale state file points at a gone/foreign workspace — discarding ==",
             file=sys.stderr,
             flush=True,
         )
         _STATE_FILE.unlink()
 
-    resource_group, sql_server, database, adls_url = _provision()
+    lane, sql_server, database, adls_url = _provision()
     state = {
-        "resource_group": resource_group,
+        "lane": lane,
         "sql_server": sql_server,
         "database": database,
         "adls_url": adls_url,
@@ -105,11 +108,11 @@ def _down() -> None:
         print("no state file, nothing to tear down", file=sys.stderr, flush=True)
         return
     state = json.loads(_STATE_FILE.read_text())
-    if not state["resource_group"]:
+    if not state["lane"]:
         print("state file is a pinned workspace — nothing to delete", file=sys.stderr, flush=True)
         _STATE_FILE.unlink(missing_ok=True)
         return
-    _teardown(state["resource_group"])
+    _teardown(state["lane"])
     _STATE_FILE.unlink(missing_ok=True)
 
 

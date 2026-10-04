@@ -13,8 +13,8 @@
 
 Build-and-prove-load in the same CI job (the discipline used to build these by hand): a bundle that
 compiles but does not LOAD is a failure. Reads <bundle>/manifest.json, copies lib/* + share/extension/*
-into pgserver's pginstall, then loads each extension. Required members must load; mysql_fdw is
-best-effort (its client lib must be discoverable to the PG process — a packaging detail).
+into pgserver's pginstall, then loads each extension. Every member must load, and the required
+ones must be present; mysql_fdw's client library ships in the bundle like every other library.
 
 Usage: python smoke_pg_extensions.py <bundle-dir>
 Exit non-zero if any REQUIRED extension fails to load.
@@ -32,8 +32,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pgserver
 
-REQUIRED = {"file_fdw", "postgres_fdw", "sqlite_fdw", "pg_duckdb"}
-BEST_EFFORT = {"mysql_fdw"}
+REQUIRED = {"file_fdw", "postgres_fdw", "sqlite_fdw", "pg_duckdb", "pg_clickhouse", "mysql_fdw"}
 
 
 def _postgres_fdw_reads(db) -> list[str]:
@@ -111,8 +110,6 @@ def main(bundle: Path) -> int:
                 loaded = False
         if loaded:
             print(f"  OK   {key}{extra}")
-        elif key in BEST_EFFORT:
-            print(f"  WARN {key} (best-effort): did not load (client lib not discoverable to PG?)")
         else:
             print(f"  FAIL {key}: CREATE EXTENSION did not register it")
             failures.append(f"{key}: did not load")

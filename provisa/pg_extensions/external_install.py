@@ -42,8 +42,6 @@ from typing import Protocol
 
 _OS = {"Linux": "linux", "Darwin": "darwin"}
 _ARCH = {"x86_64": "x64", "amd64": "x64", "aarch64": "arm64", "arm64": "arm64"}
-# Shared libraries that support an extension but are not one.
-_NOT_EXTENSIONS = frozenset({"libduckdb", "libpq"})
 # Extensions that load only from shared_preload_libraries.
 PRELOAD = frozenset({"pg_duckdb"})
 
@@ -184,8 +182,13 @@ def install(target: Target, ext_root: Path) -> Installed:
         )
     finally:
         target.run(["rm", "-rf", staging])
+    # An extension is an artifact with a control file; the rest (libduckdb, libpq, the client and
+    # TLS libraries modules load) support one.
+    extdir = tree / "share" / "extension"
     names = sorted(
-        a["name"] for a in _manifest(tree)["artifacts"] if a["name"] not in _NOT_EXTENSIONS
+        a["name"]
+        for a in _manifest(tree)["artifacts"]
+        if (extdir / f"{a['key']}.control").is_file()
     )
     return Installed(tree, names, sorted(PRELOAD & set(names)))
 

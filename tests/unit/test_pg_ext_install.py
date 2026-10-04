@@ -44,8 +44,11 @@ def _bundle(root: Path, os_: str, arch: str, pg_major: str, *, corrupt: bool = F
         blob = f"{name} for {os_}-{arch} pg{pg_major}".encode()
         (tree / "lib" / f"{name}.so").write_bytes(blob)
         digest = hashlib.sha256(b"something else" if corrupt and name == "pg_duckdb" else blob)
-        artifacts.append({"name": name, "file": f"lib/{name}.so", "sha256": digest.hexdigest()})
-    (tree / "share" / "extension" / "postgres_fdw.control").write_text("comment = 'x'\n")
+        artifacts.append(
+            {"name": name, "key": name, "file": f"lib/{name}.so", "sha256": digest.hexdigest()}
+        )
+    for ext in ("postgres_fdw", "pg_duckdb"):  # the extensions; the libraries have no control file
+        (tree / "share" / "extension" / f"{ext}.control").write_text("comment = 'x'\n")
     (tree / "manifest.json").write_text(
         json.dumps({"os": os_, "arch": arch, "pg_major": pg_major, "artifacts": artifacts})
     )

@@ -257,7 +257,8 @@ export function provisionRedshift(cmd: "up" | "down"): RedshiftConnection | unde
 }
 
 export interface SynapseConnection {
-  resource_group: string | null;
+  /** What `down` deletes inside the existing resource group; null for a pinned workspace. */
+  lane: { resource_group: string; workspace: string; storage: string } | null;
   sql_server: string;
   database: string;
   adls_url: string;

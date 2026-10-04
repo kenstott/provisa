@@ -270,6 +270,9 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      # Synapse's region, pinned: probing which regions accept a new SQL server reads the
+      # subscription, and the CI principal holds rights on FABRIC_RESOURCE_GROUP only.
+      SYNAPSE_AZ_LOCATION: centralus
       # The Google Sheets read reaches the live sheet only when asked to.
       PROVISA_GSHEETS_LIVE: "1"
     steps:
@@ -313,6 +316,16 @@ jobs:
           printf '%s' "$SP_CERT_P12_BASE64" | base64 -d > "$GITHUB_WORKSPACE/sharepoint.pfx"
           echo "SP_CERT_PATH=$GITHUB_WORKSPACE/sharepoint.pfx" >> "$GITHUB_ENV"
           echo "PROVISA_E2E_SHAREPOINT_CERT_HOST=$GITHUB_WORKSPACE/sharepoint.pfx" >> "$GITHUB_ENV"
+
+      # GovData's JDBC driver is the calcite engine's govdata jar, from the engine release
+      # provisa/runtime_deps/pgwire_bundles.py pins (RELEASE_TAG); the test loads lib/calcite-govdata-*.jar.
+      - name: GovData engine jar (engine-v0.106.0)
+        run: |
+          mkdir -p lib
+          curl -fsSL -o lib/calcite-govdata-all.jar \
+            https://github.com/kenstott/calcite/releases/download/engine-v0.106.0/sih-govdata.jar
+          echo "88d5229a46cd2c8083c2ee633ce6d58245f17cb002c3184ab8caa64563f4b916  lib/calcite-govdata-all.jar" \
+            | sha256sum -c -
 
       - name: Azure CLI login (Synapse provisioning)
         run: az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
