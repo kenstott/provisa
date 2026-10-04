@@ -534,7 +534,10 @@ services:
       - ./db/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
       - mongo_test_data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      # Through the container's own address, not localhost: the image first runs a temporary
+      # mongod bound to 127.0.0.1 for the init script, then restarts it. A localhost ping answered
+      # that temporary server, so a client from the host met the restart ("connection closed").
+      test: ["CMD-SHELL", "mongosh --host \"$$(hostname -i)\" --quiet --eval \"db.adminCommand('ping')\""]
       interval: 5s
       timeout: 5s
       retries: 30
