@@ -62,6 +62,8 @@
       "invalid_as_of": "無效的 X-Provisa-As-Of：{{error}}",
       "invalid_filter": "filter 必須是將欄位名稱對應到值的物件",
       "invalid_filter_field": "{{type_name}} 的 filter 欄位「{{field}}」無效",
+      "invalid_redirect_format": "重新導向格式 '{{format}}' 並非可用於交付結果的格式",
+      "invalid_redirect_threshold": "重新導向閾值必須是整數行數，而非 '{{threshold}}'",
       "invalid_read_mask": "read_mask 必須是包含欄位路徑清單「paths」的物件",
       "invalid_read_mask_path": "{{type_name}} 的 read_mask 路徑「{{path}}」無效",
       "missing_command_name": "缺少命令名稱",

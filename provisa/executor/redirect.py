@@ -674,6 +674,41 @@ def request_redirect_config(threshold: int | None) -> RedirectConfig:  # REQ-029
     return replace(config, enabled=True, threshold=threshold)
 
 
+# The file formats a redirect may name, by name or by media type (REQ-1194). Which of them the
+# results store actually writes is the bound engine's to say (``writes_result``), at delivery.
+_REDIRECT_FORMATS = {
+    "parquet": "parquet",
+    "application/vnd.apache.parquet": "parquet",
+    "orc": "orc",
+    "application/x-orc": "orc",
+    "csv": "csv",
+    "text/csv": "csv",
+    "arrow": "arrow",
+    "application/vnd.apache.arrow.stream": "arrow",
+}
+
+
+class RedirectFormatUnknown(ValueError):
+    """A redirect named a file format that is no format a result can be delivered in."""
+
+    def __init__(self, value: str) -> None:
+        self.value = value
+        super().__init__(
+            f"redirect format {value!r} is not one of "
+            f"{sorted({v for v in _REDIRECT_FORMATS.values()})}"
+        )
+
+
+def parse_redirect_format(value: str) -> str:  # REQ-1194
+    """The delivery format a request names (``parquet``, or its media type), or
+    :class:`RedirectFormatUnknown`. Never a default in its place: a format the caller misspelled is
+    refused by name, not delivered as something else."""
+    fmt = _REDIRECT_FORMATS.get(value.strip().lower())
+    if fmt is None:
+        raise RedirectFormatUnknown(value)
+    return fmt
+
+
 def delivery_from_request(  # REQ-1194, REQ-1195
     *,
     force_redirect: bool,

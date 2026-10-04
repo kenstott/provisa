@@ -599,11 +599,19 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
     # Stage 4: Pipeline (governance + routing)
+    from provisa.api.redirect_headers import delivery_from_headers
+
+    # REQ-1194: a redirect the request forces (X-Provisa-Redirect*), landed by the pipeline's
+    # materialize stage; else REQ-1224's threshold decides (a buffered transport), when the
+    # operator has enabled it. A header that cannot be read is refused (400) here.
+    delivery = delivery_from_headers(request.headers, role_id)
     try:
         plan = await _govern_and_route_compiled(
             semantic_sql,
             role_id,
             exec_params=resolved_params or None,
+            deliver=delivery,
+            buffered=True,
             # REQ-544: the Cypher request's own `// @provisa cache` opt-in.
             cache_hint=cache_hint_for("cypher", body.query),
             # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
@@ -634,6 +642,11 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     _executed = await _run_plan(plan, state)
     if isinstance(_executed, Response):
         return _executed
+    if _executed.redirect is not None:
+        # Landed in the results store: no row crossed the wire, the handle names where it is.
+        return JSONResponse(
+            content={"type": "cypher", "columns": [], "rows": [], "redirect": _executed.redirect}
+        )
     rows = _dict_rows(_executed)
     physical_sql = plan.physical_sql or plan.exec_sql or ""
 

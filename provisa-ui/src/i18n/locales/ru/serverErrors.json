@@ -62,6 +62,8 @@
       "invalid_as_of": "недействительный X-Provisa-As-Of: {{error}}",
       "invalid_filter": "filter должен быть объектом, сопоставляющим имена полей со значениями",
       "invalid_filter_field": "Недопустимое поле filter '{{field}}' для {{type_name}}",
+      "invalid_redirect_format": "Формат перенаправления '{{format}}' не является форматом, в котором можно выдать результат",
+      "invalid_redirect_threshold": "Порог перенаправления должен быть целым числом строк, а не '{{threshold}}'",
       "invalid_read_mask": "read_mask должен быть объектом со списком 'paths' путей к полям",
       "invalid_read_mask_path": "Недопустимый путь read_mask '{{path}}' для {{type_name}}",
       "missing_command_name": "Отсутствует имя команды",

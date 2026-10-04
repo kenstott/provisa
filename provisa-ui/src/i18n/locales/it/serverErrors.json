@@ -62,6 +62,8 @@
       "invalid_as_of": "X-Provisa-As-Of non valido: {{error}}",
       "invalid_filter": "filter deve essere un oggetto che associa nomi di campo a valori",
       "invalid_filter_field": "Campo filter non valido '{{field}}' per {{type_name}}",
+      "invalid_redirect_format": "Il formato di redirect '{{format}}' non è un formato in cui si possa consegnare un risultato",
+      "invalid_redirect_threshold": "La soglia di redirect deve essere un numero intero di righe, non '{{threshold}}'",
       "invalid_read_mask": "read_mask deve essere un oggetto con un elenco 'paths' di percorsi di campo",
       "invalid_read_mask_path": "Percorso read_mask non valido '{{path}}' per {{type_name}}",
       "missing_command_name": "Nome del comando mancante",

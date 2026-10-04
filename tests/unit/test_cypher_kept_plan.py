@@ -20,6 +20,8 @@ over Arrow Flight through the pipeline terminal, as on every other transport."""
 
 from __future__ import annotations
 
+import json
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -243,8 +245,11 @@ class _Pipeline:
         monkeypatch.setattr(parser, "parse_cypher", self.parse)
         self.governed: list[tuple[str, list | None]] = []
 
+        self.governed_kw: list[dict] = []
+
         async def _govern(sql, _role_id, *, exec_params=None, **_kw):
             self.governed.append((sql, exec_params))
+            self.governed_kw.append(_kw)
             # One reachable source: the DIRECT route every surface serves from the source's driver.
             return SimpleNamespace(
                 route=Route.DIRECT,
@@ -344,6 +349,7 @@ async def test_a_repeated_http_statement_is_translated_once(monkeypatch, builds)
     monkeypatch.setattr("provisa.compiler.sql_validator.validate_sql", validate)
     request = MagicMock()
     request.state.role = "analyst"
+    request.headers = {}
     for minimum in (1, 2, 3):
         body = CypherRequest(query=_CYPHER, params={"min": minimum})
         response = await cypher_query(body, request, query_id=None, x_provisa_stats=None)
@@ -429,6 +435,7 @@ async def test_data_cypher_reports_hit_on_a_hit_and_miss_on_a_miss(monkeypatch):
     monkeypatch.setattr("provisa.compiler.sql_validator.validate_sql", MagicMock(return_value=[]))
     request = MagicMock()
     request.state.role = "analyst"
+    request.headers = {}
     body = CypherRequest(query=_CYPHER, params={"min": 1})
 
     miss = await cypher_query(body, request, query_id=None, x_provisa_stats=None)
@@ -452,6 +459,7 @@ async def test_data_sql_reports_hit_on_a_hit_and_miss_on_a_miss(monkeypatch, acc
     monkeypatch.setattr(app_mod, "state", state, raising=False)
     raw = MagicMock()
     raw.state.role = "analyst"
+    raw.headers = {}  # no X-Provisa-Redirect: the statement answers rows
 
     async def _call(result):
         monkeypatch.setattr(_pipeline, "execute_sql_batch", AsyncMock(return_value=result))
@@ -471,3 +479,53 @@ async def test_data_sql_reports_hit_on_a_hit_and_miss_on_a_miss(monkeypatch, acc
     assert hit.headers["X-Provisa-Cache"] == "HIT"
     assert hit.headers["X-Provisa-Cache-Age"] == "7"
     assert hit.body == miss.body
+
+
+# -- Cypher over HTTP: the X-Provisa-Redirect headers (REQ-1194, REQ-1224) -------------------------
+
+
+async def test_data_cypher_forces_a_redirect_named_by_its_headers_and_answers_the_handle(
+    monkeypatch,
+):
+    from provisa.api.rest.cypher_router import CypherRequest, cypher_query
+
+    state = _state()
+    state.settings_overrides = {}  # the operator's redirect settings: the defaults
+    pipe = _Pipeline(monkeypatch, state)
+    monkeypatch.setattr("provisa.compiler.stage2.build_governance_context", MagicMock())
+    monkeypatch.setattr("provisa.compiler.sql_validator.validate_sql", MagicMock(return_value=[]))
+    handle = {"sink": "object-store", "redirect_url": "https://x/r", "row_count": 3}
+    pipe.terminal.return_value = QueryResult(rows=[], column_names=[], redirect=handle)
+    request = MagicMock()
+    request.state.role = "analyst"
+    request.headers = {}
+    request.headers = {"x-provisa-redirect": "true", "x-provisa-redirect-format": "parquet"}
+    body = CypherRequest(query=_CYPHER, params={"min": 1})
+
+    response = await cypher_query(body, request, query_id=None, x_provisa_stats=None)
+    assert json.loads(bytes(response.body)) == {
+        "type": "cypher",
+        "columns": [],
+        "rows": [],
+        "redirect": handle,
+    }
+    (kw,) = pipe.governed_kw
+    assert kw["deliver"] is not None and kw["deliver"].output_format == "parquet"
+    assert kw["buffered"] is True  # the threshold decides when the request forces nothing
+
+
+async def test_data_cypher_without_the_header_forces_nothing(monkeypatch):
+    from provisa.api.rest.cypher_router import CypherRequest, cypher_query
+
+    pipe = _Pipeline(monkeypatch, _state())
+    monkeypatch.setattr("provisa.compiler.stage2.build_governance_context", MagicMock())
+    monkeypatch.setattr("provisa.compiler.sql_validator.validate_sql", MagicMock(return_value=[]))
+    request = MagicMock()
+    request.state.role = "analyst"
+    request.headers = {}
+    request.headers = {}
+    body = CypherRequest(query=_CYPHER, params={"min": 1})
+    response = await cypher_query(body, request, query_id=None, x_provisa_stats=None)
+    assert response.status_code == 200
+    (kw,) = pipe.governed_kw
+    assert kw["deliver"] is None

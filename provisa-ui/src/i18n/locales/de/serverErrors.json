@@ -62,6 +62,8 @@
       "invalid_as_of": "ungültiges X-Provisa-As-Of: {{error}}",
       "invalid_filter": "filter muss ein Objekt sein, das Feldnamen auf Werte abbildet",
       "invalid_filter_field": "Ungültiges filter-Feld '{{field}}' für {{type_name}}",
+      "invalid_redirect_format": "Redirect-Format '{{format}}' ist kein Format, in dem ein Ergebnis geliefert werden kann",
+      "invalid_redirect_threshold": "Der Redirect-Schwellenwert muss eine ganze Zahl von Zeilen sein, nicht '{{threshold}}'",
       "invalid_read_mask": "read_mask muss ein Objekt mit einer 'paths'-Liste von Feldpfaden sein",
       "invalid_read_mask_path": "Ungültiger read_mask-Pfad '{{path}}' für {{type_name}}",
       "missing_command_name": "Befehlsname fehlt",
