@@ -39,7 +39,7 @@ export async function submitSourceAndExpectListed(page: Page, sourceId: string) 
   });
 }
 
-export async function openRegisterForm(page: Page, sourceId: string) {
+export async function openRegisterForm(page: Page, sourceId: string, domain: string = DOMAIN) {
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 15000 });
   await page.getByRole("button", { name: /\+ Table/i }).click();
@@ -49,7 +49,25 @@ export async function openRegisterForm(page: Page, sourceId: string) {
     page.getByTestId("register-table-source-select").locator(`option[value='${sourceId}']`),
   ).toHaveCount(1, { timeout: 30000 });
   await page.getByTestId("register-table-source-select").selectOption(sourceId);
-  await page.getByTestId("register-table-domain-select").selectOption(DOMAIN);
+  await expect(
+    page.getByTestId("register-table-domain-select").locator(`option[value='${domain}']`),
+  ).toHaveCount(1, { timeout: 30000 });
+  await page.getByTestId("register-table-domain-select").selectOption(domain);
+}
+
+/** Create a domain of the test's own (REQ-1933: a table's SQL address is unique in its domain, so
+ * a case that registers a table the shipped model already has registers it somewhere else). */
+export async function createDomain(page: Page, id: string): Promise<void> {
+  const res = await page.request.post("/admin/graphql", {
+    data: {
+      query:
+        "mutation($id: String!) { createDomain(input: { id: $id, description: $id }) { success message } }",
+      variables: { id },
+    },
+  });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  const result = (await res.json()).data.createDomain;
+  expect(result.success, result.message).toBeTruthy();
 }
 
 /** Pick a schema and a table in the pickers, waiting for each to be introspected from the source. */
@@ -68,9 +86,9 @@ export async function pickSchemaAndTable(page: Page, schema: string, table: stri
   // that can lose the race with the caller's next action under load, leaving submit clicked
   // before any column has populated and "At least one column must be selected" silently blocking
   // it forever. Wait for at least one column row before returning control to the caller.
-  await expect(
-    page.locator('[data-testid^="register-table-col-selected-"]').first(),
-  ).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('[data-testid^="register-table-col-selected-"]').first()).toBeVisible({
+    timeout: 30000,
+  });
 }
 
 /**

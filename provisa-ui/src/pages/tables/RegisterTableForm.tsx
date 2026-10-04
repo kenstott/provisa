@@ -12,16 +12,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { ColumnsTable } from "./ColumnsTable";
 import { FilesGlobFieldset } from "./FilesGlobFieldset";
 import { useTranslation } from "react-i18next";
-import {
-  Button,
-  Checkbox,
-  Select,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-  Textarea,
-} from "@mantine/core";
+import { Button, Checkbox, Select, Stack, Table, Text, TextInput, Textarea } from "@mantine/core";
 import { toSnakeCase } from "../../naming";
 import { NlTableSearch } from "./NlTableSearch";
 import { MultiSelect } from "../../components/MultiSelect";
@@ -37,6 +28,7 @@ import { CDC_TYPES } from "./constants";
 import { IR_TYPES_FALLBACK } from "../../irTypes";
 import { isWatermarkEligible, normalizeDomain } from "./helpers";
 import { DataQualityPanel } from "./DataQualityPanel";
+import { useDomainFilter } from "../../context/DomainFilterContext";
 import { PagingField } from "./PagingField";
 import { declaredPaging, pagingInput, pagingProblem } from "./paging";
 
@@ -94,6 +86,7 @@ export function RegisterTableForm({
   const { t } = useTranslation();
   const [sourceId, setSourceId] = useState("");
   const [domainId, setDomainId] = useState("");
+  const { ensureDomainChecked } = useDomainFilter();
   const [schemaName, setSchemaName] = useState("");
   const [tableName, setTableName] = useState("");
   const [tableAlias, setTableAlias] = useState("");
@@ -448,6 +441,9 @@ export function RegisterTableForm({
         setError(result.message);
         return;
       }
+      // A table registered into a domain the filter has not seen (one with no tables until now)
+      // would otherwise stay hidden from the tables list until a reload.
+      ensureDomainChecked(domainId);
       resetForm();
       onSuccess();
     } catch (e) {
@@ -513,6 +509,9 @@ export function RegisterTableForm({
         setError(result.message);
         return;
       }
+      // A table registered into a domain the filter has not seen (one with no tables until now)
+      // would otherwise stay hidden from the tables list until a reload.
+      ensureDomainChecked(domainId);
       resetForm();
       onSuccess();
     } catch (e) {
