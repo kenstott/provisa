@@ -468,6 +468,9 @@ def _pgw_build_state(pool):
 
     state = no_replica_routes(MagicMock())
     state.security_high = False  # REQ-693: MagicMock auto-creates attrs as truthy; explicit False
+    # REQ-1235: a single-tenant deployment serves one database, "provisa", which the pgwire catalog
+    # names; a bare MagicMock here reads as multi-tenant and the catalog demands a bound org.
+    state.multitenancy = False
     state.contexts = {"admin": ctx}
     state.rls_contexts = {}
     state.roles = {"admin": {"id": "admin", "capabilities": [], "domain_access": ["*"]}}
@@ -575,6 +578,10 @@ def pgwire_pg_backend(docker_postgres):
     # ContextVar on this transport — so the org id has to be a real string here, or asyncpg is
     # handed a MagicMock for a VARCHAR parameter. It is the org whose schema the row lands in.
     state.org_id = audit_org
+    # REQ-1914: the audit row records the stamp of the model that served the statement, an
+    # integer the boot reads off the model store. This harness has no model store; its model is
+    # the first one, stamp 1. A bare MagicMock here cannot be written to the BIGINT column.
+    state.model_stamp = 1
     # REQ-1454 meters the active hour off state.admin_db. This harness is the pgwire server against
     # a bare Postgres: there is no control plane behind it, which is what `None` says.
     state.admin_db = None

@@ -524,6 +524,11 @@ class TestReq530TLS:
 
     def test_ssl_negotiation_sends_n_when_no_ctx(self):
         # REQ-530: When no TLS, server replies 'N' to SSL negotiation
+        import io
+        import struct
+
+        from buenavista.postgres import BVBuffer
+
         from provisa.pgwire.server import ProvisaHandler
 
         handler = object.__new__(ProvisaHandler)
@@ -532,13 +537,11 @@ class TestReq530TLS:
         handler.wfile.write.side_effect = lambda d: written.append(d)
         handler.wfile.flush = MagicMock()
         handler.rfile = MagicMock()
-        handler.r = MagicMock()
+        # The SSLRequest as it arrives on the wire: length 8, then the SSL request code.
+        handler.r = BVBuffer(io.BytesIO(struct.pack("!II", 8, 80877103)))
         handler.request = MagicMock()
         handler.server = MagicMock()
         handler.server.ssl_ctx = None
-
-        # Simulate reading: first call yields msglen-4=8, second yields SSL_REQUEST code
-        handler.r.read_uint32.side_effect = [12, 80877103]
 
         # Call the real method while mocking only the recursive call it makes to itself
         real = ProvisaHandler.handle_startup
@@ -549,7 +552,12 @@ class TestReq530TLS:
 
     def test_ssl_negotiation_sends_s_when_ctx_present(self):
         # REQ-530: When TLS configured, server replies 'S' to SSL negotiation
+        import io
         import ssl
+        import struct
+
+        from buenavista.postgres import BVBuffer
+
         from provisa.pgwire.server import ProvisaHandler
 
         handler = object.__new__(ProvisaHandler)
@@ -558,7 +566,7 @@ class TestReq530TLS:
         handler.wfile.write.side_effect = lambda d: written.append(d)
         handler.wfile.flush = MagicMock()
         handler.rfile = MagicMock()
-        handler.r = MagicMock()
+        handler.r = BVBuffer(io.BytesIO(struct.pack("!II", 8, 80877103)))
         mock_ssl_ctx = MagicMock(spec=ssl.SSLContext)
         mock_ssl_socket = MagicMock()
         mock_ssl_socket.makefile = MagicMock(return_value=MagicMock())
@@ -566,8 +574,6 @@ class TestReq530TLS:
         handler.request = MagicMock()
         handler.server = MagicMock()
         handler.server.ssl_ctx = mock_ssl_ctx
-
-        handler.r.read_uint32.side_effect = [12, 80877103]
 
         real = ProvisaHandler.handle_startup
         with patch.object(ProvisaHandler, "handle_startup", return_value=None):

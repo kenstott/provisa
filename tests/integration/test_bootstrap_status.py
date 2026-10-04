@@ -87,12 +87,11 @@ def admin_plane(monkeypatch):
     # REQ-1296: the claim seats the claimant in the bootstrap org, which writes the tenant plane.
     # Pinning org_id first makes the AppState shim resolve this test's runtime.
     monkeypatch.setattr(app_state, "org_id", _ORG_ID, raising=False)
-    monkeypatch.setattr(
-        app_state,
-        "tenant_db",
-        Database(create_engine_from_url(_ASYNC_URL), name="org", search_path=_ORG_SCHEMA),
-        raising=False,
-    )
+    tenant_db = Database(create_engine_from_url(_ASYNC_URL), name="org", search_path=_ORG_SCHEMA)
+    monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
+    # REQ-1919: the role assignments the claim writes are the org's model, kept in its model store
+    # (state.model_db). This test's one org schema holds both stores.
+    monkeypatch.setattr(app_state, "model_db", tenant_db, raising=False)
 
     def set_bootstrap(enabled: bool) -> None:
         # state.auth_config is what wiring.py hands the middleware, and therefore what decides
