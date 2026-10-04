@@ -118,7 +118,7 @@ def test_google_sheets_read_through_duckdb_engine():
     src = Source(
         id="gsheets_itest",
         type=SourceType.google_sheets,
-        federation_hints={"spreadsheet_id": sheet_id},
+        database=sheet_id,  # the connector reads the sheet id from database
     )
     details = DuckDBGsheetsConnector().details(src)  # pure — assert the real DDL shape
     assert "read_gsheet(" in details["view_ddl"]
