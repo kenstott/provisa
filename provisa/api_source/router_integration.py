@@ -91,6 +91,10 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
     2. If table exists in the engine: return cache reference (phase 2 SQL applied by caller)
     3. On miss: call API → flatten → materialize → schedule DROP after TTL
     """
+    # REQ-318: the endpoint's default parameters (the values that make its whole collection,
+    # from the spec at registration) under what the statement binds — as every other
+    # whole-collection read (replica_read, events.source_loader) calls it.
+    params = {**endpoint.default_params, **params}
     with _stage(_tracer, "api_source.handle_api_query") as span:
         span.set_attribute("api_source.source_id", endpoint.source_id)
         span.set_attribute("api_source.table", endpoint.table_name)
