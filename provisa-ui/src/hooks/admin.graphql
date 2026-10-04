@@ -58,6 +58,7 @@ query RolesQuery {
     demonstrated
     domainAccess
     parentRoleId
+    residencyValues
     rateLimit {
       requestsPerSecond
       maxQueryComplexity

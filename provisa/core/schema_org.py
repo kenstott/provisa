@@ -393,6 +393,8 @@ roles = Table(
     # absent feature demonstrates nothing. Disjoint from `capabilities` by construction.
     Column("demonstrated", JSON, nullable=False, default=list, server_default="[]"),
     Column("domain_access", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-1921: with data_residency, the region values the grant covers (regions, "no_region").
+    Column("residency_values", JSON, nullable=False, default=list, server_default="[]"),
     # REQ-1174: per-role rate + query limits {requests_per_second, max_query_complexity,
     # max_query_time_ms, ...}. None/absent = unlimited.
     Column("rate_limit", JSON),

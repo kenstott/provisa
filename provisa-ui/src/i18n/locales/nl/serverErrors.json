@@ -361,7 +361,9 @@
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."
     },
     "security": {
-      "unknown_mode": "onbekende beveiligingsmodus '{{mode}}'"
+      "unknown_mode": "onbekende beveiligingsmodus '{{mode}}'",
+      "data_residency_refused": "De regio van {{object}} kan niet worden ingesteld: de data_residency-toekenning dekt {{value}} niet; een data_residency-toekenning die het noemt, staat het toe",
+      "data_residency_missing": "De regio van {{object}} kan niet worden ingesteld: geen data_residency-toekenning van de aanroeper dekt {{value}}; een data_residency-toekenning die het noemt, staat het toe"
     },
     "settings": {
       "auth_required": "{{field}} kan pas worden gewijzigd als verificatie is geconfigureerd.",

@@ -153,6 +153,7 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
             capabilities=None,
             domain_access=None,
             demonstrated=None,
+            residency_values=None,
         )
     # REQ-1174: surface the per-role rate + query-complexity limits (JSON column) to the admin API.
     rl = row.get("rate_limit")
@@ -172,6 +173,7 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
         demonstrated=list(row["demonstrated"]),
         rate_limit=rate_limit,
         parent_role_id=row.get("parent_role_id"),  # REQ-1677
+        residency_values=list(row["residency_values"]),  # REQ-1921
     )
 
 

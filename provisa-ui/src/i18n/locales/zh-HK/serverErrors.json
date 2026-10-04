@@ -361,7 +361,9 @@
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"
     },
     "security": {
-      "unknown_mode": "未知的安全模式「{{mode}}」"
+      "unknown_mode": "未知的安全模式「{{mode}}」",
+      "data_residency_refused": "無法設定 {{object}} 的區域：data_residency 授權不涵蓋 {{value}}；列出它的 data_residency 授權可允許此操作",
+      "data_residency_missing": "無法設定 {{object}} 的區域：呼叫者沒有涵蓋 {{value}} 的 data_residency 授權；列出它的 data_residency 授權可允許此操作"
     },
     "settings": {
       "auth_required": "在設定身份驗證之前，無法變更 {{field}}。",

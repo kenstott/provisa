@@ -1,0 +1,9 @@
+{
+  "residencyGrant": {
+    "right": "data_residency",
+    "help": "Establecer, cambiar o quitar dónde residen los datos de una tabla, un origen o una vista materializada, para los valores indicados abajo. Un cambio necesita cubiertos el valor anterior y el nuevo; un objeto en borrador solo necesita el nuevo.",
+    "values": "Valores de región cubiertos",
+    "valuesPlaceholder": "Elegir regiones",
+    "noRegion": "Sin región"
+  }
+}

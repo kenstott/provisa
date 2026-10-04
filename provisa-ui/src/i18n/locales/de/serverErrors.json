@@ -361,7 +361,9 @@
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."
     },
     "security": {
-      "unknown_mode": "unbekannter Sicherheitsmodus '{{mode}}'"
+      "unknown_mode": "unbekannter Sicherheitsmodus '{{mode}}'",
+      "data_residency_refused": "Die Region von {{object}} kann nicht gesetzt werden: die data_residency-Berechtigung deckt {{value}} nicht ab; eine data_residency-Berechtigung, die es aufführt, erlaubt es",
+      "data_residency_missing": "Die Region von {{object}} kann nicht gesetzt werden: keine data_residency-Berechtigung des Aufrufers deckt {{value}} ab; eine data_residency-Berechtigung, die es aufführt, erlaubt es"
     },
     "settings": {
       "auth_required": "{{field}} kann erst geändert werden, wenn die Authentifizierung konfiguriert ist.",

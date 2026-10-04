@@ -1356,6 +1356,9 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
         True  # when False (+ SQL opt-out), V002 join approval check is skipped
     )
     max_rows: int | None = None  # REQ-005: per-role result-size ceiling (LIMIT injected by Stage 2)
+    # REQ-1921: with the data_residency right, the region values its grant covers — the org's
+    # region ids and "no_region" (security/residency.NO_REGION).
+    residency_values: list[str] = Field(default_factory=list)
 
 
 def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042

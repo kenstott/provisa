@@ -361,7 +361,9 @@
       "still_referenced": "{{secret}} का नाम इस संगठन में अब भी {{count}} संग्रहीत मान ले रहे हैं। हर एक को बदलें या हटाएँ, फिर दोबारा हटाएँ।"
     },
     "security": {
-      "unknown_mode": "अज्ञात सुरक्षा मोड '{{mode}}'"
+      "unknown_mode": "अज्ञात सुरक्षा मोड '{{mode}}'",
+      "data_residency_refused": "{{object}} का क्षेत्र सेट नहीं हो सकता: data_residency अनुदान {{value}} को कवर नहीं करता; इसे सूचीबद्ध करने वाला data_residency अनुदान इसकी अनुमति देता है",
+      "data_residency_missing": "{{object}} का क्षेत्र सेट नहीं हो सकता: कॉलर का कोई data_residency अनुदान {{value}} को कवर नहीं करता; इसे सूचीबद्ध करने वाला data_residency अनुदान इसकी अनुमति देता है"
     },
     "settings": {
       "auth_required": "प्रमाणीकरण कॉन्फ़िगर होने तक {{field}} बदला नहीं जा सकता।",

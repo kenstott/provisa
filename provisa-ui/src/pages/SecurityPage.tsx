@@ -48,6 +48,8 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { OriginBadge } from "../components/OriginBadge";
+import { ResidencyGrant } from "../components/admin/ResidencyGrant";
+import { useRegionChoices } from "../hooks/useRegionQueries";
 
 const ALL_CAPABILITIES: Capability[] = [
   "source_registration",
@@ -101,6 +103,7 @@ const EMPTY_ROLE = {
   capabilities: [] as Capability[],
   domainAccess: [] as string[],
   parentRoleId: "" as string, // REQ-1677: "" = no parent
+  residencyValues: [] as string[], // REQ-1921: with data_residency, the values it covers
   // REQ-1174: per-role rate + query-complexity limits ("" = unlimited on that dimension).
   reqPerSec: "" as number | "",
   maxComplexity: "" as number | "",
@@ -163,6 +166,7 @@ export function SecurityRolesPage() {
   const { roles, loading: rolesLoading, refetch: refetchRoles } = useRoles();
   const { domains, loading: domainsLoading, refetch: refetchDomains } = useDomains();
   const { upsertRole } = useUpsertRole();
+  const regionChoices = useRegionChoices(); // REQ-1921: no regions, no data_residency
   const { deleteRole } = useDeleteRole();
   const loading = rolesLoading || domainsLoading;
   const [saving, setSaving] = useState(false);
@@ -211,6 +215,10 @@ export function SecurityRolesPage() {
         domainAccess: roleForm.domainAccess,
         rateLimit: hasLimit ? rateLimit : null,
         parentRoleId: roleForm.parentRoleId || null, // REQ-1677
+        // REQ-1921: the grant's values go with the right; without it the role lists none.
+        residencyValues: roleForm.capabilities.includes("data_residency")
+          ? roleForm.residencyValues
+          : [],
       });
       if (!res.success) {
         setError(res.message);
@@ -252,6 +260,7 @@ export function SecurityRolesPage() {
       capabilities: [...role.capabilities],
       domainAccess: [...role.domain_access],
       parentRoleId: role.parentRoleId ?? "", // REQ-1677
+      residencyValues: [...(role.residencyValues ?? [])], // REQ-1921
       reqPerSec: role.rateLimit?.requestsPerSecond ?? "",
       maxComplexity: role.rateLimit?.maxQueryComplexity ?? "",
       maxTimeMs: role.rateLimit?.maxQueryTimeMs ?? "",
@@ -333,6 +342,13 @@ export function SecurityRolesPage() {
             value={roleForm.capabilities}
             onToggle={toggleCapability}
             label={t("securityPage.capabilities")}
+          />
+          <ResidencyGrant
+            held={roleForm.capabilities.includes("data_residency")}
+            values={roleForm.residencyValues}
+            regions={regionChoices.regions}
+            onHeld={() => toggleCapability("data_residency")}
+            onValues={(residencyValues) => setRoleForm({ ...roleForm, residencyValues })}
           />
           <MultiSelect
             label={t("securityPage.domainAccess")}
@@ -510,6 +526,15 @@ export function SecurityRolesPage() {
                               value={roleForm.capabilities}
                               onToggle={toggleCapability}
                               label={t("securityPage.capabilities")}
+                            />
+                            <ResidencyGrant
+                              held={roleForm.capabilities.includes("data_residency")}
+                              values={roleForm.residencyValues}
+                              regions={regionChoices.regions}
+                              onHeld={() => toggleCapability("data_residency")}
+                              onValues={(residencyValues) =>
+                                setRoleForm({ ...roleForm, residencyValues })
+                              }
                             />
                             <MultiSelect
                               label={t("securityPage.domainAccess")}

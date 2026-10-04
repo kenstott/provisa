@@ -361,7 +361,9 @@
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."
     },
     "security": {
-      "unknown_mode": "modo de seguridad desconocido: '{{mode}}'"
+      "unknown_mode": "modo de seguridad desconocido: '{{mode}}'",
+      "data_residency_refused": "No se puede establecer la región de {{object}}: la concesión data_residency no cubre {{value}}; una concesión data_residency que lo incluya lo permite",
+      "data_residency_missing": "No se puede establecer la región de {{object}}: ninguna concesión data_residency del usuario cubre {{value}}; una concesión data_residency que lo incluya lo permite"
     },
     "settings": {
       "auth_required": "{{field}} no se puede cambiar hasta que se configure la autenticación.",

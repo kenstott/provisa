@@ -565,6 +565,23 @@ def _invalid_replicate(replicate: int | None) -> MutationResult | None:  # REQ-8
     return None
 
 
+def _residency_refusal(
+    info, what: str, before: object, after: str | None
+) -> MutationResult | None:  # REQ-1921
+    """The refusal of a region change the caller's data_residency grant does not cover, naming
+    the value; None when it may be made (``capabilities.require_residency_change``)."""
+    from provisa.api.admin.capabilities import require_residency_change
+    from provisa.security.residency import ResidencyRefused
+
+    try:
+        require_residency_change(info, what, before, after)
+    except ResidencyRefused as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params=refused.params
+        )
+    return None
+
+
 def _refuse_config_declared(source_id: str) -> MutationResult | None:  # REQ-826, REQ-030
     """The refusal for a replication setting on a source the configuration file declares, or None
     when the control plane owns the source.
@@ -805,6 +822,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _soda_refusal = _refuse_soda_on_hosted_plane(input.type)
         if _soda_refusal is not None:
             return _soda_refusal
+
+        from provisa.security.residency import CREATED
+
+        _residency = _residency_refusal(info, f"source {input.id}", CREATED, input.region)
+        if _residency is not None:  # REQ-1921
+            return _residency
 
         if input.type == "govdata":
             _err = await _validate_govdata_api_key(input)
@@ -2059,6 +2082,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             domain_access=input.domain_access,
             rate_limit=rate_limit,
             parent_role_id=parent_id,
+            residency_values=input.residency_values,  # REQ-1921
         )
         async with pool.acquire() as conn:
             _was = await origin_repo.of(cast("Connection", conn), "role", input.id)
@@ -3282,7 +3306,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _row = await conn.execute_core(
-                select(registered_tables.c.domain_id).where(registered_tables.c.id == table_id)
+                select(
+                    registered_tables.c.domain_id,
+                    registered_tables.c.table_name,
+                    registered_tables.c.region,
+                ).where(registered_tables.c.id == table_id)
             )
             row = _row.fetchone()
             if row is None:
@@ -3293,6 +3321,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"table": table_id},
                 )
             require_capability(info, "table_registration", domain_id=row.domain_id)
+            refused_here = _residency_refusal(info, f"table {row.table_name}", row.region, region)
+            if refused_here is not None:
+                return refused_here
             try:
                 name = await region_repo.set_table_region(conn, table_id, region)
             except ValueError as refused:
@@ -3321,6 +3352,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            stored = (
+                await conn.execute_core(select(sources.c.region).where(sources.c.id == source_id))
+            ).fetchone()
+            if stored is not None:
+                refused_here = _residency_refusal(
+                    info, f"source {source_id}", stored.region, region
+                )
+                if refused_here is not None:
+                    return refused_here
             try:
                 await region_repo.set_source_region(conn, source_id, region)
             except LookupError:

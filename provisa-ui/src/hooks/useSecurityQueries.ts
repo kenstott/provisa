@@ -104,6 +104,7 @@ export function useUpsertRole() {
         maxQueryTimeMs: number | null;
       } | null;
       parentRoleId?: string | null; // REQ-1677
+      residencyValues?: string[]; // REQ-1921
     }) => {
       const result = await createRole({ variables: { input } });
       return (result.data?.createRole ?? { success: false, message: "" }) as MutationResult;

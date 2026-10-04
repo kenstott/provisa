@@ -361,7 +361,9 @@
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"
     },
     "security": {
-      "unknown_mode": "未知的安全模式 '{{mode}}'"
+      "unknown_mode": "未知的安全模式 '{{mode}}'",
+      "data_residency_refused": "无法设置 {{object}} 的区域：data_residency 授权不覆盖 {{value}}；列出它的 data_residency 授权可允许此操作",
+      "data_residency_missing": "无法设置 {{object}} 的区域：调用者没有覆盖 {{value}} 的 data_residency 授权；列出它的 data_residency 授权可允许此操作"
     },
     "settings": {
       "auth_required": "在配置身份验证之前，无法更改 {{field}}。",

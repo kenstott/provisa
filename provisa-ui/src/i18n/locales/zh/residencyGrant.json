@@ -1,0 +1,9 @@
+{
+  "residencyGrant": {
+    "right": "data_residency",
+    "help": "为下列取值设置、更改或移除表、数据源或物化视图的数据所在位置。更改需要旧值和新值都被覆盖；草稿对象只需新值。",
+    "values": "覆盖的区域取值",
+    "valuesPlaceholder": "选择区域",
+    "noRegion": "无区域"
+  }
+}

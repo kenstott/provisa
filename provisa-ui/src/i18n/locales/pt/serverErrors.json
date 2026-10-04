@@ -361,7 +361,9 @@
       "still_referenced": "{{secret}} ainda é nomeado por {{count}} valor(es) armazenado(s) nesta organização. Altere ou remova cada um e exclua novamente."
     },
     "security": {
-      "unknown_mode": "modo de segurança desconhecido '{{mode}}'"
+      "unknown_mode": "modo de segurança desconhecido '{{mode}}'",
+      "data_residency_refused": "Não é possível definir a região de {{object}}: a concessão data_residency não cobre {{value}}; uma concessão data_residency que o liste permite isso",
+      "data_residency_missing": "Não é possível definir a região de {{object}}: nenhuma concessão data_residency do chamador cobre {{value}}; uma concessão data_residency que o liste permite isso"
     },
     "settings": {
       "auth_required": "{{field}} não pode ser alterado até que a autenticação seja configurada.",

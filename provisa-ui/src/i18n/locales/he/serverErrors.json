@@ -361,7 +361,9 @@
       "still_referenced": "{{secret}} עדיין מצוין על ידי {{count}} ערכים שמורים בארגון זה. יש לשנות או להסיר כל אחד מהם ואז למחוק שוב."
     },
     "security": {
-      "unknown_mode": "מצב אבטחה לא מוכר '{{mode}}'"
+      "unknown_mode": "מצב אבטחה לא מוכר '{{mode}}'",
+      "data_residency_refused": "לא ניתן להגדיר את האזור של {{object}}: הרשאת data_residency אינה מכסה את {{value}}; הרשאת data_residency שכוללת אותו מתירה זאת",
+      "data_residency_missing": "לא ניתן להגדיר את האזור של {{object}}: אף הרשאת data_residency של המבקש אינה מכסה את {{value}}; הרשאת data_residency שכוללת אותו מתירה זאת"
     },
     "settings": {
       "auth_required": "לא ניתן לשנות את {{field}} עד שהאימות יוגדר.",

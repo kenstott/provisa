@@ -320,6 +320,15 @@ async def register_table(
         model.region = await registration_region(  # REQ-1921
             _conn, input, is_view=bool(input.view_sql) or input.view_metrics is not None
         )
+        from provisa.api.admin.capabilities import require_residency_change
+        from provisa.security.residency import CREATED, ResidencyRefused
+
+        try:
+            require_residency_change(info, f"table {model.table_name}", CREATED, model.region)
+        except ResidencyRefused as _refused:
+            return MutationResult(
+                success=False, message=str(_refused), code=_refused.code, params=_refused.params
+            )
         if model.view_metrics is not None:
             # REQ-1318: compile the spec into the view SELECT against the live registries —
             # the generated SQL persists in view_sql and flows everywhere free-hand SQL does.

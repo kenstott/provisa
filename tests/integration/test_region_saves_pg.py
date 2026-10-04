@@ -9,9 +9,9 @@
 # permission from the copyright holder.
 
 """Saving refuses what loading refuses (REQ-1922), against a real PostgreSQL model store: data
-the org keeps in one region must stay readable in place by its other regions — so a source
-naming a region, another region's engine, and the region's replicas store are each refused by
-name when the save would leave it unreadable."""
+the org keeps in one region must stay readable in place by its other regions — so a table naming
+a region, another region's engine, and the region's replicas store are each refused by name when
+the save would leave it unreadable."""
 
 # Requirements: REQ-1922
 
@@ -73,22 +73,38 @@ def model(docker_postgres):
 
 
 async def test_a_save_that_leaves_a_region_unreadable_by_the_others_is_refused(model):
-    from provisa.core.models import Source
+    from provisa.core.models import Source, Table
     from provisa.core.repositories import region as region_repo
     from provisa.core.repositories import source as source_repo
+    from provisa.core.repositories import table as table_repo
+    from provisa.core.schema_org import domains
 
+    # A source's region is only the admin form's default: the table's region is where its data
+    # lives, so the table is what the save judges.
     crm = Source(
         id="crm", type="postgresql", host="h", database="d", username="u", password="", region="eu"
+    )
+    orders = Table.model_validate(
+        {
+            "source_id": "crm",
+            "domain_id": "sales",
+            "schema": "public",
+            "table": "orders",
+            "region": "eu",
+            "columns": [{"name": "id", "visible_to": ["admin"], "data_type": "integer"}],
+        }
     )
     async with model.acquire() as conn:
         for store in _STORES:
             await region_repo.upsert_store(conn, store, origin="admin")
         await region_repo.upsert_region(conn, _region("eu"), origin="admin")
         await region_repo.upsert_region(conn, _region("us", "us-snow"), origin="admin")
+        await source_repo.upsert(conn, crm, origin="admin")  # a form default: never refused
+        await conn.execute_core(sa.insert(domains).values(id="sales", origin="admin"))
         with pytest.raises(ValueError, match="region 'us' runs the snowflake engine"):
-            await source_repo.upsert(conn, crm, origin="admin")
+            await table_repo.upsert(conn, orders, origin="admin")
         await region_repo.upsert_region(conn, _region("us"), origin="admin")
-        await source_repo.upsert(conn, crm, origin="admin")
+        await table_repo.upsert(conn, orders, origin="admin")
         with pytest.raises(ValueError, match="region 'us' runs the snowflake engine"):
             await region_repo.upsert_region(conn, _region("us", "us-snow"), origin="admin")
         with pytest.raises(ValueError, match="'eu-pg' is not a PostgreSQL store"):

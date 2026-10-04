@@ -419,6 +419,7 @@ def _role_rows(**extra: dict) -> list[dict]:
             "id": role_id,
             "capabilities": role["capabilities"],
             "domain_access": role["domain_access"],
+            "residency_values": [],  # REQ-1921
             "org_id": None,
             "parent_role_id": None,
         }
@@ -430,6 +431,7 @@ def _role_rows(**extra: dict) -> list[dict]:
                 "id": role_id,
                 "capabilities": [],
                 "domain_access": ["*"],
+                "residency_values": [],  # REQ-1921
                 "org_id": "acme",
                 "parent_role_id": None,
                 **fields,

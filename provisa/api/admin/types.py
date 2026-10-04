@@ -636,6 +636,8 @@ class RoleType:  # REQ-042
     demonstrated: list[str] | None = strawberry.field(default_factory=list)  # REQ-1602
     rate_limit: RoleRateLimitType | None = None  # REQ-1174
     parent_role_id: str | None = None  # REQ-1677
+    # REQ-1921: with data_residency, the region values its grant covers; null as capabilities is.
+    residency_values: list[str] | None = strawberry.field(default_factory=list)
 
 
 @strawberry.type
@@ -1207,6 +1209,8 @@ class RoleInput:  # REQ-042
     domain_access: list[str]
     rate_limit: RoleRateLimitInput | None = None  # REQ-1174
     parent_role_id: str | None = None  # REQ-1677
+    # REQ-1921: with data_residency, the region values its grant covers (regions, "no_region").
+    residency_values: list[str] = strawberry.field(default_factory=list)
 
 
 @strawberry.input

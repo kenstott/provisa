@@ -361,7 +361,9 @@
       "still_referenced": "{{secret}} is still named by {{count}} stored value(s) in this organization. Change or remove each one, then delete it again."
     },
     "security": {
-      "unknown_mode": "unknown security mode '{{mode}}'"
+      "unknown_mode": "unknown security mode '{{mode}}'",
+      "data_residency_refused": "The region of {{object}} cannot be set: the data_residency grant does not cover {{value}}; a data_residency grant listing it allows it",
+      "data_residency_missing": "The region of {{object}} cannot be set: no data_residency grant of the caller's covers {{value}}; a data_residency grant listing it allows it"
     },
     "settings": {
       "auth_required": "{{field}} cannot be changed until authentication is configured.",

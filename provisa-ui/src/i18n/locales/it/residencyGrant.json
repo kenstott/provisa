@@ -1,0 +1,9 @@
+{
+  "residencyGrant": {
+    "right": "data_residency",
+    "help": "Impostare, modificare o rimuovere dove risiedono i dati di una tabella, di un'origine o di una vista materializzata, per i valori elencati sotto. Una modifica richiede che il valore precedente e quello nuovo siano coperti; un oggetto in bozza richiede solo quello nuovo.",
+    "values": "Valori di regione coperti",
+    "valuesPlaceholder": "Scegli le regioni",
+    "noRegion": "Nessuna regione"
+  }
+}

@@ -96,6 +96,8 @@ def validate_regions(config: "ProvisaConfig") -> None:
             raise ValueError(
                 "the platform declares no regions, so the model may not select or name one"
             )
+        for role in config.roles:
+            require_residency_grant(role.id, role.capabilities, role.residency_values, None)
         return
     if not config.regions:
         listed = ", ".join(f"{r.id} ({r.address})" for r in config.platform.regions)
@@ -125,9 +127,42 @@ def validate_regions(config: "ProvisaConfig") -> None:
                 f"{what} names region {region!r}, which the org does not select "
                 f"({', '.join(selected)})"
             )
+    for role in config.roles:
+        require_residency_grant(role.id, role.capabilities, role.residency_values, selected)
     # A table's region is where its data lives; a source's is only a form default.
     for what, region in _named_table_regions(config):
         require_readable_elsewhere(what, region, config.regions, stores)
+
+
+def require_residency_grant(
+    role_id: str,
+    capabilities: "list[str]",
+    values: "list[str]",
+    selected: "list[str] | None",
+) -> None:
+    """Refuse a role's data_residency grant that does not hold together (REQ-1921): the right
+    exists only when the platform declares regions (``selected`` None: it declares none), a grant
+    lists only the org's regions and "no region", and values are listed only with the right."""
+    from provisa.security.residency import NO_REGION
+
+    holds = "data_residency" in capabilities
+    if selected is None:
+        if holds or values:
+            raise ValueError(
+                f"role {role_id!r} holds data_residency, which exists only when the platform "
+                "declares regions"
+            )
+        return
+    if values and not holds:
+        raise ValueError(
+            f"role {role_id!r} lists residency values but does not hold data_residency"
+        )
+    unknown = sorted(set(values) - set(selected) - {NO_REGION})
+    if unknown:
+        raise ValueError(
+            f"role {role_id!r} data_residency grant names {', '.join(unknown)}, which the org "
+            f"does not select ({', '.join(selected)}, or {NO_REGION})"
+        )
 
 
 def require_readable_elsewhere(

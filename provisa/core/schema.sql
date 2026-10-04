@@ -421,6 +421,8 @@ CREATE TABLE IF NOT EXISTS roles (
     -- A right may never appear in both lists; the holder of a right needs no explanation of it.
     demonstrated    JSONB NOT NULL DEFAULT '[]',
     domain_access   JSONB NOT NULL DEFAULT '[]',
+    -- REQ-1921: with data_residency, the region values the grant covers (regions, "no_region").
+    residency_values JSONB NOT NULL DEFAULT '[]',
     rate_limit      JSONB,  -- REQ-1174: per-role rate + burst; mirrors schema_org.roles.rate_limit
     parent_role_id  TEXT REFERENCES roles(id),
     -- REQ-1597/REQ-1624: this row's capabilities are DERIVED from the named role's, in this schema
