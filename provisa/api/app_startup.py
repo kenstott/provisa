@@ -925,22 +925,23 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                         _card,
                         _alias,
                     ) in _DEMO_GRAPHQL_RELATIONSHIPS:
-                        try:
-                            await rel_repo.upsert(
-                                _pg_rel,
-                                Relationship(
-                                    id=_rel_id,
-                                    source_table_id=_src_tbl,
-                                    target_table_id=_tgt_tbl,
-                                    source_column=_src_col,
-                                    target_column=_tgt_col,
-                                    cardinality=Cardinality(_card),
-                                    alias=_alias,
-                                ),
-                                origin="seed",
-                            )
-                        except Exception:
-                            _log.warning("Failed to upsert %s", _rel_id, exc_info=True)
+                        # No per-relationship catch: a seed that names a table/column the registry
+                        # does not hold is a bug in the seed, not a tolerable miss -- let it fail the
+                        # registration by name (rel_repo.upsert raises) rather than warn and leave
+                        # the relationship silently absent.
+                        await rel_repo.upsert(
+                            _pg_rel,
+                            Relationship(
+                                id=_rel_id,
+                                source_table_id=_src_tbl,
+                                target_table_id=_tgt_tbl,
+                                source_column=_src_col,
+                                target_column=_tgt_col,
+                                cardinality=Cardinality(_card),
+                                alias=_alias,
+                            ),
+                            origin="seed",
+                        )
             _log.info(
                 "Auto-registered graphql-demo source (%d tables, %d functions)",
                 len(tables),
