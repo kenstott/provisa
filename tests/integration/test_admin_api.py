@@ -134,22 +134,31 @@ class TestMutations:
         assert "test-domain" in domain_ids
 
     async def test_create_role(self, client):
-        resp = await client.post(
-            "/admin/graphql",
-            json={
-                "query": """
-                    mutation {
-                        createRole(input: {
-                            id: "test-role",
-                            capabilities: ["query_development"],
-                            domainAccess: ["sales-analytics"]
-                        }) { success }
-                    }
-                """,
-            },
-        )
-        assert resp.status_code == 200
-        assert resp.json()["data"]["createRole"]["success"]
+        try:
+            resp = await client.post(
+                "/admin/graphql",
+                json={
+                    "query": """
+                        mutation {
+                            createRole(input: {
+                                id: "test-role",
+                                capabilities: ["query_development"],
+                                domainAccess: ["sales-analytics"]
+                            }) { success }
+                        }
+                    """,
+                },
+            )
+            assert resp.status_code == 200
+            assert resp.json()["data"]["createRole"]["success"]
+        finally:
+            # The role reaches a config-declared domain. Left behind, it made every later module's
+            # config load in the same session refuse to drop that domain (ConfigDropRefused).
+            deleted = await client.post(
+                "/admin/graphql",
+                json={"query": 'mutation { deleteRole(id: "test-role") { success message } }'},
+            )
+            assert deleted.json()["data"]["deleteRole"]["success"], deleted.text
 
 
 class TestViewRegistrationRefreshPolicy:
