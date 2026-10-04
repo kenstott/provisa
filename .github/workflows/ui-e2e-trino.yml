@@ -141,7 +141,10 @@ jobs:
       # failure that surfaces only as an unhealthy container two minutes in. Version pinned to
       # the same coordinates tests/conftest.py::_TRINO_PLUGIN_VERSION and build-dmg.yml use; all
       # three must move together or a connector behaves differently here than in the shipped
-      # image. Source is Maven Central rather than a kenstott/calcite GitHub release: that
+      # image. They track the engine release the pgwire bundles pin
+      # (provisa/runtime_deps/pgwire_bundles.py RELEASE_TAG): trino-splunk before engine-v0.93.0
+      # rejects the `schema` catalog property TrinoSplunkConnector passes ("Configuration
+      # property 'schema' was not used"), so the splunk catalog was never created. Source is Maven Central rather than a kenstott/calcite GitHub release: that
       # release was deleted mid-run and every download began 404ing, while Central is immutable
       # once published and serves anonymously (GitHub Packages 401s even for public artifacts).
       # Each jar is shaded and carries its own META-INF/services/io.trino.spi.Plugin, so one jar
@@ -149,7 +152,7 @@ jobs:
       - name: Download Calcite Trino plugins
         run: |
           MAVEN="https://repo1.maven.org/maven2/io/simpleishard"
-          VERSION="0.70.0"
+          VERSION="0.94.4"
           for plugin in trino-sharepoint trino-splunk trino-file; do
             mkdir -p "trino/plugins/$plugin"
             curl -fsSL "$MAVEN/$plugin/$VERSION/$plugin-$VERSION.jar" \
