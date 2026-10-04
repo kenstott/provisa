@@ -40,7 +40,7 @@ jobs:
 
       - name: Install build deps (macOS)
         if: matrix.os == 'darwin'
-        run: brew install cmake ninja mariadb-connector-c
+        run: brew install cmake ninja mariadb-connector-c lz4 zstd openssl@3
 
       - name: Install build deps (Linux)
         if: matrix.os == 'linux'
@@ -48,7 +48,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build git curl bison flex patchelf \
-            libssl-dev liblz4-dev libzstd-dev libsqlite3-dev libmariadb-dev pkg-config
+            libssl-dev liblz4-dev libzstd-dev libsqlite3-dev libmariadb-dev pkg-config \
+            libcurl4-openssl-dev uuid-dev
 
       - name: Setup Python 3.12 (pgserver smoke test)
         uses: actions/setup-python@v5

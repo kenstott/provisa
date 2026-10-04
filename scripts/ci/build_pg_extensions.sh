@@ -77,7 +77,19 @@ if [ ! -d "$PGCH_SRC" ]; then
     "https://github.com/ClickHouse/pg_clickhouse/releases/download/$PGCH_TAG/pg_clickhouse-${PGCH_TAG#v}.zip"
   unzip -q -d "$CACHE" "$CACHE/pg_clickhouse.zip"
 fi
-( cd "$PGCH_SRC" && make PG_CONFIG="$PGC" >/dev/null && make PG_CONFIG="$PGC" install >/dev/null )
+# pg_clickhouse names PostgreSQL's regex type pg_regex_t, the name later 16.x minors gave regex_t;
+# 16.2's headers (pinned to pgserver's PG above) still call it regex_t. Same type, renamed only.
+PGCH_CPP=""
+grep -q pg_regex_t "$("$PGC" --includedir-server)/regex/regex.h" || PGCH_CPP="-Dpg_regex_t=regex_t"
+PGCH_ENV=()
+if [ "$OS" = darwin ]; then
+  # Homebrew's lz4/zstd/openssl@3 are not on the compiler's default search path on arm64.
+  inc=""; lib=""
+  for f in lz4 zstd openssl@3; do p="$(brew --prefix "$f")"; inc="$inc:$p/include"; lib="$lib:$p/lib"; done
+  PGCH_ENV=(CPATH="${inc#:}" LIBRARY_PATH="${lib#:}")
+fi
+( cd "$PGCH_SRC" && env "${PGCH_ENV[@]}" make PG_CONFIG="$PGC" COPT="$PGCH_CPP" >/dev/null \
+  && env "${PGCH_ENV[@]}" make PG_CONFIG="$PGC" COPT="$PGCH_CPP" install >/dev/null )
 
 echo "== stage wrappers (Supabase, prebuilt .deb, LINUX ONLY — no macOS release, REQ-1871) =="
 WRAPPERS_TAG="${WRAPPERS_TAG:-v0.6.3}"
