@@ -53,8 +53,9 @@ async def _db(
     table_ttl=None,
     table_replicate=0,
     source_replicate=None,
+    source_type="postgresql",
 ):
-    """One source ``s`` with one table ``orders``. ``table_replicate`` 0 (always) says the table
+    """One source ``s`` (of ``source_type``) with one table ``orders``. ``table_replicate`` 0 (always) says the table
     is replicated (REQ-1907 option B); None = it inherits its source's value, which by default
     is not set either."""
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
@@ -65,7 +66,7 @@ async def _db(
         await conn.execute_core(
             sources.insert().values(
                 id="s",
-                type="postgresql",
+                type=source_type,
                 host="h",
                 port=5432,
                 database="d",
@@ -192,7 +193,8 @@ async def test_the_check_refuses_a_landed_ttl_table_with_no_cache_ttl(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("signal", ["ttl", "ttl_probe"])
 async def test_the_check_accepts_a_ttl_table_config_does_not_force_to_land(tmp_path, signal):
-    """Whether it lands depends on the engine's reach; the read path judges it."""
+    """Nothing in the operator's settings lands it, and the bound engine reads the source in
+    place, so it has no replica and needs no landing clock."""
     from provisa.api.admin._landing_ttl import landing_ttl_refusal
 
     async with _db(tmp_path, source_signal="kafka", table_replicate=None) as db:
@@ -442,8 +444,11 @@ def _replicate_mutation(db: Database):
     config, and the schema rebuild recorded."""
     from provisa.api.admin import schema_mutation
 
+    from provisa.federation.engine import build_engine
+
     rebuild = AsyncMock()
-    state = SimpleNamespace(config=None, tables=[])
+    # A bound engine that reads PostgreSQL in place: only the operator's settings land a table.
+    state = SimpleNamespace(config=None, tables=[], federation_engine=build_engine("trino"))
     return (
         schema_mutation.Mutation(),
         rebuild,
@@ -572,3 +577,30 @@ async def test_a_non_standard_threshold_is_kept_as_saved(tmp_path, monkeypatch):
             )
         assert result.success is True
         assert await _replicate_of(db) == (None, 750)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source_type", ["elasticsearch", "redis", "cassandra", "prometheus"])
+@pytest.mark.parametrize("signal", ["ttl", "ttl_probe"])
+async def test_a_table_the_engine_lands_needs_a_cache_ttl_at_save(
+    tmp_path, monkeypatch, source_type, signal
+):
+    """A source the bound engine cannot read in place is served from a replica, whatever the
+    operator's settings say, so its ttl / ttl_probe tables need a landing clock when they are
+    saved — not first at the read (REQ-1907)."""
+    import provisa.api.app as appmod
+    from provisa.api.admin._landing_ttl import landing_ttl_refusal
+    from provisa.federation.engine import build_engine
+
+    monkeypatch.setattr(appmod.state, "federation_engine", build_engine("duckdb"), raising=False)
+    async with _db(tmp_path, source_type=source_type, table_replicate=None) as db:
+        async with db.acquire() as conn:
+            bad = await landing_ttl_refusal(conn, "s", table=_t(signal, None))
+            assert bad is not None and bad.code == "schema.landing_ttl_required"
+            assert "orders" in bad.message and "add a cache_ttl" in bad.message
+            # A table or source cache_ttl gives it the clock.
+            assert await landing_ttl_refusal(conn, "s", table=_t(signal, 60)) is None
+            assert (
+                await landing_ttl_refusal(conn, "s", source=_s(signal, 300), table=_t(None, None))
+                is None
+            )

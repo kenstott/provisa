@@ -854,6 +854,9 @@ export function SourceFormFieldsExtended({
             </>
           );
         })()}
+      {/* REQ-1907: the load and timeliness controls are offered at create as well as edit — a
+          source whose tables land needs its cache TTL before a table is registered. */}
+      <SourceLoadManagementPanel form={form} setForm={setForm} />
       {editingSourceId && (
         <>
           <Select
@@ -864,7 +867,6 @@ export function SourceFormFieldsExtended({
             allowDeselect={false}
             data-testid="naming-convention-select"
           />
-          <SourceLoadManagementPanel form={form} setForm={setForm} />
           {domainsEnabled && (
             <Stack gap={4} style={{ gridColumn: "1 / -1" }}>
               <MultiSelect

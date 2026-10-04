@@ -155,6 +155,21 @@ async def replicate_contradiction_refusal(
     return _contradiction(source_id, *saved)
 
 
+async def _engine_reads_in_place(conn: Any, source_id: str) -> bool:
+    """Whether the bound engine reads ``source_id`` live in place (an attach or a scan) rather
+    than serving it from a replica (federation.strategy.engine_attaches). A source not stored yet
+    has no tables to judge, so it is read as in place."""
+    from provisa.api.app import state
+    from provisa.federation.strategy import engine_attaches
+
+    row = (
+        await conn.execute_core(select(sources.c.type).where(sources.c.id == source_id))
+    ).fetchone()
+    if row is None:
+        return True
+    return engine_attaches(state.federation_engine, row.type)
+
+
 async def landing_ttl_refusal(
     conn: Any,
     source_id: str,
@@ -179,8 +194,13 @@ async def landing_ttl_refusal(
     contradicted = _contradiction(source_id, source, tables)
     if contradicted is not None:
         return contradicted
+    # A table lands when the operator's settings say so, and also when the bound engine cannot
+    # read its source in place — every table of such a source is served from a replica, so it
+    # needs the same refresh clock (REQ-1907). Asked of the stored source: a source being created
+    # has no tables yet.
+    engine_lands = not await _engine_reads_in_place(conn, source_id)
     for t in tables:
-        if not lands_from_config(
+        if not engine_lands and not lands_from_config(
             materialize=t.materialize,
             row_materialize=t.row_materialize,
             table_replicate=t.replicate,
