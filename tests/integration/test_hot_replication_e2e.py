@@ -249,19 +249,26 @@ def test_a_busy_table_is_replicated_for_every_process_then_read_live_again(deplo
         assert _read(a) == [1, 2, 3]
         assert _read(b) == [1, 2, 3]
 
+    # Proven while the traffic continues: a table stays promoted only while it is busy, and with a
+    # window of seconds, assertions made after the traffic stopped race its demotion (on a loaded
+    # machine the admin calls alone outlast the window). Each process's summary says what its
+    # hot-table list says.
     _until(
         "both processes serve busy_items from its replica",
-        lambda: _kept(a).get("busy_items") == "replica" and _kept(b).get("busy_items") == "replica",
+        lambda: all(
+            _kept(server).get("busy_items") == "replica"
+            and _summary(server, "busy_items")["serving"] == "cache"
+            for server in (a, b)
+        ),
         keep_busy=_traffic,
         servers=(a, b),
     )
-    assert _summary(a, "busy_items")["serving"] == "cache"
-    assert _summary(b, "busy_items")["serving"] == "cache"
     # the table left at Default never reached the global threshold
     assert "quiet_items" not in _kept(a)
     assert _summary(a, "quiet_items")["serving"] == "live"
 
     # -- from the replica: the upstream is gone, and both still answer ---------------------------
+    _traffic()  # busy again at once: the checks above let its window run
     _upstream(f"ALTER TABLE {_SCHEMA}.busy_items RENAME TO busy_items_gone")
     try:
         for server in (a, b):
