@@ -30,6 +30,7 @@ const FORM: SourceFormState = {
   cacheTtl: "60",
   cacheEnabled: true,
   replicate: null,
+  region: null,
   loadProtected: false,
   offPeakWindow: "",
   offPeakTz: "UTC",

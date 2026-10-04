@@ -88,6 +88,7 @@ class SourceType:  # REQ-012
     cache_enabled: bool
     cache_ttl: int | None
     replicate: int | None  # REQ-826: NULL = Default; -1 never, N hot, 0 always
+    region: str | None  # REQ-1921: the region its new tables start in; null = none
     load_protected: bool = False  # REQ-1141: scheduled-refresh-only load protection
     off_peak_window: str | None = None  # REQ-1141: "HH:MM-HH:MM" maintenance window
     off_peak_tz: str = "UTC"  # REQ-1141: IANA zone for the window
@@ -317,6 +318,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     description: str | None
     cache_ttl: int | None
     replicate: int | None  # REQ-826: NULL = inherit source
+    region: str | None  # REQ-1921: where its data lives; null = no region
     load_protected: bool | None  # REQ-1141: NULL = inherit source
     off_peak_window: str | None  # REQ-1141: per-table window override
     off_peak_tz: str | None  # REQ-1141: per-table window zone override
@@ -714,6 +716,9 @@ class SourceInput:  # REQ-012
     cache_enabled: bool = True
     cache_ttl: int | None = None
     replicate: int | None = None  # REQ-826: None = Default; -1 never, N hot, 0 always
+    # REQ-1921: the region the admin form starts this source's new tables in (None = the
+    # connected one). Ignored by updateSource: it changes through setSourceRegion.
+    region: str | None = None
     max_live_concurrency: int | None = None  # REQ-1909: None = no cap; else >= 1
     sentinel_path: str | None = None  # REQ-1148
     freshness_gate: bool = False  # REQ-860
@@ -883,6 +888,10 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
         default_factory=list
     )  # REQ-1093
     view_sql: str | None = None
+    # REQ-1921: the region the table's data lives in. Left out, a new table starts in its
+    # source's region, else the connected one (a view: the connected one); null = no region.
+    # Ignored by updateTable: a region changes through setTableRegion.
+    region: str | None = strawberry.UNSET
     # REQ-1443: the data-quality contract (soda contract / GX suite) this table's rows are the scan
     # results of. The contract names what it scans, so the observed target is DERIVED from it
     # (REQ-939) and the results columns are replaced by the shipped schema at load.
@@ -1395,6 +1404,15 @@ class GrantKind(enum.Enum):  # REQ-1918
     METRIC = "metric"
     COMMAND = "command"
     WEBHOOK = "webhook"
+
+
+@strawberry.type
+class RegionChoicesType:  # REQ-1921
+    """The regions an object of the org may name, and the one the operator is connected to;
+    both empty/null when the platform declares no regions (the admin then shows none)."""
+
+    regions: list[str]
+    connected: str | None
 
 
 @strawberry.type

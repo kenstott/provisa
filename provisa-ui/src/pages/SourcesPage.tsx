@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { useSetSourceRegion } from "../hooks/useRegionQueries";
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -101,6 +102,7 @@ export function SourcesPage() {
   const { deleteSource } = useDeleteSource();
   const { updateSourceCache } = useUpdateSourceCache();
   const { updateSourceReplicate } = useUpdateSourceReplicate();
+  const setSourceRegion = useSetSourceRegion();
   const { updateSourceLoadProtection } = useUpdateSourceLoadProtection();
   const { updateSourceNaming } = useUpdateSourceNaming();
   const { updateSourceAllowedDomains } = useUpdateSourceAllowedDomains();
@@ -131,6 +133,7 @@ export function SourcesPage() {
     cacheTtl: "",
     cacheEnabled: true,
     replicate: null,
+    region: null,
     loadProtected: false,
     offPeakWindow: "",
     offPeakTz: "UTC",
@@ -441,6 +444,7 @@ export function SourcesPage() {
       cacheTtl: s.cacheTtl != null ? String(s.cacheTtl) : "",
       cacheEnabled: s.cacheEnabled,
       replicate: s.replicate,
+      region: s.region,
       loadProtected: s.loadProtected ?? false,
       offPeakWindow: s.offPeakWindow ?? "",
       offPeakTz: s.offPeakTz ?? "UTC",
@@ -653,6 +657,7 @@ export function SourcesPage() {
       cacheTtl: "",
       cacheEnabled: true,
       replicate: null,
+      region: null,
       loadProtected: false,
       offPeakWindow: "",
       offPeakTz: "UTC",
@@ -698,6 +703,7 @@ export function SourcesPage() {
         cacheTtl: _ct,
         cacheEnabled: _ce,
         replicate: _rep,
+        region: _region, // REQ-1921: saved on its own (setSourceRegion)
         ...coreForm
       } = form;
       // Data-lake storage is a config choice, not a separate source type: the object store its tables
@@ -947,6 +953,12 @@ export function SourcesPage() {
           form.gqlNamingConvention === "" ? null : form.gqlNamingConvention,
         );
         if (!namingResult.success) throw new Error(namingResult.message);
+        // REQ-1921: the region its new tables start in, saved on its own when it changed.
+        const savedRegion = sources.find((s) => s.id === effectiveId)?.region ?? null;
+        if (form.region !== savedRegion) {
+          const regionResult = await setSourceRegion(effectiveId, form.region);
+          if (!regionResult.success) throw new Error(regionResult.message);
+        }
         const parsedDomains = form.allowedDomains
           .split(",")
           .map((d) => d.trim())
@@ -969,6 +981,10 @@ export function SourcesPage() {
         if (!createCache.success) throw new Error(createCache.message);
         const createReplicate = await updateSourceReplicate(form.id, form.replicate);
         if (!createReplicate.success) throw new Error(createReplicate.message);
+        if (form.region !== null) {
+          const createRegion = await setSourceRegion(form.id, form.region); // REQ-1921
+          if (!createRegion.success) throw new Error(createRegion.message);
+        }
         if (form.loadProtected) {
           const lp = await updateSourceLoadProtection(
             form.id,

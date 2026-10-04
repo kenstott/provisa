@@ -1,0 +1,9 @@
+{
+  "regionSelect": {
+    "label": "Regio",
+    "helpTable": "Waar de gegevens van deze tabel staan: de kopieën worden alleen in deze regio gemaakt en bewaard, en de andere regio's van de organisatie lezen ze hier. Geen regio: in elke regio mag een kopie worden bewaard.",
+    "helpView": "Waar de gegevens van deze view staan: hij wordt alleen in deze regio opgebouwd en ververst, en de andere regio's van de organisatie lezen die kopie. Geen regio: hij wordt in elke regio opgebouwd.",
+    "helpSource": "De regio waarin een nieuwe tabel van deze bron begint. Hij bepaalt niet waar gegevens staan — elke tabel heeft een eigen regio — en wijzigen verplaatst geen enkele tabel.",
+    "none": "Geen regio"
+  }
+}

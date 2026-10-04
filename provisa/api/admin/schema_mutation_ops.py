@@ -315,6 +315,11 @@ async def register_table(
             await apply_dq_registration(_conn, model)
         except ValueError as _dq_err:
             return MutationResult(success=False, message=str(_dq_err))
+        from provisa.api.admin.region_defaults import registration_region
+
+        model.region = await registration_region(  # REQ-1921
+            _conn, input, is_view=bool(input.view_sql) or input.view_metrics is not None
+        )
         if model.view_metrics is not None:
             # REQ-1318: compile the spec into the view SELECT against the live registries —
             # the generated SQL persists in view_sql and flows everywhere free-hand SQL does.

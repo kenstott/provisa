@@ -35,6 +35,7 @@ export interface Source {
   cacheEnabled: boolean;
   cacheTtl: number | null;
   replicate: number | null; // REQ-826: null = Default; -1 never, N hot, 0 always
+  region: string | null; // REQ-1921: the region its new tables start in; null = none
   loadProtected: boolean; // REQ-1141: scheduled-refresh-only load protection
   offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" maintenance window
   offPeakTz: string; // REQ-1141: IANA zone for the window
@@ -289,6 +290,7 @@ export interface RegisteredTable {
   pagination: Paging | null;
   pagingCeilingRows: number | null;
   replicate: number | null; // REQ-826: null = inherit source
+  region: string | null; // REQ-1921: where its data lives; null = no region
   loadProtected: boolean | null; // REQ-1141: null = inherit source
   offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" window override
   offPeakTz: string | null; // REQ-1141: window zone override

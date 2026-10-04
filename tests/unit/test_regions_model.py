@@ -192,11 +192,35 @@ def test_a_region_others_read_needs_a_postgresql_replica_store():
             platform=_PLATFORM,
             stores=stores,
             regions=[_region("eu", replicas="eu-my", views="eu-my"), _region("us")],
-            sources=[{**_config()["sources"][0], "region": "eu"}],
+            tables=[{**_config()["tables"][0], "region": "eu"}],
         )
     )
     assert "region 'eu' replicas store 'eu-my' is not a PostgreSQL store" in said
-    assert "source crm keeps its data there" in said
+    assert "table crm/public.orders keeps its data there" in said
+
+
+def test_a_sources_region_is_a_form_default_where_no_data_lives():
+    """REQ-1921: a source's region decides nothing about where copies live, so it asks nothing
+    of the org's stores or engines; a table that names no region of its own has none."""
+    stores = [*_STORES, {"id": "us-snow", "url": "snowflake://acct/db", "kind": "snowflake"}]
+    cfg = ProvisaConfig.model_validate(
+        _config(
+            platform=_PLATFORM,
+            stores=stores,
+            regions=[_region("eu"), _region("us", engine="us-snow")],
+            sources=[{**_config()["sources"][0], "region": "eu"}],
+        )
+    )
+    assert cfg.sources[0].region == "eu" and cfg.tables[0].region is None
+
+
+def test_a_table_naming_no_region_is_homed_nowhere_whatever_its_source_names():
+    from types import SimpleNamespace
+
+    from provisa.federation.replica_converge import home_region
+
+    assert home_region({"region": None}) is None
+    assert home_region(SimpleNamespace(region="us")) == "us"
 
 
 def test_a_region_whose_engine_cannot_read_another_region_is_refused_naming_both():
@@ -357,11 +381,23 @@ def test_the_engine_kinds_that_read_other_regions_are_the_backends_that_do(monke
 
 
 async def test_a_save_that_leaves_a_region_unreadable_by_the_others_is_refused(model):
-    """Saving refuses what loading refuses — from whichever side the change comes: the source
-    naming the region, the other region's engine, or the region's replicas store."""
+    """Saving refuses what loading refuses — from whichever side the change comes: the table
+    naming the region, the other region's engine, or the region's replicas store. A source's
+    region is a form default and is never refused for it."""
+    from provisa.core.models import Table
     from provisa.core.regions import OrgRegion, StoreConfig
     from provisa.core.repositories import region as region_repo
     from provisa.core.repositories import source as source_repo
+    from provisa.core.repositories import table as table_repo
+
+    declared = _config()["tables"][0]
+    orders = Table.model_validate(
+        {
+            **declared,
+            "region": "eu",
+            "columns": [{**declared["columns"][0], "data_type": "integer"}],
+        }
+    )
 
     snow = StoreConfig(id="us-snow", url="snowflake://acct/db", kind="snowflake")
     async with model.acquire() as conn:
@@ -372,10 +408,11 @@ async def test_a_save_that_leaves_a_region_unreadable_by_the_others_is_refused(m
         await region_repo.upsert_region(
             conn, OrgRegion(**_region("us", engine="us-snow")), origin="admin"
         )
+        await source_repo.upsert(conn, _source("eu"), origin="admin")  # a form default
         with pytest.raises(ValueError, match="region 'us' runs the snowflake engine"):
-            await source_repo.upsert(conn, _source("eu"), origin="admin")
+            await table_repo.upsert(conn, orders, origin="admin")
         await region_repo.upsert_region(conn, OrgRegion(**_region("us")), origin="admin")
-        await source_repo.upsert(conn, _source("eu"), origin="admin")
+        await table_repo.upsert(conn, orders, origin="admin")
         with pytest.raises(ValueError, match="region 'us' runs the snowflake engine"):
             await region_repo.upsert_region(
                 conn, OrgRegion(**_region("us", engine="us-snow")), origin="admin"

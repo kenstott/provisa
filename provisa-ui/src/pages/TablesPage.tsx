@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { useSetTableRegion } from "../hooks/useRegionQueries";
 import { useState, useEffect, Fragment, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -113,6 +114,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { updateTableRoleTtl } = useUpdateTableRoleTtl();
   const { updateTablePaging } = useUpdateTablePaging();
   const { updateTableReplicate } = useUpdateTableReplicate();
+  const setTableRegion = useSetTableRegion();
   const { updateTableLoadProtection } = useUpdateTableLoadProtection();
   const { updateTableNaming } = useUpdateTableNaming();
   const { purgeCacheByTable } = usePurgeCacheByTable();
@@ -548,6 +550,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         );
         if (!pagingResult.success) {
           setError(serverMessage(pagingResult, pagingResult.message));
+          return;
+        }
+      }
+      // REQ-1921: the region is saved on its own, and only when it changed.
+      const savedRegion = tables.find((tbl) => tbl.id === editingTable.id)?.region ?? null;
+      if (savedRegion !== editingTable.region) {
+        const regionResult = await setTableRegion(editingTable.id, editingTable.region);
+        if (!regionResult.success) {
+          setError(serverMessage(regionResult, regionResult.message));
           return;
         }
       }

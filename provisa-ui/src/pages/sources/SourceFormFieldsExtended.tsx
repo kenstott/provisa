@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { useRegionChoices } from "../../hooks/useRegionQueries";
 import { useTranslation } from "react-i18next";
 import {
   Accordion,
@@ -37,6 +38,7 @@ import { KaggleFormSection } from "./KaggleFormSection";
 import { PushFeedFormSection } from "./PushFeedFormSection";
 import { SparqlFormSection } from "./SparqlFormSection";
 import { SourceLoadManagementPanel } from "./SourceLoadManagementPanel";
+import { RegionSelect } from "../../components/admin/RegionSelect";
 import type { SourceFormFieldsProps } from "./SourceFormFields";
 
 export function SourceFormFieldsExtended({
@@ -123,6 +125,7 @@ export function SourceFormFieldsExtended({
   onKaggleSourcesRegistered,
 }: SourceFormFieldsProps) {
   const { t } = useTranslation();
+  const regionChoices = useRegionChoices();
   // REQ-1739: was `getCategory(form.type) === "Streaming"`, which was correct only while kafka was
   // the sole Streaming member — websocket/rss/ingest now share the category and each needs its own
   // fields, so this must key on the type itself.
@@ -857,6 +860,13 @@ export function SourceFormFieldsExtended({
       {/* REQ-1907: the load and timeliness controls are offered at create as well as edit — a
           source whose tables land needs its cache TTL before a table is registered. */}
       <SourceLoadManagementPanel form={form} setForm={setForm} />
+      <RegionSelect
+        value={form.region}
+        onChange={(region) => setForm({ ...form, region })}
+        regions={regionChoices.regions}
+        scope="source"
+        testId="source-region-select"
+      />
       {editingSourceId && (
         <>
           <Select

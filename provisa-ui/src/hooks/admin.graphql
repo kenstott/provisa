@@ -79,6 +79,7 @@ query SourcesQuery {
     cacheEnabled
     cacheTtl
     replicate
+    region
     loadProtected
     offPeakWindow
     offPeakTz
@@ -198,6 +199,7 @@ query TablesQuery {
     }
     pagingCeilingRows
     replicate
+    region
     loadProtected
     offPeakWindow
     offPeakTz
@@ -1132,6 +1134,27 @@ mutation DeleteScheduledTask($taskId: String!) {
 
 mutation PurgeCacheByTable($tableId: Int!) {
   purgeCacheByTable(tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+# REQ-1921: the org's regions and the one the operator is connected to (empty/null: none
+# declared, and the admin shows no region at all).
+query RegionChoices {
+  regionChoices {
+    regions
+    connected
+  }
+}
+
+mutation SetTableRegion($tableId: Int!, $region: String) {
+  setTableRegion(tableId: $tableId, region: $region) {
+    ...MutationResult
+  }
+}
+
+mutation SetSourceRegion($sourceId: String!, $region: String) {
+  setSourceRegion(sourceId: $sourceId, region: $region) {
     ...MutationResult
   }
 }

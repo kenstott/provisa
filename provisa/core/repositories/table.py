@@ -240,9 +240,9 @@ async def _upsert(
 ) -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
     await _require_free_sql_address(conn, table, domain_id, leaving)
-    from provisa.core.repositories.region import require_selected
+    from provisa.core.repositories.region import require_table_region
 
-    await require_selected(  # REQ-1921: a table names one of its org's regions, or none
+    await require_table_region(  # REQ-1921: a table names one of its org's regions, or none
         conn,
         f"table {table.source_id}/{table.schema_name}.{table.table_name}",
         getattr(table, "region", None),

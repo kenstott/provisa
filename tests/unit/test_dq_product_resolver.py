@@ -70,6 +70,7 @@ def _table(**overrides: Any) -> RegisteredTableType:
         description=None,
         cache_ttl=None,
         replicate=None,
+        region=None,
         load_protected=None,
         off_peak_window=None,
         off_peak_tz=None,

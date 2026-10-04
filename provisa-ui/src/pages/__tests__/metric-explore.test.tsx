@@ -62,6 +62,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pagination: null,
     pagingCeilingRows: null,
     replicate: null,
+    region: null,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,

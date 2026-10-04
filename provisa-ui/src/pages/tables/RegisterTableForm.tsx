@@ -17,6 +17,8 @@ import { toSnakeCase } from "../../naming";
 import { NlTableSearch } from "./NlTableSearch";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
+import { RegionSelect } from "../../components/admin/RegionSelect";
+import { useRegionChoice, useRegionChoices } from "../../hooks/useRegionQueries";
 import { useQueryPreview } from "../../hooks/useQueryPreview";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import { fetchIrTypes, fetchTableUniqueConstraints } from "../../api/admin";
@@ -113,6 +115,14 @@ export function RegisterTableForm({
   const [previewRows, setPreviewRows] = useState<Record<string, unknown>[]>([]);
   const [previewing, setPreviewing] = useState(false);
   const { preview: previewQuery } = useQueryPreview();
+
+  // REQ-1921: a new table starts in its source's region, else the region the operator is
+  // connected to; the operator may change it or choose No region. No regions: no field, and the
+  // table is registered with none.
+  const regionChoices = useRegionChoices();
+  const sourceRegion = sources.find((s) => s.id === sourceId)?.region ?? null;
+  const [region, setRegion] = useRegionChoice(sourceRegion ?? regionChoices.connected, sourceId);
+  const regionInput = regionChoices.regions.length > 0 ? { region } : {};
 
   const sourceType = sources.find((s) => s.id === sourceId)?.type?.toLowerCase() ?? "";
   const isChecker = (DQ_CHECKERS as readonly string[]).includes(sourceType);
@@ -411,6 +421,7 @@ export function RegisterTableForm({
       const result = await registerTable({
         sourceId,
         domainId,
+        ...regionInput,
         // REQ-1673: the PHYSICAL schema the table was picked from (or the source's fixed schema),
         // never the domain. The domain is `domainId`; registering the domain as the schema lost
         // the physical location of every source whose schema is not named after the domain —
@@ -487,6 +498,7 @@ export function RegisterTableForm({
       const result = await registerTable({
         sourceId,
         domainId,
+        ...regionInput,
         schemaName: domainId ? normalizeDomain(domainId) : schemaName,
         tableName,
         alias: tableAlias || undefined,
@@ -554,6 +566,15 @@ export function RegisterTableForm({
             ))}
         </select>
       </label>
+      {sourceId && (
+        <RegionSelect
+          value={region}
+          onChange={setRegion}
+          regions={regionChoices.regions}
+          scope="table"
+          testId="register-table-region-select"
+        />
+      )}
       {domainsEnabled && (
         <label>
           {t("registerTableForm.domainLabel")}

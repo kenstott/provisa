@@ -74,6 +74,7 @@ from provisa.api.admin.types import (
     QueryPreviewType,
     HotTableStatType,
     ClusterNodeType,
+    RegionChoicesType,
     KaggleDatasetType,
     MaterializeStoreInfoType,
     ReplicaBuildsType,
@@ -1262,6 +1263,21 @@ class Query:  # REQ-021, REQ-042
         # REQ-595: the acting org's entries in the acting environment, no other org's.
         counts = await state.response_cache_store.table_entry_counts(cache_place(state))
         return [CacheTableStatType(table_id=tid, cached_entries=n) for tid, n in counts.items()]
+
+    @strawberry.field
+    async def region_choices(self) -> RegionChoicesType:  # REQ-1921
+        """The org's regions and the connected one, for the admin's region fields."""
+        from provisa.api.admin.region_defaults import connected_region
+        from provisa.api.app import state
+        from provisa.core.repositories.region import list_regions
+
+        connected = connected_region()
+        if connected is None:
+            return RegionChoicesType(regions=[], connected=None)
+        assert state.model_db is not None  # the org's model is open while it is served
+        async with state.model_db.acquire() as conn:
+            regions = [r.id for r in await list_regions(conn)]
+        return RegionChoicesType(regions=regions, connected=connected)
 
     @strawberry.field
     async def cluster_nodes(self, info: StrawberryInfo) -> list[ClusterNodeType]:  # REQ-1916

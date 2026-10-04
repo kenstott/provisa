@@ -1,0 +1,9 @@
+{
+  "regionSelect": {
+    "label": "Region",
+    "helpTable": "Wo die Daten dieser Tabelle liegen: Ihre Kopien werden nur in dieser Region erstellt und vorgehalten, und die anderen Regionen der Organisation lesen sie von hier. Keine Region: In jeder Region darf eine Kopie vorgehalten werden.",
+    "helpView": "Wo die Daten dieser Ansicht liegen: Sie wird nur in dieser Region erstellt und aktualisiert, und die anderen Regionen der Organisation lesen diese Kopie. Keine Region: Sie wird in jeder Region erstellt.",
+    "helpSource": "Die Region, in der eine neue Tabelle dieser Quelle beginnt. Sie entscheidet nicht, wo Daten liegen – jede Tabelle hat ihre eigene Region –, und eine Änderung verschiebt keine Tabelle.",
+    "none": "Keine Region"
+  }
+}

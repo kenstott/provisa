@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { useRegionChoices } from "../../hooks/useRegionQueries";
 import { Fragment, useEffect, useState } from "react";
 import { Check, X, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -49,6 +50,7 @@ import { RoleTtlField } from "./RoleTtlField";
 import { PagingField } from "./PagingField";
 import { tableTtlSignalError } from "./roleTtl";
 import { ReplicateSelect } from "../../components/admin/ReplicateSelect";
+import { RegionSelect } from "../../components/admin/RegionSelect";
 import { ReplicaBuildLine } from "./ReplicaBuildLine";
 
 interface CacheTtlEdit {
@@ -136,6 +138,7 @@ export function TableEditForm({
   // materialize + mv_refresh_interval + change_signal. Materialization is driven by the "Materialized
   // View" checkbox, not replicate. Hide those fields for a view to avoid contradictory knobs.
   const isView = editingTable.viewSql != null;
+  const regionChoices = useRegionChoices();
 
   // REQ-1907/REQ-930: the table's resolved landing cache_ttl — the staged Cache TTL edit, else the
   // saved table value, else the source's. The global default is the response-cache TTL, not a
@@ -221,6 +224,14 @@ export function TableEditForm({
           }
           comboboxProps={{ withinPortal: true }}
           allowDeselect={false}
+        />
+        {/* REQ-1921: where the table's (or view's) data lives; saved on its own (setTableRegion). */}
+        <RegionSelect
+          value={editingTable.region}
+          onChange={(region) => setEditingTable({ ...editingTable, region })}
+          regions={regionChoices.regions}
+          scope={isView ? "view" : "table"}
+          testId="table-region-select"
         />
         {!isView && (
           <CollapsibleSection

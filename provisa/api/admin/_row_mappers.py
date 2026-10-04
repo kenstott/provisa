@@ -111,6 +111,7 @@ def _source_from_row(row, *, connection: bool) -> SourceType:
         cache_enabled=row.get("cache_enabled", True),
         cache_ttl=row.get("cache_ttl"),
         replicate=row["replicate"],  # REQ-826
+        region=row["region"],  # REQ-1921
         load_protected=bool(row.get("load_protected", False)),  # REQ-1141
         off_peak_window=row.get("off_peak_window"),  # REQ-1141
         off_peak_tz=row.get("off_peak_tz") or "UTC",  # REQ-1141

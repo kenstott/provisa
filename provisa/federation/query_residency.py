@@ -315,7 +315,7 @@ async def ensure_resident(
     for t in await registered_tables(state):
         if t.source_id not in wanted or t.id not in read:
             continue
-        home = home_region(by_id[t.source_id], t)
+        home = home_region(t)
         if not builds_here(home):
             # REQ-1922: kept in another region, read from its replica there and never live; it
             # is never built here (the address seam routes the read).

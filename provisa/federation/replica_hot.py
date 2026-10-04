@@ -258,7 +258,7 @@ def hot_candidates(
         if not attach[source.id]:
             continue
         key = (reg.source_id, reg.schema_name, reg.table_name)
-        if not builds_here(home_region(source, reg)):
+        if not builds_here(home_region(reg)):
             continue  # REQ-1922: promoted, built and counted only in the region it names
         if reg.id in hot_tier:
             skipped[key] = HOT_TIER

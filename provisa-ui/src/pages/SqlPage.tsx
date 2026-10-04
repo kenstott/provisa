@@ -9,6 +9,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { useRegionChoice, useRegionChoices } from "../hooks/useRegionQueries";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
@@ -70,6 +71,12 @@ export function SqlPage() {
   const [viewModal, setViewModal] = useState(false);
   const [viewId, setViewId] = useState("");
   const [viewDescription, setViewDescription] = useState("");
+  // REQ-1921: a view created here starts in the region the operator is connected to; they may
+  // change it or choose No region. No regions: no field, and the view is saved with none.
+  const regionChoices = useRegionChoices();
+  // Each opening of the dialog starts the view in the connected region again.
+  const [viewOpenings, setViewOpenings] = useState(0);
+  const [viewRegion, setViewRegion] = useRegionChoice(regionChoices.connected, viewOpenings);
   const [viewDomainId, setViewDomainId] = useState("");
   const [viewSaving, setViewSaving] = useState(false);
   const [viewMsg, setViewMsg] = useState("");
@@ -554,6 +561,7 @@ export function SqlPage() {
         domainId: viewDomainId.trim(),
         schemaName: "views",
         tableName: viewId.trim(),
+        ...(regionChoices.regions.length > 0 ? { region: viewRegion } : {}),
         alias: viewId.trim(),
         description: viewDescription.trim() || undefined,
         viewSql: asMetricView ? undefined : viewSqlNormalized,
@@ -592,6 +600,8 @@ export function SqlPage() {
     saveAsMetricView,
     canCreateView,
     viewColumns,
+    viewRegion,
+    regionChoices.regions.length,
     registerTable,
     refetchTables,
     refetchRelationships,
@@ -712,6 +722,7 @@ export function SqlPage() {
         unmaskedTo: "",
       })),
     );
+    setViewOpenings((n) => n + 1);
     setViewModal(true);
   }, [tables, resultColumns, roles]);
 
@@ -952,6 +963,9 @@ export function SqlPage() {
         viewHasParams={viewHasParams}
         viewDescription={viewDescription}
         setViewDescription={setViewDescription}
+        viewRegion={viewRegion}
+        setViewRegion={setViewRegion}
+        regions={regionChoices.regions}
         viewSqlNormalized={viewSqlNormalized}
         viewSqlExtensions={viewSqlExtensions}
         domainMap={domainMap}

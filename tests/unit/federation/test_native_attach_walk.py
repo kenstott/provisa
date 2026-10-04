@@ -108,8 +108,8 @@ def _state() -> SimpleNamespace:
         config=config,
         runtime_sources={},
         tables=[
-            {"source_id": "pg", "schema_name": "public", "table_name": "orders"},
-            {"source_id": "api", "schema_name": "public", "table_name": "pets"},
+            {"source_id": "pg", "schema_name": "public", "table_name": "orders", "region": None},
+            {"source_id": "api", "schema_name": "public", "table_name": "pets", "region": None},
         ],
         model_db=None,
         tenant_db=None,
@@ -140,7 +140,7 @@ def test_a_registry_change_triggers_exactly_one_more_walk():
     # A rebuild publishes a NEW table list (state.tables is replaced, never mutated in place).
     state.tables = [
         *state.tables,
-        {"source_id": "pg", "schema_name": "public", "table_name": "invoices"},
+        {"source_id": "pg", "schema_name": "public", "table_name": "invoices", "region": None},
     ]
     for _ in range(5):
         backend._runtime_for(state)
@@ -170,7 +170,7 @@ def test_a_source_registered_after_boot_is_reachable_on_the_next_query():
     }
     state.tables = [
         *state.tables,
-        {"source_id": "pg2", "schema_name": "sales", "table_name": "leads"},
+        {"source_id": "pg2", "schema_name": "sales", "table_name": "leads", "region": None},
     ]
     backend._runtime_for(state)
     assert "sales.leads" in backend.runtime.attempts

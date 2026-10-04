@@ -93,6 +93,9 @@ declare module "*.graphql" {
   export const ForceRegen: DocumentNode;
   export const UpdateSourceReplicate: DocumentNode;
   export const UpdateTableReplicate: DocumentNode;
+  export const RegionChoices: DocumentNode;
+  export const SetTableRegion: DocumentNode;
+  export const SetSourceRegion: DocumentNode;
   export const UpdateSourceLoadProtection: DocumentNode;
   export const UpdateTableLoadProtection: DocumentNode;
   export const UpdateSourceNaming: DocumentNode;
@@ -196,6 +199,9 @@ declare module "*.gql" {
   export const ForceRegen: DocumentNode;
   export const UpdateSourceReplicate: DocumentNode;
   export const UpdateTableReplicate: DocumentNode;
+  export const RegionChoices: DocumentNode;
+  export const SetTableRegion: DocumentNode;
+  export const SetSourceRegion: DocumentNode;
   export const UpdateSourceLoadProtection: DocumentNode;
   export const UpdateTableLoadProtection: DocumentNode;
   export const UpdateSourceNaming: DocumentNode;

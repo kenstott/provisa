@@ -436,7 +436,7 @@ class NativeEngineBackend(EngineBackend):
 
         for tbl in config.tables:
             src = sources.get(tbl.source_id)
-            if src is not None and builds_here(home_region(src, tbl)):
+            if src is not None and builds_here(home_region(tbl)):
                 _attach_tbl(src, tbl.schema_name, tbl.table_name)
 
         # Also attach tables registered dynamically after startup via registerTable. These live in
@@ -445,7 +445,7 @@ class NativeEngineBackend(EngineBackend):
         for tbl_dict in _state_tables:
             _sid = tbl_dict.get("source_id")
             src = sources.get(_sid)
-            if src is not None and builds_here(home_region(src, tbl_dict)):
+            if src is not None and builds_here(home_region(tbl_dict)):
                 _attach_tbl(src, tbl_dict.get("schema_name", ""), tbl_dict.get("table_name", ""))
 
         # Native DuckDB path: attach a PostgreSQL control-plane DB as the provisa_admin catalog so

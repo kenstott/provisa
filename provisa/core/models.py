@@ -252,8 +252,9 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # never (live wherever a live path exists); N > 0 = once a table passes N governed statements
     # per interval; 0 = always (the only guarantee; the source then has no live attach at all).
     replicate: int | None = None
-    # REQ-1921: the org region this source's data lives in (one of the org's ``regions``);
-    # None = no region. A table may name its own.
+    # REQ-1921: one of the org's ``regions``, or None: the region the admin form starts a new
+    # table of this source in. It decides nothing about where copies live — each table carries
+    # its own — and changing it later moves no table.
     region: str | None = None
     # REQ-1141: mark this source LOAD-PROTECTED. Like replicate 0 it removes the live route
     # AND selects the SCHEDULED freshness discipline: the query path NEVER pulls the source — reads
@@ -1007,7 +1008,8 @@ class Table(
     # REQ-826: when this table is served from its replica (provisa.core.replicate): -1 never,
     # N > 0 once it passes N governed statements per interval, 0 always. None = its source's value.
     replicate: int | None = None
-    # REQ-1921: the org region this table's data lives in; None = its source's region.
+    # REQ-1921: the org region this table's data lives in; None = no region (a copy may be kept in
+    # every region). Its source's region is only the admin form's default for a new table.
     region: str | None = None
     # REQ-1141: per-table load-protection override; None = inherit the source's load_protected.
     load_protected: bool | None = None

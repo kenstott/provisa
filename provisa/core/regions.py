@@ -14,9 +14,11 @@ The PLATFORM declares the physical regions its nodes run in (``platform.regions`
 address its nodes answer at). An ORG is a collection of regions: its model selects the platform
 regions it uses and declares, for each, the stores it keeps there — the engine, the replica and
 view storage, the cache, the state store and the request record (``regions``, naming entries of
-``stores``). A source, or a table (overriding its source's), may name one of the org's regions:
-its data is replicated and read only there, and the org's other regions read it from that
-region's replica.
+``stores``). A table may name one of the org's regions: its data is replicated and read only
+there, and the org's other regions read it from that region's replica. A table naming none may be
+copied in every region. A source may name one too, but only as the region the admin form starts
+a new table of it in: it decides nothing about where data lives (REQ-1921, "a table carries its
+own region; a source's region is its default").
 
 With no platform regions there is one implicit region (:data:`DEFAULT_REGION`) and nothing in a
 model may name a region.
@@ -123,7 +125,8 @@ def validate_regions(config: "ProvisaConfig") -> None:
                 f"{what} names region {region!r}, which the org does not select "
                 f"({', '.join(selected)})"
             )
-    for what, region in named:
+    # A table's region is where its data lives; a source's is only a form default.
+    for what, region in _named_table_regions(config):
         require_readable_elsewhere(what, region, config.regions, stores)
 
 
@@ -193,14 +196,13 @@ def require_engine_kind(region: str, store: StoreConfig) -> None:
 def _named_regions(config: "ProvisaConfig") -> list[tuple[str, str]]:
     """``(what, region)`` for every source and table that names a region."""
     out = [(f"source {s.id}", s.region) for s in config.sources if s.region is not None]
-    out += [
+    return out + _named_table_regions(config)
+
+
+def _named_table_regions(config: "ProvisaConfig") -> list[tuple[str, str]]:
+    """``(what, region)`` for every table that names a region."""
+    return [
         (f"table {t.source_id}/{t.schema_name}.{t.table_name}", t.region)
         for t in config.tables
         if t.region is not None
     ]
-    return out
-
-
-def table_region(source_region: str | None, table_region_: str | None) -> str | None:
-    """The region a table's data lives in: its own, else its source's; None for no region."""
-    return table_region_ if table_region_ is not None else source_region

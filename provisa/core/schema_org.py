@@ -106,7 +106,7 @@ sources = Table(
     Column("cache_enabled", Boolean, nullable=False, server_default=true()),
     Column("cache_ttl", Integer),
     Column("replicate", Integer),  # REQ-826: NULL = global threshold; -1 never, N hot, 0 always
-    Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = no region
+    Column("region", Text),  # REQ-1921: the admin form's default region for its new tables
     Column("load_protected", Boolean, nullable=False, server_default=false()),  # REQ-1141
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text, nullable=False, server_default="UTC"),  # REQ-1141
@@ -203,7 +203,7 @@ registered_tables = Table(
     # REQ-1907: role -> TTL seconds; effective TTL = max(cache_ttl, role_ttl(role)).
     Column("role_ttl", JSON, nullable=False, default=dict, server_default="{}"),
     Column("replicate", Integer),  # REQ-826: NULL = inherit source
-    Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = its source's
+    Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = none
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text),  # REQ-1141

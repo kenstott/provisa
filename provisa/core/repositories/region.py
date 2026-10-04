@@ -137,37 +137,41 @@ async def require_selected(conn: "Connection", what: str, region: str | None) ->
     None — no region — is always allowed."""
     if region is None:
         return
-    regions = await list_regions(conn)
-    selected = [r.id for r in regions]
+    selected = [r.id for r in await list_regions(conn)]
     if region not in selected:
         raise RegionNotSelected(what, region, selected)
+
+
+async def require_table_region(conn: "Connection", what: str, region: str | None) -> None:
+    """Refuse a table naming a region its org does not select, or one the org's other regions
+    cannot read it in (REQ-1921, REQ-1922): a table's region is where its data lives."""
+    await require_selected(conn, what, region)
+    if region is None:
+        return
     from provisa.core.regions import require_readable_elsewhere
 
     declared = {s.id: s for s in await list_stores(conn)}
-    require_readable_elsewhere(what, region, regions, declared)
+    require_readable_elsewhere(what, region, await list_regions(conn), declared)
 
 
 async def _require_named_readable(
     conn: "Connection", regions: list[OrgRegion], declared: dict[str, StoreConfig]
 ) -> None:
-    """Refuse a change to the org's regions or stores that leaves a source or table naming a
-    region its other regions cannot read there (REQ-1922; ``regions.require_readable_elsewhere``)."""
+    """Refuse a change to the org's regions or stores that leaves a table naming a region its
+    other regions cannot read it in (REQ-1922; ``regions.require_readable_elsewhere``). A
+    source's region is only a form default: no data lives there."""
     from provisa.core.regions import require_readable_elsewhere
-    from provisa.core.schema_org import registered_tables, sources
+    from provisa.core.schema_org import registered_tables
 
     if len(regions) < 2:
         return
-    named = await conn.execute_core(
-        select(sources.c.id, sources.c.region).where(sources.c.region.isnot(None))
-    )
-    out = [(f"source {r.id}", r.region) for r in named.fetchall()]
     t = registered_tables
     named = await conn.execute_core(
         select(t.c.source_id, t.c.schema_name, t.c.table_name, t.c.region).where(
             t.c.region.isnot(None)
         )
     )
-    out += [
+    out = [
         (f"table {r.source_id}/{r.schema_name}.{r.table_name}", r.region) for r in named.fetchall()
     ]
     selected = {r.id for r in regions}
@@ -187,3 +191,42 @@ async def require_serves_here(conn: "Connection", org_id: str, node_region: str)
     selected = [r.id for r in await list_regions(conn)]
     if node_region not in selected:
         raise OrgNotInRegion(org_id, node_region, selected)
+
+
+async def set_table_region(conn: "Connection", table_id: int, region: str | None) -> str:
+    """Set (or, None, remove) the region a registered table's data lives in (REQ-1921) — the one
+    place it changes after registration. Refused as a save of the table is. Returns the table's
+    name."""
+    from sqlalchemy import update
+
+    from provisa.core.schema_org import registered_tables as t
+
+    row = (
+        await conn.execute_core(
+            select(t.c.source_id, t.c.schema_name, t.c.table_name).where(t.c.id == table_id)
+        )
+    ).fetchone()
+    if row is None:
+        raise LookupError(f"table {table_id} is not registered")
+    model_change.name("update", "table region", row.table_name)  # REQ-1524
+    await require_table_region(
+        conn, f"table {row.source_id}/{row.schema_name}.{row.table_name}", region
+    )
+    await conn.execute_core(update(t).where(t.c.id == table_id).values(region=region))
+    return row.table_name
+
+
+async def set_source_region(conn: "Connection", source_id: str, region: str | None) -> None:
+    """Set (or, None, remove) the region the admin form starts a source's new tables in
+    (REQ-1921). It moves no existing table: each carries its own."""
+    from sqlalchemy import update
+
+    from provisa.core.schema_org import sources
+
+    model_change.name("update", "source region", source_id)  # REQ-1524
+    await require_selected(conn, f"source {source_id}", region)
+    done = await conn.execute_core(
+        update(sources).where(sources.c.id == source_id).values(region=region)
+    )
+    if done.rowcount == 0:
+        raise LookupError(f"source {source_id!r} is not registered")

@@ -376,7 +376,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         src = registry.sources.get(reg["source_id"])
         if src is None:
             continue
-        home = home_region(src, reg)
+        home = home_region(reg)
         if builds_here(home):
             continue
         assert home is not None  # builds_here is True for a table naming no region

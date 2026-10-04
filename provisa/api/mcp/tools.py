@@ -1133,14 +1133,15 @@ async def _queue_mcp_proposal(
     Never creates the live entity itself — always lands in the same REQ-434 queue a low-privilege
     GraphQL caller falls back to, so a rights-holder must execute or reject it via the admin UI
     (Requests page) regardless of what capability the MCP credential itself carries."""
-    import dataclasses
 
     from provisa.core.repositories import creation_request as cr_repo
 
     if not reason or not reason.strip():
         raise ValueError("reason is required — say why this was discovered/proposed")
 
-    payload = dataclasses.asdict(rebuilt_input)
+    from provisa.api.admin.schema_common import request_payload
+
+    payload = request_payload(rebuilt_input)
     payload["_proposed_reason"] = reason.strip()
     payload["_proposed_via"] = "mcp"
 

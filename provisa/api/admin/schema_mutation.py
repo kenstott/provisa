@@ -892,6 +892,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             cache_enabled=input.cache_enabled,
             cache_ttl=input.cache_ttl,
             replicate=input.replicate,  # REQ-826
+            region=input.region,  # REQ-1921: its new tables' starting region
             max_live_concurrency=input.max_live_concurrency,  # REQ-1909
             sentinel_path=input.sentinel_path,  # REQ-1148
             freshness_gate=input.freshness_gate,  # REQ-860
@@ -1197,8 +1198,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 cache_enabled=input.cache_enabled,
                 cache_ttl=input.cache_ttl,
                 replicate=input.replicate,  # REQ-826
-                # REQ-1921: kept; the form carries no region, and writing NULL over the stored one
-                # changed it without anyone choosing to.
+                # REQ-1921: kept; a source's region changes only through setSourceRegion.
                 region=existing["region"],
                 max_live_concurrency=input.max_live_concurrency,  # REQ-1909
                 sentinel_path=input.sentinel_path,  # REQ-1148
@@ -3269,6 +3269,79 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"replicate set for table {table_id}",
             code="schema.table_replicate_set",
             params={"table": table_id},
+        )
+
+    @strawberry.mutation
+    async def set_table_region(
+        self, info: StrawberryInfo, table_id: int, region: str | None = None
+    ) -> MutationResult:  # REQ-1921
+        """Set where one table's data lives (None = no region): the one place a registered
+        table's region changes. Its copies follow — built in the new region, retired elsewhere."""
+        from provisa.core.repositories import region as region_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            _row = await conn.execute_core(
+                select(registered_tables.c.domain_id).where(registered_tables.c.id == table_id)
+            )
+            row = _row.fetchone()
+            if row is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_not_found",
+                    params={"table": table_id},
+                )
+            require_capability(info, "table_registration", domain_id=row.domain_id)
+            try:
+                name = await region_repo.set_table_region(conn, table_id, region)
+            except ValueError as refused:
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.region_refused",
+                    params={"table": table_id, "region": region, "reason": str(refused)},
+                )
+        await _rebuild_schemas()
+        return MutationResult(
+            success=True,
+            message=f"region of table {name!r} set to {region or 'none'}",
+            code="schema.table_region_set",
+            params={"table": table_id, "region": region},
+        )
+
+    @strawberry.mutation
+    async def set_source_region(
+        self, info: StrawberryInfo, source_id: str, region: str | None = None
+    ) -> MutationResult:  # REQ-1921
+        """Set the region the admin form starts this source's new tables in (None = the
+        connected one). Moves no existing table."""
+        require_capability(info, "source_registration")
+        from provisa.core.repositories import region as region_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            try:
+                await region_repo.set_source_region(conn, source_id, region)
+            except LookupError:
+                return MutationResult(
+                    success=False,
+                    message=f"Source {source_id!r} not found",
+                    code="schema.source_not_found",
+                    params={"source": source_id},
+                )
+            except ValueError as refused:
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.region_refused",
+                    params={"source": source_id, "region": region, "reason": str(refused)},
+                )
+        return MutationResult(
+            success=True,
+            message=f"region of source {source_id!r} set to {region or 'none'}",
+            code="schema.source_region_set",
+            params={"source": source_id, "region": region},
         )
 
     @strawberry.mutation

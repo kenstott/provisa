@@ -1,0 +1,9 @@
+{
+  "regionSelect": {
+    "label": "Região",
+    "helpTable": "Onde ficam os dados desta tabela: as cópias são criadas e mantidas apenas nesta região, e as outras regiões da organização as leem daqui. Sem região: pode ser mantida uma cópia em cada região.",
+    "helpView": "Onde ficam os dados desta visão: ela é construída e atualizada apenas nesta região, e as outras regiões da organização leem essa cópia. Sem região: ela é construída em cada região.",
+    "helpSource": "A região em que começa uma nova tabela desta origem. Ela não decide onde ficam os dados — cada tabela tem sua própria região — e alterá-la não move nenhuma tabela.",
+    "none": "Sem região"
+  }
+}
