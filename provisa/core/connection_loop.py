@@ -502,9 +502,13 @@ def _caller_context() -> contextvars.Context:
     identity travel, its request deadline does not (REQ-1905). Every request now carries one
     deadline for its whole life; detached work that kept it would have its statements refused
     once that request's timeout had passed — a TTL drop scheduled hours ahead, a cache write
-    finishing after the response left."""
+    finishing after the response left. Nor does its model change (REQ-1524): that closes when the
+    caller finishes, so detached work that writes the model opens a change of its own."""
+    from provisa.core import model_change
+
     ctx = contextvars.copy_context()
     ctx.run(request_deadline.unbind)
+    ctx.run(model_change.unbind)
     return ctx
 
 

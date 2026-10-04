@@ -16861,17 +16861,27 @@
   description: 'OpenTelemetry (OTel) instrumentation across all Provisa components — traces, metrics,
     and logs exported via OTLP. Covers: FastAPI app, GraphQL compiler, SQL executor, Trino driver, admin
     GraphQL API, Arrow Flight server, cache layer, MV subsystem, discovery pipeline, and all source adapters.
-    Structured log emission with trace_id/span_id correlation.'
+    Structured log emission with trace_id/span_id correlation.
+
+    (Amended 2026-10-04, OTEL STORAGE MAINTENANCE FOLLOWS THE ENGINE STORE:) The scheduled OTel storage
+    jobs act only on an engine that declares the Iceberg otel catalog (EngineBackend.has_otel_catalog:
+    Trino). Reclaim runs the Iceberg procedures expire_snapshots and remove_orphan_files on otel.signals.*,
+    and compaction writes the collector Parquet into those tables. A native engine (DuckDB) keeps its
+    telemetry in the dedicated ops store, which keeps no snapshots, leaves no orphan files and prunes its
+    own rows (REQ-1910), so on such an engine neither job sends a statement: the decision is made from the
+    declared capability before anything runs, never by catching the error a statement raises.'
   use_case: OTel instrumentation across all components gives operators unified traces, metrics, and logs
     in one backend.
   code:
   - provisa/otel_compat.py
   - provisa/api/app.py
+  - provisa/scheduler/jobs.py
   tests:
   - tests/unit/test_executor_trino.py
   - tests/unit/test_flight_modes.py
   - tests/unit/test_otel_requirements.py
   - tests/unit/test_otel_trace_pipeline.py
+  - tests/unit/test_otel_jobs_follow_the_engines_store.py
   since: 2026-01
   scenario: 'Given OTel is configured
 

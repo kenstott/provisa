@@ -748,6 +748,81 @@ async def _seed_sandbox_org(_log: logging.Logger) -> None:  # REQ-1598
     _log.info("sandbox org %s: %s", SANDBOX_ORG_ID, outcome)
 
 
+# (rel_id, source_table, target_table, source_column, target_column, cardinality, alias).
+# Seeded for the auto-registered graphql-demo source. Every source_column MUST be a column the demo
+# config lands for source_table (asserted by tests/unit/test_demo_relationship_keys.py): the mapper's
+# _detect_relationships keys a many-to-one on the raw GQL object field and cannot name-match it
+# (employee != employeeId), so it emits an empty source_column that these rows correct. schedules
+# keys on the landed employee_id scalar (config gql_selection "employee_id: employee { id }"), not
+# the raw employee object field -- keying on a column the config does not land refuses the startup
+# column-drop of the stale object field.
+_DEMO_GRAPHQL_RELATIONSHIPS: tuple[tuple[str, str, str, str, str, str, str | None], ...] = (
+    (
+        "employees_to_assignments",
+        "employees",
+        "assignments",
+        "id",
+        "employee_id",
+        "one-to-many",
+        None,
+    ),
+    (
+        "pets-to-shelter-breed",
+        "pets",
+        "animal_breeds",
+        "breed_name",
+        "name",
+        "many-to-one",
+        "BREED_INFO",
+    ),
+    (
+        "shelter-breed-to-pets",
+        "animal_breeds",
+        "pets",
+        "name",
+        "breed_name",
+        "one-to-many",
+        "PETS_OF_BREED",
+    ),
+    (
+        "pets-to-shelter-assignments",
+        "pets",
+        "assignments",
+        "breed_name",
+        "breed_name",
+        "many-to-one",
+        None,
+    ),
+    (
+        "shelter-assignments-to-pets",
+        "assignments",
+        "pets",
+        "breed_name",
+        "breed_name",
+        "one-to-many",
+        None,
+    ),
+    (
+        "shelter-assignments-to-employees",
+        "assignments",
+        "employees",
+        "employee_id",
+        "id",
+        "many-to-one",
+        None,
+    ),
+    (
+        "gql_remote__graphql-demo__schedules__employee",
+        "schedules",
+        "employees",
+        "employee_id",
+        "id",
+        "many-to-one",
+        "IS_EMPLOYEE",
+    ),
+)
+
+
 async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
     """Auto-register the graphql-demo source when GRAPHQL_DEMO_ENABLED is truthy.
 
@@ -841,62 +916,15 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
 
                 async with _demo_pool.acquire() as _rel_conn:
                     _pg_rel = _rel_conn
-                    for _rel_id, _src_tbl, _tgt_tbl, _src_col, _tgt_col, _card, _alias in [
-                        (
-                            "employees_to_assignments",
-                            "employees",
-                            "assignments",
-                            "id",
-                            "employee_id",
-                            "one-to-many",
-                            None,
-                        ),
-                        (
-                            "pets-to-shelter-breed",
-                            "pets",
-                            "animal_breeds",
-                            "breed_name",
-                            "name",
-                            "many-to-one",
-                            "BREED_INFO",
-                        ),
-                        (
-                            "shelter-breed-to-pets",
-                            "animal_breeds",
-                            "pets",
-                            "name",
-                            "breed_name",
-                            "one-to-many",
-                            "PETS_OF_BREED",
-                        ),
-                        (
-                            "pets-to-shelter-assignments",
-                            "pets",
-                            "assignments",
-                            "breed_name",
-                            "breed_name",
-                            "many-to-one",
-                            None,
-                        ),
-                        (
-                            "shelter-assignments-to-pets",
-                            "assignments",
-                            "pets",
-                            "breed_name",
-                            "breed_name",
-                            "one-to-many",
-                            None,
-                        ),
-                        (
-                            "shelter-assignments-to-employees",
-                            "assignments",
-                            "employees",
-                            "employee_id",
-                            "id",
-                            "many-to-one",
-                            None,
-                        ),
-                    ]:
+                    for (
+                        _rel_id,
+                        _src_tbl,
+                        _tgt_tbl,
+                        _src_col,
+                        _tgt_col,
+                        _card,
+                        _alias,
+                    ) in _DEMO_GRAPHQL_RELATIONSHIPS:
                         try:
                             await rel_repo.upsert(
                                 _pg_rel,
@@ -907,36 +935,12 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                                     source_column=_src_col,
                                     target_column=_tgt_col,
                                     cardinality=Cardinality(_card),
-                                    **({} if _alias is None else {"alias": _alias}),
+                                    alias=_alias,
                                 ),
                                 origin="seed",
                             )
                         except Exception:
                             _log.warning("Failed to upsert %s", _rel_id, exc_info=True)
-                    # schedules.employee is a JSONB blob with no employee_id scalar exposed in
-                    # the GQL schema, so _infer_fk_columns returns ("", ""). Correct it here.
-                    try:
-                        await rel_repo.upsert(
-                            _pg_rel,
-                            Relationship(
-                                id="gql_remote__graphql-demo__schedules__employee",
-                                source_table_id="schedules",
-                                target_table_id="employees",
-                                source_column="employee",
-                                target_column="id",
-                                cardinality=Cardinality("many-to-one"),
-                                alias="IS_EMPLOYEE",
-                                graphql_alias="employee",
-                                source_json_key="id",
-                                disable_cypher=True,
-                            ),
-                            origin="seed",
-                        )
-                    except Exception:
-                        _log.warning(
-                            "Failed to upsert gql_remote__graphql-demo__schedules__employee",
-                            exc_info=True,
-                        )
             _log.info(
                 "Auto-registered graphql-demo source (%d tables, %d functions)",
                 len(tables),
@@ -949,8 +953,17 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                 exc_info=True,
             )
 
+    async def _register_graphql_demo_as_one_change() -> None:
+        # REQ-1524: the seed writes the model (its source, tables and relationships), and every
+        # model write is part of a change. This worker runs after the boot's change has closed,
+        # so it opens its own.
+        from provisa.core import model_change
+
+        async with model_change.scope("register graphql-demo"):
+            await _register_graphql_demo()
+
     # REQ-1882: introspects the demo service and rebuilds schemas — a background worker.
-    spawn_background(_register_graphql_demo(), name="graphql-demo-register")
+    spawn_background(_register_graphql_demo_as_one_change(), name="graphql-demo-register")
 
 
 async def _capture_config_boot_snapshot(_log: logging.Logger) -> None:

@@ -51,3 +51,38 @@ def test_every_many_to_one_target_column_is_unique_in_the_demo_data(path):
         assert not dupes, (
             f"{path}: {rel_id} is many-to-one on {table}.{column} but it repeats: {dupes}"
         )
+
+
+def _config_table_columns(path: str) -> dict[str, set[str]]:
+    cfg = yaml.safe_load(Path(path).read_text())
+    cols: dict[str, set[str]] = {}
+    for t in cfg.get("tables", []):
+        cols.setdefault(t["table"], set()).update(c["name"] for c in t.get("columns", []))
+    return cols
+
+
+@pytest.mark.parametrize("path", _CONFIGS)
+def test_seeded_graphql_demo_relationships_key_on_landed_columns(path):
+    """Every relationship the boot seeds for the graphql-demo source must key on a column the config
+    lands for its source/target table. A relationship on a column the config does not land refuses
+    the startup column-drop of the stale column (ColumnDropRefused on ``schedules.employee``): the
+    schedules->employees FK must key on the landed ``employee_id`` scalar, not the raw ``employee``
+    object field the config no longer lands. Tables registered only from live GQL introspection (not
+    in the static config, e.g. ``animal_breeds``) are out of scope here."""
+    from provisa.api.app_startup import _DEMO_GRAPHQL_RELATIONSHIPS
+
+    cols = _config_table_columns(path)
+    checked = 0
+    for rel_id, src_tbl, tgt_tbl, src_col, tgt_col, *_rest in _DEMO_GRAPHQL_RELATIONSHIPS:
+        if src_tbl in cols:
+            checked += 1
+            assert src_col in cols[src_tbl], (
+                f"{path}: {rel_id} keys source_column {src_tbl}.{src_col}, not a landed column: "
+                f"{sorted(cols[src_tbl])}"
+            )
+        if tgt_tbl in cols:
+            assert tgt_col in cols[tgt_tbl], (
+                f"{path}: {rel_id} keys target_column {tgt_tbl}.{tgt_col}, not a landed column: "
+                f"{sorted(cols[tgt_tbl])}"
+            )
+    assert checked, f"{path}: no seeded relationship had a statically-configured source table"

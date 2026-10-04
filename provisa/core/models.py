@@ -2245,6 +2245,19 @@ class ProvisaConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _commands_share_one_address_space(self) -> "ProvisaConfig":
+        # REQ-1385: functions and webhooks are both commands, named in one address space.
+        names = [f.name for f in self.functions] + [w.name for w in self.webhooks]
+        seen: set[str] = set()
+        dupes = sorted({n for n in names if n in seen or seen.add(n)})
+        if dupes:
+            raise ValueError(
+                f"command names used more than once (functions and webhooks share one address "
+                f"space): {dupes}"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_metrics(self) -> "ProvisaConfig":
         # REQ-1317: metric names are unique. REQ-1318: view_metrics references resolve.
         seen: set[str] = set()

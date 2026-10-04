@@ -59,3 +59,72 @@ def test_notify_targets_the_table_channel_the_provider_listens_on() -> None:
     assert f"pg_notify('{CHANNEL_PREFIX}orders'" in sql
     assert "provisa_notify_app_orders" in sql
     assert "ON app.orders" in sql
+
+
+def test_a_view_is_served_by_polling_without_attempting_a_trigger(caplog) -> None:
+    # REQ-258: a view cannot carry a row trigger, so its subscription uses watermark polling; that
+    # is decided up front from the catalog, never by a failed CREATE TRIGGER and a warning (the
+    # control-plane meta views -- roles_domain_access and the rest -- hit this at startup).
+    import asyncio
+    import logging
+
+    from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
+
+    class _FakeConn:
+        dialect = "postgresql"
+
+        def __init__(self, base: set[tuple[str, str]]) -> None:
+            self._base = base
+            self.executed: list[str] = []
+
+        async def fetch(self, sql, schemas, names):  # noqa: ANN001
+            assert "relkind" in sql  # the up-front base-table decision
+            return [
+                {"schema": s, "name": n}
+                for s, n in zip(schemas, names, strict=False)
+                if (s, n) in self._base
+            ]
+
+        async def execute(self, sql):  # noqa: ANN001
+            self.executed.append(sql)
+            return "OK"
+
+    conn = _FakeConn(base={("org_default", "orders")})
+    tables = [
+        {"source_id": "cp", "schema_name": "org_default", "table_name": "orders"},  # base table
+        {
+            "source_id": "cp",
+            "schema_name": "org_default",
+            "table_name": "roles_domain_access",
+        },  # view
+        {"source_id": "api", "schema_name": "api", "table_name": "list_pets"},  # non-pg: ignored
+    ]
+    source_types = {"cp": "postgresql", "api": "openapi"}
+    with caplog.at_level(logging.WARNING, logger="provisa.subscriptions.pg_triggers"):
+        installed = asyncio.run(ensure_pg_notify_triggers(conn, tables, source_types))
+
+    assert installed == {"orders"}  # only the base table got a trigger
+    assert len(conn.executed) == 1 and "org_default.orders" in conn.executed[0]
+    # The view triggered no CREATE and no "failed ... fall back to polling" warning.
+    assert not [r for r in caplog.records if "roles_domain_access" in r.getMessage()]
+
+
+def test_a_non_postgres_control_plane_installs_no_triggers_and_does_not_query_pg_catalog() -> None:
+    # REQ-258: LISTEN/NOTIFY is PostgreSQL-only. On a SQLite demo/dev control plane the walk must
+    # install nothing and must NOT run the PG-only pg_class probe (it would fail the whole walk).
+    import asyncio
+
+    from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
+
+    class _SqliteConn:
+        dialect = "sqlite"
+
+        async def fetch(self, *_a, **_k):  # noqa: ANN002, ANN003
+            raise AssertionError("pg_class probe must not run on a non-postgres control plane")
+
+        async def execute(self, *_a, **_k):  # noqa: ANN002, ANN003
+            raise AssertionError("no trigger DDL on a non-postgres control plane")
+
+    tables = [{"source_id": "cp", "schema_name": "org_default", "table_name": "orders"}]
+    installed = asyncio.run(ensure_pg_notify_triggers(_SqliteConn(), tables, {"cp": "postgresql"}))
+    assert installed == set()

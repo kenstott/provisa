@@ -117,6 +117,13 @@ def attach(admin_db: "Database", *, commit: _Commit, projected: frozenset[str]) 
     _platform, _commit, _projected_tables = admin_db, commit, projected
 
 
+def unbind() -> None:
+    """Leave the current context's change. Detached work (a background worker) outlives the change
+    its spawner was in, which closes when the spawner finishes; a write the worker made inside it
+    would then find it closed. Detached work that writes the model opens a change of its own."""
+    _SCOPE.set(None)
+
+
 def detach() -> None:
     """The process's platform plane is gone (shutdown)."""
     global _platform, _commit
@@ -145,7 +152,7 @@ def record(
     writes.append((verb, table))
 
 
-def name(action: str, kind: str, ident: object) -> None:
+def name(action: str, kind: str, ident: str | int) -> None:
     """Name the change a writer is making, for the commit's message: ``upsert relationship
     orders-to-customers``. Outside a scope, or in one that commits nothing, it says nothing."""
     current = _SCOPE.get()

@@ -67,24 +67,60 @@ FOR EACH ROW EXECUTE FUNCTION {fn}();
 """
 
 
+async def _base_tables(conn: Any, pairs: list[tuple[str, str]]) -> set[tuple[str, str]]:
+    """The subset of ``(schema, table)`` pairs that are ordinary or partitioned base tables
+    (``pg_class.relkind`` in ``r``/``p``) — the only relations a row-level AFTER trigger can be
+    installed on. A view, materialized view, or foreign table is excluded, as is a name with no
+    relation yet. One catalog query, so the decision is made up front, not by a failed CREATE."""
+    if not pairs:
+        return set()
+    schemas = [s for s, _ in pairs]
+    names = [t for _, t in pairs]
+    rows = await conn.fetch(
+        """
+        SELECT n.nspname AS schema, c.relname AS name
+        FROM unnest($1::text[], $2::text[]) AS want(schema, name)
+        JOIN pg_namespace n ON n.nspname = want.schema
+        JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = want.name
+        WHERE c.relkind IN ('r', 'p')
+        """,
+        schemas,
+        names,
+    )
+    return {(r["schema"], r["name"]) for r in rows}
+
+
 async def ensure_pg_notify_triggers(  # REQ-258
     conn: Any,
     tables: list[dict],
     source_types: dict[str, str],
 ) -> set[str]:
-    """Idempotently install notify triggers on all registered PostgreSQL tables.
+    """Idempotently install notify triggers on registered PostgreSQL BASE tables.
 
-    Returns the set of table_names where triggers were successfully installed.
-    Tables where installation fails (e.g. insufficient privilege) are omitted;
-    callers should fall back to polling for those tables.
+    Returns the set of table_names where triggers were installed. A relation that is a view or
+    materialized view cannot carry a row trigger, so its subscription is served by watermark
+    polling (REQ-258) -- that is decided up front from the catalog, never discovered by a failed
+    CREATE TRIGGER. A base table whose install fails for another reason (e.g. insufficient
+    privilege) is omitted too, and its caller likewise falls back to polling.
     """
+    # LISTEN/NOTIFY and the pg_class base-table probe are PostgreSQL-only: on any other control
+    # plane (e.g. a SQLite demo/dev plane) there are no notify triggers at all, so every table's
+    # subscription is served by polling. Returning early also keeps the PG-only catalog query in
+    # _base_tables from running against a non-PG plane (it would otherwise fail the whole walk).
+    if getattr(conn, "dialect", None) != "postgresql":
+        return set()
+    pg_tables = [
+        (tbl.get("schema_name", "public"), tbl["table_name"])
+        for tbl in tables
+        if source_types.get(tbl["source_id"], "") == "postgresql"
+    ]
+    base = await _base_tables(conn, pg_tables)
     installed: set[str] = set()
-    for tbl in tables:
-        source_type = source_types.get(tbl["source_id"], "")
-        if source_type != "postgresql":
+    for schema, table in pg_tables:
+        if (schema, table) not in base:
+            # A view/matview (or a not-yet-created relation): polling serves it, by design.
+            log.debug("Subscription on %s.%s uses polling (not a base table)", schema, table)
             continue
-        schema = tbl.get("schema_name", "public")
-        table = tbl["table_name"]
         try:
             await conn.execute(_trigger_sql(schema, table))
             installed.add(table)

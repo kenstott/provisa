@@ -273,6 +273,21 @@ def test_is_referential_constraints_populated():
     assert dele == "NO ACTION"
 
 
+def test_a_join_to_a_column_that_is_no_key_is_not_published_as_a_foreign_key():
+    # A relationship whose target column is no primary or unique key of its table is a semantic
+    # join: PostgreSQL has no foreign key like it, and a client reflecting the catalog must still
+    # read referential_constraints instead of failing on it.
+    ctx = _make_ctx_with_fk()
+    ctx.joins[("Dog", "breed")].target_column = "name"
+    state = _make_state(ctx)
+    db = _build_catalog_db("alice", state)
+    fks = db.execute("SELECT conname FROM _pg_constraint WHERE contype = 'f'").fetchall()
+    rcs = db.execute("SELECT constraint_name FROM _is_referential_constraints").fetchall()
+    db.close()
+    assert fks == []
+    assert rcs == []
+
+
 def test_classify_copy_is_passthrough():
     assert classify("COPY dogs FROM STDIN") == "PASS_THROUGH"
 
