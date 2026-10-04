@@ -127,6 +127,14 @@ def _install_fake_aisuite(monkeypatch, responses):
     return holder
 
 
+@pytest.fixture(autouse=True)
+def _a_configured_vendor_key(monkeypatch):
+    """The chat runs only once its vendor's key is set (the readiness check, REQ-1794); these
+    tests fake the vendor's client, so they state the key it is configured with rather than
+    depend on one in the environment. A test of the unconfigured case removes it itself."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+
 def _state():
     ctx = SimpleNamespace(tables={}, joins={})
     return SimpleNamespace(
