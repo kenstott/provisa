@@ -195,6 +195,10 @@ async function bootstrapBackend(BACKEND_URL: string, yaml: string, orgId: string
 }
 
 export default async function globalSetup() {
+  // REQ-1922: the regions-demo project brings up its own two-region instance and boots no default
+  // webServer (playwright.config.ts). There is no core backend to bootstrap, so this global setup
+  // has nothing to do — and attempting the PUT /admin/config would fail with ECONNREFUSED.
+  if (process.env.PROVISA_E2E_ONLY_REGIONS === "1") return;
   // Start exactly the shared-stack containers (and, separately, the neo4j export container)
   // this invocation's own spec-file/-g arguments actually need — see resolve-needed-sources.ts.
   // PROVISA_E2E_SKIP_SHARED_SOURCES=1 forces both to empty regardless, for a case the resolver

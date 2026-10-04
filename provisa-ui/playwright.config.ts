@@ -162,6 +162,19 @@ const IS_AMD64 = process.arch === "x64";
 // `--project regions-demo` (infra-features' CI lane). A skip would be a defect, so it is NOT gated by
 // an env flag -- selecting the project IS the gate.
 const REGIONS_SPECS = ["**/regions-demo.spec.ts"];
+// The webServer array below is process-global: Playwright boots every entry for ANY run, whatever
+// project is selected. The regions-demo project brings up its OWN two-region instance and addresses
+// none of the core backends, so for a run that selects ONLY regions-demo those core/vite/demo
+// servers are pure dead weight — and worse, the core DuckDB backend emits org_e2e MV-reclamation
+// errors into the very log the maintainer reads when proving the demo. When regions-demo is the only
+// project asked for, start no default webServers at all (the spec needs none).
+const SELECTED_PROJECTS = process.argv.flatMap((a, i) =>
+  a === "--project" ? [process.argv[i + 1]] : a.startsWith("--project=") ? [a.slice("--project=".length)] : [],
+);
+const ONLY_REGIONS_DEMO = SELECTED_PROJECTS.length > 0 && SELECTED_PROJECTS.every((p) => p === "regions-demo");
+// global-setup.ts runs unconditionally (Playwright has one global setup, not one per project). When
+// no default webServer is booted it has no core backend to PUT /admin/config to, so it must no-op.
+if (ONLY_REGIONS_DEMO) process.env.PROVISA_E2E_ONLY_REGIONS = "1";
 // The vault a source's password is stored in encrypts at rest, and the key is what authorizes
 // reading it back (REQ-685/REQ-1695). This host has no OS keychain for the store to mint one in,
 // so the key is supplied explicitly — exactly as every deployment that stores secrets must, and as
@@ -404,7 +417,7 @@ export default defineConfig({
     baseURL: `http://localhost:${E2E_UI_PORT}`,
     headless: true,
   },
-  webServer: [
+  webServer: ONLY_REGIONS_DEMO ? [] : [
     {
       command: "npm run dev",
       port: E2E_UI_PORT,
