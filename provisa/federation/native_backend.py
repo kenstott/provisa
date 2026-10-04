@@ -356,10 +356,8 @@ class NativeEngineBackend(EngineBackend):
             # KeyError('attach') caught as "table not queryable" for every such table at startup,
             # though the table is queryable from its replica (REQ-947/951). Decide from the
             # connector's declared reach, not by catching the failure.
-            _type = getattr(src, "type", None)
-            stype = getattr(_type, "value", _type)
-            if not isinstance(stype, str):
-                return
+            # A registered source always carries its type; one without fails here, by name.
+            stype: str = src.type.value
             try:
                 if not self.engine.connector_for(stype).reads_in_place:
                     return
