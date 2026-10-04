@@ -825,6 +825,19 @@ def pytest_collection_modifyitems(config, items):  # pyright: ignore
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _the_session_is_a_launched_node():
+    """A process is launched in a mode and a region before it serves (REQ-1916, REQ-1922): the
+    launch binds them (``process_region.bind_from_environment``, the top of boot). An app built
+    in-process by a fixture runs no launch, so the session stands in for it: a node of a platform
+    that declares no regions, in the one implicit region. A test of regions binds its own and
+    restores this one."""
+    from provisa.core import process_region
+
+    process_region.bind_launch({}, requested=None)
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _audit_writer_lives_with_the_session():
     """The audit writer's lifetime is its application's (the lifespan starts and stops it). An app
     built in-process by a fixture runs no lifespan, so the session stands in for it: the writer
