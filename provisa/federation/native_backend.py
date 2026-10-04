@@ -61,10 +61,12 @@ _log = logging.getLogger(__name__)
 #   (api/startup_seed.py). Its rows are compiler-emitted views, never a remote database.
 _NO_REMOTE_SOURCE_IDS = frozenset({"provisa-admin", "__derived__"})
 
-# Attach refusals that are the declared state of an (engine, source type) pair — the connector
-# details carry no attach entry (KeyError), or the engine has no connector for the type
-# (UnreachableSource, REQ-841). They cannot change until the registry does.
-_DECLARED_REFUSALS: tuple[type[BaseException], ...] = (KeyError, UnreachableSource)
+# Attach refusals that are the declared state of an (engine, source type) pair — the engine has no
+# connector for the type (UnreachableSource, REQ-841). A source whose connector simply has no live
+# attach is now decided up front from its reach (``reads_in_place``) and never attempts an attach,
+# so a missing details key is a real bug, not a declared refusal. They cannot change until the
+# registry does.
+_DECLARED_REFUSALS: tuple[type[BaseException], ...] = (UnreachableSource,)
 
 
 def libpq_dsn(url: "URL") -> str:
@@ -109,12 +111,15 @@ class NativeEngineBackend(EngineBackend):
     # source not yet materialized) — logged and skipped so one bad table never fails other queries.
     # A subclass ORs in its driver error type. Anything else is a real bug and propagates.
     #
-    # UnreachableSource belongs here for the same reason: reachability is binary and engine-scoped
-    # (REQ-841), so on a PARTIAL/SELF_ONLY engine some registered source types simply have no
-    # connector — the seeded provisa-otel iceberg store on the Synapse engine, for example. That is
-    # the declared state of that pair, not a failure of the attach loop, and reconcile_landed_tables
-    # already skips the same condition the same way (see its `except UnreachableSource: continue`).
-    _attach_errors: tuple[type[BaseException], ...] = (KeyError, UnreachableSource)
+    # UnreachableSource belongs here: reachability is binary and engine-scoped (REQ-841), so on a
+    # PARTIAL/SELF_ONLY engine some registered source types simply have no connector — the seeded
+    # provisa-otel iceberg store on the Synapse engine, for example. That is the declared state of
+    # that pair, not a failure of the attach loop, and reconcile_landed_tables already skips the
+    # same condition the same way (see its `except UnreachableSource: continue`). KeyError is NOT
+    # here: a source whose connector has no attach face is decided up front from the connector's
+    # reach (`reads_in_place`) and never reaches attach_source, so a missing details key is now a
+    # real bug that propagates rather than a swallowed "not queryable" for every API table.
+    _attach_errors: tuple[type[BaseException], ...] = (UnreachableSource,)
 
     # The marker the runtime connection's driver binds a value at, for the API-result cache
     # terminal (``isolated_sync``). None: the engine's subclass declares none, and the cache
@@ -343,6 +348,22 @@ class NativeEngineBackend(EngineBackend):
                 return
             tried.add(key)
             if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
+                return
+            # Only a source the engine reads LIVE in place (attach/scan) is attached here. A
+            # FETCH/DIRECT source (API/push adapter or native driver -- openapi, graphql_remote,
+            # the dq sources) is read from its replica or the API cache, never attached, so the
+            # walk must not attempt an attach its connector has no face for: that raised a
+            # KeyError('attach') caught as "table not queryable" for every such table at startup,
+            # though the table is queryable from its replica (REQ-947/951). Decide from the
+            # connector's declared reach, not by catching the failure.
+            _type = getattr(src, "type", None)
+            stype = getattr(_type, "value", _type)
+            if not isinstance(stype, str):
+                return
+            try:
+                if not self.engine.connector_for(stype).reads_in_place:
+                    return
+            except UnreachableSource:
                 return
             merged = SimpleNamespace(
                 id=getattr(src, "id", None),
