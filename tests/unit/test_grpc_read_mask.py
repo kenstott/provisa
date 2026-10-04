@@ -255,7 +255,9 @@ def _context():
 async def _run(servicer, request, context, result):
     from provisa.transpiler.router import Route
 
-    plan = SimpleNamespace(route=Route.CACHE, source_id=None, cache_hit=None, warnings=[])
+    plan = SimpleNamespace(
+        route=Route.CACHE, source_id=None, cache_hit=None, warnings=[], materialize=None
+    )
     with (
         patch(
             "provisa.pgwire._pipeline._govern_and_route_compiled",

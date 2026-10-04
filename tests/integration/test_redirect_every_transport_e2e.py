@@ -162,12 +162,75 @@ def _cypher_http(boot) -> dict:
     return out["redirect"]
 
 
+def _grpc(boot) -> dict:
+    """A streamed Query RPC: the call's metadata forces the delivery; no message is streamed and
+    the handle rides the trailing metadata."""
+    import grpc
+    from google.protobuf.message_factory import GetMessageClass
+
+    from tests.grpc_proto_client import role_descriptor_pool
+
+    _pool, svc = role_descriptor_pool(f"http://127.0.0.1:{boot.ports['http']}", _ROLE)
+    method = next(
+        m
+        for m in svc.methods
+        if m.name.startswith("Query")
+        and "orders" in m.name.lower()
+        and not m.name.endswith(("Aggregate", "GroupBy", "Batch"))
+    )
+    req_cls = GetMessageClass(method.input_type)
+    resp_cls = GetMessageClass(method.output_type)
+    channel = grpc.insecure_channel(f"127.0.0.1:{boot.ports['grpc']}")
+    try:
+        rpc = channel.unary_stream(
+            f"/{svc.full_name}/{method.name}",
+            request_serializer=req_cls.SerializeToString,
+            response_deserializer=resp_cls.FromString,
+        )
+        call = rpc(
+            req_cls(),
+            metadata=(
+                ("x-provisa-role", _ROLE),
+                ("x-provisa-redirect", "true"),
+                ("x-provisa-redirect-format", "parquet"),
+            ),
+            timeout=120,
+        )
+        assert list(call) == []  # nothing streamed: the rows were delivered
+        trailers = dict(call.trailing_metadata())
+        return json.loads(trailers["x-provisa-redirect"])
+    finally:
+        channel.close()
+
+
+def _bolt(boot) -> dict:
+    """Bolt: the transaction metadata forces the delivery; no record comes back and the handle is
+    in the RUN's summary."""
+    from neo4j import GraphDatabase, Query
+
+    driver = GraphDatabase.driver(f"bolt://127.0.0.1:{boot.ports['bolt']}", auth=(_ROLE, ""))
+    try:
+        with driver.session() as sess:
+            result = sess.run(
+                Query(
+                    "MATCH (n:Orders) RETURN n.id AS id",
+                    metadata={"provisa_redirect": "true", "provisa_redirect_format": "parquet"},
+                )
+            )
+            assert list(result) == []
+            return result.consume().metadata["redirect"]
+    finally:
+        driver.close()
+
+
 _TRANSPORTS = {
     "graphql": _graphql,
     "jsonapi": _jsonapi,
     "rest": _rest,
     "sql_http": _sql_http,
     "cypher_http": _cypher_http,
+    "grpc": _grpc,
+    "bolt": _bolt,
 }
 
 

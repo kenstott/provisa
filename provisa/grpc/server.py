@@ -24,6 +24,7 @@ parallel.
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
 import re
 import sys
@@ -394,11 +395,12 @@ class ProvisaServicer:  # REQ-045, REQ-143
         report(current_org.get(), msg.ByteSize())
         return msg
 
-    def _emit_trailing_metadata(self, context, warnings=()) -> None:
+    def _emit_trailing_metadata(self, context, warnings=(), redirect: dict | None = None) -> None:
         """Attach the RPC's out-of-band notices to its trailing metadata, in ONE call (a second
-        ``set_trailing_metadata`` replaces the first): the REQ-1137 license nag, once per peer, and
-        what the statement's answer says about itself (REQ-1350) as ``x-provisa-warnings``,
-        ASCII-escaped JSON (gRPC metadata values are ASCII). The response stream is untouched."""
+        ``set_trailing_metadata`` replaces the first): the REQ-1137 license nag, once per peer,
+        what the statement's answer says about itself (REQ-1350) as ``x-provisa-warnings``, and a
+        delivered result's handle (REQ-1194) as ``x-provisa-redirect`` -- ASCII-escaped JSON (gRPC
+        metadata values are ASCII). The response stream is untouched."""
         from provisa.core.statement_warnings import header_value
 
         metadata: list[tuple[str, str]] = []
@@ -412,8 +414,35 @@ class ProvisaServicer:  # REQ-045, REQ-143
             log.debug("gRPC license nag emission skipped", exc_info=True)
         if warnings:
             metadata.append(("x-provisa-warnings", header_value(list(warnings))))
+        if redirect is not None:
+            metadata.append(("x-provisa-redirect", json.dumps(redirect, default=str)))
         if metadata:
             context.set_trailing_metadata(tuple(metadata))
+
+    @staticmethod
+    def _forced_delivery(metadata: dict, role_id: str):  # REQ-1194
+        """The delivery the call's metadata forces -- ``x-provisa-redirect: true``, with
+        ``x-provisa-redirect-format`` and ``x-provisa-redirect-threshold`` as on HTTP -- or None.
+        ``ValueError`` names a format or threshold that cannot be read."""
+        from provisa.executor.redirect import delivery_from_request, parse_redirect_format
+
+        fmt = metadata.get("x-provisa-redirect-format")
+        threshold = metadata.get("x-provisa-redirect-threshold")
+        return delivery_from_request(
+            force_redirect=str(metadata.get("x-provisa-redirect", "")).lower() == "true",
+            redirect_format=parse_redirect_format(fmt) if fmt else None,
+            threshold=int(threshold) if threshold is not None else None,
+            role=role_id,
+        )
+
+    async def _delivery_or_abort(self, context, role_id: str):
+        """:meth:`_forced_delivery` for this call, aborting it INVALID_ARGUMENT when the
+        metadata cannot be read (``(False, None)``)."""
+        try:
+            return True, self._forced_delivery(dict(context.invocation_metadata()), role_id)
+        except ValueError as exc:
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"invalid redirect: {exc}")
+            return False, None
 
     def _resolve_command_rpc(self, cmd_pascal: str) -> str | None:
         """Reverse the Call{Cmd} RPC name to the registered command name (REQ-1156).
@@ -678,6 +707,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
         def _norm(s: str) -> str:
             return s.replace("_", "").lower()
 
+        # REQ-1194: a delivery the call forces; a streamed result is never landed on a threshold.
+        ok, delivery = await self._delivery_or_abort(context, role_id)
+        if not ok:
+            return
         try:
             # REQ-544: the call's own `x-provisa-cache` / `x-provisa-cache-ttl` metadata opt-in.
             # REQ-1897: serve_cached — an opted-in request whose entry exists comes back as a
@@ -687,12 +720,19 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 role_id,
                 exec_params=bound_params or None,
                 state=state,
+                deliver=delivery,
                 cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),
                 serve_cached=True,
                 sdl_joins=False,
             )
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+            return
+        if plan.materialize is not None:
+            # Delivered to the results store by the pipeline's materialize stage: no row is
+            # streamed, and the handle rides the trailing metadata.
+            delivered = await _execute_plan(plan, state)
+            self._emit_trailing_metadata(context, plan.warnings, redirect=delivered.redirect)
             return
 
         def _col_fields_for(out_cols: list[str]) -> list[tuple[str, object, MaskTree | None]]:
@@ -1046,12 +1086,16 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return None
         compiled = compiled_queries[0]
 
+        ok, delivery = await self._delivery_or_abort(context, role_id)  # REQ-1194
+        if not ok:
+            return None
         try:
             plan = await _govern_and_route_compiled(
                 compiled.sql,
                 role_id,
                 exec_params=compiled.params or None,
                 state=state,
+                deliver=delivery,
                 cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),  # REQ-544
                 sdl_joins=True,
             )
@@ -1059,7 +1103,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             return None
         result = await _execute_plan(plan, state)
-        self._emit_trailing_metadata(context, plan.warnings)  # REQ-1137
+        # REQ-1137; REQ-1194: a delivered result's handle rides the trailing metadata, and the
+        # message answered is the empty aggregate.
+        self._emit_trailing_metadata(context, plan.warnings, redirect=result.redirect)
         row = result.rows[0] if result.rows else ()
         top, nested = self._split_agg_columns(compiled.columns, row)
         return self._build_aggregate_result_message(type_name, top, nested)
@@ -1147,12 +1193,16 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return
         compiled = compiled_queries[0]
 
+        ok, delivery = await self._delivery_or_abort(context, role_id)  # REQ-1194
+        if not ok:
+            return
         try:
             plan = await _govern_and_route_compiled(
                 compiled.sql,
                 role_id,
                 exec_params=compiled.params or None,
                 state=state,
+                deliver=delivery,
                 cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),  # REQ-544
                 sdl_joins=True,
             )
@@ -1160,7 +1210,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             return
         result = await _execute_plan(plan, state)
-        self._emit_trailing_metadata(context, plan.warnings)  # REQ-1137
+        # REQ-1137; REQ-1194: a delivered result streams no group and names its handle instead.
+        self._emit_trailing_metadata(context, plan.warnings, redirect=result.redirect)
+        if result.redirect is not None:
+            return
 
         from provisa.executor.serialize import _convert_value
         from provisa.grpc.query_ir import split_group_by_columns
