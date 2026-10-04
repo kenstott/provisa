@@ -116,6 +116,8 @@ async def test_preview_then_register_then_tables_reports_the_cypher(admin_client
         host="localhost",
         port=_neo4j_port(),
         database="neo4j",
+        # REQ-1907: a neo4j table is landed, so its source carries the TTL its refresh runs on.
+        cache_ttl=300,
     )
 
     preview = (
@@ -177,6 +179,8 @@ async def test_register_without_cypher_is_refused(admin_client):
         host="localhost",
         port=_neo4j_port(),
         database="neo4j",
+        # REQ-1907: a neo4j table is landed, so its source carries the TTL its refresh runs on.
+        cache_ttl=300,
     )
     result = (
         await _gql(
