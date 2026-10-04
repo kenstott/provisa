@@ -3604,7 +3604,7 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "protobuf", specifier = ">=6.33.5,<7" },
     { name = "provisa-duckdb-ext", marker = "extra == 'embedded'", specifier = ">=0.1.1" },
-    { name = "provisa-pg-ext", marker = "extra == 'dev'", specifier = "==0.1.0" },
+    { name = "provisa-pg-ext", marker = "extra == 'dev'", specifier = "==0.1.1" },
     { name = "psycopg", extras = ["binary"] },
     { name = "psycopg-pool" },
     { name = "psycopg2-binary" },
@@ -3662,11 +3662,11 @@ wheels = [
 
 [[package]]
 name = "provisa-pg-ext"
-version = "0.1.0"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b7/4e/ac956c62695d5459e71efc05db9bfde72b1194ff6eec7b11ced8579aa7a8/provisa_pg_ext-0.1.0.tar.gz", hash = "sha256:ad43e23bc34537120c66731bfa3cbb1b9a74c43b95ddfb6ef724158514ce9a19", size = 44284361, upload-time = "2026-07-19T23:12:04.704Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/31/3fc17c1b914eb786f47d55b6d243d0cc12d2c47474680e1dcf606e84fa1f/provisa_pg_ext-0.1.1.tar.gz", hash = "sha256:3593ce7f9e1bf46a78ab0f6345ca165c3cf81f42073a1cdab59c339f19102297", size = 48319488, upload-time = "2026-10-04T22:28:42.331Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/99/d9/5f5ead6ce88484cb15b42e8c315bf65306e0271341d17322221a3da6e251/provisa_pg_ext-0.1.0-py3-none-any.whl", hash = "sha256:1f35ca0dd1a58197a0b54d093a9401fe5754d9e9ccc2f669ca9abdd31e98eacd", size = 44524936, upload-time = "2026-07-19T23:12:00.873Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/33/bbef555a09fea93df4b9fab795beec971d3e23f3f79505f86bf22043b75a/provisa_pg_ext-0.1.1-py3-none-any.whl", hash = "sha256:0c3d817c8f47e067c2b2f9cda4163c8e0a075d1fa07e2f55e1d247647ffa9a9e", size = 48566756, upload-time = "2026-10-04T22:28:39.024Z" },
 ]
 
 [[package]]
