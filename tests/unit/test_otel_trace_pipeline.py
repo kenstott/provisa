@@ -636,6 +636,8 @@ class TestOtelStorageReclamation:
         calls: list[tuple[str, dict]] = []
 
         class _Engine:
+            has_otel_catalog = True  # Trino's runtime: the otel Iceberg catalog is its
+
             def execute_engine_sync(
                 self, sql, params=None, *, session_hints=None, authorization=None
             ):

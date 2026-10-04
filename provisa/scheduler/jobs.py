@@ -106,6 +106,13 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
 
     from provisa.api.app import state
 
+    # The Parquet is compacted into the Iceberg ``otel.signals`` tables, which only an engine that
+    # declares the ``otel`` catalog has (Trino). A native engine's telemetry is the dedicated ops
+    # store, written directly — there is nothing to compact into (REQ-302, REQ-303).
+    if state.federation_engine is None or not state.federation_engine.has_otel_catalog:
+        logger.debug("compact_otel: the engine has no otel Iceberg catalog — nothing to compact")
+        return
+
     # None = compact every date present, oldest first. A backfill pins one date.
     override = os.environ.get("OTEL_COMPACT_DATE")
     target = datetime.strptime(override, "%Y-%m-%d") if override else None
@@ -721,6 +728,13 @@ async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
         return
     engine = state.federation_engine
     if engine is None:
+        return
+    # Snapshots and orphan files are the Iceberg ``otel`` catalog's, and ALTER TABLE ... EXECUTE is
+    # Trino's procedure syntax: only an engine that declares that catalog has either. A native
+    # engine's telemetry is the dedicated ops store, which keeps no snapshots, leaves no orphan
+    # files and prunes its own rows (REQ-1910) — reclaim has nothing to do there (REQ-302, REQ-303).
+    if not engine.has_otel_catalog:
+        logger.debug("reclaim_otel: the engine has no otel Iceberg catalog — nothing to reclaim")
         return
 
     # Same seam as compaction: these ALTER TABLE ... EXECUTE statements go through the shared

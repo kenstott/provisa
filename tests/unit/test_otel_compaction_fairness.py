@@ -41,7 +41,8 @@ def compaction_state(monkeypatch):
         otel_s3_endpoint="https://object-store.invalid",
         otel_compact_file_chunk=50,
         otel_compact_max_files_per_run=500,
-        federation_engine=object(),
+        # Trino's runtime: compaction writes into the otel Iceberg catalog only it declares.
+        federation_engine=types.SimpleNamespace(has_otel_catalog=True),
     )
     monkeypatch.setattr("provisa.api.app.state", state, raising=False)
     return state
