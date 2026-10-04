@@ -131,11 +131,10 @@ def _stream(batches: list[list[tuple]], pulls: list[int] | None = None, fail_at:
 # -- key ------------------------------------------------------------------------------------------
 
 
-def test_raw_sql_key_is_disjoint_from_graphql_and_partitioned_by_role_and_params():
-    from provisa.cache.key import cache_key, raw_sql_cache_key
+def test_the_key_is_partitioned_by_role_and_params():
+    from provisa.cache.key import raw_sql_cache_key
 
     sql = "SELECT id FROM t WHERE id = $1"
-    assert raw_sql_cache_key(sql, [1], "r", wire_formats=None) != cache_key(sql, [1], "r", {})
     assert raw_sql_cache_key(sql, [1], "r", wire_formats=None) != raw_sql_cache_key(
         sql, [2], "r", wire_formats=None
     )

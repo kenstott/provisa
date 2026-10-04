@@ -2256,9 +2256,8 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
         state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
     )
     plan.replicas_read = residency.replicas_read
-    # REQ-1897: the result cache is GraphQL's Route.CACHE candidate route, extended here so every
-    # other raw-SQL surface that reaches this one chokepoint (Bolt, pgwire's non-COPY path) gets
-    # the same served-without-touching-the-engine hit -- with the same audit row and tier/egress
+    # REQ-1897: the one response cache, at the chokepoint every surface that reaches it shares: a
+    # hit is served without touching the engine -- with the same audit row and tier/egress
     # accounting a live execution would have written, not a silent skip.
     cached_result = await check_response_cache(plan, state)
     if cached_result is not None:
@@ -2353,10 +2352,8 @@ def _response_cache_key(plan: _Plan, *, wire_formats: list[int] | None) -> str |
     """This plan's raw-SQL cache key (REQ-1897), or ``None`` when it is not cacheable at all.
     ``wire_formats`` selects a passthrough ``pg_datarows`` entry (None: a decoded entry).
 
-    The raw-SQL namespace (``raw_sql_cache_key``) is disjoint from GraphQL's, so a raw-SQL reader
-    never meets a GraphQL response entry. Raw-SQL surfaces carry no separate RLS-rules dict — the
-    resolved identity is already baked into the governed ``plan.sql``/``plan.exec_params`` — so the
-    one residual fail-closed gate is a governed SQL string that itself depends on unresolved
+    The resolved identity is already baked into the governed ``plan.sql``/``plan.exec_params``, so
+    the one residual fail-closed gate is a governed SQL string that itself depends on unresolved
     session state (REQ-866's ``current_setting(`` check). A plan with no governed role is not
     cacheable.
     """
@@ -2382,7 +2379,7 @@ def _raw_cache_key(
     or None when the text depends on unresolved session state (REQ-866)."""
     from provisa.cache.key import is_cacheable, raw_sql_cache_key
 
-    cacheable, _ = is_cacheable(sql, {})
+    cacheable, _ = is_cacheable(sql)
     if not cacheable:
         return None
     return raw_sql_cache_key(sql, params, role_id, wire_formats=wire_formats, as_of=as_of)

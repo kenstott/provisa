@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.cache.key import cache_key
+from provisa.cache.key import raw_sql_cache_key
 from provisa.cache.middleware import (
     build_cache_headers,
     check_cache,
@@ -101,8 +101,8 @@ class TestRolePartitionedCache:
         store = FakeStore()
         sql = "SELECT * FROM orders"
 
-        key_analyst = cache_key(sql, [], "analyst", {})
-        key_admin = cache_key(sql, [], "admin", {})
+        key_analyst = raw_sql_cache_key(sql, [], "analyst", wire_formats=None)
+        key_admin = raw_sql_cache_key(sql, [], "admin", wire_formats=None)
         assert key_analyst != key_admin
 
         await store_result(store, key_analyst, {"rows": [1]}, ttl=60)
@@ -120,7 +120,7 @@ class TestRolePartitionedCache:
     async def test_same_role_same_key_hits(self):
         store = FakeStore()
         sql = "SELECT * FROM orders"
-        key = cache_key(sql, [], "analyst", {})
+        key = raw_sql_cache_key(sql, [], "analyst", wire_formats=None)
 
         miss = await check_cache(store, key)
         assert miss is None
@@ -135,7 +135,7 @@ class TestRolePartitionedCache:
 class TestMutationInvalidatesCache:
     async def test_mutation_invalidates_affected_table(self):
         store = FakeStore()
-        key = cache_key("SELECT * FROM orders", [], "analyst", {})
+        key = raw_sql_cache_key("SELECT * FROM orders", [], "analyst", wire_formats=None)
 
         await store_result(store, key, {"rows": [1]}, ttl=60, table_ids={42})
 
@@ -150,7 +150,7 @@ class TestMutationInvalidatesCache:
 
     async def test_mutation_does_not_invalidate_unrelated_table(self):
         store = FakeStore()
-        key = cache_key("SELECT * FROM orders", [], "analyst", {})
+        key = raw_sql_cache_key("SELECT * FROM orders", [], "analyst", wire_formats=None)
 
         await store_result(store, key, {"rows": [1]}, ttl=60, table_ids={42})
 

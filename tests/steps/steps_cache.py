@@ -9,10 +9,10 @@
 from __future__ import annotations
 
 import pytest
-from pytest_bdd import given, when, then, parsers, scenario
+from pytest_bdd import given, when, then, scenario
 
 from provisa.cache.policy import CachePolicy, resolve_policy
-from provisa.cache.key import cache_key
+from provisa.cache.key import raw_sql_cache_key
 
 
 @pytest.fixture
@@ -31,9 +31,9 @@ def cache_ttl_configured(shared_data):
     shared_data["stable_id"] = "abc-123"
 
     # Security context for cache key partitioning
-    shared_data["sql"] = "SELECT id, name FROM customers WHERE region = ?"
+    # The governed statement carries its resolved row filter inline (REQ-866).
+    shared_data["sql"] = "SELECT id, name FROM customers WHERE region = $1 AND tenant_id = 7"
     shared_data["params"] = ["EU"]
-    shared_data["rls_rules"] = {42: "tenant_id = 7"}
 
     assert shared_data["table_cache_ttl"] is not None
     assert shared_data["source_cache_ttl"] is not None
@@ -55,24 +55,18 @@ def resolve_cache_key_and_policy(shared_data):
     shared_data["resolved_ttl"] = ttl
 
     # Resolve cache keys for two distinct roles to validate security partitioning
-    key_role_a = cache_key(
-        sql=shared_data["sql"],
-        params=shared_data["params"],
-        role_id="role-analyst",
-        rls_rules=shared_data["rls_rules"],
+    key_role_a = raw_sql_cache_key(
+        shared_data["sql"], shared_data["params"], "role-analyst", wire_formats=None
     )
-    key_role_b = cache_key(
-        sql=shared_data["sql"],
-        params=shared_data["params"],
-        role_id="role-admin",
-        rls_rules=shared_data["rls_rules"],
+    key_role_b = raw_sql_cache_key(
+        shared_data["sql"], shared_data["params"], "role-admin", wire_formats=None
     )
-    # Same role, different RLS context
-    key_role_a_other_rls = cache_key(
-        sql=shared_data["sql"],
-        params=shared_data["params"],
-        role_id="role-analyst",
-        rls_rules={42: "tenant_id = 99"},
+    # Same role, a different resolved RLS context: a different governed statement
+    key_role_a_other_rls = raw_sql_cache_key(
+        shared_data["sql"].replace("tenant_id = 7", "tenant_id = 99"),
+        shared_data["params"],
+        "role-analyst",
+        wire_formats=None,
     )
     shared_data["key_role_a"] = key_role_a
     shared_data["key_role_b"] = key_role_b
@@ -116,17 +110,6 @@ def assert_source_disable_overrides(shared_data):
     )
     assert policy == CachePolicy.NONE
     assert ttl == 0
-
-
-@then(parsers.parse("an unresolved RLS context raises a security error"))
-def assert_unresolved_rls_raises(shared_data):
-    with pytest.raises(ValueError, match="unresolved RLS context"):
-        cache_key(
-            sql=shared_data["sql"],
-            params=shared_data["params"],
-            role_id="role-analyst",
-            rls_rules={42: "   "},
-        )
 
 
 @scenario(

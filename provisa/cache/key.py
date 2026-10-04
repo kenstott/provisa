@@ -8,18 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Cache key generation for query results (REQ-078, REQ-544, REQ-864, REQ-866).
+"""The response cache's key (REQ-078, REQ-544, REQ-864, REQ-866, REQ-1897).
 
-The key is computed from a NORMALIZED form of the governed SQL (REQ-864) plus the
-resolved governance identity — role_id and the resolved RLS predicate values
-(REQ-866). Two users with different RLS filters get different cache entries; two
-cosmetically-different but semantically-identical queries get the SAME entry.
+There is one response cache, keyed by :func:`raw_sql_cache_key`: a NORMALIZED form of the
+governed SQL (REQ-864), its bound values and the governed role. The governed SQL carries the
+resolved row filters and session values inline, so two users with different RLS filters read
+different statements and get different entries (REQ-866); two cosmetically-different but
+semantically-identical statements get the SAME entry.
 
-Cacheability is gated separately by ``is_cacheable`` (REQ-866, fail-closed): a
-query whose identity is not fully resolved into the key — an empty RLS filter, or
-a predicate that depends on unresolved session state (``current_setting``) — MUST
-NOT be cached, because a per-session value would otherwise let one persona's rows
-serve another. The per-tenant prefix (REQ-595) is applied by the store on top.
+Cacheability is gated separately by ``is_cacheable`` (REQ-866, fail-closed): a statement whose
+identity is not resolved into its text — a predicate that depends on unresolved session state
+(``current_setting``) — MUST NOT be cached, because a per-session value would otherwise let one
+persona's rows serve another. The per-tenant prefix (REQ-595) is applied by the store on top.
 """
 
 from __future__ import annotations
@@ -57,53 +57,18 @@ def _normalize_sql(sql: str) -> str:  # REQ-864
         return sql
 
 
-def is_cacheable(sql: str, rls_rules: dict[int, str]) -> tuple[bool, str]:  # REQ-866
-    """Fail-closed cacheability gate for the query result cache.
+def is_cacheable(sql: str) -> tuple[bool, str]:  # REQ-866
+    """Fail-closed cacheability gate for the response cache.
 
-    A query is cacheable only when every identity dimension is RESOLVED into the key.
-    Returns ``(False, reason)`` when it is not — an empty/whitespace RLS filter
-    (unresolved RLS context), or a governed SQL / RLS predicate that depends on
-    unresolved session state (``current_setting``). Callers MUST consult this before
-    reading or writing the cache and treat a False result as no-cache (REQ-865/866):
-    never a silent fallback that could serve another persona's rows.
+    A statement is cacheable only when every identity dimension is RESOLVED into its text.
+    Returns ``(False, reason)`` when the governed SQL depends on unresolved session state
+    (``current_setting``). Callers MUST consult this before reading or writing the cache and treat
+    a False result as no-cache (REQ-865/866): never a silent fallback that could serve another
+    persona's rows.
     """
     if _UNRESOLVED_MARKER in sql.lower():
         return False, "governed SQL depends on unresolved session state (current_setting)"
-    for table_id, expr in rls_rules.items():
-        if not expr or not expr.strip():
-            return False, f"RLS rule for table {table_id} has an empty/unresolved filter"
-        if _UNRESOLVED_MARKER in expr.lower():
-            return False, f"RLS rule for table {table_id} depends on unresolved session state"
     return True, ""
-
-
-def cache_key(  # REQ-544, REQ-864, REQ-866
-    sql: str,
-    params: list,
-    role_id: str,
-    rls_rules: dict[int, str],
-) -> str:
-    """Generate a deterministic cache key from the normalized query + security context.
-
-    Args:
-        sql: The compiled (governed) SQL string — normalized before hashing (REQ-864).
-        params: Positional parameters.
-        role_id: The requesting role (partitions persona, masking, and column visibility).
-        rls_rules: Active resolved RLS rules (table_id → filter expression) for this role.
-
-    Returns:
-        SHA-256 hex digest cache key.
-
-    Callers MUST gate on ``is_cacheable`` first (REQ-866); this function assumes the
-    identity is resolved and does not itself decide cacheability.
-    """
-    key_parts = {
-        "sql": _normalize_sql(sql),
-        "params": params,
-        "role_id": role_id,
-        "rls": {str(k): v for k, v in sorted(rls_rules.items())},
-    }
-    return _digest(key_parts)
 
 
 def raw_sql_cache_key(  # REQ-1897
@@ -114,16 +79,14 @@ def raw_sql_cache_key(  # REQ-1897
     wire_formats: list[int] | None,
     as_of: str | None = None,
 ) -> str:
-    """The key of a raw-SQL plan's cached result — a namespace disjoint from GraphQL's.
+    """The key of a plan's cached result — the one response cache's key, whichever surface sent
+    the statement (REQ-1897).
 
     ``wire_formats`` is None for a DECODED entry (rows / Arrow — any surface can serve it) and the
     client's pgwire result format codes for a ``pg_datarows`` entry, whose raw DataRow bytes are
     specific to those codes: a binary-format client must never be replayed text-format bytes.
 
-    GraphQL (``cache_key``) caches a serialized GraphQL response; a plan executed by the one
-    pipeline caches rows. The ``namespace`` part makes the two digests disjoint even for identical
-    SQL text, params and role, so neither reader can ever meet the other's payload. The governed
-    ``sql`` already carries the resolved RLS predicates and session values (raw-SQL surfaces have
+    The entry holds rows, never a surface's own response shape. The governed ``sql`` already carries the resolved RLS predicates and session values (raw-SQL surfaces have
     no separate rules dict); the bound ``params`` and the ``role_id`` partition it further, and the
     store prefixes the org (REQ-595). ``as_of`` is the request-level as-of time (REQ-1163): it
     is not in the governed text, yet a statement over a bitemporal view reads different rows at
