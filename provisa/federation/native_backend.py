@@ -372,6 +372,10 @@ class NativeEngineBackend(EngineBackend):
                 # and fixes for a different connector attribute. backend.py's introspection-time
                 # _merged_source already carries mapping; this query-time merge needed it too.
                 mapping=getattr(src, "mapping", {}) or {},
+                # REQ-788: the source's file_glob table specs drive the file adapter's merged
+                # glob tables (pgwire_replica._files_operand). Dropping them here builds the
+                # endpoint without the merged table, so the glob table is never queryable.
+                file_glob_tables=getattr(src, "file_glob_tables", []) or [],
                 schema_name=schema_name,
                 table_name=table_name,
             )
