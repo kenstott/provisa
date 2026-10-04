@@ -93,7 +93,7 @@ def _compile_to_databricks(si: SchemaInput, gql: str, rls: RLSContext | None = N
     """Run the real pipeline: compile → (govern) → catalog-physical → transpile(databricks)."""
     schema = generate_schema(si)
     ctx = build_context(si)
-    compiled = compile_query(parse_query(schema, gql, {}), ctx)[0]
+    compiled = compile_query(parse_query(schema, gql, {}, ctx=ctx), ctx)[0]
     sql = compiled.sql
     if rls is not None:
         gov_ctx = build_governance_context("admin", rls, {}, ctx, si.tables, role=_ADMIN)

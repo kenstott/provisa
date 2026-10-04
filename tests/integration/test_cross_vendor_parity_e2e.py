@@ -168,7 +168,7 @@ class Lane:
         si = _schema_input(self.source_id, self.source_type, self.catalog, self.schema)
         ctx = build_context(si)
         compiled = compile_query(
-            parse_query(generate_schema(si), "{ orders { id region amount } }", {}), ctx
+            parse_query(generate_schema(si), "{ orders { id region amount } }", {}, ctx=ctx), ctx
         )[0]
         gov = apply_governance(
             compiled.sql,

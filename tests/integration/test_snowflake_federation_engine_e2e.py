@@ -80,7 +80,7 @@ def _schema_input() -> SchemaInput:
 def _compile_to_snowflake(si: SchemaInput, gql: str, rls: RLSContext | None = None) -> str:
     schema = generate_schema(si)
     ctx = build_context(si)
-    compiled = compile_query(parse_query(schema, gql, {}), ctx)[0]
+    compiled = compile_query(parse_query(schema, gql, {}, ctx=ctx), ctx)[0]
     sql = compiled.sql
     if rls is not None:
         gov_ctx = build_governance_context("admin", rls, {}, ctx, si.tables, role=_ADMIN)

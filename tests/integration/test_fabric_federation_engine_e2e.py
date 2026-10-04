@@ -87,7 +87,7 @@ def _compile(rls=None, schema=_SCH):
     s = _si(schema)
     ctx = build_context(s)
     compiled = compile_query(
-        parse_query(generate_schema(s), "{ orders { id region amount } }", {}), ctx
+        parse_query(generate_schema(s), "{ orders { id region amount } }", {}, ctx=ctx), ctx
     )[0]
     sql = compiled.sql
     if rls is not None:

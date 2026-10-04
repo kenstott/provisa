@@ -825,7 +825,7 @@ class ProvisaFlightServer(
         rls = self._state.rls_contexts.get(role_id, RLSContext.empty())
         role = self._state.roles.get(role_id)
 
-        document = parse_query(schema, query_text, variables)
+        document = parse_query(schema, query_text, variables, ctx=ctx)
         compiled_queries = compile_query(document, ctx, variables)
         if not compiled_queries:
             raise _flight_error("No query fields found")

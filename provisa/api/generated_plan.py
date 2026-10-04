@@ -228,7 +228,7 @@ def _shape_plan(
     taken = [p for cq in compiled for p in (*cq.params, *cq.nodes_params)]
     others = _other_values(values, taken)
     try:
-        twin = tuple(compile_query(parse_query(schema, _text_with(shape, others)), ctx))
+        twin = tuple(compile_query(parse_query(schema, _text_with(shape, others), ctx=ctx), ctx))
     except (GraphQLValidationError, GraphQLError, ValueError):
         # The schema or the compiler reads this shape differently for another value.
         return None
@@ -284,7 +284,7 @@ def compile_generated_graphql(  # REQ-1877
         if kept_text is not None:
             return _copies(kept_text)
 
-    compiled = tuple(compile_query(parse_query(schema, gql_query), ctx))
+    compiled = tuple(compile_query(parse_query(schema, gql_query, ctx=ctx), ctx))
     if not compiled:
         return []
     if text_slot is not None:

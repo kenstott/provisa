@@ -137,7 +137,7 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
         role=require_role(app_state.roles, role),
     )
 
-    document = parse_query(schema, query, {})
+    document = parse_query(schema, query, {}, ctx=ctx)
     compiled_queries = compile_query(document, ctx, {})
     if not compiled_queries:
         raise RuntimeError("No query fields found")

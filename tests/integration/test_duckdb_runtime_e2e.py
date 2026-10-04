@@ -145,6 +145,7 @@ async def test_runtime_federates_all_demo_source_types():
                 generate_schema(_si()),
                 "{ orders { id amount customer { firstName } product { name category } } }",
                 {},
+                ctx=ctx,
             ),
             ctx,
         )[0]

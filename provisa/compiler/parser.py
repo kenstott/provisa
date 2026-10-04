@@ -15,6 +15,8 @@ Uses graphql-core directly (REQ-007). No third-party GraphQL framework.
 
 # Requirements: REQ-007, REQ-011, REQ-039, REQ-300
 
+from typing import TYPE_CHECKING
+
 from graphql import (
     DocumentNode,
     GraphQLSchema,
@@ -34,6 +36,10 @@ from graphql.language.ast import (
 )
 
 
+if TYPE_CHECKING:
+    from provisa.compiler.sql_gen import CompilationContext
+
+
 class GraphQLValidationError(Exception):
     """Raised when a GraphQL query fails validation against the schema."""
 
@@ -43,10 +49,46 @@ class GraphQLValidationError(Exception):
         super().__init__(f"GraphQL validation failed: {messages}")
 
 
+def _refuse_unoffered_writes(
+    document: DocumentNode, schema: GraphQLSchema, ctx: "CompilationContext"
+) -> None:  # REQ-209, REQ-1925
+    """A mutation field naming a table the role reads, for an operation the table does not take,
+    is refused by name (``data.write_not_supported``) — the refusal every surface gives such a
+    write. The schema offers a table only the mutations its source takes, so the field is absent
+    and validation alone would answer with an unnamed "Cannot query field"."""
+    from graphql import OperationDefinitionNode, OperationType
+
+    from provisa.compiler.mutation_gen import _get_mutation_meta
+    from provisa.compiler.write_admission import WriteNotSupported
+
+    mutation_type = schema.mutation_type
+    offered = set(mutation_type.fields) if mutation_type is not None else set()
+    for definition in document.definitions:
+        if not isinstance(definition, OperationDefinitionNode):
+            continue
+        if definition.operation != OperationType.MUTATION:
+            continue
+        for selection in definition.selection_set.selections:
+            name = getattr(getattr(selection, "name", None), "value", None)
+            if name is None or name in offered:
+                continue
+            try:
+                operation, _field, table = _get_mutation_meta(name, ctx)
+            except ValueError:
+                continue  # names no table the role reads: validation answers it
+            if operation == "upsert":
+                # An upsert inserts or updates: what is missing is the insert, unless the table's
+                # insert field is offered, in which case it is the update.
+                operation = "update" if name.replace("upsert", "insert", 1) in offered else "insert"
+            raise WriteNotSupported(table.table_name, operation)
+
+
 def parse_query(  # REQ-007, REQ-011, REQ-039
     schema: GraphQLSchema,
     query: str,
     variables: dict | None = None,
+    *,
+    ctx: "CompilationContext",
 ) -> DocumentNode:
     """Parse and validate a GraphQL query string against a schema.
 
@@ -60,11 +102,14 @@ def parse_query(  # REQ-007, REQ-011, REQ-039
 
     Raises:
         GraphQLValidationError: If the query is invalid against the schema.
+        WriteNotSupported: If a mutation names a table the role reads for an operation the
+            table does not take (``ctx`` resolves the field to its table).
         graphql.error.GraphQLSyntaxError: If the query has syntax errors.
     """
     document = parse(query)
     errors = validate(schema, document)
     if errors:
+        _refuse_unoffered_writes(document, schema, ctx)
         raise GraphQLValidationError(errors)
     return document
 

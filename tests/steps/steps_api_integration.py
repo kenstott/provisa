@@ -953,7 +953,7 @@ def submit_graphql_query(shared_data):
     query = f"{{ {field} {{ id amount region }} }}"
 
     # Parse against the REAL generated schema (validates types → typed request).
-    document = parse_query(shared_data["schema"], query)
+    document = parse_query(shared_data["schema"], query, ctx=shared_data["ctx"])
     shared_data["document"] = document
 
     # Compile against the REAL context → typed SQL + typed columns.
@@ -990,8 +990,12 @@ def graphql_typed_response(shared_data):
     from provisa.compiler.parser import parse_query, GraphQLValidationError
 
     field = shared_data["orders_field"]
-    with pytest.raises((GraphQLValidationError, Exception)):
-        parse_query(shared_data["schema"], f"{{ {field} {{ not_a_real_column }} }}")
+    with pytest.raises(GraphQLValidationError):
+        parse_query(
+            shared_data["schema"],
+            f"{{ {field} {{ not_a_real_column }} }}",
+            ctx=shared_data["ctx"],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1134,7 +1138,7 @@ def rest_query_string_maps_to_graphql(shared_data):
     shared_data["gql_query"] = gql_query
 
     # Compile the REST-derived GraphQL query through the REAL compiler.
-    document = parse_query(schema, gql_query)
+    document = parse_query(schema, gql_query, ctx=ctx)
     compiled = compile_query(document, ctx)
     assert compiled, "REST-derived GraphQL query must compile"
     shared_data["rest_compiled"] = compiled[0]
@@ -1143,7 +1147,7 @@ def rest_query_string_maps_to_graphql(shared_data):
     direct_query = (
         f'{{ {field}(where: {{region: {{eq: "US"}}}}, limit: 10) {{ {" ".join(fields)} }} }}'
     )
-    direct_doc = parse_query(schema, direct_query)
+    direct_doc = parse_query(schema, direct_query, ctx=ctx)
     direct_compiled = compile_query(direct_doc, ctx)
     assert direct_compiled
     shared_data["direct_compiled"] = direct_compiled[0]
@@ -1480,7 +1484,7 @@ def subscription_request_with_sink_header(shared_data, monkeypatch):
     from provisa.compiler.parser import parse_query as _parse
 
     sub_query = f"subscription {{ {orders_field} {{ id amount region }} }}"
-    document = _parse(schema, sub_query)
+    document = _parse(schema, sub_query, ctx=ctx)
 
     # Build a real Starlette Request with the X-Provisa-Sink header.
     sink_uri = b"kafka://localhost:9092/orders-changes"

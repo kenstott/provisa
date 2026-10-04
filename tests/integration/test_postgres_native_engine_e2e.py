@@ -151,7 +151,10 @@ async def test_postgres_zero_connector_engine_lands_everything():
         ctx = build_context(_si())
         compiled = compile_query(
             parse_query(
-                generate_schema(_si()), "{ orders { id amount customer { firstName state } } }", {}
+                generate_schema(_si()),
+                "{ orders { id amount customer { firstName state } } }",
+                {},
+                ctx=ctx,
             ),
             ctx,
         )[0]
