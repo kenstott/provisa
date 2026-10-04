@@ -513,10 +513,15 @@ jobs:
           uvx --from cyclonedx-bom cyclonedx-py requirements requirements-audit.txt \
             --of JSON -o sbom/provisa-sbom.cdx.json
 
+      # Documented ignore, PYSEC-2026-4114 / CVE-2026-49265 only: a server-side PKCE timing flaw
+      # in oauthlib. Provisa uses oauthlib only client-side, through databricks-sql-connector,
+      # which pins oauthlib<4 even in 4.6.0. Remove this ignore when the connector allows
+      # oauthlib 4. Every other finding still fails the job.
       - name: CVE scan (gates PyPI publish)
         run: |
           set -o pipefail
-          uvx pip-audit -r requirements-audit.txt --no-deps -f json | tee sbom/provisa-cve-report.json
+          uvx pip-audit -r requirements-audit.txt --no-deps --ignore-vuln PYSEC-2026-4114 -f json \
+            | tee sbom/provisa-cve-report.json
 
       - name: Ensure release exists
         uses: ./.github/actions/ensure-release
