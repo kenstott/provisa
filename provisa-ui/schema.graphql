@@ -302,6 +302,14 @@ The `JSON` scalar type represents JSON values as specified by [ECMA-404](https:/
 """
 scalar JSON @specifiedBy(url: "https://ecma-international.org/wp-content/uploads/ECMA-404_2nd_edition_december_2017.pdf")
 
+input DeltaConfigInput {
+  query: String = null
+  apply: String! = "upsert"
+  deletes: String! = "none"
+  tombstoneColumn: String = null
+  rebuildEvery: Int = null
+}
+
 input LiveDeliveryConfigInput {
   strategy: String! = "poll"
   watermarkColumn: String = null
@@ -318,6 +326,14 @@ type LiveDeliveryConfigType {
   kafka: LiveKafkaParamsType
   queryId: String
   outputs: [LiveOutputConfigType!]!
+}
+
+type DeltaConfigType {
+  query: String
+  apply: String!
+  deletes: String!
+  tombstoneColumn: String
+  rebuildEvery: Int
 }
 
 input LiveKafkaParamsInput {
@@ -609,6 +625,7 @@ type RegisteredTableType {
   enableGroupBy: Boolean!
   canDeployToDb: Boolean!
   live: LiveDeliveryConfigType
+  delta: DeltaConfigType
   implicitMeasures: [ImplicitMeasureType!]!
   implicitDimensions: [String!]!
   refreshPolicySummary: RefreshPolicySummaryType
@@ -837,6 +854,7 @@ input TableInput {
   enableGroupBy: Boolean! = false
   discover: Boolean! = false
   live: LiveDeliveryConfigInput = null
+  delta: DeltaConfigInput = null
 }
 
 input TagAssignmentInput {

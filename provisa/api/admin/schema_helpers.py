@@ -49,7 +49,11 @@ from provisa.compiler.aggregate_gen import (
 )  # REQ-1360: reuse REQ-196 classification
 from provisa.compiler.introspect import ColumnMetadata
 
-from provisa.api.admin._row_mappers import _live_type_from_row, _view_metrics_type_from_row
+from provisa.api.admin._row_mappers import (
+    _delta_type_from_row,
+    _live_type_from_row,
+    _view_metrics_type_from_row,
+)
 
 log = logging.getLogger(__name__)
 
@@ -459,6 +463,7 @@ async def _fetch_table_with_columns(
         enable_group_by=bool(row.get("enable_group_by", False)),
         can_deploy_to_db=can_deploy,
         live=_live_type_from_row(row.get("live")),
+        delta=_delta_type_from_row(row.get("delta")),  # REQ-874
         implicit_measures=implicit_measures,  # REQ-1360
         implicit_dimensions=implicit_dimensions,  # REQ-1360
     )

@@ -146,3 +146,35 @@ def test_delta_of_treats_json_null_and_non_dict_as_no_delta():
     assert _delta_of("") is None
     assert _delta_of('{"apply": "append"}').apply == "append"
     assert _delta_of({"apply": "upsert"}).apply == "upsert"
+
+
+def test_delta_maps_from_admin_input_and_back_to_the_view():
+    # REQ-874: the admin surface round-trips -- a DeltaConfigInput becomes a DeltaConfig model, and
+    # the persisted dict becomes the DeltaConfigType the table form reads back.
+    from types import SimpleNamespace
+
+    from provisa.api.admin._live_mappers import delta_model_from_input
+    from provisa.api.admin._row_mappers import _delta_type_from_row
+
+    assert delta_model_from_input(None) is None
+    inp = SimpleNamespace(
+        query=None, apply="upsert", deletes="tombstone", tombstone_column="_d", rebuild_every=3600
+    )
+    model = delta_model_from_input(inp)
+    assert (model.apply, model.deletes, model.tombstone_column, model.rebuild_every) == (
+        "upsert",
+        "tombstone",
+        "_d",
+        3600,
+    )
+    view = _delta_type_from_row(model.model_dump())
+    assert (view.apply, view.deletes, view.tombstone_column, view.rebuild_every) == (
+        "upsert",
+        "tombstone",
+        "_d",
+        3600,
+    )
+    assert _delta_type_from_row(None) is None
+    assert (
+        _delta_type_from_row("null") is None
+    )  # JSONB null stored as text -> no delta, not a crash

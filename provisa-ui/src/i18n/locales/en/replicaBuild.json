@@ -11,12 +11,26 @@
     "convergenceError": "Replicas are not being brought in line with the model: {{error}}",
     "method": {
       "engine_statement": "copied by the engine",
-      "stream_batches": "streamed in batches"
+      "stream_batches": "streamed in batches",
+      "delta": "delta"
     },
     "loadKind": {
       "bulk_stream": "bulk stream",
-      "row_copy": "row copy"
+      "row_copy": "row copy",
+      "delta": "incremental"
     },
-    "feedDown": "Change feed down since {{since}}; the replica is not refreshed until it reconnects: {{error}}"
+    "feedDown": "Change feed down since {{since}}; the replica is not refreshed until it reconnects: {{error}}",
+    "delta": {
+      "applied": "Last refresh applied the delta since the stored watermark ({{cursor}}).",
+      "wholeRebuild": "Last build was a whole rebuild, not a delta: {{reason}}.",
+      "skip": {
+        "no_delta_declared": "no delta is declared",
+        "first_build": "first build, nothing to delta from yet",
+        "definition_changed": "the table definition changed",
+        "operator_requested": "an operator requested a full build",
+        "rebuild_interval_elapsed": "the periodic rebuild interval elapsed",
+        "store_cannot_apply_delta": "the store cannot apply a delta"
+      }
+    }
   }
 }

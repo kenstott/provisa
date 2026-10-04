@@ -288,6 +288,25 @@ def _live_type_from_row(raw):  # REQ-565, REQ-813
     )
 
 
+def _delta_type_from_row(raw):  # REQ-874
+    """Build a DeltaConfigType from a persisted JSONB dict (None when unset or stored as JSON null).
+
+    The control plane stores an unset JSONB column as the text ``"null"`` on some paths, which
+    reads back as the string; treat any non-dict as "no delta", never ``DeltaConfigType(**"null")``.
+    """
+    from provisa.api.admin.types import DeltaConfigType
+
+    if not isinstance(raw, dict):
+        return None
+    return DeltaConfigType(
+        query=raw.get("query"),
+        apply=raw.get("apply", "upsert"),
+        deletes=raw.get("deletes", "none"),
+        tombstone_column=raw.get("tombstone_column"),
+        rebuild_every=raw.get("rebuild_every"),
+    )
+
+
 def _view_metrics_type_from_row(raw):  # REQ-1318
     """Build a ViewMetricsType from a persisted JSONB dict (None when unset)."""
     from provisa.api.admin.types import ViewMetricsType

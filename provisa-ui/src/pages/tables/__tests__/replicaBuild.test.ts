@@ -13,7 +13,7 @@
 import { describe, it, expect } from "vitest";
 import type { ReplicaBuild } from "../../../api/admin";
 import type { ServerMessageShape } from "../../../i18n/serverMessage";
-import { replicaBuildLine, replicaFeedLine } from "../replicaBuild";
+import { replicaBuildLine, replicaDeltaLine, replicaFeedLine } from "../replicaBuild";
 
 const t = (key: string, options?: Record<string, unknown>) =>
   options ? `${key} ${JSON.stringify(options)}` : key;
@@ -51,6 +51,8 @@ function build(over: Partial<ReplicaBuild>): ReplicaBuild {
     waitingOnCode: null,
     feedDownSince: null,
     feedError: null,
+    deltaSkipped: null,
+    deltaCursor: null,
     ...over,
   };
 }
@@ -98,7 +100,13 @@ describe("replicaBuildLine", () => {
       "replicaBuild.requested",
     );
     expect(
-      replicaBuildLine(build({ state: "requested", waitingOn: "the engine is busy" }), t, num, when, msg),
+      replicaBuildLine(
+        build({ state: "requested", waitingOn: "the engine is busy" }),
+        t,
+        num,
+        when,
+        msg,
+      ),
     ).toBe('replicaBuild.waiting {"waitingOn":"the engine is busy"}');
   });
 
@@ -175,6 +183,31 @@ describe("replicaFeedLine", () => {
     );
     expect(line).toBe(
       'replicaBuild.feedDown {"since":"@2026-10-03T08:00:00+00:00","error":"connection refused"}',
+    );
+  });
+});
+
+describe("replicaDeltaLine (REQ-874)", () => {
+  it("is null for a table that is not a delta table", () => {
+    expect(replicaDeltaLine(undefined, t)).toBeNull();
+    expect(replicaDeltaLine(build({ method: "stream_batches" }), t)).toBeNull();
+  });
+
+  it("names the reason when a delta table whole-rebuilt instead of applying a delta", () => {
+    expect(replicaDeltaLine(build({ deltaSkipped: "first_build" }), t)).toBe(
+      'replicaBuild.delta.wholeRebuild {"reason":"replicaBuild.delta.skip.first_build"}',
+    );
+  });
+
+  it("shows the advanced cursor when a delta was applied", () => {
+    expect(replicaDeltaLine(build({ method: "delta", deltaCursor: 42 }), t)).toBe(
+      'replicaBuild.delta.applied {"cursor":"42"}',
+    );
+  });
+
+  it("renders an applied delta with no cursor without throwing", () => {
+    expect(replicaDeltaLine(build({ method: "delta", deltaCursor: null }), t)).toBe(
+      'replicaBuild.delta.applied {"cursor":""}',
     );
   });
 });

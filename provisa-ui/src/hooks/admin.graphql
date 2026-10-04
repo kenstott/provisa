@@ -269,6 +269,13 @@ query TablesQuery {
         bootstrapServers
       }
     }
+    delta {
+      query
+      apply
+      deletes
+      tombstoneColumn
+      rebuildEvery
+    }
     columns {
       ...ColumnFields
     }
@@ -699,6 +706,8 @@ query ReplicaBuilds {
       waitingOnCode
       feedDownSince
       feedError
+      deltaSkipped
+      deltaCursor
     }
     convergenceError
     convergenceErrorAt
