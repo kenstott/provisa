@@ -78,6 +78,7 @@ async def test_a_data_cypher_cache_hit_does_no_route_work(graph):
 
     request = MagicMock()
     request.state.role = "analyst"
+    request.headers = {}  # no X-Provisa-Redirect: the read answers rows
 
     async def _call():
         body = CypherRequest(query=_CYPHER, params={"v": 7})

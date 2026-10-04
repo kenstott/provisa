@@ -62,6 +62,8 @@
       "invalid_as_of": "ongeldige X-Provisa-As-Of: {{error}}",
       "invalid_filter": "filter moet een object zijn dat veldnamen aan waarden koppelt",
       "invalid_filter_field": "Ongeldig filter-veld '{{field}}' voor {{type_name}}",
+      "invalid_redirect_format": "Redirect-formaat '{{format}}' is geen formaat waarin een resultaat kan worden geleverd",
+      "invalid_redirect_threshold": "De redirect-drempel moet een geheel aantal rijen zijn, niet '{{threshold}}'",
       "invalid_read_mask": "read_mask moet een object zijn met een 'paths'-lijst van veldpaden",
       "invalid_read_mask_path": "Ongeldig read_mask-pad '{{path}}' voor {{type_name}}",
       "missing_command_name": "Opdrachtnaam ontbreekt",

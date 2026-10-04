@@ -138,14 +138,22 @@ def _build_redirect_params(
     directives,
 ) -> tuple[str | None, int | None, bool]:
     """Return (redirect_format, effective_threshold, force_redirect) from headers + directives."""
-    directive_redirect_format = (
-        _parse_accept(directives.redirect_format) if directives.redirect_format else None
-    )
-    redirect_format = (
-        _parse_accept(x_provisa_redirect_format)
-        if x_provisa_redirect_format
-        else directive_redirect_format
-    )
+    from provisa.api.errors import ApiError
+    from provisa.executor.redirect import RedirectFormatUnknown, parse_redirect_format
+
+    try:
+        directive_redirect_format = (
+            parse_redirect_format(directives.redirect_format)
+            if directives.redirect_format
+            else None
+        )
+        redirect_format = (
+            parse_redirect_format(x_provisa_redirect_format)
+            if x_provisa_redirect_format
+            else directive_redirect_format
+        )
+    except RedirectFormatUnknown as exc:
+        raise ApiError(400, "data.invalid_redirect_format", str(exc), format=exc.value) from exc
     effective_threshold = x_provisa_redirect_threshold or directives.redirect_threshold
     force_redirect = (x_provisa_redirect or "").lower() == "true"
     if redirect_format and effective_threshold is None:

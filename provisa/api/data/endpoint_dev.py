@@ -284,6 +284,14 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         from provisa.cache.middleware import build_cache_headers
 
         cache_headers = build_cache_headers(result.cache_entry)
+        if result.redirect is not None:
+            from provisa.api.json_response import OrjsonResponse
+
+            # REQ-1194 / REQ-1224: landed in the results store; the handle names where it is.
+            return OrjsonResponse(
+                _with_warnings({"data": {"sql": None}, "redirect": result.redirect}),
+                headers=cache_headers,
+            )
         rows_as_dicts = [dict(zip(result.column_names, row)) for row in result.rows]
         if stats_enabled:
             # REQ-1517: the entries and the execution DAG are recorded by the pipeline terminal
@@ -343,8 +351,12 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         )
     role = state.roles.get(role_id)
     _check_sql_capabilities(role)
+    from provisa.api.redirect_headers import delivery_from_headers
     from provisa.pgwire._pipeline import execute_sql_batch
 
+    # REQ-1194: a redirect the request forces (X-Provisa-Redirect*); else REQ-1224's threshold
+    # decides, SQL over HTTP being a buffered transport.
+    delivery = delivery_from_headers(raw_request.headers, role_id)
     # Request-boundary error handling (mirrors the pgwire handle_query handler): a governance denial
     # (RLS/masking/visibility/relationship guard) raises PermissionError → 403; any OTHER error from an
     # arbitrary user query — a source/engine rejection (UndefinedTable, syntax, type mismatch, ...) or a
@@ -352,7 +364,9 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     # error response. Converting a bad query to an error RESPONSE (not crashing the request) is the
     # documented boundary contract, not silent error handling.
     try:
-        result = await execute_sql_batch(request.sql, role_id, state, as_of=_as_of)
+        result = await execute_sql_batch(
+            request.sql, role_id, state, as_of=_as_of, deliver=delivery, buffered=True
+        )
     except ComplexityLimitExceeded:
         raise  # REQ-1174: answered as 413 by the app's handler
     except NotAvailableHere:

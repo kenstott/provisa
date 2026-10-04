@@ -62,6 +62,8 @@
       "invalid_as_of": "invalid X-Provisa-As-Of: {{error}}",
       "invalid_filter": "filter must be an object mapping field names to values",
       "invalid_filter_field": "Invalid filter field '{{field}}' for {{type_name}}",
+      "invalid_redirect_format": "Redirect format '{{format}}' is not a format a result can be delivered in",
+      "invalid_redirect_threshold": "The redirect threshold must be a whole number of rows, not '{{threshold}}'",
       "invalid_read_mask": "read_mask must be an object with a 'paths' list of field paths",
       "invalid_read_mask_path": "Invalid read_mask path '{{path}}' for {{type_name}}",
       "missing_command_name": "Missing command name",

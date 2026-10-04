@@ -62,6 +62,8 @@
       "invalid_as_of": "X-Provisa-As-Of לא תקין: {{error}}",
       "invalid_filter": "filter חייב להיות אובייקט הממפה שמות שדות לערכים",
       "invalid_filter_field": "שדה filter לא תקין '{{field}}' עבור {{type_name}}",
+      "invalid_redirect_format": "תבנית ה-redirect '{{format}}' אינה תבנית שבה ניתן למסור תוצאה",
+      "invalid_redirect_threshold": "סף ה-redirect חייב להיות מספר שלם של שורות, לא '{{threshold}}'",
       "invalid_read_mask": "read_mask חייב להיות אובייקט עם רשימת 'paths' של נתיבי שדות",
       "invalid_read_mask_path": "נתיב read_mask לא תקין '{{path}}' עבור {{type_name}}",
       "missing_command_name": "חסר שם פקודה",

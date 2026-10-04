@@ -62,6 +62,8 @@
       "invalid_as_of": "अमान्य X-Provisa-As-Of: {{error}}",
       "invalid_filter": "filter एक ऐसा ऑब्जेक्ट होना चाहिए जो फ़ील्ड नामों को मानों से मैप करे",
       "invalid_filter_field": "{{type_name}} के लिए अमान्य filter फ़ील्ड '{{field}}'",
+      "invalid_redirect_format": "रीडायरेक्ट फ़ॉर्मेट '{{format}}' ऐसा फ़ॉर्मेट नहीं है जिसमें परिणाम दिया जा सके",
+      "invalid_redirect_threshold": "रीडायरेक्ट सीमा पंक्तियों की एक पूर्ण संख्या होनी चाहिए, '{{threshold}}' नहीं",
       "invalid_read_mask": "read_mask एक ऐसा ऑब्जेक्ट होना चाहिए जिसमें फ़ील्ड पथों की 'paths' सूची हो",
       "invalid_read_mask_path": "{{type_name}} के लिए अमान्य read_mask पथ '{{path}}'",
       "missing_command_name": "कमांड नाम गायब है",

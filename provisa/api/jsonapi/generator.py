@@ -980,17 +980,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         # REQ-1194/REQ-1195: a caller may request the result be materialized to a sink instead of
         # inlined. The request rides the same X-Provisa-Redirect* headers GraphQL uses; the handle is
         # surfaced in the document's top-level `meta` — JSON:API's side-channel alongside `data`.
-        from provisa.api.data.endpoint_helpers import _parse_accept
-        from provisa.executor.redirect import delivery_from_request
+        from provisa.api.redirect_headers import delivery_from_headers
 
-        _redir_fmt = request.headers.get("x-provisa-redirect-format")
-        _redir_thr = request.headers.get("x-provisa-redirect-threshold")
-        delivery = delivery_from_request(
-            force_redirect=request.headers.get("x-provisa-redirect", "").lower() == "true",
-            redirect_format=_parse_accept(_redir_fmt) if _redir_fmt else None,
-            threshold=int(_redir_thr) if _redir_thr else None,
-            role=role_id,
-        )
+        delivery = delivery_from_headers(request.headers, role_id)
 
         try:
             plan = await _govern_and_route_compiled(

@@ -2959,6 +2959,8 @@
   "zh/serverErrors.json::serverErrors.data.invalid_filter_field": "Invalid filter field '{{field}}' for {{type_name}}",
   "zh/serverErrors.json::serverErrors.data.invalid_read_mask": "read_mask must be an object with a 'paths' list of field paths",
   "zh/serverErrors.json::serverErrors.data.invalid_read_mask_path": "Invalid read_mask path '{{path}}' for {{type_name}}",
+  "zh/serverErrors.json::serverErrors.data.invalid_redirect_format": "Redirect format '{{format}}' is not a format a result can be delivered in",
+  "zh/serverErrors.json::serverErrors.data.invalid_redirect_threshold": "The redirect threshold must be a whole number of rows, not '{{threshold}}'",
   "zh/serverErrors.json::serverErrors.data.missing_command_name": "Missing command name",
   "zh/serverErrors.json::serverErrors.data.missing_role_id": "Missing role_id",
   "zh/serverErrors.json::serverErrors.data.missing_x_provisa_role_header": "Missing X-Provisa-Role header",

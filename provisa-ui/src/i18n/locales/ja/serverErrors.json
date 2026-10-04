@@ -62,6 +62,8 @@
       "invalid_as_of": "X-Provisa-As-Of が無効です：{{error}}",
       "invalid_filter": "filter はフィールド名を値に対応付けるオブジェクトである必要があります",
       "invalid_filter_field": "{{type_name}} の filter フィールド「{{field}}」が無効です",
+      "invalid_redirect_format": "リダイレクト形式 '{{format}}' は結果を配信できる形式ではありません",
+      "invalid_redirect_threshold": "リダイレクトのしきい値は行数を表す整数である必要があります（'{{threshold}}' ではありません）",
       "invalid_read_mask": "read_mask はフィールドパスのリスト「paths」を持つオブジェクトである必要があります",
       "invalid_read_mask_path": "{{type_name}} の read_mask パス「{{path}}」が無効です",
       "missing_command_name": "コマンド名がありません",
