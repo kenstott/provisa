@@ -293,3 +293,33 @@ def test_attach_is_read_only(prime, attached):
     con, details = attached
     with pytest.raises(duckdb.Error):
         con.execute(f"INSERT INTO {_relation(details, prime)} VALUES (99, 'nope', 'nope')")
+
+
+def _polled(read):
+    """What a Register Table picker gets: it asks again while the connector reports STARTING."""
+    deadline = time.monotonic() + 120
+    while True:
+        try:
+            return read()
+        except pr.SourceStillStartingError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(3)
+
+
+def test_register_table_lists_the_sources_schema_and_its_data_model(splunk_source, prime):
+    """The seam the Register Table pickers call on a native engine for a source with no table
+    registered yet (REQ-1673): the schema list holds the source's schema, and that schema's table
+    list holds the seeded data model."""
+    from provisa.federation.engine import build_engine
+
+    backend = build_engine("duckdb").backend
+    try:
+        schemas = _polled(lambda: backend.introspect_schemas(None, splunk_source))
+        assert "splunk_duckdb_itest" in schemas, schemas
+        tables = _polled(
+            lambda: backend.introspect_tables(None, splunk_source, "splunk_duckdb_itest")
+        )
+        assert prime.MODEL in tables, tables
+    finally:
+        pr.stop_all_servers()
