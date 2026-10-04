@@ -30,6 +30,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 asyncpg = pytest.importorskip("asyncpg")
 pgserver = pytest.importorskip("pgserver")
 
+from tests.helpers import registry_write_ops  # noqa: E402
 from provisa.compiler.introspect import ColumnMetadata  # noqa: E402
 from provisa.compiler.parser import parse_query  # noqa: E402
 from provisa.compiler.rls import RLSContext  # noqa: E402
@@ -83,6 +84,7 @@ def _si(orders_schema: str) -> SchemaInput:
                 "domain_id": "sales",
                 "schema_name": orders_schema,
                 "table_name": "orders",
+                "write_ops": registry_write_ops("sqlite"),
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "amount", "region")
                 ],
