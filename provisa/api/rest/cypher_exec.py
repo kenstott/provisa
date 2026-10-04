@@ -8,23 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Cypher execution backends (Phase AU, REQ-345–353).
-
-Role/label resolution, API + graphql-remote lookups, and the federation/API/
-gql-remote execution paths invoked by the /query/cypher pipeline. Extracted
-from cypher_router.py; leaf module (no route handlers).
+"""Cypher over HTTP: role and label resolution, and a CALL subquery body's execution (Phase AU,
+REQ-345–353). A statement is executed by the one pipeline terminal (``_execute_plan``), whose
+routing stage holds the API and graphql_remote fetches. Leaf module (no route handlers).
 """
-
-# complexity-gate: allow-cc=31 allow-ble=1 reason="_execute_with_api and its one broad except (API-source execution error surfaced to the client) relocated verbatim from cypher_router.py; per-stage split is separately-tracked debt"
 
 from __future__ import annotations
 
 import logging
-import secrets
-from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
-from provisa.federation.execution_auth import ExecutionAuthorization, plan_authorization
 
 from fastapi import Request
 
@@ -35,12 +28,10 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection  # noqa: F401
 
 
-from provisa.core.connection_loop import spawn_background
 from provisa.api.rest.registered_call import (
     _detect_procedure,  # noqa: F401 — re-exported for tests
     _handle_procedure,  # noqa: F401 — re-exported for tests
 )
-from provisa.observability.span_attrs import span_attrs_from_semantic_sql
 
 log = logging.getLogger(__name__)
 
@@ -90,409 +81,6 @@ def _build_label_map(ctx: CompilationContext, role_id: str, state: AppState) -> 
     )
 
 
-def _statement_api_endpoints(state: AppState, table_ids: Iterable[int]) -> dict:
-    """The endpoints of the API tables the statement reads, by the names its SQL carries."""
-    from provisa.api_source.endpoints import statement_endpoints
-
-    return statement_endpoints(state, table_ids)
-
-
-def _lookup_gql_remote_table(state: AppState, table_name: str) -> dict | None:
-    """Look up graphql_remote source info by SQL table name (snake_case)."""
-    from provisa.graphql_remote.executor import NO_POLICY
-
-    for reg in getattr(state, "graphql_remote_sources", {}).values():
-        for t in reg.get("tables", []):
-            if t["sql_name"] == table_name:
-                return {
-                    "source_id": reg["source_id"],
-                    "url": reg["url"],
-                    "auth": reg.get("auth"),
-                    "field_name": t.get("field_name", t["name"]),
-                    "columns": t.get("columns", []),
-                    "required_args": t.get("required_args", []),
-                    "rows_path": t.get("rows_path"),
-                    "error_policy": reg.get("error_policy") or NO_POLICY,
-                    "cache_ttl": reg.get("cache_ttl", 300),
-                    "cache_catalog": reg.get("cache_catalog", "provisa_admin"),
-                }
-    return None
-
-
-async def _execute_with_api(
-    exec_sql: str,
-    params: list,
-    nf_args: dict,
-    state: Any,
-    span_attrs: dict[str, str] | None = None,
-    *,
-    table_ids: Iterable[int],
-    authorization: "ExecutionAuthorization",
-) -> list[dict]:
-    """Phase 1 (REST) + Phase 2 (the engine) execution for ALL API-backed tables in the query.
-    ``table_ids`` are the registered tables it reads, as the pipeline resolved them: the hot rows
-    substituted, and the rows fetched and promoted, are theirs.
-
-    For each API-backed table referenced in FROM/JOIN clauses:
-      1. Derive URL params from nf_args columns that match the endpoint's native params.
-      2. Materialize into the engine cache (cache miss) or reuse (cache hit).
-      3. Rewrite all API table references in the SQL to their respective cache tables.
-    This ensures json-typed JSONB columns are always exposed as VARCHAR in the cache.
-    """
-    import asyncio
-    from provisa.api_source.router_integration import handle_api_query
-    from provisa.api_source.engine_cache import (
-        org_cache_schema,
-        cache_table_name,
-        cache_location,
-        ensure_cache_schema,
-        table_exists,
-        rewrite_all_from_cache,
-        schedule_drop,
-    )
-    from provisa.compiler.nf_extractor import find_api_table_names
-
-    table_names = find_api_table_names(exec_sql)
-    api_endpoints_in_sql: list[tuple[str, Any]] = []
-    statement_eps = _statement_api_endpoints(state, table_ids)
-    for tn in table_names:
-        ep = statement_eps.get(tn)
-        if ep is not None:
-            api_endpoints_in_sql.append((tn, ep))
-
-    if not api_endpoints_in_sql:
-        raise RuntimeError(f"No API endpoint found for tables: {table_names}")
-
-    from provisa.api.data.materialization import _StatementHot
-
-    hot_mgr = getattr(state, "hot_manager", None)
-    hot = _StatementHot(hot_mgr, state, table_ids)
-
-    # Hot table bypass: only applies when there is exactly one API table and it is hot.
-    if len(api_endpoints_in_sql) == 1:
-        table_name, endpoint = api_endpoints_in_sql[0]
-        entry = hot.entries.get(table_name)
-        if entry is not None:
-            from provisa.cache.values_cte import build_values_cte_sql
-
-            hot_sql = build_values_cte_sql(exec_sql, table_name, entry)
-            physical_sql = state.federation_engine.transpile_physical(hot_sql)
-            log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
-            engine_result = await state.federation_engine.execute_engine(
-                physical_sql, params, span_attrs=span_attrs, authorization=authorization
-            )
-            return [dict(zip(engine_result.column_names, row)) for row in engine_result.rows]
-
-    from provisa.executor.redirect import RedirectConfig
-
-    redirect_config = RedirectConfig.from_env()
-
-    # Materialize every API-backed table into its the engine cache slot.
-    cache_rewrites: dict[str, tuple] = {}  # physical table name → (CacheLocation, cache_tbl)
-    for table_name, endpoint in api_endpoints_in_sql:
-        # param_only, not param_type — a param that shares a response field's name carries both.
-        _response_cols = [c for c in endpoint.columns if not c.param_only]
-        if not _response_cols:
-            from provisa.compiler.nf_extractor import drop_union_branches_for_table
-
-            exec_sql = drop_union_branches_for_table(exec_sql, table_name)
-            log.warning(
-                "[API CACHE] %s has no response columns — dropping union branch", table_name
-            )
-            continue
-        source_id: Any = getattr(endpoint, "source_id", None)
-        api_source = getattr(state, "api_sources", {}).get(source_id)
-
-        # Filter nf_args to columns belonging to this endpoint.
-        param_name_map: dict = {}
-        valid_nf_keys: set = set()
-        for c in endpoint.columns:
-            if c.param_name:
-                param_name_map[c.name] = c.param_name
-                param_name_map[f"_{c.name}"] = c.param_name
-                valid_nf_keys.add(c.name)
-                valid_nf_keys.add(f"_{c.name}")
-        url_params = {param_name_map.get(k, k): v for k, v in nf_args.items() if k in valid_nf_keys}
-
-        _unfilled_path_params = [
-            c.param_name or c.name
-            for c in endpoint.columns
-            if c.param_type is not None
-            and c.param_type.value == "path"
-            and (c.param_name or c.name) not in url_params
-        ]
-        if _unfilled_path_params:
-            from provisa.compiler.nf_extractor import drop_union_branches_for_table
-
-            exec_sql = drop_union_branches_for_table(exec_sql, table_name)
-            log.warning(
-                "[API CACHE] %s missing path params %s — dropping union branch",
-                table_name,
-                _unfilled_path_params,
-            )
-            continue
-
-        # REQ-1730: an explicit api_source.cache_catalog wins; then the engine's own cache catalog
-        # (a native engine's attached store); then, for an engine with none (Trino),
-        # state.source_catalogs (catalog_name_for_source's resolution — the SAME catalog the
-        # compiler emits for this source's own table refs). Without it, cache_location's
-        # per-source fallback (source_id.replace("-", "_")) named a catalog Trino never provisions
-        # for an adapter-fetched source (REQ-826 _MATERIALIZE_ONLY, REQ-842) and
-        # ensure_cache_schema raised CATALOG_NOT_FOUND on every result-cache write.
-        _cc = getattr(api_source, "cache_catalog", None) if api_source else None
-        _default_cs = org_cache_schema(state)
-        _cs = getattr(api_source, "cache_schema", _default_cs) if api_source else _default_cs
-        _cache_loc = cache_location(
-            source_id,
-            _cc,
-            _cs,
-            engine=state.federation_engine,
-            source_catalog=getattr(state, "source_catalogs", {}).get(source_id),
-        )
-        cache_tbl = cache_table_name(source_id, table_name, url_params)
-        cache_rewrites[table_name] = (_cache_loc, cache_tbl)
-
-        loop = asyncio.get_event_loop()
-
-        def _check_schema_and_exists() -> bool:
-            with state.federation_engine.isolated_sync() as conn:
-                ensure_cache_schema(conn, _cache_loc)
-                return table_exists(conn, _cache_loc, cache_tbl)
-
-        hit = await loop.run_in_executor(None, _check_schema_and_exists)
-        if not hit:
-            result = await handle_api_query(
-                endpoint=endpoint,
-                params=url_params,
-                engine=state.federation_engine,
-                source=api_source,
-                source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
-                global_ttl=getattr(state, "response_cache_default_ttl", None),
-                loc=_cache_loc,
-            )
-
-            ttl = (
-                getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl")
-                or getattr(state, "response_cache_default_ttl", None)
-                or endpoint.ttl
-            )
-            # REQ-1350: a cut answer landed under a name of its own (handle_api_query): the
-            # statement reads that one, and its rows are never promoted as the table's.
-            cache_rewrites[table_name] = (_cache_loc, result.cache_table)
-            schedule_drop(
-                state.federation_engine, _cache_loc, result.cache_table, ttl, redirect_config
-            )
-
-            promoted = hot.table_id(table_name)
-            # Only a fetch with no arguments, and not cut (REQ-1350), returned the resource's
-            # whole rows.
-            if (
-                hot_mgr is not None
-                and promoted is not None
-                and result.rows
-                and not url_params
-                and result.cut is None
-            ):
-                spawn_background(hot_mgr.maybe_promote_dicts(promoted, result.rows))
-        else:
-            log.info("[API CACHE] hit — %s", cache_tbl)
-
-    rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
-    physical_sql = state.federation_engine.transpile_physical(rewritten_sql)
-
-    result = await state.federation_engine.execute_engine(
-        physical_sql, params, fresh=True, span_attrs=span_attrs, authorization=authorization
-    )
-    return [dict(zip(result.column_names, row)) for row in result.rows]
-
-
-async def _execute_with_gql_remote(
-    exec_sql: str,
-    params: list,
-    nf_args: dict,
-    state: Any,
-    span_attrs: dict[str, str] | None = None,
-    *,
-    authorization: "ExecutionAuthorization",
-) -> list[dict]:
-    """Materialize graphql_remote tables into the engine cache and execute the query."""
-    import asyncio
-    from dataclasses import dataclass
-    from provisa.graphql_remote.executor import execute_remote
-    from provisa.federation.registry_view import connection_rows
-    from provisa.api_source.engine_cache import (
-        org_cache_schema,
-        cache_table_name,
-        cache_location,
-        ensure_cache_schema,
-        table_exists,
-        create_and_insert,
-        rewrite_all_from_cache,
-        schedule_drop,
-    )
-    from provisa.compiler.nf_extractor import (
-        find_api_table_names,
-        drop_joined_table,
-        drop_union_branches_for_table,
-        where_referenced_tables,
-    )
-    from provisa.compiler.naming import (
-        apply_sql_name as _apply_sql_name,
-        apply_gql_name as _apply_gql_name,
-    )
-
-    def _gql_selection(c: dict) -> str:
-        # The store lands under the semantic sql name; the remote keys the field by its GraphQL
-        # name. Both derive from the naming authority. When they differ, emit a GraphQL alias
-        # ``<sql_name>: <gqlField>`` so the outbound field matches the remote AND the response
-        # comes back keyed by the sql name the store expects; when they coincide, the bare field.
-        # gql_selection (nested object path) still wins. Mirrors source_loader.py's _selection.
-        if c.get("gql_selection"):
-            return c["gql_selection"]
-        sql_name = _apply_sql_name(c["name"])
-        gql_field = _apply_gql_name(c["name"])
-        return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
-
-    @dataclass
-    class _Col:
-        name: str
-        type: str
-
-    _GQL_TO_CACHE_TYPE = {
-        "text": "string",
-        "integer": "integer",
-        "numeric": "number",
-        "boolean": "boolean",
-        "jsonb": "jsonb",
-    }
-
-    table_names = find_api_table_names(exec_sql)
-    where_tables = where_referenced_tables(exec_sql)
-    cache_rewrites: dict[str, tuple] = {}
-    gql_remote_skipped: set[str] = set()
-
-    for tn in table_names:
-        info = _lookup_gql_remote_table(state, tn)
-        if info is None:
-            continue
-
-        required_args: list[dict] = info.get("required_args", [])
-        # Build variables for this table from nf_args keyed by arg name
-        gql_vars = {a["name"]: nf_args[a["name"]] for a in required_args if a["name"] in nf_args}
-        missing = [a["name"] for a in required_args if a["name"] not in nf_args]
-        if missing:
-            if tn not in where_tables:
-                # Not explicitly filtered — drop JOIN or UNION branch.
-                exec_sql = drop_joined_table(exec_sql, tn)
-                exec_sql = drop_union_branches_for_table(exec_sql, tn)
-                gql_remote_skipped.add(tn)
-                continue
-            raise ValueError(
-                f"Table '{tn}' requires argument(s) {missing} — "
-                f"add a WHERE clause, e.g. WHERE n.{missing[0]} = <value>"
-            )
-
-        cache_loc = cache_location(
-            info["source_id"],
-            # The bound engine's cache catalog (native DuckDB → attached materialization store, which
-            # isolated_sync attaches below; Trino → provisa_admin). Hardcoding provisa_admin
-            # binder-errors on a native engine that never attaches it.
-            state.federation_engine.cache_catalog() or info["cache_catalog"],
-            org_cache_schema(state, "_gql_cache"),
-        )
-        cache_tbl = cache_table_name(info["source_id"], tn, gql_vars)
-        cache_rewrites[tn] = (cache_loc, cache_tbl)
-        _info_columns: list = info["columns"]
-
-        loop = asyncio.get_event_loop()
-
-        def _check_or_create_cache(fetch_rows: list | None) -> bool:
-            with state.federation_engine.isolated_sync() as conn:
-                ensure_cache_schema(conn, cache_loc)
-                if table_exists(conn, cache_loc, cache_tbl):
-                    return True
-                if fetch_rows is not None:
-                    col_objs = [
-                        _Col(
-                            name=_apply_sql_name(c["name"]),
-                            type=_GQL_TO_CACHE_TYPE.get(c.get("type", "text"), "string"),
-                        )
-                        for c in _info_columns
-                    ]
-                    _gql_to_sql = {c["name"]: _apply_sql_name(c["name"]) for c in _info_columns}
-                    fetch_rows = [
-                        {_gql_to_sql.get(k, k): v for k, v in row.items()} for row in fetch_rows
-                    ]
-                    create_and_insert(conn, cache_loc, cache_tbl, fetch_rows, col_objs)
-                return False
-
-        hit = await loop.run_in_executor(None, _check_or_create_cache, None)
-        if not hit:
-            col_selections = [_gql_selection(c) for c in info["columns"]]
-            answer = await execute_remote(
-                url=info["url"],
-                auth=info["auth"],
-                field_name=info["field_name"],
-                columns=col_selections,
-                variables=gql_vars or None,
-                required_args=required_args or None,
-                rows_path=info["rows_path"],
-                max_rows=await connection_rows(state, info["source_id"], tn),  # REQ-318
-                error_policy=info["error_policy"],
-            )
-            if answer.cut:
-                # REQ-1350: an answer cut at max_rows lands under a name of this statement's
-                # own, so no later statement finds it as the table's answer.
-                cache_tbl = cache_table_name(
-                    info["source_id"], tn, {**gql_vars, "__cut__": secrets.token_hex(8)}
-                )
-                cache_rewrites[tn] = (cache_loc, cache_tbl)
-            await loop.run_in_executor(None, _check_or_create_cache, answer.rows)
-            # REQ-1688: statistics where the table lives, off the query's critical path.
-            from provisa.api_source.engine_cache import analyze_cache_table
-
-            spawn_background(analyze_cache_table(state.federation_engine, cache_loc, cache_tbl))
-            schedule_drop(state.federation_engine, cache_loc, cache_tbl, info["cache_ttl"])
-        else:
-            log.info("[GQL CACHE] hit — %s", cache_tbl)
-
-    # If skipped gql_remote tables (missing required args) weren't dropped from the main FROM,
-    # they still reference an uncacheable catalog — return empty instead of failing in the engine.
-    if gql_remote_skipped and not cache_rewrites:
-        still_present = gql_remote_skipped & set(find_api_table_names(exec_sql))
-        if still_present:
-            return []
-
-    rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites) if cache_rewrites else exec_sql
-    physical_sql = state.federation_engine.transpile_physical(rewritten_sql)
-
-    result = await state.federation_engine.execute_engine(
-        physical_sql, params, fresh=True, span_attrs=span_attrs, authorization=authorization
-    )
-    return [dict(zip(result.column_names, row)) for row in result.rows]
-
-
-async def _execute(
-    sql: str,
-    params: list,
-    state: Any,
-    span_attrs: dict[str, str] | None = None,
-    *,
-    authorization: "ExecutionAuthorization",
-) -> list[dict]:
-    """Execute SQL against the federation engine and return rows as dicts.
-
-    No readiness gate here: an isolated-engine org (REQ-1043/REQ-1244) is bound with kwargs and no
-    connection on purpose — its dedicated coordinator sleeps and the first real query wakes it. The
-    backend's execute() owns that contract and raises only when the terminal has NEITHER a
-    connection nor kwargs, so gating on is_connected() here refused every first query.
-    """
-    result = await state.federation_engine.execute_engine(
-        sql, params or [], span_attrs=span_attrs, authorization=authorization
-    )
-    return [dict(zip(result.column_names, row)) for row in result.rows]
-
-
 async def _execute_call_body(
     call_body: Any,
     label_map: Any,
@@ -505,7 +93,6 @@ async def _execute_call_body(
     from provisa.cypher.translator import cypher_to_sql
     from provisa.cypher.graph_rewriter import apply_graph_rewrites
     from provisa.compiler.sql_rewrite import make_semantic_sql
-    from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled
 
@@ -513,7 +100,6 @@ async def _execute_call_body(
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
     sql_str = sql_ast.sql(dialect="postgres")
     semantic_sql = make_semantic_sql(sql_str, ctx)
-    _cb_span_attrs: dict[str, str] = span_attrs_from_semantic_sql(semantic_sql, role_id)
     resolved_params = [params.get(name) for name in ordered_params]
 
     plan = await _govern_and_route_compiled(
@@ -524,59 +110,10 @@ async def _execute_call_body(
         cache_hint=NO_CACHE_HINT,
         sdl_joins=False,
     )
-    from provisa.pgwire._pipeline import require_governed_plan
+    from provisa.pgwire._pipeline import _execute_plan, require_governed_plan
 
-    require_governed_plan(plan)  # REQ-1176: verify before this path executes plan SQL on the engine
-    exec_sql = plan.exec_sql or ""
-    physical_sql = plan.physical_sql or ""
-
-    clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
-    api_table_names = find_api_table_names(exec_sql)
-    statement_eps = _statement_api_endpoints(state, plan.table_ids)
-    has_api = any(tn in statement_eps for tn in api_table_names)
-    has_gql_remote = any(_lookup_gql_remote_table(state, tn) is not None for tn in api_table_names)
-
-    # REQ-074/REQ-1386: the branches below reach engine/API terminals directly, so the audit row is
-    # written here; finalize_audit is idempotent, so the _execute_plan branch stays single-write.
-    from provisa.pgwire._pipeline import finalize_audit
-
-    try:
-        if nf_args or has_api:
-            rows = await _execute_with_api(
-                clean_exec_sql,
-                clean_params,
-                nf_args,
-                state,
-                _cb_span_attrs,
-                table_ids=plan.table_ids,
-                authorization=plan_authorization(plan),
-            )
-        elif has_gql_remote:
-            rows = await _execute_with_gql_remote(
-                exec_sql,
-                resolved_params,
-                nf_args,
-                state,
-                _cb_span_attrs,
-                authorization=plan_authorization(plan),
-            )
-        elif physical_sql:
-            rows = await _execute(
-                physical_sql,
-                resolved_params,
-                state,
-                _cb_span_attrs,
-                authorization=plan_authorization(plan),
-            )
-        else:
-            from provisa.pgwire._pipeline import _execute_plan as _exec_plan
-
-            qr = await _exec_plan(plan, state)
-            rows = [dict(zip(qr.column_names, row)) for row in qr.rows]
-    except Exception:
-        await finalize_audit(plan, 500, state)
-        raise
-    plan.row_count = len(rows)
-    await finalize_audit(plan, 200, state)
-
-    return rows, graph_vars
+    require_governed_plan(plan)  # REQ-1176: verify before the terminal executes plan SQL
+    # The one terminal: residency, the statement on its route (the API stage's fetches already in
+    # it), the audit row (REQ-074/REQ-1386).
+    result = await _execute_plan(plan, state)
+    return [dict(zip(result.column_names, row)) for row in result.rows], graph_vars

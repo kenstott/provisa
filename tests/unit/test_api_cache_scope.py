@@ -112,9 +112,10 @@ def test_every_cache_writer_asks_for_the_acting_orgs_schema():
     import inspect
 
     from provisa.api.data import materialization
-    from provisa.api.rest import cypher_exec
 
-    for module in (materialization, cypher_exec):
+    # The pipeline's API stage is the one writer of API caches; Cypher over HTTP writes none of
+    # its own (it reads through the pipeline).
+    for module in (materialization,):
         source = inspect.getsource(module)
         assert 'f"org_' not in source, f"{module.__name__} names a cache schema from an org id"
         assert "org_cache_schema(state" in source, module.__name__

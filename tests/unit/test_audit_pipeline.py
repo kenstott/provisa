@@ -342,8 +342,6 @@ def test_every_caller_facing_surface_binds_an_acting_principal(surface, module, 
         ("pgwire COPY", "provisa/pgwire/copy_handler.py"),
         ("flight", "provisa/api/flight/server.py"),
         ("grpc", "provisa/grpc/server.py"),
-        ("cypher REST exec", "provisa/api/rest/cypher_exec.py"),
-        ("cypher REST router", "provisa/api/rest/cypher_router.py"),
         ("airport", "provisa/api/airport/query.py"),
     ],
 )
@@ -351,6 +349,23 @@ def test_every_govern_then_stream_terminal_finalizes_its_audit(surface, module):
     """These surfaces drain the engine themselves and never reach _execute_plan, so they must
     write the row at their own terminal — otherwise their traffic never reaches the reports."""
     assert "finalize_audit" in _read(module), f"{surface} terminal never writes its audit row"
+
+
+@pytest.mark.parametrize(
+    ("surface", "module"),
+    [
+        ("cypher REST exec", "provisa/api/rest/cypher_exec.py"),
+        ("cypher REST router", "provisa/api/rest/cypher_router.py"),
+        ("bolt", "provisa/bolt/session.py"),
+    ],
+)
+def test_cypher_reads_reach_the_one_terminal_that_audits_them(surface, module):
+    """Cypher over HTTP and Bolt run no terminal of their own: their reads go through
+    _execute_plan, which writes the audit row (REQ-074/REQ-1386)."""
+    source = _read(module)
+    assert "_execute_plan(" in source, f"{surface} does not execute through the pipeline"
+    for terminal in ("_dispatch_execution", "_execute_with_api", "_execute_with_gql_remote"):
+        assert terminal not in source, f"{surface} still runs its own terminal {terminal}"
 
 
 def test_require_governed_plan_callers_are_the_known_surface_set():
@@ -377,9 +392,7 @@ def test_require_governed_plan_callers_are_the_known_surface_set():
         "provisa/pgwire/_pipeline.py",
         "provisa/pgwire/server.py",
         "provisa/pgwire/copy_handler.py",
-        # bolt's single-source DIRECT branch reuses cypher_router.py's own
-        # _dispatch_execution_direct, whose finalize_audit calls (already tracked under "cypher
-        # REST router" below) cover this call site too — no separate finalize needed here.
+        # bolt's reads go through _execute_plan, which writes the audit row itself.
         "provisa/bolt/session.py",
         "provisa/api/flight/server.py",
         "provisa/api/airport/query.py",

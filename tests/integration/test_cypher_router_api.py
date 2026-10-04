@@ -337,7 +337,7 @@ class TestCypherErrorPaths:
 
     async def test_execution_type_mismatch_scrubs_engine_name(self, client):
         """A query that translates successfully but fails at the DB (comparing a numeric
-        column to a non-numeric literal) drives _dispatch_execution's query-error branch
+        column to a non-numeric literal) drives _run_plan's query-error branch
         into _exec_error/_federation_error, which must scrub the raw engine name."""
         schema = await _schema(client)
         orders = _label_for_domain(schema, "sales-analytics")

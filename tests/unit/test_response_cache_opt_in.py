@@ -335,18 +335,3 @@ async def test_the_compiled_pipeline_carries_the_hint_onto_the_plan(monkeypatch)
         )
     assert (hinted.cache_opt_in, hinted.cache_ttl) == (True, 30)
     assert (plain.cache_opt_in, plain.cache_ttl) == (False, None)
-
-
-@pytest.mark.asyncio
-async def test_cypher_dict_rows_round_trip_through_the_cache():
-    """The HTTP Cypher and Bolt DIRECT dispatchers return dict rows; an opted-in plan stores them
-    and serves them back identically, an unhinted one does neither."""
-    from provisa.api.rest.cypher_router import cached_cypher_rows, store_cypher_rows
-
-    state = _state(FakeCacheStore())
-    rows = [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
-    await store_cypher_rows(_plan(), state, rows)
-    assert await cached_cypher_rows(_plan(), state) is None
-    assert await cached_cypher_rows(_plan(cache_opt_in=True), state) is None
-    await store_cypher_rows(_plan(cache_opt_in=True), state, rows)
-    assert await cached_cypher_rows(_plan(cache_opt_in=True), state) == rows

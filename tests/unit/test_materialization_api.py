@@ -1391,3 +1391,63 @@ class TestMatGqlRemoteTableCut:
         assert len(set(landed)) == 2  # each cut statement lands its own, found by no other
         assert hot_mgr._hot_tables == {}
         assert first["pets"].rows == [{"id": 1, "name": "Fido"}]  # this statement reads it
+
+
+class TestMatApiEpTableCut:
+    """REQ-1350: an API answer cut at max_pages, warned earlier in the statement, is landed under a
+    name of the statement's own and never held hot -- on the pipeline's API stage, which every
+    surface's statement reaches (Cypher over HTTP included, since its own API terminal is gone)."""
+
+    async def test_a_cut_answer_lands_under_its_own_name_and_is_never_promoted(self):
+        from provisa.core.statement_warnings import ServerWarning, collecting, warn
+
+        state = SimpleNamespace(
+            api_sources={},
+            org_id="default",
+            federation_engine=MagicMock(),
+            source_cache={},
+            response_cache_default_ttl=300,
+        )
+        named: list[dict] = []
+
+        def table_name(source_id, tn, args):
+            named.append(dict(args))
+            return f"pets_{len(named)}"
+
+        hot_mgr = _hot_manager()
+        values_cte_entries: dict = {}
+        cache_rewrites: dict = {}
+        with (
+            collecting(),
+            patch(_FILLS, new=AsyncMock(return_value=[{"id": 1}])),
+            patch(
+                "provisa.api_source.engine_cache.cache_location",
+                return_value=CacheLocation("cat", "sch", "relational"),
+            ),
+            patch("provisa.api_source.engine_cache.cache_table_name", side_effect=table_name),
+            patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
+            patch("provisa.api_source.engine_cache.ensure_cache_schema"),
+            patch("provisa.api_source.engine_cache.table_exists", return_value=False),
+            patch("provisa.api_source.engine_cache.create_and_insert"),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
+        ):
+            warn(
+                ServerWarning(
+                    code="api.answer_cut",
+                    message="the answer for pets was cut at max_pages=1 (2 rows)",
+                    params={"table": "pets", "max_pages": 1, "rows": 2},
+                )
+            )
+            await _mat_api_ep_table(
+                "pets",
+                _ep([_col("id")]),
+                state,
+                _statement_hot(hot_mgr),
+                500,
+                set(),
+                cache_rewrites,
+                values_cte_entries,
+            )
+        assert any("__cut__" in args for args in named), named  # a name of this statement's own
+        assert values_cte_entries["pets"].rows == [{"id": 1}]  # the statement reads its rows
+        assert hot_mgr._hot_tables == {}  # never held as the table's rows
