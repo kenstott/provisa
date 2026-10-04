@@ -354,3 +354,32 @@ async def test_the_search_never_touches_the_vault(planes, monkeypatch):
         planes.admin, ORG, "DB_PW", environments=planes.environments
     )
     assert [(r.table, r.id) for r in found] == [("sources", "warehouse")]
+
+
+async def test_an_environments_model_store_handle_is_searched_on_its_own_side(planes):
+    """The org's environment planes are its MODEL stores (REQ-1922): a handle that refuses the
+    state tables. The search reads the model's tables through it, where every declared value is
+    (the runtime alone writes state, REQ-1920), and not the state tables it would be refused --
+    deleting a source's password used to fail there on ``events``."""
+    model_planes = Planes(
+        planes.admin,
+        {
+            env: Database(
+                plane.engine, name=f"{env}-model", search_path=plane.search_path, holds="model"
+            )
+            for env, plane in planes.environments.items()
+        },
+    )
+    await _secret(model_planes)
+    await _source(model_planes, "prod", "warehouse", password_ref="${secret:DB_PW}")
+    with pytest.raises(SecretDeleteRefused) as err:
+        await _delete(model_planes)
+    assert _named(err.value) == [("prod", "sources", "warehouse", "password_ref")]
+
+    async with model_planes.environments["prod"].acquire() as conn:
+        await conn.execute_core(
+            update(schema_org.sources)
+            .where(schema_org.sources.c.id == "warehouse")
+            .values(password_ref="")
+        )
+    assert await _delete(model_planes) is True

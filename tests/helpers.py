@@ -198,7 +198,9 @@ async def delete_source_and_its_tables(client, source_id: str) -> None:
     async def gql(query: str) -> dict:
         resp = await client.post("/admin/graphql", json={"query": query})
         assert resp.status_code == 200, resp.text
-        return resp.json()["data"]
+        body = resp.json()
+        assert not body.get("errors"), body
+        return body["data"]
 
     listed = await gql(
         "{ tables { id sourceId } relationships { id sourceTableId targetTableId } }"
@@ -206,9 +208,13 @@ async def delete_source_and_its_tables(client, source_id: str) -> None:
     table_ids = {t["id"] for t in listed["tables"] if t["sourceId"] == source_id}
     for rel in listed["relationships"]:
         if rel["sourceTableId"] in table_ids or rel["targetTableId"] in table_ids:
-            await gql(f'mutation {{ deleteRelationship(id: "{rel["id"]}") {{ success }} }}')
+            deleted = await gql(
+                f'mutation {{ deleteRelationship(id: "{rel["id"]}") {{ success message }} }}'
+            )
+            assert deleted["deleteRelationship"]["success"], deleted
     for table_id in sorted(table_ids):
-        await gql(f"mutation {{ deleteTable(id: {table_id}) {{ success }} }}")
+        deleted = await gql(f"mutation {{ deleteTable(id: {table_id}) {{ success message }} }}")
+        assert deleted["deleteTable"]["success"], deleted
     outcome = (
         await gql(f'mutation {{ deleteSource(id: "{source_id}") {{ success code message }} }}')
     )["deleteSource"]
