@@ -376,6 +376,12 @@ def _detect_relationships(  # REQ-313
             rel_id = f"gql_remote__{table['source_id']}__{table['name']}__{col['name']}"
             if cardinality == "many-to-one":
                 src_col, tgt_col = _infer_fk_columns(col["name"], gql_type, src_scalars, types)
+                # The columns are named as they are registered too (apply_sql_name): FK/PK marking
+                # in rel_repo.upsert matches source_column/target_column against the registered
+                # column names, so a camelCase GQL field (breedName) must become breed_name here or
+                # the is_foreign_key/is_primary_key flag lands on no row.
+                src_col = apply_sql_name(src_col) if src_col else ""
+                tgt_col = apply_sql_name(tgt_col) if tgt_col else ""
             else:
                 src_col, tgt_col = "", ""
             relationships.append(

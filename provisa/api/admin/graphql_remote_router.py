@@ -419,22 +419,24 @@ async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
 
     async with model_db.acquire() as conn:
         for r in relationships or []:
-            try:
-                await rel_repo.upsert(
-                    conn,
-                    Relationship(
-                        id=r["id"],
-                        source_table_id=r["source_table_id"],
-                        target_table_id=r["target_table_id"],
-                        source_column=r["source_column"],
-                        target_column=r["target_column"],
-                        cardinality=Cardinality(r.get("cardinality", "many-to-one")),
-                        source_json_key=r.get("source_json_key") or None,
-                    ),
-                    origin="admin",
-                )
-            except Exception:
-                log.warning("Failed to upsert relationship %s", r["id"], exc_info=True)
+            # No per-relationship catch: a generated relationship that names a table/column the
+            # registry does not hold is a mapper bug, not a tolerable miss -- let it fail the
+            # registration by name (rel_repo.upsert raises ValueError) rather than warn and leave
+            # the relationship silently absent. The deferred-config retry below is the one place a
+            # not-yet-registered table is expected, and it alone swallows ValueError.
+            await rel_repo.upsert(
+                conn,
+                Relationship(
+                    id=r["id"],
+                    source_table_id=r["source_table_id"],
+                    target_table_id=r["target_table_id"],
+                    source_column=r["source_column"],
+                    target_column=r["target_column"],
+                    cardinality=Cardinality(r.get("cardinality", "many-to-one")),
+                    source_json_key=r.get("source_json_key") or None,
+                ),
+                origin="admin",
+            )
         # Retry config relationships deferred at startup (tables may now exist)
         cfg = getattr(state, "config", None) if state is not None else None
         if cfg is not None:

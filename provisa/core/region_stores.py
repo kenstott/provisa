@@ -35,6 +35,21 @@ if TYPE_CHECKING:
     from provisa.core.regions import OrgRegion, StoreConfig
 
 
+class HomeRegionUnavailable(RuntimeError):
+    """A table that names another region is read from that region's replica, never live and
+    never from a copy here (REQ-1922): refused while that replica cannot be read from here."""
+
+    code = "query.home_region_unavailable"
+
+    def __init__(self, table: str, region: str, why: str) -> None:
+        self.table, self.region = table, region
+        self.params = {"table": table, "region": region}
+        super().__init__(
+            f"table {table!r} is kept in region {region!r} and is read only from its replica "
+            f"there, which {why}"
+        )
+
+
 class StoreNotDeclared(LookupError):
     """A region names a store id the org does not declare. Load and save refuse this
     (``provisa/core/regions.py``); meeting it here means the model store was written around them."""

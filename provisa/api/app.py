@@ -2873,14 +2873,14 @@ async def _stop_long_lived(handle: Any, timeout: float = 10.0) -> None:
 def create_app() -> FastAPI:
     """Create the FastAPI application."""
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import ORJSONResponse
+    from provisa.api.json_response import OrjsonResponse
     from strawberry.fastapi import GraphQLRouter
 
     from provisa.api.admin.schema import admin_schema
 
     # Swagger/OpenAPI live under /data/openapi/ (not the default /docs) so the UI can
     # own /docs for its in-app documentation reader.
-    # REQ-1867: ORJSONResponse (orjson-backed) instead of FastAPI's stdlib-json default for every
+    # REQ-1867: OrjsonResponse (orjson-backed) instead of FastAPI's stdlib-json default for every
     # route that doesn't explicitly return its own Response — orjson was already resolving
     # transitively (langsmith/trino pull it in) but nothing in this app actually used it; every
     # JSON response paid stdlib json's slower encode. A route building its own JSONResponse/
@@ -2892,7 +2892,7 @@ def create_app() -> FastAPI:
         docs_url="/data/openapi/docs",
         redoc_url="/data/openapi/redoc",
         openapi_url="/data/openapi/openapi.json",
-        default_response_class=ORJSONResponse,
+        default_response_class=OrjsonResponse,
     )
     state.federation_engine.write_config(config_path_str())
     _setup_otel(app)
@@ -2977,6 +2977,18 @@ def create_app() -> FastAPI:
         return _JSONResponse(
             status_code=403,
             content={"detail": str(exc), "code": "query.operator_floor", "params": {}},
+        )
+
+    from provisa.core.region_stores import HomeRegionUnavailable as _HomeRegionUnavailable
+
+    @app.exception_handler(_HomeRegionUnavailable)
+    async def _home_region_handler(_req: _Request, exc: _HomeRegionUnavailable):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1922: a table kept in another region is read only from its replica there; while that
+        # replica cannot be read from here the read is refused — 503, the answer exists but
+        # cannot be given from here now.
+        return _JSONResponse(
+            status_code=503,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 
     @app.exception_handler(Exception)

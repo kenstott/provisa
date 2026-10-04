@@ -221,7 +221,10 @@ async def converge_replicas(state: Any) -> Converged:
             if await replica_state.request_build(conn, key, reason, model_stamp=stamp, now=now):
                 done.requested.append(key)
         for key, record in sorted(records.items()):
-            if key in declared or record.retired_at is not None:
+            # REQ-1922: a copy of a table declared but kept in another region (it named none,
+            # or another, when this region built it) holds data this region may not keep: it
+            # goes exactly as an undeclared one does.
+            if (key in declared and builds_here(homes[key])) or record.retired_at is not None:
                 continue
             if record.model_stamp is not None and (stamp is None or stamp < record.model_stamp):
                 continue  # requested under a newer model than this node has loaded: not gone
@@ -313,7 +316,10 @@ async def drop_retired(state: Any, locks: Any, org_id: str) -> list[ReplicaKey]:
     finally:
         claim.close()
     if dropped:
-        log.info("replicas dropped (no longer declared): %s", [".".join(k) for k in dropped])
+        log.info(
+            "replicas dropped (no longer declared, or kept in another region): %s",
+            [".".join(k) for k in dropped],
+        )
     return dropped
 
 
