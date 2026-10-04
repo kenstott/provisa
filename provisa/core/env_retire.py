@@ -271,9 +271,13 @@ async def retire_environment(
     if blocking:
         raise EnvironmentInUse(org_id, name, blocking)
     from provisa.core.org_provisioning import deprovision_org
+    from provisa.core.region_purge import purge_org_regions
 
     from provisa.core.redis_location import redis_url
 
+    # REQ-1921/REQ-1922: what the environment keeps in every region store goes first — all or
+    # nothing (an unreachable store refuses the retirement, naming its region).
+    await purge_org_regions(pool, org_id, [name])
     await deprovision_org(pool, org_id, redis_url=redis_url(), env=name)
     # REQ-1620: the schemas are not everything the environment owned. An environment created with
     # its bindings carried was given its own copies of every file-backed source, and those live on
