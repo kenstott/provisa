@@ -208,7 +208,7 @@ def _infer_gql_type(field_name: str) -> str:
 @then(
     "the createUser tracked-function entry carries suggested_associations whose top "
     'candidate is the users table (score 1.0, reason "return type User"), '
-    "and its writable_by stays empty — the suggestion is a hint that no code auto-binds"
+    "and it is assigned to no role — the suggestion is a hint that no code auto-binds"
 )
 def then_create_user_has_top_suggestion_users(shared_data: dict) -> None:
     suggestions: list[TableCandidate] = shared_data["create_user_suggestions"]
@@ -229,8 +229,7 @@ def then_create_user_has_top_suggestion_users(shared_data: dict) -> None:
     # Reason must mention the return type 'User'
     assert "User" in top.reason, f"Expected reason to mention 'User', got '{top.reason}'"
 
-    # Verify writable_by is absent / empty on the corresponding function entry.
-    # The mapper should leave writable_by unset (default-deny per REQ-867).
+    # The corresponding function entry is assigned to no role (REQ-871: a suggestion assigns none).
     fn_entry = None
     for fn in shared_data["functions"]:
         field = fn.get("field_name") or fn.get("name", "")
@@ -243,9 +242,8 @@ def then_create_user_has_top_suggestion_users(shared_data: dict) -> None:
         + str([f.get("field_name") or f.get("name") for f in shared_data["functions"]])
     )
 
-    # writable_by must be absent or an empty collection — default-deny
-    writable_by = fn_entry.get("writable_by", [])
-    assert not writable_by, f"Expected writable_by to be empty (default-deny), got {writable_by!r}"
+    visible_to = fn_entry.get("visible_to", [])
+    assert not visible_to, f"Expected createUser assigned to no role, got {visible_to!r}"
 
     # The mapper should attach suggested_associations; if it does, verify them.
     if "suggested_associations" in fn_entry:

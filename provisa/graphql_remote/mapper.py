@@ -646,7 +646,7 @@ def _map_mutation_field(  # REQ-308, REQ-871
 
     Attaches non-binding ``suggested_associations`` (REQ-871): ranked (table, score, reason)
     hints for which table this mutation likely writes. Hints only — nothing is bound here;
-    an admin confirms, and a confirmed association registers with empty writable_by.
+    an admin confirms; a suggestion assigns the command to no role.
     """
     ret_kind, ret_name = _unwrap_type(field["type"])
     return_type = _find_type(types, ret_name) if ret_kind == "OBJECT" else None

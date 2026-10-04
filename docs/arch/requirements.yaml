@@ -25284,17 +25284,23 @@
   type: behavioral
   description: 'Admin-only reclassification: legitimate reclassification of a mutation to read-safe is
     gated by ACCESS_CONFIG capability and recorded as a governance decision. No per-operation read_only
-    opt-out for callers; only admin acts can demote a mutation. Re-introspection of discovered mutations
-    registers with empty writable_by; existing grants preserved by name. DONE (2026-07): two enforceable
+    opt-out for callers; only admin acts can demote a mutation. [SUPERSEDED by REQ-870, 2026-10-03 -- a
+    command has no writable_by; its one role list is visible_to. Kept here for history; do not implement
+    against it.] Re-introspection of discovered mutations registers with empty writable_by; existing grants
+    preserved by name. [END SUPERSEDED BLOCK] DONE (2026-07): two enforceable
     behaviors. (1) reclassify_kind (provisa/security/ mutation_authz.py) is the single reclassification
     gate — only a role holding ACCESS_CONFIG (ADMIN bypasses, per has_capability) may demote a mutation
     to read-safe; the reverse (promoting a read to a write) is rejected for everyone, and there is no
     caller-supplied read_only flag anywhere in the request path, so classification stays under governance
-    control. A no-op transition is idempotent. (2) upsert_function (provisa/core/repositories/ function.py)
-    now preserves an existing writable_by on re-introspection: a discovered mutation upserts with an empty
-    writable_by that keeps the current admin grant (grants preserved by name), while an explicit non-empty
-    grant still applies. Proven with unit tests for the gate and a live-Postgres test for grant preservation
-    across re-introspection.'
+    control. A no-op transition is idempotent. [SUPERSEDED by REQ-870, 2026-10-03 -- the writable_by
+    upsert rule is gone with the column. Kept here for history; do not implement against it.] (2) upsert_function
+    (provisa/core/repositories/ function.py) now preserves an existing writable_by on re-introspection:
+    a discovered mutation upserts with an empty writable_by that keeps the current admin grant (grants
+    preserved by name), while an explicit non-empty grant still applies. Proven with unit tests for the
+    gate and a live-Postgres test for grant preservation across re-introspection. [END SUPERSEDED BLOCK]
+    (Amended 2026-10-03, ONE ROLE LIST:) A command carries one role list, its assigned roles (visible_to);
+    a role reaches a command only when assigned to it AND reaching the command''s domain. Re-registering
+    a source keeps every assignment an admin made; discovery never drops an assignment.'
   use_case: Ensures authorization policy remains under control of governance (admin), not individual callers.
     Prevents callers from overriding mutation classification, supports safe discovery/re-registration
     of mutations without accidentally granting them.
@@ -25303,23 +25309,19 @@
   - provisa/core/repositories/function.py
   tests:
   - tests/unit/test_mutation_authz.py
-  - tests/integration/test_mutation_writable_by_preservation.py
+  - tests/steps/steps_authorization.py
   target: 2026-Q4
-  scenario: 'Given a discovered remote mutation "createOrder" registered with an empty writable_by
+  scenario: 'Given a discovered mutation "createOrder" in domain "sales", assigned on discovery to org_admin alone
 
-    And an admin grants it to the "ops" role (writable_by = [''ops''])
+    And an admin assigns it to the "ops" role
 
-    When introspection re-runs and upserts createOrder by name with an empty writable_by
+    When introspection re-runs and registers createOrder again
 
-    Then the ops grant is preserved (writable_by stays [''ops'']) — discovery never wipes grants
+    Then ops still reaches createOrder through its assignment and the sales domain — discovery never drops an assignment
 
-    And when a role WITHOUT the ACCESS_CONFIG capability attempts to reclassify createOrder
+    And when a role WITHOUT the ACCESS_CONFIG capability attempts to reclassify createOrder to read-safe, the attempt is rejected
 
-    to read-safe, the attempt is rejected
-
-    And an ACCESS_CONFIG (or admin) role may demote it to read, but no one may promote a
-
-    read back to a write
+    And an ACCESS_CONFIG (or admin) role may demote it to read, but no one may promote a read back to a write
 
     '
   related_reqs:
@@ -25355,7 +25357,9 @@
     invokes it during registration so every mapped mutation entry carries suggested_associations = [{table,
     score, reason}] computed from its unwrapped return-type leaves + input-type stem, with writable_by
     left empty (default-deny). Consuming these hints into an admin confirmation surface is REQ-870; projecting/binding
-    across surfaces is REQ-872.'
+    across surfaces is REQ-872. (Amended 2026-10-03, ONE ROLE LIST:) A command has no writable_by; every
+    "empty writable_by" above reads as "assigned to no role" (visible_to empty). A suggestion assigns no
+    role; only an admin assigns a command to a role.'
   use_case: Registration of mutations across heterogeneous sources requires protocol-aware association
     signals. Per-adapter suggesters reduce admin friction by ranking likely alignment; unmatched mutations
     remain registerable as global functions or require manual binding.
@@ -25374,9 +25378,9 @@
 
     Then the createUser tracked-function entry carries suggested_associations whose top
 
-    candidate is the users table (score 1.0, reason "return type User"), and its writable_by
+    candidate is the users table (score 1.0, reason "return type User"), and it is assigned
 
-    stays empty — the suggestion is a hint that no code auto-binds
+    to no role — the suggestion is a hint that no code auto-binds
 
     And a mutation "sendTelemetry: Boolean" with no table-typed return yields an empty
 
