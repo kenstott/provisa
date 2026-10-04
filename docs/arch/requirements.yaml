@@ -22061,14 +22061,15 @@
     file is one logical table. Every matched file must carry the same column set; a file that differs is
     refused by name, never null-filled. A table may declare a source-file column carrying each row's file.
     The glob's change signal is the matched-file count, the latest modification time and the total size.
-    (Amended 2026-10-03, NATIVE READ:) The merged table is read natively through the bundled Calcite file
-    adapter (the pgwire bridge used by DuckDB, Postgres and Trino), generalising the adapter's existing glob
-    and partitioned-table handling to CSV, JSON and Parquet in both modes. It ships by an engine release
-    of the calcite fork and a RELEASE_TAG bump in provisa/runtime_deps/pgwire_bundles.py. The interim
-    replica-read reader (an in-process DuckDB read over the file list, the table always served from its
-    replica) is removed once the native read is proven, unless a bridge engine has no bundle for its
-    platform. In that case the engine is named here and glob tables are refused by name on any other
-    engine without the bundle. A ClickHouse engine-native read (file()/s3) is a later optimization.
+    (Amended 2026-10-03, NATIVE READ:) A files source and its glob tables are served by the bundled Calcite
+    file adapter whatever the engine. The adapter already lists one table per file for a wildcard on the
+    schema directory and merges CSV, JSON and Parquet matches for a table whose url is a glob. It gains a
+    by-name refusal for a file whose columns differ and the optional source-file column. Provisa passes
+    a table's file_glob and source_file_column into the adapter's table definition. A replica, wherever
+    one is needed, is read from the file adapter's connection like any source's table; there is no
+    second reader and no glob-specific routing. A platform with no adapter bundle has no files sources,
+    the same condition as every files source. It ships by an engine release of the calcite fork and a
+    RELEASE_TAG bump in provisa/runtime_deps/pgwire_bundles.py.
   use_case: File glob patterns enable users to query across multiple CSV files without manual discovery
     or registration of individual files.
   code:
