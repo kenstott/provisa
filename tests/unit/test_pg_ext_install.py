@@ -40,7 +40,7 @@ def _bundle(root: Path, os_: str, arch: str, pg_major: str, *, corrupt: bool = F
     (tree / "lib").mkdir(parents=True)
     (tree / "share" / "extension").mkdir(parents=True)
     artifacts = []
-    for name in ("postgres_fdw", "pg_duckdb", "libduckdb"):
+    for name in ("postgres_fdw", "pg_duckdb", "libduckdb", "libpq"):  # the last two: support libs
         blob = f"{name} for {os_}-{arch} pg{pg_major}".encode()
         (tree / "lib" / f"{name}.so").write_bytes(blob)
         digest = hashlib.sha256(b"something else" if corrupt and name == "pg_duckdb" else blob)
