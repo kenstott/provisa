@@ -334,6 +334,8 @@ class TestGitHubBrandedSource:
             json={
                 "source_id": "it-github-bad",
                 "brand": "github",
+                # REQ-1907: its tables are landed, so the source declares their cache TTL.
+                "cache_ttl": 300,
                 "auth": {"type": "bearer", "token": "wrong"},
             },
         )
@@ -350,6 +352,8 @@ class TestGitHubBrandedSource:
             json={
                 "source_id": _GITHUB_SOURCE,
                 "brand": "github",
+                # REQ-1907: its tables are landed, so the source declares their cache TTL.
+                "cache_ttl": 300,
                 "auth": {"type": "bearer", "token": "ghp_integration"},
                 "description": "GitHub",
             },
@@ -494,6 +498,8 @@ class TestGitLabBrandedSource:
             json={
                 "source_id": "it-gitlab-bad",
                 "brand": "gitlab",
+                # REQ-1907: its tables are landed, so the source declares their cache TTL.
+                "cache_ttl": 300,
                 "auth": {"type": "bearer", "token": "stale"},
             },
         )
@@ -510,6 +516,8 @@ class TestGitLabBrandedSource:
             json={
                 "source_id": _GITLAB_SOURCE,
                 "brand": "gitlab",
+                # REQ-1907: its tables are landed, so the source declares their cache TTL.
+                "cache_ttl": 300,
                 "auth": {"type": "bearer", "token": "glpat_integration"},
             },
         )

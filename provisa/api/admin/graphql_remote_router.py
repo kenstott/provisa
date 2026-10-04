@@ -121,6 +121,12 @@ def _auth_hints(auth: dict | None) -> dict[str, str]:
     return {"auth_type": auth["type"]}
 
 
+def _declared_cache_ttl(body: "GraphQLRemoteSourceRequest") -> int | None:
+    """The cache TTL the caller sent, or None when it sent none: the request model's default
+    (300) is the remote-call cache, not a landing TTL anyone declared (REQ-1907)."""
+    return body.cache_ttl if "cache_ttl" in body.model_fields_set else None
+
+
 async def _persist_source(  # REQ-307, REQ-1923
     request: Request,
     source_id: str,
@@ -130,10 +136,13 @@ async def _persist_source(  # REQ-307, REQ-1923
     auth: dict | None,
     brand_id: str | None,
     conn,
+    *,
+    cache_ttl: int | None,
 ) -> None:
     """Write the ``sources`` row. The credential goes to the org's vault and the row carries the
     reference (REQ-1695); the namespace, the auth scheme and the brand ride in
-    ``federation_hints``."""
+    ``federation_hints``. ``cache_ttl`` is the source's cache TTL when the caller declared one: the
+    clock its landed tables refresh on (REQ-1907); None leaves the row's as it is."""
     from provisa.api.admin.schema_common import store_source_password
     from provisa.graphql_remote.brands import BRAND_HINT, NAMESPACE_HINT
 
@@ -142,27 +151,27 @@ async def _persist_source(  # REQ-307, REQ-1923
     hints = {NAMESPACE_HINT: namespace, **_auth_hints(auth)}
     if brand_id:
         hints[BRAND_HINT] = brand_id
-    await conn.upsert(
-        sources,
-        {
-            "origin": "admin",  # REQ-1919: written when the row is created
-            "id": source_id,
-            "type": "graphql_remote",
-            "host": "",
-            "port": 0,
-            "database": "",
-            "username": (auth or {}).get("username", ""),
-            "dialect": "",
-            "path": url,
-            "description": description,
-            "federation_hints": hints,
-            "password_ref": await store_source_password(
-                getattr(identity, "user_id", None), source_id, secret
-            ),
-        },
-        index_elements=["id"],
-        update_columns=["path", "description", "username", "federation_hints", "password_ref"],
-    )
+    row = {
+        "origin": "admin",  # REQ-1919: written when the row is created
+        "id": source_id,
+        "type": "graphql_remote",
+        "host": "",
+        "port": 0,
+        "database": "",
+        "username": (auth or {}).get("username", ""),
+        "dialect": "",
+        "path": url,
+        "description": description,
+        "federation_hints": hints,
+        "password_ref": await store_source_password(
+            getattr(identity, "user_id", None), source_id, secret
+        ),
+    }
+    updated = ["path", "description", "username", "federation_hints", "password_ref"]
+    if cache_ttl is not None:
+        row["cache_ttl"] = cache_ttl
+        updated.append("cache_ttl")
+    await conn.upsert(sources, row, index_elements=["id"], update_columns=updated)
 
 
 async def _register_branded_source(request: Request, body: "GraphQLRemoteSourceRequest") -> dict:
@@ -213,6 +222,7 @@ async def _register_branded_source(request: Request, body: "GraphQLRemoteSourceR
             brand.auth(token),
             brand.id,
             conn,
+            cache_ttl=_declared_cache_ttl(body),
         )
     state.graphql_remote_sources[body.source_id] = {
         "source_id": body.source_id,
@@ -492,6 +502,7 @@ async def register_graphql_remote_source(
             body.auth,
             None,
             _conn,
+            cache_ttl=_declared_cache_ttl(body),
         )
         if body.domain_id:
             await _conn.upsert(
