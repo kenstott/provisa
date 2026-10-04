@@ -273,17 +273,17 @@ async def test_native_columns_trino_no_driver_returns_none():
 
 
 @pytest.mark.asyncio
-async def test_native_tables_mysql_uses_percent_s_placeholder():
-    """Regression: this branch used to pass a literal `?` placeholder, which aiomysql does not
-    support (it expects `%s`) — raised inside pymysql's own escaping, silently caught by this
-    function's `except Exception: return None` and never surfaced as an error, just an empty
-    picker. Asserting the query text catches a regression without a live mysql server."""
+async def test_native_tables_mysql_uses_the_drivers_dollar_placeholder():
+    """Regression: MySQLDriver.execute binds `$N` and escapes every literal `%`, so a `?` or a
+    `%s` written here is a literal and PyMySQL's formatting raises. Asserting the query text
+    catches a regression without a live mysql server; test_mysql_discovery_binds_through_its_driver
+    runs the real driver's binding."""
     pool = _pool([("widgets", None)])
     result = await native_tables("src", "mysql", "verify_db", pool, _no_conn(), None)
     assert result is not None
     assert [t.name for t in result] == ["widgets"]
     _, query, params = pool.execute.call_args[0]
-    assert "%s" in query and "?" not in query
+    assert "$1" in query and "%s" not in query and "?" not in query
     assert params == ["verify_db"]
 
 
@@ -293,7 +293,7 @@ async def test_native_columns_mysql():
     result = await native_columns("src", "mysql", "verify_db", "widgets", pool)
     assert result == [("id", "int"), ("name", "varchar")]
     _, query, params = pool.execute.call_args[0]
-    assert "%s" in query and "?" not in query
+    assert "$1" in query and "$2" in query and "%s" not in query and "?" not in query
     assert params == ["verify_db", "widgets"]
 
 
@@ -327,13 +327,13 @@ async def test_native_schemas_tidb():
 
 
 @pytest.mark.asyncio
-async def test_native_tables_tidb_uses_percent_s_placeholder():
+async def test_native_tables_tidb_uses_the_drivers_dollar_placeholder():
     pool = _pool([("widgets", None)])
     result = await native_tables("src", "tidb", "verify_db", pool, _no_conn(), None)
     assert result is not None
     assert [t.name for t in result] == ["widgets"]
     _, query, params = pool.execute.call_args[0]
-    assert "%s" in query and "?" not in query
+    assert "$1" in query and "%s" not in query and "?" not in query
     assert params == ["verify_db"]
 
 
@@ -343,7 +343,7 @@ async def test_native_columns_tidb():
     result = await native_columns("src", "tidb", "verify_db", "widgets", pool)
     assert result == [("id", "int"), ("name", "varchar")]
     _, query, params = pool.execute.call_args[0]
-    assert "%s" in query and "?" not in query
+    assert "$1" in query and "$2" in query and "%s" not in query and "?" not in query
     assert params == ["verify_db", "widgets"]
 
 
