@@ -124,12 +124,23 @@ def test_arrow_batches_locks_schema_from_first_batch():
     assert tbl.column("name").to_pylist() == ["a", "b"]
 
 
-def test_arrow_batches_converts_decimal_to_float():
-    res = _rows_result(["amount"], [(Decimal("1.5"),), (Decimal("2.5"),)])
+def test_arrow_batches_keep_a_decimal_exact():
+    # REQ-1897: rows -> Arrow is lossless; a Decimal is never narrowed to a double.
+    res = _rows_result(["amount"], [(Decimal("1.5"),), (Decimal("2.25"),)])
     schema, batches = arrow_batches_from_rows(res)
-    assert schema.field("amount").type == pa.float64()
+    assert schema.field("amount").type == pa.decimal128(38, 2)
     tbl = pa.Table.from_batches(list(batches), schema=schema)
-    assert tbl.column("amount").to_pylist() == [1.5, 2.5]
+    assert tbl.column("amount").to_pylist() == [Decimal("1.50"), Decimal("2.25")]
+
+
+def test_arrow_batches_take_a_declared_decimal_precision():
+    from provisa.executor.result import StreamingQueryResult
+
+    res = StreamingQueryResult(
+        iter([[(Decimal("1.50"),)]]), column_names=["amount"], column_types=["DECIMAL(10,2)"]
+    )
+    schema, _ = arrow_batches_from_rows(res)
+    assert schema.field("amount").type == pa.decimal128(10, 2)
 
 
 def test_arrow_batches_empty_result_yields_null_typed_schema():

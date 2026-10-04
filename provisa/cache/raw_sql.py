@@ -43,7 +43,6 @@ drained to its end within the bound is stored.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Coroutine, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
@@ -142,19 +141,6 @@ def entry_as_result(entry: dict, column_types: list[str] | None) -> QueryResult:
     raise _decoded_only(kind)
 
 
-_DECIMAL_TYPE = re.compile(r"^\s*(?:decimal|numeric)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)\s*$", re.I)
-
-
-def _arrow_array(values: list, declared: str | None) -> Any:
-    import pyarrow as pa
-
-    m = _DECIMAL_TYPE.match(declared) if declared else None
-    if m is not None:
-        precision, scale = int(m.group(1)), int(m.group(2))
-        return pa.array(values, type=pa.decimal128(precision, scale))
-    return pa.array(values)  # Decimal -> decimal128, aware datetime -> timestamp(tz): lossless
-
-
 def entry_as_arrow(entry: dict, column_types: list[str] | None) -> Any:
     """A cached entry of either kind as the Arrow table Flight serves."""
     import pyarrow as pa
@@ -166,7 +152,12 @@ def entry_as_arrow(entry: dict, column_types: list[str] | None) -> Any:
         names: list[str] = entry["column_names"]
         rows = entry["rows"]
         declared = column_types if column_types is not None else [None] * len(names)
-        arrays = [_arrow_array([row[i] for row in rows], declared[i]) for i in range(len(names))]
+        # The rows->Arrow typing Flight's live row stream uses, so a miss and its hit agree.
+        from provisa.federation.runtime_support import arrow_array_for_rows
+
+        arrays = [
+            arrow_array_for_rows([row[i] for row in rows], declared[i]) for i in range(len(names))
+        ]
         return pa.table(arrays, names=names)
     raise _decoded_only(kind)
 

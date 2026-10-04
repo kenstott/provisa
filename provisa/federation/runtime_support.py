@@ -17,6 +17,7 @@ as free functions the concretes call, not in a base class."""
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Iterator
 from decimal import Decimal
 from itertools import islice
@@ -132,6 +133,33 @@ def stream_from_dbapi(
     )
 
 
+_DECLARED_DECIMAL = re.compile(r"^\s*(?:decimal|numeric)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)\s*$", re.I)
+_DECIMAL128_MAX_PRECISION = 38
+
+
+def arrow_array_for_rows(values: list, declared: str | None) -> Any:  # REQ-1219, REQ-1897
+    """One column of row values as an Arrow array: the one rows->Arrow typing Flight uses for a
+    live row stream and for a cached ``rows`` entry alike, so a miss and its hit share a schema.
+
+    Lossless: a declared ``DECIMAL(p,s)``/``NUMERIC(p,s)`` is ``decimal128(p, s)``; a ``Decimal``
+    column declared without precision (Postgres reports plain ``numeric``) is
+    ``decimal128(38, s)`` at the widest scale it holds, so its type does not depend on how many
+    digits the rows at hand happen to have; anything else is pyarrow's inference (an aware
+    datetime keeps its zone)."""
+    import pyarrow as pa
+
+    m = _DECLARED_DECIMAL.match(declared) if declared else None
+    if m is not None:
+        return pa.array(values, type=pa.decimal128(int(m.group(1)), int(m.group(2))))
+    decimals = [v for v in values if isinstance(v, Decimal)]
+    if decimals:
+        # A non-finite Decimal (NaN, Infinity) has no decimal128 form: pyarrow refuses it below.
+        exponents = [e for e in (v.as_tuple().exponent for v in decimals) if isinstance(e, int)]
+        scale = max([0, *(-e for e in exponents)])
+        return pa.array(values, type=pa.decimal128(_DECIMAL128_MAX_PRECISION, scale))
+    return pa.array(values)
+
+
 def arrow_batches_from_rows(
     result: ResultStream,
     *,
@@ -149,20 +177,19 @@ def arrow_batches_from_rows(
     A zero-row result yields a null-typed schema (column names only) and an empty generator."""
     import pyarrow as pa
 
-    names = result.column_names
-
-    def _conv(v: Any) -> Any:
-        return float(v) if isinstance(v, Decimal) else v
-
     def _to_batch(rows: list[tuple], schema: Any | None) -> Any:
-        cols = [[_conv(r[i]) for r in rows] for i in range(len(names))]
+        cols = [[r[i] for r in rows] for i in range(len(names))]
         if schema is None:
-            return pa.RecordBatch.from_arrays([pa.array(c) for c in cols], names=names)
+            declared = result.column_types or [None] * len(names)
+            arrays = [arrow_array_for_rows(c, declared[i]) for i, c in enumerate(cols)]
+            return pa.RecordBatch.from_arrays(arrays, names=names)
         arrays = [pa.array(c, type=schema.field(i).type) for i, c in enumerate(cols)]
         return pa.RecordBatch.from_arrays(arrays, schema=schema)
 
     row_iter = result.iter_rows()
     first_rows = list(islice(row_iter, batch_rows))
+    # A lazy stream opens on its first read, which is when it learns its columns.
+    names = result.column_names
     if not first_rows:
         empty = pa.schema([pa.field(n, pa.null()) for n in names])
         return empty, iter(())
