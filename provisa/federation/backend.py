@@ -592,6 +592,10 @@ class EngineBackend:
             path=_rs(getattr(source, "path", None)),
             federation_hints=getattr(source, "federation_hints", {}) or {},
             mapping=getattr(source, "mapping", {}) or {},
+            # REQ-788: carry the source's file_glob table specs so an introspection- or
+            # execution-time attach builds the file adapter's merged glob table (the endpoint is
+            # built once per source and cached, so a merge that drops them poisons later reads).
+            file_glob_tables=getattr(source, "file_glob_tables", []) or [],
             schema_name=schema_name,
             table_name=table_name,
         )
@@ -723,6 +727,7 @@ class EngineBackend:
                 password=_rs(getattr(source, "password", None)),
                 path=_rs(getattr(source, "path", None)),
                 federation_hints=getattr(source, "federation_hints", {}),
+                file_glob_tables=getattr(source, "file_glob_tables", []) or [],  # REQ-788
                 schema_name=schema_name,
                 table_name=table_name,
             )
