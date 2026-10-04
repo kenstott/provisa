@@ -545,6 +545,7 @@ class TestWebhookApprovalGate:
             "domain_id": "pet-store",
             "description": None,
             "kind": "mutation",
+            "requires_approval": False,  # REQ-209: the stored row carries the column
         }
 
         class _Conn:

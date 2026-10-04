@@ -976,6 +976,7 @@ CREATE TABLE IF NOT EXISTS tracked_webhooks (
     visible_to         JSONB NOT NULL DEFAULT '[]',
     domain_id          TEXT NOT NULL DEFAULT '',
     description        TEXT,
+    requires_approval  BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-209, REQ-1924: each call approved by the hook
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

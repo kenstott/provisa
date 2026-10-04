@@ -193,7 +193,7 @@ export function CommandsPage() {
         implKind: "source_procedure",
         binding: {},
         materialize: false,
-        requiresApproval: false,
+        requiresApproval: wh.requiresApproval, // REQ-209
         writesTable: "",
         outputColumns: [],
         productId: "",
@@ -252,6 +252,7 @@ export function CommandsPage() {
           domainId: form.domainId,
           description: form.description || undefined,
           kind: form.kind,
+          requiresApproval: form.requiresApproval, // REQ-209
         });
       }
       setMsg(t("commandsPage.savedMessage", { type: form.actionType, name: form.name }));

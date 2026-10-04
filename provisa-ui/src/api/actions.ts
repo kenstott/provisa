@@ -89,6 +89,8 @@ export interface TrackedWebhook {
   domainId: string;
   description: string | null;
   kind: string;
+  // REQ-209, REQ-1924: each call is approved by the deployment's approval hook before it is made.
+  requiresApproval: boolean;
   // REQ-209: false when registered but not yet steward-approved — the webhook is absent from
   // the GraphQL schema and every other surface until its latest creation_request is executed.
   approved?: boolean;
@@ -147,6 +149,8 @@ export async function saveWebhook(input: {
   domainId: string;
   description?: string | null;
   kind?: string;
+  // REQ-209, REQ-1924: each call is approved by the deployment's approval hook before it is made.
+  requiresApproval?: boolean;
 }): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/webhooks`, {
     method: "POST",

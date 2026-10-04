@@ -939,6 +939,8 @@ tracked_webhooks = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("kind", Text, nullable=False, server_default="mutation"),
+    # REQ-209, REQ-1924: each call is approved by the approval hook before the webhook is called.
+    Column("requires_approval", Boolean, nullable=False, server_default=false()),
 )
 
 # REQ-1742 gap: grpc_remote_router.py's _register_schema has always written its per-table
