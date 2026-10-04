@@ -120,16 +120,22 @@ def delta_build_reason(
 ) -> str | None:
     """None when this build applies a delta; otherwise the declared ``delta_skipped`` code for
     why it falls back to a whole rebuild (REQ-874). The order is the rule's: no delta declared,
-    then the cases that force a whole copy (first build, a definition change or a model/
-    definition/operator request, the rebuild interval), then a store that cannot apply a delta.
-    A delta read or apply that FAILS is a failed build, never routed here."""
+    then the cases that force a whole copy (first build, a definition change, an operator full
+    build, the rebuild interval), then a store that cannot apply a delta. A delta read or apply that
+    FAILS is a failed build, never routed here.
+
+    ``REASON_MODEL`` is NOT a force-whole here: a model-declared replica carries ``requested_reason
+    = "model"`` for its whole life, so once it HAS a completed build and a cursor (``has_cursor``,
+    checked above), a model-driven refresh is exactly when a delta should apply -- the first build
+    is already separated out as ``SKIP_FIRST_BUILD``. Only a real definition change
+    (``REASON_DEFINITION`` / ``definition_changed``) or an operator full build forces a whole copy."""
     from provisa.federation import replica_state as rs
 
     if not has_delta:
         return SKIP_NO_DELTA
     if not has_cursor:
         return SKIP_FIRST_BUILD
-    if definition_changed or reason in (rs.REASON_MODEL, rs.REASON_DEFINITION):
+    if definition_changed or reason == rs.REASON_DEFINITION:
         return SKIP_DEFINITION
     if reason == rs.REASON_OPERATOR:
         return SKIP_OPERATOR

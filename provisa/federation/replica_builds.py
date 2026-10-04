@@ -208,7 +208,7 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
                 await replica_state.record_started(conn, key, method="delta", load_kind="delta")
             async with land_lock(f"{address.schema}.{address.table}"):
                 applied, new_cursor = await _delta.apply_sql_delta(
-                    state, eng, source, table, args, address, json.loads(cursor_raw), store_dsn
+                    state, engine, source, table, args, address, json.loads(cursor_raw), store_dsn
                 )
             async with state.tenant_db.acquire() as conn:
                 await replica_state.record_delta_applied(conn, key, cursor=new_cursor)
@@ -265,7 +265,7 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
         if delta_cfg is not None:
             from provisa.federation import delta as _delta
 
-            new_cursor = await _delta.source_max_watermark(state, engine.engine, source, table)
+            new_cursor = await _delta.source_max_watermark(state, engine, source, table)
             async with state.tenant_db.acquire() as conn:
                 await replica_state.record_whole_rebuild(
                     conn, key, skipped=delta_skipped or _delta.SKIP_NO_DELTA, cursor=new_cursor

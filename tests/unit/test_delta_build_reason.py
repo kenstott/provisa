@@ -34,9 +34,14 @@ def test_first_build_without_a_cursor_rebuilds_whole():
     assert _reason(has_cursor=False) == delta.SKIP_FIRST_BUILD
 
 
-@pytest.mark.parametrize("reason", [rs.REASON_MODEL, rs.REASON_DEFINITION])
-def test_a_model_or_definition_request_rebuilds_whole(reason):
-    assert _reason(reason=reason) == delta.SKIP_DEFINITION
+def test_a_definition_request_rebuilds_whole():
+    assert _reason(reason=rs.REASON_DEFINITION) == delta.SKIP_DEFINITION
+
+
+def test_a_model_request_on_an_existing_replica_applies_the_delta():
+    # A model-declared replica keeps requested_reason="model" for life; once it has a completed
+    # build + cursor (the first build is SKIP_FIRST_BUILD), a model-driven refresh deltas (REQ-874).
+    assert _reason(reason=rs.REASON_MODEL) is None
 
 
 def test_a_definition_change_rebuilds_whole():
