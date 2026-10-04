@@ -47,9 +47,9 @@ test("REQ-369: rate limit exceeded returns 429 with Retry-After header", async (
 
 // REQ-370: NL query rate limit per role — rejected before LLM call
 test("REQ-370: NL query rate limit enforced before LLM call", async ({ request }) => {
+  // REQ-273: the job runs as the request's acting role; the body names none.
   const nlPayload = {
     q: "List all customers",
-    role: "default",
   };
 
   // First NL query should be accepted
