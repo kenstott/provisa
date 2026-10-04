@@ -27,7 +27,7 @@ from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.context import build_context
 from provisa.executor.direct import execute_direct
 from provisa.executor.pool import SourcePool
-from tests.helpers import ALL_DATA_CAPABILITIES
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -51,6 +51,7 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            "write_ops": registry_write_ops("postgresql"),
             "enable_aggregates": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
@@ -67,6 +68,7 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "customers",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},

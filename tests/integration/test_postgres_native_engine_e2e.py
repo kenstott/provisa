@@ -41,7 +41,7 @@ from provisa.compiler.stage2 import apply_governance, build_governance_context  
 from provisa.core.database import Database, create_engine_from_url  # noqa: E402
 from provisa.federation.materialize_exec import build_table, land_replace  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
-from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
 _ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
@@ -67,6 +67,7 @@ def _tbl(i: int, tname: str, cols: list[str]) -> dict:
         "domain_id": "sales",
         "schema_name": "pgself",  # the engine's own native store
         "table_name": tname,
+        "write_ops": registry_write_ops("csv" if i == 1 else "sqlite"),
         "columns": [{"column_name": c, "visible_to": ["admin"]} for c in cols],
     }
 

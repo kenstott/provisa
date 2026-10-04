@@ -44,6 +44,7 @@ pytestmark = [pytest.mark.integration]
 
 duckdb = pytest.importorskip("duckdb", reason="duckdb required for ATTACH e2e")
 
+from tests.helpers import registry_write_ops  # noqa: E402
 from provisa.compiler.introspect import ColumnMetadata  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.compiler import naming as _naming  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.compiler.schema_gen import SchemaInput  # noqa: E402  # imports follow the duckdb importorskip guard
@@ -62,6 +63,7 @@ _TABLES = [
         "domain_id": "sales",
         "schema_name": "public",
         "table_name": "orders",
+        "write_ops": registry_write_ops("postgresql"),
         "columns": [
             {"column_name": "id", "visible_to": []},
             {"column_name": "amount", "visible_to": []},
@@ -121,6 +123,8 @@ def _build_state():
     state.engine_conn = None
     state.schema_boot_id = "test-boot"
     state.schema_version = 1
+    # A single-tenant deployment (a bare MagicMock attribute would read as multitenant).
+    state.multitenancy = False
 
     from provisa.compiler.compiled_query_cache import CompiledQueryCache
 

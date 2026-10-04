@@ -45,7 +45,7 @@ from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical  #
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.bigquery_runtime import BigQueryFederationRuntime  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
-from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops  # noqa: E402
 
 _PROJ = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
 _ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
@@ -66,6 +66,7 @@ def _si():
                 "domain_id": "s",
                 "schema_name": _DS,
                 "table_name": "orders",
+                "write_ops": registry_write_ops("bigquery"),
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],

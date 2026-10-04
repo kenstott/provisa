@@ -29,7 +29,7 @@ Covered REQ-IDs:
 from __future__ import annotations
 
 import pytest
-from tests.helpers import ALL_DATA_CAPABILITIES
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops
 from tests.integration.conftest import no_replica_routes
 
 pytestmark = [pytest.mark.integration]
@@ -188,6 +188,7 @@ class TestDistinctOn:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
+                "write_ops": registry_write_ops("postgresql"),
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             }
         ]
@@ -227,6 +228,7 @@ class TestDistinctOn:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
+                "write_ops": registry_write_ops("postgresql"),
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "region", "visible_to": ["admin"]},
