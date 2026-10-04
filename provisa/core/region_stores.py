@@ -170,7 +170,7 @@ class RegionLane(NamedTuple):
     cache_url: str  # the org's response cache and Hot counts in this region
 
 
-_ENDPOINT_KINDS = frozenset({"trino", "trino-byo"})
+ENDPOINT_KINDS = frozenset({"trino", "trino-byo"})
 
 
 class RegionLaneConflict(RuntimeError):
@@ -223,7 +223,7 @@ def region_lane(
     require_engine_kind(region, store)
     assert store.kind is not None  # require_engine_kind refuses a store without one
     url = resolve_secrets(store.url)
-    if store.kind in _ENDPOINT_KINDS:
+    if store.kind in ENDPOINT_KINDS:
         parsed = make_url(url)
         if parsed.host is None or parsed.port is None:
             raise ValueError(
