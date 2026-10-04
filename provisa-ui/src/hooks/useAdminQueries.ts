@@ -620,9 +620,10 @@ export function useRefreshKaggleSource() {
   return {
     refreshKaggleSource: async (sourceId: string, token: string) => {
       const result = await refreshKaggleSource({ variables: { sourceId, token } });
-      return (
-        result.data?.refreshKaggleSource ?? { success: false, message: "" }
-      ) as MutationResult;
+      return (result.data?.refreshKaggleSource ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
     },
     loading,
   };
@@ -847,12 +848,25 @@ export function useRoles() {
 // every render produces a new function, re-running the effect → infinite loop.
 
 export function useAvailableSchemas(sourceId: string | null) {
-  const { data, loading } = useQuery<{ availableSchemas: string[] }>(AvailableSchemas, {
-    variables: { sourceId },
-    skip: !sourceId,
-    fetchPolicy: "no-cache",
-  });
-  return { schemas: data?.availableSchemas ?? [], loading };
+  // A connector-server source (files/sharepoint/splunk) answers STARTING while its server boots
+  // (REQ-1824): asked again until it answers, as the table list is. Without the poll, the first
+  // answer was an error and the schema list stayed empty for good.
+  const { data, loading, error, refetch } = useQuery<{ availableSchemas: string[] }>(
+    AvailableSchemas,
+    {
+      variables: { sourceId },
+      skip: !sourceId,
+      fetchPolicy: "no-cache",
+      errorPolicy: "all",
+    },
+  );
+  const { starting, timedOut } = useStartingPoll(error, refetch);
+  return {
+    schemas: data?.availableSchemas ?? [],
+    loading: loading || starting,
+    starting,
+    startingTimedOut: timedOut,
+  };
 }
 
 export function useAvailableTables(sourceId: string | null, schemaName: string | null) {
@@ -893,10 +907,9 @@ export function useKaggleTokenValidLazy() {
 // fresh query per keystroke (debounced by the caller) — Kaggle's own datasets/list is the source
 // of truth, never cached client-side stale results a re-search should replace.
 export function useKaggleDatasetsLazy() {
-  const [run] = useLazyQuery<{ kaggleDatasets: { ref: string; title: string; subtitle: string }[] }>(
-    KaggleDatasets,
-    { fetchPolicy: "no-cache" },
-  );
+  const [run] = useLazyQuery<{
+    kaggleDatasets: { ref: string; title: string; subtitle: string }[];
+  }>(KaggleDatasets, { fetchPolicy: "no-cache" });
   return useCallback(
     async (token: string, query: string) => {
       const { data } = await run({ variables: { token, query } });
