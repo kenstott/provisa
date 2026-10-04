@@ -509,6 +509,13 @@ def test_empty_namespace_no_prefix():
 # ---------------------------------------------------------------------------
 
 
+def _registered(name: str) -> str:
+    """A mapped table's name as the registry holds it."""
+    from provisa.compiler.naming import apply_sql_name
+
+    return apply_sql_name(name)
+
+
 def test_intra_source_relationship_detected():
     # REQ-313: Relationships between remote virtual tables detected automatically.
     # Order.product references the Product query type → relationship emitted.
@@ -516,8 +523,9 @@ def test_intra_source_relationship_detected():
 
     assert len(relationships) > 0
     rel_pairs = {(r["source_table_id"], r["target_table_id"]) for r in relationships}
-    # orders → products relationship should be detected, each end named as it is registered
-    assert ("shopify__orders", "shopify__products") in rel_pairs
+    # orders → products relationship should be detected, each end named as the table is
+    # registered (8ecc23606: the registry holds the SQL name)
+    assert (_registered("Shopify__orders"), _registered("Shopify__products")) in rel_pairs
 
 
 def test_auto_detected_relationships_carry_remote_managed_flag():
@@ -537,7 +545,8 @@ def test_relationship_cardinality_many_to_one_for_object_field():
     orders_to_products = [
         r
         for r in relationships
-        if r["source_table_id"] == "shopify__orders" and r["target_table_id"] == "shopify__products"
+        if r["source_table_id"] == _registered("Shopify__orders")
+        and r["target_table_id"] == _registered("Shopify__products")
     ]
     assert len(orders_to_products) == 1
     assert orders_to_products[0]["cardinality"] == "many-to-one"
