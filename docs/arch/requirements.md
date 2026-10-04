@@ -1052,7 +1052,7 @@ A datasource may be associated with multiple domains. Any domain owner may regis
 
 **Code:** `provisa/api/admin/schema_helpers.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/core/schema_org.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/pages/TablesPage.tsx`
 
-**Tests:** `tests/unit/test_dataset_uniqueness.py`
+**Tests:** `tests/unit/test_dataset_uniqueness.py`, `provisa-ui/e2e/registration-admin.spec.ts`
 
 ### REQ-434 · Registration & Governance {#REQ-434}
 
@@ -1504,9 +1504,9 @@ OpenAPI write operations as commands. [SUPERSEDED by [REQ-1924](#REQ-1924), 2026
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-[SUPERSEDED by [REQ-845](#REQ-845), 2026-10-03 -- the API cache is held in the engine's own store on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against it.] GET operation results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id + operation path + native args`. Repeated calls within TTL hit Trino directly. The cache table is dropped after TTL expires. Mutations are never cached — they are side-effecting. (Amended 2026-10-03, THE API CACHE LIVES IN THE ENGINE'S STORE:) The rows a call returns are kept in the federation engine's own store, in the org's API cache schema, in one table per API table ([REQ-845](#REQ-845), [REQ-859](#REQ-859)). This holds on every engine. The cache key and the rule that a mutation is never cached are unchanged.
+[SUPERSEDED by [REQ-845](#REQ-845), 2026-10-03 -- the API cache is held in the engine's own store on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against it.] GET operation results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id + operation path + native args`. [SUPERSEDED by [REQ-845](#REQ-845), 2026-10-03 -- a repeated call is served from the engine's own store, not from Trino. Kept here for history; do not implement against it.] Repeated calls within TTL hit Trino directly. [END SUPERSEDED BLOCK] The cache table is dropped after TTL expires. Mutations are never cached — they are side-effecting. (Amended 2026-10-03, THE API CACHE LIVES IN THE ENGINE'S STORE:) The rows a call returns are kept in the federation engine's own store, in the org's API cache schema, in one table per API table ([REQ-845](#REQ-845), [REQ-859](#REQ-859)). This holds on every engine. The cache key and the rule that a mutation is never cached are unchanged. (Amended 2026-10-03, THE SCENARIO READS THE ENGINE'S STORE:) A repeated call with identical args within TTL is served from its cache table in the engine's own store, with no upstream REST call. The acceptance scenario, which read "cached in Trino Iceberg on S3 ... served from Trino directly", names the engine's store.
 
-**Use case:** S3/Iceberg materialization of GET operation results prevents repeated upstream REST calls and enables Trino SQL filtering over cached rows.
+**Use case:** [SUPERSEDED by [REQ-845](#REQ-845), 2026-10-03 -- the API cache is held in the engine's own store on every engine, not in S3/Iceberg read through Trino. Kept here for history; do not implement against it.] S3/Iceberg materialization of GET operation results prevents repeated upstream REST calls and enables Trino SQL filtering over cached rows. [END SUPERSEDED BLOCK] (Amended 2026-10-03, THE ENGINE'S STORE:) Keeping GET operation results in the engine's own store prevents repeated upstream REST calls and lets the engine filter the cached rows with SQL.
 
 **Code:** `provisa/api_source/engine_cache.py`, `provisa/api_source/router_integration.py`, `provisa/api_source/fill_cache.py`
 
@@ -1612,9 +1612,9 @@ Each mutation-classified gRPC method is exposed as a tracked function (mutation)
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-[SUPERSEDED by [REQ-845](#REQ-845), 2026-10-03 -- the API cache is held in the engine's own store on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against it.] Query method results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id + method + native args`. Mutations are never cached — they are side-effecting. One `grpc.aio.Channel` is reused per registered source across requests, stored in `AppState.grpc_remote_channels`. The cache table is dropped after TTL expires. (Amended 2026-10-03, THE API CACHE LIVES IN THE ENGINE'S STORE:) The rows a call returns are kept in the federation engine's own store, in the org's API cache schema, in one table per API table ([REQ-845](#REQ-845), [REQ-859](#REQ-859)). This holds on every engine. The cache key and the rule that a mutation is never cached are unchanged.
+[SUPERSEDED by [REQ-845](#REQ-845), 2026-10-03 -- the API cache is held in the engine's own store on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against it.] Query method results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id + method + native args`. Mutations are never cached — they are side-effecting. One `grpc.aio.Channel` is reused per registered source across requests, stored in `AppState.grpc_remote_channels`. The cache table is dropped after TTL expires. (Amended 2026-10-03, THE API CACHE LIVES IN THE ENGINE'S STORE:) The rows a call returns are kept in the federation engine's own store, in the org's API cache schema, in one table per API table ([REQ-845](#REQ-845), [REQ-859](#REQ-859)). This holds on every engine. The cache key and the rule that a mutation is never cached are unchanged. (Amended 2026-10-03, THE SCENARIO READS THE ENGINE'S STORE:) A repeated call within TTL is served from its cache table in the engine's own store, and the source's channel is reused. The acceptance scenario, which read "cached in Trino Iceberg on S3 ... served from Trino directly", names the engine's store.
 
-**Use case:** S3/Iceberg materialization of gRPC query results enables Trino SQL filtering over cached rows and eliminates repeated remote calls. Channel reuse reduces connection overhead.
+**Use case:** [SUPERSEDED by [REQ-845](#REQ-845), 2026-10-03 -- the API cache is held in the engine's own store on every engine, not in S3/Iceberg read through Trino. Kept here for history; do not implement against it.] S3/Iceberg materialization of gRPC query results enables Trino SQL filtering over cached rows and eliminates repeated remote calls. Channel reuse reduces connection overhead. [END SUPERSEDED BLOCK] (Amended 2026-10-03, THE ENGINE'S STORE:) Keeping gRPC query results in the engine's own store lets the engine filter the cached rows with SQL and eliminates repeated remote calls. Channel reuse reduces connection overhead.
 
 **Code:** `provisa/grpc_remote/executor.py`, `provisa/api_source/engine_cache.py`, `provisa/source_adapters/grpc_remote_adapter.py`
 
@@ -5222,7 +5222,7 @@ Trino 480 with Iceberg results catalog (JDBC on PG, native S3 filesystem).
 
 **Code:** `provisa/executor/redirect.py`, `provisa/federation/backend.py`, `docker-compose.core.yml`
 
-**Tests:** `tests/unit/test_redirect_bucket_lazy.py`, `tests/unit/test_infra_requirements.py`
+**Tests:** `tests/unit/test_redirect_bucket_lazy.py`, `tests/unit/test_infra_requirements.py`, `tests/integration/test_redirect_encryption_minio.py`
 
 ### REQ-223 · Installer & Packaging {#REQ-223}
 
@@ -7140,7 +7140,7 @@ Impute-relationships endpoint accepts visible node set with stable integer ids a
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-File connector sources accept a directory glob pattern to enumerate CSV files. Discovered files are introspected to extract schema (column names and types). Multiple CSV files matching the glob are consolidated into a single logical table when registered.
+File connector sources accept a directory glob pattern to enumerate CSV files. Discovered files are introspected to extract schema (column names and types). Multiple CSV files matching the glob are consolidated into a single logical table when registered. (Amended 2026-10-03, WILDCARD PLACEMENT:) Where the wildcard is written decides its meaning. On a SOURCE's path it filters; discovery offers one table per matched file, and the steward registers each. On a TABLE's file_glob it merges; every matched file is one logical table. Every matched file must carry the same column set; a file that differs is refused by name, never null-filled. A table may declare a source-file column carrying each row's file. The glob's change signal is the matched-file count, the latest modification time and the total size. (Amended 2026-10-03, NATIVE READ:) A files source and its glob tables are served by the bundled Calcite file adapter whatever the engine. The adapter already lists one table per file for a wildcard on the schema directory and merges CSV, JSON and Parquet matches for a table whose url is a glob. It gains a by-name refusal for a file whose columns differ and the optional source-file column. Provisa passes a table's file_glob and source_file_column into the adapter's table definition. A replica, wherever one is needed, is read from the file adapter's connection like any source's table; there is no second reader and no glob-specific routing. A platform with no adapter bundle has no files sources, the same condition as every files source. It ships by an engine release of the calcite fork and a RELEASE_TAG bump in provisa/runtime_deps/pgwire_bundles.py.
 
 **Use case:** File glob patterns enable users to query across multiple CSV files without manual discovery or registration of individual files.
 
@@ -8156,25 +8156,25 @@ Mutations are classified as WRITES by contract (not caller declaration) via prot
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Admin-only reclassification: legitimate reclassification of a mutation to read-safe is gated by ACCESS_CONFIG capability and recorded as a governance decision. No per-operation read_only opt-out for callers; only admin acts can demote a mutation. Re-introspection of discovered mutations registers with empty writable_by; existing grants preserved by name. DONE (2026-07): two enforceable behaviors. (1) reclassify_kind (provisa/security/ mutation_authz.py) is the single reclassification gate — only a role holding ACCESS_CONFIG (ADMIN bypasses, per has_capability) may demote a mutation to read-safe; the reverse (promoting a read to a write) is rejected for everyone, and there is no caller-supplied read_only flag anywhere in the request path, so classification stays under governance control. A no-op transition is idempotent. (2) upsert_function (provisa/core/repositories/ function.py) now preserves an existing writable_by on re-introspection: a discovered mutation upserts with an empty writable_by that keeps the current admin grant (grants preserved by name), while an explicit non-empty grant still applies. Proven with unit tests for the gate and a live-Postgres test for grant preservation across re-introspection.
+Admin-only reclassification: legitimate reclassification of a mutation to read-safe is gated by ACCESS_CONFIG capability and recorded as a governance decision. No per-operation read_only opt-out for callers; only admin acts can demote a mutation. [SUPERSEDED by REQ-870, 2026-10-03 -- a command has no writable_by; its one role list is visible_to ([REQ-1156](#REQ-1156)), and discovery registers no command ([REQ-887](#REQ-887)). Kept here for history; do not implement against it.] Re-introspection of discovered mutations registers with empty writable_by; existing grants preserved by name. [END SUPERSEDED BLOCK] DONE (2026-07): two enforceable behaviors. (1) reclassify_kind (provisa/security/ mutation_authz.py) is the single reclassification gate — only a role holding ACCESS_CONFIG [SUPERSEDED by [REQ-1327](#REQ-1327), 2026-10-03 -- no role or role string stands in for ACCESS_CONFIG; an admin demotes only by holding it. Kept here for history; do not implement against it.] (ADMIN bypasses, per has_capability) [END SUPERSEDED BLOCK] may demote a mutation to read-safe; the reverse (promoting a read to a write) is rejected for everyone, and there is no caller-supplied read_only flag anywhere in the request path, so classification stays under governance control. A no-op transition is idempotent. [SUPERSEDED by REQ-870, 2026-10-03 -- the writable_by upsert rule is gone with the column, and discovery no longer re-registers. Kept here for history; do not implement against it.] (2) upsert_function (provisa/core/repositories/ function.py) now preserves an existing writable_by on re-introspection: a discovered mutation upserts with an empty writable_by that keeps the current admin grant (grants preserved by name), while an explicit non-empty grant still applies. Proven with unit tests for the gate and a live-Postgres test for grant preservation across re-introspection. [END SUPERSEDED BLOCK] (Amended 2026-10-03, ONE ROLE LIST:) A command carries one role list, its assigned roles (visible_to); a role reaches a command only when assigned to it AND reaching the command's domain. [SUPERSEDED by REQ-870 amendment DISCOVERY OFFERS, 2026-10-03 -- discovery registers nothing, so there is no re-registration for an assignment to survive. Kept here for history; do not implement against it.] Re-registering a source keeps every assignment an admin made; discovery never drops an assignment. [END SUPERSEDED BLOCK] (Amended 2026-10-03, DISCOVERY OFFERS, A STEWARD ASSIGNS:) Discovery registers no command: a discovered mutation is on offer ([REQ-887](#REQ-887)) until a steward registers it, and the steward assigns its roles then, in the command's one assigned-roles list, visible_to ([REQ-1156](#REQ-1156)). Nothing discovery does later writes or rewrites a registered command, so no grant can be widened or wiped by re-introspection. A role reaches a command only when it is assigned the command and reaches the command's domain (mutation_authz.command_reachable). Reclassification is unchanged: reclassify_kind is the one gate, demotion needs ACCESS_CONFIG, and no one promotes a read to a write.
 
 **Use case:** Ensures authorization policy remains under control of governance (admin), not individual callers. Prevents callers from overriding mutation classification, supports safe discovery/re-registration of mutations without accidentally granting them.
 
-**Code:** `provisa/security/mutation_authz.py`, `provisa/core/repositories/function.py`
+**Code:** `provisa/security/mutation_authz.py`, `provisa/core/repositories/function.py`, `provisa/api/admin/schema_query.py`
 
-**Tests:** `tests/unit/test_mutation_authz.py`, `tests/integration/test_mutation_writable_by_preservation.py`
+**Tests:** `tests/unit/test_mutation_authz.py`, `tests/unit/test_stored_proc_discovery.py`, `tests/steps/steps_authorization.py`
 
 ### REQ-871 · Authorization {#REQ-871}
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Mutation↔table association suggestions at registration time via protocol-specific association-suggesters. Universal rule: adapter emits ranked (mutation → table) candidates; suggestions are hints only; admin-confirmed; confirmed associations register with empty writable_by (default-deny); any mutation may bind to any table (manual override always); unmatched mutations remain registerable. GraphQL: walk mutation return type's fields, unwrap NON_NULL/LIST, match leaf types against type_to_table; LIST-valued field = changed-records collection; prioritize single object > list-of-table-type; ignore scalar/stats fields. OpenAPI: align via URL path template, operationId stem, and tags (e.g., POST /users → users table); response schema is tiebreaker only, not primary signal. gRPC: response-message repeated field type + method-name entity stem (weakest signal). Fallbacks (all adapters): operation name affixes (create*/update*/delete*/upsert*) and input-type stem for operations whose response carries no queryable type. False negatives expected; no suggestion auto-binds. DONE (2026-07): the suggester engine (provisa/security/association_suggester.py) implements all three protocols and the shared fallbacks exactly as specified, returning a ranked list of TableCandidate(table, score, reason) deduplicated per table (strongest signal wins, corroborating signals add a small tiebreak). Signal strengths encode the spec order: GraphQL single-object return (1.0) > list-of-table-type (0.8); OpenAPI path resource (0.9) > operationId stem (0.7) > tag (0.6) with response schema as a 0.05 tiebreak; gRPC repeated response-field type (0.6) > method-name stem (0.4); name-affix / input-type stem fallback (0.3). Nothing auto-binds — the functions are pure and return hints; an empty list is the honest false-negative case. The GraphQL remote mapper (provisa/graphql_remote/mapper.py) invokes it during registration so every mapped mutation entry carries suggested_associations = [{table, score, reason}] computed from its unwrapped return-type leaves + input-type stem, with writable_by left empty (default-deny). Consuming these hints into an admin confirmation surface is [REQ-870](#REQ-870); projecting/binding across surfaces is [REQ-872](#REQ-872).
+Mutation↔table association suggestions at registration time via protocol-specific association-suggesters. Universal rule: adapter emits ranked (mutation → table) candidates; suggestions are hints only; admin-confirmed; [SUPERSEDED by REQ-871 amendment, 2026-10-03 -- a command has one assigned-roles list, visible_to ([REQ-1156](#REQ-1156)). Kept here for history; do not implement against it.] confirmed associations register with empty writable_by (default-deny); [END SUPERSEDED BLOCK] any mutation may bind to any table (manual override always); unmatched mutations remain registerable. GraphQL: walk mutation return type's fields, unwrap NON_NULL/LIST, match leaf types against type_to_table; LIST-valued field = changed-records collection; prioritize single object > list-of-table-type; ignore scalar/stats fields. OpenAPI: align via URL path template, operationId stem, and tags (e.g., POST /users → users table); response schema is tiebreaker only, not primary signal. gRPC: response-message repeated field type + method-name entity stem (weakest signal). Fallbacks (all adapters): operation name affixes (create*/update*/delete*/upsert*) and input-type stem for operations whose response carries no queryable type. False negatives expected; no suggestion auto-binds. DONE (2026-07): the suggester engine (provisa/security/association_suggester.py) implements all three protocols and the shared fallbacks exactly as specified, returning a ranked list of TableCandidate(table, score, reason) deduplicated per table (strongest signal wins, corroborating signals add a small tiebreak). Signal strengths encode the spec order: GraphQL single-object return (1.0) > list-of-table-type (0.8); OpenAPI path resource (0.9) > operationId stem (0.7) > tag (0.6) with response schema as a 0.05 tiebreak; gRPC repeated response-field type (0.6) > method-name stem (0.4); name-affix / input-type stem fallback (0.3). Nothing auto-binds — the functions are pure and return hints; an empty list is the honest false-negative case. The GraphQL remote mapper (provisa/graphql_remote/mapper.py) invokes it during registration so every mapped mutation entry carries suggested_associations = [{table, score, reason}] computed from its unwrapped return-type leaves + input-type stem, [SUPERSEDED by REQ-871 amendment, 2026-10-03 -- the mapped entry carries no role list at all. Kept here for history; do not implement against it.] with writable_by left empty (default-deny). [END SUPERSEDED BLOCK] Consuming these hints into an admin confirmation surface is [REQ-870](#REQ-870); projecting/binding across surfaces is [REQ-872](#REQ-872). (Amended 2026-10-03, ONE ROLE LIST:) A command has no writable_by; every "empty writable_by" above reads as "assigned to no role" (visible_to empty). A suggestion assigns no role; only an admin assigns a command to a role. (Amended 2026-10-03, ROLES ARE ASSIGNED AT REGISTRATION:) A mapped mutation entry carries its suggested_associations and no role list: the mapping assigns no role, so a suggestion can never grant anything. A command has one assigned-roles list, visible_to ([REQ-1156](#REQ-1156)), and the steward sets it when registering the command ([REQ-870](#REQ-870)); confirming an association binds the table the command writes and assigns no role.
 
 **Use case:** Registration of mutations across heterogeneous sources requires protocol-aware association signals. Per-adapter suggesters reduce admin friction by ranking likely alignment; unmatched mutations remain registerable as global functions or require manual binding.
 
 **Code:** `provisa/security/association_suggester.py`, `provisa/graphql_remote/mapper.py`
 
-**Tests:** `tests/unit/test_association_suggester.py`, `tests/unit/test_graphql_remote_mapper.py`
+**Tests:** `tests/unit/test_association_suggester.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/steps/steps_authorization.py`
 
 ### REQ-872 · Authorization {#REQ-872}
 
@@ -8378,13 +8378,13 @@ Engine-emitted I/O tracing for UDF/transformer invocations must be mandatory and
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Extend database source introspection to auto-discover stored procedures and routines (via information_schema.routines, pg_proc, or vendor equivalents) and auto-register them, rather than requiring hand-registration. Classify discovered procedures as read-returning (registered as parameterized relations; proc arguments become query arguments) or side-effecting (registered as mutations/tracked functions). Discovered proc results flow through Stage-2 governance identically to tables.
+[SUPERSEDED by REQ-887 amendment, 2026-10-03 -- discovered routines are offered, never auto-registered; a steward registers each one. Kept here for history; do not implement against it.] Extend database source introspection to auto-discover stored procedures and routines (via information_schema.routines, pg_proc, or vendor equivalents) and auto-register them, rather than requiring hand-registration. Classify discovered procedures as read-returning (registered as parameterized relations; proc arguments become query arguments) or side-effecting (registered as mutations/tracked functions). [END SUPERSEDED BLOCK] Discovered proc results flow through Stage-2 governance identically to tables. (Amended 2026-10-03, ROUTINES ARE OFFERED, NOT REGISTERED:) Introspection discovers a database source's stored procedures and routines (pg_proc, or a vendor equivalent) and classifies each as read-returning (query) or side-effecting (mutation). It registers none of them. The admin availableFunctions picker offers a schema's routines, each with its kind, and a steward registers the ones the catalog should carry as commands, one at a time, through the command form, assigning their roles there. Catalog indexing records a source's tables on offer and creates no command. Registration is the curation step, for commands as for tables. Routines are read from the source's own catalog over a direct connection; a source reached only through the engine offers none.
 
-**Use case:** Meet legacy enterprise estates (Oracle/SQL Server shops with large proc inventories) at their current state, ensuring nothing in the estate is invisible to the catalog. Mirrors the OpenAPI discovery pattern ([REQ-316](#REQ-316)/317): introspection + auto-registration avoiding hand-registration. Value scales with proc inventory; low build cost because it reuses existing introspection and OpenAPI-style registration.
+**Use case:** Meet legacy enterprise estates (Oracle/SQL Server shops with large proc inventories) at their current state, ensuring nothing in the estate is invisible to the catalog. [SUPERSEDED by REQ-887 amendment, 2026-10-03 -- discovery offers routines and a steward registers them. Kept here for history; do not implement against it.] Mirrors the OpenAPI discovery pattern ([REQ-316](#REQ-316)/317): introspection + auto-registration avoiding hand-registration. [END SUPERSEDED BLOCK] Value scales with proc inventory; low build cost because it reuses existing introspection and OpenAPI-style registration.
 
 **Code:** `provisa/api/admin/introspect.py`, `provisa/discovery/catalog_cache.py`
 
-**Tests:** `tests/unit/test_stored_proc_discovery.py`
+**Tests:** `tests/unit/test_stored_proc_discovery.py`, `tests/unit/test_discovery_through_driver.py`, `tests/integration/test_routines_offered_e2e.py`
 
 ## 6. Execution, Routing, Caching & Performance
 
@@ -10634,7 +10634,7 @@ Metadata export user documentation: a published docs page (docs/metadata-export.
 
 **Code:** `docs/metadata-export.md`, `mkdocs.yml`
 
-**Tests:** `tests/steps/steps_metadata_export_docs.py`, `tests/features/REQ-1368.feature`
+**Tests:** `tests/steps/steps_metadata_export_docs.py`, `tests/features/REQ-1368.feature`, `tests/unit/test_metadata_export_docs_page.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -13208,7 +13208,7 @@ The root org is a working org, not a placeholder. The platform_admin registers a
 
 **Code:** `provisa/core/org_registry_view.py`, `provisa/api/startup_seed.py`, `provisa/api/admin/orgs_router.py`
 
-**Tests:** `tests/integration/test_org_registry_view.py`, `tests/integration/test_create_org_onboarding.py`
+**Tests:** `tests/integration/test_org_registry_view.py`, `tests/integration/test_create_org_onboarding.py`, `tests/unit/test_org_registry_view_sql.py`
 
 ### REQ-1302 · Authorization {#REQ-1302}
 
@@ -13352,7 +13352,7 @@ An invitation may only confer a role the inviter is entitled to confer, and the 
 
 **Code:** `provisa/api/admin/invites_router.py`, `provisa/api/auth_router.py`, `provisa/core/org_membership.py`
 
-**Tests:** `tests/integration/test_invite_role_authz.py`
+**Tests:** `tests/integration/test_invite_role_authz.py`, `tests/unit/test_invite_role_resolution.py`
 
 ### REQ-1314 · Authorization {#REQ-1314}
 
@@ -13364,7 +13364,7 @@ An invitation that names no role confers analyst, [SUPERSEDED by [REQ-1297](#REQ
 
 **Code:** `provisa/api/admin/invites_router.py`, `provisa-ui/src/components/admin/OrgsTab.tsx`
 
-**Tests:** `tests/integration/test_invite_role_authz.py`
+**Tests:** `tests/integration/test_invite_role_authz.py`, `tests/unit/test_invite_role_resolution.py`
 
 ### REQ-1315 · Authorization {#REQ-1315}
 
@@ -13376,7 +13376,7 @@ An org whose provisioning failed is recoverable, not abandoned. Background provi
 
 **Code:** `provisa/api/admin/orgs_router.py`
 
-**Tests:** `tests/integration/test_org_lifecycle.py`
+**Tests:** `tests/integration/test_org_lifecycle.py`, `tests/unit/test_org_retry_provisioning.py`
 
 ## 3. Source Registration & Data Modeling
 
@@ -19428,7 +19428,7 @@ New e2e test proving a custom AI endpoint configured with its API key held in th
 
 **Code:** `provisa-ui/e2e/custom-ai-endpoint-secret.spec.ts`
 
-**Tests:** `provisa-ui/e2e/custom-ai-endpoint-secret.spec.ts`
+**Tests:** `provisa-ui/e2e/custom-ai-endpoint-secret.spec.ts`, `tests/unit/test_mcp_chat.py`
 
 ### REQ-1826 · MCP & AI Integration {#REQ-1826}
 
@@ -19512,7 +19512,7 @@ Three related conversational-quality bugs reported live in Polly's source-creati
 
 **Code:** `provisa/api/mcp/chat.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_mcp_chat_prompt_rules.py`
 
 ### REQ-1833 · MCP & AI Integration {#REQ-1833}
 
@@ -19536,7 +19536,7 @@ When Polly performs an action tied to a specific admin page (creating or registe
 
 **Code:** `provisa/api/mcp/chat.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_mcp_chat_prompt_rules.py`
 
 ### REQ-1835 · MCP & AI Integration {#REQ-1835}
 
@@ -19560,7 +19560,7 @@ On an admin page (e.g. AI Models) whose form content is taller than the viewport
 
 **Code:** `provisa-ui/src/App.css`
 
-**Tests:** —
+**Tests:** `provisa-ui/src/__tests__/AppMainScroll.test.ts`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -19684,7 +19684,7 @@ Reported live: asked to query the iris table via GraphQL, Polly navigated to a n
 
 **Code:** `provisa/api/mcp/chat.py`, `provisa-ui/src/mcp/clientTools.ts`
 
-**Tests:** —
+**Tests:** `tests/unit/test_mcp_chat_prompt_rules.py`, `provisa-ui/src/__tests__/clientTools.navigate.test.ts`
 
 ### REQ-1847 · MCP & AI Integration {#REQ-1847}
 
@@ -20164,7 +20164,7 @@ Extends [REQ-1884](#REQ-1884)'s gRPC-serialization investigation: `provisa/feder
 
 **Code:** `demo/named/perf/bench/run_benchmark.py`
 
-**Tests:** —
+**Tests:** `tests/unit/perf_bench/test_cache_pass_and_federated_join.py`
 
 ### REQ-1885 · Bolt Protocol {#REQ-1885}
 
@@ -20226,7 +20226,7 @@ demo/named/perf/bench/queries.py's federated_join GraphQL query text is a single
 
 **Code:** `demo/named/perf/bench/queries.py`, `demo/named/perf/bench/run_benchmark.py`
 
-**Tests:** —
+**Tests:** `tests/unit/perf_bench/test_cache_pass_and_federated_join.py`
 
 ### REQ-1890 · Performance Benchmarking {#REQ-1890}
 
@@ -20360,7 +20360,7 @@ A real 3-way federated join under the PG engine (Postgres orders JOIN ClickHouse
 
 **Code:** `provisa/federation/pg_runtime.py`
 
-**Tests:** —
+**Tests:** `tests/unit/federation/test_pg_attach_analyze.py`
 
 ### REQ-1903 · gRPC Proto Field-Number Stability {#REQ-1903}
 
@@ -20386,7 +20386,7 @@ Remaining findings from the same read-only gRPC audit ([REQ-1903](#REQ-1903) cov
 
 **Code:** `provisa/grpc/server.py`, `provisa/grpc/auth.py`, `provisa/api/app_startup.py`, `pyproject.toml`
 
-**Tests:** —
+**Tests:** `tests/unit/test_grpc_audit_findings.py`
 
 ## 1. Access Governance & Security
 
@@ -21950,7 +21950,7 @@ RLS is applied after the MV rewrite: the rewritten query keeps the WHERE clauses
 
 **Code:** `provisa/mv/rewriter.py`
 
-**Tests:** `tests/e2e/test_mv_optimization.py`
+**Tests:** `tests/e2e/test_mv_optimization.py`, `tests/unit/test_mv_expose_and_rls_rewrite.py`
 
 ## 3. Source Registration & Data Modeling
 
@@ -21962,7 +21962,7 @@ A steward may set expose_in_sdl: true on an MV definition. The MV target table i
 
 **Code:** `provisa/api/app_loaders.py`, `provisa/mv/models.py`
 
-**Tests:** `tests/e2e/test_mv_optimization.py`
+**Tests:** `tests/e2e/test_mv_optimization.py`, `tests/unit/test_mv_expose_and_rls_rewrite.py`
 
 ## 4. Source Connectors
 
@@ -22052,7 +22052,7 @@ File source adapter supports SQLite, CSV and Parquet formats. SQLite uses native
 
 **Code:** `provisa/file_source/source.py`
 
-**Tests:** `tests/steps/steps_file_lake_sources.py`
+**Tests:** `tests/steps/steps_file_lake_sources.py`, `tests/unit/test_file_source_adapter.py`
 
 ### REQ-738 · NoSQL Adapters {#REQ-738}
 
@@ -22142,7 +22142,7 @@ A sandbox visitor's account is deleted when the visitor leaves the sandbox. Sign
 
 **Code:** `provisa/api/auth_router.py`, `provisa/auth/providers/firebase.py`, `provisa/core/org_membership.py`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/api/admin.ts`
 
-**Tests:** `tests/integration/test_org_lifecycle.py`
+**Tests:** `tests/integration/test_org_lifecycle.py`, `tests/unit/test_sandbox_account_deletion.py`
 
 ## 11. Platform, Infrastructure & Delivery
 
