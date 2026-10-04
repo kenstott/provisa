@@ -31,6 +31,7 @@ from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from provisa.api.app import AppState
+    from provisa.executor.redirect import Delivery
 
 from provisa.nl.job import NlJob, _json_default, make_job_store, new_job_id
 
@@ -46,6 +47,9 @@ class NlRequest(BaseModel):
     q: str
     role: str = "default"
     strict: bool = False  # REQ-1400
+    # REQ-1194: deliver each branch's result to the results store and answer its handle.
+    redirect: bool = False
+    redirect_format: str | None = None
 
 
 @router.post("/query/nl")
@@ -71,6 +75,27 @@ async def submit_nl_query(
                 headers={"Retry-After": str(max(1, int(retry_after + 0.999)))},
             )
 
+    from provisa.executor.redirect import (
+        RedirectFormatUnknown,
+        delivery_from_request,
+        parse_redirect_format,
+    )
+
+    try:
+        delivery = delivery_from_request(
+            force_redirect=body.redirect,
+            redirect_format=(
+                parse_redirect_format(body.redirect_format) if body.redirect_format else None
+            ),
+            threshold=None,
+            role=role_id,
+        )
+    except RedirectFormatUnknown as exc:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "invalid_redirect_format", "detail": str(exc)},
+        )
+
     job_id = new_job_id()
     job = NlJob(job_id=job_id, nl_query=body.q, role=role_id, strict=body.strict)
     await _job_store.put(job)
@@ -82,7 +107,8 @@ async def submit_nl_query(
     # from the request thread it runs on the process loop, whose default executor runs its parallel
     # LLM branches on real worker threads.
     spawn_background(
-        _run_job(job_id, body.q, role_id, state, llm, body.strict), name=f"nl-job:{job_id}"
+        _run_job(job_id, body.q, role_id, state, llm, body.strict, delivery),
+        name=f"nl-job:{job_id}",
     )
 
     return JSONResponse(status_code=202, content={"job_id": job_id})
@@ -113,12 +139,20 @@ async def stream_nl_result(job_id: str) -> StreamingResponse:  # REQ-354, REQ-35
 
 
 async def _run_job(
-    job_id: str, nl_query: str, role: str, app_state: AppState, llm, strict: bool = False
+    job_id: str,
+    nl_query: str,
+    role: str,
+    app_state: AppState,
+    llm,
+    strict: bool,
+    delivery: "Delivery | None",
 ) -> None:
     from provisa.nl.runner import run_nl_job
 
     try:
-        await run_nl_job(job_id, nl_query, role, app_state, _job_store, llm, strict=strict)
+        await run_nl_job(
+            job_id, nl_query, role, app_state, _job_store, llm, strict=strict, deliver=delivery
+        )
     except Exception as exc:
         log.exception("NL job %s failed: %s", job_id, exc)
         await _job_store.set_state(job_id, "failed")

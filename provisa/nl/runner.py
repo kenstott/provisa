@@ -40,6 +40,7 @@ from provisa.nl.loop import (
 )
 
 if TYPE_CHECKING:
+    from provisa.executor.redirect import Delivery
     from provisa.api.app import AppState
     from provisa.cypher.label_map import CypherLabelMap
 
@@ -744,8 +745,13 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     job_store: JobStore,
     llm: LLMClient,
     strict: bool = False,
+    *,
+    deliver: "Delivery | None",
 ) -> None:
     """Background coroutine: runs all six generation branches, writes results.
+
+    ``deliver``: the delivery the request forced (REQ-1194), or None; each branch's statement is
+    delivered to the results store and its handle is the branch's result.
 
     ``strict`` (REQ-1400) selects the generation order for the graphql/sql/cypher branches:
     strict compiles NL -> GraphQL first (schema-validated), then GraphQL -> SQL, then SQL ->
@@ -974,7 +980,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         result = None
         if valid_query is not None and error is None and target in _QUERY_TARGETS:
             try:
-                result = await _execute(valid_query, target, role, app_state)  # type: ignore[arg-type]
+                result = await _execute(valid_query, target, role, app_state, deliver=deliver)  # type: ignore[arg-type]
             # complexity-gate: allow-ble=3 reason="[file ceiling 3] Per-branch NL execution boundary: running a generated query against the pluggable engine has an unbounded failure surface; a failure is captured as this branch's error (valid_query kept so the UI shows the query alongside it) and must not abort the other branches' execution."
             except Exception as exc:
                 error = str(exc)

@@ -356,8 +356,15 @@ def build_mcp_server(state: Any):
         role: str | None = None,
         limit: int | None = None,
         offset: int = 0,
+        redirect: bool = False,
+        redirect_format: str | None = None,
     ) -> dict:
-        """Execute SQL through the governed pipeline; returns row-capped JSON rows."""
+        """Execute SQL through the governed pipeline; returns row-capped JSON rows.
+
+        ``redirect``: deliver the whole result to the results store and answer its handle
+        (``redirect``: a presigned URL, row count and expiry) instead of rows; ``redirect_format``
+        is its file format (parquet or orc). A result over the operator's threshold is delivered
+        the same way when the operator has enabled it."""
         # REQ-1882: governance and execution run on this call's request thread; the license nag
         # below writes to the MCP session, whose streams belong to the MCP loop, so it stays here.
         from provisa.core.statement_warnings import collecting
@@ -368,7 +375,15 @@ def build_mcp_server(state: Any):
         with collecting() as found:
             result = await run_on_request_thread(
                 lambda: _within_request(
-                    lambda: tools.run_sql(state, _role(role), sql, limit=limit, offset=offset)
+                    lambda: tools.run_sql(
+                        state,
+                        _role(role),
+                        sql,
+                        limit=limit,
+                        offset=offset,
+                        redirect=redirect,
+                        redirect_format=redirect_format,
+                    )
                 )
             )
         result = _with_warnings(result, found)
