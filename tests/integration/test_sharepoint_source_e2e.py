@@ -69,25 +69,39 @@ _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
 
 _REQUIRED = ("SHAREPOINT_SITE_URL", "SHAREPOINT_TENANT_ID", "SHAREPOINT_CLIENT_ID")
-_HAVE_IDENTITY = all(os.environ.get(v) for v in _REQUIRED)
-_HAVE_SECRET = bool(os.environ.get("SHAREPOINT_CLIENT_SECRET"))
-_HAVE_CERT = bool(os.environ.get("SHAREPOINT_CERT_PATH")) and bool(
-    os.environ.get("SHAREPOINT_CERT_PASSWORD")
-)
-_HAVE_CREDS = _HAVE_IDENTITY and (_HAVE_SECRET or _HAVE_CERT)
-pytestmark.append(
-    pytest.mark.skipif(
-        not _HAVE_CREDS,
-        reason=(
-            "No live SharePoint site credentials configured (repo has sharepoint.pfx + "
-            "SP_SITE_URL in .env, but no Azure AD tenant/client id or client secret/cert "
-            "password — the cert alone is not a runnable credential); set "
-            "SHAREPOINT_SITE_URL/SHAREPOINT_TENANT_ID/SHAREPOINT_CLIENT_ID plus "
-            "SHAREPOINT_CLIENT_SECRET or SHAREPOINT_CERT_PATH+SHAREPOINT_CERT_PASSWORD to run "
-            "against a real site"
-        ),
+
+
+def _present(name: str) -> bool:
+    """A credential var counts only when it is set AND non-empty -- an empty value is as good as
+    unset, so the test is skipped by name rather than run against M365 with a half credential."""
+    return bool(os.environ.get(name))
+
+
+# What a full credential is missing, by name: the identity trio, plus a secret OR a cert+password.
+_MISSING_IDENTITY = [v for v in _REQUIRED if not _present(v)]
+_HAVE_SECRET = _present("SHAREPOINT_CLIENT_SECRET")
+_HAVE_CERT = _present("SHAREPOINT_CERT_PATH") and _present("SHAREPOINT_CERT_PASSWORD")
+_HAVE_CREDS = not _MISSING_IDENTITY and (_HAVE_SECRET or _HAVE_CERT)
+
+if _HAVE_CREDS:
+    _SKIP_REASON = ""
+else:
+    _missing: list[str] = list(_MISSING_IDENTITY)
+    if not (_HAVE_SECRET or _HAVE_CERT):
+        # Name exactly which auth material is absent (an empty cert password reads as absent).
+        _cert_bits = [
+            n for n in ("SHAREPOINT_CERT_PATH", "SHAREPOINT_CERT_PASSWORD") if not _present(n)
+        ]
+        _missing.append(
+            "SHAREPOINT_CLIENT_SECRET or (" + " + ".join(_cert_bits or ["SHAREPOINT_CERT_*"]) + ")"
+        )
+    _SKIP_REASON = (
+        "No live SharePoint credentials — missing (empty counts as unset): "
+        + ", ".join(_missing)
+        + ". Set the Azure AD app identity plus a client secret or cert+password to run against "
+        "a real M365 site."
     )
-)
+pytestmark.append(pytest.mark.skipif(not _HAVE_CREDS, reason=_SKIP_REASON))
 
 # The list the connector must expose as a table. Defaults to the built-in "Documents" library,
 # which exists on every SharePoint site (toSqlName("Documents") == "documents") — a stable,

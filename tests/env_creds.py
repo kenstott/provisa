@@ -112,6 +112,8 @@ def load_provider_creds(path: Path | None = None) -> list[str]:
 
     loaded: list[str] = []
     for key, value in _parse_env_file(source).items():
+        if not value:
+            continue  # an empty value is as good as unset -- never export it as a half credential
         if os.environ.get(key):
             continue  # a caller-exported value always wins
         os.environ[key] = value
