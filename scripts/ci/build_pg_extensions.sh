@@ -173,6 +173,7 @@ if [ -e "$OUT/lib/postgres_fdw.$SUF" ]; then
   else
     cp -L "$PREFIX/lib/libpq.so.5" "$OUT/lib/libpq.so"
     patchelf --set-soname libpq.so "$OUT/lib/libpq.so"
+    patchelf --set-rpath '$ORIGIN' "$OUT/lib/libpq.so"  # its build-tree run path means nothing here
     patchelf --replace-needed libpq.so.5 libpq.so "$OUT/lib/postgres_fdw.so"
   fi
   sha="$( (command -v sha256sum >/dev/null && sha256sum "$OUT/lib/libpq.$SUF" || shasum -a256 "$OUT/lib/libpq.$SUF") | awk '{print $1}')"
@@ -180,10 +181,58 @@ if [ -e "$OUT/lib/postgres_fdw.$SUF" ]; then
   printf '  {"name":"libpq","key":"libpq","file":"lib/libpq.%s","sha256":"%s","redistribution":"bundled","runtime_deps":""}' \
     "$SUF" "$sha" >> "$manifest"
 fi
+if [ "$OS" = darwin ]; then
+  # A module may load only the OS's own libraries (/usr/lib, /System) and the bundle's. Anything
+  # else it links by absolute path (Homebrew's libssl/libcrypto/lz4/zstd for pg_clickhouse) ships
+  # beside it and loads through @rpath + @loader_path; repeat until the vendored libraries' own
+  # dependencies are covered too.
+  changed=1
+  while [ "$changed" = 1 ]; do
+    changed=0
+    for f in "$OUT"/lib/*.dylib; do
+      for d in $(otool -L "$f" | tail -n +2 | awk '{print $1}'); do
+        case "$d" in /usr/lib/*|/System/*|@rpath/*|@loader_path/*) continue ;; esac
+        name="$(basename "$d")"
+        if [ ! -e "$OUT/lib/$name" ]; then
+          cp -L "$d" "$OUT/lib/$name"; chmod 755 "$OUT/lib/$name"
+          install_name_tool -id "@rpath/$name" "$OUT/lib/$name"
+          for rp in $(rpaths "$OUT/lib/$name"); do  # its own install's run paths mean nothing here
+            [ "$rp" = "@loader_path" ] || install_name_tool -delete_rpath "$rp" "$OUT/lib/$name"
+          done
+          rpaths "$OUT/lib/$name" | grep -qx "@loader_path" \
+            || install_name_tool -add_rpath "@loader_path" "$OUT/lib/$name"
+          codesign -f -s - "$OUT/lib/$name"
+          sha="$(shasum -a256 "$OUT/lib/$name" | awk '{print $1}')"
+          echo ',' >> "$manifest"
+          printf '  {"name":"%s","key":"%s","file":"lib/%s","sha256":"%s","redistribution":"bundled","runtime_deps":""}' \
+            "${name%%.*}" "${name%%.*}" "$name" "$sha" >> "$manifest"
+        fi
+        install_name_tool -change "$d" "@rpath/$name" "$f"
+        rpaths "$f" | grep -qx "@loader_path" || install_name_tool -add_rpath "@loader_path" "$f"
+        codesign -f -s - "$f"
+        changed=1
+      done
+    done
+  done
+fi
 echo '' >> "$manifest"; echo ']}' >> "$manifest"
 
-echo "== verify: nothing in the bundle loads a library from this build's tree =="
+echo "== verify: the bundle loads only the OS's libraries and its own =="
 for f in "$OUT"/lib/*."$SUF"; do
+  if [ "$OS" = darwin ]; then
+    for d in $(otool -L "$f" | tail -n +2 | awk '{print $1}'); do
+      case "$d" in
+        /usr/lib/*|/System/*) ;;
+        @rpath/*|@loader_path/*)
+          [ -e "$OUT/lib/$(basename "$d")" ] \
+            || { echo "FAIL: $(basename "$f") loads $d, which the bundle does not ship"; exit 1; } ;;
+        *) echo "FAIL: $(basename "$f") loads $d (not the OS's, not the bundle's)"; exit 1 ;;
+      esac
+    done
+    for rp in $(rpaths "$f"); do
+      [ "$rp" = "@loader_path" ] || { echo "FAIL: $(basename "$f") has run path $rp"; exit 1; }
+    done
+  fi
   if [ "$OS" = darwin ]; then deps="$(otool -L "$f" | tail -n +2 | awk '{print $1}') $(rpaths "$f")"
   else deps="$(patchelf --print-needed "$f") $(patchelf --print-rpath "$f" | tr ':' ' ')"; fi
   for d in $deps; do
