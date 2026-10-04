@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: c04900a5-b8b5-4635-9cfe-60e5767610e3
 
 """The env/git projection works on a schemaless control plane (SQLite/DuckDB).
 
