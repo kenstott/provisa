@@ -39,6 +39,7 @@ from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
 
 from provisa.core import request_deadline
+from provisa.core.region_stores import HomeRegionUnavailable
 from provisa.core.statement_warnings import collecting
 from provisa.api.errors import ApiError
 from provisa.cache.key import cache_key, is_cacheable
@@ -914,6 +915,8 @@ async def _execute_one_field(
                 ) = await _dispatch()
         except HTTPException:
             raise
+        except HomeRegionUnavailable:
+            raise  # REQ-1922: refused by name; the app answers it (503, its code and params)
         except (MemoryError, ConnectionError) as e:
             log.error("Query resource error for %s: %s", root_field, e)
             raise HTTPException(status_code=503, detail=str(e))

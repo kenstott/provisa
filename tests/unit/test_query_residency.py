@@ -44,6 +44,7 @@ def _source(sid, **kw):
         freshness_gate=False,
         replicate=None,
         load_protected=False,
+        region=None,  # REQ-1921
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -73,6 +74,7 @@ def _table(sid, name, schema="pet_store", row_materialize=False, columns=None, c
         change_signal=None,
         replicate=None,
         load_protected=None,
+        region=None,  # REQ-1921
     )
 
 
@@ -697,3 +699,48 @@ async def test_the_engine_residency_step_puts_what_was_read_on_the_plan(monkeypa
     state = SimpleNamespace(federation_engine=SimpleNamespace(dialect="postgres"))
     await prepare_engine_residency(state, plan)
     assert plan.replicas_read == read
+
+
+_PLATFORM = {
+    "regions": [
+        {"id": "eu", "address": "https://eu.example.com"},
+        {"id": "us", "address": "https://us.example.com"},
+    ]
+}
+
+
+@pytest.fixture
+def node_in_us():
+    from provisa.core import process_region
+
+    was = process_region._region
+    process_region.bind_launch(_PLATFORM, requested="us")
+    yield
+    process_region._region = was
+
+
+@pytest.mark.asyncio
+async def test_a_table_kept_in_another_region_is_refused_by_name_and_never_built_here(
+    wiring, plane, node_in_us
+):
+    """REQ-1922: a table naming eu, read on a us node, is read only from its replica in eu —
+    never built here by the read, never read live; until that read is wired it is refused."""
+    from provisa.core.region_stores import HomeRegionUnavailable
+
+    pets = _table("pets-db", "pets")
+    pets.region = "eu"
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    with pytest.raises(HomeRegionUnavailable) as refused:
+        await _ensure(state, {"pets-db"})
+    assert refused.value.code == "query.home_region_unavailable"
+    assert refused.value.params == {"table": "pets", "region": "eu"}
+    assert wiring.built == [] and wiring.kicks == 0
+    assert await _record(plane, pets) is None
+
+
+@pytest.mark.asyncio
+async def test_a_table_kept_in_this_region_is_built_for_its_read(wiring, plane, node_in_us):
+    pets = _table("pets-db", "pets")
+    pets.region = "us"
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    assert await _ensure(state, {"pets-db"}) == [("pets-db", "pets")]

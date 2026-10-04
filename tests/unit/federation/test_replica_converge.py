@@ -443,3 +443,86 @@ async def test_a_table_naming_a_region_is_built_only_there(model):
         assert done.requested == [eu_table]
     finally:
         process_region._region = was
+
+
+_PLATFORM = {
+    "regions": [
+        {"id": "eu", "address": "https://eu.example.com"},
+        {"id": "us", "address": "https://us.example.com"},
+    ]
+}
+
+
+@pytest.fixture
+def node_region():
+    """Bind this process to a platform region for the test, and unbind it after."""
+    from provisa.core import process_region
+
+    was = process_region._region
+    yield lambda region: process_region.bind_launch(_PLATFORM, requested=region)
+    process_region._region = was
+
+
+async def _retired_then_dropped(model, monkeypatch, key) -> None:
+    done = await converge_replicas(model.state)
+    assert done.retired == [key] and done.requested == []
+    monkeypatch.setattr(replica_converge, "drop_grace_seconds", lambda: 0.0)
+    assert await drop_retired(model.state, BuildLocks(model.url), ORG) == [key]
+    assert model.store.dropped == [replica_table_name(*key)]
+    assert await model.record(key) is None
+    assert (await converge_replicas(model.state)).requested == []  # nor built here again
+
+
+async def test_a_copy_built_before_its_table_named_another_region_is_retired_and_dropped(
+    model, monkeypatch, node_region
+):
+    """REQ-1922: a table that named no region was built in every region; once it names eu, the
+    copy a us node built holds data us may no longer keep — it goes, like an undeclared one."""
+    node_region("us")
+    key = model.declare("orders")
+    await converge_replicas(model.state)
+    await model.build(key)
+    model.regions[key] = "eu"
+    await _retired_then_dropped(model, monkeypatch, key)
+
+
+async def test_a_copy_left_behind_when_its_table_moves_region_is_retired_and_dropped(
+    model, monkeypatch, node_region
+):
+    node_region("eu")
+    key = model.declare("orders")
+    model.regions[key] = "eu"
+    await converge_replicas(model.state)
+    await model.build(key)
+    model.regions[key] = "us"
+    await _retired_then_dropped(model, monkeypatch, key)
+
+
+async def test_a_table_moved_back_before_the_drop_keeps_its_copy(model, node_region):
+    node_region("eu")
+    key = model.declare("orders")
+    model.regions[key] = "eu"
+    await converge_replicas(model.state)
+    await model.build(key)
+    model.regions[key] = "us"
+    assert (await converge_replicas(model.state)).retired == [key]
+    model.regions[key] = "eu"
+    done = await converge_replicas(model.state)
+    assert done.kept == [key] and done.requested == []
+
+
+async def test_an_older_model_node_does_not_retire_a_copy_a_newer_model_wants_here(
+    plane, monkeypatch, node_region
+):
+    """A node still on the model before the table was homed here must not retire the copy the
+    newer model asked this region for."""
+    node_region("eu")
+    newer = _Model(plane, monkeypatch, stamp=11)
+    key = newer.declare("orders")
+    newer.regions[key] = "eu"
+    await converge_replicas(newer.state)  # requested here under model stamp 11
+    older = _Model(plane, monkeypatch, stamp=10)
+    older.declare("orders")
+    older.regions[key] = "us"  # the model before: the table was us's
+    assert (await converge_replicas(older.state)).retired == []
+    assert (await older.record(key)).retired_at is None

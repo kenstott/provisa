@@ -2979,6 +2979,18 @@ def create_app() -> FastAPI:
             content={"detail": str(exc), "code": "query.operator_floor", "params": {}},
         )
 
+    from provisa.core.region_stores import HomeRegionUnavailable as _HomeRegionUnavailable
+
+    @app.exception_handler(_HomeRegionUnavailable)
+    async def _home_region_handler(_req: _Request, exc: _HomeRegionUnavailable):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1922: a table kept in another region is read only from its replica there; while that
+        # replica cannot be read from here the read is refused — 503, the answer exists but
+        # cannot be given from here now.
+        return _JSONResponse(
+            status_code=503,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     @app.exception_handler(Exception)
     async def _global_exception_handler(_req: _Request, exc: Exception):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
         log.exception("Unhandled exception on %s %s", _req.method, _req.url.path)

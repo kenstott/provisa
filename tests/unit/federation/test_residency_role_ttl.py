@@ -44,6 +44,7 @@ def _src(sid="s", cache_ttl=None, **kw):
         freshness_gate=False,
         replicate=None,
         load_protected=False,
+        region=None,  # REQ-1921
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -65,6 +66,7 @@ def _tbl(name, sid="s", cache_ttl=60, role_ttl=None, **kw):
         change_signal=None,
         replicate=None,
         load_protected=None,
+        region=None,  # REQ-1921
     )
     base.update(kw)
     return SimpleNamespace(**base)

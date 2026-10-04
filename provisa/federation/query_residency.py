@@ -283,12 +283,23 @@ async def ensure_resident(
         source is left alone — it is neither landed nor asked for a replication clock."""
         return t.id in floored or not _attached_types[t.source_id]
 
-    from provisa.federation.replica_converge import whole_copy
+    from provisa.federation.replica_converge import builds_here, home_region, whole_copy
 
     by_id = {s.id: s for s in sources}
     tables_by_source: dict[str, list[Any]] = {}
     for t in await registered_tables(state):
-        if t.source_id not in wanted or t.id not in read or not _lands(t):
+        if t.source_id not in wanted or t.id not in read:
+            continue
+        home = home_region(by_id[t.source_id], t)
+        if not builds_here(home):
+            # REQ-1922: kept in another region — read only from its replica there, never live
+            # and never from a copy built here. Reading that region's store in place is not
+            # wired yet, so the read is refused by name (never a local build, never a raw error).
+            from provisa.core.region_stores import HomeRegionUnavailable
+
+            assert home is not None  # builds_here is True for a table naming no region
+            raise HomeRegionUnavailable(t.table_name, home, "cannot be read from this region")
+        if not _lands(t):
             continue
         # Only a whole copy is built for a read: not a row-level table's (its rows come by
         # key) and not a parameterized table's (a function of its arguments has no whole).
