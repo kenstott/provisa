@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: fe60a112-9cd3-4bca-bd68-72f2812f4a46
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -75,7 +76,15 @@ test.describe("REQ-1922 region selector, two-region demo", () => {
   });
 
   test("a us node reads an eu-homed table, served from eu's replica", async () => {
-    // TODO(prove): query intake_eu on the us API and assert rows come back.
+    // TODO(prove): query intake_eu on the us API and assert rows come back (a cross-region READ,
+    // governed by RLS — not by data_residency).
+    test.fixme(true, "fill in against the running demo once proof is unblocked");
+  });
+
+  test("data_residency refuses a region EDIT it does not cover, naming the region", async () => {
+    // TODO(prove): as eu_resident (grant = eu, no_region), change a us-homed table's region on the
+    // eu node -> refused, message names `us`; then set the no-region table's region to eu -> succeeds.
+    // data_residency gates setting the region, not reads.
     test.fixme(true, "fill in against the running demo once proof is unblocked");
   });
 

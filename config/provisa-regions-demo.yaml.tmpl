@@ -61,9 +61,11 @@ roles:
       - source_registration
       - access_config
     domain_access: ["*"]
-  # REQ-1921 data_residency: this role's grant covers only eu (plus no_region). Reading a us-homed
-  # object is refused BY NAME (naming us) — the demo's residency refusal. Act as eu_resident (the
-  # X-Provisa-Role header, or the role picker) and read intake_us to see it.
+  # REQ-1921 data_residency: the RIGHT TO SET an object's region, covering only eu (plus no_region).
+  # It does NOT gate reads (reads are governed by RLS on user + region attributes). So as eu_resident:
+  # changing a us-homed table's region is refused BY NAME (naming us, which the grant does not cover),
+  # while setting a no-region table's region to eu succeeds. Act as it via the X-Provisa-Role header
+  # or the role picker.
   - id: eu_resident
     capabilities:
       - query_development
