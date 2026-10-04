@@ -156,7 +156,11 @@ class ViewLoopRefused(ValueError):
 
 
 async def upsert(
-    conn: "Connection", table: Table, *, origin: str
+    conn: "Connection",
+    table: Table,
+    *,
+    origin: str,
+    leaving: frozenset[tuple[str, str, str]] = frozenset(),
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
     """Upsert a registered table and its columns. Returns the table row id.
 
@@ -180,11 +184,62 @@ async def upsert(
             loop = await view_loop(conn, table.table_name, view_sql)
             if loop:
                 raise ViewLoopRefused(loop)
-        return await _upsert(conn, table, require_origin(origin))
+        return await _upsert(conn, table, require_origin(origin), leaving)
 
 
-async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
+async def _require_free_sql_address(
+    conn: "Connection", table: Table, domain_id: str, leaving: frozenset[tuple[str, str, str]]
+) -> None:
+    """REQ-1933: refuse a table whose SQL address another registered table in its domain holds,
+    naming that table (:class:`provisa.compiler.naming.SqlAddressTaken`). The table itself being
+    saved again is not another table, nor is one in ``leaving``: a table the same config load
+    removes because its file no longer declares it ``(source_id, schema_name, table_name)``."""
+    from sqlalchemy import select
+
+    from provisa.compiler.naming import refuse_taken_sql_addresses
+    from provisa.core.schema_org import naming_rules as naming_rules_t
+
+    rules = [
+        {"pattern": r.pattern, "replacement": r.replacement}
+        for r in (
+            await conn.execute_core(select(naming_rules_t.c.pattern, naming_rules_t.c.replacement))
+        ).fetchall()
+    ]
+    rt = registered_tables
+    others = [
+        dict(r._mapping)
+        for r in (
+            await conn.execute_core(
+                select(
+                    rt.c.domain_id,
+                    rt.c.source_id,
+                    rt.c.schema_name,
+                    rt.c.table_name,
+                    rt.c.alias,
+                    rt.c.gql_naming_convention,
+                ).where(rt.c.domain_id == domain_id)
+            )
+        ).fetchall()
+        if (r.source_id, r.schema_name, r.table_name)
+        != (table.source_id, table.schema_name, table.table_name)
+        and (r.source_id, r.schema_name, r.table_name) not in leaving
+    ]
+    candidate = {
+        "domain_id": domain_id,
+        "source_id": table.source_id,
+        "schema_name": table.schema_name,
+        "table_name": table.table_name,
+        "alias": table.alias,
+        "gql_naming_convention": table.gql_naming_convention,
+    }
+    refuse_taken_sql_addresses([*others, candidate], rules)
+
+
+async def _upsert(
+    conn: "Connection", table: Table, origin: str, leaving: frozenset[tuple[str, str, str]]
+) -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
+    await _require_free_sql_address(conn, table, domain_id, leaving)
     from provisa.core.repositories.region import require_selected
 
     await require_selected(  # REQ-1921: a table names one of its org's regions, or none

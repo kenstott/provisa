@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+from provisa.compiler.naming import SqlAddressTaken
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
@@ -2376,6 +2377,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     message=str(_drop),
                     code="schema.column_has_dependents",
                     params={"table": _drop.table_name, "columns": _drop.report()},
+                )
+            except SqlAddressTaken as _taken:
+                # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
+                return MutationResult(
+                    success=False,
+                    message=str(_taken),
+                    code="schema.sql_address_taken",
+                    params={
+                        "domain": _taken.domain_id,
+                        "address": _taken.address,
+                        "holder": _taken.holder,
+                    },
                 )
             if model.query_template:
                 # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table serves from.

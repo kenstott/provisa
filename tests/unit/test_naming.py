@@ -12,59 +12,27 @@
 
 import pytest
 
-from provisa.compiler.naming import generate_name, to_type_name
+from provisa.compiler.naming import (
+    SqlAddressTaken,
+    generate_name,
+    refuse_taken_sql_addresses,
+    to_type_name,
+)
 
 
 class TestGenerateName:
     def test_simple_unique_name(self):
-        result = generate_name(
-            "orders",
-            "public",
-            "sales-pg",
-            domain_table_names=["orders", "customers"],
-            naming_rules=[],
-        )
-        assert result == "orders"
-
-    def test_conflict_adds_schema_qualifier(self):
-        # us_orders → "orders" (prior), then "orders" → "orders" conflicts → qualify
-        result = generate_name(
-            "orders",
-            "sales",
-            "pg1",
-            domain_table_names=["us_orders", "orders"],
-            naming_rules=[{"pattern": "^us_", "replacement": ""}],
-        )
-        assert result == "salesOrders"
-
-    def test_conflict_adds_source_qualifier_when_schema_taken(self):
-        # eu_orders → "orders" (prior), "sales_orders" stays as-is (prior), then "orders" conflicts:
-        # schema qualifier "sales_orders" already taken → falls through to source_id "pg1_orders"
-        result = generate_name(
-            "orders",
-            "sales",
-            "pg1",
-            domain_table_names=["eu_orders", "sales_orders", "orders"],
-            naming_rules=[{"pattern": "^eu_", "replacement": ""}],
-        )
-        assert result == "pg1Orders"
+        assert generate_name("orders", naming_rules=[]) == "orders"
 
     def test_naming_rules_applied(self):
         result = generate_name(
-            "prod_pg_orders",
-            "public",
-            "pg1",
-            domain_table_names=["prod_pg_orders"],
-            naming_rules=[{"pattern": "^prod_pg_", "replacement": ""}],
+            "prod_pg_orders", naming_rules=[{"pattern": "^prod_pg_", "replacement": ""}]
         )
         assert result == "orders"
 
     def test_multiple_naming_rules(self):
         result = generate_name(
             "prod_pg_raw_orders",
-            "public",
-            "pg1",
-            domain_table_names=["prod_pg_raw_orders"],
             naming_rules=[
                 {"pattern": "^prod_pg_", "replacement": ""},
                 {"pattern": "^raw_", "replacement": ""},
@@ -73,35 +41,61 @@ class TestGenerateName:
         assert result == "orders"
 
     def test_alias_overrides_everything(self):
-        result = generate_name(
-            "ugly_internal_name",
-            "public",
-            "pg1",
-            domain_table_names=["ugly_internal_name"],
-            naming_rules=[],
-            alias="sales_orders",
-        )
+        result = generate_name("ugly_internal_name", naming_rules=[], alias="sales_orders")
         assert result == "salesOrders"
 
     def test_hyphens_in_name_replaced(self):
-        result = generate_name(
-            "my-table",
-            "public",
-            "pg1",
-            domain_table_names=["my-table"],
-            naming_rules=[],
-        )
-        assert result == "myTable"
+        assert generate_name("my-table", naming_rules=[]) == "myTable"
 
     def test_empty_after_rules_raises(self):
         with pytest.raises(ValueError, match="empty name"):
-            generate_name(
-                "orders",
-                "public",
-                "pg1",
-                domain_table_names=["orders"],
-                naming_rules=[{"pattern": ".*", "replacement": ""}],
+            generate_name("orders", naming_rules=[{"pattern": ".*", "replacement": ""}])
+
+
+def _t(table_name, *, source="pg1", schema="sales", domain="d", alias=None):
+    return {
+        "domain_id": domain,
+        "source_id": source,
+        "schema_name": schema,
+        "table_name": table_name,
+        "alias": alias,
+    }
+
+
+class TestOneSqlAddressPerTable:
+    """REQ-1933: two tables never share a SQL address in a domain. A name is never qualified with
+    its schema or source to make it unique; which table kept the bare name was only list order."""
+
+    def test_a_name_the_rules_make_taken_is_refused_naming_the_holder(self):
+        # us_orders -> "orders" under the rule, then "orders" is the same address.
+        with pytest.raises(SqlAddressTaken) as refused:
+            refuse_taken_sql_addresses(
+                [_t("us_orders"), _t("orders", schema="public")],
+                [{"pattern": "^us_", "replacement": ""}],
             )
+        assert refused.value.address == "orders"
+        assert refused.value.holder == "pg1.sales.us_orders"
+        assert refused.value.newcomer == "pg1.public.orders"
+
+    def test_two_sources_tables_of_one_name_in_a_domain_are_refused(self):
+        with pytest.raises(SqlAddressTaken):
+            refuse_taken_sql_addresses(
+                [_t("getInventory", source="petstore-api"), _t("getInventory", source="copy")], []
+            )
+
+    def test_an_alias_or_another_domain_gives_a_table_its_own_address(self):
+        refuse_taken_sql_addresses(
+            [
+                _t("orders"),
+                _t("orders", source="pg2", alias="eu_orders"),
+                _t("orders", source="pg3", domain="other"),
+            ],
+            [],
+        )
+
+    def test_spellings_of_one_address_are_one_address(self):
+        with pytest.raises(SqlAddressTaken):
+            refuse_taken_sql_addresses([_t("get_inventory"), _t("getInventory", source="x")], [])
 
 
 class TestToTypeName:

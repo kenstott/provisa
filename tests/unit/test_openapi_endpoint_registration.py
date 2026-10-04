@@ -329,7 +329,8 @@ async def test_a_second_source_registering_a_table_of_the_same_name_keeps_the_fi
 ):
     """A table is named within its source. Two OpenAPI sources each registering ``listPets`` hold
     two endpoints; the second registration once took over the first source's row, which then
-    served the second source's calls."""
+    served the second source's calls. (The copy is registered in a domain of its own: one SQL
+    address per table in a domain, REQ-1933.)"""
     from provisa.api.admin._openapi_table_registration import persist_openapi_endpoint
     from provisa.api_source.loader import load_api_sources
     from provisa.api_source.openapi_endpoint import register_openapi_source
@@ -339,8 +340,9 @@ async def test_a_second_source_registering_a_table_of_the_same_name_keeps_the_fi
     await _register_in_the_admin(control_plane, state, _table(max_pages=10))
     copy_base = "https://copy.test"
     state.openapi_specs["copy"] = {"spec": SPEC, "base_url": copy_base, "auth_config": None}
-    copy_table = _table(max_pages=10).model_copy(update={"source_id": "copy"})
+    copy_table = _table(max_pages=10).model_copy(update={"source_id": "copy", "domain_id": "e"})
     async with control_plane.acquire() as conn:
+        await conn.execute_core(insert(domains).values(id="e", origin="ui"))
         await conn.execute_core(insert(sources).values(id="copy", type="openapi", origin="admin"))
         await register_openapi_source(conn, "copy", copy_base)
         await table_repo.upsert(conn, copy_table, origin="admin")

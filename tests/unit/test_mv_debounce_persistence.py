@@ -26,6 +26,7 @@ from provisa.core.schema_org import (
     registered_tables,
     roles,
     table_columns,
+    naming_rules,
 )
 
 
@@ -41,6 +42,8 @@ async def _conn(tmp_path):
             tables=[
                 registered_tables,
                 table_columns,
+                # naming_rules: the table upsert refuses a taken SQL address under them (REQ-1933).
+                naming_rules,
                 roles,
                 glossary_terms,
                 glossary_term_refs,
