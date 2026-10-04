@@ -958,6 +958,7 @@ class ProvisaFlightServer(
                     # REQ-1897: an opted-in read is looked up in the response cache before it
                     # is routed; a Route.CACHE plan has no engine SQL and is served below.
                     serve_cached=True,
+                    sdl_joins=False,
                 )
             )
         except PermissionError as exc:
@@ -1385,6 +1386,7 @@ class ProvisaFlightServer(
                     state=self._state,
                     # REQ-544: the GraphQL request's own @cached opt-in.
                     cache_hint=cache_hint_for("graphql", str(request.get("query", ""))),
+                    sdl_joins=True,
                 )
             )
         except PermissionError as exc:

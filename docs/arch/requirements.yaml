@@ -739,7 +739,14 @@
     (duckdb_secrets(), duckdb_settings(), duckdb_databases(), read_csv(...), ...) or unregistered relation
     name (a quoted file path answered by DuckDB''s replacement scan) is refused before routing with V006
     (validate_sql). These reach engine internals or the engine host: DuckDB prints http-secret headers
-    (the live ClickHouse connector''s X-ClickHouse-Key, REQ-899) in clear text from duckdb_secrets().'
+    (the live ClickHouse connector''s X-ClickHouse-Key, REQ-899) in clear text from duckdb_secrets().
+
+
+    (Amended 2026-10-04, EVERY COMPILED SURFACE MEETS THE V-RULES:) The compiled stage validates every
+    statement it governs (validate_sql) as the raw-SQL stage does: a masked column in a filter, a hidden
+    column, an unregistered relation and, outside the SDL''s joins, an unapproved join (REQ-603) are
+    refused before routing. REST and JSON:API, which compile a generated GraphQL document, now answer such
+    a request with the refusal (403 naming the V-rule) where the masked value used to be filtered on.'
   use_case: Stage 2 as standalone SQL transformer ensures no client can bypass governance without bypassing
     the server.
   code:
@@ -1303,7 +1310,15 @@
   description: 'V002 relationship governance: every JOIN ON condition in SQL and Cypher queries must match
     an approved, registered relationship (source_col = target_col). SQL and Cypher queries that traverse
     a join not backed by a registered relationship are rejected at compile time. GraphQL queries that
-    traverse relationships defined in the SDL are always pre-approved and exempt from the V002 check.'
+    traverse relationships defined in the SDL are always pre-approved and exempt from the V002 check.
+
+
+    (Amended 2026-10-04, THE COMPILED STAGE:) The check runs where a statement is governed, on the raw-SQL
+    stage and on the compiled stage alike. A compiled statement built from a GraphQL document (HTTP GraphQL,
+    REST, JSON:API, gRPC, NL''s GraphQL-shaped targets, GraphQL over Arrow Flight) has its joins from the
+    SDL and is exempt; a compiled Cypher statement (Bolt, Cypher over HTTP, Cypher over Arrow Flight) and
+    the native gRPC table read are checked. ignore_relationships lifts the check on the compiled stage
+    as on the raw one, except in high-security mode (REQ-693).'
   use_case: V002 enforces approved navigation paths so joins between sensitive tables require explicit
     steward registration and approval, providing an audit surface for cross-table data access.
   code:

@@ -167,6 +167,10 @@ class TestGrpcServerStarts:
         # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
         # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
         state.admin_db = None
+        # The compiled stage asks the approval hook (REQ-203) and windows Kafka reads (REQ-148) on
+        # every surface: a bare MagicMock reads as a configured hook and as Kafka-backed tables.
+        state.approval_hook = None
+        state.kafka_table_configs = {}
         # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
         # would put this server behind the credential gate. Name it unsecured; the secured path
         # has its own fixture.
@@ -216,6 +220,10 @@ class TestGrpcServerStarts:
         # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
         # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
         state.admin_db = None
+        # The compiled stage asks the approval hook (REQ-203) and windows Kafka reads (REQ-148) on
+        # every surface: a bare MagicMock reads as a configured hook and as Kafka-backed tables.
+        state.approval_hook = None
+        state.kafka_table_configs = {}
         # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
         # would put this server behind the credential gate. Name it unsecured; the secured path
         # has its own fixture.
@@ -371,6 +379,10 @@ class TestGrpcQueryExecution:
         # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
         # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
         state.admin_db = None
+        # The compiled stage asks the approval hook (REQ-203) and windows Kafka reads (REQ-148) on
+        # every surface: a bare MagicMock reads as a configured hook and as Kafka-backed tables.
+        state.approval_hook = None
+        state.kafka_table_configs = {}
         # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
         # would put this server behind the credential gate. Name it unsecured; the secured path
         # has its own fixture.
@@ -533,6 +545,10 @@ class TestGrpcQueryExecution:
         # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
         # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
         state.admin_db = None
+        # The compiled stage asks the approval hook (REQ-203) and windows Kafka reads (REQ-148) on
+        # every surface: a bare MagicMock reads as a configured hook and as Kafka-backed tables.
+        state.approval_hook = None
+        state.kafka_table_configs = {}
         # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
         # would put this server behind the credential gate. Name it unsecured; the secured path
         # has its own fixture.
@@ -612,6 +628,10 @@ class TestSecuredGrpcRequiresACredential:
         # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
         # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
         state.admin_db = None
+        # The compiled stage asks the approval hook (REQ-203) and windows Kafka reads (REQ-148) on
+        # every surface: a bare MagicMock reads as a configured hook and as Kafka-backed tables.
+        state.approval_hook = None
+        state.kafka_table_configs = {}
         state.auth_config = _SECURED_AUTH_CONFIG
         state.auth_middleware_active = True
         # REQ-1904: server_cfg.get(...) is read for real during server construction.

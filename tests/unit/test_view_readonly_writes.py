@@ -91,5 +91,9 @@ async def test_compiled_pipeline_entrypoint_rejects_view_write():
 
     with pytest.raises(PermissionError, match="query-only"):
         await _pipeline._govern_and_route_compiled(
-            "UPDATE daily_totals SET n = 1", "admin", state=_FakeState(), cache_hint=NO_CACHE_HINT
+            "UPDATE daily_totals SET n = 1",
+            "admin",
+            state=_FakeState(),
+            cache_hint=NO_CACHE_HINT,
+            sdl_joins=True,
         )

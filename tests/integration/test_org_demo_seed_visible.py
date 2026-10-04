@@ -186,6 +186,7 @@ async def test_compiled_pipeline_forces_engine_route_for_view_backed_query(demo_
         "org_admin",
         state=state,
         cache_hint=NO_CACHE_HINT,
+        sdl_joins=True,
     )
     assert plan.route == Route.ENGINE, plan.route
     assert plan.exec_sql is not None

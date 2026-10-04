@@ -196,6 +196,7 @@ async def _handle_normalized(document, ctx, state, variables, role_id):
             deliver=delivery,
             cache_hint=NO_CACHE_HINT,
             compiled=nt.compiled,
+            sdl_joins=True,
         )
         handle = (await _execute_plan(plan, state)).redirect
         assert handle is not None, "a forced delivery answers with its handle"
@@ -595,6 +596,7 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
         buffered=compiled.nodes_sql is None,
         compiled=compiled,
         **common,
+        sdl_joins=True,
     )
     route = cast(Route, plan.route)
     hit = plan.cache_hit[1] if route == Route.CACHE and plan.cache_hit else None
@@ -612,6 +614,7 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
             api_args=compiled.api_args or None,
             extra_selections=compiled.gql_remote_extra_selections or None,
             **common,
+            sdl_joins=True,
         )
         nodes_rows = (await _executed(nodes_plan, state, root_field)).rows
 

@@ -247,7 +247,13 @@ async def _run(b, sql, params):
     from provisa.compiler.directives import NO_CACHE_HINT
 
     plan = await b.mod._govern_and_route_compiled(
-        sql, "analyst", exec_params=params, state=b.state, buffered=True, cache_hint=NO_CACHE_HINT
+        sql,
+        "analyst",
+        exec_params=params,
+        state=b.state,
+        buffered=True,
+        cache_hint=NO_CACHE_HINT,
+        sdl_joins=True,
     )
     return plan, await b.mod._execute_plan(plan, b.state)
 
@@ -336,6 +342,7 @@ async def test_a_buffered_read_the_router_sends_to_the_engine_stays_on_the_engin
             state=buffered.state,
             buffered=True,
             cache_hint=NO_CACHE_HINT,
+            sdl_joins=True,
         )
     assert plan.route == Route.ENGINE and plan.auto_deliver is not None and plan.physical_sql
 
@@ -350,6 +357,7 @@ async def test_an_unbuffered_direct_read_is_not_probed(buffered):
             "analyst",
             state=buffered.state,
             cache_hint=NO_CACHE_HINT,
+            sdl_joins=True,
         )
     assert plan.auto_deliver is None and plan.engine_landing is None
     assert not plan.sql.endswith("LIMIT 6")
@@ -423,7 +431,12 @@ async def test_a_direct_read_issues_no_control_plane_statement(buffered, monkeyp
         )
         for _ in range(3):
             plan = await buffered.mod._govern_and_route_compiled(
-                _LOOKUP, "analyst", exec_params=[7, 1], state=state, cache_hint=NO_CACHE_HINT
+                _LOOKUP,
+                "analyst",
+                exec_params=[7, 1],
+                state=state,
+                cache_hint=NO_CACHE_HINT,
+                sdl_joins=True,
             )
             assert plan.table_ids == (_ORDERS_TABLE_ID,)
             result = await buffered.mod._execute_plan(plan, state)

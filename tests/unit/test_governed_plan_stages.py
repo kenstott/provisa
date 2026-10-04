@@ -250,7 +250,11 @@ def pipeline(monkeypatch):
 
 async def _compiled(p, sql=_SQL, role="analyst", params=None):
     return await p.mod._govern_and_route_compiled(
-        sql, role, exec_params=params, cache_hint=NO_CACHE_HINT
+        sql,
+        role,
+        exec_params=params,
+        cache_hint=NO_CACHE_HINT,
+        sdl_joins=True,
     )
 
 
@@ -412,13 +416,21 @@ async def test_a_repeated_engine_statement_on_the_compiled_stage_parses_once(eng
     transpile and the span attributes are functions of the governed text — kept with the plan."""
     p = engine_pipeline
     first = await p.mod._govern_and_route_compiled(
-        _ENGINE_SQL, "analyst", exec_params=[1], cache_hint=NO_CACHE_HINT
+        _ENGINE_SQL,
+        "analyst",
+        exec_params=[1],
+        cache_hint=NO_CACHE_HINT,
+        sdl_joins=True,
     )
     assert first.physical_sql and p.parses["n"] > 0
     p.parses["n"] = 0
     for value in (2, 3, 4):
         again = await p.mod._govern_and_route_compiled(
-            _ENGINE_SQL, "analyst", exec_params=[value], cache_hint=NO_CACHE_HINT
+            _ENGINE_SQL,
+            "analyst",
+            exec_params=[value],
+            cache_hint=NO_CACHE_HINT,
+            sdl_joins=True,
         )
         assert again.physical_sql == first.physical_sql
         assert again.exec_sql == first.exec_sql
@@ -426,6 +438,42 @@ async def test_a_repeated_engine_statement_on_the_compiled_stage_parses_once(eng
         assert again.exec_params == [value]
         assert again.stamp != first.stamp
     assert p.parses["n"] == 0, "a repeated ENGINE-route statement was parsed again"
+
+
+_UNAPPROVED_JOIN = "SELECT a.id FROM sales.orders a JOIN sales.orders b ON a.id = b.id"
+
+
+async def test_the_relationship_guard_holds_on_a_compiled_statement_whose_joins_are_not_the_sdls(
+    pipeline,
+):
+    """(d): a compiled statement meets the raw stage's V-rules, the relationship guard included —
+    skipped only where the GraphQL SDL defined the joins (``sdl_joins``)."""
+    with pytest.raises(PermissionError, match="V002"):
+        await pipeline.mod._govern_and_route_compiled(
+            _UNAPPROVED_JOIN, "analyst", cache_hint=NO_CACHE_HINT, sdl_joins=False
+        )
+    plan = await pipeline.mod._govern_and_route_compiled(
+        _UNAPPROVED_JOIN, "analyst", cache_hint=NO_CACHE_HINT, sdl_joins=True
+    )
+    assert plan.sql
+
+
+async def test_ignore_relationships_lifts_the_guard_except_in_high_security_mode(pipeline):
+    """The raw stage's rule (REQ-693): the capability bypasses the guard; high-security mode
+    does not let it."""
+    from provisa.security.rights import Capability
+
+    pipeline.state.roles["analyst"]["capabilities"] = [Capability.IGNORE_RELATIONSHIPS.value]
+    plan = await pipeline.mod._govern_and_route_compiled(
+        _UNAPPROVED_JOIN, "analyst", cache_hint=NO_CACHE_HINT, sdl_joins=False
+    )
+    assert plan.sql
+    pipeline.state.security_high = True
+    pipeline.state.schema_version += 1  # a new generation: the kept plan is not served
+    with pytest.raises(PermissionError, match="V002"):
+        await pipeline.mod._govern_and_route_compiled(
+            _UNAPPROVED_JOIN, "analyst", cache_hint=NO_CACHE_HINT, sdl_joins=False
+        )
 
 
 async def test_a_filter_the_approval_hook_adds_reaches_a_statement_already_kept(pipeline):
@@ -491,7 +539,11 @@ async def test_the_kept_engine_form_follows_the_optimized_text_and_the_engine(en
     changes with the data) or a swapped engine derives it again."""
     p = engine_pipeline
     first = await p.mod._govern_and_route_compiled(
-        _ENGINE_SQL, "analyst", exec_params=[1], cache_hint=NO_CACHE_HINT
+        _ENGINE_SQL,
+        "analyst",
+        exec_params=[1],
+        cache_hint=NO_CACHE_HINT,
+        sdl_joins=True,
     )
 
     async def _rewritten(exec_sql, governed_sql, gov_ctx, ctx, state, role_id, **kwargs):
@@ -500,7 +552,11 @@ async def test_the_kept_engine_form_follows_the_optimized_text_and_the_engine(en
 
     with patch.object(p.mod, "_optimize_and_route_cached", new=AsyncMock(side_effect=_rewritten)):
         rewritten = await p.mod._govern_and_route_compiled(
-            _ENGINE_SQL, "analyst", exec_params=[1], cache_hint=NO_CACHE_HINT
+            _ENGINE_SQL,
+            "analyst",
+            exec_params=[1],
+            cache_hint=NO_CACHE_HINT,
+            sdl_joins=True,
         )
     assert "1 = 1" in rewritten.physical_sql and "1 = 1" not in first.physical_sql
 
@@ -510,7 +566,11 @@ async def test_the_kept_engine_form_follows_the_optimized_text_and_the_engine(en
 
     p.state.federation_engine = _Other()
     swapped = await p.mod._govern_and_route_compiled(
-        _ENGINE_SQL, "analyst", exec_params=[1], cache_hint=NO_CACHE_HINT
+        _ENGINE_SQL,
+        "analyst",
+        exec_params=[1],
+        cache_hint=NO_CACHE_HINT,
+        sdl_joins=True,
     )
     assert swapped.physical_sql.startswith("/* other engine */")
 

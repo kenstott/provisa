@@ -141,8 +141,18 @@ def client(monkeypatch):
     state.source_dialects = {"pet-store-sqlite": "sqlite"}
 
     async def _fake_govern(
-        sql, role_id, exec_params=None, state=None, deliver=None, buffered=False, *, cache_hint
+        sql,
+        role_id,
+        exec_params=None,
+        state=None,
+        deliver=None,
+        buffered=False,
+        *,
+        cache_hint,
+        sdl_joins,
     ):
+        # JSON:API compiles a generated GraphQL document: its joins are the SDL's.
+        assert sdl_joins is True
         return SimpleNamespace(_is_count="COUNT(*)" in sql)
 
     async def _fake_execute(plan, state):

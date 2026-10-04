@@ -91,7 +91,7 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     # same entrypoint the real Bolt/Cypher session uses (provisa/bolt/session.py) — so governance,
     # API-table hydration/materialization, and cache rewrites all apply exactly as they do there.
     plan = await _govern_and_route_compiled(
-        semantic_sql, role, state=app_state, cache_hint=NO_CACHE_HINT
+        semantic_sql, role, state=app_state, cache_hint=NO_CACHE_HINT, sdl_joins=True
     )
     result = await _execute_plan(plan, app_state)
     rows = [dict(zip(result.column_names, row)) for row in result.rows]
@@ -126,7 +126,12 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
     out: list[tuple] = []
     for cq in compiled_queries:
         plan = await _govern_and_route_compiled(
-            cq.sql, role, exec_params=cq.params or None, state=app_state, cache_hint=NO_CACHE_HINT
+            cq.sql,
+            role,
+            exec_params=cq.params or None,
+            state=app_state,
+            cache_hint=NO_CACHE_HINT,
+            sdl_joins=True,
         )
         result = await _execute_plan(plan, app_state)
         nodes_result = None
@@ -137,6 +142,7 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
                 exec_params=cq.nodes_params or None,
                 state=app_state,
                 cache_hint=NO_CACHE_HINT,
+                sdl_joins=True,
             )
             nodes_result = await _execute_plan(nodes_plan, app_state)
         out.append((cq, result, nodes_result))
