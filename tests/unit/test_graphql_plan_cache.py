@@ -8,11 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A repeated GraphQL query reuses its governed plan (REQ-1877, amended 2026-09-30).
+"""A repeated GraphQL query reuses its compiled plan (REQ-1877, amended 2026-09-30).
 
-The cached-hit path is: role -> plan lookup -> response-cache key -> Redis GET -> respond. Parsing,
-validation, compilation and governance run once per (schema generation, role, query,
-variables, session variables, as-of) and are reused until the schema generation moves."""
+Parsing, validation and compilation run once per (schema generation, role, query, variables,
+session variables, as-of) and are reused until the schema generation moves. The kept fields go to
+the one compiled pipeline on every request, which keeps its own governed form and runs the
+per-call stages (the approval hook, fresh materialized views, Kafka windows, the response
+cache)."""
 
 # Requirements: REQ-1877
 
@@ -71,7 +73,6 @@ def _request(state, **over) -> PlanRequest:
         query="{ orders { orderId } }",
         variables=None,
         as_of=None,
-        fresh_mvs=[],
         eligible=True,
     )
     kwargs.update(over)
@@ -157,15 +158,6 @@ def test_a_replaced_governance_object_misses_even_under_the_same_generation(anch
     assert _request(state).cached() is None
 
 
-def test_a_change_in_the_fresh_mv_set_misses():
-    state = _state()
-    mv = SimpleNamespace(id="mv1")
-    _request(state, fresh_mvs=[mv]).record(_DIRECTIVES, [_cq()])
-    assert _request(state, fresh_mvs=[mv]).cached() is not None
-    assert _request(state, fresh_mvs=[]).cached() is None
-    assert _request(state, fresh_mvs=[SimpleNamespace(id="mv1")]).cached() is None
-
-
 def test_nothing_is_recorded_while_a_rebuild_is_in_progress(monkeypatch):
     state = _state()
     monkeypatch.setattr(governed_plan, "_rebuild_in_progress", lambda: True)
@@ -183,21 +175,20 @@ def test_nothing_is_recorded_when_the_generation_moved_during_the_compile():
     assert len(state.compiled_query_cache) == 0
 
 
-def test_an_approval_hook_is_evaluated_per_request_so_no_plan_is_kept():
+def test_a_plan_is_kept_under_an_approval_hook():
+    """The kept fields are compiled, not governed: the hook is asked by the pipeline per call."""
     state = _state(approval_hook=object())
-    req = _request(state)
-    req.record(_DIRECTIVES, [_cq()])
-    assert _request(state).cached() is None
-    assert len(state.compiled_query_cache) == 0
+    _request(state).record(_DIRECTIVES, [_cq()])
+    assert _request(state).cached() is not None
 
 
-def test_a_kafka_windowed_query_is_not_kept():
-    """inject_kafka_filters writes a CURRENT_TIMESTAMP-relative window chosen per table config."""
+def test_a_kafka_query_is_kept_unwindowed():
+    """The Kafka window is the pipeline's prepare step, per call: the kept field has none."""
     state = _state(kafka_table_configs={"events": object()})
     _request(state).record(_DIRECTIVES, [_cq(sources=("events-kafka",))])
-    assert _request(state).cached() is None
-    _request(state).record(_DIRECTIVES, [_cq(sources=("sales-pg",))])
-    assert _request(state).cached() is not None
+    plan = _request(state).cached()
+    assert plan is not None
+    assert plan.prepared_copies()[0].sql == 'SELECT "order_id" FROM "sales"."orders"'
 
 
 def test_an_ineligible_request_neither_reads_nor_writes():
@@ -244,7 +235,7 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
     import provisa.api.app as app_module
     from provisa.api.data import endpoint
 
-    calls = {"parse": 0, "compile": 0, "prepare": 0, "execute": 0}
+    calls = {"parse": 0, "compile": 0, "execute": 0}
     document = SimpleNamespace(definitions=[])
 
     def _parse(schema, query, variables=None, *, ctx):
@@ -255,18 +246,13 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
         calls["compile"] += 1
         return [_cq()]
 
-    async def _prepare(cq, ctx, rls, state, role_id, role, fresh_mvs, as_of=None):
-        calls["prepare"] += 1
-        cq.sql = cq.sql + " /* governed */"
-        return cq, False
-
     seen_sql: list[str] = []
 
     async def _execute(compiled, *args, **kwargs):
         calls["execute"] += 1
         seen_sql.append(compiled.sql)
         compiled.sql = "MUTATED DOWNSTREAM"
-        return compiled.root_field, [{"orderId": 1}], None, "ck", None
+        return compiled.root_field, [{"orderId": 1}], None, None
 
     async def _awake(state):
         return None
@@ -292,7 +278,6 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
     monkeypatch.setattr(app_module, "state", state)
     monkeypatch.setattr(endpoint, "parse_query", _parse)
     monkeypatch.setattr(endpoint, "compile_query", _compile)
-    monkeypatch.setattr(endpoint, "_prepare_compiled", _prepare)
     monkeypatch.setattr(endpoint, "_execute_one_field", _execute)
     monkeypatch.setattr(endpoint, "ensure_engine_awake", _awake)
     monkeypatch.setattr(endpoint, "_check_role_capability", lambda role, cap: None)
@@ -304,7 +289,6 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
     monkeypatch.setattr(
         endpoint, "_build_directives_with_legacy", lambda query, doc, hints: _DIRECTIVES
     )
-    monkeypatch.setattr(endpoint, "cache_tenant", lambda st: "org")
 
     def call(query="{ orders { orderId } }", variables=None, **headers):
         raw = SimpleNamespace(state=SimpleNamespace(role="analyst", tenant_id=None))
@@ -328,15 +312,15 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
     return SimpleNamespace(call=call, calls=calls, state=state, seen_sql=seen_sql)
 
 
-def test_a_repeated_query_compiles_and_governs_once(monkeypatch):
+def test_a_repeated_query_compiles_once(monkeypatch):
     h = _endpoint_harness(monkeypatch)
     h.call()
-    assert h.calls == {"parse": 1, "compile": 1, "prepare": 1, "execute": 1}
+    assert h.calls == {"parse": 1, "compile": 1, "execute": 1}
     for _ in range(3):
         h.call()
-    assert h.calls == {"parse": 1, "compile": 1, "prepare": 1, "execute": 4}
-    governed = 'SELECT "order_id" FROM "sales"."orders" /* governed */'
-    assert h.seen_sql == [governed] * 4, "a hit must execute the governed SQL the miss produced"
+    assert h.calls == {"parse": 1, "compile": 1, "execute": 4}
+    compiled = 'SELECT "order_id" FROM "sales"."orders"'
+    assert h.seen_sql == [compiled] * 4, "a hit must execute the SQL the miss compiled"
 
 
 def test_different_variables_compile_separately(monkeypatch):
@@ -344,7 +328,7 @@ def test_different_variables_compile_separately(monkeypatch):
     h.call(variables={"id": 1})
     h.call(variables={"id": 2})
     h.call(variables={"id": 1})
-    assert h.calls["parse"] == 2 and h.calls["prepare"] == 2 and h.calls["execute"] == 3
+    assert h.calls["parse"] == 2 and h.calls["compile"] == 2 and h.calls["execute"] == 3
 
 
 def test_a_schema_rebuild_recompiles(monkeypatch):
@@ -352,14 +336,15 @@ def test_a_schema_rebuild_recompiles(monkeypatch):
     h.call()
     h.state.schema_version += 1
     h.call()
-    assert h.calls["parse"] == 2 and h.calls["prepare"] == 2
+    assert h.calls["parse"] == 2 and h.calls["compile"] == 2
 
 
-def test_an_approval_hook_deployment_governs_every_request(monkeypatch):
+def test_an_approval_hook_deployment_compiles_once_and_executes_every_request(monkeypatch):
+    """The hook is the pipeline's per-call stage, reached by every execution."""
     h = _endpoint_harness(monkeypatch, approval_hook=object())
     h.call()
     h.call()
-    assert h.calls["parse"] == 2 and h.calls["prepare"] == 2
+    assert h.calls == {"parse": 1, "compile": 1, "execute": 2}
 
 
 def test_a_normalized_request_does_not_take_the_plan_path(monkeypatch):

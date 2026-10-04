@@ -14,8 +14,8 @@
 surface uses for a cache HIT: the chokepoint (``_execute_plan_in_org``, reached by Bolt and
 pgwire's non-COPY path) and the three direct ``execute_engine_sync`` call sites that bypass it
 (Flight SQL, gRPC's streaming RPC, pgwire's COPY-binary sink). These tests exercise the shared
-helper directly rather than each transport's wiring, plus GraphQL's own read/write round trip
-through the same typed encoding (REQ-1896) and its audit/egress fix.
+helper directly rather than each transport's wiring. GraphQL has no cache of its own: its
+``@cached`` opt-in rides this one (REQ-1897).
 """
 
 from __future__ import annotations
@@ -261,38 +261,6 @@ async def test_different_roles_get_different_cache_entries(monkeypatch):
     miss_for_b = await check_response_cache(plan_b, state)
     assert hit_for_a is not None
     assert miss_for_b is None
-
-
-@pytest.mark.asyncio
-async def test_graphql_hit_serves_the_rows_the_miss_stored():
-    """GraphQL's Route.CACHE round trip: the MISS stores the serialized response
-    ({"data": {root_field: rows}}) through store_result; the HIT must serve those same rows.
-    Regression: the HIT read ``payload["data"][root_field]`` one level too shallow and served
-    ``[]`` for every hit (perf bench cache pass: 1000 rows on the miss, 0 on every hit)."""
-    import decimal
-
-    from types import SimpleNamespace
-
-    from provisa.api.data.endpoint import cached_field_rows
-    from provisa.api.data.endpoint_executors import response_cache_entry
-    from provisa.cache.middleware import check_cache, store_result
-    from provisa.compiler.sql_types import ColumnRef
-    from provisa.executor.serialize import serialize_rows
-
-    store = FakeCacheStore()
-    rows = [(5001, decimal.Decimal("2850.23")), (5002, decimal.Decimal("2308.34"))]
-    columns = [
-        ColumnRef(None, "order_id", "orderId", None),
-        ColumnRef(None, "amount", "amount", None),
-    ]
-    response_data = serialize_rows(rows, columns, "pb__orders")
-    entry = response_cache_entry(response_data, "pb__orders", "pb__orders")
-    await store_result(store, "k", entry, ttl=60, org_id="org-1")
-    cached = await check_cache(store, "k", "org-1")
-    assert cached is not None
-    field = SimpleNamespace(canonical_field="pb__orders")
-    assert cached_field_rows(cached, field) == response_data["data"]["pb__orders"]
-    assert len(cached_field_rows(cached, field)) == 2
 
 
 @pytest.mark.asyncio

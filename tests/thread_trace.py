@@ -85,7 +85,7 @@ _STAGES: dict[tuple[str, str], str] = {
     ("provisa/pgwire/_pipeline.py", "plan_pgwire_statement"): "route:pgwire.plan_statement",
     ("provisa/pgwire/_pipeline.py", "govern_batch_final_plan_with_fn"): "govern:batch",
     ("provisa/api/data/endpoint.py", "_handle_query"): "govern:graphql",
-    ("provisa/api/data/endpoint.py", "_prepare_compiled"): "govern:graphql.compile",
+    ("provisa/api/data/endpoint.py", "_execute_one_field"): "govern:graphql.field",
     ("provisa/compiler/sql_validator.py", "validate_sql"): "govern:validate_sql",
     # routing
     ("provisa/transpiler/router.py", "decide_route"): "route:decide_route",
@@ -93,10 +93,6 @@ _STAGES: dict[tuple[str, str], str] = {
     # execution
     ("provisa/pgwire/_pipeline.py", "_execute_plan_in_org"): "execute:plan",
     ("provisa/pgwire/_pipeline.py", "_run_plan_terminal"): "execute:terminal",
-    (
-        "provisa/api/data/endpoint_executors.py",
-        "_execute_engine_standard",
-    ): "execute:graphql.engine",
     ("provisa/federation/query_residency.py", "ensure_resident"): "execute:ensure_resident",
     ("provisa/federation/duckdb_runtime.py", "run"): "execute:duckdb.run",
     ("provisa/federation/duckdb_runtime.py", "_run"): "execute:duckdb._run",

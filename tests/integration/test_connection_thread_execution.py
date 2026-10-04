@@ -429,8 +429,8 @@ async def test_graphql_governance_runs_on_the_request_thread_in_parallel():
         request_idents.add(threading.get_ident())
         return real_serve(make_coro, ctx)
 
-    async def _blocking_handle_query(document, ctx, rls, state_, variables, role, *args, **kw):
-        del document, ctx, rls, state_, variables, role, args, kw
+    async def _blocking_handle_query(document, ctx, state_, variables, role, *args, **kw):
+        del document, ctx, state_, variables, role, args, kw
         ident = threading.get_ident()
         assert current_connection_loop().owner == ident
         govern_idents.append(ident)

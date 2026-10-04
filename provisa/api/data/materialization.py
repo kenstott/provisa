@@ -403,9 +403,9 @@ async def _mat_grpc_remote_table(
     Mirrors _mat_gql_remote_table: the raw-SQL surface (/data/sql, pgwire) has no live-fetch
     handler of its own, so without this a grpc_remote table left decide_route at Route.API with
     no source_pools entry, and _execute_plan_in_org's no-native-pool fallback ran the query
-    against tenant_db instead of the engine ("no such table"). Reuses the same PG-cache-table +
-    VALUES-CTE mechanism endpoint_executors._execute_grpc_remote_source uses for the compiled
-    GraphQL path.
+    against tenant_db instead of the engine ("no such table"). The same PG-cache-table +
+    VALUES-CTE mechanism serves every surface, compiled GraphQL included, through the pipeline's
+    API stage.
     """
     from dataclasses import dataclass as _dc
 
@@ -839,7 +839,8 @@ async def _materialize_api_to_engine_cache(
     Avoids INVALID_CAST_ARGUMENT: the engine's PG connector exposes JSONB as json type;
     cache tables store all columns as VARCHAR/scalar types instead.
 
-    Reads the fills _hydrate_api_tables_before_engine keeps in the store — no HTTP call.
+    Reads the fills the API stage keeps in the store (a compiled GraphQL read fills them first,
+    ``hydration._hydrate_api_tables_before_engine``), and fetches over REST on a miss.
     Returns (cache_rewrites, values_cte_entries, dropped_tables):
       cache_rewrites: {physical_table_name: (CacheLocation, cache_tbl)}
       values_cte_entries: {physical_table_name: rows} — inlined as VALUES CTEs

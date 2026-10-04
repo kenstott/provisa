@@ -111,10 +111,10 @@ def test_every_cache_writer_asks_for_the_acting_orgs_schema():
     """No module builds a cache schema's name from the deployment's org any more."""
     import inspect
 
-    from provisa.api.data import endpoint_executors, materialization
+    from provisa.api.data import materialization
     from provisa.api.rest import cypher_exec
 
-    for module in (endpoint_executors, materialization, cypher_exec):
+    for module in (materialization, cypher_exec):
         source = inspect.getsource(module)
         assert 'f"org_' not in source, f"{module.__name__} names a cache schema from an org id"
         assert "org_cache_schema(state" in source, module.__name__

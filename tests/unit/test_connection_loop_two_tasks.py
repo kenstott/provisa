@@ -140,26 +140,30 @@ def test_multi_root_graphql_query_runs_its_fields_as_one_task_on_the_request_thr
         me = asyncio.current_task()
         sibling_tasks.append(sum(1 for t in asyncio.all_tasks() if t is not me and not t.done()))
         name = await execute(compiled.name)
-        return name, [{"v": name}], None, None, None
+        return name, [{"v": name}], None, None
 
-    async def _prepare(cq, *args, **kwargs):
-        del args, kwargs
-        return cq, None
-
-    state = SimpleNamespace(mv_registry=SimpleNamespace(get_fresh=lambda: []))
+    state = SimpleNamespace()
     compiled = [SimpleNamespace(name="a"), SimpleNamespace(name="b")]
     request_thread: list[int] = []
 
     async def _request():
         request_thread.append(threading.get_ident())
         return await endpoint._handle_query(
-            None, None, None, state, {}, {}, "json", "analyst", cache_ttl=None, cache_opt_in=False
+            None,
+            None,
+            state,
+            {},
+            {},
+            "json",
+            "analyst",
+            cache_ttl=None,
+            cache_opt_in=False,
+            debug_trace=False,
         )
 
     with (
         patch.object(endpoint, "_split_action_fields", lambda _document, _state: ([], ["a", "b"])),
         patch.object(endpoint, "compile_query", lambda _document, _ctx, _variables: compiled),
-        patch.object(endpoint, "_prepare_compiled", _prepare),
         patch.object(endpoint, "_execute_one_field", _execute_one_field),
     ):
         response = _run_on_connection_thread(_request)

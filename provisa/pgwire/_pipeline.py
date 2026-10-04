@@ -293,6 +293,7 @@ async def _optimize_and_route(
     has_json_extract=False,
     is_mutation=False,
     steward_hint: str | None = None,
+    extra_selections: dict | None = None,
 ):
     """REQ-863 post-governance optimization stage (may REMOVE sources) + routing on the reduced
     set — shared by both governed-SQL entrypoints so routing observes the optimized source set,
@@ -310,8 +311,10 @@ async def _optimize_and_route(
     from provisa.compiler.stage2 import extract_sources, reduce_sources_for_routing
     from provisa.transpiler.router import Route, decide_route
 
+    # ``extra_selections``: the fields a GraphQL query reads of a graphql_remote table beyond its
+    # columns (``CompiledQuery.gql_remote_extra_selections``), fetched with it.
     _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
-        exec_sql, state, nf_args=nf_args, table_ids=table_ids
+        exec_sql, state, extra_selections, nf_args=nf_args, table_ids=table_ids
     )
     _actually_dropped: set[str] = set()
     if _dropped:
@@ -366,6 +369,25 @@ async def _optimize_and_route(
         operator_floor=operator_floor(state, table_ids),
         steward_hint=steward_hint,  # the request's route hint (REQ-1203); the floor still binds
     )
+    if (
+        decision.route == Route.DIRECT
+        and not is_mutation
+        and decision.source_id is not None
+        and decision.source_id != "provisa-admin"
+        and state.source_types.get(decision.source_id) != "govdata"
+        and not state.source_pools.has(decision.source_id)
+    ):
+        # A read of one source this node holds no connection for is the engine's: the engine
+        # reaches the source through its own catalog, and the DIRECT terminal would refuse it
+        # (data.no_direct_route). The provisa-admin and GovData terminals need no pool.
+        from provisa.transpiler.router import RouteDecision
+
+        decision = RouteDecision(
+            route=Route.ENGINE,
+            source_id=None,
+            dialect=None,
+            reason=f"source {decision.source_id!r} has no direct connection on this node",
+        )
     if _rewrites and decision.route != Route.ENGINE:
         # A cache rewrite points the SQL at a materialized table living in the engine's
         # attached mat_store catalog — no native pool or API caller can see it, so the
@@ -507,6 +529,7 @@ async def _optimize_and_route_cached(
     has_json_extract=False,
     is_mutation=False,
     steward_hint: str | None = None,
+    extra_selections: dict | None = None,
 ):
     """REQ-1877 routing addendum: cache `_optimize_and_route`'s output for the ONE case proven
     safe — see `provisa/compiler/compiled_query_cache.py`'s "ROUTING-DECISION CACHING" section
@@ -539,6 +562,7 @@ async def _optimize_and_route_cached(
             has_json_extract=has_json_extract,
             is_mutation=is_mutation,
             steward_hint=steward_hint,
+            extra_selections=extra_selections,
         )
 
     from provisa.compiler.compiled_query_cache import RoutingOutcome
@@ -572,6 +596,7 @@ async def _optimize_and_route_cached(
         nf_args=nf_args,
         has_json_extract=has_json_extract,
         is_mutation=is_mutation,
+        extra_selections=extra_selections,
     )
     _exec_sql_out, decision, default_source, optimized, sources, opt_labels = result
     # Guaranteed by would_materialize_optimize(exec_sql, state) being False (see module docstring):
@@ -2261,7 +2286,11 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
         # REQ-1044: the engine kills a query that breached a scan-side ceiling with its own
         # EXCEEDED_* error, which says nothing about the customer's plan. Restate it as the tier
         # boundary it is — 402, not 500 — and audit it as such.
-        tier_error = _translate_tier_error(plan, exc)
+        from provisa.executor.redirect import DeliveryFailed
+
+        # A ceiling kill during a delivery's CTAS is that kill: judged on the engine's own error.
+        engine_exc = exc.cause if isinstance(exc, DeliveryFailed) else exc
+        tier_error = _translate_tier_error(plan, engine_exc)
         if tier_error is not None:
             await finalize_audit(plan, 402, state)
             raise tier_error from exc
@@ -2528,6 +2557,9 @@ async def _account_cache_hit(
     result.cache_entry = stored
     plan.row_count = len(result.rows)
     await finalize_audit(plan, 200, state, cache_hit=True, cache_entry=stored)
+    from provisa.otel_compat import annotate_request
+
+    annotate_request(db__row_count=len(result.rows))  # REQ-1910: as the live chokepoint does
     return result
 
 
@@ -2772,11 +2804,15 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         # the delivery handle on the result; the row list is empty (zero rows transit memory).
         from typing import cast
 
-        from provisa.executor.redirect import Delivery, run_materialize
+        from provisa.executor.redirect import Delivery, deliver
 
         assert plan.physical_sql is not None
-        handle = await run_materialize(
-            state, plan.physical_sql, cast(Delivery, plan.materialize), plan.exec_params
+        handle = await deliver(
+            state,
+            plan.physical_sql,
+            cast(Delivery, plan.materialize),
+            plan.exec_params,
+            forced=True,
         )
         return QueryResult(rows=[], column_names=[], redirect=handle)
 
@@ -2788,7 +2824,7 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         # derived now.
         from typing import cast
 
-        from provisa.executor.redirect import Delivery, run_materialize
+        from provisa.executor.redirect import Delivery, deliver
 
         deliv = cast(Delivery, plan.auto_deliver)
         result = await engine.execute_native(
@@ -2796,7 +2832,9 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         )
         if len(result.rows) <= deliv.config.threshold:
             return result
-        handle = await run_materialize(state, await plan.engine_landing(), deliv, plan.exec_params)
+        handle = await deliver(
+            state, await plan.engine_landing(), deliv, plan.exec_params, forced=False
+        )
         return QueryResult(rows=[], column_names=[], redirect=handle)
 
     if plan.auto_deliver is not None:
@@ -2809,7 +2847,7 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         import asyncio
         from typing import cast
 
-        from provisa.executor.redirect import Delivery, run_materialize
+        from provisa.executor.redirect import Delivery, deliver
 
         assert plan.physical_sql is not None
         deliv = cast(Delivery, plan.auto_deliver)
@@ -2840,7 +2878,7 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         col_names, col_types, buffered_rows, over = await asyncio.to_thread(_drain)
         if not over:
             return QueryResult(rows=buffered_rows, column_names=col_names, column_types=col_types)
-        handle = await run_materialize(state, physical_sql, deliv, plan.exec_params)
+        handle = await deliver(state, physical_sql, deliv, plan.exec_params, forced=False)
         return QueryResult(rows=[], column_names=[], redirect=handle)
 
     if plan.route == Route.ENGINE:
@@ -3026,12 +3064,15 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     as_of: str | None = None,
     steward_hint: str | None = None,
     session_props: dict[str, str] | None = None,
+    extra_selections: dict | None = None,
 ) -> _Plan:
     """Governance + routing for already-physical SQL, with the org's tier ceilings bound.
 
     ``compiled``: the compiler's ``CompiledQuery`` the SQL came from, when the caller has one —
     the prepare stage reads it (materialized-view rewrite, Kafka windows) and ``sql`` is then its
-    prepared SQL. ``as_of``, ``steward_hint`` and ``session_props``: the request's as-of time
+    prepared SQL; its API arguments and graphql_remote extra selections are the API stage's, and
+    its API tables are filled before routing. ``extra_selections`` names those selections for a
+    statement of the same query given without it (a nodes statement). ``as_of``, ``steward_hint`` and ``session_props``: the request's as-of time
     (REQ-1163), route hint and engine session properties.
 
     ``cache_hint`` is the request's response-cache opt-in (REQ-544), required so every caller
@@ -3048,6 +3089,8 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
         if compiled is not None:
             prepared = prepare_compiled_query(compiled, role_id, state)
             sql, compiled = prepared.sql, prepared
+            api_args = prepared.api_args or None
+            extra_selections = prepared.gql_remote_extra_selections or None
         plan = await _govern_and_route_compiled_planned(
             sql,
             role_id,
@@ -3062,6 +3105,8 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
             steward_hint=steward_hint,
             session_props=session_props,
             columns=[c.column for c in compiled.columns] if compiled is not None else None,
+            api_compiled=compiled,
+            extra_selections=extra_selections,
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
@@ -3082,6 +3127,8 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     steward_hint: str | None = None,
     session_props: dict[str, str] | None = None,
     columns: list[str] | None = None,
+    api_compiled: Any | None = None,
+    extra_selections: dict | None = None,
 ) -> _Plan:
     """Governance + routing for already-physical SQL.
 
@@ -3117,9 +3164,14 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     sql, _compiled_tree, gov_ctx = _governed.sql, _governed.parsed, _governed.gov_ctx
     _table_ids, governed_sql = _governed.table_ids, _governed.governed_sql
     # REQ-203: the approval hook is asked per call, after governance, on every compiled surface.
-    governed_sql = await _approval_stage(
+    approved_sql = await _approval_stage(
         governed_sql, role_id, state, _table_ids, columns, _compiled_tree
     )
+    # What is kept with the governed plan (its lowering, its DIRECT form, its key bounds) was
+    # derived from the governed text; a filter the hook added makes another statement, derived
+    # afresh for this call.
+    _memo = _governed.memo if approved_sql == governed_sql else {}
+    governed_sql = approved_sql
     # REQ-1910: request entry on the compiled path (GraphQL over Flight, Cypher, gRPC, MCP, REST).
     await resolve_trace_scope(state, role_id, hint=cache_hint.debug_trace)
     _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx, state.model_stamp)
@@ -3129,7 +3181,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     _cache_params = list(exec_params or [])
     # REQ-1915: key bounds and the unbound-read refusal before the cache and the route (see
     # route_governed).
-    _pk_bounds_now = _kept_pk_bounds(_governed.memo, governed_sql, state, exec_params)
+    _pk_bounds_now = _kept_pk_bounds(_memo, governed_sql, state, exec_params)
     _cache_missed: tuple[tuple[int, ...] | None, ...] = ()
     if serve_cached and deliver is None:
         _hit, _cache_missed = await _cached_before_routing(
@@ -3150,8 +3202,8 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
                 cache_hint=cache_hint,
                 hit=_hit,
                 audit=_audit,
-                span_attrs=_kept_span_attrs(_governed.memo, governed_sql, role_id, sql, _audit),
-                sources=_governed.memo.get("sources", frozenset()),
+                span_attrs=_kept_span_attrs(_memo, governed_sql, role_id, sql, _audit),
+                sources=_memo.get("sources", frozenset()),
                 semantic_sql=None,
                 as_of=as_of,
             )
@@ -3171,13 +3223,15 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         api_args=api_args,
         deliver=deliver,
         buffered=buffered,
-        memo=_governed.memo,
+        memo=_memo,
         cache_params=_cache_params,
         cache_missed=_cache_missed,
         pk_bounds=_pk_bounds_now,
         as_of=as_of,
         steward_hint=steward_hint,
         session_props=session_props,
+        api_compiled=api_compiled,
+        extra_selections=extra_selections,
     )
 
 
@@ -3421,6 +3475,8 @@ async def _route_compiled(
     as_of: str | None = None,
     steward_hint: str | None = None,
     session_props: dict[str, str] | None = None,
+    api_compiled: Any | None = None,
+    extra_selections: dict | None = None,
 ) -> _Plan:
     """The per-call half of the compiled stage: optimization, routing and the plan. ``memo`` is
     the governed statement's own (see :func:`_kept_lowering`). ``as_of`` reads bitemporal views
@@ -3477,6 +3533,13 @@ async def _route_compiled(
     _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(_exec_sql, exec_params or [])
     exec_params = _nf_clean_params if _nf_clean_params != (exec_params or []) else exec_params
     _nf_args = {**(api_args or {}), **(_extracted_nf or {})} or None
+    if api_compiled is not None:
+        from provisa.api.data.hydration import _hydrate_api_tables_before_engine
+
+        # The API stage's fills for a compiled GraphQL read, before the optimization stage reads
+        # them: a child endpoint joined to its parent is fetched for the parent's keys in one
+        # batch, a path-parameter endpoint once per parent key (api_source.fill_cache).
+        await _hydrate_api_tables_before_engine(api_compiled, ctx, state)
     # Route on the OUTPUT of the optimization stage (REQ-863): sources whose every referenced
     # table was inlined/pruned drop out of the routing set.
     (
@@ -3496,6 +3559,7 @@ async def _route_compiled(
         table_ids=_table_ids,
         nf_args=_nf_args,
         steward_hint=steward_hint,
+        extra_selections=extra_selections,
     )
     # REQ-1910: the sources are known now — a window opened on one of them covers this request.
     await extend_trace_scope_to_sources(state, role_id, frozenset(sources))

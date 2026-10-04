@@ -1167,8 +1167,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # REQ-1405: include_nodes routes compiled.nodes_sql through the identical
         # govern → route → execute pipeline the primary query just used above — the same one
         # pipeline every surface shares, just a second SQL string GraphQL's own
-        # groupKey/aggregate/nodes shape requires (JSON:API/REST take this same seam via
-        # _exec_nodes_query; gRPC just has to type it instead of dropping it into JSON).
+        # groupKey/aggregate/nodes shape requires (JSON:API, REST and HTTP GraphQL take this same
+        # seam with a second plan; gRPC just has to type it instead of dropping it into JSON).
         nodes_by_group_key: dict[tuple, list] = {}
         row_msg_cls = getattr(self._pb2, type_name, None)
         nodes_columns = compiled.nodes_columns

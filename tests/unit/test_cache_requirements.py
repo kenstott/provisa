@@ -132,67 +132,32 @@ class TestREQ595CacheKeyPrefixing:
 
 
 class TestREQ595InlineResultWritesTenantScoped:
-    """The inline query path reads with check_cache(..., org_id) and so must write with the
-    same org_id. Writing without it lands the entry at the unprefixed provisa:cache:<hash>,
-    which no tenant read ever looks at — on the SaaS node every query missed forever while
-    single-org desktop, whose org_id is None on both sides, kept working.
+    """Every surface reads with check_cache(..., org) and so must write with the same org. Writing
+    without it lands the entry at the unprefixed provisa:cache:<hash>, which no tenant read ever
+    looks at -- on the SaaS node every query missed forever while single-org desktop, whose org is
+    None on both sides, kept working. GraphQL has no cache of its own (REQ-1897): its opt-in rides
+    the pipeline's, so the pipeline's write is the one that must carry the org.
     """
 
     # REQ-595
-    async def test_inline_result_stores_under_the_org(self, monkeypatch):
-        import types
+    async def test_the_pipeline_write_stores_under_the_org_its_read_uses(self, monkeypatch):
+        from provisa.pgwire._pipeline import check_response_cache, response_cache_tee
+        from tests.unit.test_raw_sql_response_cache import _ROWS, _plan, _state, _stream
+        from tests.unit.test_response_cache_shared import FakeCacheStore
 
-        from provisa.api.data import endpoint_executors as ee
+        async def _noop(pending, status_code, state=None, **outcome):
+            return None
 
-        captured: dict = {}
+        monkeypatch.setattr("provisa.audit.pipeline.write_audit", _noop)
+        monkeypatch.setattr("provisa.pgwire._pipeline._response_cache_bound", lambda: 100)
+        store = FakeCacheStore()
+        state = _state(store)
+        tee = response_cache_tee(_plan(), state, run=None)
+        assert tee is not None
+        for _ in tee.rows(_stream([_ROWS])).batches():
+            pass
+        await tee.commit()
 
-        async def _fake_store(
-            store, key, data, ttl, table_ids=None, org_id=None, column_types=None
-        ):
-            captured.update(key=key, org_id=org_id)
-
-        monkeypatch.setattr(ee, "store_result", _fake_store)
-        monkeypatch.setattr(ee, "_record_per_source_stats", lambda *a, **k: None)
-        monkeypatch.setattr(ee._qs_mod, "current", lambda: None)
-        monkeypatch.setattr(
-            ee, "_format_response", lambda *a, **k: {"data": {"users": [{"id": 1}]}}
-        )
-
-        state = types.SimpleNamespace(
-            source_cache={},
-            table_cache={},
-            response_cache_default_ttl=300,
-            response_cache_store=object(),
-        )
-        compiled = types.SimpleNamespace(
-            nodes_sql=None,
-            columns=["id"],
-            sources={"src"},
-            canonical_field="users",
-            result_limit=None,
-        )
-        ctx = types.SimpleNamespace(tables={})
-        result = types.SimpleNamespace(rows=[(1,)])
-
-        await ee._exec_inline_result(
-            compiled,
-            ctx,
-            state,
-            None,
-            "users",
-            result,
-            "json",
-            "ck-1",
-            None,
-            True,  # REQ-544 (amended): the request opted into the response cache
-            0.0,
-            None,
-            {},
-            0.0,
-            0,
-            0,
-            None,
-            org_id="acme",
-        )
-
-        assert captured == {"key": "ck-1", "org_id": "acme"}
+        assert all(k.startswith("org-a:m1:") for k in store._data), list(store._data)
+        hit = await check_response_cache(_plan(), state)
+        assert hit is not None and hit.rows == _ROWS

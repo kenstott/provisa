@@ -1252,9 +1252,14 @@ def test_graphql_field_execution_redispatches_a_moved_coordinator():
     import inspect
 
     from provisa.api.data import endpoint as endpoint_module
+    from provisa.pgwire import _pipeline
 
-    src = inspect.getsource(endpoint_module._execute_one_field)
+    # A GraphQL field is executed by the one pipeline's terminal, whose chokepoint re-resolves.
+    assert "await _execute_plan(plan, state)" in inspect.getsource(endpoint_module._executed)
+    src = inspect.getsource(_pipeline._execute_plan_in_org)
     assert "readdress_lost_coordinator(exc, state)" in src, (
-        "a lost coordinator is never re-resolved on the GraphQL path"
+        "a lost coordinator is never re-resolved on the pipeline's terminal"
     )
-    assert src.count("await _dispatch()") == 2, "the redispatch after re-resolution is missing"
+    assert src.count("await _run_plan_terminal(plan, state)") == 2, (
+        "the redispatch after re-resolution is missing"
+    )

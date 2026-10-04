@@ -27,10 +27,7 @@ import pytest
 import sqlglot.generator
 import sqlglot.parser
 
-from provisa.compiler.compiled_query_cache import CompiledQueryCache
-from provisa.compiler.sql_types import CompilationContext, TableMeta
 from provisa.pgwire import governed_plan
-from provisa.transpiler.router import Route, RouteDecision
 
 
 @pytest.fixture
@@ -56,98 +53,17 @@ def _no_rebuild(monkeypatch):
     monkeypatch.setattr(governed_plan, "_rebuild_in_progress", lambda: False)
 
 
-def _ctx() -> CompilationContext:
-    orders = TableMeta(
-        table_id=7,
-        field_name="orders",
-        type_name="Orders",
-        source_id="sales-pg",
-        catalog_name="sales_pg",
-        schema_name="public",
-        table_name="orders",
-        domain_id="sales",
-    )
-    return CompilationContext(tables={"orders": orders})
-
-
-def _state(ctx) -> SimpleNamespace:
-    return SimpleNamespace(
-        compiled_query_cache=CompiledQueryCache(),
-        schema_boot_id="boot",
-        schema_version=7,
-        contexts={"analyst": ctx},
-        rls_contexts={},
-        roles={"analyst": {"id": "analyst"}},
-        masking_rules={},
-        tables=[],
-    )
-
-
-_SQL = 'SELECT "order_id" FROM "public"."orders" AS "orders" LIMIT $1'
-_DIRECT = RouteDecision(route=Route.DIRECT, source_id="sales-pg", dialect="postgres", reason="t")
-
-
-def _direct_sql(state, ctx, sql=_SQL, decision=_DIRECT, probe_limit=None, role="analyst"):
-    from provisa.api.data.endpoint import _direct_exec_sql
-
-    return _direct_exec_sql(state, role, sql, ctx, decision, probe_limit)
-
-
-def test_a_repeated_graphql_direct_read_derives_its_source_sql_once(sqlglot_calls):
-    ctx = _ctx()
-    state = _state(ctx)
-    first = _direct_sql(state, ctx)
-    derived = dict(sqlglot_calls)
-    assert derived["parse"] >= 1 and derived["generate"] >= 1
-    for _ in range(5):
-        assert _direct_sql(state, ctx) == first
-    assert sqlglot_calls == derived  # 0 parses, 0 generations on the repeats
-
-
-@pytest.mark.parametrize(
-    "change",
-    ["sql", "dialect", "source", "probe_limit", "role", "generation", "context", "role_set"],
-)
-def test_anything_that_changes_the_sql_derives_it_again(sqlglot_calls, change, monkeypatch):
-    ctx = _ctx()
-    state = _state(ctx)
-    state.contexts["steward"] = ctx
-    state.roles["steward"] = {"id": "steward"}
-    _direct_sql(state, ctx)
-    before = dict(sqlglot_calls)
-    kwargs: dict = {}
-    if change == "sql":
-        kwargs["sql"] = _SQL.replace('"order_id"', '"order_id", "order_id" AS again')
-    elif change == "dialect":
-        kwargs["decision"] = RouteDecision(Route.DIRECT, "sales-pg", "mysql", "t")
-    elif change == "source":
-        kwargs["decision"] = RouteDecision(Route.DIRECT, "other-pg", "postgres", "t")
-    elif change == "probe_limit":
-        kwargs["probe_limit"] = 11
-    elif change == "role":
-        kwargs["role"] = "steward"
-    elif change == "generation":
-        state.schema_version = 8
-    elif change == "context":
-        ctx = _ctx()  # a rebuild publishes a new compilation context for the role
-        state.contexts["analyst"] = ctx
-    elif change == "role_set":
-        # A set of held roles acts as its meta-role (security/meta_role.py): another role.
-        state.contexts["meta:analyst+steward"] = ctx
-        state.roles["meta:analyst+steward"] = {"id": "meta:analyst+steward"}
-        kwargs["role"] = "meta:analyst+steward"
-    _direct_sql(state, ctx, **kwargs)
-    assert sqlglot_calls["parse"] > before["parse"]
-
-
-def test_the_graphql_executor_uses_the_kept_form():
+def test_the_graphql_executor_derives_no_sql_of_its_own():
+    """GraphQL's DIRECT read is the compiled pipeline's, which keeps its derived source SQL with
+    the governed plan (tests/unit/test_governed_plan_stages.py,
+    test_a_repeated_direct_statement_on_the_compiled_stage_parses_once)."""
     import inspect
 
     from provisa.api.data import endpoint
 
-    source = inspect.getsource(endpoint._execute_one_field)
-    assert "_direct_exec_sql(state, role_id, compiled.sql, ctx, decision, probe_limit)" in source
-    assert "rewrite_semantic_to_physical(compiled.sql, ctx)" not in source
+    source = inspect.getsource(endpoint)
+    assert "rewrite_semantic_to_physical" not in source
+    assert "transpile(" not in source
 
 
 def test_classifying_a_statement_for_the_pgwire_catalog_parses_its_text_once(sqlglot_calls):

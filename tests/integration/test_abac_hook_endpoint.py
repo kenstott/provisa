@@ -8,7 +8,7 @@
 
 Drives a compiled query through the live /data/graphql endpoint with a stub
 ApprovalHook injected into AppState, executing against a running Postgres source.
-Pins the three contractual behaviours of the hook seam in ``_prepare_compiled``:
+Pins the three contractual behaviours of the pipeline's approval stage (``_approval_stage``):
 
   1. The hook is evaluated for the query, receiving a payload that reflects the
      compiled query (tables + requested columns) — it runs AFTER RLS/visibility.
