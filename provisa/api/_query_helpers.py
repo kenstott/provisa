@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-# Requirements: REQ-027, REQ-028, REQ-256
+# Requirements: REQ-256
 
 from __future__ import annotations
 
@@ -96,60 +96,3 @@ def build_graphql_query(  # REQ-256
     args_str = f"({', '.join(args_parts)})" if args_parts else ""
     fields_str = " ".join(fields)
     return f"{{ {table}{args_str} {{ {fields_str} }} }}"
-
-
-async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
-    """Route a compiled query to the correct executor and return the result.
-
-    Args:
-        compiled: A compiled query object (sql, sources, params, columns).
-        state: AppState with source_types, source_dialects, source_pools, engine_conn.
-
-    Returns:
-        Execution result with .rows and .columns.
-
-    Raises:
-        HTTPException: On execution failure or missing the engine connection.
-    """
-    from provisa.federation.registry_view import operator_floor
-    from provisa.transpiler.router import Route, decide_route
-    from provisa.transpiler.transpile import transpile
-
-    has_json_extract = "->>" in compiled.sql
-    decision = decide_route(
-        sources=compiled.sources,
-        source_types=state.source_types,
-        source_dialects=state.source_dialects,
-        has_json_extract=has_json_extract,
-        source_dsns=getattr(state, "source_dsns", None),
-        operator_floor=operator_floor(state, compiled.table_ids),
-    )
-
-    from provisa.federation.live_concurrency import acquire_for_route
-
-    engine = state.federation_engine
-    # REQ-1909: a capped source this read reaches live holds its permit for the execution.
-    with await acquire_for_route(
-        state, decision.route, decision.source_id or "", compiled.sources, compiled.table_ids
-    ):
-        if decision.route == Route.DIRECT and decision.source_id:
-            target_sql = transpile(compiled.sql, decision.dialect or "postgres")
-            return await engine.execute_native(
-                state.source_pools,
-                decision.source_id,
-                target_sql,
-                compiled.params,
-            )
-
-        # ENGINE terminal — execute_engine guards its own connection/availability, and the physical
-        # dialect comes from the bound engine (engine.transpile_physical), so no engine specifics.
-        physical_sql = engine.transpile_physical(compiled.sql)
-        # REQ-1661/030: a MATERIALIZED (incl. operator-floored) source is landed before the engine
-        # reads it — the same residency prep every other ENGINE terminal runs. This helper carries
-        # no governed role, so each table is judged on its cache_ttl (REQ-1907: no reader).
-        from provisa.federation.query_residency import ensure_resident
-
-        await ensure_resident(
-            state, compiled.sources, reader_role=None, table_ids=compiled.table_ids
-        )
-        return await engine.execute_engine(physical_sql, compiled.params)
