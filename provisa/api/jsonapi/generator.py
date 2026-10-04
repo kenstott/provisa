@@ -23,7 +23,6 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
 
 from graphql import (
     GraphQLError,
@@ -33,6 +32,7 @@ from graphql import (
     GraphQLSchema,
 )
 
+from provisa.api.json_response import OrjsonResponse
 from provisa.api.jsonapi.errors import error_response, jsonapi_error
 from provisa.api.jsonapi.pagination import (
     PAGE_TOTAL_PARAM,
@@ -547,7 +547,7 @@ def _next_page_probe_rows(page_size: int, role_id: str) -> int:  # REQ-257, REQ-
 def _jsonapi_error_response(status: int, title: str, detail: str | None = None, **kwargs):
     """Return a JSONResponse with JSON:API error format."""
     body = error_response([jsonapi_error(status, title, detail, **kwargs)])
-    return JSONResponse(
+    return OrjsonResponse(
         content=body,
         status_code=status,
         media_type=JSONAPI_CONTENT_TYPE,
@@ -583,7 +583,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         headers = (
             {"Content-Disposition": "attachment; filename=jsonapi-openapi.json"} if download else {}
         )
-        return JSONResponse(content=spec, headers=headers)
+        return OrjsonResponse(content=spec, headers=headers)
 
     @jsonapi_router.get("/{domain_id}/{table_name}")
     async def _jsonapi_table_endpoint(  # pyright: ignore[reportUnusedFunction]
@@ -896,7 +896,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                     {"type": f"{table_name}GroupBy", "id": str(idx), "attributes": row}
                     for idx, row in enumerate(group_rows)
                 ]
-                return JSONResponse(content={"data": data}, media_type=JSONAPI_CONTENT_TYPE)
+                return OrjsonResponse(content={"data": data}, media_type=JSONAPI_CONTENT_TYPE)
 
             shaped = serialize_aggregate(
                 agg_result.rows,
@@ -911,7 +911,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 .get(agg_compiled.root_field, {})
                 .get(agg_compiled.agg_alias, {})
             )
-            return JSONResponse(
+            return OrjsonResponse(
                 content={"data": None, "meta": {"aggregate": agg_payload}},
                 media_type=JSONAPI_CONTENT_TYPE,
             )
@@ -1016,7 +1016,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
 
         if result.redirect is not None:
             # Materialized: no resource rows crossed the wire. `data: null` + the handle in `meta`.
-            return JSONResponse(
+            return OrjsonResponse(
                 content={"data": None, "meta": {"redirect": result.redirect}},
                 media_type=JSONAPI_CONTENT_TYPE,
             )
@@ -1130,6 +1130,6 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             has_next=has_next,
         )
 
-        return JSONResponse(content=doc, media_type=JSONAPI_CONTENT_TYPE)
+        return OrjsonResponse(content=doc, media_type=JSONAPI_CONTENT_TYPE)
 
     return jsonapi_router

@@ -25,8 +25,8 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
 
+from provisa.api.json_response import OrjsonResponse
 from provisa.api.acting_role import held_role
 from provisa.api.errors import ApiError
 from provisa.grpc.query_ir import (
@@ -140,9 +140,7 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
 
-    from fastapi.encoders import jsonable_encoder
-
-    return JSONResponse(jsonable_encoder(rows))
+    return OrjsonResponse(rows)
 
 
 @router.get("/grpc-group-by-columns/{role_id}/{type_name}")
@@ -253,7 +251,6 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
     if type_name.endswith("Aggregate") or type_name.endswith("GroupBy"):
         from provisa.compiler.parser import GraphQLValidationError, parse_query
         from provisa.compiler.sql_gen import compile_query
-        from fastapi.encoders import jsonable_encoder
 
         schema = state.schemas[role_id]
         is_group_by = type_name.endswith("GroupBy")
@@ -394,11 +391,11 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                     join_key = tuple(_convert_value(row[i]) for i in group_key_idx)
                     out_row["nodes"] = nodes_by_group_key.get(join_key, [])
                 out_rows.append(out_row)
-            return JSONResponse(jsonable_encoder(out_rows))
+            return OrjsonResponse(out_rows)
 
         row = result.rows[0] if result.rows else ()
         top, nested = split_agg_columns(compiled.columns, row)
-        return JSONResponse(jsonable_encoder({**top, **nested}))
+        return OrjsonResponse({**top, **nested})
 
     # Same IR path as the native gRPC servicer (query language → IR → governed IR → plan → physical).
     # Lower the request straight to a semantic SELECT — never round-trip through GraphQL.
@@ -466,7 +463,6 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
         }
         for row in result.rows
     ]
-    # Coerce driver-native scalars (PG Decimal, date/datetime) the JSON encoder can't emit directly.
-    from fastapi.encoders import jsonable_encoder
-
-    return JSONResponse(jsonable_encoder(proto_rows))
+    # REQ-1867: a driver-native scalar orjson has no encoding for (a PG Decimal) goes through
+    # jsonable_encoder on its own; datetimes it encodes itself.
+    return OrjsonResponse(proto_rows)

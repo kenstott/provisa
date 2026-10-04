@@ -211,9 +211,7 @@ async def _execute_govdata(source_id: str, sql: str, state) -> "QueryResult":
 
 def _with_cache_headers(payload, cache_headers: dict[str, str]):  # REQ-536
     """``payload`` as a response carrying the X-Provisa-Cache headers. A payload that is already
-    a response gets them added; a plain body is encoded as the app's default response class
-    encodes a returned body (jsonable_encoder, then OrjsonResponse)."""
-    from fastapi.encoders import jsonable_encoder
+    a response gets them added; a plain body is encoded by OrjsonResponse (REQ-1867)."""
     from fastapi.responses import Response
 
     from provisa.api.json_response import OrjsonResponse
@@ -221,7 +219,7 @@ def _with_cache_headers(payload, cache_headers: dict[str, str]):  # REQ-536
     if isinstance(payload, Response):
         payload.headers.update(cache_headers)
         return payload
-    return OrjsonResponse(jsonable_encoder(payload), headers=cache_headers)
+    return OrjsonResponse(payload, headers=cache_headers)
 
 
 def _with_warnings(body: dict) -> dict:
@@ -297,21 +295,17 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 # the total instead of its own construction time.
                 qs.wall_ms = (_time.perf_counter() - _t0) * 1000
             if qs is not None and output_format == "json":
-                from fastapi.encoders import jsonable_encoder
                 from provisa.api.json_response import OrjsonResponse
 
-                # REQ-1867: jsonable_encoder still runs first (normalizes datetimes/Decimals/
-                # Pydantic models to plain JSON-safe types orjson doesn't natively accept the
-                # same way stdlib json does) — only the final encode step moves to orjson.
+                # REQ-1867: orjson encodes the body directly; a value it has no encoding for
+                # (a Decimal, a Pydantic model) goes through jsonable_encoder on its own.
                 return OrjsonResponse(
-                    jsonable_encoder(
-                        _with_warnings(
-                            {
-                                "data": {"sql": rows_as_dicts},
-                                "columns": list(result.column_names),
-                                "provisa_stats": qs.to_dict(),
-                            }
-                        )
+                    _with_warnings(
+                        {
+                            "data": {"sql": rows_as_dicts},
+                            "columns": list(result.column_names),
+                            "provisa_stats": qs.to_dict(),
+                        }
                     ),
                     headers=cache_headers,
                 )
