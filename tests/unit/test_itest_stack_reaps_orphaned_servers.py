@@ -91,11 +91,28 @@ def started():
             pass  # already ended, which is what the reaping test expects
 
 
+def _as_ps_sees_it(pid: int) -> str:
+    """What the selection reads for ``pid``: its listing line and whether ``ps eww`` shows the
+    data directory in its environment — the failure message, so a run that fails says why."""
+    listed = subprocess.run(
+        ["ps", "-axo", "pid=,ppid=,command="], capture_output=True, text=True, check=False
+    ).stdout
+    line = next((ln for ln in listed.splitlines() if ln.split(None, 1)[0] == str(pid)), None)
+    shown = subprocess.run(
+        ["ps", "eww", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, check=False
+    )
+    data_dir = [w for w in shown.stdout.split() if w.startswith("PROVISA_DATA_DIR=")]
+    return (
+        f"listing line: {line!r}; ps eww rc={shown.returncode} stderr={shown.stderr.strip()!r} "
+        f"length={len(shown.stdout)} PROVISA_DATA_DIR entries={data_dir!r}"
+    )
+
+
 def test_an_orphaned_harness_server_is_selected_and_can_be_ended(tmp_path, started):
     pid = _orphan(str(tmp_path / "provisa-wboot-abc123"))
     started.append(pid)
 
-    assert pid in _orphaned_harness_processes()
+    assert pid in _orphaned_harness_processes(), _as_ps_sees_it(pid)
     _end([pid])
     _await(lambda: not _alive(pid), f"orphaned harness process {pid} is still running")
 
