@@ -448,6 +448,10 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
                         plan_request=plan_request,
                         directives=directives,
                     )
+                if isinstance(response, dict):
+                    # A handler's dict body (a mutation's) is encoded by orjson here, never by
+                    # FastAPI's jsonable_encoder pass over a returned dict (REQ-1867).
+                    response = JSONResponse(content=response)
             except PermissionError as exc:
                 # A read's refusal by the pipeline — validation, governance, the approval hook — is
                 # the caller's: 403, never the global handler's 500. A refusal the app answers
@@ -799,7 +803,7 @@ async def _handle_query(
                 headers=headers,
             )
         if redirect_info is not None:
-            return {"data": {root_field: None}, "redirect": redirect_info}
+            return JSONResponse(content={"data": {root_field: None}, "redirect": redirect_info})
         # Binary format passthrough (parquet/arrow/csv single-field)
         if not isinstance(field_rows, list):
             return field_rows

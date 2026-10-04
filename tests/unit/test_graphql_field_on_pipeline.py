@@ -228,3 +228,44 @@ def test_the_complexity_refusal_keeps_the_apps_413(monkeypatch):
     h = _refused_by(monkeypatch, too_complex)
     with pytest.raises(ComplexityLimitExceeded):
         h.call()
+
+
+def test_every_graphql_answer_is_encoded_by_orjson(monkeypatch):
+    """REQ-1867: /data/graphql returns its body as an orjson response, never a dict for FastAPI's
+    jsonable_encoder pass: a query, a redirect handle and a mutation's body alike."""
+    import decimal
+
+    from provisa.api.data import endpoint
+    from provisa.api.json_response import OrjsonResponse
+    from tests.unit.test_graphql_plan_cache import _endpoint_harness
+
+    h = _endpoint_harness(monkeypatch)
+
+    async def _rows(compiled, *args, **kwargs):
+        return compiled.root_field, [{"amount": decimal.Decimal("2.50")}], None, None
+
+    monkeypatch.setattr(endpoint, "_execute_one_field", _rows)
+    answered = h.call()
+    assert isinstance(answered, OrjsonResponse)
+    assert (
+        bytes(answered.body) == b'{"data":{"orders":[{"amount":2.5}]}}'
+    )  # as jsonable_encoder gives it
+
+    async def _redirected(compiled, *args, **kwargs):
+        return compiled.root_field, None, {"redirect_url": "https://x/r", "row_count": 3}, None
+
+    monkeypatch.setattr(endpoint, "_execute_one_field", _redirected)
+    assert isinstance(h.call(), OrjsonResponse)
+
+    async def _mutation_body(*args, **kwargs):
+        return {"data": {"insert_orders": {"affected_rows": 1}}}
+
+    from graphql import parse
+
+    monkeypatch.setattr(
+        endpoint, "parse_query", lambda schema, query, variables=None, *, ctx: parse(query)
+    )
+    monkeypatch.setattr(endpoint, "_handle_mutation", _mutation_body)
+    mutated = h.call('mutation { insert_orders(objects: [{region: "eu"}]) { affected_rows } }')
+    assert isinstance(mutated, OrjsonResponse)
+    assert bytes(mutated.body) == b'{"data":{"insert_orders":{"affected_rows":1}}}'

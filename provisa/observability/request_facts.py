@@ -24,7 +24,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from fastapi.responses import JSONResponse
+from provisa.api.json_response import OrjsonResponse
 
 from provisa.core.request_context import current_org
 from provisa.otel_compat import (
@@ -114,8 +114,9 @@ def observe_cache_hit(*, sources: Any, rows: int, started: float) -> None:
         )
 
 
-class TimedJSONResponse(JSONResponse):
-    """A JSONResponse whose body encoding is reported as the request's ``encode`` stage."""
+class TimedJSONResponse(OrjsonResponse):
+    """An orjson-encoded JSON response (REQ-1867) whose body encoding is reported as the
+    request's ``encode`` stage."""
 
     def render(self, content: Any) -> bytes:
         with stage(_tracer, "http.encode", name="encode", request_only=True):
