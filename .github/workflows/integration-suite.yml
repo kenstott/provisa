@@ -259,7 +259,6 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       SP_AUTH_TYPE: ${{ secrets.SP_AUTH_TYPE }}
       SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
-      SP_CLIENT_SECRET: ${{ secrets.SP_CLIENT_SECRET }}
       SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
       SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
       # Synapse provisions through the Azure CLI, logged in as this service principal.
@@ -279,6 +278,7 @@ jobs:
       - name: Credentials present
         env:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+          SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
         run: |
           missing=""
           for v in SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_WAREHOUSE \
@@ -288,8 +288,8 @@ jobs:
                    FABRIC_SQL_SERVER FABRIC_DATABASE FABRIC_WORKSPACE_ID \
                    REDSHIFT_AWS_ACCESS_KEY_ID REDSHIFT_AWS_SECRET_ACCESS_KEY \
                    AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_OVERRIDE \
-                   CLOUDFLARE_ACCOUNT_ID SP_CLIENT_ID SP_CLIENT_SECRET SP_SITE_URL SP_TENANT_ID \
-                   AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID; do
+                   CLOUDFLARE_ACCOUNT_ID SP_AUTH_TYPE SP_CLIENT_ID SP_SITE_URL SP_TENANT_ID \
+                   AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID SP_CERT_P12_BASE64; do
             [ -n "${!v}" ] || missing="$missing $v"
           done
           if [ -n "$missing" ]; then
@@ -298,6 +298,10 @@ jobs:
           fi
           printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/gcp-key.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
+          # SharePoint authenticates with the app's client certificate (a password-less PFX), not a
+          # client secret; the certificate is gitignored, so it arrives as a base64 secret.
+          printf '%s' "$SP_CERT_P12_BASE64" | base64 -d > "$RUNNER_TEMP/sharepoint.pfx"
+          echo "SP_CERT_PATH=$RUNNER_TEMP/sharepoint.pfx" >> "$GITHUB_ENV"
 
       - name: Azure CLI login (Synapse provisioning)
         run: az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
