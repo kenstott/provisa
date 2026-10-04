@@ -297,3 +297,66 @@ async def test_set_table_region_refuses_a_change_the_grant_does_not_cover(
             assert (
                 await conn.execute_core(select(registered_tables.c.region))
             ).scalar_one() == "eu"
+
+
+async def test_set_table_region_runs_the_real_capability_gate(node, monkeypatch, tmp_path):
+    """REQ-1921: setting a region needs data_residency IN ADDITION TO owning the object through its
+    domain (the ``table_registration`` gate). A holder of data_residency ALONE is refused at the
+    capability gate, before the residency check ever runs; adding table_registration carries the
+    call through to the residency refusal that names the region. The gate is deliberately NOT
+    patched out here — the point is that it runs first, so patching it would prove nothing."""
+    from unittest.mock import AsyncMock, patch
+
+    from sqlalchemy import select, update
+
+    from provisa.api.admin import capabilities
+    from provisa.api.admin.schema_mutation import Mutation
+    from provisa.api.app import state
+    from provisa.core.schema_org import registered_tables
+    from tests.unit.test_landing_ttl_admin import _db, _Pool
+
+    node("eu")
+    monkeypatch.setattr(
+        state,
+        "roles",
+        {
+            # data_residency for eu, but does NOT own the object (no table_registration).
+            "res_only": {
+                "capabilities": ["data_residency"],
+                "residency_values": ["eu"],
+                "domain_access": ["*"],
+            },
+            # owns the object AND holds data_residency for eu.
+            "res_owner": {
+                "capabilities": ["data_residency", "table_registration"],
+                "residency_values": ["eu"],
+                "domain_access": ["*"],
+            },
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(capabilities, "_identity_from_info", lambda info: info.identity)
+    async with _db(tmp_path) as db:
+        async with db.acquire() as conn:
+            await conn.execute_core(update(registered_tables).values(region="eu"))
+            (table_id,) = (await conn.execute_core(select(registered_tables.c.id))).one()
+        with patch(
+            "provisa.api.admin.schema_mutation._get_pool",
+            new=AsyncMock(return_value=_Pool(db)),
+        ):
+            # data_residency alone: refused at the capability gate, before the residency check.
+            info_only = SimpleNamespace(identity=SimpleNamespace(user_id="u1", roles=["res_only"]))
+            with pytest.raises(PermissionError, match="table_registration"):
+                await Mutation().set_table_region(info_only, table_id=table_id, region="us")
+            # owns the object too: carried through to the residency refusal naming the region.
+            info_owner = SimpleNamespace(
+                identity=SimpleNamespace(user_id="u2", roles=["res_owner"])
+            )
+            result = await Mutation().set_table_region(info_owner, table_id=table_id, region="us")
+            assert result.success is False
+            assert result.code == "security.data_residency_refused"
+            assert result.params == {"object": "table orders", "value": "us"}
+        async with db.acquire() as conn:
+            assert (
+                await conn.execute_core(select(registered_tables.c.region))
+            ).scalar_one() == "eu"
