@@ -58,7 +58,11 @@ def seed_ops_trino(  # REQ-016
                 f"({', '.join(col_defs)}) "
                 f"WITH (partitioning = ARRAY[{', '.join(partition_cols)}], format = 'PARQUET')"
             )
-    except Exception:
+    except Exception as exc:
+        # A statement the engine cut off at its run-time limit is not "catalog not ready yet": the
+        # otel store behind the catalog did not answer, and boot must stop and say so.
+        if getattr(exc, "error_name", None) == "EXCEEDED_TIME_LIMIT":
+            raise
         _log.warning(
             "ops Iceberg DDL failed — will retry before next schema introspection", exc_info=True
         )

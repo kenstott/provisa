@@ -64,7 +64,7 @@ class BuildClaim:
     def __init__(self, platform_url: str) -> None:
         from sqlalchemy import make_url
 
-        from provisa.core.database import create_engine_from_url, sync_store_url
+        from provisa.core.database import control_plane_lock_engine, sync_store_url
 
         self._engine: Any = None
         self._conn: Any = None
@@ -77,9 +77,11 @@ class BuildClaim:
         shield = request_deadline.shielded()
         with shield.lock:
             shield.settle()
-            # The engine is this claim's own, so disposing it ends the session and with it the
-            # locks. Autocommit: a session lock must not sit inside an open transaction.
-            self._engine = create_engine_from_url(platform_url, pool_size=1, max_overflow=0)
+            # The engine is this claim's own, on the server itself (the session must be this
+            # process's, which behind a pooling PgBouncer it is not), so disposing it ends the
+            # session and with it the locks. Autocommit: a session lock must not sit inside an
+            # open transaction.
+            self._engine = control_plane_lock_engine(platform_url)
             self._conn = self._engine.connect().execution_options(isolation_level="AUTOCOMMIT")
 
     def _try_advisory(self, lock_class: int, name: str) -> bool:

@@ -26,6 +26,8 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import re
+
 import pytest
 
 from provisa.core.database import (
@@ -263,12 +265,12 @@ def test_use_pgbouncer_flag_turns_prepared_statements_off(monkeypatch):
 
     monkeypatch.setattr(dbmod.sa, "create_engine", _capture)
     dbmod.create_engine_from_url("postgresql://u:p@h:5432/db")
-    dbmod.create_engine_from_url("postgresql://u:p@h:6432/db?use_pgbouncer=true")
+    dbmod.create_engine_from_url("postgresql://u:p@h:6432/db?use_pgbouncer=true&direct=pg:5432")
     (direct_url, direct), (bounced_url, bounced) = seen
     assert direct_url.startswith("postgresql+psycopg://")
     assert direct["connect_args"] == {"prepare_threshold": 0}
     assert bounced["connect_args"] == {"prepare_threshold": None}
-    assert "use_pgbouncer" not in bounced_url
+    assert "use_pgbouncer" not in bounced_url and "direct" not in bounced_url
 
 
 @pytest.mark.parametrize(
@@ -280,3 +282,38 @@ def test_bad_use_pgbouncer_flag_fails_loud(bad):
 
     with pytest.raises(ValueError, match="use_pgbouncer"):
         create_engine_from_url(bad)
+
+
+@pytest.mark.parametrize(
+    ("bad", "names"),
+    [
+        ("postgresql://u:p@h:6432/db?use_pgbouncer=true", "direct=<host>:<port>"),
+        ("postgresql://u:p@h:5432/db?direct=pg:5432", "only with use_pgbouncer=true"),
+        ("postgresql://u:p@h:6432/db?use_pgbouncer=true&direct=pg", "direct must be <host>:<port>"),
+    ],
+)
+def test_a_store_behind_pgbouncer_must_name_its_server(bad, names):
+    """Session-scoped advisory locks are taken on the server itself (REQ-1900): a pooled URL
+    without direct= — or direct= on a URL that is not pooled, or malformed — is refused by name."""
+    from provisa.core.database import create_engine_from_url
+
+    with pytest.raises(ValueError, match=re.escape(names)):
+        create_engine_from_url(bad)
+
+
+def test_the_lock_engine_opens_on_the_server_behind_pgbouncer():
+    from provisa.core.database import control_plane_lock_engine, create_engine_from_url
+
+    store = create_engine_from_url(
+        "postgresql://u:p@bouncer:6432/db?use_pgbouncer=true&direct=pg:5433"
+    )
+    lock = control_plane_lock_engine(store)
+    try:
+        assert (lock.url.host, lock.url.port, lock.url.database) == ("pg", 5433, "db")
+        assert lock.url.password == "p"
+        from sqlalchemy.pool import NullPool
+
+        assert isinstance(lock.pool, NullPool)  # closing a connection ends its session
+    finally:
+        lock.dispose()
+        store.dispose()

@@ -275,7 +275,14 @@ _ICEBERG_CATALOG_DDL = (
 )
 
 
-def ensure_iceberg_catalog_tables(url: URL) -> None:
+def _boot_wait() -> float:
+    """How long a boot step waits on the control plane or the engine: engine.ready_timeout."""
+    from provisa.core import settings_registry  # REQ-1913: the operator setting
+
+    return settings_registry.value("engine.ready_timeout")
+
+
+def ensure_iceberg_catalog_tables(url: URL, timeout: float | None = None) -> None:
     """Create the Iceberg JDBC metastore tables in the control-plane database if they are absent.
 
     Runs against the same database ``_iceberg_spec`` hands Trino, so the catalog Trino is about to
@@ -286,8 +293,15 @@ def ensure_iceberg_catalog_tables(url: URL) -> None:
     import psycopg2
 
     host, port, database, user, password = _pg_parts(url)
+    # Bounded: an unreachable control plane fails here, naming itself, rather than hanging boot.
+    wait = _boot_wait() if timeout is None else timeout
     with psycopg2.connect(
-        host=host, port=port, dbname=database, user=user, password=password
+        host=host,
+        port=port,
+        dbname=database,
+        user=user,
+        password=password,
+        connect_timeout=max(1, int(wait)),
     ) as pg:
         with pg.cursor() as cur:
             for ddl in _ICEBERG_CATALOG_DDL:
@@ -303,33 +317,55 @@ _CATALOG_LOCK_KEY = 7338
 
 
 @contextmanager
-def one_registrar(url: URL) -> Iterator[None]:
-    """Hold the deployment's catalog-registration lock for the block (session advisory lock on
-    the control plane, released when the block ends however it ends)."""
+def one_registrar(url: URL, timeout: float | None = None) -> Iterator[None]:
+    """Hold the deployment's catalog-registration lock for the block: a transaction-scoped advisory
+    lock (``pg_advisory_xact_lock``) taken in a transaction that stays open for the block and ends
+    with it, so the lock is released at its commit or rollback however the block ends.
+
+    Transaction-scoped, not session-scoped: through a transaction-pooling PgBouncer (the chart's
+    default) a session belongs to no one client, so a session lock is held by whichever server
+    connection took it and released by whichever one runs the unlock. A transaction keeps its
+    server connection for its whole length, so the lock and its release stay together.
+
+    Waiting for the lock is bounded like connecting: a holder that never lets go fails boot with a
+    lock timeout instead of blocking it forever."""
     import psycopg2
 
     host, port, database, user, password = _pg_parts(url)
-    pg = psycopg2.connect(host=host, port=port, dbname=database, user=user, password=password)
+    wait = _boot_wait() if timeout is None else timeout
+    pg = psycopg2.connect(
+        host=host,
+        port=port,
+        dbname=database,
+        user=user,
+        password=password,
+        connect_timeout=max(1, int(wait)),
+    )
     try:
-        pg.autocommit = True
-        with pg.cursor() as cur:
-            cur.execute("SELECT pg_advisory_lock(%s)", (_CATALOG_LOCK_KEY,))
+        with pg.cursor() as cur:  # psycopg2 opens the transaction with this first statement
+            cur.execute("SELECT set_config('lock_timeout', %s, true)", (f"{int(wait * 1000)}ms",))
+            cur.execute("SELECT pg_advisory_xact_lock(%s)", (_CATALOG_LOCK_KEY,))
         try:
             yield
-        finally:
-            with pg.cursor() as cur:
-                cur.execute("SELECT pg_advisory_unlock(%s)", (_CATALOG_LOCK_KEY,))
+        except BaseException:
+            pg.rollback()
+            raise
+        pg.commit()
     finally:
         pg.close()
 
 
-def register_system_catalogs(conn: TrinoConnection, url: URL, org_id: str) -> None:
-    """Register every Provisa-owned catalog from runtime values. Boot-time; blocking."""
+def register_system_catalogs(
+    conn: TrinoConnection, url: URL, org_id: str, timeout: float | None = None
+) -> None:
+    """Register every Provisa-owned catalog from runtime values. Boot-time; blocking, and each wait
+    bounded by ``timeout`` (engine.ready_timeout when not given)."""
     from provisa.core.catalog import wait_until_ready
 
-    wait_until_ready(conn)  # a coordinator that just restarted races app boot
-    ensure_iceberg_catalog_tables(url)
-    with one_registrar(url):
+    wait = _boot_wait() if timeout is None else timeout
+    wait_until_ready(conn, wait)  # a coordinator that just restarted races app boot
+    ensure_iceberg_catalog_tables(url, wait)
+    with one_registrar(url, wait):
         for spec in system_catalog_specs(url, org_id):
             register_catalog(conn, spec)
 

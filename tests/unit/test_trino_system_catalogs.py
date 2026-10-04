@@ -156,7 +156,7 @@ def _registrar(monkeypatch):
     held: list[str] = []
 
     @contextlib.contextmanager
-    def _one(url):
+    def _one(url, timeout=None):
         held.append("lock")
         yield
         held.append("unlock")
@@ -170,8 +170,8 @@ def test_two_processes_register_the_catalogs_one_at_a_time(monkeypatch, _registr
     interleave and one fails to boot (ALREADY_EXISTS). Every registration is inside the lock."""
     from provisa.core import catalog as catalog_module
 
-    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn: None)
-    monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url: None)
+    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn, timeout=None: None)
+    monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url, timeout=None: None)
     monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: _registrar.append(spec.name))
     tsc.register_system_catalogs(_Conn(), _URL, "default")
     assert _registrar == ["lock", "provisa_admin", "otel", "results", "unlock"]
@@ -189,9 +189,11 @@ def test_registration_ensures_the_iceberg_metastore_before_creating_any_catalog(
     order: list[str] = []
     from provisa.core import catalog as catalog_module
 
-    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn: None)
+    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn, timeout=None: None)
     monkeypatch.setattr(
-        tsc, "ensure_iceberg_catalog_tables", lambda url: order.append(f"ensure:{url.database}")
+        tsc,
+        "ensure_iceberg_catalog_tables",
+        lambda url, timeout=None: order.append(f"ensure:{url.database}"),
     )
     monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: order.append(spec.name))
 
@@ -251,8 +253,8 @@ def test_a_per_org_rebuild_leaves_the_deployment_scoped_catalogs_alone(monkeypat
     # `otel` at all after its own CREATE failed CATALOG_NOT_FOUND.
     from provisa.core import catalog as catalog_module
 
-    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn: None)
-    monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url: None)
+    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn, timeout=None: None)
+    monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url, timeout=None: None)
     registered: list[str] = []
     monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: registered.append(spec.name))
 
@@ -264,8 +266,8 @@ def test_a_per_org_rebuild_leaves_the_deployment_scoped_catalogs_alone(monkeypat
 def test_a_missing_deployment_catalog_is_still_created(monkeypatch):
     from provisa.core import catalog as catalog_module
 
-    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn: None)
-    monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url: None)
+    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn, timeout=None: None)
+    monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url, timeout=None: None)
     registered: list[str] = []
     monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: registered.append(spec.name))
 

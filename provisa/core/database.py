@@ -899,26 +899,26 @@ class Connection:
     @asynccontextmanager
     async def advisory_lock(self, key: int) -> "AsyncGenerator[Connection]":
         """Hold a session advisory lock keyed by ``key`` for the ``with`` block, released on exit.
-        A no-op on backends without advisory locks."""
+        A no-op on backends without advisory locks. On PostgreSQL the lock is taken on a session of
+        its own on the server itself (:func:`control_plane_lock_connection`), not on this pooled
+        connection, so it holds across this connection's transactions even behind PgBouncer."""
         caps = self.capabilities
-        held = caps.advisory_lock and caps.dialect in ("postgresql", "mysql", "mariadb")
-        if held:
-            take = (
-                f"SELECT pg_advisory_lock({key})"
-                if caps.dialect == "postgresql"
-                else f"SELECT GET_LOCK('{key}', -1)"
-            )
-            await self.execute(take)
+        if not caps.advisory_lock:
+            yield self
+            return
+        if caps.dialect == "postgresql":
+            with control_plane_lock_connection(self._sc.engine) as lock:
+                lock.execute(text(f"SELECT pg_advisory_lock({key})"))
+                try:
+                    yield self
+                finally:
+                    lock.execute(text(f"SELECT pg_advisory_unlock({key})"))
+            return
+        await self.execute(f"SELECT GET_LOCK('{key}', -1)")
         try:
             yield self
         finally:
-            if held:
-                release = (
-                    f"SELECT pg_advisory_unlock({key})"
-                    if caps.dialect == "postgresql"
-                    else f"SELECT RELEASE_LOCK('{key}')"
-                )
-                await self.execute(release)
+            await self.execute(f"SELECT RELEASE_LOCK('{key}')")
 
     # -- portable Core helpers (dialect-agnostic; used by migrated repositories) --
     def _execute_core(self, stmt: Any) -> Any:
@@ -1512,7 +1512,7 @@ def create_engine_from_url(
     """
     from sqlalchemy import make_url
 
-    parsed, use_pgbouncer = _pgbouncer_flag(make_url(sync_store_url(url)))
+    parsed, use_pgbouncer, direct = _pgbouncer_flag(make_url(sync_store_url(url)))
     normalized = parsed.render_as_string(hide_password=False)
     backend = parsed.get_backend_name()
     if backend == "duckdb":
@@ -1530,14 +1530,16 @@ def create_engine_from_url(
         kwargs["max_overflow"] = max_overflow
         kwargs["pool_timeout"] = _POOL_WAIT_S
     if backend == "postgresql":
-        return pg_engine(normalized, use_pgbouncer=use_pgbouncer, **kwargs)
+        return pg_engine(normalized, use_pgbouncer=use_pgbouncer, direct=direct, **kwargs)
     engine = sa.create_engine(normalized, **kwargs)
     if backend == "sqlite":
         event.listen(engine, "connect", _on_sqlite_connect)
     return engine
 
 
-def pg_engine(url: str, *, use_pgbouncer: bool, **kwargs: Any) -> Engine:
+def pg_engine(
+    url: str, *, use_pgbouncer: bool, direct: tuple[str, int] | None = None, **kwargs: Any
+) -> Engine:
     """A SQLAlchemy engine on ``postgresql+psycopg`` with Provisa's prepared-statement policy — the
     one place it is set, for the control plane and the ingest write engines alike.
 
@@ -1554,7 +1556,7 @@ def pg_engine(url: str, *, use_pgbouncer: bool, **kwargs: Any) -> Engine:
     engine = sa.create_engine(
         url,
         connect_args=connect_args,
-        execution_options={_PGBOUNCER_OPTION: use_pgbouncer},
+        execution_options={_PGBOUNCER_OPTION: use_pgbouncer, _DIRECT_OPTION: direct},
         **kwargs,
     )
     event.listen(engine, "connect", _on_pg_connect)
@@ -1567,24 +1569,84 @@ def pg_uses_pgbouncer(engine: Engine) -> bool:
 
 
 _PGBOUNCER_OPTION = "provisa_use_pgbouncer"
+_DIRECT_OPTION = "provisa_direct_server"
 
 
 # asyncpg's default per-connection statement cache size, which the psycopg pool replaced.
 _PREPARED_MAX = 100
 
 
-def _pgbouncer_flag(url: Any) -> tuple[Any, bool]:
-    """Strip Provisa's ``use_pgbouncer=true|false`` query flag off a store URL (libpq does not know
-    it) and return it: the URL names PgBouncer's endpoint when the store sits behind one, which only
-    the operator knows. Any other value, or the flag on a non-PostgreSQL store, fails loud."""
+def _pgbouncer_flag(url: Any) -> tuple[Any, bool, tuple[str, int] | None]:
+    """Strip Provisa's ``use_pgbouncer=true|false`` and ``direct=<host>:<port>`` query flags off a
+    store URL (libpq knows neither) and return them: the URL names PgBouncer's endpoint when the
+    store sits behind one, which only the operator knows, and ``direct`` names the PostgreSQL server
+    behind it, where the control plane's session-scoped advisory locks are taken
+    (:func:`control_plane_lock_engine`): through a transaction-pooling PgBouncer a session belongs
+    to no one client, so a lock that must outlive a transaction cannot be held there. A store
+    behind PgBouncer without ``direct``, ``direct`` without PgBouncer, or any malformed value fails
+    loud."""
     raw = url.query.get("use_pgbouncer")
+    direct_raw = url.query.get("direct")
+    if raw is None and direct_raw is None:
+        return url, False, None
     if raw is None:
-        return url, False
+        raise ValueError("direct=<host>:<port> applies only with use_pgbouncer=true")
     if raw not in ("true", "false"):
         raise ValueError(f"use_pgbouncer must be 'true' or 'false', got {raw!r} in store URI")
     if url.get_backend_name() != "postgresql":
         raise ValueError("use_pgbouncer applies only to a postgresql store URI")
-    return url.difference_update_query(["use_pgbouncer"]), raw == "true"
+    behind = raw == "true"
+    if behind and direct_raw is None:
+        raise ValueError(
+            "a store URI with use_pgbouncer=true must name the PostgreSQL server behind PgBouncer "
+            "as direct=<host>:<port>: the control plane's session-scoped advisory locks are taken "
+            "there, since a transaction-pooling PgBouncer does not keep a session to one client"
+        )
+    if not behind and direct_raw is not None:
+        raise ValueError("direct=<host>:<port> applies only with use_pgbouncer=true")
+    direct: tuple[str, int] | None = None
+    if direct_raw is not None:
+        host, sep, port = str(direct_raw).rpartition(":")
+        if not sep or not host or not port.isdigit():
+            raise ValueError(f"direct must be <host>:<port>, got {direct_raw!r} in store URI")
+        direct = (host, int(port))
+    return url.difference_update_query(["use_pgbouncer", "direct"]), behind, direct
+
+
+def control_plane_lock_engine(source: "Engine | str") -> Engine:
+    """An engine on the control plane's PostgreSQL server itself, for a session-scoped advisory
+    lock that must be held across transactions: the server named by the store URL's ``direct``
+    when it reaches the store through PgBouncer, else the store URL's own. Unpooled (NullPool), so
+    closing a connection ends its session and every session lock with it. The one place such a
+    connection is made; ``source`` is the store's engine (built by :func:`create_engine_from_url`)
+    or its URL."""
+    engine = source if isinstance(source, Engine) else create_engine_from_url(source)
+    try:
+        if engine.dialect.name != "postgresql":
+            raise ValueError("a control-plane lock connection is a PostgreSQL session")
+        url = engine.url
+        direct = engine.get_execution_options()[_DIRECT_OPTION]
+        if direct is not None:
+            url = url.set(host=direct[0], port=direct[1])
+        return pg_engine(
+            url.render_as_string(hide_password=False), use_pgbouncer=False, poolclass=NullPool
+        )
+    finally:
+        if engine is not source:
+            engine.dispose()
+
+
+@contextmanager
+def control_plane_lock_connection(source: "Engine | str") -> Iterator[sa.Connection]:
+    """An autocommit connection on the control plane's PostgreSQL server (see
+    :func:`control_plane_lock_engine`) for the block; its session, and every session lock taken on
+    it, ends with the block."""
+    engine = control_plane_lock_engine(source)
+    try:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            yield conn
+    finally:
+        engine.dispose()
 
 
 def _on_pg_connect(dbapi_conn: Any, connection_record: Any) -> None:

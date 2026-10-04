@@ -187,22 +187,67 @@ def connect_terminal(state: Any) -> None:  # REQ-1900
     schema_service.init(state.federation_engine)
 
 
+class BootStepFailed(RuntimeError):
+    """A boot step did not complete: names the step, what it was waiting on, and the limit."""
+
+
+def _boot_step(step: str, waits_on: str, limit: float, run: Any) -> None:
+    """Run one engine-connect step, logged as it starts and ends. Each step's own waits are bounded
+    by ``limit`` (engine.ready_timeout); a step that fails or hits it stops boot with this error."""
+    import time
+
+    log.warning(
+        "startup engine-connect %-26s begin (waits on %s; limit %.0fs)", step, waits_on, limit
+    )
+    began = time.monotonic()
+    try:
+        run()
+    except Exception as exc:
+        raise BootStepFailed(
+            f"boot step {step!r} failed after {time.monotonic() - began:.1f}s, waiting on "
+            f"{waits_on} (limit {limit:.0f}s, setting engine.ready_timeout): {exc}"
+        ) from exc
+    log.warning("startup engine-connect %-26s done +%.2fs", step, time.monotonic() - began)
+
+
 def provision(state: Any, ops_views: list) -> None:
-    """Connect the Trino terminal and seed the OTel ops catalog. Boot-time; blocking."""
+    """Connect the Trino terminal and seed the OTel ops catalog. Boot-time; blocking, each step
+    logged and bounded by engine.ready_timeout."""
+    from provisa.compiler import schema_service
+    from provisa.core import settings_registry
+    from provisa.core.trino_system_catalogs import otel_object_store, register_system_catalogs
+    from provisa.observability.ops_trino import seed_ops_trino
+
     state.engine_conn_kwargs = terminal_conn_kwargs(state)
     state.engine_conn = trino.dbapi.connect(**state.engine_conn_kwargs)
 
-    from provisa.compiler import schema_service
-    from provisa.core.trino_system_catalogs import register_system_catalogs
-    from provisa.observability.ops_trino import seed_ops_trino
+    limit = settings_registry.value("engine.ready_timeout")
+    # Boot's own connection: the engine cuts off any statement of it at the limit, so a catalog
+    # whose backing store never answers ends the statement rather than leaving it running.
+    boot = trino.dbapi.connect(
+        **state.engine_conn_kwargs,
+        session_properties={"query_max_run_time": f"{max(1, int(limit))}s"},
+    )
+    assert state.tenant_engine is not None
+    url = state.tenant_engine.url
+    engine_at = f"Trino at {state.engine_conn_kwargs['host']}:{state.engine_conn_kwargs['port']}"
+    control_plane_at = f"the control plane at {url.host}:{url.port}"
 
     # REQ-1332: provisa_admin/otel/results come from the live control plane and object store, not
     # from checked-in .properties files. Must precede seed_ops_trino, which writes into `otel`.
-    assert state.tenant_engine is not None
-    register_system_catalogs(state.engine_conn, state.tenant_engine.url, state.org_id)
-
+    _boot_step(
+        "register system catalogs",
+        f"{engine_at} and {control_plane_at}",
+        limit,
+        lambda: register_system_catalogs(boot, url, state.org_id, limit),
+    )
     schema_service.init(state.federation_engine)
-    seed_ops_trino(state.engine_conn, ops_views)
+    _boot_step(
+        "seed ops tables",
+        f"{engine_at} and the otel store at {otel_object_store()['endpoint']}",
+        limit,
+        lambda: seed_ops_trino(boot, ops_views),
+    )
 
 
 async def connect_infra(state: Any) -> None:  # REQ-143, REQ-171

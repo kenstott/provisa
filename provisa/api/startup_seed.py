@@ -912,20 +912,15 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # (`pg_advisory_lock`, unlocked in `finally`), not `pg_advisory_xact_lock`, because these
         # statements autocommit individually rather than running inside one wrapping transaction.
         # Sqlite (the embedded demo tier) has no multi-worker story and no advisory-lock function.
-        _seed_lock_held = False
-        if cp_dialect == "postgresql":
-            await _conn.execute("SELECT pg_advisory_lock($1)", _SEED_DOMAIN_ADVISORY_LOCK_KEY)
-            _seed_lock_held = True
-        try:
+        # The lock is held on a session of its own on the server (Connection.advisory_lock), so it
+        # spans these autocommitting statements even behind a transaction-pooling PgBouncer.
+        async with _conn.advisory_lock(_SEED_DOMAIN_ADVISORY_LOCK_KEY):
             await _seed_tag_param_values(_conn)  # REQ-1467
             await _seed_meta_domain(_conn, org_id=eff_org, env=env)
             await _seed_ops_pg(_conn)
             await _seed_ops_domain(_conn, org_id=eff_org, env=env)  # REQ-884
             await _ensure_ops_steward_grant(_conn)  # REQ-1386
             await _seed_meta_relationships(_conn)
-        finally:
-            if _seed_lock_held:
-                await _conn.execute("SELECT pg_advisory_unlock($1)", _SEED_DOMAIN_ADVISORY_LOCK_KEY)
         needs_clusters = (
             await _conn.execute_core(
                 select(_sa_func.count())

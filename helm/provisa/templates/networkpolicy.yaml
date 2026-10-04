@@ -157,7 +157,8 @@ spec:
 {{- end }}
 {{- if .Values.minio.enabled }}
 ---
-# MinIO: only accept connections from provisa
+# MinIO: only accept connections from provisa and trino (the otel Iceberg catalog's store, the
+# exchange spool, and the job that creates its bucket all live here)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -172,6 +173,9 @@ spec:
         - podSelector:
             matchLabels:
               app: provisa
+        - podSelector:
+            matchLabels:
+              app: trino
       ports:
         - port: 9000
         - port: 9001

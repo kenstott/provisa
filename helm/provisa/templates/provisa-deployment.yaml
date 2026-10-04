@@ -129,14 +129,17 @@ spec:
             - name: PROVISA_DATA_DIR
               value: {{ .Values.encryption.dataVolume.mountPath | quote }}
             {{- end }}
+            # Behind PgBouncer the URLs also name the PostgreSQL server itself (direct=): the control
+            # plane takes its session-scoped advisory locks there, since a transaction-pooling
+            # PgBouncer keeps no session to one client.
             # Control-plane DB URLs are REQUIRED with no fallback (REQ-837), so
             # the chart must supply them. Both planes share the same Postgres in
             # this deployment; built from the PG_* vars above via k8s dependent
             # env-var interpolation so the password stays sourced from the secret.
             - name: TENANT_DATABASE_URL
-              value: "postgresql+psycopg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE){{ if .Values.pgbouncer.enabled }}?use_pgbouncer=true{{ end }}"
+              value: "postgresql+psycopg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE){{ if .Values.pgbouncer.enabled }}?use_pgbouncer=true&direct={{ if .Values.postgresql.host }}{{ .Values.postgresql.host }}{{ else }}{{ .Release.Name }}-postgresql{{ end }}:{{ .Values.postgresql.port }}{{ end }}"
             - name: PLATFORM_DATABASE_URL
-              value: "postgresql+psycopg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE){{ if .Values.pgbouncer.enabled }}?use_pgbouncer=true{{ end }}"
+              value: "postgresql+psycopg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE){{ if .Values.pgbouncer.enabled }}?use_pgbouncer=true&direct={{ if .Values.postgresql.host }}{{ .Values.postgresql.host }}{{ else }}{{ .Release.Name }}-postgresql{{ end }}:{{ .Values.postgresql.port }}{{ end }}"
             # Deployment engine (parity with the desktop wizard, REQ-972..979).
             # The user-facing "external" maps to the app's engine key "sqlalchemy"
             # (the value the installers write); the engine registry has no "external"
@@ -159,6 +162,23 @@ spec:
               value: "8480"
             - name: FLIGHT_PORT
               value: "{{ .Values.provisa.flightPort }}"
+            {{- if .Values.minio.enabled }}
+            # The OTel store Trino's `otel` Iceberg catalog reads (REQ-1332): this release's MinIO.
+            # Unset, the endpoint is the setting's default, http://minio:9000 — the compose service
+            # name, which does not resolve in the cluster, so boot's catalog provisioning waits on it.
+            - name: PROVISA_OTEL_S3_ENDPOINT
+              value: "http://{{ .Release.Name }}-minio:9000"
+            - name: PROVISA_OTEL_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: minio-access-key
+            - name: PROVISA_OTEL_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: minio-secret-key
+            {{- end }}
             {{- if .Values.tls.enabled }}
             # REQ-1257: the app's wire-protocol listeners (Flight/pgwire/bolt/MCP/gRPC)
             # read this pair to start their sockets in TLS mode.

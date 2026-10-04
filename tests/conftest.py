@@ -274,6 +274,7 @@ _DEFAULT_WAIT_TIMEOUT = 180
 # read from these env vars. compose interpolates the same ${VAR} at `up` time.
 _ITEST_PORT_ENV = [
     "PG_PORT",
+    "PGBOUNCER_PORT",
     "TRINO_PORT",
     "REDIS_PORT",
     "MINIO_PORT",
