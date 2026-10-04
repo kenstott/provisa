@@ -250,6 +250,18 @@ class LiveDeliveryConfigType:  # REQ-565, REQ-813
 
 
 @strawberry.type
+class DeltaConfigType:  # REQ-874
+    """A table's incremental-reload (delta) declaration, as the table form reads it back. The
+    cursor field is the table's ``watermark_column``."""
+
+    query: str | None = None  # source-native delta query; None = generated for a SQL source
+    apply: str = "upsert"  # upsert | append
+    deletes: str = "none"  # none | tombstone
+    tombstone_column: str | None = None
+    rebuild_every: int | None = None  # seconds between whole rebuilds; None = never on a clock
+
+
+@strawberry.type
 class RefreshPolicySummaryType:  # REQ-1143
     """Server-derived plain-English summary of a table's effective refresh/serving policy, computed
     per (source, engine) from the same resolution the planner uses. ``serving`` ∈
@@ -365,6 +377,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     enable_group_by: bool = False
     can_deploy_to_db: bool = False
     live: LiveDeliveryConfigType | None = None
+    delta: DeltaConfigType | None = None  # REQ-874: incremental-reload declaration
     # REQ-1360: metadata-only, discoverability annotations derived from the same
     # numeric/comparable classification build_agg_fields_type uses (REQ-196). Never
     # governed/reusable — that stays exclusively the named `metrics:` path (REQ-1319).
@@ -841,6 +854,18 @@ class LiveDeliveryConfigInput:  # REQ-565, REQ-813
 
 
 @strawberry.input
+class DeltaConfigInput:  # REQ-874
+    """The table form's incremental-reload (delta) declaration. The cursor field is the table's
+    ``watermark_column``; a delta is defined only for a SQL source (refused by name otherwise)."""
+
+    query: str | None = None  # source-native delta query; None = generated for a SQL source
+    apply: str = "upsert"  # upsert | append
+    deletes: str = "none"  # none | tombstone
+    tombstone_column: str | None = None
+    rebuild_every: int | None = None  # seconds between whole rebuilds; None = never on a clock
+
+
+@strawberry.input
 class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     source_id: str
     domain_id: str
@@ -905,6 +930,7 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     enable_group_by: bool = False
     discover: bool = False  # REQ-252: infer columns from the live NoSQL source at registration
     live: LiveDeliveryConfigInput | None = None  # REQ-565: live delivery config
+    delta: DeltaConfigInput | None = None  # REQ-874: incremental-reload declaration
 
 
 @strawberry.input
@@ -1281,6 +1307,11 @@ class ReplicaBuildType:  # REQ-1915
     # since when (ISO 8601, UTC) and the server's own reason. None while it is watching.
     feed_down_since: str | None
     feed_error: str | None
+    # REQ-874: the last build of a delta table. ``delta_skipped`` names why it was a whole rebuild
+    # instead of a delta (a ``delta.SKIP_*`` code), or None when a delta was applied; ``delta_cursor``
+    # is the stored watermark the next delta resumes from. Both None for a non-delta table.
+    delta_skipped: str | None
+    delta_cursor: JsonScalar | None
 
 
 @strawberry.type

@@ -1506,6 +1506,11 @@ export interface ReplicaBuild {
   /** REQ-1861: while a change-feed table's listener is down, since when and the server's reason. */
   feedDownSince: string | null;
   feedError: string | null;
+  /** REQ-874: the last build of a delta table. `deltaSkipped` is the code for why it was a whole
+   * rebuild instead of a delta (a delta.SKIP_* value), or null when a delta was applied;
+   * `deltaCursor` is the stored watermark the next delta resumes from. Both null for a non-delta table. */
+  deltaSkipped: string | null;
+  deltaCursor: unknown | null;
 }
 
 export interface ReplicaBuilds {

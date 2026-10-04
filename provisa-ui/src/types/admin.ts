@@ -241,6 +241,16 @@ export interface LiveDeliveryConfig {
   outputs: LiveOutputConfig[];
 }
 
+// REQ-874: a table's incremental-reload (delta) declaration. The cursor field is the table's
+// watermarkColumn. Defined only for a SQL source (refused by name otherwise). null = whole-copy.
+export interface DeltaConfig {
+  query?: string | null; // source-native delta query; null = generated for a SQL source
+  apply: "upsert" | "append";
+  deletes: "none" | "tombstone";
+  tombstoneColumn?: string | null;
+  rebuildEvery?: number | null; // seconds between whole rebuilds; null = never on a clock
+}
+
 // REQ-1907: one role's staleness tolerance on a table, in seconds.
 export interface RoleTtl {
   role: string;
@@ -327,6 +337,7 @@ export interface RegisteredTable {
   canDeployToDb: boolean;
   writeOps: string[]; // the data writes the table's source can take (insert, update, delete)
   live: LiveDeliveryConfig | null;
+  delta?: DeltaConfig | null; // REQ-874: incremental-reload declaration (absent on older fixtures)
   modelingRole?: "fact" | "dimension" | null; // REQ-1322: star-schema role for the Explore browser
   modelingHistory?: unknown; // REQ-1322: server-owned modeling audit trail (shape not consumed by UI)
   viewMetrics?: ViewMetricsSpec | null; // REQ-1318: declarative metric-composed view (null = free-hand SQL)

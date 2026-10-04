@@ -55,31 +55,55 @@ def test_rebuild_every_must_be_positive():
         _table(watermark_column="u", delta=DeltaConfig(apply="append", rebuild_every=0))
 
 
-def _config(table):
-    source = Source(id="pg", type=SourceType("postgresql"), host="h")
+def _config(table, source_type="postgresql"):
+    kw = {"path": "/tmp/x"} if source_type == "files" else {"host": "h"}
+    source = Source(id="pg", type=SourceType(source_type), **kw)
     return type("C", (), {"sources": [source], "tables": [table]})()
 
 
-def test_the_load_refuses_any_delta_until_the_apply_path_lands():
-    # REQ-874 guard: the apply path is not wired yet, so a declared delta is refused by name at
-    # config load (this test is updated when the guard is reverted).
+def test_the_load_refuses_a_delta_on_a_non_sql_source():
+    # REQ-874: a generated SQL delta is defined only for SQL sources; a delta on any other source
+    # type is refused by name at config load. A SQL source, replicated, is accepted.
     from provisa.core.config_loader import _validate_delta
 
-    t = _table(watermark_column="u", delta=DeltaConfig(apply="append"))
-    with pytest.raises(ValueError, match="delta replication is not available yet"):
-        _validate_delta(_config(t))
+    t = _table(watermark_column="u", replicate=0, delta=DeltaConfig(apply="append"))
+    with pytest.raises(ValueError, match="only available for SQL sources"):
+        _validate_delta(_config(t, source_type="files"))
+    _validate_delta(_config(t))  # postgresql source, replicated: no raise
 
 
-def test_the_save_refuses_a_delta_table_by_name():
+def test_the_save_refuses_a_delta_on_a_non_sql_source():
+    import asyncio
     from types import SimpleNamespace
 
     from provisa.api.admin._delta_guard import table_delta_refusal
 
-    assert table_delta_refusal(SimpleNamespace(table_name="t", delta=None)) is None
-    r = table_delta_refusal(SimpleNamespace(table_name="orders", delta=DeltaConfig(apply="append")))
+    async def _refuse(source_type):
+        import provisa.core.repositories.source as source_repo
+
+        orig = source_repo.get
+
+        async def _fake_get(_conn, _id):
+            return {"id": "pg", "type": source_type}
+
+        source_repo.get = _fake_get
+        try:
+            model = SimpleNamespace(
+                table_name="orders", source_id="pg", delta=DeltaConfig(apply="append")
+            )
+            return await table_delta_refusal(object(), model)
+        finally:
+            source_repo.get = orig
+
+    # No delta → no refusal (no source lookup needed).
+    assert asyncio.run(table_delta_refusal(object(), SimpleNamespace(delta=None))) is None
+    # Non-SQL source → refused by name.
+    r = asyncio.run(_refuse("files"))
     assert r is not None and r.success is False
-    assert r.code == "schema.delta_not_available"
-    assert "not available yet" in r.message
+    assert r.code == "schema.delta_not_sql_source"
+    assert "only available for SQL sources" in r.message
+    # SQL source → allowed.
+    assert asyncio.run(_refuse("postgresql")) is None
 
 
 def test_delta_round_trips_through_the_control_plane(tmp_path):
@@ -122,3 +146,35 @@ def test_delta_of_treats_json_null_and_non_dict_as_no_delta():
     assert _delta_of("") is None
     assert _delta_of('{"apply": "append"}').apply == "append"
     assert _delta_of({"apply": "upsert"}).apply == "upsert"
+
+
+def test_delta_maps_from_admin_input_and_back_to_the_view():
+    # REQ-874: the admin surface round-trips -- a DeltaConfigInput becomes a DeltaConfig model, and
+    # the persisted dict becomes the DeltaConfigType the table form reads back.
+    from types import SimpleNamespace
+
+    from provisa.api.admin._live_mappers import delta_model_from_input
+    from provisa.api.admin._row_mappers import _delta_type_from_row
+
+    assert delta_model_from_input(None) is None
+    inp = SimpleNamespace(
+        query=None, apply="upsert", deletes="tombstone", tombstone_column="_d", rebuild_every=3600
+    )
+    model = delta_model_from_input(inp)
+    assert (model.apply, model.deletes, model.tombstone_column, model.rebuild_every) == (
+        "upsert",
+        "tombstone",
+        "_d",
+        3600,
+    )
+    view = _delta_type_from_row(model.model_dump())
+    assert (view.apply, view.deletes, view.tombstone_column, view.rebuild_every) == (
+        "upsert",
+        "tombstone",
+        "_d",
+        3600,
+    )
+    assert _delta_type_from_row(None) is None
+    assert (
+        _delta_type_from_row("null") is None
+    )  # JSONB null stored as text -> no delta, not a crash

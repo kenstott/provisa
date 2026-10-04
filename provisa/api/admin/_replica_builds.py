@@ -60,4 +60,9 @@ def build_view(record: Any, now: datetime) -> dict:
         "waiting_on_code": record.waiting_on,
         "feed_down_since": _iso(record.feed_down_since),
         "feed_error": record.feed_error,
+        # REQ-874: how the last build refreshed a delta table. ``delta_skipped`` is the declared
+        # reason this build was a whole rebuild instead of a delta (delta.SKIP_*), or None when a
+        # delta was applied; ``delta_cursor`` is the stored watermark the next delta resumes from.
+        "delta_skipped": record.delta_skipped,
+        "delta_cursor": record.delta_cursor,
     }

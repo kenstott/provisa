@@ -39,6 +39,7 @@ import { DescriptionField } from "./DescriptionField";
 import { FieldLabel } from "./FieldLabel";
 import { MaterializedViewPanels } from "./MaterializedViewPanels";
 import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
+import { DeltaFieldset } from "./DeltaFieldset";
 import { TimeInput } from "@mantine/dates";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { DataQualityPanel } from "./DataQualityPanel";
@@ -702,6 +703,7 @@ export function TableEditForm({
           sources={sources}
           settings={settings}
         />
+        <DeltaFieldset editingTable={editingTable} setEditingTable={setEditingTable} />
       </div>
       {/* REQ-1443 clause 7: a checker source's table lands that checker's scans, so its contract is
           edited here. Only a checker source has one — every other table has no contract to build. */}

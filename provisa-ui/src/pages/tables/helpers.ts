@@ -82,6 +82,16 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
           })),
         }
       : null,
+    // REQ-874: the incremental-reload declaration. The cursor field is the table's watermark.
+    delta: t.delta
+      ? {
+          query: t.delta.query ?? undefined,
+          apply: t.delta.apply,
+          deletes: t.delta.deletes,
+          tombstoneColumn: t.delta.tombstoneColumn ?? undefined,
+          rebuildEvery: t.delta.rebuildEvery ?? undefined,
+        }
+      : null,
     columnPresets: t.columnPresets,
     // REQ-1093: persist edited UNIQUE constraints; drop empty/incomplete rows.
     uniqueConstraints: (t.uniqueConstraints ?? [])

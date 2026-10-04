@@ -258,6 +258,25 @@
     "pagingTypeRequired": "Choose a paging type, or clear the paging fields.",
     "pagingPositive": "Use a whole number of 1 or more.",
     "pagingAboveCeiling": "At most {{ceiling}}: a table may lower the operator's bound, never raise it.",
-    "pagingFixErrors": "Fix the paging errors before saving."
+    "pagingFixErrors": "Fix the paging errors before saving.",
+    "delta": {
+      "legend": "Incremental reload (delta)",
+      "enable": "Refresh this replica incrementally (delta) instead of re-copying it whole",
+      "needsWatermark": "A delta needs a watermark column (the cursor it reads past). Set one under Live Delivery.",
+      "cursorNote": "Cursor field: the table's watermark column ({{watermark}}). Each refresh reads only rows past the stored watermark and advances it.",
+      "apply": "Apply",
+      "applyHelp": "How returned rows are applied to the replica.",
+      "applyUpsert": "Upsert on the primary key",
+      "applyAppend": "Append (immutable source)",
+      "deletes": "Deletes",
+      "deletesHelp": "How deletes at the source reach the replica.",
+      "deletesNone": "None (a periodic whole rebuild catches deletes)",
+      "deletesTombstone": "Tombstone column (a flagged row deletes its key)",
+      "tombstoneColumn": "Tombstone column",
+      "rebuildEvery": "Whole rebuild every (seconds)",
+      "rebuildEveryHelp": "Periodically rebuild the whole replica to catch anything a delta misses. Blank = never on a clock.",
+      "query": "Delta query (optional, source-native)",
+      "queryHelp": "A source-native query with the $wm (cursor) and {{fields}} placeholders. Leave blank for a SQL source: Provisa generates SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
+    }
   }
 }

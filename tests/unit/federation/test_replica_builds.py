@@ -502,3 +502,98 @@ async def test_a_failed_build_is_stamped_not_fresh_and_ripples_nothing(queue, mo
     with pytest.raises(RuntimeError, match="source down"):
         await replica_builds.run_build(state, key, _noop)
     assert queue.refreshes == [("s1/public.events", False)] and queue.events == []
+
+
+# -- REQ-874: build_replica branches a delta table into an incremental apply, or a whole rebuild
+# that records why. These drive the real build_replica over the fakes above, with the delta read +
+# apply (delta.apply_sql_delta, covered end-to-end against a real store in test_delta_apply_store)
+# stubbed, so what is asserted is build_replica's OWN wiring: the decision, the store DSN it applies
+# into, and the cursor/skip bookkeeping.
+
+
+def _delta_table():
+    from provisa.core.models import DeltaConfig
+
+    t = _table()
+    t.watermark_column = "updated_at"
+    t.delta = DeltaConfig(apply="upsert")
+    return t
+
+
+def _delta_state(backend):
+    source = _source()
+    source.type = "postgresql"  # a SQL source: delta is defined for it
+    eng = SimpleNamespace(
+        backend=backend,
+        name="fake",
+        native_store=None,  # not its own store -> applies into the materialize store
+        materialize_store=lambda: "duckdb:///x.duckdb",
+    )
+    return SimpleNamespace(
+        config=SimpleNamespace(sources=[source], tables=[_delta_table()]),
+        federation_engine=SimpleNamespace(engine=eng),
+        tenant_db=_Db(),
+        source_pools=SimpleNamespace(has=lambda _id: True),
+    )
+
+
+async def test_a_delta_table_with_a_cursor_applies_the_delta_and_advances_it(wiring, monkeypatch):
+    captured: dict = {}
+
+    async def _apply(state, engine, source, table, args, address, cursor, store_dsn):
+        captured["cursor"] = cursor
+        captured["store_dsn"] = store_dsn
+        captured["address"] = (address.schema, address.table)
+        return 3, 42
+
+    async def _record_delta(conn, key, *, cursor):
+        captured["recorded_cursor"] = cursor
+
+    monkeypatch.setattr("provisa.federation.delta.apply_sql_delta", _apply)
+    monkeypatch.setattr("provisa.federation.replica_state.record_delta_applied", _record_delta)
+    wiring["record"] = SimpleNamespace(
+        delta_cursor="7", definition_hash=None, requested_reason="refresh",
+        exists_in=lambda store: store == "store-a",
+    )  # fmt: skip
+
+    backend = _Backend()
+    outcome = await replica_builds.build_replica(
+        _delta_state(backend), ("s1", "public", "events"), _noop
+    )
+    # The delta path ran: no whole copy was read/written through the target.
+    assert backend.log == [] and backend.target is None
+    assert (outcome.rows_copied, outcome.method, outcome.changed) == (3, "delta", True)
+    assert captured["cursor"] == 7  # the stored JSON cursor, decoded and bound as $1
+    assert captured["store_dsn"] == "duckdb:///x.duckdb"
+    assert captured["address"] == ("org_acme_replicas", "s1__public__events")
+    assert captured["recorded_cursor"] == 42  # advanced
+    assert wiring["started"][1] == "delta"
+
+
+async def test_a_delta_table_without_a_cursor_whole_rebuilds_and_records_the_skip(
+    wiring, monkeypatch
+):
+    captured: dict = {}
+
+    async def _max_wm(state, engine, source, table):
+        return 99
+
+    async def _record_whole(conn, key, *, skipped, cursor):
+        captured["skipped"] = skipped
+        captured["cursor"] = cursor
+
+    monkeypatch.setattr("provisa.federation.delta.source_max_watermark", _max_wm)
+    monkeypatch.setattr("provisa.federation.replica_state.record_whole_rebuild", _record_whole)
+    wiring["record"] = None  # no prior build -> no cursor -> first_build
+
+    backend = _Backend()
+    outcome = await replica_builds.build_replica(
+        _delta_state(backend), ("s1", "public", "events"), _noop
+    )
+    # The whole copy ran through the target, and the skip + the fresh cursor were recorded.
+    assert outcome.method == "stream_batches"
+    assert "swap" in backend.log
+    from provisa.federation import delta as _delta
+
+    assert captured["skipped"] == _delta.SKIP_FIRST_BUILD
+    assert captured["cursor"] == 99

@@ -88,6 +88,22 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         enable_aggregates=inp.enable_aggregates,
         enable_group_by=inp.enable_group_by,
         live=live_model_from_input(inp.live),
+        delta=delta_model_from_input(getattr(inp, "delta", None)),
+    )
+
+
+def delta_model_from_input(inp):  # REQ-874
+    """Convert a DeltaConfigInput into a DeltaConfig model (None when unset)."""
+    if inp is None:
+        return None
+    from provisa.core.models import DeltaConfig
+
+    return DeltaConfig(
+        query=inp.query,
+        apply=inp.apply,
+        deletes=inp.deletes,
+        tombstone_column=inp.tombstone_column,
+        rebuild_every=inp.rebuild_every,
     )
 
 

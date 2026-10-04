@@ -237,7 +237,15 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                 # load and by the admin alike — so a table registered at runtime (no config entry)
                 # is judged by its own signal, not its source's. NULL = it sets none.
                 change_signal=rt["change_signal"],
-                watermark_column=getattr(cfg, "watermark_column", None),
+                # A table registered through the admin API (no YAML `tables:` entry) has no `cfg`,
+                # so reading the watermark from cfg alone was ALWAYS None for it -- the same gap
+                # cache_ttl below documents and fixes. registerTable writes it straight to
+                # registered_tables.watermark_column, so read rt first, then cfg (REQ-874/929).
+                watermark_column=(
+                    rt["watermark_column"]
+                    if rt.get("watermark_column") is not None
+                    else getattr(cfg, "watermark_column", None)
+                ),
                 # REQ-1730: a table registered dynamically (through the UI, no YAML `tables:`
                 # entry) has no `cfg` at all, so `getattr(cfg, "cache_ttl", None)` alone was ALWAYS
                 # None for it, regardless of the Cache TTL an operator saved on it — TableEditForm

@@ -84,3 +84,24 @@ export function replicaFeedLine(
     error: build.feedError ?? "",
   });
 }
+
+/** REQ-874: how a delta table's replica was last refreshed, or null for a non-delta table (no
+ * delta_skipped and not a delta build). A whole rebuild names its reason (`deltaSkipped`, a
+ * delta.SKIP_* code); an applied delta shows the cursor it advanced to. */
+export function replicaDeltaLine(build: ReplicaBuild | undefined, t: Translate): string | null {
+  if (!build) return null;
+  if (build.deltaSkipped) {
+    return t("replicaBuild.delta.wholeRebuild", {
+      reason: t(`replicaBuild.delta.skip.${build.deltaSkipped}`),
+    });
+  }
+  if (build.method === "delta") {
+    return t("replicaBuild.delta.applied", {
+      cursor:
+        build.deltaCursor === null || build.deltaCursor === undefined
+          ? ""
+          : String(build.deltaCursor),
+    });
+  }
+  return null;
+}

@@ -150,7 +150,7 @@ async def fetch_tables(conn: "Connection") -> list[dict]:  # REQ-155, REQ-393, R
         "live, push_debounce_quiet, push_debounce_max_delay, cache_ttl, "  # REQ-1733, REQ-1730
         "row_materialize, role_ttl, replicate, load_protected, region, "  # REQ-1865/1907/826/1141/1921
         "file_glob, source_file_column, delta, "  # REQ-788/874
-        "change_signal, "  # REQ-929: the table's own; NULL = its source's
+        "change_signal, watermark_column, "  # REQ-929/874: the table's own; NULL = its source's
         "pagination "  # REQ-318
         "FROM registered_tables ORDER BY id"
     )

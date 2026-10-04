@@ -8,12 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Refuse a table that declares a delta at save, until the delta apply path lands (REQ-874).
+"""Refuse a table that declares a delta on a non-SQL source at save (REQ-874).
 
-The declaration, validation and persistence of ``delta`` are in place but the apply path is not
-wired into the replicator yet, so a declared delta would silently whole-rebuild. Registering or
-updating such a table is refused by name until then. This guard is reverted when the apply path
-lands (it is the mirror of config_loader._validate_delta's same refusal)."""
+The delta apply path is a generated SQL delta run on the source's native pool, so it is defined
+only for SQL source types. Registering or updating a table that declares ``delta`` on any other
+source type is refused by name -- the admin-mutation mirror of ``config_loader._validate_delta``."""
 
 # Requirements: REQ-874
 
@@ -24,12 +23,22 @@ from typing import Any
 from provisa.api.admin.types import MutationResult
 
 
-def table_delta_refusal(model: Any) -> MutationResult | None:
+async def table_delta_refusal(conn: Any, model: Any) -> MutationResult | None:
+    """A failing MutationResult when ``model`` declares ``delta`` and its source is not a SQL
+    source a generated delta is defined for (REQ-874); None otherwise."""
     if getattr(model, "delta", None) is None:
+        return None
+    from provisa.core.repositories import source as source_repo
+    from provisa.federation.delta import delta_source_supported
+
+    source = await source_repo.get(conn, model.source_id)
+    source_type = (source or {}).get("type")
+    if source_type is not None and delta_source_supported(source_type):
         return None
     return MutationResult(
         success=False,
-        message=f"table {model.table_name!r}: delta replication is not available yet (REQ-874)",
-        code="schema.delta_not_available",
-        params={"table": model.table_name},
+        message=f"table {model.table_name!r}: delta replication is only available for SQL sources, "
+        f"not {source_type!r} (REQ-874)",
+        code="schema.delta_not_sql_source",
+        params={"table": model.table_name, "source": model.source_id, "type": source_type},
     )
