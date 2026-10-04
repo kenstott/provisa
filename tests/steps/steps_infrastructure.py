@@ -239,7 +239,7 @@ def endpoint_unauthenticated(shared_data, path):
 
 
 @pytest_asyncio.fixture
-async def _whitelisted_and_protected_responses(shared_data):
+async def _whitelisted_and_protected_responses(shared_data, tmp_path, monkeypatch):
     """Call both unauthenticated endpoints plus a protected one without a token.
 
     The whitelisted endpoints (``/health`` and ``/setup/status``) must succeed
@@ -278,6 +278,26 @@ async def _whitelisted_and_protected_responses(shared_data):
         "simple": {"users": []},
     }
     _state.auth_middleware_active = False
+    # Boot brings the platform planes up with the control planes; this app is not booted, so it is
+    # given the two it reads (empty): the platform plane (the 'simple' provider keeps its users'
+    # ids there, and /setup/status counts its accounts), and the platform state store, whose
+    # cluster nodes the health report lists.
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import cluster_nodes, metadata
+
+    admin_engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'admin.db'}")
+    with admin_engine.begin() as raw:
+        metadata.create_all(raw)
+    monkeypatch.setattr(_state, "admin_db", Database(admin_engine, "admin"), raising=False)
+    platform_engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'platform.db'}")
+    with platform_engine.begin() as raw:
+        metadata.create_all(raw, tables=[cluster_nodes])
+    monkeypatch.setattr(
+        _state,
+        "platform_state_db",
+        Database(platform_engine, "platform-state", holds="platform_state"),
+        raising=False,
+    )
 
     app = create_app()
 

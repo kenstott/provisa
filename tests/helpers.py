@@ -252,3 +252,13 @@ def derived_lineage(views: list, tables: list[tuple[str, str, str]]) -> dict[str
         mv_registry=SimpleNamespace(get_enabled=lambda: list(views), get=by_id.get),
     )
     return lineage_graph(views, model)
+
+
+def registry_write_ops(source_type: str, *, view: bool = False) -> list[str]:
+    """The ``write_ops`` a registered table's record carries for a table on ``source_type`` (a
+    view's, when ``view``), by the product's own rule (executor/write_capability.table_write_ops),
+    for fixtures that build registry rows by hand. No engine is bound, so a source writable only
+    through the engine takes none here."""
+    from provisa.executor.write_capability import table_write_ops
+
+    return sorted(table_write_ops({"view_sql": "SELECT 1"} if view else {}, source_type, None))

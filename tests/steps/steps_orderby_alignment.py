@@ -21,6 +21,7 @@ import pytest
 from graphql import parse, validate
 from pytest_bdd import given, when, then, scenario
 
+from tests.helpers import registry_write_ops
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import compile_query
@@ -56,6 +57,7 @@ def _build_schema_with_relationship():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -68,6 +70,7 @@ def _build_schema_with_relationship():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "customers",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},

@@ -45,6 +45,7 @@ from graphql import (
 )
 from pytest_bdd import given, scenario, then, when
 
+from tests.helpers import registry_write_ops
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import (
     MutationResult,
@@ -128,6 +129,7 @@ def _build_schema_input(source_type: str = "postgresql") -> SchemaInput:
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},
@@ -162,6 +164,7 @@ def _build_batch_schema_and_ctx() -> tuple:
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},
@@ -175,6 +178,7 @@ def _build_batch_schema_and_ctx() -> tuple:
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "customers",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},

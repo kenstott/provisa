@@ -49,6 +49,12 @@ def given_federation_engine_with_connectors(shared_data):
     cassandra_capability.write = True
     cassandra_connector = MagicMock()
     cassandra_connector.capability.return_value = cassandra_capability
+    # The engine writes a source only through a live read-write attach of it (a land connector's
+    # write is its own replica store, never the source): executor/writable._writes_upstream.
+    from provisa.federation.connector_base import Mechanism
+
+    for connector in (pg_connector, sqlite_connector, cassandra_connector):
+        connector.mechanism = Mechanism.ATTACH_RW
 
     engine = MagicMock()
     engine.connectors = {

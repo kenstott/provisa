@@ -29,6 +29,7 @@ from graphql import (
 )
 from pytest_bdd import given, scenario, then, when
 
+from tests.helpers import registry_write_ops
 from provisa.compiler import naming as _naming
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
@@ -66,6 +67,7 @@ def _make_path_schema_input() -> SchemaInput:
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "events",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {
@@ -109,6 +111,7 @@ def _make_routed_schema_input(source_id: str, source_type: str, table_name: str)
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": table_name,
+            "write_ops": registry_write_ops(source_type),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {
