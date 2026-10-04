@@ -8,7 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useSetSourceRegion } from "../hooks/useRegionQueries";
+import { useSetSourceRegion, useRegionChoices } from "../hooks/useRegionQueries";
+import { useRegionSelection } from "../hooks/useRegionSelection";
+import { filterByRegion } from "../hooks/regionFilter";
+import { RegionSelector } from "../components/RegionSelector";
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -121,6 +124,28 @@ export function SourcesPage() {
   const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+  // REQ-1922: the region selector filters the list; a name search crosses regions (region filter off).
+  const { regions, connected } = useRegionChoices();
+  const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
+  const hasRegions = regions.length > 0;
+  const searchActive = !!sourceSearch.trim();
+  const searchedSources = React.useMemo(
+    () =>
+      sources.filter((s) => {
+        if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
+        if (!searchActive) return true;
+        const q = sourceSearch.toLowerCase();
+        return (
+          s.id.toLowerCase().includes(q) ||
+          s.type.toLowerCase().includes(q) ||
+          (s.description ?? "").toLowerCase().includes(q)
+        );
+      }),
+    [sources, sourceSearch, searchActive],
+  );
+  const { visible: regionSources, hidden: regionHidden } = searchActive
+    ? { visible: searchedSources, hidden: 0 }
+    : filterByRegion(searchedSources, regionSel, connected, (s) => s.region ?? null);
   const [form, setForm] = useState<SourceFormState>({
     id: "",
     type: "postgresql",
@@ -1339,6 +1364,13 @@ export function SourcesPage() {
           onChange={updateSearch}
           placeholder={t("sourcesPage.filterPlaceholder")}
         />
+        <RegionSelector
+          regions={regions}
+          connected={connected}
+          value={regionSel}
+          onChange={setRegionSel}
+          hidden={regionHidden}
+        />
         <div className="page-actions">
           {!editingSourceId && (
             <Button
@@ -1458,6 +1490,7 @@ export function SourcesPage() {
               <Table.Th>{t("sourcesPage.colHost")}</Table.Th>
               <Table.Th>{t("sourcesPage.colPort")}</Table.Th>
               <Table.Th>{t("sourcesPage.colDatabase")}</Table.Th>
+              {hasRegions && <Table.Th>{t("regionSelector.columnHeader")}</Table.Th>}
               <Table.Th>{t("sourcesPage.colNaming")}</Table.Th>
               <Table.Th>{t("sourcesPage.colCache")}</Table.Th>
               <Table.Th>{t("sourcesPage.colEffectiveTtl")}</Table.Th>
@@ -1470,21 +1503,11 @@ export function SourcesPage() {
           </Table.Thead>
           <Table.Tbody>
             {(() => {
-              const filtered = sources.filter((s) => {
-                if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id))
-                  return false;
-                if (!sourceSearch.trim()) return true;
-                const q = sourceSearch.toLowerCase();
-                return (
-                  s.id.toLowerCase().includes(q) ||
-                  s.type.toLowerCase().includes(q) ||
-                  (s.description ?? "").toLowerCase().includes(q)
-                );
-              });
+              const filtered = regionSources;
               if (filtered.length === 0) {
                 return (
                   <Table.Tr>
-                    <Table.Td colSpan={9} ta="center" c="dimmed">
+                    <Table.Td colSpan={hasRegions ? 10 : 9} ta="center" c="dimmed">
                       {t("sourcesPage.empty")}
                     </Table.Td>
                   </Table.Tr>
@@ -1522,6 +1545,11 @@ export function SourcesPage() {
                       <Table.Td>{s.host}</Table.Td>
                       <Table.Td>{s.port || "—"}</Table.Td>
                       <Table.Td>{s.database || "—"}</Table.Td>
+                      {hasRegions && (
+                        <Table.Td c="dimmed" fz="0.85rem">
+                          {s.region ?? t("regionSelector.noRegion")}
+                        </Table.Td>
+                      )}
                       <Table.Td c="dimmed" fz="0.85rem">
                         {s.gqlNamingConvention || t("sourcesPage.naOrInherit")}
                       </Table.Td>
@@ -1581,7 +1609,7 @@ export function SourcesPage() {
                     {isExpanded && (
                       <Table.Tr key={`${s.id}-detail`}>
                         <Table.Td
-                          colSpan={9}
+                          colSpan={hasRegions ? 10 : 9}
                           style={{
                             padding: "0.75rem 1rem",
                             background: "var(--bg)",
