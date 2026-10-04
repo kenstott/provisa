@@ -31,9 +31,9 @@ _ENV = ("DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN"
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.asyncio,
-    pytest.mark.skipif(
-        not all(os.environ.get(k) for k in _ENV), reason="Databricks warehouse creds not set"
-    ),
+    # A live cloud warehouse: the warehouse lane only, where its credentials load (a missing one
+    # fails that lane's credential check). Never a skip in the default lanes.
+    pytest.mark.requires_warehouse,
 ]
 
 _CATALOG = "workspace"
