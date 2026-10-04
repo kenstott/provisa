@@ -22,17 +22,19 @@ platform:
 # One embedded Postgres backs every pg store; each region keeps its DuckDB engine in its own file, and
 # the cache is the one shared fakeredis. replicas and views share a store (one materialize store per
 # region, REQ-1912). state/record also live in the shared pg.
+# Two declarations per region point at the one shared Postgres (its engine is DuckDB per node); the
+# cache is one shared fakeredis both regions name. Region-qualified schema/cache names keep the two
+# regions from colliding on the shared instances (replica-layout-2, regions-3c).
 stores:
   - { id: eu_engine, url: "@@EU_ENGINE_URL@@", kind: duckdb }
   - { id: us_engine, url: "@@US_ENGINE_URL@@", kind: duckdb }
   - { id: eu_data, url: "@@PG_URL@@" }
   - { id: us_data, url: "@@PG_URL@@" }
-  - { id: eu_cache, url: "@@REDIS_URL@@" }
-  - { id: us_cache, url: "@@REDIS_URL@@" }
+  - { id: cache, url: "@@REDIS_URL@@" }
 
 regions:
-  - { id: eu, engine: eu_engine, replicas: eu_data, views: eu_data, cache: eu_cache, state: eu_data, record: eu_data }
-  - { id: us, engine: us_engine, replicas: us_data, views: us_data, cache: us_cache, state: us_data, record: us_data }
+  - { id: eu, engine: eu_engine, replicas: eu_data, views: eu_data, cache: cache, state: eu_data, record: eu_data }
+  - { id: us, engine: us_engine, replicas: us_data, views: us_data, cache: cache, state: us_data, record: us_data }
 
 auth:
   provider: none
@@ -58,6 +60,16 @@ roles:
       - table_registration
       - source_registration
       - access_config
+    domain_access: ["*"]
+  # REQ-1921 data_residency: this role's grant covers only eu (plus no_region). Reading a us-homed
+  # object is refused BY NAME (naming us) — the demo's residency refusal. Act as eu_resident (the
+  # X-Provisa-Role header, or the role picker) and read intake_us to see it.
+  - id: eu_resident
+    capabilities:
+      - query_development
+      - observability
+      - data_residency
+    residency_values: ["eu", "no_region"]
     domain_access: ["*"]
 
 # One files source over a directory the launcher seeds with CSVs that carry a `region` column, so the

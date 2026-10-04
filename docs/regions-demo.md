@@ -43,5 +43,9 @@ Open the **eu** UI at http://127.0.0.1:8310 and the **us** UI at http://127.0.0.
   reads it from eu's replica store — the data processed and kept in eu, read from us under one model.
 - **The 503 refusal when a home region is stopped.** Stop just the eu node (leave us up), then on the
   us node read `intake_eu` again: the read is refused by name, because eu's store is not reachable.
-- **data_residency refusals and draft.** (Pending replica-layout-2's data_residency and draft work;
-  this section and the demo's draft table are added when those land.)
+- **A data_residency refusal, by name.** The config declares a role `eu_resident` whose grant covers
+  only `eu` (and no-region). Act as it (send `X-Provisa-Role: eu_resident`, or pick it in the role
+  menu) and read `intake_us` (homed in us): the read is refused and the message names `us` — the
+  region the grant does not cover.
+- **A draft table.** Pending replica-layout-2's draft work; the demo's draft table and this step are
+  added when draft lands on regions-3c.
