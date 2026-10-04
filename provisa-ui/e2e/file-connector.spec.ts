@@ -160,7 +160,10 @@ test("file connector: add northwind source and query customers", async ({ page }
   );
 
   expect(registerResult.errors, `registerTable errors: ${JSON.stringify(registerResult.errors)}`).toBeUndefined();
-  expect(registerResult.data?.registerTable?.success).toBe(true);
+  expect(
+    registerResult.data?.registerTable?.success,
+    `registerTable: ${JSON.stringify(registerResult.data?.registerTable)}`,
+  ).toBe(true);
 
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 15000 });
