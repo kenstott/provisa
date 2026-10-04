@@ -380,6 +380,7 @@ async def test_a_direct_read_issues_no_control_plane_statement(buffered, monkeyp
         replicate=None,
         load_protected=False,
         max_live_concurrency=None,  # REQ-1909: no cap on live reads of this source
+        region=None,  # REQ-1921: a source and a table each carry their region
         model_dump_json=lambda: "{}",
     )
     table = SimpleNamespace(
@@ -391,6 +392,7 @@ async def test_a_direct_read_issues_no_control_plane_statement(buffered, monkeyp
         columns=[],
         replicate=None,
         load_protected=None,
+        region=None,
     )
 
     async def _sources(state, conn=None):

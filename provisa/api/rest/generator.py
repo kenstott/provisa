@@ -27,9 +27,10 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from graphql import GraphQLError, GraphQLObjectType, GraphQLSchema
 
+from provisa.api.json_response import OrjsonResponse
 from provisa.api._query_helpers import (
     build_graphql_query as _build_graphql_query_shared,
     get_scalar_fields as _get_scalar_fields_shared,
@@ -485,7 +486,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         spec = generate_rest_openapi_spec(state, role_id, domains=domain_list)
         download = request.query_params.get("download")
         headers = {"Content-Disposition": "attachment; filename=openapi.json"} if download else {}
-        return JSONResponse(content=spec, headers=headers)
+        return OrjsonResponse(content=spec, headers=headers)
 
     @rest_router.get("/docs", include_in_schema=False)
     async def rest_docs(  # pyright: ignore[reportUnusedFunction]
@@ -663,7 +664,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         if result.redirect is not None:
             # REQ-1224: the result exceeded the row threshold and was landed as an engine-native CTAS
             # off Provisa's heap — surface the delivery handle instead of buffering the body here.
-            return JSONResponse(content={"data": None, "meta": {"redirect": result.redirect}})
+            return OrjsonResponse(content={"data": None, "meta": {"redirect": result.redirect}})
 
         # REQ-1359: aggregate/group-by results aren't resource rows — reuse the same
         # serializers the GraphQL/data pipeline uses for _aggregate/_group_by fields, but
@@ -677,7 +678,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 compiled.nodes_columns if nodes_result is not None else None,
                 compiled.root_field,
             )
-            return JSONResponse(content={"data": gb_response["data"][compiled.root_field]})
+            return OrjsonResponse(content={"data": gb_response["data"][compiled.root_field]})
         if is_aggregate:
             agg_response = serialize_aggregate(
                 result.rows,
@@ -688,7 +689,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 agg_alias=compiled.agg_alias,
             )
             agg_obj = agg_response["data"][compiled.root_field][compiled.agg_alias]
-            return JSONResponse(content={"data": agg_obj})
+            return OrjsonResponse(content={"data": agg_obj})
 
         # Serialize
         from provisa.executor.serialize import serialize_rows
@@ -760,7 +761,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             except ImportError:
                 raise HTTPException(status_code=400, detail="arrow format requires pyarrow")
 
-        return JSONResponse(content={"data": rows})
+        return OrjsonResponse(content={"data": rows})
 
     @rest_router.post("/{domain_id}/commands/{command_name}")
     async def rest_command_endpoint(  # pyright: ignore[reportUnusedFunction]  # REQ-1155
@@ -809,6 +810,6 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
 
-        return JSONResponse(content={"data": rows})
+        return OrjsonResponse(content={"data": rows})
 
     return rest_router
