@@ -234,9 +234,13 @@ def test_trino_reads_another_regions_replicas_through_a_catalog_of_that_store(mo
     backend, state, conn = _trino(monkeypatch)
     region = ForeignRegion("eu", "postgresql://reader:pw@eu-replicas:5433/replicas", None)  # type: ignore[arg-type]
     where = ("org_acme__region_eu", "org_acme_replicas", "orders")
+    # The read map names it without dialing anything.
     assert backend.region_read_address(state, region, "org_acme_replicas", "orders") == where
-    # Registered once: a second table of that region reads through the same catalog.
-    assert backend.region_read_address(state, region, "org_acme_replicas", "lines")[0] == where[0]
+    assert conn.statements == []
+    # A read that finds the replica built registers the catalog — once: a second table of that
+    # region, or a rebuild, reads through the same catalog.
+    backend.attach_region_read(state, region, "org_acme_replicas", "orders", ("h1", "[]"))
+    backend.attach_region_read(state, region, "org_acme_replicas", "lines", ("h2", "[]"))
     assert conn.statements == [
         "-- lock postgresql://cp/db",
         "DROP CATALOG IF EXISTS org_acme__region_eu",
@@ -275,24 +279,76 @@ def test_trino_reaches_a_store_without_a_password_setting_none():
     assert spec.properties["connection-url"] == "jdbc:postgresql://eu:5432/db"
 
 
-def test_a_native_engine_that_imports_a_table_reads_it_where_it_imported_it(monkeypatch):
-    """PostgreSQL has no catalog per store: it imports the table through postgres_fdw, and the
-    read goes where the import put it."""
+def test_the_pg_engine_names_the_import_at_publish_and_imports_once_per_build(monkeypatch):
+    """PostgreSQL has no catalog per store: it imports the table through postgres_fdw into a
+    schema of its own. The read map names that schema without dialing the other region; a read
+    that finds the replica built imports it — again only when that region rebuilt it."""
     from provisa.federation.native_backend import NativeEngineBackend
+    from provisa.federation.pg_runtime import PgFederationRuntime
 
     imported: list[tuple] = []
-
-    class _Runtime:
-        def attach_region_table(self, region_id, dsn, schema, table):
-            imported.append((region_id, dsn, schema, table))
-            return "provisa", f"region_{region_id}__{schema}", table
-
+    runtime = PgFederationRuntime.__new__(PgFederationRuntime)
+    runtime._region_imports = {}
+    monkeypatch.setattr(runtime, "ensure_materialize_attached", lambda: "provisa")
+    monkeypatch.setattr(
+        runtime,
+        "attach_region_table",
+        lambda region_id, dsn, schema, table: imported.append((region_id, schema, table)),
+    )
     backend = NativeEngineBackend.__new__(NativeEngineBackend)
-    monkeypatch.setattr(backend, "_store_runtime", lambda: _Runtime())
+    backend._attach_errors = (RuntimeError,)
+    monkeypatch.setattr(backend, "_store_runtime", lambda: runtime)
     region = ForeignRegion("eu", "postgresql://r@eu/db", None)  # type: ignore[arg-type]
     where = backend.region_read_address(SimpleNamespace(), region, "org_acme_replicas", "orders")
     assert where == ("provisa", "region_eu__org_acme_replicas", "orders")
-    assert imported == [("eu", "postgresql://r@eu/db", "org_acme_replicas", "orders")]
+    assert imported == []
+    for build in (("h1", "[id]"), ("h1", "[id]"), ("h2", "[id, total]")):
+        backend.attach_region_read(SimpleNamespace(), region, "org_acme_replicas", "orders", build)
+    assert imported == [("eu", "org_acme_replicas", "orders")] * 2
+
+
+def test_a_store_that_cannot_be_attached_is_unreachable(monkeypatch):
+    from provisa.federation.backend import RegionStoreUnreachable
+    from provisa.federation.native_backend import NativeEngineBackend
+
+    class _Runtime:
+        def attach_region_read(self, *_args):
+            raise RuntimeError("could not connect to server")
+
+    backend = NativeEngineBackend.__new__(NativeEngineBackend)
+    backend._attach_errors = (RuntimeError,)
+    monkeypatch.setattr(backend, "_store_runtime", lambda: _Runtime())
+    region = ForeignRegion("eu", "postgresql://r@eu/db", None)  # type: ignore[arg-type]
+    with pytest.raises(RegionStoreUnreachable, match="could not connect"):
+        backend.attach_region_read(SimpleNamespace(), region, "s", "t", ("h", "[]"))
+
+
+async def test_a_read_of_a_built_home_replica_attaches_it_and_an_unreachable_one_is_refused(
+    eu_state,
+):
+    from provisa.federation.backend import RegionStoreUnreachable
+    from provisa.federation.query_residency import read_home_replica
+
+    await _built(eu_state)
+    attached: list[tuple] = []
+
+    class _Backend:
+        fail = False
+
+        def replica_address(self, state, *, source_id, schema_name, table_name):
+            return SimpleNamespace(schema="org_acme_replicas", table="crm__public__orders")
+
+        def attach_region_read(self, state, region, schema, table, build):
+            if self.fail:
+                raise RegionStoreUnreachable("eu store is down")
+            attached.append((region.id, schema, table))
+
+    backend = _Backend()
+    await read_home_replica(_state(eu_state), backend, _TABLE, "eu")
+    assert attached == [("eu", "org_acme_replicas", "crm__public__orders")]
+    backend.fail = True
+    with pytest.raises(HomeRegionUnavailable, match="cannot be reached"):
+        await read_home_replica(_state(eu_state), backend, _TABLE, "eu")
 
 
 @pytest.mark.parametrize(

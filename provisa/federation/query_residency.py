@@ -206,7 +206,7 @@ class ReplicaAgeUnknown(RuntimeError):
         )
 
 
-async def require_home_replica(state: Any, table: Any, home: str) -> None:
+async def require_home_replica(state: Any, table: Any, home: str) -> Any:
     """Refuse a read of ``table``, kept in region ``home``, unless its replica there is built
     (REQ-1922): such a table is read only from that replica, never live. Whether it is built is
     the home region's record, read from its state store; a store that cannot be reached refuses
@@ -225,6 +225,37 @@ async def require_home_replica(state: Any, table: Any, home: str) -> None:
         raise HomeRegionUnavailable(table.table_name, home, "cannot be reached") from exc
     if record is None or not record.exists or record.retired_at is not None:
         raise HomeRegionUnavailable(table.table_name, home, "is not built")
+    return record
+
+
+async def read_home_replica(state: Any, backend: Any, table: Any, home: str) -> None:
+    """Make the read of ``table`` from its replica in region ``home`` possible (REQ-1922): that
+    replica is built there (``require_home_replica``), and the engine has attached it for that
+    build. A store that cannot be attached refuses the read like one that cannot be reached."""
+    import asyncio
+
+    from provisa.core.region_stores import HomeRegionUnavailable
+    from provisa.federation.backend import RegionStoreUnreachable
+
+    record = await require_home_replica(state, table, home)
+    address = backend.replica_address(
+        state,
+        source_id=table.source_id,
+        schema_name=table.schema_name,
+        table_name=table.table_name,
+    )
+    build = (record.definition_hash, repr(record.built_columns))
+    try:
+        await asyncio.to_thread(
+            backend.attach_region_read,
+            state,
+            state.foreign_regions[home],
+            address.schema,
+            address.table,
+            build,
+        )
+    except RegionStoreUnreachable as exc:
+        raise HomeRegionUnavailable(table.table_name, home, "cannot be reached") from exc
 
 
 async def ensure_resident(
@@ -329,7 +360,7 @@ async def ensure_resident(
         if whole_copy(by_id[t.source_id], t, engine):
             tables_by_source.setdefault(t.source_id, []).append(t)
     for t, home in elsewhere:
-        await require_home_replica(state, t, home)
+        await read_home_replica(state, backend, t, home)
     # REQ-826 / REQ-1141: a table the operator's settings put on its replica moves its source's
     # read there for this statement, even where the engine could attach the source.
     replicated_by = {s.id: _replicated(state, tables_by_source.get(s.id, [])) for s in sources}

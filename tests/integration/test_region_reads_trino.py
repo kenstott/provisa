@@ -99,6 +99,8 @@ def test_trino_reads_another_regions_replica_through_a_catalog_of_its_store(stor
     catalog, schema, table = backend.region_read_address(
         state, region, store.schema, "crm__public__orders"
     )
+    # A read that finds the replica built attaches it (registers the catalog).
+    backend.attach_region_read(state, region, store.schema, "crm__public__orders", ("h", "[]"))
     assert (catalog, schema, table) == (
         f"org_{_ORG}__region_eu",
         store.schema,

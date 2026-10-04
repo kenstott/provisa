@@ -38,6 +38,11 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
+class RegionStoreUnreachable(RuntimeError):
+    """Another region's replicas store could not be attached to read from (REQ-1922): the read
+    is refused naming the table and its region (``HomeRegionUnavailable``)."""
+
+
 class EngineReadsNoOtherRegion(RuntimeError):
     """An engine that cannot attach another region's replicas store (REQ-1922)."""
 
@@ -255,11 +260,21 @@ class EngineBackend:
         self, state: Any, region: Any, schema: str, table: str
     ) -> tuple[str | None, str, str]:
         """Where a statement reads ``schema.table`` of another region's replicas store
-        (REQ-1922), attaching that store (or the table) on first use: a table that region names
-        is read from its replica there. ``region`` is a ``region_stores.ForeignRegion``. An
-        engine with no way to attach another store refuses, naming itself — it is never read
-        live in its place."""
+        (REQ-1922): a name only — the read map is published without dialing any other region.
+        ``attach_region_read`` makes it readable when a read finds that replica built.
+        ``region`` is a ``region_stores.ForeignRegion``. An engine with no way to attach another
+        store refuses, naming itself — it is never read live in its place."""
         del state, schema, table
+        raise EngineReadsNoOtherRegion(self.engine.name, region.id)
+
+    def attach_region_read(
+        self, state: Any, region: Any, schema: str, table: str, build: object
+    ) -> None:
+        """Make ``schema.table`` of another region's replicas store readable at
+        ``region_read_address`` (REQ-1922), for the build of it ``build`` identifies (a replica
+        rebuilt with other columns is attached again). Called by a read that found the replica
+        built there. Raises ``RegionStoreUnreachable`` when that store cannot be attached."""
+        del state, schema, table, build
         raise EngineReadsNoOtherRegion(self.engine.name, region.id)
 
     def pending_lands(
@@ -902,12 +917,28 @@ class TrinoBackend(EngineBackend):
         self, state: Any, region: Any, schema: str, table: str
     ) -> tuple[str | None, str, str]:
         """REQ-1922: another region's replicas store, as catalog ``org_<org>__region_<id>``."""
+        return self._region_catalog(state, region), schema, table
+
+    def attach_region_read(
+        self, state: Any, region: Any, schema: str, table: str, build: object
+    ) -> None:
+        """REQ-1922: the catalog of that region's store, registered once per process (it reads
+        the store's tables as they are, so a rebuild needs nothing more)."""
+        import trino.exceptions
+
+        del schema, table, build
+        try:
+            self._store_catalog_named(
+                state, self._region_catalog(state, region), region.replicas_url
+            )
+        except (trino.exceptions.Error, OSError) as exc:
+            raise RegionStoreUnreachable(str(exc)) from exc
+
+    @staticmethod
+    def _region_catalog(state: Any, region: Any) -> str:
         from provisa.federation.replica_address import active_org_id
 
-        catalog = self._store_catalog_named(
-            state, f"org_{active_org_id(state)}__region_{region.id}", region.replicas_url
-        )
-        return catalog, schema, table
+        return f"org_{active_org_id(state)}__region_{region.id}"
 
     def materialize_store_target(self, state: Any, org_id: str) -> tuple[str, str]:
         """Trino reaches its materialization store through the ``provisa_admin`` catalog.

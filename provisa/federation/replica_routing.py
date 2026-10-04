@@ -369,7 +369,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
     # REQ-1922: a table the org keeps in another region is read from its replica there, always —
     # never live, never from a copy here. Whether that replica is built is asked on each read
     # (query_residency.require_home_replica); where it is read is the region's store, which the
-    # engine attaches (backend.region_read_address).
+    # engine names (backend.region_read_address) and attaches when a read finds it built.
     from provisa.federation.replica_converge import builds_here, home_region
 
     for reg in registry.registered:

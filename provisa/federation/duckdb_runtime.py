@@ -756,6 +756,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._store_attached = True
         return self._MAT_STORE
 
+    def region_table_address(self, region_id: str, schema: str, table: str) -> tuple[str, str, str]:
+        """Where a statement reads ``schema.table`` of another region's store (REQ-1922)."""
+        return f"region_{region_id}", schema, table
+
+    def attach_region_read(
+        self, region_id: str, dsn: str, schema: str, table: str, build: object
+    ) -> None:
+        """REQ-1922: the store is ATTACHed once; it reads that store's tables as they are."""
+        del schema, table, build
+        self.attach_region_store(region_id, dsn)
+
     def attach_region_store(self, region_id: str, dsn: str) -> str:
         """ATTACH another region's replicas store READ_ONLY under ``region_<id>`` (idempotent) and
         return the alias (REQ-1922): a table that region names is read from its replica there.

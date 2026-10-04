@@ -270,6 +270,8 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         # store is configured. Landed/cached rows live in a schema this same connection reads.
         self._materialize_dsn = materialize_dsn
         self._raw_attached: set[str] = set()
+        # REQ-1922: the build of each other region's table this engine last imported.
+        self._region_imports: dict[tuple[str, str, str], object] = {}
         # REQ-1895: run_sync's read path borrows from this pool instead of opening a fresh
         # psycopg2 connection per call — scoped to THIS runtime instance (never a process-global
         # pool; see _AdbcConnectionPool's docstring for why).
@@ -679,6 +681,22 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
     #: The advisory lock the processes on one engine database take around attaching another
     #: region's store: they share its foreign servers and foreign tables.
     _REGION_ATTACH_LOCK_KEY = 7339
+
+    def region_table_address(self, region_id: str, schema: str, table: str) -> tuple[str, str, str]:
+        """Where a statement reads ``schema.table`` of another region's store (REQ-1922): the
+        schema this engine imports it into."""
+        return self.ensure_materialize_attached(), f"region_{region_id}__{schema}", table
+
+    def attach_region_read(
+        self, region_id: str, dsn: str, schema: str, table: str, build: object
+    ) -> None:
+        """REQ-1922: import the table for ``build`` — once per build of it in that region, so a
+        replica rebuilt with other columns is imported again."""
+        key = (region_id, schema, table)
+        if self._region_imports.get(key) == build:
+            return
+        self.attach_region_table(region_id, dsn, schema, table)
+        self._region_imports[key] = build
 
     def attach_region_table(
         self, region_id: str, dsn: str, schema: str, table: str
