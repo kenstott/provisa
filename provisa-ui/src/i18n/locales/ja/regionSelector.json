@@ -1,0 +1,11 @@
+{
+  "regionSelector": {
+    "label": "リージョン",
+    "allRegions": "すべてのリージョン",
+    "noRegion": "リージョンなし",
+    "connectedRegion": "{{region}}（接続中）",
+    "columnHeader": "リージョン",
+    "hidden_one": "リージョンにより{{count}}件を非表示",
+    "hidden_other": "リージョンにより{{count}}件を非表示"
+  }
+}

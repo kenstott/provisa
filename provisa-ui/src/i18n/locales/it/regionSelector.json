@@ -1,0 +1,11 @@
+{
+  "regionSelector": {
+    "label": "Regione",
+    "allRegions": "Tutte le regioni",
+    "noRegion": "Nessuna regione",
+    "connectedRegion": "{{region}} (connessa)",
+    "columnHeader": "Regione",
+    "hidden_one": "{{count}} nascosto per regione",
+    "hidden_other": "{{count}} nascosti per regione"
+  }
+}

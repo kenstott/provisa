@@ -1,0 +1,11 @@
+{
+  "regionSelector": {
+    "label": "區域",
+    "allRegions": "所有區域",
+    "noRegion": "無區域",
+    "connectedRegion": "{{region}}（已連線）",
+    "columnHeader": "區域",
+    "hidden_one": "{{count}} 項因區域被隱藏",
+    "hidden_other": "{{count}} 項因區域被隱藏"
+  }
+}

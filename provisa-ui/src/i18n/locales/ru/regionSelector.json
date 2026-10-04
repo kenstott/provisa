@@ -1,0 +1,11 @@
+{
+  "regionSelector": {
+    "label": "Регион",
+    "allRegions": "Все регионы",
+    "noRegion": "Без региона",
+    "connectedRegion": "{{region}} (подключён)",
+    "columnHeader": "Регион",
+    "hidden_one": "{{count}} скрыт по региону",
+    "hidden_other": "{{count}} скрыто по региону"
+  }
+}
