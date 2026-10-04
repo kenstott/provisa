@@ -13,6 +13,8 @@
 # Requirements: REQ-307, REQ-308, REQ-309, REQ-310, REQ-311, REQ-312, REQ-313
 from __future__ import annotations
 
+from provisa.compiler.naming import apply_sql_name
+
 _SCALAR_TO_PROVISA = {
     "String": "text",
     "ID": "text",
@@ -379,8 +381,11 @@ def _detect_relationships(  # REQ-313
             relationships.append(
                 {
                     "id": rel_id,
-                    "source_table_id": table["name"],
-                    "target_table_id": target_table,
+                    # Each end names its table as it is registered (apply_sql_name, as
+                    # _upsert_tables_to_semantic_layer lands it), not by its GraphQL field name:
+                    # "assignmentsByEmployee" is registered as "assignments_by_employee".
+                    "source_table_id": apply_sql_name(table["name"]),
+                    "target_table_id": apply_sql_name(target_table),
                     "source_column": src_col,
                     "target_column": tgt_col,
                     "cardinality": cardinality,
