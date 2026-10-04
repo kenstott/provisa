@@ -313,7 +313,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     else:
         # Parse and validate
         try:
-            document = parse_query(schema, request.query, request.variables)
+            document = parse_query(schema, request.query, request.variables, ctx=ctx)
         except GraphQLValidationError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except GraphQLSyntaxError as e:

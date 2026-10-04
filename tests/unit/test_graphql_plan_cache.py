@@ -247,7 +247,7 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
     calls = {"parse": 0, "compile": 0, "prepare": 0, "execute": 0}
     document = SimpleNamespace(definitions=[])
 
-    def _parse(schema, query, variables=None):
+    def _parse(schema, query, variables=None, *, ctx):
         calls["parse"] += 1
         return document
 

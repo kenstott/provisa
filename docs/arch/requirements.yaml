@@ -3307,6 +3307,7 @@
   - provisa-ui/src/pages/TablesPage.tsx
   tests:
   - tests/unit/test_dataset_uniqueness.py
+  - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
   scenario: 'Given a datasource shared across multiple domains
 
@@ -16521,6 +16522,7 @@
   tests:
   - tests/unit/test_redirect_bucket_lazy.py
   - tests/unit/test_infra_requirements.py
+  - tests/integration/test_redirect_encryption_minio.py
   since: 2026-01
   scenario: 'Given the Provisa stack starts for the first time
 
@@ -32398,6 +32400,7 @@
   tests:
   - tests/steps/steps_metadata_export_docs.py
   - tests/features/REQ-1368.feature
+  - tests/unit/test_metadata_export_docs_page.py
   scenario: 'Given the published documentation set
 
     When a reader looks for how to publish metadata to an external catalog
@@ -40552,6 +40555,7 @@
   tests:
   - tests/integration/test_org_registry_view.py
   - tests/integration/test_create_org_onboarding.py
+  - tests/unit/test_org_registry_view_sql.py
   scenario: 'Given a provisioned root org
 
     Then a registered view over the org registry exists in root
@@ -41311,6 +41315,7 @@
   - provisa/core/org_membership.py
   tests:
   - tests/integration/test_invite_role_authz.py
+  - tests/unit/test_invite_role_resolution.py
   scenario: 'Given an org_admin creating an invitation naming a role that does not exist in their org
 
     When it is submitted
@@ -41369,6 +41374,7 @@
   - provisa-ui/src/components/admin/OrgsTab.tsx
   tests:
   - tests/integration/test_invite_role_authz.py
+  - tests/unit/test_invite_role_resolution.py
   scenario: 'Given an invitation created with no role named
 
     Then the stored invitation names analyst
@@ -41417,6 +41423,7 @@
   - provisa/api/admin/orgs_router.py
   tests:
   - tests/integration/test_org_lifecycle.py
+  - tests/unit/test_org_retry_provisioning.py
   scenario: 'Given an org in provisioning_state failed
 
     When its creator retries provisioning
@@ -64782,6 +64789,7 @@
   - provisa-ui/e2e/custom-ai-endpoint-secret.spec.ts
   tests:
   - provisa-ui/e2e/custom-ai-endpoint-secret.spec.ts
+  - tests/unit/test_mcp_chat.py
   e2e: true
   e2e_reason: Proving a live third-party vendor integration end to end (secrets vault, AI Models config,
     real chat turn, real tool call) requires the full running application and a real API key.
@@ -65059,7 +65067,8 @@
     than going silent.
   code:
   - provisa/api/mcp/chat.py
-  tests: []
+  tests:
+  - tests/unit/test_mcp_chat_prompt_rules.py
   e2e: false
   scenario: 'Given exactly one Kaggle/GovData candidate was found for a topical data request
 
@@ -65132,7 +65141,8 @@
     take Polly's word for what happened somewhere off-screen.
   code:
   - provisa/api/mcp/chat.py
-  tests: []
+  tests:
+  - tests/unit/test_mcp_chat_prompt_rules.py
   e2e: false
   scenario: 'Given Polly is about to register a table (or perform another page-specific admin action)
 
@@ -65201,7 +65211,8 @@
   use_case: Scrolling a long admin form should never move the chat panel out of view.
   code:
   - provisa-ui/src/App.css
-  tests: []
+  tests:
+  - provisa-ui/src/__tests__/AppMainScroll.test.ts
   e2e: false
   scenario: 'Given an admin page (e.g. AI Models) whose content is taller than the viewport
 
@@ -65542,7 +65553,9 @@
   code:
   - provisa/api/mcp/chat.py
   - provisa-ui/src/mcp/clientTools.ts
-  tests: []
+  tests:
+  - tests/unit/test_mcp_chat_prompt_rules.py
+  - provisa-ui/src/__tests__/clientTools.navigate.test.ts
   e2e: false
   scenario: 'Given Polly is asked to run a GraphQL query
 
@@ -68269,7 +68282,8 @@
     production setting.'
   code:
   - demo/named/perf/bench/run_benchmark.py
-  tests: []
+  tests:
+  - tests/unit/perf_bench/test_cache_pass_and_federated_join.py
   scenario: 'Given a query with a response cache on at least one transport (GraphQL today)
 
     When the nocache pass runs
@@ -68665,7 +68679,8 @@
   code:
   - demo/named/perf/bench/queries.py
   - demo/named/perf/bench/run_benchmark.py
-  tests: []
+  tests:
+  - tests/unit/perf_bench/test_cache_pass_and_federated_join.py
   scenario: 'Given fragment.yaml registers the HAS_EVENT/HAS_DOC relationships between orders and
 
     order_events/order_docs
@@ -70060,7 +70075,8 @@
     to actually reading the query plan instead of accepting the assumption.'
   code:
   - provisa/federation/pg_runtime.py
-  tests: []
+  tests:
+  - tests/unit/federation/test_pg_attach_analyze.py
   scenario: 'Given a Postgres-engine source attached via postgres_fdw/clickhouse_fdw/mongodb_wrapper,
 
     freshly imported and never queried before
@@ -70255,7 +70271,8 @@
   - provisa/grpc/auth.py
   - provisa/api/app_startup.py
   - pyproject.toml
-  tests: []
+  tests:
+  - tests/unit/test_grpc_audit_findings.py
   scenario: 'Given a streaming query RPC whose engine execution raises mid-stream after some rows were
 
     already sent
@@ -75186,6 +75203,7 @@
   - provisa/mv/rewriter.py
   tests:
   - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_expose_and_rls_rewrite.py
   scenario: 'Given a compiled join query carrying an RLS WHERE predicate and a matching fresh MV
 
     When the query is rewritten to the MV
@@ -75212,6 +75230,7 @@
   - provisa/mv/models.py
   tests:
   - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_expose_and_rls_rewrite.py
   scenario: 'Given an MV with expose_in_sdl true and an sdl_config
 
     When the config loads
@@ -75420,6 +75439,7 @@
   - provisa/file_source/source.py
   tests:
   - tests/steps/steps_file_lake_sources.py
+  - tests/unit/test_file_source_adapter.py
   scenario: 'Given a SQLite database with multiple tables
 
     When the adapter discovers schema and executes queries
@@ -75606,6 +75626,7 @@
   - provisa-ui/src/api/admin.ts
   tests:
   - tests/integration/test_org_lifecycle.py
+  - tests/unit/test_sandbox_account_deletion.py
   scenario: 'Given a visitor whose only org membership is the sandbox
 
     When they confirm leaving the sandbox

@@ -1035,7 +1035,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return None
 
         try:
-            document = parse_query(schema, gql_text)
+            document = parse_query(schema, gql_text, ctx=ctx)
         except GraphQLValidationError as exc:
             await context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
             return None
@@ -1135,7 +1135,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return
 
         try:
-            document = parse_query(schema, gql_text)
+            document = parse_query(schema, gql_text, ctx=ctx)
         except GraphQLValidationError as exc:
             await context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
             return

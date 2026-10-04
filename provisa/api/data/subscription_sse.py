@@ -216,7 +216,7 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
         from provisa.compiler.parser import parse_query as _parse
         from provisa.api.data.endpoint import _handle_query
 
-        q_doc = _parse(schema, query_text, variables)
+        q_doc = _parse(schema, query_text, variables, ctx=ctx)
         result = await _handle_query(
             q_doc,
             ctx,
@@ -407,7 +407,7 @@ async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
         from provisa.compiler.parser import parse_query as _parse
         from provisa.api.data.endpoint import _handle_query
 
-        q_doc = _parse(schema, query_text, variables)
+        q_doc = _parse(schema, query_text, variables, ctx=ctx)
         result = await _handle_query(
             q_doc,
             ctx,

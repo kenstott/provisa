@@ -240,7 +240,7 @@ class TestParseGroupByParam:
 
 class TestBuildAggregateGraphqlQuery:
     def test_default_selection_all_funcs(self):
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_aggregate_graphql_query(schema, "orders", [], {}, None)
         assert q.startswith("{ orders_aggregate")
         assert "count" in q
@@ -250,34 +250,34 @@ class TestBuildAggregateGraphqlQuery:
         assert "max {" in q
 
     def test_explicit_funcs_only(self):
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_aggregate_graphql_query(schema, "orders", ["count", "sum"], {}, None)
         assert "count" in q
         assert "sum {" in q
         assert "avg {" not in q
 
     def test_with_where(self):
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_aggregate_graphql_query(
             schema, "orders", ["count"], {"region": {"eq": "US"}}, None
         )
         assert 'where: {region: {eq: "US"}}' in q
 
     def test_field_filter_restricts_columns(self):
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_aggregate_graphql_query(schema, "orders", ["sum"], {}, ["amount"])
         assert "sum { amount }" in q
 
     def test_query_parses_against_schema(self):
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_aggregate_graphql_query(schema, "orders", [], {}, None)
-        document = parse_query(schema, q)
+        document = parse_query(schema, q, ctx=ctx)
         assert document is not None
 
 
 class TestBuildGroupByGraphqlQuery:
     def test_basic_group_by(self):
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_group_by_graphql_query(
             schema, "orders", ["region"], [], {}, [], None, None, None
         )
@@ -286,7 +286,7 @@ class TestBuildGroupByGraphqlQuery:
         assert "aggregate {" in q
 
     def test_with_limit_offset_order(self):
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_group_by_graphql_query(
             schema,
             "orders",
@@ -303,17 +303,17 @@ class TestBuildGroupByGraphqlQuery:
         assert "order_by: {region: asc}" in q
 
     def test_query_parses_against_schema(self):
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_group_by_graphql_query(
             schema, "orders", ["region"], [], {}, [], None, None, None
         )
-        document = parse_query(schema, q)
+        document = parse_query(schema, q, ctx=ctx)
         assert document is not None
 
     def test_by_columns_translated_to_gql_convention(self):
         """REQ-1361: ?groupBy= takes API-native (physical) column names; the
         synthesized GraphQL text must use the schema's GQL-convention spelling."""
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         _naming.configure(gql="apollo_graphql")
         try:
             q = _build_group_by_graphql_query(
@@ -325,16 +325,16 @@ class TestBuildGroupByGraphqlQuery:
         assert "user_id" not in q
 
     def test_include_nodes_adds_nodes_selection(self):
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_group_by_graphql_query(
             schema, "orders", ["region"], ["count"], {}, [], None, None, None, True
         )
         assert "nodes {" in q
-        document = parse_query(schema, q)
+        document = parse_query(schema, q, ctx=ctx)
         assert document is not None
 
     def test_without_include_nodes_omits_nodes_selection(self):
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_group_by_graphql_query(
             schema, "orders", ["region"], ["count"], {}, [], None, None, None, False
         )
@@ -342,29 +342,29 @@ class TestBuildGroupByGraphqlQuery:
 
     def test_include_nodes_projection_restricts_scalar_fields(self):
         """REQ-1402: a bare (no-dot) includeNodes path selects just that scalar field."""
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_group_by_graphql_query(
             schema, "orders", ["region"], ["count"], {}, [], None, None, None, ["amount"]
         )
         assert "nodes { amount }" in q
         assert "status" not in q
-        document = parse_query(schema, q)
+        document = parse_query(schema, q, ctx=ctx)
         assert document is not None
 
     def test_include_nodes_projection_unknown_field_rejected_by_compiler(self):
         """REQ-1402: no local schema check — an unknown path is still emitted (translated via
         apply_gql_name) and left for parse_query's own validation to reject, same as by_cols."""
-        schema, _ = _build_schema_and_ctx()
+        schema, ctx = _build_schema_and_ctx()
         q = _build_group_by_graphql_query(
             schema, "orders", ["region"], ["count"], {}, [], None, None, None, ["not_a_field"]
         )
         assert "nodes { not_a_field }" in q
         with pytest.raises(GraphQLValidationError):
-            parse_query(schema, q)
+            parse_query(schema, q, ctx=ctx)
 
     def test_include_nodes_dot_path_selects_relationship_scalar(self):
         """REQ-1402: "customer.email" projects nodes { customer { email } } — one level deep."""
-        schema, _ = _build_schema_and_ctx_with_relationship()
+        schema, ctx = _build_schema_and_ctx_with_relationship()
         q = _build_group_by_graphql_query(
             schema,
             "orders",
@@ -378,11 +378,11 @@ class TestBuildGroupByGraphqlQuery:
             ["customer.email"],
         )
         assert "nodes { customer { email } }" in q
-        document = parse_query(schema, q)
+        document = parse_query(schema, q, ctx=ctx)
         assert document is not None
 
     def test_include_nodes_dot_path_unknown_relationship_rejected_by_compiler(self):
-        schema, _ = _build_schema_and_ctx_with_relationship()
+        schema, ctx = _build_schema_and_ctx_with_relationship()
         q = _build_group_by_graphql_query(
             schema,
             "orders",
@@ -397,10 +397,10 @@ class TestBuildGroupByGraphqlQuery:
         )
         assert "nodes { vendor { email } }" in q
         with pytest.raises(GraphQLValidationError):
-            parse_query(schema, q)
+            parse_query(schema, q, ctx=ctx)
 
     def test_include_nodes_dot_path_unknown_nested_field_rejected_by_compiler(self):
-        schema, _ = _build_schema_and_ctx_with_relationship()
+        schema, ctx = _build_schema_and_ctx_with_relationship()
         q = _build_group_by_graphql_query(
             schema,
             "orders",
@@ -415,12 +415,12 @@ class TestBuildGroupByGraphqlQuery:
         )
         assert "nodes { customer { not_a_field } }" in q
         with pytest.raises(GraphQLValidationError):
-            parse_query(schema, q)
+            parse_query(schema, q, ctx=ctx)
 
     def test_include_nodes_dot_path_two_levels_deep(self):
         """REQ-1402: depth is bounded only by the schema's own relationships, not by this code —
         "customer.home_region.name" resolves through two hops (orders -> customers -> home_regions)."""
-        schema, _ = _build_schema_and_ctx_with_relationship()
+        schema, ctx = _build_schema_and_ctx_with_relationship()
         q = _build_group_by_graphql_query(
             schema,
             "orders",
@@ -434,11 +434,11 @@ class TestBuildGroupByGraphqlQuery:
             ["customer.home_region.name"],
         )
         assert "nodes { customer { home_region { name } } }" in q
-        document = parse_query(schema, q)
+        document = parse_query(schema, q, ctx=ctx)
         assert document is not None
 
     def test_include_nodes_mixes_base_and_relationship_paths(self):
-        schema, _ = _build_schema_and_ctx_with_relationship()
+        schema, ctx = _build_schema_and_ctx_with_relationship()
         q = _build_group_by_graphql_query(
             schema,
             "orders",
@@ -452,7 +452,7 @@ class TestBuildGroupByGraphqlQuery:
             ["amount", "customer.email", "customer.name"],
         )
         assert "nodes { amount customer { email name } }" in q
-        document = parse_query(schema, q)
+        document = parse_query(schema, q, ctx=ctx)
         assert document is not None
 
 
@@ -509,7 +509,7 @@ class TestAggregateEndpointResponseShape:
         state = _make_state()
         schema, ctx = state.schemas["admin"], state.contexts["admin"]
         q = _build_aggregate_graphql_query(schema, "orders", ["count"], {}, None)
-        document = parse_query(schema, q)
+        document = parse_query(schema, q, ctx=ctx)
         from provisa.compiler.sql_gen import compile_query
 
         compiled = compile_query(document, ctx)[0]
@@ -529,7 +529,7 @@ class TestAggregateEndpointResponseShape:
         q = _build_group_by_graphql_query(
             schema, "orders", ["region"], ["count"], {}, [], None, None, None
         )
-        document = parse_query(schema, q)
+        document = parse_query(schema, q, ctx=ctx)
         from provisa.compiler.sql_gen import compile_query
 
         compiled = compile_query(document, ctx)[0]

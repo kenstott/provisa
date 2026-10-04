@@ -144,7 +144,9 @@ def test_a_mutation_produces_exactly_one_audit_row(audited, monkeypatch):
     async def _mutate(*args, **kwargs):
         return JSONResponse({"data": {"insert_orders": {"affected_rows": 1}}})
 
-    monkeypatch.setattr(endpoint, "parse_query", lambda schema, query, variables=None: parse(query))
+    monkeypatch.setattr(
+        endpoint, "parse_query", lambda schema, query, variables=None, *, ctx: parse(query)
+    )
     monkeypatch.setattr(endpoint, "_handle_mutation", _mutate)
     audited.call(mutation)
     assert [_facts(r) for r in audited.rows()] == [
@@ -187,7 +189,9 @@ def test_opening_a_subscription_is_audited(audited, monkeypatch):
     async def _open(*args, **kwargs):
         return JSONResponse({"stream": "opened"})
 
-    monkeypatch.setattr(endpoint, "parse_query", lambda schema, query, variables=None: parse(query))
+    monkeypatch.setattr(
+        endpoint, "parse_query", lambda schema, query, variables=None, *, ctx: parse(query)
+    )
     monkeypatch.setattr(sse, "handle_subscription_sse", _open)
     audited.call(subscription)
     assert [_facts(r) for r in audited.rows()] == [

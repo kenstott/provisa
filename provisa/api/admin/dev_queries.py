@@ -537,7 +537,7 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
     steward_hint = directives.steward_hint
 
     try:
-        document = parse_query(schema, query, variables)
+        document = parse_query(schema, query, variables, ctx=ctx)
     except (GraphQLValidationError, GraphQLSyntaxError) as e:
         raise ValueError(str(e))
 

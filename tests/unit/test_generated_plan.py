@@ -64,7 +64,7 @@ def env(monkeypatch):
         return compile_generated_graphql(state, _ROLE, schema, ctx, text)
 
     def fresh(text: str):
-        return compile_query(parse_query(schema, text), ctx)
+        return compile_query(parse_query(schema, text, ctx=ctx), ctx)
 
     return SimpleNamespace(run=run, fresh=fresh, parses=parses, state=state)
 

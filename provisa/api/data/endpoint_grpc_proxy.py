@@ -318,7 +318,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             )
 
         try:
-            document = parse_query(schema, gql_text)
+            document = parse_query(schema, gql_text, ctx=ctx)
             compiled_queries = compile_query(document, ctx)
         except GraphQLValidationError as exc:
             raise ApiError(400, "data.aggregate_query_validation_failed", str(exc)) from exc

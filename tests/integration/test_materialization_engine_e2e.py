@@ -142,7 +142,10 @@ async def test_materialized_api_source_federates_via_pg_store():
         schema = generate_schema(_si())
         ctx = build_context(_si())
         compiled = compile_query(
-            parse_query(schema, "{ ordersApi { id amount customer { firstName state } } }", {}), ctx
+            parse_query(
+                schema, "{ ordersApi { id amount customer { firstName state } } }", {}, ctx=ctx
+            ),
+            ctx,
         )[0]
         gov_ctx = build_governance_context("admin", rls, {}, ctx, _si().tables, role=_ADMIN)
         governed = apply_governance(compiled.sql, gov_ctx)
