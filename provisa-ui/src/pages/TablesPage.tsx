@@ -8,8 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useSetTableDraft, useSetTableRegion } from "../hooks/useRegionQueries";
-import { useState, useEffect, Fragment, useCallback, useRef } from "react";
+import { useSetTableDraft, useSetTableRegion, useRegionChoices } from "../hooks/useRegionQueries";
+import { useRegionSelection } from "../hooks/useRegionSelection";
+import { filterByRegion } from "../hooks/regionFilter";
+import { RegionSelector } from "../components/RegionSelector";
+import { useState, useEffect, Fragment, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Network, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, Layers, X } from "lucide-react";
@@ -153,6 +156,28 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { checkedDomains, domainsEnabled } = useDomainFilter();
   const { domainAccess, role: activeRole } = useAuth();
+  // REQ-1922: the region selector filters the list; a name search crosses regions (filter off).
+  const { regions, connected } = useRegionChoices();
+  const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
+  const hasRegions = regions.length > 0;
+  const nameSearchActive = tableSearch.trim().length > 0;
+  const baseTables = useMemo(
+    () =>
+      tables.filter((t) => {
+        if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
+        if (viewsOnly && !t.viewSql) return false;
+        if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
+        const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        if (terms.length === 0) return true;
+        const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
+        return terms.every((term) => haystack.includes(term));
+      }),
+    [tables, viewsOnly, checkedDomains, tableSearch],
+  );
+  // A name search crosses regions; otherwise the region selection filters the list (REQ-1922).
+  const { visible: regionTables, hidden: regionHidden } = nameSearchActive
+    ? { visible: baseTables, hidden: 0 }
+    : filterByRegion(baseTables, regionSel, connected, (t) => t.region ?? null);
   // REQ-1592: the model-report download. Busy while the server builds the workbook.
   const [reportBusy, setReportBusy] = useState(false);
 
@@ -634,6 +659,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               : translate("tablesPage.filterPlaceholderTables")
           }
         />
+        <RegionSelector
+          regions={regions}
+          connected={connected}
+          value={regionSel}
+          onChange={setRegionSel}
+          hidden={regionHidden}
+        />
         <div className="page-actions">
           {!viewsOnly && (
             <Button
@@ -889,6 +921,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               <Table.Th>{translate("tablesPage.colNaming")}</Table.Th>
               <Table.Th>{translate("tablesPage.colCacheTtl")}</Table.Th>
               <Table.Th>{translate("tablesPage.colEffectiveTtl")}</Table.Th>
+              {hasRegions && <Table.Th>{translate("regionSelector.columnHeader")}</Table.Th>}
               <Table.Th style={{ whiteSpace: "nowrap" }}>
                 {(() => {
                   const label = translate("tablesPage.colCols");
@@ -945,18 +978,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           </Table.Thead>
           <Table.Tbody>
             {(() => {
-              const filtered = tables.filter((t) => {
-                if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
-                if (viewsOnly && !t.viewSql) return false;
-                if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId))
-                  return false;
-                const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
-                if (terms.length === 0) return true;
-                const haystack = [t.sourceId, t.tableName, t.domainId ?? ""]
-                  .join(" ")
-                  .toLowerCase();
-                return terms.every((term) => haystack.includes(term));
-              });
+              const filtered = [...regionTables];
 
               if (sortCol) {
                 filtered.sort((a, b) => {
@@ -1049,7 +1071,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                   return (
                     <Table.Tr key={`grp-${item.key}`}>
                       <Table.Td
-                        colSpan={domainsEnabled ? 9 : 8}
+                        colSpan={(domainsEnabled ? 9 : 8) + (hasRegions ? 1 : 0)}
                         role="button"
                         tabIndex={0}
                         aria-expanded={!isCollapsed}
@@ -1197,6 +1219,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                         {getEffectiveTableTtl(t)}
                       </Table.Td>
+                      {hasRegions && (
+                        <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                          {t.region ?? translate("regionSelector.noRegion")}
+                        </Table.Td>
+                      )}
                       <Table.Td>{t.columns.length}</Table.Td>
                       <Table.Td onClick={(e) => e.stopPropagation()}>
                         <Group gap="xs" wrap="nowrap">
@@ -1247,7 +1274,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     </Table.Tr>
                     {expanded === t.id && (
                       <Table.Tr key={`${t.id}-cols`}>
-                        <Table.Td colSpan={domainsEnabled ? 12 : 11} style={{ padding: 0 }}>
+                        <Table.Td colSpan={(domainsEnabled ? 12 : 11) + (hasRegions ? 1 : 0)} style={{ padding: 0 }}>
                           {!isEditing ? (
                             <TableReadView
                               t={t}
