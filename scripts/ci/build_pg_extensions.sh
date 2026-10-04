@@ -77,7 +77,19 @@ if [ ! -d "$PGCH_SRC" ]; then
     "https://github.com/ClickHouse/pg_clickhouse/releases/download/$PGCH_TAG/pg_clickhouse-${PGCH_TAG#v}.zip"
   unzip -q -d "$CACHE" "$CACHE/pg_clickhouse.zip"
 fi
-( cd "$PGCH_SRC" && make PG_CONFIG="$PGC" >/dev/null && make PG_CONFIG="$PGC" install >/dev/null )
+# pg_clickhouse names PostgreSQL's regex type pg_regex_t, the name later 16.x minors gave regex_t;
+# 16.2's headers (pinned to pgserver's PG above) still call it regex_t. Same type, renamed only.
+PGCH_CPP=""
+grep -q pg_regex_t "$("$PGC" --includedir-server)/regex/regex.h" || PGCH_CPP="-Dpg_regex_t=regex_t"
+PGCH_ENV=()
+if [ "$OS" = darwin ]; then
+  # Homebrew's lz4/zstd/openssl@3 are not on the compiler's default search path on arm64.
+  inc=""; lib=""
+  for f in lz4 zstd openssl@3; do p="$(brew --prefix "$f")"; inc="$inc:$p/include"; lib="$lib:$p/lib"; done
+  PGCH_ENV=(CPATH="${inc#:}" LIBRARY_PATH="${lib#:}")
+fi
+( cd "$PGCH_SRC" && env "${PGCH_ENV[@]}" make PG_CONFIG="$PGC" COPT="$PGCH_CPP" >/dev/null \
+  && env "${PGCH_ENV[@]}" make PG_CONFIG="$PGC" COPT="$PGCH_CPP" install >/dev/null )
 
 echo "== stage wrappers (Supabase, prebuilt .deb, LINUX ONLY — no macOS release, REQ-1871) =="
 WRAPPERS_TAG="${WRAPPERS_TAG:-v0.6.3}"
@@ -96,11 +108,16 @@ fi
 
 echo "== collect + relocate into $OUT =="
 rm -rf "$OUT"; mkdir -p "$OUT/lib" "$OUT/share/extension"
+rpaths() { otool -l "$1" | awk '/cmd LC_RPATH/ {getline; getline; print $2}'; }
 relocate() {  # make a lib self-contained: @loader_path (macOS) / $ORIGIN (linux) for sibling deps
   local f="$1"
   if [ "$OS" = darwin ]; then
-    install_name_tool -add_rpath "@loader_path" "$f" 2>/dev/null || true
-    codesign -f -s - "$f" 2>/dev/null || true
+    # Drop the run paths the build left pointing into its own tree; keep only @loader_path.
+    for rp in $(rpaths "$f"); do
+      [ "$rp" = "@loader_path" ] || install_name_tool -delete_rpath "$rp" "$f"
+    done
+    rpaths "$f" | grep -qx "@loader_path" || install_name_tool -add_rpath "@loader_path" "$f"
+    codesign -f -s - "$f"
   else
     patchelf --set-rpath '$ORIGIN' "$f" 2>/dev/null || true
   fi
@@ -143,10 +160,47 @@ if [ -n "$WRAPPERS_SO" ]; then
   printf '  {"name":"%s","key":"wrappers","file":"lib/%s","sha256":"%s","redistribution":"bundled","runtime_deps":"linux-only (Rust/pgrx, no macOS release)"}' \
     "$wso" "$wso" "$sha" >> "$manifest"
 fi
+if [ -e "$OUT/lib/postgres_fdw.$SUF" ]; then
+  # postgres_fdw links the libpq this build made under $PREFIX: on macOS by that absolute path, on
+  # Linux by soname, and neither exists on the machine that stages the bundle. Ship it beside the
+  # modules, under a name the stager's *.$SUF glob copies, and point postgres_fdw at that copy.
+  if [ "$OS" = darwin ]; then
+    cp "$PREFIX/lib/libpq.5.dylib" "$OUT/lib/libpq.dylib"
+    install_name_tool -id "@rpath/libpq.dylib" "$OUT/lib/libpq.dylib"
+    old="$(otool -L "$OUT/lib/postgres_fdw.dylib" | awk '/libpq/ {print $1}')"
+    install_name_tool -change "$old" "@rpath/libpq.dylib" "$OUT/lib/postgres_fdw.dylib"
+    codesign -f -s - "$OUT/lib/libpq.dylib" "$OUT/lib/postgres_fdw.dylib"
+  else
+    cp -L "$PREFIX/lib/libpq.so.5" "$OUT/lib/libpq.so"
+    patchelf --set-soname libpq.so "$OUT/lib/libpq.so"
+    patchelf --replace-needed libpq.so.5 libpq.so "$OUT/lib/postgres_fdw.so"
+  fi
+  sha="$( (command -v sha256sum >/dev/null && sha256sum "$OUT/lib/libpq.$SUF" || shasum -a256 "$OUT/lib/libpq.$SUF") | awk '{print $1}')"
+  echo ',' >> "$manifest"
+  printf '  {"name":"libpq","key":"libpq","file":"lib/libpq.%s","sha256":"%s","redistribution":"bundled","runtime_deps":""}' \
+    "$SUF" "$sha" >> "$manifest"
+fi
 echo '' >> "$manifest"; echo ']}' >> "$manifest"
 
+echo "== verify: nothing in the bundle loads a library from this build's tree =="
+for f in "$OUT"/lib/*."$SUF"; do
+  if [ "$OS" = darwin ]; then deps="$(otool -L "$f" | tail -n +2 | awk '{print $1}') $(rpaths "$f")"
+  else deps="$(patchelf --print-needed "$f") $(patchelf --print-rpath "$f" | tr ':' ' ')"; fi
+  for d in $deps; do
+    # Library references and run paths both: neither may name the build tree or a home directory.
+    case "$d" in
+      "$CACHE"/*|"$PREFIX"/*|"$ROOT"/*|/Users/*|/home/*|/tmp/*|/private/*)
+        echo "FAIL: $(basename "$f") references $d (builder path)"; exit 1 ;;
+    esac
+    # A Linux soname this build produced must ship in the bundle.
+    if [ "$OS" = linux ] && [ -e "$PREFIX/lib/$d" ] && [ ! -e "$OUT/lib/$d" ]; then
+      echo "FAIL: $(basename "$f") needs $d, which this build made and the bundle does not ship"; exit 1
+    fi
+  done
+done
+
 echo "== package =="
-TARBALL="$ROOT/dist/provisa-pg-ext-$OS-$ARCH.tar.gz"
+TARBALL="${TARBALL:-$ROOT/dist/provisa-pg-ext-$OS-$ARCH.tar.gz}"
 tar -czf "$TARBALL" -C "$OUT" .
 ( cd "$(dirname "$TARBALL")" && { command -v sha256sum >/dev/null && sha256sum "$(basename "$TARBALL")" || shasum -a256 "$(basename "$TARBALL")"; } > "$TARBALL.sha256" )
 echo "BUNDLE: $TARBALL"; cat "$manifest"

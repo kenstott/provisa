@@ -28,11 +28,32 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pgserver
 
 REQUIRED = {"file_fdw", "postgres_fdw", "sqlite_fdw", "pg_duckdb"}
 BEST_EFFORT = {"mysql_fdw"}
+
+
+def _postgres_fdw_reads(db) -> list[str]:
+    """A foreign table over this same server: postgres_fdw opens a libpq connection, so the read
+    proves the libpq the bundle ships is the one that loads (the build's own libpq is moved away
+    before this runs in CI)."""
+    socket_dir = parse_qs(urlparse(db.get_uri()).query)["host"][0]
+    out = db.psql(
+        "CREATE TABLE smoke_src(id int); INSERT INTO smoke_src VALUES (1),(2),(3);"
+        f"CREATE SERVER smoke_rem FOREIGN DATA WRAPPER postgres_fdw "
+        f"OPTIONS (host '{socket_dir}', dbname 'postgres');"
+        "CREATE USER MAPPING FOR CURRENT_USER SERVER smoke_rem;"
+        "CREATE FOREIGN TABLE smoke_ft(id int) SERVER smoke_rem OPTIONS (table_name 'smoke_src');"
+        "SELECT 'fdw-sum=' || sum(id) FROM smoke_ft;"
+    )
+    if "fdw-sum=6" in out:
+        print("  OK   postgres_fdw foreign-table read")
+        return []
+    print(f"  FAIL postgres_fdw foreign-table read:\n{out}")
+    return ["postgres_fdw: foreign-table read failed"]
 
 
 def main(bundle: Path) -> int:
@@ -85,6 +106,9 @@ def main(bundle: Path) -> int:
         else:
             print(f"  FAIL {key}: CREATE EXTENSION did not register it")
             failures.append(f"{key}: did not load")
+
+    if "postgres_fdw" in keys and not any(f.startswith("postgres_fdw") for f in failures):
+        failures += _postgres_fdw_reads(db)
 
     missing = REQUIRED - keys
     if missing:

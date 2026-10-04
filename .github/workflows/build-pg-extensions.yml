@@ -40,7 +40,7 @@ jobs:
 
       - name: Install build deps (macOS)
         if: matrix.os == 'darwin'
-        run: brew install cmake ninja mariadb-connector-c
+        run: brew install cmake ninja mariadb-connector-c lz4 zstd openssl@3
 
       - name: Install build deps (Linux)
         if: matrix.os == 'linux'
@@ -48,7 +48,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build git curl bison flex patchelf \
-            libssl-dev liblz4-dev libzstd-dev libsqlite3-dev libmariadb-dev pkg-config
+            libssl-dev liblz4-dev libzstd-dev libsqlite3-dev libmariadb-dev pkg-config \
+            libcurl4-openssl-dev uuid-dev
 
       - name: Setup Python 3.12 (pgserver smoke test)
         uses: actions/setup-python@v5
@@ -82,8 +83,17 @@ jobs:
 
       - name: Smoke-test (pgserver load + CREATE EXTENSION)
         run: |
+          # The build's own PG install (and its libpq) is moved away first: the bundle must load
+          # with nothing from the build tree present, as it does on a user's machine.
+          mv "$HOME/.cache/provisa-fdw/pg162" "$HOME/.cache/provisa-fdw/pg162.moved-aside"
           pip install pgserver asyncpg
           python scripts/ci/smoke_pg_extensions.py "dist/pg-ext/${{ matrix.os }}-${{ matrix.arch }}"
+
+      - name: Put the build tree back (the cache saves it)
+        if: always()
+        run: |
+          d="$HOME/.cache/provisa-fdw"
+          [ ! -d "$d/pg162.moved-aside" ] || mv "$d/pg162.moved-aside" "$d/pg162"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

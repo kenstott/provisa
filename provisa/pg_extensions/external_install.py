@@ -43,7 +43,7 @@ from typing import Protocol
 _OS = {"Linux": "linux", "Darwin": "darwin"}
 _ARCH = {"x86_64": "x64", "amd64": "x64", "aarch64": "arm64", "arm64": "arm64"}
 # Shared libraries that support an extension but are not one.
-_NOT_EXTENSIONS = frozenset({"libduckdb"})
+_NOT_EXTENSIONS = frozenset({"libduckdb", "libpq"})
 # Extensions that load only from shared_preload_libraries.
 PRELOAD = frozenset({"pg_duckdb"})
 
