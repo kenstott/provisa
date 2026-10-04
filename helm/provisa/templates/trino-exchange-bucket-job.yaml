@@ -1,19 +1,22 @@
 {{- if and .Values.trino.enabled .Values.minio.enabled (not .Values.trino.exchange.s3.endpoint) }}
 {{- /*
-  Creates the FTE exchange bucket in the in-cluster MinIO before Trino starts.
-  Only runs when the exchange manager targets in-cluster MinIO; for external S3
-  the bucket is expected to already exist.
+  Creates the FTE exchange bucket in the in-cluster MinIO, alongside the release's other
+  resources. Only runs when the exchange manager targets in-cluster MinIO; for external S3 the
+  bucket is expected to already exist.
+
+  Not a post-install hook: Helm runs those only after `helm install --wait` sees every pod Ready,
+  and the API pod is not Ready until its boot has provisioned catalogs on Trino, whose
+  fault-tolerant execution spools to this bucket. As a hook the bucket never existed when it was
+  needed (Trino: NoSuchBucket, rescheduling forever) and the install deadlocked. The name carries
+  the revision, since a Job's spec cannot change in place on an upgrade.
 */}}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ .Release.Name }}-trino-exchange-bucket
-  annotations:
-    "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "-5"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  name: {{ .Release.Name }}-trino-exchange-bucket-{{ .Release.Revision }}
 spec:
   backoffLimit: 6
+  ttlSecondsAfterFinished: 600
   template:
     metadata:
       labels:

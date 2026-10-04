@@ -271,6 +271,17 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.provisa.resources | nindent 12 }}
+          # Boot waits on the engine and the control plane, each step bounded by the setting
+          # engine.ready_timeout (120 s by default) and failing by name when it runs out. Liveness is
+          # held off until /health first answers, so a booting pod is not killed before its own
+          # bound can say what it waited on; the budget covers several bounded steps.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.provisa.port }}
+              scheme: {{ if .Values.tls.enabled }}HTTPS{{ else }}HTTP{{ end }}
+            periodSeconds: 10
+            failureThreshold: {{ .Values.provisa.startupProbe.failureThreshold }}
           readinessProbe:
             httpGet:
               path: /health

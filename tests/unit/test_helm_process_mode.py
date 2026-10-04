@@ -37,3 +37,29 @@ def test_the_api_container_is_started_in_a_process_mode_the_product_accepts():
     ]
     modes = [e.get("value") for e in api.get("env", []) if e["name"] == "PROVISA_MODE"]
     assert all(m in process_mode.MODES for m in modes), modes
+
+
+def test_liveness_waits_for_boot_and_the_exchange_bucket_is_created_with_the_install():
+    """Boot's steps are each bounded by engine.ready_timeout and fail by name; liveness killed the
+    pod before a step could (startupProbe). And the exchange bucket Trino spools to was a
+    post-install hook, which Helm runs only after `--wait` sees every pod Ready — never, since the
+    API's boot needed that bucket."""
+    rendered = _render(*_LOCAL)
+    assert rendered.returncode == 0, rendered.stderr
+    docs = list(_documents(rendered.stdout))
+    deployment = next(
+        d
+        for d in docs
+        if d.get("kind") == "Deployment" and d["metadata"]["name"].endswith("-provisa")
+    )
+    (api,) = [
+        c for c in deployment["spec"]["template"]["spec"]["containers"] if c["name"] == "provisa"
+    ]
+    probe = api["startupProbe"]
+    assert probe["periodSeconds"] * probe["failureThreshold"] >= 600
+    bucket_jobs = [
+        d for d in docs if d.get("kind") == "Job" and "exchange-bucket" in d["metadata"]["name"]
+    ]
+    assert bucket_jobs
+    for job in bucket_jobs:
+        assert "helm.sh/hook" not in (job["metadata"].get("annotations") or {})

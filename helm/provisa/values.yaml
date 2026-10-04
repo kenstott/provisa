@@ -160,6 +160,10 @@ provisa:
     pullPolicy: IfNotPresent
   port: 8000
   flightPort: 8815
+  # How long a booting pod may take before /health answers: periodSeconds 10 x this. Boot's
+  # engine and control-plane steps are each bounded by engine.ready_timeout and fail by name.
+  startupProbe:
+    failureThreshold: 60
   flightService:
     # ClusterIP  — internal only, use kubectl port-forward for local dev
     # LoadBalancer — cloud provider assigns an external IP (recommended for production)
