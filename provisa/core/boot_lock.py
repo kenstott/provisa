@@ -74,7 +74,7 @@ from sqlalchemy import (
     text,
 )
 
-from provisa.core.database import create_engine_from_url
+from provisa.core.database import control_plane_lock_connection, create_engine_from_url
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Connection as SAConnection
@@ -169,8 +169,9 @@ def control_plane_boot_lock(platform_url: str) -> Generator[BootLock]:
                 lock.release()
             return
         # A session-level lock lives on this one connection, so it stays open (autocommit: the
-        # lock must not sit inside a transaction that idles for the whole boot).
-        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        # lock must not sit inside a transaction that idles for the whole boot) — on the server
+        # itself, since behind a transaction-pooling PgBouncer no session is this process's own.
+        with control_plane_lock_connection(engine) as conn:
             conn.execute(text(f"SELECT pg_advisory_lock({_BOOT_LOCK_KEY})"))
             try:
                 # Under the lock, so the CREATE TABLE IF NOT EXISTS here never races another

@@ -39,7 +39,7 @@ import threading
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from provisa.core.database import create_engine_from_url
+from provisa.core.database import control_plane_lock_engine, create_engine_from_url
 from provisa.core.host_lock import FileLock, control_plane_lock_dir, lock_name
 
 log = logging.getLogger(__name__)
@@ -54,11 +54,18 @@ class SchedulerHolder:
     holder)."""
 
     def __init__(self, platform_url: str, scope: str) -> None:
-        self._engine = create_engine_from_url(platform_url, pool_size=1, max_overflow=0)
         self._scope = scope
         self._conn = None
         self._held = False
         self._file: FileLock | None = None
+        store = create_engine_from_url(platform_url, pool_size=1, max_overflow=0)
+        # The claim's session is on the server itself: behind a pooling PgBouncer no session is
+        # this process's own, so a lock taken there would not be.
+        self._engine = (
+            control_plane_lock_engine(store) if store.dialect.name == "postgresql" else store
+        )
+        if store is not self._engine:
+            store.dispose()
         if self._engine.dialect.name != "postgresql":
             self._file = FileLock(
                 control_plane_lock_dir(platform_url) / lock_name("scheduler-holder", scope)

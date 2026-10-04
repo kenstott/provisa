@@ -72,7 +72,9 @@ def test_pgbouncer_ingest_engine_never_prepares(captured: list[dict[str, Any]]) 
 def test_tenant_mirror_inherits_the_control_plane_pgbouncer_choice(
     captured: list[dict[str, Any]],
 ) -> None:
-    tenant = D.create_engine_from_url("postgresql+psycopg://u:p@h:5432/db?use_pgbouncer=true")
+    tenant = D.create_engine_from_url(
+        "postgresql+psycopg://u:p@h:6432/db?use_pgbouncer=true&direct=h:5432"
+    )
     try:
         engine = _ingest("mirror", use_pgbouncer=D.pg_uses_pgbouncer(tenant))
         assert (

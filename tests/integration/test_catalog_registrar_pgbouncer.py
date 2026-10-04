@@ -16,9 +16,13 @@ PgBouncer (the Helm chart's default) a session belongs to no one client, so the 
 whichever server connection took it and the unlock ran on whichever one came next. It now takes
 a transaction-scoped lock in a transaction that spans the block. These tests reach the control
 plane through the stack's PgBouncer (POOL_MODE transaction), as a pooled deployment does.
+
+The locks that must outlive a transaction (the boot lock, replica claims, the scheduler holder, the
+seed and schema locks) are taken on the server itself, through ``control_plane_lock_connection``,
+which opens to the store URL's ``direct=`` address.
 """
 
-# Requirements: REQ-1429
+# Requirements: REQ-1429, REQ-1900
 
 from __future__ import annotations
 
@@ -31,6 +35,7 @@ import psycopg2.errors
 import pytest
 from sqlalchemy.engine import URL
 
+from provisa.core.database import control_plane_lock_connection, create_engine_from_url
 from provisa.core.trino_system_catalogs import _CATALOG_LOCK_KEY, one_registrar
 
 pytestmark = [pytest.mark.integration]
@@ -102,3 +107,30 @@ def test_the_lock_is_released_when_the_block_fails():
     assert _held_on_the_server() == 0
     with one_registrar(pooled, 2):
         pass
+
+
+def test_a_session_lock_through_the_helper_holds_across_the_pooled_stores_transactions():
+    from sqlalchemy import text
+
+    direct = _url("PG_PORT")
+    pooled = _url("PGBOUNCER_PORT").render_as_string(hide_password=False)
+    store = create_engine_from_url(
+        f"{pooled}?use_pgbouncer=true&direct={direct.host}:{direct.port}"
+    )
+    key = 0x50564C4B  # this test's own
+    try:
+        with control_plane_lock_connection(store) as lock:
+            lock.execute(text(f"SELECT pg_advisory_lock({key})"))
+            # Many transactions on the pooled store, each on whichever server connection PgBouncer
+            # hands out: none of them is the lock's session, and none disturbs it.
+            for _ in range(5):
+                with store.begin() as conn:
+                    conn.execute(text("SELECT 1"))
+                with store.connect() as conn:
+                    taken = conn.execute(text(f"SELECT pg_try_advisory_xact_lock({key})")).scalar()
+                    assert taken is False  # held by the helper's session, on the server
+            lock.execute(text(f"SELECT pg_advisory_unlock({key})"))
+        with store.connect() as conn:
+            assert conn.execute(text(f"SELECT pg_try_advisory_xact_lock({key})")).scalar() is True
+    finally:
+        store.dispose()

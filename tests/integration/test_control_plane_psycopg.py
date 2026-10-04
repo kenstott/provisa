@@ -63,7 +63,9 @@ async def test_a_control_plane_statement_is_prepared_once_and_reused():
 
 
 async def test_behind_pgbouncer_nothing_is_prepared():
-    db = _db(_URL + "?use_pgbouncer=true")
+    # The server itself stands in for PgBouncer here; direct= names it, as every pooled URL must.
+    direct = f"{os.environ.get('PG_HOST', 'localhost')}:{os.environ.get('PG_PORT', '5432')}"
+    db = _db(_URL + f"?use_pgbouncer=true&direct={direct}")
     try:
         for i in range(3):
             async with db.acquire() as conn:
