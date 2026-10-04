@@ -129,11 +129,13 @@ async def _persist_source(  # REQ-307, REQ-1923
     namespace: str,
     auth: dict | None,
     brand_id: str | None,
+    cache_ttl: int,
     conn,
 ) -> None:
     """Write the ``sources`` row. The credential goes to the org's vault and the row carries the
     reference (REQ-1695); the namespace, the auth scheme and the brand ride in
-    ``federation_hints``."""
+    ``federation_hints``. ``cache_ttl`` is the source's own landing TTL, offered at create: every
+    table of a remote GraphQL source is landed, so its tables are saved against it (REQ-1907)."""
     from provisa.api.admin.schema_common import store_source_password
     from provisa.graphql_remote.brands import BRAND_HINT, NAMESPACE_HINT
 
@@ -156,12 +158,20 @@ async def _persist_source(  # REQ-307, REQ-1923
             "path": url,
             "description": description,
             "federation_hints": hints,
+            "cache_ttl": cache_ttl,
             "password_ref": await store_source_password(
                 getattr(identity, "user_id", None), source_id, secret
             ),
         },
         index_elements=["id"],
-        update_columns=["path", "description", "username", "federation_hints", "password_ref"],
+        update_columns=[
+            "path",
+            "description",
+            "username",
+            "federation_hints",
+            "cache_ttl",
+            "password_ref",
+        ],
     )
 
 
@@ -212,6 +222,7 @@ async def _register_branded_source(request: Request, body: "GraphQLRemoteSourceR
             namespace,
             brand.auth(token),
             brand.id,
+            body.cache_ttl,
             conn,
         )
     state.graphql_remote_sources[body.source_id] = {
@@ -493,6 +504,7 @@ async def register_graphql_remote_source(
             body.namespace,
             body.auth,
             None,
+            body.cache_ttl,
             _conn,
         )
         if body.domain_id:
