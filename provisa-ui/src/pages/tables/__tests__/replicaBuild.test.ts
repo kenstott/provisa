@@ -34,6 +34,7 @@ function build(over: Partial<ReplicaBuild>): ReplicaBuild {
     sourceId: "src",
     schemaName: "public",
     tableName: "orders",
+    region: null,
     state: "idle",
     requestedReason: null,
     method: null,

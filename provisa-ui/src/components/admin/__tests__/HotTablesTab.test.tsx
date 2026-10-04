@@ -17,14 +17,15 @@ import { render, screen, within } from "../../../test-utils/render";
 import type { HotTableStat } from "../../../api/admin";
 
 const rows: HotTableStat[] = [
-  { tableName: "currencies", catalog: "pg", schemaName: "public", rowCount: 40, kind: "hot" },
-  { tableName: "orders", catalog: "pg", schemaName: "public", rowCount: 5000, kind: "replica" },
+  { tableName: "currencies", catalog: "pg", schemaName: "public", rowCount: 40, kind: "hot", region: null },
+  { tableName: "orders", catalog: "pg", schemaName: "public", rowCount: 5000, kind: "replica", region: null },
   {
     tableName: "items",
     catalog: "pg",
     schemaName: "public",
     rowCount: 0,
     kind: "replica_building",
+    region: null,
   },
 ];
 
