@@ -575,3 +575,24 @@ def test_serve_stream_through_cache_check_rows_false_skips_the_decoded_read(boun
             assert [r for b in out.batches() for r in b] == _ROWS
     finally:
         run.close()
+
+
+@pytest.mark.parametrize("declared", ["numeric", None])
+def test_flight_direct_miss_and_its_hit_build_one_arrow_shape(declared):
+    """Flight's DIRECT stream (the miss) and its rows-entry hit build Arrow through one rows->Arrow
+    typing: a Decimal stays a decimal on both, and the hit's table has the miss's schema even when
+    it holds fewer rows (a Postgres stream declares ``numeric``, with no precision or scale)."""
+    from provisa.federation.runtime_support import arrow_batches_from_rows
+
+    rows = [(1, decimal.Decimal("129.99")), (2, decimal.Decimal("19.99"))]
+    names = ["id", "amount"]
+    types = ["int8", declared] if declared else None
+    miss_schema, batches = arrow_batches_from_rows(
+        StreamingQueryResult(iter([rows]), column_names=names, column_types=types)
+    )
+    miss = pa.Table.from_batches(list(batches), schema=miss_schema)
+    entry = {"kind": KIND_ROWS, "rows": [list(rows[1])], "column_names": names}
+    hit = entry_as_arrow(entry, types)
+    assert pa.types.is_decimal(miss.schema.field("amount").type)
+    assert hit.schema == miss.schema
+    assert hit.to_pylist() == miss.to_pylist()[1:2]
