@@ -126,7 +126,8 @@ def _client(planes) -> TestClient:
     return TestClient(app)
 
 
-_AS_ALICE = {"Authorization": "Bearer tok-alice"}
+# REQ-1235: a request names its org; belonging to one org does not name it.
+_AS_ALICE = {"Authorization": "Bearer tok-alice", "x-org-provisa": _ORG}
 
 
 # ── the store ─────────────────────────────────────────────────────────────────
