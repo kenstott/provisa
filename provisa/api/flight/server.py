@@ -645,9 +645,17 @@ class ProvisaFlightServer(
 
             try:
                 with request_budget(request_timeout_for("flight")):
-                    return self._execute_with_role_cap(request, limiter, role_id, cap)
+                    result = self._execute_with_role_cap(request, limiter, role_id, cap)
             except FlightDeadlineExceeded as exc:
                 raise _flight_error(str(exc), exc) from exc
+            # REQ-1910: the statement text is a debug-detail fact, and the request's detail is
+            # known only once the pipeline has resolved its trace scope (a window, or the ticket's
+            # own hint): recorded here, after that, rather than only at the ticket's arrival.
+            from provisa.otel_compat import annotate_request
+
+            text_attr = "flight__sql" if ticket_type == "sql" else "flight__gql_query"
+            annotate_request(**{text_attr: str(query_text)[:200]})
+            return result
 
         return self._do_get_catalog(ticket)
 
