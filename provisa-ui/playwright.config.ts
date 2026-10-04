@@ -157,6 +157,11 @@ const AMD64_ONLY_SPECS = ["**/source-to-query-exasol.spec.ts"];
 // source-to-query-olap-lake-trino.spec.ts).
 const AMD64_ONLY_TITLES = /\bdruid: /;
 const IS_AMD64 = process.arch === "x64";
+// REQ-1922: the two-region demo spec owns its own servers (scripts/launch-demo-regions.sh --test),
+// so it never uses the core backend. Excluded from every default project and run only via
+// `--project regions-demo` (infra-features' CI lane). A skip would be a defect, so it is NOT gated by
+// an env flag -- selecting the project IS the gate.
+const REGIONS_SPECS = ["**/regions-demo.spec.ts"];
 // The vault a source's password is stored in encrypts at rest, and the key is what authorizes
 // reading it back (REQ-685/REQ-1695). This host has no OS keychain for the store to mint one in,
 // so the key is supplied explicitly — exactly as every deployment that stores secrets must, and as
@@ -533,7 +538,12 @@ export default defineConfig({
       ? [
           {
             name: "core",
-            testIgnore: [...TRINO_SPECS, ...SWAP_SPECS, ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS)],
+            testIgnore: [
+              ...TRINO_SPECS,
+              ...SWAP_SPECS,
+              ...REGIONS_SPECS,
+              ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
+            ],
           },
         ]
       : []),
@@ -546,6 +556,9 @@ export default defineConfig({
           },
         ]
       : []),
+    // REQ-1922: selected explicitly with `--project regions-demo`; the spec brings up its own
+    // two-region instance, so it does not use the default webServer/backends.
+    { name: "regions-demo", testMatch: REGIONS_SPECS },
     // Requires RUNS_TRINO (the Trino webServer + its shared-org env overrides) exactly like the
     // "trino" project does — it is a separate project only so a routine core/trino run never
     // selects it by accident. See engine-swap.spec.ts's module doc for the invocation.

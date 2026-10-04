@@ -88,6 +88,22 @@ if [[ "$MODE" == "check" ]]; then
   exit 0
 fi
 
+# --- demo credentials: generated once per instance, reused across restarts (--reset regenerates) ---
+CREDS_FILE="$INSTANCE_DIR/creds.env"
+if [[ "$MODE" == "test" ]]; then
+  # Fixed, known creds so the spec can log in (the instance is throwaway and unexposed).
+  ADMIN_PW="admin-test-pw"; RESIDENT_PW="resident-test-pw"; JWT_SECRET="regions-demo-test-jwt-secret-0001234567"
+elif [[ -f "$CREDS_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$CREDS_FILE"
+else
+  _rand() { openssl rand -hex "$1" 2>/dev/null || date +%s%N | shasum | head -c $(( $1 * 2 )); }
+  ADMIN_PW="admin-$(_rand 6)"
+  RESIDENT_PW="resident-$(_rand 6)"
+  JWT_SECRET="$(_rand 24)"
+  { echo "ADMIN_PW=$ADMIN_PW"; echo "RESIDENT_PW=$RESIDENT_PW"; echo "JWT_SECRET=$JWT_SECRET"; } >"$CREDS_FILE"
+fi
+
 # --- one shared fakeredis TCP server (cache for both regions) ---
 "$PY" - "$REDIS_PORT" <<'PY' &
 import sys, fakeredis
@@ -110,12 +126,12 @@ PG_URL="postgresql+psycopg://provisa:provisa@/provisa?host=$PGHOST&port=$PGPORT"
 EU_ADDRESS="http://127.0.0.1:$EU_UI" US_ADDRESS="http://127.0.0.1:$US_UI" \
 EU_ENGINE_URL="duckdb:///$INSTANCE_DIR/eu/engine.duckdb" \
 US_ENGINE_URL="duckdb:///$INSTANCE_DIR/us/engine.duckdb" \
-PG_URL="$PG_URL" REDIS_URL="$REDIS_URL" DATA_CSV_DIR="$CSV_DIR" \
+PG_URL="$PG_URL" REDIS_URL="$REDIS_URL" DATA_CSV_DIR="$CSV_DIR" JWT_SECRET="$JWT_SECRET" \
   "$PY" - "$REPO/config/provisa-regions-demo.yaml.tmpl" "$CONFIG_OUT" <<'PY'
 import os, sys
 src, out = sys.argv[1], sys.argv[2]
 text = open(src).read()
-for tok in ("EU_ADDRESS","US_ADDRESS","EU_ENGINE_URL","US_ENGINE_URL","PG_URL","REDIS_URL","DATA_CSV_DIR"):
+for tok in ("EU_ADDRESS","US_ADDRESS","EU_ENGINE_URL","US_ENGINE_URL","PG_URL","REDIS_URL","DATA_CSV_DIR","JWT_SECRET"):
     text = text.replace(f"@@{tok}@@", os.environ[tok])
 open(out, "w").write(text)
 PY
@@ -131,6 +147,7 @@ launch_node() {
   PLATFORM_DATABASE_URL="$PG_URL" TENANT_DATABASE_URL="$PG_URL" \
   REDIS_URL="$REDIS_URL" \
   PROVISA_CONFIG="$CONFIG_OUT" PROVISA_CONFIG_REPLACE="true" \
+  PROVISA_SUPERUSER_USERNAME="admin" PROVISA_SUPERUSER_PASSWORD="$ADMIN_PW" \
     $PROVISA run --region "$region" --api-port "$api" --ui-port "$ui" \
       --data-dir "$datadir" --no-browser \
       >"$INSTANCE_DIR/$region.log" 2>&1 &
@@ -139,15 +156,44 @@ launch_node() {
 launch_node eu "$EU_API" "$EU_UI" "$INSTANCE_DIR/eu"
 launch_node us "$US_API" "$US_UI" "$INSTANCE_DIR/us"
 
+# --- first-launch seed: admin is bootstrapped from PROVISA_SUPERUSER_* above; the resident user
+# (eu_resident role) is created the real way -- admin opens an invite bound to eu_resident and
+# /auth/register redeems it. Runs once; --reset clears the marker so it re-seeds. ---
+_seed_resident() {
+  local marker="$INSTANCE_DIR/.seeded"
+  [[ -f "$marker" ]] && return 0
+  for _i in $(seq 1 30); do
+    [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$EU_API/auth/provider-type" 2>/dev/null)" == "200" ]] && break
+    sleep 5
+  done
+  if EU_API="$EU_API" ADMIN_PW="$ADMIN_PW" RESIDENT_PW="$RESIDENT_PW" "$PY" - <<'PY'
+import os, json, base64, urllib.request
+api = f"http://127.0.0.1:{os.environ['EU_API']}"
+admin = "Basic " + base64.b64encode(f"admin:{os.environ['ADMIN_PW']}".encode()).decode()
+def post(path, body, auth=None):
+    h = {"content-type": "application/json"}
+    if auth: h["Authorization"] = auth
+    req = urllib.request.Request(api + path, data=json.dumps(body).encode(), headers=h)
+    return json.load(urllib.request.urlopen(req, timeout=20))
+inv = post("/admin/invites/", {"org_id": "default", "role_id": "eu_resident"}, auth=admin)
+post("/auth/register", {"username": "resident", "password": os.environ['RESIDENT_PW'], "invite_token": inv["token"]})
+print("seeded resident -> eu_resident")
+PY
+  then touch "$marker"; else echo "WARN: resident seed failed (see logs); residency demo step unavailable"; fi
+}
+_seed_resident
+
 if [[ "$MODE" == "test" ]]; then
-  # Machine-readable line the Playwright harness parses, then it waits for readiness itself.
+  # Machine-readable lines the Playwright harness parses, then it waits for readiness itself.
   echo "PORTS eu_ui=$EU_UI eu_api=$EU_API us_ui=$US_UI us_api=$US_API"
+  echo "CREDS admin=$ADMIN_PW resident=$RESIDENT_PW"
   wait  # stay up until the spec kills the process group (teardown trap wipes the temp dir)
 else
   echo "demo-regions up:"
   echo "  eu:  http://127.0.0.1:$EU_UI   (API http://127.0.0.1:$EU_API)"
   echo "  us:  http://127.0.0.1:$US_UI   (API http://127.0.0.1:$US_API)"
   echo "  shared model store: embedded Postgres at $PGHOST:$PGPORT ; cache: fakeredis :$REDIS_PORT"
+  echo "Logins (basic auth):  admin / $ADMIN_PW  (org_admin)   resident / $RESIDENT_PW  (eu_resident)"
   echo "Stop with: scripts/launch-demo-regions.sh --stop"
   wait
 fi

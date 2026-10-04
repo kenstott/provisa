@@ -37,7 +37,13 @@ regions:
   - { id: us, engine: us_engine, replicas: us_data, views: us_data, cache: cache, state: us_data, record: us_data }
 
 auth:
-  provider: none
+  # REQ-124: basic auth so roles are ENFORCED (dev/no-auth skips admin enforcement, which would hide
+  # the data_residency refusal). allow_simple_auth lets the launcher's seed step register the resident
+  # user. The launcher seeds: admin (PROVISA_SUPERUSER_*) -> org_admin, and resident -> eu_resident via
+  # an invite + /auth/register. Passwords are the launcher's env, printed in the runbook.
+  provider: basic
+  allow_simple_auth: true
+  jwt_secret: "@@JWT_SECRET@@"
   assignments_source: provisa
   default_assignments:
     - { domain_id: "*", role_id: org_admin }
@@ -80,23 +86,28 @@ sources:
   - { id: shelter_files, type: files, path: "@@DATA_CSV_DIR@@" }
 
 tables:
-  # Homed in eu: its data is replicated to and read from eu's stores.
+  # Homed in eu: replicated (replicate=0) so eu builds its replica, and a us read is served from it
+  # across regions. Without a built replica a cross-region read is refused by name.
   - source_id: shelter_files
     domain_id: shelter
     schema: main
     table: intake_eu
     region: eu
+    replicate: 0
+    cache_ttl: 3600
     file_glob: "intake_eu/*.csv"
     columns:
       - { name: id, data_type: integer, is_primary_key: true, visible_to: [org_admin] }
       - { name: region, data_type: varchar, visible_to: [org_admin] }
       - { name: animal, data_type: varchar, visible_to: [org_admin] }
-  # Homed in us.
+  # Homed in us (replicated, symmetric with intake_eu).
   - source_id: shelter_files
     domain_id: shelter
     schema: main
     table: intake_us
     region: us
+    replicate: 0
+    cache_ttl: 3600
     file_glob: "intake_us/*.csv"
     columns:
       - { name: id, data_type: integer, is_primary_key: true, visible_to: [org_admin] }
