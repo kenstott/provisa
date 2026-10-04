@@ -196,6 +196,9 @@ class _Engine:
     def __init__(self) -> None:
         self.sqls: list[str] = []
 
+    # The engine seam names its SQL dialect; refresh resolves a view's settings in it.
+    dialect = "duckdb"
+
     def address_replicas(self, sql):
         return sql  # this stand-in's tables are all read where the statement names them
 
