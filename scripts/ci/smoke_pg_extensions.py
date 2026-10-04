@@ -41,14 +41,24 @@ def _postgres_fdw_reads(db) -> list[str]:
     proves the libpq the bundle ships is the one that loads (the build's own libpq is moved away
     before this runs in CI)."""
     socket_dir = parse_qs(urlparse(db.get_uri()).query)["host"][0]
-    out = db.psql(
+    sql = (
         "CREATE TABLE smoke_src(id int); INSERT INTO smoke_src VALUES (1),(2),(3);"
         f"CREATE SERVER smoke_rem FOREIGN DATA WRAPPER postgres_fdw "
         f"OPTIONS (host '{socket_dir}', dbname 'postgres');"
-        "CREATE USER MAPPING FOR CURRENT_USER SERVER smoke_rem;"
+        "CREATE USER MAPPING FOR CURRENT_USER SERVER smoke_rem OPTIONS (user 'postgres');"
         "CREATE FOREIGN TABLE smoke_ft(id int) SERVER smoke_rem OPTIONS (table_name 'smoke_src');"
         "SELECT 'fdw-sum=' || sum(id) FROM smoke_ft;"
     )
+    # psql directly rather than pgserver's psql(), which drops stderr: a failed read names why.
+    psql = Path(pgserver.__file__).parent / "pginstall" / "bin" / "psql"
+    done = subprocess.run(  # noqa: S603
+        [str(psql), "-v", "ON_ERROR_STOP=1", db.get_uri()],
+        input=sql,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    out = done.stdout + done.stderr
     if "fdw-sum=6" in out:
         print("  OK   postgres_fdw foreign-table read")
         return []
