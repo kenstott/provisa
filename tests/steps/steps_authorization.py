@@ -208,7 +208,7 @@ def _infer_gql_type(field_name: str) -> str:
 @then(
     "the createUser tracked-function entry carries suggested_associations whose top "
     'candidate is the users table (score 1.0, reason "return type User"), '
-    "and it is assigned to no role — the suggestion is a hint that no code auto-binds"
+    "and it assigns no role (no visible_to) — the suggestion is a hint that no code auto-binds"
 )
 def then_create_user_has_top_suggestion_users(shared_data: dict) -> None:
     suggestions: list[TableCandidate] = shared_data["create_user_suggestions"]
@@ -229,7 +229,8 @@ def then_create_user_has_top_suggestion_users(shared_data: dict) -> None:
     # Reason must mention the return type 'User'
     assert "User" in top.reason, f"Expected reason to mention 'User', got '{top.reason}'"
 
-    # The corresponding function entry is assigned to no role (REQ-871: a suggestion assigns none).
+    # The mapped entry assigns no role: the steward assigns roles when registering the command
+    # (REQ-870), so a suggestion can never grant anything.
     fn_entry = None
     for fn in shared_data["functions"]:
         field = fn.get("field_name") or fn.get("name", "")
@@ -242,17 +243,12 @@ def then_create_user_has_top_suggestion_users(shared_data: dict) -> None:
         + str([f.get("field_name") or f.get("name") for f in shared_data["functions"]])
     )
 
-    visible_to = fn_entry.get("visible_to", [])
-    assert not visible_to, f"Expected createUser assigned to no role, got {visible_to!r}"
+    assert "visible_to" not in fn_entry, f"the mapping assigned roles: {fn_entry['visible_to']!r}"
 
-    # The mapper should attach suggested_associations; if it does, verify them.
-    if "suggested_associations" in fn_entry:
-        assoc = fn_entry["suggested_associations"]
-        assert assoc, "suggested_associations list is present but empty for createUser"
-        top_assoc = assoc[0]
-        assert top_assoc.get("table") == users_table_name or (
-            isinstance(top_assoc, TableCandidate) and top_assoc.table == users_table_name
-        ), f"suggested_associations top table mismatch: {top_assoc}"
+    # The mapper attaches the suggestions to the entry it maps.
+    assoc = fn_entry["suggested_associations"]
+    assert assoc, "suggested_associations list is empty for createUser"
+    assert assoc[0]["table"] == users_table_name, f"top suggestion mismatch: {assoc[0]}"
 
 
 @then(

@@ -5,5 +5,5 @@ Feature: REQ-871 — Authorization
   Scenario: REQ-871 default behaviour
     Given a remote GraphQL source with a query "users" returning [User] (so type_to_table maps User → the users table) and a mutation "createUser(input: UserInput): User"
     When the schema is registered and mapped
-    Then the createUser tracked-function entry carries suggested_associations whose top candidate is the users table (score 1.0, reason "return type User"), and it is assigned to no role — the suggestion is a hint that no code auto-binds
+    Then the createUser tracked-function entry carries suggested_associations whose top candidate is the users table (score 1.0, reason "return type User"), and it assigns no role (no visible_to) — the suggestion is a hint that no code auto-binds
     And a mutation "sendTelemetry: Boolean" with no table-typed return yields an empty suggested_associations list rather than an error

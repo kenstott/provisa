@@ -25352,7 +25352,9 @@
   type: behavioral
   description: 'Mutation↔table association suggestions at registration time via protocol-specific association-suggesters.
     Universal rule: adapter emits ranked (mutation → table) candidates; suggestions are hints only; admin-confirmed;
-    confirmed associations register with empty writable_by (default-deny); any mutation may bind to any
+    [SUPERSEDED by REQ-871 amendment, 2026-10-03 -- a command has one assigned-roles list, visible_to (REQ-1156).
+    Kept here for history; do not implement against it.] confirmed associations register with empty writable_by
+    (default-deny); [END SUPERSEDED BLOCK] any mutation may bind to any
     table (manual override always); unmatched mutations remain registerable. GraphQL: walk mutation return
     type''s fields, unwrap NON_NULL/LIST, match leaf types against type_to_table; LIST-valued field =
     changed-records collection; prioritize single object > list-of-table-type; ignore scalar/stats fields.
@@ -25369,11 +25371,17 @@
     (0.4); name-affix / input-type stem fallback (0.3). Nothing auto-binds — the functions are pure and
     return hints; an empty list is the honest false-negative case. The GraphQL remote mapper (provisa/graphql_remote/mapper.py)
     invokes it during registration so every mapped mutation entry carries suggested_associations = [{table,
-    score, reason}] computed from its unwrapped return-type leaves + input-type stem, with writable_by
-    left empty (default-deny). Consuming these hints into an admin confirmation surface is REQ-870; projecting/binding
-    across surfaces is REQ-872. (Amended 2026-10-03, ONE ROLE LIST:) A command has no writable_by; every
-    "empty writable_by" above reads as "assigned to no role" (visible_to empty). A suggestion assigns no
-    role; only an admin assigns a command to a role.'
+    score, reason}] computed from its unwrapped return-type leaves + input-type stem, [SUPERSEDED by REQ-871
+    amendment, 2026-10-03 -- the mapped entry carries no role list at all. Kept here for history; do not
+    implement against it.] with writable_by left empty (default-deny). [END SUPERSEDED BLOCK] Consuming
+    these hints into an admin confirmation surface is REQ-870; projecting/binding across surfaces is REQ-872.
+    (Amended 2026-10-03, ONE ROLE LIST:) A command has no writable_by; every "empty writable_by" above
+    reads as "assigned to no role" (visible_to empty). A suggestion assigns no role; only an admin assigns
+    a command to a role. (Amended 2026-10-03, ROLES ARE ASSIGNED AT REGISTRATION:) A mapped mutation entry
+    carries its suggested_associations and no role list: the mapping assigns no role, so a suggestion can
+    never grant anything. A command has one assigned-roles list, visible_to (REQ-1156), and the steward
+    sets it when registering the command (REQ-870); confirming an association binds the table the command
+    writes and assigns no role.'
   use_case: Registration of mutations across heterogeneous sources requires protocol-aware association
     signals. Per-adapter suggesters reduce admin friction by ranking likely alignment; unmatched mutations
     remain registerable as global functions or require manual binding.
@@ -25383,6 +25391,7 @@
   tests:
   - tests/unit/test_association_suggester.py
   - tests/unit/test_graphql_remote_mapper.py
+  - tests/steps/steps_authorization.py
   target: 2026-Q4
   scenario: 'Given a remote GraphQL source with a query "users" returning [User] (so type_to_table
 
@@ -25392,9 +25401,9 @@
 
     Then the createUser tracked-function entry carries suggested_associations whose top
 
-    candidate is the users table (score 1.0, reason "return type User"), and it is assigned
+    candidate is the users table (score 1.0, reason "return type User"), and it assigns no
 
-    to no role — the suggestion is a hint that no code auto-binds
+    role (no visible_to) — the suggestion is a hint that no code auto-binds
 
     And a mutation "sendTelemetry: Boolean" with no table-typed return yields an empty
 
