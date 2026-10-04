@@ -1506,7 +1506,7 @@ webhooks:
   domain_id: pet-store
   kind: mutation
   method: POST
-  name: add_pet
+  name: petstore_add_pet
   timeout_ms: 5000
   url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/pet
   visible_to:
