@@ -2853,8 +2853,10 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         from provisa.api.data.endpoint_dev import _execute_govdata
 
         result = await _execute_govdata(plan.source_id, plan.sql, state)
-    elif plan.source_id == "provisa-admin" or not state.source_pools.has(plan.source_id):
+    elif plan.source_id == "provisa-admin":
         # Admin-owned tables (meta.*) are views over the org's model (REQ-1919): its model store.
+        # That store serves this source and no other: a statement for any other source reaching
+        # it would be read from, or written into, the control plane.
         tenant_db = state.model_db
         if tenant_db is None:
             raise RuntimeError("Admin model_db not available")
@@ -2873,6 +2875,18 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
                 rows = [tuple(r) for r in _rows]
             _span.set_attribute("db.row_count", len(rows))
         result = QueryResult(rows=rows, column_names=col_names)
+    elif not state.source_pools.has(plan.source_id):
+        # A DIRECT plan names a source this process holds no driver for. Nothing here can run it,
+        # and it is refused by name rather than handed to some other connection.
+        from provisa.api.errors import ApiError
+
+        raise ApiError(
+            500,
+            "data.no_direct_route",
+            f"source {plan.source_id!r} has no direct connection on this node, so a statement "
+            "routed to it directly cannot run",
+            source=plan.source_id,
+        )
     else:
         # DIRECT terminal (REQ-825): single reachable source on its native driver.
         result = await engine.execute_native(
