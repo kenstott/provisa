@@ -62,6 +62,8 @@
     "requiresApproval": "Requires approval",
     "requiresApprovalHint": "Each call runs only once the approval hook approves it. With no hook configured, calls are refused.",
     "writesTable": "Writes table",
-    "writesTableHint": "The registered table this command changes. After each call, cached results and materialized views over it are refreshed."
+    "writesTableHint": "The registered table this command changes. After each call, cached results and materialized views over it are refreshed.",
+    "routinesOffered_one": "{{count}} routine in this schema is on offer",
+    "routinesOffered_other": "{{count}} routines in this schema are on offer"
   }
 }

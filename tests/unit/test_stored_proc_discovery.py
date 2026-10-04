@@ -20,7 +20,6 @@ from provisa.api.admin.introspect import (
     _pg_type_to_gql,
     classify_routine,
     native_routines,
-    register_discovered_routines,
 )
 from provisa.executor.result import QueryResult
 
@@ -142,11 +141,29 @@ async def test_native_routines_error_propagates():
         await native_routines("src1", "postgresql", "public", pool)
 
 
-# ── auto-registration into tracked-function representation ────────────────────
+# ── discovery offers routines; a steward registers them ──────────────────────
+
+
+def _offer_state(monkeypatch, source_type: str = "postgresql"):
+    """App state for the availableFunctions resolver: one database source, and a command store
+    that records any registration (discovery must make none)."""
+    from types import SimpleNamespace
+
+    from provisa.core.repositories import function as function_repo
+
+    upsert = AsyncMock()
+    monkeypatch.setattr(function_repo, "upsert_function", upsert)
+    state = SimpleNamespace(source_types={"src1": source_type}, source_pools=MagicMock())
+    monkeypatch.setattr("provisa.api.app.state", state)
+    return state, upsert
 
 
 @pytest.mark.asyncio
-async def test_register_wires_routine_into_tracked_function():
+async def test_a_database_source_offers_its_schemas_routines_and_registers_none(monkeypatch):
+    from provisa.api.admin.schema_query import Query
+    from tests.unit.gate_identity import grant
+
+    state, upsert = _offer_state(monkeypatch)
     routines = [
         DiscoveredRoutine(
             schema_name="public",
@@ -155,92 +172,31 @@ async def test_register_wires_routine_into_tracked_function():
             returns_setof=True,
             arguments=[RoutineArg(name="customer_id", type="Int")],
             description="Orders",
-        )
-    ]
-    conn = MagicMock()
-    with (
-        patch(
-            "provisa.core.repositories.function.get_function",
-            new=AsyncMock(return_value=None),
         ),
-        patch(
-            "provisa.core.repositories.function.upsert_function",
-            new=AsyncMock(return_value=1),
-        ) as up,
-    ):
-        registered, skipped = await register_discovered_routines(conn, "src1", routines)
+        DiscoveredRoutine(
+            schema_name="public", routine_name="close_order", kind="mutation", returns_setof=False
+        ),
+    ]
+    info, _ = grant(monkeypatch, "table_registration", state=state)
+    with patch(
+        "provisa.api.admin.introspect.native_routines", new=AsyncMock(return_value=routines)
+    ) as discover:
+        offered = await Query().available_functions(info, source_id="src1", schema_name="public")
 
-    assert (registered, skipped) == (1, 0)
-    func = up.call_args.args[1]
-    assert func.name == "list_orders"
-    assert func.source_id == "src1"
-    assert func.function_name == "list_orders"
-    assert func.kind == "query"
-    assert [a.name for a in func.arguments] == ["customer_id"]
+    assert discover.call_args.args[:3] == ("src1", "postgresql", "public")
+    assert [(o.name, o.comment) for o in offered] == [
+        ("list_orders", "query — Orders"),
+        ("close_order", "mutation"),
+    ]
+    upsert.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_register_skips_conflicting_hand_registered_name():
-    # A hand-registered function already owns "list_orders" pointing at a
-    # different routine — discovery must not clobber the explicit registration.
-    routines = [
-        DiscoveredRoutine(
-            schema_name="public",
-            routine_name="list_orders",
-            kind="query",
-            returns_setof=True,
-        )
-    ]
-    conn = MagicMock()
-    existing = {
-        "source_id": "OTHER",
-        "schema_name": "public",
-        "function_name": "hand_written",
-    }
-    with (
-        patch(
-            "provisa.core.repositories.function.get_function",
-            new=AsyncMock(return_value=existing),
-        ),
-        patch(
-            "provisa.core.repositories.function.upsert_function",
-            new=AsyncMock(),
-        ) as up,
-    ):
-        registered, skipped = await register_discovered_routines(conn, "src1", routines)
+async def test_a_source_with_no_routine_catalog_offers_no_routines(monkeypatch):
+    from provisa.api.admin.schema_query import Query
+    from tests.unit.gate_identity import grant
 
-    assert (registered, skipped) == (0, 1)
-    up.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_register_reintrospection_upserts_same_routine():
-    # Same routine seen again (same source+schema+name) → idempotent upsert.
-    routines = [
-        DiscoveredRoutine(
-            schema_name="public",
-            routine_name="list_orders",
-            kind="query",
-            returns_setof=True,
-        )
-    ]
-    conn = MagicMock()
-    existing = {
-        "source_id": "src1",
-        "schema_name": "public",
-        "function_name": "list_orders",
-    }
-    with (
-        patch(
-            "provisa.core.repositories.function.get_function",
-            new=AsyncMock(return_value=existing),
-        ),
-        patch(
-            "provisa.core.repositories.function.upsert_function",
-            new=AsyncMock(return_value=1),
-        ) as up,
-    ):
-        registered, skipped = await register_discovered_routines(conn, "src1", routines)
-
-    assert (registered, skipped) == (1, 0)
-    up.assert_called_once()
+    state, _ = _offer_state(monkeypatch, source_type="mysql")
+    info, _ = grant(monkeypatch, "table_registration", state=state)
+    with patch("provisa.api.admin.introspect.native_routines", new=AsyncMock(return_value=None)):
+        assert await Query().available_functions(info, source_id="src1", schema_name="x") == []

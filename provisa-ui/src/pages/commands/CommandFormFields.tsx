@@ -12,6 +12,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
+  Autocomplete,
   Button,
   Group,
   NumberInput,
@@ -210,12 +211,20 @@ export function CommandFormFields({
                   data-testid="command-function-select"
                 />
               ) : (
-                <TextInput
+                // REQ-887: the schema's routines are offered to pick from; picking one registers
+                // nothing until the command is saved.
+                <Autocomplete
                   label={t("commandFormFields.functionName")}
                   required
+                  data={availableFunctions.map((f) => f.name)}
                   value={form.functionName}
-                  onChange={(e) => setForm({ ...form, functionName: e.currentTarget.value })}
+                  onChange={(val) => setForm({ ...form, functionName: val })}
                   placeholder={t("commandFormFields.dbFunctionNamePlaceholder")}
+                  description={
+                    availableFunctions.length > 0
+                      ? t("commandFormFields.routinesOffered", { count: availableFunctions.length })
+                      : undefined
+                  }
                   data-testid="command-function-input"
                 />
               )}

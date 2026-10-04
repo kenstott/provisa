@@ -883,15 +883,32 @@ class Query:  # REQ-021, REQ-042
     async def available_functions(
         self, info: StrawberryInfo, source_id: str, schema_name: str = "openapi"
     ) -> list[AvailableTableType]:
-        """The write operations a remote source offers, to be registered as commands one at a
-        time (REQ-1924): an OpenAPI source's operations that are not GETs, a remote GraphQL
-        source's mutations, a gRPC source's mutation methods. Listing them registers none."""
+        """What a source offers to be registered as commands one at a time. A remote source
+        offers write operations (REQ-1924): an OpenAPI source's operations that are not GETs, a
+        remote GraphQL source's mutations, a gRPC source's mutation methods. A database source
+        offers the routines of ``schema_name`` (REQ-887), each with its read/write kind. Listing
+        them registers none: registration is the steward's curation step."""
         require_capability(info, "table_registration")
         from provisa.api.app import state
         from provisa.executor.source_operation import OPERATION_SCHEMA, offered_operations
 
         source_type = (getattr(state, "source_types", None) or {}).get(source_id, "")
-        if OPERATION_SCHEMA.get(source_type) != schema_name:
+        operation_schema = OPERATION_SCHEMA.get(source_type)
+        if operation_schema is None:
+            from provisa.api.admin.introspect import native_routines
+
+            routines = await native_routines(
+                source_id, source_type, schema_name, state.source_pools
+            )
+            # None: this source type has no routine catalog to read, so it offers no routines.
+            return [
+                AvailableTableType(
+                    name=r.routine_name,
+                    comment=" — ".join(p for p in (r.kind, r.description) if p),
+                )
+                for r in routines or []
+            ]
+        if operation_schema != schema_name:
             return []
         if source_type == "openapi":
             await _ensure_openapi_spec(source_id)

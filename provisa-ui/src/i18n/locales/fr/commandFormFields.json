@@ -62,6 +62,8 @@
     "requiresApproval": "Nécessite une approbation",
     "requiresApprovalHint": "Chaque appel ne s'exécute qu'une fois approuvé par le hook d'approbation. Sans hook configuré, les appels sont refusés.",
     "writesTable": "Écrit dans la table",
-    "writesTableHint": "La table enregistrée que cette commande modifie. Après chaque appel, les résultats en cache et les vues matérialisées qui l'utilisent sont actualisés."
+    "writesTableHint": "La table enregistrée que cette commande modifie. Après chaque appel, les résultats en cache et les vues matérialisées qui l'utilisent sont actualisés.",
+    "routinesOffered_one": "{{count}} routine de ce schéma est proposée",
+    "routinesOffered_other": "{{count}} routines de ce schéma sont proposées"
   }
 }

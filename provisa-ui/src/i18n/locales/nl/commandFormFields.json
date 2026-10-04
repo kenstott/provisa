@@ -62,6 +62,8 @@
     "requiresApproval": "Vereist goedkeuring",
     "requiresApprovalHint": "Elke aanroep wordt pas uitgevoerd nadat de goedkeuringshook hem goedkeurt. Zonder geconfigureerde hook worden aanroepen geweigerd.",
     "writesTable": "Schrijft tabel",
-    "writesTableHint": "De geregistreerde tabel die deze opdracht wijzigt. Na elke aanroep worden gecachte resultaten en gematerialiseerde views erover vernieuwd."
+    "writesTableHint": "De geregistreerde tabel die deze opdracht wijzigt. Na elke aanroep worden gecachte resultaten en gematerialiseerde views erover vernieuwd.",
+    "routinesOffered_one": "{{count}} routine in dit schema is beschikbaar",
+    "routinesOffered_other": "{{count}} routines in dit schema zijn beschikbaar"
   }
 }

@@ -21,7 +21,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from provisa.security.rights import ORG_ADMIN_ROLE
 
 import json
 
@@ -1555,15 +1554,14 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     return await _native_tables_rdbms(source_id, source_type, schema_name, pool)
 
 
-# ── Stored-procedure / routine auto-discovery (REQ-887) ──────────────────────
+# ── Stored-procedure / routine discovery (REQ-887) ──────────────────────────
 #
 # Extends database-source introspection to discover source-resident routines
 # (stored procedures + functions) from the vendor catalog and classify each as
-# read-returning ("query") or write/side-effecting ("mutation"). Discovered
-# routines auto-register through the existing tracked-function representation
-# (REQ-205–208); see register.register_discovered_routines. Mirrors the OpenAPI
-# discovery pattern (REQ-316/317) — introspection + auto-registration, no
-# parallel registry.
+# read-returning ("query") or write/side-effecting ("mutation"). Discovered routines are
+# OFFERED, never registered: a steward registers the ones the catalog should carry as
+# commands, one at a time (the admin ``availableFunctions`` picker, then the command form) —
+# registration is the curation step, for commands as for tables.
 
 # GraphQL scalar names — reuse the tracked-function argument type vocabulary.
 _PG_TYPE_TO_GQL: dict[str, str] = {
@@ -1689,58 +1687,3 @@ async def native_routines(  # REQ-887
 
     # Other vendors (mysql, sqlserver, oracle) not yet wired — no fallback.
     return None
-
-
-async def register_discovered_routines(  # REQ-887
-    conn: "Connection",
-    source_id: str,
-    routines: "list[DiscoveredRoutine]",
-    domain_id: str = "",
-) -> tuple[int, int]:
-    """Auto-register discovered routines as tracked functions. Returns (registered, skipped).
-
-    Conflict rule — explicit hand-registration wins, discovery never clobbers it:
-      * If no tracked function owns the exposed name → register it.
-      * If a tracked function with the same name already points at this exact
-        routine (same source_id + schema + function_name) → upsert (idempotent
-        re-introspection keeps the roles the command was assigned).
-      * If a tracked function with the same name points at a *different* routine
-        (a hand-registered function, or a different proc) → skip; a discovered
-        routine must not overwrite an explicit registration.
-    """
-    from provisa.core.models import Function, FunctionArgument
-    from provisa.core.repositories import function as function_repo
-
-    registered = 0
-    skipped = 0
-    for r in routines:
-        existing = await function_repo.get_function(conn, r.routine_name)
-        if existing is not None and not (
-            existing.get("source_id") == source_id
-            and existing.get("schema_name") == r.schema_name
-            and existing.get("function_name") == r.routine_name
-        ):
-            skipped += 1
-            continue
-        func = Function(
-            name=r.routine_name,
-            source_id=source_id,
-            schema_name=r.schema_name,
-            function_name=r.routine_name,
-            returns="",
-            arguments=[FunctionArgument(name=a.name, type=a.type) for a in r.arguments],
-            # A command found again keeps the roles it was assigned. A newly found one is
-            # assigned to the organization's administrator alone when it writes (no other role
-            # calls a mutation nobody assigned), and to every role when it reads.
-            visible_to=(
-                list(existing.get("visible_to") or [])
-                if existing is not None
-                else ([] if r.kind == "query" else [ORG_ADMIN_ROLE])
-            ),
-            domain_id=domain_id or "",
-            description=r.description,
-            kind=r.kind,
-        )
-        await function_repo.upsert_function(conn, func, origin="admin")
-        registered += 1
-    return registered, skipped

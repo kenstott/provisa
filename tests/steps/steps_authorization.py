@@ -296,73 +296,73 @@ def _make_role(role_id: str, *caps: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _register_create_order(shared_data: dict) -> None:
-    """Run discovery's registration of createOrder against the in-memory command store."""
+@given('a mutation "createOrder" in domain "sales" that discovery offers and has not registered')
+def given_create_order_offered(shared_data: dict, monkeypatch) -> None:
+    """The admin picker lists the source's routines through the product's resolver; listing them
+    registers none (REQ-887)."""
     import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
 
-    from provisa.api.admin.introspect import DiscoveredRoutine, register_discovered_routines
+    from provisa.api.admin.introspect import DiscoveredRoutine
+    from provisa.api.admin.schema_query import Query
+    from provisa.core.repositories import function as function_repo
+    from tests.unit.gate_identity import grant
 
+    upsert = AsyncMock()
+    monkeypatch.setattr(function_repo, "upsert_function", upsert)
+    state = SimpleNamespace(source_types={"s1": "postgresql"}, source_pools=MagicMock())
+    monkeypatch.setattr("provisa.api.app.state", state)
+    info, _ = grant(monkeypatch, "table_registration", state=state)
     routine = DiscoveredRoutine(
         schema_name="public", routine_name="createOrder", kind="mutation", returns_setof=False
     )
-    registered, skipped = asyncio.run(
-        register_discovered_routines(None, "s1", [routine], domain_id="sales")  # type: ignore[arg-type]
+    with patch(
+        "provisa.api.admin.introspect.native_routines", new=AsyncMock(return_value=[routine])
+    ):
+        offered = asyncio.run(
+            Query().available_functions(info, source_id="s1", schema_name="public")
+        )
+    assert [(o.name, o.comment) for o in offered] == [("createOrder", "mutation")]
+    upsert.assert_not_called()
+
+
+@given('a steward registers it, assigned to the "ops" role')
+def given_steward_registers_for_ops(shared_data: dict) -> None:
+    """The command the steward saves, as the command store holds it."""
+    from provisa.core.models import Function
+
+    command = Function(
+        name="createOrder",
+        source_id="s1",
+        schema_name="public",
+        function_name="createOrder",
+        returns="",
+        visible_to=["ops"],
+        domain_id="sales",
+        kind="mutation",
     )
-    assert (registered, skipped) == (1, 0)
+    shared_data["function_record"] = command.model_dump()
 
 
-@given(
-    'a discovered mutation "createOrder" in domain "sales", assigned on discovery to org_admin '
-    "alone"
-)
-def given_create_order_discovered(shared_data: dict, monkeypatch) -> None:
-    """Discovery registers createOrder through the product's registration; the command store
-    behind it is held in memory."""
-    from provisa.core.repositories import function as function_repo
+@then("ops reaches createOrder through its assignment and the sales domain")
+def then_ops_reaches_create_order(shared_data: dict) -> None:
+    from provisa.security.mutation_authz import command_reachable
 
-    store: dict[str, dict] = {}
-
-    async def _get(conn, name):
-        return dict(store[name]) if name in store else None
-
-    async def _upsert(conn, func, return_schema=None, *, origin):
-        store[func.name] = {**func.model_dump(), "origin": origin}
-        return 1
-
-    monkeypatch.setattr(function_repo, "get_function", _get)
-    monkeypatch.setattr(function_repo, "upsert_function", _upsert)
-    shared_data["command_store"] = store
-    _register_create_order(shared_data)
-    assert store["createOrder"]["visible_to"] == ["org_admin"]
-    assert store["createOrder"]["domain_id"] == "sales"
-    shared_data["function_record"] = store["createOrder"]
-
-
-@given('an admin assigns it to the "ops" role')
-def given_admin_assigns_ops(shared_data: dict) -> None:
-    record = shared_data["command_store"]["createOrder"]
-    record["visible_to"] = [*record["visible_to"], "ops"]
-
-
-@when("introspection re-runs and registers createOrder again")
-def when_introspection_reruns(shared_data: dict) -> None:
-    _register_create_order(shared_data)
-    shared_data["function_record"] = shared_data["command_store"]["createOrder"]
+    assert command_reachable(
+        shared_data["function_record"], {"id": "ops", "domain_access": ["sales"]}
+    )
 
 
 @then(
-    "ops still reaches createOrder through its assignment and the sales domain — discovery "
-    "never drops an assignment"
+    "a role assigned it outside the sales domain, or reaching sales without the assignment, "
+    "does not"
 )
-def then_ops_still_reaches_create_order(shared_data: dict) -> None:
+def then_assignment_and_domain_are_both_needed(shared_data: dict) -> None:
     from provisa.security.mutation_authz import command_reachable
 
     record = shared_data["function_record"]
-    assert record["visible_to"] == ["org_admin", "ops"]
-    assert command_reachable(record, {"id": "ops", "domain_access": ["sales"]})
-    # The assignment alone is not enough: the role must reach the command's domain too.
     assert not command_reachable(record, {"id": "ops", "domain_access": ["finance"]})
-    # Reaching every domain is not enough either: the role must be assigned the command.
     assert not command_reachable(record, {"id": "analyst", "domain_access": ["*"]})
 
 

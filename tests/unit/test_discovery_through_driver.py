@@ -309,11 +309,7 @@ async def test_the_catalog_index_of_a_floored_source_never_asks_the_engine(monke
     async def _write(_pool, source_id, schema_name, tables):
         written.append((source_id, schema_name, [(t.table_name, t.column_names) for t in tables]))
 
-    async def _no_routines(*args: Any, **kwargs: Any) -> None:
-        del args, kwargs
-
     monkeypatch.setattr(catalog_cache, "write_cache", _write)
-    monkeypatch.setattr(catalog_cache, "_index_source_routines", _no_routines)
     control_plane = SimpleNamespace(acquire=lambda: _Acquire())
 
     await catalog_cache.index_source(
@@ -324,3 +320,36 @@ async def test_the_catalog_index_of_a_floored_source_never_asks_the_engine(monke
         ("orders-pg", "public", [("orders", ["id", "name", "placed_at", "tags", "status"])])
     ]
     assert engine.statements == []
+
+
+async def test_the_catalog_index_registers_none_of_the_sources_routines(monkeypatch):
+    """REQ-887: indexing a source's catalog records its tables on offer and registers nothing: a
+    routine the source holds stays on offer until a steward registers it as a command."""
+    from unittest.mock import AsyncMock
+
+    from provisa.core.repositories import function as function_repo
+    from provisa.discovery import catalog_cache
+
+    pool = _Pool(
+        {
+            "information_schema.schemata": [("public",)],
+            "information_schema.tables": [("orders", None)],
+            "information_schema.columns": _PG_COLUMNS,
+            "pg_proc": [
+                ("public", "close_order", "p", "v", False, ["order_id"], ["integer"], None)
+            ],
+        }
+    )
+    engine = _Engine()
+    state = _state(monkeypatch, _source(replicate=0, cache_ttl=60), pool, engine)
+    monkeypatch.setattr(catalog_cache, "write_cache", AsyncMock())
+    upsert = AsyncMock()
+    monkeypatch.setattr(function_repo, "upsert_function", upsert)
+    monkeypatch.setattr(function_repo, "get_function", AsyncMock(return_value=None))
+    control_plane = SimpleNamespace(acquire=lambda: _Acquire())
+
+    await catalog_cache.index_source(
+        "orders-pg", control_plane, engine, pool, state.source_types, state
+    )
+
+    upsert.assert_not_called()
