@@ -10,9 +10,9 @@
 
 """Raw-SQL response-cache entries (REQ-1897): the payload kinds, and the write-through tee.
 
-Every plan the one pipeline executes (pgwire, Flight SQL, /data/sql, gRPC, Bolt, REST) reads and
-writes its OWN key namespace (``cache.key.raw_sql_cache_key``) — never GraphQL's, whose entries
-hold a serialized GraphQL response, not rows. An entry is one of three explicitly tagged kinds:
+Every plan the one pipeline executes (pgwire, Flight SQL, /data/sql, gRPC, Bolt, REST, GraphQL)
+reads and writes the one response cache under ``cache.key.raw_sql_cache_key``. An entry holds rows,
+never a surface's own response shape, and is one of three explicitly tagged kinds:
 
 * ``rows`` — ``{rows, column_names}`` plus the engine's declared ``column_types``, written by a
   terminal that drains rows (the buffered chokepoint, pgwire's ENGINE sink and DIRECT stream,

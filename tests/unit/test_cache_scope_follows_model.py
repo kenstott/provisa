@@ -31,7 +31,7 @@ from typing import Any
 
 import pytest
 
-from provisa.cache.key import cache_key, raw_sql_cache_key
+from provisa.cache.key import raw_sql_cache_key
 from provisa.cache.middleware import check_cache, store_result
 from provisa.cache.tenancy import cache_tenant, invalidate_tables
 from provisa.core.request_context import current_env, current_org
@@ -84,12 +84,10 @@ async def _read(worker: _Worker, key: str):
     return await check_cache(worker.response_cache_store, key, cache_tenant(worker))
 
 
-@pytest.fixture(params=["graphql", "raw_sql"])
-def key(request) -> str:
-    """The key of a read of a view, on each of the two key functions. Neither changes when the
-    view's definition does: the statement names the view."""
-    if request.param == "graphql":
-        return cache_key(VIEW_READ, [], ROLE, {})
+@pytest.fixture
+def key() -> str:
+    """The key of a read of a view (the one response cache's, REQ-1897). It does not change when
+    the view's definition does: the statement names the view."""
     return raw_sql_cache_key(VIEW_READ, [], ROLE, wire_formats=None)
 
 

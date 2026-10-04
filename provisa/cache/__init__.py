@@ -10,12 +10,12 @@
 
 """Query result caching (Phase O)."""
 
-from provisa.cache.key import cache_key
+from provisa.cache.key import raw_sql_cache_key
 from provisa.cache.policy import CachePolicy, resolve_policy
 from provisa.cache.store import CacheStore, NoopCacheStore, RedisCacheStore
 
 __all__ = [
-    "cache_key",
+    "raw_sql_cache_key",
     "CachePolicy",
     "resolve_policy",
     "CacheStore",

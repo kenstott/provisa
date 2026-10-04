@@ -9,16 +9,17 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Property-based tests for the response cache key (REQ-544, REQ-864, REQ-866).
+"""Property-based tests for the response cache key (REQ-544, REQ-864, REQ-866, REQ-1897).
 
-cache_key derives the identity under which a governed result is cached. If two
+raw_sql_cache_key derives the identity under which a governed result is cached. If two
 DIFFERENT security contexts hash to the same key, one role is served another's
 rows — a governance bypass through the cache. If two EQUIVALENT queries hash to
 different keys, the cache never hits. So the key must reflect exactly the security
 context and nothing cosmetic:
 
   * deterministic — identical inputs always yield the same key;
-  * role-, RLS-, param-, and query-sensitive — changing any of them changes the key
+  * role-, RLS-, param-, and query-sensitive — changing any of them changes the key (the
+    resolved RLS filter is part of the governed statement it keys)
     (no cached result crosses a security boundary);
   * SQL-normalizing — queries differing only in whitespace share a key (REQ-864).
 """
@@ -30,7 +31,14 @@ import re
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from provisa.cache.key import cache_key
+from provisa.cache.key import raw_sql_cache_key
+
+
+def cache_key(sql: str, params: list, role: str, rls: str) -> str:
+    """The key of ``sql`` governed under the resolved row filter ``rls`` ("" for none)."""
+    governed = f"SELECT * FROM ({sql}) AS g WHERE {rls}" if rls else sql
+    return raw_sql_cache_key(governed, params, role, wire_formats=None)
+
 
 _SQLS = [
     "SELECT id FROM t",
@@ -42,7 +50,7 @@ _ROLES = ["admin", "analyst", "viewer", "guest"]
 _RLS_FILTERS = ["region = 'x'", "dept_id = 1", "tenant = current_user", ""]
 
 _params = st.lists(st.one_of(st.integers(-50, 50), st.text(max_size=4)), max_size=3)
-_rls = st.dictionaries(st.integers(1, 5), st.sampled_from(_RLS_FILTERS), max_size=3)
+_rls = st.sampled_from(_RLS_FILTERS)
 
 
 @st.composite

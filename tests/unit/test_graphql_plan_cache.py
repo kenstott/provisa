@@ -408,9 +408,14 @@ def test_cache_key_normalization_parses_a_statement_once(monkeypatch):
 
     monkeypatch.setattr(sqlglot, "parse_one", _counting_parse)
     sql = 'SELECT "order_id" FROM "sales"."orders" WHERE "region" = \'EU\' LIMIT 1'
-    k1 = cache_key_module.cache_key(sql, [], "analyst", {})
+    k1 = cache_key_module.raw_sql_cache_key(sql, [], "analyst", wire_formats=None)
     assert parses["n"] == 1
     for _ in range(20):
-        assert cache_key_module.cache_key(sql, [], "analyst", {}) == k1
+        assert cache_key_module.raw_sql_cache_key(sql, [], "analyst", wire_formats=None) == k1
     assert parses["n"] == 1
-    assert cache_key_module.cache_key(sql.replace("EU", "US"), [], "analyst", {}) != k1
+    assert (
+        cache_key_module.raw_sql_cache_key(
+            sql.replace("EU", "US"), [], "analyst", wire_formats=None
+        )
+        != k1
+    )

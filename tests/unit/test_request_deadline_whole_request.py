@@ -57,10 +57,15 @@ def test_a_requests_deadline_names_its_transport_and_setting():
     with request_deadline.request("rest") as deadline:
         assert request_deadline.current() is deadline
         request_deadline.check()  # in time: nothing
-        with request_deadline.shielded().lock:  # held: only the check below speaks
+        shield = request_deadline.shielded()
+        with shield.lock:  # held: only the check below speaks
             time.sleep(0.25)
             with pytest.raises(RequestTimedOut) as raised:
                 request_deadline.check()
+            # Answered: the watchdog, which raises again once the shield is released (2 ms
+            # later when it found the shield held), has nothing left to end.
+            shield.settle()
+            deadline.stop()
         _names(raised.value, "rest")
     assert request_deadline.current() is None
 

@@ -264,24 +264,6 @@ async def test_different_roles_get_different_cache_entries(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_graphql_entry_with_colliding_text_is_a_raw_sql_miss(monkeypatch):
-    """GraphQL's ``store_result`` entry under ``cache_key`` of the SAME SQL/params/role is never
-    read by a raw-SQL plan: the namespaces are disjoint (REQ-1897, #127). Before the split, the
-    raw-SQL reader's ``payload.get("rows", [])`` served it as a zero-row HIT."""
-    from provisa.cache.key import cache_key
-    from provisa.cache.middleware import store_result
-
-    plan = _make_plan()
-    store = FakeCacheStore()
-    assert plan.audit is not None
-    ck = cache_key(plan.sql, [], plan.audit.role_id, {})
-    await store_result(store, ck, {"data": {"orders": [{"id": 1}]}}, ttl=60)
-    monkeypatch.setattr("provisa.audit.pipeline.write_audit", _fake_write_audit_noop)
-
-    assert await check_response_cache(plan, FakeState(response_cache_store=store)) is None
-
-
-@pytest.mark.asyncio
 async def test_raw_sql_entry_of_unknown_kind_raises(monkeypatch):
     """A raw-SQL entry must name a kind the readers handle; anything else is an error, never a
     defaulted empty result."""

@@ -236,34 +236,34 @@ class TestCacheHeaders:
 class TestCacheKey:
     async def test_different_roles_produce_different_keys(self):
         # REQ-544: cache keys are role-partitioned
-        from provisa.cache.key import cache_key
+        from provisa.cache.key import raw_sql_cache_key
 
-        k1 = cache_key("SELECT 1", [], "admin", {})
-        k2 = cache_key("SELECT 1", [], "viewer", {})
+        k1 = raw_sql_cache_key("SELECT 1", [], "admin", wire_formats=None)
+        k2 = raw_sql_cache_key("SELECT 1", [], "viewer", wire_formats=None)
         assert k1 != k2
 
     async def test_different_rls_produce_different_keys(self):
-        # REQ-544: RLS filter values are included in cache key
-        from provisa.cache.key import cache_key
+        # REQ-544: the resolved RLS filter is part of the governed statement the key hashes
+        from provisa.cache.key import raw_sql_cache_key
 
-        k1 = cache_key("SELECT 1", [], "admin", {1: "region = 'us-east'"})
-        k2 = cache_key("SELECT 1", [], "admin", {1: "region = 'eu-west'"})
+        k1 = raw_sql_cache_key("SELECT 1 WHERE region = 'us-east'", [], "admin", wire_formats=None)
+        k2 = raw_sql_cache_key("SELECT 1 WHERE region = 'eu-west'", [], "admin", wire_formats=None)
         assert k1 != k2
 
-    async def test_empty_rls_rule_not_cacheable(self):
-        # REQ-866: an empty RLS filter is an unresolved identity — the fail-closed
-        # is_cacheable gate reports it (relocated from cache_key's former ValueError).
+    async def test_unresolved_session_state_not_cacheable(self):
+        # REQ-866: a row filter on unresolved session state is an unresolved identity — the
+        # fail-closed is_cacheable gate reports it.
         from provisa.cache.key import is_cacheable
 
-        ok, reason = is_cacheable("SELECT 1", {1: ""})
-        assert ok is False and "empty" in reason
+        ok, reason = is_cacheable("SELECT 1 WHERE t = current_setting('app.tenant')")
+        assert ok is False and "session state" in reason
 
     async def test_same_inputs_stable_key(self):
         # REQ-544: cache key is deterministic for identical inputs
-        from provisa.cache.key import cache_key
+        from provisa.cache.key import raw_sql_cache_key
 
-        k1 = cache_key("SELECT 1", [42], "admin", {1: "x = 1"})
-        k2 = cache_key("SELECT 1", [42], "admin", {1: "x = 1"})
+        k1 = raw_sql_cache_key("SELECT 1 WHERE x = 1", [42], "admin", wire_formats=None)
+        k2 = raw_sql_cache_key("SELECT 1 WHERE x = 1", [42], "admin", wire_formats=None)
         assert k1 == k2
 
     async def test_table_level_ttl_resolution(self):
