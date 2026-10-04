@@ -1354,11 +1354,20 @@ def provisa_server(_reserve_flight_port):
     # ${env:PG_PORT}/${env:PG_PASSWORD}, and it declares the admin/analyst roles these tests use — so
     # the requires_provisa_server tests exercise a real, executable governance pipeline.
     _live_cfg = os.path.join(os.path.dirname(__file__), "fixtures", "sample_config.yaml")
+    # The server is another worker of this session's deployment, so it holds the session's master
+    # key. The session's keyring is process-local memory (tests/_memory_keyring.py): a key minted
+    # by an in-process write is not visible to a subprocess, which then refused the deployment's
+    # recorded key at boot ("holds no encryption master key"). Minted here if no write has yet,
+    # and handed over as the deployment key (PROVISA_ENCRYPTION_KEY wins over the keyring).
+    from provisa.encryption.providers import _master_key_b64, mint_master_key
+
+    mint_master_key()
     server_env = {
         **os.environ,
         "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa",
         "FLIGHT_PORT": str(_flight_port),
         "PROVISA_CONFIG": _live_cfg,
+        "PROVISA_ENCRYPTION_KEY": _master_key_b64(None),
         **_server_coverage_env(),
     }
     # Keep the subprocess's own output. It used to go to DEVNULL, which turned every startup
