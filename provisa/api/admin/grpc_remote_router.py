@@ -365,6 +365,9 @@ async def _register_schema(  # REQ-322, REQ-325, REQ-599
             table_name=table_name,
             columns=output_cols + nf_cols,
         )
+        from provisa.api.admin.region_defaults import admin_registration_draft
+
+        tbl.draft = await admin_registration_draft(conn, source_id, "grpc_remote", table_name)
         await table_repo.upsert(conn, tbl, origin="admin")
         written += 1
 

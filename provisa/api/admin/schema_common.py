@@ -577,8 +577,10 @@ async def _sync_view_mv(
     allowed_lateness: float = 0.0,  # REQ-961: seal-deadline slack (s)
     expected_events: list[str] | None = None,  # REQ-961: preflight freshness contract
     business_day_grain: bool = False,  # REQ-962: gate windows to business days
+    draft: bool,  # REQ-1921: checked as saved, registered for building only once released
 ) -> None:
-    """Register or update an MVDefinition for a materialized user-defined view."""
+    """Register or update an MVDefinition for a materialized user-defined view. A draft view is
+    held to every rule a saved view is, and is not registered: nothing builds it."""
     # REQ-879: consistency tier is a closed set — reject anything else loudly (no silent default).
     if consistency not in ("shared", "distributed"):
         raise ValueError(
@@ -664,8 +666,11 @@ async def _sync_view_mv(
         business_day_grain=business_day_grain,  # REQ-962
     )
     # Refused, and nothing registered, when the view reads an input the engine cannot read whole.
-    from provisa.mv.readable_inputs import register_view
+    from provisa.mv.readable_inputs import register_view, require_readable_inputs
 
+    if draft:
+        await require_readable_inputs(mv, state)
+        return
     await register_view(state, mv)
 
 

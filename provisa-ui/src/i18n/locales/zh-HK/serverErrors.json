@@ -97,7 +97,8 @@
       "unknown_action_field": "未知的動作欄位：「{{field}}」",
       "unknown_command": "未知命令「{{name}}」",
       "write_not_admitted": "角色 '{{role}}' 不能執行此寫入：寫入需要寫入權限、對所寫每一欄的寫入權限，以及該角色的行過濾器允許的行。",
-      "write_not_supported": "'{{table}}' 不接受 {{operation}}：其資料來源無法執行"
+      "write_not_supported": "'{{table}}' 不接受 {{operation}}：其資料來源無法執行",
+      "table_is_draft": "{{table}} 是草稿：在其領域的擁有者發佈之前停止服務"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
@@ -355,7 +356,9 @@
       "webhook_approved": "已批准 Webhook「{{webhook}}」",
       "webhook_name_required": "Webhook 觸發程序必須提供 webhook_name",
       "webhook_not_found": "找不到 Webhook「{{webhook}}」",
-      "change_streams_unavailable": "來源 '{{source}}' 是獨立的 MongoDB 伺服器，不提供 change streams：native 變更訊號需要副本集或分片叢集。請將其作為副本集執行，或使用 poll 變更訊號。"
+      "change_streams_unavailable": "來源 '{{source}}' 是獨立的 MongoDB 伺服器，不提供 change streams：native 變更訊號需要副本集或分片叢集。請將其作為副本集執行，或使用 poll 變更訊號。",
+      "table_draft_set": "表 {{table}} 已設為草稿",
+      "table_released": "表 {{table}} 已發佈"
     },
     "secrets": {
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"

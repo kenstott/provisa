@@ -258,6 +258,8 @@
     "pagingTypeRequired": "Kies een pagineringstype, of maak de pagineringsvelden leeg.",
     "pagingPositive": "Gebruik een geheel getal van 1 of meer.",
     "pagingAboveCeiling": "Hoogstens {{ceiling}}: een tabel mag de grens van de beheerder verlagen, nooit verhogen.",
-    "pagingFixErrors": "Herstel de pagineringsfouten voordat u opslaat."
+    "pagingFixErrors": "Herstel de pagineringsfouten voordat u opslaat.",
+    "draftLabel": "Concept",
+    "draftHelp": "Buiten gebruik zolang aangevinkt: nergens gelezen of geschreven, in geen enkel schema aangeboden en nergens gekopieerd — bestaande kopieën in elke regio worden verwijderd. Een hier geregistreerde tabel of view begint als concept; vink uit om haar vrij te geven."
   }
 }

@@ -291,6 +291,7 @@ export interface RegisteredTable {
   pagingCeilingRows: number | null;
   replicate: number | null; // REQ-826: null = inherit source
   region: string | null; // REQ-1921: where its data lives; null = no region
+  draft: boolean; // REQ-1921: out of service until its domain's owners release it
   loadProtected: boolean | null; // REQ-1141: null = inherit source
   offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" window override
   offPeakTz: string | null; // REQ-1141: window zone override

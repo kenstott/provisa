@@ -95,6 +95,8 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                     ).where(
                         _registered_tables_t.c.source_id == DERIVED_SOURCE_ID,
                         _registered_tables_t.c.view_sql.is_not(None),
+                        # REQ-1921: a draft view is neither built nor expanded.
+                        _registered_tables_t.c.draft.is_(False),
                     )
                 )
             ).fetchall()
@@ -103,6 +105,20 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
         from provisa.core import settings_registry  # REQ-1913: an operator setting
 
         _mv_default_ttl = settings_registry.value("materialized_views.default_ttl")
+        # REQ-1921: a view that is draft goes out of service here, wherever this runs (each
+        # region on its reload): it is not expanded, and its build is no longer registered — so
+        # its stored table is an orphan the reclamation sweep drops (mv/refresh.py, REQ-234).
+        for (_draft_name,) in (
+            await conn.execute_core(
+                select(_registered_tables_t.c.table_name).where(
+                    _registered_tables_t.c.source_id == DERIVED_SOURCE_ID,
+                    _registered_tables_t.c.draft.is_(True),
+                )
+            )
+        ).fetchall():
+            state.view_sql_map.pop(_draft_name, None)
+            if state.mv_registry.get(f"view-{_draft_name}") is not None:
+                state.mv_registry.unregister(f"view-{_draft_name}")
         for _vr in _view_rows:
             # Store the *semantic* view SQL; _compile_view_sqls rewrites it to a physical plan.
             # EVERY user view (materialized or not) goes into view_sql_map so the query path can

@@ -97,7 +97,8 @@
       "unknown_action_field": "अज्ञात एक्शन फ़ील्ड: '{{field}}'",
       "unknown_command": "अज्ञात कमांड '{{name}}'",
       "write_not_admitted": "भूमिका '{{role}}' यह लेखन नहीं कर सकती: लेखन के लिए लेखन अधिकार, लिखे जाने वाले हर कॉलम पर लेखन पहुँच, और ऐसी पंक्तियाँ चाहिए जिन्हें भूमिका का पंक्ति फ़िल्टर स्वीकार करे।",
-      "write_not_supported": "'{{table}}' {{operation}} स्वीकार नहीं करता: इसका स्रोत इसे नहीं कर सकता"
+      "write_not_supported": "'{{table}}' {{operation}} स्वीकार नहीं करता: इसका स्रोत इसे नहीं कर सकता",
+      "table_is_draft": "{{table}} ड्राफ़्ट है: उसके डोमेन के स्वामियों द्वारा रिलीज़ किए जाने तक सेवा से बाहर"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",
@@ -355,7 +356,9 @@
       "webhook_approved": "वेबहुक '{{webhook}}' अनुमोदित किया गया",
       "webhook_name_required": "वेबहुक ट्रिगर के लिए webhook_name आवश्यक है",
       "webhook_not_found": "वेबहुक '{{webhook}}' नहीं मिला",
-      "change_streams_unavailable": "स्रोत '{{source}}' एक स्टैंडअलोन MongoDB सर्वर है, जो change streams नहीं देता: native परिवर्तन संकेत के लिए replica set या sharded cluster चाहिए। इसे replica set के रूप में चलाएँ, या poll परिवर्तन संकेत का उपयोग करें।"
+      "change_streams_unavailable": "स्रोत '{{source}}' एक स्टैंडअलोन MongoDB सर्वर है, जो change streams नहीं देता: native परिवर्तन संकेत के लिए replica set या sharded cluster चाहिए। इसे replica set के रूप में चलाएँ, या poll परिवर्तन संकेत का उपयोग करें।",
+      "table_draft_set": "टेबल {{table}} ड्राफ़्ट के रूप में सेट",
+      "table_released": "टेबल {{table}} रिलीज़ हुई"
     },
     "secrets": {
       "still_referenced": "{{secret}} का नाम इस संगठन में अब भी {{count}} संग्रहीत मान ले रहे हैं। हर एक को बदलें या हटाएँ, फिर दोबारा हटाएँ।"

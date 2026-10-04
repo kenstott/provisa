@@ -141,18 +141,23 @@ def _as_dict(v: Any) -> dict:
     return dict(v or {})
 
 
-async def fetch_tables(conn: "Connection") -> list[dict]:  # REQ-155, REQ-393, REQ-399
-    """Fetch registered tables with columns."""
+async def fetch_tables(  # REQ-155, REQ-393, REQ-399
+    conn: "Connection", *, draft: bool = False
+) -> list[dict]:
+    """Fetch registered tables with columns — the data plane's: those in service. ``draft``
+    True fetches the ones out of service instead (REQ-1921), which no schema offers, no statement
+    reads and nothing copies; they are fetched only to be refused by name."""
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, "
         "alias, description, column_presets, unique_constraints, l1_cluster, l2_cluster, l3_cluster, "
         "enable_aggregates, enable_group_by, view_sql, dq_contract, "  # REQ-1443
         "live, push_debounce_quiet, push_debounce_max_delay, cache_ttl, "  # REQ-1733, REQ-1730
-        "row_materialize, role_ttl, replicate, load_protected, region, "  # REQ-1865/1907/826/1141/1921
+        "row_materialize, role_ttl, replicate, load_protected, region, draft, "  # REQ-1865/1907/826/1141/1921
         "file_glob, source_file_column, delta, "  # REQ-788/874
         "change_signal, watermark_column, "  # REQ-929/874: the table's own; NULL = its source's
         "pagination "  # REQ-318
-        "FROM registered_tables ORDER BY id"
+        "FROM registered_tables WHERE draft = $1 ORDER BY id",
+        draft,
     )
     tables = []
     for row in rows:

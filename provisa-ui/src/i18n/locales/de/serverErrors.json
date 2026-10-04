@@ -97,7 +97,8 @@
       "unknown_action_field": "Unbekanntes Aktionsfeld: '{{field}}'",
       "unknown_command": "Unbekannter Befehl '{{name}}'",
       "write_not_admitted": "Die Rolle '{{role}}' darf diesen Schreibvorgang nicht ausführen: Ein Schreibvorgang erfordert das Schreibrecht, Schreibzugriff auf jede geschriebene Spalte und Zeilen, die der Zeilenfilter der Rolle zulässt.",
-      "write_not_supported": "'{{table}}' nimmt kein {{operation}} an: seine Quelle kann es nicht ausführen"
+      "write_not_supported": "'{{table}}' nimmt kein {{operation}} an: seine Quelle kann es nicht ausführen",
+      "table_is_draft": "{{table}} ist ein Entwurf: außer Betrieb, bis die Verantwortlichen ihrer Domäne sie freigeben"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
@@ -355,7 +356,9 @@
       "webhook_approved": "Webhook '{{webhook}}' genehmigt",
       "webhook_name_required": "webhook_name ist für einen Webhook-Trigger erforderlich",
       "webhook_not_found": "Webhook '{{webhook}}' nicht gefunden",
-      "change_streams_unavailable": "Quelle '{{source}}' ist ein eigenständiger MongoDB-Server, der keine Change Streams bereitstellt: Das native Änderungssignal erfordert ein Replica Set oder einen Sharded Cluster. Betreiben Sie ihn als Replica Set oder verwenden Sie das Änderungssignal poll."
+      "change_streams_unavailable": "Quelle '{{source}}' ist ein eigenständiger MongoDB-Server, der keine Change Streams bereitstellt: Das native Änderungssignal erfordert ein Replica Set oder einen Sharded Cluster. Betreiben Sie ihn als Replica Set oder verwenden Sie das Änderungssignal poll.",
+      "table_draft_set": "Tabelle {{table}} als Entwurf gesetzt",
+      "table_released": "Tabelle {{table}} freigegeben"
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."

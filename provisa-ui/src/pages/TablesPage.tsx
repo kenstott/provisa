@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useSetTableRegion } from "../hooks/useRegionQueries";
+import { useSetTableDraft, useSetTableRegion } from "../hooks/useRegionQueries";
 import { useState, useEffect, Fragment, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -115,6 +115,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { updateTablePaging } = useUpdateTablePaging();
   const { updateTableReplicate } = useUpdateTableReplicate();
   const setTableRegion = useSetTableRegion();
+  const setTableDraft = useSetTableDraft();
   const { updateTableLoadProtection } = useUpdateTableLoadProtection();
   const { updateTableNaming } = useUpdateTableNaming();
   const { purgeCacheByTable } = usePurgeCacheByTable();
@@ -554,7 +555,19 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         }
       }
       // REQ-1921: the region is saved on its own, and only when it changed.
-      const savedRegion = tables.find((tbl) => tbl.id === editingTable.id)?.region ?? null;
+      // REQ-1921: draft and region are saved on their own, each only when it changed. Going to
+      // draft is saved before a region change and a release after it: a draft table is claimed
+      // by its destination alone, so a move between regions is draft, re-region, release.
+      const saved = tables.find((tbl) => tbl.id === editingTable.id);
+      const savedRegion = saved?.region ?? null;
+      const savedDraft = saved?.draft ?? false;
+      const saveDraft = async () => {
+        if (savedDraft === editingTable.draft) return true;
+        const draftResult = await setTableDraft(editingTable.id, editingTable.draft);
+        if (!draftResult.success) setError(serverMessage(draftResult, draftResult.message));
+        return draftResult.success;
+      };
+      if (editingTable.draft && !(await saveDraft())) return;
       if (savedRegion !== editingTable.region) {
         const regionResult = await setTableRegion(editingTable.id, editingTable.region);
         if (!regionResult.success) {
@@ -562,6 +575,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           return;
         }
       }
+      if (!editingTable.draft && !(await saveDraft())) return;
       // REQ-826 / REQ-1141: persist Replicate and load protection + off-peak window (the ≥1-gate
       // rule is validated server-side). The server refuses load protection with Replicate = Never,
       // judged against what is stored at each save, so the one that is being turned off goes

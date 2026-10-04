@@ -179,6 +179,14 @@ def _check_registered_relations(  # REQ-001, REQ-266
         field_named = not tbl.db and tbl.name in ctx.tables
         if _resolve_table_id(tbl, gov_ctx) is None and not field_named:
             ref = f"{tbl.db}.{tbl.name}" if tbl.db else tbl.name
+            draft = ctx.draft_names.get(ref)
+            if draft is not None:
+                # REQ-1921: out of service, and said so — not taken for a relation that is not
+                # registered.
+                from provisa.compiler.definitions import DRAFT_REASON
+
+                violations.append(ValidationViolation("V020", f"{draft!r} {DRAFT_REASON}"))
+                continue
             violations.append(
                 ValidationViolation("V006", f"Relation {ref!r} is not a registered table")
             )

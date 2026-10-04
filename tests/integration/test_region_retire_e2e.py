@@ -45,6 +45,8 @@ import psycopg
 import pytest
 import yaml
 
+from tests.helpers import registered_id, release_field
+
 from tests.integration.test_pg_engine_landing_never_writes_source_e2e import (
     _ROLE,
     _ROWS,
@@ -221,9 +223,10 @@ def _admin(srv, document: str) -> dict:
     return response.json()["data"]
 
 
-def _mutate(srv, mutation: str) -> None:
+def _mutate(srv, mutation: str) -> dict:
     (result,) = _admin(srv, "mutation { " + mutation + " { success message } }").values()
     assert result["success"], result["message"]
+    return result
 
 
 def _read(srv) -> list[tuple]:
@@ -267,7 +270,7 @@ def test_a_copy_in_a_region_no_longer_its_tables_home_is_retired_and_dropped(sta
                 f'port: {stack.pg.source_port}, database: "shop", username: "provisa", '
                 'password: "provisa"})',
             )
-            _mutate(
+            registered = _mutate(
                 eu,
                 # No region: chosen explicitly (left out, a new table starts in the connected one).
                 'registerTable(input: {sourceId: "src", domainId: "shop", schemaName: "public", '
@@ -275,6 +278,8 @@ def test_a_copy_in_a_region_no_longer_its_tables_home_is_retired_and_dropped(sta
                 '{name: "id", visibleTo: ["org_admin"], dataType: "integer", isPrimaryKey: true}, '
                 '{name: "amount", visibleTo: ["org_admin"], dataType: "double"}]})',
             )
+            # REQ-1921: registered through the admin, it starts as draft; released, it is served.
+            _mutate(eu, release_field(registered_id(registered["message"])))
             _mutate(eu, 'updateSourceCache(sourceId: "src", cacheEnabled: true, cacheTtl: 3600)')
             _mutate(eu, 'updateSourceReplicate(sourceId: "src", replicate: 0)')
 

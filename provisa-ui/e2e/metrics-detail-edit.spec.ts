@@ -57,6 +57,19 @@ test.beforeAll(async () => {
   if (!result?.success) {
     throw new Error(`registerFact failed: ${result?.message ?? JSON.stringify(res.errors)}`);
   }
+  // REQ-1921: registered through the admin, the fact starts as draft; released, it is read.
+  const listed = await gql(`{ tables { id tableName } }`);
+  const fact = ((listed.data?.tables ?? []) as Array<{ id: number; tableName: string }>).find(
+    (t) => t.tableName === FACT_NAME,
+  );
+  if (!fact) throw new Error(`registered fact ${FACT_NAME} is not listed`);
+  const released = await gql(
+    `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
+    { id: fact.id },
+  );
+  if (!released.data?.setTableDraft?.success) {
+    throw new Error(`setTableDraft failed: ${JSON.stringify(released)}`);
+  }
 });
 
 test.afterAll(cleanup);

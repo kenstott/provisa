@@ -258,6 +258,8 @@
     "pagingTypeRequired": "Escolha um tipo de paginação ou limpe os campos de paginação.",
     "pagingPositive": "Use um número inteiro igual ou maior que 1.",
     "pagingAboveCeiling": "No máximo {{ceiling}}: uma tabela pode reduzir o limite do operador, nunca aumentá-lo.",
-    "pagingFixErrors": "Corrija os erros de paginação antes de salvar."
+    "pagingFixErrors": "Corrija os erros de paginação antes de salvar.",
+    "draftLabel": "Rascunho",
+    "draftHelp": "Fora de serviço enquanto marcado: não é lida nem escrita em lugar algum, não é oferecida em nenhum esquema e não é copiada — as cópias existentes em todas as regiões são removidas. Uma tabela ou visão registrada aqui começa como rascunho; desmarque para liberá-la."
   }
 }

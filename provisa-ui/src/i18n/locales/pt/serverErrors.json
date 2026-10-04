@@ -97,7 +97,8 @@
       "unknown_action_field": "Campo de ação desconhecido: '{{field}}'",
       "unknown_command": "Comando desconhecido '{{name}}'",
       "write_not_admitted": "O papel '{{role}}' não pode fazer esta escrita: uma escrita exige o direito de escrita, acesso de escrita a cada coluna escrita e linhas que o filtro de linhas do papel admita.",
-      "write_not_supported": "'{{table}}' não aceita {{operation}}: sua origem não consegue executá-lo"
+      "write_not_supported": "'{{table}}' não aceita {{operation}}: sua origem não consegue executá-lo",
+      "table_is_draft": "{{table}} é um rascunho: fora de serviço até que os responsáveis pelo seu domínio a liberem"
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -355,7 +356,9 @@
       "webhook_approved": "Webhook '{{webhook}}' aprovado",
       "webhook_name_required": "webhook_name é obrigatório para um gatilho de webhook",
       "webhook_not_found": "Webhook '{{webhook}}' não encontrado",
-      "change_streams_unavailable": "A origem '{{source}}' é um servidor MongoDB autônomo, que não oferece change streams: o sinal de alteração native exige um replica set ou um cluster fragmentado. Execute-o como replica set ou use o sinal de alteração poll."
+      "change_streams_unavailable": "A origem '{{source}}' é um servidor MongoDB autônomo, que não oferece change streams: o sinal de alteração native exige um replica set ou um cluster fragmentado. Execute-o como replica set ou use o sinal de alteração poll.",
+      "table_draft_set": "Tabela {{table}} definida como rascunho",
+      "table_released": "Tabela {{table}} liberada"
     },
     "secrets": {
       "still_referenced": "{{secret}} ainda é nomeado por {{count}} valor(es) armazenado(s) nesta organização. Altere ou remova cada um e exclua novamente."

@@ -2056,6 +2056,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     async with state.model_db.acquire() as conn:
         _pg = cast("Connection", conn)
         tables = await _fetch_tables(_pg)
+        # REQ-1921: out of service — offered in no schema, refused by name when named.
+        draft_tables = await _fetch_tables(_pg, draft=True)
         _assert_domain_table_unique(tables)
         relationships = await _fetch_relationships(_pg)
 
@@ -2396,6 +2398,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             rls_rules=rls_rules,
             metrics=_metric_dicts,  # REQ-1319
             field_numbers=_field_numbers,
+            draft_tables=draft_tables,  # REQ-1921
         )
 
         await persist_field_numbers(conn, _field_numbers)
@@ -2412,6 +2415,13 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # path can expand `metrics.<name>` queries into governed aggregates (loaded above,
     # same registry the admin surfaces read — runtime-registered metrics included).
     state.metrics = {m.name: m for m in _metric_models}
+
+    # REQ-1921: a table or view that has gone draft since the last build keeps no copy in this
+    # region: its cached responses go (its replicas retire with convergence, its view build with
+    # the reclamation sweep). Entries are kept by place, not by table, so the place is purged.
+    from provisa.cache.tenancy import purge_when_drafted
+
+    await purge_when_drafted(state, frozenset(t["id"] for t in draft_tables))
 
     # Cache raw build data for on-demand domain-filtered schema generation
     state.schema_build_cache = {
@@ -2974,6 +2984,20 @@ def create_app() -> FastAPI:
                 "detail": str(exc),
                 "code": "data.write_not_supported",
                 "params": {"table": exc.table, "operation": exc.operation.upper()},
+            },
+        )
+
+    from provisa.compiler.definitions import TableIsDraft as _TableIsDraft
+
+    @app.exception_handler(_TableIsDraft)
+    async def _table_is_draft_handler(_req: _Request, exc: _TableIsDraft):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1921: a draft table or view is out of service, and the refusal says so by name.
+        return _JSONResponse(
+            status_code=409,
+            content={
+                "detail": str(exc),
+                "code": "data.table_is_draft",
+                "params": {"table": exc.table},
             },
         )
 

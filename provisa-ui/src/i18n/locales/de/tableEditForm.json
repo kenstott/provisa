@@ -258,6 +258,8 @@
     "pagingTypeRequired": "Wählen Sie einen Paginierungstyp oder leeren Sie die Paginierungsfelder.",
     "pagingPositive": "Verwenden Sie eine ganze Zahl ab 1.",
     "pagingAboveCeiling": "Höchstens {{ceiling}}: Eine Tabelle darf die Grenze des Betreibers senken, nie erhöhen.",
-    "pagingFixErrors": "Beheben Sie die Paginierungsfehler vor dem Speichern."
+    "pagingFixErrors": "Beheben Sie die Paginierungsfehler vor dem Speichern.",
+    "draftLabel": "Entwurf",
+    "draftHelp": "Außer Betrieb, solange aktiviert: nirgends gelesen oder geschrieben, in keinem Schema angeboten und nirgends kopiert – vorhandene Kopien in allen Regionen werden entfernt. Eine hier registrierte Tabelle oder Ansicht beginnt als Entwurf; zum Freigeben deaktivieren."
   }
 }

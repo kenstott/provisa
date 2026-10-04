@@ -52,6 +52,7 @@ import {
   openSourcesForm,
   pickSchemaAndTable,
   runSqlOnPage,
+  releaseDraftTables,
   submitSourceAndExpectListed,
 } from "./source-to-query-helpers";
 
@@ -144,6 +145,8 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
     await page.getByTestId("register-table-submit").click();
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
+    // REQ-1921: registered through the admin, it starts as draft; released, it is read.
+    await releaseDraftTables(page, { sourceId });
     const res = await page.request.post("/admin/graphql", {
       data: { query: "{ tables { sourceId dqDataset } }" },
     });
@@ -234,6 +237,8 @@ test.describe("source to query through the UI: exasol (REQ-1731, REQ-1763)", () 
     await page.getByTestId("register-table-submit").click();
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
+    // REQ-1921: registered through the admin, it starts as draft; released, it is read.
+    await releaseDraftTables(page, { sourceId });
 
     const res = await page.request.post("/admin/graphql", {
       data: { query: "{ tables { sourceId dqDataset } }" },

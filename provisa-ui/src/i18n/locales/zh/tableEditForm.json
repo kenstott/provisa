@@ -258,6 +258,8 @@
     "pagingTypeRequired": "请选择分页类型，或清空分页字段。",
     "pagingPositive": "请使用不小于 1 的整数。",
     "pagingAboveCeiling": "最多 {{ceiling}}：表可以降低操作员的上限，但不能提高。",
-    "pagingFixErrors": "保存前请修正分页错误。"
+    "pagingFixErrors": "保存前请修正分页错误。",
+    "draftLabel": "草稿",
+    "draftHelp": "勾选期间停止服务：任何地方都不读写、任何模式中都不提供、也不复制——所有区域中已有的副本都会被删除。在此注册的表或视图以草稿开始；取消勾选即可发布。"
   }
 }

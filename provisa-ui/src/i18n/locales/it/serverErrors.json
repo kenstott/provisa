@@ -97,7 +97,8 @@
       "unknown_action_field": "Campo azione sconosciuto: '{{field}}'",
       "unknown_command": "Comando '{{name}}' sconosciuto",
       "write_not_admitted": "Il ruolo '{{role}}' non può eseguire questa scrittura: una scrittura richiede il diritto di scrittura, l'accesso in scrittura a ogni colonna scritta e righe ammesse dal filtro di riga del ruolo.",
-      "write_not_supported": "'{{table}}' non accetta {{operation}}: la sua origine non può eseguirlo"
+      "write_not_supported": "'{{table}}' non accetta {{operation}}: la sua origine non può eseguirlo",
+      "table_is_draft": "{{table}} è una bozza: fuori servizio finché i responsabili del suo dominio non la rilasciano"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adattatore per '{{source_type}}' non implementa discover_schema",
@@ -355,7 +356,9 @@
       "webhook_approved": "Webhook '{{webhook}}' approvato",
       "webhook_name_required": "webhook_name è obbligatorio per un trigger webhook",
       "webhook_not_found": "Webhook '{{webhook}}' non trovato",
-      "change_streams_unavailable": "L'origine '{{source}}' è un server MongoDB standalone, che non fornisce change stream: il segnale di modifica native richiede un replica set o un cluster shardato. Eseguilo come replica set oppure usa il segnale di modifica poll."
+      "change_streams_unavailable": "L'origine '{{source}}' è un server MongoDB standalone, che non fornisce change stream: il segnale di modifica native richiede un replica set o un cluster shardato. Eseguilo come replica set oppure usa il segnale di modifica poll.",
+      "table_draft_set": "Tabella {{table}} impostata come bozza",
+      "table_released": "Tabella {{table}} rilasciata"
     },
     "secrets": {
       "still_referenced": "{{secret}} è ancora nominato da {{count}} valore/i memorizzato/i in questa organizzazione. Modifica o rimuovi ciascuno, poi eliminalo di nuovo."

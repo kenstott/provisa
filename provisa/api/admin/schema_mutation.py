@@ -566,7 +566,7 @@ def _invalid_replicate(replicate: int | None) -> MutationResult | None:  # REQ-8
 
 
 def _residency_refusal(
-    info, what: str, before: object, after: str | None
+    info, what: str, before: object, after: str | None, *, draft: bool = False
 ) -> MutationResult | None:  # REQ-1921
     """The refusal of a region change the caller's data_residency grant does not cover, naming
     the value; None when it may be made (``capabilities.require_residency_change``)."""
@@ -574,7 +574,7 @@ def _residency_refusal(
     from provisa.security.residency import ResidencyRefused
 
     try:
-        require_residency_change(info, what, before, after)
+        require_residency_change(info, what, before, after, draft=draft)
     except ResidencyRefused as refused:
         return MutationResult(
             success=False, message=str(refused), code=refused.code, params=refused.params
@@ -2311,9 +2311,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 await apply_dq_registration(_conn, model)
             except ValueError as _dq_err:
                 return MutationResult(success=False, message=str(_dq_err))
-            from provisa.api.admin.region_defaults import kept_region
+            from provisa.api.admin.region_defaults import kept_placement
 
-            model.region = await kept_region(_conn, model)  # REQ-1921
+            model.region, model.draft = await kept_placement(_conn, model)  # REQ-1921
             _conflict = await _domain_table_conflict(
                 _conn,
                 model.domain_id,
@@ -2472,6 +2472,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     allowed_lateness=input.mv_allowed_lateness,  # REQ-961
                     expected_events=input.mv_expected_events,  # REQ-961
                     business_day_grain=input.mv_business_day_grain,  # REQ-962
+                    draft=model.draft,  # REQ-1921
                 )
             except ValueError as _det_err:  # REQ-964: reject non-deterministic MV SQL
                 return MutationResult(success=False, message=str(_det_err))
@@ -2495,7 +2496,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 "Landed-table reconcile failed after update_table", exc_info=True
             )
         # Materialize + wire a (re)materialized view immediately — FRESH now, not STALE-until-restart.
-        if input.view_sql and input.materialize:
+        if input.view_sql and input.materialize and not model.draft:
             from provisa.api.admin.schema_common import activate_view_mv
 
             await activate_view_mv(input.table_name)
@@ -3310,6 +3311,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     registered_tables.c.domain_id,
                     registered_tables.c.table_name,
                     registered_tables.c.region,
+                    registered_tables.c.draft,
                 ).where(registered_tables.c.id == table_id)
             )
             row = _row.fetchone()
@@ -3321,7 +3323,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"table": table_id},
                 )
             require_capability(info, "table_registration", domain_id=row.domain_id)
-            refused_here = _residency_refusal(info, f"table {row.table_name}", row.region, region)
+            # A draft table is claimed: its destination alone is judged (REQ-1921).
+            refused_here = _residency_refusal(
+                info, f"table {row.table_name}", row.region, region, draft=row.draft
+            )
             if refused_here is not None:
                 return refused_here
             try:
@@ -3339,6 +3344,55 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"region of table {name!r} set to {region or 'none'}",
             code="schema.table_region_set",
             params={"table": table_id, "region": region},
+        )
+
+    @strawberry.mutation
+    async def set_table_draft(
+        self, info: StrawberryInfo, table_id: int, draft: bool
+    ) -> MutationResult:  # REQ-1921
+        """Put a table or view out of service (draft) or release it. While draft it is read and
+        written nowhere, offered in no schema and copied nowhere; its domain's owners set and
+        clear it, and no other right is needed."""
+        from sqlalchemy import update as _update
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            row = (
+                await conn.execute_core(
+                    select(
+                        registered_tables.c.domain_id,
+                        registered_tables.c.table_name,
+                        registered_tables.c.materialize,
+                    ).where(registered_tables.c.id == table_id)
+                )
+            ).fetchone()
+            if row is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_not_found",
+                    params={"table": table_id},
+                )
+            require_capability(info, "table_registration", domain_id=row.domain_id)
+            from provisa.core import model_change
+
+            model_change.name("update", "table draft", row.table_name)  # REQ-1524
+            await conn.execute_core(
+                _update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(draft=draft)
+            )
+        await _rebuild_schemas()
+        if not draft and row.materialize:
+            # Released: a materialized view is built now, as a newly saved one is.
+            from provisa.api.admin.schema_common import activate_view_mv
+
+            await activate_view_mv(row.table_name)
+        return MutationResult(
+            success=True,
+            message=f"table {row.table_name!r} {'set as draft' if draft else 'released'}",
+            code="schema.table_draft_set" if draft else "schema.table_released",
+            params={"table": row.table_name},
         )
 
     @strawberry.mutation

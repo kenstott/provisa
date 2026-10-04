@@ -110,7 +110,8 @@ async def _build_catalog_tables_async(state) -> list[CatalogTable]:
     async with state.model_db.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, domain_id, table_name, description, modeling_role, modeling_history "
-            "FROM registered_tables ORDER BY domain_id, table_name"
+            # REQ-1921: a draft table is in no catalog.
+            "FROM registered_tables WHERE NOT draft ORDER BY domain_id, table_name"
         )
         col_rows = await conn.fetch(
             "SELECT tc.table_id, tc.column_name, tc.description "

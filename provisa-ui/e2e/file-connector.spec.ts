@@ -165,6 +165,19 @@ test("file connector: add northwind source and query customers", async ({ page }
     `registerTable: ${JSON.stringify(registerResult.data?.registerTable)}`,
   ).toBe(true);
 
+  // REQ-1921: registered through the admin, the table starts as draft; released, it is read.
+  const registeredId = Number(
+    /\(id=(\d+)\)/.exec(String(registerResult.data?.registerTable?.message))?.[1],
+  );
+  const releaseResult = await gql(
+    `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
+    { id: registeredId },
+  );
+  expect(
+    releaseResult.data?.setTableDraft?.success,
+    `setTableDraft: ${JSON.stringify(releaseResult)}`,
+  ).toBe(true);
+
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 15000 });
 

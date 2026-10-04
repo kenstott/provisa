@@ -258,6 +258,8 @@
     "pagingTypeRequired": "Scegli un tipo di paginazione o svuota i campi di paginazione.",
     "pagingPositive": "Usa un numero intero pari o superiore a 1.",
     "pagingAboveCeiling": "Al massimo {{ceiling}}: una tabella può abbassare il limite dell'operatore, mai alzarlo.",
-    "pagingFixErrors": "Correggi gli errori di paginazione prima di salvare."
+    "pagingFixErrors": "Correggi gli errori di paginazione prima di salvare.",
+    "draftLabel": "Bozza",
+    "draftHelp": "Fuori servizio finché è selezionato: non viene letta né scritta da nessuna parte, non è offerta in alcuno schema e non viene copiata — le copie esistenti in ogni regione vengono rimosse. Una tabella o vista registrata qui inizia come bozza; deselezionare per rilasciarla."
   }
 }

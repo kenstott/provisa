@@ -201,6 +201,7 @@ query TablesQuery {
     pagingCeilingRows
     replicate
     region
+    draft
     loadProtected
     offPeakWindow
     offPeakTz
@@ -1156,6 +1157,13 @@ mutation SetTableRegion($tableId: Int!, $region: String) {
 
 mutation SetSourceRegion($sourceId: String!, $region: String) {
   setSourceRegion(sourceId: $sourceId, region: $region) {
+    ...MutationResult
+  }
+}
+
+# REQ-1921: put a table or view out of service (draft) or release it.
+mutation SetTableDraft($tableId: Int!, $draft: Boolean!) {
+  setTableDraft(tableId: $tableId, draft: $draft) {
     ...MutationResult
   }
 }

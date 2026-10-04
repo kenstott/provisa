@@ -1011,6 +1011,10 @@ class Table(
     # REQ-1921: the org region this table's data lives in; None = no region (a copy may be kept in
     # every region). Its source's region is only the admin form's default for a new table.
     region: str | None = None
+    # REQ-1921: out of service while set — read and written nowhere, offered in no schema, copied
+    # nowhere. A table or view registered through the admin starts as draft; one a config file
+    # declares is draft only when the file says so.
+    draft: bool = False
     # REQ-1141: per-table load-protection override; None = inherit the source's load_protected.
     load_protected: bool | None = None
     # REQ-1141: per-table off-peak window override ("HH:MM-HH:MM"); None = inherit source window.

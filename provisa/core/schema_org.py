@@ -204,6 +204,9 @@ registered_tables = Table(
     Column("role_ttl", JSON, nullable=False, default=dict, server_default="{}"),
     Column("replicate", Integer),  # REQ-826: NULL = inherit source
     Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = none
+    # REQ-1921: out of service while set — read and written nowhere, offered in no schema, copied
+    # nowhere; a table or view registered through the admin starts so.
+    Column("draft", Boolean, nullable=False, default=False, server_default=false()),
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text),  # REQ-1141

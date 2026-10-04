@@ -319,6 +319,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     cache_ttl: int | None
     replicate: int | None  # REQ-826: NULL = inherit source
     region: str | None  # REQ-1921: where its data lives; null = no region
+    draft: bool  # REQ-1921: out of service until its domain's owners release it
     load_protected: bool | None  # REQ-1141: NULL = inherit source
     off_peak_window: str | None  # REQ-1141: per-table window override
     off_peak_tz: str | None  # REQ-1141: per-table window zone override

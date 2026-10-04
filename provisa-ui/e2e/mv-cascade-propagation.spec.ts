@@ -13,6 +13,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { test, expect, BACKEND_URL } from "./coverage";
+import { releaseDraftTables } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const PYTHON = path.join(ROOT, ".venv", "bin", "python");
@@ -125,6 +126,8 @@ async function createView(page: import("@playwright/test").Page, sql: string, al
   // note above); on the 2-core runner with four workers that has taken over 30s.
   await expect(page.getByTestId("view-saved-close-button")).toBeVisible({ timeout: 120000 });
   await page.getByTestId("view-saved-close-button").click();
+  // REQ-1921: saved through the admin, the view starts as draft; released, it is read and built.
+  expect(await releaseDraftTables(page, { tableName: alias })).toBe(1);
 }
 
 async function materialize(page: import("@playwright/test").Page, tableName: string) {

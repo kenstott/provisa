@@ -277,6 +277,8 @@
       "rebuildEveryHelp": "Periodically rebuild the whole replica to catch anything a delta misses. Blank = never on a clock.",
       "query": "Delta query (optional, source-native)",
       "queryHelp": "A source-native query with the $wm (cursor) and {{fields}} placeholders. Leave blank for a SQL source: Provisa generates SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
-    }
+    },
+    "draftLabel": "Draft",
+    "draftHelp": "Out of service while checked: read and written nowhere, offered in no schema, and copied nowhere — existing copies in every region are removed. A table or view registered here starts as draft; clear it to release it."
   }
 }

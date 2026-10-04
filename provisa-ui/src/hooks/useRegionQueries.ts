@@ -13,7 +13,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@apollo/client/react";
 import type { MutationResult } from "../types/admin";
-import { RegionChoices, SetTableRegion, SetSourceRegion } from "./admin.graphql";
+import { RegionChoices, SetTableRegion, SetSourceRegion, SetTableDraft } from "./admin.graphql";
 
 /** REQ-1921: the org's regions and the connected one; no regions = the admin shows none. */
 export interface RegionChoicesData {
@@ -54,4 +54,13 @@ export function useRegionChoice(
   const [chosen, setChosen] = useState<{ key: unknown; region: string | null } | null>(null);
   const region = chosen !== null && chosen.key === key ? chosen.region : start;
   return [region, (picked) => setChosen({ key, region: picked })];
+}
+
+/** REQ-1921: put a table or view out of service (draft: true) or release it (false). */
+export function useSetTableDraft() {
+  const [setTableDraft] = useMutation<{ setTableDraft: MutationResult }>(SetTableDraft);
+  return async (tableId: number, draft: boolean) => {
+    const result = await setTableDraft({ variables: { tableId, draft } });
+    return (result.data?.setTableDraft ?? { success: false, message: "" }) as MutationResult;
+  };
 }

@@ -35,7 +35,7 @@ CREATE TABLE glossary_term_experts (
     id TEXT PRIMARY KEY, term_id TEXT, user_id TEXT, kind TEXT, tenant_id TEXT);
 CREATE TABLE registered_tables (
     id INTEGER PRIMARY KEY, source_id TEXT, schema_name TEXT, table_name TEXT,
-    domain_id TEXT, tenant_id TEXT);
+    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE table_columns (
     id INTEGER PRIMARY KEY, table_id INTEGER, domain_id TEXT, column_name TEXT, data_type TEXT,
     is_primary_key BOOLEAN, alias TEXT, description TEXT, path TEXT, scope TEXT,
@@ -72,7 +72,7 @@ def db() -> sqlite3.Connection:
         )
 
     conn.execute(
-        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1')"
+        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0)"
     )
     conn.executemany(
         "INSERT INTO table_columns (id, table_id, column_name, alias, mask_type, domain_id,"

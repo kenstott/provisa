@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
-// Canary: 5d1a7c93-2b6e-4f08-8c4d-9e3b1f7a6c25
+// Canary: a8397cab-481f-4d3c-b9ba-b2bedc6362d6
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -8,8 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1907: saving the table edit form persists the Role TTL list through updateTableRoleTtl
-// (full replace), and an invalid row blocks the whole save before any mutation runs.
+// REQ-1921: the edit form's Draft checkbox puts a table out of service or releases it, saved on
+// its own (setTableDraft) — and in the order the handover needs: going to draft before a region
+// change, a release after it (a draft table is claimed by its destination alone).
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "../../test-utils/render";
@@ -126,12 +127,8 @@ function table(
 }
 
 const TABLES = [
-  table(7, "orders", [{ role: "analyst", ttl: 360 }]),
-  // REQ-930: a ttl signal with no Cache TTL on the table or its source (the source sets none).
-  table(9, "ticks", [], { cacheTtl: null, changeSignal: "ttl", replicate: 0 }),
-  // Read live: a ttl table with no Cache TTL saves; the server raises if it ever lands.
-  table(14, "live_ticks", [], { cacheTtl: null, changeSignal: "ttl" }),
-  table(15, "mv_ticks", [], { cacheTtl: null, changeSignal: "ttl_probe", materialize: true }),
+  table(7, "orders", [], { region: "eu" }),
+  table(8, "staging", [], { region: "eu", draft: true }),
 ];
 const SOURCES = [
   {
@@ -163,6 +160,23 @@ const updateTableReplicate = vi.fn();
 const updateTableLoadProtection = vi.fn();
 const updateTableRoleTtl = vi.fn();
 
+const calls: string[] = [];
+const setTableDraft = vi.fn(async (id: number, draft: boolean) => {
+  calls.push(`draft ${id} ${draft}`);
+  return ok;
+});
+const setTableRegion = vi.fn(async (id: number, region: string | null) => {
+  calls.push(`region ${id} ${region}`);
+  return ok;
+});
+
+vi.mock("../../hooks/useRegionQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useRegionQueries")>()),
+  useRegionChoices: () => ({ regions: ["eu", "us"], connected: "eu" }),
+  useSetTableDraft: () => setTableDraft,
+  useSetTableRegion: () => setTableRegion,
+}));
+
 vi.mock("../../hooks/useAdminOpsQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminOpsQueries")>()),
   usePurgeCacheByTable: () => ({ purgeCacheByTable: vi.fn(), loading: false }),
@@ -188,25 +202,22 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 
 import { TablesPage } from "../TablesPage";
 
-async function openEditor(name = "orders") {
+async function openEditor(name: string) {
   render(<TablesPage />);
   const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
   await userEvent.click(row.querySelector("td") as HTMLElement);
   await userEvent.click(await screen.findByTestId("table-read-view-edit"));
-  // The load settings live in the collapsed "Load Management and Timeliness" panel.
-  const toggle = await screen.findByTestId("load-management-panel-toggle");
-  expect(toggle).toHaveAttribute("aria-expanded", "false");
-  expect(toggle).toHaveTextContent("Load Management and Timeliness");
-  await userEvent.click(toggle);
-  expect(screen.getByTestId("load-management-help")).toHaveTextContent(
-    "How current the data must be for each reader, balanced against load on the platform and upstream sources.",
-  );
-  return screen.findByTestId("role-ttl-field");
+  return screen.findByTestId("table-draft-checkbox");
 }
 
-// The signal matrix lives in the tableTtlSignalError unit tests (roleTtl.test.ts), not here.
-describe("TablesPage — Role TTL save (REQ-1907)", () => {
+async function pickRegion(region: string) {
+  await userEvent.click(screen.getByTestId("table-region-select"));
+  await userEvent.click(await screen.findByRole("option", { name: region, hidden: true }));
+}
+
+describe("TablesPage — draft (REQ-1921)", () => {
   beforeEach(() => {
+    calls.length = 0;
     for (const fn of [
       updateTable,
       updateTableNaming,
@@ -220,84 +231,24 @@ describe("TablesPage — Role TTL save (REQ-1907)", () => {
     }
   });
 
-  it("sends the full role list when a row is added", async () => {
-    await openEditor();
-    await userEvent.click(await screen.findByRole("button", { name: "Add role TTL" }));
-    await userEvent.click(screen.getByTestId("table-edit-save"));
-    await waitFor(() =>
-      expect(updateTableRoleTtl).toHaveBeenCalledWith(7, [
-        { role: "analyst", ttl: 360 },
-        { role: "trader", ttl: 60 },
-      ]),
-    );
-  });
-
-  it("does not call updateTableRoleTtl when the list is unchanged", async () => {
-    await openEditor();
+  it("shows a table's draft and saves nothing for it when unchanged", async () => {
+    expect(await openEditor("staging")).toBeChecked();
     await userEvent.click(screen.getByTestId("table-edit-save"));
     await waitFor(() => expect(updateTable).toHaveBeenCalled());
-    expect(updateTableRoleTtl).not.toHaveBeenCalled();
+    expect(calls).toEqual([]);
   });
 
-  it("blocks the whole save on an invalid row", async () => {
-    await openEditor();
-    await userEvent.clear(await screen.findByRole("textbox", { name: "TTL (seconds)" }));
+  it("goes to draft before it moves region", async () => {
+    await userEvent.click(await openEditor("orders"));
+    await pickRegion("us");
     await userEvent.click(screen.getByTestId("table-edit-save"));
-    expect(await screen.findByText("Fix the Role TTL rows before saving.")).toBeInTheDocument();
-    expect(updateTable).not.toHaveBeenCalled();
-    expect(updateTableRoleTtl).not.toHaveBeenCalled();
+    await waitFor(() => expect(calls).toEqual(["draft 7 true", "region 7 us"]));
   });
 
-  it("reports a server refusal", async () => {
-    updateTableRoleTtl.mockResolvedValue({
-      success: false,
-      message: "Unknown role 'trader'",
-      code: "schema.role_ttl_unknown_role",
-      params: { role: "trader" },
-    });
-    await openEditor();
-    await userEvent.click(await screen.findByRole("button", { name: "Add role TTL" }));
+  it("is claimed by its new region before it is released", async () => {
+    await userEvent.click(await openEditor("staging"));
+    await pickRegion("us");
     await userEvent.click(screen.getByTestId("table-edit-save"));
-    expect(await screen.findByText("Unknown role 'trader'")).toBeInTheDocument();
+    await waitFor(() => expect(calls).toEqual(["region 8 us", "draft 8 false"]));
   });
-
-  it("refuses a ttl signal with no Cache TTL, and saves once one is entered", async () => {
-    await openEditor("ticks");
-    const msg =
-      "The ttl change signal judges staleness by the Cache TTL, so set a Cache TTL here or on the source.";
-    expect(await screen.findByText(msg)).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId("table-edit-save"));
-    expect(
-      await screen.findByText("Fix the Load Management and Timeliness settings before saving."),
-    ).toBeInTheDocument();
-    expect(updateTable).not.toHaveBeenCalled();
-
-    await userEvent.type(screen.getByRole("textbox", { name: /^Cache TTL/ }), "30");
-    await waitFor(() => expect(screen.queryByText(msg)).toBeNull());
-    await userEvent.click(screen.getByTestId("table-edit-save"));
-    await waitFor(() => expect(updateTable).toHaveBeenCalled());
-  });
-
-  it.each(["live_ticks"])("saves the live-read ttl table %s with no Cache TTL", async (name) => {
-    await openEditor(name);
-    expect(screen.queryByText(/judges staleness by the Cache TTL/)).toBeNull();
-    await userEvent.click(screen.getByTestId("table-edit-save"));
-    await waitFor(() => expect(updateTable).toHaveBeenCalled());
-    expect(
-      screen.queryByText("Fix the Load Management and Timeliness settings before saving."),
-    ).toBeNull();
-  });
-
-  it.each(["mv_ticks"])(
-    "refuses landed table %s with a ttl signal and no Cache TTL",
-    async (name) => {
-      await openEditor(name);
-      expect(await screen.findByText(/judges staleness by the Cache TTL/)).toBeInTheDocument();
-      await userEvent.click(screen.getByTestId("table-edit-save"));
-      expect(
-        await screen.findByText("Fix the Load Management and Timeliness settings before saving."),
-      ).toBeInTheDocument();
-      expect(updateTable).not.toHaveBeenCalled();
-    },
-  );
 });

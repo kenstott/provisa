@@ -67,6 +67,8 @@ from typing import Any
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from tests.helpers import registered_id, release_mutation
+
 # The role every test in this bucket registers for and queries as. It must be a role the app
 # actually seeds (config/provisa.yaml:7 makes org_admin the default identity) — a role name that
 # does not resolve produces an empty role dict, so stage2 (compiler/stage2.py:140) sees neither the
@@ -251,7 +253,7 @@ async def register_table(
         + " }"
         for c in columns
     )
-    await _gql(
+    registered = await _gql(
         client,
         f"""
         mutation {{
@@ -267,6 +269,8 @@ async def register_table(
         """,
         "registerTable",
     )
+    # REQ-1921: registered through the admin, it starts as draft; released, it is read.
+    await _gql(client, release_mutation(registered_id(registered["message"])), "setTableDraft")
 
 
 async def rebuild_schemas(client: AsyncClient) -> None:

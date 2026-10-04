@@ -92,6 +92,48 @@ export async function pickSchemaAndTable(page: Page, schema: string, table: stri
 }
 
 /**
+ * REQ-1921: a table or view registered through the admin starts as draft — out of service until
+ * its domain's owners release it. Release every draft table matching ``match`` (a source's, or one
+ * table by name), as a domain owner does after registering it and before anything reads it.
+ * Returns how many were released.
+ */
+export async function releaseDraftTables(
+  page: Page,
+  match: { sourceId?: string; tableName?: string },
+  baseUrl = "",
+): Promise<number> {
+  const res = await page.request.post(`${baseUrl}/admin/graphql`, {
+    data: { query: "{ tables { id sourceId tableName draft } }" },
+  });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  const tables = (await res.json()).data.tables as {
+    id: number;
+    sourceId: string;
+    tableName: string;
+    draft: boolean;
+  }[];
+  const drafts = tables.filter(
+    (t) =>
+      t.draft &&
+      (match.sourceId === undefined || t.sourceId === match.sourceId) &&
+      (match.tableName === undefined || t.tableName === match.tableName),
+  );
+  for (const t of drafts) {
+    const released = await page.request.post(`${baseUrl}/admin/graphql`, {
+      data: {
+        query: `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
+        variables: { id: t.id },
+      },
+    });
+    expect(released.ok(), await released.text()).toBeTruthy();
+    const body = await released.json();
+    expect(body.errors, JSON.stringify(body.errors)).toBeUndefined();
+    expect(body.data.setTableDraft.success, body.data.setTableDraft.message).toBeTruthy();
+  }
+  return drafts.length;
+}
+
+/**
  * Submit the registration, wait for the table's row in the tables list, and return the name a
  * SELECT addresses it by. The list shows the alias (the GraphQL name, camelCase under the default
  * convention); the SQL-plane name is its snake form, which the server reports as the last segment
@@ -114,6 +156,7 @@ export async function submitRegisterAndExpectListed(
   // Registration rebuilds the schemas; the row lands in the tables list when it is done.
   const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
   await expect(row).toBeVisible({ timeout: timeoutMs });
+  await releaseDraftTables(page, { sourceId }, baseUrl);
   const res = await page.request.post(`${baseUrl}/admin/graphql`, {
     data: { query: "{ tables { sourceId dqDataset } }" },
   });
@@ -194,6 +237,7 @@ export async function registerOfferedTable(
   expect(json.errors, JSON.stringify(json.errors)).toBeUndefined();
   expect(json.data.registerTable.success, json.data.registerTable.message).toBeTruthy();
   expect(await registeredTableNames(page, sourceId)).toEqual([tableName]);
+  await releaseDraftTables(page, { sourceId, tableName: tableName as string });
   return tableName as string;
 }
 

@@ -1475,6 +1475,7 @@ def schema_input_for(
         governed_gql_types=inputs["governed_gql_types"],
         gql_governed_object_cols=inputs["gql_governed_object_cols"],
         metrics=metrics,  # REQ-1319
+        draft_tables=inputs["draft_tables"],  # REQ-1921
     )
 
 
@@ -1515,6 +1516,8 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     rls_rules: list[dict],
     metrics: list[dict],  # REQ-1319: config metric registry for schema projection
     field_numbers=None,  # FieldNumberAllocator | None (REQ-1903) — the caller owns load/persist
+    *,
+    draft_tables: list[dict],  # REQ-1921: out of service; named only to be refused
 ) -> None:
     """Build and register GraphQL schemas, contexts, and protos for each role."""
     from provisa.api.app import state
@@ -1560,6 +1563,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         "governed_gql_types": _governed_gql_types,
         "gql_governed_object_cols": _gov_obj_cols,
         "tables": tables,
+        "draft_tables": draft_tables,
         "metrics": metrics,
         "rls_rules": rls_rules,
         "field_numbers": field_numbers,
