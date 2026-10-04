@@ -29,7 +29,6 @@ only ever driven inside the TestClient's event loop — same reason as test_rede
 from __future__ import annotations
 
 import os
-from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, Request
@@ -42,6 +41,7 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships
 from provisa.core.schema_org import metadata as org_metadata
+from provisa.api.org_runtime import OrgRegistry, OrgRuntime
 from provisa.core.schema_org import roles, user_directory, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
@@ -105,10 +105,36 @@ def planes(monkeypatch):
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
 
     # REQ-1266: the middleware binds the ACTIVE org's data-plane runtime before reading assignments,
-    # so the read lands in that org's schema. Here the tenant schema IS the org's schema; resolve the
-    # runtime to a stub carrying it rather than building a full per-org runtime (covered elsewhere).
-    async def _org_runtime(_org_id: str, _env: str | None = None):
-        return SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
+    # so the read lands in that org's schema. Here the tenant schema IS the org's schema; the org's
+    # runtime carries it rather than being built in full (covered elsewhere).
+    # REQ-1337: the runtime's roles registry is where a role id becomes the rights it carries, and
+    # the org's assignments are judged by it. It mirrors the role rows seeded above: the org's
+    # org_admin is its data-plane administrator and carries no platform right. The root runtime is
+    # the deployment's own, whose org_admin may carry one (a single-tenant grant) — which the
+    # tenant org's assignment must not be judged by.
+    org_roles = {
+        "admin": {"id": "admin", "capabilities": []},
+        "analyst": {"id": "analyst", "capabilities": ["usage"]},
+        "org_admin": {"id": "org_admin", "capabilities": ["user_management", "usage"]},
+    }
+    root_roles = {"org_admin": {"id": "org_admin", "capabilities": ["platform_settings"]}}
+    registry = OrgRegistry()
+    # The deployment's own runtime, under the id this process boots with.
+    registry.set(app_state.org_id, OrgRuntime(org_id=app_state.org_id, roles=root_roles))
+    registry.set(
+        _ORG,
+        OrgRuntime(
+            org_id=_ORG,
+            model_db=tenant_db,
+            tenant_db=tenant_db,
+            record_db=tenant_db,
+            roles=org_roles,
+        ),
+    )
+    monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
+
+    async def _org_runtime(org_id: str, _env: str | None = None):
+        return registry.get(org_id)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
 

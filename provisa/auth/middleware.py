@@ -159,6 +159,19 @@ def _loaded_roles() -> dict[str, dict]:  # REQ-1337
     return getattr(state, "roles", {})
 
 
+async def _org_roles(org_id: str) -> dict[str, dict]:  # REQ-1337
+    """The roles registry of ``org_id``'s own runtime (prod), built if it is not yet."""
+    from provisa.api.app import ensure_org_runtime
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    await ensure_org_runtime(org_id, None)
+    token = set_current_org(org_id)
+    try:
+        return _loaded_roles()
+    finally:
+        reset_current_org(token)
+
+
 def _dedup_assignments(assignments: list[RoleAssignment]) -> list[RoleAssignment]:
     """The same (role, domain) pair once, in first-seen order.
 
@@ -810,6 +823,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # assignments in that org's schema. A platform admin bound to a tenant org they are a
             # member of resolves whatever role that org granted them, nothing more; the platform
             # set never carries across. The default org's members have rows from the platform read.
+            tenant_roles: dict[str, dict] | None = None
             if (
                 self._assignments_source == "provisa"
                 and self._db_pool
@@ -857,6 +871,8 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 env_token = set_current_env(active_env) if active_env is not None else None
                 try:
                     assignments = await self._read_assignments(identity)
+                    # The org's own role definitions decide what its assignments carry (below).
+                    tenant_roles = _loaded_roles()
                 finally:
                     if env_token is not None:
                         reset_current_env(env_token)
@@ -876,9 +892,14 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 # REQ-1337: identified by the PLATFORM RIGHTS the role carries, not by its name —
                 # cross_org or platform_settings. Platform authority is conferred in root only, so
                 # a tenant schema naming a role that carries either resolves to nothing here.
-                _roles = _loaded_roles()
+                # Judged by THIS org's role definitions: the default org's roles map can give the
+                # same role id a platform right (a single-tenant org_admin holds platform_settings),
+                # and reading it here dropped every tenant org_admin assignment.
+                if tenant_roles is None:
+                    assert active_org_id is not None  # a tenant org is a bound one (is_tenant_org)
+                    tenant_roles = await _org_roles(active_org_id)
                 assignments = [
-                    a for a in assignments if not _carries_platform_right(a.role_id, _roles)
+                    a for a in assignments if not _carries_platform_right(a.role_id, tenant_roles)
                 ]
 
         role = resolve_role(identity, self._mapping_rules, self._default_role)
