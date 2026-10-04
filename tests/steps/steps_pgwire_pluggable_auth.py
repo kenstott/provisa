@@ -45,16 +45,17 @@ def shared_data(pgwire_loop):
     return {"errors": [], "provider": None}
 
 
-class _Session:
-    """A session with no role until the handler grants one — so 'no session' is checkable."""
+def _real_session():
+    """The session pgwire authenticates: it has no role until the handler grants one."""
+    from provisa.pgwire.server import ProvisaSession
 
-    org_id = None
+    return ProvisaSession()
 
 
 class _Ctx:
     def __init__(self, user: str):
         self.params = {"user": user}
-        self.session = _Session()
+        self.session = _real_session()
 
 
 def _handler(shared_data):
@@ -223,7 +224,7 @@ def then_fatal_no_session(shared_data):
         ("FATAL", "28P01", 'password authentication failed for user "alice"')
     ]
     assert shared_data.get("admitted", []) == []
-    assert not hasattr(shared_data["ctx"].session, "role_id")
+    assert shared_data["ctx"].session.role_id is None
 
 
 # --- simple provider not enabled → refused ------------------------------------------------------
@@ -249,7 +250,7 @@ def then_connection_refused(shared_data):
     assert (severity, sqlstate) == ("FATAL", "28P01")
     assert "allow_simple_auth" in message
     assert shared_data.get("admitted", []) == []
-    assert not hasattr(shared_data["ctx"].session, "role_id")
+    assert shared_data["ctx"].session.role_id is None
 
 
 # --- ordinary password → basic presentation, role from the identity -----------------------------
@@ -353,7 +354,7 @@ def then_connection_fails(shared_data):
     assert isinstance(shared_data["raised"], RuntimeError)
     assert "default_role" in str(shared_data["raised"])
     assert shared_data.get("admitted", []) == []
-    assert not hasattr(shared_data["ctx"].session, "role_id")
+    assert shared_data["ctx"].session.role_id is None
 
 
 scenarios("../features/REQ-890.feature")

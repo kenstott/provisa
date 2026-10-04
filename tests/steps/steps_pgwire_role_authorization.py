@@ -37,6 +37,8 @@ def _state_for_role(visible_tables: dict) -> Any:
     ctx = MagicMock()
     ctx.tables = visible_tables
     state = MagicMock()
+    # A single-tenant deployment: its catalog serves the one database, provisa.
+    state.multitenancy = False
     state.contexts = {"analyst": ctx}
     state.schema_build_cache = {"column_types": {tm.table_id: [] for tm in visible_tables.values()}}
     return state
