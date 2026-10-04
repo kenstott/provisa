@@ -27,9 +27,9 @@ _ENV = ("GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS")
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.asyncio,
-    pytest.mark.skipif(
-        not all(os.environ.get(k) for k in _ENV), reason="BigQuery project creds not set"
-    ),
+    # A live cloud warehouse: the warehouse lane only, where its credentials load (a missing one
+    # fails that lane's credential check). Never a skip in the default lanes.
+    pytest.mark.requires_warehouse,
 ]
 
 _DATASET = replica_schema(f"swaptest{os.getpid()}")

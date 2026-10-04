@@ -26,9 +26,9 @@ _ENV = ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD")
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.asyncio,
-    pytest.mark.skipif(
-        not all(os.environ.get(k) for k in _ENV), reason="Snowflake account creds not set"
-    ),
+    # A live cloud warehouse: the warehouse lane only, where its credentials load (a missing one
+    # fails that lane's credential check). Never a skip in the default lanes.
+    pytest.mark.requires_warehouse,
 ]
 
 _DB = f"PROVISA_REPLICA_TARGET_{os.getpid()}"

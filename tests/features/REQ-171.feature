@@ -4,5 +4,5 @@ Feature: REQ-171 — Infrastructure
 
   Scenario: REQ-171 default behaviour
     Given the Provisa stack starts for the first time
-    When the startup sequence runs
+    When the first redirect that needs the results bucket runs
     Then the MinIO results bucket is created automatically without manual intervention
