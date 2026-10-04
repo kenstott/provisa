@@ -92,16 +92,18 @@ fi
 CREDS_FILE="$INSTANCE_DIR/creds.env"
 if [[ "$MODE" == "test" ]]; then
   # Fixed, known creds so the spec can log in (the instance is throwaway and unexposed).
-  ADMIN_PW="admin-test-pw"; RESIDENT_PW="resident-test-pw"; JWT_SECRET="regions-demo-test-jwt-secret-0001234567"
+  ADMIN_PW="admin-test-pw"; OPERATOR_PW="operator-test-pw"; RESIDENT_PW="resident-test-pw"
+  JWT_SECRET="regions-demo-test-jwt-secret-0001234567"
 elif [[ -f "$CREDS_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$CREDS_FILE"
 else
   _rand() { openssl rand -hex "$1" 2>/dev/null || date +%s%N | shasum | head -c $(( $1 * 2 )); }
   ADMIN_PW="admin-$(_rand 6)"
+  OPERATOR_PW="operator-$(_rand 6)"
   RESIDENT_PW="resident-$(_rand 6)"
   JWT_SECRET="$(_rand 24)"
-  { echo "ADMIN_PW=$ADMIN_PW"; echo "RESIDENT_PW=$RESIDENT_PW"; echo "JWT_SECRET=$JWT_SECRET"; } >"$CREDS_FILE"
+  { echo "ADMIN_PW=$ADMIN_PW"; echo "OPERATOR_PW=$OPERATOR_PW"; echo "RESIDENT_PW=$RESIDENT_PW"; echo "JWT_SECRET=$JWT_SECRET"; } >"$CREDS_FILE"
 fi
 
 # --- one shared fakeredis TCP server (cache for both regions) ---
@@ -136,6 +138,20 @@ for tok in ("EU_ADDRESS","US_ADDRESS","EU_ENGINE_URL","US_ENGINE_URL","PG_URL","
 open(out, "w").write(text)
 PY
 
+# --- the UI bundle `provisa run` serves (ui_server.py reads provisa/_ui) ---
+# A dev worktree ships no bundle, so `provisa run` would serve "Provisa UI not bundled" and none of
+# the region admin UX would render. Build it once into provisa/_ui (gitignored, staged exactly as
+# scripts/build-wheel.sh does); subsequent launches reuse it.
+_ensure_ui_built() {
+  [[ -f "$REPO/provisa/_ui/index.html" ]] && return 0
+  echo "demo-regions: building the UI bundle once (provisa/_ui)..." >&2
+  ( cd "$REPO/provisa-ui" && npm run build ) >&2
+  test -f "$REPO/provisa-ui/dist/index.html" || { echo "UI build produced no dist/index.html" >&2; return 1; }
+  mkdir -p "$REPO/provisa/_ui"
+  cp -r "$REPO/provisa-ui/dist/." "$REPO/provisa/_ui/"
+}
+_ensure_ui_built
+
 # --- launch a node per region, BOTH on the one shared model store and shared cache ---
 # PLATFORM/TENANT_DATABASE_URL and REDIS_URL are exported so the embedded profile (setdefault) keeps
 # them: both nodes use the ONE shared pg + fakeredis instead of each starting its own.
@@ -156,44 +172,62 @@ launch_node() {
 launch_node eu "$EU_API" "$EU_UI" "$INSTANCE_DIR/eu"
 launch_node us "$US_API" "$US_UI" "$INSTANCE_DIR/us"
 
-# --- first-launch seed: admin is bootstrapped from PROVISA_SUPERUSER_* above; the resident user
-# (eu_resident role) is created the real way -- admin opens an invite bound to eu_resident and
-# /auth/register redeems it. Runs once; --reset clears the marker so it re-seeds. ---
-_seed_resident() {
+# --- first-launch seed: the break-glass superuser (PROVISA_SUPERUSER_*, control-plane only) opens
+# invites; /auth/register redeems them as the data-plane basic users operator (org_admin) and
+# resident (eu_resident). A second org_admin, `grantor`, then assigns residency_steward to the
+# operator through /admin/users -- a grant by ANOTHER principal, because a user cannot assign a role
+# to itself (REQ-1308). The operator ends up org_admin + residency_steward (REQ-1921: org_admin
+# alone cannot move data across a border). grantor is a seeding artifact, not a demo login. All
+# admin data work runs as operator; the superuser holds no data capabilities. Runs once; --reset
+# clears the marker so it re-seeds. ---
+_seed_users() {
   local marker="$INSTANCE_DIR/.seeded"
   [[ -f "$marker" ]] && return 0
   for _i in $(seq 1 30); do
     [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$EU_API/auth/provider-type" 2>/dev/null)" == "200" ]] && break
     sleep 5
   done
-  if EU_API="$EU_API" ADMIN_PW="$ADMIN_PW" RESIDENT_PW="$RESIDENT_PW" "$PY" - <<'PY'
-import os, json, base64, urllib.request
+  if EU_API="$EU_API" ADMIN_PW="$ADMIN_PW" OPERATOR_PW="$OPERATOR_PW" RESIDENT_PW="$RESIDENT_PW" "$PY" - <<'PY'
+import os, json, secrets, urllib.request
 api = f"http://127.0.0.1:{os.environ['EU_API']}"
-admin = "Basic " + base64.b64encode(f"admin:{os.environ['ADMIN_PW']}".encode()).decode()
 def post(path, body, auth=None):
     h = {"content-type": "application/json"}
     if auth: h["Authorization"] = auth
     req = urllib.request.Request(api + path, data=json.dumps(body).encode(), headers=h)
     return json.load(urllib.request.urlopen(req, timeout=20))
-inv = post("/admin/invites/", {"org_id": "default", "role_id": "eu_resident"}, auth=admin)
-post("/auth/register", {"username": "resident", "password": os.environ['RESIDENT_PW'], "invite_token": inv["token"]})
-print("seeded resident -> eu_resident")
+# The superuser session token only opens the invites; each user is created by redeeming one.
+su = post("/auth/superuser-login", {"username": "admin", "password": os.environ['ADMIN_PW']})["access_token"]
+ids = {}
+for username, role, pw_env in (("operator", "org_admin", "OPERATOR_PW"), ("resident", "eu_resident", "RESIDENT_PW")):
+    inv = post("/admin/invites/", {"org_id": "default", "role_id": role}, auth="Bearer " + su)
+    reg = post("/auth/register", {"username": username, "password": os.environ[pw_env], "invite_token": inv["token"]})
+    ids[username] = reg["user_id"]
+    print(f"seeded {username} -> {role}")
+# A second org_admin assigns residency_steward to the operator -- a grant by another principal
+# (REQ-1308 forbids assigning a role to yourself). grantor's password is ephemeral (seeding only).
+grantor_pw = secrets.token_hex(16)
+ginv = post("/admin/invites/", {"org_id": "default", "role_id": "org_admin"}, auth="Bearer " + su)
+post("/auth/register", {"username": "grantor", "password": grantor_pw, "invite_token": ginv["token"]})
+gtok = post("/auth/login", {"username": "grantor", "password": grantor_pw})["access_token"]
+post(f"/admin/users/{ids['operator']}/assignments", {"role_id": "residency_steward", "domain_id": "*"}, auth="Bearer " + gtok)
+print("granted operator -> residency_steward (via grantor, /admin/users)")
 PY
-  then touch "$marker"; else echo "WARN: resident seed failed (see logs); residency demo step unavailable"; fi
+  then touch "$marker"; else echo "WARN: user seed failed (see logs); admin/residency demo steps unavailable"; fi
 }
-_seed_resident
+_seed_users
 
 if [[ "$MODE" == "test" ]]; then
   # Machine-readable lines the Playwright harness parses, then it waits for readiness itself.
   echo "PORTS eu_ui=$EU_UI eu_api=$EU_API us_ui=$US_UI us_api=$US_API"
-  echo "CREDS admin=$ADMIN_PW resident=$RESIDENT_PW"
+  echo "CREDS operator=$OPERATOR_PW resident=$RESIDENT_PW admin=$ADMIN_PW"
   wait  # stay up until the spec kills the process group (teardown trap wipes the temp dir)
 else
   echo "demo-regions up:"
   echo "  eu:  http://127.0.0.1:$EU_UI   (API http://127.0.0.1:$EU_API)"
   echo "  us:  http://127.0.0.1:$US_UI   (API http://127.0.0.1:$US_API)"
   echo "  shared model store: embedded Postgres at $PGHOST:$PGPORT ; cache: fakeredis :$REDIS_PORT"
-  echo "Logins (basic auth):  admin / $ADMIN_PW  (org_admin)   resident / $RESIDENT_PW  (eu_resident)"
+  echo "Logins (basic auth):  operator / $OPERATOR_PW  (org_admin)   resident / $RESIDENT_PW  (eu_resident)"
+  echo "Break-glass superuser (control plane): admin / $ADMIN_PW  (/auth/superuser-login)"
   echo "Stop with: scripts/launch-demo-regions.sh --stop"
   wait
 fi

@@ -44,11 +44,14 @@ Open the **eu** UI at http://127.0.0.1:8310 and the **us** UI at http://127.0.0.
 - **The 503 refusal when a home region is stopped.** Stop just the eu node (leave us up), then on the
   us node read `intake_eu` again: the read is refused by name, because eu's store is not reachable.
 - **A data_residency refusal, by name.** data_residency is the right to SET an object's region, not
-  a read filter. The launcher seeds two basic-auth logins (printed on start): `admin` (org_admin) and
-  `resident` (the `eu_resident` role, whose grant covers only `eu` and no-region). Log in as
-  `resident`, then on **Tables** change a us-homed table's region → the edit is refused and the
-  message names `us` (not covered by the grant); set the no-region `breeds` table's region to `eu` →
-  it succeeds. Reads are unaffected — what a reader sees across regions is governed by RLS, not by
-  data_residency.
+  a read filter. The launcher seeds two basic-auth logins (printed on start): `operator` (the seed
+  `org_admin`, plus `residency_steward` whose grant covers every region, so it can register and move
+  anything) and `resident` (`eu_resident`, which owns objects but whose grant covers only `eu` and
+  no-region). Log in as `resident`, then on **Tables** change a us-homed table's region → the edit is
+  refused and the message names `us` (not covered by the grant); set the no-region `breeds` table's
+  region to `eu` → it succeeds. That org_admin alone cannot move data — it needs the separate
+  data_residency grant — is the design point. Reads are unaffected: what a reader sees across regions
+  is governed by RLS, not by data_residency. (The break-glass `admin` superuser is control-plane only
+  and holds no data capabilities, so it is not used for this.)
 - **A draft table.** Pending replica-layout-2's draft work; the demo's draft table and this step are
   added when draft lands on regions-3c.
