@@ -114,3 +114,16 @@ async def test_the_registration_writes_the_model_inside_one_change(monkeypatch):
     assert len(spawned) == 1
     await spawned[0]
     assert len(seen) == 1 and seen[0] is not None, "the registration ran outside a model change"
+
+
+def test_detached_work_does_not_join_its_spawners_change():
+    # A background worker outlives the change it was spawned in, so its context carries none.
+    from provisa.core import connection_loop, model_change
+
+    sentinel = object()
+    token = model_change._SCOPE.set(sentinel)  # type: ignore[arg-type]
+    try:
+        ctx = connection_loop._caller_context()
+    finally:
+        model_change._SCOPE.reset(token)
+    assert ctx.run(model_change._SCOPE.get) is None
