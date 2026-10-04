@@ -763,6 +763,20 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
     if invite is None or is_spent(invite) or invite["expires_at"] < now:
         raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
 
+    # REQ-1308: a user may not gain a role from an invitation they issued themselves. Issuing an
+    # invite is a user_management act, but the self-role-change guard on /admin/users
+    # (_reject_self_role_change) is defeated if the same administrator then redeems their own invite
+    # here — the role lands on themselves with no second principal. The role an invitation confers
+    # is a grant TO SOMEONE ELSE; redeeming your own is refused. created_by is NOT NULL on
+    # org_invites and create_invite refuses issuance without a real identity, so it is always a real
+    # issuer to compare against.
+    if invite["created_by"] == user_id:
+        raise ApiError(
+            403,
+            "auth.self_invite_redemption",
+            "You cannot redeem an invitation you issued yourself",
+        )
+
     # Bind the invited org's tenant_db so redeem_env can create its environment
     from provisa.api.app import ensure_org_runtime, set_current_org, reset_current_org
 

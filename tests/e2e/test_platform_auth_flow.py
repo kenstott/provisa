@@ -320,6 +320,17 @@ class TestOrgEmailRuleOnRedemption:
         assert resp.status_code == 200, resp.text
         assert resp.json()["user_id"] == _ctx["user_ids"]["erin"]
 
+    async def test_an_admin_cannot_redeem_an_invite_they_issued(self, client):
+        # REQ-1308: the self-role-change guard on /admin/users must not be circumvented by issuing
+        # an invite and redeeming it yourself. founder (org_admin, with user_management) issues the
+        # invite; founder redeeming it would self-grant the role with no second principal. Refused.
+        token = await self._invite(client)  # issued BY founder
+        resp = await client.post(
+            "/auth/redeem-invite", json={"token": token}, headers=_basic("founder")
+        )
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["code"] == "auth.self_invite_redemption"
+
 
 class TestOnlyAssignedRoleRidesHeader:
     """REQ-1295: with auth enforced, X-Provisa-Role is honored only for an ASSIGNED role."""
