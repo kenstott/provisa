@@ -25285,39 +25285,53 @@
   description: 'Admin-only reclassification: legitimate reclassification of a mutation to read-safe is
     gated by ACCESS_CONFIG capability and recorded as a governance decision. No per-operation read_only
     opt-out for callers; only admin acts can demote a mutation. [SUPERSEDED by REQ-870, 2026-10-03 -- a
-    command has no writable_by; its one role list is visible_to. Kept here for history; do not implement
-    against it.] Re-introspection of discovered mutations registers with empty writable_by; existing grants
-    preserved by name. [END SUPERSEDED BLOCK] DONE (2026-07): two enforceable
+    command has no writable_by; its one role list is visible_to (REQ-1156), and discovery registers no
+    command (REQ-887). Kept here for history; do not implement against it.] Re-introspection of discovered
+    mutations registers with empty writable_by; existing grants preserved by name. [END SUPERSEDED BLOCK]
+    DONE (2026-07): two enforceable
     behaviors. (1) reclassify_kind (provisa/security/ mutation_authz.py) is the single reclassification
-    gate — only a role holding ACCESS_CONFIG (ADMIN bypasses, per has_capability) may demote a mutation
+    gate — only a role holding ACCESS_CONFIG [SUPERSEDED by REQ-1327, 2026-10-03 -- no role or role string
+    stands in for ACCESS_CONFIG; an admin demotes only by holding it. Kept here for history; do not implement
+    against it.] (ADMIN bypasses, per has_capability) [END SUPERSEDED BLOCK] may demote a mutation
     to read-safe; the reverse (promoting a read to a write) is rejected for everyone, and there is no
     caller-supplied read_only flag anywhere in the request path, so classification stays under governance
     control. A no-op transition is idempotent. [SUPERSEDED by REQ-870, 2026-10-03 -- the writable_by
-    upsert rule is gone with the column. Kept here for history; do not implement against it.] (2) upsert_function
-    (provisa/core/repositories/ function.py) now preserves an existing writable_by on re-introspection:
-    a discovered mutation upserts with an empty writable_by that keeps the current admin grant (grants
-    preserved by name), while an explicit non-empty grant still applies. Proven with unit tests for the
-    gate and a live-Postgres test for grant preservation across re-introspection. [END SUPERSEDED BLOCK]
-    (Amended 2026-10-03, ONE ROLE LIST:) A command carries one role list, its assigned roles (visible_to);
-    a role reaches a command only when assigned to it AND reaching the command''s domain. Re-registering
-    a source keeps every assignment an admin made; discovery never drops an assignment.'
+    upsert rule is gone with the column, and discovery no longer re-registers. Kept here for history; do
+    not implement against it.] (2) upsert_function (provisa/core/repositories/ function.py) now preserves
+    an existing writable_by on re-introspection: a discovered mutation upserts with an empty writable_by
+    that keeps the current admin grant (grants preserved by name), while an explicit non-empty grant still
+    applies. Proven with unit tests for the gate and a live-Postgres test for grant preservation across
+    re-introspection. [END SUPERSEDED BLOCK] (Amended 2026-10-03, ONE ROLE LIST:) A command carries one
+    role list, its assigned roles (visible_to); a role reaches a command only when assigned to it AND reaching
+    the command''s domain. [SUPERSEDED by REQ-870 amendment DISCOVERY OFFERS, 2026-10-03 -- discovery
+    registers nothing, so there is no re-registration for an assignment to survive. Kept here for history;
+    do not implement against it.] Re-registering a source keeps every assignment an admin made; discovery
+    never drops an assignment. [END SUPERSEDED BLOCK] (Amended 2026-10-03, DISCOVERY OFFERS, A STEWARD
+    ASSIGNS:) Discovery registers no command: a discovered mutation is on offer (REQ-887) until a steward
+    registers it, and the steward assigns its roles then, in the command''s one assigned-roles list, visible_to
+    (REQ-1156). Nothing discovery does later writes or rewrites a registered command, so no grant can be
+    widened or wiped by re-introspection. A role reaches a command only when it is assigned the command
+    and reaches the command''s domain (mutation_authz.command_reachable). Reclassification is unchanged:
+    reclassify_kind is the one gate, demotion needs ACCESS_CONFIG, and no one promotes a read to a write.'
   use_case: Ensures authorization policy remains under control of governance (admin), not individual callers.
     Prevents callers from overriding mutation classification, supports safe discovery/re-registration
     of mutations without accidentally granting them.
   code:
   - provisa/security/mutation_authz.py
   - provisa/core/repositories/function.py
+  - provisa/api/admin/schema_query.py
   tests:
   - tests/unit/test_mutation_authz.py
+  - tests/unit/test_stored_proc_discovery.py
   - tests/steps/steps_authorization.py
   target: 2026-Q4
-  scenario: 'Given a discovered mutation "createOrder" in domain "sales", assigned on discovery to org_admin alone
+  scenario: 'Given a mutation "createOrder" in domain "sales" that discovery offers and has not registered
 
-    And an admin assigns it to the "ops" role
+    And a steward registers it, assigned to the "ops" role
 
-    When introspection re-runs and registers createOrder again
+    Then ops reaches createOrder through its assignment and the sales domain
 
-    Then ops still reaches createOrder through its assignment and the sales domain — discovery never drops an assignment
+    And a role assigned it outside the sales domain, or reaching sales without the assignment, does not
 
     And when a role WITHOUT the ACCESS_CONFIG capability attempts to reclassify createOrder to read-safe, the attempt is rejected
 
