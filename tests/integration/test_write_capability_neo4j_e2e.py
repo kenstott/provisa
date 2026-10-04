@@ -13,7 +13,8 @@
 A real isolated server (DuckDB engine, SQLite control plane) over a real Neo4j. A Neo4j-backed
 table takes no inserts, updates or deletes (executor/write_capability.py): an INSERT over SQL is
 refused naming the table and the operation, before any right is checked, even for a role holding
-the write right; GraphQL offers it no mutation field at all."""
+the write right; GraphQL offers it no mutation field at all, and a mutation naming one anyway is
+refused the same way."""
 
 from __future__ import annotations
 
@@ -135,5 +136,9 @@ def test_graphql_names_the_insert_it_does_not_offer(server):
             "query": 'mutation { g__insertWcPerson(input: {person_id: 1, name: "ada"}) { affected_rows } }'
         },
     )
-    assert "g__insertWcPerson" in resp.text, resp.text
-    assert resp.status_code != 200 or '"errors"' in resp.text, resp.text
+    # The schema offers no mutation for the table, and the insert the request names anyway is
+    # refused as SQL refuses it: naming the table and the operation its source cannot take.
+    assert resp.status_code == 400, resp.text
+    body = resp.json()
+    assert body["code"] == "data.write_not_supported", body
+    assert body["params"] == {"table": _TABLE, "operation": "INSERT"}, body
