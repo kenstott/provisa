@@ -69670,8 +69670,10 @@
     \ it; every other worker takes the lock only to read the record and then runs its per-worker half\
     \ at the same time as the rest. Time to all workers ready is the first worker's boot plus one worker's\
     \ own half (measured, 4 workers: 79.5 s -> 9.7 s). A process with no launch id (a single server, a\
-    \ `--reload` child) and a control plane on another dialect record nothing and do the whole boot under\
-    \ the lock, as before. A restart is a new launch and applies the config again: the registry can be\
+    \ `--reload` child) [SUPERSEDED by REQ-1920, 2026-10-02 -- a file control plane holds its boot lock as\
+    \ a file lock and records the generation like PostgreSQL; see the amendment below. Kept here for history;\
+    \ do not implement against it.] and a control plane on another dialect [END SUPERSEDED BLOCK] record\
+    \ nothing and do the whole boot under the lock, as before. A restart is a new launch and applies the config again: the registry can be\
     \ changed between boots and Trino may have lost its catalogs, so the record is never carried across\
     \ launches. A launch id without a worker count fails the boot.\n(Amended 2026-10-01, /health REPORTS\
     \ THE LAUNCH'S WORKERS:) `/health` answers from the first ready worker and carries `workers: {ready,\
@@ -69741,7 +69743,11 @@
     \ `/health` and its `workers.ready`/`expected` are unchanged. `start-ui-install.sh` sets it for more\
     \ than one worker on Linux only: with one worker there is nothing to spread, and darwin hands every\
     \ connection on a SO_REUSEPORT port to one listener (16 workers, 64 connections: 64,0,0,...), which\
-    \ is worse than its shared socket."
+    \ is worse than its shared socket.\n(Amended 2026-10-04, A FILE CONTROL PLANE RECORDS ITS GENERATION:)\
+    \ A control plane that is a file on one host (SQLite) holds the boot lock as an exclusive file lock\
+    \ beside it (REQ-1920), which the operating system releases when the holder dies, and records the\
+    \ launch's generation in `boot_generations` like the PostgreSQL control plane: the first worker of\
+    \ a launch does the once-per-launch work and the rest find it done."
   use_case: 'Direct follow-up to live saturation findings on the perf-bench VM: the maintainer asked to
     tune the number of uvicorn workers to raise the saturation ceiling, which first required checking
     whether the app''s own auxiliary protocol servers could survive running as multiple processes at all
