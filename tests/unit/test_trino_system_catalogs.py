@@ -147,6 +147,39 @@ def test_register_catalog_drops_before_creating():
     )
 
 
+@pytest.fixture(autouse=True)
+def _registrar(monkeypatch):
+    """The deployment's catalog-registration lock, taken on the control plane: recorded, not taken
+    (these tests reach no Postgres). Each test sees the lock's span in ``held``."""
+    import contextlib
+
+    held: list[str] = []
+
+    @contextlib.contextmanager
+    def _one(url):
+        held.append("lock")
+        yield
+        held.append("unlock")
+
+    monkeypatch.setattr(tsc, "one_registrar", _one)
+    return held
+
+
+def test_two_processes_register_the_catalogs_one_at_a_time(monkeypatch, _registrar):
+    """``register_catalog`` drops then creates; two processes of one deployment doing it at once
+    interleave and one fails to boot (ALREADY_EXISTS). Every registration is inside the lock."""
+    from provisa.core import catalog as catalog_module
+
+    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn: None)
+    monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url: None)
+    monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: _registrar.append(spec.name))
+    tsc.register_system_catalogs(_Conn(), _URL, "default")
+    assert _registrar == ["lock", "provisa_admin", "otel", "results", "unlock"]
+    _registrar.clear()
+    tsc.ensure_system_catalogs(_LiveConn({"results"}), _URL, "kstott")
+    assert _registrar == ["lock", "provisa_admin", "otel", "unlock"]
+
+
 def test_registration_ensures_the_iceberg_metastore_before_creating_any_catalog(monkeypatch):
     # Trino's JDBC catalog factory never creates iceberg_tables; db/init.sql does, but only for the
     # BUNDLED Postgres via docker-entrypoint-initdb.d. On a managed control plane the tables were

@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from sqlalchemy.engine import URL
@@ -293,14 +295,43 @@ def ensure_iceberg_catalog_tables(url: URL) -> None:
     pg.close()
 
 
+#: The control-plane advisory lock the processes of one deployment take around registering the
+#: shared coordinator's system catalogs: ``register_catalog`` drops then creates, and two
+#: processes doing it at once interleave — one's CREATE meets the other's (``ALREADY_EXISTS``)
+#: and that process fails to boot.
+_CATALOG_LOCK_KEY = 7338
+
+
+@contextmanager
+def one_registrar(url: URL) -> Iterator[None]:
+    """Hold the deployment's catalog-registration lock for the block (session advisory lock on
+    the control plane, released when the block ends however it ends)."""
+    import psycopg2
+
+    host, port, database, user, password = _pg_parts(url)
+    pg = psycopg2.connect(host=host, port=port, dbname=database, user=user, password=password)
+    try:
+        pg.autocommit = True
+        with pg.cursor() as cur:
+            cur.execute("SELECT pg_advisory_lock(%s)", (_CATALOG_LOCK_KEY,))
+        try:
+            yield
+        finally:
+            with pg.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (_CATALOG_LOCK_KEY,))
+    finally:
+        pg.close()
+
+
 def register_system_catalogs(conn: TrinoConnection, url: URL, org_id: str) -> None:
     """Register every Provisa-owned catalog from runtime values. Boot-time; blocking."""
     from provisa.core.catalog import wait_until_ready
 
     wait_until_ready(conn)  # a coordinator that just restarted races app boot
     ensure_iceberg_catalog_tables(url)
-    for spec in system_catalog_specs(url, org_id):
-        register_catalog(conn, spec)
+    with one_registrar(url):
+        for spec in system_catalog_specs(url, org_id):
+            register_catalog(conn, spec)
 
 
 def _live_catalogs(conn: TrinoConnection) -> set[str]:
@@ -328,7 +359,8 @@ def ensure_system_catalogs(conn: TrinoConnection, url: URL, org_id: str) -> None
 
     wait_until_ready(conn)
     ensure_iceberg_catalog_tables(url)
-    live = _live_catalogs(conn)
-    for spec in system_catalog_specs(url, org_id):
-        if spec.name == PROVISA_ADMIN_CATALOG or spec.name not in live:
-            register_catalog(conn, spec)
+    with one_registrar(url):
+        live = _live_catalogs(conn)
+        for spec in system_catalog_specs(url, org_id):
+            if spec.name == PROVISA_ADMIN_CATALOG or spec.name not in live:
+                register_catalog(conn, spec)
