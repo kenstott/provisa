@@ -108,7 +108,7 @@ async def persist_api_source(conn: "Connection", api_source: ApiSource) -> None:
 
 
 async def persist_api_endpoint(conn: "Connection", endpoint: ApiEndpoint) -> None:  # REQ-1668
-    """Upsert the ``api_endpoints`` row for one query-backed table, keyed by table name."""
+    """Upsert the ``api_endpoints`` row for one query-backed table, keyed by its source and name."""
     # An endpoint a materialized view reads may not start needing arguments: refused here,
     # naming the views (provisa/mv/readable_inputs.py).
     from provisa.mv.readable_inputs import require_argument_switch_allowed
@@ -129,9 +129,8 @@ async def persist_api_endpoint(conn: "Connection", endpoint: ApiEndpoint) -> Non
             "query_template": endpoint.query_template,
             "response_normalizer": endpoint.response_normalizer,
         },
-        index_elements=["table_name"],
+        index_elements=["source_id", "table_name"],
         update_columns=[
-            "source_id",
             "path",
             "method",
             "columns",

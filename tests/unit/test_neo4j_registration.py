@@ -154,7 +154,10 @@ async def test_registration_persists_the_endpoint_and_mirrors_live_state(monkeyp
     assert ep["body_encoding"] == "neo4j_tx"
     assert ep["query_template"] == "MATCH (a) RETURN a.id AS adopter_id"
     assert state.api_sources["graph"].base_url == "http://h:7474"
-    assert state.api_endpoints["adopter"].query_template == "MATCH (a) RETURN a.id AS adopter_id"
+    assert (
+        state.api_endpoints[("graph", "adopter")].query_template
+        == "MATCH (a) RETURN a.id AS adopter_id"
+    )
 
 
 def test_table_type_reads_the_cypher_from_the_live_endpoint_map(monkeypatch):
@@ -164,11 +167,13 @@ def test_table_type_reads_the_cypher_from_the_live_endpoint_map(monkeypatch):
     monkeypatch.setattr(
         state,
         "api_endpoints",
-        {"adopter": SimpleNamespace(query_template="MATCH (a) RETURN a.id AS id")},
+        {("graph", "adopter"): SimpleNamespace(query_template="MATCH (a) RETURN a.id AS id")},
         raising=False,
     )
-    assert _query_template_for("adopter") == "MATCH (a) RETURN a.id AS id"
-    assert _query_template_for("other") is None
+    assert _query_template_for("graph", "adopter") == "MATCH (a) RETURN a.id AS id"
+    assert _query_template_for("graph", "other") is None
+    # A table is named within its source: another source's table of that name has no Cypher here.
+    assert _query_template_for("other-graph", "adopter") is None
 
 
 def test_register_table_input_carries_query_template_into_the_model():

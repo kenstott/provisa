@@ -57,8 +57,8 @@ def _endpoint(source_id: str, table_name: str):
 def _state(tables):
     return SimpleNamespace(
         api_endpoints={
-            "bench_order_node": _endpoint("neo", "bench_order_node"),
-            "bench_placed_edge": _endpoint("neo", "bench_placed_edge"),
+            ("neo", "bench_order_node"): _endpoint("neo", "bench_order_node"),
+            ("neo", "bench_placed_edge"): _endpoint("neo", "bench_placed_edge"),
         },
         api_sources={"neo": SimpleNamespace(base_url="http://neo")},
         tenant_db=_Db(),

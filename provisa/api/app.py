@@ -220,7 +220,7 @@ class AppState:
     approval_hook_config: Any | None = None  # REQ-247: ApprovalHookConfig
     table_approval_hooks: dict[int, bool] = {}  # table_id → approval_hook flag
     source_approval_hooks: dict[str, bool] = {}  # source_id → approval_hook flag
-    api_endpoints: dict[str, Any] = {}  # table_name → ApiEndpoint
+    api_endpoints: dict[tuple[str, str], Any] = {}  # (source_id, table_name) → ApiEndpoint
     api_sources: dict[str, Any] = {}  # source_id → ApiSource
     hot_manager: HotTableManager | None = None
     _hot_refresh_task: LongLived | None = None

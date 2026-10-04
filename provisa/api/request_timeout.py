@@ -33,6 +33,14 @@ log = logging.getLogger(__name__)
 
 
 async def _send_timeout(send: Any, deadline: Deadline) -> None:
+    # The answer to the expiry ends the request. The watchdog's raise (again every period after
+    # expiry) is for inline work, and this is not that work: a raise landing while the answer was
+    # built or sent left the client with none. Stopped inside the shield, so a raise set a moment
+    # earlier is dropped and none is set after.
+    shield = request_deadline.shielded()
+    with shield.lock:
+        shield.settle()
+        deadline.stop()
     error = timeout_error(deadline.expired_error())
     body = json.dumps({"detail": error.detail, "code": error.code, "params": error.params}).encode()
     await send(

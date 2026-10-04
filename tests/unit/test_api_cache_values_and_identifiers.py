@@ -163,7 +163,7 @@ async def test_hydration_parent_lookup_quotes_its_names():
         yield _Conn()
 
     state = SimpleNamespace(tenant_db=SimpleNamespace(acquire=_acquire), api_endpoints={})
-    parent = SimpleNamespace(table_name='pa"rent', schema_name="s;x")
+    parent = SimpleNamespace(source_id="pg", table_name='pa"rent', schema_name="s;x")
 
     await _hydrate_dataloader(
         src=None,

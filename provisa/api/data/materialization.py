@@ -93,10 +93,11 @@ class _StatementHot:
         return entry
 
 
-def _lookup_ep(state, table_name: str):
-    """Find API endpoint by table name."""
-    ep_map: dict = getattr(state, "api_endpoints", {})
-    return ep_map.get(table_name)
+def _statement_endpoints(state, table_ids: Iterable[int]) -> dict:
+    """The endpoints of the API tables the statement reads, by the names its SQL carries."""
+    from provisa.api_source.endpoints import statement_endpoints
+
+    return statement_endpoints(state, table_ids)
 
 
 def _lookup_gql_remote_table(state, table_name: str):
@@ -784,9 +785,9 @@ def would_materialize_optimize(exec_sql: str, state, *, table_ids: Iterable[int]
     graphql_remote/grpc_remote remote fetch) are reachable at all.
 
     Mirrors that function's own control flow table name-by-name, using the exact same lookups
-    (`find_api_table_names`, `_lookup_ep`, `_lookup_gql_remote_table`,
+    (`find_api_table_names`, `_statement_endpoints`, `_lookup_gql_remote_table`,
     `_lookup_grpc_remote_table`) — all in-memory dict lookups, never I/O. An OpenAPI table is an
-    API endpoint (`_lookup_ep`), like every other. Returns True the moment any table COULD
+    API endpoint (`_statement_endpoints`), like every other. Returns True the moment any table COULD
     reach a live branch; a caller must treat True as "cannot prove this call is a no-op" and take
     the full, uncached path.
 
@@ -803,6 +804,7 @@ def would_materialize_optimize(exec_sql: str, state, *, table_ids: Iterable[int]
     if not table_names:
         return False
     hot = _StatementHot(getattr(state, "hot_manager", None), state, table_ids)
+    endpoints = _statement_endpoints(state, table_ids)
     row_materialize_table_names = {
         t.get("table_name")
         for t in (getattr(state, "tables", None) or [])
@@ -813,7 +815,7 @@ def would_materialize_optimize(exec_sql: str, state, *, table_ids: Iterable[int]
             continue
         if tn in hot.entries:
             return True
-        if _lookup_ep(state, tn) is not None:
+        if tn in endpoints:
             return True
         gql_reg, _gql_tbl = _lookup_gql_remote_table(state, tn)
         if gql_reg is not None:
@@ -860,6 +862,7 @@ async def _materialize_api_to_engine_cache(
     if not table_names:
         return cache_rewrites, values_cte_entries, dropped_tables
     hot = _StatementHot(hot_mgr, state, table_ids)
+    endpoints = _statement_endpoints(state, table_ids)
 
     _META_COLS = {"_params_hash", "_cached_at"}
     _hot_threshold = hot_mgr.auto_threshold if hot_mgr is not None else 500
@@ -888,7 +891,7 @@ async def _materialize_api_to_engine_cache(
             log.warning("[MAT] hot VALUES CTE for %s (%d rows inline)", tn, len(entry.rows))
             continue
 
-        ep = _lookup_ep(state, tn)
+        ep = endpoints.get(tn)
         if ep is None:
             gql_reg, gql_tbl = _lookup_gql_remote_table(state, tn)
             if gql_reg is not None:

@@ -56,10 +56,10 @@ def _resolve_param_only(c: dict) -> bool:
 async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
     conn: "Connection",
     source_types: dict[str, str],
-) -> tuple[dict[str, ApiEndpoint], dict[str, ApiSource]]:
+) -> tuple[dict[tuple[str, str], ApiEndpoint], dict[str, ApiSource]]:
     """Load the API sources and the endpoints registered tables are served from.
 
-    Returns (api_endpoints_by_table_name, api_sources_by_id). An endpoint is derived from a
+    Returns (api_endpoints by (source_id, table_name), api_sources_by_id). An endpoint is derived from a
     table's registration and makes nothing readable by itself: a table is in the schema only
     because it is registered.
     """
@@ -90,7 +90,7 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
         "response_root, error_path, pk_column, pagination, max_concurrency, default_params, "
         "promotions, body_encoding, query_template, response_normalizer FROM api_endpoints"
     )
-    api_endpoints: dict[str, ApiEndpoint] = {}
+    api_endpoints: dict[tuple[str, str], ApiEndpoint] = {}
     for r in ep_rows:
         cols_raw = json.loads(r["columns"]) if isinstance(r["columns"], str) else r["columns"]
         columns = [
@@ -140,6 +140,6 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
             query_template=r.get("query_template"),
             response_normalizer=r.get("response_normalizer"),
         )
-        api_endpoints[ep.table_name] = ep
+        api_endpoints[(ep.source_id, ep.table_name)] = ep
 
     return api_endpoints, api_sources

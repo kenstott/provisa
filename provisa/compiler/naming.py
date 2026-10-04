@@ -401,49 +401,62 @@ def _apply_table_convention(name: str, convention: str) -> str:
     return safe  # snake_case
 
 
-def generate_name(  # REQ-154, REQ-155, REQ-157, REQ-194
+class SqlAddressTaken(ValueError):  # REQ-1933
+    """A table's SQL address (``domain.table``) is already another registered table's. Two
+    tables never share one: nothing would decide which of them a statement reads."""
+
+    def __init__(self, domain_id: str, address: str, holder: str, newcomer: str) -> None:
+        self.domain_id = domain_id
+        self.address = address
+        self.holder = holder
+        self.newcomer = newcomer
+        super().__init__(
+            f"{newcomer} would be {domain_to_sql_name(domain_id)}.{address}, which is already "
+            f"{holder}'s address in domain {domain_id!r}. Give it a different name or alias, or "
+            "register it in another domain."
+        )
+
+
+def table_sql_address(
+    table_name: str, alias: str | None, naming_rules: list[dict], convention: str | None = None
+) -> str:  # REQ-1933
+    """The name a table is addressed by within its domain on the SQL plane: its alias, else its
+    name under the naming rules, spelled as the compiler spells it
+    (``sql_rewrite.semantic_table_name``)."""
+    if alias:
+        return apply_sql_name(alias)
+    named = _apply_naming_rules(table_name, naming_rules)
+    return apply_sql_name(_apply_table_convention(named, convention or active_gql_convention()))
+
+
+def refuse_taken_sql_addresses(tables: "list[dict]", naming_rules: list[dict]) -> None:  # REQ-1933
+    """Raise :class:`SqlAddressTaken` for the first table whose SQL address an earlier one in
+    ``tables`` already has in the same domain. Each entry carries ``domain_id``, ``source_id``,
+    ``schema_name``, ``table_name`` and ``alias`` (and may carry ``gql_naming_convention``)."""
+    held: dict[tuple[str, str], str] = {}
+    for t in tables:
+        address = table_sql_address(
+            t["table_name"], t.get("alias"), naming_rules, t.get("gql_naming_convention")
+        )
+        who = f"{t['source_id']}.{t['schema_name']}.{t['table_name']}"
+        key = (t["domain_id"], address)
+        if key in held and held[key] != who:
+            raise SqlAddressTaken(t["domain_id"], address, held[key], who)
+        held.setdefault(key, who)
+
+
+def generate_name(  # REQ-154, REQ-155, REQ-157, REQ-194, REQ-1933
     table_name: str,
-    schema_name: str,
-    source_id: str,
-    domain_table_names: list[str],
     naming_rules: list[dict],
     alias: str | None = None,
     convention: str = "apollo_graphql",
 ) -> str:
-    """Generate a unique GraphQL-safe name for a table.
-
-    Priority: alias > naming rules > shortest unique name.
-    Convention controls output casing (default: camelCase).
-    """
+    """The GraphQL-safe name of a table: its alias, else its name under the naming rules, in the
+    convention's casing. A name is never qualified to make it unique: two tables of one address in
+    a domain are refused (:func:`refuse_taken_sql_addresses`, REQ-1933)."""
     if alias:
         return _apply_table_convention(alias, convention)
-
-    # Apply naming rules to this name AND all domain names for correct comparison
-    name = _apply_naming_rules(table_name, naming_rules)
-    transformed_names = [_apply_naming_rules(n, naming_rules) for n in domain_table_names]
-
-    # Collision check uses "first-wins" ordering: only tables that appear
-    # earlier in domain_table_names can claim a name ahead of this table.
-    try:
-        self_idx = domain_table_names.index(table_name)
-    except ValueError:
-        self_idx = len(domain_table_names)
-    prior_names = transformed_names[:self_idx]
-
-    # If name already claimed by a prior table, qualify it.
-    if name in prior_names:
-        for qualifier in [schema_name, source_id]:
-            candidate = f"{qualifier}_{name}"
-            if candidate not in prior_names:
-                name = candidate
-                break
-        else:
-            raise ValueError(
-                f"Cannot generate unique name for {table_name!r} within domain. "
-                f"All qualifier combinations exhausted."
-            )
-
-    result = _apply_table_convention(name, convention)
+    result = _apply_table_convention(_apply_naming_rules(table_name, naming_rules), convention)
     if not result:
         raise ValueError(
             f"Naming rules produced empty name for table {table_name!r}. "

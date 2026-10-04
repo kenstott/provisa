@@ -872,7 +872,8 @@ CREATE TABLE IF NOT EXISTS api_endpoints (
     source_id       TEXT NOT NULL REFERENCES api_sources(id) ON DELETE CASCADE,
     path            TEXT NOT NULL,
     method          TEXT NOT NULL DEFAULT 'GET',
-    table_name      TEXT NOT NULL UNIQUE,
+    -- A table is named within its source: two sources may each register a table of one name.
+    table_name      TEXT NOT NULL,
     columns         JSONB NOT NULL,
     ttl             INTEGER NOT NULL DEFAULT 300,
     response_root   TEXT,
@@ -884,7 +885,8 @@ CREATE TABLE IF NOT EXISTS api_endpoints (
     body_encoding       TEXT,
     query_template      TEXT,
     response_normalizer TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT api_endpoints_source_table_key UNIQUE (source_id, table_name)
 );
 
 DO $$ BEGIN

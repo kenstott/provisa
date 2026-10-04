@@ -839,7 +839,8 @@ api_endpoints = Table(
     Column("source_id", Text, ForeignKey("api_sources.id", ondelete="CASCADE"), nullable=False),
     Column("path", Text, nullable=False),
     Column("method", Text, nullable=False, server_default="GET"),
-    Column("table_name", Text, nullable=False, unique=True),
+    # A table is named within its source: two sources may each register a table of one name.
+    Column("table_name", Text, nullable=False),
     Column("columns", JSON, nullable=False),
     Column("ttl", Integer, nullable=False, server_default="300"),
     Column("response_root", Text),
@@ -855,6 +856,7 @@ api_endpoints = Table(
     Column("query_template", Text),
     Column("response_normalizer", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("source_id", "table_name", name="api_endpoints_source_table_key"),
 )
 
 creation_requests = Table(

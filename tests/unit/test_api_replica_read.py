@@ -376,7 +376,10 @@ def test_an_answer_that_must_be_understood_whole_is_a_single_document():
 
     endpoint = _endpoint(response_normalizer="neo4j_query_v2")
     loader = sl.make_openapi_loader(
-        SimpleNamespace(api_endpoints={"pets": endpoint}, api_sources={"api": _api_source()})
+        SimpleNamespace(
+            api_endpoints={(endpoint.source_id, "pets"): endpoint},
+            api_sources={"api": _api_source()},
+        )
     )
     table = SimpleNamespace(schema_name="s", table_name="pets", columns=[])
     document = loader.replica_source(SimpleNamespace(id="api"), table, COLUMNS)
@@ -386,7 +389,9 @@ def test_an_answer_that_must_be_understood_whole_is_a_single_document():
 
 def test_the_openapi_loader_hands_a_build_the_streamed_reader():
     loader = sl.make_openapi_loader(
-        SimpleNamespace(api_endpoints={"pets": _endpoint()}, api_sources={"api": _api_source()})
+        SimpleNamespace(
+            api_endpoints={("api", "pets"): _endpoint()}, api_sources={"api": _api_source()}
+        )
     )
     table = SimpleNamespace(schema_name="s", table_name="pets", columns=[])
     assert isinstance(

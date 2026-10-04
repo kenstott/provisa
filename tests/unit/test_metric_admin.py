@@ -156,6 +156,7 @@ async def _admin_db(tmp_path):
         relationships,
         roles,
         table_columns,
+        naming_rules,
     )
 
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'admin.db'}")
@@ -169,6 +170,8 @@ async def _admin_db(tmp_path):
                 metrics,
                 registered_tables,
                 table_columns,
+                # naming_rules: the table upsert refuses a taken SQL address under them (REQ-1933).
+                naming_rules,
                 relationships,
                 roles,
                 glossary_terms,

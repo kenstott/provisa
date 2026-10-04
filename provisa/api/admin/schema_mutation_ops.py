@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import delete, select, update
 
+from provisa.compiler.naming import SqlAddressTaken
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.schema_org import (
     file_source_mtimes,
@@ -438,6 +439,18 @@ async def register_table(
                 message=str(_drop),
                 code="schema.column_has_dependents",
                 params={"table": _drop.table_name, "columns": _drop.report()},
+            )
+        except SqlAddressTaken as _taken:
+            # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
+            return MutationResult(
+                success=False,
+                message=str(_taken),
+                code="schema.sql_address_taken",
+                params={
+                    "domain": _taken.domain_id,
+                    "address": _taken.address,
+                    "holder": _taken.holder,
+                },
             )
         if model.query_template:
             _qa_err = await persist_query_api_registration(_conn, model)

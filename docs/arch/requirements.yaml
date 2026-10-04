@@ -75691,3 +75691,52 @@
   - REQ-1922
   notes: Maintainer ruling 2026-10-03 ('we do need a place for platform state'). Not built as a named
     store.
+- id: REQ-1933
+  status: complete
+  group: 3. Source Registration & Data Modeling
+  category: Naming & Schema
+  priority: MUST
+  type: behavioral
+  description: 'A registered table''s SQL address is unique within its domain. The address is the domain''s
+    SQL name and the table''s name in it: its alias, else its registered name under the naming rules, as
+    the compiler spells it. Registration refuses a table whose address another registered table in that
+    domain already holds, and the refusal names the table that holds it; the operator gives the new table
+    a different name or alias, or registers it in another domain. The refusal is at the one write path
+    the admin and config load share, so a config file that declares two tables at one address fails its
+    load the same way. A table the same config load removes, because its file no longer declares it,
+    holds no address against the tables that file declares. A name is never qualified with its schema
+    or source to make it unique, and no rule chooses between two tables at one address: which table
+    kept the bare name was only the order the tables were listed in, and two tables of one exact name
+    both kept it, so a statement read whichever the compiler met first. A model that holds two tables
+    at one address is an error when the schema is built.'
+  use_case: A name a user writes in SQL, GraphQL or Cypher reaches the one table the operator meant, and
+    a second registration that would take an existing table's name is told so instead of silently shadowing
+    or being shadowed.
+  code:
+  - provisa/compiler/naming.py
+  - provisa/compiler/schema_gen.py
+  - provisa/core/repositories/table.py
+  - provisa/core/config_loader.py
+  - provisa/api/admin/schema_mutation_ops.py
+  - provisa/api/admin/schema_mutation.py
+  tests:
+  - tests/unit/test_sql_address_one_per_domain.py
+  - tests/unit/test_naming.py
+  - tests/unit/test_load_manages_what_config_declared.py
+  since: 2026-10
+  scenario: 'Given a table registered in domain pet-store whose SQL address is pet_store.get_inventory
+
+    When another source registers a table that would have the address pet_store.get_inventory
+
+    Then the registration is refused, naming the table that holds the address
+
+    And the table registers once it is given an alias or another domain
+
+    '
+  integration_test: required
+  integration_test_reason: The refusal is at the control-plane write path the admin and config load share.
+  related_reqs:
+  - REQ-155
+  - REQ-1919
+  notes: Maintainer ruling 2026-10-04 (option a), from the openapi source-to-query spec, which registered
+    a second getInventory into pet-store and read the first source's table.

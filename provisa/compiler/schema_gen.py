@@ -44,6 +44,7 @@ from provisa.compiler.naming import (
     domain_gql_alias,
     domain_to_sql_name,
     generate_name,
+    refuse_taken_sql_addresses,
     junction_field_name,
     rel_field_name,
     to_type_name,
@@ -260,14 +261,26 @@ def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-
         def _strip(name: str) -> str:
             return name[len(dp) :] if (domain_prefix and name.lower().startswith(dp)) else name
 
-        domain_table_names = [_strip(t.table_name) if not t.alias else t.table_name for t in group]
+        # REQ-1933: one SQL address per table in a domain. Registration refuses a taken one; a
+        # model that holds two anyway is an error, never resolved by the order tables are listed.
+        refuse_taken_sql_addresses(
+            [
+                {
+                    "domain_id": domain_id,
+                    "source_id": t.source_id,
+                    "schema_name": t.schema_name,
+                    "table_name": _strip(t.table_name) if not t.alias else t.table_name,
+                    "alias": t.alias,
+                    "gql_naming_convention": t.gql_convention_override,
+                }
+                for t in group
+            ],
+            naming_rules,
+        )
         for t in group:
             base_table_name = _strip(t.table_name) if not t.alias else t.table_name
             t.field_name = generate_name(
                 base_table_name,
-                t.schema_name,
-                t.source_id,
-                domain_table_names,
                 naming_rules,
                 alias=t.alias,
                 convention=t.gql_convention_override or active_gql_convention(),

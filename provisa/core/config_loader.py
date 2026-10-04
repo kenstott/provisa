@@ -498,8 +498,10 @@ async def _upsert_single_table(
     openapi_specs: dict[str, dict],
     *,
     origin: str,
+    leaving: frozenset[tuple[str, str, str]] = frozenset(),
 ) -> None:
-    """Upsert one table and run source-type-specific post-upsert steps."""
+    """Upsert one table and run source-type-specific post-upsert steps. ``leaving``: the tables
+    this load removes (its file no longer declares them), which hold no SQL address against it."""
     if src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})
         if spec:
@@ -508,7 +510,7 @@ async def _upsert_single_table(
     # REQ-1426: data_type is design-time metadata — the config carries it and nothing infers it
     # here. A column that reaches this point untyped means the design was never completed; the
     # repository refuses it rather than persisting a hole the catalog renders as "unknown".
-    await table_repo.upsert(conn, tbl, origin=origin)
+    await table_repo.upsert(conn, tbl, origin=origin, leaving=leaving)
 
     if src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})
@@ -1013,9 +1015,29 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     # The rows a table's source-specific step writes (its API source and endpoint) are stored
     # from the source as written: a credential in its address stays a reference.
     written_by_id = {src.id: src for src in config.written.sources}
+    # REQ-1933: the deployment's file is the model. A table it no longer declares is removed by
+    # this load (_remove_what_the_config_dropped, after the upserts), so its SQL address is free
+    # for a table the file now declares. An import (admin origin) removes nothing.
+    leaving: frozenset[tuple[str, str, str]] = frozenset()
+    if origin == CONFIG:
+        declared = _declared_tables(config)
+        rows = await conn.execute_core(
+            select(
+                registered_tables.c.source_id,
+                registered_tables.c.schema_name,
+                registered_tables.c.table_name,
+            ).where(registered_tables.c.origin == CONFIG)
+        )
+        leaving = frozenset(
+            (r.source_id, r.schema_name, r.table_name)
+            for r in rows.fetchall()
+            if (r.source_id, r.schema_name, r.table_name) not in declared
+        )
     for tbl in config.tables:
         src = written_by_id.get(tbl.source_id)
-        await _upsert_single_table(conn, engine, tbl, src, openapi_specs, origin=origin)
+        await _upsert_single_table(
+            conn, engine, tbl, src, openapi_specs, origin=origin, leaving=leaving
+        )
 
     if engine is not None:
         await _analyze_sources(engine, config, catalog_names)

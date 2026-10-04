@@ -164,7 +164,9 @@ def _openapi_state() -> SimpleNamespace:
     conn.fetch = AsyncMock(return_value=[])
     return SimpleNamespace(
         hot_manager=None,
-        api_endpoints={"get_pet_by_id": ep},
+        api_endpoints={(ep.source_id, "get_pet_by_id"): ep},
+        # The registered table the statement reads (its endpoint is keyed by source and name).
+        tables=[{"id": TABLE_ID, "source_id": API_SOURCE_ID, "table_name": "get_pet_by_id"}],
         graphql_remote_sources={},
         api_sources={},
         org_id="default",
@@ -220,7 +222,7 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
             gov_ctx,
             ctx,
             state,
-            table_ids=(),
+            table_ids=(TABLE_ID,),
             nf_args={"petId": "1"},
         )
 

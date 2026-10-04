@@ -223,7 +223,7 @@ async def test_loader_restores_query_api_columns():
     )
     endpoints, sources = await load_api_sources(conn, {})  # type: ignore[arg-type]
     assert sources["g"].type is ApiSourceType.neo4j
-    ep = endpoints["adopter"]
+    ep = endpoints[("g", "adopter")]
     assert (ep.method, ep.body_encoding, ep.response_normalizer) == (
         "POST",
         "neo4j_tx",

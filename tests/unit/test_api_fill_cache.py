@@ -310,7 +310,7 @@ async def test_a_request_fetches_a_path_parameter_table_once_per_parent_key_with
             ),
         ],
     )
-    state.api_endpoints = {"pets": pets, "pet_by_id": by_id}
+    state.api_endpoints = {(pets.source_id, "pets"): pets, (by_id.source_id, "pet_by_id"): by_id}
     state.api_sources = {"api": _api_source({"bearer": "t0ken"})}
     state.tables = []
     state.tenant_db = None
@@ -319,7 +319,11 @@ async def test_a_request_fetches_a_path_parameter_table_once_per_parent_key_with
     )
     ctx = SimpleNamespace(
         joins={("Pet", "byId"): join},
-        tables={"pets": SimpleNamespace(type_name="Pet", table_name="pets", schema_name="x")},
+        tables={
+            "pets": SimpleNamespace(
+                type_name="Pet", source_id="api", table_name="pets", schema_name="x"
+            )
+        },
     )
     compiled = SimpleNamespace(sources={"api"}, api_args={})
     hydration._source_hydration_expiry.clear()
@@ -375,7 +379,7 @@ async def test_an_api_that_answers_nothing_gives_no_rows_through_every_path_that
             ApiColumn(name="petId", type=ApiColumnType.integer, param_type="path", param_only=True),
         ],
     )
-    state.api_endpoints = {"pets": pets, "pet_by_id": by_id}
+    state.api_endpoints = {(pets.source_id, "pets"): pets, (by_id.source_id, "pet_by_id"): by_id}
     state.api_sources = {"api": _api_source()}
     state.tables = []
     state.tenant_db = None
@@ -384,7 +388,11 @@ async def test_an_api_that_answers_nothing_gives_no_rows_through_every_path_that
     )
     ctx = SimpleNamespace(
         joins={("Pet", "byId"): join},
-        tables={"pets": SimpleNamespace(type_name="Pet", table_name="pets", schema_name="x")},
+        tables={
+            "pets": SimpleNamespace(
+                type_name="Pet", source_id="api", table_name="pets", schema_name="x"
+            )
+        },
     )
     hydration._source_hydration_expiry.clear()
     _, _, rows, _ = await hydration._hydrate_api_tables_before_engine(

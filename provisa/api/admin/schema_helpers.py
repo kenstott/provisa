@@ -89,14 +89,14 @@ async def _dynamic_openapi_columns(base_url: str, query) -> list[dict]:
     return [{"name": k, "type": value_type} for k in sample]
 
 
-def _query_template_for(table_name: str) -> str | None:  # REQ-1670
+def _query_template_for(source_id: str, table_name: str) -> str | None:  # REQ-1670
     """The Cypher a neo4j table runs — read from the hydrated api_endpoints map, which is where
     the registration persisted it (registered_tables carries no query column)."""
     from provisa.api.app import state
+    from provisa.api_source.endpoints import endpoint_of
 
-    endpoints = getattr(state, "api_endpoints", None) or {}
-    ep = endpoints.get(table_name) if isinstance(endpoints, dict) else None
-    return getattr(ep, "query_template", None) if ep is not None else None
+    ep = endpoint_of(state, source_id, table_name)
+    return ep.query_template if ep is not None else None
 
 
 async def _ensure_openapi_spec(source_id: str) -> bool:
@@ -435,7 +435,7 @@ async def _fetch_table_with_columns(
         paging_ceiling_rows=_state.config.graphql_remote.max_rows,
         view_sql=view_sql,
         dq_contract=row.get("dq_contract"),  # REQ-1443
-        query_template=_query_template_for(row["table_name"]),  # REQ-1670
+        query_template=_query_template_for(row["source_id"], row["table_name"]),  # REQ-1670
         file_glob=row.get("file_glob"),  # REQ-788
         source_file_column=row.get("source_file_column"),  # REQ-788
         view_metrics=_view_metrics_type_from_row(row.get("view_metrics")),  # REQ-1318

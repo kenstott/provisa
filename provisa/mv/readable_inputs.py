@@ -149,7 +149,9 @@ async def unreadable_inputs(inputs: list[str], state: Any) -> list[UnreadableInp
                 UnreadableInput(name, _ROW_LEVEL, "it holds only the rows requests have fetched")
             )
             continue
-        endpoint = state.api_endpoints.get(table)
+        from provisa.api_source.endpoints import endpoint_named  # noqa: PLC0415
+
+        endpoint = endpoint_named(state, table, schema)
         needed = (
             _needed_path_arguments(endpoint)
             if endpoint is not None
@@ -332,7 +334,10 @@ async def require_argument_switch_allowed(conn: Any, endpoint: Any) -> None:
     if not needed:
         return
     stored = await conn.execute_core(
-        select(api_endpoints.c.path).where(api_endpoints.c.table_name == endpoint.table_name)
+        select(api_endpoints.c.path).where(
+            api_endpoints.c.source_id == endpoint.source_id,
+            api_endpoints.c.table_name == endpoint.table_name,
+        )
     )
     row = stored.fetchone()
     if row is None or _PATH_PLACEHOLDER.search(row.path):
