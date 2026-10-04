@@ -12,6 +12,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from provisa.auth.middleware import request_session_vars
 from provisa.core.request_context import (
     reset_session_vars,
@@ -97,3 +99,46 @@ class TestSessionVarsFor:
         finally:
             reset_session_vars(token)
         assert sql == "id = 'o''neil'"
+
+
+# -- the node's region (REQ-1922) ------------------------------------------------------------------
+
+
+@pytest.fixture
+def _region():
+    from provisa.core import process_region
+
+    was = process_region._region
+    yield process_region
+    process_region._region = was
+
+
+_PLATFORM = {
+    "regions": [
+        {"id": "eu", "address": "https://eu.example.com"},
+        {"id": "us", "address": "https://us.example.com"},
+    ]
+}
+
+
+def test_a_predicate_reads_the_answering_nodes_region(_region):
+    from provisa.core.request_context import (
+        reset_session_vars,
+        session_vars_for,
+        set_session_vars,
+    )
+
+    _region.bind_launch(_PLATFORM, requested="eu")
+    token = set_session_vars({"region": "us", "team": "a"})  # a caller cannot name another
+    try:
+        assert session_vars_for({"session_vars": {"region": "us"}}) == {"region": "eu", "team": "a"}
+    finally:
+        reset_session_vars(token)
+
+
+def test_with_no_platform_regions_the_name_stays_the_deployments(_region):
+    from provisa.core.request_context import session_vars_for
+
+    _region.bind_launch({}, requested=None)
+    assert "region" not in session_vars_for(None)
+    assert session_vars_for({"session_vars": {"region": "east"}}) == {"region": "east"}

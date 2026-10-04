@@ -107,6 +107,30 @@ class TestBuildRefreshSQL:
         result = await _build_refresh_sql(mv)
         assert result == mv.sql
 
+    async def test_a_views_region_setting_is_the_building_regions(self):
+        """REQ-1922: each region builds its own copy of a view; a view whose SQL reads
+        ``provisa.region`` holds that region's rows, and any other setting resolves to NULL."""
+        from provisa.core import process_region
+
+        platform = {
+            "regions": [
+                {"id": "eu", "address": "https://eu.example.com"},
+                {"id": "us", "address": "https://us.example.com"},
+            ]
+        }
+        mv = _sql_mv()
+        mv.sql = (
+            "SELECT id FROM orders WHERE region = current_setting('provisa.region') "
+            "AND team = current_setting('provisa.team')"
+        )
+        was = process_region._region
+        try:
+            process_region.bind_launch(platform, requested="eu")
+            sql = await _build_refresh_sql(mv, _FakeEngine())
+        finally:
+            process_region._region = was
+        assert sql == "SELECT id FROM orders WHERE region = 'eu' AND team = NULL"
+
     async def test_join_pattern_without_introspection_raises(self):
         mv = _jp_mv()
         with pytest.raises(ValueError, match="engine required to introspect"):

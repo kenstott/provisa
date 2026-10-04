@@ -52,6 +52,9 @@ class RegisteredNames:
     address seam leaves every statement as written. The tests bind their tables to source
     ``src``, schema ``public`` (:func:`src_table`)."""
 
+    #: The dialect statements bound for this engine are written in (``EngineRuntime.dialect``).
+    dialect = "trino"
+
     def address_replicas(self, sql: str) -> str:
         return sql
 

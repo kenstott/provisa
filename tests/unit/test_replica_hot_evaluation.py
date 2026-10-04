@@ -71,6 +71,7 @@ def _reg(table_id: int, name: str, **settings) -> SimpleNamespace:
         "cache_ttl": None,
         "columns": [SimpleNamespace(name="id", native_filter_type=None)],
         "row_materialize": False,
+        "region": None,
     }
     row.update(settings)
     return SimpleNamespace(**row)
@@ -452,3 +453,43 @@ async def test_an_evaluation_that_fails_is_logged_and_the_loop_goes_on(world, mo
         )
     assert any("Hot promotion evaluation failed for default" in m for m in _errors(caplog))
     assert len(calls) >= 2, "the loop stopped after one failed evaluation"
+
+
+# -- regions (REQ-1922) ----------------------------------------------------------------------------
+
+
+@pytest.fixture
+def _region():
+    from provisa.core import process_region
+
+    was = process_region._region
+    yield process_region
+    process_region._region = was
+
+
+_PLATFORM = {
+    "regions": [
+        {"id": "eu", "address": "https://eu.example.com"},
+        {"id": "us", "address": "https://us.example.com"},
+    ]
+}
+
+
+async def test_a_table_naming_another_region_is_not_promoted_here(world, _region):
+    """Only the region a table names promotes, builds and counts it; the org's other regions read
+    it from there."""
+    _region.bind_launch(_PLATFORM, requested="us")
+    world.registry.tables[0].region = "eu"
+    world.seen(1, 100)
+    outcome = await evaluate(world.state, workers=1)
+    assert outcome.promoted == ()
+    stored = await world.stored()
+    assert stored["promoted"] == frozenset() and stored["orders"] is None  # nothing requested
+
+
+async def test_the_region_a_table_names_promotes_it(world, _region):
+    _region.bind_launch(_PLATFORM, requested="eu")
+    world.registry.tables[0].region = "eu"
+    world.seen(1, 100)
+    outcome = await evaluate(world.state, workers=1)
+    assert outcome.promoted == (ORDERS,)

@@ -126,7 +126,20 @@ def session_vars_for(role: dict | None) -> dict[str, str]:
     for k, v in ((role or {}).get("session_vars") or {}).items():
         out[str(k)] = str(v)
     out.update(current_session_vars.get())
+    # REQ-1922: where the platform declares regions, ``provisa.region`` is the region of the
+    # node answering, so a rule can keep a region's rows in that region. It is the node's fact,
+    # not the caller's: set last, over any role constant or request value of that name. With no
+    # platform regions the implicit region is invisible and the name stays the deployment's own.
+    from provisa.core import process_region
+    from provisa.core.regions import DEFAULT_REGION
+
+    if process_region.region() != DEFAULT_REGION:
+        out[REGION_VAR] = process_region.region()
     return out
+
+
+#: The session variable that names the answering node's region (REQ-1922).
+REGION_VAR = "region"
 
 
 # The role the request acts as (request.state.role), bound by the surfaces that authenticate a

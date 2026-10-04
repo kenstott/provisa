@@ -1653,6 +1653,40 @@ async def build_org_runtime(
     engine_url: str | None = None,
     shard: str = "",
     storage_url: str | None = None,
+) -> OrgRuntime:  # REQ-1266, REQ-1524
+    """Build the org's runtime (``_build_org_runtime``) as one model change.
+
+    A build writes the org's model — its role grants, the built-in and demo rows it loads — and
+    it is reached from every surface: an HTTP request (whose change it joins), a protocol server
+    or a background job (none open one). Every model change commits (REQ-1524), so the build
+    opens its own scope; under an outer one it is part of that one."""
+    async with model_change.scope(f"build org {org_id}/{env}"):
+        return await _build_org_runtime(
+            org_id,
+            env=env,
+            ephemeral=ephemeral,
+            include_demo=include_demo,
+            isolated_engine=isolated_engine,
+            external_engine=external_engine,
+            engine_kind=engine_kind,
+            engine_url=engine_url,
+            shard=shard,
+            storage_url=storage_url,
+        )
+
+
+async def _build_org_runtime(
+    org_id: str,
+    *,
+    env: str = PROD,
+    ephemeral: bool = False,
+    include_demo: bool = False,
+    isolated_engine: bool = False,
+    external_engine: tuple[str, int] | None = None,
+    engine_kind: str | None = None,
+    engine_url: str | None = None,
+    shard: str = "",
+    storage_url: str | None = None,
 ) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 

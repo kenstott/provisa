@@ -112,6 +112,16 @@ async def org_plane(monkeypatch):
         {"org_admin": {"capabilities": list(_ORG_ADMIN_CAPS), "domain_access": ["*"]}},
         raising=False,
     )
+    # A booted node always holds the deployment's config (set by the boot's load); this fixture
+    # boots no app, so it gives the surface the config one with no sources of its own would hold.
+    from provisa.core.config_loader import parse_config_dict
+
+    monkeypatch.setattr(
+        app_state,
+        "config",
+        parse_config_dict({"sources": [], "domains": [], "tables": [], "roles": []}),
+        raising=False,
+    )
 
     yield tenant_db
 

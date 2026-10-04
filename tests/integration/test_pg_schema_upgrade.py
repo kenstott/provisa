@@ -200,7 +200,31 @@ async def test_a_table_schema_sql_does_not_create_lands_in_the_org_schema(own_da
         conn.exec_driver_sql("SET LOCAL search_path TO audit_reference")
         conn.exec_driver_sql(AUDIT_SCHEMA_SQL.split("DO $$")[0])
     declared = _column_shapes(db, "audit_reference", "query_audit_log")
-    assert len(declared) == 14
+    # The record's columns: the statement and its outcome, and the provenance a reader of the
+    # record is answered with (model stamp and commit, the rules enforced, why it was routed where
+    # it was, the sources read and the age of the data).
+    assert {shape[0] for shape in declared} == {
+        "id",
+        "tenant_id",
+        "user_id",
+        "role_id",
+        "query_hash",
+        "query_text_enc",
+        "table_ids",
+        "source",
+        "status_code",
+        "duration_ms",
+        "route",
+        "row_count",
+        "trace_id",
+        "model_stamp",
+        "model_commit",
+        "enforced",
+        "route_reason",
+        "sources",
+        "data_age",
+        "logged_at",
+    }
     assert _column_shapes(db, _SCHEMA, "query_audit_log") == declared
     with db.engine.begin() as conn:
         conn.exec_driver_sql("DROP SCHEMA audit_reference CASCADE")

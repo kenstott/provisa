@@ -22,6 +22,8 @@ under an org_admin identity — the same path the browser uses.
 
 from __future__ import annotations
 
+import re
+
 import os
 from types import SimpleNamespace
 
@@ -101,8 +103,8 @@ async def _run(query: str) -> dict:
 
 async def test_provisioning_writes_the_demo_rows_into_the_orgs_own_schema(demo_org):
     _state, rt = demo_org
-    assert rt.tenant_db is not None
-    async with rt.tenant_db.acquire() as conn:
+    assert rt.model_db is not None
+    async with rt.model_db.acquire() as conn:
         tables = (await conn.execute_core(select(registered_tables_t.c.table_name))).fetchall()
         domain_ids = {r[0] for r in (await conn.execute_core(select(domains_t.c.id))).fetchall()}
     assert "orders" in {r[0] for r in tables}
@@ -116,8 +118,8 @@ async def test_provisioning_seeds_the_derived_source_and_its_virtual_views(demo_
     # target and was dropped from the load — the org came up with the demo "missing elements" and
     # its GraphQL schema had no groupBy field for the fact.
     _state, rt = demo_org
-    assert rt.tenant_db is not None
-    async with rt.tenant_db.acquire() as conn:
+    assert rt.model_db is not None
+    async with rt.model_db.acquire() as conn:
         source_ids = {r[0] for r in (await conn.execute_core(select(sources_t.c.id))).fetchall()}
         derived = {
             r[0]
@@ -139,8 +141,8 @@ async def test_provisioning_strips_control_plane_roles_from_column_grants(demo_o
     # provisioning load it answered "none" and platform_admin stayed on every column grant of the
     # new org. It is resolved from the org's own roles table now, seeded before any registration.
     _state, rt = demo_org
-    assert rt.tenant_db is not None
-    async with rt.tenant_db.acquire() as conn:
+    assert rt.model_db is not None
+    async with rt.model_db.acquire() as conn:
         grants = (
             await conn.execute_core(
                 select(table_columns_t.c.column_name, table_columns_t.c.visible_to)
@@ -191,7 +193,10 @@ async def test_compiled_pipeline_forces_engine_route_for_view_backed_query(demo_
     # the view's defining subquery over "public"."orders", not a bare, un-routable "order_totals"
     # table reference (what the DIRECT-branch fallback would hand a native driver).
     exec_sql = plan.exec_sql.lower()
-    # normalize_table_refs may add a self-alias ("orders" AS orders) after the physical table ref;
-    # match the open of the subquery to tolerate that without weakening the guard (a bare
-    # "order_totals" table ref would not contain this pattern).
-    assert 'from (select "id", "amount" from "public"."orders"' in exec_sql, exec_sql
+    # normalize_table_refs may add a self-alias ("orders" AS orders) after the physical table ref,
+    # and the engine route names the base table under the org's engine catalog (REQ-1266:
+    # "org_<org>__<source>"."public"."orders"); match the open of the subquery over that base
+    # table — a bare "order_totals" table ref would not contain it.
+    assert re.search(
+        r'from \(select "id", "amount" from (?:"[^"]+"\.)?"public"\."orders"', exec_sql
+    ), exec_sql

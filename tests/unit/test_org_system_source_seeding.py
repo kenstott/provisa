@@ -59,7 +59,7 @@ def _awaited_names(func: ast.AsyncFunctionDef) -> list[str]:
 
 
 def test_the_org_builder_seeds_system_sources_before_it_loads_the_config():
-    awaited = _awaited_names(_function(_REPO_ROOT / "provisa/api/app.py", "build_org_runtime"))
+    awaited = _awaited_names(_function(_REPO_ROOT / "provisa/api/app.py", "_build_org_runtime"))
 
     assert "_seed_built_in_sources" in awaited, "the org builder no longer seeds system sources"
     assert "load_config" in awaited, "the org builder no longer loads the config"
@@ -72,7 +72,7 @@ def test_the_org_builder_seeds_system_sources_before_it_loads_the_config():
 def test_the_org_builder_seeds_into_the_org_being_built():
     """Seeding without the org id writes the DEFAULT org's rows, leaving the new org empty."""
     source = (_REPO_ROOT / "provisa/api/app.py").read_text()
-    builder = source.split("async def build_org_runtime")[1]
+    builder = source.split("async def _build_org_runtime")[1]
     call = builder.split("await _seed_built_in_sources(")[1].split(")")[0]
 
     assert "org_id=org_id" in call
@@ -86,7 +86,7 @@ def test_the_org_builder_seeds_into_the_environment_being_built():
     first request made to it.
     """
     source = (_REPO_ROOT / "provisa/api/app.py").read_text()
-    builder = source.split("async def build_org_runtime")[1]
+    builder = source.split("async def _build_org_runtime")[1]
     call = builder.split("await _seed_built_in_sources(")[1].split(")")[0]
 
     assert "env=env" in call

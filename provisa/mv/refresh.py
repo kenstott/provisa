@@ -309,7 +309,18 @@ async def _build_refresh_sql(
     if mv.sql:
         # REQ-1912: a table the view reads that is served from its replica is addressed there —
         # the same rewrite every statement bound for the engine gets.
-        return engine.address_replicas(mv.sql) if engine is not None else mv.sql
+        sql = engine.address_replicas(mv.sql) if engine is not None else mv.sql
+        if engine is None:
+            return sql
+        # REQ-1922: a view's ``current_setting('provisa.<var>')`` is resolved as every statement
+        # bound for the engine is (the engine has no such function). A refresh acts for no caller
+        # and no role, so what it resolves against is the node's own facts: in a region
+        # deployment ``provisa.region`` is the building region, and each region's copy of the
+        # view holds what that region's rule keeps. Any other name resolves to NULL.
+        from provisa.core.request_context import session_vars_for
+        from provisa.pgwire._pipeline import _resolve_session_settings
+
+        return _resolve_session_settings(sql, session_vars_for(None), engine.dialect)
 
     if mv.join_pattern:
         jp = mv.join_pattern
