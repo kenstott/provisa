@@ -663,7 +663,6 @@
   "ru/commandsPage.json::commandsPage.nameLabel": "Name",
   "ru/commandsPage.json::commandsPage.namePlaceholder": "e.g. process_order",
   "ru/commandsPage.json::commandsPage.noFunctions": "No functions registered",
-  "ru/commandsPage.json::commandsPage.noGovernance": "(no governance)",
   "ru/commandsPage.json::commandsPage.noWebhooks": "No webhooks registered",
   "ru/commandsPage.json::commandsPage.none": "none",
   "ru/commandsPage.json::commandsPage.saveAria": "Save changes",

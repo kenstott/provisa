@@ -179,12 +179,13 @@ export async function deleteWebhook(name: string): Promise<MutationResult> {
 export async function testAction(
   actionType: "function" | "webhook",
   name: string,
-  roleId?: string,
+  roleId: string,
 ): Promise<unknown> {
+  // The role is required: a test call runs as a role, governed as that role's own call.
   const resp = await fetch(`${API_BASE}/admin/actions/test`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ actionType, name, role_id: roleId || null }),
+    body: JSON.stringify({ actionType, name, role_id: roleId }),
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));

@@ -62,7 +62,6 @@
     "detailInlineFields": "Campi inline",
     "inlineReturns": "inline ({{count}} campi)",
     "testAsRole": "Prova come ruolo:",
-    "noGovernance": "(nessuna governance)",
     "testResultHeading": "Risultato prova: {{name}}",
     "close": "Chiudi",
     "governanceApplied": "Governance applicata",

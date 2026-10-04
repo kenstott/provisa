@@ -62,7 +62,6 @@
     "detailInlineFields": "Campos inline",
     "inlineReturns": "inline ({{count}} campos)",
     "testAsRole": "Testar como função:",
-    "noGovernance": "(sem governança)",
     "testResultHeading": "Resultado do teste: {{name}}",
     "close": "Fechar",
     "governanceApplied": "Governança aplicada",

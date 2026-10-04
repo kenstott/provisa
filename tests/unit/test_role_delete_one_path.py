@@ -351,3 +351,23 @@ async def test_rest_lists_each_roles_origin(plane):
         "config",
         "admin",
     )
+
+
+# --- create and edit rebuild too ----------------------------------------------------------------
+# A role's rights are read from the runtime's roles, which a rebuild refreshes. A REST create or
+# edit that did not rebuild granted nothing until some later rebuild happened to run.
+
+
+async def test_rest_creates_a_role_and_rebuilds(plane, rebuilds):
+    body = roles_router.CreateRoleBody(
+        id="fresh", capabilities=["query_development"], domain_access=["*"]
+    )
+    made = await roles_router.create_role(body, _request())  # type: ignore[arg-type]
+    assert made["id"] == "fresh"
+    assert "fresh" in await _ids(plane) and rebuilds == [1]
+
+
+async def test_rest_edits_a_role_and_rebuilds(plane, rebuilds):
+    body = roles_router.UpdateRoleBody(capabilities=["query_development", "full_results"])
+    await roles_router.update_role("loose", body, _request())  # type: ignore[arg-type]
+    assert rebuilds == [1]

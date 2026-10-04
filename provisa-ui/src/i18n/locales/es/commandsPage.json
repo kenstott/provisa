@@ -62,7 +62,6 @@
     "detailInlineFields": "Campos en línea",
     "inlineReturns": "en línea ({{count}} campos)",
     "testAsRole": "Probar como rol:",
-    "noGovernance": "(sin gobierno)",
     "testResultHeading": "Resultado de la prueba: {{name}}",
     "close": "Cerrar",
     "governanceApplied": "Gobierno aplicado",

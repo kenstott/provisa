@@ -150,6 +150,10 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
                 origin="admin",  # REQ-1919: made through the admin
             )
         )
+    from provisa.api.app import _rebuild_schemas
+
+    # The role's rights and schema are live once it is made, as on the GraphQL path and delete.
+    await _rebuild_schemas()
     return {
         "id": body.id,
         "capabilities": body.capabilities,
@@ -258,6 +262,10 @@ async def update_role(
             .where(roles.c.id == role_id)
             .values(capabilities=new_caps, domain_access=new_domains, parent_role_id=new_parent)
         )
+    from provisa.api.app import _rebuild_schemas
+
+    # The edit is live at once, as on the GraphQL path and delete.
+    await _rebuild_schemas()
     return {
         "id": role_id,
         "capabilities": new_caps,

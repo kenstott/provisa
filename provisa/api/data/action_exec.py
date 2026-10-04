@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import httpx
 
+from provisa.api.data.action_governance import ActionEnforcement, govern_action_rows
 from provisa.api.errors import ApiError
 from provisa.executor.function_dispatch import dispatch_function
 from provisa.security.rights import require_role
@@ -226,6 +227,15 @@ async def invoke_tracked_function(name: str, args: dict, state, role_id: str | N
     step when it declares ``writes_table``; the returned rows as the role may see them. ``args``
     is an ordered dict of argument values.
     """
+    rows, _enforcement = await invoke_command(name, args, state, role_id)
+    return rows
+
+
+async def invoke_command(
+    name: str, args: dict, state, role_id: str | None
+) -> tuple[list[dict], ActionEnforcement | None]:
+    """:func:`invoke_tracked_function`, also answering what governance applied to the rows
+    (``None`` when the command declares no column contract). The admin test call reports it."""
     fn = state.tracked_functions.get(name)
     if fn:
         role = admit_command(fn, state, role_id, name)
@@ -236,12 +246,12 @@ async def invoke_tracked_function(name: str, args: dict, state, role_id: str | N
         rows = await dispatch_function(fn, args, state, role_id)
         if fn.get("writes_table"):
             await _table_was_written(fn, state)
-        return await _governed(rows, fn, state, role_id)
+        return await govern_action_rows(rows, fn, role_id, state)
     # A webhook is a governed command too (REQ-872): every surface routes here, so a webhook is
     # invocable beyond GraphQL. Kept a distinct path because a webhook is a scalar-argument HTTP
     # POST — the function dispatcher rejects scalar-only external calls (they can't batch).
     if name in (getattr(state, "tracked_webhooks", None) or {}):
-        return await invoke_tracked_webhook(name, args, state, role_id)
+        return await _invoke_webhook(name, args, state, role_id)
     raise unknown_command(name)
 
 
@@ -264,6 +274,13 @@ async def invoke_tracked_webhook(name: str, args: dict, state, role_id: str | No
     The same admission and record as a function, then POSTs the argument body to the webhook's
     URL and normalizes the response to a list of row dicts; the rows as the role may see them.
     """
+    rows, _enforcement = await _invoke_webhook(name, args, state, role_id)
+    return rows
+
+
+async def _invoke_webhook(
+    name: str, args: dict, state, role_id: str | None
+) -> tuple[list[dict], ActionEnforcement | None]:
     wh = (getattr(state, "tracked_webhooks", None) or {}).get(name)
     if not wh:
         raise unknown_command(name)
@@ -275,7 +292,7 @@ async def invoke_tracked_webhook(name: str, args: dict, state, role_id: str | No
         resp = await client.request(wh["method"].upper(), wh["url"], json=_webhook_body(wh, args))
     body = resp.json()
     rows = body if isinstance(body, list) else [body]
-    return await _governed(rows, wh, state, role_id)
+    return await govern_action_rows(rows, wh, role_id, state)
 
 
 async def _table_was_written(fn: dict, state) -> None:
@@ -336,12 +353,3 @@ async def _require_approval(fn: dict, args: dict, state, role_id: str | None, ro
             name=fn["name"],
             reason=str(verdict.reason),
         )
-
-
-async def _governed(rows: list[dict], action: dict, state, role_id: str) -> list[dict]:
-    """REQ-1679, REQ-1758: the response as the acting role may see it. Every call has a role
-    (the admission refuses one without)."""
-    from provisa.api.data.action_governance import govern_action_rows
-
-    governed, _enforcement = await govern_action_rows(rows, action, role_id, state)
-    return governed

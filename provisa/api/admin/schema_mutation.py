@@ -3806,6 +3806,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         found = False
         for t in triggers:
             if t["id"] == task_id:
+                if enabled and t.get("sql") is not None:
+                    from provisa.api.admin.capabilities import require_trigger_role
+
+                    # Enabling a SQL trigger sets it running as its role, so it is the same act
+                    # as saving one. Disabling one runs nothing and needs no role.
+                    require_trigger_role(info.context["request"], t["role"])
                 t["enabled"] = enabled
                 found = True
                 break
@@ -3844,7 +3850,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Create a scheduled trigger (webhook or SQL) and register it live (REQ-1003/1004)."""
         require_capability(info, "org_settings")
         return await _ops.create_scheduled_task_op(
-            id, name, cron, kind, webhook_name, args_json, sql, role
+            info.context["request"], id, name, cron, kind, webhook_name, args_json, sql, role
         )
 
     @strawberry.mutation

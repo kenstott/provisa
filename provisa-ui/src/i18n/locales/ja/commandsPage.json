@@ -62,7 +62,6 @@
     "detailInlineFields": "インラインフィールド",
     "inlineReturns": "インライン（{{count}} フィールド）",
     "testAsRole": "テスト実行ロール:",
-    "noGovernance": "（ガバナンスなし）",
     "testResultHeading": "テスト結果: {{name}}",
     "close": "閉じる",
     "governanceApplied": "ガバナンス適用済み",

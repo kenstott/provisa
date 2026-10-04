@@ -268,7 +268,7 @@ export function CommandsPage() {
     setTestResult(null);
     setError("");
     try {
-      const result = await testAction(actionType, name, testRoleId || undefined);
+      const result = await testAction(actionType, name, testRoleId);
       setTestResult({ name, data: result });
     } catch (e) {
       setError(`Test failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -906,11 +906,8 @@ export function CommandsPage() {
         <Select
           aria-label={t("commandsPage.testAsRole")}
           size="xs"
-          data={[
-            { value: "", label: t("commandsPage.noGovernance") },
-            ...roles.map((r) => ({ value: r.id, label: r.id })),
-          ]}
-          value={testRoleId}
+          data={roles.map((r) => ({ value: r.id, label: r.id }))}
+          value={testRoleId || null}
           onChange={(v) => setTestRoleId(v ?? "")}
           allowDeselect={false}
         />

@@ -142,6 +142,8 @@ async def plane(monkeypatch) -> Database:
 
     monkeypatch.setattr(schema_mutation, "_get_pool", _pool)
     monkeypatch.setattr(schema_mutation, "_rebuild_schemas", _rebuild)
+    # The REST role routes rebuild too; a real rebuild would replace the callers' test roles.
+    monkeypatch.setattr(appmod, "_rebuild_schemas", _rebuild)
     return db
 
 

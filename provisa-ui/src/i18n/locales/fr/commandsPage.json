@@ -62,7 +62,6 @@
     "detailInlineFields": "Champs inline",
     "inlineReturns": "inline ({{count}} champs)",
     "testAsRole": "Tester avec le rôle :",
-    "noGovernance": "(aucune gouvernance)",
     "testResultHeading": "Résultat du test : {{name}}",
     "close": "Fermer",
     "governanceApplied": "Gouvernance appliquée",

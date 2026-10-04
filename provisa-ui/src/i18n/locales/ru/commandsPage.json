@@ -62,7 +62,6 @@
     "detailInlineFields": "Встроенные поля",
     "inlineReturns": "встроенные ({{count}} полей)",
     "testAsRole": "Проверить с ролью:",
-    "noGovernance": "(без управления)",
     "testResultHeading": "Результат проверки: {{name}}",
     "close": "Закрыть",
     "governanceApplied": "Управление применено",

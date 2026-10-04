@@ -62,7 +62,6 @@
     "detailInlineFields": "Inline Fields",
     "inlineReturns": "inline ({{count}} fields)",
     "testAsRole": "Test as role:",
-    "noGovernance": "(no governance)",
     "testResultHeading": "Test Result: {{name}}",
     "close": "Close",
     "governanceApplied": "Governance applied",

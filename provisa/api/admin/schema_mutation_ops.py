@@ -45,6 +45,7 @@ from provisa.api.admin.schema_common import (
 from provisa.core.repositories import origin as origin_repo
 
 if TYPE_CHECKING:
+    from starlette.requests import Request
     from strawberry.types.info import Info as StrawberryInfo
 
     from provisa.core.database import Connection
@@ -766,6 +767,7 @@ def _register_trigger_live(trigger_dict: dict) -> None:  # REQ-1003
 
 
 async def create_scheduled_task_op(  # REQ-1003, REQ-1004
+    request: Request,
     id: str,
     name: str,
     cron: str,
@@ -777,7 +779,8 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
 ) -> MutationResult:
     """Create a scheduled trigger (webhook or SQL) and register it live. Persists to config
     and (if a scheduler is running) adds the job so it fires without a restart. url/sql are
-    mutually exclusive — supplying both fails loudly (REQ-1003)."""
+    mutually exclusive — supplying both fails loudly (REQ-1003). ``request`` is the caller's: a
+    SQL trigger runs as its role, so saving one needs that role held or ``cross_org``."""
     import json as _json
 
     import yaml
@@ -866,6 +869,9 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
                 code="schema.trigger_role_required",
                 params={"trigger": id.strip()},
             )
+        from provisa.api.admin.capabilities import require_trigger_role
+
+        require_trigger_role(request, role)
         try:
             checked_trigger_sql(sql.strip(), id.strip(), datetime.now(timezone.utc))
         except TriggerSqlRefused as exc:

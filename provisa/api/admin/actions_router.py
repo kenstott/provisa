@@ -20,8 +20,6 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select, update
 
-import httpx
-
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 from provisa.api.admin.capabilities import require_capability_request
@@ -557,73 +555,15 @@ def _test_endpoints_enabled() -> bool:
     )
 
 
-def _build_function_enforcement(
-    table_id: int | None,
-    role_id: str,
-    state,
-    rls_filter: str | None,
-    masked_cols: list[str],
-    excluded_cols: list[str],
-) -> dict:
-    """REQ-062: build enforcement metadata for the function test response."""
-    masking_applied = []
-    if table_id is not None:
-        col_masking = state.masking_rules.get((table_id, role_id), {})
-        for col, (rule, _) in col_masking.items():
-            if col in masked_cols:
-                masking_applied.append(f"{col} -> {rule.mask_type.value}")
-    return {
-        "role_used": role_id,
-        "rls_filters_applied": [rls_filter] if rls_filter else [],
-        "columns_excluded": excluded_cols,
-        "masking_applied": masking_applied,
-    }
-
-
-def _apply_row_governance(  # REQ-062, REQ-207, REQ-245
-    rows: list[dict],
-    table_id: int | None,
-    role_id: str,
-    state,
-    gov_ctx,
-) -> tuple[list[dict], list[str], list[str]]:
-    """Apply visibility and masking governance to Python result rows.
-
-    Returns (governed_rows, masked_col_names, excluded_col_names).
-    """
-    from provisa.security.masking import apply_mask_to_value
-
-    if table_id is None or not rows:
-        return rows, [], []
-
-    col_masking = state.masking_rules.get((table_id, role_id), {})
-    visible = gov_ctx.visible_columns.get(table_id)  # None = all visible
-
-    all_cols = set(rows[0].keys())
-    excluded = [c for c in all_cols if visible is not None and c not in visible]
-    masked_col_names: list[str] = []
-
-    governed: list[dict] = []
-    for row in rows:
-        new_row: dict = {}
-        for col, val in row.items():
-            if col in excluded:
-                continue
-            if col in col_masking:
-                rule, dtype = col_masking[col]
-                new_row[col] = apply_mask_to_value(rule, val, dtype)
-                if col not in masked_col_names:
-                    masked_col_names.append(col)
-            else:
-                new_row[col] = val
-        governed.append(new_row)
-
-    return governed, masked_col_names, excluded
-
-
 @router.post("/test")
 async def test_action(request: Request, body: TestActionInput):  # REQ-004, REQ-062, REQ-245
-    """Run a no-arg test invocation of a tracked function or webhook."""
+    """Run a no-arg test invocation of a tracked function or webhook, as a role.
+
+    The role is required and is one the caller holds, or the caller holds ``access_config`` (the
+    rule compileQuery follows). The call is then the real one: the same command admission,
+    approval, record, dispatch and governed rows every surface gets (``invoke_command``), with
+    what governance applied reported beside the rows.
+    """
     require_capability_request(request, "table_registration")
     if not _test_endpoints_enabled():
         raise ApiError(
@@ -637,148 +577,45 @@ async def test_action(request: Request, body: TestActionInput):  # REQ-004, REQ-
     if state.model_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
-    if body.actionType == "function":
-        fn_def = state.tracked_functions.get(body.name)
-        if not fn_def:
-            raise ApiError(
-                404,
-                "actions.function_not_found",
-                f"Function '{body.name}' not found",
-                name=body.name,
-            )
+    if body.actionType not in ("function", "webhook"):
+        raise ApiError(
+            400,
+            "actions.unknown_action_type",
+            f"Unknown actionType '{body.actionType}'",
+            action_type=body.actionType,
+        )
+    if not body.role_id:
+        raise ApiError(
+            422,
+            "actions.test_role_required",
+            "role_id is required: a test call runs as a role, governed as that role's own call",
+            field="role_id",
+        )
+    from provisa.api.admin.capabilities import require_inspectable_role_request
 
-        impl_kind = fn_def.get("impl_kind", "source_procedure")
-        role_id = body.role_id
+    require_inspectable_role_request(request, body.role_id)
 
-        # REQ-885: non-source-procedure commands (python/script/http/grpc) don't execute
-        # against a source pool — route through the shared dispatcher for a no-arg invocation.
-        if impl_kind != "source_procedure":
-            from provisa.executor.function_dispatch import dispatch_function
+    registry = state.tracked_functions if body.actionType == "function" else state.tracked_webhooks
+    if body.name not in registry:
+        kind = "Function" if body.actionType == "function" else "Webhook"
+        raise ApiError(
+            404,
+            f"actions.{body.actionType}_not_found",
+            f"{kind} '{body.name}' not found",
+            name=body.name,
+        )
 
-            rows = await dispatch_function(fn_def, {}, state, role_id)
-            return {"rows": rows}
+    from provisa.api.data.action_exec import invoke_command
 
-        src_id = fn_def["source_id"]
-        fn = fn_def["function_name"]
-        schema = fn_def["schema_name"]
-        returns = fn_def["returns"] or ""
-
-        if not state.source_pools.has(src_id):
-            raise ApiError(
-                503,
-                "actions.source_not_connected",
-                f"Source '{src_id}' not connected",
-                source=src_id,
-            )
-
-        gov_ctx = None
-        table_id: int | None = None
-        rls_filter: str | None = None
-
-        if role_id:
-            from provisa.compiler.stage2 import build_governance_context
-
-            if role_id not in state.contexts:
-                raise ApiError(
-                    422, "actions.unknown_role", f"Unknown role '{role_id}'", role=role_id
-                )
-
-            ctx = state.contexts[role_id]
-            # Invariant: contexts and rls_contexts are written together per-role
-            # (app.py). role_id is present in contexts (checked above), so it must
-            # be in rls_contexts — a missing key is an invariant break, fail loud.
-            rls = state.rls_contexts[role_id]
-            from provisa.security.rights import require_role
-
-            role = require_role(state.roles, role_id)
-            gov_ctx = build_governance_context(
-                role_id,
-                rls,
-                state.masking_rules,
-                ctx,
-                getattr(state, "tables", []),
-                role=role,
-            )
-
-            # Find return table_id by matching table_name to function's `returns` field
-            for meta in ctx.tables.values():
-                if meta.table_name == returns or meta.field_name == returns:
-                    table_id = meta.table_id
-                    break
-
-            if table_id is not None:
-                rls_filter = gov_ctx.rls_rules.get(table_id)
-
-        # Build governed SQL — wrap in subquery to apply RLS WHERE
-        base_sql = f'SELECT * FROM "{schema}"."{fn}"()'
-        if rls_filter:
-            exec_sql = f"SELECT * FROM ({base_sql}) AS _fn_result WHERE {rls_filter} LIMIT 5"
-        else:
-            exec_sql = f"{base_sql} LIMIT 5"
-
-        result = await state.source_pools.execute(src_id, exec_sql)
-        cols = result.column_names
-        raw_rows = [dict(zip(cols, r)) for r in result.rows]
-
-        if role_id and gov_ctx is not None:
-            governed_rows, masked_cols, excluded_cols = _apply_row_governance(
-                raw_rows, table_id, role_id, state, gov_ctx
-            )
-            enforcement = _build_function_enforcement(
-                table_id, role_id, state, rls_filter, masked_cols, excluded_cols
-            )
-            return {"rows": governed_rows, "enforcement": enforcement}
-
-        return {"rows": raw_rows}
-
-    elif body.actionType == "webhook":
-        async with state.model_db.acquire() as conn:
-            result = await conn.execute_core(
-                select(tracked_webhooks).where(tracked_webhooks.c.name == body.name)
-            )
-            fetched = result.fetchone()
-        if not fetched:
-            raise ApiError(
-                404, "actions.webhook_not_found", f"Webhook '{body.name}' not found", name=body.name
-            )
-        row = dict(fetched._mapping)
-
-        url = row["url"]
-        method = row["method"].upper()
-        timeout = row["timeout_ms"] / 1000
-        role_id = body.role_id
-
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.request(method, url, json={"_test": True})
-
-        body_json = resp.json()
-        webhook_result: dict = {"status": resp.status_code, "body": body_json}
-        if role_id:
-            # REQ-1679: the response is governed like a table's rows; report what applied.
-            from provisa.api.data.action_governance import govern_action_rows
-
-            action = (getattr(state, "tracked_webhooks", None) or {}).get(body.name) or {
-                **row,
-                "inline_return_type": row.get("inline_return_type") or [],
+    rows, enforcement = await invoke_command(body.name, {}, state, body.role_id)
+    return {
+        "rows": rows,
+        "enforcement": (
+            enforcement.as_dict()
+            if enforcement is not None
+            else {
+                "role_used": body.role_id,
+                "note": "The command declares no output columns; nothing to govern.",
             }
-            raw_rows = body_json if isinstance(body_json, list) else [body_json]
-            governed, enforcement = await govern_action_rows(raw_rows, action, role_id, state)
-            webhook_result["body"] = (
-                governed if isinstance(body_json, list) else governed[0] if governed else None
-            )
-            webhook_result["enforcement"] = (
-                enforcement.as_dict()
-                if enforcement is not None
-                else {
-                    "role_used": role_id,
-                    "note": "Webhook declares no output columns; nothing to govern.",
-                }
-            )
-        return webhook_result
-
-    raise ApiError(
-        400,
-        "actions.unknown_action_type",
-        f"Unknown actionType '{body.actionType}'",
-        action_type=body.actionType,
-    )
+        ),
+    }

@@ -108,24 +108,51 @@ def require_capability(  # REQ-042, REQ-060
 
 
 def require_inspectable_role(info: "strawberry.types.Info", role_id: str) -> None:  # REQ-273
-    """May this caller ask what a query compiles to AS ``role_id``?
+    """May this caller ask what a query compiles to AS ``role_id``? See
+    :func:`require_inspectable_role_request`."""
+    identity = _identity_from_info(info)
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return
+    # An identity was read off the request, so the request is there.
+    request = info.context["request"] if isinstance(info.context, dict) else info.context.request
+    require_inspectable_role_request(request, role_id)
+
+
+def require_inspectable_role_request(request, role_id: str) -> None:  # REQ-273, REQ-004
+    """May this caller inspect, or test-run, what ``role_id`` is served?
 
     A role named in an admin request follows the rule for a role named anywhere else: it is one
     the caller holds, or the request is refused (:func:`provisa.api.acting_role.held_role`). The
     one exception is the holder of ``access_config`` — the right that administers row filters and
-    visibility — who inspects what any role's query compiles to as part of that work.
+    visibility — who inspects what any role is served as part of that work.
     """
     from provisa.api.acting_role import held_role
     from provisa.api.app import state
     from provisa.security.rights import Capability
 
-    identity = _identity_from_info(info)
-    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+    identity = getattr(request.state, "identity", None)
+    if identity is not None and Capability.ACCESS_CONFIG.value in _resolved_capabilities(
+        identity, state
+    ):
         return
-    if Capability.ACCESS_CONFIG.value in _resolved_capabilities(identity, state):
+    held_role(request, role_id)
+
+
+def require_trigger_role(request, role_id: str) -> None:  # REQ-1003
+    """May this caller save a scheduled SQL trigger that runs AS ``role_id``?
+
+    A trigger's statement runs as its role on every firing, so saving one is acting as that role:
+    the role is one the caller holds (:func:`provisa.api.acting_role.held_role`, whose refusal
+    names the role), or the caller holds ``cross_org``. Without this, the right that schedules a
+    trigger would be a way to run statements as any role of the org, ``org_admin`` included.
+    """
+    from provisa.api.acting_role import held_role
+    from provisa.api.app import state
+    from provisa.security.rights import can_act_cross_org
+
+    identity = getattr(request.state, "identity", None)
+    if identity is not None and can_act_cross_org(_resolved_capabilities(identity, state)):
         return
-    # An identity was read off the request, so the request is there.
-    request = info.context["request"] if isinstance(info.context, dict) else info.context.request
     held_role(request, role_id)
 
 
