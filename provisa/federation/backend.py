@@ -247,12 +247,15 @@ class EngineBackend:
         """The catalog this engine names its materialization store by: that of its MV target."""
         return self.materialize_store_target(state, org_id)[0]
 
-    def region_read_catalog(self, state: Any, region: Any) -> str:
-        """The catalog a statement names another region's replicas store by (REQ-1922), attaching
-        it on first use: a table that region names is read from its replica there. ``region`` is
-        a ``region_stores.ForeignRegion``. An engine with no way to attach another store refuses,
-        naming itself — it is never read live in its place."""
-        del state
+    def region_read_address(
+        self, state: Any, region: Any, schema: str, table: str
+    ) -> tuple[str | None, str, str]:
+        """Where a statement reads ``schema.table`` of another region's replicas store
+        (REQ-1922), attaching that store (or the table) on first use: a table that region names
+        is read from its replica there. ``region`` is a ``region_stores.ForeignRegion``. An
+        engine with no way to attach another store refuses, naming itself — it is never read
+        live in its place."""
+        del state, schema, table
         raise EngineReadsNoOtherRegion(self.engine.name, region.id)
 
     def pending_lands(
@@ -889,13 +892,16 @@ class TrinoBackend(EngineBackend):
         registered[name] = dsn
         return name
 
-    def region_read_catalog(self, state: Any, region: Any) -> str:
+    def region_read_address(
+        self, state: Any, region: Any, schema: str, table: str
+    ) -> tuple[str | None, str, str]:
         """REQ-1922: another region's replicas store, as catalog ``org_<org>__region_<id>``."""
         from provisa.federation.replica_address import active_org_id
 
-        return self._store_catalog_named(
+        catalog = self._store_catalog_named(
             state, f"org_{active_org_id(state)}__region_{region.id}", region.replicas_url
         )
+        return catalog, schema, table
 
     def materialize_store_target(self, state: Any, org_id: str) -> tuple[str, str]:
         """Trino reaches its materialization store through the ``provisa_admin`` catalog.

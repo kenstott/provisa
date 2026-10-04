@@ -100,7 +100,7 @@ def test_an_engine_without_an_attach_for_another_region_refuses_naming_itself():
     backend.engine = SimpleNamespace(name="snowflake")  # type: ignore[assignment]
     region = ForeignRegion("eu", "postgresql://eu/db", None)  # type: ignore[arg-type]
     with pytest.raises(EngineReadsNoOtherRegion, match="snowflake engine cannot read region 'eu'"):
-        backend.region_read_catalog(SimpleNamespace(), region)
+        backend.region_read_address(SimpleNamespace(), region, "org_acme_replicas", "orders")
 
 
 # -- the read is routed to the home region's replica -------------------------------------------
@@ -156,11 +156,11 @@ async def test_a_table_kept_in_another_region_is_read_at_its_replica_there(monke
     engine = build_engine("trino")
     attached: list[str] = []
 
-    def _region_catalog(_self, _state, region):
+    def _region_address(_self, _state, region, schema, table):
         attached.append(region.id)
-        return f"region_{region.id}"
+        return f"region_{region.id}", schema, table
 
-    monkeypatch.setattr(type(engine.backend), "region_read_catalog", _region_catalog)
+    monkeypatch.setattr(type(engine.backend), "region_read_address", _region_address)
     source = Source(
         id="src", type=SourceType.postgresql, host="h", port=5432, database="d", username="u"
     )
@@ -233,8 +233,10 @@ def _trino(monkeypatch):
 def test_trino_reads_another_regions_replicas_through_a_catalog_of_that_store(monkeypatch):
     backend, state, conn = _trino(monkeypatch)
     region = ForeignRegion("eu", "postgresql://reader:pw@eu-replicas:5433/replicas", None)  # type: ignore[arg-type]
-    assert backend.region_read_catalog(state, region) == "org_acme__region_eu"
-    assert backend.region_read_catalog(state, region) == "org_acme__region_eu"  # registered once
+    where = ("org_acme__region_eu", "org_acme_replicas", "orders")
+    assert backend.region_read_address(state, region, "org_acme_replicas", "orders") == where
+    # Registered once: a second table of that region reads through the same catalog.
+    assert backend.region_read_address(state, region, "org_acme_replicas", "lines")[0] == where[0]
     assert conn.statements == [
         "-- lock postgresql://cp/db",
         "DROP CATALOG IF EXISTS org_acme__region_eu",
@@ -271,3 +273,38 @@ def test_trino_reaches_a_store_without_a_password_setting_none():
     spec = store_catalog_spec("region_eu", "postgresql://reader@eu/db")
     assert "connection-password" not in spec.properties
     assert spec.properties["connection-url"] == "jdbc:postgresql://eu:5432/db"
+
+
+def test_a_native_engine_that_imports_a_table_reads_it_where_it_imported_it(monkeypatch):
+    """PostgreSQL has no catalog per store: it imports the table through postgres_fdw, and the
+    read goes where the import put it."""
+    from provisa.federation.native_backend import NativeEngineBackend
+
+    imported: list[tuple] = []
+
+    class _Runtime:
+        def attach_region_table(self, region_id, dsn, schema, table):
+            imported.append((region_id, dsn, schema, table))
+            return "provisa", f"region_{region_id}__{schema}", table
+
+    backend = NativeEngineBackend.__new__(NativeEngineBackend)
+    monkeypatch.setattr(backend, "_store_runtime", lambda: _Runtime())
+    region = ForeignRegion("eu", "postgresql://r@eu/db", None)  # type: ignore[arg-type]
+    where = backend.region_read_address(SimpleNamespace(), region, "org_acme_replicas", "orders")
+    assert where == ("provisa", "region_eu__org_acme_replicas", "orders")
+    assert imported == [("eu", "postgresql://r@eu/db", "org_acme_replicas", "orders")]
+
+
+@pytest.mark.parametrize(
+    ("dsn", "refusal"),
+    [
+        ("mysql://u:p@eu/db", "is 'mysql'; the pg engine reads another region's store"),
+        ("postgresql://eu/db", "must name a host, a database and a user"),
+    ],
+)
+def test_the_pg_engine_refuses_a_store_it_cannot_import_from(dsn, refusal):
+    from provisa.federation.pg_runtime import PgFederationRuntime
+
+    runtime = PgFederationRuntime.__new__(PgFederationRuntime)
+    with pytest.raises(RuntimeError, match=refusal):
+        runtime.attach_region_table("eu", dsn, "org_acme_replicas", "orders")

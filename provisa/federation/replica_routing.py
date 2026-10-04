@@ -369,10 +369,9 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
     # REQ-1922: a table the org keeps in another region is read from its replica there, always —
     # never live, never from a copy here. Whether that replica is built is asked on each read
     # (query_residency.require_home_replica); where it is read is the region's store, which the
-    # engine attaches under a catalog of its own.
+    # engine attaches (backend.region_read_address).
     from provisa.federation.replica_converge import builds_here, home_region
 
-    catalogs: dict[str, str] = {}
     for reg in registry.registered:
         src = registry.sources.get(reg["source_id"])
         if src is None:
@@ -381,9 +380,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         if builds_here(home):
             continue
         assert home is not None  # builds_here is True for a table naming no region
-        if home not in catalogs:
-            region = state.foreign_regions[home]  # bound with the org: its selected regions
-            catalogs[home] = await asyncio.to_thread(backend.region_read_catalog, state, region)
+        region = state.foreign_regions[home]  # bound with the org: its selected regions
         name = physical.get(reg["table_name"], reg["table_name"])
         keys = engine_table_keys(engine, state.source_catalogs[src.id], reg["schema_name"], name)
         address = backend.replica_address(
@@ -392,7 +389,10 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         route = ReplicaRoute(
             source_id=src.id,
             table_name=reg["table_name"],
-            target=(catalogs[home], address.schema, address.table),
+            # Attaching that region's store may dial it: off the event loop (REQ-1882).
+            target=await asyncio.to_thread(
+                backend.region_read_address, state, region, address.schema, address.table
+            ),
         )
         for key in keys:
             if key in ambiguous:

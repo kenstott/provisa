@@ -676,6 +676,103 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         assert row is not None  # SELECT current_database() always returns exactly one row
         return row[0]
 
+    #: The advisory lock the processes on one engine database take around attaching another
+    #: region's store: they share its foreign servers and foreign tables.
+    _REGION_ATTACH_LOCK_KEY = 7339
+
+    def attach_region_table(
+        self, region_id: str, dsn: str, schema: str, table: str
+    ) -> tuple[str, str, str]:
+        """Import ``schema.table`` of another region's replicas store through postgres_fdw and
+        return where a statement reads it (REQ-1922): ``(current database, region_<id>__<schema>,
+        table)``. The foreign server ``region_<id>`` is read only (``updatable 'false'``): the
+        region's replicas are its own to build. Its address and credentials, and the foreign
+        table's columns, are set afresh on each call — a call comes with each publish of the read
+        map, so a store that moved, or a replica whose columns changed with the model, is read
+        as it is now. Only a PostgreSQL store is reached; any other is refused, naming it."""
+        from sqlalchemy import make_url
+
+        url = make_url(dsn)
+        if not url.get_backend_name().startswith("postgresql"):
+            raise RuntimeError(
+                f"region {region_id!r} replicas store is {url.get_backend_name()!r}; the pg "
+                "engine reads another region's store through postgres_fdw only"
+            )
+        if not url.host or not url.database or not url.username:
+            raise RuntimeError(
+                f"region {region_id!r} replicas store must name a host, a database and a user"
+            )
+        server = f"region_{region_id}"
+        local = f"{server}__{schema}"
+        options = {"host": url.host, "port": str(url.port or 5432), "dbname": url.database}
+        user = {"user": url.username}
+        if url.password is not None:  # a store reached without a password (trust auth) sets none
+            user["password"] = url.password
+        cur = self._con.cursor()
+        cur.execute("SELECT pg_advisory_lock(%s)", (self._REGION_ATTACH_LOCK_KEY,))
+        try:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw")
+            cur.execute(
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
+                "OPTIONS (updatable 'false')"
+            )
+            self._set_server_options(cur, server, options)
+            cur.execute(f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}"')
+            self._set_user_mapping(cur, server, user)
+            cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local}"')
+            cur.execute(f'DROP FOREIGN TABLE IF EXISTS "{local}"."{table}"')
+            cur.execute(
+                f'IMPORT FOREIGN SCHEMA "{schema}" LIMIT TO ("{table}") '
+                f'FROM SERVER "{server}" INTO "{local}"'
+            )
+        finally:
+            cur.execute("SELECT pg_advisory_unlock(%s)", (self._REGION_ATTACH_LOCK_KEY,))
+        return self.ensure_materialize_attached(), local, table
+
+    @staticmethod
+    def _set_server_options(cur: Any, server: str, options: dict[str, str]) -> None:
+        """Set each of ``options`` on the foreign server — ADD the ones it lacks, SET the ones it
+        has."""
+        cur.execute("SELECT srvoptions FROM pg_foreign_server WHERE srvname = %s", (server,))
+        row = cur.fetchone()
+        assert row is not None  # created just above, under the lock
+        have = {opt.split("=", 1)[0] for opt in row[0]}  # updatable is always among them
+        PgFederationRuntime._alter_options(cur, f'ALTER SERVER "{server}"', have, options)
+
+    @staticmethod
+    def _set_user_mapping(cur: Any, server: str, options: dict[str, str]) -> None:
+        """Set the current user's mapping on ``server`` to exactly ``options``."""
+        cur.execute(
+            "SELECT umoptions FROM pg_user_mappings WHERE srvname = %s AND usename = CURRENT_USER",
+            (server,),
+        )
+        row = cur.fetchone()
+        assert row is not None  # created just above, under the lock
+        have = {opt.split("=", 1)[0] for opt in row[0] or ()}
+        PgFederationRuntime._alter_options(
+            cur, f'ALTER USER MAPPING FOR CURRENT_USER SERVER "{server}"', have, options
+        )
+        if "password" in have and "password" not in options:
+            cur.execute(
+                f'ALTER USER MAPPING FOR CURRENT_USER SERVER "{server}" OPTIONS (DROP password)'
+            )
+
+    @staticmethod
+    def _alter_options(cur: Any, statement: str, have: set[str], options: dict[str, str]) -> None:
+        from psycopg2 import sql as pgsql
+
+        clauses = [
+            pgsql.SQL("{} {} {}").format(
+                pgsql.SQL("SET" if key in have else "ADD"),
+                pgsql.Identifier(key),
+                pgsql.Literal(value),
+            )
+            for key, value in options.items()
+        ]
+        cur.execute(
+            pgsql.SQL("{} OPTIONS ({})").format(pgsql.SQL(statement), pgsql.SQL(", ").join(clauses))
+        )
+
     @property
     def connection(self):
         """The psycopg2 connection — the backend's cache terminal issues CREATE TABLE/INSERT through

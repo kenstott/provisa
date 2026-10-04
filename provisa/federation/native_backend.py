@@ -178,13 +178,19 @@ class NativeEngineBackend(EngineBackend):
         del state, org_id  # the store's catalog is the runtime's, whichever org is served
         return self._store_runtime().ensure_materialize_attached()
 
-    def region_read_catalog(self, state: Any, region: Any) -> str:
-        """REQ-1922: the catalog another region's replicas store is read under, attached on the
-        runtime (DuckDB). A native runtime with no such attach refuses, naming the engine."""
+    def region_read_address(
+        self, state: Any, region: Any, schema: str, table: str
+    ) -> tuple[str | None, str, str]:
+        """REQ-1922: where another region's replica is read, attached on the runtime — DuckDB
+        ATTACHes that region's store as a catalog; PostgreSQL imports the table through
+        postgres_fdw into a schema of its own. A native runtime with neither refuses, naming the
+        engine."""
         runtime = self._store_runtime()
-        if not hasattr(runtime, "attach_region_store"):
-            return super().region_read_catalog(state, region)
-        return runtime.attach_region_store(region.id, region.replicas_url)
+        if hasattr(runtime, "attach_region_table"):
+            return runtime.attach_region_table(region.id, region.replicas_url, schema, table)
+        if hasattr(runtime, "attach_region_store"):
+            return runtime.attach_region_store(region.id, region.replicas_url), schema, table
+        return super().region_read_address(state, region, schema, table)
 
     def _attach_registered(self, state: Any) -> None:
         """ATTACH every registered table into the runtime: one walk per registry state, not one per

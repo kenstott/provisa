@@ -96,8 +96,14 @@ def _rows(conn, sql: str) -> list:
 def test_trino_reads_another_regions_replica_through_a_catalog_of_its_store(store, trino_state):
     backend, state, conn = trino_state
     region = ForeignRegion("eu", store.engine_dsn, None)  # type: ignore[arg-type]
-    catalog = backend.region_read_catalog(state, region)
-    assert catalog == f"org_{_ORG}__region_eu"
+    catalog, schema, table = backend.region_read_address(
+        state, region, store.schema, "crm__public__orders"
+    )
+    assert (catalog, schema, table) == (
+        f"org_{_ORG}__region_eu",
+        store.schema,
+        "crm__public__orders",
+    )
     assert _rows(
         conn, f'SELECT id, region FROM {catalog}."{store.schema}".crm__public__orders ORDER BY id'
     ) == [[1, "eu"], [2, "eu"]]
