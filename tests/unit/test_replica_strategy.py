@@ -19,6 +19,7 @@ Calcite jar / real Postgres.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -921,3 +922,52 @@ def test_owner_pid_flag_is_gated_on_the_bundle_release(tmp_path):
     assert "--owner-pid" not in spawned[-1]
     _server_for("engine-v0.82.1").start()
     assert spawned[-1][-2:] == ["--owner-pid", str(os.getpid())]
+
+
+def test_each_source_server_runs_from_its_own_state_directory(tmp_path):
+    """The bundle is a machine-wide download cache. Two servers of one connector (two sources,
+    or two Provisa instances) used to write one ``model/model.json`` into it and run in it, so
+    the Calcite adapter's per-schema state was shared and one served the other's files (REQ-955).
+    Each server now runs from its own directory under the instance's data directory, with the
+    bundle's code linked in, and the bundle is never written to."""
+
+    def _dl(spec, dest):
+        _lay_down_bundle(spec, dest)
+
+    resolver = rd.BundleResolver(cache_root=tmp_path / "cache", downloader=_dl)
+    started: list[tuple[list[str], Path]] = []
+
+    def _spawn(cmd, cwd):
+        started.append((cmd, cwd))
+        return _FakeProc()
+
+    def _server_of(source_id: str):
+        replica = pr.ConnectorReplica(
+            _files_source(id=source_id, path=f"/data/{source_id}"),
+            resolver=resolver,
+            allocator=pr.PortAllocator(is_free=lambda _: True),
+            spawn=_spawn,
+            health_check=_health_from(lambda: True),
+            port_is_free=lambda _: True,
+        )
+        replica.endpoint()
+        return replica
+
+    first, second = _server_of("files-a"), _server_of("files-b")
+    bundle = resolver.cached_path(first.spec)
+    (cmd_a, cwd_a), (cmd_b, cwd_b) = started
+    # Each runs in its own directory, under the instance's data directory, never the bundle.
+    assert cwd_a != cwd_b
+    data_dir = Path(os.environ["PROVISA_DATA_DIR"])
+    assert {cwd_a.parent.name, cwd_b.parent.name} == {first.spec.version}
+    assert cwd_a.is_relative_to(data_dir) and cwd_b.is_relative_to(data_dir)
+    # Each reads its own model: the launcher resolves its home from its linked bin directory.
+    assert cmd_a[0] == str(cwd_a / "bin" / first.spec.artifact_name)
+    assert (cwd_a / "bin").resolve() == (bundle / "bin").resolve()
+    model_a = json.loads((cwd_a / "model" / "model.json").read_text())
+    model_b = json.loads((cwd_b / "model" / "model.json").read_text())
+    assert model_a != model_b
+    # The shared bundle holds no model of either.
+    assert not (bundle / "model" / "model.json").exists()
+    first.close()
+    second.close()
