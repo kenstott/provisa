@@ -62,6 +62,8 @@
     "requiresApproval": "需要审批",
     "requiresApprovalHint": "每次调用仅在审批钩子批准后执行。未配置钩子时，调用将被拒绝。",
     "writesTable": "写入表",
-    "writesTableHint": "此命令更改的已注册表。每次调用后，该表的缓存结果和物化视图都会刷新。"
+    "writesTableHint": "此命令更改的已注册表。每次调用后，该表的缓存结果和物化视图都会刷新。",
+    "routinesOffered_one": "此架构中有 {{count}} 个例程可供选择",
+    "routinesOffered_other": "此架构中有 {{count}} 个例程可供选择"
   }
 }

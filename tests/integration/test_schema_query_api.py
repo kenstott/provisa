@@ -194,7 +194,9 @@ class TestAvailableTables:
 
 
 class TestAvailableFunctions:
-    async def test_available_functions_non_openapi_returns_empty(self, client):
+    async def test_a_source_reached_only_through_the_engine_offers_no_routines(self, client):
+        # Routines are read from the source's own catalog over a direct connection; this server
+        # reaches pet-store-pg only through the engine, so it has none on offer.
         data = await _gql(
             client,
             '{ availableFunctions(sourceId: "pet-store-pg", schemaName: "public") { name } }',

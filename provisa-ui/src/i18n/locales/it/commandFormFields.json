@@ -62,6 +62,8 @@
     "requiresApproval": "Richiede approvazione",
     "requiresApprovalHint": "Ogni chiamata viene eseguita solo dopo l'approvazione dell'hook di approvazione. Senza un hook configurato, le chiamate vengono rifiutate.",
     "writesTable": "Scrive nella tabella",
-    "writesTableHint": "La tabella registrata che questo comando modifica. Dopo ogni chiamata, i risultati in cache e le viste materializzate su di essa vengono aggiornati."
+    "writesTableHint": "La tabella registrata che questo comando modifica. Dopo ogni chiamata, i risultati in cache e le viste materializzate su di essa vengono aggiornati.",
+    "routinesOffered_one": "{{count}} routine di questo schema è disponibile",
+    "routinesOffered_other": "{{count}} routine di questo schema sono disponibili"
   }
 }

@@ -243,3 +243,38 @@ describe("CommandFormFields — the table a command writes (REQ-1924, REQ-871)",
     expect(screen.getByTestId("command-writes-table-select")).toBeInTheDocument();
   });
 });
+
+describe("CommandFormFields — a database source's routines on offer (REQ-887)", () => {
+  it("suggests the schema's routines, and the one picked becomes the function name", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    function DbHarness() {
+      const [form, setForm] = useState<FormState>({
+        ...EMPTY_FORM,
+        actionType: "function",
+        implKind: "source_procedure",
+        sourceId: "pg",
+        schemaName: "public",
+      });
+      return (
+        <>
+          <CommandFormFields
+            form={form}
+            setForm={setForm}
+            sources={[{ id: "pg", type: "postgresql" } as never]}
+            tables={[]}
+            domainHints={[]}
+            availableFunctions={[{ name: "get_customers_by_region", comment: "query" }]}
+            loadingFunctions={false}
+            dataProducts={[]}
+          />
+          <output data-testid="picked">{form.functionName}</output>
+        </>
+      );
+    }
+    render(<DbHarness />);
+    expect(screen.getByText("1 routine in this schema is on offer")).toBeInTheDocument();
+    await userEvent.type(screen.getByTestId("command-function-input"), "get_");
+    await userEvent.click(await screen.findByText("get_customers_by_region"));
+    expect(screen.getByTestId("picked")).toHaveTextContent("get_customers_by_region");
+  });
+});

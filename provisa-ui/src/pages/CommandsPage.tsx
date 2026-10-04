@@ -125,14 +125,17 @@ export function CommandsPage() {
        resets the available-functions list synchronously when the selected source changes, before refetching */
     setAvailableFunctions([]);
     const src = sources.find((s) => s.id === form.sourceId);
-    const schema = src ? OPERATION_SCHEMA[src.type] : undefined;
+    if (!src) return;
+    // A remote source offers its write operations; a database source offers the routines of
+    // the schema named (REQ-887). Either list only proposes: nothing is registered until saved.
+    const schema = OPERATION_SCHEMA[src.type] ?? form.schemaName;
     if (!schema) return;
     setLoadingFunctions(true);
     getAvailableFunctions(form.sourceId, schema)
       .then(setAvailableFunctions)
       .catch(() => setAvailableFunctions([]))
       .finally(() => setLoadingFunctions(false));
-  }, [form.sourceId, sources, getAvailableFunctions]);
+  }, [form.sourceId, form.schemaName, sources, getAvailableFunctions]);
 
   const handleEdit = (actionType: ActionType, name: string) => {
     if (actionType === "function") {

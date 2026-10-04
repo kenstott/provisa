@@ -25285,39 +25285,53 @@
   description: 'Admin-only reclassification: legitimate reclassification of a mutation to read-safe is
     gated by ACCESS_CONFIG capability and recorded as a governance decision. No per-operation read_only
     opt-out for callers; only admin acts can demote a mutation. [SUPERSEDED by REQ-870, 2026-10-03 -- a
-    command has no writable_by; its one role list is visible_to. Kept here for history; do not implement
-    against it.] Re-introspection of discovered mutations registers with empty writable_by; existing grants
-    preserved by name. [END SUPERSEDED BLOCK] DONE (2026-07): two enforceable
+    command has no writable_by; its one role list is visible_to (REQ-1156), and discovery registers no
+    command (REQ-887). Kept here for history; do not implement against it.] Re-introspection of discovered
+    mutations registers with empty writable_by; existing grants preserved by name. [END SUPERSEDED BLOCK]
+    DONE (2026-07): two enforceable
     behaviors. (1) reclassify_kind (provisa/security/ mutation_authz.py) is the single reclassification
-    gate — only a role holding ACCESS_CONFIG (ADMIN bypasses, per has_capability) may demote a mutation
+    gate — only a role holding ACCESS_CONFIG [SUPERSEDED by REQ-1327, 2026-10-03 -- no role or role string
+    stands in for ACCESS_CONFIG; an admin demotes only by holding it. Kept here for history; do not implement
+    against it.] (ADMIN bypasses, per has_capability) [END SUPERSEDED BLOCK] may demote a mutation
     to read-safe; the reverse (promoting a read to a write) is rejected for everyone, and there is no
     caller-supplied read_only flag anywhere in the request path, so classification stays under governance
     control. A no-op transition is idempotent. [SUPERSEDED by REQ-870, 2026-10-03 -- the writable_by
-    upsert rule is gone with the column. Kept here for history; do not implement against it.] (2) upsert_function
-    (provisa/core/repositories/ function.py) now preserves an existing writable_by on re-introspection:
-    a discovered mutation upserts with an empty writable_by that keeps the current admin grant (grants
-    preserved by name), while an explicit non-empty grant still applies. Proven with unit tests for the
-    gate and a live-Postgres test for grant preservation across re-introspection. [END SUPERSEDED BLOCK]
-    (Amended 2026-10-03, ONE ROLE LIST:) A command carries one role list, its assigned roles (visible_to);
-    a role reaches a command only when assigned to it AND reaching the command''s domain. Re-registering
-    a source keeps every assignment an admin made; discovery never drops an assignment.'
+    upsert rule is gone with the column, and discovery no longer re-registers. Kept here for history; do
+    not implement against it.] (2) upsert_function (provisa/core/repositories/ function.py) now preserves
+    an existing writable_by on re-introspection: a discovered mutation upserts with an empty writable_by
+    that keeps the current admin grant (grants preserved by name), while an explicit non-empty grant still
+    applies. Proven with unit tests for the gate and a live-Postgres test for grant preservation across
+    re-introspection. [END SUPERSEDED BLOCK] (Amended 2026-10-03, ONE ROLE LIST:) A command carries one
+    role list, its assigned roles (visible_to); a role reaches a command only when assigned to it AND reaching
+    the command''s domain. [SUPERSEDED by REQ-870 amendment DISCOVERY OFFERS, 2026-10-03 -- discovery
+    registers nothing, so there is no re-registration for an assignment to survive. Kept here for history;
+    do not implement against it.] Re-registering a source keeps every assignment an admin made; discovery
+    never drops an assignment. [END SUPERSEDED BLOCK] (Amended 2026-10-03, DISCOVERY OFFERS, A STEWARD
+    ASSIGNS:) Discovery registers no command: a discovered mutation is on offer (REQ-887) until a steward
+    registers it, and the steward assigns its roles then, in the command''s one assigned-roles list, visible_to
+    (REQ-1156). Nothing discovery does later writes or rewrites a registered command, so no grant can be
+    widened or wiped by re-introspection. A role reaches a command only when it is assigned the command
+    and reaches the command''s domain (mutation_authz.command_reachable). Reclassification is unchanged:
+    reclassify_kind is the one gate, demotion needs ACCESS_CONFIG, and no one promotes a read to a write.'
   use_case: Ensures authorization policy remains under control of governance (admin), not individual callers.
     Prevents callers from overriding mutation classification, supports safe discovery/re-registration
     of mutations without accidentally granting them.
   code:
   - provisa/security/mutation_authz.py
   - provisa/core/repositories/function.py
+  - provisa/api/admin/schema_query.py
   tests:
   - tests/unit/test_mutation_authz.py
+  - tests/unit/test_stored_proc_discovery.py
   - tests/steps/steps_authorization.py
   target: 2026-Q4
-  scenario: 'Given a discovered mutation "createOrder" in domain "sales", assigned on discovery to org_admin alone
+  scenario: 'Given a mutation "createOrder" in domain "sales" that discovery offers and has not registered
 
-    And an admin assigns it to the "ops" role
+    And a steward registers it, assigned to the "ops" role
 
-    When introspection re-runs and registers createOrder again
+    Then ops reaches createOrder through its assignment and the sales domain
 
-    Then ops still reaches createOrder through its assignment and the sales domain — discovery never drops an assignment
+    And a role assigned it outside the sales domain, or reaching sales without the assignment, does not
 
     And when a role WITHOUT the ACCESS_CONFIG capability attempts to reclassify createOrder to read-safe, the attempt is rejected
 
@@ -25338,7 +25352,9 @@
   type: behavioral
   description: 'Mutation↔table association suggestions at registration time via protocol-specific association-suggesters.
     Universal rule: adapter emits ranked (mutation → table) candidates; suggestions are hints only; admin-confirmed;
-    confirmed associations register with empty writable_by (default-deny); any mutation may bind to any
+    [SUPERSEDED by REQ-871 amendment, 2026-10-03 -- a command has one assigned-roles list, visible_to (REQ-1156).
+    Kept here for history; do not implement against it.] confirmed associations register with empty writable_by
+    (default-deny); [END SUPERSEDED BLOCK] any mutation may bind to any
     table (manual override always); unmatched mutations remain registerable. GraphQL: walk mutation return
     type''s fields, unwrap NON_NULL/LIST, match leaf types against type_to_table; LIST-valued field =
     changed-records collection; prioritize single object > list-of-table-type; ignore scalar/stats fields.
@@ -25355,11 +25371,17 @@
     (0.4); name-affix / input-type stem fallback (0.3). Nothing auto-binds — the functions are pure and
     return hints; an empty list is the honest false-negative case. The GraphQL remote mapper (provisa/graphql_remote/mapper.py)
     invokes it during registration so every mapped mutation entry carries suggested_associations = [{table,
-    score, reason}] computed from its unwrapped return-type leaves + input-type stem, with writable_by
-    left empty (default-deny). Consuming these hints into an admin confirmation surface is REQ-870; projecting/binding
-    across surfaces is REQ-872. (Amended 2026-10-03, ONE ROLE LIST:) A command has no writable_by; every
-    "empty writable_by" above reads as "assigned to no role" (visible_to empty). A suggestion assigns no
-    role; only an admin assigns a command to a role.'
+    score, reason}] computed from its unwrapped return-type leaves + input-type stem, [SUPERSEDED by REQ-871
+    amendment, 2026-10-03 -- the mapped entry carries no role list at all. Kept here for history; do not
+    implement against it.] with writable_by left empty (default-deny). [END SUPERSEDED BLOCK] Consuming
+    these hints into an admin confirmation surface is REQ-870; projecting/binding across surfaces is REQ-872.
+    (Amended 2026-10-03, ONE ROLE LIST:) A command has no writable_by; every "empty writable_by" above
+    reads as "assigned to no role" (visible_to empty). A suggestion assigns no role; only an admin assigns
+    a command to a role. (Amended 2026-10-03, ROLES ARE ASSIGNED AT REGISTRATION:) A mapped mutation entry
+    carries its suggested_associations and no role list: the mapping assigns no role, so a suggestion can
+    never grant anything. A command has one assigned-roles list, visible_to (REQ-1156), and the steward
+    sets it when registering the command (REQ-870); confirming an association binds the table the command
+    writes and assigns no role.'
   use_case: Registration of mutations across heterogeneous sources requires protocol-aware association
     signals. Per-adapter suggesters reduce admin friction by ranking likely alignment; unmatched mutations
     remain registerable as global functions or require manual binding.
@@ -25369,6 +25391,7 @@
   tests:
   - tests/unit/test_association_suggester.py
   - tests/unit/test_graphql_remote_mapper.py
+  - tests/steps/steps_authorization.py
   target: 2026-Q4
   scenario: 'Given a remote GraphQL source with a query "users" returning [User] (so type_to_table
 
@@ -25378,9 +25401,9 @@
 
     Then the createUser tracked-function entry carries suggested_associations whose top
 
-    candidate is the users table (score 1.0, reason "return type User"), and it is assigned
+    candidate is the users table (score 1.0, reason "return type User"), and it assigns no
 
-    to no role — the suggestion is a hint that no code auto-binds
+    role (no visible_to) — the suggestion is a hint that no code auto-binds
 
     And a mutation "sendTelemetry: Boolean" with no table-typed return yields an empty
 
@@ -26254,29 +26277,44 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q3
-  description: Extend database source introspection to auto-discover stored procedures and routines (via
-    information_schema.routines, pg_proc, or vendor equivalents) and auto-register them, rather than requiring
-    hand-registration. Classify discovered procedures as read-returning (registered as parameterized relations;
-    proc arguments become query arguments) or side-effecting (registered as mutations/tracked functions).
-    Discovered proc results flow through Stage-2 governance identically to tables.
+  description: '[SUPERSEDED by REQ-887 amendment, 2026-10-03 -- discovered routines are offered, never
+    auto-registered; a steward registers each one. Kept here for history; do not implement against it.]
+    Extend database source introspection to auto-discover stored procedures and routines (via information_schema.routines,
+    pg_proc, or vendor equivalents) and auto-register them, rather than requiring hand-registration. Classify
+    discovered procedures as read-returning (registered as parameterized relations; proc arguments become
+    query arguments) or side-effecting (registered as mutations/tracked functions). [END SUPERSEDED BLOCK]
+    Discovered proc results flow through Stage-2 governance identically to tables. (Amended 2026-10-03,
+    ROUTINES ARE OFFERED, NOT REGISTERED:) Introspection discovers a database source''s stored procedures
+    and routines (pg_proc, or a vendor equivalent) and classifies each as read-returning (query) or side-effecting
+    (mutation). It registers none of them. The admin availableFunctions picker offers a schema''s routines,
+    each with its kind, and a steward registers the ones the catalog should carry as commands, one at a
+    time, through the command form, assigning their roles there. Catalog indexing records a source''s tables
+    on offer and creates no command. Registration is the curation step, for commands as for tables. Routines
+    are read from the source''s own catalog over a direct connection; a source reached only through the
+    engine offers none.'
   use_case: 'Meet legacy enterprise estates (Oracle/SQL Server shops with large proc inventories) at their
-    current state, ensuring nothing in the estate is invisible to the catalog. Mirrors the OpenAPI discovery
-    pattern (REQ-316/317): introspection + auto-registration avoiding hand-registration. Value scales
+    current state, ensuring nothing in the estate is invisible to the catalog. [SUPERSEDED by REQ-887 amendment,
+    2026-10-03 -- discovery offers routines and a steward registers them. Kept here for history; do not
+    implement against it.] Mirrors the OpenAPI discovery pattern (REQ-316/317): introspection + auto-registration
+    avoiding hand-registration. [END SUPERSEDED BLOCK] Value scales
     with proc inventory; low build cost because it reuses existing introspection and OpenAPI-style registration.'
   code:
   - provisa/api/admin/introspect.py
   - provisa/discovery/catalog_cache.py
   tests:
   - tests/unit/test_stored_proc_discovery.py
+  - tests/unit/test_discovery_through_driver.py
+  - tests/integration/test_routines_offered_e2e.py
   scenario: 'Given a user connects a Postgres source with stored procedures (identified via pg_proc)
 
-    When introspection runs and analyzes prokind (p=procedure, f=function) and provolatile (stable/immutable
-    vs volatile)
+    When introspection runs and classifies each routine by prokind (p=procedure, f=function) and provolatile
+    (stable/immutable vs volatile)
 
-    Then Provisa auto-registers stable/immutable procedures as parameterized relations (proc arguments
-    as query params, same shape as OpenAPI GET tables) and volatile procedures as mutations/tracked functions,
-    making results queryable via GraphQL and SQL with governance applied identically to hand-registered
-    procs
+    Then the schema''s routines are offered in the admin availableFunctions picker, each with its read or
+    write kind, and none of them is registered
+
+    And a steward registers an offered routine as a command, which is then governed like any hand-registered
+    command
 
     '
   related_reqs:

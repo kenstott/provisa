@@ -62,6 +62,8 @@
     "requiresApproval": "Erfordert Genehmigung",
     "requiresApprovalHint": "Jeder Aufruf wird erst ausgeführt, wenn der Genehmigungs-Hook ihn genehmigt. Ohne konfigurierten Hook werden Aufrufe abgelehnt.",
     "writesTable": "Schreibt Tabelle",
-    "writesTableHint": "Die registrierte Tabelle, die dieser Befehl ändert. Nach jedem Aufruf werden zwischengespeicherte Ergebnisse und materialisierte Sichten darauf aktualisiert."
+    "writesTableHint": "Die registrierte Tabelle, die dieser Befehl ändert. Nach jedem Aufruf werden zwischengespeicherte Ergebnisse und materialisierte Sichten darauf aktualisiert.",
+    "routinesOffered_one": "{{count}} Routine in diesem Schema steht zur Auswahl",
+    "routinesOffered_other": "{{count}} Routinen in diesem Schema stehen zur Auswahl"
   }
 }
