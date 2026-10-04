@@ -277,6 +277,15 @@ async def test_the_compiled_stage_keeps_a_plan_per_role(pipeline):
     state = pipeline.state
     state.contexts["auditor"] = state.contexts["analyst"]
     state.roles["auditor"] = {"id": "auditor", "capabilities": [], "domain_access": ["*"]}
+    # The auditor reads what the analyst reads: granted the same columns (a column a role is not
+    # granted is refused on the compiled stage as on the raw one).
+    state.tables = [
+        {
+            **t,
+            "columns": [{**c, "visible_to": [*c["visible_to"], "auditor"]} for c in t["columns"]],
+        }
+        for t in state.tables
+    ]
     await _compiled(pipeline, role="analyst")
     await _compiled(pipeline, role="auditor")
     assert pipeline.calls["context"] == 2

@@ -292,6 +292,7 @@ async def _optimize_and_route(
     nf_args=None,
     has_json_extract=False,
     is_mutation=False,
+    steward_hint: str | None = None,
 ):
     """REQ-863 post-governance optimization stage (may REMOVE sources) + routing on the reduced
     set — shared by both governed-SQL entrypoints so routing observes the optimized source set,
@@ -363,6 +364,7 @@ async def _optimize_and_route(
         source_dsns=getattr(state, "source_dsns", None),
         is_mutation=is_mutation,
         operator_floor=operator_floor(state, table_ids),
+        steward_hint=steward_hint,  # the request's route hint (REQ-1203); the floor still binds
     )
     if _rewrites and decision.route != Route.ENGINE:
         # A cache rewrite points the SQL at a materialized table living in the engine's
@@ -504,6 +506,7 @@ async def _optimize_and_route_cached(
     nf_args=None,
     has_json_extract=False,
     is_mutation=False,
+    steward_hint: str | None = None,
 ):
     """REQ-1877 routing addendum: cache `_optimize_and_route`'s output for the ONE case proven
     safe — see `provisa/compiler/compiled_query_cache.py`'s "ROUTING-DECISION CACHING" section
@@ -523,7 +526,8 @@ async def _optimize_and_route_cached(
     """
     from provisa.api.data.materialization import would_materialize_optimize
 
-    if would_materialize_optimize(exec_sql, state, table_ids=table_ids):
+    # A request's route hint is the request's own: its decision is not the shape's to keep.
+    if steward_hint is not None or would_materialize_optimize(exec_sql, state, table_ids=table_ids):
         return await _optimize_and_route(
             exec_sql,
             governed_sql,
@@ -534,6 +538,7 @@ async def _optimize_and_route_cached(
             nf_args=nf_args,
             has_json_extract=has_json_extract,
             is_mutation=is_mutation,
+            steward_hint=steward_hint,
         )
 
     from provisa.compiler.compiled_query_cache import RoutingOutcome
@@ -3017,8 +3022,17 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     buffered: bool = False,
     cache_hint: CacheHint,
     serve_cached: bool = False,
+    compiled: Any | None = None,
+    as_of: str | None = None,
+    steward_hint: str | None = None,
+    session_props: dict[str, str] | None = None,
 ) -> _Plan:
     """Governance + routing for already-physical SQL, with the org's tier ceilings bound.
+
+    ``compiled``: the compiler's ``CompiledQuery`` the SQL came from, when the caller has one —
+    the prepare stage reads it (materialized-view rewrite, Kafka windows) and ``sql`` is then its
+    prepared SQL. ``as_of``, ``steward_hint`` and ``session_props``: the request's as-of time
+    (REQ-1163), route hint and engine session properties.
 
     ``cache_hint`` is the request's response-cache opt-in (REQ-544), required so every caller
     states it: ``compiler.directives.cache_hint_for(language, request_text)``, gRPC's
@@ -3031,6 +3045,9 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
 
     await _wake_before_governing(state)
     with collecting() as found:
+        if compiled is not None:
+            prepared = prepare_compiled_query(compiled, role_id, state)
+            sql, compiled = prepared.sql, prepared
         plan = await _govern_and_route_compiled_planned(
             sql,
             role_id,
@@ -3041,6 +3058,10 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
             buffered=buffered,
             cache_hint=cache_hint,
             serve_cached=serve_cached,
+            as_of=as_of,
+            steward_hint=steward_hint,
+            session_props=session_props,
+            columns=[c.column for c in compiled.columns] if compiled is not None else None,
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
@@ -3057,13 +3078,15 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     buffered: bool = False,
     cache_hint: CacheHint,
     serve_cached: bool = False,
+    as_of: str | None = None,
+    steward_hint: str | None = None,
+    session_props: dict[str, str] | None = None,
+    columns: list[str] | None = None,
 ) -> _Plan:
     """Governance + routing for already-physical SQL.
 
-    Used by GQL and Cypher transport paths after language-specific compilation.
-    No SQL validation: the compiler produced this SQL from a governed AST, so there is no
-    caller-authored text to validate.
-    """
+    Used by the compiled transport paths after language-specific compilation. ``columns``: the
+    output columns the compiler named, which the approval hook is told of (REQ-203)."""
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     from provisa.audit.pipeline import begin_audit, write_denial
@@ -3093,6 +3116,10 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             _slot.keep(_governed)
     sql, _compiled_tree, gov_ctx = _governed.sql, _governed.parsed, _governed.gov_ctx
     _table_ids, governed_sql = _governed.table_ids, _governed.governed_sql
+    # REQ-203: the approval hook is asked per call, after governance, on every compiled surface.
+    governed_sql = await _approval_stage(
+        governed_sql, role_id, state, _table_ids, columns, _compiled_tree
+    )
     # REQ-1910: request entry on the compiled path (GraphQL over Flight, Cypher, gRPC, MCP, REST).
     await resolve_trace_scope(state, role_id, hint=cache_hint.debug_trace)
     _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx, state.model_stamp)
@@ -3112,7 +3139,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             role_id=role_id,
             cache_hint=cache_hint,
             wire_formats=None,
-            as_of=None,  # the compiled stage takes no request-level as-of
+            as_of=as_of,
         )
         if _hit is not None:
             return _cached_plan(
@@ -3126,7 +3153,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
                 span_attrs=_kept_span_attrs(_governed.memo, governed_sql, role_id, sql, _audit),
                 sources=_governed.memo.get("sources", frozenset()),
                 semantic_sql=None,
-                as_of=None,
+                as_of=as_of,
             )
 
     return await _route_compiled(
@@ -3148,7 +3175,87 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         cache_params=_cache_params,
         cache_missed=_cache_missed,
         pk_bounds=_pk_bounds_now,
+        as_of=as_of,
+        steward_hint=steward_hint,
+        session_props=session_props,
     )
+
+
+def prepare_compiled_query(compiled: Any, role_id: str, state: Any) -> Any:  # REQ-148, REQ-198
+    """The compiled stage's prepare step, before governance, for a statement the compiler built:
+    a fresh materialized view that answers it replaces its tables (REQ-198, REQ-882), and a read
+    of a Kafka-backed table gets its time window and discriminator (REQ-148)."""
+    from provisa.mv.rewriter import rewrite_if_mv_match
+
+    compiled = rewrite_if_mv_match(compiled, state.mv_registry.get_fresh())
+    if getattr(state, "kafka_table_configs", None):
+        from provisa.kafka.window import inject_kafka_filters
+
+        compiled = inject_kafka_filters(
+            compiled, state.contexts[role_id], state.source_types, state.kafka_table_configs
+        )
+    return compiled
+
+
+async def _approval_stage(
+    governed_sql: str,
+    role_id: str,
+    state: Any,
+    table_ids: tuple[int, ...],
+    columns: list[str] | None,
+    tree: Any,
+) -> str:  # REQ-203, REQ-204
+    """The ABAC approval hook, after governance and before routing: it may deny the read, or add
+    a filter ANDed into the governed statement. Asked only where it is configured for one of the
+    statement's tables or sources (REQ-204)."""
+    hook = getattr(state, "approval_hook", None)
+    if hook is None:
+        return governed_sql
+    from provisa.auth.approval_hook import ApprovalRequest, should_check
+    from provisa.compiler.rls import _inject_where
+    from provisa.core.request_context import session_vars_for
+
+    source_of = {t["id"]: t.get("source_id") for t in getattr(state, "tables", [])}
+    sources = sorted({source_of[t] for t in table_ids if source_of.get(t)})
+    if not should_check(
+        [str(t) for t in table_ids],
+        sources,
+        state.approval_hook_config,
+        table_hooks=getattr(state, "table_approval_hooks", {}),
+        source_hooks=getattr(state, "source_approval_hooks", {}),
+    ):
+        return governed_sql
+    import sqlglot.expressions as _exp
+
+    if columns is None:
+        columns = (
+            [e.alias_or_name for e in tree.expressions] if isinstance(tree, _exp.Select) else []
+        )
+    resp = await hook.evaluate(
+        ApprovalRequest(
+            user=role_id,
+            roles=[role_id],
+            tables=sorted(str(t) for t in table_ids),
+            columns=columns,
+            operation="query",
+            session_vars=session_vars_for(state.roles.get(role_id)),  # REQ-1682
+        )
+    )
+    if not resp.approved:
+        raise ApprovalDenied(str(resp.reason))
+    if resp.additional_filter:
+        return _inject_where(governed_sql, f"({resp.additional_filter})")
+    return governed_sql
+
+
+class ApprovalDenied(PermissionError):  # REQ-203
+    """The approval hook denied a read."""
+
+    code = "data.approval_denied"
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Approval denied: {reason}")
+        self.reason = reason
 
 
 @dataclass
@@ -3241,6 +3348,22 @@ async def _govern_compiled(
         engine=getattr(state, "federation_engine", None),
     )
     await _guard_complexity(sql, role_id, _compiled_tree, gov_ctx, ctx, state)
+    # The V-rules every statement meets (a masked column in a filter, a hidden column, …), on the
+    # compiled path too. Its joins are the model's own relationships — the compiler built them —
+    # so the relationship guard has nothing to check.
+    from provisa.compiler.sql_validator import validate_sql
+
+    violations = validate_sql(
+        sql,
+        ctx,
+        gov_ctx,
+        require_role(state.roles, role_id),
+        getattr(state, "tables", []),
+        bypass_relationship_guard=True,
+        bypass_uncovered_relationships=True,
+    )
+    if violations:
+        raise PermissionError("; ".join(f"[{v.code}] {v.message}" for v in violations))
 
     _table_ids = tuple(resolve_table_ids(_compiled_tree, gov_ctx))  # REQ-1897
 
@@ -3251,6 +3374,28 @@ async def _govern_compiled(
     # the raw path above for why the direct Postgres route cannot keep native current_setting).
     governed_sql = _resolve_session_settings(governed_sql, session_vars, "postgres")
     return _GovernedCompiled(sql, _compiled_tree, gov_ctx, _table_ids, governed_sql)
+
+
+def _engine_session_hints(
+    state: Any, sources: Any, session_props: dict[str, str] | None, exec_sql: str
+) -> dict[str, str] | None:  # REQ-281
+    """The engine session properties one compiled read runs with: each source's federation hints
+    (translated from the ``@provisa`` vocabulary), then the request's own properties and the
+    statement's comment hints filling only what the operator left open — and, for a read of a
+    non-replayable connector (kafka), no fault-tolerant retry, whose splits stall that exchange."""
+    from provisa.compiler.directives import merge_session_props, translate_federation_hints
+    from provisa.compiler.hints import extract_hints
+
+    _, comment_hints = extract_hints(exec_sql)
+    operator_hints: dict[str, str] = {}
+    for sid in sources or ():
+        operator_hints.update(
+            translate_federation_hints(getattr(state, "source_federation_hints", {}).get(sid, {}))
+        )
+    hints = merge_session_props(operator_hints, session_props or {}, comment_hints)
+    if any(state.source_types.get(s) in _NON_FTE_SOURCE_TYPES for s in (sources or ())):
+        hints = {**hints, "retry_policy": "NONE"}
+    return hints or None
 
 
 async def _route_compiled(
@@ -3273,9 +3418,15 @@ async def _route_compiled(
     cache_params: list,
     cache_missed: tuple[tuple[int, ...] | None, ...],
     pk_bounds: tuple[Any, ...],
+    as_of: str | None = None,
+    steward_hint: str | None = None,
+    session_props: dict[str, str] | None = None,
 ) -> _Plan:
     """The per-call half of the compiled stage: optimization, routing and the plan. ``memo`` is
-    the governed statement's own (see :func:`_kept_lowering`).
+    the governed statement's own (see :func:`_kept_lowering`). ``as_of`` reads bitemporal views
+    as of that time (REQ-1163); ``steward_hint`` is the request's route hint; ``session_props``
+    are the request's engine session properties, filling only what the operator left open
+    (REQ-281).
 
     REQ-074/REQ-1386: ``audit`` is the record the compiled surfaces (GQL, Cypher, Flight, gRPC)
     open like the raw-SQL path — the terminal finalizes it. REQ-544 (amended 2026-09-30):
@@ -3313,8 +3464,14 @@ async def _route_compiled(
         from provisa.compiler.view_expand import expand_view_refs
         from provisa.mv.view_read import view_bodies
 
+        _vmap = _view_map
+        if as_of and getattr(state, "bitemporal_view_reads", None):
+            from provisa.mv.bitemporal import as_of_view_map
+
+            # REQ-1163: a request-level as-of reads each bitemporal view as of that time.
+            _vmap = as_of_view_map(_view_map, state.bitemporal_view_reads, as_of)
         # As on the raw-SQL stage: each view reference becomes what THIS reader may read of it.
-        _exec_sql = expand_view_refs(_exec_sql, view_bodies(_exec_sql, _view_map, state, gov_ctx))
+        _exec_sql = expand_view_refs(_exec_sql, view_bodies(_exec_sql, _vmap, state, gov_ctx))
     from provisa.compiler.nf_extractor import extract_nf_args
 
     _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(_exec_sql, exec_params or [])
@@ -3338,6 +3495,7 @@ async def _route_compiled(
         role_id,
         table_ids=_table_ids,
         nf_args=_nf_args,
+        steward_hint=steward_hint,
     )
     # REQ-1910: the sources are known now — a window opened on one of them covers this request.
     await extend_trace_scope_to_sources(state, role_id, frozenset(sources))
@@ -3456,13 +3614,7 @@ async def _route_compiled(
     # instead. A single-source neo4j query now always falls through to Route.ENGINE.
     if decision.route == Route.ENGINE:
         _exec_sql, physical_sql = await _engine_forms(_exec_sql)
-        # Bypass FTE for queries touching non-replayable connectors (kafka), whose
-        # splits stall the fault-tolerant exchange (blocks forever, 0 drivers).
-        _hints = (
-            {"retry_policy": "NONE"}
-            if any(state.source_types.get(s) in _NON_FTE_SOURCE_TYPES for s in (sources or ()))
-            else None
-        )
+        _hints = _engine_session_hints(state, sources, session_props, _exec_sql)
         return _Plan(
             route=Route.ENGINE,
             sql=governed_sql,
