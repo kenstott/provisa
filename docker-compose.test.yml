@@ -285,23 +285,6 @@ services:
       retries: 60
       start_period: 180s
 
-  singlestore:
-    restart: unless-stopped
-    image: ghcr.io/singlestore-labs/singlestoredb-dev:latest
-    environment:
-      SINGLESTORE_LICENSE: "${SINGLESTORE_LICENSE:-}"
-      ROOT_PASSWORD: provisa
-    ports:
-      - "${SINGLESTORE_PORT:-3306}:3306"
-    volumes:
-      - singlestore_test_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -pprovisa || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 120s
-
   # Connector source (federation-engine → Trino splunk catalog, not a direct driver — see
   # TrinoSplunkConnector in provisa/federation/trino_connectors.py). Trino reaches it in-network at
   # splunk:8089 over the Splunk management/REST port (the trino-splunk plugin wraps Calcite's Splunk
@@ -937,7 +920,6 @@ volumes:
   yugabyte_test_data:
   mssql_test_data:
   oracle_test_data:
-  singlestore_test_data:
   cassandra_test_data:
   firebird_test_data:
   splunk_test_data:

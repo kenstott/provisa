@@ -326,7 +326,6 @@ markers = [
     "requires_yugabytedb: requires YugabyteDB service (docker compose up yugabytedb)",
     "requires_sqlserver: requires SQL Server service (docker compose up sqlserver)",
     "requires_oracle: requires Oracle service (docker compose up oracle)",
-    "requires_singlestore: requires SingleStore service (docker compose up singlestore); needs SINGLESTORE_LICENSE",
     "requires_cassandra: requires Cassandra service (docker compose up cassandra)",
     "requires_clickhouse: requires ClickHouse service (docker compose up clickhouse); self-provisioned per-test",
     "requires_firebird: requires Firebird service (docker compose up firebird)",
