@@ -159,6 +159,23 @@ spec:
               value: "8480"
             - name: FLIGHT_PORT
               value: "{{ .Values.provisa.flightPort }}"
+            {{- if .Values.minio.enabled }}
+            # The OTel store Trino's `otel` Iceberg catalog reads (REQ-1332): this release's MinIO.
+            # Unset, the endpoint is the setting's default, http://minio:9000 — the compose service
+            # name, which does not resolve in the cluster, so boot's catalog provisioning waits on it.
+            - name: PROVISA_OTEL_S3_ENDPOINT
+              value: "http://{{ .Release.Name }}-minio:9000"
+            - name: PROVISA_OTEL_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: minio-access-key
+            - name: PROVISA_OTEL_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: minio-secret-key
+            {{- end }}
             {{- if .Values.tls.enabled }}
             # REQ-1257: the app's wire-protocol listeners (Flight/pgwire/bolt/MCP/gRPC)
             # read this pair to start their sockets in TLS mode.
