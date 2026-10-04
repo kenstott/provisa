@@ -699,6 +699,24 @@ class Connection:
         """The store side this connection's handle holds (REQ-1922), or None for an unguarded one."""
         return self._holds
 
+    def over(self, database: "Database") -> bool:
+        """Whether ``database``'s handle is over the engine this connection came from — one
+        database keeping both sides (REQ-1922: the implicit region keeps its state and record
+        with the model)."""
+        return database.engine is self._sc.engine
+
+    def as_handle(self, database: "Database") -> "Connection":
+        """This connection — its transaction — guarded as ``database``'s handle, for a handle
+        over the same engine (:meth:`over`). A second connection to that database would wait on
+        this one's open transaction: on SQLite, 'database is locked'."""
+        if not self.over(database):
+            raise ValueError(
+                f"the {database.name!r} handle is over another engine than this connection's"
+            )
+        view = Connection(self._sc, self.capabilities, database)
+        view._tx_depth = self._tx_depth
+        return view
+
     def _record_write(self, target: tuple[str, str, str | None] | None, rowcount: int) -> None:
         """REQ-1524: a write that changed a row of the model is recorded for its commit
         (``provisa.core.model_change``). A rowcount the driver does not report (-1) counts as a
