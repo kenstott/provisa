@@ -54,6 +54,10 @@ spec:
             - name: TRINO_NODE_TYPE
               value: coordinator
           volumeMounts:
+            # The dynamic catalog store: CREATE CATALOG writes <name>.properties here, so the
+            # directory must be writable by Trino's user; the static catalogs below mount into it.
+            - name: catalog-store
+              mountPath: /etc/trino/catalog
             - name: config
               mountPath: /etc/trino/config.properties
               subPath: coordinator-config.properties
@@ -96,6 +100,8 @@ spec:
             periodSeconds: {{ .Values.trino.coordinator.livenessProbe.periodSeconds | default 30 }}
             failureThreshold: {{ .Values.trino.coordinator.livenessProbe.failureThreshold | default 5 }}
       volumes:
+        - name: catalog-store
+          emptyDir: {}
         - name: config
           configMap:
             name: {{ .Release.Name }}-trino-config

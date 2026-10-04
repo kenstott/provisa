@@ -52,6 +52,10 @@ spec:
             - name: TRINO_NODE_TYPE
               value: worker
           volumeMounts:
+            # The dynamic catalog store: CREATE CATALOG writes <name>.properties here, so the
+            # directory must be writable by Trino's user; the static catalogs below mount into it.
+            - name: catalog-store
+              mountPath: /etc/trino/catalog
             - name: config
               mountPath: /etc/trino/config.properties
               subPath: worker-config.properties
@@ -86,6 +90,8 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 30
       volumes:
+        - name: catalog-store
+          emptyDir: {}
         - name: config
           configMap:
             name: {{ .Release.Name }}-trino-config

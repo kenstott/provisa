@@ -6,6 +6,8 @@ metadata:
 data:
   coordinator-config.properties: |
     coordinator=true
+    # CREATE/DROP CATALOG at runtime: the API registers its own catalogs at boot (REQ-1332).
+    catalog.management=dynamic
     node-scheduler.include-coordinator=false
     http-server.http.port={{ .Values.trino.port }}
     discovery.uri=http://{{ .Release.Name }}-trino-coordinator:{{ .Values.trino.port }}
@@ -24,6 +26,8 @@ data:
 {{ .Files.Get "files/resource-groups.json" | indent 4 }}
   worker-config.properties: |
     coordinator=false
+    # CREATE/DROP CATALOG at runtime: the API registers its own catalogs at boot (REQ-1332).
+    catalog.management=dynamic
     http-server.http.port={{ .Values.trino.port }}
     discovery.uri=http://{{ .Release.Name }}-trino-coordinator:{{ .Values.trino.port }}
     query.max-memory-per-node={{ .Values.trino.memory.maxMemoryPerNode }}
