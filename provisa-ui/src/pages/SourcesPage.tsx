@@ -1102,6 +1102,11 @@ export function SourcesPage() {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
         throw new Error(serverMessage(body, requestFailed("OpenAPI register", resp.status)));
       }
+      // REQ-1907: the cache TTL offered at create, as the GraphQL and generic paths apply it.
+      const ttlValue = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
+      if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
+      const cacheResult = await updateSourceCache(form.id, form.cacheEnabled, ttlValue);
+      if (!cacheResult.success) throw new Error(cacheResult.message);
       handleCancelForm();
       load();
     } catch (err) {
@@ -1141,6 +1146,11 @@ export function SourcesPage() {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
         throw new Error(serverMessage(body, requestFailed("gRPC register", resp.status)));
       }
+      // REQ-1907: the cache TTL offered at create, as the GraphQL and generic paths apply it.
+      const ttlValue = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
+      if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
+      const cacheResult = await updateSourceCache(form.id, form.cacheEnabled, ttlValue);
+      if (!cacheResult.success) throw new Error(cacheResult.message);
       handleCancelForm();
       load();
     } catch (err) {
