@@ -763,13 +763,10 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
     if invite is None or is_spent(invite) or invite["expires_at"] < now:
         raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
 
-    # REQ-1308: a user may not gain a role from an invitation they issued themselves. Issuing an
-    # invite is a user_management act, but the self-role-change guard on /admin/users
-    # (_reject_self_role_change) is defeated if the same administrator then redeems their own invite
-    # here — the role lands on themselves with no second principal. The role an invitation confers
-    # is a grant TO SOMEONE ELSE; redeeming your own is refused. created_by is NOT NULL on
-    # org_invites and create_invite refuses issuance without a real identity, so it is always a real
-    # issuer to compare against.
+    # REQ-1308: a user may not gain a role from an invitation they issued themselves, the same rule
+    # /admin/users applies to an administrator's own assignment (_reject_self_role_change). The role
+    # an invitation confers is a grant to someone else. created_by is NOT NULL on org_invites and
+    # create_invite refuses issuance without a real identity, so it is always a real issuer.
     if invite["created_by"] == user_id:
         raise ApiError(
             403,
