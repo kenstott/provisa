@@ -208,7 +208,8 @@ registered_tables = Table(
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text),  # REQ-1141
     # REQ-318: how the table is read page by page (provisa.core.paging); NULL = not paged here.
-    Column("pagination", JSON),
+    # none_as_null: an unpaged table (None) is SQL NULL, never the JSON value null.
+    Column("pagination", JSON(none_as_null=True)),
     Column("gql_naming_convention", Text),
     Column("watermark_column", Text),
     Column("change_signal", Text),  # REQ-929: override source change signal; NULL = inherit
@@ -844,7 +845,8 @@ api_endpoints = Table(
     Column("response_root", Text),
     Column("error_path", Text),
     Column("pk_column", Text),
-    Column("pagination", JSON),
+    # REQ-318: a copy of the table's paging; NULL = not paged (SQL NULL, never JSON null).
+    Column("pagination", JSON(none_as_null=True)),
     Column("max_concurrency", Integer),
     Column("default_params", JSON),
     Column("promotions", JSON, nullable=False, default=list, server_default="[]"),
