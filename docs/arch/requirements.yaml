@@ -22055,7 +22055,20 @@
   type: behavioral
   description: File connector sources accept a directory glob pattern to enumerate CSV files. Discovered
     files are introspected to extract schema (column names and types). Multiple CSV files matching the
-    glob are consolidated into a single logical table when registered.
+    glob are consolidated into a single logical table when registered. (Amended 2026-10-03, WILDCARD PLACEMENT:)
+    Where the wildcard is written decides its meaning. On a SOURCE's path it filters; discovery offers one
+    table per matched file, and the steward registers each. On a TABLE's file_glob it merges; every matched
+    file is one logical table. Every matched file must carry the same column set; a file that differs is
+    refused by name, never null-filled. A table may declare a source-file column carrying each row's file.
+    The glob's change signal is the matched-file count, the latest modification time and the total size.
+    (Amended 2026-10-03, NATIVE READ:) The merged table is read natively through the bundled Calcite file
+    adapter (the pgwire bridge used by DuckDB, Postgres and Trino), generalising the adapter's existing glob
+    and partitioned-table handling to CSV, JSON and Parquet in both modes. It ships by an engine release
+    of the calcite fork and a RELEASE_TAG bump in provisa/runtime_deps/pgwire_bundles.py. The interim
+    replica-read reader (an in-process DuckDB read over the file list, the table always served from its
+    replica) is removed once the native read is proven, unless a bridge engine has no bundle for its
+    platform. In that case the engine is named here and glob tables are refused by name on any other
+    engine without the bundle. A ClickHouse engine-native read (file()/s3) is a later optimization.
   use_case: File glob patterns enable users to query across multiple CSV files without manual discovery
     or registration of individual files.
   code:
