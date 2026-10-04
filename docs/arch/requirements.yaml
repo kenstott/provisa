@@ -36962,7 +36962,20 @@
     keeps the engine stream drained to the threshold. A statement that is not a query, or a DIRECT decision
     that is not the pooled-driver terminal (the admin store, the GovData bridge), keeps the engine route.
     Measured cause: a REST primary-key lookup on one PostgreSQL source cost 43.5 ms CPU per request as
-    an engine scan against 4.6 ms for the same lookup over GraphQL.'
+    an engine scan against 4.6 ms for the same lookup over GraphQL.
+
+    (Amended 2026-10-04, A FORCED REDIRECT ON EVERY TRANSPORT, THE THRESHOLD ON BUFFERED ONES:) Redirect
+    is the pipeline''s materialize stage (`_Plan.materialize`, `_Plan.auto_deliver`), and every transport
+    reaches it through the one pipeline; none keeps a redirect of its own. A caller may force a redirect
+    on every transport, by naming it in that transport''s own way: the `X-Provisa-Redirect*` headers over
+    HTTP (GraphQL, REST, JSON:API, Cypher), call metadata over gRPC, transaction metadata over Bolt, a
+    tool argument over MCP, a request option for a natural-language query, a session setting or startup
+    parameter over pgwire (`provisa.redirect`, `provisa.redirect_format`), and a ticket option over
+    Arrow Flight. The answer carries the redirect handle in that transport''s own shape. The automatic
+    threshold applies to the buffered transports only (GraphQL, REST, JSON:API, Bolt, gRPC unary reads,
+    MCP, natural-language queries, Cypher over HTTP). A streaming transport (pgwire, Arrow Flight, and
+    any other streaming terminal) is already a bulk transport: it never redirects on the threshold or
+    any default, only when the caller forces it.'
   use_case: Buffered transports cannot stream incrementally to the wire and require materialization. An
     automatic threshold at the terminal (not per-caller) prevents memory OOM on unexpectedly large results
     by using engine-native CTAS for large sets while keeping small results inline for latency.
