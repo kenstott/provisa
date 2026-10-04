@@ -116,7 +116,7 @@ def test_wait_is_bounded() -> None:
         pool.getconn()
 
 
-def test_wait_is_bounded_by_request_deadline() -> None:
+def test_wait_is_bounded_by_request_deadline(deadline_clock) -> None:
     pool = _pool(1, wait_s=30)
     pool.getconn()
     with request_deadline.within(0.2):

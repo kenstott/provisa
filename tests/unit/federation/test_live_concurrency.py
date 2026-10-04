@@ -68,7 +68,9 @@ def test_renewal_keeps_a_live_lease(store, org, monkeypatch):
     assert store.try_acquire(key, 1) is None
 
 
-def test_a_full_source_fails_at_the_request_deadline_naming_the_source_and_cap(store, org):
+def test_a_full_source_fails_at_the_request_deadline_naming_the_source_and_cap(
+    store, org, deadline_clock
+):
     key = store.key(org, "orders_pg")
     assert store.try_acquire(key, 2) and store.try_acquire(key, 2)
     t0 = time.monotonic()
@@ -78,7 +80,7 @@ def test_a_full_source_fails_at_the_request_deadline_naming_the_source_and_cap(s
     assert 0.35 <= time.monotonic() - t0 < 1.5
 
 
-def test_a_waiter_runs_as_soon_as_a_permit_is_released(store, org):
+def test_a_waiter_runs_as_soon_as_a_permit_is_released(store, org, deadline_clock):
     key = store.key(org, "src")
     token = store.try_acquire(key, 1)
     assert token is not None
@@ -124,7 +126,7 @@ def test_opposite_orders_never_deadlock(store, org):
     assert sorted(done) == ["a", "b"], f"done {done}; timeline {timeline}"
 
 
-def test_partial_acquisition_is_released_when_a_later_source_times_out(store, org):
+def test_partial_acquisition_is_released_when_a_later_source_times_out(store, org, deadline_clock):
     key_b = store.key(org, "b")
     assert store.try_acquire(key_b, 1) is not None
     with request_deadline.within(0.3):

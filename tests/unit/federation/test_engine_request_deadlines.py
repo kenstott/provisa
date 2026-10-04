@@ -194,7 +194,7 @@ def test_snowflake_execute_arms_the_connector_timeout_from_the_budget() -> None:
     assert calls[1] == {}
 
 
-def test_snowflake_execute_after_expiry_raises_without_running() -> None:
+def test_snowflake_execute_after_expiry_raises_without_running(deadline_clock) -> None:
     from provisa.federation.snowflake_runtime import _execute_within_deadline
 
     class _Cur:
@@ -202,7 +202,7 @@ def test_snowflake_execute_after_expiry_raises_without_running() -> None:
             pytest.fail("must not start a statement after the budget expired")
 
     with request_deadline.within(0.05), pytest.raises(TimeoutError):
-        time.sleep(0.1)
+        deadline_clock.advance(0.1)
         _execute_within_deadline(_Cur(), "SELECT 1", None)
 
 

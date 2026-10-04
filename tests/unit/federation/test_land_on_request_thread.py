@@ -411,7 +411,7 @@ def test_lands_from_two_requests_never_overlap_on_the_shared_connection(
     assert idents == set(request_idents), "a land ran on a thread that is not its request's"
 
 
-def test_a_land_waits_for_the_connection_no_longer_than_the_request_budget() -> None:
+def test_a_land_waits_for_the_connection_no_longer_than_the_request_budget(deadline_clock) -> None:
     """Another land holds the connection. A request with 0.2 s left gives up at its deadline
     with an error naming the store, instead of queuing behind it."""
     import time

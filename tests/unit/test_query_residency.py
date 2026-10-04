@@ -451,7 +451,9 @@ async def test_a_failed_build_is_not_asked_for_again_within_the_retry_interval(
 
 
 @pytest.mark.asyncio
-async def test_a_read_whose_deadline_passes_while_the_build_runs_says_so(wiring, plane):
+async def test_a_read_whose_deadline_passes_while_the_build_runs_says_so(
+    wiring, plane, deadline_clock
+):
     from provisa.core import request_deadline
 
     wiring.hold = True

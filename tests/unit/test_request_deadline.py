@@ -78,19 +78,19 @@ def test_remaining_reflects_the_request_budget() -> None:
     assert request_deadline.remaining() is None  # unbound outside a request
 
 
-def test_statement_started_after_expiry_fails_immediately() -> None:
+def test_statement_started_after_expiry_fails_immediately(deadline_clock) -> None:
     with request_deadline.within(0.05) as dl:
         # Inside the thread's shield the watchdog raises nothing, so what is seen here is the
         # statement's own refusal at its start.
         with request_deadline.shielded().lock:
-            time.sleep(0.15)
+            deadline_clock.advance(0.15)
             assert dl.fired
             with pytest.raises(TimeoutError):
                 with request_deadline.cancel_on_deadline(lambda: None):
                     pytest.fail("must not start a statement after the budget expired")
 
 
-def test_tighter_enclosing_deadline_wins() -> None:
+def test_tighter_enclosing_deadline_wins(deadline_clock) -> None:
     with request_deadline.within(1.0) as outer:
         with request_deadline.within(30.0) as inner:
             assert inner is outer
@@ -173,9 +173,9 @@ def test_a_statement_registered_late_is_still_cancelled_at_the_deadline() -> Non
     assert 0.9 <= time.monotonic() - t0 < 2.0
 
 
-def test_expiry_is_by_the_clock_when_nothing_was_registered(thread_starts) -> None:
+def test_expiry_is_by_the_clock_when_nothing_was_registered(thread_starts, deadline_clock) -> None:
     with request_deadline.within(0.05) as dl, request_deadline.shielded().lock:
         assert not dl.fired
-        time.sleep(0.1)
+        deadline_clock.advance(0.1)
         assert dl.fired
     assert thread_starts == []

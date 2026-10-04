@@ -176,7 +176,7 @@ def test_the_row_carries_the_statement_not_the_batch(writer, store):
     assert row["query_text_enc"] == b"SELECT 3" and len(row["query_hash"]) == 64
 
 
-def test_a_full_queue_makes_the_enqueue_wait_for_the_deadline_then_raise(store):
+def test_a_full_queue_makes_the_enqueue_wait_for_the_deadline_then_raise(store, deadline_clock):
     writer = AuditWriter(
         capacity=2, batch_size=1, interval_s=0.01, retry_s=0.01, insert=store.insert
     ).start()

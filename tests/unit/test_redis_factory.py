@@ -139,7 +139,7 @@ def test_real_redis_pool_waits_when_exhausted(monkeypatch):
         pool.release(c)
 
 
-def test_real_redis_pool_wait_is_bounded_by_the_request_budget(monkeypatch):
+def test_real_redis_pool_wait_is_bounded_by_the_request_budget(monkeypatch, deadline_clock):
     """REQ-1882: an exhausted pool's wait ends at the request's remaining budget, not the fixed cap."""
     import time
 
