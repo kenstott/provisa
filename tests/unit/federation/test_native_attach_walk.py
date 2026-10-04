@@ -11,10 +11,11 @@
 """A native engine walks its registered tables once per registry state, not once per query.
 
 ``NativeEngineBackend._runtime_for`` runs before every ENGINE-route statement. It used to rebuild
-the source map and re-walk every registered table each time, and — because a table whose attach is
-refused for a declared reason (a source type the engine lands instead of attaching) was never
-remembered — re-attempt those attaches on the engine connection on every query (measured on the
-perf config: 22 of 36 tables, ``KeyError('attach')``, about a quarter of a millisecond each)."""
+the source map and re-walk every registered table each time (measured on the perf config: 22 of 36
+tables re-attached about a quarter of a millisecond each); it now walks once per registry state. A
+FETCH/DIRECT source (one the engine lands instead of attaching) is decided up front from the
+connector's reach and skipped, never attempted; a driver error (an offline source) is retried on a
+later query, and a declared refusal (``UnreachableSource``) is remembered for the registry state."""
 
 # Requirements: REQ-825
 
@@ -30,8 +31,9 @@ from provisa.federation.native_backend import NativeEngineBackend
 
 
 class _Runtime:
-    """Stands in for an engine runtime: records every attach; refuses land-only source types the
-    way the DuckDB runtime does (their connector details carry no ``attach`` entry)."""
+    """Stands in for an engine runtime: records every attach. A FETCH/DIRECT source is never
+    handed here -- the walk decides that up front from the connector's reach (reads_in_place) and
+    skips it, so attach_source only ever sees a source the engine reads live in place."""
 
     def __init__(self) -> None:
         self.attempts: list[str] = []
@@ -40,13 +42,17 @@ class _Runtime:
     def attach_source(self, source) -> None:
         with self._lock:
             self.attempts.append(f"{source.schema_name}.{source.table_name}")
-        if source.type.value == "openapi":
-            raise KeyError("attach")
+
+
+def _connector_for(source_type):
+    """The engine double's connector lookup: a source the engine reads live in place (anything but
+    the land-only ``openapi`` here) vs. a FETCH source it reads from a replica instead."""
+    return SimpleNamespace(reads_in_place=source_type != "openapi")
 
 
 class _Backend(NativeEngineBackend):
     def __init__(self) -> None:
-        super().__init__(SimpleNamespace(name="test-engine"))
+        super().__init__(SimpleNamespace(name="test-engine", connector_for=_connector_for))
         self.runtime = _Runtime()
 
     def _new_runtime(self):
@@ -117,9 +123,10 @@ def test_repeated_queries_walk_the_registry_once():
         assert backend._runtime_for(state) is backend.runtime
     assert state.config.walks == 1, "the source map was rebuilt on a later query"
     attempts = backend.runtime.attempts
-    assert sorted(set(attempts)) == ["public.customers", "public.orders", "public.pets"]
+    # Only the live-in-place (pg) tables are attached; the openapi table is read from its replica.
+    assert sorted(set(attempts)) == ["public.customers", "public.orders"]
     assert attempts.count("public.orders") == 1
-    assert attempts.count("public.pets") == 1, "a refused attach was re-attempted on a later query"
+    assert attempts.count("public.pets") == 0, "a FETCH source is never attached, on any query"
 
 
 def test_a_registry_change_triggers_exactly_one_more_walk():
@@ -137,7 +144,7 @@ def test_a_registry_change_triggers_exactly_one_more_walk():
     attempts = backend.runtime.attempts
     assert attempts.count("public.invoices") == 1, "the newly registered table was not attached"
     assert attempts.count("public.orders") == 1, "an attached table was attached again"
-    assert attempts.count("public.pets") == 2, "a refused attach is retried once per registry state"
+    assert attempts.count("public.pets") == 0, "a FETCH source is never attached, on any walk"
 
 
 def test_a_source_registered_after_boot_is_reachable_on_the_next_query():
@@ -238,7 +245,7 @@ def test_a_driver_error_is_retried_on_the_next_query():
     attempts = backend.runtime.attempts
     assert attempts.count("public.orders") == 3, "the recovered source was not attached once"
     assert attempts.count("public.customers") == 1
-    assert attempts.count("public.pets") == 1
+    assert attempts.count("public.pets") == 0, "a FETCH source is never attached"
 
 
 def test_a_sqlite_control_plane_snapshot_is_checked_on_every_query():

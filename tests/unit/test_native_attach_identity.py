@@ -34,7 +34,14 @@ class _Runtime:
 class _Backend(NativeEngineBackend):
     def __init__(self) -> None:  # no engine wiring: the walk alone is under test
         self._runtime = _Runtime()
-        self.engine = SimpleNamespace(name="duckdb")
+        # The walk decides whether to attach a source from its connector's reach (reads_in_place):
+        # a live-in-place source (anything but the land-only openapi here) is attached.
+        self.engine = SimpleNamespace(
+            name="duckdb",
+            connector_for=lambda source_type: SimpleNamespace(
+                reads_in_place=source_type != "openapi"
+            ),
+        )
         self._attached = set()
         self._detached = set()
         self._refused = set()

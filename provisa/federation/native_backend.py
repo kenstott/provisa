@@ -356,10 +356,10 @@ class NativeEngineBackend(EngineBackend):
             # KeyError('attach') caught as "table not queryable" for every such table at startup,
             # though the table is queryable from its replica (REQ-947/951). Decide from the
             # connector's declared reach, not by catching the failure.
-            _type = getattr(src, "type", None)
+            # A registered source always has a type; a malformed one fails by name here (no silent
+            # skip). An enum type carries .value; a plain string type is used as-is.
+            _type = src.type
             stype = getattr(_type, "value", _type)
-            if not isinstance(stype, str):
-                return
             try:
                 if not self.engine.connector_for(stype).reads_in_place:
                     return
