@@ -153,7 +153,8 @@ def test_tables_in_fec(govdata_conn):
 
 
 def test_columns_for_candidates(govdata_conn):
-    """candidates table must have at least cand_id and cand_name columns."""
+    """candidates table must have at least candidate_id and candidate_name columns (the pinned
+    engine release's FEC schema, engine-v0.106.0)."""
     meta = govdata_conn.getMetaData()
     rs = meta.getColumns(None, _FEC, "candidates", "%")
     cols = []
@@ -161,24 +162,24 @@ def test_columns_for_candidates(govdata_conn):
         cols.append(str(rs.getString("COLUMN_NAME")))
     rs.close()
     assert len(cols) > 0, "Expected columns for candidates"
-    assert "cand_id" in cols, f"Expected cand_id column, got first 10: {cols[:10]}"
+    assert {"candidate_id", "candidate_name"} <= set(cols), f"got first 10: {cols[:10]}"
 
 
 def test_query_candidates(govdata_conn):
     """SQL query against fec.candidates must return rows."""
     stmt = govdata_conn.createStatement()
     rs = stmt.executeQuery(
-        "SELECT cand_id, cand_name, cand_office, cand_state "
+        "SELECT candidate_id, candidate_name, office, state "
         "FROM fec.candidates "
-        "ORDER BY cand_name "
+        "ORDER BY candidate_name "
         "FETCH FIRST 5 ROWS ONLY"
     )
     rows = []
     while rs.next():
         rows.append(
             (
-                str(rs.getString("cand_id")),
-                str(rs.getString("cand_name")),
+                str(rs.getString("candidate_id")),
+                str(rs.getString("candidate_name")),
             )
         )
     rs.close()
