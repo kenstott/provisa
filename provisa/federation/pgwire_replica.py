@@ -89,6 +89,24 @@ class ServerLifecycleError(Exception):  # REQ-955
     """An invalid pgwire server lifecycle transition (start-when-running, health-before-start)."""
 
 
+class ServerExited(Exception):  # REQ-955
+    """The pgwire server's process ended before it accepted connections: its start failed. Not
+    "still starting" — nothing is booting any more — so a discovery call reports it, with the exit
+    code and the end of the server's own log, instead of asking to be polled again."""
+
+    def __init__(self, source_id: str, code: int, log_tail: str) -> None:
+        super().__init__(
+            f"the connector server for {source_id!r} exited with code {code} before it accepted "
+            f"connections; its log ends:\n{log_tail}"
+        )
+        self.source_id = source_id
+        self.code = code
+
+
+#: How much of a failed server's log its error carries.
+_LOG_TAIL_LINES = 20
+
+
 class SourceStillStartingError(Exception):  # REQ-1824
     """A files/sharepoint/splunk source's bundled Calcite server hasn't finished starting yet —
     raised by a DISCOVERY call (schema/table/column introspection) that chose not to wait the full
@@ -410,6 +428,10 @@ class _ProcessGroup:
         except ProcessLookupError:
             return  # already gone
 
+    def exit_code(self) -> int | None:
+        """The launcher's exit code once it has exited, else None."""
+        return self._proc.poll()
+
     def wait(self, timeout: float) -> None:
         try:
             self._proc.wait(timeout=timeout)
@@ -532,6 +554,17 @@ class PgwireServer:  # REQ-955
         if self._proc is None:
             raise ServerLifecycleError("pgwire server health checked before start")
         return self._health(self._ports.calcite_child_host, self._ports.pgwire_port)
+
+    def exit_code(self) -> int | None:
+        """The started server's exit code once its process has ended, else None."""
+        if self._proc is None:
+            raise ServerLifecycleError("pgwire server exit checked before start")
+        return self._proc.exit_code()
+
+    def log_tail(self) -> str:
+        """The last lines of the server's own output (written next to its working directory)."""
+        lines = (self._bundle_dir / SERVER_LOG_NAME).read_text(errors="replace").splitlines()
+        return "\n".join(lines[-_LOG_TAIL_LINES:])
 
     def stop(self) -> None:
         """Terminate the server and wait for it to exit, so its port is free for the next start
@@ -703,6 +736,11 @@ class ConnectorReplica:  # REQ-954/955/956
         wait = SERVER_READY_SECONDS if timeout is None else timeout
         deadline = time.monotonic() + wait
         while not server.health():
+            code = server.exit_code()
+            if code is not None:
+                # A start that failed: forgotten, so a later call starts the server afresh.
+                self._server = None
+                raise ServerExited(self._source.id, code, server.log_tail())
             if time.monotonic() >= deadline:
                 raise ServerLifecycleError(
                     f"pgwire server for {self._source.id!r} did not accept connections on port "

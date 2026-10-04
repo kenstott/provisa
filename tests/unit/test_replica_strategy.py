@@ -401,9 +401,13 @@ def _health_from(get_result):
 
 
 class _FakeProc:
-    def __init__(self) -> None:
+    def __init__(self, exit_code: int | None = None) -> None:
         self.terminated = False
         self.waited = False
+        self._exit_code = exit_code  # None: still running
+
+    def exit_code(self) -> int | None:
+        return self._exit_code
 
     def terminate(self) -> None:
         self.terminated = True
@@ -756,6 +760,45 @@ def test_ensure_endpoint_for_discovery_raises_still_starting(tmp_path, monkeypat
         pr.ensure_endpoint_for_discovery(_files_source(id="big-kaggle-dataset"))
     assert "big-kaggle-dataset" in str(exc_info.value)
     assert str(exc_info.value).startswith("STARTING:")
+
+
+def test_a_server_that_exited_is_reported_with_its_log_not_as_still_starting(tmp_path, monkeypatch):
+    """A connector server whose process has ended will never accept connections. Polled as "not
+    healthy yet", discovery answered "still starting" until the UI gave up, and a query waited
+    the whole ready budget to say only that nothing listened. Its exit is reported at once, with
+    the exit code and the end of the server's own log."""
+    monkeypatch.setattr(pr.time, "sleep", lambda _: None)
+    monkeypatch.setattr(pr, "_ENDPOINTS", {})
+    monkeypatch.setattr(pr, "DISCOVERY_READY_SECONDS", 60)
+    real_replica_cls = pr.ConnectorReplica
+    spawned_in: list[Path] = []
+
+    def _spawn(cmd, cwd):
+        spawned_in.append(cwd)
+        (cwd / pr.SERVER_LOG_NAME).write_text("starting\nsplunk login failed: 401 Unauthorized\n")
+        return _FakeProc(exit_code=1)
+
+    def _fake_replica(source, allocator):
+        return real_replica_cls(
+            source,
+            resolver=rd.BundleResolver(cache_root=tmp_path, downloader=_lay_down_bundle),
+            allocator=allocator,
+            spawn=_spawn,
+            health_check=_health_from(lambda: False),
+            port_is_free=lambda _: True,
+        )
+
+    monkeypatch.setattr(pr, "ConnectorReplica", _fake_replica)
+    with pytest.raises(pr.ServerExited) as exc_info:
+        pr.ensure_endpoint_for_discovery(_files_source(id="broken-source"))
+    assert exc_info.value.code == 1
+    assert "broken-source" in str(exc_info.value)
+    assert "splunk login failed: 401 Unauthorized" in str(exc_info.value)
+    assert not str(exc_info.value).startswith("STARTING:")
+    # The failed start is forgotten: the next call starts the server again.
+    with pytest.raises(pr.ServerExited):
+        pr.ensure_endpoint_for_discovery(_files_source(id="broken-source"))
+    assert len(spawned_in) == 2
 
 
 def test_ensure_endpoint_for_discovery_succeeds_when_ready(tmp_path, monkeypatch):
