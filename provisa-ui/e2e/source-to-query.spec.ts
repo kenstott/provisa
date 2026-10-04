@@ -35,6 +35,7 @@ import {
   E2E_SPLUNK_PORT,
 } from "./demo-source-containers";
 import {
+  createDomain,
   existingSourcePath,
   openRegisterForm,
   openSourcesForm,
@@ -692,15 +693,22 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
-    // 2. Register Table form — pick one operation as a table, same picker every other type uses
-    await openRegisterForm(page, sourceId);
+    // 2. Register Table form — pick one operation as a table, same picker every other type uses.
+    // The shipped petstore-api already has getInventory in pet-store, and a table's SQL address is
+    // its own within its domain (REQ-1933): this copy registers into a domain of its own.
+    const domain = `e2e-openapi-${stamp}`;
+    await createDomain(page, domain);
+    await openRegisterForm(page, sourceId, domain);
     // REQ-1729: the picker lists raw OpenAPI operationIds (camelCase), not the snake_cased
     // table name registration later normalizes them to.
     await pickSchemaAndTable(page, "openapi", "getInventory");
     const registered = await submitRegisterAndExpectListed(page, sourceId);
 
     // 3. SQL page — the mock's inventory endpoint returns a real, non-empty status/count mapping
-    const rows = await runSqlOnPage(page, `SELECT * FROM pet_store.${registered}`);
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT * FROM ${domain.replace(/-/g, "_")}.${registered}`,
+    );
     expect(rows.length).toBeGreaterThan(0);
   });
 });

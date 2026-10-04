@@ -467,12 +467,12 @@ def _logged(path: str) -> list[tuple]:
         con.close()
 
 
-def test_write_audit_lands_one_row_in_the_tenant_database(tmp_path, monkeypatch):
+def test_write_audit_lands_one_row_in_the_tenant_database(tmp_path, monkeypatch, caplog):
     """The whole seam: write_audit returns, the writer inserts through the real Database."""
     from types import SimpleNamespace
 
     from provisa.audit.pipeline import PendingAudit, write_audit
-    from provisa.audit.writer import audit_writer_status, flush_audit
+    from provisa.audit.writer import audit_writer, audit_writer_status, flush_audit
 
     path = str(tmp_path / "tenant.db")
     from provisa.federation.replica_hot import HotCounts
@@ -485,8 +485,15 @@ def test_write_audit_lands_one_row_in_the_tenant_database(tmp_path, monkeypatch)
     monkeypatch.setattr("provisa.encryption.runtime.encryption_service", NullEncryption)
     monkeypatch.setattr("provisa.core.settings_registry.value", lambda key: 60)
     pending = PendingAudit("alice", "graphql", "analyst", "{ orders { id } }", [7, 9], 0.0, 1, {})
-    asyncio.run(write_audit(pending, 200, state, route="engine"))
-    assert flush_audit(5.0), audit_writer_status()
+    with caplog.at_level(logging.DEBUG, logger="provisa.audit"):
+        asyncio.run(write_audit(pending, 200, state, route="engine"))
+        flushed = flush_audit(5.0)
+    # When it does not flush: the writer's own account, whether its thread is alive, and every
+    # line it logged while this record was in its hands.
+    assert flushed, (
+        f"{audit_writer_status()}; writer running={audit_writer().running()}; "
+        f"log={[f'{r.levelname} {r.name}: {r.getMessage()}' for r in caplog.records]}"
+    )
     assert _logged(path) == [(org, "alice", "analyst", "[7, 9]", "graphql", 200)]
     # REQ-826: and each table the statement read is counted once, in this org environment.
     assert counts.counts(f"{org}:prod", [7, 9, 11], 60) == {7: 1.0, 9: 1.0, 11: 0.0}

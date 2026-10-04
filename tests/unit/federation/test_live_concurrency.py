@@ -95,24 +95,33 @@ def test_a_waiter_runs_as_soon_as_a_permit_is_released(store, org):
 def test_opposite_orders_never_deadlock(store, org):
     """Two queries naming the same two cap-1 sources in opposite orders both complete."""
     done: list[str] = []
-    errors: list[BaseException] = []
+    errors: list[str] = []
+    started = time.monotonic()
+    timeline: list[str] = []  # each thread's progress, for the failure message
 
     def run(name: str, pairs: list[tuple[str, int]]) -> None:
         try:
             with request_deadline.within(10.0):
-                for _ in range(10):
+                for i in range(10):
                     with lc.acquire(store, org, pairs):
+                        timeline.append(f"{name}{i}@{time.monotonic() - started:.2f}s")
                         time.sleep(0.01)
             done.append(name)
-        except BaseException as e:  # surfaced below
-            errors.append(e)
+        except BaseException as e:  # surfaced below, with when and what was held
+            held = {s: store.holders(store.key(org, s)) for s in ("x", "y")}
+            errors.append(
+                f"{name} at {time.monotonic() - started:.2f}s: {type(e).__name__}: {e}; "
+                f"holders then {held}"
+            )
 
     a = threading.Thread(target=run, args=("a", [("x", 1), ("y", 1)]))
     b = threading.Thread(target=run, args=("b", [("y", 1), ("x", 1)]))
     a.start(), b.start()
     a.join(20), b.join(20)
-    assert not errors
-    assert sorted(done) == ["a", "b"]
+    # The whole story when it fails: what each thread raised (the wait it reports and which
+    # source), what was held at that moment, and how far each thread had got.
+    assert not errors, f"{errors}; timeline {timeline}"
+    assert sorted(done) == ["a", "b"], f"done {done}; timeline {timeline}"
 
 
 def test_partial_acquisition_is_released_when_a_later_source_times_out(store, org):
