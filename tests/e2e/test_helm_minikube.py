@@ -148,12 +148,17 @@ def _why_not_ready() -> str:
         name = pod["metadata"]["name"]
         described = _kubectl("describe", "pod", name)
         lines.append(f"=== describe {name}\n{described.stdout[-4000:]}")
-        for previous in (False, True):
-            flags = ["--previous"] if previous else []
-            logs = _kubectl("logs", name, "--all-containers", "--tail=80", *flags)
-            if logs.stdout.strip():
+        # Per container: `--all-containers --previous` returns nothing at all when any container
+        # (an init container) has no previous run, which hid a crash-looping container's last log.
+        for container in pod["spec"]["containers"]:
+            for previous in (False, True):
+                flags = ["--previous"] if previous else []
+                logs = _kubectl("logs", name, "-c", container["name"], "--tail=120", *flags)
                 label = "previous logs" if previous else "logs"
-                lines.append(f"=== {label} {name}\n{logs.stdout}")
+                lines.append(f"=== {label} {name}/{container['name']}\n{logs.stdout}{logs.stderr}")
+    # The API's boot provisions catalogs on the Trino coordinator; its side of a stalled boot.
+    trino = _kubectl("logs", "-l", "app=trino,role=coordinator", "--tail=120")
+    lines.append(f"=== trino coordinator logs\n{trino.stdout}{trino.stderr}")
     return "\n".join(lines)
 
 
