@@ -163,6 +163,8 @@ def test_a_source_registered_after_boot_is_reachable_on_the_next_query():
             "database": "d",
             "username": "u",
             "password_ref": "p",
+            "replicate": None,
+            "load_protected": False,
             "path": None,
             "base_url": None,
             "mapping": {},

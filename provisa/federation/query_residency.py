@@ -340,6 +340,7 @@ async def ensure_resident(
         return t.id in floored or not _attached_types[t.source_id]
 
     from provisa.federation.replica_converge import builds_here, home_region, whole_copy
+    from provisa.federation.replica_routing import home_keeps_replica
 
     by_id = {s.id: s for s in sources}
     tables_by_source: dict[str, list[Any]] = {}
@@ -349,10 +350,23 @@ async def ensure_resident(
             continue
         home = home_region(t)
         if not builds_here(home):
-            # REQ-1922: kept in another region, read from its replica there and never live; it
-            # is never built here (the address seam routes the read).
+            # REQ-1922: kept in another region and never built here. Where that region keeps a
+            # replica it is read from it, never live (the address seam routes the read); where
+            # it keeps none — its engine reads the source in place — it is read in place here
+            # too, under the reader's governance (REQ-1921). Here it must be readable in place:
+            # a copy here would be one kept outside its region.
             assert home is not None  # builds_here is True for a table naming no region
-            elsewhere.append((t, home))
+            if home_keeps_replica(by_id[t.source_id], t, state.foreign_regions[home]):
+                elsewhere.append((t, home))
+            elif _lands(t):
+                from provisa.core.region_stores import HomeRegionUnavailable
+
+                raise HomeRegionUnavailable(
+                    t.table_name,
+                    home,
+                    "that region does not keep (its engine reads the source in place), and this "
+                    "region's engine cannot read the source in place",
+                )
             continue
         if not _lands(t):
             continue

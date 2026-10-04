@@ -23,6 +23,7 @@ with (``replica_address.address_replicas``).
 
 from __future__ import annotations
 
+import functools
 import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -99,6 +100,26 @@ def reads_replica(source: Any, table: Any, engine: Any, *, promoted: bool) -> bo
     except UnreachableSource:
         return False
     return strategy is Strategy.MATERIALIZED
+
+
+def home_keeps_replica(source: Any, table: Any, region: Any) -> bool:
+    """Whether ``region`` — another region of the org (``region_stores.ForeignRegion``), the one
+    ``table`` names — keeps a replica of it (REQ-1921, REQ-1922): by the one decision
+    (``reads_replica``) on that region's engine. A region whose engine reads the source in place
+    keeps none, and a reader elsewhere then reads the source itself, under its own governance
+    (RLS on the reader's attributes and region), never asking for a replica that was never meant
+    to exist. A table it promotes for being busy is read live meanwhile, so it is judged
+    unpromoted."""
+    return reads_replica(source, table, _judging_engine(region.engine_kind), promoted=False)
+
+
+@functools.cache
+def _judging_engine(kind: str) -> Any:
+    """The engine of ``kind``, built once per process to judge another region's replicas by (it
+    runs nothing)."""
+    from provisa.federation.engine import build_engine
+
+    return build_engine(kind)
 
 
 def has_live_attach(source: Any, engine: Any) -> bool:
@@ -366,10 +387,12 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
                 ambiguous[key] = (routes.pop(key).source_id, src.id)
             else:
                 routes[key] = route
-    # REQ-1922: a table the org keeps in another region is read from its replica there, always —
-    # never live, never from a copy here. Whether that replica is built is asked on each read
-    # (query_residency.require_home_replica); where it is read is the region's store, which the
-    # engine names (backend.region_read_address) and attaches when a read finds it built.
+    # REQ-1922: a table the org keeps in another region is read from its replica there when that
+    # region keeps one — never live, never from a copy here. Whether that replica is built is
+    # asked on each read (query_residency.require_home_replica); where it is read is the region's
+    # store, which the engine names (backend.region_read_address) and attaches when a read finds
+    # it built. A region that keeps none (its engine reads the source in place) leaves the table
+    # to be read in place here too (REQ-1921): it has no route.
     from provisa.federation.replica_converge import builds_here, home_region
 
     for reg in registry.registered:
@@ -381,6 +404,8 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
             continue
         assert home is not None  # builds_here is True for a table naming no region
         region = state.foreign_regions[home]  # bound with the org: its selected regions
+        if not home_keeps_replica(src, reg, region):
+            continue
         name = physical.get(reg["table_name"], reg["table_name"])
         keys = engine_table_keys(engine, state.source_catalogs[src.id], reg["schema_name"], name)
         address = backend.replica_address(  # where the home region wrote it (REQ-1922)

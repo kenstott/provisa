@@ -333,6 +333,10 @@ class NativeEngineBackend(EngineBackend):
                     username=_rs_dict.get("username"),
                     # REQ-1695: the row's password reference is the source's password.
                     password=_rs_dict["password_ref"],
+                    # REQ-826/1141/1921: the operator's settings, which decide (with the engine)
+                    # whether a region keeps a replica of its tables.
+                    replicate=_rs_dict["replicate"],
+                    load_protected=_rs_dict["load_protected"],
                     federation_hints={},
                     # REQ-1742: forwarded so _attach_tbl's merged SimpleNamespace below (which reads
                     # it via getattr(src, "mapping", {})) can actually see it — same gap base_url
@@ -441,13 +445,21 @@ class NativeEngineBackend(EngineBackend):
                     "%s attach of %s failed; table not queryable: %s", self.engine.name, key, _ae
                 )
 
-        # REQ-1922: a table the org keeps in another region is never read live from here — its
-        # reads go to its replica there (replica_routing) — so its source is not attached for it.
+        # REQ-1922: a table the org keeps in another region that keeps a replica of it is never
+        # read live from here — its reads go to that replica (replica_routing) — so its source is
+        # not attached for it. One that region reads in place is read in place here too (REQ-1921).
         from provisa.federation.replica_converge import builds_here, home_region
+        from provisa.federation.replica_routing import home_keeps_replica
+
+        def _read_here(src: Any, tbl: Any) -> bool:
+            home = home_region(tbl)
+            return builds_here(home) or not home_keeps_replica(
+                src, tbl, state.foreign_regions[home]
+            )
 
         for tbl in config.tables:
             src = sources.get(tbl.source_id)
-            if src is not None and builds_here(home_region(tbl)):
+            if src is not None and _read_here(src, tbl):
                 _attach_tbl(src, tbl.schema_name, tbl.table_name)
 
         # Also attach tables registered dynamically after startup via registerTable. These live in
@@ -456,7 +468,7 @@ class NativeEngineBackend(EngineBackend):
         for tbl_dict in _state_tables:
             _sid = tbl_dict.get("source_id")
             src = sources.get(_sid)
-            if src is not None and builds_here(home_region(tbl_dict)):
+            if src is not None and _read_here(src, tbl_dict):
                 _attach_tbl(src, tbl_dict.get("schema_name", ""), tbl_dict.get("table_name", ""))
 
         # Native DuckDB path: attach a PostgreSQL control-plane DB as the provisa_admin catalog so

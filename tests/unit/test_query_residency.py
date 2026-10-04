@@ -734,19 +734,42 @@ def node_in_us():
 
 
 @pytest.mark.asyncio
-async def test_a_table_kept_in_another_region_is_refused_by_name_and_never_built_here(
+async def test_a_table_its_region_keeps_a_replica_of_is_read_from_it_never_built_here(
     wiring, plane, node_in_us
 ):
-    """REQ-1922: a table naming eu, read on a us node, is read only from its replica in eu —
-    never built here by the read, never read live; until that read is wired it is refused."""
-    from provisa.core.region_stores import HomeRegionUnavailable
+    """REQ-1922: a table naming eu, whose engine (Snowflake) cannot read the source in place and
+    so keeps a replica of it, read on a us node: read only from that replica — refused by name
+    while it is not built, never built here by the read, never read live."""
+    from provisa.core.region_stores import ForeignRegion, HomeRegionUnavailable
 
     pets = _table("pets-db", "pets")
     pets.region = "eu"
     state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, "snowflake")}
     with pytest.raises(HomeRegionUnavailable) as refused:
         await _ensure(state, {"pets-db"})
     assert refused.value.code == "query.home_region_unavailable"
+    assert refused.value.params == {"table": "pets", "region": "eu"}
+    assert "is not built" in str(refused.value)
+    assert wiring.built == [] and wiring.kicks == 0
+    assert await _record(plane, pets) is None
+
+
+@pytest.mark.asyncio
+async def test_a_table_its_region_reads_in_place_is_never_built_here_for_a_read(
+    wiring, plane, node_in_us
+):
+    """REQ-1921: eu's engine (DuckDB) reads the sqlite source in place and keeps no replica, so
+    a us read is the source's — and never a copy here. This us engine cannot read it in place,
+    so the read is refused by name, saying why."""
+    from provisa.core.region_stores import ForeignRegion, HomeRegionUnavailable
+
+    pets = _table("pets-db", "pets")
+    pets.region = "eu"
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, "duckdb")}
+    with pytest.raises(HomeRegionUnavailable, match="does not keep") as refused:
+        await _ensure(state, {"pets-db"})
     assert refused.value.params == {"table": "pets", "region": "eu"}
     assert wiring.built == [] and wiring.kicks == 0
     assert await _record(plane, pets) is None

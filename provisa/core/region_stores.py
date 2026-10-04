@@ -261,12 +261,14 @@ def refuse_lane_conflict(
 
 class ForeignRegion(NamedTuple):
     """Another region of the org, as a node of this region reads it (REQ-1922): the store its
-    replicas are kept in (a table that names it is read from there) and its state store, where
-    whether that replica is built is recorded. Read only."""
+    replicas are kept in (a table that names it is read from there), its state store, where
+    whether that replica is built is recorded, and its engine's kind, which decides whether it
+    keeps a replica of a table at all (REQ-1921). Read only."""
 
     id: str
     replicas_url: str
     state_db: "Database"
+    engine_kind: str
 
 
 class HomeRegionUnavailable(RuntimeError):
@@ -304,16 +306,26 @@ async def bind_foreign_regions(
         return {}
     async with model_db.acquire() as conn:
         selected = await list_regions(conn)
-        declared = {s.id: s.url for s in await list_stores(conn)}
+        stores = {s.id: s for s in await list_stores(conn)}
+    declared = {store_id: s.url for store_id, s in stores.items()}
     out: dict[str, ForeignRegion] = {}
     from provisa.core.environments import org_schema
 
     for region in selected:
         if region.id == here:
             continue
-        for role, store_id in (("replicas", region.replicas), ("state", region.state)):
+        for role, store_id in (
+            ("replicas", region.replicas),
+            ("state", region.state),
+            ("engine", region.engine),
+        ):
             if store_id not in declared:
                 raise StoreNotDeclared(org_id, region.id, role, store_id)
+        from provisa.core.regions import require_engine_kind
+
+        require_engine_kind(region.id, stores[region.engine])
+        engine_kind = stores[region.engine].kind
+        assert engine_kind is not None  # require_engine_kind refuses a store without one
         state_engine = _engine_for(
             resolve_secrets(declared[region.state]), pool_size=pool_size, max_overflow=max_overflow
         )
@@ -326,5 +338,6 @@ async def bind_foreign_regions(
                 search_path=org_schema(org_id, env, region=region.id),
                 holds="state",
             ),
+            engine_kind,
         )
     return out

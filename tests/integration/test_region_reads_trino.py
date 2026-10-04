@@ -95,7 +95,7 @@ def _rows(conn, sql: str) -> list:
 
 def test_trino_reads_another_regions_replica_through_a_catalog_of_its_store(store, trino_state):
     backend, state, conn = trino_state
-    region = ForeignRegion("eu", store.engine_dsn, None)  # type: ignore[arg-type]
+    region = ForeignRegion("eu", store.engine_dsn, None, "pg")  # type: ignore[arg-type]
     catalog, schema, table = backend.region_read_address(
         state, region, store.schema, "crm__public__orders"
     )
