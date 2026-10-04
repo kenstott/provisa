@@ -1490,77 +1490,28 @@ async def _execute_cypher(
     except CypherParamError as exc:
         raise ValueError(str(exc)) from exc
 
-    # Un-buffered first pass: learn the route decision would-be forced by a buffered read
-    # (REQ-1224) BEFORE paying for it. A single-source query's own router already picks
-    # Route.DIRECT here, same as cypher_router.py's HTTP surface (provisa/api/rest/
-    # cypher_router.py:686) — forcing Route.ENGINE via buffered=True on top of that (this
-    # function's previous behavior, unconditional) sent every single-source Cypher read
-    # through the federation engine's join/attach machinery instead of straight to the one
-    # source. Confirmed live: cypher_single_source (both tables on Postgres) benchmarked at
-    # 6655ms p50 over Bolt vs 90-193ms over sql/flight/http for the identical compiled SQL
-    # (github.com/kenstott/provisa/issues/123).
-    from provisa.transpiler.router import Route
-
-    # REQ-544: the Cypher request's own `// @provisa cache` opt-in, carried onto every plan.
-    cache_hint = cache_hint_for("cypher", cypher)
+    # One governed plan, through the one terminal. Bolt is a buffered transport (REQ-1224): the
+    # terminal inlines a result under the threshold and lands one over it. A single-source read
+    # stays on its source -- the pipeline probes it there, at threshold+1 rows -- so this no longer
+    # needs a first, un-buffered pass to keep it off the engine (github.com/kenstott/provisa/
+    # issues/123), nor a DIRECT terminal of its own with its own cache read and write.
     plan = await _govern_and_route_compiled(
         semantic_sql,
         role_id,
         exec_params=resolved_params or None,
         deliver=deliver,
-        cache_hint=cache_hint,
+        buffered=True,
+        # REQ-544: the Cypher request's own `// @provisa cache` opt-in.
+        cache_hint=cache_hint_for("cypher", cypher),
         # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
         serve_cached=True,
         sdl_joins=False,
     )
-    if plan.route == Route.CACHE:
-        # Answered before routing: the plan names no source and holds the entry. The pipeline
-        # terminal serves, accounts and audits it — nothing is routed, landed or dialled.
-        result = await _execute_plan(plan)
-        raw_rows = [dict(zip(result.column_names, row)) for row in result.rows]
-    elif plan.route != Route.ENGINE and plan.source_id:
-        from provisa.api.rest.cypher_router import (
-            _dispatch_execution_direct,
-            cached_cypher_rows,
-            store_cypher_rows,
-        )
-        from provisa.pgwire._pipeline import require_governed_plan
-
-        require_governed_plan(plan)  # REQ-1176: verified before the source executes
-        # REQ-1897: this DIRECT terminal bypasses the chokepoint, so it reads/writes the cache itself.
-        _cached_rows = await cached_cypher_rows(plan, app_state)
-        if _cached_rows is not None:
-            raw_rows = _cached_rows
-        else:
-            _direct_result = await _dispatch_execution_direct(
-                plan.exec_sql or "", plan.source_id, resolved_params, app_state
-            )
-            if not isinstance(_direct_result, list):
-                body = getattr(_direct_result, "body", b"")
-                detail = body.decode() if isinstance(body, bytes) else str(body)
-                raise RuntimeError(detail or "direct execution failed")
-            await store_cypher_rows(plan, app_state, _direct_result)
-            raw_rows = _direct_result
-    else:
-        # Not single-source-eligible (or already ENGINE-routed) — the buffered/auto-deliver
-        # protection this class of query actually needs, so re-govern with it on. A second
-        # governance pass only ever runs for a multi-source/materialize-bound query, which
-        # constitutes the minority of Cypher traffic (single-source point/join lookups are
-        # resolved by the branch above without ever reaching here).
-        plan = await _govern_and_route_compiled(
-            semantic_sql,
-            role_id,
-            exec_params=resolved_params or None,
-            deliver=deliver,
-            buffered=True,  # REQ-1224: buffered transport — terminal auto-thresholds inline vs CTAS
-            cache_hint=cache_hint,
-            sdl_joins=False,
-        )
-        result = await _execute_plan(plan)
-        if result.redirect is not None:
-            # Materialized to a sink — no records stream; the handle rides the trailing SUCCESS metadata.
-            return [], [], result.redirect
-        raw_rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    result = await _execute_plan(plan)
+    if result.redirect is not None:
+        # Materialized to a sink — no records stream; the handle rides the trailing SUCCESS metadata.
+        return [], [], result.redirect
+    raw_rows = [dict(zip(result.column_names, row)) for row in result.rows]
     assembled = assemble_rows(raw_rows, graph_vars)
     serializable = [to_serializable(r) for r in assembled]
 

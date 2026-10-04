@@ -257,17 +257,15 @@ class _Pipeline:
                 live_caps_org=None,
                 tier_caps=None,
                 tier_plan=None,
+                span_attrs=None,
             )
 
         monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)
         monkeypatch.setattr(_pipeline, "require_governed_plan", lambda _p: None)
         monkeypatch.setattr(_pipeline, "finalize_audit", AsyncMock(return_value=None))
-        monkeypatch.setattr(_pipeline, "check_response_cache", AsyncMock(return_value=None))
-        monkeypatch.setattr(_pipeline, "store_executed_result", AsyncMock(return_value=None))
-        monkeypatch.setattr(
-            "provisa.api.rest.cypher_router._dispatch_execution_direct",
-            AsyncMock(return_value=[{"amount": 10.5}]),
-        )
+        # The one terminal every Cypher transport reads through (HTTP, Bolt, Flight).
+        self.terminal = AsyncMock(return_value=QueryResult(rows=[(10.5,)], column_names=["amount"]))
+        monkeypatch.setattr(_pipeline, "_execute_plan", self.terminal)
 
 
 async def _bolt(role="analyst", minimum=1, cypher=_CYPHER):
@@ -423,6 +421,7 @@ async def test_a_pipeline_hit_names_the_entry_it_was_served_from(monkeypatch):
 
 
 async def test_data_cypher_reports_hit_on_a_hit_and_miss_on_a_miss(monkeypatch):
+    """The terminal's result names the entry a HIT was served from; /data/cypher reports it."""
     from provisa.api.rest.cypher_router import CypherRequest, cypher_query
 
     _Pipeline(monkeypatch, _state())
@@ -437,7 +436,7 @@ async def test_data_cypher_reports_hit_on_a_hit_and_miss_on_a_miss(monkeypatch):
     assert "X-Provisa-Cache-Age" not in miss.headers
 
     served = QueryResult(rows=[(10.5,)], column_names=["amount"], cache_entry=_stored(7))
-    monkeypatch.setattr(_pipeline, "check_response_cache", AsyncMock(return_value=served))
+    monkeypatch.setattr(_pipeline, "_execute_plan", AsyncMock(return_value=served))
     hit = await cypher_query(body, request, query_id=None, x_provisa_stats=None)
     assert hit.headers["X-Provisa-Cache"] == "HIT"
     assert hit.headers["X-Provisa-Cache-Age"] == "7"
