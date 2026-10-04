@@ -1129,15 +1129,14 @@ def then_virtual_table_alias(shared_data, alias):
 
 
 # ---------------------------------------------------------------------------
-# REQ-318 Steps — GET results served from Trino cache within TTL
+# REQ-318 Steps — GET results served from the engine's store within TTL
 # ---------------------------------------------------------------------------
 
 
-@given("a GET operation result cached in Trino Iceberg on S3")
+@given("a GET operation result cached in the engine's own store")
 def given_get_result_cached_in_trino(shared_data):
     """The API cache is held in the bound engine's own store, in the org's API cache schema, on
-    every engine (REQ-318 as amended, REQ-845): the scenario's "Trino Iceberg on S3" is the
-    superseded placement. The location comes from the production rule for each engine; the cached
+    every engine (REQ-318 as amended, REQ-845). The location comes from the production rule for each engine; the cached
     table is then probed once, which is the cache miss that records it as live."""
     from types import SimpleNamespace
 
@@ -1185,9 +1184,9 @@ def when_same_query_issued_within_ttl(shared_data):
     shared_data["second_conn"] = _make_fake_trino_conn(recomputed, loc, _REQ318_TTL)
 
 
-@then("results are served from Trino directly with zero upstream REST calls")
+@then("results are served from the engine's store with zero upstream REST calls")
 def then_served_from_trino_zero_rest(shared_data):
-    """Assert the second call is a cache hit — no Trino probe, no REST fetch."""
+    """Assert the second call is a cache hit — no probe of the store, no REST fetch."""
     loc: CacheLocation = shared_data["loc"]
     table_name: str = shared_data["table_name"]
     second_conn: mock.MagicMock = shared_data["second_conn"]
@@ -1200,9 +1199,7 @@ def then_served_from_trino_zero_rest(shared_data):
         table_exists(EngineSession(second_conn, dialect="trino"), loc, table_name, ttl=_REQ318_TTL)
         is True
     )
-    assert not second_conn.cursor.called, (
-        "cache hit must not issue any Trino probe (zero upstream calls)"
-    )
+    assert not second_conn.cursor.called, "cache hit must not probe the store (zero upstream calls)"
 
 
 # ---------------------------------------------------------------------------

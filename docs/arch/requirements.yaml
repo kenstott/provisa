@@ -4792,11 +4792,16 @@
     on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against
     it.] GET operation results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`,
     `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id
-    + operation path + native args`. Repeated calls within TTL hit Trino directly. The cache table is
-    dropped after TTL expires. Mutations are never cached — they are side-effecting. (Amended 2026-10-03,
+    + operation path + native args`. [SUPERSEDED by REQ-845, 2026-10-03 -- a repeated call is served from the engine''s own store, not
+    from Trino. Kept here for history; do not implement against it.] Repeated calls within TTL hit Trino directly. [END SUPERSEDED
+    BLOCK] The cache table is dropped after TTL expires. Mutations are never cached — they are side-effecting. (Amended 2026-10-03,
     THE API CACHE LIVES IN THE ENGINE''S STORE:) The rows a call returns are kept in the federation engine''s
     own store, in the org''s API cache schema, in one table per API table (REQ-845, REQ-859). This holds
-    on every engine. The cache key and the rule that a mutation is never cached are unchanged.'
+    on every engine. The cache key and the rule that a mutation is never cached are unchanged. (Amended
+    2026-10-03, THE SCENARIO READS THE ENGINE''S STORE:) A repeated call with identical args within TTL is
+    served from its cache table in the engine''s own store, with no upstream REST call. The acceptance
+    scenario, which read "cached in Trino Iceberg on S3 ... served from Trino directly", names the engine''s
+    store.'
   use_case: S3/Iceberg materialization of GET operation results prevents repeated upstream REST calls
     and enables Trino SQL filtering over cached rows.
   code:
@@ -4807,11 +4812,11 @@
   - tests/unit/test_api_cache.py
   - tests/integration/test_openapi_source.py
   since: 2026-01
-  scenario: 'Given a GET operation result cached in Trino Iceberg on S3
+  scenario: 'Given a GET operation result cached in the engine''s own store
 
     When the same query with identical args is issued within TTL
 
-    Then results are served from Trino directly with zero upstream REST calls
+    Then results are served from the engine''s store with zero upstream REST calls
 
     '
   integration_test: required
@@ -5149,7 +5154,10 @@
     table is dropped after TTL expires. (Amended 2026-10-03, THE API CACHE LIVES IN THE ENGINE''S STORE:)
     The rows a call returns are kept in the federation engine''s own store, in the org''s API cache schema,
     in one table per API table (REQ-845, REQ-859). This holds on every engine. The cache key and the rule
-    that a mutation is never cached are unchanged.'
+    that a mutation is never cached are unchanged. (Amended 2026-10-03, THE SCENARIO READS THE ENGINE''S
+    STORE:) A repeated call within TTL is served from its cache table in the engine''s own store, and the
+    source''s channel is reused. The acceptance scenario, which read "cached in Trino Iceberg on S3 ...
+    served from Trino directly", names the engine''s store.'
   use_case: S3/Iceberg materialization of gRPC query results enables Trino SQL filtering over cached rows
     and eliminates repeated remote calls. Channel reuse reduces connection overhead.
   code:
@@ -5167,11 +5175,11 @@
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
   since: 2026-01
-  scenario: 'Given a gRPC query method result cached in Trino Iceberg on S3
+  scenario: 'Given a gRPC query method result cached in the engine''s own store
 
     When the same call is repeated within TTL
 
-    Then results are served from Trino directly and the gRPC channel is reused without a new connection
+    Then results are served from the engine''s store and the gRPC channel is reused without a new connection
 
     '
   integration_test: required

@@ -941,7 +941,7 @@ def assert_tracked_function_structure(shared_data):
 
 
 @given(
-    "a gRPC query method result cached in Trino Iceberg on S3",
+    "a gRPC query method result cached in the engine's own store",
     target_fixture="shared_data",
 )
 def grpc_query_result_cached_in_iceberg(shared_data):
@@ -959,7 +959,6 @@ def grpc_query_result_cached_in_iceberg(shared_data):
 
     # The cache location, by the rule the gRPC-remote read uses (api/data/materialization.py):
     # the bound engine's own store, in the org's API cache schema, on every engine (REQ-327 as
-    # amended, REQ-845). The scenario's "Trino Iceberg on S3" is the superseded placement.
     locations = {}
     for engine_name, store in (("trino", "provisa_admin"), ("duckdb", "materialize_store")):
         engine = SimpleNamespace(name=engine_name, cache_catalog=lambda store=store: store)
@@ -976,7 +975,7 @@ def grpc_query_result_cached_in_iceberg(shared_data):
     # Simulate the in-process TTL cache confirming this table is live
     _TABLE_EXISTS_CACHE[(loc.catalog, loc.schema, tbl)] = time.monotonic() + 3600
 
-    # Simulate cached rows already in Trino (no live gRPC call needed)
+    # Cached rows already in the engine's store (no live gRPC call needed)
     cached_rows = [{"sku": "SKU-42", "warehouse_id": "WH-001", "quantity": 100, "unit_cost": 9.99}]
 
     # Simulate a reusable gRPC channel stored in AppState.grpc_remote_channels
@@ -1009,13 +1008,13 @@ def same_grpc_call_repeated_within_ttl(shared_data):
     loc = shared_data["loc"]
     tbl = shared_data["tbl"]
 
-    # table_known_live must return True — no Trino probe needed
+    # table_known_live must return True — no probe of the store needed
     is_live = table_known_live(loc, tbl)
     assert is_live, "table_known_live must return True when the cache entry has not expired"
 
     shared_data["is_cache_hit"] = is_live
 
-    # Simulate that the executor skips the gRPC call and reads from Trino instead
+    # The executor skips the gRPC call and reads the engine's store instead
     # The channel is accessed from the channel registry — not re-created
     source_id = shared_data["source_id"]
     channels = shared_data["grpc_remote_channels"]
@@ -1032,15 +1031,16 @@ def same_grpc_call_repeated_within_ttl(shared_data):
 
 
 @then(
-    "results are served from Trino directly and the gRPC channel is reused without a new connection"
+    "results are served from the engine's store and the gRPC channel is reused without a new "
+    "connection"
 )
 def assert_results_from_cache_and_channel_reused(shared_data):
-    """Assert REQ-327: cache hit serves Trino rows; channel not re-created; mutations never cached."""
+    """Assert REQ-327: cache hit serves the store's rows; channel not re-created; mutations never cached."""
     assert shared_data["is_cache_hit"] is True, (
         "Cache hit must have been confirmed in the When step"
     )
 
-    # Rows come from the simulated Trino cache — not from a live gRPC call
+    # Rows come from the cache in the engine's store — not from a live gRPC call
     cached_rows = shared_data["cached_rows"]
     assert len(cached_rows) == 1
     assert cached_rows[0]["sku"] == "SKU-42"
