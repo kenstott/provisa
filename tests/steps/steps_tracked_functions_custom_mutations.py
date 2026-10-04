@@ -275,24 +275,12 @@ def then_runs_via_direct_db_not_trino(shared_data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Helpers shared by REQ-209 / REQ-360 / REQ-361 / REQ-362
-# ---------------------------------------------------------------------------
-
-
-def _requires_steward_approval(webhook: Webhook) -> bool:
-    """Determine whether a webhook is gated behind steward approval."""
-    governance = (getattr(webhook, "governance", None) or "").lower()
-    return governance in {
-        "requires_approval",
-        "requires-approval",
-        "registry-required",
-        "registry_required",
-    }
-
-
-# ---------------------------------------------------------------------------
 # REQ-209 — Webhook-backed mutations
 # ---------------------------------------------------------------------------
+#
+# Driven through the real invocation path every surface takes (action_exec.invoke_tracked_webhook,
+# via tests/webhook_call.py): the command admission, the approval hook, then the HTTP call. Only
+# the deployment's approval hook and the remote endpoint are stood in for.
 
 
 @given(
@@ -300,7 +288,9 @@ def _requires_steward_approval(webhook: Webhook) -> bool:
     target_fixture="shared_data",
 )
 def given_webhook_requires_approval(shared_data: dict) -> dict:
-    """Configure a webhook mutation with requires_approval governance (REQ-209)."""
+    """The REQ-209 configuration, read by the product's own model."""
+    from tests.webhook_call import ROLE
+
     webhook = Webhook(
         name="trigger_external_service",
         url="https://api.example.com/trigger",
@@ -310,114 +300,68 @@ def given_webhook_requires_approval(shared_data: dict) -> dict:
             FunctionArgument(name="order_id", type="Int"),
             FunctionArgument(name="reason", type="String"),
         ],
-        visible_to=["admin"],
+        visible_to=[ROLE],
         timeout_ms=5000,
         governance="requires_approval",
     )
-    assert _requires_steward_approval(webhook) is True, (
-        f"Expected governance 'requires_approval' to gate the webhook, "
-        f"but _requires_steward_approval returned False for governance={webhook.governance!r}"
-    )
+    assert webhook.requires_approval is True
     shared_data["webhook"] = webhook
     shared_data["arguments"] = {"order_id": 42, "reason": "manual-retry"}
-    shared_data["steward_approved"] = False
     return shared_data
 
 
 @when("a client invokes it")
-def when_client_invokes(shared_data: dict) -> None:
-    """Simulate a client invoking the webhook mutation."""
+def when_client_invokes(shared_data: dict, monkeypatch) -> None:
+    """The client calls it twice: once while the approval hook withholds approval, once when it
+    approves."""
+    from provisa.api.errors import ApiError
+    from tests.webhook_call import Endpoint, RecordingHook, call_webhook
+
     webhook: Webhook = shared_data["webhook"]
     arguments = shared_data["arguments"]
 
-    approval_required = _requires_steward_approval(webhook)
-    shared_data["approval_required"] = approval_required
+    withheld = RecordingHook(approved=False, reason="awaiting steward approval")
+    withheld_endpoint = Endpoint()
+    with pytest.raises(ApiError) as refused:
+        call_webhook(
+            webhook, arguments, hook=withheld, endpoint=withheld_endpoint, monkeypatch=monkeypatch
+        )
+    shared_data["refused"] = refused.value
+    shared_data["withheld"] = (withheld, withheld_endpoint)
 
-    assert approval_required is True, (
-        "Webhook with governance=requires_approval must require steward approval "
-        "before a client can invoke it."
+    approved = RecordingHook(approved=True)
+    approved_endpoint = Endpoint()
+    shared_data["rows"] = call_webhook(
+        webhook, arguments, hook=approved, endpoint=approved_endpoint, monkeypatch=monkeypatch
     )
-
-    shared_data["steward_approved"] = True
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"id": 42, "region": "us-east"}
-    mock_response.headers = {"content-type": "application/json"}
-    mock_response.raise_for_status = MagicMock(return_value=None)
-
-    mock_client = AsyncMock()
-    mock_client.request = AsyncMock(return_value=mock_response)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
-
-    async def _invoke() -> WebhookResult:
-        return await execute_webhook(webhook, arguments)
-
-    with patch("provisa.webhooks.executor.httpx.AsyncClient", return_value=mock_client):
-        result = asyncio.run(_invoke())
-
-    shared_data["result"] = result
-    shared_data["http_request_call"] = mock_client.request.call_args
+    shared_data["approved"] = (approved, approved_endpoint)
 
 
 @then("steward approval is required and the external HTTP endpoint is called")
 def then_approval_and_endpoint_called(shared_data: dict) -> None:
-    """Assert all REQ-209 invariants for webhook mutation governance and dispatch."""
+    """Unapproved, the call is refused and nothing reaches the endpoint; approved, the endpoint
+    is called with the call's arguments and its answer is returned."""
+    from tests.webhook_call import REPLY, ROLE
+
     webhook: Webhook = shared_data["webhook"]
+    arguments = shared_data["arguments"]
 
-    assert shared_data["approval_required"] is True, (
-        "Webhook with governance=requires_approval must flag approval_required=True"
-    )
-    assert _requires_steward_approval(webhook) is True, (
-        f"_requires_steward_approval must return True for governance={webhook.governance!r}"
-    )
-    assert shared_data["steward_approved"] is True, (
-        "Steward approval must be granted before the external endpoint is invoked"
-    )
+    refused = shared_data["refused"]
+    assert (refused.status_code, refused.code) == (403, "functions.approval_denied")
+    withheld, withheld_endpoint = shared_data["withheld"]
+    assert withheld_endpoint.requests == []
+    (asked,) = withheld.asked
+    assert (asked.command, asked.roles, asked.arguments) == (webhook.name, [ROLE], arguments)
 
-    call = shared_data["http_request_call"]
-    assert call is not None, (
-        "execute_webhook must have called the external HTTP endpoint; no call recorded"
-    )
-    kwargs = call.kwargs
-    assert kwargs.get("method") == webhook.method, (
-        f"HTTP method mismatch: expected {webhook.method!r}, got {kwargs.get('method')!r}"
-    )
-    assert kwargs.get("url") == webhook.url, (
-        f"HTTP URL mismatch: expected {webhook.url!r}, got {kwargs.get('url')!r}"
-    )
-    assert kwargs.get("json") == shared_data["arguments"], (
-        f"HTTP JSON body mismatch: expected {shared_data['arguments']!r}, "
-        f"got {kwargs.get('json')!r}"
-    )
+    approved, approved_endpoint = shared_data["approved"]
+    assert len(approved.asked) == 1
+    assert approved_endpoint.requests == [(webhook.method, webhook.url, arguments)]
+    assert shared_data["rows"] == [REPLY]
 
-    result: WebhookResult = shared_data["result"]
-    assert isinstance(result, WebhookResult), (
-        f"execute_webhook must return a WebhookResult, got {type(result)}"
-    )
-    assert result.status_code == 200, (
-        f"Expected HTTP 200 from the external endpoint, got {result.status_code}"
-    )
-    assert result.data == {"id": 42, "region": "us-east"}, (
-        f"Unexpected response data: {result.data!r}"
-    )
-
-    mapped = map_response_to_return_type(result.data, inline_fields=[{"name": "id", "type": "Int"}])
-    assert mapped == {"id": 42}, (
-        f"map_response_to_return_type with inline_fields=[id] must return {{id: 42}}, "
-        f"got {mapped!r}"
-    )
-
-    mapped_full = map_response_to_return_type(result.data, inline_fields=None)
-    assert mapped_full == result.data, (
-        "map_response_to_return_type with inline_fields=None must return data unchanged"
-    )
-
-    assert "generated_sql" not in shared_data, (
-        "Webhook mutations must not generate SQL — they call external HTTP endpoints, "
-        "not the database (REQ-209 explicitly excludes DB mutation paths)"
-    )
+    # The answer maps onto the webhook's return shape as the GraphQL field reads it.
+    assert map_response_to_return_type(REPLY, inline_fields=[{"name": "id", "type": "Int"}]) == {
+        "id": 42
+    }
 
     assert webhook.timeout_ms == 5000, f"Expected timeout_ms=5000, got {webhook.timeout_ms}"
 

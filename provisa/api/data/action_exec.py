@@ -284,8 +284,11 @@ async def _invoke_webhook(
     wh = (getattr(state, "tracked_webhooks", None) or {}).get(name)
     if not wh:
         raise unknown_command(name)
-    admit_command(wh, state, role_id, name)
+    role = admit_command(wh, state, role_id, name)
     assert role_id is not None
+    if wh.get("requires_approval"):
+        # REQ-209: approved before the webhook is called, exactly as a command is (REQ-1924).
+        await _require_approval(wh, args, state, role_id, role)
     _record_call(name, args, state, role_id)
     timeout = wh["timeout_ms"] / 1000
     async with httpx.AsyncClient(timeout=timeout) as client:

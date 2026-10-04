@@ -1558,19 +1558,27 @@ class Webhook(BaseModel):  # REQ-209, REQ-210, REQ-211
     domain_id: str = ""
     description: str | None = None
     kind: str = "mutation"  # "mutation" or "query"
+    # REQ-209, REQ-1924: each call is put to the deployment's approval hook (REQ-203) before the
+    # webhook is called, and is made only when the hook approves it; with no hook configured the
+    # call is refused. The same approval a command declares.
+    requires_approval: bool = False
 
     @model_validator(mode="before")
     @classmethod
-    def _no_approval_yet(cls, data: Any) -> Any:
-        """A webhook does not yet run through an approval (REQ-209 is not built for webhooks). A
-        configuration asking for one is refused by name, never accepted and ignored."""
-        if isinstance(data, dict):
-            for key in ("governance", "requires_approval"):
-                if key in data:
-                    raise ValueError(
-                        f"webhook {data.get('name')!r}: {key!r} is not supported on a webhook "
-                        "yet — a webhook call is not put to an approval"
-                    )
+    def _governance_names_approval(cls, data: Any) -> Any:
+        """REQ-209 writes the setting as ``governance: requires_approval``. That spelling sets
+        ``requires_approval``; any other ``governance`` value is refused by name rather than
+        dropped, since a dropped one would leave the webhook callable without the approval its
+        author asked for."""
+        if isinstance(data, dict) and "governance" in data:
+            data = dict(data)
+            governance = data.pop("governance")
+            if governance != "requires_approval":
+                raise ValueError(
+                    f"webhook {data.get('name')!r}: governance {governance!r} is not a webhook "
+                    "setting; 'requires_approval' is (or requires_approval: true)"
+                )
+            data["requires_approval"] = True
         return data
 
 

@@ -92,6 +92,7 @@ def _row_to_webhook(row: dict) -> dict:
         "domainId": row["domain_id"],
         "description": row.get("description"),
         "kind": row.get("kind", "mutation"),
+        "requiresApproval": bool(row["requires_approval"]),  # REQ-209, REQ-1924
     }
 
 
@@ -166,6 +167,7 @@ class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
     domainId: str = ""
     description: str | None = None
     kind: str = "mutation"
+    requiresApproval: bool = False  # REQ-209, REQ-1924: each call approved before it is made
 
 
 async def _as_source_operation(body: FunctionInput) -> None:
@@ -422,6 +424,7 @@ async def create_webhook(
                 "domain_id": body.domainId,
                 "description": body.description,
                 "kind": body.kind,
+                "requires_approval": body.requiresApproval,  # REQ-209, REQ-1924
                 "updated_at": func.now(),
             },
             index_elements=["name"],
@@ -436,6 +439,7 @@ async def create_webhook(
                 "domain_id",
                 "description",
                 "kind",
+                "requires_approval",
                 "updated_at",
             ],
         )
@@ -494,6 +498,7 @@ async def update_webhook(request: Request, name: str, body: WebhookInput):  # RE
                 domain_id=body.domainId,
                 description=body.description,
                 kind=body.kind,
+                requires_approval=body.requiresApproval,  # REQ-209, REQ-1924
                 updated_at=func.now(),
             )
         )

@@ -398,6 +398,14 @@ export function CommandFormFields({
             onChange={(e) => setForm({ ...form, visibleTo: e.currentTarget.value })}
             placeholder={t("commandFormFields.visibleToPlaceholder")}
           />
+          {/* REQ-209: a call is made only once the deployment's approval hook approves it. */}
+          <Switch
+            label={t("commandFormFields.requiresApproval")}
+            description={t("commandFormFields.requiresApprovalHint")}
+            checked={form.requiresApproval}
+            onChange={(e) => setForm({ ...form, requiresApproval: e.currentTarget.checked })}
+            data-testid="webhook-requires-approval-switch"
+          />
           {!form.returns && (
             <div style={{ gridColumn: "1 / -1" }}>
               <Title order={5} mb="xs">

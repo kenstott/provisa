@@ -61,11 +61,21 @@ def test_a_filter_it_cannot_apply_is_refused_by_name(args, named):
     assert str(refused.value.detail).startswith("s__orders_by:")
 
 
-@pytest.mark.parametrize("key", ["governance", "requires_approval"])
-def test_a_webhook_asking_for_an_approval_is_refused_by_name(key):
+@pytest.mark.parametrize(
+    "setting", [{"governance": "requires_approval"}, {"requires_approval": True}]
+)
+def test_a_webhook_asking_for_an_approval_requires_it(setting):
+    # REQ-209: a webhook's calls are put to the approval hook, as a command's are (REQ-1924).
     from provisa.core.models import Webhook
 
-    with pytest.raises(ValidationError, match=f"'{key}' is not supported on a webhook"):
+    hook = Webhook.model_validate({"name": "notify", "url": "https://x/hook", **setting})
+    assert hook.requires_approval is True
+
+
+def test_a_webhook_governance_that_is_not_a_setting_is_refused_by_name():
+    from provisa.core.models import Webhook
+
+    with pytest.raises(ValidationError, match="governance 'pre-approved' is not a webhook setting"):
         Webhook.model_validate(
-            {"name": "notify", "url": "https://x/hook", key: "requires_approval"}
+            {"name": "notify", "url": "https://x/hook", "governance": "pre-approved"}
         )

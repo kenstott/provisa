@@ -199,6 +199,7 @@ async def upsert_webhook(
         "domain_id": domain_policy.command_domain_id(wh.domain_id, wh.name),  # REQ-1531
         "description": wh.description,
         "kind": wh.kind,
+        "requires_approval": wh.requires_approval,  # REQ-209, REQ-1924
     }
     webhook_id = await conn.upsert_returning(
         tracked_webhooks,
@@ -216,6 +217,7 @@ async def upsert_webhook(
             "domain_id",
             "description",
             "kind",
+            "requires_approval",
         ],
     )
     await take_over(
@@ -304,4 +306,5 @@ def webhook_from_dict(d: dict) -> Webhook:  # REQ-209, REQ-210
         domain_id=d.get("domain_id", ""),
         description=d.get("description"),
         kind=d.get("kind", "mutation"),
+        requires_approval=bool(d["requires_approval"]),  # REQ-209, REQ-1924
     )
