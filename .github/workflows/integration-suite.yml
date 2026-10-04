@@ -307,8 +307,10 @@ jobs:
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
           # SharePoint authenticates with the app's client certificate (a password-less PFX), not a
           # client secret; the certificate is gitignored, so it arrives as a base64 secret.
-          printf '%s' "$SP_CERT_P12_BASE64" | base64 -d > "$RUNNER_TEMP/sharepoint.pfx"
-          echo "SP_CERT_PATH=$RUNNER_TEMP/sharepoint.pfx" >> "$GITHUB_ENV"
+          # It goes where compose mounts it into Trino from: ./sharepoint.pfx (docker-compose.core.yml).
+          printf '%s' "$SP_CERT_P12_BASE64" | base64 -d > "$GITHUB_WORKSPACE/sharepoint.pfx"
+          echo "SP_CERT_PATH=$GITHUB_WORKSPACE/sharepoint.pfx" >> "$GITHUB_ENV"
+          echo "PROVISA_E2E_SHAREPOINT_CERT_HOST=$GITHUB_WORKSPACE/sharepoint.pfx" >> "$GITHUB_ENV"
 
       - name: Azure CLI login (Synapse provisioning)
         run: az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none

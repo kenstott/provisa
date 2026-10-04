@@ -32,22 +32,15 @@ connector):
      ``trino.dbapi`` then reads live from the SharePoint site through the plugin — no data is
      landed in Provisa's own store.
 
-Why this is credential-gated, not docker-gated
--------------------------------------------------
-There is no SharePoint emulator/self-hosted target to self-provision — a real Microsoft 365 tenant
-+ site is required. The trino-sharepoint plugin jar and a client cert (``sharepoint.pfx``, repo
-root) ARE present and already mounted into the ``trino``/``trino-worker`` services by
-``docker-compose.core.yml`` (lines ~85-88, ~119-122), and ``.env`` sets ``SP_SITE_URL`` +
-``SP_CERT_PATH`` (see ``tests/steps/steps_sharepoint_connector.py`` for the same site,
-``kenstott.sharepoint.com``, exercised as unit-level Source/catalog-properties checks). What is
-MISSING from this environment is the Azure AD app registration identity needed to actually
-authenticate: no tenant id and no client id/secret (or certificate password) are configured — the
-cert file alone is not a runnable credential. This test is unconditionally skipped unless ALL of
-``SHAREPOINT_SITE_URL``/``SHAREPOINT_TENANT_ID``/``SHAREPOINT_CLIENT_ID`` are set AND at least one
-of ``SHAREPOINT_CLIENT_SECRET`` or (``SHAREPOINT_CERT_PATH`` + ``SHAREPOINT_CERT_PASSWORD``) is set
-— so it SKIPS here. Not added to ``tests/conftest.py::_MARKER_SERVICES`` — there is no docker
-service for the provisioner to bring up beyond the already-always-running core Trino, which reaches
-out to the real Microsoft 365 endpoint over the network.
+Credentials
+-----------
+There is no SharePoint emulator to self-provision: a real Microsoft 365 tenant and site are
+required, so this runs in the warehouse lane. It reads the SP_* variables the lane and ``.env``
+set (the names ``tests/steps/steps_sharepoint_connector.py`` uses): SP_SITE_URL, SP_TENANT_ID,
+SP_CLIENT_ID and SP_AUTH_TYPE, plus SP_CLIENT_SECRET for CLIENT_CREDENTIALS or the certificate for
+CERTIFICATE. The connector runs inside the Trino container, where compose mounts the certificate
+at ``/certs/sharepoint.pfx`` from ``./sharepoint.pfx`` (the lane writes it there); SP_CERT_PASSWORD
+is optional, a password-less PFX has none.
 """
 
 from __future__ import annotations
@@ -67,41 +60,6 @@ pytestmark = [
 
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
-
-_REQUIRED = ("SHAREPOINT_SITE_URL", "SHAREPOINT_TENANT_ID", "SHAREPOINT_CLIENT_ID")
-
-
-def _present(name: str) -> bool:
-    """A credential var counts only when it is set AND non-empty -- an empty value is as good as
-    unset, so the test is skipped by name rather than run against M365 with a half credential."""
-    return bool(os.environ.get(name))
-
-
-# What a full credential is missing, by name: the identity trio, plus a secret OR a cert+password.
-_MISSING_IDENTITY = [v for v in _REQUIRED if not _present(v)]
-_HAVE_SECRET = _present("SHAREPOINT_CLIENT_SECRET")
-_HAVE_CERT = _present("SHAREPOINT_CERT_PATH") and _present("SHAREPOINT_CERT_PASSWORD")
-_HAVE_CREDS = not _MISSING_IDENTITY and (_HAVE_SECRET or _HAVE_CERT)
-
-if _HAVE_CREDS:
-    _SKIP_REASON = ""
-else:
-    _missing: list[str] = list(_MISSING_IDENTITY)
-    if not (_HAVE_SECRET or _HAVE_CERT):
-        # Name exactly which auth material is absent (an empty cert password reads as absent).
-        _cert_bits = [
-            n for n in ("SHAREPOINT_CERT_PATH", "SHAREPOINT_CERT_PASSWORD") if not _present(n)
-        ]
-        _missing.append(
-            "SHAREPOINT_CLIENT_SECRET or (" + " + ".join(_cert_bits or ["SHAREPOINT_CERT_*"]) + ")"
-        )
-    _SKIP_REASON = (
-        "No live SharePoint credentials — missing (empty counts as unset): "
-        + ", ".join(_missing)
-        + ". Set the Azure AD app identity plus a client secret or cert+password to run against "
-        "a real M365 site."
-    )
-pytestmark.append(pytest.mark.skipif(not _HAVE_CREDS, reason=_SKIP_REASON))
 
 # The list the connector must expose as a table. Defaults to the built-in "Documents" library,
 # which exists on every SharePoint site (toSqlName("Documents") == "documents") — a stable,
@@ -172,31 +130,31 @@ def test_sharepoint_catalog_created_and_lists_visible():
     catalog = "sharepoint_itest"
     _drop(cur, catalog)
 
-    mapping: dict = {}
-    if _HAVE_SECRET:
-        mapping["auth_type"] = "CLIENT_CREDENTIALS"
-    else:
-        # Certificate app-only auth. The connector runs INSIDE the Trino container, where compose
-        # mounts the pfx at a fixed path (docker-compose.core.yml: ./sharepoint.pfx:/certs/sharepoint.pfx);
-        # certificate-path must therefore be that in-container path, NOT the host path in
-        # SHAREPOINT_CERT_PATH (which only gates the skip — proving a real cert exists to be mounted).
-        # Matches the CERTIFICATE contract in trino/catalog-install/e2e_sharepoint.properties and the
-        # steps_sharepoint_connector BDD assertion.
-        mapping["auth_type"] = "CERTIFICATE"
+    auth_type = os.environ[
+        "SP_AUTH_TYPE"
+    ].upper()  # .env writes "certificate"; the connector takes CERTIFICATE
+    mapping: dict = {"auth_type": auth_type}
+    secret = ""
+    if auth_type == "CERTIFICATE":
+        # The in-container path compose mounts ./sharepoint.pfx at (docker-compose.core.yml).
         mapping["certificate_path"] = "/certs/sharepoint.pfx"
-        mapping["certificate_password"] = os.environ["SHAREPOINT_CERT_PASSWORD"]
+        mapping["certificate_password"] = os.environ.get(
+            "SP_CERT_PASSWORD", ""
+        )  # none on a password-less PFX
+    else:
+        secret = os.environ["SP_CLIENT_SECRET"]
 
     src = Source(
         id=_SOURCE_ID,
         type=SourceType.sharepoint,
-        base_url=os.environ["SHAREPOINT_SITE_URL"],
-        username=os.environ["SHAREPOINT_CLIENT_ID"],
-        password=os.environ.get("SHAREPOINT_CLIENT_SECRET", ""),
-        database=os.environ["SHAREPOINT_TENANT_ID"],
+        base_url=os.environ["SP_SITE_URL"],
+        username=os.environ["SP_CLIENT_ID"],
+        password=secret,
+        database=os.environ["SP_TENANT_ID"],
         mapping=mapping,
     )
     try:
-        create_catalog(conn, src, os.environ.get("SHAREPOINT_CLIENT_SECRET", ""))
+        create_catalog(conn, src, secret)
 
         # Querying SHOW TABLES through Trino IS reading through the federation engine — the
         # sharepoint connector enumerates live SharePoint lists as TABLES under its single
