@@ -265,10 +265,13 @@ async def ensure_resident(
         return Residency()
     from provisa.federation.registry_view import registered_sources, registered_tables
 
-    # REQ-1674: the registry, not the config file — see registry_view.
+    # REQ-1674: the registry, not the config file — see registry_view. A built-in source
+    # (provisa-admin, ...) is never landed and is not in it: a statement's read of one of its
+    # tables is not judged here.
     sources = [s for s in await registered_sources(state) if s.id in wanted]
     if not sources:
         return Residency()
+    wanted = {s.id for s in sources}
     from provisa.federation.strategy import engine_attaches
 
     _attached_types = {s.id: engine_attaches(engine, s.type.value) for s in sources}

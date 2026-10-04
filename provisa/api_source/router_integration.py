@@ -91,6 +91,10 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
     2. If table exists in the engine: return cache reference (phase 2 SQL applied by caller)
     3. On miss: call API → flatten → materialize → schedule DROP after TTL
     """
+    # REQ-318: the endpoint's default parameters (the values that make its whole collection,
+    # from the spec at registration) under what the statement binds — as every other
+    # whole-collection read (replica_read, events.source_loader) calls it.
+    params = {**endpoint.default_params, **params}
     with _stage(_tracer, "api_source.handle_api_query") as span:
         span.set_attribute("api_source.source_id", endpoint.source_id)
         span.set_attribute("api_source.table", endpoint.table_name)
@@ -99,20 +103,24 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
         tbl = cache_table_name(endpoint.source_id, endpoint.table_name, params)
 
         if loc is None:
-            # REQ-1730: state.source_catalogs (catalog_name_for_source's resolution) beats
-            # engine.cache_catalog()'s per-ENGINE default for an adapter-fetched source under
-            # Trino (openapi is REQ-826 _MATERIALIZE_ONLY) — see cypher_exec.py's identical fix.
+            # REQ-1730: an engine with no cache catalog of its own (Trino) caches in the catalog
+            # it reads the source through (state.source_catalogs; openapi is REQ-826
+            # _MATERIALIZE_ONLY) — engine_cache.cache_location's rule.
             from provisa.api.app import state as _state
 
-            _cc = (getattr(source, "cache_catalog", None) if source else None) or (
-                _state.source_catalogs.get(endpoint.source_id)
-            )
+            _cc = getattr(source, "cache_catalog", None) if source else None
             _default_cs = active_org_schema(org_id, "_api_cache")  # REQ-1623
             _cs = getattr(source, "cache_schema", _default_cs) if source else _default_cs
             # Resolved through the module, not a from-import binding: a from-import taken while a
             # test patches engine_cache.cache_location captures the patch permanently, since this
             # module is first imported lazily from inside the patched block.
-            loc = _engine_cache.cache_location(endpoint.source_id, _cc, _cs, engine=engine)
+            loc = _engine_cache.cache_location(
+                endpoint.source_id,
+                _cc,
+                _cs,
+                engine=engine,
+                source_catalog=_state.source_catalogs.get(endpoint.source_id),
+            )
 
         with engine.isolated_sync() as _c:
             _hit = table_exists(_c, loc, tbl, ttl=ttl)

@@ -486,9 +486,12 @@ test.describe("source to query through the UI: hive (REQ-1763)", () => {
           "    cur.execute(sql)\n" +
           "    return cur.fetchall()\n" +
           // Property KEYS are Trino <identifier>s, not string literals (see hive_s3's identical
-          // note above) — "hive.metastore"='thrift', not 'hive.metastore'='thrift'.
+          // note above) — "hive.metastore"='thrift', not 'hive.metastore'='thrift'. The Hive 4
+          // metastore makes a non-ACID managed table EXTERNAL, so the seed INSERT is refused
+          // ("Cannot write to non-managed Hive table") without non-managed writes — the same
+          // property the product's own hive catalog sets (trino_connectors._hive_metastore_props).
           'props = \'"hive.metastore"=\\\'thrift\\\', "hive.metastore.uri"=\\\'thrift://hive:9083\\\', \' \\\n' +
-          '    \'"fs.hadoop.enabled"=\\\'true\\\'\'\n' +
+          '    \'"hive.non-managed-table-writes-enabled"=\\\'true\\\', "fs.hadoop.enabled"=\\\'true\\\'\'\n' +
           "try:\n" +
           "    ex('DROP CATALOG IF EXISTS e2e_olap_hive_seed')\n" +
           "except Exception:\n" +

@@ -156,6 +156,26 @@ def _engine_reaches_live(state: Any, source_type: str) -> bool:
     return connector is not None and connector.mechanism in LIVE_IN_PLACE
 
 
+# REQ-1672/REQ-1730: types whose native schema/table lister dials the address the source declares
+# (hive_s3: its S3 endpoint). That address is the ENGINE-visible one, so under an engine that reads
+# the type live (Trino's hive connector) the app is not the reader and the listing goes through the
+# engine's catalog, as the column metadata already does (resolve_available_columns_metadata).
+_ENGINE_ADDRESSED_LISTERS = frozenset({"hive_s3"})
+
+
+async def _engine_lists(state: Any, source_id: str, source_type: str) -> bool:
+    """Whether the source's schemas and tables are listed through the bound engine rather than
+    the app's own native lister: a type in ``_ENGINE_ADDRESSED_LISTERS`` that the engine reads
+    live and holds an attach of."""
+    from provisa.api.admin.introspect import unattached_source
+
+    return (
+        source_type in _ENGINE_ADDRESSED_LISTERS
+        and _engine_reaches_live(state, source_type)
+        and await unattached_source(state, source_id) is None
+    )
+
+
 def _is_instance_local_store(store_ref: str | None) -> bool:
     """Classify a resolved materialization-store DSN as instance-local (a local file store) vs shared.
 
@@ -680,8 +700,12 @@ class Query:  # REQ-021, REQ-042
         if source_type == "openapi":
             await _ensure_openapi_spec(source_id)
         pool = await _get_pool()
-        async with pool.acquire() as config_conn:
-            result = await native_schemas(source_id, source_type, state.source_pools, config_conn)
+        result = None
+        if not await _engine_lists(state, source_id, source_type):
+            async with pool.acquire() as config_conn:
+                result = await native_schemas(
+                    source_id, source_type, state.source_pools, config_conn
+                )
         if result is not None:
             return [s for s in result if not is_provisa_internal(s)]
         # native_schemas returns None only for the engine-backed connector sources that have no
@@ -738,16 +762,17 @@ class Query:  # REQ-021, REQ-042
             await _ensure_openapi_spec(source_id)
         pool = await _get_pool()
         result = None
-        async with pool.acquire() as config_conn:
-            with discovery_fallback(f"native tables for {source_id!r}"):
-                result = await native_tables(
-                    source_id,
-                    source_type,
-                    schema_name,
-                    state.source_pools,
-                    config_conn,
-                    state,
-                )
+        if not await _engine_lists(state, source_id, source_type):
+            async with pool.acquire() as config_conn:
+                with discovery_fallback(f"native tables for {source_id!r}"):
+                    result = await native_tables(
+                        source_id,
+                        source_type,
+                        schema_name,
+                        state.source_pools,
+                        config_conn,
+                        state,
+                    )
         if result is not None:
             return result
         # the engine fallback

@@ -138,3 +138,25 @@ async def test_a_prune_keeps_the_rows_of_objects_the_model_still_has(stores):
     await _seed(model_db, here)
     assert await prune_state_parts(model_db, here) == {}
     assert await _counts(here) == [1, 1, 1]
+
+
+async def test_with_one_database_keeping_every_side_a_table_is_removed_in_one_transaction(
+    tmp_path, monkeypatch
+):
+    """The implicit region keeps its state with the model, in the control plane's one database
+    (region_stores.open_org_stores): both handles are over one engine. Removing a table in a
+    transaction reached its state part through a SECOND connection to that database, which
+    waited on the first's write lock — on SQLite, 'database is locked' and the table stayed."""
+    engine = _store(tmp_path / "tenant.db")
+    model_db = Database(engine, "org-model", holds="model")
+    state_db = Database(engine, "org-state", holds="state")
+    sides = {"model": model_db, "state": state_db}
+    monkeypatch.setattr(request_context, "_org_store_provider", lambda side: sides[side])
+    table_id = await _seed(model_db, state_db)
+    async with model_db.acquire() as conn:
+        async with conn.transaction():
+            await discard(conn, ObjectRef("table", table_id))
+    assert (await _counts(state_db))[0] == 0
+    async with model_db.acquire() as conn:
+        left = await conn.execute_core(select(func.count()).select_from(registered_tables))
+        assert left.scalar_one() == 0

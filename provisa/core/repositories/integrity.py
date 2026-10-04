@@ -549,7 +549,12 @@ async def _reaching(conn: "Connection", table_name: str) -> AsyncIterator["Conne
     if conn.holds is None or conn.holds == side:
         yield conn
         return
-    async with org_store(side).acquire() as other:
+    store = org_store(side)
+    if conn.over(store):
+        # One database keeps both sides: the part is reached in this connection's transaction.
+        yield conn.as_handle(store)
+        return
+    async with store.acquire() as other:
         yield other
 
 

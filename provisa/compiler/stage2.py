@@ -754,10 +754,19 @@ def reduce_sources_for_routing(  # REQ-863
     tree = sqlglot.parse_one(sql, read="postgres")
 
     inlined_tids: set[int] = set()
+    unresolved: set[str] = set()
     for nm in inlined_table_names:
         tid = gov_ctx.table_map.get(nm) or gov_ctx.table_map.get(nm.split(".")[-1])
         if tid is not None:
             inlined_tids.add(tid)
+        else:
+            unresolved.add(nm.split(".")[-1])
+    # The optimizer names a table by its physical name; table_map keys semantic names only, so a
+    # table registered under a display alias (get_inventory shown as inventory) is matched by
+    # its physical name here.
+    for meta in ctx.tables.values():
+        if meta.table_name in unresolved or meta.original_table_name in unresolved:
+            inlined_tids.add(meta.table_id)
 
     live: set[str] = set()
     for tbl in physical_tables(tree):

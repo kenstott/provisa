@@ -84,9 +84,9 @@ test("REQ-354: POST /query/nl accepts natural language question and returns job_
   request,
 }) => {
   const resp = await request.post(`${BACKEND_URL}/query/nl`, {
+    // REQ-273: the job runs as the request's acting role; the body names none.
     data: {
       q: "Show me all entities",
-      role: "default",
     },
     headers: { "Content-Type": "application/json" },
   });
@@ -104,11 +104,12 @@ test("REQ-354: POST /query/nl accepts role parameter in request body", async ({
   request,
 }) => {
   const resp = await request.post(`${BACKEND_URL}/query/nl`, {
+    // REQ-273: a body role is accepted when it is the role the request runs as.
     data: {
       q: "What is the count of all records?",
       role: "analyst",
     },
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Provisa-Role": "analyst" },
   });
 
   expect(resp.status()).toBe(202);
@@ -122,9 +123,9 @@ test("REQ-354: GET /query/nl/{job_id} polls for NL query result", async ({
 }) => {
   // First, submit an NL query
   const submitResp = await request.post(`${BACKEND_URL}/query/nl`, {
+    // REQ-273: the job runs as the request's acting role; the body names none.
     data: {
       q: "List all entities",
-      role: "default",
     },
     headers: { "Content-Type": "application/json" },
   });

@@ -79,16 +79,23 @@ def cache_location(  # REQ-318, REQ-309, REQ-327
     cache_schema: str = _DEFAULT_CACHE_SCHEMA,
     *,
     engine: Any = None,
+    source_catalog: str | None = None,
 ) -> CacheLocation:
     """Build cache location.
 
-    cache_catalog=None → the bound engine's cache catalog (``engine.cache_catalog()``): a broad
-    federator / store-engine caches into the source's own (durable) catalog (returns None → source_id
-    with hyphens→underscores); an ephemeral engine caches into its attached materialization store.
+    cache_catalog=None → the bound engine's cache catalog (``engine.cache_catalog()``): an
+    ephemeral engine caches into its attached materialization store; a broad federator /
+    store-engine (returns None) caches into the catalog it reads the source through,
+    ``source_catalog`` (REQ-1730: ``state.source_catalogs``), else source_id with
+    hyphens→underscores. ``source_catalog`` never overrides an engine's own cache catalog: a
+    native engine attaches no catalog for an adapter-fetched source (OpenAPI), so the per-source
+    name it would give is a catalog that does not exist there.
     Any explicit catalog is used as-is; "results" triggers Iceberg S3 behaviour.
     """
     if cache_catalog is None and engine is not None:
         cache_catalog = engine.cache_catalog()
+    if cache_catalog is None:
+        cache_catalog = source_catalog
     catalog = cache_catalog if cache_catalog is not None else source_id.replace("-", "_")
     backend = "iceberg" if catalog == _ICEBERG_CATALOG else "relational"
     return CacheLocation(catalog, cache_schema, backend)

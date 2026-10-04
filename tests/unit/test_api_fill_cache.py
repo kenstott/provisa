@@ -101,6 +101,34 @@ def test_the_fill_table_is_in_the_orgs_api_cache_schema_named_for_the_table(stor
     assert [c.name for c in table.columns][-2:] == ["_params_hash", "_cached_at"]
 
 
+def test_an_engine_with_its_own_cache_catalog_caches_there_not_in_the_sources_catalog(store):
+    """REQ-318/REQ-1730: a native engine (DuckDB) caches API rows in the store it attaches, even
+    though the source has a per-source catalog name — DuckDB never attaches an OpenAPI source, so
+    that name is a catalog that does not exist ("Catalog petstore_api does not exist")."""
+    state, _con = store
+    state.source_catalogs["api"] = "api_catalog"
+    table = fill_cache.fill_table(state, _endpoint(), _api_source())
+    assert table.loc.catalog == "memory"
+
+
+def test_an_engine_with_no_cache_catalog_caches_in_the_catalog_it_reads_the_source_through():
+    """REQ-1730: an engine whose own catalogs are durable (Trino: ``cache_catalog()`` is None)
+    caches in the catalog the source resolves to, never in a per-source name nothing provisions."""
+    engine = SimpleNamespace(cache_catalog=lambda: None)
+    state = SimpleNamespace(
+        org_id="o1", federation_engine=engine, source_catalogs={"api": "provisa_admin"}
+    )
+    table = fill_cache.fill_table(state, _endpoint(), _api_source())
+    assert table.loc.catalog == "provisa_admin"
+
+
+def test_a_sources_own_cache_catalog_wins_on_every_engine(store):
+    state, _con = store
+    state.source_catalogs["api"] = "api_catalog"
+    source = SimpleNamespace(base_url=BASE, auth=None, cache_catalog="pinned")
+    assert fill_cache.fill_table(state, _endpoint(), source).loc.catalog == "pinned"
+
+
 @respx.mock
 async def test_a_fill_calls_the_remote_with_its_auth_and_paging_and_keeps_the_answer(store):
     """The remote requires a credential and pages its answer: the fill sends the source's

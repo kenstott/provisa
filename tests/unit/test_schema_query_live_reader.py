@@ -72,3 +72,30 @@ def test_the_real_engines_agree():
             os.environ.pop("PROVISA_ENGINE", None)
         else:
             os.environ["PROVISA_ENGINE"] = prior
+
+
+async def test_hive_s3_is_listed_through_an_engine_that_reads_it_live(monkeypatch):
+    """REQ-1672/REQ-1730: hive_s3's native lister dials the S3 endpoint the source declares, the
+    engine-visible address (http://minio:9000 in the Trino lane), which the app cannot reach. Under
+    Trino the schema picker came back empty; its schemas are listed through the engine's catalog."""
+    from provisa.api.admin.schema_query import _engine_lists
+
+    async def _attached(_state, _source_id):
+        return None
+
+    monkeypatch.setattr("provisa.api.admin.introspect.unattached_source", _attached)
+    trino = _state({"hive_s3": _conn(Mechanism.SCAN)})
+    assert await _engine_lists(trino, "lake", "hive_s3")
+    duckdb = _state({"hive_s3": _conn(Mechanism.FETCH)})
+    assert not await _engine_lists(duckdb, "lake", "hive_s3")
+    assert not await _engine_lists(_state({"pinot": _conn(Mechanism.SCAN)}), "olap", "pinot")
+
+
+async def test_a_floored_hive_s3_source_is_listed_by_the_app(monkeypatch):
+    from provisa.api.admin.schema_query import _engine_lists
+
+    async def _floored(_state, source_id):
+        return SimpleNamespace(id=source_id)
+
+    monkeypatch.setattr("provisa.api.admin.introspect.unattached_source", _floored)
+    assert not await _engine_lists(_state({"hive_s3": _conn(Mechanism.SCAN)}), "lake", "hive_s3")
