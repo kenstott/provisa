@@ -843,6 +843,8 @@ export interface EngineConfigField {
 export interface EngineRegistryEntry {
   key: string;
   label: string;
+  /** The hosted services that are this engine (e.g. managed PostgreSQL), shown in the picker. */
+  managed?: string;
   description: string;
   config_fields: EngineConfigField[];
   /** Types this engine reads LIVE via a live-attach connector (queried in place, always fresh). */

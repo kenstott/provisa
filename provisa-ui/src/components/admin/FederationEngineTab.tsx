@@ -119,7 +119,9 @@ export function FederationEngineTab() {
 
   const engineOptions = state.engines.map((e) => ({
     value: e.key,
-    label: e.key === state.current ? `${e.label}${t("federationEngineTab.current")}` : e.label,
+    label: `${e.label}${e.managed ? ` (${e.managed})` : ""}${
+      e.key === state.current ? t("federationEngineTab.current") : ""
+    }`,
   }));
 
   return (

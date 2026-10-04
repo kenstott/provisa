@@ -1238,6 +1238,10 @@ ENGINE_REGISTRY: list[dict] = [
     {
         "key": "pg",
         "label": "PostgreSQL",
+        # The hosted services that ARE this engine, shown beside its name in the engine picker so
+        # someone on one of them finds it. Each exposes only its own allowed extensions, which
+        # discover() probes; a cloud-hosted engine reaches only sources it can address.
+        "managed": "RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon",
         "description": "PostgreSQL (embedded or bring-your-own) with FDW / pg_duckdb federation. Leave the URL empty to use the embedded instance.",
         "config_fields": [
             {
