@@ -3381,8 +3381,16 @@
   category: Naming & Schema
   priority: SHOULD
   type: behavioral
-  description: Regex naming rules in config are applied to table names in order when generating GraphQL
-    field names, before uniqueness resolution.
+  description: '[SUPERSEDED by REQ-1933, 2026-10-04 -- a name is no longer made unique by qualifying it;
+    a name the rules make taken is refused. Kept here for history; do not implement against it.]
+    Regex naming rules in config are applied to table names in order when generating GraphQL field names,
+    before uniqueness resolution.
+    [END SUPERSEDED BLOCK]
+
+    (Amended 2026-10-04, A NAME THE RULES MAKE TAKEN IS REFUSED:) Regex naming rules in config are applied
+    to table names in order when generating GraphQL field names. A table whose name under the rules is
+    another table''s address in its domain is refused, naming that table (REQ-1933); it is never qualified
+    with its schema or source.'
   use_case: Ordered naming rules let stewards strip common prefixes (e.g., prod_pg_) from auto-generated
     GraphQL names without manual aliasing.
   code:
@@ -3395,7 +3403,7 @@
 
     When GraphQL field names are generated for table names
 
-    Then each rule is applied in order before uniqueness resolution
+    Then each rule is applied in order, and a name the rules make taken is refused
 
     '
   integration_test: not_required

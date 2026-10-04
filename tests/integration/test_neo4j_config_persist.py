@@ -157,7 +157,7 @@ async def test_persisted_endpoint_hydrates_and_serves_rows(pg_conn):
 
     await _load(pg_conn)
     endpoints, sources = await load_api_sources(pg_conn, {})
-    assert endpoints[_TABLE].query_template == _CYPHER
+    assert endpoints[(_SOURCE_ID, _TABLE)].query_template == _CYPHER
 
     class _Ref:
         def __init__(self, **kw):
