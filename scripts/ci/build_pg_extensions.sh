@@ -9,7 +9,7 @@
 #
 # Members (the OOTB set we build; each is smoke-tested by the caller/CI, not here):
 #   core contrib : file_fdw, postgres_fdw            (no external runtime dep)
-#   external fdw : sqlite_fdw (system libsqlite3), mysql_fdw (libmysqlclient/mariadb-connector-c)
+#   external fdw : sqlite_fdw (system libsqlite3), mysql_fdw (with MariaDB Connector/C, built here)
 #   pg_duckdb    : csv/parquet/json + httpfs + iceberg, via scripts/build_pg_duckdb.sh (vcpkg)
 #   pg_clickhouse: built from source (github.com/ClickHouse/pg_clickhouse release zip — no apt/
 #                  PGDG package exists, confirmed; live-verified working, REQ-1870)
@@ -61,9 +61,34 @@ build_external_fdw() {  # $1 repo, $2 make-vars...
 echo "== build sqlite_fdw (system libsqlite3) =="
 SDK="$( (command -v xcrun >/dev/null && xcrun --show-sdk-path) || echo /usr )"
 build_external_fdw sqlite_fdw https://github.com/pgspider/sqlite_fdw "SQLITE_INCLUDE=-I$SDK/usr/include" "SQLITE_LIB=-lsqlite3" || true
-echo "== build mysql_fdw (mariadb-connector-c) =="
-MYCFG="$( (command -v mariadb_config || command -v mysql_config) 2>/dev/null || true )"
-[ -n "$MYCFG" ] && build_external_fdw mysql_fdw https://github.com/EnterpriseDB/mysql_fdw "MYSQL_CONFIG=$MYCFG" || echo "  (skip: no mysql client config found)"
+echo "== build MariaDB Connector/C (LGPL), the client library mysql_fdw loads =="
+# mysql_fdw dlopens lib<client>.<suf> at load time; the bundle ships this build of it, with its auth
+# plugins compiled in (a dynamic plugin is loaded from a directory fixed at build time) and nothing
+# beyond OpenSSL linked: no remote_io (curl), no GSSAPI, no zstd, bundled zlib.
+MCC_TAG="${MARIADB_CC_TAG:-v3.4.9}"
+MCC_SRC="$CACHE/mariadb-connector-c-${MCC_TAG#v}"
+MCC_PREFIX="$CACHE/mariadb-cc-${MCC_TAG#v}"
+if [ ! -x "$MCC_PREFIX/bin/mariadb_config" ]; then
+  [ -d "$MCC_SRC" ] || git clone -q --depth 1 --branch "$MCC_TAG" \
+    https://github.com/mariadb-corporation/mariadb-connector-c "$MCC_SRC"
+  MCC_SSL=()
+  [ "$OS" = darwin ] && MCC_SSL=(-DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)")
+  cmake -S "$MCC_SRC" -B "$MCC_SRC/build" -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="$MCC_PREFIX" -DWITH_SSL=OPENSSL "${MCC_SSL[@]}" \
+    -DWITH_UNIT_TESTS=OFF -DWITH_CURL=OFF -DWITH_EXTERNAL_ZLIB=OFF \
+    -DCLIENT_PLUGIN_DIALOG=STATIC -DCLIENT_PLUGIN_CLIENT_ED25519=STATIC \
+    -DCLIENT_PLUGIN_CACHING_SHA2_PASSWORD=STATIC -DCLIENT_PLUGIN_SHA256_PASSWORD=STATIC \
+    -DCLIENT_PLUGIN_PARSEC=STATIC -DCLIENT_PLUGIN_MYSQL_CLEAR_PASSWORD=STATIC \
+    -DCLIENT_PLUGIN_AUTH_GSSAPI_CLIENT=OFF -DCLIENT_PLUGIN_REMOTE_IO=OFF \
+    -DCLIENT_PLUGIN_ZSTD=OFF -DCLIENT_PLUGIN_REPLICATION=OFF >/dev/null
+  cmake --build "$MCC_SRC/build" -j"$NPROC" >/dev/null
+  cmake --install "$MCC_SRC/build" >/dev/null
+fi
+echo "== build mysql_fdw (against that Connector/C) =="
+# A cached tree may hold objects compiled against another client's headers; make cannot tell.
+[ ! -d "$CACHE/mysql_fdw/.git" ] || make -C "$CACHE/mysql_fdw" USE_PGXS=1 PG_CONFIG="$PGC" clean >/dev/null
+build_external_fdw mysql_fdw https://github.com/EnterpriseDB/mysql_fdw \
+  "MYSQL_CONFIG=$MCC_PREFIX/bin/mariadb_config"
 
 echo "== build pg_duckdb (vcpkg: csv/parquet/json + httpfs + iceberg) =="
 PG_DUCKDB_TAG="$PGDUCKDB_TAG" PROVISA_FDW_CACHE="$CACHE" bash "$ROOT/scripts/build_pg_duckdb.sh"
@@ -111,7 +136,7 @@ declare -a MEMBERS=(
   "file_fdw|file_fdw|bundled|"
   "postgres_fdw|postgres_fdw|bundled|"
   "sqlite_fdw|sqlite_fdw|bundled|libsqlite3 (system)"
-  "mysql_fdw|mysql_fdw|bundled|libmysqlclient/mariadb-connector-c"
+  "mysql_fdw|mysql_fdw|bundled|libmysqlclient (bundled MariaDB Connector/C)"
   "pg_duckdb|pg_duckdb|bundled|libduckdb; aws-sdk-cpp/avro-c/roaring (static)"
   "libduckdb|libduckdb|bundled|"
   "pg_clickhouse|pg_clickhouse|bundled|libssl/libcrypto; liblz4; libzstd; libcurl; libuuid"
@@ -148,6 +173,24 @@ if [ -e "$OUT/lib/postgres_fdw.$SUF" ]; then
   sha="$( (command -v sha256sum >/dev/null && sha256sum "$OUT/lib/libpq.$SUF" || shasum -a256 "$OUT/lib/libpq.$SUF") | awk '{print $1}')"
   echo ',' >> "$manifest"
   printf '  {"name":"libpq","key":"libpq","file":"lib/libpq.%s","sha256":"%s","redistribution":"bundled","runtime_deps":""}' \
+    "$SUF" "$sha" >> "$manifest"
+fi
+if [ -e "$OUT/lib/mysql_fdw.$SUF" ]; then
+  # mysql_fdw dlopens the client by the name its Makefile derived from the client's link flags
+  # (libmysqlclient.<suf> for Connector/C's -lmariadb); the dlopen finds it beside the module
+  # (the pkglibdir on macOS, mysql_fdw's $ORIGIN run path on Linux).
+  if [ "$OS" = darwin ]; then
+    cp -L "$MCC_PREFIX/lib/mariadb/libmariadb.3.dylib" "$OUT/lib/libmysqlclient.dylib"
+    install_name_tool -id "@rpath/libmysqlclient.dylib" "$OUT/lib/libmysqlclient.dylib"
+    relocate "$OUT/lib/libmysqlclient.dylib"
+  else
+    cp -L "$MCC_PREFIX/lib/mariadb/libmariadb.so.3" "$OUT/lib/libmysqlclient.so"
+    patchelf --set-soname libmysqlclient.so "$OUT/lib/libmysqlclient.so"
+    patchelf --set-rpath '$ORIGIN' "$OUT/lib/libmysqlclient.so"
+  fi
+  sha="$( (command -v sha256sum >/dev/null && sha256sum "$OUT/lib/libmysqlclient.$SUF" || shasum -a256 "$OUT/lib/libmysqlclient.$SUF") | awk '{print $1}')"
+  echo ',' >> "$manifest"
+  printf '  {"name":"libmysqlclient","key":"libmysqlclient","file":"lib/libmysqlclient.%s","sha256":"%s","redistribution":"bundled (MariaDB Connector/C, LGPL-2.1)","runtime_deps":""}' \
     "$SUF" "$sha" >> "$manifest"
 fi
 if [ "$OS" = darwin ]; then
