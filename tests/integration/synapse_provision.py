@@ -249,14 +249,42 @@ def _create_database(server: str) -> None:
             rt.close()
 
 
+def _wait_gone(workspace: str, group: str) -> None:
+    """Block until the workspace no longer exists (its delete is long-running), bounded."""
+    deadline = time.monotonic() + _AZ_TIMEOUT_S
+    while time.monotonic() < deadline:
+        try:
+            _az(
+                "synapse",
+                "workspace",
+                "show",
+                "-n",
+                workspace,
+                "-g",
+                group,
+                "-o",
+                "none",
+                timeout=120,
+            )
+        except RuntimeError as exc:
+            if "NotFound" in str(exc) or "Not Found" in str(exc) or "ResourceNotFound" in str(exc):
+                return
+            raise
+        time.sleep(15)
+    raise RuntimeError(f"workspace {workspace} still exists {_AZ_TIMEOUT_S}s after its delete")
+
+
 def _teardown(lane: dict[str, str]) -> None:
     """Delete what ``_provision`` created inside the resource group: the workspace, then the
     storage account's role assignments and the account. The group itself is not this lane's."""
     group, workspace, storage = lane["resource_group"], lane["workspace"], lane["storage"]
     print(f"== teardown: {workspace} + {storage} in {group} ==", flush=True)
     steps = [
-        ("synapse", "workspace", "delete", "-n", workspace, "-g", group, "--yes"),
-        ("role", "assignment", "delete", "--scope", lane["storage_scope"]),
+        # --no-wait, then poll the workspace itself: az's own wait reads the operation's status at
+        # subscription scope, which the CI principal (rights on the group only) may not, so the
+        # delete went through while the step reported a failure.
+        ("synapse", "workspace", "delete", "-n", workspace, "-g", group, "--yes", "--no-wait"),
+        ("role", "assignment", "delete", "--scope", lane.get("storage_scope", "")),
         ("storage", "account", "delete", "-n", storage, "-g", group, "--yes"),
     ]
     for step in steps:
@@ -264,6 +292,8 @@ def _teardown(lane: dict[str, str]) -> None:
             continue  # provisioning stopped before the account had an id to scope a role to
         try:
             _az(*step)
+            if step[:3] == ("synapse", "workspace", "delete"):
+                _wait_gone(workspace, group)
         except (RuntimeError, subprocess.TimeoutExpired) as exc:
             print(
                 f"teardown step `az {' '.join(step[:3])}` failed ({exc}) -- DELETE {workspace} "
@@ -274,17 +304,24 @@ def _teardown(lane: dict[str, str]) -> None:
     print(f"== teardown done: {workspace} + {storage} ==", flush=True)
 
 
-def _signed_in_principal() -> tuple[str, str]:
-    """The object id and role-assignment principal type of whoever the Azure CLI is logged in as: a
-    developer (``az login``) or the CI lane's service principal (``az login --service-principal``),
-    for which ``az ad signed-in-user show`` is refused (it is a delegated-flow call)."""
+def _signed_in_principal() -> tuple[str, str, str]:
+    """The object id, role-assignment principal type and display name of whoever the Azure CLI is
+    logged in as: a developer (``az login``) or the CI lane's service principal (``az login
+    --service-principal``), for which ``az ad signed-in-user show`` is refused (it is a
+    delegated-flow call)."""
     kind = _az("account", "show", "--query", "user.type", "-o", "tsv")
     if kind == "servicePrincipal":
         app_id = _az("account", "show", "--query", "user.name", "-o", "tsv")
-        oid = _az("ad", "sp", "show", "--id", app_id, "--query", "id", "-o", "tsv", timeout=120)
-        return oid, "ServicePrincipal"
-    oid = _az("ad", "signed-in-user", "show", "--query", "id", "-o", "tsv", timeout=120)
-    return oid, "User"
+        oid, name = _az(
+            "ad", "sp", "show", "--id", app_id, "--query", "[id, displayName]", "-o", "tsv",
+            timeout=120,
+        ).split()  # fmt: skip
+        return oid, "ServicePrincipal", name
+    oid, name = _az(
+        "ad", "signed-in-user", "show", "--query", "[id, userPrincipalName]", "-o", "tsv",
+        timeout=120,
+    ).split()  # fmt: skip
+    return oid, "User", name
 
 
 def _provision() -> tuple[dict[str, str], str, str, str]:
@@ -302,7 +339,7 @@ def _provision() -> tuple[dict[str, str], str, str, str]:
 
     _register_provider()
     location = _resolve_location()
-    user_oid, principal_type = _signed_in_principal()
+    user_oid, principal_type, principal_name = _signed_in_principal()
 
     lane = {"resource_group": resource_group, "workspace": workspace, "storage": storage}
     print(f"== provisioning {workspace} in {resource_group} ({location}) ==", flush=True)
@@ -430,6 +467,25 @@ def _provision() -> tuple[dict[str, str], str, str, str]:
             "provisaadmin",
             "--sql-admin-login-password",
             _sql_password(),
+            "-o",
+            "none",
+        )
+        # The serverless SQL endpoint admits Azure AD logins only for its AD admin and the logins
+        # that admin creates; a service principal that created the workspace is not made its admin
+        # ("Login failed for user '<token-identified principal>'"), so it is set explicitly.
+        _az(
+            "synapse",
+            "sql",
+            "ad-admin",
+            "create",
+            "--workspace-name",
+            workspace,
+            "-g",
+            resource_group,
+            "--display-name",
+            principal_name,
+            "--object-id",
+            user_oid,
             "-o",
             "none",
         )
