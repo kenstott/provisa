@@ -78,6 +78,7 @@ def state(monkeypatch):
         ],
         source_catalogs={},
         contexts={},
+        view_sql_map={},  # AppState.view_sql_map: no view reads another here
     )
 
 

@@ -307,9 +307,17 @@ async def _build_refresh_sql(
     path compiles view SQL, so the engine never sees an unresolved semantic schema.
     """
     if mv.sql:
+        # REQ-133/REQ-135: a view this one reads (pets -> A -> B) is lowered to the __derived__
+        # sentinel, which is no engine catalog. The refresh acts for no role, so each is read by
+        # the one view rule with nothing narrowed: its stored rows when fresh, else its own SQL.
+        from provisa.api.app import state  # noqa: PLC0415
+        from provisa.compiler.view_expand import expand_view_refs  # noqa: PLC0415
+        from provisa.mv.view_read import unnarrowed_view_bodies  # noqa: PLC0415
+
+        sql = expand_view_refs(mv.sql, unnarrowed_view_bodies(mv.sql, state.view_sql_map, state))
         # REQ-1912: a table the view reads that is served from its replica is addressed there —
         # the same rewrite every statement bound for the engine gets.
-        sql = engine.address_replicas(mv.sql) if engine is not None else mv.sql
+        sql = engine.address_replicas(sql) if engine is not None else sql
         if engine is None:
             return sql
         # REQ-1922: a view's ``current_setting('provisa.<var>')`` is resolved as every statement
