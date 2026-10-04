@@ -156,6 +156,12 @@ def _why_not_ready() -> str:
                 logs = _kubectl("logs", name, "-c", container["name"], "--tail=120", *flags)
                 label = "previous logs" if previous else "logs"
                 lines.append(f"=== {label} {name}/{container['name']}\n{logs.stdout}{logs.stderr}")
+    # Reachability between pods: which services have ready endpoints, and what the chart's network
+    # policies admit (a policy that leaves out a client shows up as a connect timeout).
+    endpoints = _kubectl("get", "endpoints", "-o", "wide")
+    lines.append(f"=== endpoints\n{endpoints.stdout}{endpoints.stderr}")
+    policies = _kubectl("get", "networkpolicy", "-o", "yaml")
+    lines.append(f"=== network policies\n{policies.stdout[-6000:]}{policies.stderr}")
     # The API's boot provisions catalogs on the Trino coordinator; its side of a stalled boot.
     trino = _kubectl("logs", "-l", "app=trino,role=coordinator", "--tail=120")
     lines.append(f"=== trino coordinator logs\n{trino.stdout}{trino.stderr}")

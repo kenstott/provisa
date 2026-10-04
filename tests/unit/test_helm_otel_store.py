@@ -45,3 +45,21 @@ def test_the_api_reads_the_otel_store_at_this_releases_minio():
         ("PROVISA_OTEL_S3_SECRET_KEY", "minio-secret-key"),
     ):
         assert env[name]["valueFrom"]["secretKeyRef"]["key"] == key
+
+
+def test_trino_may_reach_this_releases_minio():
+    """Trino reads the otel catalog's store (and spools its exchange) on MinIO; the chart's MinIO
+    network policy admitted only the API, so Trino's connect timed out and boot stalled."""
+    rendered = _render(*_LOCAL)
+    assert rendered.returncode == 0, rendered.stderr
+    policy = next(
+        d
+        for d in _documents(rendered.stdout)
+        if d.get("kind") == "NetworkPolicy" and d["metadata"]["name"].endswith("-minio")
+    )
+    admitted = [
+        peer["podSelector"]["matchLabels"].get("app")
+        for rule in policy["spec"]["ingress"]
+        for peer in rule["from"]
+    ]
+    assert "trino" in admitted
