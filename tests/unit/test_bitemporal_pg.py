@@ -8,8 +8,9 @@
 
 The DuckDB exec suite proves the approach on one engine; this runs the SAME generated SQL against
 PostgreSQL to catch dialect drift (Postgres is strict where DuckDB is lenient — e.g. it refused a
-CAST(NULL AS varchar) into an int column, which this suite is here to keep honest). Self-provisions
-the postgres container via the shared fixture; skips only if it truly cannot be reached.
+CAST(NULL AS varchar) into an int column, which this suite is here to keep honest). Runs on the
+session's own embedded Postgres (tests/unit/conftest.py ``embedded_postgres``), never the machine's
+5432.
 """
 
 from __future__ import annotations
@@ -95,9 +96,8 @@ class PgDriver:
 
 
 @pytest.fixture()
-def pg_conn(docker_postgres, pg_dsn):
-    _ = docker_postgres  # depend on the fixture for its side effect (container up)
-    return pg_dsn
+def pg_conn(embedded_postgres):
+    return embedded_postgres.dsn()
 
 
 def _story(dsn: str, mode: str) -> PgDriver:
