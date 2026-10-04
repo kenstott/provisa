@@ -63,6 +63,7 @@ import {
   backendType,
   getDefaultPort,
   parseFilesPath,
+  pickerTypeLabel,
   reachInfoFor,
   reachSuffix,
   sourceBrand,
@@ -298,7 +299,7 @@ export function SourcesPage() {
         const info = reachInfoFor(s.value, engineState);
         return {
           value: s.value,
-          label: `${s.label}${reachSuffix(info)}`,
+          label: `${pickerTypeLabel(s)}${reachSuffix(info)}`,
           disabled: !info.selectable,
         };
       }),

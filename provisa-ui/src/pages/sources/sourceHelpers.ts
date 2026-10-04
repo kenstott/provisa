@@ -33,6 +33,12 @@ export function sourceTypeLabel(type: string, federationHintsJson: string | null
   return SOURCE_TYPES.find((st) => st.value === shown)?.label ?? type;
 }
 
+/** A source type as the type picker offers it: its name, then the hosted services that are that
+ * type (``managed``), so someone looking for their provider finds it. */
+export function pickerTypeLabel(st: (typeof SOURCE_TYPES)[number]): string {
+  return "managed" in st ? `${st.label} (${st.managed})` : st.label;
+}
+
 const REVERSE_TYPE_ALIAS: Record<string, string> = Object.fromEntries(
   Object.entries(TYPE_ALIAS).map(([uiValue, backendValue]) => [backendValue, uiValue]),
 );

@@ -49,7 +49,15 @@ export const SOURCE_TYPES = [
   },
   { value: "kaggle", label: "Kaggle", category: "Subscriptions", defaultPort: 0 },
   // RDBMS
-  { value: "postgresql", label: "PostgreSQL", category: "RDBMS", defaultPort: 5432 },
+  // `managed` names the hosted services that ARE this type, so a picker reader looking for their
+  // provider finds it; shown in the type dropdown only, the source's own type stays "PostgreSQL".
+  {
+    value: "postgresql",
+    label: "PostgreSQL",
+    managed: "RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon",
+    category: "RDBMS",
+    defaultPort: 5432,
+  },
   { value: "mysql", label: "MySQL", category: "RDBMS", defaultPort: 3306 },
   { value: "singlestore", label: "SingleStore", category: "RDBMS", defaultPort: 3306 },
   { value: "mariadb", label: "MariaDB", category: "RDBMS", defaultPort: 3306 },
