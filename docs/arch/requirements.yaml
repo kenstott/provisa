@@ -25516,7 +25516,23 @@
     advances the stored cursor to max(cursor-field) over the returned rows (empty keeps it). REMAINING
     (kept in-progress): the per-source-type delta authoring + native execution (GraphQL/HTTP/gRPC/SQL
     callers, predicate pushed down at source), keyed-upsert apply on the replica, and the delta/opaque-probe
-    mutual-exclusivity wiring with REQ-855.'
+    mutual-exclusivity wiring with REQ-855. [AMENDED 2026-10-04: the SQL-source delta apply path
+    has landed. build_replica branches on delta.delta_build_reason: a replica with a stored cursor,
+    an unchanged definition, a PG/DuckDB store, and no operator full-build request is refreshed by
+    reading only the rows past the stored watermark on the source native pool
+    (EngineRuntime.execute_native, with $wm bound as a parameter, never spliced) and applying them
+    by primary key in one transaction (materialize_exec.apply_cdc: upsert, plus tombstone delete
+    when deletes=tombstone), then advancing the cursor; otherwise it whole-rebuilds and records why
+    (delta_skipped) and sets the cursor to the source max watermark so the next build resumes as a
+    delta. CORRECTION to the build-decision rule: a model-declared replica carries
+    requested_reason=model for its whole life, so once it HAS a completed first build (separated out
+    as SKIP_FIRST_BUILD) a model-driven refresh DELTAS — REASON_MODEL is NOT a force-whole. Only a
+    real definition change (REASON_DEFINITION, or a changed definition_hash) or an operator full
+    build forces a whole copy. Non-SQL source types still refuse a delta by name (the config and
+    admin guards narrowed to them, not removed). The per-source-type GraphQL/HTTP/gRPC native-delta
+    authoring and the REQ-855 mutual-exclusivity wiring remain future work. Proven end-to-end by
+    tests/integration/test_delta_build_e2e against a live source Postgres: insert, update and
+    tombstone each reach a replica read via a delta that copied only the changed rows.]'
   use_case: 'For REPLICAS (any MATERIALIZED-strategy dataset whose federation strategy lands data), full
     re-pull on every refresh is expensive and unnecessary. Delta fetch via monotonic watermark keeps replicas
     fresh with zero lag (REQ-855 probe) without repeated full upstream fetches. Primary use: remote-schema
