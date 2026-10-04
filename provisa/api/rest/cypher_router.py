@@ -64,7 +64,7 @@ from provisa.api.rest.cypher_exec import (
     _execute_call_body,
     _execute_with_api,
     _execute_with_gql_remote,
-    _lookup_api_endpoint,
+    _statement_api_endpoints,
     _lookup_gql_remote_table,
     _resolve_role_id,
 )
@@ -297,7 +297,8 @@ async def _dispatch_execution(
 
     _row_materialize_names = await row_materialized_tables_by_name(state)
     _api_table_names = [tn for tn in _api_table_names if tn not in _row_materialize_names]
-    _has_api_tables = any(_lookup_api_endpoint(state, tn) is not None for tn in _api_table_names)
+    _statement_eps = _statement_api_endpoints(state, table_ids)
+    _has_api_tables = any(tn in _statement_eps for tn in _api_table_names)
     _has_gql_remote = any(
         _lookup_gql_remote_table(state, tn) is not None for tn in _api_table_names
     )

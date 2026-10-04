@@ -87,7 +87,7 @@ async def _execute_api_source(
             break
 
     table_name = table_meta.table_name if table_meta else root_field
-    endpoint = state.api_endpoints.get(table_name)
+    endpoint = state.api_endpoints.get((source_id, table_name))
     if endpoint is None:
         raise ApiError(
             400,

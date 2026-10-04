@@ -90,10 +90,11 @@ def _build_label_map(ctx: CompilationContext, role_id: str, state: AppState) -> 
     )
 
 
-def _lookup_api_endpoint(state: AppState, table_name: str):
-    """Look up an API endpoint by table name."""
-    ep_map: dict = getattr(state, "api_endpoints", {})
-    return ep_map.get(table_name)
+def _statement_api_endpoints(state: AppState, table_ids: Iterable[int]) -> dict:
+    """The endpoints of the API tables the statement reads, by the names its SQL carries."""
+    from provisa.api_source.endpoints import statement_endpoints
+
+    return statement_endpoints(state, table_ids)
 
 
 def _lookup_gql_remote_table(state: AppState, table_name: str) -> dict | None:
@@ -153,8 +154,9 @@ async def _execute_with_api(
 
     table_names = find_api_table_names(exec_sql)
     api_endpoints_in_sql: list[tuple[str, Any]] = []
+    statement_eps = _statement_api_endpoints(state, table_ids)
     for tn in table_names:
-        ep = _lookup_api_endpoint(state, tn)
+        ep = statement_eps.get(tn)
         if ep is not None:
             api_endpoints_in_sql.append((tn, ep))
 
@@ -529,7 +531,8 @@ async def _execute_call_body(
 
     clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
     api_table_names = find_api_table_names(exec_sql)
-    has_api = any(_lookup_api_endpoint(state, tn) is not None for tn in api_table_names)
+    statement_eps = _statement_api_endpoints(state, plan.table_ids)
+    has_api = any(tn in statement_eps for tn in api_table_names)
     has_gql_remote = any(_lookup_gql_remote_table(state, tn) is not None for tn in api_table_names)
 
     # REQ-074/REQ-1386: the branches below reach engine/API terminals directly, so the audit row is

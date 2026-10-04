@@ -56,9 +56,11 @@ def state(monkeypatch):
     monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _sources)
     return SimpleNamespace(
         api_endpoints={
-            "contact": _endpoint("contact", "/contacts/{id}", _col("id", ParamType.path)),
-            "deal": _endpoint("deal", "/deals/{deal_id}"),
-            "countries": _endpoint("countries", "/countries", _col("region", ParamType.query)),
+            ("crm", "contact"): _endpoint("contact", "/contacts/{id}", _col("id", ParamType.path)),
+            ("crm", "deal"): _endpoint("deal", "/deals/{deal_id}"),
+            ("crm", "countries"): _endpoint(
+                "countries", "/countries", _col("region", ParamType.query)
+            ),
         },
         graphql_remote_sources={
             "gh": {

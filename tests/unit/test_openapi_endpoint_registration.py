@@ -135,7 +135,7 @@ async def test_an_admin_registered_table_behind_a_three_page_collection_returns_
     state = _state()
     await _register_in_the_admin(control_plane, state, _table(max_pages=10))
     route = _three_pages()
-    endpoint = state.api_endpoints["listPets"]
+    endpoint = state.api_endpoints[("petstore", "listPets")]
     rows, cut = answer_rows(
         endpoint, await call_api(endpoint, {}, state.api_sources["petstore"].base_url)
     )
@@ -150,7 +150,7 @@ async def test_with_max_pages_two_the_answer_is_cut_and_says_so(control_plane):
     state = _state()
     await _register_in_the_admin(control_plane, state, _table(max_pages=2))
     _three_pages()
-    endpoint = state.api_endpoints["listPets"]
+    endpoint = state.api_endpoints[("petstore", "listPets")]
     rows, cut = answer_rows(endpoint, await call_api(endpoint, {}, BASE))
     assert [r["id"] for r in rows] == [1, 2, 3, 4]
     warning = answer_cut_warning("listPets", cut)
@@ -207,7 +207,7 @@ async def test_a_table_with_no_paging_is_stored_as_null_and_loads_unpaged(contro
     state = _state()
     table = _table(max_pages=2).model_copy(update={"pagination": None})
     await _register_in_the_admin(control_plane, state, table)
-    assert state.api_endpoints["listPets"].pagination is None
+    assert state.api_endpoints[("petstore", "listPets")].pagination is None
     async with control_plane.acquire() as conn:
         raw = await conn.fetch("SELECT pagination FROM api_endpoints")
         assert [r["pagination"] for r in raw] == [None]
@@ -322,3 +322,34 @@ def test_the_stewards_paging_at_registration_is_checked_like_any_other():
     assert declared_paging(state, "openapi", "petstore", "listPets", PagingInput()) is None
     refused = declared_paging(state, "postgresql", "pg", "orders", PagingInput(type="offset"))
     assert (refused.success, refused.code) == (False, "schema.paging_not_paged")
+
+
+async def test_a_second_source_registering_a_table_of_the_same_name_keeps_the_firsts_endpoint(
+    control_plane,
+):
+    """A table is named within its source. Two OpenAPI sources each registering ``listPets`` hold
+    two endpoints; the second registration once took over the first source's row, which then
+    served the second source's calls."""
+    from provisa.api.admin._openapi_table_registration import persist_openapi_endpoint
+    from provisa.api_source.loader import load_api_sources
+    from provisa.api_source.openapi_endpoint import register_openapi_source
+    from provisa.core.repositories import table as table_repo
+
+    state = _state()
+    await _register_in_the_admin(control_plane, state, _table(max_pages=10))
+    copy_base = "https://copy.test"
+    state.openapi_specs["copy"] = {"spec": SPEC, "base_url": copy_base, "auth_config": None}
+    copy_table = _table(max_pages=10).model_copy(update={"source_id": "copy"})
+    async with control_plane.acquire() as conn:
+        await conn.execute_core(insert(sources).values(id="copy", type="openapi", origin="admin"))
+        await register_openapi_source(conn, "copy", copy_base)
+        await table_repo.upsert(conn, copy_table, origin="admin")
+        assert await persist_openapi_endpoint(state, conn, copy_table) is None
+        state.api_endpoints, state.api_sources = await load_api_sources(conn, {})
+        rows = (
+            await conn.execute_core(select(api_endpoints.c.source_id, api_endpoints.c.table_name))
+        ).fetchall()
+
+    assert sorted(tuple(r) for r in rows) == [("copy", "listPets"), ("petstore", "listPets")]
+    assert state.api_endpoints[("petstore", "listPets")].source_id == "petstore"
+    assert state.api_endpoints[("copy", "listPets")].source_id == "copy"

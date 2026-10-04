@@ -28,7 +28,7 @@ import pytest
 
 from provisa.graphql_remote.executor import RemoteAnswer
 from provisa.api.data.materialization import (
-    _lookup_ep,
+    _statement_endpoints,
     _lookup_gql_remote_table,
     _mat_api_ep_table,
     _mat_fetch_rows_from_fills,
@@ -69,23 +69,59 @@ def _statement_hot(manager=None):
     """The hot tier as a statement reading ``pets`` sees it."""
     from provisa.api.data.materialization import _StatementHot
 
-    state = SimpleNamespace(tables=[{"id": PETS, "table_name": "pets"}])
+    state = SimpleNamespace(tables=[{"id": PETS, "source_id": "src", "table_name": "pets"}])
     return _StatementHot(manager, state, [PETS])
 
 
-class TestLookupEp:
+class TestStatementEndpoints:
+    """A statement's API table names resolve to endpoints through the tables it reads: a table is
+    named within its source, so two sources' ``pets`` are two endpoints."""
+
+    def _state(self, endpoints, tables):
+        return SimpleNamespace(api_endpoints=endpoints, tables=tables)
+
     def test_found(self):
-        ep = object()
-        state = SimpleNamespace(api_endpoints={"pets": ep})
-        assert _lookup_ep(state, "pets") is ep
+        ep = SimpleNamespace(source_id="src", table_name="pets")
+        state = self._state(
+            {("src", "pets"): ep}, [{"id": PETS, "source_id": "src", "table_name": "pets"}]
+        )
+        assert _statement_endpoints(state, [PETS])["pets"] is ep
 
     def test_missing(self):
-        state = SimpleNamespace(api_endpoints={})
-        assert _lookup_ep(state, "pets") is None
+        state = self._state({}, [{"id": PETS, "source_id": "src", "table_name": "pets"}])
+        assert "pets" not in _statement_endpoints(state, [PETS])
 
     def test_no_attr_defaults_empty(self):
-        state = SimpleNamespace()
-        assert _lookup_ep(state, "pets") is None
+        assert _statement_endpoints(SimpleNamespace(), [PETS]) == {}
+
+    def test_another_sources_table_of_the_name_is_not_the_statements(self):
+        mine = SimpleNamespace(source_id="b", table_name="pets")
+        other = SimpleNamespace(source_id="a", table_name="pets")
+        state = self._state(
+            {("a", "pets"): other, ("b", "pets"): mine},
+            [
+                {"id": 1, "source_id": "a", "table_name": "pets"},
+                {"id": 2, "source_id": "b", "table_name": "pets"},
+            ],
+        )
+        assert _statement_endpoints(state, [2])["pets"] is mine
+        assert _statement_endpoints(state, [1])["pets"] is other
+
+    def test_two_api_tables_of_one_name_in_a_statement_are_refused(self):
+        from provisa.api_source.endpoints import AmbiguousApiTable
+
+        state = self._state(
+            {
+                ("a", "pets"): SimpleNamespace(source_id="a", table_name="pets"),
+                ("b", "pets"): SimpleNamespace(source_id="b", table_name="pets"),
+            },
+            [
+                {"id": 1, "source_id": "a", "table_name": "pets"},
+                {"id": 2, "source_id": "b", "table_name": "pets"},
+            ],
+        )
+        with pytest.raises(AmbiguousApiTable):
+            _statement_endpoints(state, [1, 2])
 
 
 class TestLookupGqlRemoteTable:
@@ -1067,7 +1103,7 @@ class TestMaterializeApiToEngineCache:
             hot_manager=hot_mgr,
             api_endpoints={},
             graphql_remote_sources={},
-            tables=[{"id": PETS, "table_name": "pets"}],
+            tables=[{"id": PETS, "source_id": "src", "table_name": "pets"}],
         )
         rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
             "SELECT * FROM pets", state, table_ids=[PETS]
@@ -1082,7 +1118,9 @@ class TestMaterializeApiToEngineCache:
         ep = _ep([_col("id")])
         state = SimpleNamespace(
             hot_manager=None,
-            api_endpoints={"pets": ep},
+            api_endpoints={("src", "pets"): ep},
+            # The registered table the statement reads: its endpoint is keyed by source and name.
+            tables=[{"id": PETS, "source_id": "src", "table_name": "pets"}],
             graphql_remote_sources={},
             model_db=None,
             tenant_db=None,
@@ -1264,7 +1302,9 @@ class TestMaterializeApiToEngineCache:
         ep = _ep([_col("id"), _col("owner_id", param_type=ParamType.path)])
         state = SimpleNamespace(
             hot_manager=None,
-            api_endpoints={"pets": ep},
+            api_endpoints={("src", "pets"): ep},
+            # The registered table the statement reads: its endpoint is keyed by source and name.
+            tables=[{"id": PETS, "source_id": "src", "table_name": "pets"}],
             graphql_remote_sources={},
             org_id="default",
             federation_engine=MagicMock(),

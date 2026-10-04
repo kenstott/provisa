@@ -118,8 +118,8 @@ async def persist_query_api_registration(
         )
     if not isinstance(getattr(state, "api_sources", None), dict):
         state.api_sources = {}
-    if not isinstance(getattr(state, "api_endpoints", None), dict):
-        state.api_endpoints = {}
     state.api_sources[api_source.id] = api_source
-    state.api_endpoints[endpoint.table_name] = endpoint
+    from provisa.api_source.endpoints import put_endpoint
+
+    put_endpoint(state, endpoint)
     return None

@@ -50,7 +50,7 @@ async def _parent_keys(state, parent_table_meta, parent_join_col: str, child: st
     from provisa.api_source import fill_cache
 
     p_table = parent_table_meta.table_name
-    parent_ep = state.api_endpoints.get(p_table)
+    parent_ep = state.api_endpoints.get((parent_table_meta.source_id, p_table))
     if parent_ep is not None:
         table = fill_cache.fill_table(
             state, parent_ep, (state.api_sources or {}).get(parent_ep.source_id)
@@ -218,7 +218,7 @@ async def _hydrate_api_tables_before_engine(
         if src is None:
             continue
         _min_ttl = None
-        for table_name, endpoint in state.api_endpoints.items():
+        for (_ep_source, table_name), endpoint in state.api_endpoints.items():
             if endpoint.source_id != source_id:
                 continue
             if table_name in _row_level_tables:

@@ -120,14 +120,17 @@ async def save_table_paging(
         # The REST endpoint's copy: its row, and the endpoint this process serves it from.
         await conn.execute_core(
             update(api_endpoints)
-            .where(api_endpoints.c.table_name == row.table_name)
+            .where(
+                api_endpoints.c.source_id == row.source_id,
+                api_endpoints.c.table_name == row.table_name,
+            )
             .values(pagination=stored)
         )
-        endpoint = (getattr(state, "api_endpoints", None) or {}).get(row.table_name)
+        from provisa.api_source.endpoints import endpoint_of, put_endpoint
+
+        endpoint = endpoint_of(state, row.source_id, row.table_name)
         if endpoint is not None:
-            state.api_endpoints[row.table_name] = endpoint.model_copy(
-                update={"pagination": stored_paging(stored)}
-            )
+            put_endpoint(state, endpoint.model_copy(update={"pagination": stored_paging(stored)}))
     from provisa.federation.registered_tables_cache import get_cache_for
 
     get_cache_for(state).clear()  # a connection table's next read takes its new bound

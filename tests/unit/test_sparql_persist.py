@@ -172,6 +172,6 @@ async def test_registration_persists_the_sparql_endpoint_and_mirrors_live_state(
     )
     assert state.api_sources["graph"].type is ApiSourceType.sparql
     assert (
-        state.api_endpoints["adopter"].query_template
+        state.api_endpoints[("graph", "adopter")].query_template
         == "SELECT ?name WHERE { ?a <urn:name> ?name }"
     )

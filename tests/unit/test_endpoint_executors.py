@@ -169,7 +169,7 @@ class TestExecuteApiSource:
         )
         state = SimpleNamespace(
             contexts={"admin": ctx},
-            api_endpoints={"pets": ep},
+            api_endpoints={(ep.source_id, "pets"): ep},
             hot_manager=hot_mgr,
             federation_engine=engine,
             api_sources={},
@@ -206,7 +206,7 @@ class TestExecuteApiSource:
         )
         state = SimpleNamespace(
             contexts={"admin": ctx},
-            api_endpoints={"pets": ep},
+            api_endpoints={(ep.source_id, "pets"): ep},
             hot_manager=None,
             federation_engine=engine,
             api_sources={},
@@ -257,7 +257,7 @@ class TestExecuteApiSource:
         )
         state = SimpleNamespace(
             contexts={"admin": ctx},
-            api_endpoints={"pets": ep},
+            api_endpoints={(ep.source_id, "pets"): ep},
             hot_manager=None,
             federation_engine=engine,
             api_sources={},

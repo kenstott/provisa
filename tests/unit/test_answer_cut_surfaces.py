@@ -235,14 +235,14 @@ async def test_a_cypher_statement_reads_a_cut_answer_from_its_own_table_and_neve
         promoted.append(table)
 
     state = SimpleNamespace(
-        api_endpoints={"pets": endpoint},
+        api_endpoints={(endpoint.source_id, "pets"): endpoint},
         api_sources={},
         source_catalogs={},
         source_cache={},
         response_cache_default_ttl=60,
         # ``pets`` is a registered table the statement reads (id 5), so the cut alone keeps its
         # rows from being promoted: a fetch with no arguments is otherwise promotable.
-        tables=[{"id": 5, "table_name": "pets"}],
+        tables=[{"id": 5, "source_id": "api", "table_name": "pets"}],
         hot_manager=SimpleNamespace(entries_for=lambda _ids: {}, maybe_promote_dicts=promote),
         federation_engine=SimpleNamespace(
             isolated_sync=isolated_sync,

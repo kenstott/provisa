@@ -323,7 +323,7 @@ def make_openapi_loader(state: Any) -> AdapterLoader:
     :class:`UnsupportedSourceFetch` (explicit — never a silent empty snapshot)."""
 
     def _registered(source: Any, table: Any) -> tuple[Any, Any]:
-        endpoint = state.api_endpoints.get(table.table_name)
+        endpoint = state.api_endpoints.get((source.id, table.table_name))
         api_source = state.api_sources.get(source.id)
         if endpoint is None or api_source is None:
             raise UnsupportedSourceFetch(
@@ -376,7 +376,7 @@ def make_neo4j_keyed_loader(state: Any) -> AdapterKeyedLoader:
         from provisa.api_source.caller import answer_rows, call_api
         from provisa.cypher.query_template_filter import inject_keys_filter
 
-        endpoint = state.api_endpoints.get(table.table_name)
+        endpoint = state.api_endpoints.get((source.id, table.table_name))
         api_source = state.api_sources.get(source.id)
         if endpoint is None or api_source is None:
             raise UnsupportedSourceFetch(

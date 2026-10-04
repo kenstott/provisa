@@ -208,9 +208,8 @@ async def register_openapi_endpoint(
             # REQ-318: a copy of the table's own paging, the one place it is authored.
             "pagination": paging_row(table.pagination),
         },
-        index_elements=["table_name"],
+        index_elements=["source_id", "table_name"],
         update_columns=[
-            "source_id",
             "path",
             "columns",
             "ttl",

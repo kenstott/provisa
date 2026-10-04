@@ -142,7 +142,9 @@ def _state():
 
     return SimpleNamespace(
         config=SimpleNamespace(graphql_remote=SimpleNamespace(max_rows=100)),
-        api_endpoints={"pets": ApiEndpoint(source_id="api", path="/pets", table_name="pets", columns=[])},
+        api_endpoints={
+            ("api", "pets"): ApiEndpoint(source_id="api", path="/pets", table_name="pets", columns=[])
+        },
         graphql_remote_sources={
             "gh": {"tables": [{"sql_name": "gh__issues", "rows_path": ["nodes"]}]}
         },
@@ -176,12 +178,12 @@ async def test_a_rest_tables_paging_is_saved_on_the_table_and_copied_to_its_endp
     assert result.success and result.code == "schema.table_paging_updated"
     declared = {"type": "offset", "page_size": 50, "max_pages": 3}
     assert await _stored(control_plane, 1) == (declared, declared)
-    assert state.api_endpoints["pets"].pagination == PaginationConfig(**declared)
+    assert state.api_endpoints[("api", "pets")].pagination == PaginationConfig(**declared)
 
     async with control_plane.acquire() as conn:
         cleared = await save_table_paging(state, conn, 1, None)
     assert cleared.success and await _stored(control_plane, 1) == (None, None)
-    assert state.api_endpoints["pets"].pagination is None
+    assert state.api_endpoints[("api", "pets")].pagination is None
 
 
 async def test_a_connection_tables_bound_is_saved_only_below_the_operators(control_plane):
