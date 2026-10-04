@@ -96,7 +96,8 @@ jobs:
         name: Lane cache key
         id: key
         run: |
-          name="${{ matrix.lane }}-${{ matrix.shard }}"
+          # A lane with no shards is named by itself ("e2e"), not with a trailing dash.
+          name="${{ matrix.lane }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}"
           echo "lane=${name//\//of}" >> "$GITHUB_OUTPUT"
           echo "compose=${{ hashFiles('docker-compose.core.yml', 'docker-compose.test.yml', 'docker-compose.e2e.yml') }}" >> "$GITHUB_OUTPUT"
 

@@ -124,10 +124,11 @@ def test_nothing_is_raised_once_the_scope_has_ended():
     _quiet(1.0)
 
 
-def test_a_request_that_finishes_in_time_is_never_raised_in(_timeouts):
+def test_a_request_that_finishes_in_time_is_never_raised_in(_timeouts, deadline_clock):
     _timeouts["s"] = 0.3
     with request_deadline.request("graphql"):
-        _spin(0.05)
+        _spin(0.05)  # in time on the deadline's clock, however long the machine takes
+    deadline_clock.advance(0.8)
     _quiet(0.8)  # past where its deadline would have been
 
 

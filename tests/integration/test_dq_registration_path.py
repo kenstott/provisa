@@ -37,6 +37,7 @@ from provisa.core.schema_org import (
     glossary_term_refs,
     glossary_terms,
     registered_tables,
+    naming_rules,
     roles,
     sources,
     table_columns,
@@ -50,6 +51,8 @@ _TABLES = [
     sources,
     registered_tables,
     table_columns,
+    # naming_rules: the table upsert refuses a taken SQL address under them (REQ-1933).
+    naming_rules,
     roles,
     glossary_terms,
     glossary_term_refs,

@@ -23,7 +23,6 @@ import asyncio
 import json
 import threading
 import time
-import types
 
 import pytest
 
@@ -31,6 +30,9 @@ from provisa.api.request_timeout import serve_within_deadline
 from provisa.core import request_deadline
 from provisa.core.request_deadline import RequestTimedOut
 from provisa.executor.result import StreamingQueryResult
+
+# A test that asserts something happens inside a 0.2 s budget takes ``deadline_clock``: the budget
+# then runs on a clock the test moves, so it is in time however long a loaded machine takes.
 
 
 @pytest.fixture(autouse=True)
@@ -53,13 +55,13 @@ def _names(exc: BaseException, transport: str) -> None:
 # --- the deadline itself -----------------------------------------------------------------------
 
 
-def test_a_requests_deadline_names_its_transport_and_setting():
+def test_a_requests_deadline_names_its_transport_and_setting(deadline_clock):
     with request_deadline.request("rest") as deadline:
         assert request_deadline.current() is deadline
         request_deadline.check()  # in time: nothing
         shield = request_deadline.shielded()
         with shield.lock:  # held: only the check below speaks
-            time.sleep(0.25)
+            deadline_clock.advance(0.25)
             with pytest.raises(RequestTimedOut) as raised:
                 request_deadline.check()
             # Answered: the watchdog, which raises again once the shield is released (2 ms
@@ -82,7 +84,7 @@ def test_a_blocking_call_that_returns_after_the_deadline_ends_the_request():
     assert cancelled == [True]  # the watchdog did call the statement's cancel at expiry
 
 
-def test_a_blocking_call_within_the_deadline_is_untouched():
+def test_a_blocking_call_within_the_deadline_is_untouched(deadline_clock):
     with request_deadline.request("sql_http"):
         with request_deadline.cancel_on_deadline(lambda: None):
             pass
@@ -98,41 +100,28 @@ def test_a_failure_after_the_deadline_is_reported_as_the_timeout():
     assert isinstance(raised.value.__cause__, ValueError)
 
 
-def test_a_failure_before_the_deadline_is_itself():
+def test_a_failure_before_the_deadline_is_itself(deadline_clock):
     with pytest.raises(ValueError):
         with request_deadline.request("bolt"):
             raise ValueError("an ordinary failure")
 
 
-def test_a_tighter_deadline_already_bound_is_kept():
+def test_a_tighter_deadline_already_bound_is_kept(deadline_clock):
     with request_deadline.within(0.05) as outer:
         with request_deadline.request("grpc") as inner:
             assert inner is outer
 
 
-class _Clock:
-    """The deadline module's clock, moved only by the test: a message bound before the budget
-    passes is bound in time however long the machine takes to run it."""
-
-    def __init__(self) -> None:
-        self.now = time.monotonic()
-
-    def monotonic(self) -> float:
-        return self.now
-
-
 def test_a_deadline_held_across_messages_is_bound_per_message_and_stopped_by_its_owner(
-    monkeypatch,
+    deadline_clock,
 ):
     # The 0.2 s budget is the deadline's own clock. On the wall clock the first message raised
     # RequestTimedOut itself whenever a loaded machine took longer than 0.2 s to run it.
-    clock = _Clock()
-    monkeypatch.setattr(request_deadline, "time", types.SimpleNamespace(monotonic=clock.monotonic))
     deadline = request_deadline.open_request("pgwire")
     assert request_deadline.current() is None
     with request_deadline.bound(deadline):
         assert request_deadline.current() is deadline, f"remaining {deadline.remaining()}s"
-    clock.now += 0.25  # between messages, the budget passes
+    deadline_clock.advance(0.25)  # between messages, the budget passes
     with request_deadline.bound(deadline), pytest.raises(RequestTimedOut) as raised:
         request_deadline.check()
     _names(raised.value, "pgwire")
@@ -293,7 +282,7 @@ def _is_the_timeout(client: _Client, transport: str) -> None:
     assert transport in answer["detail"] and answer["params"]["setting"] in answer["detail"]
 
 
-def test_a_response_inside_the_deadline_is_sent_as_it_is():
+def test_a_response_inside_the_deadline_is_sent_as_it_is(deadline_clock):
     async def app(scope, receive, send):
         await _respond(send, 200, b'{"data":1}')
 
@@ -354,7 +343,7 @@ def test_a_failure_after_the_deadline_with_nothing_sent_is_answered_as_the_timeo
     _is_the_timeout(_serve(app, "rest"), "rest")
 
 
-def test_a_failure_inside_the_deadline_is_not_touched():
+def test_a_failure_inside_the_deadline_is_not_touched(deadline_clock):
     async def app(scope, receive, send):
         raise RuntimeError("an ordinary failure")
 

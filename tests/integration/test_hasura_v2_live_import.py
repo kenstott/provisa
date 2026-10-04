@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -118,9 +119,19 @@ class TestLiveImport:
         untyped = [w for w in body["warnings"] if w["category"] in ("sources", "tables")]
         assert not untyped, untyped
         assert "data_type: integer" in body["config_yaml"], body["config_yaml"][:2000]
+        # REQ-1907: the remote schema's root fields are landed, so the source needs a cache TTL; the
+        # import carries none of its own (Hasura has no such setting), so the operator adds it, as
+        # the hasura-import e2e spec does through the form.
+        config_yaml, added = re.subn(
+            r"^(\s*)(\S+:\s*)\$\{env:RS_ENV\}\s*$",
+            lambda m: f"{m.group(0)}\n{m.group(1)}cache_ttl: 300",
+            body["config_yaml"],
+            flags=re.MULTILINE,
+        )
+        assert added == 1, body["config_yaml"][:2000]
         applied = await client.post(
             "/admin/import/hasura/apply",
-            json={"config_yaml": body["config_yaml"], "replace": False},
+            json={"config_yaml": config_yaml, "replace": False},
         )
         assert applied.status_code == 200, applied.text
 

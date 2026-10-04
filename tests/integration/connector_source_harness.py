@@ -157,8 +157,12 @@ async def create_source(
     path: str = "",
     mapping: dict[str, Any] | None = None,
     federation_hints: dict[str, str] | None = None,
+    cache_ttl: int | None = None,
 ) -> None:
     """Register the source through the real ``createSource`` mutation.
+
+    ``cache_ttl``: the source's cache TTL, which a source whose tables the engine lands needs
+    (REQ-1907) — the value the Sources form's Load Management panel sets at create.
 
     This is the seam the raw-cursor tests skip. It persists the source, records
     ``state.source_types``/``source_catalogs``, and provisions the catalog on the bound engine via
@@ -181,6 +185,7 @@ async def create_source(
         # to escape it as a literal — so quotes inside the mapping survive.
         mapping_arg = f", mappingJson: {json.dumps(json.dumps(mapping))}"
     path_arg = f", path: {json.dumps(path)}" if path else ""
+    ttl_arg = f", cacheTtl: {cache_ttl}" if cache_ttl is not None else ""
     # Connection extras the typed args can't carry (an Exasol server-certificate fingerprint is
     # the case here) — same double-dumps escaping as mapping.
     hints_arg = (
@@ -203,6 +208,7 @@ async def create_source(
                 {path_arg}
                 {mapping_arg}
                 {hints_arg}
+                {ttl_arg}
             }}) {{ success message }}
         }}
         """,

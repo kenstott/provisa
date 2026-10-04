@@ -145,36 +145,45 @@ def given_ordered_naming_rules(shared_data: dict) -> None:
 
 @when("GraphQL field names are generated for table names")
 def when_field_names_generated(shared_data: dict) -> None:
-    table_names = shared_data["table_names"]
+    from provisa.compiler.naming import SqlAddressTaken, refuse_taken_sql_addresses
+
     rules = shared_data["naming_rules"]
-
-    generated: dict[str, str] = {}
-    for table in table_names:
-        name = generate_name(
-            table,
-            shared_data["schema"],
-            shared_data["source_id"],
-            domain_table_names=table_names,
-            naming_rules=rules,
+    shared_data["generated_names"] = {
+        table: generate_name(table, naming_rules=rules) for table in shared_data["table_names"]
+    }
+    # REQ-1933: the tables' addresses in their one domain, checked as registration checks them.
+    try:
+        refuse_taken_sql_addresses(
+            [
+                {
+                    "domain_id": "d",
+                    "source_id": shared_data["source_id"],
+                    "schema_name": shared_data["schema"],
+                    "table_name": table,
+                    "alias": None,
+                }
+                for table in shared_data["table_names"]
+            ],
+            rules,
         )
-        generated[table] = name
-    shared_data["generated_names"] = generated
+        shared_data["refused"] = None
+    except SqlAddressTaken as taken:
+        shared_data["refused"] = taken
 
 
-@then("each rule is applied in order before uniqueness resolution")
+@then("each rule is applied in order, and a name the rules make taken is refused")
 def then_rules_applied_in_order(shared_data: dict) -> None:
     generated = shared_data["generated_names"]
 
-    # prod_pg_orders → strip ^prod_pg_ → orders (unique, no qualifier needed).
+    # prod_pg_orders → strip ^prod_pg_ → orders.
     assert generated["prod_pg_orders"] == "orders", generated
 
     # prod_pg_raw_customers → strip ^prod_pg_ → raw_customers → strip ^raw_ → customers.
     assert generated["prod_pg_raw_customers"] == "customers", generated
 
-    # prod_pg_raw_orders → strip ^prod_pg_ → raw_orders → strip ^raw_ → orders,
-    # which now collides with prod_pg_orders → uniqueness resolution qualifies it.
-    assert generated["prod_pg_raw_orders"] != "prod_pg_raw_orders", generated
-    assert not generated["prod_pg_raw_orders"].startswith("prod_pg_"), generated
+    # prod_pg_raw_orders → strip ^prod_pg_ → raw_orders → strip ^raw_ → orders: the rules ran in
+    # order and reduced it fully.
+    assert generated["prod_pg_raw_orders"] == "orders", generated
 
     # All generated names must be valid GraphQL identifiers (no leftover prefixes).
     for original, name in generated.items():
@@ -183,5 +192,10 @@ def then_rules_applied_in_order(shared_data: dict) -> None:
         )
         assert "prod_pg_" not in name, f"prefix not stripped for {original!r}: {name!r}"
 
-    # The two colliding tables must resolve to distinct field names.
-    assert generated["prod_pg_orders"] != generated["prod_pg_raw_orders"], generated
+    # "orders" is then prod_pg_orders's address: prod_pg_raw_orders is refused, naming it, and
+    # is never qualified into a distinct name (REQ-1933).
+    refused = shared_data["refused"]
+    assert refused is not None, "the collision the rules made was not refused"
+    assert refused.address == "orders"
+    assert refused.holder == "pg1.public.prod_pg_orders"
+    assert refused.newcomer == "pg1.public.prod_pg_raw_orders"

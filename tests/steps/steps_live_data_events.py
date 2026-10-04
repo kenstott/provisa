@@ -224,7 +224,8 @@ def given_openapi_source_with_registered_endpoint(shared_data):
         auth={"type": "bearer", "token": "tok-123"},
     )
 
-    endpoints_by_table = {"products": endpoint}
+    # Endpoints are held by (source, table): a table is named within its source.
+    endpoints_by_table = {("openapi-shop", "products"): endpoint}
     sources_by_id = {"openapi-shop": api_source}
 
     source = _make_source("openapi-shop", "openapi")

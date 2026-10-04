@@ -184,7 +184,7 @@ def test_an_error_before_the_deadline_is_not_reported_as_the_deadline():
         server.do_get(None, _ticket())
 
 
-def test_a_tighter_deadline_the_caller_bound_is_kept():
+def test_a_tighter_deadline_the_caller_bound_is_kept(deadline_clock):
     seen: list[float | None] = []
     server = _server(
         _State(cap=2, request_timeout=30.0), lambda _r: seen.append(request_deadline.remaining())

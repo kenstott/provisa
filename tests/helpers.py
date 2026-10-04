@@ -198,7 +198,10 @@ async def delete_source_and_its_tables(client, source_id: str) -> None:
     async def gql(query: str) -> dict:
         resp = await client.post("/admin/graphql", json={"query": query})
         assert resp.status_code == 200, resp.text
-        return resp.json()["data"]
+        body = resp.json()
+        # A refused mutation is an error, not a None to index into: say what it was.
+        assert not body.get("errors"), f"{query}: {body['errors']}"
+        return body["data"]
 
     listed = await gql(
         "{ tables { id sourceId } relationships { id sourceTableId targetTableId } }"
