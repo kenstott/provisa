@@ -207,7 +207,8 @@ provisa:
       cpu: "1"
       memory: 512Mi
   env:
-    PROVISA_MODE: production
+    # PROVISA_MODE is the launch's process mode (every | query | coordinator, REQ-1916); unset
+    # runs every role in one process. It no longer means production vs test.
     PROVISA_CONFIG: /app/config/provisa.yaml
   configMap: provisa-config
   # Prefer scheduling replicas on different nodes
