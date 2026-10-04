@@ -94,9 +94,33 @@ def _wait_for_trino():
     raise RuntimeError("Trino did not become ready within 120s")
 
 
+class _CausedCursor:
+    """A Trino cursor whose failures carry the engine's cause chain. Trino reports a JDBC
+    connector's failure as "The connection attempt failed." and keeps the driver's own reason (the
+    refused or timed-out connection, the TLS or auth error) in the error's failureInfo causes,
+    which the client's message drops; the failure is diagnosed from that chain."""
+
+    def __init__(self, cur) -> None:
+        self._cur = cur
+
+    def execute(self, sql: str):
+        try:
+            return self._cur.execute(sql)
+        except trino.exceptions.TrinoExternalError as exc:
+            causes, info = [], exc.failure_info
+            while info:
+                causes.append(f"{info.get('type')}: {info.get('message')}")
+                info = info.get("cause")
+            exc.add_note(f"{sql}\n  " + "\n  caused by ".join(causes))  # shown in the report
+            raise
+
+    def __getattr__(self, name: str):
+        return getattr(self._cur, name)
+
+
 def _trino_cursor():
     conn = trino.dbapi.connect(host=_TRINO_HOST, port=_TRINO_PORT, user="itest", catalog="system")
-    cur = conn.cursor()
+    cur = _CausedCursor(conn.cursor())
     cur.execute("SELECT 1")
     cur.fetchall()
     return conn, cur
