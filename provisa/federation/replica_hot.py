@@ -154,8 +154,12 @@ class HotCounts:
 
 
 def count_scope(org_id: str, env: str) -> str:
-    """The key part naming one org environment: registered table ids are its own."""
-    return f"{org_id}:{env}"
+    """The key part naming one org environment in this node's region (REQ-1922: regions may
+    share one Redis, and each counts its own reads): registered table ids are its own."""
+    from provisa.core import process_region
+    from provisa.core.environments import region_part
+
+    return f"{org_id}:{env}{region_part(process_region.region())}"
 
 
 def promotion_runs(counts: HotCounts, workers: int) -> bool:

@@ -166,11 +166,18 @@ class EngineBackend:
         del state
 
     def replica_address(
-        self, state: Any, *, source_id: str, schema_name: str, table_name: str
+        self,
+        state: Any,
+        *,
+        source_id: str,
+        schema_name: str,
+        table_name: str,
+        region: str | None = None,
     ) -> ReplicaAddress:
         """Where the replica of a source table is written in this engine's store (REQ-1912): the
         replicas schema of the org and environment being served, under the one replica name. The
-        same on every engine — no engine places a replica at its table's registered address."""
+        same on every engine — no engine places a replica at its table's registered address.
+        ``region`` names another region's replica: where that region wrote it (REQ-1922)."""
         from provisa.federation.replica_address import active_org_id, replica_address
 
         return replica_address(
@@ -178,6 +185,7 @@ class EngineBackend:
             source_id=source_id,
             schema_name=schema_name,
             table_name=table_name,
+            region=region,
         )
 
     def export_view_address(

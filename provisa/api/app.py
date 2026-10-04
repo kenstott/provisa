@@ -1596,7 +1596,7 @@ async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> Non
     from provisa.core.region_stores import bind_foreign_regions
 
     state._active_runtime().foreign_regions = await bind_foreign_regions(
-        org_id, state.model_db, pool_size=cp.pool_max, max_overflow=cp.max_overflow
+        org_id, env, state.model_db, pool_size=cp.pool_max, max_overflow=cp.max_overflow
     )
     state.model_db, state.tenant_db, state.record_db = await bind_region_stores(
         org_id,

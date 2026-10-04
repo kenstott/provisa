@@ -182,7 +182,8 @@ async def test_a_table_kept_in_another_region_is_read_at_its_replica_there(monke
         process_region._region = was
     sql = 'SELECT "o"."id" FROM "src"."public"."orders" AS "o"'
     assert address_replicas(sql, routes) == (
-        'SELECT "o"."id" FROM "region_eu"."org_acme_replicas"."src__public__orders" AS "o"'
+        # Where eu wrote it: eu's replicas schema (REQ-1922, names carry the region).
+        'SELECT "o"."id" FROM "region_eu"."org_acme_rg_eu_replicas"."src__public__orders" AS "o"'
     )
     assert attached == ["eu"]
 
@@ -335,8 +336,11 @@ async def test_a_read_of_a_built_home_replica_attaches_it_and_an_unreachable_one
     class _Backend:
         fail = False
 
-        def replica_address(self, state, *, source_id, schema_name, table_name):
-            return SimpleNamespace(schema="org_acme_replicas", table="crm__public__orders")
+        def replica_address(self, state, *, source_id, schema_name, table_name, region):
+            # Where the home region wrote it.
+            return SimpleNamespace(
+                schema=f"org_acme_rg_{region}_replicas", table="crm__public__orders"
+            )
 
         def attach_region_read(self, state, region, schema, table, build):
             if self.fail:
@@ -345,7 +349,7 @@ async def test_a_read_of_a_built_home_replica_attaches_it_and_an_unreachable_one
 
     backend = _Backend()
     await read_home_replica(_state(eu_state), backend, _TABLE, "eu")
-    assert attached == [("eu", "org_acme_replicas", "crm__public__orders")]
+    assert attached == [("eu", "org_acme_rg_eu_replicas", "crm__public__orders")]
     backend.fail = True
     with pytest.raises(HomeRegionUnavailable, match="cannot be reached"):
         await read_home_replica(_state(eu_state), backend, _TABLE, "eu")

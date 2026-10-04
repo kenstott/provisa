@@ -134,8 +134,11 @@ async def bind_region_stores(
         url = resolve_secrets(declared[store_id])
         return _engine_for(url, pool_size=pool_size, max_overflow=max_overflow)
 
-    search_path = model_db.search_path
-    assert search_path is not None  # an org handle is always scoped to its schema
+    # REQ-1922: the state and record a region keeps are named for it — two regions may keep them
+    # in one database instance; the model, every region's, keeps its own name.
+    from provisa.core.environments import org_schema
+
+    search_path = org_schema(org_id, env, region=region)
     tenant_db = Database(
         _engine("state", here.state), name="org-state", search_path=search_path, holds="state"
     )
@@ -150,8 +153,8 @@ async def bind_region_stores(
     if initialise:
         for db in {id(d.engine): d for d in (tenant_db, record_db)}.values():
             layout = Database(db.engine, name="org-layout", search_path=search_path)
-            await init_schema(layout, schema_sql, org_id=org_id, env=env)
-            await init_audit_schema(layout, org_id=org_id, env=env)
+            await init_schema(layout, schema_sql, org_id=org_id, env=env, region=region)
+            await init_audit_schema(layout, org_id=org_id, env=env, region=region)
     return OrgStores(model_db, tenant_db, record_db)
 
 
@@ -282,7 +285,12 @@ class HomeRegionUnavailable(RuntimeError):
 
 
 async def bind_foreign_regions(
-    org_id: str, model_db: "Database", *, pool_size: int, max_overflow: int
+    org_id: str,
+    env: str | None,
+    model_db: "Database",
+    *,
+    pool_size: int,
+    max_overflow: int,
 ) -> "dict[str, ForeignRegion]":
     """The org's regions other than this node's, by id. Empty with no platform regions."""
     from provisa.core import process_region
@@ -298,8 +306,8 @@ async def bind_foreign_regions(
         selected = await list_regions(conn)
         declared = {s.id: s.url for s in await list_stores(conn)}
     out: dict[str, ForeignRegion] = {}
-    search_path = model_db.search_path
-    assert search_path is not None  # an org handle is always scoped to its schema
+    from provisa.core.environments import org_schema
+
     for region in selected:
         if region.id == here:
             continue
@@ -312,8 +320,11 @@ async def bind_foreign_regions(
         out[region.id] = ForeignRegion(
             region.id,
             resolve_secrets(declared[region.replicas]),
-            Database(
-                state_engine, name=f"org-state-{region.id}", search_path=search_path, holds="state"
+            Database(  # REQ-1922: that region's state, under the name it keeps it by
+                state_engine,
+                name=f"org-state-{region.id}",
+                search_path=org_schema(org_id, env, region=region.id),
+                holds="state",
             ),
         )
     return out

@@ -66,7 +66,11 @@ CREATE INDEX IF NOT EXISTS idx_audit_user_time ON query_audit_log (user_id, logg
 
 
 async def init_audit_schema(
-    pool: "Database", org_id: str = "default", env: str | None = None
+    pool: "Database",
+    org_id: str = "default",
+    env: str | None = None,
+    *,
+    region: str | None = None,  # REQ-1922: the record a region keeps, in its own schema
 ) -> None:  # REQ-074, REQ-1488
     from provisa.core.db import SCHEMA_LOCK_KEY, _validate_org_id
     from provisa.core.environments import org_schema
@@ -80,7 +84,7 @@ async def init_audit_schema(
         return
     # REQ-1488: an environment is a schema of its own, so its query audit log is the one in its
     # own schema — an environment's reads are not entries in prod's log.
-    schema_name = org_schema(org_id, env)
+    schema_name = org_schema(org_id, env, region=region)
     async with pool.acquire() as conn:
         # Same advisory lock id as init_schema (provisa/core/db.py) — both bootstrap relations into
         # org_<id>, and two callers can run them concurrently for one org (provision_org runs

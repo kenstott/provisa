@@ -655,6 +655,11 @@ class _DockerServiceManager:
 
 
 def pytest_configure(config):
+    # REQ-1916/REQ-1922: the session is a launched node before anything is collected — a test
+    # module may name a replica at import, and a replica's name carries the node's region.
+    from provisa.core import process_region
+
+    process_region.bind_launch({}, requested=None)
     config.pluginmanager.register(_DockerServiceManager())
     config.addinivalue_line(
         "markers",
@@ -828,7 +833,7 @@ def _the_session_is_a_launched_node():
     launch binds them (``process_region.bind_from_environment``, the top of boot). An app built
     in-process by a fixture runs no launch, so the session stands in for it: a node of a platform
     that declares no regions, in the one implicit region. A test of regions binds its own and
-    restores this one."""
+    restores this one. (``pytest_configure`` binds it first, for what is named at collection.)"""
     from provisa.core import process_region
 
     process_region.bind_launch({}, requested=None)

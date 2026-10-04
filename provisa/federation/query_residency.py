@@ -238,11 +238,12 @@ async def read_home_replica(state: Any, backend: Any, table: Any, home: str) -> 
     from provisa.federation.backend import RegionStoreUnreachable
 
     record = await require_home_replica(state, table, home)
-    address = backend.replica_address(
+    address = backend.replica_address(  # where the home region wrote it (REQ-1922)
         state,
         source_id=table.source_id,
         schema_name=table.schema_name,
         table_name=table.table_name,
+        region=home,
     )
     build = (record.definition_hash, repr(record.built_columns))
     try:

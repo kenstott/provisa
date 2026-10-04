@@ -383,8 +383,12 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         region = state.foreign_regions[home]  # bound with the org: its selected regions
         name = physical.get(reg["table_name"], reg["table_name"])
         keys = engine_table_keys(engine, state.source_catalogs[src.id], reg["schema_name"], name)
-        address = backend.replica_address(
-            state, source_id=src.id, schema_name=reg["schema_name"], table_name=reg["table_name"]
+        address = backend.replica_address(  # where the home region wrote it (REQ-1922)
+            state,
+            source_id=src.id,
+            schema_name=reg["schema_name"],
+            table_name=reg["table_name"],
+            region=home,
         )
         route = ReplicaRoute(
             source_id=src.id,

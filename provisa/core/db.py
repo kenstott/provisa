@@ -369,9 +369,15 @@ async def _init_schema_portable(pool: "Database") -> None:
 
 
 async def init_schema(
-    pool: "Database", schema_sql: str, org_id: str = "default", env: str | None = None
+    pool: "Database",
+    schema_sql: str,
+    org_id: str = "default",
+    env: str | None = None,
+    *,
+    region: str | None = None,
 ) -> None:
-    """Execute schema SQL scoped to org_<org_id> schema (REQ-697).
+    """Execute schema SQL scoped to org_<org_id> schema (REQ-697) — the one ``region`` names, in
+    that region's store (REQ-1922: its state and record), else the org's model.
 
     PostgreSQL runs the raw ``schema.sql`` script inside an ``org_<id>`` schema.
     Non-PG backends bootstrap from portable ``schema_org`` metadata instead."""
@@ -381,14 +387,16 @@ async def init_schema(
     if getattr(pool, "dialect", "postgresql") != "postgresql":
         await _init_schema_portable(pool)
         return
-    schema_name = org_schema(org_id, env)
+    schema_name = org_schema(org_id, env, region=region)
     async with pool.acquire() as conn:
         # This branch is PostgreSQL-only (non-PG returned above); the advisory lock is taken through
         # the abstraction so no PG-specific lock SQL appears here.
         async with conn.advisory_lock(SCHEMA_LOCK_KEY):
             await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
             await conn.execute_core(
-                CreateSchema(org_schema(org_id, env, "_mv_cache"), if_not_exists=True)
+                CreateSchema(
+                    org_schema(org_id, env, "_mv_cache", region=region), if_not_exists=True
+                )
             )
             await conn.execute(f'SET search_path TO "{schema_name}"')
             # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg

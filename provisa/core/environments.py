@@ -93,25 +93,43 @@ def is_env_name(value: str | None) -> bool:
     return bool(value) and ENV_NAME_PATTERN.fullmatch(value) is not None  # type: ignore[arg-type]
 
 
-def org_schema(org_id: str, env: str | None = None, suffix: str = "") -> str:
+def region_part(region: str | None) -> str:
+    """What a region adds to the name of everything it keeps (REQ-1922, "regions may share a
+    database instance"): ``_rg_<region>``, so two regions pointed at one Postgres, or one Redis,
+    never share a schema or a key. None — the model, which every region shares — and the one
+    implicit region add nothing, so a deployment that declares no regions keeps today's names."""
+    from provisa.core.regions import DEFAULT_REGION
+
+    if region is None or region == DEFAULT_REGION:
+        return ""
+    return f"_rg_{region}"
+
+
+def org_schema(
+    org_id: str, env: str | None = None, suffix: str = "", *, region: str | None = None
+) -> str:
     """The schema an org's ``env`` occupies, optionally one of its ``SCHEMA_SUFFIXES`` stores.
 
     ``prod`` and ``None`` both give the pre-environment name, which is what makes an org that
     holds only prod indistinguishable from an org that predates environments entirely.
+    ``region`` names what one region keeps (its state, its record, its replicas and views, its
+    caches): see :func:`region_part`. The model is shared by the org's regions and names none.
     """
     if suffix not in SCHEMA_SUFFIXES:
         raise ValueError(f"unknown org store suffix: {suffix!r}")
-    if env is None or env == PROD:
-        return f"org_{org_id}{suffix}"
-    return f"org_{org_id}_env_{env}{suffix}"
+    scope = f"org_{org_id}" if env is None or env == PROD else f"org_{org_id}_env_{env}"
+    return f"{scope}{region_part(region)}{suffix}"
 
 
-def env_schemas(org_id: str, env: str | None = None) -> list[str]:
-    """Every store schema whose bytes belong to one environment of one org."""
-    return [org_schema(org_id, env, suffix) for suffix in SCHEMA_SUFFIXES]
+def env_schemas(org_id: str, env: str | None = None, *, region: str | None = None) -> list[str]:
+    """Every store schema whose bytes belong to one environment of one org — in ``region``, for
+    the stores a region keeps (REQ-1922)."""
+    return [org_schema(org_id, env, suffix, region=region) for suffix in SCHEMA_SUFFIXES]
 
 
-def active_org_schema(org_id: str, suffix: str = "") -> str:  # REQ-1623
+def active_org_schema(  # REQ-1623
+    org_id: str, suffix: str = "", *, region: str | None = None
+) -> str:
     """:func:`org_schema` for the environment bound to THIS context.
 
     The derived stores -- an MV's target, an API source's result cache, the GraphQL cache -- are
@@ -121,10 +139,17 @@ def active_org_schema(org_id: str, suffix: str = "") -> str:  # REQ-1623
     provisioning and dropped by ``deprovision_org`` -- was never written to: a write into prod plus
     a leak. Reading the environment from the ContextVar here puts every derived store inside
     ``env_schemas``, which is what already makes retiring an environment remove it.
+
+    REQ-1922: a derived store (any ``suffix``) is one region's — this node's, unless ``region``
+    names another (a read of that region's replicas). The model (no suffix) is every region's.
     """
     from provisa.core.request_context import active_env  # noqa: PLC0415
 
-    return org_schema(org_id, active_env(), suffix)
+    if suffix and region is None:
+        from provisa.core import process_region  # noqa: PLC0415
+
+        region = process_region.region()
+    return org_schema(org_id, active_env(), suffix, region=region)
 
 
 #: The longest name ``ENV_NAME_PATTERN`` itself admits, before any org-specific budget applies.

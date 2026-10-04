@@ -12,9 +12,12 @@
 dropped (REQ-1921, REQ-1922).
 
 Two real pg-engine nodes of one org, one in region ``eu`` and one in ``us``, over one SOURCE
-Postgres and an ENGINE Postgres holding the shared model store and each region's own store
-(engine, replicas, state and record: databases ``eu_store`` / ``us_store``), with a Redis as each
-region's cache. A replicated table naming no region is built in both regions. Then:
+Postgres and an ENGINE Postgres holding the shared model store and the regions' stores (engine,
+replicas, state and record), with a Redis as their cache. Run twice: each region with a database
+of its own (``eu_store`` / ``us_store``), and both regions keeping every store in ONE database and
+one Redis (REQ-1922, "regions may share a database instance": every object a region keeps
+carries its name, so nothing collides). A replicated table naming no region is built in both
+regions. Then:
 
 * it names ``eu``: the copy us built goes from us's store (retired, then dropped after the grace),
   eu's stays and answers; a read on us is answered from eu's replica in place and builds no copy
@@ -22,8 +25,8 @@ region's cache. A replicated table naming no region is built in both regions. Th
 * it names ``us``: the copy eu built goes from eu's store, us builds its own and answers, and a
   read on eu is answered from us's replica the same way.
 
-The table's region is written in the model store as the operator's change (the admin has no
-region field on this branch); the write advances the model stamp, so every node reloads.
+The table's region is written in the model store as the operator's change; the write advances
+the model stamp, so every node reloads.
 """
 
 # Requirements: REQ-1921, REQ-1922
@@ -51,18 +54,27 @@ from tests.integration.test_pg_engine_landing_never_writes_source_e2e import (
 pytestmark = [pytest.mark.integration]
 
 _NAME = "region_retire"
-_REPLICA = f'"org_{_NAME}_replicas"."src__public__orders"'
+
+
+def _replica(region: str) -> str:
+    """Where ``region`` keeps its copy: its replicas schema carries its name (REQ-1922)."""
+    return f'"org_{_NAME}_rg_{region}_replicas"."src__public__orders"'
+
+
 _RELOAD_S, _TIMEOUT_S = 0.5, 3
 _ID_AMOUNT = [(i, amount) for i, amount, _note in _ROWS]
 _MASTER_KEY = base64.b64encode(os.urandom(32)).decode()
 
 
 class _Stack:
-    """The source and engine Postgres, each region's store database, and a Redis."""
+    """The source and engine Postgres, the regions' store databases, and a Redis. ``shared``:
+    both regions keep every store in ONE database (and the one Redis) — REQ-1922, "regions may
+    share a database instance"; otherwise each region has a database of its own."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, shared: bool) -> None:
         from tests.port_lease import lease_ports
 
+        self.shared = shared
         self.pg = _SourceAndEngine()
         (self.redis_port,) = lease_ports(1)
         self._redis = f"provisa-itest-regretire-redis-{os.getpid()}"
@@ -70,8 +82,8 @@ class _Stack:
     def start(self) -> None:
         self.pg.start()
         with psycopg.connect(self.pg.url(self.pg.engine_port, "provisa"), autocommit=True) as c:
-            for region in ("eu", "us"):
-                c.execute(f"CREATE DATABASE {region}_store")
+            for name in ("shared",) if self.shared else ("eu", "us"):
+                c.execute(f"CREATE DATABASE {name}_store")
         subprocess.run(
             ["docker", "run", "-d", "--rm", "--name", self._redis]
             + ["-p", f"127.0.0.1:{self.redis_port}:6379", "redis:7-alpine"],
@@ -84,14 +96,19 @@ class _Stack:
         self.pg.stop()
 
     def store_url(self, region: str, driver: str = "") -> str:
-        return self.pg.url(self.pg.engine_port, f"{region}_store", driver)
+        database = "shared_store" if self.shared else f"{region}_store"
+        return self.pg.url(self.pg.engine_port, database, driver)
 
     def replica_rows(self, region: str) -> int | None:
         """The row count of ``region``'s copy, or None when its store has no such table."""
         with psycopg.connect(self.store_url(region), autocommit=True) as conn:
-            if conn.execute("SELECT to_regclass(%s)", (_REPLICA,)).fetchone()[0] is None:
+            if conn.execute("SELECT to_regclass(%s)", (_replica(region),)).fetchone()[0] is None:
                 return None
-            return conn.execute(f"SELECT COUNT(*) FROM {_REPLICA}").fetchone()[0]
+            try:
+                return conn.execute(f"SELECT COUNT(*) FROM {_replica(region)}").fetchone()[0]
+            except psycopg.errors.UndefinedTable:
+                # Dropped between the two statements: the drop the caller is waiting for.
+                return None
 
     def set_region(self, region: str | None) -> None:
         """The operator's change of the table's region, in the shared model store."""
@@ -228,9 +245,9 @@ def _wait(condition, *, seconds: float, what: str) -> None:
         time.sleep(0.25)
 
 
-@pytest.fixture
-def stack():
-    s = _Stack()
+@pytest.fixture(params=[False, True], ids=["a-database-per-region", "one-shared-instance"])
+def stack(request):
+    s = _Stack(shared=request.param)
     s.start()
     try:
         yield s

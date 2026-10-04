@@ -40,11 +40,15 @@ from typing import Any
 
 
 def cache_place(state: Any) -> str:
-    """The acting org and environment: whose cached data this is, whatever model it holds."""
+    """The acting org and environment — and this node's region (REQ-1922: regions may share one
+    Redis): whose cached data this is, whatever model it holds."""
     from provisa.api.org_runtime import runtime_key
+    from provisa.core import process_region
+    from provisa.core.environments import region_part
     from provisa.core.request_context import current_env, current_org
 
-    return runtime_key(current_org.get() or state.org_id, current_env.get())
+    place = runtime_key(current_org.get() or state.org_id, current_env.get())
+    return f"{place}{region_part(process_region.region())}"
 
 
 def cache_tenant(state: Any) -> str:

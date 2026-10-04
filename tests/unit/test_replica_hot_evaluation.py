@@ -132,12 +132,12 @@ async def world(tmp_path, monkeypatch):
         hot_manager=None,
         federation_engine=_Engine({"orders": 5000, "items": 5000}),
     )
-    scope = count_scope(org, "prod")
+    scope = count_scope(org, "prod")  # the session's node: no platform regions
 
     def seen(table_id: int, statements: int) -> None:
         """The statements that read ``table_id`` in the current interval, as the audit writer
-        counts them."""
-        state.hot_counts.add({(scope, table_id): statements}, _INTERVAL)
+        counts them — under the scope of the node's region as it is when they are read."""
+        state.hot_counts.add({(count_scope(org, "prod"), table_id): statements}, _INTERVAL)
 
     async def stored() -> dict:
         async with db.acquire() as conn:
