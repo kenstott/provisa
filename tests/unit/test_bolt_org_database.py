@@ -139,3 +139,51 @@ class TestTheDatabaseOrgBindsTheSession:
     async def test_member_orgs_are_listed(self, monkeypatch):
         session = self._session(monkeypatch)
         assert await session._member_orgs() == ["acme", "beta"]
+
+
+class TestRoleSetDatabase:
+    """REQ-1620: ``provisa_<a>,<b>`` names a set of held roles, which acts as their meta-role."""
+
+    @staticmethod
+    def _session(roles, org_id=None):
+        from types import SimpleNamespace
+
+        from provisa.bolt.session import BoltSession
+
+        session = BoltSession(SimpleNamespace(), (5, 4))  # type: ignore[arg-type]
+        session.roles = roles
+        session.org_id = org_id
+        return session
+
+    def test_a_set_of_held_roles_is_named_whole(self):
+        session = self._session(["analyst", "auditor"])
+        assert session._resolve_db("provisa_analyst,auditor") == ("analyst,auditor", False)
+        assert session._resolve_db("provisa_ops_auditor, analyst") == ("auditor,analyst", True)
+
+    def test_a_set_with_a_role_not_held_is_not_accessible(self):
+        session = self._session(["analyst"])
+        assert session._resolve_db("provisa_analyst,org_admin") is None
+
+    def test_a_meta_role_named_directly_is_not_accessible(self):
+        session = self._session(["analyst", "auditor"])
+        assert session._resolve_db("provisa_meta:analyst+auditor") is None
+
+    def test_the_set_acts_as_its_meta_role_built_in_the_sessions_org(self, monkeypatch):
+        import provisa.security.meta_role as meta_role
+        from provisa.core.request_context import current_org
+
+        built = []
+
+        def _ensure(state, members):
+            built.append((current_org.get(), members))
+            return meta_role.meta_role_id(members)
+
+        monkeypatch.setattr(meta_role, "ensure_meta_role", _ensure)
+        session = self._session(["analyst", "auditor"], org_id="acme")
+        assert session._meta_role(object(), "auditor,analyst") == "meta:analyst+auditor"
+        assert built == [("acme", ["analyst", "auditor"])]
+
+    def test_a_role_not_held_is_refused_by_name(self):
+        session = self._session(["analyst"])
+        with pytest.raises(PermissionError, match="'org_admin'"):
+            session._meta_role(object(), "analyst,org_admin")

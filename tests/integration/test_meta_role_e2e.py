@@ -18,8 +18,10 @@ does — so acting as (analyst, org_admin) is exactly acting as org_admin."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 
@@ -147,3 +149,80 @@ def test_a_meta_role_named_directly_is_refused(server):
         server, "meta:analyst+org_admin", "/data/sql", {"sql": "SELECT id FROM sales.orders"}
     )
     assert status == 403 and "is not a role" in str(body), body
+
+
+# --- the same sets over Bolt, pgwire and MCP ------------------------------------------------------
+
+
+def _pgwire(boot, roles: str) -> list[dict]:
+    import psycopg
+
+    with psycopg.connect(
+        host="127.0.0.1",
+        port=boot.ports["pgwire"],
+        user=roles,
+        password="provisa",
+        dbname="provisa",
+        autocommit=True,
+        connect_timeout=30,
+    ) as conn:
+        rows = conn.execute("SELECT id, region, email FROM sales.orders ORDER BY id").fetchall()
+    return [{"id": i, "region": r, "email": e} for i, r, e in rows]
+
+
+def _bolt(boot, roles: str) -> list[dict]:
+    from neo4j import GraphDatabase
+
+    driver = GraphDatabase.driver(f"bolt://127.0.0.1:{boot.ports['bolt']}", auth=("anyone", ""))
+    try:
+        with driver.session(database=f"provisa_{roles}") as sess:
+            rows = sess.run(
+                "MATCH (n:Orders) RETURN n.id AS id, n.region AS region, n.email AS email "
+                "ORDER BY id"
+            )
+            return [dict(rec) for rec in rows]
+    finally:
+        driver.close()
+
+
+def _mcp(boot, roles: str) -> list[dict]:
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+
+    async def _call() -> tuple[bool, str]:
+        url = f"http://127.0.0.1:{boot.ports['mcp']}/mcp"
+        async with streamablehttp_client(url) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(
+                    "run_sql",
+                    {
+                        "sql": "SELECT id, region, email FROM sales.orders ORDER BY id",
+                        "role": roles,
+                        "limit": 50,
+                    },
+                )
+                return bool(result.isError), "".join(getattr(c, "text", "") for c in result.content)
+
+    # Asserted out here: inside the client's task group a failure arrives wrapped in a group.
+    is_error, text = asyncio.run(_call())
+    assert not is_error, text
+    found = re.findall(r'"id":\s*(\d+),\s*"region":\s*"(\w+)",\s*"email":\s*"([^"]*)"', text)
+    assert found, text
+    return [{"id": int(i), "region": r, "email": e} for i, r, e in found]
+
+
+@pytest.mark.parametrize("read", [_pgwire, _bolt, _mcp])
+def test_every_transport_acts_as_the_set(server, read):
+    assert read(server, "analyst,org_admin") == _ALL
+    rows = read(server, "west_reader,east_reader")
+    assert [(r["id"], r["region"], r["email"]) for r in rows] == [
+        (1, "east", "***"),
+        (2, "west", "***"),
+    ]
+
+
+@pytest.mark.parametrize("read", [_pgwire, _bolt, _mcp])
+def test_every_transport_refuses_a_meta_role_named_directly(server, read):
+    with pytest.raises(Exception, match="is not a role|does not exist or is not accessible"):
+        read(server, "meta:analyst+org_admin")

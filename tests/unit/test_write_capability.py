@@ -105,3 +105,9 @@ def test_a_landed_replica_is_no_write_route_to_its_source():
         "update",
         "delete",
     }
+
+
+@pytest.mark.parametrize("source_id", ["provisa-admin", "provisa-otel"])
+def test_the_catalog_takes_no_writes(source_id):
+    table = {"table_name": "roles", "source_id": source_id}
+    assert table_write_ops(table, "postgresql", None) == frozenset()

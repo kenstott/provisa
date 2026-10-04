@@ -215,7 +215,10 @@ class BoltSession:
             provider = "none"
         else:
             provider = app_state.auth_config["provider"]
-        all_roles = list(app_state.contexts.keys())
+        from provisa.security.meta_role import is_meta_role_id
+
+        # A meta-role is made from roles a session names, never selected by its own id.
+        all_roles = [r for r in app_state.contexts if not is_meta_role_id(r)]
 
         if provider == "none" or not getattr(app_state, "auth_middleware_active", False):
             # No auth — every role is available; default to principal if it names a real role.
@@ -292,6 +295,17 @@ class BoltSession:
         ordered = [mapped, *[r for r in held if r != mapped]]
         return [r for r in ordered if r in app_state.contexts]
 
+    def _meta_role(self, app_state: Any, named: str) -> str:
+        from provisa.core.request_context import reset_current_org, set_current_org
+        from provisa.security.meta_role import resolve_requested_role
+
+        token = set_current_org(self.org_id) if self.org_id is not None else None
+        try:
+            return resolve_requested_role(app_state, set(self.roles), named)
+        finally:
+            if token is not None:
+                reset_current_org(token)
+
     def _resolve_db(self, db: Any) -> tuple[str, bool] | None:
         """Map a Bolt `db` value to (role_id, include_ops), or None if unauthorized.
 
@@ -299,19 +313,21 @@ class BoltSession:
           provisa_ops_<role> → role + ops/meta domains included
           provisa_<role>     → role + business domains only (ops/meta excluded)
         Empty / "system" / "provisa" → default role, business view.
-        The role must be in the user's set; anything else → None.
+        ``<role>`` may be a comma-separated set of held roles, which acts as their meta-role
+        (security/meta_role.py; resolved once the session's org is bound). Every role must be in
+        the user's set; anything else → None.
         """
         if not self.roles:
             return None
         default = self.roles[0]
         if not db or db in ("system", "provisa"):
             return default, False
-        if isinstance(db, str) and db.startswith("provisa_ops_"):
-            role = db[len("provisa_ops_") :]
-            return (role, True) if role in self.roles else None
-        if isinstance(db, str) and db.startswith("provisa_"):
-            role = db[len("provisa_") :]
-            return (role, False) if role in self.roles else None
+        for prefix, include_ops in (("provisa_ops_", True), ("provisa_", False)):
+            if isinstance(db, str) and db.startswith(prefix):
+                named = [r.strip() for r in db[len(prefix) :].split(",") if r.strip()]
+                if named and all(r in self.roles for r in named):
+                    return ",".join(named), include_ops
+                return None
         return None
 
     # ── Message handlers ───────────────────────────────────────────────────────
@@ -549,6 +565,14 @@ class BoltSession:
         except OrgResolutionError as exc:
             self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
             return
+
+        if "," in role_id:
+            # A set of held roles acts as their meta-role, built in this session's org.
+            try:
+                role_id = self._meta_role(_app_state, role_id)
+            except PermissionError as exc:
+                self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
+                return
 
         # REQ-1194/REQ-1195: a caller requests materialization via Bolt transaction metadata — the
         # side-channel that rides RUN's `extra` map without touching the record stream. The handle is
