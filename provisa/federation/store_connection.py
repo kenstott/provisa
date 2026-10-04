@@ -32,6 +32,7 @@ text on insert).
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from sqlalchemy.schema import CreateSchema, CreateTable
@@ -45,6 +46,15 @@ def _duckdb_dialect() -> Any:
     import duckdb_engine
 
     return duckdb_engine.Dialect()
+
+
+def _cell(value: Any) -> Any:
+    """A row value as the registered DataFrame must carry it. A dict or list is a JSON value: it goes
+    in as JSON text, because DuckDB reads a Python object cell through its repr
+    (``{'k': 7}``), which is not JSON and fails the JSON column's cast."""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value)
+    return value
 
 
 def _bulk_insert_rows(cur: Any, qualified: str, colnames: list[str], rows: list[dict]) -> None:
@@ -72,7 +82,7 @@ def _bulk_insert_rows(cur: Any, qualified: str, colnames: list[str], rows: list[
 
     view_name = f"_bulk_insert_{uuid.uuid4().hex}"
     df = pd.DataFrame(
-        [{cn: r.get(cn) for cn in colnames} for r in rows], columns=pd.Index(colnames)
+        [{cn: _cell(r.get(cn)) for cn in colnames} for r in rows], columns=pd.Index(colnames)
     )
     cur.register(view_name, df)
     try:

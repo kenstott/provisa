@@ -321,3 +321,23 @@ def test_land_row_cache_arrow_stamps_and_lands_through_the_broker(tmp_path):
     for _, _, _, cached, expires in rows:
         assert before <= cached <= datetime.now(UTC).replace(tzinfo=None)
         assert expires - cached == timedelta(seconds=300)
+
+
+def test_a_json_column_takes_a_dict_value_as_json(store_con):
+    # A source that hands back a parsed JSON value (a dict or list, e.g. a data-quality outcome's
+    # diagnostics) lands as that JSON, not as Python's repr of it.
+    land_duckdb_native(
+        store_con,
+        catalog="mat_store",
+        schema="mat",
+        table="pets",
+        columns=COLS,
+        rows=[
+            {"id": 1, "s": "a", "j": {"observed_value": 7}},
+            {"id": 2, "s": "b", "j": [1, "x"]},
+        ],
+    )
+    got = store_con.execute(
+        'SELECT id, CAST(j AS VARCHAR) FROM mat_store.mat."pets" ORDER BY id'
+    ).fetchall()
+    assert [(i, json.loads(t)) for i, t in got] == [(1, {"observed_value": 7}), (2, [1, "x"])]
