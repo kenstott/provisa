@@ -456,6 +456,11 @@ class AppState:
         return self._active_runtime().tenant_db
 
     @property
+    def foreign_regions(self) -> dict[str, Any]:
+        """The active org's other regions (REQ-1922; ``OrgRuntime.foreign_regions``)."""
+        return self._active_runtime().foreign_regions
+
+    @property
     def record_db(self) -> Database | None:
         """The acting org's RECORD in this region (query_audit_log, query_sla_log) — REQ-1922."""
         return self._active_runtime().record_db
@@ -1588,6 +1593,11 @@ async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> Non
     assert state.model_db is not None  # opened with the runtime, before its model was loaded
     cp = load_control_plane(config_path_str())
     await _bind_region_cache(org_id)
+    from provisa.core.region_stores import bind_foreign_regions
+
+    state._active_runtime().foreign_regions = await bind_foreign_regions(
+        org_id, state.model_db, pool_size=cp.pool_max, max_overflow=cp.max_overflow
+    )
     state.model_db, state.tenant_db, state.record_db = await bind_region_stores(
         org_id,
         env,
@@ -2920,6 +2930,18 @@ def create_app() -> FastAPI:
             headers=exc.headers,
         )
 
+    from provisa.core.region_stores import HomeRegionUnavailable as _HomeRegionUnavailable
+
+    @app.exception_handler(_HomeRegionUnavailable)
+    async def _home_region_handler(_req: _Request, exc: _HomeRegionUnavailable):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1922: a table kept in another region is read only from its replica there; while that
+        # replica is not built, or its region cannot be reached, the read is refused — 503, the
+        # answer exists but cannot be given from here now.
+        return _JSONResponse(
+            status_code=503,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     from provisa.core.operator_floor import OperatorFloorError as _OperatorFloorError
 
     from provisa.compiler.complexity import ComplexityLimitExceeded as _ComplexityLimitExceeded
@@ -2977,18 +2999,6 @@ def create_app() -> FastAPI:
         return _JSONResponse(
             status_code=403,
             content={"detail": str(exc), "code": "query.operator_floor", "params": {}},
-        )
-
-    from provisa.core.region_stores import HomeRegionUnavailable as _HomeRegionUnavailable
-
-    @app.exception_handler(_HomeRegionUnavailable)
-    async def _home_region_handler(_req: _Request, exc: _HomeRegionUnavailable):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
-        # REQ-1922: a table kept in another region is read only from its replica there; while that
-        # replica cannot be read from here the read is refused — 503, the answer exists but
-        # cannot be given from here now.
-        return _JSONResponse(
-            status_code=503,
-            content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 
     @app.exception_handler(Exception)

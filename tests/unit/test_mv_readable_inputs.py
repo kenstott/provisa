@@ -196,6 +196,8 @@ def test_a_config_load_fails_on_the_first_view_it_cannot_build(state):
 
 
 class _Engine:
+    dialect = "trino"  # the dialect its statements are written in (EngineRuntime.dialect)
+
     def __init__(self) -> None:
         self.sqls: list[str] = []
 

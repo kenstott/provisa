@@ -91,11 +91,12 @@ def _source(source_id: str, kind: str) -> SimpleNamespace:
         cache_ttl=None,
         off_peak_window=None,
         change_signal="ttl",
+        region=None,
     )
 
 
 def _table(source_id: str, name: str) -> SimpleNamespace:
-    return SimpleNamespace(source_id=source_id, schema_name="public", table_name=name)
+    return SimpleNamespace(source_id=source_id, schema_name="public", table_name=name, region=None)
 
 
 def _state() -> SimpleNamespace:
@@ -155,6 +156,7 @@ def test_a_source_registered_after_boot_is_reachable_on_the_next_query():
     backend._runtime_for(state)
     state.runtime_sources = {
         "pg2": {
+            "region": None,
             "type": "postgresql",
             "host": "h2",
             "port": 2,

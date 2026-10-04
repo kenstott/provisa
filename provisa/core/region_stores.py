@@ -30,24 +30,9 @@ from typing import TYPE_CHECKING, NamedTuple
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
-    from provisa.core.database import OrgStores
+    from provisa.core.database import Database, OrgStores
     from provisa.core.model_change import ModelPlane
     from provisa.core.regions import OrgRegion, StoreConfig
-
-
-class HomeRegionUnavailable(RuntimeError):
-    """A table that names another region is read from that region's replica, never live and
-    never from a copy here (REQ-1922): refused while that replica cannot be read from here."""
-
-    code = "query.home_region_unavailable"
-
-    def __init__(self, table: str, region: str, why: str) -> None:
-        self.table, self.region = table, region
-        self.params = {"table": table, "region": region}
-        super().__init__(
-            f"table {table!r} is kept in region {region!r} and is read only from its replica "
-            f"there, which {why}"
-        )
 
 
 class StoreNotDeclared(LookupError):
@@ -269,3 +254,66 @@ def refuse_lane_conflict(
     ]
     if fields:
         raise RegionLaneConflict(org_id, process_region.region(), fields)
+
+
+class ForeignRegion(NamedTuple):
+    """Another region of the org, as a node of this region reads it (REQ-1922): the store its
+    replicas are kept in (a table that names it is read from there) and its state store, where
+    whether that replica is built is recorded. Read only."""
+
+    id: str
+    replicas_url: str
+    state_db: "Database"
+
+
+class HomeRegionUnavailable(RuntimeError):
+    """A table that names another region is read from that region's replica, never live: refused
+    while that replica is not built or that region's stores cannot be reached."""
+
+    code = "query.home_region_unavailable"
+
+    def __init__(self, table: str, region: str, why: str) -> None:
+        self.table, self.region = table, region
+        self.params = {"table": table, "region": region}
+        super().__init__(
+            f"table {table!r} is kept in region {region!r} and is read only from its replica "
+            f"there, which {why}"
+        )
+
+
+async def bind_foreign_regions(
+    org_id: str, model_db: "Database", *, pool_size: int, max_overflow: int
+) -> "dict[str, ForeignRegion]":
+    """The org's regions other than this node's, by id. Empty with no platform regions."""
+    from provisa.core import process_region
+    from provisa.core.database import Database
+    from provisa.core.regions import DEFAULT_REGION
+    from provisa.core.repositories.region import list_regions, list_stores
+    from provisa.core.secrets import resolve_secrets
+
+    here = process_region.region()
+    if here == DEFAULT_REGION:
+        return {}
+    async with model_db.acquire() as conn:
+        selected = await list_regions(conn)
+        declared = {s.id: s.url for s in await list_stores(conn)}
+    out: dict[str, ForeignRegion] = {}
+    search_path = model_db.search_path
+    assert search_path is not None  # an org handle is always scoped to its schema
+    for region in selected:
+        if region.id == here:
+            continue
+        for role, store_id in (("replicas", region.replicas), ("state", region.state)):
+            if store_id not in declared:
+                raise StoreNotDeclared(org_id, region.id, role, store_id)
+        state_engine = _engine_for(
+            resolve_secrets(declared[region.state]), pool_size=pool_size, max_overflow=max_overflow
+        )
+        out[region.id] = ForeignRegion(
+            region.id,
+            resolve_secrets(declared[region.replicas]),
+            Database(
+                state_engine, name=f"org-state-{region.id}", search_path=search_path, holds="state"
+            ),
+        )
+    return out

@@ -206,6 +206,27 @@ class ReplicaAgeUnknown(RuntimeError):
         )
 
 
+async def require_home_replica(state: Any, table: Any, home: str) -> None:
+    """Refuse a read of ``table``, kept in region ``home``, unless its replica there is built
+    (REQ-1922): such a table is read only from that replica, never live. Whether it is built is
+    the home region's record, read from its state store; a store that cannot be reached refuses
+    the read the same way (``query.home_region_unavailable``)."""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from provisa.core.region_stores import HomeRegionUnavailable
+    from provisa.federation import replica_state
+
+    region = state.foreign_regions[home]  # bound with the org: a table names a selected region
+    key = (table.source_id, table.schema_name, table.table_name)
+    try:
+        async with region.state_db.acquire() as conn:
+            record = await replica_state.read(conn, key)
+    except (SQLAlchemyError, OSError) as exc:
+        raise HomeRegionUnavailable(table.table_name, home, "cannot be reached") from exc
+    if record is None or not record.exists or record.retired_at is not None:
+        raise HomeRegionUnavailable(table.table_name, home, "is not built")
+
+
 async def ensure_resident(
     state: Any,
     source_ids: Iterable[str],
@@ -290,24 +311,25 @@ async def ensure_resident(
 
     by_id = {s.id: s for s in sources}
     tables_by_source: dict[str, list[Any]] = {}
+    elsewhere: list[tuple[Any, str]] = []
     for t in await registered_tables(state):
         if t.source_id not in wanted or t.id not in read:
             continue
         home = home_region(by_id[t.source_id], t)
         if not builds_here(home):
-            # REQ-1922: kept in another region — read only from its replica there, never live
-            # and never from a copy built here. Reading that region's store in place is not
-            # wired yet, so the read is refused by name (never a local build, never a raw error).
-            from provisa.core.region_stores import HomeRegionUnavailable
-
+            # REQ-1922: kept in another region, read from its replica there and never live; it
+            # is never built here (the address seam routes the read).
             assert home is not None  # builds_here is True for a table naming no region
-            raise HomeRegionUnavailable(t.table_name, home, "cannot be read from this region")
+            elsewhere.append((t, home))
+            continue
         if not _lands(t):
             continue
         # Only a whole copy is built for a read: not a row-level table's (its rows come by
         # key) and not a parameterized table's (a function of its arguments has no whole).
         if whole_copy(by_id[t.source_id], t, engine):
             tables_by_source.setdefault(t.source_id, []).append(t)
+    for t, home in elsewhere:
+        await require_home_replica(state, t, home)
     # REQ-826 / REQ-1141: a table the operator's settings put on its replica moves its source's
     # read there for this statement, even where the engine could attach the source.
     replicated_by = {s.id: _replicated(state, tables_by_source.get(s.id, [])) for s in sources}

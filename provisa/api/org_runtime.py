@@ -141,6 +141,9 @@ class OrgRuntime:
     tenant_db: "Database | None" = None
     # REQ-1922: this region's request record (query_audit_log, query_sla_log).
     record_db: "Database | None" = None
+    # REQ-1922: the org's other regions, by id (region_stores.ForeignRegion): a table one of them
+    # names is read from its replica there. Empty with no platform regions.
+    foreign_regions: dict[str, Any] = field(default_factory=dict)
 
     # Physical connection + source metadata (source_id → …).
     source_pools: SourcePool = field(default_factory=SourcePool)

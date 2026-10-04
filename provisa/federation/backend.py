@@ -38,6 +38,19 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
+class EngineReadsNoOtherRegion(RuntimeError):
+    """An engine that cannot attach another region's replicas store (REQ-1922)."""
+
+    code = "query.engine_reads_no_other_region"
+
+    def __init__(self, engine: str, region: str) -> None:
+        self.params = {"engine": engine, "region": region}
+        super().__init__(
+            f"the {engine} engine cannot read region {region!r}'s replicas store, so a table kept "
+            "there cannot be read from this region on it"
+        )
+
+
 class EngineBackend:
     """Default backend for native in-process engines (duckdb/pg/clickhouse/sqlalchemy).
 
@@ -233,6 +246,14 @@ class EngineBackend:
     def _store_catalog(self, state: Any, org_id: str) -> str:
         """The catalog this engine names its materialization store by: that of its MV target."""
         return self.materialize_store_target(state, org_id)[0]
+
+    def region_read_catalog(self, state: Any, region: Any) -> str:
+        """The catalog a statement names another region's replicas store by (REQ-1922), attaching
+        it on first use: a table that region names is read from its replica there. ``region`` is
+        a ``region_stores.ForeignRegion``. An engine with no way to attach another store refuses,
+        naming itself — it is never read live in its place."""
+        del state
+        raise EngineReadsNoOtherRegion(self.engine.name, region.id)
 
     def pending_lands(
         self,

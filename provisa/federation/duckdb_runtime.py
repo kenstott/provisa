@@ -193,6 +193,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._pg_ext_loaded = False  # postgres DuckDB extension INSTALL/LOAD (source ATTACH)
         self._httpfs_loaded = False  # httpfs INSTALL/LOAD for S3-compatible (e.g. R2) sources
         self._store_attached = False  # materialization-store ATTACH (distinct from source attaches)
+        # REQ-1922: the other regions' replicas stores this connection has attached, by alias.
+        self._region_stores: set[str] = set()
         # REQ-1901: set instead of a `mat_store` ATTACH when the store is embedded DuckDB — see
         # ensure_materialize_attached. A statement's `mat_store.<schema>.<table>` reads (a replica,
         # a materialized view) are served by the query-time refresh in run/run_sync/run_arrow/
@@ -753,6 +755,28 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._con.execute(f"ATTACH '{target}' AS {self._MAT_STORE} (TYPE {store_type})")
             self._store_attached = True
         return self._MAT_STORE
+
+    def attach_region_store(self, region_id: str, dsn: str) -> str:
+        """ATTACH another region's replicas store READ_ONLY under ``region_<id>`` (idempotent) and
+        return the alias (REQ-1922): a table that region names is read from its replica there.
+        Only a server store attaches: an embedded DuckDB file belongs to the nodes of its own
+        region (refused at load — ``regions.validate_regions``)."""
+        from sqlalchemy import make_url
+
+        alias = f"region_{region_id}"
+        if alias in self._region_stores:
+            return alias
+        store_type = self._ATTACH_TYPE_BY_SCHEME.get(make_url(dsn).get_backend_name())
+        if store_type is None or store_type in self._FILE_ATTACH_TYPES:
+            raise RuntimeError(
+                f"region {region_id!r} replicas store is not a server store this engine can attach"
+            )
+        if store_type not in self._NO_EXTENSION_TYPES:
+            self._con.execute(f"INSTALL {store_type}")
+            self._con.execute(f"LOAD {store_type}")
+        self._con.execute(f"ATTACH '{dsn}' AS {alias} (TYPE {store_type}, READ_ONLY)")
+        self._region_stores.add(alias)
+        return alias
 
     @property
     def connection(self):
