@@ -47,6 +47,7 @@ async def test_clickhouse_runtime_federates_csv_source():
     try:
         src = SimpleNamespace(
             id="cust",
+            catalog="cust",
             type=SimpleNamespace(value="csv"),
             path=str(_FILES / "customers.csv"),
             schema_name="sales",
@@ -55,10 +56,10 @@ async def test_clickhouse_runtime_federates_csv_source():
         )
         rt.attach_source(src)
 
-        res = rt.run_sync('SELECT count(*) AS n FROM "sales"."customers"')
+        res = rt.run_sync('SELECT count(*) AS n FROM "cust_sales"."customers"')
         assert res.rows[0][0] > 0
 
-        rows = rt.run_sync('SELECT "id" FROM "sales"."customers" ORDER BY "id" LIMIT 3')
+        rows = rt.run_sync('SELECT "id" FROM "cust_sales"."customers" ORDER BY "id" LIMIT 3')
         assert len(rows.rows) == 3
     finally:
         rt.close()
@@ -72,6 +73,7 @@ async def test_detach_removes_the_live_view_and_nothing_else():
     try:
         src = SimpleNamespace(
             id="cust",
+            catalog="cust",
             type=SimpleNamespace(value="csv"),
             path=str(_FILES / "customers.csv"),
             schema_name="sales",
@@ -79,16 +81,18 @@ async def test_detach_removes_the_live_view_and_nothing_else():
             federation_hints={},
         )
         rt.attach_source(src)
-        assert rt.run_sync('SELECT count(*) FROM "sales"."customers"').rows[0][0] > 0
+        assert rt.run_sync('SELECT count(*) FROM "cust_sales"."customers"').rows[0][0] > 0
 
         rt.detach_source(src)
         with pytest.raises(Exception, match="(?i)unknown|doesn't exist|does not exist"):
-            rt.run_sync('SELECT count(*) FROM "sales"."customers"')
+            rt.run_sync('SELECT count(*) FROM "cust_sales"."customers"')
         rt.detach_source(src)  # nothing left: no error
 
-        rt._backend.command('CREATE TABLE "sales"."kept" (id Int32) ENGINE = Memory')
-        rt.detach_source(SimpleNamespace(id="cust", schema_name="sales", table_name="kept"))
-        assert rt.run_sync('SELECT count(*) FROM "sales"."kept"').rows[0][0] == 0
+        rt._backend.command('CREATE TABLE "cust_sales"."kept" (id Int32) ENGINE = Memory')
+        rt.detach_source(
+            SimpleNamespace(id="cust", catalog="cust", schema_name="sales", table_name="kept")
+        )
+        assert rt.run_sync('SELECT count(*) FROM "cust_sales"."kept"').rows[0][0] == 0
     finally:
         rt.close()
 
@@ -102,6 +106,7 @@ async def test_clickhouse_runtime_federates_sqlite_source(tmp_path):
     try:
         src = SimpleNamespace(
             id="shop",
+            catalog="shop",
             type=SimpleNamespace(value="sqlite"),
             path=str(db),
             schema_name="inv",
@@ -110,10 +115,10 @@ async def test_clickhouse_runtime_federates_sqlite_source(tmp_path):
         )
         rt.attach_source(src)
 
-        total = rt.run_sync('SELECT count(*) AS n FROM "inv"."widget"')
+        total = rt.run_sync('SELECT count(*) AS n FROM "shop_inv"."widget"')
         assert total.rows[0][0] == 3
 
-        rows = rt.run_sync('SELECT "name" FROM "inv"."widget" WHERE "qty" >= 20 ORDER BY "id"')
+        rows = rt.run_sync('SELECT "name" FROM "shop_inv"."widget" WHERE "qty" >= 20 ORDER BY "id"')
         assert [r[0] for r in rows.rows] == ["gear", "cog"]
     finally:
         rt.close()
@@ -145,6 +150,7 @@ async def test_clickhouse_config_driven_connector_federates_sqlite(tmp_path, mon
         assert rt._engine.reachable("sqlite_custom")  # the descriptor granted reach — no code
         src = SimpleNamespace(
             id="ledger",
+            catalog="ledger",
             type=SimpleNamespace(value="sqlite_custom"),
             path=str(db),
             schema_name="fin",
@@ -153,7 +159,7 @@ async def test_clickhouse_config_driven_connector_federates_sqlite(tmp_path, mon
         )
         rt.attach_source(src)
 
-        rows = rt.run_sync('SELECT "id", "name" FROM "fin"."widget" ORDER BY "id"')
+        rows = rt.run_sync('SELECT "id", "name" FROM "ledger_fin"."widget" ORDER BY "id"')
         assert [(r[0], r[1]) for r in rows.rows] == [(1, "sprocket"), (2, "gear"), (3, "cog")]
     finally:
         rt.close()

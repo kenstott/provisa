@@ -480,24 +480,22 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         ``columns`` (name, clickhouse_type) is required only for engines that cannot infer their
         schema (MongoDB); file/relational engines ignore it.
 
-        Bare ``schema_name`` (no catalog fold), unchanged by REQ-1730's ``catalog_qualified=False``:
-        a live-attached source reaches this method only via ``Route.DIRECT`` (a single VIRTUAL
-        source), which ``strip_catalog`` already drops the catalog for entirely — the SAME
-        unqualified name this method has always created. ``fold_catalog_into_schema`` (this
-        engine's OWN new ``catalog_qualified=False``) only ever applies to ``Route.ENGINE``, which
-        MATERIALIZED sources take (their replicas are addressed in the replicas schema, REQ-1912)
-        — a live-attached source under Route.ENGINE (e.g. joined with
-        another source) is a genuinely untested combination this session's scope did not reach;
-        reverted here after breaking test_clickhouse_runtime_e2e.py's own ``"fin"."widget"``
-        assertions, which exercise this exact method directly and predate REQ-1730.
+        The view lives at ``live_view_schema(source.catalog, schema_name)``: the schema the engine
+        route's SQL names it by on this catalog-incapable engine (``fold_catalog_into_schema``,
+        REQ-1730), and a name carrying the source's org and environment (its catalog name,
+        REQ-1266/1529), as every database the engine keeps for the source does.
         """
+        from provisa.compiler.naming import live_view_schema
         from provisa.federation.replica_guard import refuse_live_in_write_surface
 
-        refuse_live_in_write_surface(source.schema_name, source.table_name)  # REQ-1912
+        # REQ-1266/1529/1730: under the source's catalog name, which carries its org and
+        # environment — where the engine route's folded SQL reads it.
+        schema = live_view_schema(source.catalog, source.schema_name)
+        refuse_live_in_write_surface(schema, source.table_name)  # REQ-1912
         entry = self._engine.resolve(source)  # picks the (clickhouse, source_type) connector
         details = entry.details
-        self._backend.command(f'CREATE DATABASE IF NOT EXISTS "{source.schema_name}"')
-        phys = f'"{source.schema_name}"."{source.table_name}"'
+        self._backend.command(f'CREATE DATABASE IF NOT EXISTS "{schema}"')
+        phys = f'"{schema}"."{source.table_name}"'
         if "attach_ddl" in details:  # relational DATABASE engine (postgresql/mysql)
             for stmt in details["attach_ddl"]:
                 self._backend.command(stmt)
@@ -506,7 +504,7 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
             return
         # per-table TABLE engine (file S3/URL/File, or MongoDB)
         clause = details["engine_clause"].replace("{table}", source.table_name)
-        staged = f'"{self._staging}"."{source.schema_name}__{source.table_name}"'
+        staged = f'"{self._staging}"."{schema}__{source.table_name}"'
         if details.get("requires_columns"):
             if not columns:
                 raise ValueError(
@@ -524,14 +522,16 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
     def detach_source(self, source: Any) -> None:
         """Remove the live view of ``source``'s table. Called when the table's reads move to its
         replica (REQ-1912): no query can then read the source through this engine."""
+        from provisa.compiler.naming import live_view_schema
         from provisa.federation.clickhouse_store import _lit
 
+        schema = live_view_schema(source.catalog, source.schema_name)
         rows, _ = self._backend.query(
             "SELECT engine FROM system.tables WHERE database = "
-            f"{_lit(source.schema_name)} AND name = {_lit(source.table_name)}"
+            f"{_lit(schema)} AND name = {_lit(source.table_name)}"
         )
         if rows and rows[0][0] == "View":  # only what a live attach created is dropped
-            self._backend.command(f'DROP VIEW "{source.schema_name}"."{source.table_name}"')
+            self._backend.command(f'DROP VIEW "{schema}"."{source.table_name}"')
 
     # -- replica terminals (REQ-1730/REQ-1633) ----------------------------------
 
@@ -604,8 +604,10 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         metadata view (attach the source, DESCRIBE the physical relation). Returns
         ``{column_name: clickhouse_type_name}``. This is the ClickHouse implementation of the
         engine-introspection seam (REQ-825/840); callers reach it via EngineRuntime."""
+        from provisa.compiler.naming import live_view_schema
+
         self.attach_source(source)
-        phys = f'"{source.schema_name}"."{source.table_name}"'
+        phys = f'"{live_view_schema(source.catalog, source.schema_name)}"."{source.table_name}"'
         rows, _ = self._backend.query(f"DESCRIBE TABLE {phys}")
         # DESCRIBE columns: name, type, default_type, default_expression, ...
         return columns_from_describe(rows)

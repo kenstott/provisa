@@ -224,7 +224,7 @@ class GenericClickHouseDatabaseConnector(_GenericClickHouseConnector):  # REQ-11
 
     def details(self, source: Source) -> dict:
         fields = _source_fields(source)
-        local_schema = f"ch_{source.id}"
+        local_schema = engine_attach_name("ch", attach_catalog(source))
         return {
             "attach_ddl": [
                 f'CREATE DATABASE IF NOT EXISTS "{local_schema}" '

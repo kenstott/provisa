@@ -176,7 +176,14 @@ def test_clickhouse_database_emits_create_database_and_local_schema():
     }
     c = GenericClickHouseDatabaseConnector(d)
     det = c.details(
-        _src(id="cache", host="redis", port=6379, password="pw", federation_hints={"db_index": "0"})
+        _src(
+            id="cache",
+            catalog="cache",
+            host="redis",
+            port=6379,
+            password="pw",
+            federation_hints={"db_index": "0"},
+        )
     )
     assert det["local_schema"] == "ch_cache"
     assert det["attach_ddl"] == [
