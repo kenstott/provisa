@@ -1634,6 +1634,11 @@ def _validate_delta(config) -> None:  # REQ-874
     for table in config.tables:
         if getattr(table, "delta", None) is None:
             continue
+        # REQ-874: the apply path is not wired yet, so a declared delta would silently whole-rebuild.
+        # Refuse it by name until the apply path lands (this guard is reverted then).
+        raise ValueError(
+            f"table {table.table_name!r}: delta replication is not available yet (REQ-874)"
+        )
         source = by_id.get(table.source_id)
         if source is None:
             continue

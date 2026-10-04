@@ -60,26 +60,26 @@ def _config(table):
     return type("C", (), {"sources": [source], "tables": [table]})()
 
 
-def test_the_load_refuses_delta_with_a_probe_signal():
+def test_the_load_refuses_any_delta_until_the_apply_path_lands():
+    # REQ-874 guard: the apply path is not wired yet, so a declared delta is refused by name at
+    # config load (this test is updated when the guard is reverted).
     from provisa.core.config_loader import _validate_delta
 
-    t = _table(watermark_column="u", change_signal="ttl_probe", delta=DeltaConfig(apply="append"))
-    with pytest.raises(ValueError, match="mutually"):
+    t = _table(watermark_column="u", delta=DeltaConfig(apply="append"))
+    with pytest.raises(ValueError, match="delta replication is not available yet"):
         _validate_delta(_config(t))
 
 
-def test_the_load_refuses_delta_on_a_never_replicated_table():
-    from provisa.core.config_loader import _validate_delta
+def test_the_save_refuses_a_delta_table_by_name():
+    from types import SimpleNamespace
 
-    t = _table(watermark_column="u", replicate=-1, delta=DeltaConfig(apply="append"))
-    with pytest.raises(ValueError, match="replicated"):
-        _validate_delta(_config(t))
+    from provisa.api.admin._delta_guard import table_delta_refusal
 
-
-def test_the_load_accepts_a_well_formed_delta():
-    from provisa.core.config_loader import _validate_delta
-
-    _validate_delta(_config(_table(watermark_column="u", delta=DeltaConfig(apply="append"))))
+    assert table_delta_refusal(SimpleNamespace(table_name="t", delta=None)) is None
+    r = table_delta_refusal(SimpleNamespace(table_name="orders", delta=DeltaConfig(apply="append")))
+    assert r is not None and r.success is False
+    assert r.code == "schema.delta_not_available"
+    assert "not available yet" in r.message
 
 
 def test_delta_round_trips_through_the_control_plane(tmp_path):

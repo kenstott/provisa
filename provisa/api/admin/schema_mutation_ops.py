@@ -342,6 +342,11 @@ async def register_table(
         _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
         if _glob_refusal is not None:
             return _glob_refusal
+        from provisa.api.admin._delta_guard import table_delta_refusal
+
+        _delta_refusal = table_delta_refusal(model)  # REQ-874
+        if _delta_refusal is not None:
+            return _delta_refusal
         _conflict = await _domain_table_conflict(
             _conn, model.domain_id, model.table_name, model.source_id, model.schema_name, alias
         )
