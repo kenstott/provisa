@@ -1,0 +1,116 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# REQ-1922 two-region demo (eu + us). This is a TEMPLATE: scripts/launch-demo-regions.sh substitutes
+# the @@TOKENS@@ with the shared embedded-Postgres URL, the per-region DuckDB engine files, the shared
+# fakeredis URL, and the two node addresses, then deploys the result to BOTH nodes' shared model store.
+#
+# The platform declares eu and us; the org selects both. Per the REQ-1922 amendment the two regions
+# share ONE embedded Postgres instance (region-qualified schema/cache names keep them from colliding —
+# that naming is replica-layout-2's work on regions-3c; do NOT prove this demo until it lands). Each
+# node runs its own DuckDB engine; the cache is one shared fakeredis.
+
+federation_engine: duckdb
+
+platform:
+  regions:
+    - { id: eu, address: "@@EU_ADDRESS@@" }
+    - { id: us, address: "@@US_ADDRESS@@" }
+
+# One embedded Postgres backs every pg store; each region keeps its DuckDB engine in its own file, and
+# the cache is the one shared fakeredis. replicas and views share a store (one materialize store per
+# region, REQ-1912). state/record also live in the shared pg.
+stores:
+  - { id: eu_engine, url: "@@EU_ENGINE_URL@@", kind: duckdb }
+  - { id: us_engine, url: "@@US_ENGINE_URL@@", kind: duckdb }
+  - { id: eu_data, url: "@@PG_URL@@" }
+  - { id: us_data, url: "@@PG_URL@@" }
+  - { id: eu_cache, url: "@@REDIS_URL@@" }
+  - { id: us_cache, url: "@@REDIS_URL@@" }
+
+regions:
+  - { id: eu, engine: eu_engine, replicas: eu_data, views: eu_data, cache: eu_cache, state: eu_data, record: eu_data }
+  - { id: us, engine: us_engine, replicas: us_data, views: us_data, cache: us_cache, state: us_data, record: us_data }
+
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - { domain_id: "*", role_id: org_admin }
+
+naming:
+  domain_prefix: false
+  rules: []
+
+cache:
+  enabled: false
+
+domains:
+  - { id: shelter, description: "Animal shelter" }
+
+roles:
+  - id: org_admin
+    capabilities:
+      - query_development
+      - observability
+      - table_registration
+      - source_registration
+      - access_config
+    domain_access: ["*"]
+
+# One files source over a directory the launcher seeds with CSVs that carry a `region` column, so the
+# row rule below makes each region's view copy differ.
+sources:
+  - { id: shelter_files, type: files, path: "@@DATA_CSV_DIR@@" }
+
+tables:
+  # Homed in eu: its data is replicated to and read from eu's stores.
+  - source_id: shelter_files
+    domain_id: shelter
+    schema: main
+    table: intake_eu
+    region: eu
+    file_glob: "intake_eu/*.csv"
+    columns:
+      - { name: id, data_type: integer, is_primary_key: true, visible_to: [org_admin] }
+      - { name: region, data_type: varchar, visible_to: [org_admin] }
+      - { name: animal, data_type: varchar, visible_to: [org_admin] }
+  # Homed in us.
+  - source_id: shelter_files
+    domain_id: shelter
+    schema: main
+    table: intake_us
+    region: us
+    file_glob: "intake_us/*.csv"
+    columns:
+      - { name: id, data_type: integer, is_primary_key: true, visible_to: [org_admin] }
+      - { name: region, data_type: varchar, visible_to: [org_admin] }
+      - { name: animal, data_type: varchar, visible_to: [org_admin] }
+  # No region: built/served wherever it is read (shows under the connected region and under "no region").
+  - source_id: shelter_files
+    domain_id: shelter
+    schema: main
+    table: breeds
+    file_glob: "breeds/*.csv"
+    columns:
+      - { name: name, data_type: varchar, is_primary_key: true, visible_to: [org_admin] }
+      - { name: species, data_type: varchar, visible_to: [org_admin] }
+  # TODO(replica-layout-2 item 4, draft): one table left in draft. The `draft` field does not exist on
+  #   the table model yet; add `draft: true` to intake_eu's sibling here once draft lands on regions-3c.
+
+# A view homed in a region, and one with none. The homed view is read across regions (a us node reads
+# intake_eu from eu's replica), and the row rule makes each region's copy of the open view differ.
+relationships: []
+rls_rules: []
+# TODO(prove-after-region-qualified-names): add the cross-region demo pieces once replica-layout-2's
+# region-qualified naming lands and the exact semantics are confirmed against the running platform:
+#   - a view homed in a region plus one with no region;
+#   - a row rule on `region` so each region's copy of the open view differs (the predicate function
+#     for "the reader's connected region" must be taken from the shipped RLS vocabulary, not invented);
+#   - a us read of eu-homed `intake_eu`, served from eu's replica (attach_region_store).
+# Kept out until then so this template never declares an unproven predicate or a missing table.
+
+functions: []
+webhooks: []
