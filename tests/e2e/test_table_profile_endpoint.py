@@ -36,10 +36,16 @@ async def client():
 async def view_id():
     """Register a __derived__ view sampling a semantic query, yield its id, clean up."""
     from provisa.api.app import state
+    from provisa.core import model_change
     from provisa.core.schema_org import registered_tables
 
-    assert state.tenant_db is not None
-    async with state.tenant_db.acquire() as conn:
+    assert state.model_db is not None
+    # registered_tables is a model table: it is read through the org's model_db and written inside
+    # a model change scope (REQ-1524).
+    async with (
+        model_change.scope("e2e: register profile test view"),
+        state.model_db.acquire() as conn,
+    ):
         res = await conn.execute_core(
             insert(registered_tables)
             .values(
@@ -56,8 +62,11 @@ async def view_id():
 
     yield new_id
 
-    assert state.tenant_db is not None
-    async with state.tenant_db.acquire() as conn:
+    assert state.model_db is not None
+    async with (
+        model_change.scope("e2e: remove profile test view"),
+        state.model_db.acquire() as conn,
+    ):
         await conn.execute_core(delete(registered_tables).where(registered_tables.c.id == new_id))
 
 

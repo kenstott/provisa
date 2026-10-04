@@ -39,7 +39,7 @@ from tests.integration.replica_seed import (  # noqa: E402
     routes_to,
     seed_replica,
 )
-from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
 _ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
@@ -71,6 +71,7 @@ def _tbl(i: int, sid: str, tname: str, cols: list[str]) -> dict:
         "domain_id": "sales",
         "schema_name": "main",
         "table_name": tname,
+        "write_ops": registry_write_ops({1: "csv", 2: "sqlite", 3: "parquet"}[i]),
         "columns": [{"column_name": c, "visible_to": ["admin"]} for c in cols],
     }
 

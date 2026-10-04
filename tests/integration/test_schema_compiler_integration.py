@@ -29,6 +29,7 @@ from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.context import build_context
+from tests.helpers import registry_write_ops
 
 pytestmark = [pytest.mark.integration]
 
@@ -86,6 +87,7 @@ class TestJSONBFieldPromotion:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "events",
+                "write_ops": registry_write_ops("postgresql"),
                 "columns": [
                     {
                         "column_name": "id",
@@ -173,6 +175,7 @@ class TestViewRLSEnforcement:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders_view",
+                "write_ops": registry_write_ops("postgresql"),
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     # 'secret_col' only visible to admin
@@ -238,6 +241,7 @@ class TestViewRLSEnforcement:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "revenue_view",
+                "write_ops": registry_write_ops("postgresql"),
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {"column_name": "revenue", "visible_to": ["analyst"]},
@@ -284,6 +288,7 @@ class TestViewComputedSemantics:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "order_summary",
+                "write_ops": registry_write_ops("postgresql"),
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {
@@ -340,6 +345,7 @@ class TestJSONPathExpressions:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "events",
+                "write_ops": registry_write_ops("postgresql"),
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {
@@ -399,6 +405,7 @@ class TestDomainPrefix:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
+                "write_ops": registry_write_ops("postgresql"),
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {"column_name": "amount", "visible_to": []},
@@ -460,6 +467,7 @@ class TestTableAlias:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "legacy_order_data",
+                "write_ops": registry_write_ops("postgresql"),
                 "alias": alias,
                 "columns": [
                     {"column_name": "id", "visible_to": []},

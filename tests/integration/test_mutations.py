@@ -30,7 +30,7 @@ from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.context import build_context
 from provisa.executor.direct import execute_direct
 from provisa.executor.pool import SourcePool
-from tests.helpers import ALL_DATA_CAPABILITIES
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -57,6 +57,7 @@ def _build_schema_and_ctx():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -329,7 +330,12 @@ class TestInsertMutation:
             await _cleanup(tenant_db)
 
     async def test_mutation_blocked_for_read_only_column(self, mut_pool, tenant_db):
-        """Mutation on a NoSQL (non-writable) source type raises an appropriate error."""
+        """A table whose source takes no writes (a MongoDB collection,
+        executor/write_capability.py) is refused by the one write admission, naming the table and
+        the operation."""
+        from provisa.compiler.write_admission import WriteNotSupported
+        from tests.write_governance import admitted, write_governance
+
         schema, ctx = _build_schema_and_ctx()
 
         doc = parse(f"""
@@ -341,6 +347,11 @@ class TestInsertMutation:
         """)
         assert not validate(schema, doc)
 
-        # Pass mongodb as the source type — mutations on NoSQL sources are blocked
-        with pytest.raises(ValueError, match="NoSQL"):
-            compile_mutation(doc, ctx, {"sales-pg": "mongodb"})
+        m = compile_mutation(doc, ctx, {"sales-pg": "mongodb"})[0]
+        columns = ["id", "customer_id", "product_id", "amount", "region", "status"]
+        with pytest.raises(WriteNotSupported, match="does not take INSERT"):
+            admitted(
+                m.sql,
+                write_governance({"public.orders": (1, columns)}, write_ops={1: set()}),
+                m.params,
+            )

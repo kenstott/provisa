@@ -40,7 +40,7 @@ from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical  # noqa: E
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.connector_duckdb import SqliteFdwConnector  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
-from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops  # noqa: E402
 
 _SQLITE = Path(__file__).parent.parent.parent / "demo" / "files" / "orders.sqlite"
 _ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
@@ -83,6 +83,7 @@ def _si(orders_schema: str) -> SchemaInput:
                 "domain_id": "sales",
                 "schema_name": orders_schema,
                 "table_name": "orders",
+                "write_ops": registry_write_ops("sqlite"),
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "amount", "region")
                 ],
