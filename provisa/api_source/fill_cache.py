@@ -50,8 +50,6 @@ from provisa.api_source.engine_cache import (
     CacheLocation,
     _string_literal,
     _table_ref,
-    create_and_insert,
-    ensure_cache_schema,
     org_cache_schema,
 )
 from provisa.api_source.models import ApiEndpoint
@@ -243,13 +241,13 @@ def _ensure(conn: Any, table: FillTable) -> None:
         made_as = _shapes.get(key)
         if made_as == table.shape:
             return
-        ensure_cache_schema(conn, table.loc)
+        engine_cache.ensure_cache_schema(conn, table.loc)
         # Another shape: this process made it for one, or a table from before this process
         # started lacks a column this definition has.
         if made_as is not None or (_exists(conn, table) and not _has_columns(conn, table)):
             conn.execute(f"DROP TABLE IF EXISTS {_ref(conn, table)}")
             conn.fetchall()
-        create_and_insert(conn, table.loc, table.name, [], list(table.columns))
+        engine_cache.create_and_insert(conn, table.loc, table.name, [], list(table.columns))
         _shapes[key] = table.shape
 
 
@@ -281,7 +279,7 @@ def store(
         for row in group
     ]
     if rows:
-        create_and_insert(conn, table.loc, table.name, rows, list(table.columns))
+        engine_cache.create_and_insert(conn, table.loc, table.name, rows, list(table.columns))
     for phash in fills:
         if phash not in cut:
             _mark_fresh(table, phash, ttl)
