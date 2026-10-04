@@ -2238,6 +2238,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                         _roles_t.c.domain_access,
                         _roles_t.c.rate_limit,
                         _roles_t.c.parent_role_id,  # REQ-1677
+                        # REQ-1921: the data_residency grant's covered values. state.roles feeds
+                        # residency_values_for_claims (the region-edit gate); without this column a
+                        # role holding data_residency resolves to a dict with no residency_values
+                        # and every region change raises KeyError.
+                        _roles_t.c.residency_values,
                     )
                 )
             ).fetchall()
