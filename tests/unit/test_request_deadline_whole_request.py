@@ -23,6 +23,7 @@ import asyncio
 import json
 import threading
 import time
+import types
 
 import pytest
 
@@ -104,12 +105,29 @@ def test_a_tighter_deadline_already_bound_is_kept():
             assert inner is outer
 
 
-def test_a_deadline_held_across_messages_is_bound_per_message_and_stopped_by_its_owner():
+class _Clock:
+    """The deadline module's clock, moved only by the test: a message bound before the budget
+    passes is bound in time however long the machine takes to run it."""
+
+    def __init__(self) -> None:
+        self.now = time.monotonic()
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+def test_a_deadline_held_across_messages_is_bound_per_message_and_stopped_by_its_owner(
+    monkeypatch,
+):
+    # The 0.2 s budget is the deadline's own clock. On the wall clock the first message raised
+    # RequestTimedOut itself whenever a loaded machine took longer than 0.2 s to run it.
+    clock = _Clock()
+    monkeypatch.setattr(request_deadline, "time", types.SimpleNamespace(monotonic=clock.monotonic))
     deadline = request_deadline.open_request("pgwire")
     assert request_deadline.current() is None
     with request_deadline.bound(deadline):
-        assert request_deadline.current() is deadline
-    time.sleep(0.25)
+        assert request_deadline.current() is deadline, f"remaining {deadline.remaining()}s"
+    clock.now += 0.25  # between messages, the budget passes
     with request_deadline.bound(deadline), pytest.raises(RequestTimedOut) as raised:
         request_deadline.check()
     _names(raised.value, "pgwire")
