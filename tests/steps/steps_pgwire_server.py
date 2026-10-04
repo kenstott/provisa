@@ -210,16 +210,17 @@ def pgwire_listener_disabled_then_enabled(shared_data):
 # ---------------------------------------------------------------------------
 
 
-class _Session529:
-    """A session with no role until the handler grants one."""
+def _real_session():
+    """The session pgwire authenticates: it has no role until the handler grants one."""
+    from provisa.pgwire.server import ProvisaSession
 
-    org_id = None
+    return ProvisaSession()
 
 
 class _Ctx529:
     def __init__(self, user: str):
         self.params = {"user": user}
-        self.session = _Session529()
+        self.session = _real_session()
 
 
 def _handler529(shared_data: dict):
@@ -448,7 +449,7 @@ def then_fatal_28p01(shared_data):
     assert shared_data.get("admitted", []) == [], (
         "No session must be admitted on invalid credential"
     )
-    assert not hasattr(shared_data["ctx"].session, "role_id"), (
+    assert shared_data["ctx"].session.role_id is None, (
         "role_id must not be set when authentication fails"
     )
 
@@ -1180,6 +1181,8 @@ def catalog_intercepts_scalar(shared_data):
     from provisa.pgwire.catalog import classify, answer
 
     mock_state = MagicMock()
+    # A single-tenant deployment: its catalog serves the one database, provisa.
+    mock_state.multitenancy = False
     mock_state.contexts = {}
 
     results = {}
