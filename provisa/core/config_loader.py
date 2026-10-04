@@ -1630,18 +1630,23 @@ def _validate_delta(config) -> None:  # REQ-874
     from provisa.core.change_signal import resolve as _resolve_signal
     from provisa.core.replicate import resolved_replicate
 
+    from provisa.federation.delta import delta_source_supported
+
     by_id = {s.id: s for s in config.sources}
     for table in config.tables:
         if getattr(table, "delta", None) is None:
             continue
-        # REQ-874: the apply path is not wired yet, so a declared delta would silently whole-rebuild.
-        # Refuse it by name until the apply path lands (this guard is reverted then).
-        raise ValueError(
-            f"table {table.table_name!r}: delta replication is not available yet (REQ-874)"
-        )
         source = by_id.get(table.source_id)
         if source is None:
             continue
+        # REQ-874: the delta apply path is a generated SQL delta on the source's native pool, so it
+        # is defined only for SQL source types; a delta on any other type is refused by name (it
+        # would otherwise silently whole-rebuild every time).
+        if not delta_source_supported(source.type.value):
+            raise ValueError(
+                f"table {table.table_name!r}: delta replication is only available for SQL sources, "
+                f"not {source.type.value!r} (REQ-874)"
+            )
         if resolved_replicate(source, table) == -1:
             raise ValueError(
                 f"table {table.table_name!r}: delta reload needs the table replicated "

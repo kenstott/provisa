@@ -1278,6 +1278,11 @@ class ReplicaBuildType:  # REQ-1915
     # since when (ISO 8601, UTC) and the server's own reason. None while it is watching.
     feed_down_since: str | None
     feed_error: str | None
+    # REQ-874: the last build of a delta table. ``delta_skipped`` names why it was a whole rebuild
+    # instead of a delta (a ``delta.SKIP_*`` code), or None when a delta was applied; ``delta_cursor``
+    # is the stored watermark the next delta resumes from. Both None for a non-delta table.
+    delta_skipped: str | None
+    delta_cursor: JsonScalar | None
 
 
 @strawberry.type

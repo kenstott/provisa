@@ -40,6 +40,8 @@ def _record(**kw):
         retired_at=None,
         feed_down_since=None,
         feed_error=None,
+        delta_skipped=None,
+        delta_cursor=None,
     )
     base.update(kw)
     return SimpleNamespace(**base)

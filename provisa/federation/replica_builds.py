@@ -95,6 +95,17 @@ def store_identity(state: Any) -> str:
     return hashlib.sha256(f"{engine.name}|{where}".encode()).hexdigest()[:32]
 
 
+def _delta_rebuild_due(record: Any, delta_cfg: Any) -> bool:
+    """REQ-874: whether a delta table is due for its periodic whole rebuild. True when
+    ``delta.rebuild_every`` seconds have elapsed since the last completed build; False when no
+    interval is declared or no build has completed yet (the first-build case is handled by
+    ``delta_build_reason`` via ``has_cursor``)."""
+    every = getattr(delta_cfg, "rebuild_every", None)
+    if every is None or record is None or record.completed_at is None:
+        return False
+    return (datetime.now(UTC) - record.completed_at).total_seconds() >= every
+
+
 async def _model_row(state: Any, key: ReplicaKey) -> tuple[Any, Any, list[Any]]:
     """The source and table ``key`` names, as the model in this process has them, and every
     registered source (the vault a build dials sources under is bound for all of them)."""
@@ -154,6 +165,60 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
     )
     async with state.tenant_db.acquire() as conn:
         record = await replica_state.read(conn, key)
+
+    # REQ-874: a declared delta refreshes the whole-copy replica incrementally -- read only the
+    # rows past the stored cursor from the SQL source and apply them by key -- when the rule allows;
+    # otherwise the whole rebuild below runs and records WHY (delta_skipped). SQL sources only; the
+    # config/admin guards refuse `delta` on non-SQL source types by name.
+    delta_cfg = getattr(table, "delta", None)
+    delta_skipped: str | None = None
+    if delta_cfg is not None:
+        from sqlalchemy import make_url
+
+        from provisa.federation import delta as _delta
+
+        eng = engine.engine
+        # The store the replica is applied into is the engine's materialization store -- the same
+        # store ``replica_target`` writes the whole copy to, for every engine (REQ-1912).
+        store_dsn = eng.materialize_store()
+        store_applies = make_url(store_dsn).get_backend_name() in ("postgresql", "duckdb")
+        this_def = definition_hash(source, address, args.columns, args.pk_columns)
+        cursor_raw = record.delta_cursor if record is not None else None
+        has_cursor = (
+            record is not None
+            and cursor_raw is not None
+            and record.exists_in(store_identity(state))
+        )
+        delta_skipped = _delta.delta_build_reason(
+            has_delta=True,
+            has_cursor=has_cursor,
+            reason=(record.requested_reason if record else None) or replica_state.REASON_MODEL,
+            definition_changed=(
+                record is not None
+                and record.definition_hash is not None
+                and record.definition_hash != this_def
+            ),
+            store_applies_delta=store_applies and state.source_pools.has(source.id),
+            rebuild_due=_delta_rebuild_due(record, delta_cfg),
+        )
+        if delta_skipped is None and cursor_raw is not None:
+            import json
+
+            async with state.tenant_db.acquire() as conn:
+                await replica_state.record_started(conn, key, method="delta", load_kind="delta")
+            async with land_lock(f"{address.schema}.{address.table}"):
+                applied, new_cursor = await _delta.apply_sql_delta(
+                    state, eng, source, table, args, address, json.loads(cursor_raw), store_dsn
+                )
+            async with state.tenant_db.acquire() as conn:
+                await replica_state.record_delta_applied(conn, key, cursor=new_cursor)
+            return BuildOutcome(
+                rows_copied=applied,
+                method="delta",
+                changed=applied > 0,
+                definition_hash=this_def,
+                built_columns=[[name, ir_type] for name, ir_type in args.columns],
+            )
     loader = SourceRowLoader(
         engine,
         adapter_loaders=build_adapter_loaders(state, engine),
@@ -194,6 +259,17 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
         # take this same lock, keyed on the replica's address.
         async with land_lock(f"{address.schema}.{address.table}"):
             outcome = await job.run(progress)
+        # REQ-874: a delta table that fell through to a whole rebuild records why (delta_skipped) and
+        # advances the cursor to the source's current max watermark, so the next build resumes as a
+        # delta from there instead of re-pulling everything.
+        if delta_cfg is not None:
+            from provisa.federation import delta as _delta
+
+            new_cursor = await _delta.source_max_watermark(state, engine.engine, source, table)
+            async with state.tenant_db.acquire() as conn:
+                await replica_state.record_whole_rebuild(
+                    conn, key, skipped=delta_skipped or _delta.SKIP_NO_DELTA, cursor=new_cursor
+                )
         # What it was built from: the next convergence compares the model with this.
         return replace(
             outcome,

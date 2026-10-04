@@ -549,6 +549,8 @@ type ReplicaBuildType {
   failedAttempts: Int!
   waitingOn: String
   waitingOnCode: String
+  deltaSkipped: String
+  deltaCursor: JSON
 }
 
 type ReplicaBuildsType {
