@@ -463,6 +463,33 @@ def _tcp_health(host: str, port: int) -> bool:
         return False
 
 
+def server_state_dir(bundle_dir: Path, version: str, source_id: str) -> Path:  # REQ-955
+    """The directory one source's server runs in on this instance: its own ``model/model.json``,
+    its working directory (where the Calcite adapter keeps its per-schema state, ``.aperio/`` and
+    ``catalog-cache-*.pkl``) and its log — with the bundle's read-only parts (launcher, jars,
+    runtimes) linked in, never copied.
+
+    The bundle is a machine-wide download cache shared by every Provisa on the machine, and its
+    launcher reads ``$HERE/model/model.json`` from the directory above its ``bin``. Run from the
+    bundle itself, two servers of one connector — two sources, or two instances — shared one
+    model and one adapter state keyed by schema name, so one served the other's files. Linking
+    ``bin`` makes ``$HERE`` this directory. Kept under the instance's data directory
+    (``$PROVISA_DATA_DIR``, else ``~/.provisa``, as the instance's other per-instance state is),
+    by bundle version and source id (the key a server's ports are allocated by)."""
+    data_dir = Path(os.environ.get("PROVISA_DATA_DIR") or (Path.home() / ".provisa"))
+    state = data_dir / "pgwire" / version / source_id
+    state.mkdir(parents=True, exist_ok=True)
+    for entry in Path(bundle_dir).iterdir():
+        name = entry.name
+        # State a server writes is its own; the bundle's copy (from a run before this) is not.
+        if name in ("model", SERVER_LOG_NAME) or name.startswith((".", "catalog-cache-")):
+            continue
+        link = state / name
+        if not link.is_symlink() and not link.exists():
+            link.symlink_to(entry)
+    return state
+
+
 class PgwireServer:  # REQ-955
     """Lifecycle for one source's bundled Calcite pgwire server: write model.json, start, health,
     stop. The launcher (``bin/pgwire-<connector>``) takes only ``--port`` and ``--calcite-child``
@@ -676,7 +703,9 @@ class ConnectorReplica:  # REQ-954/955/956
         bundle_dir = self._resolver.resolve(self._spec)  # REQ-956 (resolve + cache)
         ports = self._allocator.allocate(self._source.id)  # REQ-955 (unique ports)
         server = PgwireServer(
-            bundle_dir=bundle_dir,
+            # The server runs from its own state directory, the bundle's code linked in: the
+            # shared bundle is never written to (one model and one adapter state per server).
+            bundle_dir=server_state_dir(bundle_dir, self._spec.version, self._source.id),
             spec=self._spec,
             model=build_model_json(self._source),  # REQ-955 (config)
             ports=ports,
