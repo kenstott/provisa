@@ -6,6 +6,7 @@
     "connectedRegion": "{{region}} (connected)",
     "columnHeader": "Region",
     "hidden_one": "{{count}} hidden by region",
-    "hidden_other": "{{count}} hidden by region"
+    "hidden_other": "{{count}} hidden by region",
+    "loadError": "Regions could not be loaded"
   }
 }

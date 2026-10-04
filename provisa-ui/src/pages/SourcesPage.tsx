@@ -125,7 +125,7 @@ export function SourcesPage() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
   // REQ-1922: the region selector filters the list; a name search crosses regions (region filter off).
-  const { regions, connected } = useRegionChoices();
+  const { regions, connected, error: regionError } = useRegionChoices();
   const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
   const hasRegions = regions.length > 0;
   const searchActive = !!sourceSearch.trim();
@@ -1370,6 +1370,7 @@ export function SourcesPage() {
           value={regionSel}
           onChange={setRegionSel}
           hidden={regionHidden}
+          error={regionError}
         />
         <div className="page-actions">
           {!editingSourceId && (

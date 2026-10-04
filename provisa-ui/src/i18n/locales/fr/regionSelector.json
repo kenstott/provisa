@@ -6,6 +6,7 @@
     "connectedRegion": "{{region}} (connectée)",
     "columnHeader": "Région",
     "hidden_one": "{{count}} masqué par région",
-    "hidden_other": "{{count}} masqués par région"
+    "hidden_other": "{{count}} masqués par région",
+    "loadError": "Impossible de charger les régions"
   }
 }

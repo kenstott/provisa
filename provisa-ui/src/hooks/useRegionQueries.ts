@@ -19,10 +19,15 @@ import { RegionChoices, SetTableRegion, SetSourceRegion, SetTableDraft } from ".
 export interface RegionChoicesData {
   regions: string[];
   connected: string | null;
+  /** REQ-1922: the choices query failed. A failure is NOT the same as a platform with no regions —
+   * the selector surfaces it as an error rather than silently hiding, so a 503 never reads as
+   * "this deployment has no regions". */
+  error?: boolean;
 }
 
 export function useRegionChoices(): RegionChoicesData {
-  const { data } = useQuery<{ regionChoices: RegionChoicesData }>(RegionChoices);
+  const { data, error } = useQuery<{ regionChoices: RegionChoicesData }>(RegionChoices);
+  if (error) return { ...NO_REGIONS, error: true };
   // Until the answer arrives no region field is shown: the same as a platform with none.
   return data?.regionChoices ?? NO_REGIONS;
 }

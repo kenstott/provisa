@@ -157,7 +157,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { checkedDomains, domainsEnabled } = useDomainFilter();
   const { domainAccess, role: activeRole } = useAuth();
   // REQ-1922: the region selector filters the list; a name search crosses regions (filter off).
-  const { regions, connected } = useRegionChoices();
+  const { regions, connected, error: regionError } = useRegionChoices();
   const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
   const hasRegions = regions.length > 0;
   const nameSearchActive = tableSearch.trim().length > 0;
@@ -665,6 +665,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           value={regionSel}
           onChange={setRegionSel}
           hidden={regionHidden}
+          error={regionError}
         />
         <div className="page-actions">
           {!viewsOnly && (

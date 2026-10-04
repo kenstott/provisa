@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: 1b169835-e357-4970-aa2e-63b3ae70304e
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -28,6 +29,9 @@ export interface RegionSelectorProps {
   onChange: (selection: RegionSelection) => void;
   /** How many rows the current selection hides, shown beside the selector so nothing looks missing. */
   hidden: number;
+  /** REQ-1922: the region-choices query failed. Shown as an error, never hidden — a failure must not
+   * read as "this deployment has no regions". */
+  error?: boolean;
 }
 
 export function RegionSelector({
@@ -36,8 +40,17 @@ export function RegionSelector({
   value,
   onChange,
   hidden,
+  error,
 }: RegionSelectorProps) {
   const { t } = useTranslation();
+  // A failed load is an error to show, not an absence: a 503 must never masquerade as "no regions".
+  if (error) {
+    return (
+      <Text size="xs" c="red" data-testid="region-load-error">
+        {t("regionSelector.loadError")}
+      </Text>
+    );
+  }
   // Absent when the deployment declares no regions (like every region control).
   if (regions.length === 0) return null;
 

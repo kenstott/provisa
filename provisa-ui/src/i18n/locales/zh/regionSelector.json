@@ -6,6 +6,7 @@
     "connectedRegion": "{{region}}（已连接）",
     "columnHeader": "区域",
     "hidden_one": "{{count}} 项因区域被隐藏",
-    "hidden_other": "{{count}} 项因区域被隐藏"
+    "hidden_other": "{{count}} 项因区域被隐藏",
+    "loadError": "无法加载区域"
   }
 }

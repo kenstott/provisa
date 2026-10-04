@@ -368,7 +368,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
   const candidates = hotTables.filter((h) => h.kind === "hot_candidate");
   const totalRows = [...loaded, ...busy].reduce((n, h) => n + h.rowCount, 0);
   // REQ-1922: the shared region selector filters the list (the stat totals stay whole-estate).
-  const { regions, connected } = useRegionChoices();
+  const { regions, connected, error: regionError } = useRegionChoices();
   const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
   const hasRegions = regions.length > 0;
   const { visible: shownHot, hidden: hotHidden } = filterByRegion(
@@ -397,6 +397,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
         value={regionSel}
         onChange={setRegionSel}
         hidden={hotHidden}
+        error={regionError}
       />
       {hotTables.length === 0 ? (
         <Text c="dimmed">{t("cacheManager.hot.empty")}</Text>

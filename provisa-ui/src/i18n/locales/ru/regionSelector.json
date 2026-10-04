@@ -6,6 +6,7 @@
     "connectedRegion": "{{region}} (подключён)",
     "columnHeader": "Регион",
     "hidden_one": "{{count}} скрыт по региону",
-    "hidden_other": "{{count}} скрыто по региону"
+    "hidden_other": "{{count}} скрыто по региону",
+    "loadError": "Не удалось загрузить регионы"
   }
 }
