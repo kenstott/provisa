@@ -20,6 +20,7 @@ import asyncio
 
 import pytest
 
+from tests.helpers import attaching
 from provisa.core.models import Source, SourceType
 from provisa.federation import pgwire_replica as pr
 from provisa.federation.engine import build_pg_engine
@@ -90,9 +91,9 @@ def test_pg_splunk_details_builds_postgres_fdw_pointed_at_the_bundle(monkeypatch
 
     monkeypatch.setattr(pr, "ensure_endpoint", _ensure)
     src = _splunk_source()
-    details = PgSplunkConnector().details(src)
+    details = PgSplunkConnector().details(attaching(src, "pg_splunk_prod"))
     assert started == ["pg-splunk-prod"]
-    assert details["local_schema"] == "fdw_pgwire_pg-splunk-prod"
+    assert details["local_schema"] == "fdw_pgwire_pg_splunk_prod"
     ddl = details["attach_ddl"]
     assert "CREATE EXTENSION IF NOT EXISTS postgres_fdw" in ddl
     assert any(
@@ -104,7 +105,8 @@ def test_pg_splunk_details_builds_postgres_fdw_pointed_at_the_bundle(monkeypatch
     )
     assert any("CREATE USER MAPPING" in stmt and "user 'provisa'" in stmt for stmt in ddl)
     assert any(
-        "IMPORT FOREIGN SCHEMA pg_splunk_prod" in stmt and "INTO fdw_pgwire_pg-splunk-prod" in stmt
+        "IMPORT FOREIGN SCHEMA pg_splunk_prod" in stmt
+        and 'INTO "fdw_pgwire_pg_splunk_prod"' in stmt
         for stmt in ddl
     )
 
@@ -114,11 +116,11 @@ def test_pg_files_and_sharepoint_details_use_their_own_source_ids(monkeypatch):
 
     monkeypatch.setattr(pr, "ensure_endpoint", lambda _source: pr.PortPair(5441, "127.0.0.1", 5541))
 
-    files_details = PgFilesConnector().details(_files_source())
-    assert files_details["local_schema"] == "fdw_pgwire_pg-files"
+    files_details = PgFilesConnector().details(attaching(_files_source(), "pg_files"))
+    assert files_details["local_schema"] == "fdw_pgwire_pg_files"
 
-    sp_details = PgSharepointConnector().details(_sharepoint_source())
-    assert sp_details["local_schema"] == "fdw_pgwire_pg-sp-team"
+    sp_details = PgSharepointConnector().details(attaching(_sharepoint_source(), "pg_sp_team"))
+    assert sp_details["local_schema"] == "fdw_pgwire_pg_sp_team"
     assert any("IMPORT FOREIGN SCHEMA pg_sp_team" in stmt for stmt in sp_details["attach_ddl"])
 
 

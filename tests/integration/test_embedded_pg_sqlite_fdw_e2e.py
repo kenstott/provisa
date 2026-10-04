@@ -112,7 +112,9 @@ async def test_sqlite_fdw_connector_attaches_and_reads(embedded_pg_sqlite_fdw):
     """The REAL SqliteFdwConnector DDL attaches orders.sqlite; a governed read runs in place."""
     conn = await asyncpg.connect(dsn=embedded_pg_sqlite_fdw.get_uri())
     try:
-        det = SqliteFdwConnector().details(SimpleNamespace(id="ord", path=str(_SQLITE)))
+        det = SqliteFdwConnector().details(
+            SimpleNamespace(id="ord", catalog="ord", path=str(_SQLITE))
+        )
         for ddl in det["attach_ddl"]:  # CREATE EXTENSION / SERVER / SCHEMA / IMPORT FOREIGN SCHEMA
             await conn.execute(ddl)
         orders_schema = det["local_schema"]  # fdw_ord

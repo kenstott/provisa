@@ -21,14 +21,15 @@ from __future__ import annotations
 
 import pytest
 
+from tests.helpers import attaching
 from provisa.core.models import Source, SourceType
 from provisa.federation.connector import Mechanism
 from provisa.federation.connector_duckdb import PgDuckdbMotherDuckConnector
 
 
-def _src(sid: str, **kw) -> Source:
+def _src(sid: str, **kw):
     fields = {"password": "md_token_abc", **kw}
-    return Source(id=sid, type=SourceType.motherduck, **fields)
+    return attaching(Source(id=sid, type=SourceType.motherduck, **fields), sid)
 
 
 class _FakeFetch:
@@ -73,10 +74,10 @@ def test_attach_ddl_provisions_server_and_user_mapping_with_token():
     details = PgDuckdbMotherDuckConnector().details(_src("mdsrc", password="secrettoken"))
     ddl = details["attach_ddl"]
     assert ddl[0] == (
-        "CREATE SERVER IF NOT EXISTS fdw_mdsrc TYPE 'motherduck' FOREIGN DATA WRAPPER duckdb"
+        """CREATE SERVER IF NOT EXISTS "fdw_mdsrc" TYPE 'motherduck' FOREIGN DATA WRAPPER duckdb"""
     )
     assert ddl[1] == (
-        "CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER fdw_mdsrc "
+        'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "fdw_mdsrc" '
         "OPTIONS (token 'secrettoken')"
     )
     assert details["server"] == "fdw_mdsrc"

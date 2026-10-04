@@ -38,6 +38,7 @@ _FIXTURE = "tests/fixtures/custom_connectors.yaml"
 def _src(**kw):
     base = dict(
         id="reviews",
+        catalog="reviews",
         host="mongodb",
         port=27017,
         database="test",
@@ -71,9 +72,9 @@ def test_pg_fdw_no_import_emits_server_ddl_and_table_options():
     assert det["server"] == "fdw_reviews"
     assert det["server_ddl"] == [
         "CREATE EXTENSION IF NOT EXISTS mongo_fdw",
-        "CREATE SERVER IF NOT EXISTS fdw_reviews FOREIGN DATA WRAPPER mongo_fdw "
+        'CREATE SERVER IF NOT EXISTS "fdw_reviews" FOREIGN DATA WRAPPER mongo_fdw '
         "OPTIONS (address 'mongodb', port '27017')",
-        "CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER fdw_reviews "
+        'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "fdw_reviews" '
         "OPTIONS (username 'admin', password 'secret')",
     ]
     assert det["table_options"] == "OPTIONS (database 'test', collection 'customer_reviews')"
@@ -94,7 +95,7 @@ def test_pg_fdw_bare_user_mapping_when_empty():
     }
     det = GenericPgFdwConnector(d).details(_src())
     assert det["server_ddl"][-1] == (
-        "CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER fdw_reviews"
+        'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "fdw_reviews"'
     )  # no OPTIONS clause
 
 
@@ -107,10 +108,10 @@ def test_pg_fdw_import_path_emits_attach_ddl_and_local_schema():
         "supports_import": True,
         "remote_schema": "public",
     }
-    det = GenericPgFdwConnector(d).details(_src(id="w"))
+    det = GenericPgFdwConnector(d).details(_src(id="w", catalog="w"))
     assert det["local_schema"] == "fdw_w"
     assert det["attach_ddl"][0] == "CREATE EXTENSION IF NOT EXISTS widget_fdw"
-    assert det["attach_ddl"][-1] == "IMPORT FOREIGN SCHEMA public FROM SERVER fdw_w INTO fdw_w"
+    assert det["attach_ddl"][-1] == 'IMPORT FOREIGN SCHEMA public FROM SERVER "fdw_w" INTO "fdw_w"'
     # no user_mapping declared → no CREATE USER MAPPING statement
     assert not any("USER MAPPING" in s for s in det["attach_ddl"])
 

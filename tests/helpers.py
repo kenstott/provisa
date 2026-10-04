@@ -262,3 +262,12 @@ def registry_write_ops(source_type: str, *, view: bool = False) -> list[str]:
     from provisa.executor.write_capability import table_write_ops
 
     return sorted(table_write_ops({"view_sql": "SELECT 1"} if view else {}, source_type, None))
+
+
+def attaching(source, catalog: str):
+    """``source`` as an engine attaches it: its fields, plus the catalog name the engine names
+    what it keeps for the source after (REQ-1266/1529 — the org-scoped catalog the compiler
+    emits)."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(**dict(source), catalog=catalog)

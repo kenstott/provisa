@@ -342,7 +342,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             ft = f'"{details["server"]}__{source.table_name}"'
             cur.execute(
                 f"CREATE FOREIGN TABLE IF NOT EXISTS {ft} ({cols}) "
-                f"SERVER {details['server']} {details['table_options']}"
+                f'SERVER "{details["server"]}" {details["table_options"]}'
             )
             remote = ft
             if first_attach:
@@ -359,9 +359,11 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         # federated_join under PROVISA_ENGINE=pg failed 100% of calls with `relation
         # "bench_postgresql_public.orders" does not exist` — the two sides had never been
         # reconciled to the same convention.
-        from provisa.compiler.naming import source_to_catalog
+        from provisa.compiler.naming import live_view_schema
 
-        folded_schema = f"{source_to_catalog(source.id)}_{source.schema_name}"
+        # REQ-1266/1529: under the source's own catalog name (``source.catalog``), the one the
+        # compiler emits — it carries the org and the environment.
+        folded_schema = live_view_schema(source.catalog, source.schema_name)
         # REQ-1912: this name belongs to the live attach alone. A replica lives in the replicas
         # schema under its own name, so nothing Provisa writes ever stands here — and the live
         # view is never created in a schema Provisa writes. Anything other than a view at this
@@ -392,10 +394,10 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         that it is one). Called when the table's reads move to its replica (REQ-1912): no query
         can then read the source through this engine. The foreign table in the connector's own
         schema stays — the engine-side replica build copies from it."""
-        from provisa.compiler.naming import source_to_catalog
+        from provisa.compiler.naming import live_view_schema
         from provisa.federation.replica_guard import pg_relation_kind
 
-        folded_schema = f"{source_to_catalog(source.id)}_{source.schema_name}"
+        folded_schema = live_view_schema(source.catalog, source.schema_name)
         cur = self._con.cursor()
         found = pg_relation_kind(cur, folded_schema, source.table_name)
         if found is not None and found[1] == "v":

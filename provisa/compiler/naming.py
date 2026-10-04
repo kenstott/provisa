@@ -213,6 +213,30 @@ def source_to_catalog(source_id: str) -> str:  # REQ-471
     return source_id.replace("-", "_")
 
 
+def engine_attach_name(kind: str, catalog: str) -> str:  # REQ-1266, REQ-1529
+    """The name of an object an engine database keeps to reach a source live — its foreign
+    server (and so its user mapping), and the schema its foreign tables are imported into —
+    from the source's catalog name (:func:`org_prefixed_catalog`, the name the compiler emits).
+    It carries the org and the environment as that catalog does, so two orgs, or two
+    environments, keeping one engine database never share one. ``kind`` is the connector's
+    prefix (``fdw``, ``ch``, ``fdw_pgwire``, ``fdw_file``)."""
+    return f"{kind}_{catalog}"
+
+
+def attach_catalog(source: object) -> str:  # REQ-1266, REQ-1529
+    """The catalog name an engine attaches ``source`` under: carried by the attach view of a
+    source its caller builds (``native_backend._walk_registry``, ``pg_backend``) from the org's
+    ``source_catalogs``. A source that was not handed over that way has none (KeyError)."""
+    return vars(source)["catalog"]
+
+
+def live_view_schema(catalog: str, schema: str) -> str:  # REQ-1730
+    """The one schema segment a catalog-incapable engine addresses ``catalog.schema`` under
+    (:func:`provisa.compiler.sql_rewrite.fold_catalog_into_schema`), and so the schema the engine
+    keeps a source's live view in."""
+    return f"{catalog}_{schema}"
+
+
 def org_prefixed_catalog(
     org_id: str, base_catalog: str, *, default_org: str, env: str | None = None
 ) -> str:  # REQ-1266, REQ-1529
