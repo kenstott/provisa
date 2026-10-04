@@ -51,6 +51,7 @@ const TRINO_CONFIG_PATH =
 async function putAdminConfig(url: string, body: string): Promise<Response> {
   const RETRIES = 5;
   const DELAY_MS = 3000;
+  const failures: string[] = [];
   for (let attempt = 1; attempt <= RETRIES; attempt++) {
     try {
       const res = await fetch(url, {
@@ -60,11 +61,35 @@ async function putAdminConfig(url: string, body: string): Promise<Response> {
       });
       return res; // HTTP response received (may be non-2xx — caller checks)
     } catch (err) {
-      if (attempt === RETRIES) throw err;
+      failures.push(`attempt ${attempt}: ${connectionFailure(err)}`);
+      if (attempt === RETRIES) {
+        // Node's "fetch failed" names neither the address nor the cause; this does.
+        throw new Error(`PUT ${url} never got a response: ${failures.join("; ")}`, {
+          cause: err,
+        });
+      }
       await new Promise((r) => setTimeout(r, DELAY_MS));
     }
   }
   throw new Error("unreachable");
+}
+
+/** What a failed fetch actually hit: undici wraps the socket error (one per address tried, in an
+ * AggregateError for a name that resolves to several) under ``cause``. */
+function connectionFailure(err: unknown): string {
+  const cause = (err as { cause?: unknown }).cause as
+    | {
+        code?: string;
+        message?: string;
+        errors?: { code?: string; address?: string; port?: number }[];
+      }
+    | undefined;
+  if (cause?.errors?.length) {
+    return cause.errors
+      .map((e) => `${e.code ?? "?"} ${e.address ?? ""}:${e.port ?? ""}`)
+      .join(", ");
+  }
+  return `${cause?.code ?? ""} ${cause?.message ?? String(err)}`.trim();
 }
 
 /** Bring one worker's backend from a bare uvicorn to a queryable, warmed-up instance. */
