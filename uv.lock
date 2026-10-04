@@ -2126,6 +2126,18 @@ wheels = [
 ]
 
 [[package]]
+name = "ldap3"
+version = "2.9.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyasn1" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/ac/96bd5464e3edbc61595d0d69989f5d9969ae411866427b2500a8e5b812c0/ldap3-2.9.1.tar.gz", hash = "sha256:f3e7fc4718e3f09dda568b57100095e0ce58633bcabbed8667ce3f8fbaa4229f", size = 398830, upload-time = "2021-07-18T06:34:21.786Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/f6/71d6ec9f18da0b2201287ce9db6afb1a1f637dedb3f0703409558981c723/ldap3-2.9.1-py2.py3-none-any.whl", hash = "sha256:5869596fc4948797020d3f03b7939da938778a0f9e2009f7a072ccf92b8e8d70", size = 432192, upload-time = "2021-07-18T06:34:12.905Z" },
+]
+
+[[package]]
 name = "license-expression"
 version = "30.4.4"
 source = { registry = "https://pypi.org/simple" }
@@ -3340,6 +3352,8 @@ dependencies = [
     { name = "jpype1" },
     { name = "jsonpath-ng" },
     { name = "keyring" },
+    { name = "ldap3" },
+    { name = "lxml" },
     { name = "mcp" },
     { name = "minio" },
     { name = "motor" },
@@ -3375,6 +3389,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "redis", extra = ["hiredis"] },
     { name = "scipy" },
+    { name = "signxml" },
     { name = "snowflake-connector-python", extra = ["pandas"] },
     { name = "snowflake-sqlalchemy" },
     { name = "sqlalchemy" },
@@ -3421,6 +3436,7 @@ dev = [
     { name = "pandas" },
     { name = "pip-audit" },
     { name = "pre-commit" },
+    { name = "provisa-pg-ext" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -3555,6 +3571,8 @@ requires-dist = [
     { name = "jpype1" },
     { name = "jsonpath-ng" },
     { name = "keyring" },
+    { name = "ldap3", specifier = ">=2.9,<3" },
+    { name = "lxml" },
     { name = "mcp", specifier = ">=1.2.0,<2" },
     { name = "mcp-proxy", marker = "extra == 'desktop'" },
     { name = "minio" },
@@ -3586,6 +3604,7 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "protobuf", specifier = ">=6.33.5,<7" },
     { name = "provisa-duckdb-ext", marker = "extra == 'embedded'", specifier = ">=0.1.1" },
+    { name = "provisa-pg-ext", marker = "extra == 'dev'", specifier = "==0.1.0" },
     { name = "psycopg", extras = ["binary"] },
     { name = "psycopg-pool" },
     { name = "psycopg2-binary" },
@@ -3611,6 +3630,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "scipy" },
     { name = "sentence-transformers", marker = "extra == 'vector'" },
+    { name = "signxml", specifier = ">=4,<5" },
     { name = "snowflake-connector-python", extras = ["pandas"] },
     { name = "snowflake-sqlalchemy" },
     { name = "soda-postgres", marker = "extra == 'soda'" },
@@ -3638,6 +3658,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/21/7b/f9a7aadcdf4188e55c5a583ababcef13977f7c49212036517b3ebe042801/provisa_duckdb_ext-0.1.1.tar.gz", hash = "sha256:df999e5125abaff3bfe0d6392a303dbde7d8c8abe94abcb59ba78364ad94c278", size = 88258533, upload-time = "2026-09-30T19:27:34.619Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f8/1a/e877f39ce6fbc7e86111b70163261d9e9c25c92d37a7f5dd3095b42d30e4/provisa_duckdb_ext-0.1.1-py3-none-any.whl", hash = "sha256:4e8d58861b22b186eb506d39132a9f7788cb86bd9082370b7a58bff75d4144f9", size = 88615695, upload-time = "2026-09-30T19:27:29.102Z" },
+]
+
+[[package]]
+name = "provisa-pg-ext"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/4e/ac956c62695d5459e71efc05db9bfde72b1194ff6eec7b11ced8579aa7a8/provisa_pg_ext-0.1.0.tar.gz", hash = "sha256:ad43e23bc34537120c66731bfa3cbb1b9a74c43b95ddfb6ef724158514ce9a19", size = 44284361, upload-time = "2026-07-19T23:12:04.704Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/99/d9/5f5ead6ce88484cb15b42e8c315bf65306e0271341d17322221a3da6e251/provisa_pg_ext-0.1.0-py3-none-any.whl", hash = "sha256:1f35ca0dd1a58197a0b54d093a9401fe5754d9e9ccc2f669ca9abdd31e98eacd", size = 44524936, upload-time = "2026-07-19T23:12:00.873Z" },
 ]
 
 [[package]]
@@ -4555,6 +4584,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/58/15/8b3609fd3830ef7b27b655beb4b4e9c62313a4e8da8c676e142cc210d58e/shellingham-1.5.4.tar.gz", hash = "sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de", size = 10310, upload-time = "2023-10-24T04:13:40.426Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl", hash = "sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686", size = 9755, upload-time = "2023-10-24T04:13:38.866Z" },
+]
+
+[[package]]
+name = "signxml"
+version = "4.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "cryptography" },
+    { name = "lxml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/55/2e/63f3a26be2a5aba9000bda998197b7e6be700b04a7488ec90d52a5a25423/signxml-4.5.1.tar.gz", hash = "sha256:6378d16cfd79cffc1761b75532e3ce3465ecd0c3a81890398813913d75a0b88a", size = 1615677, upload-time = "2026-06-13T23:51:48.822Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/45/53/a9047a471b2497b0dcbbb68d32cf99ad15e4a28f5d06a03ab5ff5489731d/signxml-4.5.1-py3-none-any.whl", hash = "sha256:20212c609d84596ec87d66df71af69cc6728c94bdbcd9d67fefefcc5d22b8a2d", size = 60549, upload-time = "2026-06-13T23:51:47.462Z" },
 ]
 
 [[package]]
