@@ -9,6 +9,10 @@ import { test, expect, UI_URL, TRINO_BACKEND_URL } from "./coverage";
 import { deleteSourceAndItsTables } from "./delete-source";
 
 const SOURCE_ID = "e2e-sharepoint";
+// REQ-1730: the sharepoint catalog's schema is the sql-normalized source id on every engine
+// (trino_connectors.TrinoSharepointConnector passes it as the catalog's `schema`, as
+// the DuckDB pgwire bridge exposes it), not the fixed literal "sharepoint".
+const SCHEMA = SOURCE_ID.replace(/-/g, "_");
 // Trino backend: register_source() creates a real Trino catalog so the schema dropdown populates.
 // DuckDB backend's register_source() is a no-op — the schema dropdown would stay empty.
 const GQL = `${TRINO_BACKEND_URL}/admin/graphql`;
@@ -156,18 +160,19 @@ test("sharepoint connector: add source and verify calendar list is available", a
   const firstDomain = await domainSelect.locator("option").nth(1).getAttribute("value");
   await domainSelect.selectOption(firstDomain!);
 
-  // Wait for 'sharepoint' schema to appear — Trino SharePoint catalog loads asynchronously; allow
+  // Wait for the source's schema to appear — Trino SharePoint catalog loads asynchronously; allow
   // 240s for Trino catalog initialisation + schema enumeration via SharePoint REST API.
   await page.waitForFunction(
-    () => {
+    (schema) => {
       const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-schema-select"]');
-      return Array.from(sel?.options ?? []).some((o) => o.value === "sharepoint");
+      return Array.from(sel?.options ?? []).some((o) => o.value === schema);
     },
+    SCHEMA,
     { timeout: 240000 },
   );
 
   // Select sharepoint schema
-  await page.locator('[data-testid="register-table-schema-select"]').selectOption("sharepoint");
+  await page.locator('[data-testid="register-table-schema-select"]').selectOption(SCHEMA);
 
   // Wait for 'calendar' table to appear — proves SharePoint lists are enumerated
   await page.waitForFunction(
@@ -196,12 +201,12 @@ test("sharepoint connector: add source and verify calendar list is available", a
       input: {
         sourceId: SOURCE_ID,
         domainId,
-        // The source schema the table lives in — the same "sharepoint" schema selected in the
+        // The source schema the table lives in — the same SCHEMA selected in the
         // dropdown above, not a name derived from the domain. register_table introspects
         // <source>.<schemaName>.<tableName> to resolve each column's data type (REQ-846), and a
         // schema the catalog does not have resolves nothing, so the mutation refuses the
         // registration with "no data type could be resolved from the source".
-        schemaName: "sharepoint",
+        schemaName: SCHEMA,
         tableName: "calendar",
         alias: "e2e_sp_calendar",
         columns: CALENDAR_COLUMNS,
