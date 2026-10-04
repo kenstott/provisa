@@ -96,6 +96,20 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
+      # The SQL Server warehouse replica target (provisa/federation/mssql_warehouse_runtime.py)
+      # connects through Microsoft's ODBC Driver 18, which the runner image does not ship; its
+      # requires_sqlserver tests run in the suite shards.
+      - &install-mssql-odbc
+        name: Install Microsoft ODBC Driver 18 for SQL Server
+        run: |
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+            | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          curl -fsSL "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
+            | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+          sudo apt-get update -q
+          sudo ACCEPT_EULA=Y apt-get install -y -q msodbcsql18 unixodbc-dev
+          odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
+
       - &install-deps
         name: Install dependencies
         run: |
