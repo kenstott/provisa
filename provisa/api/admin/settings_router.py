@@ -116,6 +116,29 @@ async def config_patch(request: Request):  # REQ-164
     )
 
 
+def _require_trigger_roles(request: Request, body: bytes) -> None:  # REQ-1003
+    """Each SQL trigger the uploaded config adds, changes or enables runs as its role, so saving
+    it is acting as that role (``capabilities.require_trigger_role``). A trigger carried over
+    unchanged, or one left disabled, is not checked: it starts nothing new."""
+    import yaml
+
+    from provisa.api.admin.capabilities import require_trigger_role
+
+    current = {t.get("id"): t for t in (read_config().get("scheduled_triggers") or [])}
+    uploaded = (yaml.safe_load(body.decode("utf-8")) or {}).get("scheduled_triggers") or []
+    for trigger in uploaded:
+        if (
+            trigger.get("sql") is None
+            or not trigger.get("enabled", True)
+            or not trigger.get("role")
+        ):
+            # A SQL trigger with no role is refused by the config's own validation on load.
+            continue
+        if trigger == current.get(trigger.get("id")):
+            continue
+        require_trigger_role(request, trigger["role"])
+
+
 @router.put("/admin/config")
 async def upload_config(request: Request):  # REQ-164
     """Upload a revised config YAML and reload.
@@ -128,6 +151,7 @@ async def upload_config(request: Request):  # REQ-164
     from provisa.api.app import _load_and_build, state  # lazy to avoid circular import
 
     body = await request.body()
+    _require_trigger_roles(request, body)
     if getattr(state, "config_live_export", False):
         import yaml
 

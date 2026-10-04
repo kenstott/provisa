@@ -373,6 +373,124 @@ class TestOnlyAssignedRoleRidesHeader:
         assert held.status_code == 200, held.text
 
 
+class TestScheduledTriggerRunsAsAHeldRole:
+    """REQ-1003: a scheduled SQL trigger runs as its role on every firing, so it is saved only by
+    a caller who holds that role (or holds cross_org). alice holds analyst and is given a role
+    carrying org_settings, the right that schedules triggers, and table_registration, the right
+    that test-calls a command (the next class); she does not hold org_admin."""
+
+    _SQL = "INSERT INTO audit.d SELECT '{{YYYY-MM-DD}}'"
+
+    async def _create(self, client, task_id: str, role: str):
+        query = (
+            "mutation($id: String!, $sql: String!, $role: String!) { createScheduledTask("
+            'id: $id, name: $id, cron: "0 2 * * *", kind: "sql", sql: $sql, role: $role) '
+            "{ success message } }"
+        )
+        return await client.post(
+            "/admin/graphql",
+            json={"query": query, "variables": {"id": task_id, "sql": self._SQL, "role": role}},
+            headers=_in_org("alice", _ctx["org1"]),
+        )
+
+    async def _task_ids(self, client) -> set[str]:
+        resp = await client.post(
+            "/admin/graphql",
+            json={"query": "{ scheduledTasks { id } }"},
+            headers=_in_org("founder", _ctx["org1"]),
+        )
+        assert resp.status_code == 200 and not resp.json().get("errors"), resp.text
+        return {t["id"] for t in resp.json()["data"]["scheduledTasks"]}
+
+    async def test_alice_is_given_the_scheduling_and_test_call_rights(self, client):
+        org1, ids = _ctx["org1"], _ctx["user_ids"]
+        # Defined over REST: the rights it carries are live as soon as it is made.
+        made = await client.post(
+            "/admin/roles/",
+            json={
+                "id": "scheduler",
+                "capabilities": ["org_settings", "table_registration"],
+                "domain_access": ["*"],
+            },
+            headers=_in_org("founder", org1),
+        )
+        assert made.status_code == 200, made.text
+        assign = await client.post(
+            f"/admin/users/{ids['alice']}/assignments",
+            json={"role_id": "scheduler", "domain_id": "*"},
+            headers=_in_org("founder", org1),
+        )
+        assert assign.status_code == 200, assign.text
+
+    async def test_a_role_created_over_rest_grants_at_once(self, client):
+        # A REST-created role's right is honoured on the next request, with no other change in
+        # between to rebuild the runtime's roles. A webhook trigger needs only org_settings, so
+        # its refusal for a webhook that does not exist says the right was granted.
+        query = (
+            'mutation { createScheduledTask(id: "rest-grant", name: "rest-grant", '
+            'cron: "0 2 * * *", kind: "webhook", webhookName: "no-such-webhook") '
+            "{ success code } }"
+        )
+        resp = await client.post(
+            "/admin/graphql", json={"query": query}, headers=_in_org("alice", _ctx["org1"])
+        )
+        assert resp.status_code == 200, resp.text
+        assert not resp.json().get("errors"), resp.text
+        assert resp.json()["data"]["createScheduledTask"]["code"] == "schema.webhook_not_found"
+
+    async def test_a_trigger_cannot_run_as_a_role_its_creator_does_not_hold(self, client):
+        resp = await self._create(client, "as-org-admin", "org_admin")
+        assert resp.status_code == 200, resp.text
+        errors = resp.json().get("errors") or []
+        assert errors and "Role 'org_admin' is not assigned to this user" in errors[0]["message"]
+        assert "as-org-admin" not in await self._task_ids(client)
+
+    async def test_a_trigger_runs_as_a_role_its_creator_holds(self, client):
+        resp = await self._create(client, "as-analyst", "analyst")
+        assert resp.status_code == 200, resp.text
+        assert not resp.json().get("errors"), resp.text
+        assert resp.json()["data"]["createScheduledTask"]["success"] is True, resp.text
+        assert "as-analyst" in await self._task_ids(client)
+
+        removed = await client.post(
+            "/admin/graphql",
+            json={"query": 'mutation { deleteScheduledTask(taskId: "as-analyst") { success } }'},
+            headers=_in_org("founder", _ctx["org1"]),
+        )
+        assert removed.json()["data"]["deleteScheduledTask"]["success"] is True, removed.text
+
+
+class TestActionTestCallIsGoverned:
+    """REQ-004, REQ-273: the admin test call of a command names a role, the role is one the
+    caller holds (or the caller holds access_config), and the call is the governed one: the
+    command admission decides. alice holds analyst and table_registration (the class above);
+    enrich_orders (sample config) is assigned to org_admin only."""
+
+    async def _test(self, client, monkeypatch, role_id):
+        monkeypatch.setenv("PROVISA_ENABLE_TEST_ENDPOINTS", "true")
+        body = {"actionType": "function", "name": "enrich_orders", "role_id": role_id}
+        return await client.post(
+            "/admin/actions/test", json=body, headers=_in_org("alice", _ctx["org1"])
+        )
+
+    async def test_a_test_call_names_its_role(self, client, monkeypatch):
+        resp = await self._test(client, monkeypatch, None)
+        assert resp.status_code == 422, resp.text
+        assert resp.json()["code"] == "actions.test_role_required", resp.text
+
+    async def test_a_test_call_runs_only_as_a_role_the_caller_holds(self, client, monkeypatch):
+        resp = await self._test(client, monkeypatch, "org_admin")
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["detail"] == "Role 'org_admin' is not assigned to this user"
+
+    async def test_a_held_role_is_held_to_the_command_admission(self, client, monkeypatch):
+        # analyst is alice's own role, and enrich_orders is not assigned to it: the same answer
+        # as a command never registered, and nothing runs.
+        resp = await self._test(client, monkeypatch, "analyst")
+        assert resp.status_code == 404, resp.text
+        assert resp.json()["code"] == "functions.unknown_command", resp.text
+
+
 class TestPlatformAdminHasZeroDataPlane:
     """REQ-1327: platform_admin is a purely control-plane role — no data surface anywhere,
     and no right it holds passes a data-plane capability check."""
