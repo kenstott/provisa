@@ -66,3 +66,72 @@ def target_ref(sql: str) -> str:
 def admitted(sql: str, gov: GovernanceContext, params: list | None = None) -> str:
     """``sql`` as the governance stage admits it (raises when it does not)."""
     return apply_governance(sql, gov, {}, params)
+
+
+def run_after_write(table_id: int, table_name: str, source_id: str) -> dict[str, list]:
+    """Finalize a successful write plan through the pipeline's terminal and record what the
+    steps after a write did."""
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from provisa.kafka import change_events as _change_mod
+    from provisa.kafka import sink_executor as _sink_mod
+    from provisa.pgwire._pipeline import _Plan, finalize_audit
+    from provisa.transpiler.router import Route
+
+    calls: dict[str, list] = {"invalidated": [], "stale": [], "events": [], "sinks": []}
+
+    class _Store:
+        async def invalidate_by_table(self, tid, tenant_id=None):
+            calls["invalidated"].append(tid)
+            return 1
+
+    async def _sinks(name, _state):
+        calls["sinks"].append(name)
+        return 0
+
+    state = SimpleNamespace(
+        response_cache_store=_Store(),
+        model_db="fake",
+        tenant_db="fake",
+        org_id="org-a",
+        model_stamp=1,
+        contexts={
+            "writer": SimpleNamespace(
+                tables={
+                    table_name: SimpleNamespace(
+                        table_id=table_id, table_name=table_name, source_id=source_id
+                    )
+                }
+            )
+        },
+        mv_registry=SimpleNamespace(mark_stale=calls["stale"].append),
+        hot_manager=None,
+    )
+    plan = _Plan(
+        route=Route.DIRECT,
+        sql="INSERT",
+        source_id=source_id,
+        dialect="postgres",
+        role_id="writer",
+        table_ids=(table_id,),
+        writes_tables=True,
+        written_table_id=table_id,
+    )
+
+    async def _no_replica(_state, _table_id, _source_id, _reason):
+        return False  # no replica store here: the build request has its own tests
+
+    with (
+        patch.object(_change_mod, "emit_change_event", lambda *a: calls["events"].append(a)),
+        patch.object(_sink_mod, "trigger_sinks_for_table", _sinks),
+        patch("provisa.federation.replica_builds.request_if_replicated", _no_replica),
+    ):
+
+        async def _finalize():
+            await finalize_audit(plan, 200, state)
+            await asyncio.sleep(0)  # the sink run is spawned in the background
+
+        asyncio.run(_finalize())
+    return calls

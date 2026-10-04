@@ -111,6 +111,7 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
+from tests.helpers import registry_write_ops
 from provisa.core.models import (
     Cardinality,
     Column,
@@ -505,6 +506,7 @@ class SchemaGenerationEngine:
             "domain_id": table.domain_id,
             "schema_name": table.schema_name,
             "table_name": table.table_name,
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": col.name, "visible_to": list(col.visible_to)}
                 for col in table.columns
@@ -918,6 +920,7 @@ def _build_schema_input_with_root_ids(root_table_ids: set[int] | None) -> Any:
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": []},
                 {"column_name": "customer_id", "visible_to": []},
@@ -929,6 +932,7 @@ def _build_schema_input_with_root_ids(root_table_ids: set[int] | None) -> Any:
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "customers",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": []},
                 {"column_name": "name", "visible_to": []},

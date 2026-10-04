@@ -20,9 +20,9 @@ REQ-326: Each mutation-classified gRPC method is exposed as a tracked function (
 Input message fields become GraphQL mutation input arguments. The output message schema
 becomes the mutation's return_schema.
 
-REQ-327: Query method results are materialized as Parquet in a Trino Iceberg table
-on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). The cache key is
-a SHA-256 hash of `source_id + method + native args`. Mutations are never cached.
+REQ-327 (amended 2026-10-03): Query method results are kept in the federation engine's own
+store, in the org's API cache schema, on every engine (REQ-845). The cache key is a SHA-256
+hash of `source_id + method + native args`. Mutations are never cached.
 One `grpc.aio.Channel` is reused per registered source across requests, stored in
 `AppState.grpc_remote_channels`. The cache table is dropped after TTL expires.
 
@@ -34,6 +34,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -43,6 +44,8 @@ from provisa.grpc_remote import loader
 from provisa.api_source.engine_cache import (
     cache_location,
     cache_table_name,
+    org_cache_schema,
+    resolved_cache_catalog,
     table_known_live,
     _TABLE_EXISTS_CACHE,
 )
@@ -359,12 +362,6 @@ service InventoryService {
   rpc GetInventory (GetInventoryRequest) returns (InventoryItem);
 }
 """
-
-# Iceberg catalog/schema/bucket constants mirroring trino_cache.py
-_ICEBERG_CATALOG = "results"
-_ICEBERG_SCHEMA = "api_cache"
-_ICEBERG_BUCKET = "provisa-results"
-
 
 # ---------------------------------------------------------------------------
 # REQ-329 proto constants — original and changed versions
@@ -944,11 +941,11 @@ def assert_tracked_function_structure(shared_data):
 
 
 @given(
-    "a gRPC query method result cached in Trino Iceberg on S3",
+    "a gRPC query method result cached in the engine's own store",
     target_fixture="shared_data",
 )
 def grpc_query_result_cached_in_iceberg(shared_data):
-    """Set up a simulated cache hit in the Trino Iceberg table for a gRPC query."""
+    """Set up a cache hit in the engine's store for a gRPC query."""
     parsed = loader.parse_proto_text(_REQ327_PROTO)
     assert parsed["services"], "loader produced no services from REQ-327 proto"
 
@@ -960,11 +957,16 @@ def grpc_query_result_cached_in_iceberg(shared_data):
     cache_key = _grpc_cache_key(source_id, method, native_args)
     assert len(cache_key) == 64, "SHA-256 hex digest must be 64 characters"
 
-    # Derive the Iceberg cache location (results catalog → Iceberg backend)
-    loc = cache_location(source_id, cache_catalog=_ICEBERG_CATALOG, cache_schema=_ICEBERG_SCHEMA)
-    assert loc.catalog == _ICEBERG_CATALOG
-    assert loc.schema == _ICEBERG_SCHEMA
-    assert loc.backend == "iceberg"
+    # The cache location, by the rule the gRPC-remote read uses (api/data/materialization.py):
+    # the bound engine's own store, in the org's API cache schema, on every engine (REQ-327 as
+    locations = {}
+    for engine_name, store in (("trino", "provisa_admin"), ("duckdb", "materialize_store")):
+        engine = SimpleNamespace(name=engine_name, cache_catalog=lambda store=store: store)
+        state = SimpleNamespace(org_id="acme", federation_engine=engine)
+        locations[engine_name] = cache_location(
+            source_id, resolved_cache_catalog(state.federation_engine), org_cache_schema(state)
+        )
+    loc = locations["trino"]
 
     # Compute the stable table name from cache key components
     tbl = cache_table_name(source_id, method, native_args)
@@ -973,7 +975,7 @@ def grpc_query_result_cached_in_iceberg(shared_data):
     # Simulate the in-process TTL cache confirming this table is live
     _TABLE_EXISTS_CACHE[(loc.catalog, loc.schema, tbl)] = time.monotonic() + 3600
 
-    # Simulate cached rows already in Trino (no live gRPC call needed)
+    # Cached rows already in the engine's store (no live gRPC call needed)
     cached_rows = [{"sku": "SKU-42", "warehouse_id": "WH-001", "quantity": 100, "unit_cost": 9.99}]
 
     # Simulate a reusable gRPC channel stored in AppState.grpc_remote_channels
@@ -987,6 +989,7 @@ def grpc_query_result_cached_in_iceberg(shared_data):
     shared_data["native_args"] = native_args
     shared_data["cache_key"] = cache_key
     shared_data["loc"] = loc
+    shared_data["locations"] = locations
     shared_data["tbl"] = tbl
     shared_data["cached_rows"] = cached_rows
     shared_data["grpc_remote_channels"] = grpc_remote_channels
@@ -1005,13 +1008,13 @@ def same_grpc_call_repeated_within_ttl(shared_data):
     loc = shared_data["loc"]
     tbl = shared_data["tbl"]
 
-    # table_known_live must return True — no Trino probe needed
+    # table_known_live must return True — no probe of the store needed
     is_live = table_known_live(loc, tbl)
     assert is_live, "table_known_live must return True when the cache entry has not expired"
 
     shared_data["is_cache_hit"] = is_live
 
-    # Simulate that the executor skips the gRPC call and reads from Trino instead
+    # The executor skips the gRPC call and reads the engine's store instead
     # The channel is accessed from the channel registry — not re-created
     source_id = shared_data["source_id"]
     channels = shared_data["grpc_remote_channels"]
@@ -1028,15 +1031,16 @@ def same_grpc_call_repeated_within_ttl(shared_data):
 
 
 @then(
-    "results are served from Trino directly and the gRPC channel is reused without a new connection"
+    "results are served from the engine's store and the gRPC channel is reused without a new "
+    "connection"
 )
 def assert_results_from_cache_and_channel_reused(shared_data):
-    """Assert REQ-327: cache hit serves Trino rows; channel not re-created; mutations never cached."""
+    """Assert REQ-327: cache hit serves the store's rows; channel not re-created; mutations never cached."""
     assert shared_data["is_cache_hit"] is True, (
         "Cache hit must have been confirmed in the When step"
     )
 
-    # Rows come from the simulated Trino cache — not from a live gRPC call
+    # Rows come from the cache in the engine's store — not from a live gRPC call
     cached_rows = shared_data["cached_rows"]
     assert len(cached_rows) == 1
     assert cached_rows[0]["sku"] == "SKU-42"
@@ -1070,15 +1074,15 @@ def assert_results_from_cache_and_channel_reused(shared_data):
         "Cache key must be deterministic for identical source_id + method + args"
     )
 
-    # Verify Iceberg S3 location convention
-    loc = shared_data["loc"]
-    assert loc.catalog == _ICEBERG_CATALOG, (
-        f"gRPC query cache must use the '{_ICEBERG_CATALOG}' Iceberg catalog"
-    )
-    assert loc.schema == _ICEBERG_SCHEMA, f"gRPC query cache schema must be '{_ICEBERG_SCHEMA}'"
-    assert loc.backend == "iceberg", (
-        "Cache location backend must be 'iceberg' for the results catalog"
-    )
+    # The cache is held in each engine's own store, in the org's API cache schema — never the
+    # Iceberg results catalog.
+    for engine_name, store in (("trino", "provisa_admin"), ("duckdb", "materialize_store")):
+        where = shared_data["locations"][engine_name]
+        assert (where.catalog, where.schema, where.backend) == (
+            store,
+            "org_acme_api_cache",
+            "relational",
+        ), (engine_name, where)
 
 
 # ---------------------------------------------------------------------------

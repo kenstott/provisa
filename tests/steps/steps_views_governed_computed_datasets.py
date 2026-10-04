@@ -30,6 +30,7 @@ import pytest
 from graphql import GraphQLObjectType
 from pytest_bdd import given, scenarios, then, when
 
+from tests.helpers import registry_write_ops
 from provisa.compiler import naming as _naming
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
@@ -106,6 +107,7 @@ def _dataset_def(kind: str) -> dict:
         "domain_id": "sales",
         "schema_name": "public",
         "table_name": "secured_dataset",
+        "write_ops": registry_write_ops("postgresql", view=kind == "view"),
         "kind": kind,
         "columns": _COLUMNS,
     }

@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-736 — File & Lake Sources
-  # File source adapter supports SQLite, CSV, and Parquet formats. SQLite uses native type mapping (INTEGER→BIGINT, REAL→DOU…
+  # File source adapter supports SQLite, CSV and Parquet formats. SQLite uses native type mapping (INTEGER to BIGINT, REAL t…
 
   Scenario: REQ-736 default behaviour
     Given a SQLite database with multiple tables

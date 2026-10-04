@@ -488,6 +488,12 @@ def request_to_skip_path(shared_data: dict) -> None:
         "/auth/superuser-login",
         "/auth/provider-type",
         "/auth/bootstrap-status",
+        # REQ-1265: SAML web SSO runs before any token exists. /login sends the browser to the
+        # IdP, the IdP posts the signed assertion to /acs, and /metadata is the SP's published
+        # descriptor the IdP is configured from.
+        "/auth/saml/login",
+        "/auth/saml/acs",
+        "/auth/saml/metadata",
         "/setup/status",
         # REQ-1486: an org's branding dresses its sign-in page, which renders before a token
         # exists. Both answer only what the org chose to show every visitor at its address.

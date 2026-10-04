@@ -38,6 +38,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
+from tests.helpers import registry_write_ops
 from pytest_bdd import given, when, then, scenarios
 
 scenarios("../features/REQ-257.feature")
@@ -852,6 +853,7 @@ def _build_orders_schema_ctx():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -866,6 +868,7 @@ def _build_orders_schema_ctx():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "customers",
+            "write_ops": registry_write_ops("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},

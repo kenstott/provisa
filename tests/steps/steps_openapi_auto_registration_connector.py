@@ -27,10 +27,10 @@ is derived by stripping the leading verb segment and singularizing the noun
 (e.g. ``findPetsByStatus`` → ``pet_by_status``). The alias is used as the
 consumer-facing name in GraphQL and other query interfaces.
 
-REQ-318: GET operation results are materialized as Parquet in a Trino Iceberg table on
-S3 (results.api_cache, s3a://provisa-results/api_cache/). The cache key is a SHA-256
-hash of source_id + operation path + native args. Repeated calls within TTL hit Trino
-directly. The cache table is dropped after TTL expires. Mutations are never cached.
+REQ-318 (amended 2026-10-03): GET operation results are kept in the federation engine's own
+store, in the org's API cache schema, on every engine (REQ-845). The cache key is a SHA-256 hash
+of source_id + operation path + native args. Repeated calls within TTL are served from the
+cache. Mutations are never cached.
 
 REQ-321: Spec refresh is triggered on demand via an admin mutation. On refresh, existing
 virtual table and tracked function registrations derived from the spec are updated;
@@ -53,7 +53,6 @@ from provisa.openapi.loader import load_spec, parse_text
 from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec as map_operations
 from provisa.api_source.engine_cache import (
     CacheLocation,
-    cache_location,
     cache_table_name,
     table_exists,
     table_known_live,
@@ -1130,27 +1129,40 @@ def then_virtual_table_alias(shared_data, alias):
 
 
 # ---------------------------------------------------------------------------
-# REQ-318 Steps — GET results served from Trino cache within TTL
+# REQ-318 Steps — GET results served from the engine's store within TTL
 # ---------------------------------------------------------------------------
 
 
-@given("a GET operation result cached in Trino Iceberg on S3")
+@given("a GET operation result cached in the engine's own store")
 def given_get_result_cached_in_trino(shared_data):
-    """Populate the in-process table-exists cache to simulate a live Iceberg table."""
-    loc = cache_location(_REQ318_SOURCE_ID, cache_catalog="results")
-    assert loc.backend == "iceberg", "results catalog must map to the Iceberg backend"
+    """The API cache is held in the bound engine's own store, in the org's API cache schema, on
+    every engine (REQ-318 as amended, REQ-845). The location comes from the production rule for each engine; the cached
+    table is then probed once, which is the cache miss that records it as live."""
+    from types import SimpleNamespace
+
+    from provisa.api_source.fill_cache import source_cache_location
+
+    locations = {}
+    for engine_name, store in (("trino", "provisa_admin"), ("duckdb", "materialize_store")):
+        engine = SimpleNamespace(name=engine_name, cache_catalog=lambda store=store: store)
+        state = SimpleNamespace(org_id="acme", source_catalogs={}, federation_engine=engine)
+        loc = source_cache_location(state, _REQ318_SOURCE_ID, None)
+        # The engine's own store, the org's API cache schema — never the Iceberg results catalog.
+        assert (loc.catalog, loc.schema, loc.backend) == (store, "org_acme_api_cache", "relational")
+        locations[engine_name] = loc
+    loc = locations["trino"]
 
     table_name = cache_table_name(_REQ318_SOURCE_ID, _REQ318_OPERATION_PATH, _REQ318_NATIVE_ARGS)
     assert table_name.startswith("r_"), "cache table name must be the SHA-256-derived r_ name"
 
-    # First access: a live Trino probe materializes the positive result into the
-    # in-process TTL cache (matching real table_exists behaviour on cache miss).
+    # First access: a live probe of the engine's store records the table as live in the
+    # in-process TTL cache (real table_exists behaviour on a cache miss).
     conn = _make_fake_trino_conn(table_name, loc, _REQ318_TTL)
     _TABLE_EXISTS_CACHE.pop((loc.catalog, loc.schema, table_name), None)
     assert (
         table_exists(EngineSession(conn, dialect="trino"), loc, table_name, ttl=_REQ318_TTL) is True
     )
-    assert conn.cursor.called, "first access must probe Trino (cache miss)"
+    assert conn.cursor.called, "first access must probe the engine's store (cache miss)"
 
     shared_data["loc"] = loc
     shared_data["table_name"] = table_name
@@ -1172,9 +1184,9 @@ def when_same_query_issued_within_ttl(shared_data):
     shared_data["second_conn"] = _make_fake_trino_conn(recomputed, loc, _REQ318_TTL)
 
 
-@then("results are served from Trino directly with zero upstream REST calls")
+@then("results are served from the engine's store with zero upstream REST calls")
 def then_served_from_trino_zero_rest(shared_data):
-    """Assert the second call is a cache hit — no Trino probe, no REST fetch."""
+    """Assert the second call is a cache hit — no probe of the store, no REST fetch."""
     loc: CacheLocation = shared_data["loc"]
     table_name: str = shared_data["table_name"]
     second_conn: mock.MagicMock = shared_data["second_conn"]
@@ -1187,9 +1199,7 @@ def then_served_from_trino_zero_rest(shared_data):
         table_exists(EngineSession(second_conn, dialect="trino"), loc, table_name, ttl=_REQ318_TTL)
         is True
     )
-    assert not second_conn.cursor.called, (
-        "cache hit must not issue any Trino probe (zero upstream calls)"
-    )
+    assert not second_conn.cursor.called, "cache hit must not probe the store (zero upstream calls)"
 
 
 # ---------------------------------------------------------------------------

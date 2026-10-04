@@ -5,7 +5,8 @@ Feature: REQ-818 — Cypher Mutations
   Scenario: REQ-818 default behaviour
     Given a valid CREATE statement targeting a table with write rights
     When executed via the /data/cypher endpoint
-    Then it executes as a direct table write, returns affected_rows, and applies RLS + post-mutation hooks
+    Then the role's row filter is applied to the translated write by the one write admission
+    And it executes as a direct table write, returns affected_rows, and runs the one after-write step
 
     Given a MERGE or DETACH statement
     When parsed

@@ -15,6 +15,7 @@ import pytest
 from graphql import GraphQLObjectType
 from pytest_bdd import given, when, then, scenarios
 
+from tests.helpers import registry_write_ops
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
@@ -48,6 +49,7 @@ def _registered_table(shared_data):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            "write_ops": registry_write_ops("postgresql"),
             "enable_aggregates": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
@@ -186,6 +188,7 @@ def _role_without_aggregations(shared_data):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            "write_ops": registry_write_ops("postgresql"),
             # Table-level aggregates auto-detection is enabled; gating must be per-role.
             "enable_aggregates": True,
             "columns": [
