@@ -356,6 +356,18 @@ async def test_only_the_sources_the_plan_names_are_considered(wiring, plane):
 
 
 @pytest.mark.asyncio
+async def test_a_built_in_sources_table_read_beside_a_registered_one_is_never_landed(wiring, plane):
+    """A built-in source (provisa-admin) is never landed, so registered_sources leaves it out;
+    a statement that reads one of its tables beside a registered source's table builds the
+    registered one and leaves the built-in one alone (it used to fail the read with
+    ``KeyError: 'provisa-admin'``)."""
+    pets = _table("pets-db", "pets")
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    state.config.tables.append(_table("provisa-admin", "registered_tables", schema="main"))
+    assert await _ensure(state, {"pets-db", "provisa-admin"}) == [("pets-db", "pets")]
+
+
+@pytest.mark.asyncio
 async def test_only_the_tables_the_statement_reads_are_judged_and_built(wiring, plane):
     """REQ-826: a statement that reads one table of a source neither builds nor waits on the
     source's other tables."""
