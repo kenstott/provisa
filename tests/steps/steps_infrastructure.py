@@ -144,30 +144,29 @@ def stack_first_start(shared_data):
 # ---------------------------------------------------------------------------
 
 
-@when("the startup sequence runs")
-def run_startup_sequence(shared_data):
-    """Run the real application startup (lifespan) which bootstraps storage."""
+@when("the first redirect that needs the results bucket runs")
+def run_first_redirect(shared_data):
+    """A real redirect: upload a one-row result and presign it (REQ-171, amended 2026-10-01: the
+    bucket is ensured by the first redirect that needs it, not by startup)."""
     import asyncio as _asyncio
+    from dataclasses import replace
 
-    os.environ.setdefault("PG_PASSWORD", "provisa")
+    from provisa.executor.redirect import RedirectConfig, upload_and_presign
+    from provisa.executor.result import QueryResult
 
     minio = shared_data["minio_settings"]
     scheme = "https" if minio["secure"] else "http"
-    os.environ.setdefault("PROVISA_REDIRECT_ENDPOINT", f"{scheme}://{minio['endpoint']}")
-    os.environ.setdefault("PROVISA_REDIRECT_ACCESS_KEY", minio["access_key"])
-    os.environ.setdefault("PROVISA_REDIRECT_SECRET_KEY", minio["secret_key"])
-    os.environ.setdefault("PROVISA_REDIRECT_BUCKET", minio["bucket"])
-
-    from provisa.api.app import create_app
-
-    app = create_app()
-
-    async def _run():
-        async with app.router.lifespan_context(app):
-            shared_data["startup_completed"] = True
-
-    _asyncio.run(_run())
-    assert shared_data.get("startup_completed") is True, "startup lifespan did not complete"
+    config = replace(
+        RedirectConfig.from_env(),
+        enabled=True,
+        endpoint_url=f"{scheme}://{minio['endpoint']}",
+        access_key=minio["access_key"],
+        secret_key=minio["secret_key"],
+        bucket=minio["bucket"],
+        encrypt=False,
+    )
+    result = QueryResult(rows=[(1,)], column_names=["id"])
+    shared_data["redirect"] = _asyncio.run(upload_and_presign(result, config, ["id"]))
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +182,7 @@ def results_bucket_created(shared_data):
     bucket = settings["bucket"]
 
     assert client.bucket_exists(bucket), (
-        f"results bucket {bucket!r} was not auto-created during startup"
+        f"results bucket {bucket!r} was not auto-created by the first redirect"
     )
     assert shared_data.get("bucket_existed_before_startup") is False
 
