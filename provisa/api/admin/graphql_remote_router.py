@@ -464,8 +464,11 @@ async def register_graphql_remote_source(
     if not body.url:
         raise ApiError(422, "graphql_remote.url_required", "A GraphQL endpoint URL is required")
 
+    # The row keeps the endpoint as written; a ``${env:...}`` reference is read at what it names,
+    # as boot resolves a config-declared path (app_loaders).
+    url = await _resolved_credential(body.url)
     try:
-        schema = await introspect_schema(body.url, body.auth)
+        schema = await introspect_schema(url, body.auth)
         offered, _, _ = map_schema(
             schema, body.namespace, body.source_id, body.domain_id, only=set()
         )
@@ -499,7 +502,7 @@ async def register_graphql_remote_source(
             )
     state.graphql_remote_sources[body.source_id] = {
         "source_id": body.source_id,
-        "url": body.url,
+        "url": url,
         "namespace": body.namespace,
         "domain_id": body.domain_id,
         "auth": body.auth,

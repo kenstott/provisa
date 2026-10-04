@@ -996,142 +996,132 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
         return None
 
     t = source_type.lower()
-    try:
-        if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum", "redshift"):
-            # cockroachdb/yugabytedb/greenplum/redshift: same wire-compatible grouping as
-            # native_schemas's postgres-wire branch — were missing from this tuple, so each fell
-            # through to the generic engine-catalog fallback (empty pre-registration), leaving the
-            # Register Table TABLE picker permanently empty even once the schema picker itself
-            # worked (verified live: cockroachdb's schema list resolves fine, but "widgets" never
-            # appeared in the table select without this; redshift's regclass/pg_class support is
-            # identical to upstream Postgres's for this already-schema-scoped query).
-            result = await pool.execute(
-                source_id,
-                "SELECT table_name, obj_description("
-                "(quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass, 'pg_class') "
-                "FROM information_schema.tables "
-                "WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name",
-                [schema_name],
-            )
-            return [AvailableTableType(name=row[0], comment=row[1]) for row in result.rows]
+    if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum", "redshift"):
+        # cockroachdb/yugabytedb/greenplum/redshift: same wire-compatible grouping as
+        # native_schemas's postgres-wire branch — were missing from this tuple, so each fell
+        # through to the generic engine-catalog fallback (empty pre-registration), leaving the
+        # Register Table TABLE picker permanently empty even once the schema picker itself
+        # worked (verified live: cockroachdb's schema list resolves fine, but "widgets" never
+        # appeared in the table select without this; redshift's regclass/pg_class support is
+        # identical to upstream Postgres's for this already-schema-scoped query).
+        result = await pool.execute(
+            source_id,
+            "SELECT table_name, obj_description("
+            "(quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass, 'pg_class') "
+            "FROM information_schema.tables "
+            "WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name",
+            [schema_name],
+        )
+        return [AvailableTableType(name=row[0], comment=row[1]) for row in result.rows]
 
-        if t == "oracle":
-            # Oracle has no per-table comment catalog as cheap as postgres's obj_description;
-            # ALL_TAB_COMMENTS carries it. Same fell-through-to-None gap as the postgres-wire
-            # group above.
-            result = await pool.execute(
-                source_id,
-                "SELECT t.table_name, c.comments FROM all_tables t "
-                "LEFT JOIN all_tab_comments c ON c.owner = t.owner AND c.table_name = t.table_name "
-                "WHERE t.owner = $1 ORDER BY t.table_name",
-                [schema_name],
-            )
-            return [AvailableTableType(name=row[0], comment=row[1]) for row in result.rows]
+    if t == "oracle":
+        # Oracle has no per-table comment catalog as cheap as postgres's obj_description;
+        # ALL_TAB_COMMENTS carries it. Same fell-through-to-None gap as the postgres-wire
+        # group above.
+        result = await pool.execute(
+            source_id,
+            "SELECT t.table_name, c.comments FROM all_tables t "
+            "LEFT JOIN all_tab_comments c ON c.owner = t.owner AND c.table_name = t.table_name "
+            "WHERE t.owner = $1 ORDER BY t.table_name",
+            [schema_name],
+        )
+        return [AvailableTableType(name=row[0], comment=row[1]) for row in result.rows]
 
-        if t == "clickhouse":
-            # Same fell-through-to-None gap as native_schemas's clickhouse branch — system.tables
-            # is ClickHouse's own catalog. ClickHouseDriver.execute always ignores params (SQL
-            # arrives fully formed), so schema_name is inlined — always a value native_schemas's
-            # own clickhouse branch already returned from system.databases, never raw user input,
-            # same constraint noted for the snowflake/databricks/bigquery branches elsewhere here.
-            result = await pool.execute(
-                source_id,
-                f"SELECT name, comment FROM system.tables "
-                f"WHERE database = '{schema_name}' AND engine NOT LIKE '%View%' ORDER BY name",
-            )
-            return [AvailableTableType(name=row[0], comment=row[1] or None) for row in result.rows]
+    if t == "clickhouse":
+        # Same fell-through-to-None gap as native_schemas's clickhouse branch — system.tables
+        # is ClickHouse's own catalog. ClickHouseDriver.execute always ignores params (SQL
+        # arrives fully formed), so schema_name is inlined — always a value native_schemas's
+        # own clickhouse branch already returned from system.databases, never raw user input,
+        # same constraint noted for the snowflake/databricks/bigquery branches elsewhere here.
+        result = await pool.execute(
+            source_id,
+            f"SELECT name, comment FROM system.tables "
+            f"WHERE database = '{schema_name}' AND engine NOT LIKE '%View%' ORDER BY name",
+        )
+        return [AvailableTableType(name=row[0], comment=row[1] or None) for row in result.rows]
 
-        if t in ("mysql", "mariadb", "tidb", "singlestore"):
-            # REQ-1732: `%s`, not `?` — aiomysql's paramstyle (MySQLDriver.execute only rewrites
-            # `$N`, never touches a literal `?`). Verified live: passing `?` here raises
-            # "not all arguments converted during string formatting" inside pymysql's own escaping
-            # — silently swallowed by this function's outer `except Exception: return None`, so the
-            # picker just came back empty rather than erroring. This never surfaced before because
-            # mysql/mariadb are normally registered under Trino, where a real ATTACH connector
-            # answers available_tables through the engine-catalog fallback instead, this broken
-            # pool query never actually running. tidb (identical MySQL wire protocol) was missing
-            # from this tuple too — same silent-empty-picker symptom.
-            result = await pool.execute(
-                source_id,
-                "SELECT TABLE_NAME, TABLE_COMMENT FROM information_schema.TABLES "
-                "WHERE TABLE_SCHEMA = %s AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
-                [schema_name],
-            )
-            return [AvailableTableType(name=row[0], comment=row[1] or None) for row in result.rows]
+    if t in ("mysql", "mariadb", "tidb", "singlestore"):
+        # REQ-1732: `$1` — MySQLDriver.execute binds `$N` as PyMySQL's `%s` and escapes every
+        # literal `%` first, so a `%s` written here is a literal and the binding fails. tidb
+        # speaks the same wire protocol.
+        result = await pool.execute(
+            source_id,
+            "SELECT TABLE_NAME, TABLE_COMMENT FROM information_schema.TABLES "
+            "WHERE TABLE_SCHEMA = $1 AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+            [schema_name],
+        )
+        return [AvailableTableType(name=row[0], comment=row[1] or None) for row in result.rows]
 
-        if t == "sqlserver":
-            result = await pool.execute(
-                source_id,
-                "SELECT TABLE_NAME, NULL FROM INFORMATION_SCHEMA.TABLES "
-                "WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
-                [schema_name],
-            )
-            return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+    if t == "sqlserver":
+        result = await pool.execute(
+            source_id,
+            "SELECT TABLE_NAME, NULL FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+            [schema_name],
+        )
+        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
-        if t == "saphana":
-            # SYS.TABLES is HANA's own catalog view; TABLE_TYPE excludes views (COLUMN/ROW covers
-            # both HANA storage engines — a view's TABLE_TYPE is neither).
-            result = await pool.execute(
-                source_id,
-                "SELECT TABLE_NAME, COMMENTS FROM SYS.TABLES WHERE SCHEMA_NAME = $1 "
-                "AND TABLE_TYPE IN ('COLUMN', 'ROW') ORDER BY TABLE_NAME",
-                [schema_name],
-            )
-            return [AvailableTableType(name=row[0], comment=row[1] or None) for row in result.rows]
+    if t == "saphana":
+        # SYS.TABLES is HANA's own catalog view; TABLE_TYPE excludes views (COLUMN/ROW covers
+        # both HANA storage engines — a view's TABLE_TYPE is neither).
+        result = await pool.execute(
+            source_id,
+            "SELECT TABLE_NAME, COMMENTS FROM SYS.TABLES WHERE SCHEMA_NAME = $1 "
+            "AND TABLE_TYPE IN ('COLUMN', 'ROW') ORDER BY TABLE_NAME",
+            [schema_name],
+        )
+        return [AvailableTableType(name=row[0], comment=row[1] or None) for row in result.rows]
 
-        if t == "duckdb":
-            # REQ-1746: scoped to the attached file's own catalog for the same reason
-            # native_schemas' "duckdb" branch is above — a DIRECT connection to the file also
-            # carries "system"/"temp" catalogs alongside it.
-            result = await pool.execute(
-                source_id,
-                "SELECT table_name, NULL FROM information_schema.tables "
-                "WHERE table_catalog = current_database() AND table_schema = ? "
-                "AND table_type = 'BASE TABLE' ORDER BY table_name",
-                [schema_name],
-            )
-            return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+    if t == "duckdb":
+        # REQ-1746: scoped to the attached file's own catalog for the same reason
+        # native_schemas' "duckdb" branch is above — a DIRECT connection to the file also
+        # carries "system"/"temp" catalogs alongside it.
+        result = await pool.execute(
+            source_id,
+            "SELECT table_name, NULL FROM information_schema.tables "
+            "WHERE table_catalog = current_database() AND table_schema = ? "
+            "AND table_type = 'BASE TABLE' ORDER BY table_name",
+            [schema_name],
+        )
+        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
-        # REQ-1732: see native_schemas's trino branch — same "no catalog exists pre-registration"
-        # gap, for tables. $1 (not `?`) because trino's direct driver is the generic
-        # SQLAlchemyDriver, whose _to_named_params expects PG-style positional placeholders.
-        if t == "trino":
-            result = await pool.execute(
-                source_id,
-                "SELECT table_name, NULL FROM information_schema.tables "
-                "WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name",
-                [schema_name],
-            )
-            return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+    # REQ-1732: see native_schemas's trino branch — same "no catalog exists pre-registration"
+    # gap, for tables. $1 (not `?`) because trino's direct driver is the generic
+    # SQLAlchemyDriver, whose _to_named_params expects PG-style positional placeholders.
+    if t == "trino":
+        result = await pool.execute(
+            source_id,
+            "SELECT table_name, NULL FROM information_schema.tables "
+            "WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name",
+            [schema_name],
+        )
+        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
-        # REQ-1731 gap: see native_schemas's hiveserver2 branch — same missing-dispatch-branch
-        # symptom, for tables. Verified live against a stock HS2: Hive has no information_schema
-        # (`SELECT ... FROM INFORMATION_SCHEMA.TABLES` raises "Table not found 'TABLES'"), so this
-        # uses `SHOW TABLES IN <schema>` (impyla's HiveDriver.execute has no identifier-binding
-        # paramstyle, same constraint as the snowflake/databricks/bigquery f-string branches in
-        # native_tables/native_columns below — schema_name here is always one native_schemas itself
-        # already returned from `SHOW SCHEMAS`, never raw user input).
-        if t == "hiveserver2":
-            result = await pool.execute(source_id, f"SHOW TABLES IN {schema_name}")
-            return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+    # REQ-1731 gap: see native_schemas's hiveserver2 branch — same missing-dispatch-branch
+    # symptom, for tables. Verified live against a stock HS2: Hive has no information_schema
+    # (`SELECT ... FROM INFORMATION_SCHEMA.TABLES` raises "Table not found 'TABLES'"), so this
+    # uses `SHOW TABLES IN <schema>` (impyla's HiveDriver.execute has no identifier-binding
+    # paramstyle, same constraint as the snowflake/databricks/bigquery f-string branches in
+    # native_tables/native_columns below — schema_name here is always one native_schemas itself
+    # already returned from `SHOW SCHEMAS`, never raw user input).
+    if t == "hiveserver2":
+        result = await pool.execute(source_id, f"SHOW TABLES IN {schema_name}")
+        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
-        # REQ-1731 gap: see native_schemas's exasol branch — same missing-dispatch-branch symptom,
-        # for tables. EXA_ALL_TABLES is Exasol's own system-catalog view (pyexasol's own ext.py
-        # list_tables() helper reads it the same way); f-string, not a bound param, because
-        # ExasolDriver.execute (executor/drivers/exasol.py) ignores `params` entirely — pyexasol
-        # has no bind-parameter execute path this driver wires up, same constraint as the
-        # snowflake/databricks/bigquery f-string branches elsewhere in this file. schema_name here
-        # is always a value native_schemas itself already returned from EXA_SCHEMAS.
-        if t == "exasol":
-            result = await pool.execute(
-                source_id,
-                f"SELECT table_name FROM EXA_ALL_TABLES WHERE table_schema = '{schema_name}' "
-                "ORDER BY table_name",
-            )
-            return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
-
-    except Exception:
-        return None
+    # REQ-1731 gap: see native_schemas's exasol branch — same missing-dispatch-branch symptom,
+    # for tables. EXA_ALL_TABLES is Exasol's own system-catalog view (pyexasol's own ext.py
+    # list_tables() helper reads it the same way); f-string, not a bound param, because
+    # ExasolDriver.execute (executor/drivers/exasol.py) ignores `params` entirely — pyexasol
+    # has no bind-parameter execute path this driver wires up, same constraint as the
+    # snowflake/databricks/bigquery f-string branches elsewhere in this file. schema_name here
+    # is always a value native_schemas itself already returned from EXA_SCHEMAS.
+    if t == "exasol":
+        result = await pool.execute(
+            source_id,
+            f"SELECT table_name FROM EXA_ALL_TABLES WHERE table_schema = '{schema_name}' "
+            "ORDER BY table_name",
+        )
+        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
     return None
 
@@ -1257,11 +1247,11 @@ async def native_columns(  # REQ-1732
         )
         return [(row[0], row[1]) for row in result.rows]
     if t in ("mysql", "mariadb", "tidb", "singlestore"):
-        # %s, not ?  — see _native_tables_rdbms's mysql/mariadb branch for why.
+        # `$N` — see _native_tables_rdbms's mysql/mariadb branch for why.
         result = await pool.execute(
             source_id,
             "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS "
-            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION",
+            "WHERE TABLE_SCHEMA = $1 AND TABLE_NAME = $2 ORDER BY ORDINAL_POSITION",
             [schema_name, table_name],
         )
         return [(row[0], row[1]) for row in result.rows]

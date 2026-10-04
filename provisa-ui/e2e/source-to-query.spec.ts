@@ -91,6 +91,8 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByTestId("neo4j-host-input").fill("localhost");
     await page.getByTestId("neo4j-port-input").fill(String(E2E_NEO4J_HTTP_PORT));
     await page.getByTestId("neo4j-database-input").fill("neo4j");
+    // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form: name + Cypher, preview, submit
@@ -287,6 +289,8 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page
       .getByTestId("sparql-endpoint-input")
       .fill(`http://localhost:${E2E_SPARQL_PORT}/provisa/query`);
+    // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form: name + SPARQL, preview, submit
@@ -632,6 +636,8 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByTestId("sources-type-select").selectOption("graphql");
     await page.getByTestId("graphql-endpoint-input").fill(endpoint);
     await page.getByTestId("graphql-namespace-input").fill(namespace);
+    // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register the one table wanted, with the columns wanted.
@@ -682,6 +688,8 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByTestId("sources-type-select").selectOption("openapi");
     await page.getByTestId("openapi-spec-path-input").fill(specUrl);
     await page.getByTestId("openapi-base-url-input").fill(baseUrl);
+    // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form — pick one operation as a table, same picker every other type uses
@@ -724,6 +732,8 @@ test.describe("source to query through the UI, extra RDBMS coverage (REQ-1732)",
     await page.getByLabel(/^Username/).fill("root");
     await page.getByLabel(/^Password/).fill("provisa");
     await page.getByLabel(/^Database/).fill("provisa_demo");
+    // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);

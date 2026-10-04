@@ -172,7 +172,14 @@ async def index_source(
                 tables = await native_tables(
                     source_id, source_type, schema, source_pools, config_conn, state
                 )
-        except Exception:
+        except Exception as exc:
+            log.warning(
+                "catalog_cache: the driver's table list failed for %r/%r: %s",
+                source_id,
+                schema,
+                exc,
+                exc_info=True,
+            )
             tables = None
 
         if tables is None:
