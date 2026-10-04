@@ -1196,6 +1196,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 cache_enabled=input.cache_enabled,
                 cache_ttl=input.cache_ttl,
                 replicate=input.replicate,  # REQ-826
+                # REQ-1921: kept; the form carries no region, and writing NULL over the stored one
+                # changed it without anyone choosing to.
+                region=existing["region"],
                 max_live_concurrency=input.max_live_concurrency,  # REQ-1909
                 sentinel_path=input.sentinel_path,  # REQ-1148
                 freshness_gate=input.freshness_gate,  # REQ-860
@@ -2283,6 +2286,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 await apply_dq_registration(_conn, model)
             except ValueError as _dq_err:
                 return MutationResult(success=False, message=str(_dq_err))
+            from provisa.api.admin.region_defaults import kept_region
+
+            model.region = await kept_region(_conn, model)  # REQ-1921
             _conflict = await _domain_table_conflict(
                 _conn,
                 model.domain_id,
