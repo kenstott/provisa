@@ -91,3 +91,26 @@ def test_compose_always_supplies_a_default_url():
         "docker-compose.app.yml no longer defaults GRAPHQL_DEMO_URL"
     )
     assert re.search(r"GRAPHQL_DEMO_ENABLED:\s*\"\$\{GRAPHQL_DEMO_ENABLED:-false\}\"", src)
+
+
+@pytest.mark.asyncio
+async def test_the_registration_writes_the_model_inside_one_change(monkeypatch):
+    # REQ-1524: the seed runs on a background worker after the boot's change has closed, and every
+    # model write must be part of a change, so the worker opens its own around the registration.
+    from provisa.api.admin import graphql_remote_router
+    from provisa.core import model_change
+
+    seen: list[object] = []
+
+    async def _introspect(*_a, **_kw):
+        seen.append(model_change._SCOPE.get())
+        raise RuntimeError("stop after recording the scope")
+
+    monkeypatch.setattr(graphql_remote_router, "_introspect_and_map", _introspect)
+    spawned: list = []
+    monkeypatch.setattr(app_startup, "spawn_background", lambda coro, **_kw: spawned.append(coro))
+    monkeypatch.setenv("GRAPHQL_DEMO_ENABLED", "true")
+    await app_startup._auto_register_graphql_demo(logging.getLogger("test"))
+    assert len(spawned) == 1
+    await spawned[0]
+    assert len(seen) == 1 and seen[0] is not None, "the registration ran outside a model change"

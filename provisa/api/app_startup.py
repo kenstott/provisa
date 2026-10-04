@@ -953,8 +953,17 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                 exc_info=True,
             )
 
+    async def _register_graphql_demo_as_one_change() -> None:
+        # REQ-1524: the seed writes the model (its source, tables and relationships), and every
+        # model write is part of a change. This worker runs after the boot's change has closed,
+        # so it opens its own.
+        from provisa.core import model_change
+
+        async with model_change.scope("register graphql-demo"):
+            await _register_graphql_demo()
+
     # REQ-1882: introspects the demo service and rebuilds schemas — a background worker.
-    spawn_background(_register_graphql_demo(), name="graphql-demo-register")
+    spawn_background(_register_graphql_demo_as_one_change(), name="graphql-demo-register")
 
 
 async def _capture_config_boot_snapshot(_log: logging.Logger) -> None:
