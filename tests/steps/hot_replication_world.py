@@ -50,6 +50,7 @@ def _registry_row(table_id: int, name: str) -> SimpleNamespace:
             "schema_name": "public",
             "table_name": name,
             "replicate": None,  # Default: replicated once busy, at the global threshold
+            "region": None,  # REQ-1921: its source's region (this world declares no regions)
             "load_protected": None,
             "change_signal": None,
             "cache_ttl": None,

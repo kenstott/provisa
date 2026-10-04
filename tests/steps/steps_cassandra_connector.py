@@ -69,6 +69,7 @@ def given_cassandra_table_with_partition_and_clustering_keys(shared_data: dict):
             {"name": "tags", "type": "list<text>"},
             {"name": "properties", "type": "map<text,text>"},
             {"name": "visited", "type": "set<text>"},
+            {"name": "counts", "type": "list<int>"},
             {"name": "age", "type": "int"},
             {"name": "ip_address", "type": "inet"},
         ],
@@ -86,10 +87,11 @@ def when_adapter_discovers_schema(shared_data: dict):
     shared_data["columns"] = columns
 
 
-@then("CQL column types are mapped to Trino types and key columns are annotated")
+@then("CQL column types are mapped to engine types and key columns are annotated")
 def then_cql_types_mapped_and_keys_annotated(shared_data: dict):
-    """Assert that every column has the correct Trino type, that collection types
-    are normalised to VARCHAR, and that partition / clustering key flags are set."""
+    """Assert that every column has the correct engine type, that collection types are mapped by
+    their base type, that partition / clustering key flags are set, and that an unmapped type or
+    missing metadata raises."""
     columns: list[dict] = shared_data["columns"]
     keyspace_metadata: dict = shared_data["keyspace_metadata"]
 
@@ -121,13 +123,14 @@ def then_cql_types_mapped_and_keys_annotated(shared_data: dict):
     for col_name, expected_type in expected_column_types.items():
         actual_type = col_by_name[col_name]["type"]
         assert actual_type == expected_type, (
-            f"Column '{col_name}': expected Trino type '{expected_type}', got '{actual_type}'"
+            f"Column '{col_name}': expected engine type '{expected_type}', got '{actual_type}'"
         )
 
     # ------------------------------------------------------------------ #
     # Collection types must be normalised to VARCHAR
     # ------------------------------------------------------------------ #
-    for col_name in ("tags", "properties", "visited"):
+    # A collection is mapped by its base type (list, map, set), whatever its element type.
+    for col_name in ("tags", "properties", "visited", "counts"):
         actual_type = col_by_name[col_name]["type"]
         assert actual_type == "VARCHAR", (
             f"Collection column '{col_name}': expected 'VARCHAR', got '{actual_type}'"
@@ -187,3 +190,19 @@ def then_cql_types_mapped_and_keys_annotated(shared_data: dict):
     assert CQL_TYPE_TO_IR["list"] == "VARCHAR"
     assert CQL_TYPE_TO_IR["map"] == "VARCHAR"
     assert CQL_TYPE_TO_IR["set"] == "VARCHAR"
+
+    # ------------------------------------------------------------------ #
+    # An unmapped type, or metadata missing a part, raises
+    # ------------------------------------------------------------------ #
+    with pytest.raises(ValueError, match="unmapped CQL type: duration"):
+        discover_schema(
+            {
+                "columns": [{"name": "d", "type": "duration"}],
+                "partition_keys": [],
+                "clustering_keys": [],
+            }
+        )
+    for missing in ("columns", "partition_keys", "clustering_keys"):
+        incomplete = {k: v for k, v in keyspace_metadata.items() if k != missing}
+        with pytest.raises(ValueError, match=f"keyspace metadata missing '{missing}'"):
+            discover_schema(incomplete)

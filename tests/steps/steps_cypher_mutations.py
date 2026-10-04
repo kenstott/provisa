@@ -33,6 +33,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from tests.write_governance import run_after_write
+
 import pytest
 from pytest_bdd import given, when, then, scenarios
 
@@ -406,74 +408,6 @@ def _admit(sql: str, table_id: int, rls: dict[int, str] | None = None) -> str:
     return admitted(sql, write_governance({target_ref(sql): (table_id, _PERSON_COLUMNS)}, rls=rls))
 
 
-def _run_after_write(table_id: int, table_name: str, source_id: str) -> dict[str, list]:
-    """Finalize a successful write plan through the pipeline's terminal and record what the
-    steps after a write did."""
-    import asyncio
-    from types import SimpleNamespace
-
-    from provisa.kafka import change_events as _change_mod
-    from provisa.kafka import sink_executor as _sink_mod
-    from provisa.pgwire._pipeline import _Plan, finalize_audit
-    from provisa.transpiler.router import Route
-
-    calls: dict[str, list] = {"invalidated": [], "stale": [], "events": [], "sinks": []}
-
-    class _Store:
-        async def invalidate_by_table(self, tid, tenant_id=None):
-            calls["invalidated"].append(tid)
-            return 1
-
-    async def _sinks(name, _state):
-        calls["sinks"].append(name)
-        return 0
-
-    state = SimpleNamespace(
-        response_cache_store=_Store(),
-        model_db="fake",
-        tenant_db="fake",
-        org_id="org-a",
-        model_stamp=1,
-        contexts={
-            "writer": SimpleNamespace(
-                tables={
-                    table_name: SimpleNamespace(
-                        table_id=table_id, table_name=table_name, source_id=source_id
-                    )
-                }
-            )
-        },
-        mv_registry=SimpleNamespace(mark_stale=calls["stale"].append),
-        hot_manager=None,
-    )
-    plan = _Plan(
-        route=Route.DIRECT,
-        sql="INSERT",
-        source_id=source_id,
-        dialect="postgres",
-        role_id="writer",
-        table_ids=(table_id,),
-        writes_tables=True,
-        written_table_id=table_id,
-    )
-
-    async def _no_replica(_state, _table_id, _source_id, _reason):
-        return False  # no replica store here: the build request has its own tests
-
-    with (
-        patch.object(_change_mod, "emit_change_event", lambda *a: calls["events"].append(a)),
-        patch.object(_sink_mod, "trigger_sinks_for_table", _sinks),
-        patch("provisa.federation.replica_builds.request_if_replicated", _no_replica),
-    ):
-
-        async def _finalize():
-            await finalize_audit(plan, 200, state)
-            await asyncio.sleep(0)  # the sink run is spawned in the background
-
-        asyncio.run(_finalize())
-    return calls
-
-
 def _make_req798_label_map() -> CypherLabelMap:
     """Minimal label map for REQ-798 pipeline tests."""
     person_meta = NodeMapping(
@@ -658,151 +592,10 @@ def then_post_mutation_hooks_fire(shared_data):
     execute_result = shared_data["execute_result"]
     assert execute_result["affected_rows"] == 1, "hooks only fire after a successful write"
 
-    calls = _run_after_write(10, mutation_result.table_name, mutation_result.source_id)
+    calls = run_after_write(10, mutation_result.table_name, mutation_result.source_id)
 
     assert calls["invalidated"] == [10]
     assert calls["stale"] == [mutation_result.table_name]
     assert calls["events"] == [(mutation_result.table_name, mutation_result.source_id)]
     assert calls["sinks"] == [mutation_result.table_name]
     shared_data["hooks_fired"] = calls
-
-
-scenarios("../features/REQ-818.feature")
-
-
-@pytest.fixture
-def shared_data_818() -> dict:
-    return {}
-
-
-# ---------------------------------------------------------------------------
-# REQ-818 — Cypher Mutations: CREATE via /data/cypher endpoint
-# ---------------------------------------------------------------------------
-
-
-@given("a valid CREATE statement targeting a table with write rights")
-def given_valid_create_statement(shared_data):
-    label_map = _make_write_label_map()
-    cypher = "CREATE (n:Person {name: 'Frank', age: 35})"
-    ast = parse_cypher(cypher)
-
-    assert ast is not None, "parse_cypher must return a non-None AST for the CREATE statement"
-    assert "Person" in label_map.nodes, "Person label must be registered"
-
-    shared_data["label_map"] = label_map
-    shared_data["cypher"] = cypher
-    shared_data["ast"] = ast
-
-
-@when("executed via the /data/cypher endpoint")
-def when_executed_via_cypher_endpoint(shared_data):
-    """The endpoint's write path: translate, admit through the one write admission (the role
-    holds the write right and is named on the columns), then the pipeline's terminal runs the
-    steps after a write. The source execution is the only stage stood in for."""
-    import asyncio
-
-    from provisa.cypher.write_translator import WriteTranslator
-    from provisa.executor import direct as _direct_mod
-
-    sql_text, _params = _coerce_to_sql(
-        WriteTranslator(shared_data["label_map"]).translate(shared_data["ast"])
-    )
-    assert sql_text, "WriteTranslator must produce non-empty SQL"
-    governed = _admit(sql_text, 1, {1: "age >= 18"})  # Frank, 35: inside the filter
-
-    with patch.object(
-        _direct_mod, "execute_direct", AsyncMock(return_value={"affected_rows": 1})
-    ) as mock_execute:
-        exec_result = asyncio.run(
-            _direct_mod.execute_direct(sql=governed, source_id="pg-main", pool=MagicMock())
-        )
-    mock_execute.assert_called_once()
-
-    shared_data["sql"] = governed
-    shared_data["execute_result"] = exec_result
-    shared_data["after_write"] = _run_after_write(1, "persons", "pg-main")
-
-
-@then(
-    "it executes as a direct table write, returns affected_rows, and applies RLS + post-mutation hooks"
-)
-def then_direct_table_write_with_rls_and_hooks(shared_data):
-    from provisa.compiler.write_admission import WriteNotAdmitted
-
-    sql = shared_data["sql"]
-    upper = sql.upper()
-    assert "INSERT INTO" in upper, f"expected INSERT INTO for CREATE, got: {sql}"
-    assert "PERSONS" in upper, f"target table 'persons' missing: {sql}"
-    assert shared_data["execute_result"]["affected_rows"] >= 1
-
-    # The role's filter decides the new row: a row outside it is refused before execution.
-    with pytest.raises(WriteNotAdmitted, match="outside role"):
-        _admit(sql.replace("35", "15"), 1, {1: "age >= 18"})
-
-    calls = shared_data["after_write"]
-    assert calls["invalidated"] == [1]
-    assert calls["stale"] == ["persons"]
-    assert calls["events"] == [("persons", "pg-main")]
-    assert calls["sinks"] == ["persons"]
-
-
-# ---------------------------------------------------------------------------
-# REQ-818 — Cypher Mutations: MERGE/DETACH rejected at parse time
-# ---------------------------------------------------------------------------
-
-
-@given("a MERGE or DETACH statement")
-def given_merge_or_detach_statement(shared_data):
-    # Use MERGE as the representative unsupported pattern
-    shared_data["unsupported_queries"] = [
-        "MERGE (n:Person {name: 'Eve'})",
-        "MATCH (n:Person) WHERE n.name = 'Eve' DETACH DELETE n",
-    ]
-
-
-@when("parsed")
-def when_unsupported_statement_parsed(shared_data):
-    from provisa.cypher.parser import CypherParseError
-
-    results = []
-    for query in shared_data["unsupported_queries"]:
-        try:
-            parse_cypher(query)
-            results.append({"query": query, "error": None})
-        except CypherParseError as exc:
-            results.append({"query": query, "error": str(exc)})
-        except Exception as exc:
-            results.append({"query": query, "error": str(exc)})
-
-    shared_data["parse_results"] = results
-
-
-@then("it is rejected at parse time with a precise error")
-def then_rejected_at_parse_time(shared_data):
-
-    results = shared_data["parse_results"]
-    assert results, "parse_results must not be empty"
-
-    for item in results:
-        query = item["query"]
-        error = item["error"]
-
-        assert error is not None, (
-            f"Expected parse-time rejection for unsupported query, but it parsed successfully: {query!r}"
-        )
-
-        upper_err = error.upper()
-        upper_query = query.upper()
-
-        # The error must name the specific unsupported keyword
-        if "MERGE" in upper_query:
-            assert "MERGE" in upper_err, f"Error for MERGE query must mention MERGE; got: {error!r}"
-        if "DETACH" in upper_query:
-            assert "DETACH" in upper_err or "REMOVE" in upper_err or "UNSUPPORTED" in upper_err, (
-                f"Error for DETACH query must be precise about the unsupported pattern; got: {error!r}"
-            )
-
-        # The error must NOT say "read-only" — Cypher is no longer read-only
-        assert "READ-ONLY" not in upper_err, (
-            f"Error must not claim Cypher is read-only (REQ-818 supersedes REQ-346); got: {error!r}"
-        )

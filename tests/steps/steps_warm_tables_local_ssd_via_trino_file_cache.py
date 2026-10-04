@@ -14,8 +14,9 @@ Covers:
 
 Since REQ-826 a warm table is a table whose ``replicate`` setting is Default or Hot-N and that
 passed its threshold: it is promoted in the replica state, the data replicator builds its
-replica, and reads route to that replica exactly as an Always table's do. The scenarios' wording
-predates that (Iceberg, the Trino file cache); the steps exercise the mechanism as it is.
+replica, and reads route to that replica exactly as an Always table's do. REQ-239's scenario is
+written against that mechanism; REQ-238's wording predates it (Iceberg, the Trino file cache) and
+its steps exercise the mechanism as it is.
 """
 
 # Requirements: REQ-238, REQ-239, REQ-826
@@ -48,16 +49,28 @@ def world(tmp_path, monkeypatch):
 # --- REQ-239: promotion at the threshold, demotion below half of it ---
 
 
-@given("a table whose query count exceeds warm_tables.query_threshold within a refresh interval")
-def table_exceeding_threshold(world, shared_data):
-    # The busy table: well past the threshold within the interval.
-    world.statements_read("orders", 150)
-    # A table promoted earlier whose traffic has fallen away: a handful of statements now.
-    world.promoted_and_built("archive")
-    world.statements_read("archive", 5)
-    assert world.count("orders") >= THRESHOLD
-    assert world.count("archive") < THRESHOLD / 2
-    assert world.promotion()[0] == frozenset({world.key("archive")})
+def _reads_replica(world, table: str, serving: frozenset) -> bool:
+    """Whether a read of ``table`` goes to its replica, as routing decides it."""
+    row = {"source_id": "pg", "replicate": None, "load_protected": None}
+    engine = world.state.federation_engine.engine
+    return reads_replica(world.source, row, engine, promoted=world.key(table) in serving)
+
+
+@given(
+    "a table left at Default whose statement count within replication.hot_interval reaches "
+    "replication.hot_threshold"
+)
+def table_reaching_threshold(world, shared_data):
+    # orders, left at Default, reaches the global threshold exactly within the interval.
+    assert resolved_replicate(world.source, {"source_id": "pg", "replicate": None}) is None
+    world.statements_read("orders", THRESHOLD)
+    assert world.count("orders") == THRESHOLD
+    # Two tables promoted earlier: archive's traffic fell below half the threshold, customers'
+    # sits exactly at half.
+    for table, statements in (("archive", THRESHOLD // 2 - 1), ("customers", THRESHOLD // 2)):
+        world.promoted_and_built(table)
+        world.statements_read(table, statements)
+    assert world.promotion()[0] == frozenset({world.key("archive"), world.key("customers")})
 
 
 @when("the promotion check runs")
@@ -65,22 +78,40 @@ def promotion_check_runs(world, shared_data):
     shared_data["outcome"] = world.evaluate()
 
 
-@then("the table is auto-materialized into Iceberg; tables falling below threshold are demoted")
-def table_promoted_and_demoted(world, shared_data):
+@then("the table is marked promoted and a replica build is requested from the data replicator")
+def table_promoted_and_build_requested(world, shared_data):
     outcome = shared_data["outcome"]
-    # Promotion: the busy table is promoted and its replica is requested of the replicator.
-    assert outcome.promoted == (world.key("orders"),)
+    assert world.key("orders") in outcome.promoted
+    assert world.key("orders") in world.promotion()[0]
     orders = world.record("orders")
     assert (orders.build_state, orders.requested_reason) == ("requested", "hot")
     # It was sized through the engine first (it is under the size ceiling).
     assert world.state.federation_engine.sent == ['SELECT COUNT(*) FROM "pg"."public"."orders"']
-    # Demotion: the table whose traffic fell away is read live again.
+
+
+@then("reads stay live until that build completes in the engine's store")
+def reads_live_until_built(world, shared_data):
+    promoted, serving = world.promotion()
+    assert world.key("orders") in promoted and world.key("orders") not in serving
+    assert _reads_replica(world, "orders", serving) is False
+    # The replicator's build completes in this engine's store: reads move to the replica.
+    world.promoted_and_built("orders")
+    serving = world.promotion()[1]
+    assert world.key("orders") in serving
+    assert _reads_replica(world, "orders", serving) is True
+
+
+@then("the table is demoted when its count falls below half the threshold")
+def demoted_below_half(world, shared_data):
+    outcome = shared_data["outcome"]
+    # Below half: demoted and read live again; its replica is left for the replicator to retire.
     assert outcome.demoted == (world.key("archive"),)
     promoted, serving = world.promotion()
-    assert promoted == frozenset({world.key("orders")})
-    assert world.key("archive") not in serving
-    # Its replica is not dropped here: the replicator retires it.
+    assert world.key("archive") not in promoted and world.key("archive") not in serving
+    assert _reads_replica(world, "archive", serving) is False
     assert world.record("archive").exists
+    # Exactly half is not below it: still promoted and still served from its replica.
+    assert world.key("customers") in promoted and world.key("customers") in serving
 
 
 # --- REQ-238: a busy table's reads come from its replica ---

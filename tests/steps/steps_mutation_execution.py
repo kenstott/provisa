@@ -27,6 +27,7 @@ import pytest
 from graphql import parse, validate
 from pytest_bdd import given, when, then, scenarios
 
+from provisa.executor.write_capability import WRITE_OPS
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import compile_mutation
 from tests.write_governance import admitted, write_governance
@@ -59,6 +60,9 @@ def _build_schema_and_ctx():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            # The registry row carries the writes its source takes: a PostgreSQL table takes
+            # every one (executor/write_capability.table_write_ops).
+            "write_ops": list(WRITE_OPS),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},
@@ -161,6 +165,9 @@ def _build_restricted_schema():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            # The registry row carries the writes its source takes: a PostgreSQL table takes
+            # every one (executor/write_capability.table_write_ops).
+            "write_ops": list(WRITE_OPS),
             "columns": [
                 {"column_name": "id", "visible_to": ["analyst"]},
                 {"column_name": "amount", "visible_to": ["analyst"]},
@@ -337,6 +344,9 @@ def _build_rls_schema_and_ctx():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
+            # The registry row carries the writes its source takes: a PostgreSQL table takes
+            # every one (executor/write_capability.table_write_ops).
+            "write_ops": list(WRITE_OPS),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},
