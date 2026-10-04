@@ -102,7 +102,9 @@ services:
 
   yugabytedb:
     restart: unless-stopped
-    image: yugabytedb/yugabyte:latest
+    # Pinned: from 2026.1.2.0 the image runs as uid 10001 and /home/yugabyte/var is absent from
+    # it, so the named volume mounted there is root-owned and yugabyted cannot create its conf dir.
+    image: yugabytedb/yugabyte:2026.1.1.1-b2
     command: ["bin/yugabyted", "start", "--background=false"]
     ports:
       - "${YUGABYTEDB_PORT:-5433}:5433"
