@@ -23,7 +23,7 @@ fixed decimal type passes that type instead.
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -73,7 +73,8 @@ def arrow_schema(
 
 def arrow_value(value: Any, ir_type: str, *, decimal: pa.DataType | None = None) -> Any:
     """A row value as its column's Arrow type accepts it: JSON as its text; ``numeric`` as a
-    Decimal for a decimal column, else as its text."""
+    Decimal for a decimal column, else as its text; ISO-8601 text in a date or timestamp column
+    as that date or (UTC) timestamp."""
     if value is None:
         return None
     canonical = to_ir(ir_type)
@@ -85,6 +86,15 @@ def arrow_value(value: Any, ir_type: str, *, decimal: pa.DataType | None = None)
         return f"{value.days} days {value.seconds} seconds {value.microseconds} microseconds"
     if canonical in ("time", "uuid", "interval") and not isinstance(value, str):
         return str(value)
+    # A JSON source (Elasticsearch) gives a date as its ISO-8601 text; Arrow does not parse text.
+    # A string that is not ISO-8601 raises ValueError here.
+    if canonical == "timestamp" and isinstance(value, str):
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+    if canonical == "date" and isinstance(value, str):
+        return date.fromisoformat(value)
     return value
 
 
