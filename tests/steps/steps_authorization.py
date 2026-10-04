@@ -298,63 +298,74 @@ def _make_role(role_id: str, *caps: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@given('a discovered remote mutation "createOrder" registered with an empty writable_by')
-def given_create_order_registered_empty_writable_by(shared_data: dict) -> None:
-    """Simulate what upsert_function does on first discovery: empty writable_by."""
-    shared_data["function_name"] = "createOrder"
-    shared_data["kind"] = "mutation"
-    # Simulate the in-memory function record as upsert_function would produce it
-    shared_data["function_record"] = {
-        "name": "createOrder",
-        "kind": "mutation",
-        "writable_by": [],
-    }
+def _register_create_order(shared_data: dict) -> None:
+    """Run discovery's registration of createOrder against the in-memory command store."""
+    import asyncio
 
+    from provisa.api.admin.introspect import DiscoveredRoutine, register_discovered_routines
 
-@given("an admin grants it to the \"ops\" role (writable_by = ['ops'])")
-def given_admin_grants_ops(shared_data: dict) -> None:
-    """Admin updates writable_by — simulates the UPDATE an admin issues after discovery."""
-    record = shared_data["function_record"]
-    record["writable_by"] = ["ops"]
-    shared_data["function_record"] = record
-
-
-# ---------------------------------------------------------------------------
-# When
-# ---------------------------------------------------------------------------
-
-
-@when("introspection re-runs and upserts createOrder by name with an empty writable_by")
-def when_reintrospection_upserts_empty_writable_by(shared_data: dict) -> None:
-    """
-    Simulate upsert_function ON CONFLICT logic: an empty EXCLUDED.writable_by means
-    the CASE expression preserves the existing writable_by.
-    """
-    record = shared_data["function_record"]
-    incoming_writable_by: list[str] = []  # what introspection sends
-
-    # Mirror the SQL CASE:
-    #   WHEN cardinality(EXCLUDED.writable_by) > 0 THEN EXCLUDED.writable_by
-    #   ELSE tracked_functions.writable_by
-    if len(incoming_writable_by) > 0:
-        record["writable_by"] = incoming_writable_by
-    # else: leave record["writable_by"] unchanged
-
-    shared_data["function_record"] = record
-    shared_data["reintrospection_incoming_writable_by"] = incoming_writable_by
-
-
-# ---------------------------------------------------------------------------
-# Then
-# ---------------------------------------------------------------------------
-
-
-@then("the ops grant is preserved (writable_by stays ['ops']) — discovery never wipes grants")
-def then_ops_grant_preserved(shared_data: dict) -> None:
-    record = shared_data["function_record"]
-    assert record["writable_by"] == ["ops"], (
-        f"Expected writable_by=['ops'] after re-introspection, got {record['writable_by']!r}"
+    routine = DiscoveredRoutine(
+        schema_name="public", routine_name="createOrder", kind="mutation", returns_setof=False
     )
+    registered, skipped = asyncio.run(
+        register_discovered_routines(None, "s1", [routine], domain_id="sales")  # type: ignore[arg-type]
+    )
+    assert (registered, skipped) == (1, 0)
+
+
+@given(
+    'a discovered mutation "createOrder" in domain "sales", assigned on discovery to org_admin '
+    "alone"
+)
+def given_create_order_discovered(shared_data: dict, monkeypatch) -> None:
+    """Discovery registers createOrder through the product's registration; the command store
+    behind it is held in memory."""
+    from provisa.core.repositories import function as function_repo
+
+    store: dict[str, dict] = {}
+
+    async def _get(conn, name):
+        return dict(store[name]) if name in store else None
+
+    async def _upsert(conn, func, return_schema=None, *, origin):
+        store[func.name] = {**func.model_dump(), "origin": origin}
+        return 1
+
+    monkeypatch.setattr(function_repo, "get_function", _get)
+    monkeypatch.setattr(function_repo, "upsert_function", _upsert)
+    shared_data["command_store"] = store
+    _register_create_order(shared_data)
+    assert store["createOrder"]["visible_to"] == ["org_admin"]
+    assert store["createOrder"]["domain_id"] == "sales"
+    shared_data["function_record"] = store["createOrder"]
+
+
+@given('an admin assigns it to the "ops" role')
+def given_admin_assigns_ops(shared_data: dict) -> None:
+    record = shared_data["command_store"]["createOrder"]
+    record["visible_to"] = [*record["visible_to"], "ops"]
+
+
+@when("introspection re-runs and registers createOrder again")
+def when_introspection_reruns(shared_data: dict) -> None:
+    _register_create_order(shared_data)
+    shared_data["function_record"] = shared_data["command_store"]["createOrder"]
+
+
+@then(
+    "ops still reaches createOrder through its assignment and the sales domain — discovery "
+    "never drops an assignment"
+)
+def then_ops_still_reaches_create_order(shared_data: dict) -> None:
+    from provisa.security.mutation_authz import command_reachable
+
+    record = shared_data["function_record"]
+    assert record["visible_to"] == ["org_admin", "ops"]
+    assert command_reachable(record, {"id": "ops", "domain_access": ["sales"]})
+    # The assignment alone is not enough: the role must reach the command's domain too.
+    assert not command_reachable(record, {"id": "ops", "domain_access": ["finance"]})
+    # Reaching every domain is not enough either: the role must be assigned the command.
+    assert not command_reachable(record, {"id": "analyst", "domain_access": ["*"]})
 
 
 @then(
@@ -422,6 +433,8 @@ scenarios("../features/REQ-872.feature")
 
 def _build_state_with_tracked_functions(functions: dict):
     state = MagicMock()
+    # A single-tenant deployment: its catalog serves the one database, provisa.
+    state.multitenancy = False
     mc = MagicMock()
     mc.tables = {}
     state.contexts = {"alice": mc, "ops": mc}

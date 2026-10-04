@@ -66,7 +66,6 @@ def _fn(**over):
         "schema_name": "public",
         "function_name": "create_order",
         "kind": "mutation",
-        "writable_by": ["ops"],
         "returns": "",
         "impl_kind": "source_procedure",
         "binding": {},
