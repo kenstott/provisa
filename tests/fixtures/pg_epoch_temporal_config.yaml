@@ -16,17 +16,6 @@ cache:
 domains:
   - id: ptepoch
     description: epoch-stored temporal columns
-roles:
-  - id: org_admin
-    capabilities:
-      - source_registration
-      - table_registration
-      - query_development
-      - full_results
-      - write
-      - usage
-    domain_access:
-      - '*'
 sources:
   - id: ptepoch-pg
     type: postgresql
@@ -60,3 +49,4 @@ tables:
         data_type: timestamptz
         visible_to: [org_admin]
         writable_by: [org_admin]
+roles: []

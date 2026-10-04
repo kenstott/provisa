@@ -21,17 +21,6 @@ server:
 domains:
   - id: hot
     description: Hot replication
-roles:
-  - id: org_admin
-    capabilities:
-      - source_registration
-      - table_registration
-      - access_config
-      - query_development
-      - full_results
-      - observability
-    domain_access:
-      - '*'
 sources:
   - id: hot-pg
     type: postgresql
@@ -65,3 +54,4 @@ tables:
       - name: name
         data_type: varchar
         visible_to: [org_admin]
+roles: []

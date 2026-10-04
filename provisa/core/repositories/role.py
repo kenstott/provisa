@@ -28,6 +28,23 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
+class ReservedRoleRedefined(Exception):
+    """REQ-1349/REQ-1297: a config file (or the admin surface) tried to define ``org_admin`` or
+    ``platform_admin``. Their definitions are the deployment's own (the seed / schema.sql), never a
+    config file's — a config that overrode them once silently stripped an administrator of rights.
+    The write is refused by name rather than dropped silently, so a config that declares one fails
+    to load instead of loading with the declaration quietly ignored."""
+
+    code = "config.reserved_role_redefined"
+
+    def __init__(self, role_id: str) -> None:
+        self.role_id = role_id
+        super().__init__(
+            f"Role {role_id!r} is a reserved administrative role and cannot be defined by a config "
+            f"file or the admin surface; remove it from the config (REQ-1349)."
+        )
+
+
 class RoleDeleteRefused(Exception):
     """A role that may not be deleted, and why. ``reason`` is ``"system"`` (a role the
     deployment defines) or ``"dependents"`` (other objects refer to it; ``dependents`` lists
@@ -73,7 +90,11 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
         # domain_access ['*'] over the seeded row in every org schema the config loaded into. Refusing
         # the write here is what makes "platform_admin has no rights to tenant org data" hold for a
         # deployment that loads a config, not just a bare one.
-        return
+        #
+        # REQ-1349: refuse LOUDLY, by name. Returning silently let a config that declared one of these
+        # roles load as if it had been honoured, hiding an operator's mistake — the declaration did
+        # nothing, with no signal. A config that declares either role now fails to load.
+        raise ReservedRoleRedefined(role.id)
     await conn.upsert(
         roles,
         {

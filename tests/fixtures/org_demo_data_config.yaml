@@ -45,23 +45,6 @@ roles:
   # REQ-1297: platform_admin is absent by design. schema.sql seeds it with the control-plane bypass
   # and nothing else, role_repo.upsert refuses any config redefinition of that row, and it names no
   # column grant in any org. The data-plane administrator of this org is org_admin.
-  - id: org_admin
-    capabilities:
-      - source_registration
-      - table_registration
-      - create_relationship
-      - access_config
-      - query_development
-      - approve_view
-      - create_view
-      - column_grant
-      - user_management
-      - masking_config
-      - view_governance
-      - full_results
-      - usage
-      - write
-    domain_access: ["*"]
   - id: analyst
     capabilities: [query_development]
     domain_access: [sales-analytics]

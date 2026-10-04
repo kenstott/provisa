@@ -17,16 +17,6 @@ cache:
 domains:
   - id: ptloop
     description: pgwire passthrough event-loop probe
-roles:
-  - id: org_admin
-    capabilities:
-      - source_registration
-      - table_registration
-      - query_development
-      - full_results
-      - usage
-    domain_access:
-      - '*'
 sources:
   - id: ptloop-pg
     type: postgresql
@@ -74,3 +64,4 @@ tables:
       - name: reader
         data_type: integer
         visible_to: [org_admin]
+roles: []
