@@ -13,7 +13,9 @@
 # source-to-query e2e.
 services:
   yugabytedb:
-    image: yugabytedb/yugabyte:latest
+    # Pinned: from 2026.1.2.0 the image runs as uid 10001 and /home/yugabyte/var is absent from
+    # it, so the named volume mounted there is root-owned and yugabyted cannot create its conf dir.
+    image: yugabytedb/yugabyte:2026.1.1.1-b2
     restart: unless-stopped
     command: ["bin/yugabyted", "start", "--background=false"]
     ports:

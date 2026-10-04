@@ -85,8 +85,8 @@ async def test_exasol_driver_honors_configured_tls_fingerprint() -> None:
     """REQ-1731 gap fix: configure() previously didn't exist at all, so a `tls_fingerprint` the
     UI form's exasol auth-mode collects into Source.federation_hints was silently never used —
     connect() always built the plain, unpinned DSN and any self-signed Exasol server failed PKIX
-    validation. pyexasol's own DSN syntax pins a fingerprint as `<host>:<port>/<FINGERPRINT>`
-    (connection.py's `_process_dsn`)."""
+    validation. pyexasol's own DSN syntax pins a fingerprint as `<host>/<FINGERPRINT>:<port>`
+    (connection.py's `_process_dsn`: the fingerprint follows the host, the port comes last)."""
     mock_connect = MagicMock()
     with patch("pyexasol.connect", mock_connect):
         driver = ExasolDriver()
@@ -94,7 +94,33 @@ async def test_exasol_driver_honors_configured_tls_fingerprint() -> None:
         await driver.connect(
             host="exa.local", port=8563, database="TEST", user="sys", password="exasol"
         )
-    assert mock_connect.call_args.kwargs["dsn"] == "exa.local:8563/ABCDEF0123456789"
+    assert mock_connect.call_args.kwargs["dsn"] == "exa.local/ABCDEF0123456789:8563"
+
+
+@pytest.mark.asyncio
+async def test_pyexasol_reads_the_pinned_dsn_as_host_port_and_fingerprint() -> None:
+    """The DSN the driver builds, read by pyexasol's own parser. `<host>:<port>/<FINGERPRINT>`
+    left 'localhost:33081' as the hostname, and every connect failed with 'Could not resolve IP
+    address of hostname [localhost:33081]' (the amd64 swap lane's exasol cases)."""
+    from types import SimpleNamespace
+
+    from pyexasol.connection import ExaConnection
+
+    mock_connect = MagicMock()
+    with patch("pyexasol.connect", mock_connect):
+        driver = ExasolDriver()
+        driver.configure({"tls_fingerprint": "abcdef0123456789"})
+        await driver.connect(
+            host="localhost", port=33081, database="TEST", user="sys", password="exasol"
+        )
+    dsn = mock_connect.call_args.kwargs["dsn"]
+    parser = SimpleNamespace(options={"encryption": True, "resolve_hostnames": False})
+    [host] = ExaConnection._process_dsn(parser, dsn)  # type: ignore[arg-type]
+    assert (host.hostname, host.port, host.fingerprint) == (
+        "localhost",
+        33081,
+        "ABCDEF0123456789",
+    )
 
 
 @pytest.mark.asyncio

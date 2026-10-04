@@ -64,6 +64,7 @@ def app_state(monkeypatch):
         source_catalogs={},
         contexts={},
         mv_registry=SimpleNamespace(get_enabled=lambda: []),
+        view_sql_map={},  # AppState.view_sql_map: no view reads another here
     )
     monkeypatch.setattr("provisa.api.app.state", state, raising=False)
     return state

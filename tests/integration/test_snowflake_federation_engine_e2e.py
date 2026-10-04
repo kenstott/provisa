@@ -41,7 +41,7 @@ from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical  #
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.snowflake_runtime import SnowflakeFederationRuntime  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
-from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops  # noqa: E402
 
 _ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
 _SRC = "e2e-sf"
@@ -62,6 +62,7 @@ def _schema_input() -> SchemaInput:
                 "domain_id": "sales",
                 "schema_name": _SCHEMA,
                 "table_name": _TABLE,
+                "write_ops": registry_write_ops("snowflake"),
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],

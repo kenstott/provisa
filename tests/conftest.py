@@ -440,7 +440,7 @@ os.environ.setdefault(
 # META-INF/services/io.trino.spi.Plugin and no io.trino.spi classes, so a single jar dropped
 # into trino/plugins/<name>/ is a complete plugin directory.
 _TRINO_PLUGIN_MAVEN = "https://repo1.maven.org/maven2/io/simpleishard"
-_TRINO_PLUGIN_VERSION = "0.70.0"
+_TRINO_PLUGIN_VERSION = "0.94.4"
 _TRINO_PLUGINS = ("trino-sharepoint", "trino-splunk", "trino-file")
 
 

@@ -110,3 +110,27 @@ def test_source_added_by_rls_subquery_is_routed():
     )
     sources = extract_sources(governed, _gov(), _ctx())
     assert sources == {"sales-pg", "lookup-pg"}  # RLS-added countries source is present
+
+
+def test_an_inlined_table_known_by_its_physical_name_under_a_display_alias_drops_its_source():
+    """The optimizer names an inlined API table by its physical name (``get_inventory``); the
+    query and the governance map carry its display name (``pet_store.inventory``). The source
+    still drops from routing: a fully inlined statement has no API source left to route to (it was
+    routed Route.API and refused with data.no_direct_route)."""
+    ctx = CompilationContext()
+    meta = TableMeta(
+        table_id=7,
+        field_name="pet_store__inventory",
+        type_name="Inventory",
+        source_id="petstore-api",
+        catalog_name="petstore_api",
+        schema_name="default",
+        table_name="get_inventory",
+        domain_id="pet_store",
+        display_name="inventory",
+    )
+    ctx.tables = {"pet_store__inventory": meta}
+    ctx.joins = {}
+    gov = GovernanceContext(table_map={"pet_store.inventory": 7, "inventory": 7})
+    sql = 'SELECT "inventory"."count" FROM "pet_store"."inventory" AS "inventory"'
+    assert reduce_sources_for_routing(sql, gov, ctx, inlined_table_names={"get_inventory"}) == set()

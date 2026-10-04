@@ -123,6 +123,27 @@ def view_bodies(
     return bodies
 
 
+def unnarrowed_view_bodies(sql: str, view_sql_map: dict[str, str], state: Any) -> dict[str, str]:
+    """For a read that acts for no role (an MV refresh builds a view whole), what replaces each
+    view ``sql`` references, directly or through another view: by the same rule as
+    :func:`view_bodies` with nothing narrowed — its stored rows when it is materialized and its
+    build is fresh, else its own SQL."""
+    bodies: dict[str, str] = {}
+    pending = [sql]
+    while pending:
+        text = pending.pop()
+        for view, view_sql in view_sql_map.items():
+            if view in bodies or view not in text:
+                continue
+            stored = _stored_rows(view, state)
+            if stored is None:
+                bodies[view] = view_sql
+                pending.append(view_sql)
+            else:
+                bodies[view] = stored
+    return bodies
+
+
 def split_for_whole_statement_governance(
     sql: str, view_sql_map: dict[str, str], state: Any, gov: "GovernanceContext"
 ) -> tuple[dict[str, str], dict[str, str]]:

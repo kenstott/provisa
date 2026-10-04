@@ -200,6 +200,21 @@ async def test_the_config_and_the_admin_derive_the_identical_endpoint_row(contro
         assert from_config["pagination"] == {"type": "offset", "page_size": 2, "max_pages": 2}
 
 
+async def test_a_table_with_no_paging_is_stored_as_null_and_loads_unpaged(control_plane):
+    """REQ-318: NULL = not paged. A table registered with no paging must store SQL NULL, not the
+    JSON value ``null`` — the endpoint loader reads the column raw and would otherwise build a
+    paging from the text ``"null"`` and fail the whole schema build."""
+    state = _state()
+    table = _table(max_pages=2).model_copy(update={"pagination": None})
+    await _register_in_the_admin(control_plane, state, table)
+    assert state.api_endpoints["listPets"].pagination is None
+    async with control_plane.acquire() as conn:
+        raw = await conn.fetch("SELECT pagination FROM api_endpoints")
+        assert [r["pagination"] for r in raw] == [None]
+        raw = await conn.fetch("SELECT pagination FROM registered_tables")
+        assert [r["pagination"] for r in raw] == [None]
+
+
 async def test_a_table_with_no_operation_of_its_name_is_refused(control_plane):
     from provisa.api.admin._openapi_table_registration import persist_openapi_endpoint
 

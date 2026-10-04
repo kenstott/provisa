@@ -11,6 +11,10 @@ import { test, expect, UI_URL, TRINO_BACKEND_URL } from "./coverage";
 import { deleteSourceAndItsTables } from "./delete-source";
 
 const SOURCE_ID = "e2e-splunk";
+// REQ-1730: the splunk catalog's schema is the sql-normalized source id on every engine
+// (trino_connectors.TrinoSplunkConnector passes it as the catalog's `schema`, as
+// the DuckDB pgwire bridge exposes it), not the fixed literal "splunk".
+const SCHEMA = SOURCE_ID.replace(/-/g, "_");
 // Trino backend: register_source() creates a real Trino catalog so the schema dropdown populates.
 // DuckDB backend's register_source() is a no-op — the schema dropdown would stay empty.
 const ADMIN_GQL = `${TRINO_BACKEND_URL}/admin/graphql`;
@@ -250,18 +254,19 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   const firstDomain = await domainSelect.locator("option").nth(1).getAttribute("value");
   await domainSelect.selectOption(firstDomain!);
 
-  // Wait for 'splunk' schema to appear — Trino Splunk catalog loads asynchronously after the source
+  // Wait for the source's schema to appear — Trino Splunk catalog loads asynchronously after the source
   // is registered; allow 180s for Trino catalog initialisation + schema query. Splunk's cold start
   // is already paid for in beforeAll, so this budget covers only the catalog handshake.
   await page.waitForFunction(
-    () => {
+    (schema) => {
       const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-schema-select"]');
-      return Array.from(sel?.options ?? []).some((o) => o.value === "splunk");
+      return Array.from(sel?.options ?? []).some((o) => o.value === schema);
     },
+    SCHEMA,
     { timeout: 180000 },
   );
 
-  await page.locator('[data-testid="register-table-schema-select"]').selectOption("splunk");
+  await page.locator('[data-testid="register-table-schema-select"]').selectOption(SCHEMA);
 
   // Wait for internal_server table to appear
   await page.waitForFunction(
@@ -287,7 +292,7 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
       input: {
         sourceId: SOURCE_ID,
         domainId,
-        schemaName: "splunk",
+        schemaName: SCHEMA,
         tableName: "internal_server",
         columns: INTERNAL_SERVER_COLUMNS,
       },

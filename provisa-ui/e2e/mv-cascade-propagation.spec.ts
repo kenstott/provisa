@@ -8,7 +8,34 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { execFileSync } from "node:child_process";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { test, expect, BACKEND_URL } from "./coverage";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const PYTHON = path.join(ROOT, ".venv", "bin", "python");
+// The pet-store-sqlite source's file (config/provisa-install.yaml: ${PROVISA_DEMO_DIR:-./demo/files},
+// resolved from the repo root the backend runs in).
+const PET_STORE_DB = path.join(process.env.PROVISA_DEMO_DIR ?? path.join(ROOT, "demo/files"), "pet_store.sqlite");
+
+// The source changes underneath Provisa, as a source does: written in the source's own file, not
+// through Provisa. Through Provisa the UPDATE is refused — pets.price is writable by no role
+// (REQ-663: no writable_by in the demo config).
+function setPetPrice(price: number) {
+  execFileSync(PYTHON, [
+    "-c",
+    "import sqlite3, sys\n" +
+      "con = sqlite3.connect(sys.argv[1])\n" +
+      "with con:\n" +
+      "    n = con.execute('UPDATE pets SET price = ? WHERE id = 1', (float(sys.argv[2]),)).rowcount\n" +
+      "con.close()\n" +
+      "assert n == 1, n\n",
+    PET_STORE_DB,
+    String(price),
+  ]);
+}
 
 // REQ-966/158/133: a genuine end-to-end DAG cascade — a source-table state change propagates through
 // a two-level chain of materialized views, verified via the running app's own SQL/table-admin surfaces
@@ -27,7 +54,8 @@ const B = "e2e_mv_b";
 async function runSql(api: import("@playwright/test").APIRequestContext, sql: string) {
   // Use BACKEND_URL directly (not Vite proxy) — page.request resolves localhost to ::1 but
   // the API server listens on all interfaces; the Vite proxy on port 3901 is IPv4-only.
-  const resp = await api.post(`${BACKEND_URL}/data/sql`, { data: { sql, role: "admin" } });
+  // REQ-273: the statement runs as the request's acting role (org_admin); the body names none.
+  const resp = await api.post(`${BACKEND_URL}/data/sql`, { data: { sql } });
   expect(resp.ok(), await resp.text()).toBeTruthy();
   const json = await resp.json();
   return json.data.sql as Record<string, unknown>[];
@@ -167,14 +195,12 @@ async function deleteTable(page: import("@playwright/test").Page, tableName: str
 // deadlock/crash the backend via simultaneous DuckDB writes. Use test.describe.serial so
 // --repeat-each=N runs copies sequentially in one worker rather than in parallel across workers.
 test.describe.serial("dag-cascade", () => {
-  // Restore the shared pet_store.pets row through the `request` fixture, not through page.request.
-  // A test that exceeds its timeout has its browser context torn down, so the restore that used to
-  // live in the body's `finally` failed with "Target page, context or browser has been closed" and
-  // left price = 999.99 behind: the retry then read 999.99 where it asserts the 380.00 baseline and
-  // failed for a reason that had nothing to do with the cascade. The `request` fixture is a separate
-  // context that outlives the page and carries the same x-e2e-worker header (coverage.ts).
-  test.afterEach(async ({ request }) => {
-    await runSql(request, "UPDATE pet_store.pets SET price = 380.00 WHERE id = 1");
+  // Restore the shared pet_store.pets row in afterEach, not in the body's `finally`: a test that
+  // exceeds its timeout has its browser context torn down before `finally` runs its page calls,
+  // and a row left at 999.99 fails the retry's 380.00 baseline for a reason that has nothing to do
+  // with the cascade. The restore writes the source file, so it needs no browser context.
+  test.afterEach(() => {
+    setPetPrice(380.0);
   });
 
   test("source state change propagates through a two-level materialized-view DAG", async ({ page }) => {
@@ -207,9 +233,8 @@ test.describe.serial("dag-cascade", () => {
       let rows = await runSql(page.request, `SELECT price FROM views.${B} WHERE id = 1`);
       expect(Number(rows[0].price)).toBeCloseTo(380.0, 2);
 
-      // Mutate the physical source table directly (the SQL Explorer's Run wraps all SQL as a SELECT
-      // subquery and cannot execute this UPDATE) and confirm it landed.
-      await runSql(page.request, "UPDATE pet_store.pets SET price = 999.99 WHERE id = 1");
+      // Change the source itself (setPetPrice) and confirm Provisa reads the change.
+      setPetPrice(999.99);
       const updated = await runSql(page.request, "SELECT price FROM pet_store.pets WHERE id = 1");
       expect(Number(updated[0].price)).toBeCloseTo(999.99, 2);
 

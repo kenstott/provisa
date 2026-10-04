@@ -13,7 +13,8 @@
 // column state; updateCol mutates one column's one field.
 
 import { Fragment } from "react";
-import { Checkbox, MultiSelect, Select, Stack, Table, Text, TextInput, Tooltip } from "@mantine/core";
+import { Checkbox, Select, Stack, Table, Text, TextInput, Tooltip } from "@mantine/core";
+import { MultiSelect } from "../../components/MultiSelect";
 import { useTranslation } from "react-i18next";
 
 import { toIrType } from "../../irTypes";

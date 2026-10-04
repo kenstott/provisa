@@ -1478,7 +1478,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             log.debug("pgwire license nag emission skipped", exc_info=True)
 
     def handle_startup(self, conn: Connection) -> Optional[BVContext]:  # type: ignore[override]
-        msglen = self.r.read_uint32() - 4
+        head = self.r.read_bytes(4)
+        if not head:
+            # The client closed before sending a startup packet: a TCP health probe, or a client
+            # that declined the SSL answer. PostgreSQL ends such a connection without a complaint
+            # (ProcessStartupPacket); there is no session to open and nothing to answer.
+            return None
+        if len(head) < 4:
+            raise ConnectionError("incomplete startup packet")
+        msglen = struct.unpack("!I", head)[0] - 4
         code = self.r.read_uint32()
         if code == _SSL_REQUEST_CODE:
             ssl_ctx: ssl.SSLContext | None = getattr(self.server, "ssl_ctx", None)
