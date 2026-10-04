@@ -318,10 +318,17 @@ _CATALOG_LOCK_KEY = 7338
 
 @contextmanager
 def one_registrar(url: URL, timeout: float | None = None) -> Iterator[None]:
-    """Hold the deployment's catalog-registration lock for the block (session advisory lock on
-    the control plane, released when the block ends however it ends). Waiting for the lock is
-    bounded like connecting: a holder that never lets go fails boot with a lock timeout instead of
-    blocking it forever."""
+    """Hold the deployment's catalog-registration lock for the block: a transaction-scoped advisory
+    lock (``pg_advisory_xact_lock``) taken in a transaction that stays open for the block and ends
+    with it, so the lock is released at its commit or rollback however the block ends.
+
+    Transaction-scoped, not session-scoped: through a transaction-pooling PgBouncer (the chart's
+    default) a session belongs to no one client, so a session lock is held by whichever server
+    connection took it and released by whichever one runs the unlock. A transaction keeps its
+    server connection for its whole length, so the lock and its release stay together.
+
+    Waiting for the lock is bounded like connecting: a holder that never lets go fails boot with a
+    lock timeout instead of blocking it forever."""
     import psycopg2
 
     host, port, database, user, password = _pg_parts(url)
@@ -335,15 +342,15 @@ def one_registrar(url: URL, timeout: float | None = None) -> Iterator[None]:
         connect_timeout=max(1, int(wait)),
     )
     try:
-        pg.autocommit = True
-        with pg.cursor() as cur:
-            cur.execute("SELECT set_config('lock_timeout', %s, false)", (f"{int(wait * 1000)}ms",))
-            cur.execute("SELECT pg_advisory_lock(%s)", (_CATALOG_LOCK_KEY,))
+        with pg.cursor() as cur:  # psycopg2 opens the transaction with this first statement
+            cur.execute("SELECT set_config('lock_timeout', %s, true)", (f"{int(wait * 1000)}ms",))
+            cur.execute("SELECT pg_advisory_xact_lock(%s)", (_CATALOG_LOCK_KEY,))
         try:
             yield
-        finally:
-            with pg.cursor() as cur:
-                cur.execute("SELECT pg_advisory_unlock(%s)", (_CATALOG_LOCK_KEY,))
+        except BaseException:
+            pg.rollback()
+            raise
+        pg.commit()
     finally:
         pg.close()
 

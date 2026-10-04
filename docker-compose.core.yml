@@ -32,6 +32,11 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: provisa
+      # The postgres service's own role: without it PgBouncer logs in as "postgres", which this
+      # server has no password for, and every client connection fails server_login_retry.
+      DB_USER: provisa
+      DB_PASSWORD: provisa
+      AUTH_TYPE: scram-sha-256
       POOL_MODE: transaction
       LISTEN_PORT: 6432
     depends_on:
