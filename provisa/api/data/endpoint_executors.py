@@ -97,15 +97,18 @@ async def _execute_api_source(
         )
 
     api_source = state.api_sources.get(source_id)
-    # REQ-1730: state.source_catalogs (catalog_name_for_source's resolution) beats
-    # engine.cache_catalog()'s per-ENGINE default for an adapter-fetched source under Trino —
-    # see cypher_exec.py's identical fix for why.
-    _cc = (getattr(api_source, "cache_catalog", None) if api_source else None) or (
-        getattr(state, "source_catalogs", {}).get(source_id)
-    )
+    # REQ-1730: an engine with no cache catalog of its own (Trino) caches in the catalog it reads
+    # the source through (state.source_catalogs) — engine_cache.cache_location's rule.
+    _cc = getattr(api_source, "cache_catalog", None) if api_source else None
     _org_cs = org_cache_schema(state)
     _cs = getattr(api_source, "cache_schema", _org_cs) if api_source else _org_cs
-    _cache_loc = cache_location(source_id, _cc, _cs, engine=state.federation_engine)
+    _cache_loc = cache_location(
+        source_id,
+        _cc,
+        _cs,
+        engine=state.federation_engine,
+        source_catalog=getattr(state, "source_catalogs", {}).get(source_id),
+    )
 
     # Resolve native filter args (path/query params) — may be "_"-prefixed on collision.
     url_params: dict = compiled.api_args.copy() if compiled.api_args else {}
