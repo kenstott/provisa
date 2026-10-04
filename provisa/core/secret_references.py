@@ -211,6 +211,16 @@ def _names_it(ciphertext: Any, literal: str) -> bool | None:
     return literal in plaintext
 
 
+def _kept_elsewhere(holds: str | None, table_name: str) -> bool:
+    """Whether a handle that holds ``holds`` (None: an unguarded one) does not keep
+    ``table_name``: another store's tables are not read through it (REQ-1922)."""
+    from provisa.core.store_sides import TABLES
+
+    return holds is not None and any(
+        table_name in tables for side, tables in TABLES.items() if side != holds
+    )
+
+
 async def references(
     admin_db: "Database", org_id: str, name: str, *, environments: "Mapping[str, Database]"
 ) -> list[SecretReference]:
@@ -231,6 +241,11 @@ async def references(
         for environment in sorted(environments):
             async with environments[environment].acquire() as conn:
                 for table in schema_org.metadata.sorted_tables:
+                    if _kept_elsewhere(conn.holds, table.name):
+                        # Only the model holds values an operator declared. A state or record
+                        # table is written by the runtime alone (REQ-1920), so it names no secret,
+                        # and its store is not this handle's (REQ-1922).
+                        continue
                     found.extend(await _in_table(conn, table, literal, environment=environment))
     finally:
         reset_current_org(token)
