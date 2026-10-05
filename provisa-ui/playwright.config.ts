@@ -153,6 +153,10 @@ const SWAP_SPECS = ["**/engine-swap.spec.ts"];
 // arm64 host's emulation). The core project collects them only on an amd64 host — ui-e2e-core.yml's
 // ubuntu-latest runner — so an arm64 dev box never collects them rather than skipping them.
 const AMD64_ONLY_SPECS = ["**/source-to-query-exasol.spec.ts"];
+// The same, for a case that shares its file with others: matched by title (druid, in
+// source-to-query-olap-lake-trino.spec.ts).
+const AMD64_ONLY_TITLES = /\bdruid: /;
+const IS_AMD64 = process.arch === "x64";
 // The vault a source's password is stored in encrypts at rest, and the key is what authorizes
 // reading it back (REQ-685/REQ-1695). This host has no OS keychain for the store to mint one in,
 // so the key is supplied explicitly — exactly as every deployment that stores secrets must, and as
@@ -529,15 +533,19 @@ export default defineConfig({
       ? [
           {
             name: "core",
-            testIgnore: [
-              ...TRINO_SPECS,
-              ...SWAP_SPECS,
-              ...(process.arch === "x64" ? [] : AMD64_ONLY_SPECS),
-            ],
+            testIgnore: [...TRINO_SPECS, ...SWAP_SPECS, ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS)],
           },
         ]
       : []),
-    ...(RUNS_TRINO ? [{ name: "trino", testMatch: TRINO_SPECS }] : []),
+    ...(RUNS_TRINO
+      ? [
+          {
+            name: "trino",
+            testMatch: TRINO_SPECS,
+            ...(IS_AMD64 ? {} : { grepInvert: AMD64_ONLY_TITLES }),
+          },
+        ]
+      : []),
     // Requires RUNS_TRINO (the Trino webServer + its shared-org env overrides) exactly like the
     // "trino" project does — it is a separate project only so a routine core/trino run never
     // selects it by accident. See engine-swap.spec.ts's module doc for the invocation.
