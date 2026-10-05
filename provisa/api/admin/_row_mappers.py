@@ -282,6 +282,7 @@ def _live_type_from_row(raw):  # REQ-565, REQ-813
                 topic=o.get("topic"),
                 key_column=o.get("key_column"),
                 bootstrap_servers=o.get("bootstrap_servers"),
+                role=o.get("role"),
             )
             for o in raw.get("outputs", [])
         ],

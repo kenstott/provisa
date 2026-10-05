@@ -114,8 +114,9 @@ def _sqlite_config(work: Path, source_extra: dict) -> Path:
             "domain_id": "thread-x",
             "schema": "default",
             "table": "events",
+            # REQ-336: a subscription reads each change back by the table's key.
             "columns": [
-                {"name": n, "data_type": t, "visible_to": [_ROLE]}
+                {"name": n, "data_type": t, "visible_to": [_ROLE], "is_primary_key": n == "id"}
                 for n, t in (("id", "integer"), ("amount", "varchar"), ("ts", "varchar"))
             ],
         }

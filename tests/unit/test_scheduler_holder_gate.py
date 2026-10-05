@@ -101,8 +101,40 @@ def test_the_servers_scheduler_is_the_one_given_the_holder():
     assert "new_scheduler(_scheduler_holder(state))" in inspect.getsource(
         app_startup._start_scheduler
     )
-    # The live-query engine's polls feed THIS process's subscribers: never gated.
-    assert "BackgroundJobExecutor()" in inspect.getsource(live_engine)
+    # The live-query engine schedules on the process's (holder-gated) scheduler; which of its
+    # polls run in every worker is decided by job id (below).
+    assert "self._process_scheduler" in inspect.getsource(live_engine)
+
+
+def test_a_live_kafka_output_publishes_once_however_many_workers_poll():
+    """REQ-286/REQ-1900: every worker holds the org's live engine. Its SSE polls feed that
+    worker's own subscribers, so each worker runs them; a Kafka output is the org's, so only the
+    holder's worker publishes -- two workers, one publish."""
+    from tests.unit.live_engine_doubles import governed, make_engine, spec
+
+    from provisa.live.engine import LiveEngine
+    from provisa.live.governed import GovernanceKey
+
+    kafka = {"bootstrap_servers": "k:9092", "topic": "orders", "key_column": "id", "role": "pub"}
+    published: list[str] = []
+    polled: list[str] = []
+    for worker, holds in (("a", True), ("b", False)):
+        added: list[str] = []
+        scheduler = SimpleNamespace(add_job=lambda *_a, _added=added, **kw: _added.append(kw["id"]))
+        engine: LiveEngine = make_engine(scheduler=scheduler, started=True)
+
+        async def _wire(engine: LiveEngine = engine) -> None:
+            with patch("provisa.live.engine.KafkaSinkOutput"), governed():
+                engine.reconcile([spec(kafka_outputs=[kafka])])
+                await engine.subscribe("q1", GovernanceKey("default", "analyst", ()))
+
+        asyncio.run(_wire())
+        for job_id in added:
+            target = published if job_id.startswith("livekafka_") else polled
+            ran, _ = _submit(_Holder(holds), job_id)
+            target.extend(f"{worker}:{j}" for j in ran)
+    assert [p.split(":", 1)[0] for p in published] == ["a"]  # one publish, from the holder
+    assert sorted(p.split(":", 1)[0] for p in polled) == ["a", "b"]  # each worker's SSE poll
 
 
 # --- the long-lived loops outside the scheduler (REQ-1900) ---------------------------------------

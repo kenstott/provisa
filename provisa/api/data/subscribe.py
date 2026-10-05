@@ -60,30 +60,6 @@ def _tables_key(table: str, tables: dict, state) -> str | None:
     return None
 
 
-def _resolve_table_source(table: str) -> tuple[str, str] | None:
-    """Return (source_id, source_type) for *table* if it exists in config.
-
-    Returns None if the table is not found in any role's schema.
-    """
-    from provisa.api.app import state
-
-    # Check contexts — each context has table metadata keyed by table name
-    for ctx_key, ctx in state.contexts.items():
-        tables = getattr(ctx, "tables", {})
-        key = _tables_key(table, tables, state)
-        if key is not None:
-            tbl = tables[key]
-            source_id = getattr(tbl, "source_id", None)
-            if source_id and source_id in state.source_types:
-                return source_id, state.source_types[source_id]
-
-    # Fallback: check source_types for a default postgresql source
-    for sid, stype in state.source_types.items():
-        return sid, stype
-
-    return None
-
-
 def _build_postgresql_config(state) -> dict:
     return {"pool": state.tenant_db}
 
@@ -264,37 +240,21 @@ def _build_provider_config(  # REQ-258
     return _build_fallback_config(state, source_id, tbl_meta)
 
 
-def _resolve_tbl_meta(table: str, state):
-    for ctx in state.contexts.values():
-        tables = getattr(ctx, "tables", {})
-        key = _tables_key(table, tables, state)
-        if key is not None:
-            return tables[key]
-    return None
+# A change event as a source reports it: (operation, row). (None, None) is a keepalive tick.
+ChangeEvent = tuple[str | None, dict | None]
 
 
 async def _stream_provider_events(  # REQ-258, REQ-336
     provider,
     table: str,
-    table_id: int | None,
-    role_id: str | None,
-    rls_contexts: dict,
-    masking_rules,
     disconnect: asyncio.Event,
-) -> AsyncGenerator[str, None]:
-    yield ": connected\n\n"
+) -> AsyncGenerator[ChangeEvent, None]:
+    """The change events a subscription provider reports for *table*, until the client leaves."""
     try:
         async for event in provider.watch(table):
             if disconnect.is_set():
                 break
-            if role_id and rls_contexts:
-                rls_ctx = rls_contexts.get(role_id)
-                if rls_ctx and rls_ctx.has_rules():
-                    if not _rls_matches(event.row, rls_ctx, table):
-                        continue
-            row = _mask_row(event.row, table_id, role_id, masking_rules)
-            payload = json.dumps({"op": event.operation.upper(), "row": row}, default=str)
-            yield f"data: {payload}\n\n"
+            yield event.operation, event.row
     finally:
         await provider.close()
 
@@ -303,17 +263,13 @@ async def _provider_sse_generator(  # REQ-258, REQ-260
     table: str,
     source_id: str,
     source_type: str,
-    role_id: str | None,
-    rls_contexts: dict,
-    masking_rules,
+    tbl_meta,
     disconnect: asyncio.Event,
-) -> AsyncGenerator[str, None]:
-    """Yield SSE-formatted events from the appropriate subscription provider."""
+) -> AsyncGenerator[ChangeEvent, None]:
+    """The change events of the provider *table*'s source and change signal resolve to."""
     from provisa.api.app import state
     from provisa.subscriptions.registry import get_provider, supports_polling_fallback
 
-    tbl_meta = _resolve_tbl_meta(table, state)
-    table_id = getattr(tbl_meta, "table_id", None) if tbl_meta else None
     provider_type = _resolve_provider_type(source_type, source_id, tbl_meta, state)  # REQ-814
     provider_config = _build_provider_config(provider_type, source_id, table, tbl_meta, state)
 
@@ -327,26 +283,19 @@ async def _provider_sse_generator(  # REQ-258, REQ-260
     else:
         provider = get_provider(provider_type, provider_config)
 
-    async for chunk in _stream_provider_events(
-        provider, table, table_id, role_id, rls_contexts, masking_rules, disconnect
-    ):
-        yield chunk
+    async for event in _stream_provider_events(provider, table, disconnect):
+        yield event
 
 
 async def _sse_generator(  # REQ-219, REQ-258
     pool,
     table: str,
-    table_id: int | None,
-    role_id: str | None,
-    rls_contexts: dict,
-    masking_rules,
     disconnect: asyncio.Event,
-) -> AsyncGenerator[str, None]:
-    """Yield SSE-formatted events from a PostgreSQL LISTEN channel.
+) -> AsyncGenerator[ChangeEvent, None]:
+    """The change events of a PostgreSQL LISTEN channel, with a keepalive tick every 30s.
 
     Subscribes to the ``provisa_{table}`` channel on *pool* (the control-plane
-    ``Database``, whose listener thread holds the LISTEN connection) and forwards
-    notifications as SSE events until the client disconnects.
+    ``Database``, whose listener thread holds the LISTEN connection) until the client leaves.
     """
     channel = f"{CHANNEL_PREFIX}{table}"
     queue: asyncio.Queue[str] = asyncio.Queue()
@@ -363,110 +312,99 @@ async def _sse_generator(  # REQ-219, REQ-258
     # _on_notify on this stream's loop — the stream holds no pooled connection while it waits.
     await pool.add_listener(channel, _on_notify)
     try:
-        log.info("SSE: listening on channel %s (role=%s)", channel, role_id)
-
-        # Initial keepalive so the client sees headers immediately
-        yield ": connected\n\n"
-
+        log.info("SSE: listening on channel %s", channel)
         while not disconnect.is_set():
             try:
                 payload = await asyncio.wait_for(queue.get(), timeout=30.0)
             except asyncio.TimeoutError:
-                # Send SSE comment as keepalive
-                yield ": keepalive\n\n"
+                yield None, None
                 continue
-
-            # RLS filtering + column masking on the notify payload (REQ-336): subscriptions
-            # enforce the same row-level and column-level governance as local-table queries.
-            # Full SQL-level RLS is also enforced at query time; this is the serving-layer
-            # filter on streamed change events.
             try:
                 parsed = json.loads(payload)
             except (json.JSONDecodeError, TypeError):
-                parsed = None
-
-            if parsed is not None and role_id:
-                row = parsed.get("row", {})
-                if rls_contexts:
-                    rls_ctx = rls_contexts.get(role_id)
-                    if rls_ctx and rls_ctx.has_rules() and not _rls_matches(row, rls_ctx, table):
-                        continue
-                masked = _mask_row(row, table_id, role_id, masking_rules)
-                if masked is not row:
-                    parsed["row"] = masked
-                    payload = json.dumps(parsed, default=str)
-
-            yield f"data: {payload}\n\n"
-
+                log.warning("SSE: channel %s sent a payload that is not JSON; dropped", channel)
+                continue
+            yield parsed.get("op"), parsed.get("row")
     finally:
         await pool.remove_listener(channel, _on_notify)
         log.info("SSE: disconnected from channel %s", channel)
 
 
-def _resolve_table_id(table: str, state) -> int | None:
-    meta = _resolve_tbl_meta(table, state)
-    return getattr(meta, "table_id", None) if meta else None
+def _resolve_tbl_meta(table: str, state):
+    """The model's table *table* names (the bare physical name from the URL), from the bound
+    org's model-wide context; None when the model has no such table."""
+    ctx = state.view_context
+    if ctx is None:
+        return None
+    key = _tables_key(table, ctx.tables, state)
+    return ctx.tables[key] if key is not None else None
 
 
-def _mask_row(row: dict, table_id: int | None, role_id: str | None, masking_rules) -> dict:
-    """Apply column masking to a change-event row (REQ-336, REQ-971).
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload, default=str)}\n\n"
 
-    Mirrors local-table governance: a role not in a column's ``unmasked_to`` receives the
-    masked value, computed by the same rules Stage 2 injects into SQL. Returns the row
-    unchanged when no masking applies.
 
-    REQ-971: this is the bounded-memory STREAMING mask stage — the non-pushdown fallback.
-    It masks exactly one event/row at a time (O(1) cleartext resident, O(batch) never
-    O(relation)); the subscription generators call it per event as the stream arrives and
-    never buffer the full unmasked relation to mask it (the forbidden fetchall-then-mask).
+async def _governed_changes(  # REQ-336, REQ-286
+    events: AsyncGenerator[ChangeEvent, None],
+    key,
+    ref: str,
+    pk: list[str],
+) -> AsyncGenerator[str, None]:
+    """Each change event's row, as the subscriber's key may read it.
+
+    A source reports the changed row raw. It is never forwarded: an insert or update is read back
+    by its key through the one governed pipeline as the subscriber -- row rules, column visibility
+    and masks -- and delivered as that read returns it; a row the key may not read is not
+    delivered. A delete is delivered only for a row this stream delivered, with the key columns
+    as they were delivered; a row that leaves the key's view on update is delivered as a delete.
     """
-    if not (role_id and masking_rules and table_id is not None):
-        return row
-    col_rules = masking_rules.get((table_id, role_id))
-    if not col_rules:
-        return row
-    from provisa.security.masking import apply_mask_to_value
+    from provisa.live.governed import governed_rows
 
-    masked = dict(row)
-    for col, (rule, dtype) in col_rules.items():
-        if col in masked:
-            masked[col] = apply_mask_to_value(rule, masked[col], dtype)
-    return masked
+    where = " AND ".join(f'"{c}" = ${i + 1}' for i, c in enumerate(pk))
+    sql = f"SELECT * FROM {ref} WHERE {where}"
+    shown: dict[tuple, dict] = {}
+    yield ": connected\n\n"
+    async for op, row in events:
+        if op is None or row is None:
+            yield ": keepalive\n\n"
+            continue
+        ident = tuple(row.get(c) for c in pk)
+        if any(v is None for v in ident):
+            log.warning("SSE: a %s event on %s carries no key; dropped", op, ref)
+            continue
+        operation = op.upper()
+        if operation == "DELETE":
+            was = shown.pop(ident, None)
+            if was is not None:
+                yield _sse({"op": "DELETE", "row": was})
+            continue
+        rows = await governed_rows(sql, key, params=list(ident))
+        if not rows:
+            was = shown.pop(ident, None)
+            if was is not None:
+                yield _sse({"op": "DELETE", "row": was})
+            continue
+        for governed in rows:
+            shown[ident] = {c: governed[c] for c in pk if c in governed}
+            yield _sse({"op": operation, "row": governed})
 
 
-def _rls_matches(row: dict, rls_ctx, _table: str) -> bool:  # pyright: ignore[reportUnusedParameter]
-    """Best-effort RLS check on a notification row.
+async def _acquire_sse_slot(state, role_id: str) -> str | None:  # REQ-369, REQ-371
+    """REQ-369: acquire a concurrent-SSE-subscription slot for the bound org's role.
 
-    Checks simple ``column = 'value'`` filters from the RLS context.
-    Non-matching or unparseable rules are treated as passing (permissive).
-    """
-    import re
-
-    for _, expr in rls_ctx.rules.items():
-        match = re.match(r"^(\w+)\s*=\s*'([^']*)'$", expr.strip())
-        if match:
-            col, val = match.group(1), match.group(2)
-            if col in row and str(row[col]) != val:
-                return False
-    return True
-
-
-async def _acquire_sse_slot(state, role_id: str | None) -> str | None:  # REQ-369, REQ-371
-    """REQ-369: acquire a concurrent-SSE-subscription slot for the role.
-
-    Returns the limiter key (to release later) or None when no cap applies.
+    Returns the limiter key (to release later) or None when no cap applies. The slot is the org's
+    role's: one org's subscribers never take another's (REQ-1266).
     Raises HTTP 429 when the role is at its ``max_sse_subscriptions`` limit.
     """
+    from provisa.core.request_context import require_current_org
+
     limiter = getattr(state, "rate_limiter", None)
-    if not (limiter and role_id):
+    if limiter is None:
         return None
-    if role_id not in state.roles:
-        raise ApiError(403, "subscribe.unknown_role", f"Unknown role {role_id!r}", role=role_id)
-    role = state.roles[role_id]
-    cap = (role.get("rate_limit") or {}).get("max_sse_subscriptions")
+    cap = (state.roles[role_id].get("rate_limit") or {}).get("max_sse_subscriptions")
     if not cap:
         return None
-    key = f"rl:sse:{role_id}"
+    key = f"rl:sse:{require_current_org()}:{role_id}"
     if not await limiter.acquire(key, cap):
         raise ApiError(
             429, "subscribe.sse_limit_reached", "max concurrent SSE subscriptions reached"
@@ -484,92 +422,95 @@ async def _release_slot_when_done(gen, state, key: str | None):
             await state.rate_limiter.release(key)
 
 
-@router.get("/subscribe/{table}")  # REQ-258, REQ-260, REQ-336, REQ-369
+_SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
+
+
+@router.get("/subscribe/{table}")  # REQ-258, REQ-260, REQ-286, REQ-336, REQ-369
 async def subscribe(
     table: str,
     request: Request,
     x_provisa_role: str | None = Header(None),
     query_id: str | None = None,
 ):
-    """Stream SSE events for changes on *table*.
+    """Stream SSE events for *table*, governed as the subscriber (REQ-286, REQ-336).
 
-    When ``query_id`` is provided, streams live query results from the
-    LiveEngine (Phase AM) rather than database change notifications.
-    The query_id must match an approved persisted query registered with
-    the live engine.
-
-    Without ``query_id``, validates the table exists in the role's schema,
-    resolves the appropriate notification provider, and streams SSE events.
+    With ``query_id``, streams that live query's polled rows from the bound org's live engine;
+    without, streams the table's change notifications. Either way every row is read through the
+    one governed pipeline as the subscriber's key -- its role and the session values its rules
+    read -- and a refusal (the table or a column it needs not visible) is answered by name before
+    the stream opens.
     """
     from provisa.api.app import state
+    from provisa.live.governed import subscriber_key
 
-    auth_role = getattr(request.state, "role", None)
-    role_id = auth_role or x_provisa_role
+    role_id = getattr(request.state, "role", None) or x_provisa_role
+    key = subscriber_key(role_id)
+    assert role_id is not None  # subscriber_key refuses a subscription that acts as no role
 
     if query_id is not None:
-        # Route to live engine SSE output
-        if state.live_engine is None or not state.live_engine.is_registered(query_id):
+        engine = state.live_engine
+        if engine is None or not engine.is_registered(query_id):
             raise ApiError(
                 404,
                 "subscribe.live_query_not_registered",
                 f"Live query {query_id!r} not registered",
                 query_id=query_id,
             )
-        _engine = state.live_engine
-        queue = _engine.subscribe(query_id)
+        slot = await _acquire_sse_slot(state, role_id)
+        try:
+            queue = await engine.subscribe(query_id, key)
+        except BaseException:
+            if slot:
+                assert state.rate_limiter is not None  # the slot was taken from it
+                await state.rate_limiter.release(slot)
+            raise
 
         async def _live_event_stream():
             try:
                 while True:
-                    rows = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    try:
+                        rows = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+                        continue
+                    if rows is None:  # the engine ended the stream (its spec changed or stopped)
+                        return
                     for row in rows:
-                        yield f"data: {json.dumps(row, default=str)}\n\n"
-            except asyncio.TimeoutError:
-                yield ": keepalive\n\n"
-            except asyncio.CancelledError:
-                pass
+                        yield _sse(row)
             finally:
-                _engine.unsubscribe(query_id, queue)
+                engine.unsubscribe(query_id, key, queue)
 
         return StreamingResponse(
-            _live_event_stream(),
+            _release_slot_when_done(_live_event_stream(), state, slot),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
+            headers=_SSE_HEADERS,
         )
+
+    from provisa.live.governed import governed_rows, primary_key, table_ref
+
+    tbl_meta = _resolve_tbl_meta(table, state)
+    if tbl_meta is None:
+        raise ApiError(404, "subscribe.table_not_found", f"Table {table!r} not found", table=table)
+    pk = primary_key(tbl_meta)
+    if not pk:
+        raise ApiError(
+            422,
+            "subscribe.table_has_no_key",
+            f"Table {table!r} has no primary key: a change is read back by its key, as the "
+            "subscriber may read it",
+            table=table,
+        )
+    ref = table_ref(tbl_meta)
+    # Governed once before the stream opens: a refusal reaches the subscriber by name.
+    await governed_rows(f"SELECT * FROM {ref} LIMIT 0", key)
+    if state.tenant_db is None:
+        raise ApiError(503, "subscribe.db_pool_unavailable", "Database pool not available")
+    source_id = tbl_meta.source_id
+    source_type = state.source_types[source_id]
 
     # REQ-369: enforce the per-role concurrent SSE subscription cap (released when the
     # stream ends, in the return path below).
     _sse_slot = await _acquire_sse_slot(state, role_id)
-
-    if state.tenant_db is None:
-        raise ApiError(503, "subscribe.db_pool_unavailable", "Database pool not available")
-
-    # Validate table exists in role's schema
-    table_found = False
-    if role_id and role_id in state.contexts:
-        ctx = state.contexts[role_id]
-        tables = getattr(ctx, "tables", {})
-        if _tables_key(table, tables, state) is not None:
-            table_found = True
-    # If no role context, check all contexts
-    if not table_found:
-        for ctx in state.contexts.values():
-            tables = getattr(ctx, "tables", {})
-            if _tables_key(table, tables, state) is not None:
-                table_found = True
-                break
-
-    if state.contexts and not table_found:
-        raise ApiError(404, "subscribe.table_not_found", f"Table {table!r} not found", table=table)
-
-    # Resolve provider from source type
-    source_info = _resolve_table_source(table)
-
-    table_id = _resolve_table_id(table, state)
     disconnect = asyncio.Event()
 
     async def on_disconnect() -> None:
@@ -582,27 +523,13 @@ async def subscribe(
     async def wrapped_generator() -> AsyncGenerator[str, None]:
         task = asyncio.create_task(on_disconnect())
         try:
-            if source_info and source_info[1] != "postgresql":
-                gen = _provider_sse_generator(
-                    table,
-                    source_info[0],
-                    source_info[1],
-                    role_id,
-                    state.rls_contexts,
-                    state.masking_rules,
-                    disconnect,
+            if source_type != "postgresql":
+                events = _provider_sse_generator(
+                    table, source_id, source_type, tbl_meta, disconnect
                 )
             else:
-                gen = _sse_generator(
-                    state.tenant_db,
-                    table,
-                    table_id,
-                    role_id,
-                    state.rls_contexts,
-                    state.masking_rules,
-                    disconnect,
-                )
-            async for chunk in gen:
+                events = _sse_generator(state.tenant_db, table, disconnect)
+            async for chunk in _governed_changes(events, key, ref, pk):
                 yield chunk
         finally:
             task.cancel()
@@ -614,9 +541,5 @@ async def subscribe(
     return StreamingResponse(
         _release_slot_when_done(wrapped_generator(), state, _sse_slot),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+        headers=_SSE_HEADERS,
     )

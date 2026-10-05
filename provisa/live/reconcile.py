@@ -38,6 +38,7 @@ async def reconcile_live_engine(conn: "Connection", engine) -> None:  # REQ-565,
 
     result = await conn.execute_core(
         select(
+            _rt.c.id,
             _rt.c.source_id,
             _rt.c.schema_name,
             _rt.c.table_name,
@@ -59,13 +60,13 @@ async def reconcile_live_engine(conn: "Connection", engine) -> None:  # REQ-565,
         # WITHOUT one it full-replaces (re-scan + content-hash suppression). REQ-932.
         watermark = row["watermark_column"] or live.get("watermark_column")
         mode = "append" if watermark else "replace"
-        catalog = row["source_id"].replace("-", "_")
-        sql = f'SELECT * FROM {catalog}."{row["schema_name"]}"."{row["table_name"]}"'
+        # REQ-286: an output publishes governed rows, as the role it names (required at load).
         kafka_outputs = [
             {
                 "bootstrap_servers": o["bootstrap_servers"],
                 "topic": o["topic"],
                 "key_column": o.get("key_column"),
+                "role": o["role"],
             }
             for o in live.get("outputs", [])
             if o.get("type") == "kafka" and o.get("topic") and o.get("bootstrap_servers")
@@ -73,7 +74,7 @@ async def reconcile_live_engine(conn: "Connection", engine) -> None:  # REQ-565,
         specs.append(
             LiveSpec(
                 query_id=f"{row['source_id']}.{row['table_name']}",
-                sql=sql,
+                table_id=row["id"],
                 watermark_column=watermark or "",
                 poll_interval=int(live.get("poll_interval", 10)),
                 kafka_outputs=kafka_outputs,

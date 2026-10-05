@@ -298,9 +298,8 @@ def _resolve_tls(cert_env: str, key_env: str) -> tuple[str, str] | None:
 
 
 async def _start_servers(_log: logging.Logger) -> None:
-    """Start gRPC, Arrow Flight, pgwire, Live Query Engine, and APQ cache servers."""
+    """Start gRPC, Arrow Flight, pgwire, and APQ cache servers."""
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
-    from provisa.api.app_rebuild import _reconcile_live_engine
 
     _evaluate_licensing(_log)  # REQ-1135–1139: offline trial/license check + shell banner
 
@@ -553,24 +552,8 @@ async def _start_servers(_log: logging.Logger) -> None:
         # unexpected and propagates loudly.
         _log.exception("airport server startup failed")
 
-    try:
-        from provisa.live.engine import LiveEngine
-
-        live_engine = LiveEngine(
-            tenant_db=state.tenant_db, engine=state.federation_engine, org_id=state.org_id
-        )
-        await live_engine.start()
-        state.live_engine = live_engine
-        _log.info("Live Query Engine started")
-
-        # Reconcile poll jobs from persisted per-table live config (Phase AY).
-        # Data polls route through the engine; CDC-delivered tables are driven by
-        # subscription providers, not the poll engine.
-        if state.model_db is not None:
-            async with state.model_db.acquire() as _lc:
-                await _reconcile_live_engine(_lc)
-    except Exception:
-        _log.exception("Live Query Engine startup failed")
+    # Live Query Engines are each org's, started with its prod runtime once the process's
+    # scheduler runs (provisa.api.app_rebuild.start_org_live_engine; REQ-1266).
 
     # REQ-289: APQ cache uses the resolved cache.redis_url and apq.ttl (not raw env vars).
     # REQ-829: with no URL, RedisAPQCache(None) uses embedded fakeredis so desktop

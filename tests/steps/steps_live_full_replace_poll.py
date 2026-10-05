@@ -14,21 +14,9 @@ import pytest
 from pytest_bdd import given, scenarios, then, when
 
 import provisa.live.engine as live_engine
-from provisa.live.engine import LiveEngine, _LiveJob
-
-
-class _FakeEngineRuntime:
-    def __init__(self, rows):
-        self.rows = rows
-        self.column_names = ["id", "v"]
-
-    def address_replicas(self, sql):
-        return sql  # this stand-in's tables are all read where the statement names them
-
-    async def execute_engine(self, _sql):
-        from types import SimpleNamespace
-
-        return SimpleNamespace(column_names=self.column_names, rows=list(self.rows))
+from provisa.live.engine import LiveEngine, _Group
+from provisa.live.governed import GovernanceKey
+from tests.unit.live_engine_doubles import governed, spec
 
 
 class _RecordingFanout:
@@ -66,17 +54,16 @@ def _run_replace_poll(rows, monkeypatch, watermark_state):
     monkeypatch.setattr(wm, "set_watermark", _set)
 
     fanout = _RecordingFanout()
-    job = _LiveJob(
-        query_id="q1",
-        sql="SELECT * FROM t",
-        watermark_column="",
-        poll_interval=5,
-        fanout=fanout,  # type: ignore[arg-type]  # test double records send() calls
-        kafka_outputs=[],
-        mode="replace",
+    group = _Group(
+        spec=spec(watermark_column="", mode="replace"),
+        key=GovernanceKey("default", "analyst", ()),
+        output=fanout,  # type: ignore[arg-type]  # test double records send() calls
+        output_type="sse:k",
+        job_id="live_q1:org_default:sse:k",
     )
-    eng = LiveEngine(tenant_db=_NullTenantDB(), engine=_FakeEngineRuntime(rows), org_id="default")
-    asyncio.run(eng._poll_replace(job))
+    eng = LiveEngine(tenant_db=_NullTenantDB(), org_id="default", scheduler=None)
+    with governed(rows):  # the governed read of the whole table, as the group's key
+        asyncio.run(eng._poll_replace(group))
     return fanout
 
 

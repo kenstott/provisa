@@ -145,14 +145,17 @@ async def test_row_materialize_wiring_refuses_with_no_org_bound():
 async def test_a_live_poll_runs_as_the_engines_org(monkeypatch):
     from provisa.live.engine import LiveEngine
 
-    engine = LiveEngine(tenant_db=None, engine=None, org_id="root")
+    engine = LiveEngine(tenant_db=None, org_id="root", scheduler=None)
+    engine._groups[("q1", "sse:k")] = cast(
+        "Any", SimpleNamespace(spec=SimpleNamespace(mode="append"))
+    )
     seen: list[str | None] = []
 
-    async def _bound(_query_id: str) -> None:
+    async def _bound(_group) -> None:
         seen.append(current_org.get())
 
-    monkeypatch.setattr(engine, "_poll_bound", _bound)
-    await engine._poll("q1")
+    monkeypatch.setattr(engine, "_poll_append", _bound)
+    await engine._poll("q1", "sse:k")
     assert seen == ["root"]
     assert current_org.get() is None
 
@@ -192,19 +195,26 @@ def test_airport_stream_batches_are_pulled_in_the_serving_org():
 
 
 async def test_the_live_engine_reconciles_only_from_its_own_orgs_model(monkeypatch):
-    """Another org's rebuild must not hand the deployment org's engine its live tables (they would
-    be polled in the engine's org and delivered to the other org's outputs) nor drop its jobs."""
+    """Each org's runtime holds its own engine (REQ-1266): an org's rebuild reconciles that org's
+    engine, never another org's -- whose live tables would be polled in the wrong org."""
     from provisa.api import app_rebuild
     from provisa.live.engine import LiveEngine
 
-    engine = LiveEngine(tenant_db=None, engine=None, org_id="root")
-    reconciled: list[str | None] = []
+    engines = {
+        org: LiveEngine(tenant_db=None, org_id=org, scheduler=None) for org in ("acme", "root")
+    }
+    reconciled: list[tuple[str | None, str]] = []
 
-    async def _reconcile(_conn, _engine):
-        reconciled.append(current_org.get())
+    async def _reconcile(_conn, engine):
+        reconciled.append((current_org.get(), engine.org_id))
+
+    class _State:
+        @property
+        def live_engine(self):
+            return engines[current_org.get()]
 
     monkeypatch.setattr("provisa.live.reconcile.reconcile_live_engine", _reconcile)
-    monkeypatch.setattr("provisa.api.app.state", SimpleNamespace(live_engine=engine), raising=False)
+    monkeypatch.setattr("provisa.api.app.state", _State(), raising=False)
 
     for org in ("acme", "root"):
         token = set_current_org(org)
@@ -212,16 +222,30 @@ async def test_the_live_engine_reconciles_only_from_its_own_orgs_model(monkeypat
             await app_rebuild._reconcile_live_engine(cast("Any", None))
         finally:
             reset_current_org(token)
-    assert reconciled == ["root"]
+    assert reconciled == [("acme", "acme"), ("root", "root")]
+
+    # An engine held under another org's runtime is a defect, refused rather than reconciled.
+    engines["acme"] = engines["root"]
+    token = set_current_org("acme")
+    try:
+        with pytest.raises(AssertionError, match="holds that org's live engine"):
+            await app_rebuild._reconcile_live_engine(cast("Any", None))
+    finally:
+        reset_current_org(token)
 
 
-def test_a_live_query_job_is_named_for_the_engines_org():
+async def test_a_live_query_job_is_named_for_the_engines_org():
+    from tests.unit.live_engine_doubles import governed, spec
+
     from provisa.live.engine import LiveEngine
+    from provisa.live.governed import GovernanceKey
 
     added: list[str] = []
-    engine = LiveEngine(tenant_db=None, engine=None, org_id="root")
-    engine._scheduler = SimpleNamespace(  # type: ignore[assignment]
-        add_job=lambda *_a, **kw: added.append(kw["id"]) or SimpleNamespace(id=kw["id"])
-    )
-    engine.register("q1", "SELECT 1", "ts", 30)
-    assert added == ["live_q1:org_root"]
+    scheduler = SimpleNamespace(add_job=lambda *_a, **kw: added.append(kw["id"]))
+    engine = LiveEngine(tenant_db=None, org_id="root", scheduler=scheduler)
+    await engine.start()
+    engine.reconcile([spec()])
+    key = GovernanceKey("root", "analyst", ())
+    with governed():
+        await engine.subscribe("q1", key)
+    assert added == [f"live_q1:org_root:sse:{key.digest}"]

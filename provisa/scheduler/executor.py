@@ -43,13 +43,19 @@ if TYPE_CHECKING:
 #                    background work builds, so capacity grows with nodes. One job per org
 #                    (``replica:builds:org_<id>``); the per-node, per-engine and per-replica locks
 #                    are what keep builds single, not the scheduler's holder.
+#   live_<query> — a live poll (REQ-286): it feeds THIS process's SSE subscribers, held on this
+#                  worker's connections. One job per org and governance key. A live Kafka
+#                  output's poll (``livekafka_<query>``) is the deployment's: it publishes once,
+#                  from the holder.
 PER_WORKER_JOB_IDS = frozenset({"egress_drain", "engine_watch", "replica:builds"})
+LIVE_POLL_PREFIX = "live_"
 
 
 def runs_in_every_worker(job_id: str) -> bool:
     """Whether the job ``job_id`` runs in every worker, not only the scheduler's holder. An
     org's copy of a job carries an ``:org_<id>`` suffix."""
-    return job_id.partition(":org_")[0] in PER_WORKER_JOB_IDS
+    name = job_id.partition(":org_")[0]
+    return name in PER_WORKER_JOB_IDS or name.startswith(LIVE_POLL_PREFIX)
 
 
 class BackgroundJobExecutor(BaseExecutor):

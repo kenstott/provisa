@@ -230,6 +230,7 @@ class LiveOutputConfigType:  # REQ-565
     topic: str | None = None
     key_column: str | None = None
     bootstrap_servers: str | None = None
+    role: str | None = None  # REQ-286: the role a Kafka output publishes as
 
 
 @strawberry.type
@@ -821,6 +822,7 @@ class LiveOutputConfigInput:  # REQ-565
     topic: str | None = None
     key_column: str | None = None
     bootstrap_servers: str | None = None
+    role: str | None = None  # REQ-286: the role a Kafka output publishes as
 
 
 @strawberry.input

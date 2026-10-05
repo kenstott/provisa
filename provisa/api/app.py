@@ -233,7 +233,6 @@ class AppState:
     _warmup_task: LongLived | None = None
     apq_cache: APQCache = NoopAPQCache()  # Phase AN: Automatic Persisted Queries
     apq_ttl: int = 86400  # REQ-289: APQ cache TTL (apq.ttl config / PROVISA_APQ_TTL env)
-    live_engine: Any | None = None  # Phase AM: LiveEngine instance
     hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
     engine_session_hints: dict[
         str, str
@@ -618,6 +617,15 @@ class AppState:
         """REQ-1621: whether the environment being served has an expiry. Read-only — it is decided
         when the runtime is built (``env_registry.expires_at``) and no request may change it."""
         return self._active_runtime().ephemeral
+
+    @property
+    def live_engine(self) -> Any:
+        """REQ-1266: the bound org's live-query engine (OrgRuntime.live_engine)."""
+        return self._active_runtime().live_engine
+
+    @live_engine.setter
+    def live_engine(self, value: Any) -> None:
+        self._active_runtime().live_engine = value
 
     @property
     def roles(self) -> dict[str, dict]:
@@ -1986,6 +1994,10 @@ async def _build_org_runtime(
                 from provisa.scheduler.jobs import register_org_triggers
 
                 await register_org_triggers(scheduler, org_id, env)
+                # REQ-286/REQ-1266: the org's own live-query engine (prod only).
+                from provisa.api.app_rebuild import start_org_live_engine
+
+                await start_org_live_engine(scheduler)
 
             # REQ-1733: start (or, on a re-wire, top up) the kafka/websocket push-source CDC landing
             # listeners — a separate mechanism from wire_event_loop's poll/MV tick loop (CDC upsert/
@@ -2734,6 +2746,13 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         from provisa.scheduler.jobs import register_org_triggers
 
         await register_org_triggers(state._scheduler, state.org_id, None)
+        # REQ-286/REQ-1266: the deployment org's live-query engine, on the process's scheduler.
+        from provisa.api.app_rebuild import start_org_live_engine
+
+        try:
+            await start_org_live_engine(state._scheduler)
+        except Exception:
+            _log.exception("Live Query Engine startup failed")
 
     # Snapshot the config AFTER all boot-time auto-derivation, so the admin config-diff baseline
     # excludes runtime-derived entities (REQ-164). Opt-in; best-effort (the helper degrades and the
@@ -2846,10 +2865,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         stop_all_servers()
 
-    # Stop Live Query Engine (Phase AM)
-    if state.live_engine is not None:
+    # Stop every org's Live Query Engine (Phase AM, REQ-1266)
+    for _live in state.org_registry.live_engines():
         with tolerate_shutdown_failure("live query engine stop"):
-            await state.live_engine.stop()
+            await _live.stop()
 
     # Close APQ cache (Phase AN)
     with tolerate_shutdown_failure("APQ cache close"):

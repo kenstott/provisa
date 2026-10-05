@@ -7,7 +7,7 @@
 """REQ-932: a change event received from a provider is published downstream as an SSE frame.
 
 Broker-free: a fake provider stands in for Debezium/Kafka so the publish path (provider.watch →
-mask/RLS → ``data:`` frame) is exercised without infrastructure. The provider *selection* from
+governed read-back as the subscriber → ``data:`` frame) is exercised without infrastructure. The provider *selection* from
 change_signal is covered in test_source_cdc_config::TestProviderRouting; this covers the delivery.
 """
 
@@ -18,8 +18,11 @@ import json
 
 import pytest
 
-from provisa.api.data.subscribe import _stream_provider_events
+from provisa.api.data.subscribe import _governed_changes, _stream_provider_events
+from provisa.live.governed import GovernanceKey
 from provisa.subscriptions.base import ChangeEvent
+
+_KEY = GovernanceKey("default", "analyst", ())
 
 
 class _FakeProvider:
@@ -45,18 +48,24 @@ async def test_change_events_published_as_sse_frames():
     ]
     provider = _FakeProvider(events)
 
-    frames = [
-        frame
-        async for frame in _stream_provider_events(
-            provider,
-            table="orders",
-            table_id=None,
-            role_id=None,
-            rls_contexts={},
-            masking_rules=None,
-            disconnect=asyncio.Event(),
-        )
-    ]
+    async def _governed(_sql, _key, params=None):
+        return [{"id": params[0], "status": "new"}]
+
+    import provisa.live.governed as governed
+
+    original, governed.governed_rows = governed.governed_rows, _governed
+    try:
+        frames = [
+            frame
+            async for frame in _governed_changes(
+                _stream_provider_events(provider, "orders", asyncio.Event()),
+                _KEY,
+                '"sales"."orders"',
+                ["id"],
+            )
+        ]
+    finally:
+        governed.governed_rows = original
 
     assert frames[0] == ": connected\n\n"
     payloads = [json.loads(f.removeprefix("data: ").strip()) for f in frames[1:]]
@@ -73,19 +82,8 @@ async def test_disconnect_stops_the_stream():
     disconnect.set()  # already disconnected before the first event
     provider = _FakeProvider([ChangeEvent(operation="insert", table="orders", row={"id": 1})])
 
-    frames = [
-        frame
-        async for frame in _stream_provider_events(
-            provider,
-            table="orders",
-            table_id=None,
-            role_id=None,
-            rls_contexts={},
-            masking_rules=None,
-            disconnect=disconnect,
-        )
-    ]
+    events = [event async for event in _stream_provider_events(provider, "orders", disconnect)]
 
-    # Only the connected preamble; the event is skipped because disconnect is set.
-    assert frames == [": connected\n\n"]
+    # The event is skipped because disconnect is set.
+    assert events == []
     assert provider.closed
