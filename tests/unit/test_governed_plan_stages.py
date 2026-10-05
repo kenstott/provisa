@@ -678,3 +678,31 @@ async def test_a_plan_governed_for_a_wider_acting_role_set_is_not_served_to_a_na
     before = dict(pipeline.calls)
     await pipeline.mod._govern_and_route(_SQL, meta)  # the same set: the same plan
     assert pipeline.calls == before
+
+
+async def test_two_users_of_one_role_differing_in_one_attribute_never_share_a_cached_answer(
+    pipeline,
+):
+    """REQ-866, REQ-1922: the response cache's key covers the user attributes a role's rules read
+    — the raw stage resolves them into the governed statement the key is taken from — so two
+    users of one role who differ only in such an attribute never share an entry."""
+    from provisa.compiler.rls import RLSContext
+    from provisa.core.request_context import current_session_vars
+
+    orders_id = pipeline.state.tables[0]["id"]
+    pipeline.state.rls_contexts["analyst"] = RLSContext(
+        rules={orders_id: "team = current_setting('provisa.team')"}
+    )
+    sql = f"-- @provisa cache=true\n{_SQL}"
+    keys = []
+    token = current_session_vars.set({"team": "red"})
+    try:
+        for team in ("red", "blue", "red"):
+            current_session_vars.set({"team": team})
+            plan = await pipeline.mod._govern_and_route(sql, "analyst")
+            keys.append(pipeline.mod._response_cache_key(plan, wire_formats=None))
+    finally:
+        current_session_vars.reset(token)
+    red, blue, red_again = keys
+    assert red is not None and blue is not None
+    assert red != blue and red == red_again
