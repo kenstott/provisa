@@ -12,6 +12,7 @@
     "method": {
       "engine_statement": "copiada por el motor",
       "stream_batches": "transmitida por lotes",
+      "store_pipeline": "cargada por la propia pipeline del almacén",
       "delta": "delta"
     },
     "loadKind": {

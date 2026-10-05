@@ -12,6 +12,7 @@
     "method": {
       "engine_statement": "由引擎複製",
       "stream_batches": "分批串流",
+      "store_pipeline": "由儲存區自身的管線載入",
       "delta": "delta"
     },
     "loadKind": {

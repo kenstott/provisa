@@ -12,6 +12,7 @@
     "method": {
       "engine_statement": "copiada pelo mecanismo",
       "stream_batches": "transmitida em lotes",
+      "store_pipeline": "carregada pelo próprio pipeline do repositório",
       "delta": "delta"
     },
     "loadKind": {
