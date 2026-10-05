@@ -44,13 +44,15 @@ if [ -f .env ]; then
 fi
 
 VERSION="${SPLUNK_CIM_VERSION:?SPLUNK_CIM_VERSION not set (see .env)}"
-: "${SPLUNKBASE_USERNAME:?SPLUNKBASE_USERNAME is empty — create a free splunk.com account, accept the app-1621 terms at https://splunkbase.splunk.com/app/${APP_ID}, then fill it in .env}"
-: "${SPLUNKBASE_PASSWORD:?SPLUNKBASE_PASSWORD is empty — see .env}"
 
 mkdir -p "$CACHE"
 TARBALL="$CACHE/Splunk_SA_CIM-$VERSION.tgz"
 
 if [ ! -s "$TARBALL" ]; then
+  # Credentials are needed only to download; a cached tarball (a dev box, or CI's actions/cache)
+  # extracts without them.
+  : "${SPLUNKBASE_USERNAME:?SPLUNKBASE_USERNAME is empty — create a free splunk.com account, accept the app-1621 terms at https://splunkbase.splunk.com/app/${APP_ID}, then fill it in .env}"
+  : "${SPLUNKBASE_PASSWORD:?SPLUNKBASE_PASSWORD is empty — see .env}"
   echo "Authenticating to Splunkbase as $SPLUNKBASE_USERNAME"
   # The login endpoint answers XML: <feed …><id>TOKEN</id>… . It returns 403 (not 401) for bad
   # credentials AND for an account that has not accepted the app terms, so the two are
