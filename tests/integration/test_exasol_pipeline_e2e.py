@@ -22,11 +22,14 @@ refuses the registration — which is exactly how the uppercase spelling failed 
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from tests.integration.connector_source_harness import (
     assert_registration_and_query,
     connector_client,  # noqa: F401 — imported for pytest fixture discovery
+    host_address_both_reach,
 )
 from tests.integration.test_exasol_source_e2e import (
     _AMD64,
@@ -71,8 +74,11 @@ async def test_exasol_registers_and_serves_semantic_query(connector_client):  # 
         connector_client,
         source_id=_SOURCE_ID,
         source_type="exasol",
-        host="exasol",
-        port=8563,
+        # Exasol has a direct driver (REQ-1731), so createSource validates the connection from the
+        # app, and the engine reads the same registration: an address both reach, at the
+        # host-published port (the in-network name `exasol` resolves only for the engine).
+        host=host_address_both_reach(),
+        port=int(os.environ["EXASOL_PORT"]),
         # The container's TLS certificate is generated at boot, so the engine can only reach it by
         # pinning this fingerprint — Source.jdbc_url turns the hint into exasol JDBC's
         # <host>/<FINGERPRINT>:<port> form.

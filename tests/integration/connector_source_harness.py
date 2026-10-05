@@ -119,6 +119,23 @@ async def connector_client():
             os.environ["PROVISA_ENGINE"] = prior_env
 
 
+def host_address_both_reach() -> str:
+    """An address the in-process app AND the engine's containers both reach a host-published port
+    at: this machine's primary IPv4 address. A source with a direct driver is validated from the app
+    at its registered host (the maintainer's rule: that host must resolve from the app), and the
+    engine dials the same registration, so the in-network service name (`exasol`) reaches only the
+    engine and `localhost` only the app. Docker publishes ports on every interface, so <this
+    address>:<published port> answers both. Found by the route a UDP socket would take (nothing is
+    sent)."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.connect(("10.255.255.255", 1))
+        address = s.getsockname()[0]
+    assert not address.startswith("127."), f"no non-loopback address to register: {address}"
+    return address
+
+
 async def _gql(client: AsyncClient, query: str, field: str) -> dict[str, Any]:
     """POST an admin GraphQL mutation and return its MutationResult payload.
 
