@@ -78,4 +78,54 @@ test.describe("ChatPanel streaming does not freeze mid-reply", () => {
     expect(finalText.length).toBeGreaterThan(earlyText.length);
     expect(finalText.trim().split(/\s+/).length).toBeGreaterThan(20);
   });
+
+  /**
+   * REQ-1823: each round of a multi-round tool-call turn gets its own message bubble. A round ends
+   * when the model calls a CLIENT tool (useMcpChat.ts's loop: streamOnce returns `awaiting`, the
+   * tool runs in the browser, and the next round streams into a fresh beginAssistantTurn()
+   * placeholder) — present_choice is the one that waits on the user, so the test answers it between
+   * the rounds. The regression was round two's text accumulating onto round one's bubble.
+   */
+  test("each round of a client-tool turn streams into its own message bubble", async ({ page }) => {
+    await page.goto("/sources");
+
+    await page.getByTestId("chat-panel-toggle").click();
+    const panel = page.getByTestId("chat-panel");
+    await expect(panel).toBeVisible({ timeout: 30000 });
+
+    const textarea = panel.getByPlaceholder("Ask me a question, or tell me what to do.");
+    await textarea.click();
+    await textarea.fill(
+      'Follow these steps exactly and do nothing else. Step 1: write the sentence "ROUND-ONE ' +
+        'asking." Step 2: call the present_choice tool with mode yes_no and the question ' +
+        '"Proceed?". Step 3: after I answer, write the sentence "ROUND-TWO done." and stop.',
+    );
+    const sendBtn = page.getByTestId("chat-panel-send");
+    await sendBtn.click();
+
+    // Round one has ended: the turn is waiting on the client tool.
+    const choice = page.getByTestId("chat-panel-choice-modal");
+    await expect(choice).toBeVisible({ timeout: 120000 });
+    const messages = panel.locator(".chat-message");
+    // The prompt bubble names both sentences; only the assistant's bubbles are rounds.
+    const PROMPT = "Follow these steps exactly";
+    const roundOne = messages.filter({ hasText: "ROUND-ONE" }).filter({ hasNotText: PROMPT });
+    await expect(roundOne).toHaveCount(1);
+    const beforeAnswer = await messages.count();
+
+    await choice.getByRole("button", { name: "Yes", exact: true }).click();
+    await expect(sendBtn).toHaveText("Send", { timeout: 120000 });
+
+    const roundTwo = messages.filter({ hasText: "ROUND-TWO" }).filter({ hasNotText: PROMPT });
+    await expect(roundTwo).toHaveCount(1);
+    // Round two did not land on round one's bubble, and round one's bubble kept its own text.
+    await expect(roundOne).toHaveCount(1);
+    await expect(roundOne).not.toContainText("ROUND-TWO");
+    // Round two's bubble came after the answer: a new message, not an earlier one rewritten.
+    const texts = await messages.allTextContents();
+    const oneAt = texts.findIndex((t) => t.includes("ROUND-ONE") && !t.includes(PROMPT));
+    const twoAt = texts.findIndex((t) => t.includes("ROUND-TWO") && !t.includes(PROMPT));
+    expect(twoAt).toBeGreaterThanOrEqual(beforeAnswer);
+    expect(twoAt).toBeGreaterThan(oneAt);
+  });
 });
