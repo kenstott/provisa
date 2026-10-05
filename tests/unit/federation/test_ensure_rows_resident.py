@@ -322,3 +322,128 @@ async def test_a_row_level_table_kept_in_another_region_is_never_fetched_into_th
         assert patched_registry.loader.calls == []
     finally:
         process_region._region = was
+
+
+_TWO_REGIONS = {
+    "regions": [
+        {"id": "eu", "address": "https://eu.example.com"},
+        {"id": "us", "address": "https://us.example.com"},
+    ]
+}
+
+
+@pytest.fixture
+def node_in_us():
+    from provisa.core import process_region
+
+    was = process_region._region
+    process_region.bind_launch(_TWO_REGIONS, requested="us")
+    yield
+    process_region._region = was
+
+
+def _regional_table() -> types.SimpleNamespace:
+    """A row-level table naming no region whose rows carry the region they may be kept in — the
+    registry's shape: a config table's fields plus its registered id."""
+    table = _table()
+    table.columns.append(Column(name="home", visible_to=["public"], data_type="text"))
+    return types.SimpleNamespace(
+        **{name: getattr(table, name) for name in type(table).model_fields}, id=7
+    )
+
+
+def _admin_ruled_state(sqlite_dsn, rule):
+    from provisa.compiler.rls import RLSContext
+
+    return types.SimpleNamespace(
+        federation_engine=_FakeEngine(sqlite_dsn),
+        roles={},
+        rls_contexts={"org_admin": RLSContext(rules={7: rule})},
+    )
+
+
+def _bound(*keys):
+    return PkBound(
+        source_id="pg1",
+        schema_name="public",
+        table_name="orders",
+        pk_columns=("id",),
+        values=tuple((k,) for k in keys),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_row_this_regions_administrator_may_not_keep_is_never_landed_here(
+    sqlite_dsn, patched_registry, node_in_us
+):
+    """REQ-1921 (scenario): a row-level table with a row rule on the region attribute, read
+    through us: the row that may be held only in eu is fetched but not kept here — asked for
+    again, it is fetched again — while the us row is kept."""
+    from provisa.federation.query_residency import ensure_rows_resident
+
+    patched_registry.table = _regional_table()
+    patched_registry.source = _source()
+    patched_registry.loader = _FakeLoader(
+        {
+            (1,): {"id": 1, "status": "new", "home": "eu"},
+            (2,): {"id": 2, "status": "new", "home": "us"},
+        }
+    )
+    state = _admin_ruled_state(sqlite_dsn, "home = current_setting('provisa.region')")
+    assert await ensure_rows_resident(state, [_bound(1, 2)], reader_role=None) == [
+        ("pg1", "orders", 1)
+    ]
+    assert await ensure_rows_resident(state, [_bound(1, 2)], reader_role=None) == [
+        ("pg1", "orders", 0)
+    ]
+    assert patched_registry.loader.calls == [[(1,), (2,)], [(1,)]]
+
+
+@pytest.mark.asyncio
+async def test_a_rule_that_cannot_be_judged_over_the_fetched_rows_keeps_none_of_them(
+    sqlite_dsn, patched_registry, node_in_us
+):
+    from provisa.federation.query_residency import ensure_rows_resident
+    from provisa.federation.region_rows import RowRuleNotEvaluable
+
+    patched_registry.table = _regional_table()
+    patched_registry.source = _source()
+    patched_registry.loader = _FakeLoader({(1,): {"id": 1, "status": "new", "home": "us"}})
+    state = _admin_ruled_state(sqlite_dsn, "home IN (SELECT region FROM allowed_regions)")
+    with pytest.raises(RowRuleNotEvaluable) as refused:
+        await ensure_rows_resident(state, [_bound(1)], reader_role=None)
+    assert refused.value.params == {"table": "orders"}
+    assert await ensure_rows_resident(
+        types.SimpleNamespace(federation_engine=state.federation_engine, roles={}, rls_contexts={}),
+        [_bound(1)],
+        reader_role=None,
+    ) == [("pg1", "orders", 1)]  # nothing was landed by the refused fetch
+
+
+def test_a_key_pushdown_batch_keeps_only_what_this_regions_administrator_may(node_in_us):
+    """The Arrow batch key pushdown lands is admitted the same way (REQ-1921/1922)."""
+    import pyarrow as pa
+
+    from provisa.federation.region_rows import admit_rows
+
+    state = _admin_ruled_state("unused", "home = current_setting('provisa.region')")
+    batch = pa.Table.from_pylist(
+        [{"id": 1, "home": "eu"}, {"id": 2, "home": "us"}, {"id": 3, "home": None}]
+    )
+    assert admit_rows(state, _regional_table(), batch).to_pylist() == [{"id": 2, "home": "us"}]
+
+
+def test_with_no_platform_regions_every_fetched_row_is_kept():
+    import pyarrow as pa
+
+    from provisa.core import process_region
+    from provisa.federation.region_rows import admit_rows
+
+    was = process_region._region
+    process_region.bind_launch(None, requested=None)
+    try:
+        state = _admin_ruled_state("unused", "home = current_setting('provisa.region')")
+        batch = pa.Table.from_pylist([{"id": 1, "home": "eu"}])
+        assert admit_rows(state, _regional_table(), batch) is batch
+    finally:
+        process_region._region = was

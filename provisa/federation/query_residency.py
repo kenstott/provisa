@@ -948,6 +948,10 @@ async def pushdown_row_materialize(
             fetched = await loader.load_keys_arrow(
                 source, table, [target_col], [(v,) for v in stale_or_missing]
             )
+            # REQ-1921/1922: only what this region's administrator may keep is landed here.
+            from provisa.federation.region_rows import admit_rows
+
+            fetched = admit_rows(state, table, fetched)
             if fetched.num_rows == 0:
                 landed_this_call.add(name)
                 made_progress = True
@@ -1332,6 +1336,11 @@ async def ensure_rows_resident(
                 continue
 
             fetched = await loader.load_keys(source, table, pk_columns, still_needed)
+            # REQ-1921/1922: only what this region's administrator may keep is landed here; a key
+            # it does not admit is tombstoned below like one the source no longer has.
+            from provisa.federation.region_rows import admit_row_dicts
+
+            fetched = admit_row_dicts(state, table, fetched)
             fetched_keys = {tuple(row.get(pk) for pk in pk_columns) for row in fetched}
             # Tombstone: a requested key the source returned no row for (section 6a) -- deleted
             # synchronously, inline, here, never deferred.
