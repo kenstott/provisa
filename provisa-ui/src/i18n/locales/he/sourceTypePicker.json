@@ -5,6 +5,10 @@
     "all": "הכול",
     "recent": "בשימוש לאחרונה",
     "noMatch": "אין סוג מקור תואם.",
-    "browse": "עיון…"
+    "browse": "עיון…",
+    "reachLive": "חי (נקרא במקום)",
+    "reachReplica": "העתק (עותק מתרענן)",
+    "reachLiveOn": "חי רק ב-{{engines}}",
+    "reachNone": "לא נגיש ממנוע זה"
   }
 }

@@ -5,6 +5,10 @@
     "all": "Tutti",
     "recent": "Usati di recente",
     "noMatch": "Nessun tipo di origine corrisponde.",
-    "browse": "Sfoglia…"
+    "browse": "Sfoglia…",
+    "reachLive": "Live (letto sul posto)",
+    "reachReplica": "Replica (copia aggiornata)",
+    "reachLiveOn": "Live solo su {{engines}}",
+    "reachNone": "Non raggiungibile da questo motore"
   }
 }

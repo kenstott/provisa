@@ -5,6 +5,10 @@
     "all": "Alle",
     "recent": "Zuletzt verwendet",
     "noMatch": "Kein Quelltyp passt.",
-    "browse": "Durchsuchen…"
+    "browse": "Durchsuchen…",
+    "reachLive": "Live (direkt gelesen)",
+    "reachReplica": "Replikat (aktualisierte Kopie)",
+    "reachLiveOn": "Live nur auf {{engines}}",
+    "reachNone": "Von dieser Engine nicht erreichbar"
   }
 }

@@ -5,6 +5,10 @@
     "all": "Alle",
     "recent": "Recent gebruikt",
     "noMatch": "Geen brontype komt overeen.",
-    "browse": "Bladeren…"
+    "browse": "Bladeren…",
+    "reachLive": "Live (ter plaatse gelezen)",
+    "reachReplica": "Replica (een ververste kopie)",
+    "reachLiveOn": "Alleen live op {{engines}}",
+    "reachNone": "Niet bereikbaar vanaf deze engine"
   }
 }

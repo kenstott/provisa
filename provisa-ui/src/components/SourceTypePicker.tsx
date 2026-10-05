@@ -14,12 +14,16 @@
 import { useMemo, useRef, useState } from "react";
 import { Chip, Group, Modal, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { Ban, Copy, Zap } from "lucide-react";
 import { SourceLogo } from "./SourceLogo";
 
 export interface PickerItem {
   value: string;
   label: string;
   disabled?: boolean;
+  /** The plain name, shown with ``reach`` as an icon; ``label`` carries the select's text suffix. */
+  name?: string;
+  reach?: { tag: "live" | "replica" | "unreachable"; liveEngines: string[] };
 }
 
 export interface PickerGroup {
@@ -106,6 +110,14 @@ export function SourceTypePicker(props: PickerProps) {
 
 function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
   const { t } = useTranslation();
+  const reachText = (r: NonNullable<PickerItem["reach"]>) =>
+    r.tag === "live"
+      ? t("sourceTypePicker.reachLive")
+      : r.tag === "replica"
+        ? t("sourceTypePicker.reachReplica")
+        : r.liveEngines.length
+          ? t("sourceTypePicker.reachLiveOn", { engines: r.liveEngines.join(", ") })
+          : t("sourceTypePicker.reachNone");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("__all__");
   const [recent] = useState<string[]>(readRecent);
@@ -162,7 +174,7 @@ function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
       data-testid={`source-type-option-${item.value}`}
       disabled={item.disabled}
       onClick={() => pick(item)}
-      title={item.label}
+      title={`${item.name ?? item.label}${item.reach ? ` — ${reachText(item.reach)}` : ""}`}
       aria-current={item.value === value ? "true" : undefined}
       style={{
         display: "flex",
@@ -177,10 +189,15 @@ function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
       }}
       className="source-type-picker-row"
     >
-      <SourceLogo type={item.value} label={item.label} category={categoryOf[item.value] ?? group} />
-      <Text size="sm" truncate>
-        {item.label}
+      <SourceLogo
+        type={item.value}
+        label={item.name ?? item.label}
+        category={categoryOf[item.value] ?? group}
+      />
+      <Text size="sm" truncate style={{ flex: 1 }}>
+        {item.name ?? item.label}
       </Text>
+      {item.reach && <ReachIcon reach={item.reach} label={reachText(item.reach)} />}
     </UnstyledButton>
   );
 
@@ -211,6 +228,20 @@ function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
           ))}
         </Group>
       </Chip.Group>
+      <Group gap={14} data-testid="source-type-picker-legend">
+        <Group gap={4}>
+          <Zap size={13} aria-hidden="true" color="var(--mantine-color-green-6)" />
+          <Text size="xs" c="dimmed">
+            {t("sourceTypePicker.reachLive")}
+          </Text>
+        </Group>
+        <Group gap={4}>
+          <Copy size={13} aria-hidden="true" color="var(--mantine-color-blue-6)" />
+          <Text size="xs" c="dimmed">
+            {t("sourceTypePicker.reachReplica")}
+          </Text>
+        </Group>
+      </Group>
       <div ref={bodyRef} data-testid="source-type-picker-body">
         {recentItems.length > 0 && (
           <div style={{ marginBottom: 12 }}>
@@ -251,4 +282,16 @@ function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
       </div>
     </Stack>
   );
+}
+
+// REQ-1938: how the current engine reaches a type, as a small icon (its text is the tooltip and
+// the accessible name): live in place, through a replica, or not from this engine.
+function ReachIcon({ reach, label }: { reach: NonNullable<PickerItem["reach"]>; label: string }) {
+  const common = { size: 13, "aria-label": label, role: "img" } as const;
+  const testId = `source-reach-${reach.tag}`;
+  if (reach.tag === "live")
+    return <Zap {...common} data-testid={testId} color="var(--mantine-color-green-6)" />;
+  if (reach.tag === "replica")
+    return <Copy {...common} data-testid={testId} color="var(--mantine-color-blue-6)" />;
+  return <Ban {...common} data-testid={testId} color="var(--mantine-color-gray-6)" />;
 }

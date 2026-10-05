@@ -5,6 +5,10 @@
     "all": "All",
     "recent": "Recently used",
     "noMatch": "No source type matches.",
-    "browse": "Browse…"
+    "browse": "Browse…",
+    "reachLive": "Live (read in place)",
+    "reachReplica": "Replica (a refreshed copy)",
+    "reachLiveOn": "Live on {{engines}} only",
+    "reachNone": "Not reachable from this engine"
   }
 }

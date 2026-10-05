@@ -80,7 +80,6 @@ import { KeptTablesNotice } from "../components/KeptTablesNotice";
 import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
 import { SourceTypePicker } from "../components/SourceTypePicker";
-import { SourceLogo } from "../components/SourceLogo";
 
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -302,6 +301,9 @@ export function SourcesPage() {
         return {
           value: s.value,
           label: `${s.label}${reachSuffix(info)}`,
+          // REQ-1938: the picker shows the plain name with a reach icon instead of the suffix.
+          name: s.label,
+          reach: info,
           disabled: !info.selectable,
         };
       }),
@@ -1411,22 +1413,6 @@ export function SourcesPage() {
               ))}
             </select>
           </label>
-          {/* REQ-1938: the same list as a fluid, searchable picker. */}
-          <button
-            type="button"
-            className="btn-secondary"
-            data-testid="sources-type-browse"
-            onClick={() => setTypePickerOpen(true)}
-            style={{ alignSelf: "end", display: "inline-flex", alignItems: "center", gap: 6 }}
-          >
-            <SourceLogo
-              type={form.type}
-              label={SOURCE_TYPES.find((s) => s.value === form.type)?.label ?? form.type}
-              category={SOURCE_TYPES.find((s) => s.value === form.type)?.category ?? ""}
-              size={16}
-            />
-            {t("sourceTypePicker.browse")}
-          </button>
           <SourceTypePicker
             opened={typePickerOpen}
             onClose={() => setTypePickerOpen(false)}

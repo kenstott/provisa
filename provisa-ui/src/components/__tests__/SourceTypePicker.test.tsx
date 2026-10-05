@@ -17,7 +17,12 @@ const GROUPS: PickerGroup[] = [
   {
     group: "RDBMS",
     items: [
-      { value: "postgresql", label: "PostgreSQL" },
+      {
+        value: "postgresql",
+        label: "PostgreSQL · LIVE",
+        name: "PostgreSQL",
+        reach: { tag: "live", liveEngines: [] },
+      },
       { value: "sqlserver", label: "SQL Server" },
       { value: "oracle", label: "Oracle (needs Trino)", disabled: true },
     ],
@@ -90,5 +95,14 @@ describe("SourceTypePicker", () => {
     expect(oracle).toBeDisabled();
     fireEvent.click(oracle);
     expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("shows reach as an icon with its text as the accessible name, not the label suffix", async () => {
+    open();
+    const pg = await screen.findByTestId("source-type-option-postgresql");
+    expect(pg.textContent).toContain("PostgreSQL");
+    expect(pg.textContent).not.toContain("LIVE");
+    expect(screen.getByTestId("source-reach-live")).toHaveAttribute("aria-label");
+    expect(screen.getByTestId("source-type-picker-legend")).toBeInTheDocument();
   });
 });

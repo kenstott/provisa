@@ -5,6 +5,10 @@
     "all": "Todos",
     "recent": "Usados recientemente",
     "noMatch": "Ningún tipo de origen coincide.",
-    "browse": "Explorar…"
+    "browse": "Explorar…",
+    "reachLive": "En vivo (lectura en origen)",
+    "reachReplica": "Réplica (copia actualizada)",
+    "reachLiveOn": "En vivo solo en {{engines}}",
+    "reachNone": "No accesible desde este motor"
   }
 }

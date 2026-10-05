@@ -5,6 +5,10 @@
     "all": "全部",
     "recent": "最近使用",
     "noMatch": "沒有相符的數據源類型。",
-    "browse": "瀏覽…"
+    "browse": "瀏覽…",
+    "reachLive": "即時（就地讀取）",
+    "reachReplica": "副本（定期更新的副本）",
+    "reachLiveOn": "僅在 {{engines}} 上即時",
+    "reachNone": "此引擎無法存取"
   }
 }

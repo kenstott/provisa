@@ -5,6 +5,10 @@
     "all": "すべて",
     "recent": "最近使用したもの",
     "noMatch": "一致するソースの種類はありません。",
-    "browse": "参照…"
+    "browse": "参照…",
+    "reachLive": "ライブ（その場で読み取り）",
+    "reachReplica": "レプリカ（更新されるコピー）",
+    "reachLiveOn": "{{engines}} でのみライブ",
+    "reachNone": "このエンジンからは到達できません"
   }
 }
