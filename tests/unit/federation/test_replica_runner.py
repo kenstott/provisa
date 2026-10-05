@@ -417,3 +417,26 @@ def test_the_engine_key_has_no_org_and_names_the_host_of_an_embedded_engine():
 
     assert engine_job_key("trino", "engine:8080") == "trino@engine:8080"
     assert engine_job_key("duckdb", None) == f"duckdb@{socket.gethostname()}"
+
+
+@pytest.mark.unbound
+async def test_a_pass_builds_in_its_own_org_whoever_started_it(plane, tmp_path):
+    """REQ-1266: the scheduled pass and a read's kick may run with no org bound; the pass binds
+    its runner's org, and the builds it spawns run in it."""
+    from provisa.core.request_context import current_org
+
+    url, connect = plane
+    db = connect()
+    await _request(db, _key(0))
+    seen: list[str | None] = []
+
+    async def build(key, progress):
+        seen.append(current_org.get())
+        return BuildOutcome(rows_copied=0, method="stream_batches")
+
+    node = _Node("solo", url, db, tmp_path, build=build, permits=_Permits())
+    assert current_org.get() is None
+    assert await node.runner.run_pass() == 1
+    await node.drain()
+    assert seen == [ORG]
+    assert current_org.get() is None

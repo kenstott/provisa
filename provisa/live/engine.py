@@ -181,7 +181,8 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
                 "interval",
                 seconds=poll_interval,
                 args=[query_id],
-                id=f"live_{query_id}",
+                # REQ-1266: the job is the engine's org's; its id says so.
+                id=f"live_{query_id}:org_{self._org_id}",
                 replace_existing=True,
             )
             job.scheduler_job_id = sched_job.id

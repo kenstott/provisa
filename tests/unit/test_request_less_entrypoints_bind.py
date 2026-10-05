@@ -213,3 +213,15 @@ async def test_the_live_engine_reconciles_only_from_its_own_orgs_model(monkeypat
         finally:
             reset_current_org(token)
     assert reconciled == ["root"]
+
+
+def test_a_live_query_job_is_named_for_the_engines_org():
+    from provisa.live.engine import LiveEngine
+
+    added: list[str] = []
+    engine = LiveEngine(tenant_db=None, engine=None, org_id="root")
+    engine._scheduler = SimpleNamespace(  # type: ignore[assignment]
+        add_job=lambda *_a, **kw: added.append(kw["id"]) or SimpleNamespace(id=kw["id"])
+    )
+    engine.register("q1", "SELECT 1", "ts", 30)
+    assert added == ["live_q1:org_root"]
