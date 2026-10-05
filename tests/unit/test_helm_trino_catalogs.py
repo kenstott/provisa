@@ -47,3 +47,9 @@ def test_trino_runs_the_dynamic_catalog_store_with_a_writable_directory():
         assert store and "subPath" not in store[0], d["metadata"]["name"]
         volume = next(v for v in spec["volumes"] if v["name"] == store[0]["name"])
         assert "emptyDir" in volume, d["metadata"]["name"]
+        # Nothing is mounted into the store: the API registers every catalog, and the dynamic
+        # store cannot replace a mounted file ("Device or resource busy").
+        inside = [
+            m for m in trino["volumeMounts"] if m["mountPath"].startswith("/etc/trino/catalog/")
+        ]
+        assert inside == [], (d["metadata"]["name"], inside)

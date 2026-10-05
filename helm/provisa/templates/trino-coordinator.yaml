@@ -55,7 +55,8 @@ spec:
               value: coordinator
           volumeMounts:
             # The dynamic catalog store: CREATE CATALOG writes <name>.properties here, so the
-            # directory must be writable by Trino's user; the static catalogs below mount into it.
+            # directory must be writable by Trino's user. Every catalog is registered at runtime by
+            # the API (its sources, and its own provisa_admin/otel/results); none is mounted here.
             - name: catalog-store
               mountPath: /etc/trino/catalog
             - name: config
@@ -70,19 +71,6 @@ spec:
             - name: config
               mountPath: /etc/trino/resource-groups.json
               subPath: resource-groups.json
-            {{- if .Values.postgresql.enabled }}
-            - name: catalog-secret
-              mountPath: /etc/trino/catalog/sales_pg.properties
-              subPath: sales_pg.properties
-            - name: catalog-secret
-              mountPath: /etc/trino/catalog/analytics_pg.properties
-              subPath: analytics_pg.properties
-            {{- end }}
-            {{- if .Values.mongodb.enabled }}
-            - name: config
-              mountPath: /etc/trino/catalog/reviews_mongo.properties
-              subPath: reviews_mongo.properties
-            {{- end }}
           resources:
             {{- toYaml .Values.trino.coordinator.resources | nindent 12 }}
           readinessProbe:
@@ -108,11 +96,6 @@ spec:
         - name: exchange
           secret:
             secretName: {{ .Release.Name }}-trino-exchange
-        {{- if .Values.postgresql.enabled }}
-        - name: catalog-secret
-          secret:
-            secretName: {{ .Release.Name }}-trino-catalog
-        {{- end }}
 ---
 apiVersion: v1
 kind: Service
