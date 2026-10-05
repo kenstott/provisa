@@ -257,6 +257,8 @@ jobs:
       AWS_ENDPOINT_OVERRIDE: ${{ secrets.AWS_ENDPOINT_OVERRIDE }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # GovData's engine fetches its R2 read credentials with this key.
+      ASKAMERICA_API_KEY: ${{ secrets.ASKAMERICA_API_KEY }}
       SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}
       SINGLESTORE_PORT: ${{ secrets.SINGLESTORE_PORT }}
       SINGLESTORE_USERNAME: ${{ secrets.SINGLESTORE_USERNAME }}
@@ -300,7 +302,7 @@ jobs:
                    REDSHIFT_AWS_ACCESS_KEY_ID REDSHIFT_AWS_SECRET_ACCESS_KEY \
                    AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_OVERRIDE \
                    SINGLESTORE_HOST SINGLESTORE_PORT SINGLESTORE_USERNAME SINGLESTORE_PASSWORD \
-                   SINGLESTORE_DATABASE CLOUDFLARE_ACCOUNT_ID SP_AUTH_TYPE SP_CLIENT_ID SP_SITE_URL SP_TENANT_ID \
+                   SINGLESTORE_DATABASE CLOUDFLARE_ACCOUNT_ID ASKAMERICA_API_KEY SP_AUTH_TYPE SP_CLIENT_ID SP_SITE_URL SP_TENANT_ID \
                    AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID SP_CERT_P12_BASE64; do
             [ -n "${!v}" ] || missing="$missing $v"
           done
@@ -319,12 +321,12 @@ jobs:
 
       # GovData's JDBC driver is the calcite engine's govdata jar, from the engine release
       # provisa/runtime_deps/pgwire_bundles.py pins (RELEASE_TAG); the test loads lib/calcite-govdata-*.jar.
-      - name: GovData engine jar (engine-v0.106.0)
+      - name: GovData engine jar (engine-v0.106.2)
         run: |
           mkdir -p lib
           curl -fsSL -o lib/calcite-govdata-all.jar \
-            https://github.com/kenstott/calcite/releases/download/engine-v0.106.0/sih-govdata.jar
-          echo "88d5229a46cd2c8083c2ee633ce6d58245f17cb002c3184ab8caa64563f4b916  lib/calcite-govdata-all.jar" \
+            https://github.com/kenstott/calcite/releases/download/engine-v0.106.2/sih-govdata.jar
+          echo "5fffec5511ec2a9e3e4a6bc48386ca6c23c377448910d510090783031245d0a3  lib/calcite-govdata-all.jar" \
             | sha256sum -c -
 
       - name: Azure CLI login (Synapse provisioning)
