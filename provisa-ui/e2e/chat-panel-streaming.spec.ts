@@ -48,7 +48,7 @@ test.describe("ChatPanel streaming does not freeze mid-reply", () => {
     const panel = page.getByTestId("chat-panel");
     await expect(panel).toBeVisible({ timeout: 30000 });
 
-    const textarea = panel.getByPlaceholder("Ask the assistant, or tell it what to do…");
+    const textarea = panel.getByPlaceholder("Ask me a question, or tell me what to do.");
     await textarea.click();
     await textarea.fill(
       "List every schema in the catalog using your tools, then write a short paragraph " +
