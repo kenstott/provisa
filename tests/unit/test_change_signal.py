@@ -14,8 +14,11 @@ from provisa.core.change_signal import (
     DEFAULT_SIGNAL,
     POLL_SIGNALS,
     PUSH_SIGNALS,
+    PUSH_SOURCE_TYPES,
     REPLACE,
     VALID_SIGNALS,
+    push_signal_for_source_type,
+    source_change_signal,
     signal_from_strategy,
     is_poll,
     is_push,
@@ -128,3 +131,45 @@ class TestResolveEffective:
 
     def test_all_absent_falls_to_default(self):
         assert resolve_effective(None, None, None) == DEFAULT_SIGNAL
+
+
+class TestPushSourceTypes:
+    # REQ-1907/REQ-929: source types fed by push carry an inherently-push change signal.
+    def test_push_signal_for_source_type(self):
+        assert push_signal_for_source_type("kafka") == "kafka"
+        assert push_signal_for_source_type("ingest") == "native"
+        assert push_signal_for_source_type("websocket") == "native"
+
+    def test_every_push_source_type_maps_to_a_push_signal(self):
+        for st in PUSH_SOURCE_TYPES:
+            assert is_push(push_signal_for_source_type(st))
+
+    def test_non_push_source_type_is_a_programming_error(self):
+        with pytest.raises(ValueError, match="not a push source type"):
+            push_signal_for_source_type("postgresql")
+
+
+class TestSourceChangeSignal:
+    # REQ-1907/REQ-929: unset on a push type -> the push signal; explicit non-push -> refused.
+    def test_unset_push_source_resolves_to_its_push_signal(self):
+        assert source_change_signal("ingest", None) == "native"
+        assert source_change_signal("websocket", None) == "native"
+        assert source_change_signal("kafka", None) == "kafka"
+
+    def test_explicit_push_signal_on_a_push_source_is_kept(self):
+        assert source_change_signal("kafka", "kafka") == "kafka"
+        assert source_change_signal("websocket", "native") == "native"
+
+    def test_explicit_non_push_signal_on_a_push_source_is_refused_by_name(self):
+        for st in PUSH_SOURCE_TYPES:
+            with pytest.raises(ValueError, match=rf"source type '{st}' is push; change_signal"):
+                source_change_signal(st, "ttl")
+        with pytest.raises(ValueError, match="is not a push signal"):
+            source_change_signal("kafka", "probe")
+
+    def test_non_push_source_unset_takes_the_global_default(self):
+        assert source_change_signal("postgresql", None) == DEFAULT_SIGNAL == "ttl"
+
+    def test_non_push_source_keeps_its_explicit_signal(self):
+        assert source_change_signal("postgresql", "probe") == "probe"
+        assert source_change_signal("mysql", "native") == "native"

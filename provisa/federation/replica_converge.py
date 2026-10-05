@@ -99,9 +99,12 @@ def _field(holder: Any, name: str) -> Any:
 
 
 def whole_copy(source: Any, table: Any, engine: Any) -> bool:
-    """Whether the replica of ``table`` is a whole copy of it, the kind a build makes. Two
+    """Whether the replica of ``table`` is a whole copy of it, the kind a build makes. Three
     kinds of table are served from the store and never built whole:
 
+    - one whose source is a PUSH type (REQ-1907/REQ-929: ingest, websocket, kafka): its rows are
+      fed by its push path (a listener, or the ingest inbound endpoint), not fetched — its type has
+      no engine-scannable table and no adapter row-fetch, so a build would refuse it;
     - one replicated row by row (REQ-1865, where the engine cannot attach its source): its rows
       are fetched by key when a statement asks for them, never ahead of one;
     - one with a parameter column: it is a function of its arguments, with no whole to copy.
@@ -109,8 +112,11 @@ def whole_copy(source: Any, table: Any, engine: Any) -> bool:
     The one answer for convergence (no build is requested), the read backstop (no build is
     requested or awaited) and the build itself (it refuses). ``table`` is a registered table as
     the registry gives it, a row or a model; ``engine`` the runtime or the federation engine."""
+    from provisa.core.change_signal import PUSH_SOURCE_TYPES
     from provisa.federation.strategy import engine_attaches
 
+    if _plain(source.type) in PUSH_SOURCE_TYPES:
+        return False
     if any(_field(c, "native_filter_type") is not None for c in _field(table, "columns")):
         return False
     row_level = _field(table, "row_materialize") and not engine_attaches(

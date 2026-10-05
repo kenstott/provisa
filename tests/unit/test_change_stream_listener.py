@@ -138,4 +138,4 @@ def test_a_table_gets_a_listener_only_when_its_change_signal_opts_it_in(
 
 def test_mongodb_is_a_change_feed_source_and_not_a_row_carrying_one():
     assert "mongodb" in push_wiring._CHANGE_STREAM_SOURCE_TYPES
-    assert "mongodb" not in push_wiring._PUSH_SOURCE_TYPES
+    assert "mongodb" not in push_wiring._LISTENER_SOURCE_TYPES

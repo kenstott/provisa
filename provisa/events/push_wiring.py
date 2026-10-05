@@ -39,11 +39,15 @@ import logging
 import threading
 from typing import Any
 
+from provisa.core.change_signal import PUSH_SOURCE_TYPES
 from provisa.core.connection_loop import LongLived, spawn_long_lived
 
 log = logging.getLogger(__name__)
 
-_PUSH_SOURCE_TYPES = frozenset({"kafka", "websocket"})
+# The push source types that run a background notification LISTENER, derived from the one canonical
+# PUSH_SOURCE_TYPES. ``ingest`` is push-fed too, but it is a synchronous HTTP inbound endpoint
+# (ingest/router.py) with no listener to start, so it is not wired here.
+_LISTENER_SOURCE_TYPES = PUSH_SOURCE_TYPES - frozenset({"ingest"})
 # REQ-1861: sources whose own change feed says THAT a table changed. The listener carries no
 # rows: each burst of changes asks for a build of the table's replica (one builder, one path).
 _CHANGE_STREAM_SOURCE_TYPES = frozenset({"mongodb"})
@@ -168,7 +172,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
             if task is not None:
                 started.append(task)
             continue
-        if source_type not in _PUSH_SOURCE_TYPES:
+        if source_type not in _LISTENER_SOURCE_TYPES:
             continue
         node = source_node(tbl["source_id"], tbl["schema_name"], tbl["table_name"])
         if node in state.push_listener_disconnects:
