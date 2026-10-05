@@ -97,11 +97,12 @@ def _mock_context(role: str) -> AsyncMock:
 
 
 def _routed_plan() -> MagicMock:
-    """What governance returns for a request it routed to a source: a plan that was NOT answered
-    from the response cache (``_Plan.cache_hit`` is None unless the entry was read before
-    routing, REQ-1897). A bare MagicMock's ``cache_hit`` is another mock, which the servicer
-    reads as a cache hit."""
-    return MagicMock(cache_hit=None)
+    """What governance returns for a request it routed to a source and streams back: a plan that
+    was NOT answered from the response cache (``_Plan.cache_hit`` is None unless the entry was
+    read before routing, REQ-1897) and NOT delivered to the results store (``_Plan.materialize``
+    is None unless the call forced a redirect). A bare MagicMock's attribute is another mock,
+    which the servicer reads as a cache hit, or as a delivery whose handle it then looks for."""
+    return MagicMock(cache_hit=None, materialize=None)
 
 
 def _pipeline_patches(result, *, govern=None):
