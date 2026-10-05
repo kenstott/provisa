@@ -22227,3 +22227,15 @@ Every results grid -- the SQL explorer's results, the admin reports and the gove
 **Code:** —
 
 **Tests:** —
+
+### REQ-1938 · UI {#REQ-1938}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The add-source form chooses its source type from a picker as well as its select. Browse opens a wide dialog listing the same grouped types the select lists, with the same reach labels and the same types disabled. A search box filters by name and common aliases (mssql finds SQL Server, pg finds PostgreSQL); a row of category chips, wrapping as needed, shows one category or all; a recently-used row, remembered per browser, leads when nothing is filtered. The categories are laid out as sections that pack into as many columns as the dialog's width fits, each type a compact row of its logo and name, so the whole list fits on one screen on a wide display and collapses to fewer columns on a narrow one. Logos are the source's published mark from simple-icons (CC0 icon data; each mark remains its owner's trademark and names the source only); a type with no published mark is a lettered tile in its category's colour. Up and Down move between rows, Enter picks, Escape closes. Picking a type sets the form's type exactly as choosing it in the select does. Every label is translated in every locale.
+
+**Use case:** An operator adding a source types mssql, sees SQL Server, and picks it, without scrolling a 90-entry list.
+
+**Code:** —
+
+**Tests:** `provisa-ui/src/components/__tests__/SourceTypePicker.test.tsx`
