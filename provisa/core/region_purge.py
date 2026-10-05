@@ -39,6 +39,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+#: The engine kinds that are a ClickHouse server or embedded store (``engine_kinds.ENGINE_KINDS``).
+_CLICKHOUSE_KINDS = frozenset({"clickhouse", "clickhouse-server"})
+
 #: The stores of a region that hold an environment's schemas.
 _SQL_ROLES = ("engine", "state", "record", "replicas", "views")
 
@@ -66,6 +69,8 @@ class _Purge:
     catalogs: dict[str, set[str]] = field(default_factory=dict)
     #: A pg engine's database -> the prefixes of the catalog names whose attach objects go.
     attached: dict[str, set[str]] = field(default_factory=dict)
+    #: A ClickHouse engine server -> the same, for its databases and staged tables.
+    clickhouse: dict[str, set[str]] = field(default_factory=dict)
     reach: dict[str, tuple[str, str]] = field(default_factory=dict)  # url -> (region, role)
 
 
@@ -81,6 +86,7 @@ async def purge_org_regions(control_plane: "Database", org_id: str, envs: list[s
     await asyncio.to_thread(_require_reachable, plan, org_id)
     dropped = await asyncio.to_thread(_drop_schemas, plan)
     dropped += await asyncio.to_thread(_drop_attached, plan)
+    dropped += await asyncio.to_thread(_drop_clickhouse, plan)
     dropped += await asyncio.to_thread(_drop_catalogs, plan, org_id)
     await _delete_keys(plan)
     log.info("org %s: removed %d region schema(s) for %s", org_id, len(dropped), envs)
@@ -149,6 +155,12 @@ async def _plan(control_plane: "Database", org_id: str, envs: list[str]) -> _Pur
                 engine_url = declared[region.engine]
                 plan.reach.setdefault(engine_url, (region.id, "engine"))
                 plan.attached.setdefault(engine_url, set()).update(catalog_prefixes)
+            elif kinds[region.engine] in _CLICKHOUSE_KINDS:
+                # Its databases a source is exposed under and its live views, and the staged
+                # engine tables — each named after a catalog name of the org.
+                engine_url = declared[region.engine]
+                plan.reach.setdefault(engine_url, (region.id, "engine"))
+                plan.clickhouse.setdefault(engine_url, set()).update(catalog_prefixes)
             names = {org_schema(org_id, env, s, region=region.id) for s in SCHEMA_SUFFIXES}
             for role in _SQL_ROLES:
                 url = declared[getattr(region, role)]
@@ -178,8 +190,13 @@ async def _schema_exists(control_plane: "Database", schema: str) -> bool:
 
 
 def _is_sql(url: str) -> bool:
-    # Every store but a Redis (the cache) and a Trino coordinator (an engine endpoint) holds schemas.
-    return not url.split(":", 1)[0].lower().startswith(("redis", "rediss", "trino"))
+    # Every store but a Redis (the cache), a Trino coordinator (an engine endpoint) and a ClickHouse
+    # engine (its databases, the org's among them, go through drop_attached) holds schemas.
+    return (
+        not url.split(":", 1)[0]
+        .lower()
+        .startswith(("redis", "rediss", "trino", "clickhouse", "chdb"))
+    )
 
 
 def _coordinator(url: str) -> str:
@@ -235,7 +252,13 @@ def _require_reachable(plan: _Purge, org_id: str) -> None:
     """Reach every store before anything is removed (all or none)."""
     for url, (region, role) in plan.reach.items():
         try:
-            if url in plan.catalogs:
+            if url in plan.clickhouse:
+                runtime = _clickhouse(url)
+                try:
+                    runtime.run_sync("SELECT 1")
+                finally:
+                    runtime.close()
+            elif url in plan.catalogs:
                 conn = _trino(url, org_id)
                 try:
                     _org_catalogs(conn, plan.catalogs[url])
@@ -282,6 +305,23 @@ def _drop_attached(plan: _Purge) -> list[str]:
                     dropped.append(name)
         finally:
             engine.dispose()
+    return dropped
+
+
+def _clickhouse(url: str):
+    from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
+
+    return ClickHouseFederationRuntime.from_url(url)
+
+
+def _drop_clickhouse(plan: _Purge) -> list[str]:
+    dropped: list[str] = []
+    for url, prefixes in plan.clickhouse.items():
+        runtime = _clickhouse(url)
+        try:
+            dropped += runtime.drop_attached(prefixes)
+        finally:
+            runtime.close()
     return dropped
 
 

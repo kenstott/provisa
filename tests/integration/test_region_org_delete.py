@@ -23,6 +23,7 @@ naming its region, and nothing is removed."""
 from __future__ import annotations
 
 import os
+import tempfile
 import uuid
 
 import pytest
@@ -30,6 +31,7 @@ import redis
 import sqlalchemy as sa
 import trino
 
+from provisa.compiler.naming import org_prefixed_catalog
 from provisa.core.environments import SCHEMA_SUFFIXES, org_schema
 from provisa.core.regions import OrgRegion, StoreConfig
 
@@ -101,7 +103,10 @@ class _Estate:
     """A control plane, the regions' store databases (one per region, or one shared) and a
     Redis, holding an org (prod + dev, regions eu and us) and a bystander org."""
 
-    def __init__(self, pg: dict, *, shared: bool) -> None:
+    def __init__(self, pg: dict, *, shared: bool, engines: dict[str, str] | None = None) -> None:
+        #: Each region's engine store: by default eu's Postgres and us's Trino.
+        self.engines = engines or _ENGINE
+        self.chdb_path = os.path.join(tempfile.mkdtemp(prefix="region-purge-ch-"), "chdb")
         self.password = os.environ.get("PG_PASSWORD", "provisa")
         self.host, self.port = pg["host"], pg["port"]
         self.tag = uuid.uuid4().hex[:6]
@@ -143,6 +148,9 @@ class _Estate:
         admin.dispose()
 
     def drop(self) -> None:
+        import shutil
+
+        shutil.rmtree(os.path.dirname(self.chdb_path), ignore_errors=True)
         admin = sa.create_engine(self.url("provisa", "+psycopg"), isolation_level="AUTOCOMMIT")
         with admin.connect() as conn:
             for db in {self.cp_db, *self.store_dbs.values()}:
@@ -176,6 +184,7 @@ class _Estate:
                     url=f"trino://{self.trino_host}:{trino_port}",
                     kind="trino",
                 ),
+                StoreConfig(id=f"{region}-ch", url=f"chdb://{self.chdb_path}", kind="clickhouse"),
             ]
         return out
 
@@ -209,7 +218,7 @@ class _Estate:
                             conn,
                             OrgRegion(
                                 id=region,
-                                engine=_ENGINE[region],
+                                engine=self.engines[region],
                                 replicas=f"{region}-pg",
                                 views=f"{region}-pg",
                                 cache=f"{region}-redis",
@@ -230,9 +239,12 @@ class _Estate:
                             name = org_schema(org, env, suffix, region=region)
                             conn.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS "{name}"'))
                             conn.execute(sa.text(f'CREATE TABLE "{name}".t (id int)'))
-                        if _ENGINE[region] == f"{region}-pg":
+                        if self.engines[region] == f"{region}-pg":
                             _pg_engine_attach(conn, org, env, other)
                 engine.dispose()
+                if self.engines[region] == f"{region}-ch":
+                    for env in _ENVS:
+                        self._clickhouse_attach(org, env)
                 for env in _ENVS:
                     from provisa.cache.tenancy import place_of
                     from provisa.federation.replica_hot import count_scope
@@ -264,6 +276,44 @@ class _Estate:
                     )
         finally:
             conn.close()
+
+    def _clickhouse(self):
+        from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
+
+        return ClickHouseFederationRuntime.embedded(path=self.chdb_path)
+
+    def _clickhouse_attach(self, org: str, env: str) -> None:
+        """What a ClickHouse engine keeps for ``org``'s ``env``: the database a source is exposed
+        under, its live view's database, and a staged engine table — named after its catalog."""
+        from provisa.compiler.naming import engine_attach_name, live_view_schema
+
+        source = org_prefixed_catalog(org, "sales", default_org="boot", env=env)
+        exposed, live = engine_attach_name("ch", source), live_view_schema(source, "public")
+        runtime = self._clickhouse()
+        try:
+            run = runtime._backend.command
+            for database in (exposed, live, "_provisa_attach"):
+                run(f'CREATE DATABASE IF NOT EXISTS "{database}"')
+            run(f'CREATE TABLE "{exposed}".orders (id Int32) ENGINE = Memory')
+            run(f'CREATE VIEW "{live}".orders AS SELECT * FROM "{exposed}".orders')
+            run(f'CREATE TABLE "_provisa_attach"."{live}__events" (id Int32) ENGINE = Memory')
+        finally:
+            runtime.close()
+
+    def clickhouse_of(self, org: str) -> set[str]:
+        """Every database, and staged table, of ``org`` in the ClickHouse store."""
+        runtime = self._clickhouse()
+        try:
+            databases = {r[0] for r in runtime.run_sync("SELECT name FROM system.databases").rows}
+            staged = {
+                f"_provisa_attach.{r[0]}"
+                for r in runtime.run_sync(
+                    "SELECT name FROM system.tables WHERE database = '_provisa_attach'"
+                ).rows
+            }
+        finally:
+            runtime.close()
+        return {name for name in databases | staged if f"org_{org}_" in name}
 
     def servers_of(self, org: str) -> set[str]:
         """Every foreign server of ``org`` left in any store database."""
@@ -303,6 +353,42 @@ def estate(request, docker_postgres, node_in_eu):
     e.create()
     yield e
     e.drop()
+
+
+@pytest.fixture
+def estate_on_clickhouse(docker_postgres, node_in_eu):
+    """The same org and bystander, with us's engine an embedded ClickHouse store."""
+    e = _Estate(docker_postgres, shared=False, engines={"eu": "eu-pg", "us": "us-ch"})
+    e.create()
+    yield e
+    e.drop()
+
+
+async def test_an_org_delete_drops_what_a_clickhouse_engine_keeps_for_it(estate_on_clickhouse):
+    estate = estate_on_clickhouse
+    await estate.lay_out()
+    # prod's and dev's: the exposed source database, its live-view database, a staged table.
+    assert len(estate.clickhouse_of(estate.org)) == 6
+    bystander = estate.clickhouse_of(estate.bystander)
+    assert len(bystander) == 6
+
+    # An environment's delete takes that environment's alone.
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.region_purge import purge_org_regions
+
+    control_plane = Database(create_engine_from_url(estate.url(estate.cp_db, "+psycopg")), "cp")
+    try:
+        await purge_org_regions(control_plane, estate.org, ["dev"])
+    finally:
+        await control_plane.close()
+    kept = estate.clickhouse_of(estate.org)
+    assert len(kept) == 3 and not any("_env_dev" in name for name in kept), kept
+
+    await _delete(estate)
+
+    assert estate.clickhouse_of(estate.org) == set()
+    assert estate.clickhouse_of(estate.bystander) == bystander
+    assert estate.schemas_of(estate.org) == set()
 
 
 async def _delete(estate: _Estate) -> None:
