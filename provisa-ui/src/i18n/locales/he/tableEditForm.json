@@ -258,6 +258,25 @@
     "pagingTypeRequired": "בחרו סוג עימוד, או נקו את שדות העימוד.",
     "pagingPositive": "השתמשו במספר שלם של 1 ומעלה.",
     "pagingAboveCeiling": "לכל היותר {{ceiling}}: טבלה רשאית להוריד את מגבלת המפעיל, לעולם לא להעלות אותה.",
-    "pagingFixErrors": "תקנו את שגיאות העימוד לפני השמירה."
+    "pagingFixErrors": "תקנו את שגיאות העימוד לפני השמירה.",
+    "delta": {
+      "legend": "טעינה אינקרמנטלית (delta)",
+      "enable": "רענון הרפליקה הזו באופן אינקרמנטלי (delta) במקום להעתיק אותה מחדש במלואה",
+      "needsWatermark": "delta דורש עמודת watermark (הסמן שממנו והלאה הוא קורא). הגדירו אותה תחת אספקה חיה.",
+      "cursorNote": "שדה סמן: עמודת ה-watermark של הטבלה ({{watermark}}). כל רענון קורא רק שורות שמעבר ל-watermark השמור ומקדם אותו.",
+      "apply": "החלה",
+      "applyHelp": "האופן שבו השורות המוחזרות מוחלות על הרפליקה.",
+      "applyUpsert": "Upsert לפי המפתח הראשי",
+      "applyAppend": "הוספה (מקור בלתי משתנה)",
+      "deletes": "מחיקות",
+      "deletesHelp": "האופן שבו מחיקות במקור מגיעות לרפליקה.",
+      "deletesNone": "ללא (בנייה מחדש מלאה תקופתית תופסת מחיקות)",
+      "deletesTombstone": "עמודת tombstone (שורה מסומנת מוחקת את המפתח שלה)",
+      "tombstoneColumn": "עמודת tombstone",
+      "rebuildEvery": "בנייה מחדש מלאה כל (שניות)",
+      "rebuildEveryHelp": "בונה מחדש את הרפליקה כולה מעת לעת כדי לתפוס כל מה ש-delta מחמיץ. ריק = אף פעם לפי שעון.",
+      "query": "שאילתת delta (אופציונלית, ילידית למקור)",
+      "queryHelp": "שאילתה ילידית למקור עם מצייני המיקום $wm (סמן) ו-{{fields}}. השאירו ריק עבור מקור SQL: Provisa מייצר SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
+    }
   }
 }

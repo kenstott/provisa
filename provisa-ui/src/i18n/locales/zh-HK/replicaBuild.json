@@ -11,12 +11,26 @@
     "convergenceError": "複本未與模型保持一致：{{error}}",
     "method": {
       "engine_statement": "由引擎複製",
-      "stream_batches": "分批串流"
+      "stream_batches": "分批串流",
+      "delta": "delta"
     },
     "loadKind": {
       "bulk_stream": "大量串流",
-      "row_copy": "逐列複製"
+      "row_copy": "逐列複製",
+      "delta": "增量"
     },
-    "feedDown": "變更流自 {{since}} 起中斷；重新連線前副本不會重新整理：{{error}}"
+    "feedDown": "變更流自 {{since}} 起中斷；重新連線前副本不會重新整理：{{error}}",
+    "delta": {
+      "applied": "上次重新整理已套用自已儲存水位線（{{cursor}}）以來的增量。",
+      "wholeRebuild": "上次建置是完整重建，而非增量：{{reason}}。",
+      "skip": {
+        "no_delta_declared": "未宣告增量",
+        "first_build": "首次建置，尚無可計算增量的基準",
+        "definition_changed": "數據表定義已變更",
+        "operator_requested": "操作員要求了完整建置",
+        "rebuild_interval_elapsed": "定期重建間隔已屆滿",
+        "store_cannot_apply_delta": "儲存區無法套用增量"
+      }
+    }
   }
 }

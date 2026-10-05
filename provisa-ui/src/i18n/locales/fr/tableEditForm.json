@@ -258,6 +258,25 @@
     "pagingTypeRequired": "Choisissez un type de pagination, ou videz les champs de pagination.",
     "pagingPositive": "Utilisez un nombre entier supérieur ou égal à 1.",
     "pagingAboveCeiling": "Au plus {{ceiling}} : une table peut abaisser la limite de l'opérateur, jamais la relever.",
-    "pagingFixErrors": "Corrigez les erreurs de pagination avant d'enregistrer."
+    "pagingFixErrors": "Corrigez les erreurs de pagination avant d'enregistrer.",
+    "delta": {
+      "legend": "Rechargement incrémental (delta)",
+      "enable": "Rafraîchir cette réplique de façon incrémentale (delta) au lieu de la recopier entièrement",
+      "needsWatermark": "Un delta nécessite une colonne watermark (le curseur au-delà duquel il lit). Définissez-la sous Diffusion en direct.",
+      "cursorNote": "Champ curseur : la colonne watermark de la table ({{watermark}}). Chaque rafraîchissement ne lit que les lignes au-delà du watermark enregistré, puis l'avance.",
+      "apply": "Application",
+      "applyHelp": "Comment les lignes renvoyées sont appliquées à la réplique.",
+      "applyUpsert": "Upsert sur la clé primaire",
+      "applyAppend": "Ajout (source immuable)",
+      "deletes": "Suppressions",
+      "deletesHelp": "Comment les suppressions à la source atteignent la réplique.",
+      "deletesNone": "Aucune (une reconstruction complète périodique rattrape les suppressions)",
+      "deletesTombstone": "Colonne marqueur de suppression (une ligne marquée supprime sa clé)",
+      "tombstoneColumn": "Colonne marqueur de suppression",
+      "rebuildEvery": "Reconstruction complète toutes les (secondes)",
+      "rebuildEveryHelp": "Reconstruit périodiquement toute la réplique pour rattraper ce qu'un delta manque. Vide = jamais selon une horloge.",
+      "query": "Requête delta (facultative, native de la source)",
+      "queryHelp": "Une requête native de la source avec les espaces réservés $wm (curseur) et {{fields}}. Laissez vide pour une source SQL : Provisa génère SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
+    }
   }
 }

@@ -258,6 +258,25 @@
     "pagingTypeRequired": "Wählen Sie einen Paginierungstyp oder leeren Sie die Paginierungsfelder.",
     "pagingPositive": "Verwenden Sie eine ganze Zahl ab 1.",
     "pagingAboveCeiling": "Höchstens {{ceiling}}: Eine Tabelle darf die Grenze des Betreibers senken, nie erhöhen.",
-    "pagingFixErrors": "Beheben Sie die Paginierungsfehler vor dem Speichern."
+    "pagingFixErrors": "Beheben Sie die Paginierungsfehler vor dem Speichern.",
+    "delta": {
+      "legend": "Inkrementelles Nachladen (Delta)",
+      "enable": "Dieses Replikat inkrementell (Delta) aktualisieren, statt es vollständig neu zu kopieren",
+      "needsWatermark": "Ein Delta braucht eine Wasserzeichen-Spalte (den Cursor, ab dem es liest). Legen Sie sie unter Live-Zustellung fest.",
+      "cursorNote": "Cursor-Feld: die Wasserzeichen-Spalte der Tabelle ({{watermark}}). Jede Aktualisierung liest nur Zeilen jenseits des gespeicherten Wasserzeichens und schiebt es weiter.",
+      "apply": "Anwenden",
+      "applyHelp": "Wie zurückgelieferte Zeilen auf das Replikat angewendet werden.",
+      "applyUpsert": "Upsert über den Primärschlüssel",
+      "applyAppend": "Anfügen (unveränderliche Quelle)",
+      "deletes": "Löschungen",
+      "deletesHelp": "Wie Löschungen in der Quelle das Replikat erreichen.",
+      "deletesNone": "Keine (ein periodischer vollständiger Neuaufbau erfasst Löschungen)",
+      "deletesTombstone": "Tombstone-Spalte (eine markierte Zeile löscht ihren Schlüssel)",
+      "tombstoneColumn": "Tombstone-Spalte",
+      "rebuildEvery": "Vollständiger Neuaufbau alle (Sekunden)",
+      "rebuildEveryHelp": "Baut das gesamte Replikat periodisch neu auf, um alles zu erfassen, was ein Delta verpasst. Leer = nie nach Zeitplan.",
+      "query": "Delta-Abfrage (optional, quellnativ)",
+      "queryHelp": "Eine quellnative Abfrage mit den Platzhaltern $wm (Cursor) und {{fields}}. Für eine SQL-Quelle leer lassen: Provisa erzeugt SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
+    }
   }
 }

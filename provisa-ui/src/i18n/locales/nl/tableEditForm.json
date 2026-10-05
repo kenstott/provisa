@@ -258,6 +258,25 @@
     "pagingTypeRequired": "Kies een pagineringstype, of maak de pagineringsvelden leeg.",
     "pagingPositive": "Gebruik een geheel getal van 1 of meer.",
     "pagingAboveCeiling": "Hoogstens {{ceiling}}: een tabel mag de grens van de beheerder verlagen, nooit verhogen.",
-    "pagingFixErrors": "Herstel de pagineringsfouten voordat u opslaat."
+    "pagingFixErrors": "Herstel de pagineringsfouten voordat u opslaat.",
+    "delta": {
+      "legend": "Incrementeel herladen (delta)",
+      "enable": "Deze replica incrementeel (delta) verversen in plaats van hem volledig opnieuw te kopiëren",
+      "needsWatermark": "Een delta heeft een watermarkkolom nodig (de cursor waarvoorbij hij leest). Stel die in onder Live levering.",
+      "cursorNote": "Cursorveld: de watermarkkolom van de tabel ({{watermark}}). Elke verversing leest alleen rijen voorbij de opgeslagen watermark en schuift die op.",
+      "apply": "Toepassen",
+      "applyHelp": "Hoe geretourneerde rijen op de replica worden toegepast.",
+      "applyUpsert": "Upsert op de primaire sleutel",
+      "applyAppend": "Toevoegen (onveranderlijke bron)",
+      "deletes": "Verwijderingen",
+      "deletesHelp": "Hoe verwijderingen in de bron de replica bereiken.",
+      "deletesNone": "Geen (een periodieke volledige herbouw vangt verwijderingen op)",
+      "deletesTombstone": "Tombstonekolom (een gemarkeerde rij verwijdert zijn sleutel)",
+      "tombstoneColumn": "Tombstonekolom",
+      "rebuildEvery": "Volledige herbouw elke (seconden)",
+      "rebuildEveryHelp": "Bouwt periodiek de hele replica opnieuw op om alles op te vangen wat een delta mist. Leeg = nooit volgens een klok.",
+      "query": "Delta-query (optioneel, bronnatief)",
+      "queryHelp": "Een bronnatieve query met de placeholders $wm (cursor) en {{fields}}. Laat leeg voor een SQL-bron: Provisa genereert SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
+    }
   }
 }

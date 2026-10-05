@@ -258,6 +258,25 @@
     "pagingTypeRequired": "请选择分页类型，或清空分页字段。",
     "pagingPositive": "请使用不小于 1 的整数。",
     "pagingAboveCeiling": "最多 {{ceiling}}：表可以降低操作员的上限，但不能提高。",
-    "pagingFixErrors": "保存前请修正分页错误。"
+    "pagingFixErrors": "保存前请修正分页错误。",
+    "delta": {
+      "legend": "增量重新加载（delta）",
+      "enable": "以增量方式（delta）刷新此副本，而不是整体重新复制",
+      "needsWatermark": "增量需要一个水位线列（读取起点的游标）。请在“实时交付”中设置。",
+      "cursorNote": "游标字段：表的水位线列（{{watermark}}）。每次刷新只读取已存储水位线之后的行，并将其推进。",
+      "apply": "应用方式",
+      "applyHelp": "返回的行如何应用到副本。",
+      "applyUpsert": "按主键 upsert",
+      "applyAppend": "追加（不可变数据源）",
+      "deletes": "删除",
+      "deletesHelp": "数据源中的删除如何传递到副本。",
+      "deletesNone": "无（定期完整重建会捕获删除）",
+      "deletesTombstone": "墓碑列（被标记的行会删除其键）",
+      "tombstoneColumn": "墓碑列",
+      "rebuildEvery": "完整重建间隔（秒）",
+      "rebuildEveryHelp": "定期重建整个副本，以捕获增量遗漏的内容。留空 = 从不按时钟重建。",
+      "query": "增量查询（可选，数据源原生）",
+      "queryHelp": "使用 $wm（游标）和 {{fields}} 占位符的数据源原生查询。SQL 数据源请留空：Provisa 会生成 SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>。"
+    }
   }
 }

@@ -11,12 +11,26 @@
     "convergenceError": "Les répliques ne sont pas mises en conformité avec le modèle : {{error}}",
     "method": {
       "engine_statement": "copiée par le moteur",
-      "stream_batches": "diffusée par lots"
+      "stream_batches": "diffusée par lots",
+      "delta": "delta"
     },
     "loadKind": {
       "bulk_stream": "flux en masse",
-      "row_copy": "copie par lignes"
+      "row_copy": "copie par lignes",
+      "delta": "incrémental"
     },
-    "feedDown": "Flux de modifications interrompu depuis {{since}} ; le réplica n'est pas actualisé avant la reconnexion : {{error}}"
+    "feedDown": "Flux de modifications interrompu depuis {{since}} ; le réplica n'est pas actualisé avant la reconnexion : {{error}}",
+    "delta": {
+      "applied": "Le dernier rafraîchissement a appliqué le delta depuis le watermark enregistré ({{cursor}}).",
+      "wholeRebuild": "La dernière construction était une reconstruction complète, pas un delta : {{reason}}.",
+      "skip": {
+        "no_delta_declared": "aucun delta n'est déclaré",
+        "first_build": "première construction, aucune base pour un delta",
+        "definition_changed": "la définition de la table a changé",
+        "operator_requested": "un opérateur a demandé une construction complète",
+        "rebuild_interval_elapsed": "l'intervalle de reconstruction périodique est écoulé",
+        "store_cannot_apply_delta": "le magasin ne peut pas appliquer de delta"
+      }
+    }
   }
 }

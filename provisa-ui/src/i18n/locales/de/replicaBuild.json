@@ -11,12 +11,26 @@
     "convergenceError": "Die Replikate werden nicht mit dem Modell in Einklang gebracht: {{error}}",
     "method": {
       "engine_statement": "von der Engine kopiert",
-      "stream_batches": "in Batches gestreamt"
+      "stream_batches": "in Batches gestreamt",
+      "delta": "Delta"
     },
     "loadKind": {
       "bulk_stream": "Bulk-Stream",
-      "row_copy": "Zeilenkopie"
+      "row_copy": "Zeilenkopie",
+      "delta": "inkrementell"
     },
-    "feedDown": "Änderungs-Feed seit {{since}} unterbrochen; das Replikat wird erst nach der Wiederverbindung aktualisiert: {{error}}"
+    "feedDown": "Änderungs-Feed seit {{since}} unterbrochen; das Replikat wird erst nach der Wiederverbindung aktualisiert: {{error}}",
+    "delta": {
+      "applied": "Die letzte Aktualisierung hat das Delta seit dem gespeicherten Wasserzeichen ({{cursor}}) angewendet.",
+      "wholeRebuild": "Der letzte Build war ein vollständiger Neuaufbau, kein Delta: {{reason}}.",
+      "skip": {
+        "no_delta_declared": "es ist kein Delta deklariert",
+        "first_build": "erster Build, noch keine Basis für ein Delta",
+        "definition_changed": "die Tabellendefinition hat sich geändert",
+        "operator_requested": "ein Operator hat einen vollständigen Build angefordert",
+        "rebuild_interval_elapsed": "das Intervall für den periodischen Neuaufbau ist abgelaufen",
+        "store_cannot_apply_delta": "der Store kann kein Delta anwenden"
+      }
+    }
   }
 }

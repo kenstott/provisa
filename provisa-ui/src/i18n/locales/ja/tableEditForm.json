@@ -258,6 +258,25 @@
     "pagingTypeRequired": "ページングの種類を選ぶか、ページングのフィールドを空にしてください。",
     "pagingPositive": "1 以上の整数を使ってください。",
     "pagingAboveCeiling": "最大 {{ceiling}}: テーブルはオペレーターの上限を下げられますが、上げることはできません。",
-    "pagingFixErrors": "保存する前にページングのエラーを修正してください。"
+    "pagingFixErrors": "保存する前にページングのエラーを修正してください。",
+    "delta": {
+      "legend": "増分リロード (デルタ)",
+      "enable": "このレプリカを丸ごと再コピーする代わりに、増分 (デルタ) で更新する",
+      "needsWatermark": "デルタにはウォーターマークカラム (読み取りの起点となるカーソル) が必要です。ライブ配信で設定してください。",
+      "cursorNote": "カーソルフィールド: テーブルのウォーターマークカラム ({{watermark}})。各更新は保存済みのウォーターマークより後の行だけを読み取り、ウォーターマークを進めます。",
+      "apply": "適用",
+      "applyHelp": "返された行をレプリカに適用する方法。",
+      "applyUpsert": "主キーで upsert",
+      "applyAppend": "追記 (不変のソース)",
+      "deletes": "削除",
+      "deletesHelp": "ソースでの削除をレプリカに反映する方法。",
+      "deletesNone": "なし (定期的な全体の再ビルドで削除を反映)",
+      "deletesTombstone": "トゥームストーンカラム (フラグ付きの行がそのキーを削除)",
+      "tombstoneColumn": "トゥームストーンカラム",
+      "rebuildEvery": "全体の再ビルド間隔 (秒)",
+      "rebuildEveryHelp": "デルタで取りこぼしたものを反映するため、レプリカ全体を定期的に再ビルドします。空欄 = 時刻による再ビルドなし。",
+      "query": "デルタクエリ (任意、ソースネイティブ)",
+      "queryHelp": "$wm (カーソル) と {{fields}} のプレースホルダーを含むソースネイティブのクエリ。SQL ソースの場合は空欄のままにします: Provisa が SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark> を生成します。"
+    }
   }
 }

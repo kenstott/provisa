@@ -11,12 +11,26 @@
     "convergenceError": "रेप्लिका मॉडल के अनुरूप नहीं लाई जा रही हैं: {{error}}",
     "method": {
       "engine_statement": "इंजन द्वारा कॉपी",
-      "stream_batches": "बैचों में स्ट्रीम"
+      "stream_batches": "बैचों में स्ट्रीम",
+      "delta": "delta"
     },
     "loadKind": {
       "bulk_stream": "बल्क स्ट्रीम",
-      "row_copy": "पंक्ति कॉपी"
+      "row_copy": "पंक्ति कॉपी",
+      "delta": "इंक्रीमेंटल"
     },
-    "feedDown": "परिवर्तन फ़ीड {{since}} से बंद है; पुनः कनेक्ट होने तक प्रतिकृति अपडेट नहीं होगी: {{error}}"
+    "feedDown": "परिवर्तन फ़ीड {{since}} से बंद है; पुनः कनेक्ट होने तक प्रतिकृति अपडेट नहीं होगी: {{error}}",
+    "delta": {
+      "applied": "पिछले रिफ़्रेश ने संग्रहीत वॉटरमार्क ({{cursor}}) के बाद का delta लागू किया।",
+      "wholeRebuild": "पिछला बिल्ड पूरा पुनर्निर्माण था, delta नहीं: {{reason}}।",
+      "skip": {
+        "no_delta_declared": "कोई delta घोषित नहीं है",
+        "first_build": "पहला बिल्ड, delta के लिए अभी कोई आधार नहीं",
+        "definition_changed": "टेबल की परिभाषा बदल गई",
+        "operator_requested": "एक ऑपरेटर ने पूरे बिल्ड का अनुरोध किया",
+        "rebuild_interval_elapsed": "आवधिक पुनर्निर्माण का अंतराल बीत गया",
+        "store_cannot_apply_delta": "स्टोर delta लागू नहीं कर सकता"
+      }
+    }
   }
 }

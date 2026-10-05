@@ -11,12 +11,26 @@
     "convergenceError": "הרפליקות אינן מותאמות למודל: {{error}}",
     "method": {
       "engine_statement": "הועתקה על ידי המנוע",
-      "stream_batches": "הוזרמה באצוות"
+      "stream_batches": "הוזרמה באצוות",
+      "delta": "delta"
     },
     "loadKind": {
       "bulk_stream": "הזרמה בכמות גדולה",
-      "row_copy": "העתקת שורות"
+      "row_copy": "העתקת שורות",
+      "delta": "אינקרמנטלי"
     },
-    "feedDown": "הזנת השינויים מושבתת מאז {{since}}; העותק המשוכפל לא יתעדכן עד לחיבור מחדש: {{error}}"
+    "feedDown": "הזנת השינויים מושבתת מאז {{since}}; העותק המשוכפל לא יתעדכן עד לחיבור מחדש: {{error}}",
+    "delta": {
+      "applied": "הרענון האחרון החיל את ה-delta מאז ה-watermark השמור ({{cursor}}).",
+      "wholeRebuild": "הבנייה האחרונה הייתה בנייה מחדש מלאה, לא delta: {{reason}}.",
+      "skip": {
+        "no_delta_declared": "לא הוצהר delta",
+        "first_build": "בנייה ראשונה, עדיין אין ממה לחשב delta",
+        "definition_changed": "הגדרת הטבלה השתנתה",
+        "operator_requested": "מפעיל ביקש בנייה מלאה",
+        "rebuild_interval_elapsed": "מרווח הבנייה מחדש התקופתית חלף",
+        "store_cannot_apply_delta": "המאגר אינו יכול להחיל delta"
+      }
+    }
   }
 }
