@@ -18,6 +18,7 @@ This test suite is pure logic — no live ClickHouse/Postgres — driven by a fa
 
 from __future__ import annotations
 
+from tests.helpers import attaching
 from provisa.core.models import Source, SourceType
 from provisa.federation.connector import Mechanism
 from provisa.federation.connector_duckdb import PgClickHouseFdwConnector
@@ -58,13 +59,23 @@ def test_capability_reports_predicate_and_aggregate_pushdown_not_join():
 
 
 def test_details_emit_extension_server_mapping_and_import_schema():
+    # REQ-1266/1529: named after the source's catalog name, which carries its org.
     details = PgClickHouseFdwConnector().details(
-        _src("orders_ch", host="clickhouse", database="analytics", username="default", password="p")
+        attaching(
+            _src(
+                "orders_ch",
+                host="clickhouse",
+                database="analytics",
+                username="default",
+                password="p",
+            ),
+            "org_acme__orders_ch",
+        )
     )
     ddl = details["attach_ddl"]
     assert ddl[0] == "CREATE EXTENSION IF NOT EXISTS pg_clickhouse"
     assert any(
-        'CREATE SERVER IF NOT EXISTS "ch_orders_ch"' in s
+        'CREATE SERVER IF NOT EXISTS "ch_org_acme__orders_ch"' in s
         and "driver 'binary'" in s
         and "host 'clickhouse'" in s
         and "dbname 'analytics'" in s
@@ -72,14 +83,15 @@ def test_details_emit_extension_server_mapping_and_import_schema():
     )
     assert any("user 'default'" in s and "password 'p'" in s for s in ddl)
     assert any(
-        'IMPORT FOREIGN SCHEMA "analytics" FROM SERVER "ch_orders_ch" INTO "ch_orders_ch"' in s
+        'IMPORT FOREIGN SCHEMA "analytics" FROM SERVER "ch_org_acme__orders_ch" '
+        'INTO "ch_org_acme__orders_ch"' in s
         for s in ddl
     )
-    assert details["local_schema"] == "ch_orders_ch"
+    assert details["local_schema"] == "ch_org_acme__orders_ch"
 
 
 def test_details_defaults_database_to_default_when_unset():
-    details = PgClickHouseFdwConnector().details(_src("bare", host="clickhouse"))
+    details = PgClickHouseFdwConnector().details(attaching(_src("bare", host="clickhouse"), "bare"))
     assert any("dbname 'default'" in s for s in details["attach_ddl"])
     assert any("user 'default'" in s for s in details["attach_ddl"])
 

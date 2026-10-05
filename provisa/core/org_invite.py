@@ -79,6 +79,8 @@ INVITE_REDEMPTION_COLUMNS = (
     org_invites.c.env_policy,
     org_invites.c.env_ttl_seconds,
     org_invites.c.env_name,
+    # Who issued the invitation: a user may not redeem one they issued themselves (REQ-1308).
+    org_invites.c.created_by,
 )
 
 

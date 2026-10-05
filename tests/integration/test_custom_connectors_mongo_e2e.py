@@ -143,6 +143,7 @@ async def test_config_driven_mongo_fdw_federates_live_mongodb(
 
         src = SimpleNamespace(
             id="reviews",
+            catalog="reviews",
             type=SimpleNamespace(value="mongo_custom"),
             host="127.0.0.1",
             port=mongo_port,

@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 
+from provisa.compiler.naming import attach_catalog, engine_attach_name
 from provisa.federation.connector_base import Capability, Connector, Mechanism, ProbeResult
 from provisa.federation.connector_duckdb import _DuckDBExtensionConnector, _probe_pg_extension
 
@@ -105,26 +106,26 @@ class GenericPgFdwConnector(Connector):  # REQ-1177
 
     def details(self, source: Source) -> dict:
         fields = _source_fields(source)
-        server = f"fdw_{source.id}"
+        server = engine_attach_name("fdw", attach_catalog(source))
         ddl = [
             f"CREATE EXTENSION IF NOT EXISTS {self._fdw}",
-            f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER {self._fdw} "
+            f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER {self._fdw} '
             f"OPTIONS ({_opts(self._server_options, fields)})",
         ]
         if self._user_mapping is not None:
             # A bare (no-OPTIONS) user mapping is the SQL/MED form a no-auth FDW needs (mongo_fdw against
             # an unauthenticated MongoDB): the mapping must EXIST, but an empty username/password would
             # make the driver attempt a failing auth. `user_mapping: {}` ⇒ bare; keys ⇒ OPTIONS(...).
-            um = f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server}"
+            um = f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}"'
             if self._user_mapping:
                 um += f" OPTIONS ({_opts(self._user_mapping, fields)})"
             ddl.append(um)
         if self._supports_import:
-            local_schema = f"fdw_{source.id}"
+            local_schema = engine_attach_name("fdw", attach_catalog(source))
             ddl += [
-                f"CREATE SCHEMA IF NOT EXISTS {local_schema}",
+                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
                 f"IMPORT FOREIGN SCHEMA {_fmt(self._remote_schema, fields)} "
-                f"FROM SERVER {server} INTO {local_schema}",
+                f'FROM SERVER "{server}" INTO "{local_schema}"',
             ]
             return {"attach_ddl": ddl, "local_schema": local_schema}
         # No IMPORT: the pg runtime completes an explicit CREATE FOREIGN TABLE from column metadata,
@@ -223,7 +224,7 @@ class GenericClickHouseDatabaseConnector(_GenericClickHouseConnector):  # REQ-11
 
     def details(self, source: Source) -> dict:
         fields = _source_fields(source)
-        local_schema = f"ch_{source.id}"
+        local_schema = engine_attach_name("ch", attach_catalog(source))
         return {
             "attach_ddl": [
                 f'CREATE DATABASE IF NOT EXISTS "{local_schema}" '

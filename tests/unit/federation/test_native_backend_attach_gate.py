@@ -76,7 +76,15 @@ def test_the_walk_skips_fetch_sources_and_attaches_live_ones():
             _table("pg", "orders"),
         ],
     )
-    state = SimpleNamespace(runtime_sources={}, tables=[])
+    state = SimpleNamespace(
+        runtime_sources={},
+        tables=[],
+        source_catalogs={
+            "petstore-api": "petstore_api",
+            "graphql-demo": "graphql_demo",
+            "pg": "pg",
+        },
+    )
 
     complete = backend._walk_registry(state, config)  # noqa: SLF001
 

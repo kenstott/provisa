@@ -93,6 +93,7 @@ async def test_config_driven_pg_fdw_federates_postgres_source(pg_with_fdw, tmp_p
 
         src = SimpleNamespace(
             id="wid",
+            catalog="wid",
             type=SimpleNamespace(value="pgfdw_custom"),
             host=lp["host"],
             port=lp["port"],

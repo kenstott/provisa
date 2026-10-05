@@ -46,6 +46,7 @@ class PgBackend(NativeEngineBackend):
         if select_landing_shape(args.change_signal, args.watermark_column) != REPLACE:
             return super().replica_engine(state, source, table, address=address, args=args)
         merged = self._merged_source(source, table.schema_name, table.table_name)
+        merged.catalog = state.source_catalogs[source.id]  # REQ-1266/1529: what it attaches under
         if "server_ddl_for_copy" not in self._runtime_for(state)._engine.resolve(merged).details:
             return super().replica_engine(state, source, table, address=address, args=args)
         return PgStatementCopy(

@@ -21,6 +21,7 @@ import asyncio
 
 import pytest
 
+from tests.helpers import attaching
 from provisa.core.models import Source, SourceType
 from provisa.federation import pgwire_replica as pr
 from provisa.federation.engine import build_clickhouse_engine
@@ -84,11 +85,11 @@ def test_clickhouse_splunk_details_builds_postgresql_engine_pointed_at_the_bundl
 
     monkeypatch.setattr(pr, "ensure_endpoint", _ensure)
     src = _splunk_source()
-    details = ClickHouseSplunkConnector().details(src)
+    details = ClickHouseSplunkConnector().details(attaching(src, "ch_splunk_prod"))
     assert started == ["ch-splunk-prod"]
-    assert details["local_schema"] == "ch_pgwire_ch-splunk-prod"
+    assert details["local_schema"] == "ch_pgwire_ch_splunk_prod"
     (ddl,) = details["attach_ddl"]
-    assert 'CREATE DATABASE IF NOT EXISTS "ch_pgwire_ch-splunk-prod"' in ddl
+    assert 'CREATE DATABASE IF NOT EXISTS "ch_pgwire_ch_splunk_prod"' in ddl
     assert "ENGINE = PostgreSQL('127.0.0.1:5440', 'provisa', 'provisa', ''" in ddl
     assert "'ch_splunk_prod')" in ddl
 
@@ -101,11 +102,13 @@ def test_clickhouse_files_and_sharepoint_details_use_their_own_source_ids(monkey
 
     monkeypatch.setattr(pr, "ensure_endpoint", lambda _source: pr.PortPair(5441, "127.0.0.1", 5541))
 
-    files_details = ClickHouseFilesConnector().details(_files_source())
-    assert files_details["local_schema"] == "ch_pgwire_ch-files"
+    files_details = ClickHouseFilesConnector().details(attaching(_files_source(), "ch_files"))
+    assert files_details["local_schema"] == "ch_pgwire_ch_files"
 
-    sp_details = ClickHouseSharepointConnector().details(_sharepoint_source())
-    assert sp_details["local_schema"] == "ch_pgwire_ch-sp-team"
+    sp_details = ClickHouseSharepointConnector().details(
+        attaching(_sharepoint_source(), "ch_sp_team")
+    )
+    assert sp_details["local_schema"] == "ch_pgwire_ch_sp_team"
     assert "'ch_sp_team')" in sp_details["attach_ddl"][0]
 
 

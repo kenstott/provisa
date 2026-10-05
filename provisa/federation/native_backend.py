@@ -337,6 +337,7 @@ class NativeEngineBackend(EngineBackend):
                         SimpleNamespace(
                             id=src.id,
                             type=src.type,
+                            catalog=state.source_catalogs[src.id],
                             schema_name=schema_name,
                             table_name=table_name,
                         )
@@ -366,6 +367,9 @@ class NativeEngineBackend(EngineBackend):
             merged = SimpleNamespace(
                 id=getattr(src, "id", None),
                 type=getattr(src, "type", SimpleNamespace(value="")),
+                # REQ-1266/1529: the source's catalog name, the one the compiler emits; the
+                # engine names what it keeps for the source after it (org and environment).
+                catalog=state.source_catalogs[src.id],
                 host=_rs(getattr(src, "host", None)),
                 port=getattr(src, "port", None),
                 # REQ-1746: DuckDBAirportConnector.details() (connector_duckdb.py) reads

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.helpers import attaching
 from provisa.core.models import Source, SourceType
 from provisa.federation.connector import Mechanism
 from provisa.federation.connector_base import DriverProvider, RuntimeDep
@@ -75,13 +76,21 @@ def test_tds_fdw_identity_read_only_and_runtime_deps():
 
 
 def test_tds_fdw_attach_ddl_defaults_dbo_and_binds_endpoint():
+    # REQ-1266/1529: named after the source's catalog name, which carries its org.
     d = TdsFdwConnector().details(
-        _src("crm", SourceType.sqlserver, host="mssql", port=1433, database="sales")
+        attaching(
+            _src("crm", SourceType.sqlserver, host="mssql", port=1433, database="sales"),
+            "org_acme__crm",
+        )
     )
     ddl = d["attach_ddl"]
     assert "CREATE EXTENSION IF NOT EXISTS tds_fdw" in ddl[0]
     assert any("FOREIGN DATA WRAPPER tds_fdw" in s and "servername 'mssql'" in s for s in ddl)
-    assert any("IMPORT FOREIGN SCHEMA dbo FROM SERVER fdw_crm" in s for s in ddl)  # default schema
+    # The default schema, from the org's own server.
+    assert any(
+        'IMPORT FOREIGN SCHEMA dbo FROM SERVER "fdw_org_acme__crm" INTO "fdw_org_acme__crm"' in s
+        for s in ddl
+    )
 
 
 # ---- oracle_fdw / oracle (REQ-900) -------------------------------------------
@@ -99,7 +108,12 @@ def test_oracle_fdw_identity_operator_supplied_instant_client():
 
 def test_oracle_fdw_ezconnect_and_uppercased_schema():
     d = OracleFdwConnector().details(
-        _src("erp", SourceType.oracle, host="ora", port=1521, database="ORCL", username="scott")
+        attaching(
+            _src(
+                "erp", SourceType.oracle, host="ora", port=1521, database="ORCL", username="scott"
+            ),
+            "erp",
+        )
     )
     ddl = d["attach_ddl"]
     assert any("dbserver '//ora:1521/ORCL'" in s for s in ddl)  # EZConnect string

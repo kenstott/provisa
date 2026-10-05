@@ -719,6 +719,8 @@ class EngineBackend:
 
             merged = SimpleNamespace(
                 id=source.id,
+                # REQ-1266/1529: what the engine keeps for the source is named after its catalog.
+                catalog=state.source_catalogs[source.id],
                 type=source.type,
                 host=_rs(getattr(source, "host", None)),
                 port=getattr(source, "port", None),

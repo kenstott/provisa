@@ -114,6 +114,9 @@ def _state() -> SimpleNamespace:
         tenant_db=None,
         org_id="default",
         active_isolated_org=None,
+        # REQ-1266/1529: each registered source's catalog name, which the engine names its
+        # attach objects after.
+        source_catalogs={"pg": "pg", "api": "api", "pg2": "pg2"},
     )
 
 

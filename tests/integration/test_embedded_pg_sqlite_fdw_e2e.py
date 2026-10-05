@@ -30,6 +30,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 asyncpg = pytest.importorskip("asyncpg")
 pgserver = pytest.importorskip("pgserver")
 
+from tests.helpers import registry_write_ops  # noqa: E402
 from provisa.compiler.introspect import ColumnMetadata  # noqa: E402
 from provisa.compiler.parser import parse_query  # noqa: E402
 from provisa.compiler.rls import RLSContext  # noqa: E402
@@ -40,7 +41,7 @@ from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical  # noqa: E
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.connector_duckdb import SqliteFdwConnector  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
-from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _SQLITE = Path(__file__).parent.parent.parent / "demo" / "files" / "orders.sqlite"
 _ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
@@ -111,7 +112,9 @@ async def test_sqlite_fdw_connector_attaches_and_reads(embedded_pg_sqlite_fdw):
     """The REAL SqliteFdwConnector DDL attaches orders.sqlite; a governed read runs in place."""
     conn = await asyncpg.connect(dsn=embedded_pg_sqlite_fdw.get_uri())
     try:
-        det = SqliteFdwConnector().details(SimpleNamespace(id="ord", path=str(_SQLITE)))
+        det = SqliteFdwConnector().details(
+            SimpleNamespace(id="ord", catalog="ord", path=str(_SQLITE))
+        )
         for ddl in det["attach_ddl"]:  # CREATE EXTENSION / SERVER / SCHEMA / IMPORT FOREIGN SCHEMA
             await conn.execute(ddl)
         orders_schema = det["local_schema"]  # fdw_ord
