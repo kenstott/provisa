@@ -53,7 +53,9 @@ def _plan_for_scan(
     # separate principal — the role IS the acting identity here, bound inside the coroutine.
     plan = run_on_connection_loop(
         with_audit_identity(
-            role_id, "airport", govern_batch_final_plan(sql, role_id, state, session_vars={})
+            role_id,
+            "airport",
+            govern_batch_final_plan(sql, role_id, state, session_vars={}, deliver=None),
         )
     )
     require_governed_plan(plan)  # REQ-1176: this Arrow terminal must verify the stamp too

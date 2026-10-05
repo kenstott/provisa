@@ -257,6 +257,48 @@ def _flight_error(msg: str, cause: Exception | None = None) -> flight.FlightServ
     return err
 
 
+def _ticket_delivery(request: dict[str, object], role_id: str):  # REQ-1194
+    """The forced redirect a ticket asks for with its ``redirect`` / ``redirect_format`` options,
+    or None. Flight is a streaming transport: it is never delivered automatically (REQ-1224
+    amended 2026-10-04). An option that cannot be read is refused by name."""
+    from provisa.executor.redirect import (
+        RedirectFormatUnknown,
+        delivery_from_request,
+        parse_redirect_format,
+    )
+
+    redirect = request.get("redirect", False)  # an absent option asks for no redirect
+    if not isinstance(redirect, bool):
+        raise _flight_error(f"ticket option redirect must be true or false, not {redirect!r}")
+    fmt = request.get("redirect_format")
+    if fmt is not None and not isinstance(fmt, str):
+        raise _flight_error(f"ticket option redirect_format must be a format name, not {fmt!r}")
+    try:
+        redirect_format = parse_redirect_format(fmt) if fmt else None
+    except RedirectFormatUnknown as exc:
+        raise _flight_error(str(exc), exc) from exc
+    return delivery_from_request(
+        force_redirect=redirect, redirect_format=redirect_format, threshold=None, role=role_id
+    )
+
+
+def _redirect_table(handle: dict | None, delivery: Any) -> "pa.Table":  # REQ-1194
+    """The one-row table a delivered ticket answers: url, format, row_count, expires_at."""
+    from provisa.executor.redirect import redirect_row
+
+    if handle is None:
+        raise _flight_error("the materialize terminal answered rows instead of a delivery handle")
+    url, fmt, row_count, expires_at = redirect_row(handle, delivery)
+    return pa.table(
+        {
+            "url": pa.array([url], pa.string()),
+            "format": pa.array([fmt], pa.string()),
+            "row_count": pa.array([row_count], pa.int64()),
+            "expires_at": pa.array([expires_at], pa.timestamp("us", tz="UTC")),
+        }
+    )
+
+
 def _parse_limit_value(value: int | bool | None) -> int | None:
     """Validate and return a row-limit integer, or None for unlimited."""
     if value is None:
@@ -967,6 +1009,7 @@ class ProvisaFlightServer(
                     # is routed; a Route.CACHE plan has no engine SQL and is served below.
                     serve_cached=True,
                     sdl_joins=False,
+                    deliver=_ticket_delivery(request, role_id),
                 )
             )
         except PermissionError as exc:
@@ -981,6 +1024,8 @@ class ProvisaFlightServer(
         require_governed_plan(
             plan
         )  # REQ-1176: verify at the last moment, before the engine executes
+        if plan.materialize is not None:
+            return self._delivered_stream(plan)
         physical_sql = plan.physical_sql
         if physical_sql is None:
             # A statement the router did not send to the engine (DIRECT: one reachable source,
@@ -1159,6 +1204,23 @@ class ProvisaFlightServer(
 
         return generator_stream(schema, _gen(), warnings)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
+    def _delivered_stream(self, plan) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """REQ-1194: run a plan that asked for delivery through the one materialize terminal and
+        answer the one row naming where its result was landed."""
+        from provisa.executor.redirect import DeliveryFailed
+        from provisa.pgwire._pipeline import _execute_plan
+
+        _release_slot = self._acquire_stream_slot()  # REQ-1905: the engine is reached
+        try:
+            result = self._run_on_loop(_execute_plan(plan, self._state))
+        except DeliveryFailed as exc:
+            raise _flight_error(f"redirect delivery failed: {exc}", exc) from exc
+        finally:
+            _release_slot()
+        return record_batch_stream(
+            _redirect_table(result.redirect, plan.materialize), plan.warnings
+        )  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
     def _do_get_sql_governed(
         self, request: dict[str, object]
     ) -> (
@@ -1171,6 +1233,7 @@ class ProvisaFlightServer(
 
         sql = str(request.get("query", ""))
         role_id = str(request.get("role", "org_admin"))
+        delivery = _ticket_delivery(request, role_id)
 
         # REQ-1156: a `SELECT fn(...)` naming a registered command invokes it through the single
         # governed executor, matching pgwire/MCP — otherwise commands are dark over Flight SQL.
@@ -1181,7 +1244,9 @@ class ProvisaFlightServer(
             # REQ-1897: this terminal serves a Route.CACHE plan (below), so an opted-in read is
             # looked up in the response cache before it is routed.
             result = self._run_on_loop(
-                govern_batch_final_plan_with_fn(sql, role_id, self._state, serve_cached=True)
+                govern_batch_final_plan_with_fn(
+                    sql, role_id, self._state, serve_cached=True, deliver=delivery
+                )
             )
         except PermissionError as exc:
             raise _flight_error(str(exc), exc) from exc
@@ -1200,6 +1265,8 @@ class ProvisaFlightServer(
         require_governed_plan(
             plan
         )  # REQ-1176: verify at the last moment, before the engine executes
+        if plan.materialize is not None:
+            return self._delivered_stream(plan)
         # REQ-074/REQ-1386: this govern-then-stream terminal never reaches _execute_plan, so the
         # audit row is written here — once the terminal is established, or on the way out.
         try:
@@ -1395,6 +1462,7 @@ class ProvisaFlightServer(
                     # REQ-544: the GraphQL request's own @cached opt-in.
                     cache_hint=cache_hint_for("graphql", str(request.get("query", ""))),
                     sdl_joins=True,
+                    deliver=_ticket_delivery(request, role_id),
                 )
             )
         except PermissionError as exc:
@@ -1405,6 +1473,8 @@ class ProvisaFlightServer(
         require_governed_plan(
             plan
         )  # REQ-1176: verify at the last moment, before the engine executes
+        if plan.materialize is not None:
+            return self._delivered_stream(plan)
         # REQ-074/REQ-1386: govern-then-stream terminal — the audit row is written here.
         try:
             if plan.route == Route.DIRECT:

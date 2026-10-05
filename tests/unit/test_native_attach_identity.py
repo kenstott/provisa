@@ -69,7 +69,13 @@ def test_two_sources_same_named_tables_are_each_attached(monkeypatch):
             SimpleNamespace(source_id="crm", schema_name="public", table_name="orders"),
         ],
     )
-    state = SimpleNamespace(runtime_sources={}, tables=[], model_db=None, tenant_db=None)
+    state = SimpleNamespace(
+        runtime_sources={},
+        tables=[],
+        model_db=None,
+        tenant_db=None,
+        source_catalogs={"sales": "sales", "crm": "crm"},
+    )
 
     assert backend._walk_registry(state, config) is True
     assert sorted(backend._runtime.attached) == [

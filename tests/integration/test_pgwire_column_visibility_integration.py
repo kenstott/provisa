@@ -84,10 +84,13 @@ def _make_si(
 def _make_state(ctx: Any, col_types: dict) -> Any:
     """Build a minimal state object for catalog functions.
 
-    integration: mock-justified — state is a protocol duck-type; only .contexts
-    and .schema_build_cache are accessed by _build_catalog_db and answer().
+    integration: mock-justified — state is a protocol duck-type; only .contexts,
+    .schema_build_cache and .multitenancy are accessed by _build_catalog_db and answer().
     """
     state = no_replica_routes(MagicMock())
+    # A single-tenant deployment: the catalog names its one database (REQ-1235); a MagicMock's
+    # truthy attribute would read as multi-tenancy with no org bound.
+    state.multitenancy = False
     state.contexts = {ctx._role_id: ctx} if hasattr(ctx, "_role_id") else {}
     state.schema_build_cache = {"column_types": col_types, "tables": [], "domains": []}
     state.engine_conn = None
@@ -234,6 +237,7 @@ class TestJDBCGetColumnsRoleVisibility:
         ctx = build_context(si)
 
         state = no_replica_routes(MagicMock())
+        state.multitenancy = False  # single-tenant: the catalog names its one database (REQ-1235)
         state.contexts = {"analyst": ctx}
         state.schema_build_cache = {
             "column_types": _COL_TYPES,

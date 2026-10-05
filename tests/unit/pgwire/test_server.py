@@ -289,7 +289,7 @@ class TestProvisaSessionEngineStreaming:
             stamp=_mint_stamp(),
         )
 
-        async def _govern(sql, role_id, params=None, wire_formats=None):
+        async def _govern(sql, role_id, params=None, wire_formats=None, *, deliver):
             captured["governed"] = sql
             return plan
 
@@ -350,7 +350,7 @@ class TestProvisaSessionEngineStreaming:
             stamp=None,
         )
 
-        async def _govern(sql, role_id, params=None, wire_formats=None):
+        async def _govern(sql, role_id, params=None, wire_formats=None, *, deliver):
             return plan
 
         monkeypatch.setattr(_pipeline, "govern_pgwire_plan", _govern)
@@ -422,7 +422,7 @@ class TestPgwireDispatchHopCount:
             stamp=_mint_stamp(),
         )
 
-        async def _govern(sql, role_id, params=None, wire_formats=None):
+        async def _govern(sql, role_id, params=None, wire_formats=None, *, deliver):
             return plan
 
         monkeypatch.setattr(_pipeline, "govern_pgwire_plan", _govern)

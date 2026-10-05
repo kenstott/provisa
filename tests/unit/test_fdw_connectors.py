@@ -19,15 +19,16 @@ from __future__ import annotations
 
 import pytest
 
+from tests.helpers import attaching
 from provisa.core.models import Source, SourceType
 from provisa.federation.connector import Mechanism
 from provisa.federation.connector_base import DriverProvider, RuntimeDep
 from provisa.federation.connector_duckdb import MysqlFdwConnector, SqliteFdwConnector
 
 
-def _src(sid: str, type_: SourceType, **kw) -> Source:
+def _src(sid: str, type_: SourceType, **kw):
     fields = {"host": "h", "port": 3306, "database": "db", "username": "u", "password": "p", **kw}
-    return Source(id=sid, type=type_, **fields)
+    return attaching(Source(id=sid, type=type_, **fields), sid)
 
 
 class _FakeFetch:
@@ -97,7 +98,7 @@ def test_sqlite_fdw_attach_ddl_binds_file_path():
     assert "CREATE EXTENSION IF NOT EXISTS sqlite_fdw" in ddl[0]
     assert any("FOREIGN DATA WRAPPER sqlite_fdw" in s for s in ddl)
     assert any("database '/data/inq.sqlite'" in s for s in ddl)
-    assert any("IMPORT FOREIGN SCHEMA public FROM SERVER fdw_inq" in s for s in ddl)
+    assert any('IMPORT FOREIGN SCHEMA public FROM SERVER "fdw_inq"' in s for s in ddl)
     assert details["local_schema"] == "fdw_inq"
 
 
@@ -109,7 +110,7 @@ def test_mysql_fdw_attach_ddl_creates_server_user_mapping_and_import():
     assert "CREATE EXTENSION IF NOT EXISTS mysql_fdw" in ddl[0]
     assert any("FOREIGN DATA WRAPPER mysql_fdw" in s and "host 'mysqlhost'" in s for s in ddl)
     assert any("CREATE USER MAPPING" in s and "username 'u'" in s for s in ddl)
-    assert any("IMPORT FOREIGN SCHEMA inventory FROM SERVER fdw_inv" in s for s in ddl)
+    assert any('IMPORT FOREIGN SCHEMA inventory FROM SERVER "fdw_inv"' in s for s in ddl)
 
 
 # ---- functional probe (REQ-904 / REQ-907) ------------------------------------

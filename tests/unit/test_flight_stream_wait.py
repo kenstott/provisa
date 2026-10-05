@@ -264,14 +264,16 @@ def test_the_default_limit_divides_the_hosts_budget_among_the_launchs_workers(mo
 
 
 def test_every_place_do_get_reaches_the_engine_or_a_source_takes_a_slot():
-    """Five acquisitions cover six places: the engine stream, the direct-source stream, the
-    direct buffered read (one helper, used by SQL and by GraphQL), and the Cypher pipeline
-    terminal and engine read. None at the top of do_get."""
+    """Six acquisitions cover seven places: the engine stream, the direct-source stream, the
+    direct buffered read (one helper, used by SQL and by GraphQL), the Cypher pipeline
+    terminal and engine read, and a forced delivery's materialize terminal (one helper, used by
+    SQL, GraphQL and Cypher; REQ-1194). None at the top of do_get."""
     import inspect
 
     from provisa.api.flight import server
 
     src = inspect.getsource(server)
-    assert src.count("self._acquire_stream_slot()") == 5
+    assert src.count("self._acquire_stream_slot()") == 6
     assert src.count("self._native_read_in_slot(") == 2
+    assert src.count("self._delivered_stream(plan)") == 3
     assert "slots_for(global_cap).slot(" not in src

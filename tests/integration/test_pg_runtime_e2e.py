@@ -64,6 +64,7 @@ async def test_pg_runtime_federates_postgres_source(pg_with_fdw):
     try:
         src = SimpleNamespace(
             id="ord",
+            catalog="ord",
             type=SimpleNamespace(value="postgresql"),
             host=lp["host"],
             port=lp["port"],
@@ -77,11 +78,11 @@ async def test_pg_runtime_federates_postgres_source(pg_with_fdw):
         rt.attach_source(src)
 
         # REQ-1730: attach_source folds catalog.schema into one schema segment
-        # ("{source_to_catalog(source.id)}_{schema_name}") on this catalog-incapable engine — the
+        # (live_view_schema(source.catalog, schema_name)) on this catalog-incapable engine — the
         # view lands at "ord_sales"."orders", not the source's bare native "sales"."orders".
-        from provisa.compiler.naming import source_to_catalog
+        from provisa.compiler.naming import live_view_schema
 
-        folded = f"{source_to_catalog(src.id)}_{src.schema_name}"
+        folded = live_view_schema(src.catalog, src.schema_name)
 
         res = rt.run_sync(f'SELECT "id", "amount" FROM "{folded}"."orders" ORDER BY "id"')
         assert res.column_names == ["id", "amount"]

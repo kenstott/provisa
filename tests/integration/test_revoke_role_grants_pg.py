@@ -46,7 +46,10 @@ async def plane(monkeypatch) -> Database:  # noqa: F811 — replaces the SQLite 
     schema_sql = Path(__file__).resolve().parents[2] / "provisa" / "core" / "schema.sql"
     await init_schema(db, schema_sql.read_text(encoding="utf-8"), org_id=_ORG_ID)
     await seed(db)  # noqa: F405 — from the scenarios module
+    # The grants are model rows (REQ-1922): the mutations read the model store, as in the unit
+    # scenarios, where the one plane holds every side.
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
+    monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     try:
         yield db
     finally:

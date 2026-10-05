@@ -125,13 +125,13 @@ async def fetch_through_pgwire(
     state.multitenancy = False
     state.federation_engine = engine
 
-    async def _govern(text, role_id, params=None, wire_formats=None):
+    async def _govern(text, role_id, params=None, wire_formats=None, *, deliver):
         return _engine_plan(sql)
 
     async def _describe(text, role_id):
         return _Described(registered_shape(text, registry), cast(Any, "governed"))
 
-    async def _plan(held, params, wire_formats=None):
+    async def _plan(held, params, wire_formats=None, *, deliver):
         return _engine_plan(sql)
 
     async def _no_cache(plan, st):

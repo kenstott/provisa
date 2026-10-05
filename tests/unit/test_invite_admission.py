@@ -111,6 +111,8 @@ def plane(monkeypatch):
             "env_policy": "none",
             "env_ttl_seconds": None,
             "env_name": None,
+            # REQ-1308: issued by an administrator, not by the person redeeming it.
+            "created_by": "alice",
         },
     )
     admin_db = _Db(state)

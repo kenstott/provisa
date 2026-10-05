@@ -50,6 +50,9 @@ def _runtime(details: dict, log: list[str]) -> PgFederationRuntime:
 def _source(table: str = "orders", source_id: str = "bench-pg"):
     return types.SimpleNamespace(
         id=source_id,
+        # REQ-1266/1529: the catalog name the engine names its attach objects (and the live
+        # view's schema) after — the attach view of a source carries it.
+        catalog=source_id.replace("-", "_"),
         table_name=table,
         schema_name="public",
         type=types.SimpleNamespace(value="postgresql"),

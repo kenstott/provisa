@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from provisa.core.models import Source
 
+from provisa.compiler.naming import attach_catalog, engine_attach_name
 from provisa.federation.connector_base import Capability, Connector, Mechanism, ProbeResult
 
 
@@ -46,7 +47,7 @@ class ClickHousePostgresConnector(Connector):
         return Capability(predicate_pushdown=True, write=True)
 
     def details(self, source: Source) -> dict:
-        local_schema = f"ch_{source.id}"
+        local_schema = engine_attach_name("ch", attach_catalog(source))
         # Remote schema override rides on federation_hints (Source has no `schema` field — and
         # ``source.schema`` would resolve to pydantic's BaseModel.schema method, never the default).
         remote_schema = source.federation_hints.get("schema") or "public"
@@ -102,7 +103,7 @@ class _ClickHousePgwireConnector(Connector):  # REQ-1730
         from provisa.federation.pgwire_replica import ensure_endpoint, schema_name
 
         ports = ensure_endpoint(source)  # starts (once) the source's bundled Calcite pgwire server
-        local_schema = f"ch_pgwire_{source.id}"
+        local_schema = engine_attach_name("ch_pgwire", attach_catalog(source))
         return {
             "attach_ddl": [
                 f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = PostgreSQL('
@@ -141,7 +142,7 @@ class ClickHouseMysqlConnector(Connector):
         return Capability(predicate_pushdown=True, write=True)
 
     def details(self, source: Source) -> dict:
-        local_schema = f"ch_{source.id}"
+        local_schema = engine_attach_name("ch", attach_catalog(source))
         return {
             "attach_ddl": [
                 f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = MySQL('
@@ -171,7 +172,7 @@ class ClickHouseSqliteConnector(Connector):  # REQ-1178
     def details(self, source: Source) -> dict:
         if source.path is None:
             raise ValueError(f"sqlite source {source.id!r} has no path")
-        local_schema = f"ch_{source.id}"
+        local_schema = engine_attach_name("ch", attach_catalog(source))
         return {
             "attach_ddl": [
                 f"CREATE DATABASE IF NOT EXISTS \"{local_schema}\" ENGINE = SQLite('{source.path}')"

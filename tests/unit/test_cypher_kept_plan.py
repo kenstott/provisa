@@ -252,6 +252,7 @@ class _Pipeline:
             self.governed_kw.append(_kw)
             # One reachable source: the DIRECT route every surface serves from the source's driver.
             return SimpleNamespace(
+                materialize=None,  # as _Plan: no delivery asked for (REQ-1194)
                 route=Route.DIRECT,
                 source_id="pg",
                 sql=sql,
@@ -377,7 +378,12 @@ def test_flight_serves_a_direct_routed_cypher_statement(monkeypatch, builds):
     monkeypatch.setattr("provisa.compiler.sql_rewrite.make_semantic_sql", lambda sql, _ctx: sql)
 
     plan = SimpleNamespace(
-        route=Route.DIRECT, source_id="pg", sql="SELECT 1", physical_sql=None, warnings=[]
+        route=Route.DIRECT,
+        source_id="pg",
+        sql="SELECT 1",
+        physical_sql=None,
+        warnings=[],
+        materialize=None,  # as _Plan: no delivery asked for (REQ-1194)
     )
     monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", AsyncMock(return_value=plan))
     monkeypatch.setattr(_pipeline, "require_governed_plan", lambda _p: None)

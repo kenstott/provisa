@@ -163,7 +163,10 @@ async def test_bolt_sends_the_warnings_as_notifications_with_the_runs_success():
         patch("provisa.bolt.session._execute_cypher", execute),
         patch.object(session, "send_success", lambda meta=None: successes.append(meta or {})),
     ):
-        await session.handle_run(["MATCH (p:Pets) RETURN p.id AS id", {}, {}])
+        try:
+            await session.handle_run(["MATCH (p:Pets) RETURN p.id AS id", {}, {}])
+        finally:
+            session.close()  # the connection ends: its unpulled request with it (REQ-1905)
     (meta,) = successes
     (note,) = meta["notifications"]
     assert note["code"] == "Provisa.api.answer_cut" and note["severity"] == "WARNING"

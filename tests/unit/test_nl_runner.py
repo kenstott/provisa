@@ -82,7 +82,7 @@ async def test_three_branches_launched():
 
     branch_targets: list[str] = []
 
-    async def _fake_execute(q, target, role, app_state):
+    async def _fake_execute(q, target, role, app_state, *, deliver):
         branch_targets.append(target)
         return {"columns": [], "rows": []}
 
@@ -92,7 +92,7 @@ async def test_three_branches_launched():
     state = _make_app_state()
 
     with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
-        await run_nl_job(job_id, "test", "default", state, store, _ValidLLM())
+        await run_nl_job(job_id, "test", "default", state, store, _ValidLLM(), deliver=None)
 
     job = await store.get(job_id)
     assert job.state == "complete"
@@ -118,11 +118,11 @@ async def test_one_branch_exhausted_others_complete():
                 return "INVALID@@"
             return "MATCH (n) RETURN n LIMIT 1"
 
-    async def _fake_execute(q, target, role, app_state):
+    async def _fake_execute(q, target, role, app_state, *, deliver):
         return {"columns": [], "rows": []}
 
     with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
-        await run_nl_job(job_id, "test", "default", state, store, _MixedLLM())
+        await run_nl_job(job_id, "test", "default", state, store, _MixedLLM(), deliver=None)
 
     job = await store.get(job_id)
     assert job.state == "complete"
@@ -139,12 +139,12 @@ async def test_all_valid_all_executed():
     state = _make_app_state()
     executed_targets: list[str] = []
 
-    async def _fake_execute(q, target, role, app_state):
+    async def _fake_execute(q, target, role, app_state, *, deliver):
         executed_targets.append(target)
         return {"columns": ["x"], "rows": [{"x": 1}]}
 
     with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
-        await run_nl_job(job_id, "test", "default", state, store, _ValidLLM())
+        await run_nl_job(job_id, "test", "default", state, store, _ValidLLM(), deliver=None)
 
     job = await store.get(job_id)
     assert job.state == "complete"
@@ -162,11 +162,13 @@ async def test_non_strict_cypher_derives_from_sql_branch():
 
     state = _make_app_state()
 
-    async def _fake_execute(q, target, role, app_state):
+    async def _fake_execute(q, target, role, app_state, *, deliver):
         return {"columns": ["x"], "rows": [{"x": 1}]}
 
     with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
-        await run_nl_job(job_id, "test", "default", state, store, _ValidLLM(), strict=False)
+        await run_nl_job(
+            job_id, "test", "default", state, store, _ValidLLM(), strict=False, deliver=None
+        )
 
     job = await store.get(job_id)
     assert job.state == "complete"
@@ -188,11 +190,13 @@ async def test_strict_mode_shares_one_chain_across_graphql_sql_cypher():
 
     state = _make_app_state()
 
-    async def _fake_execute(q, target, role, app_state):
+    async def _fake_execute(q, target, role, app_state, *, deliver):
         return {"columns": ["x"], "rows": [{"x": 1}]}
 
     with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
-        await run_nl_job(job_id, "test", "default", state, store, _ValidLLM(), strict=True)
+        await run_nl_job(
+            job_id, "test", "default", state, store, _ValidLLM(), strict=True, deliver=None
+        )
 
     job = await store.get(job_id)
     assert job is not None
@@ -224,10 +228,10 @@ async def test_job_store_updated_with_partial_results():
 
     store.update_branch = _tracked_update
 
-    async def _fake_execute(q, target, role, app_state):
+    async def _fake_execute(q, target, role, app_state, *, deliver):
         return {"columns": [], "rows": []}
 
     with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
-        await run_nl_job(job_id, "test", "default", state, store, _ValidLLM())
+        await run_nl_job(job_id, "test", "default", state, store, _ValidLLM(), deliver=None)
 
     assert len(update_calls) == 6

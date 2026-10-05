@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from provisa.compiler.naming import attach_catalog, engine_attach_name
 from provisa.federation.connector_base import (
     Capability,
     Connector,
@@ -628,8 +629,8 @@ class PostgresFdwConnector(Connector):  # REQ-893
         # identifier here parses as subtraction — reproduced live (REQ-1730, 2026-09-27/28):
         # "CREATE SERVER IF NOT EXISTS fdw_bench-postgresql ..." raised "syntax error at or near
         # '-'" against a real Postgres server.
-        server = f"fdw_{source.id}"
-        local_schema = f"fdw_{source.id}"
+        server = engine_attach_name("fdw", attach_catalog(source))
+        local_schema = engine_attach_name("fdw", attach_catalog(source))
         # Remote schema override rides on federation_hints (Source has no `schema` field — and
         # ``source.schema`` would resolve to pydantic's BaseModel.schema method, never the default).
         remote_schema = source.federation_hints.get("schema") or "public"
@@ -692,8 +693,8 @@ class PgClickHouseFdwConnector(Connector):  # REQ-1870
         return Capability(predicate_pushdown=True, join_pushdown=False, aggregate_pushdown=True)
 
     def details(self, source: Source) -> dict:
-        server = f"ch_{source.id}"
-        local_schema = f"ch_{source.id}"
+        server = engine_attach_name("ch", attach_catalog(source))
+        local_schema = engine_attach_name("ch", attach_catalog(source))
         remote_database = source.database or source.federation_hints.get("database") or "default"
         return {
             "attach_ddl": [
@@ -751,7 +752,7 @@ class PgDuckdbMotherDuckConnector(Connector):  # REQ-1868
                 f"Source {source.id!r}: 'password' (MotherDuck token) is required for the "
                 "motherduck connector"
             )
-        server = f"fdw_{source.id}"
+        server = engine_attach_name("fdw", attach_catalog(source))
         option_pairs = {
             "default_database": source.federation_hints.get("default_database"),
             "tables_owner_role": source.federation_hints.get("tables_owner_role"),
@@ -763,9 +764,9 @@ class PgDuckdbMotherDuckConnector(Connector):  # REQ-1868
         options_clause = f" OPTIONS ({options})" if options else ""
         return {
             "attach_ddl": [
-                f"CREATE SERVER IF NOT EXISTS {server} TYPE 'motherduck' "
+                f"CREATE SERVER IF NOT EXISTS \"{server}\" TYPE 'motherduck' "
                 f"FOREIGN DATA WRAPPER duckdb{options_clause}",
-                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
+                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
                 f"OPTIONS (token '{source.password}')",
             ],
             "server": server,
@@ -823,19 +824,19 @@ class _PgPgwireConnector(Connector):  # REQ-1730
         from provisa.federation.pgwire_replica import ensure_endpoint, schema_name
 
         ports = ensure_endpoint(source)  # starts (once) the source's bundled Calcite pgwire server
-        server = f"fdw_pgwire_{source.id}"
-        local_schema = f"fdw_pgwire_{source.id}"
+        server = engine_attach_name("fdw_pgwire", attach_catalog(source))
+        local_schema = engine_attach_name("fdw_pgwire", attach_catalog(source))
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
-                f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER postgres_fdw "
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
                 f"OPTIONS (host '{ports.calcite_child_host}', port '{ports.pgwire_port}', "
                 f"dbname 'provisa')",
-                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
+                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
                 f"OPTIONS (user 'provisa')",
-                f"CREATE SCHEMA IF NOT EXISTS {local_schema}",
-                f"IMPORT FOREIGN SCHEMA {schema_name(source)} FROM SERVER {server} "
-                f"INTO {local_schema}",
+                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
+                f'IMPORT FOREIGN SCHEMA {schema_name(source)} FROM SERVER "{server}" '
+                f'INTO "{local_schema}"',
             ],
             "local_schema": local_schema,
         }
@@ -873,12 +874,13 @@ class FileFdwConnector(Connector):  # REQ-893
         return Capability()  # file_fdw is a plain sequential scan — no pushdown
 
     def details(self, source: Source) -> dict:
+        server = engine_attach_name("fdw_file", attach_catalog(source))
         return {
             "server_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS file_fdw",
-                "CREATE SERVER IF NOT EXISTS fdw_file_srv FOREIGN DATA WRAPPER file_fdw",
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER file_fdw',
             ],
-            "server": "fdw_file_srv",
+            "server": server,
             "table_options": f"OPTIONS (filename '{source.path}', format 'csv', header 'true')",
         }
 
@@ -905,15 +907,15 @@ class SqliteFdwConnector(Connector):  # REQ-907
         return Capability(predicate_pushdown=True, write=True)
 
     def details(self, source: Source) -> dict:
-        server = f"fdw_{source.id}"
-        local_schema = f"fdw_{source.id}"
+        server = engine_attach_name("fdw", attach_catalog(source))
+        local_schema = engine_attach_name("fdw", attach_catalog(source))
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS sqlite_fdw",
-                f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER sqlite_fdw "
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER sqlite_fdw '
                 f"OPTIONS (database '{source.path}')",
-                f"CREATE SCHEMA IF NOT EXISTS {local_schema}",
-                f"IMPORT FOREIGN SCHEMA public FROM SERVER {server} INTO {local_schema}",
+                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
+                f'IMPORT FOREIGN SCHEMA public FROM SERVER "{server}" INTO "{local_schema}"',
             ],
             "local_schema": local_schema,
         }
@@ -941,20 +943,20 @@ class MysqlFdwConnector(Connector):  # REQ-907
         return Capability(predicate_pushdown=True, join_pushdown=True, write=True)
 
     def details(self, source: Source) -> dict:
-        server = f"fdw_{source.id}"
-        local_schema = f"fdw_{source.id}"
+        server = engine_attach_name("fdw", attach_catalog(source))
+        local_schema = engine_attach_name("fdw", attach_catalog(source))
         # Remote schema override rides on federation_hints (Source has no `schema` field — and
         # ``source.schema`` would resolve to pydantic's BaseModel.schema method, never the default).
         remote_schema = source.federation_hints.get("schema") or source.database
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS mysql_fdw",
-                f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER mysql_fdw "
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER mysql_fdw '
                 f"OPTIONS (host '{source.host}', port '{source.port}')",
-                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
+                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
                 f"OPTIONS (username '{source.username}', password '{source.password}')",
-                f"CREATE SCHEMA IF NOT EXISTS {local_schema}",
-                f"IMPORT FOREIGN SCHEMA {remote_schema} FROM SERVER {server} INTO {local_schema}",
+                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
+                f'IMPORT FOREIGN SCHEMA {remote_schema} FROM SERVER "{server}" INTO "{local_schema}"',
             ],
             "local_schema": local_schema,
         }
@@ -983,19 +985,19 @@ class TdsFdwConnector(Connector):  # REQ-900
         return Capability(predicate_pushdown=True, write=False)
 
     def details(self, source: Source) -> dict:
-        server = f"fdw_{source.id}"
-        local_schema = f"fdw_{source.id}"
+        server = engine_attach_name("fdw", attach_catalog(source))
+        local_schema = engine_attach_name("fdw", attach_catalog(source))
         remote_schema = source.federation_hints.get("schema") or "dbo"
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS tds_fdw",
-                f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER tds_fdw "
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER tds_fdw '
                 f"OPTIONS (servername '{source.host}', port '{source.port}', "
                 f"database '{source.database}', msg_handler 'notice')",
-                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
+                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
                 f"OPTIONS (username '{source.username}', password '{source.password}')",
-                f"CREATE SCHEMA IF NOT EXISTS {local_schema}",
-                f"IMPORT FOREIGN SCHEMA {remote_schema} FROM SERVER {server} INTO {local_schema}",
+                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
+                f'IMPORT FOREIGN SCHEMA {remote_schema} FROM SERVER "{server}" INTO "{local_schema}"',
             ],
             "local_schema": local_schema,
         }
@@ -1024,19 +1026,19 @@ class OracleFdwConnector(Connector):  # REQ-900
         return Capability(predicate_pushdown=True, join_pushdown=True, write=True)
 
     def details(self, source: Source) -> dict:
-        server = f"fdw_{source.id}"
-        local_schema = f"fdw_{source.id}"
+        server = engine_attach_name("fdw", attach_catalog(source))
+        local_schema = engine_attach_name("fdw", attach_catalog(source))
         # Oracle schema defaults to the connecting user's schema (upper-cased), overridable via hints.
         remote_schema = (source.federation_hints.get("schema") or source.username or "").upper()
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS oracle_fdw",
-                f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER oracle_fdw "
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER oracle_fdw '
                 f"OPTIONS (dbserver '//{source.host}:{source.port}/{source.database}')",
-                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
+                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
                 f"OPTIONS (user '{source.username}', password '{source.password}')",
-                f"CREATE SCHEMA IF NOT EXISTS {local_schema}",
-                f'IMPORT FOREIGN SCHEMA "{remote_schema}" FROM SERVER {server} INTO {local_schema}',
+                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
+                f'IMPORT FOREIGN SCHEMA "{remote_schema}" FROM SERVER "{server}" INTO "{local_schema}"',
             ],
             "local_schema": local_schema,
         }

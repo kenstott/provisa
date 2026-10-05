@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.helpers import attaching
 from provisa.core.models import Source, SourceType
 from provisa.federation.clickhouse_connectors import (
     ClickHouseCsvConnector,
@@ -29,9 +30,10 @@ from provisa.federation.engine import build_clickhouse_engine
 from provisa.federation.runtime import EngineCapability, EngineRuntime
 
 
-def _src(sid: str, type_: SourceType, **kw) -> Source:
+def _src(sid: str, type_: SourceType, *, catalog: str | None = None, **kw):
+    """The source as the engine attaches it, named after its catalog (the boot org's: its id)."""
     fields = {"host": "h", "port": 9000, "database": "db", "username": "u", "password": "p", **kw}
-    return Source(id=sid, type=type_, **fields)
+    return attaching(Source(id=sid, type=type_, **fields), catalog or sid)
 
 
 # ---- identity ----------------------------------------------------------------
@@ -64,6 +66,12 @@ def test_postgres_database_engine_ddl_and_local_schema():
     assert "ENGINE = PostgreSQL('pg:5432', 'inventory', 'u', 'p', 'public')" in ddl
     assert 'CREATE DATABASE IF NOT EXISTS "ch_shop"' in ddl
     assert d["local_schema"] == "ch_shop"
+    # REQ-1266/1529: another org's database carries its catalog name — its org.
+    other = ClickHousePostgresConnector().details(
+        _src("shop", SourceType.postgresql, catalog="org_beta__shop", host="pg", port=5432)
+    )
+    assert other["local_schema"] == "ch_org_beta__shop"
+    assert 'CREATE DATABASE IF NOT EXISTS "ch_org_beta__shop"' in other["attach_ddl"][0]
 
 
 def test_postgres_remote_schema_override_rides_on_federation_hints():

@@ -224,7 +224,7 @@ async def test_embedded_pg_fdw_connectors_federate(embedded_pg_with_fdw):
 
         # ---- attach customers.csv via the REAL FileFdwConnector ----
         csv_src = SimpleNamespace(
-            id="cust", path=str(_FILES / "customers.csv"), federation_hints={}
+            id="cust", catalog="cust", path=str(_FILES / "customers.csv"), federation_hints={}
         )
         fdet = FileFdwConnector().details(csv_src)
         for ddl in fdet["server_ddl"]:
@@ -233,12 +233,13 @@ async def test_embedded_pg_fdw_connectors_federate(embedded_pg_with_fdw):
         await conn.execute("DROP FOREIGN TABLE IF EXISTS e2e_files.customers")
         await conn.execute(
             f"CREATE FOREIGN TABLE e2e_files.customers ({', '.join(_CSV_COLS)}) "
-            f"SERVER {fdet['server']} {fdet['table_options']}"
+            f'SERVER "{fdet["server"]}" {fdet["table_options"]}'
         )
 
         # ---- attach demo_remote via the REAL PostgresFdwConnector (loopback to self) ----
         pg_src = SimpleNamespace(
             id="ord",
+            catalog="ord",
             schema="demo_remote",
             password="",
             federation_hints={"schema": "demo_remote"},

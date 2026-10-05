@@ -118,7 +118,9 @@ def _assert_names_table_and_key(error: RowLevelKeyRequired) -> None:
 async def test_pgwire_refuses_an_unfiltered_read_of_a_row_level_table(planning):
     """D3 symptom 2: pgwire answered `42P01 relation … does not exist` (or a partial replica)."""
     with pytest.raises(RowLevelKeyRequired) as refused:
-        await _pipeline.govern_pgwire_plan("SELECT o.id FROM sales.orders o LIMIT 1", "analyst")
+        await _pipeline.govern_pgwire_plan(
+            "SELECT o.id FROM sales.orders o LIMIT 1", "analyst", deliver=None
+        )
     _assert_names_table_and_key(refused.value)
 
 

@@ -21,15 +21,16 @@ from __future__ import annotations
 
 import pytest
 
+from tests.helpers import attaching
 from provisa.core.models import Source, SourceType
 from provisa.federation.connector import Mechanism
 from provisa.federation.connector_duckdb import PostgresFdwConnector
 from provisa.federation.engine import DriverClass, build_pg_engine
 
 
-def _src(sid: str, **kw) -> Source:
+def _src(sid: str, **kw):
     fields = {"host": "h", "port": 5432, "database": "db", "username": "u", "password": "p", **kw}
-    return Source(id=sid, type=SourceType.postgresql, **fields)
+    return attaching(Source(id=sid, type=SourceType.postgresql, **fields), sid.replace("-", "_"))
 
 
 class _FakeFetch:
@@ -128,13 +129,21 @@ def test_attach_ddl_defaults_remote_schema_to_public_when_unset():
     assert "bound method" not in imports[0]  # regression guard for the schema-vs-.schema() bug
 
 
-def test_local_schema_quotes_a_hyphenated_source_id():
-    # source.id may contain a hyphen -- an unquoted identifier here parses as subtraction,
-    # reproduced live (REQ-1730, 2026-09-27/28). local_schema itself is a private staging name
-    # (see comment above), so it stays "fdw_<id>" literally, just correctly quoted at use sites.
-    details = PostgresFdwConnector().details(_src("bench-postgresql"))
-    assert details["local_schema"] == "fdw_bench-postgresql"
-    assert any('"fdw_bench-postgresql"' in s for s in details["attach_ddl"])
+def test_attach_names_carry_the_sources_catalog_and_are_quoted():
+    # REQ-1266/1529: the server and the staging schema are named after the source's catalog name,
+    # which carries its org and environment, so two orgs or environments keeping one engine
+    # database never share one. An identifier with a hyphen (an environment's name may carry one)
+    # unquoted parses as subtraction (REQ-1730, 2026-09-27/28): quoted at every use.
+    src = attaching(
+        Source(id="bench-postgresql", type=SourceType.postgresql, host="h", username="u"),
+        "org_acme_env_qa-1__bench_postgresql",
+    )
+    details = PostgresFdwConnector().details(src)
+    name = "fdw_org_acme_env_qa-1__bench_postgresql"
+    assert details["local_schema"] == details["server"] == name
+    assert any(f'CREATE SERVER IF NOT EXISTS "{name}"' in s for s in details["attach_ddl"])
+    assert any(f'SERVER "{name}" OPTIONS' in s for s in details["attach_ddl"])
+    assert any(f'INTO "{name}"' in s for s in details["attach_ddl"])
 
 
 # ---- install-time provisioning probe (REQ-904) ------------------------------

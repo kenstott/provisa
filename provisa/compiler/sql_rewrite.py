@@ -421,7 +421,9 @@ def fold_catalog_into_schema(sql: str) -> str:  # REQ-1730
         if catalog is None:
             continue
         schema = tbl.args.get("db")
-        merged = f"{catalog.name}_{schema.name}" if schema is not None else catalog.name
+        from provisa.compiler.naming import live_view_schema
+
+        merged = live_view_schema(catalog.name, schema.name) if schema is not None else catalog.name
         tbl.set("catalog", None)
         tbl.set("db", exp.to_identifier(merged, quoted=True))
     return tree.sql(dialect="postgres")

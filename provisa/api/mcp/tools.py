@@ -384,7 +384,7 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     # untyped `llm` param relies on) rather than subclassing it.
     llm: Any = ProvisaLLMClient("sql_generation", config=cfg, api_keys=api_keys)
 
-    await run_nl_job(job_id, question, role, state, job_store, llm, strict=False)
+    await run_nl_job(job_id, question, role, state, job_store, llm, strict=False, deliver=None)
 
     job = await job_store.get(job_id)
     if job is None:
@@ -779,14 +779,26 @@ def list_commands(state: Any, role: str) -> list[dict]:
 
 
 async def run_sql(
-    state: Any, role: str, sql: str, limit: int | None = None, offset: int = 0
+    state: Any,
+    role: str,
+    sql: str,
+    limit: int | None = None,
+    offset: int = 0,
+    *,
+    redirect: bool = False,
+    redirect_format: str | None = None,
 ) -> dict:
     """Route SQL through _govern_and_route under ``role`` and execute it.
 
     A PermissionError from governance propagates to the caller (surfaced as an
     MCP tool error) — it is never swallowed into an empty result. Rows are
     capped/paged so the full result never lands in an agent's context.
+
+    ``redirect`` forces a delivery to the results store (REQ-1194) in ``redirect_format``;
+    the tool is a buffered transport, so REQ-1224's threshold also delivers a result over it
+    when the operator has enabled it. A delivered result answers its handle and no rows.
     """
+    from provisa.executor.redirect import delivery_from_request, parse_redirect_format
     from provisa.pgwire._pipeline import execute_sql_batch
 
     require_role(role, state)
@@ -800,7 +812,25 @@ async def run_sql(
     # ONE pipeline: execute the (possibly multi-statement) batch statement-aware, governing+executing
     # each statement (last result returned) — a registered command per statement still routes through
     # the shared function hook (REQ-1156), and a multi-statement batch is never silently truncated.
-    result = await execute_sql_batch(sql, role, state)  # raises PermissionError / ValueError
+    delivery = delivery_from_request(
+        force_redirect=redirect,
+        # A format that is no format is refused by name (ValueError), never defaulted.
+        redirect_format=parse_redirect_format(redirect_format) if redirect_format else None,
+        threshold=None,
+        role=role,
+    )
+    # raises PermissionError / ValueError
+    result = await execute_sql_batch(sql, role, state, deliver=delivery, buffered=True)
+    if result.redirect is not None:
+        return {
+            "columns": [],
+            "rows": [],
+            "row_count": 0,
+            "offset": 0,
+            "total_rows": result.redirect["row_count"],
+            "truncated": False,
+            "redirect": result.redirect,
+        }
 
     total = len(result.rows)
     window = result.rows[offset : offset + page]
