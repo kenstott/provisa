@@ -29,14 +29,19 @@ async def health_report(state: Any) -> dict[str, Any]:
     """The health of the worker answering, in the shape of ``GET /health``."""
     from provisa.core.request_context import reset_current_org, set_current_org
 
-    pg_status = "unavailable"
-    # The probe asks for no org (it needs no credential): the dependency it reports is the state
-    # store of the deployment's own org, named here rather than reached through an unbound read.
+    # The probe asks for no org (it needs no credential): what it reports -- the state store and
+    # the config stamps -- are the deployment's own org's, so the whole report is bound to that
+    # org by name rather than reached through an unbound read (REQ-1266).
     token = set_current_org(state.org_id)
     try:
-        tenant_db = state.tenant_db
+        return await _deployment_health(state)
     finally:
         reset_current_org(token)
+
+
+async def _deployment_health(state: Any) -> dict[str, Any]:
+    pg_status = "unavailable"
+    tenant_db = state.tenant_db
     if tenant_db is not None:
         try:
             async with tenant_db.acquire() as conn:
