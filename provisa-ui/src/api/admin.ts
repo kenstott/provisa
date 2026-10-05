@@ -1487,7 +1487,7 @@ export interface ReplicaBuild {
   /** idle (built, nothing pending) | requested | building | failed | retired */
   state: string;
   requestedReason: string | null;
-  /** engine_statement | stream_batches, of the running or last build */
+  /** engine_statement | stream_batches | store_pipeline | delta, of the running or last build */
   method: string | null;
   /** bulk_stream | row_copy */
   loadKind: string | null;

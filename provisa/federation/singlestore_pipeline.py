@@ -65,16 +65,24 @@ def _scheme(location: str) -> str:
     return head.lower() if sep else ""
 
 
-def origin_of(source: Any, table: dict | None = None) -> LandOrigin:
-    """The :class:`LandOrigin` of ``table`` on ``source``. A Kafka table names its topic and
-    format in ``live.kafka`` (REQ-813); a file source's location is its ``path`` and its format is
-    its type."""
+def _field(holder: Any, name: str) -> Any:
+    """``name`` of a registered-table row (a dict) or of a model object; None when absent."""
+    if holder is None:
+        return None
+    if isinstance(holder, dict):
+        return holder.get(name)
+    return getattr(holder, name, None)
+
+
+def origin_of(source: Any, table: Any = None) -> LandOrigin:
+    """The :class:`LandOrigin` of ``table`` (a registered-table row or a model table) on
+    ``source``. A Kafka table names its topic and format in ``live.kafka`` (REQ-813); a file
+    source's location is its ``path`` and its format is its type."""
     source_type = source.type.value if hasattr(source.type, "value") else str(source.type)
     if source_type == "kafka":
-        live = (table or {}).get("live") or {}
-        kafka = (live.get("kafka") or {}) if isinstance(live, dict) else {}
+        kafka = _field(_field(table, "live"), "kafka")
         return LandOrigin(
-            "kafka", kafka.get("topic") or "", (kafka.get("format") or "json").lower()
+            "kafka", _field(kafka, "topic") or "", (_field(kafka, "format") or "json").lower()
         )
     return LandOrigin(source_type, source.path or "", source_type)
 

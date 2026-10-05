@@ -522,6 +522,52 @@ class SqlAlchemyStoreTarget:
         if rows:
             await asyncio.to_thread(self._write, rows)
 
+    @property
+    def schema(self) -> str:
+        return self._schema
+
+    @property
+    def table(self) -> str:
+        return self._table
+
+    @property
+    def build_table_name(self) -> str:
+        """The table this build fills before it is swapped in."""
+        return self._build
+
+    @staticmethod
+    def _execute_raw(conn: Any, statements: list[str], *, tolerate: tuple[int, ...] = ()) -> None:
+        """Run ``statements`` in order on the driver's own connection under ``conn``, then commit.
+        A statement failing with an error number in ``tolerate`` is passed over."""
+        raw = conn.connection.driver_connection
+        cursor = raw.cursor()
+        try:
+            for sql in statements:
+                try:
+                    cursor.execute(sql)
+                except Exception as exc:  # noqa: BLE001 — only the named error numbers pass
+                    if getattr(exc, "errno", None) not in tolerate:
+                        raise
+        finally:
+            cursor.close()
+        raw.commit()
+
+    async def run_on_build(self, statements: list[str], *, tolerate: tuple[int, ...] = ()) -> None:
+        """Run store statements on this build's own connection (a SingleStore pipeline that loads
+        the build table, REQ-990), after :meth:`begin` and before :meth:`swap`."""
+        await asyncio.to_thread(self._execute_raw, self._conn, statements, tolerate=tolerate)
+
+    def _build_row_count(self) -> int:
+        from sqlalchemy import func, select
+
+        return int(
+            self._conn.execute(select(func.count()).select_from(self._build_table)).scalar_one()
+        )
+
+    async def build_row_count(self) -> int:
+        """How many rows the build table holds now."""
+        return await asyncio.to_thread(self._build_row_count)
+
     def _replace_rows(self, conn: Any, standing: bool) -> None:
         """Replace the replica's rows with the build table's in one transaction, in the
         replica's own table; the first build creates that table, with its key."""
@@ -607,9 +653,25 @@ class SqlAlchemyStoreTarget:
         with self._sa.begin() as conn:
             for name in (self._build, self._previous, self._table):
                 self._drop_if_present(conn, name)
+        if self._dialect == "singlestoredb":
+            # REQ-990: a pipeline-built replica's pipeline and credential link go with it. Their
+            # names are the replica's; either may be absent (a build that never ran by pipeline).
+            from provisa.federation import singlestore_pipeline as sp
+
+            with self._sa.connect() as conn:
+                self._execute_raw(
+                    conn,
+                    sp.teardown(
+                        self._schema,
+                        sp.pipeline_name(self._schema, self._table),
+                        link=sp.link_name(self._schema, self._table),
+                    ),
+                    tolerate=(sp.NO_SUCH_LINK,),
+                )
 
     async def drop(self) -> None:
-        """Remove the replica and any build table left beside it."""
+        """Remove the replica and any build table left beside it (and, on SingleStore, the
+        pipeline and credential link that loaded it)."""
         from provisa.federation.replica_guard import require_replicas_schema
 
         require_replicas_schema(self._schema, self._table, action="drop the replica at")
