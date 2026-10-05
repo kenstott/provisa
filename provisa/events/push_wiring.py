@@ -225,6 +225,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
 
         task = spawn_long_lived(
             _run_listener(
+                state=state,
                 engine=engine,
                 provider=provider,
                 watch_target=watch_target,
@@ -457,6 +458,7 @@ async def _run_change_stream(
 
 async def _run_listener(
     *,
+    state: Any,
     engine: Any,
     provider: Any,
     watch_target: str,
@@ -490,7 +492,7 @@ async def _run_listener(
         # running waits for it and lands in the new table; applied by key, a change the build
         # already copied is applied again harmlessly.
         async with _held(write_lock):
-            return await engine.apply_cdc_events(
+            counts = await engine.apply_cdc_events(
                 schema=land_schema,
                 table=land_table,
                 columns=columns,
@@ -499,6 +501,14 @@ async def _run_listener(
                 row_materialize=row_materialize,
                 node=node,
             )
+        # A landed batch is this table's change: the views that read it are told and its
+        # freshness moves, as for any other landing (REQ-961). A row-level table has no node of its
+        # own; its keys are refreshed by the row cache's own work item (REQ-1865).
+        if not row_materialize and any(counts.values()):
+            from provisa.events.ripple import ripple
+
+            await ripple(state, node, event_type="delta", payload={"landed": counts})
+        return counts
 
     try:
         await consume_cdc_into_store(
