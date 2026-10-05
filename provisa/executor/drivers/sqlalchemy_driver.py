@@ -38,6 +38,9 @@ def _to_named_params(sql: str, params: list | None) -> tuple[str, dict[str, Any]
     Replaces highest index first so ``$1`` does not corrupt ``$10`` (same guard the native MySQL
     driver uses for its ``%s`` conversion). Returns the rewritten SQL and the bind dict.
     """
+    from provisa.core.database import _literal_colons_escaped
+
+    sql = _literal_colons_escaped(sql)  # a colon in a literal is text, never a bind
     if not params:
         return sql, {}
     out = sql
