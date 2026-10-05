@@ -53,6 +53,7 @@ import {
   pickSchemaAndTable,
   runSqlOnPage,
   releaseDraftTables,
+  setSourceCacheTtl,
   submitSourceAndExpectListed,
 } from "./source-to-query-helpers";
 
@@ -135,6 +136,8 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
     await page.getByLabel(/^Database/).fill("wh"); // demo/sources/hiveserver2/prime.py's seeded db
     // auth_mechanism defaults to PLAIN (SourceFormFields.tsx), which is what demo/sources/
     // hiveserver2's stock HS2 speaks — left untouched.
+    // REQ-1907: a source the engine lands needs a landing clock before a table is registered.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
