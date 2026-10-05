@@ -271,12 +271,18 @@ async def sample_topic_records(  # REQ-150
 ) -> list[dict]:
     """Consume up to ``max_records`` JSON messages from ``topic`` (SchemaSource.SAMPLE).
 
-    Reads from the earliest offset and JSON-decodes each value; non-JSON messages are
-    skipped. Requires a reachable broker. Returns the decoded records.
-    """
+    Reads from the earliest offset to the end offset each partition had when sampling began (or
+    until ``max_records`` are read), and JSON-decodes each value; non-JSON messages are skipped.
+    Requires a reachable broker. ``timeout_ms`` bounds each poll, not the read: a poll can come back
+    empty while the consumer is still being assigned its partitions (a loaded machine takes longer
+    than one poll for that), so the read keeps polling until the end offsets are reached. The
+    whole read is bounded by the request's own deadline (``provisa.core.request_deadline``), whose
+    expiry raises. Returns the decoded records; an empty topic returns none."""
     import json
 
-    from aiokafka import AIOKafkaConsumer
+    from aiokafka import AIOKafkaConsumer, TopicPartition
+
+    from provisa.core import request_deadline
 
     consumer = AIOKafkaConsumer(
         topic,
@@ -288,10 +294,14 @@ async def sample_topic_records(  # REQ-150
     await consumer.start()
     records: list[dict] = []
     try:
-        while len(records) < max_records:
-            batch = await consumer.getmany(timeout_ms=timeout_ms, max_records=max_records)
-            if not batch:
-                break
+        partitions = consumer.partitions_for_topic(topic) or set()
+        ends = await consumer.end_offsets([TopicPartition(topic, p) for p in partitions])
+        pending = {tp: end for tp, end in ends.items() if end > 0}
+        while pending and len(records) < max_records:
+            request_deadline.check()
+            left = request_deadline.remaining()
+            poll_ms = timeout_ms if left is None else max(1, min(timeout_ms, int(left * 1000)))
+            batch = await consumer.getmany(timeout_ms=poll_ms, max_records=max_records)
             for _tp, messages in batch.items():
                 for msg in messages:
                     if msg.value is None:
@@ -302,6 +312,9 @@ async def sample_topic_records(  # REQ-150
                         continue
                     if isinstance(decoded, dict):
                         records.append(decoded)
+            for tp in [tp for tp in pending if tp in consumer.assignment()]:
+                if await consumer.position(tp) >= pending[tp]:
+                    del pending[tp]
     finally:
         await consumer.stop()
     return records[:max_records]
