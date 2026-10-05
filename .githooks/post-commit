@@ -5,8 +5,5 @@ if [ -f .env ]; then
     set -a && source .env && set +a
 fi
 
+# Stamps, writes the shared site and deploys it under one lock (scripts/canary_stamp.py).
 python scripts/canary_stamp.py
-
-if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && [ -n "$CANARY_SITE_DIR" ]; then
-    npx wrangler pages deploy "$CANARY_SITE_DIR" --project-name=simpleishard-canary
-fi
