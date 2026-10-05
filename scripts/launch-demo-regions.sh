@@ -25,7 +25,8 @@
 #   scripts/launch-demo-regions.sh --reset    # wipe its data dir first, then start
 #   scripts/launch-demo-regions.sh --stop     # stop everything this instance started
 #   scripts/launch-demo-regions.sh --test     # spec-owned mode: unique unexposed ports, temp data
-#                                              #   dir, print machine-readable PORTS line, stay up
+#                                              #   dir, print machine-readable PORTS line and the
+#                                              #   CREDS_FILE path (never a password), stay up
 #   scripts/launch-demo-regions.sh --check     # scaffold self-check (paths/tokens), no launch
 
 set -euo pipefail
@@ -90,15 +91,21 @@ fi
 
 # --- demo credentials: generated once per instance, reused across restarts (--reset regenerates) ---
 CREDS_FILE="$INSTANCE_DIR/creds.env"
+_rand() { openssl rand -hex "$1"; }
 if [[ "$MODE" == "test" ]]; then
-  # Fixed, known creds so the spec can log in (the instance is throwaway and unexposed).
-  ADMIN_PW="admin-test-pw"; OPERATOR_PW="operator-test-pw"; RESIDENT_PW="resident-test-pw"
-  JWT_SECRET="regions-demo-test-jwt-secret-0001234567"
+  # Fresh per run and never printed: CI keeps stdout in its logs. The spec reads the passwords from
+  # TEST_CREDS, a 0600 file inside this run's temp dir (0700, removed by the EXIT trap); stdout
+  # carries only its path.
+  ADMIN_PW="$(_rand 24)"; OPERATOR_PW="$(_rand 24)"; RESIDENT_PW="$(_rand 24)"
+  JWT_SECRET="$(_rand 32)"
+  TEST_CREDS="$INSTANCE_DIR/test-creds.json"
+  ( umask 077
+    printf '{"admin": "%s", "operator": "%s", "resident": "%s"}\n' \
+      "$ADMIN_PW" "$OPERATOR_PW" "$RESIDENT_PW" >"$TEST_CREDS" )
 elif [[ -f "$CREDS_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$CREDS_FILE"
 else
-  _rand() { openssl rand -hex "$1" 2>/dev/null || date +%s%N | shasum | head -c $(( $1 * 2 )); }
   ADMIN_PW="admin-$(_rand 6)"
   OPERATOR_PW="operator-$(_rand 6)"
   RESIDENT_PW="resident-$(_rand 6)"
@@ -219,7 +226,7 @@ _seed_users
 if [[ "$MODE" == "test" ]]; then
   # Machine-readable lines the Playwright harness parses, then it waits for readiness itself.
   echo "PORTS eu_ui=$EU_UI eu_api=$EU_API us_ui=$US_UI us_api=$US_API"
-  echo "CREDS operator=$OPERATOR_PW resident=$RESIDENT_PW admin=$ADMIN_PW"
+  echo "CREDS_FILE $TEST_CREDS"
   wait  # stay up until the spec kills the process group (teardown trap wipes the temp dir)
 else
   echo "demo-regions up:"

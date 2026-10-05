@@ -11,6 +11,7 @@
 // by testMatch/testIgnore. No skip -- selecting the project is the gate.
 
 import { spawn, execSync, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "./coverage";
@@ -37,15 +38,17 @@ function launch(): Promise<Env> {
   proc = spawn("bash", [script, "--test"], { stdio: ["ignore", "pipe", "inherit"] });
   return new Promise<Env>((resolve, reject) => {
     // Generous: a fresh worktree builds the UI bundle once (provisa/_ui) before the nodes start.
-    const timer = setTimeout(() => reject(new Error("demo-regions did not print PORTS/CREDS in 420s")), 420_000);
+    const timer = setTimeout(() => reject(new Error("demo-regions did not print PORTS/CREDS_FILE in 420s")), 420_000);
     let buf = "";
     proc!.stdout!.on("data", (d: Buffer) => {
       buf += d.toString();
       const p = buf.match(/PORTS eu_ui=(\d+) eu_api=(\d+) us_ui=(\d+) us_api=(\d+)/);
-      const c = buf.match(/CREDS operator=(\S+) resident=(\S+)/);
+      // The launcher never prints a password: it names a 0600 file in its own temp dir.
+      const c = buf.match(/CREDS_FILE (\S+)/);
       if (p && c) {
         clearTimeout(timer);
-        resolve({ euUi: +p[1], euApi: +p[2], usUi: +p[3], usApi: +p[4], operatorPw: c[1], residentPw: c[2] });
+        const creds = JSON.parse(fs.readFileSync(c[1], "utf8")) as { operator: string; resident: string };
+        resolve({ euUi: +p[1], euApi: +p[2], usUi: +p[3], usApi: +p[4], operatorPw: creds.operator, residentPw: creds.resident });
       }
     });
     proc!.on("exit", (code) => reject(new Error(`launcher exited early (${code})`)));
