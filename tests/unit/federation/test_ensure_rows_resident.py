@@ -282,3 +282,43 @@ async def test_no_resolved_cache_ttl_raises(sqlite_dsn, patched_registry):
     )
     with pytest.raises(ValueError, match="no resolved cache_ttl"):
         await ensure_rows_resident(state, [bound], reader_role=None)
+
+
+@pytest.mark.asyncio
+async def test_a_row_level_table_kept_in_another_region_is_never_fetched_into_this_one(
+    sqlite_dsn, patched_registry
+):
+    """REQ-1921/1922: a row-level table naming eu, read on a us node: its rows are kept in eu
+    only, so this region fetches none of them into its own store (its read is judged — refused
+    naming eu, or read in place — by ensure_resident)."""
+    from provisa.core import process_region
+    from provisa.federation.query_residency import ensure_rows_resident
+
+    was = process_region._region
+    process_region.bind_launch(
+        {
+            "regions": [
+                {"id": "eu", "address": "https://eu.example.com"},
+                {"id": "us", "address": "https://us.example.com"},
+            ]
+        },
+        requested="us",
+    )
+    try:
+        table = _table()
+        table.region = "eu"
+        patched_registry.table = table
+        patched_registry.source = _source()
+        patched_registry.loader = _FakeLoader({(1,): {"id": 1, "status": "new"}})
+        state = types.SimpleNamespace(federation_engine=_FakeEngine(sqlite_dsn))
+        bound = PkBound(
+            source_id="pg1",
+            schema_name="public",
+            table_name="orders",
+            pk_columns=("id",),
+            values=((1,),),
+        )
+        assert await ensure_rows_resident(state, [bound], reader_role=None) == []
+        assert patched_registry.loader.calls == []
+    finally:
+        process_region._region = was
