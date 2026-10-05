@@ -5,7 +5,7 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { describe, it, expect } from "vitest";
-import { liveCapability, cdcTransportApplicable } from "../liveCapability";
+import { liveCapability, cdcTransportApplicable, sourceChangeSignals } from "../liveCapability";
 
 describe("liveCapability", () => {
   it("postgresql supports both poll and cdc", () => {
@@ -88,5 +88,20 @@ describe("cdcTransportApplicable (REQ-824)", () => {
     expect(cdcTransportApplicable("MySQL")).toBe(true);
     expect(cdcTransportApplicable(null)).toBe(false);
     expect(cdcTransportApplicable(undefined)).toBe(false);
+  });
+});
+
+describe("sourceChangeSignals (REQ-929/REQ-1907)", () => {
+  it("offers a push source only its own push signal, never ttl", () => {
+    expect(sourceChangeSignals("kafka")).toEqual(["kafka"]);
+    expect(sourceChangeSignals("websocket")).toEqual(["native"]);
+    expect(sourceChangeSignals("ingest")).toEqual(["native"]);
+    expect(sourceChangeSignals("Ingest")).toEqual(["native"]);
+  });
+
+  it("offers a polled source ttl first, then its transport push signals", () => {
+    expect(sourceChangeSignals("postgresql")).toEqual(["ttl", "native", "debezium", "kafka"]);
+    expect(sourceChangeSignals("csv")).toEqual(["ttl"]);
+    expect(sourceChangeSignals(null)).toEqual(["ttl"]);
   });
 });

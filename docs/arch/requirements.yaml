@@ -27897,14 +27897,33 @@
   description: 'The notification/inbound change signal is independent from the watermark column. Allowed
     values: ttl | probe | probe+ttl | native | debezium | kafka. When a watermark exists, probe defaults
     to MAX(watermark); otherwise probe is a source-native query or TTL is used. Push variants (native/debezium/kafka)
-    rely on the operator to maintain feed health.'
+    rely on the operator to maintain feed health. (Amended 2026-10-05:) A source whose TYPE is
+    inherently push-fed is named by the one canonical PUSH_SOURCE_TYPES set -- ingest and websocket
+    (rows delivered natively) and kafka (its own feed) -- and carries a push change signal: when the
+    signal is UNSET it resolves to the type''s push signal (ingest/websocket -> native, kafka ->
+    kafka, derived from the transport each listener declares in push_wiring and the push
+    vocabulary), and an EXPLICIT non-push signal (e.g. ttl) is REFUSED by name at registration, on
+    both the config-load and admin paths -- a push source cannot be polled, so it is never silently
+    overridden. A push source therefore needs no cache_ttl (REQ-1907) and is served from what its
+    push path keeps, never by a replica build: replica_converge.whole_copy -- the one answer for
+    convergence, the read backstop, and the build itself -- reports a push source''s table has no
+    whole copy to build. push_wiring derives its narrower "runs a background listener" set
+    (kafka/websocket; ingest is a synchronous HTTP endpoint with no listener) from the same canonical
+    set.'
   use_case: Change signals are orthogonal to watermarking; different sources may use different notification
     mechanisms (polling vs. push, automatic vs. operator-managed).
   code:
   - provisa/core/change_signal.py
+  - provisa/core/models.py
+  - provisa/federation/replica_converge.py
+  - provisa/events/push_wiring.py
+  - provisa/api/admin/schema_mutation.py
   tests:
   - tests/unit/test_change_signal.py
-  related_reqs: []
+  - tests/unit/test_push_wiring.py
+  - tests/unit/federation/test_replica_builds.py
+  related_reqs:
+  - REQ-1907
 - id: REQ-930
   status: complete
   since: 2026-07

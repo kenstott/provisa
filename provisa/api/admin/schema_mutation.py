@@ -399,6 +399,7 @@ def _validate_source_load_management(input: SourceInput) -> "MutationResult | No
     off-peak window (REQ-1141), and at least one refresh gate when load protected (REQ-1141).
     Returns a failing MutationResult naming the rule, else None."""
     from provisa.core.change_signal import resolve as _resolve_signal
+    from provisa.core.change_signal import source_change_signal
 
     def _fail(code: str, message: str) -> MutationResult:
         return MutationResult(
@@ -412,6 +413,12 @@ def _validate_source_load_management(input: SourceInput) -> "MutationResult | No
         _resolve_signal(None, input.change_signal)
     except ValueError as e:
         return _fail("schema.invalid_change_signal", str(e))
+    # REQ-1907/REQ-929: a push source type cannot be polled — an explicit non-push change_signal is
+    # refused by name (an unset one resolves to the type's push signal, applied at model build).
+    try:
+        source_change_signal(input.type, input.change_signal)
+    except ValueError as e:
+        return _fail("schema.change_signal_not_push", str(e))
     if input.cache_ttl is not None and input.cache_ttl < 0:
         return _fail("schema.invalid_cache_ttl", "cache_ttl must be 0 or more seconds")
     if input.max_live_concurrency is not None and input.max_live_concurrency < 1:

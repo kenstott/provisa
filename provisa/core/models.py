@@ -322,6 +322,26 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
             raise ValueError(f"source {self.id!r}: {refused}")
         return self
 
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_push_source_change_signal(cls, data: Any) -> Any:  # REQ-1907, REQ-929
+        # A push source type's rows arrive by push (a kafka/websocket listener, or the ingest
+        # inbound endpoint), so its change signal is INHERENTLY a push signal, never the global
+        # ``ttl`` default. Resolved here, where UNSET (key absent / None) is still distinguishable
+        # from an explicit value: an unset signal takes the type's push signal; an explicit non-push
+        # signal is REFUSED by name (a push source cannot be polled) rather than silently overridden.
+        # mode="before" so a dict being validated is seen as given; a non-dict (a model being
+        # revalidated) is already resolved and passes through untouched.
+        if not isinstance(data, dict) or "type" not in data:
+            return data
+        stype = data["type"]
+        stype = stype.value if hasattr(stype, "value") else stype
+        from provisa.core.change_signal import PUSH_SOURCE_TYPES, source_change_signal
+
+        if stype in PUSH_SOURCE_TYPES:
+            data = {**data, "change_signal": source_change_signal(stype, data.get("change_signal"))}
+        return data
+
     @property
     def connector(self) -> str | None:
         """The Trino catalog ``connector.name`` (the ``USING`` label) for this source type, or None if

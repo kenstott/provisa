@@ -213,6 +213,24 @@ async def test_a_build_of_a_table_with_no_whole_copy_is_refused_before_anything_
     assert backend.log == []
 
 
+async def test_a_build_of_a_push_source_table_is_refused_before_anything_is_read(wiring):
+    """REQ-1907/REQ-929: a push source (ingest/websocket/kafka) is fed by its push path, has no
+    whole copy to build, and would hit the "no engine-scannable table and no adapter row-fetch"
+    refusal — convergence and the read backstop never ask for its build either."""
+    for stype in ("ingest", "websocket", "kafka"):
+        table = _table()
+        source = _source()
+        source.type = stype
+        backend = _Backend()
+        with pytest.raises(replica_builds.NoWholeCopy, match="public.events of source s1"):
+            await replica_builds.build_replica(
+                _state(backend, sources=[source], tables=[table]),
+                ("s1", "public", "events"),
+                _noop,
+            )
+        assert backend.log == []
+
+
 async def test_a_build_reads_the_table_and_replaces_its_replica_at_the_replicas_address(wiring):
     backend = _Backend()
     outcome = await replica_builds.build_replica(_state(backend), ("s1", "public", "events"), _noop)

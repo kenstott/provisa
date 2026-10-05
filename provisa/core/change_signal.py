@@ -36,6 +36,57 @@ TRIGGER_SIGNALS = frozenset({"signal"})
 VALID_SIGNALS = POLL_SIGNALS | PUSH_SIGNALS | TRIGGER_SIGNALS
 DEFAULT_SIGNAL = "ttl"
 
+# REQ-1907/REQ-929: the one canonical set of source types whose rows arrive by PUSH -- a listener
+# (kafka/websocket) or an inbound endpoint (ingest) feeds the table, never a poll. Their
+# change_signal is INHERENTLY a push signal, so the global ``ttl`` default never applies: a push
+# source needs no cache_ttl (REQ-1907) and is served from what its push path keeps, never a replica
+# build. push_wiring, role_ttl and source_loader all key off THIS set, never an ad-hoc literal (the
+# narrower "runs a background listener" set -- kafka/websocket, not ingest -- is derived from it).
+PUSH_SOURCE_TYPES = frozenset({"ingest", "websocket", "kafka"})
+
+
+def push_signal_for_source_type(source_type: str) -> str:
+    """The push change_signal a push source type carries, derived from the push transport each one
+    declares in push_wiring and the push vocabulary (:data:`PUSH_SIGNALS`):
+
+    - ``kafka`` -> ``kafka``: Kafka is its own named push provider (push_wiring builds a Kafka
+      provider; :func:`to_provider` names ``kafka`` for the ``kafka`` signal).
+    - ``websocket`` -> ``native``: push_wiring's websocket listener lands through the REQ-1733
+      source-native CDC path (its ``_CHANGE_FEED_SIGNAL`` is ``native``); there is no distinct named
+      transport.
+    - ``ingest`` -> ``native``: the inbound HTTP endpoint delivers rows natively, again no distinct
+      named transport.
+
+    A non-push source type is a programming error (callers gate on :data:`PUSH_SOURCE_TYPES`)."""
+    if source_type == "kafka":
+        return "kafka"
+    if source_type in ("ingest", "websocket"):
+        return "native"
+    raise ValueError(f"{source_type!r} is not a push source type")
+
+
+def source_change_signal(source_type: str, configured_signal: str | None) -> str:
+    """The effective change_signal for a source of ``source_type`` given its configured signal
+    (REQ-929/REQ-1907). For a push source type (:data:`PUSH_SOURCE_TYPES`):
+
+    - an UNSET signal (``None``) resolves to the type's push signal
+      (:func:`push_signal_for_source_type`);
+    - an EXPLICIT non-push signal is a configuration error, refused by name -- a push source cannot
+      be polled, so a ``ttl``/``probe`` on it is never silently overridden.
+
+    A non-push type resolves an unset signal to the global default; an explicit one is returned as
+    given (its validity is checked by :func:`resolve`)."""
+    if source_type in PUSH_SOURCE_TYPES:
+        if configured_signal is None:
+            return push_signal_for_source_type(source_type)
+        if not is_push(configured_signal):
+            raise ValueError(
+                f"source type {source_type!r} is push; change_signal {configured_signal!r} is not "
+                f"a push signal (expected one of {sorted(PUSH_SIGNALS)}, or leave it unset)"
+            )
+        return configured_signal
+    return configured_signal if configured_signal is not None else DEFAULT_SIGNAL
+
 
 def resolve(
     table_signal: str | None, source_signal: str | None, *, default: str = DEFAULT_SIGNAL

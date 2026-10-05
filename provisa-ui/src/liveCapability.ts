@@ -79,11 +79,24 @@ export function availableStrategies(sourceType: string | null | undefined): stri
   return STRATEGIES_BY_SOURCE_TYPE[t] ?? ["poll"];
 }
 
+// REQ-1907/REQ-929: source types whose rows arrive by PUSH, each with the one push change_signal it
+// carries. Mirrors backend provisa/core/change_signal.py PUSH_SOURCE_TYPES /
+// push_signal_for_source_type: a push source is never polled, so ttl is never offered for it (the
+// server refuses an explicit non-push signal on a push source by name).
+const PUSH_SIGNAL_BY_SOURCE_TYPE: Record<string, string> = {
+  kafka: "kafka",
+  websocket: "native",
+  ingest: "native",
+};
+
 // REQ-929: source-level change_signal options, gated by source type. Only source-wide mechanisms
 // belong here: ttl (timer) and the transport-driven push signals. probe/ttl_probe are TABLE-level
 // only — their token comes from a per-table probe_query (or MAX(watermark_column)), neither of which
-// exists on a Source — so they are offered on the table editor, not here.
+// exists on a Source — so they are offered on the table editor, not here. A push source type offers
+// only its own push signal.
 export function sourceChangeSignals(sourceType: string | null | undefined): string[] {
+  const push = PUSH_SIGNAL_BY_SOURCE_TYPE[(sourceType ?? "").toLowerCase()];
+  if (push) return [push];
   const strat = availableStrategies(sourceType);
   const out: string[] = ["ttl"]; // poll → timer default; every source can fall back to ttl
   if (strat.includes("native")) out.push("native");

@@ -473,7 +473,7 @@ export function SourcesPage() {
       loadProtected: s.loadProtected ?? false,
       offPeakWindow: s.offPeakWindow ?? "",
       offPeakTz: s.offPeakTz ?? "UTC",
-      changeSignal: s.changeSignal || "ttl",
+      changeSignal: s.changeSignal || sourceChangeSignals(uiType(s.type))[0],
       sentinelPath: s.sentinelPath ?? "",
       freshnessGate: s.freshnessGate,
       maxLiveConcurrency: s.maxLiveConcurrency != null ? String(s.maxLiveConcurrency) : "",

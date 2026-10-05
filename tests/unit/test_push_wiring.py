@@ -18,6 +18,8 @@ from __future__ import annotations
 import logging
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from provisa.core.models import Source, SourceType
 from provisa.events.push_wiring import _build_provider
 
@@ -94,3 +96,33 @@ def test_websocket_derives_url_from_host_and_port_when_no_base_url():
 def test_non_push_source_type_returns_none():
     src = _source(type=SourceType.postgresql, host="db", port=5432)
     assert _build_provider(src, {}, node="s.t") is None
+
+
+class TestPushSourceChangeSignal:
+    """REQ-1907/REQ-929: a push source type carries an inherently-push change_signal. An unset
+    signal resolves to the type's push signal (needs no cache_ttl, never built as a replica); an
+    explicit non-push signal is refused by name — never silently overridden."""
+
+    def test_unset_push_source_defaults_to_its_push_signal(self):
+        from provisa.core.change_signal import is_push
+
+        # host/port but NO change_signal -> the key is unset, so the type's push signal applies.
+        assert _source(type=SourceType.ingest, host="", port=0).change_signal == "native"
+        assert _source(type=SourceType.websocket, host="", port=0).change_signal == "native"
+        assert _source(type=SourceType.kafka, host="", port=0).change_signal == "kafka"
+        for st in (SourceType.ingest, SourceType.websocket, SourceType.kafka):
+            assert is_push(_source(type=st, host="", port=0).change_signal)
+
+    def test_an_explicit_push_signal_on_a_push_source_is_kept(self):
+        assert _source(type=SourceType.kafka, change_signal="kafka").change_signal == "kafka"
+        assert _source(type=SourceType.websocket, change_signal="native").change_signal == "native"
+
+    def test_an_explicit_poll_signal_on_a_push_source_is_refused_by_name(self):
+        from pydantic import ValidationError
+
+        for st in (SourceType.kafka, SourceType.ingest, SourceType.websocket):
+            with pytest.raises(ValidationError, match="is not a push signal"):
+                _source(type=st, change_signal="ttl")
+
+    def test_a_poll_source_keeps_the_ttl_default(self):
+        assert _source(type=SourceType.postgresql, host="db", port=5432).change_signal == "ttl"
