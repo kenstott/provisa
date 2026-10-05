@@ -79,9 +79,10 @@ def _r818_when_execute(r818: dict, monkeypatch) -> None:
 
     sent: dict = {}
 
-    async def _govern(sql, role_id, *, exec_params=None, state=None, cache_hint=None):
-        # The one pipeline's governance stage, as it receives the route's write.
-        sent.update(sql=sql, role_id=role_id, params=exec_params)
+    async def _govern(sql, role_id, *, exec_params=None, state=None, cache_hint, sdl_joins):
+        # The one pipeline's governance stage, as it receives the route's write: required
+        # keywords as the real one declares them, so a call that drifts fails here by name.
+        sent.update(sql=sql, role_id=role_id, params=exec_params, sdl_joins=sdl_joins)
         return types.SimpleNamespace(sql=sql)
 
     async def _execute(plan, _state):
@@ -104,6 +105,7 @@ def _r818_when_execute(r818: dict, monkeypatch) -> None:
 def _r818_then_row_filter(r818: dict) -> None:
     sent = r818["sent"]
     assert sent["role_id"] == "writer"
+    assert sent["sdl_joins"] is False  # a Cypher write: its joins are not the SDL's
     sql = sent["sql"]
     assert sql.upper().startswith("INSERT INTO") and "USERS" in sql.upper()
     # The new row (id 1) is inside the role's filter: the write goes on as translated.
