@@ -11,12 +11,26 @@
     "convergenceError": "Las réplicas no se están alineando con el modelo: {{error}}",
     "method": {
       "engine_statement": "copiada por el motor",
-      "stream_batches": "transmitida por lotes"
+      "stream_batches": "transmitida por lotes",
+      "delta": "delta"
     },
     "loadKind": {
       "bulk_stream": "flujo masivo",
-      "row_copy": "copia por filas"
+      "row_copy": "copia por filas",
+      "delta": "incremental"
     },
-    "feedDown": "Flujo de cambios caído desde {{since}}; la réplica no se actualiza hasta que se reconecte: {{error}}"
+    "feedDown": "Flujo de cambios caído desde {{since}}; la réplica no se actualiza hasta que se reconecte: {{error}}",
+    "delta": {
+      "applied": "La última actualización aplicó el delta desde la marca de agua almacenada ({{cursor}}).",
+      "wholeRebuild": "La última compilación fue una recompilación completa, no un delta: {{reason}}.",
+      "skip": {
+        "no_delta_declared": "no se ha declarado ningún delta",
+        "first_build": "primera compilación, todavía no hay nada desde lo que calcular un delta",
+        "definition_changed": "la definición de la tabla cambió",
+        "operator_requested": "un operador solicitó una compilación completa",
+        "rebuild_interval_elapsed": "transcurrió el intervalo de recompilación periódica",
+        "store_cannot_apply_delta": "el almacén no puede aplicar un delta"
+      }
+    }
   }
 }

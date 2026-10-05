@@ -260,6 +260,25 @@
     "pagingAboveCeiling": "No máximo {{ceiling}}: uma tabela pode reduzir o limite do operador, nunca aumentá-lo.",
     "pagingFixErrors": "Corrija os erros de paginação antes de salvar.",
     "draftLabel": "Rascunho",
-    "draftHelp": "Fora de serviço enquanto marcado: não é lida nem escrita em lugar algum, não é oferecida em nenhum esquema e não é copiada — as cópias existentes em todas as regiões são removidas. Uma tabela ou visão registrada aqui começa como rascunho; desmarque para liberá-la."
+    "draftHelp": "Fora de serviço enquanto marcado: não é lida nem escrita em lugar algum, não é oferecida em nenhum esquema e não é copiada — as cópias existentes em todas as regiões são removidas. Uma tabela ou visão registrada aqui começa como rascunho; desmarque para liberá-la.",
+    "delta": {
+      "legend": "Recarga incremental (delta)",
+      "enable": "Atualizar esta réplica de forma incremental (delta) em vez de copiá-la inteira novamente",
+      "needsWatermark": "Um delta precisa de uma coluna de watermark (o cursor a partir do qual lê). Defina-a em Entrega ao vivo.",
+      "cursorNote": "Campo cursor: a coluna de watermark da tabela ({{watermark}}). Cada atualização lê apenas as linhas após o watermark armazenado e o avança.",
+      "apply": "Aplicar",
+      "applyHelp": "Como as linhas retornadas são aplicadas à réplica.",
+      "applyUpsert": "Upsert pela chave primária",
+      "applyAppend": "Acrescentar (fonte imutável)",
+      "deletes": "Exclusões",
+      "deletesHelp": "Como as exclusões na fonte chegam à réplica.",
+      "deletesNone": "Nenhuma (uma recompilação completa periódica captura as exclusões)",
+      "deletesTombstone": "Coluna de tombstone (uma linha marcada exclui sua chave)",
+      "tombstoneColumn": "Coluna de tombstone",
+      "rebuildEvery": "Recompilação completa a cada (segundos)",
+      "rebuildEveryHelp": "Recompila periodicamente a réplica inteira para capturar o que um delta deixar passar. Em branco = nunca por relógio.",
+      "query": "Consulta delta (opcional, nativa da fonte)",
+      "queryHelp": "Uma consulta nativa da fonte com os marcadores $wm (cursor) e {{fields}}. Deixe em branco para uma fonte SQL: o Provisa gera SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
+    }
   }
 }

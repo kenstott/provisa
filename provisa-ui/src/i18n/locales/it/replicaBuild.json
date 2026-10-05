@@ -11,12 +11,26 @@
     "convergenceError": "Le repliche non vengono allineate al modello: {{error}}",
     "method": {
       "engine_statement": "copiata dal motore",
-      "stream_batches": "trasmessa a batch"
+      "stream_batches": "trasmessa a batch",
+      "delta": "delta"
     },
     "loadKind": {
       "bulk_stream": "flusso bulk",
-      "row_copy": "copia per righe"
+      "row_copy": "copia per righe",
+      "delta": "incrementale"
     },
-    "feedDown": "Feed delle modifiche interrotto dal {{since}}; la replica non viene aggiornata finché non si riconnette: {{error}}"
+    "feedDown": "Feed delle modifiche interrotto dal {{since}}; la replica non viene aggiornata finché non si riconnette: {{error}}",
+    "delta": {
+      "applied": "L'ultimo aggiornamento ha applicato il delta dal watermark memorizzato ({{cursor}}).",
+      "wholeRebuild": "L'ultima creazione è stata una ricostruzione completa, non un delta: {{reason}}.",
+      "skip": {
+        "no_delta_declared": "nessun delta è dichiarato",
+        "first_build": "prima creazione, ancora nessuna base per un delta",
+        "definition_changed": "la definizione della tabella è cambiata",
+        "operator_requested": "un operatore ha richiesto una creazione completa",
+        "rebuild_interval_elapsed": "l'intervallo di ricostruzione periodica è trascorso",
+        "store_cannot_apply_delta": "lo store non può applicare un delta"
+      }
+    }
   }
 }

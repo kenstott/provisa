@@ -260,6 +260,25 @@
     "pagingAboveCeiling": "Como máximo {{ceiling}}: una tabla puede reducir el límite del operador, nunca aumentarlo.",
     "pagingFixErrors": "Corrija los errores de paginación antes de guardar.",
     "draftLabel": "Borrador",
-    "draftHelp": "Fuera de servicio mientras esté marcado: no se lee ni se escribe en ningún lugar, no aparece en ningún esquema y no se copia; las copias existentes en todas las regiones se eliminan. Una tabla o vista registrada aquí empieza como borrador; desmárquelo para liberarla."
+    "draftHelp": "Fuera de servicio mientras esté marcado: no se lee ni se escribe en ningún lugar, no aparece en ningún esquema y no se copia; las copias existentes en todas las regiones se eliminan. Una tabla o vista registrada aquí empieza como borrador; desmárquelo para liberarla.",
+    "delta": {
+      "legend": "Recarga incremental (delta)",
+      "enable": "Actualizar esta réplica de forma incremental (delta) en lugar de volver a copiarla entera",
+      "needsWatermark": "Un delta necesita una columna de marca de agua (el cursor a partir del cual lee). Configúrela en Entrega en vivo.",
+      "cursorNote": "Campo cursor: la columna de marca de agua de la tabla ({{watermark}}). Cada actualización lee solo las filas posteriores a la marca de agua almacenada y la hace avanzar.",
+      "apply": "Aplicar",
+      "applyHelp": "Cómo se aplican a la réplica las filas devueltas.",
+      "applyUpsert": "Upsert por la clave primaria",
+      "applyAppend": "Anexar (origen inmutable)",
+      "deletes": "Eliminaciones",
+      "deletesHelp": "Cómo llegan a la réplica las eliminaciones en el origen.",
+      "deletesNone": "Ninguna (una recompilación completa periódica recoge las eliminaciones)",
+      "deletesTombstone": "Columna de marcador de eliminación (una fila marcada elimina su clave)",
+      "tombstoneColumn": "Columna de marcador de eliminación",
+      "rebuildEvery": "Recompilación completa cada (segundos)",
+      "rebuildEveryHelp": "Recompila periódicamente toda la réplica para recoger lo que un delta no capte. En blanco = nunca por reloj.",
+      "query": "Consulta delta (opcional, nativa del origen)",
+      "queryHelp": "Una consulta nativa del origen con los marcadores $wm (cursor) y {{fields}}. Déjela en blanco para un origen SQL: Provisa genera SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
+    }
   }
 }

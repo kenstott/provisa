@@ -260,6 +260,25 @@
     "pagingAboveCeiling": "最多 {{ceiling}}：資料表可以降低營運者的上限，但不能提高。",
     "pagingFixErrors": "儲存前請修正分頁錯誤。",
     "draftLabel": "草稿",
-    "draftHelp": "勾選期間停止服務：任何地方都不讀寫、任何模式中都不提供、也不複製——所有區域中已有的副本都會被刪除。在此登記的表或檢視以草稿開始；取消勾選即可發佈。"
+    "draftHelp": "勾選期間停止服務：任何地方都不讀寫、任何模式中都不提供、也不複製——所有區域中已有的副本都會被刪除。在此登記的表或檢視以草稿開始；取消勾選即可發佈。",
+    "delta": {
+      "legend": "增量重新載入（delta）",
+      "enable": "以增量方式（delta）重新整理此複本，而非整份重新複製",
+      "needsWatermark": "增量需要水位線欄位（讀取起點的游標）。請在「即時傳送」中設定。",
+      "cursorNote": "游標欄位：數據表的水位線欄位（{{watermark}}）。每次重新整理只讀取已儲存水位線之後的資料列，並將其推進。",
+      "apply": "套用方式",
+      "applyHelp": "傳回的資料列如何套用到複本。",
+      "applyUpsert": "依主索引鍵 upsert",
+      "applyAppend": "附加（不可變的來源）",
+      "deletes": "刪除",
+      "deletesHelp": "來源中的刪除如何傳遞到複本。",
+      "deletesNone": "無（定期完整重建會擷取刪除）",
+      "deletesTombstone": "墓碑欄位（被標記的資料列會刪除其索引鍵）",
+      "tombstoneColumn": "墓碑欄位",
+      "rebuildEvery": "完整重建間隔（秒）",
+      "rebuildEveryHelp": "定期重建整個複本，以擷取增量遺漏的內容。留空 = 永不依時鐘重建。",
+      "query": "增量查詢（選用，來源原生）",
+      "queryHelp": "使用 $wm（游標）及 {{fields}} 預留位置的來源原生查詢。SQL 來源請留空：Provisa 會產生 SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>。"
+    }
   }
 }

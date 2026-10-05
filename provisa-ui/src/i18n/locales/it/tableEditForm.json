@@ -260,6 +260,25 @@
     "pagingAboveCeiling": "Al massimo {{ceiling}}: una tabella può abbassare il limite dell'operatore, mai alzarlo.",
     "pagingFixErrors": "Correggi gli errori di paginazione prima di salvare.",
     "draftLabel": "Bozza",
-    "draftHelp": "Fuori servizio finché è selezionato: non viene letta né scritta da nessuna parte, non è offerta in alcuno schema e non viene copiata — le copie esistenti in ogni regione vengono rimosse. Una tabella o vista registrata qui inizia come bozza; deselezionare per rilasciarla."
+    "draftHelp": "Fuori servizio finché è selezionato: non viene letta né scritta da nessuna parte, non è offerta in alcuno schema e non viene copiata — le copie esistenti in ogni regione vengono rimosse. Una tabella o vista registrata qui inizia come bozza; deselezionare per rilasciarla.",
+    "delta": {
+      "legend": "Ricaricamento incrementale (delta)",
+      "enable": "Aggiorna questa replica in modo incrementale (delta) invece di ricopiarla per intero",
+      "needsWatermark": "Un delta richiede una colonna watermark (il cursore oltre il quale legge). Impostala in Consegna live.",
+      "cursorNote": "Campo cursore: la colonna watermark della tabella ({{watermark}}). Ogni aggiornamento legge solo le righe oltre il watermark memorizzato e lo fa avanzare.",
+      "apply": "Applicazione",
+      "applyHelp": "Come le righe restituite vengono applicate alla replica.",
+      "applyUpsert": "Upsert sulla chiave primaria",
+      "applyAppend": "Accodamento (origine immutabile)",
+      "deletes": "Eliminazioni",
+      "deletesHelp": "Come le eliminazioni nell'origine raggiungono la replica.",
+      "deletesNone": "Nessuna (una ricostruzione completa periodica intercetta le eliminazioni)",
+      "deletesTombstone": "Colonna tombstone (una riga contrassegnata elimina la sua chiave)",
+      "tombstoneColumn": "Colonna tombstone",
+      "rebuildEvery": "Ricostruzione completa ogni (secondi)",
+      "rebuildEveryHelp": "Ricostruisce periodicamente l'intera replica per intercettare ciò che un delta perde. Vuoto = mai a orario.",
+      "query": "Query delta (facoltativa, nativa dell'origine)",
+      "queryHelp": "Una query nativa dell'origine con i segnaposto $wm (cursore) e {{fields}}. Lascia vuoto per un'origine SQL: Provisa genera SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
+    }
   }
 }

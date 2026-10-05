@@ -11,12 +11,26 @@
     "convergenceError": "De replica's worden niet in lijn gebracht met het model: {{error}}",
     "method": {
       "engine_statement": "gekopieerd door de engine",
-      "stream_batches": "in batches gestreamd"
+      "stream_batches": "in batches gestreamd",
+      "delta": "delta"
     },
     "loadKind": {
       "bulk_stream": "bulkstream",
-      "row_copy": "rijkopie"
+      "row_copy": "rijkopie",
+      "delta": "incrementeel"
     },
-    "feedDown": "Wijzigingsfeed onderbroken sinds {{since}}; de replica wordt pas vernieuwd na herverbinding: {{error}}"
+    "feedDown": "Wijzigingsfeed onderbroken sinds {{since}}; de replica wordt pas vernieuwd na herverbinding: {{error}}",
+    "delta": {
+      "applied": "De laatste verversing heeft de delta sinds de opgeslagen watermark ({{cursor}}) toegepast.",
+      "wholeRebuild": "De laatste build was een volledige herbouw, geen delta: {{reason}}.",
+      "skip": {
+        "no_delta_declared": "er is geen delta gedeclareerd",
+        "first_build": "eerste build, nog niets om een delta van te nemen",
+        "definition_changed": "de tabeldefinitie is gewijzigd",
+        "operator_requested": "een operator heeft een volledige build aangevraagd",
+        "rebuild_interval_elapsed": "het interval voor periodieke herbouw is verstreken",
+        "store_cannot_apply_delta": "de store kan geen delta toepassen"
+      }
+    }
   }
 }

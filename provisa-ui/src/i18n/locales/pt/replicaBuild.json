@@ -11,12 +11,26 @@
     "convergenceError": "As réplicas não estão sendo alinhadas ao modelo: {{error}}",
     "method": {
       "engine_statement": "copiada pelo mecanismo",
-      "stream_batches": "transmitida em lotes"
+      "stream_batches": "transmitida em lotes",
+      "delta": "delta"
     },
     "loadKind": {
       "bulk_stream": "fluxo em massa",
-      "row_copy": "cópia por linhas"
+      "row_copy": "cópia por linhas",
+      "delta": "incremental"
     },
-    "feedDown": "Fluxo de alterações inativo desde {{since}}; a réplica não é atualizada até reconectar: {{error}}"
+    "feedDown": "Fluxo de alterações inativo desde {{since}}; a réplica não é atualizada até reconectar: {{error}}",
+    "delta": {
+      "applied": "A última atualização aplicou o delta desde o watermark armazenado ({{cursor}}).",
+      "wholeRebuild": "A última compilação foi uma recompilação completa, não um delta: {{reason}}.",
+      "skip": {
+        "no_delta_declared": "nenhum delta foi declarado",
+        "first_build": "primeira compilação, ainda não há base para um delta",
+        "definition_changed": "a definição da tabela mudou",
+        "operator_requested": "um operador solicitou uma compilação completa",
+        "rebuild_interval_elapsed": "o intervalo de recompilação periódica expirou",
+        "store_cannot_apply_delta": "o repositório não consegue aplicar um delta"
+      }
+    }
   }
 }

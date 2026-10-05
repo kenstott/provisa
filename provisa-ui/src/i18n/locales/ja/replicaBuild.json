@@ -11,12 +11,26 @@
     "convergenceError": "レプリカがモデルに合わせて更新されていません: {{error}}",
     "method": {
       "engine_statement": "エンジンがコピー",
-      "stream_batches": "バッチでストリーム"
+      "stream_batches": "バッチでストリーム",
+      "delta": "delta"
     },
     "loadKind": {
       "bulk_stream": "バルクストリーム",
-      "row_copy": "行コピー"
+      "row_copy": "行コピー",
+      "delta": "増分"
     },
-    "feedDown": "変更フィードは {{since}} から停止しています。再接続されるまでレプリカは更新されません: {{error}}"
+    "feedDown": "変更フィードは {{since}} から停止しています。再接続されるまでレプリカは更新されません: {{error}}",
+    "delta": {
+      "applied": "前回の更新では、保存済みのウォーターマーク ({{cursor}}) 以降のデルタを適用しました。",
+      "wholeRebuild": "前回のビルドはデルタではなく全体の再ビルドでした: {{reason}}。",
+      "skip": {
+        "no_delta_declared": "デルタが宣言されていません",
+        "first_build": "初回ビルドのため、デルタの基準がまだありません",
+        "definition_changed": "テーブル定義が変更されました",
+        "operator_requested": "オペレーターが全体ビルドを要求しました",
+        "rebuild_interval_elapsed": "定期的な再ビルドの間隔が経過しました",
+        "store_cannot_apply_delta": "ストアがデルタを適用できません"
+      }
+    }
   }
 }
