@@ -143,8 +143,9 @@ def semantic_table_name(meta: TableMeta) -> str:  # REQ-641
     return apply_sql_name(raw)
 
 
-def _semantic_table_ref(meta: TableMeta) -> str:
-    """Semantic table reference: domain_schema.table_name (as JDBC clients see it)."""
+def semantic_ref(meta: TableMeta) -> str:
+    """Semantic table reference: domain_schema.table_name (as JDBC clients see it) — a
+    registered table's quoted name in the model's SQL."""
     from provisa.compiler.naming import domain_to_sql_name
 
     return f"{_q(domain_to_sql_name(meta.domain_id))}.{_q(semantic_table_name(meta))}"
@@ -169,8 +170,8 @@ def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         if key in seen:
             continue
         seen.add(key)
-        replacements[_table_ref(meta, use_catalog=False)] = _semantic_table_ref(meta)
-        replacements[_table_ref(meta, use_catalog=True)] = _semantic_table_ref(meta)
+        replacements[_table_ref(meta, use_catalog=False)] = semantic_ref(meta)
+        replacements[_table_ref(meta, use_catalog=True)] = semantic_ref(meta)
     return _apply_replacements(sql, replacements)
 
 
@@ -298,7 +299,7 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # R
         if key in seen:
             continue
         seen.add(key)
-        semantic = _semantic_table_ref(meta)
+        semantic = semantic_ref(meta)
         physical = _table_ref(meta, use_catalog=False)
         replacements[semantic] = physical
         if "__" in meta.field_name:
@@ -346,7 +347,7 @@ def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> s
         if key in seen:
             continue
         seen.add(key)
-        semantic = _semantic_table_ref(meta)
+        semantic = semantic_ref(meta)
         physical_no_catalog = _table_ref(meta, use_catalog=False)
         physical_with_catalog = _table_ref(meta, use_catalog=True)
         replacements[semantic] = physical_with_catalog

@@ -82,7 +82,7 @@ def _make_simple_ctx_and_label_map():
 def _make_prefixed_ctx_and_label_map():
     """Single table where field_name has domain prefix (sa__orders style).
 
-    _semantic_table_ref strips the prefix: "sales_analytics"."orders"
+    semantic_ref strips the prefix: "sales_analytics"."orders"
     domain_to_label must look up ("sales_analytics", "orders") not
     ("sales_analytics", "sa__orders").
     """
@@ -179,7 +179,7 @@ class TestDomainPrefixedFieldName:
         """semantic_sql_to_cypher must not return None when field_name has domain prefix.
 
         The semantic SQL for sa__orders uses "sales_analytics"."orders" as the table
-        reference (domain prefix stripped by _semantic_table_ref). The domain_to_label
+        reference (domain prefix stripped by semantic_ref). The domain_to_label
         dict must be keyed on "orders", not "sa__orders".
         """
         ctx, lm = _make_prefixed_ctx_and_label_map()

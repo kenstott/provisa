@@ -154,3 +154,87 @@ async def test_with_no_platform_regions_a_build_reads_as_before(pipeline, node_i
     sql = await view_build_sql(_view(), _Engine())
     assert pipeline.routed == [] and pipeline.resident == []
     assert sql == '/*addressed*/ SELECT "id", "home" FROM "pg"."public"."orders"'
+
+
+def _join_view() -> MVDefinition:
+    from provisa.mv.models import JoinPattern, TableIdentity
+
+    return MVDefinition(
+        id="mv-orders-customers",
+        source_tables=["orders", "customers"],
+        inputs=[TableIdentity("pg", "public", t) for t in ("orders", "customers")],
+        target_catalog="mat_store",
+        target_schema="mv",
+        join_pattern=JoinPattern(
+            left_table="orders",
+            left_column="customer_id",
+            right_table="customers",
+            right_column="id",
+            join_type="left",
+        ),
+    )
+
+
+def _meta(table: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        source_id="pg",
+        schema_name="public",
+        table_name=table,
+        original_table_name="",
+        domain_id="sales",
+        display_name=table,
+        field_name=table,
+    )
+
+
+@pytest.fixture
+def model(monkeypatch, pipeline):
+    """The model's names and registered columns of the join view's tables."""
+    from provisa.api import app
+    from provisa.federation import registry_view
+
+    app.state.view_context = SimpleNamespace(
+        tables={"orders": _meta("orders"), "customers": _meta("customers")}
+    )
+
+    async def _tables(_state):
+        return [
+            SimpleNamespace(
+                source_id="pg",
+                schema_name="public",
+                table_name="customers",
+                columns=[SimpleNamespace(name="id"), SimpleNamespace(name="home")],
+            )
+        ]
+
+    monkeypatch.setattr(registry_view, "registered_tables", _tables)
+    return pipeline
+
+
+@pytest.mark.asyncio
+async def test_a_join_pattern_view_is_governed_as_its_semantic_join(model, node_in):
+    """A join-pattern view is a view: in a region deployment its build is the same join in the
+    model's terms, through the one pipeline as the region's administrator."""
+    from provisa.mv.governed_build import view_build_sql
+
+    node_in("us")
+    await view_build_sql(_join_view(), _Engine())
+    [(sql, role, _kw)] = model.routed
+    assert role == "org_admin"
+    assert sql == (
+        'SELECT "orders".*, "customers"."id" AS "customers__id", '
+        '"customers"."home" AS "customers__home" '
+        'FROM "sales"."orders" AS "orders" LEFT JOIN "sales"."customers" AS "customers" '
+        'ON "orders"."customer_id" = "customers"."id"'
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_join_view_over_a_table_the_model_cannot_name_is_refused(model, node_in):
+    from provisa.api import app
+    from provisa.mv.governed_build import ViewNotBuildable, view_build_sql
+
+    node_in("us")
+    del app.state.view_context.tables["orders"]
+    with pytest.raises(ViewNotBuildable, match="'orders' has no name in the model"):
+        await view_build_sql(_join_view(), _Engine())

@@ -117,10 +117,14 @@ async def _governed_plan(state: Any, mv: "MVDefinition") -> Any:
     from provisa.pgwire._pipeline import _govern_and_route
     from provisa.transpiler.router import Route
 
-    if mv.semantic_sql is None:
+    if mv.semantic_sql is not None:
+        semantic = mv.semantic_sql
+    elif mv.join_pattern is not None:
+        semantic = await _join_semantic_sql(state, mv)
+    else:
         raise ViewNotBuildable(mv.id, "it has no definition in the model's terms to govern")
     plan = await _govern_and_route(
-        mv.semantic_sql,
+        semantic,
         region_admin.ROLE,
         session_vars=region_admin.session_vars(state),
         route_hint="engine",
@@ -130,3 +134,40 @@ async def _governed_plan(state: Any, mv: "MVDefinition") -> Any:
     if plan.exec_params:
         raise ViewNotBuildable(mv.id, "its definition carries bound parameters")
     return plan
+
+
+async def _join_semantic_sql(state: Any, mv: "MVDefinition") -> str:
+    """A join-pattern view's definition in the model's terms: the same SELECT a physical build
+    runs (``refresh.join_pattern_sql``), naming each table it was bound to by its name in the
+    model and taking its columns from the registry."""
+    from provisa.compiler.sql_rewrite import semantic_ref
+    from provisa.federation.registry_view import registered_tables
+    from provisa.mv.refresh import join_pattern_sql
+
+    bound = dict(zip(mv.source_tables, mv.inputs, strict=True))
+    registered = {
+        (t.source_id, t.schema_name, t.table_name): t for t in await registered_tables(state)
+    }
+    metas = {
+        (m.source_id, m.schema_name, m.original_table_name or m.table_name): m
+        for m in state.view_context.tables.values()
+    }
+
+    def _identity(table: str) -> tuple[str, str, str]:
+        identity = bound[table]
+        return identity.source_id, identity.schema_name, identity.table_name
+
+    async def _ref(table: str) -> str:
+        source_id, schema, name = _identity(table)
+        meta = metas.get((source_id, schema, name))
+        if meta is None:
+            raise ViewNotBuildable(mv.id, f"its table {table!r} has no name in the model")
+        return semantic_ref(meta)
+
+    async def _columns(table: str) -> list[str]:
+        reg = registered.get(_identity(table))
+        if reg is None:
+            raise ViewNotBuildable(mv.id, f"its table {table!r} is not registered")
+        return [c.name for c in reg.columns]
+
+    return await join_pattern_sql(mv, _ref, _columns)

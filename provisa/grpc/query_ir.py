@@ -26,7 +26,7 @@ from provisa.compiler.aggregate_gen import _is_comparable, _is_numeric
 from provisa.compiler.naming import active_gql_convention, apply_gql_name
 from provisa.compiler.params import ParamCollector
 from provisa.compiler.sql_gen import _q
-from provisa.compiler.sql_rewrite import _semantic_table_ref
+from provisa.compiler.sql_rewrite import semantic_ref
 from provisa.grpc.proto_gen import _physical_to_proto
 
 
@@ -340,7 +340,7 @@ def grpc_table_to_semantic_sql(
     else:
         selected = [c for c, _t in ctx.aggregate_columns.get(meta.table_id, [])]
     cols = ", ".join(_q(c) for c in selected) or "*"
-    sql = f"SELECT {cols} FROM {_semantic_table_ref(meta)}"
+    sql = f"SELECT {cols} FROM {semantic_ref(meta)}"
     collector = ParamCollector()
     where_parts = _filter_where(ctx, meta, type_name, filter_msg, collector)
     if where_parts:

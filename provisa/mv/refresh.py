@@ -24,7 +24,7 @@ from provisa.compiler.sql_literals import sql_literal
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 from provisa.federation.execution_auth import SystemAuth, mint_system_token
@@ -313,11 +313,17 @@ async def _build_refresh_sql(
         return await view_build_sql(mv, engine)
 
     if mv.join_pattern:
-        jp = mv.join_pattern
         # Prefix all right-table columns as "right_table__col" to avoid
         # duplicate column names when both tables share column names like "id".
         if engine is None:
             raise ValueError(f"MV {mv.id}: engine required to introspect right-table columns")
+        from provisa.core import region_admin
+
+        if region_admin.governs_region_work():
+            # REQ-1921/1922: a join-pattern view is a view: built through the one pipeline.
+            from provisa.mv.governed_build import view_build_sql
+
+            return await view_build_sql(mv, engine)
 
         # A join pattern names its tables by registered name, which is no engine address. Each
         # is the registered table the view was bound to when it was declared (``mv.inputs``,
@@ -328,22 +334,18 @@ async def _build_refresh_sql(
         bound = dict(zip(mv.source_tables, mv.inputs, strict=True))
         refs: dict[str, str] = {}
 
-        async def _from(table: str) -> str:
+        async def _ref(table: str) -> str:
             if table not in refs:
-                if table not in bound:
-                    raise RuntimeError(
-                        f"MV {mv.id}: its join pattern names {table!r}, which is not one of the "
-                        f"tables it was bound to ({', '.join(sorted(bound))})"
-                    )
                 refs[table] = await engine.read_ref(bound[table])
-            return f'{refs[table]} AS "{table}"'
+            return refs[table]
 
         async def _columns_of(table: str) -> list[str]:
             try:
                 # The table's shape, read with a zero-row SELECT: every engine answers it, and it
                 # names the table the same way the refresh's own SELECT does.
                 result = await engine.execute_engine(
-                    f"SELECT * FROM {await _from(table)} LIMIT 0", authorization=authorization
+                    f'SELECT * FROM {await _ref(table)} AS "{table}" LIMIT 0',
+                    authorization=authorization,
                 )
             except Exception as exc:
                 # Falling back to left.* silently drops the table's columns — fail loud.
@@ -352,45 +354,71 @@ async def _build_refresh_sql(
                 ) from exc
             return list(result.column_names)
 
-        def _prefixed(table: str, cols: list[str]) -> str:
-            return ", ".join(f'"{table}"."{c}" AS "{table}__{c}"' for c in cols)
-
-        right_cols = _prefixed(jp.right_table, await _columns_of(jp.right_table))
-
-        if jp.is_junction:  # REQ-1586: left -> via -> right, one MV row per edge
-            # JoinPattern.__post_init__ admits no junction without a via table and both via keys.
-            assert jp.via_table is not None
-            # The junction's own columns are the edge's attributes; they are materialized
-            # under the same "{table}__{col}" convention the rewriter rewrites refs to.
-            via_cols = _prefixed(jp.via_table, await _columns_of(jp.via_table))
-            join_kw = jp.join_type.upper()
-            sql = (
-                f'SELECT "{jp.left_table}".*, {via_cols}, {right_cols} '
-                f"FROM {await _from(jp.left_table)} "
-                f"{join_kw} JOIN {await _from(jp.via_table)} "
-                f'ON "{jp.left_table}"."{jp.left_column}" = '
-                f'"{jp.via_table}"."{jp.via_left_column}" '
-                f"{join_kw} JOIN {await _from(jp.right_table)} "
-                f'ON "{jp.via_table}"."{jp.via_right_column}" = '
-                f'"{jp.right_table}"."{jp.right_column}"'
-            )
-            if jp.via_type_column:
-                # __post_init__ declares the discriminator column and its value together.
-                assert jp.via_type_value is not None
-                literal = sql_literal(jp.via_type_value, "postgres")
-                sql += f' WHERE "{jp.via_table}"."{jp.via_type_column}" = {literal}'
-            return sql
-
-        select_clause = f'"{jp.left_table}".*, {right_cols}'
-
-        return (
-            f"SELECT {select_clause} FROM {await _from(jp.left_table)} "
-            f"{jp.join_type.upper()} JOIN {await _from(jp.right_table)} "
-            f'ON "{jp.left_table}"."{jp.left_column}" = '
-            f'"{jp.right_table}"."{jp.right_column}"'
-        )
+        return await join_pattern_sql(mv, _ref, _columns_of)
 
     raise ValueError(f"MV {mv.id} has neither sql nor join_pattern defined")
+
+
+async def join_pattern_sql(
+    mv: MVDefinition,
+    ref: "Callable[[str], Awaitable[str]]",
+    columns_of: "Callable[[str], Awaitable[list[str]]]",
+) -> str:
+    """The SELECT of join-pattern ``mv``: its left table's columns, and each other table's
+    prefixed ``"{table}__{col}"`` (the convention the MV rewriter rewrites refs to). ``ref(table)``
+    names a table the SELECT reads (it is aliased to its registered name) and ``columns_of(table)``
+    lists its columns — an engine's addresses and shapes for a physical build, the model's for a
+    governed one (``mv.governed_build``)."""
+    jp = mv.join_pattern
+    assert jp is not None
+    bound = dict(zip(mv.source_tables, mv.inputs, strict=True))
+
+    for table in (jp.left_table, jp.right_table, *([jp.via_table] if jp.is_junction else [])):
+        if table not in bound:
+            raise RuntimeError(
+                f"MV {mv.id}: its join pattern names {table!r}, which is not one of the "
+                f"tables it was bound to ({', '.join(sorted(bound))})"
+            )
+
+    async def _from(table: str) -> str:
+        return f'{await ref(table)} AS "{table}"'
+
+    async def _prefixed(table: str) -> str:
+        cols = await columns_of(table)
+        return ", ".join(f'"{table}"."{c}" AS "{table}__{c}"' for c in cols)
+
+    right_cols = await _prefixed(jp.right_table)
+
+    if jp.is_junction:  # REQ-1586: left -> via -> right, one MV row per edge
+        # JoinPattern.__post_init__ admits no junction without a via table and both via keys.
+        assert jp.via_table is not None
+        # The junction's own columns are the edge's attributes; they are materialized
+        # under the same "{table}__{col}" convention the rewriter rewrites refs to.
+        via_cols = await _prefixed(jp.via_table)
+        join_kw = jp.join_type.upper()
+        sql = (
+            f'SELECT "{jp.left_table}".*, {via_cols}, {right_cols} '
+            f"FROM {await _from(jp.left_table)} "
+            f"{join_kw} JOIN {await _from(jp.via_table)} "
+            f'ON "{jp.left_table}"."{jp.left_column}" = '
+            f'"{jp.via_table}"."{jp.via_left_column}" '
+            f"{join_kw} JOIN {await _from(jp.right_table)} "
+            f'ON "{jp.via_table}"."{jp.via_right_column}" = '
+            f'"{jp.right_table}"."{jp.right_column}"'
+        )
+        if jp.via_type_column:
+            # __post_init__ declares the discriminator column and its value together.
+            assert jp.via_type_value is not None
+            literal = sql_literal(jp.via_type_value, "postgres")
+            sql += f' WHERE "{jp.via_table}"."{jp.via_type_column}" = {literal}'
+        return sql
+
+    return (
+        f'SELECT "{jp.left_table}".*, {right_cols} FROM {await _from(jp.left_table)} '
+        f"{jp.join_type.upper()} JOIN {await _from(jp.right_table)} "
+        f'ON "{jp.left_table}"."{jp.left_column}" = '
+        f'"{jp.right_table}"."{jp.right_column}"'
+    )
 
 
 def _target_ref(mv: MVDefinition) -> str:

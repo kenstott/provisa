@@ -449,7 +449,7 @@ async def _execute_domain_table(
     domain_id: str, table_name: str, role: str, app_state: Any, deliver: "Delivery | None"
 ) -> dict:
     from provisa.compiler.sql_gen import _q
-    from provisa.compiler.sql_rewrite import _semantic_table_ref
+    from provisa.compiler.sql_rewrite import semantic_ref
 
     ctx = _get_ctx(app_state, role)
     meta = next(
@@ -459,7 +459,7 @@ async def _execute_domain_table(
     if meta is None:
         raise RuntimeError(f"No table matches {domain_id}/{table_name}")
     cols = ", ".join(_q(c) for c, _t in ctx.aggregate_columns.get(meta.table_id, [])) or "*"
-    sql = f"SELECT {cols} FROM {_semantic_table_ref(meta)} LIMIT 20"
+    sql = f"SELECT {cols} FROM {semantic_ref(meta)} LIMIT 20"
     return await _execute_sql(sql, role, app_state, deliver)
 
 
