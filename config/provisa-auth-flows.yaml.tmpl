@@ -12,6 +12,10 @@
 
 federation_engine: duckdb
 
+# Orgs, membership and auto-join (REQ-1285/1568) are the multitenant plane; single-tenant has one
+# org and the sign-in auto-join never runs.
+multitenancy: true
+
 auth:
   provider: basic
   # /auth/register: users join by redeeming an invite, or (for the auto-join flow) sign up and are
