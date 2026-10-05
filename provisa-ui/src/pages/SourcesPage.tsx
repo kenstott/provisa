@@ -79,6 +79,8 @@ import { OriginBadge } from "../components/OriginBadge";
 import { KeptTablesNotice } from "../components/KeptTablesNotice";
 import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
+import { SourceTypePicker } from "../components/SourceTypePicker";
+import { SourceLogo } from "../components/SourceLogo";
 
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -106,6 +108,7 @@ export function SourcesPage() {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [typePickerOpen, setTypePickerOpen] = useState(false);
   // Only the type-specific branches below (snowflake/databricks/.../sparql) rebuild
   // federation_hints on submit -- any OTHER type's hints (e.g. kaggle_owner/kaggle_ref, stashed on
   // create by KaggleFormSection with no UI field of its own to reconstruct them from) fell through
@@ -1395,6 +1398,29 @@ export function SourcesPage() {
               ))}
             </select>
           </label>
+          {/* REQ-1938: the same list as a fluid, searchable picker. */}
+          <button
+            type="button"
+            className="btn-secondary"
+            data-testid="sources-type-browse"
+            onClick={() => setTypePickerOpen(true)}
+            style={{ alignSelf: "end", display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            <SourceLogo
+              type={form.type}
+              label={SOURCE_TYPES.find((s) => s.value === form.type)?.label ?? form.type}
+              category={SOURCE_TYPES.find((s) => s.value === form.type)?.category ?? ""}
+              size={16}
+            />
+            {t("sourceTypePicker.browse")}
+          </button>
+          <SourceTypePicker
+            opened={typePickerOpen}
+            onClose={() => setTypePickerOpen(false)}
+            groups={typeSelectData()}
+            value={form.type}
+            onPick={handleTypeChange}
+          />
           <SourceFormFields {...sourceFormFieldsProps} />
           {form.type !== "kaggle" && (
             <Button type="submit" loading={submitting} data-testid="sources-submit">

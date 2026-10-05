@@ -1,0 +1,10 @@
+{
+  "sourceTypePicker": {
+    "title": "Kies een brontype",
+    "searchPlaceholder": "Brontypen zoeken (naam, bijv. postgres, mssql, kafka)",
+    "all": "Alle",
+    "recent": "Recent gebruikt",
+    "noMatch": "Geen brontype komt overeen.",
+    "browse": "Bladeren…"
+  }
+}

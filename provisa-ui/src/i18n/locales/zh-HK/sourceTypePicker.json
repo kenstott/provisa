@@ -1,0 +1,10 @@
+{
+  "sourceTypePicker": {
+    "title": "選擇數據源類型",
+    "searchPlaceholder": "搜尋數據源類型（名稱，例如 postgres、mssql、kafka）",
+    "all": "全部",
+    "recent": "最近使用",
+    "noMatch": "沒有相符的數據源類型。",
+    "browse": "瀏覽…"
+  }
+}

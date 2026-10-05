@@ -1,0 +1,10 @@
+{
+  "sourceTypePicker": {
+    "title": "Choisir un type de source",
+    "searchPlaceholder": "Rechercher un type de source (nom, ex. postgres, mssql, kafka)",
+    "all": "Tous",
+    "recent": "Utilisés récemment",
+    "noMatch": "Aucun type de source ne correspond.",
+    "browse": "Parcourir…"
+  }
+}

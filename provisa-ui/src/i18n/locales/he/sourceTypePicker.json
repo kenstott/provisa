@@ -1,0 +1,10 @@
+{
+  "sourceTypePicker": {
+    "title": "בחירת סוג מקור",
+    "searchPlaceholder": "חיפוש סוגי מקור (שם, לדוגמה postgres, mssql, kafka)",
+    "all": "הכול",
+    "recent": "בשימוש לאחרונה",
+    "noMatch": "אין סוג מקור תואם.",
+    "browse": "עיון…"
+  }
+}
