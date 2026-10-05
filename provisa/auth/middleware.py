@@ -48,8 +48,20 @@ from provisa.security.sni import org_from_host
 logger = logging.getLogger(__name__)
 
 
-def _deny(request: Request, status: int, detail: str, *, cause: str | None = None) -> JSONResponse:
-    """REQ-1318: every auth denial records WHY, at WARNING, with the request identity.
+# The stable code of the refusal of a request that names no org (REQ-1235, REQ-1935): the UI
+# answers it with a prompt to select one rather than an error.
+ORG_SELECTION_REQUIRED = "auth.org_selection_required"
+
+
+def _deny(
+    request: Request,
+    status: int,
+    detail: str,
+    *,
+    cause: str | None = None,
+    code: str | None = None,
+) -> JSONResponse:
+    """Every auth denial records WHY, at WARNING, with the request identity.
 
     A 401 that logs nothing is indistinguishable from every other 401 in the container log, so a
     client stuck in a sign-in loop could not be attributed to a cause — expired token, unresolved
@@ -64,7 +76,8 @@ def _deny(request: Request, status: int, detail: str, *, cause: str | None = Non
         detail,
         f" ({cause})" if cause else "",
     )
-    return JSONResponse(status_code=status, content={"detail": detail})
+    content = {"detail": detail} if code is None else {"detail": detail, "code": code}
+    return JSONResponse(status_code=status, content=content)
 
 
 def _basic_username(scheme: str, token: str) -> str | None:
@@ -159,17 +172,40 @@ def _loaded_roles() -> dict[str, dict]:  # REQ-1337
     return getattr(state, "roles", {})
 
 
+def _platform_roles() -> dict[str, dict]:  # REQ-1327, REQ-1337
+    """The role definitions the platform plane's rights (cross_org) are read from, named as such:
+    the deployment org's, where the platform grants live (AppState.platform_roles)."""
+    from provisa.api.app import state
+
+    return state.platform_roles
+
+
 async def _org_roles(org_id: str) -> dict[str, dict]:  # REQ-1337
     """The roles registry of ``org_id``'s own runtime (prod), built if it is not yet."""
-    from provisa.api.app import ensure_org_runtime
+    from provisa.api.app import ensure_serving_runtime
     from provisa.core.request_context import reset_current_org, set_current_org
 
-    await ensure_org_runtime(org_id, None)
+    await ensure_serving_runtime(org_id, None)
     token = set_current_org(org_id)
     try:
         return _loaded_roles()
     finally:
         reset_current_org(token)
+
+
+async def org_env_capabilities(identity: object, org_id: str) -> set[str] | None:  # REQ-1573
+    """The capabilities an ENVIRONMENT gate reads for ``identity`` in ``org_id``: judged by that
+    org's own PROD role definitions (REQ-1266) -- never another org's, and never by the copy an
+    environment holds, which must not be able to grant the right to select itself."""
+    from provisa.api.admin.capabilities import env_gate_capabilities_for
+    from provisa.core.request_context import reset_current_env, set_current_env
+
+    env_token = set_current_env(None)  # PROD's definitions, never a branch's copy
+    try:
+        roles = await _org_roles(org_id)
+    finally:
+        reset_current_env(env_token)
+    return env_gate_capabilities_for(identity, roles)
 
 
 def _dedup_assignments(assignments: list[RoleAssignment]) -> list[RoleAssignment]:
@@ -477,6 +513,8 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # Where this request's org runtime is, when it is not the default one: a meta-role is
         # built in it (_meta_role).
         _org_binding: tuple[str, str | None] | None = None
+        # The acting tenant org's own role definitions, once read (REQ-1266, REQ-1337).
+        tenant_roles: dict[str, dict] | None = None
 
         # No auth configured — dev mode. REQ-273 caveat: when the server is unsecured, a
         # client-supplied role IS honored (there is no auth to validate against), so
@@ -581,9 +619,19 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 # membership — that is what it is for, and REQ-1327's membership rule governs the
                 # provider path below — but it does not get to ignore the org the caller named.
                 su_org = _requested_org_from_host(request)
-                if su_org is None or not self._multitenancy or su_org == self._default_org_id:
+                if not self._multitenancy or su_org == self._default_org_id:
                     request.state.active_org_id = self._default_org_id
                     return None
+                if su_org is None:
+                    # REQ-1935: under multitenancy break-glass names its org like everyone else;
+                    # there is no implied one.
+                    return _deny(
+                        request,
+                        401,
+                        "Org selection required: name the org with its subdomain (<org>.<domain>)",
+                        cause="no_org_named",
+                        code=ORG_SELECTION_REQUIRED,
+                    )
                 if self._admin_pool is None:
                     return _deny(
                         request,
@@ -612,6 +660,14 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         scheme, _, token = (auth_header or "").partition(" ")
         validator = validators.get(scheme.lower())
         if not token or validator is None:
+            # REQ-124: credential-less self-registration. A redeemer following an invite link is
+            # not signed in, and the UI (src/api/admin.ts registerAccount) posts with no
+            # Authorization header. Only a request that presents NO credential at all falls through
+            # — with no identity, exactly like a public path — and the handler then requires a
+            # valid, unspent invite before it writes anything. A PRESENTED-but-invalid credential
+            # is still refused here, so a bad token can never be laundered into an anonymous signup.
+            if request.url.path == "/auth/register" and not auth_header:
+                return None
             return _deny(request, 401, "Missing or invalid Authorization header")
 
         try:
@@ -719,8 +775,11 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # runs on the platform plane (see platform_plane below), which needs no tenant binding.
             # REQ-1337: the decision is a RIGHT (cross_org), resolved from the assigned roles'
             # capabilities. Nothing here tests a role name.
+            # Platform rights are read on the platform plane, named as such (REQ-1327).
             can_cross_org = _can_act_cross_org(
-                _capabilities_for_claims({a.role_id for a in platform_assignments}, _loaded_roles())
+                _capabilities_for_claims(
+                    {a.role_id for a in platform_assignments}, _platform_roles()
+                )
             )
             # REQ-1618: publish it. The environment resolution (both this middleware's role read and
             # _OrgRoutingMiddleware's binding) needs to know whether the caller is the control plane,
@@ -809,25 +868,19 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     return _deny(request, 403, f"Not a member of org {requested_org!r}")
             elif platform_plane:
                 active_org_id = None
-            elif can_cross_org:
-                # REQ-1318: a cross_org principal holds zero org memberships by design — the platform
-                # operator is not a tenant. Without this branch they named no org, matched no
-                # membership, and fell to the tenant-path 401 on every non-platform-plane request,
-                # so /admin/graphql 401'd while /auth/me returned 200 and reported platform_admin.
-                # The client read that as an unusable session. They already act in any org they name
-                # (the requested_org branch above); with none named they act in the default org.
-                # Ordered AFTER the platform plane so /auth/me keeps reporting an unresolved org —
-                # the org there is a fact about the user, not a plane the request needs bound.
-                active_org_id = self._default_org_id
             else:
                 # REQ-1235: an org nobody named is refused, never chosen — belonging to exactly
-                # one org does not name it. The refusal says what to send.
+                # one org does not name it. The refusal says what to send. REQ-1935: a cross_org
+                # principal is refused the same way: there is no implied org, the deployment's own
+                # included; it acts in any org it names (the requested_org branch above).
                 return _deny(
                     request,
                     401,
                     "Org selection required: name the org with its subdomain "
                     "(<org>.<domain>) or the X-Org-Provisa header, or present a personal "
                     "access token issued for the org",
+                    cause="no_org_named",
+                    code=ORG_SELECTION_REQUIRED,
                 )
 
             # Tenant-plane assignments. A member's role assignment lives in their org's OWN schema,
@@ -836,15 +889,13 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # assignments in that org's schema. A platform admin bound to a tenant org they are a
             # member of resolves whatever role that org granted them, nothing more; the platform
             # set never carries across. The default org's members have rows from the platform read.
-            tenant_roles: dict[str, dict] | None = None
             if (
                 self._assignments_source == "provisa"
                 and self._db_pool
                 and active_org_id is not None
                 and active_org_id != self._default_org_id
             ):
-                from provisa.api.admin.capabilities import env_gate_capabilities
-                from provisa.api.app import ensure_org_runtime, state as _app_state
+                from provisa.api.app import ensure_org_runtime
                 from provisa.api.env_routing import (
                     EnvironmentRightError,
                     EnvironmentSelectionError,
@@ -868,7 +919,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                         active_org_id,
                         identity,
                         None,
-                        env_gate_capabilities(identity, _app_state),
+                        await org_env_capabilities(identity, active_org_id),
                         is_control_plane=can_cross_org,
                     )
                 except (EnvironmentSelectionError, EnvironmentRightError):
@@ -941,7 +992,14 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # keeps it as the acting role: the control plane needs it, and the data surfaces refuse it
         # outright (no schema is generated for it) rather than serving an empty one.
         # REQ-1337: a control-plane role is one holding the cross_org RIGHT — no name is tested.
-        _all_roles = _loaded_roles()
+        # REQ-1266: judged by the ACTING org's own role definitions (the same role id may carry
+        # other rights in another org); with no org acting, by the platform plane's.
+        if tenant_roles is not None:
+            _all_roles = tenant_roles
+        elif active_org_id is not None:
+            _all_roles = await _org_roles(active_org_id)
+        else:
+            _all_roles = _platform_roles()
         _data_plane_roles = [
             a.role_id for a in assignments if not _is_control_plane_role(a.role_id, _all_roles)
         ]

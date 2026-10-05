@@ -92,6 +92,9 @@ class Method(str, Enum):
 
     ENGINE_STATEMENT = "engine_statement"  # the engine copies; no row passes through Provisa
     STREAM_BATCHES = "stream_batches"  # Provisa streams bounded batches into the store
+    # The store loads the origin itself (a SingleStore PIPELINE, REQ-990); chosen by the write
+    # face (REQ-848 PIPELINE_LAND), not by choose_method.
+    STORE_PIPELINE = "store_pipeline"
 
 
 _STREAMED_READS = frozenset(

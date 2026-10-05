@@ -12,6 +12,7 @@
     "method": {
       "engine_statement": "इंजन द्वारा कॉपी",
       "stream_batches": "बैचों में स्ट्रीम",
+      "store_pipeline": "स्टोर की अपनी पाइपलाइन द्वारा लोड",
       "delta": "delta"
     },
     "loadKind": {

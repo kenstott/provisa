@@ -90,13 +90,21 @@ TS_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx", ".mts", ".cts"}
 
 
 def find_source_files() -> list[Path]:
+    """The repository's tracked sources. Only files git tracks are stamped: an ignored build output
+    (the UI bundle copied into provisa/_ui) carries copies of tracked files' canaries, and stamping
+    it made every commit reissue the originals' ids."""
+    listed = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=PROJECT_ROOT, check=True, capture_output=True
+    ).stdout.decode("utf-8")
     results = []
-    for root, dirs, files in os.walk(PROJECT_ROOT):
-        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
-        for f in files:
-            p = Path(root) / f
-            if f.endswith(".py") or p.suffix in TS_EXTENSIONS:
-                results.append(p)
+    for rel in listed.split("\0"):
+        if not rel:
+            continue
+        p = PROJECT_ROOT / rel
+        if set(Path(rel).parts) & EXCLUDE_DIRS or not p.is_file():
+            continue
+        if p.suffix == ".py" or p.suffix in TS_EXTENSIONS:
+            results.append(p)
     return sorted(results)
 
 

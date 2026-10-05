@@ -13,6 +13,9 @@ import { useTranslation } from "react-i18next";
 import type { Domain } from "../../types/admin";
 import { DATA_LAKE, FILE_SOURCES, HOST_PORT_ONLY, SIMPLE_RDBMS } from "./constants";
 import { AuthUserPass } from "./AuthUserPass";
+import { IcebergCatalogFields } from "./IcebergCatalogFields";
+import { ObjectStoreCredentialFields } from "./ObjectStoreCredentialFields";
+import { CLOUD_FILE_TYPES, objectStoreOf } from "./objectStoreHints";
 import { SourceFormFieldsExtended } from "./SourceFormFieldsExtended";
 
 export interface SourceFormState {
@@ -277,6 +280,13 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
                 ? "./demo/files/customers.csv"
                 : "./demo/files/products.parquet"
           }
+        />
+      )}
+      {CLOUD_FILE_TYPES.has(form.type) && objectStoreOf(form.path) && (
+        <ObjectStoreCredentialFields
+          store={objectStoreOf(form.path)!}
+          fields={authFields}
+          setFields={setAuthFields}
         />
       )}
       {form.type === "snowflake" && (
@@ -762,6 +772,9 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
                 onChange={(e) => setForm({ ...form, path: e.currentTarget.value })}
                 placeholder="s3://bucket/warehouse/table"
               />
+              {form.type === "iceberg" && (
+                <IcebergCatalogFields fields={authFields} setFields={setAuthFields} />
+              )}
             </>
           )}
           {/* REQ-229: hive_s3 DECLARES S3 storage — TrinoHiveS3Connector always wires the native S3
@@ -782,7 +795,13 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
             value={authType}
             onChange={(v) => {
               setAuthType(v ?? "");
-              setAuthFields({});
+              // A new storage credential starts empty; an Iceberg source's catalog is not storage
+              // and is kept.
+              setAuthFields(
+                Object.fromEntries(
+                  Object.entries(authFields).filter(([k]) => k.startsWith("iceberg_")),
+                ),
+              );
             }}
             allowDeselect={false}
           />

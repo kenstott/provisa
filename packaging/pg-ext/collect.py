@@ -15,6 +15,8 @@ Usage: python collect.py <artifacts_root>   # dir containing per-platform <os>-<
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -22,11 +24,33 @@ from pathlib import Path
 _DEST = Path(__file__).resolve().parent / "provisa_pg_ext" / "_ext"
 
 
+def stale_rows(platform_dir: Path) -> list[str]:
+    """Each manifest row whose file is missing or whose sha256 is not the file's. A wheel carrying
+    such a row is refused by every installer that checks it (provisa.pg_extensions.external_install,
+    the smoke test), and once on PyPI a version cannot be replaced -- 0.1.1 was published with five
+    such rows -- so the tree is refused here, before the wheel is built."""
+    manifest = json.loads((platform_dir / "manifest.json").read_text())
+    stale = []
+    for artifact in manifest["artifacts"]:
+        path = platform_dir / artifact["file"]
+        if not path.is_file():
+            stale.append(f"{artifact['file']}: missing")
+        elif hashlib.sha256(path.read_bytes()).hexdigest() != artifact["sha256"]:
+            stale.append(f"{artifact['file']}: sha256 does not match its manifest row")
+    return stale
+
+
 def main(src_root: Path) -> int:
     # Each platform tree is identified by its manifest.json at the <os>-<arch>/ root.
     manifests = sorted(src_root.rglob("manifest.json"))
     if not manifests:
         print("[collect] ERROR: no manifest.json found — nothing to package", file=sys.stderr)
+        return 1
+    refused = {m.parent.name: stale_rows(m.parent) for m in manifests}
+    refused = {plat: rows for plat, rows in refused.items() if rows}
+    if refused:
+        for plat, rows in refused.items():
+            print(f"[collect] ERROR: {plat}: " + "; ".join(rows), file=sys.stderr)
         return 1
     n = 0
     for manifest in manifests:

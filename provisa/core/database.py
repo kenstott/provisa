@@ -699,6 +699,34 @@ def _singlestore_tsv_chunks(
         yield bytes(buf)
 
 
+def singlestore_load_data(
+    dbapi_conn: Any, dialect: Any, table: Table, rows: list[dict[str, Any]]
+) -> None:
+    """Stream ``rows`` into ``table`` via ``LOAD DATA LOCAL INFILE ':stream:'`` through the
+    singlestoredb client (REQ-990) — the ONE SingleStore bulk write, shared by the store writer,
+    the replica build target and the engine's own land. Tab-separated, backslash-escaped, ``\\N``
+    for NULL so a NULL stays distinct from an empty string; each value is rendered through its
+    column type's bind processor first (JSON serialises, Decimal/`datetime` keep their exact text).
+    The rows are emitted as bounded byte chunks so a large batch never materialises a second full
+    copy, and the client caps each wire packet. A refused LOCAL INFILE raises by name — never
+    executemany. The caller commits."""
+    colnames = [c.name for c in table.columns]
+    procs = [c.type.dialect_impl(dialect).bind_processor(dialect) for c in table.columns]
+    qualified = f"`{table.schema}`.`{table.name}`" if table.schema else f"`{table.name}`"
+    cols_sql = ", ".join(f"`{cn}`" for cn in colnames)
+    load_sql = f"LOAD DATA LOCAL INFILE ':stream:' INTO TABLE {qualified} ({cols_sql})"
+    try:
+        dbapi_conn.query(load_sql, infile_stream=_singlestore_tsv_chunks(rows, colnames, procs))
+    except Exception as exc:  # noqa: BLE001 — re-raised by name; never silently downgraded
+        msg = str(exc).lower()
+        if "local infile" in msg or "local_infile" in msg or "load_local" in msg:
+            raise RuntimeError(
+                f"SingleStore bulk load into {qualified} was refused: LOAD DATA LOCAL INFILE is "
+                f"not permitted (enable local_infile on the connection and server) — {exc}"
+            ) from exc
+        raise
+
+
 class StoreSideViolation(RuntimeError):
     """A statement on one store's handle touched another store's tables (REQ-1922): the model
     store (``model_db``), an org region's state store (``tenant_db``) and its record
@@ -1064,41 +1092,19 @@ class Connection:
             # REQ-990: SingleStore's bulk path is a streaming LOAD DATA LOCAL INFILE — one statement
             # that streams every row in memory through the singlestoredb client (no temp file, no
             # per-row INSERT). Never falls back to executemany: a refused local-infile raises by name.
-            return self._bulk_load_singlestore(table, rows, colnames)
+            return self._bulk_load_singlestore(table, rows)
         param_list = [{cn: r.get(cn) for cn in colnames} for r in rows]
         self._exec(table.insert(), param_list)
         self._commit_if_autocommit()
         return len(param_list)
 
-    def _bulk_load_singlestore(
-        self, table: Table, rows: list[dict[str, Any]], colnames: list[str]
-    ) -> int:
-        """Stream ``rows`` into ``table`` via ``LOAD DATA LOCAL INFILE ':stream:'`` through the
-        singlestoredb client (REQ-990). Tab-separated, backslash-escaped, ``\\N`` for NULL so a NULL
-        stays distinct from an empty string; each value is rendered through its column type's bind
-        processor first (JSON serialises, Decimal/`datetime` keep their exact text). The rows are
-        emitted as bounded byte chunks so a large batch never materialises a second full copy, and
-        the client caps each wire packet. A refused LOCAL INFILE raises by name — no executemany."""
-        dialect = self._sc.dialect
-        procs = [c.type.dialect_impl(dialect).bind_processor(dialect) for c in table.columns]
-        qualified = f"`{table.schema}`.`{table.name}`" if table.schema else f"`{table.name}`"
-        cols_sql = ", ".join(f"`{cn}`" for cn in colnames)
-        load_sql = f"LOAD DATA LOCAL INFILE ':stream:' INTO TABLE {qualified} ({cols_sql})"
+    def _bulk_load_singlestore(self, table: Table, rows: list[dict[str, Any]]) -> int:
+        """Stream ``rows`` into ``table`` through :func:`singlestore_load_data` on this connection's
+        own DBAPI connection, cancellable with the request (REQ-990)."""
         dbapi_conn = self._sc.connection.dbapi_connection
         assert dbapi_conn is not None
-        try:
-            with self._cancellable():
-                dbapi_conn.query(
-                    load_sql, infile_stream=_singlestore_tsv_chunks(rows, colnames, procs)
-                )
-        except Exception as exc:  # noqa: BLE001 — re-raised by name; never silently downgraded
-            msg = str(exc).lower()
-            if "local infile" in msg or "local_infile" in msg or "load_local" in msg:
-                raise RuntimeError(
-                    f"SingleStore bulk load into {qualified} was refused: LOAD DATA LOCAL INFILE is "
-                    f"not permitted (enable local_infile on the connection and server) — {exc}"
-                ) from exc
-            raise
+        with self._cancellable():
+            singlestore_load_data(dbapi_conn, self._sc.dialect, table, rows)
         self._commit_if_autocommit()
         return len(rows)
 

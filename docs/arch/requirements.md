@@ -9792,7 +9792,7 @@ Cross-engine result-schema → target DDL type coercion policy: the SELECT resul
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Extend the APScheduler-backed ScheduledTrigger (provisa/core/models.py:640) to support execution of a user-supplied SQL statement on its cron schedule, not only webhook POST. When a trigger fires, the SQL statement executes against the federated engine. [SUPERSEDED by [REQ-1926](#REQ-1926), 2026-10-03 -- a scheduled statement may not create tables; a snapshot or archive is an INSERT ... SELECT into a declared table. Kept here for history; do not implement against it.] This enables scheduled CTAS snapshot/archive patterns ([REQ-996](#REQ-996)). [END SUPERSEDED BLOCK] (Amended 2026-10-03, A SCHEDULED STATEMENT WRITES TO EXISTING TABLES ONLY:) A scheduled statement may not create a table ([REQ-1926](#REQ-1926)). It may only insert into, update or delete from existing registered tables, through the one write admission ([REQ-1925](#REQ-1925)), acting as the trigger's role. A snapshot or an archive is an INSERT ... SELECT into a declared table.
+Extend the APScheduler-backed ScheduledTrigger (provisa/core/models.py:640) to support execution of a user-supplied SQL statement on its cron schedule, not only webhook POST. When a trigger fires, the SQL statement executes against the federated engine. [SUPERSEDED by [REQ-1926](#REQ-1926), 2026-10-03 -- a scheduled statement may not create tables; a snapshot or archive is an INSERT ... SELECT into a declared table. Kept here for history; do not implement against it.] This enables scheduled CTAS snapshot/archive patterns ([REQ-996](#REQ-996)). [END SUPERSEDED BLOCK] (Amended 2026-10-03, A SCHEDULED STATEMENT WRITES TO EXISTING TABLES ONLY:) A scheduled statement may not create a table ([REQ-1926](#REQ-1926)). It may only insert into, update or delete from existing registered tables, through the one write admission ([REQ-1925](#REQ-1925)), acting as the trigger's role. A snapshot or an archive is an INSERT ... SELECT into a declared table. (Amended 2026-10-05, per-org triggers:) A scheduled trigger belongs to the org whose model holds it and runs bound to that org, with that org's roles and data; it never runs in another org. Triggers are stored in the org's model store ([REQ-1919](#REQ-1919)), versioned and branchable like every other definition, and are never written to the shared config file. Their job ids carry the org (`<id>:org_<org>`), so two orgs may use the same trigger id; creating, deleting, enabling or replacing a trigger touches only the caller's org's triggers. Triggers declared in the deployment's config file are loaded into the deployment org's model store when the config is read (origin config), so the deployment org's are stated at load, not defaulted when they fire. Only an org's prod triggers are scheduled; an environment's triggers are definitions that run once promoted to prod.
 
 **Use case:** Scheduled CTAS (CREATE TABLE ... AS SELECT) is the primary derived pattern from one-time CTAS ([REQ-996](#REQ-996)), enabling snapshot and archive tables that update on a regular schedule without requiring external ETL orchestrators or manual user intervention. Users express scheduled snapshots as declarative triggers whose SQL statements run on cron.
 
@@ -22195,6 +22195,34 @@ A DATA PROFILER is a source type, registered and used the way the data-quality c
 Under multitenancy a request acts in the org it names, and there is no implied org. A principal holding the cross_org right who names no org is refused by name on every surface, as any principal is: HTTP answers 401 naming the subdomain and the X-Org-Provisa header, with the code auth.org_selection_required, which the UI answers with a prompt to select one of the caller's orgs (or, when the caller belongs to none, to ask an organization administrator for an invitation); pgwire, Bolt, Flight, gRPC and MCP refuse the session naming how that surface names an org. The break-glass account likewise names its org by its subdomain and is refused when it names none. The platform-plane routes (/auth/, /setup, /admin/orgs, /billing) still serve a request that names no org, with no org bound. A cross_org principal naming an org acts in it. A single-tenant deployment is unchanged -- its one org is the answer.
 
 **Use case:** A platform operator signs in with no org selected and opens the data explorer: instead of silently reading the deployment org's data, the UI asks which org to act in.
+
+**Code:** —
+
+**Tests:** —
+
+## 2. Authentication & Identity
+
+### REQ-1936 · Session {#REQ-1936}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
+
+A browser session's stored bearer is cleared only when the identity provider says the credential is dead (signed out, revoked, or a refresh rejected for the credential itself). A failure to reach the provider -- a network error, a timeout, rate limiting, or the provider's internal error (Firebase auth/network-request-failed, auth/timeout, auth/too-many-requests, auth/internal-error) -- is not a signed-out state: the stored bearer is kept, the request that needed a fresh one uses it, and the next request asks the provider again ([REQ-1434](#REQ-1434)). Treating a transient failure as sign-out deleted a still-valid bearer on a network blip and forced a sign-in the user did not ask for.
+
+**Use case:** A user on a flaky network keeps working; a momentary failure to reach the identity provider does not sign them out.
+
+**Code:** —
+
+**Tests:** `provisa-ui/src/__tests__/firebaseTokenSync.test.ts`, `provisa-ui/src/__tests__/requestTimeToken.test.ts`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1937 · UI {#REQ-1937}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+
+Every results grid -- the SQL explorer's results, the admin reports and the governed table viewer, which share one grid -- filters each column Excel-style, typed by the column's type, beyond today's case-insensitive contains. Each column's filter offers operators for its type: text (contains, equals, starts with, ends with, does not contain, is empty); numbers (=, not =, <, <=, >, >=, between); dates and times (before, after, between, and relative periods such as the last N days or this month); booleans and enumerations a checklist; every type is-empty and is-not-empty. A value checklist lists the column's distinct values in the rows the grid holds, with their counts and a search box, and filters to the values ticked. The column's filter box also takes a quick syntax -- >100, 10..20, !text, a, b, c, =exact -- and plain text keeps meaning contains, so nothing a reader types today changes meaning. A column's type comes from the result's column types, or is inferred from its values when the result carries none. Active filters show as removable chips above the grid, next to the clear-filters control ([REQ-1442](#REQ-1442)). Filters on several columns combine with AND. When the grid holds only part of the result -- cut at the row limit or with more pages to fetch -- it says the filter applies to the rows loaded, naming their count, so a filtered page is never read as the whole answer; the server-paged governed viewer sends the same typed filters into its query. A table-level builder with OR and nested groups is not part of this requirement. Every new label is translated in every locale.
+
+**Use case:** An operator reading the request-log report filters duration to >500 and status to the ticked values error and timeout, and sees how many of the loaded rows match, without writing SQL.
 
 **Code:** —
 

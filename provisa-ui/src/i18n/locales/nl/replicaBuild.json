@@ -12,6 +12,7 @@
     "method": {
       "engine_statement": "gekopieerd door de engine",
       "stream_batches": "in batches gestreamd",
+      "store_pipeline": "geladen door de eigen pipeline van de store",
       "delta": "delta"
     },
     "loadKind": {

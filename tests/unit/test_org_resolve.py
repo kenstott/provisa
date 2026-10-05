@@ -118,11 +118,14 @@ async def test_platform_admin_requested_non_member_is_honored():
 
 
 @pytest.mark.asyncio
-async def test_platform_admin_no_membership_no_request_acts_in_the_deployment_org():
-    # REQ-1318: as on HTTP, a cross_org principal naming no org acts in the deployment org.
+async def test_platform_admin_naming_no_org_is_refused_by_name():
+    # REQ-1935: as on HTTP, a cross_org principal naming no org is refused --
+    # no org is implied, the deployment's own included.
     state = _FakeState(multitenancy=True, org_ids=[])
-    resolved = await resolve_session_org(state, user_id="admin", can_act_any_org=True)
-    assert resolved == "root"
+    with pytest.raises(OrgResolutionError, match="org selection required"):
+        await resolve_session_org(
+            state, user_id="admin", can_act_any_org=True, named_by="send the x-provisa-org metadata"
+        )
 
 
 @pytest.mark.asyncio

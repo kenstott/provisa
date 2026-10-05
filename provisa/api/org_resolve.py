@@ -107,10 +107,8 @@ async def resolve_session_org(
         if can_act_any_org or requested_org in member_org_ids:
             return requested_org
         raise OrgResolutionError(f"principal not a member of org {requested_org!r}")
-    if can_act_any_org:
-        # REQ-1318: a cross_org principal naming no org acts in the deployment org, as on HTTP
-        # (org CRUD is a separate platform-plane concern).
-        return state.org_id
+    # REQ-1935: a cross_org principal naming no org is refused like anyone else -- there is no
+    # implied org. It acts in any org it names (above).
     raise OrgResolutionError(
         "org selection required: authenticated principal belongs to "
         f"{len(member_org_ids)} orgs and none was requested. To name one, {named_by}, "

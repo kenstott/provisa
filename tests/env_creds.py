@@ -74,6 +74,8 @@ _CRED_PREFIXES = (
     # (provisa/api/admin/schema_common.py::_configure_govdata_env).
     "AWS_",
     "CLOUDFLARE_",
+    # The SingleStore store/engine e2e (REQ-990) reach the .env's live shared-tier workspace.
+    "SINGLESTORE_",
     # The gsheets e2e READS a durable fixture sheet rather than creating one -- the service account
     # has zero Drive quota and cannot self-seed. Its id is the external prerequisite.
     "GSHEETS_",

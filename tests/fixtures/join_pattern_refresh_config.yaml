@@ -17,18 +17,6 @@ cache:
 domains:
   - id: jp
     description: Join pattern refresh
-roles:
-  - id: org_admin
-    capabilities:
-      - source_registration
-      - table_registration
-      - access_config
-      - query_development
-      - full_results
-      - usage
-      - observability
-    domain_access:
-      - '*'
 sources:
   - id: jp-live
     type: postgresql
@@ -83,3 +71,4 @@ relationships:
     cardinality: many-to-one
     materialize: true
     refresh_interval: 86400
+roles: []

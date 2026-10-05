@@ -152,7 +152,7 @@ jobs:
       - name: Download Calcite Trino plugins
         run: |
           MAVEN="https://repo1.maven.org/maven2/io/simpleishard"
-          VERSION="0.106.2"
+          VERSION="0.106.3"
           for plugin in trino-sharepoint trino-splunk trino-file; do
             mkdir -p "trino/plugins/$plugin"
             curl -fsSL "$MAVEN/$plugin/$VERSION/$plugin-$VERSION.jar" \

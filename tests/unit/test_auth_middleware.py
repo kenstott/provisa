@@ -80,6 +80,10 @@ def _make_app(
     async def _setup_status():
         return {"needs_setup": False}
 
+    @app.post("/auth/register")
+    async def _register():
+        return {"user_id": "u1", "username": "new"}
+
     @app.get("/test")
     async def _test_route(request: Request):
         return {
@@ -179,6 +183,30 @@ def test_setup_status_skips_auth():
     client = TestClient(app)
     resp = client.get("/setup/status")
     assert resp.status_code == 200
+
+
+def test_credential_less_register_reaches_the_handler():
+    # REQ-124: a request that presents NO Authorization header reaches /auth/register's handler
+    # (which then requires a valid invite) instead of being 401'd by the bearer gate — the redeemer
+    # following an invite link is not signed in and the UI posts with no header.
+    app = _make_app(provider=MockProvider())
+    client = TestClient(app)
+    resp = client.post("/auth/register", json={"username": "new", "password": "pw"})
+    assert resp.status_code == 200
+    assert resp.json()["username"] == "new"
+
+
+def test_register_with_an_invalid_credential_is_still_refused():
+    # REQ-124: the relaxation is only for a credential-LESS request. A presented-but-invalid bearer
+    # is still 401'd at the gate, so a bad token can never be laundered into an anonymous signup.
+    app = _make_app(provider=MockProvider())
+    client = TestClient(app)
+    resp = client.post(
+        "/auth/register",
+        json={"username": "new", "password": "pw"},
+        headers={"Authorization": "Bearer not-a-real-token"},
+    )
+    assert resp.status_code == 401
 
 
 def test_malformed_auth_header():
@@ -542,12 +570,28 @@ def test_superuser_on_an_unknown_org_host_is_refused_not_defaulted():
     assert resp.status_code == 404
 
 
-def test_superuser_on_the_control_plane_host_binds_the_default_org():
-    """`cloud.*` carries no org subdomain, so the break-glass account acts in the default org."""
+def test_superuser_naming_no_org_on_the_control_plane_host_is_refused_by_name():
+    """REQ-1935: `cloud.*` carries no org subdomain, and break-glass under multitenancy names its
+    org like everyone else -- there is no implied one."""
     pool = _FakeAdminPool({"ks"})
     app = _make_app(provider=MockProvider(), superuser=_SU, multitenancy=True, admin_pool=pool)
     resp = TestClient(app).get(
         "/test", headers={"Authorization": _basic("root", "s3cr3t"), "Host": "cloud.provisa.dev"}
+    )
+    assert resp.status_code == 401
+    assert resp.json()["code"] == "auth.org_selection_required"
+
+
+def test_superuser_naming_the_deployment_org_on_the_control_plane_host_acts_in_it():
+    pool = _FakeAdminPool({"ks"})
+    app = _make_app(provider=MockProvider(), superuser=_SU, multitenancy=True, admin_pool=pool)
+    resp = TestClient(app).get(
+        "/test",
+        headers={
+            "Authorization": _basic("root", "s3cr3t"),
+            "Host": "cloud.provisa.dev",
+            "x-org-provisa": "root",
+        },
     )
     assert resp.status_code == 200
     assert resp.json()["active_org_id"] == "root"

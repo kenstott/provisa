@@ -121,7 +121,7 @@ sources = Table(
     # Connection extras the typed columns cannot carry (warehouse account/http_path, remote-schema
     # override, Exasol server-certificate fingerprint) — Source.federation_hints.
     Column("federation_hints", JSON, nullable=False, default=dict, server_default="{}"),
-    Column("cdc", JSON),
+    Column("cdc", JSON(none_as_null=True)),
     Column("change_signal", Text, nullable=False, server_default="ttl"),  # REQ-929
     # REQ-1491: whether this environment has supplied this source's connection values. A copy
     # carries the row and never the binding, and an empty host is not an absent one — the
@@ -226,7 +226,7 @@ registered_tables = Table(
     Column("dq_contract", Text),
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
-    Column("view_metrics", JSON),
+    Column("view_metrics", JSON(none_as_null=True)),
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),  # REQ-1634
     Column("materialize", Boolean, nullable=False, server_default=false()),
     Column("row_materialize", Boolean, nullable=False, server_default=false()),  # REQ-1865
@@ -235,7 +235,7 @@ registered_tables = Table(
     ),  # REQ-788: one logical table over a glob of files; NULL = single file
     Column("source_file_column", Text),  # REQ-788: opt-in column carrying each row's file path
     Column(
-        "delta", JSON
+        "delta", JSON(none_as_null=True)
     ),  # REQ-874: incremental-reload (delta) declaration; NULL = whole rebuild only
     Column("mv_refresh_interval", Integer, nullable=False, server_default="300"),
     # REQ-963 live-MV debounce (event-loop path). quiet=0 → real-time recompute.
@@ -255,10 +255,10 @@ registered_tables = Table(
     # REQ-1162: append-only bitemporal materialization. NULL = ordinary MV; "snapshot"|"delta".
     # mv_bitemporal_key is the business-key column list a version belongs to (required for delta).
     Column("mv_bitemporal_mode", Text),
-    Column("mv_bitemporal_key", JSON),
+    Column("mv_bitemporal_key", JSON(none_as_null=True)),
     # REQ-965/969/970: MV persistence outcome + row identity + incremental maintenance.
     Column("mv_persist", Text, nullable=False, server_default="replace"),
-    Column("mv_primary_key", JSON),
+    Column("mv_primary_key", JSON(none_as_null=True)),
     Column("mv_incremental", Boolean, nullable=False, server_default=false()),
     # REQ-961/962/1168: PERIODIC calendar trigger (snapshot schedule). mv_calendar names a registered
     # calendar; mv_grain is a nesting grain ("daily".."annual") OR an nth-weekday recurrence
@@ -268,7 +268,7 @@ registered_tables = Table(
     Column("mv_calendar", Text),
     Column("mv_grain", Text),
     Column("mv_allowed_lateness", Float, nullable=False, server_default="0"),
-    Column("mv_expected_events", JSON),
+    Column("mv_expected_events", JSON(none_as_null=True)),
     Column("mv_business_day_grain", Boolean, nullable=False, server_default=false()),
     # REQ-1320: star/vault modeling role retained after entity/fact lowering
     # ("dimension" | "fact" | NULL) and the originating entity's history mode.
@@ -276,7 +276,7 @@ registered_tables = Table(
     Column("modeling_history", Text),
     Column("enable_aggregates", Boolean, nullable=False, server_default=false()),
     Column("enable_group_by", Boolean, nullable=False, server_default=false()),
-    Column("live", JSON),
+    Column("live", JSON(none_as_null=True)),
     Column("tenant_id", Uuid),
     Column("l1_cluster", Integer),
     Column("l2_cluster", Integer),
@@ -400,7 +400,7 @@ roles = Table(
     Column("residency_values", JSON, nullable=False, default=list, server_default="[]"),
     # REQ-1174: per-role rate + query limits {requests_per_second, max_query_complexity,
     # max_query_time_ms, ...}. None/absent = unlimited.
-    Column("rate_limit", JSON),
+    Column("rate_limit", JSON(none_as_null=True)),
     Column("parent_role_id", Text, ForeignKey("roles.id")),
     # REQ-1597/REQ-1624: this role's capabilities are DERIVED from the named role's, in this schema
     # only -- the sandbox visitor's `org_admin` is `sandbox` (env_copy.adopt_role_definition). Held
@@ -633,10 +633,10 @@ materialized_views = Table(
     Column("target_table", Text, nullable=False),
     Column("refresh_interval", Integer, nullable=False, server_default="300"),
     Column("enabled", Boolean, nullable=False, server_default=true()),
-    Column("join_pattern", JSON),
+    Column("join_pattern", JSON(none_as_null=True)),
     Column("custom_sql", Text),
     Column("expose_in_sdl", Boolean, nullable=False, server_default=false()),
-    Column("sdl_config", JSON),
+    Column("sdl_config", JSON(none_as_null=True)),
     # REQ-1922: the view's DEFINITION, shared by the org's regions. Each region's build of it —
     # status, the fleet's claim on it, what it was built from — is that region's own:
     # ``mv_build_state`` in the region's state store.
@@ -648,7 +648,7 @@ materialized_views = Table(
     Column("calendar", Text),
     Column("grain", Text),
     Column("allowed_lateness", Integer, nullable=False, server_default="0"),
-    Column("expected_events", JSON),
+    Column("expected_events", JSON(none_as_null=True)),
     Column("business_day_grain", Boolean, nullable=False, server_default=false()),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
@@ -698,8 +698,12 @@ calendars = Table(
     Column("fiscal_anchor_day", Integer, nullable=False, server_default="1"),
     Column("retail_anchor", Date),  # retail_445: the reference retail-year start date
     Column("week_start", Integer, nullable=False, server_default="0"),  # 0 = Monday
-    Column("holidays", JSON, default=list, server_default="[]"),  # ISO dates, versioned/immutable
-    Column("weekend", JSON, default=list, server_default="[5, 6]"),  # weekday ints (Sat, Sun)
+    Column(
+        "holidays", JSON(none_as_null=True), default=list, server_default="[]"
+    ),  # ISO dates, versioned/immutable
+    Column(
+        "weekend", JSON(none_as_null=True), default=list, server_default="[5, 6]"
+    ),  # weekday ints (Sat, Sun)
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
         "base_system IN ('gregorian', 'fiscal', 'retail_445')",
@@ -748,8 +752,8 @@ mv_delta_ledger = Table(
     Column("row_key", Text, nullable=False),
     Column("old_hash", Text),
     Column("new_hash", Text),
-    Column("old_values", JSON),
-    Column("new_values", JSON),
+    Column("old_values", JSON(none_as_null=True)),
+    Column("new_values", JSON(none_as_null=True)),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
         "change_type IN ('insert', 'update', 'delete')",
@@ -869,7 +873,7 @@ api_endpoints = Table(
     # REQ-318: a copy of the table's paging; NULL = not paged (SQL NULL, never JSON null).
     Column("pagination", JSON(none_as_null=True)),
     Column("max_concurrency", Integer),
-    Column("default_params", JSON),
+    Column("default_params", JSON(none_as_null=True)),
     Column("promotions", JSON, nullable=False, default=list, server_default="[]"),
     # REQ-1668: query-API endpoint shape (neo4j) — NULL on plain REST endpoints.
     Column("body_encoding", Text),
@@ -931,9 +935,9 @@ tracked_functions = Table(
     Column(
         "product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")
     ),  # REQ-1634: optional data-product membership; FK mirrors schema.sql so copies order after data_products
-    Column("return_schema", JSON),
+    Column("return_schema", JSON(none_as_null=True)),
     # REQ-1159: canonical IR-typed output dataset contract [{name,type}]; return_schema projects it to GraphQL.
-    Column("output_columns", JSON),
+    Column("output_columns", JSON(none_as_null=True)),
     # REQ-885: implementation kind + swappable binding, decoupled from addressing.
     Column("impl_kind", Text, nullable=False, server_default="source_procedure"),
     Column("binding", JSON, nullable=False, default=dict, server_default="{}"),
@@ -1200,7 +1204,7 @@ events = Table(
     # delta (upsert by PK) | append (insert) | replace (delete+insert) | warn (advise) | error (halt)
     Column("event_type", Text, nullable=False),
     # cursor / changed rows (bounded to jsonb; over the ceiling degrade to replace) / warn|error detail.
-    Column("payload", JSON, default=dict, server_default="{}"),
+    Column("payload", JSON(none_as_null=True), default=dict, server_default="{}"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
         "event_type IN ('delta','append','replace','warn','error','quarantine','row_refresh')",  # REQ-1865
@@ -1282,7 +1286,7 @@ replica_state = Table(
     # no longer matches the digest asks for a rebuild; the columns say whether the standing
     # replica can still answer the model meanwhile.
     Column("definition_hash", Text),
-    Column("built_columns", JSON),
+    Column("built_columns", JSON(none_as_null=True)),
     # The model stamp (REQ-1914) of the process that asked for the build: a node whose loaded
     # model is older than this has not seen the table yet and must not retire its replica.
     Column("model_stamp", BigInteger),
@@ -1294,7 +1298,7 @@ replica_state = Table(
     # REQ-1350: the failure's stable code and params, when its cause is one Provisa names
     # (``replica_errors``); NULL for a driver's or a source's own error.
     Column("last_error_code", Text),
-    Column("last_error_params", JSON),
+    Column("last_error_params", JSON(none_as_null=True)),
     Column("failed_at", DateTime(timezone=True)),
     # Builds that have failed in a row since the last one that completed: a replica that keeps
     # failing is retried every ``replication.retry_interval``, and this says how often it has.
@@ -1308,7 +1312,7 @@ replica_state = Table(
     Column("feed_down_since", DateTime(timezone=True)),
     Column("feed_error", Text),
     Column(
-        "delta_cursor", JSON
+        "delta_cursor", JSON(none_as_null=True)
     ),  # REQ-874: the stored delta cursor (max cursor-field of the last applied delta)
     Column(
         "delta_skipped", Text

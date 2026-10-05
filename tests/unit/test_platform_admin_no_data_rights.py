@@ -75,14 +75,17 @@ class _RecordingConn:
 @pytest.mark.asyncio
 async def test_role_upsert_refuses_to_redefine_platform_admin():
     conn = _RecordingConn()
-    await role_repo.upsert(
-        conn,  # type: ignore[arg-type]  # fake connection records the write instead of issuing it
-        Role(
-            id="platform_admin", capabilities=["source_registration", "admin"], domain_access=["*"]
-        ),
-        org_id=None,
-        origin="admin",
-    )
+    with pytest.raises(role_repo.ReservedRoleRedefined, match="'platform_admin'"):
+        await role_repo.upsert(
+            conn,  # type: ignore[arg-type]  # fake connection records the write instead of issuing it
+            Role(
+                id="platform_admin",
+                capabilities=["source_registration", "admin"],
+                domain_access=["*"],
+            ),
+            org_id=None,
+            origin="admin",
+        )
     assert conn.upserts == [], "platform_admin's definition belongs to schema.sql alone"
 
 
@@ -92,12 +95,13 @@ async def test_role_upsert_refuses_to_redefine_org_admin():
     # Config load runs AFTER apply_tenancy_role_grants and overwrites `capabilities` wholesale, so
     # the org administrator lost both org-scoped rights and the Admin tab disappeared entirely.
     conn = _RecordingConn()
-    await role_repo.upsert(
-        conn,  # type: ignore[arg-type]
-        Role(id="org_admin", capabilities=["query_development"], domain_access=["*"]),
-        org_id=None,
-        origin="admin",
-    )
+    with pytest.raises(role_repo.ReservedRoleRedefined, match="'org_admin'"):
+        await role_repo.upsert(
+            conn,  # type: ignore[arg-type]
+            Role(id="org_admin", capabilities=["query_development"], domain_access=["*"]),
+            org_id=None,
+            origin="admin",
+        )
     assert conn.upserts == [], "org_admin's definition belongs to schema.sql alone"
 
 

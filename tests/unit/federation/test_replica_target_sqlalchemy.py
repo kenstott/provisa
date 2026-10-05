@@ -26,6 +26,7 @@ from provisa.federation.replica_target import (
     LOAD_INSERT,
     LOAD_ODBC_ARRAY,
     LOAD_ORACLE_DIRECT_PATH,
+    LOAD_SINGLESTORE_INFILE,
     RENAME_IN_TRANSACTION,
     RENAME_PAIR,
     ROWS_IN_TRANSACTION,
@@ -63,6 +64,8 @@ def _target(url: str, **overrides) -> SqlAlchemyStoreTarget:
             LOAD_ORACLE_DIRECT_PATH,
             ROWS_IN_TRANSACTION,
         ),
+        # REQ-990: a SingleStore store streams LOAD DATA LOCAL INFILE, never executemany.
+        ("singlestoredb://u:p@localhost:1/d", LOAD_SINGLESTORE_INFILE, ROWS_IN_TRANSACTION),
     ],
 )
 def test_each_dialect_declares_its_load_and_its_atomic_replace(url, load, replace):
@@ -71,7 +74,9 @@ def test_each_dialect_declares_its_load_and_its_atomic_replace(url, load, replac
     assert target.caps.atomic_swap
     # The named capability the store page and the docs state: only a bulk path is a bulk stream.
     assert target.caps.load is (
-        TargetLoad.BULK_STREAM if load == LOAD_ORACLE_DIRECT_PATH else TargetLoad.ROW_COPY
+        TargetLoad.BULK_STREAM
+        if load in (LOAD_ORACLE_DIRECT_PATH, LOAD_SINGLESTORE_INFILE)
+        else TargetLoad.ROW_COPY
     )
 
 

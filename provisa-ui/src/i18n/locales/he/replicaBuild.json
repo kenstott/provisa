@@ -12,6 +12,7 @@
     "method": {
       "engine_statement": "הועתקה על ידי המנוע",
       "stream_batches": "הוזרמה באצוות",
+      "store_pipeline": "נטענה על ידי ה-Pipeline של המאגר עצמו",
       "delta": "delta"
     },
     "loadKind": {

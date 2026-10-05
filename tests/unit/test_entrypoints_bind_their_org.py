@@ -64,8 +64,26 @@ def _routing_middleware():
     return cast("Any", cls)
 
 
+def _with_runtime(registry, org_id: str):
+    """A copy of ``registry`` that also holds a built runtime for ``org_id``."""
+    from provisa.api.org_runtime import OrgRegistry, OrgRuntime
+
+    copy = OrgRegistry()
+    for key in registry.all_org_ids():
+        rt = registry.get(key)
+        assert rt is not None
+        copy.set(key, rt)
+    copy.set(org_id, OrgRuntime(org_id=org_id))
+    return copy
+
+
 async def _route(monkeypatch, active_org: str | None) -> list[str | None]:
+    from provisa.api.app import state
     from provisa.core.environments import PROD
+
+    if active_org is not None and state.org_registry.get(active_org) is None:
+        # The named org's runtime, as ensure_org_runtime builds it (stubbed below).
+        monkeypatch.setattr(state, "org_registry", _with_runtime(state.org_registry, active_org))
 
     async def _prod(*_a, **_k):
         return PROD

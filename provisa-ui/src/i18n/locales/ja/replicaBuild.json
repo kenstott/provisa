@@ -12,6 +12,7 @@
     "method": {
       "engine_statement": "エンジンがコピー",
       "stream_batches": "バッチでストリーム",
+      "store_pipeline": "ストア自身のパイプラインでロード",
       "delta": "delta"
     },
     "loadKind": {

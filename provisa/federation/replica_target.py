@@ -275,18 +275,23 @@ SA_NO_ATOMIC_REPLACE = frozenset(
 LOAD_INSERT = "insert"  # SQLAlchemy executemany: the floor every driver has
 LOAD_ODBC_ARRAY = "odbc_array"  # pyodbc parameter arrays (``fast_executemany``) on the raw cursor
 LOAD_ORACLE_DIRECT_PATH = "oracle_direct_path"  # python-oracledb Direct Path Load
+LOAD_SINGLESTORE_INFILE = "singlestore_infile"  # streamed LOAD DATA LOCAL INFILE (REQ-990)
 
 #: What each load method is, as the store declares it (``TargetCaps.load``).
 _SA_LOAD_KIND = {
     LOAD_INSERT: TargetLoad.ROW_COPY,
     LOAD_ODBC_ARRAY: TargetLoad.ROW_COPY,
     LOAD_ORACLE_DIRECT_PATH: TargetLoad.BULK_STREAM,
+    LOAD_SINGLESTORE_INFILE: TargetLoad.BULK_STREAM,
 }
 
 _SA_NATIVE_LOAD = {
     ("mssql", "pyodbc"): LOAD_ODBC_ARRAY,
     ("oracle", "oracledb"): LOAD_ORACLE_DIRECT_PATH,
 }
+#: Dialects with one client only, whose bulk call is keyed on the dialect alone: the singlestoredb
+#: dialect names no driver until it connects, then names the wire protocol (``mysql``).
+_SA_DIALECT_LOAD = {"singlestoredb": LOAD_SINGLESTORE_INFILE}
 
 
 def sa_replace_method(dialect: str, *, rename: bool = True) -> str | None:
@@ -340,6 +345,7 @@ class SqlAlchemyStoreTarget:
 
     - SQL Server over pyodbc: parameter arrays on the raw cursor (``fast_executemany``);
     - Oracle over python-oracledb: Direct Path Load;
+    - SingleStore: one streamed ``LOAD DATA LOCAL INFILE`` per batch (REQ-990), never executemany;
     - any other driver: SQLAlchemy's ``executemany``, the floor (PyMySQL sends it as multi-row
       ``INSERT`` statements; its ``LOAD DATA LOCAL`` reads a named file and is not used).
 
@@ -380,8 +386,10 @@ class SqlAlchemyStoreTarget:
         self._pk = tuple(pk_columns)
         self._build = build_table_name(table)
         self._previous = previous_table_name(table)
-        self.load_method = load or _SA_NATIVE_LOAD.get(
-            (self._dialect, sa_engine.dialect.driver), LOAD_INSERT
+        self.load_method = (
+            load
+            or _SA_DIALECT_LOAD.get(self._dialect)
+            or _SA_NATIVE_LOAD.get((self._dialect, sa_engine.dialect.driver), LOAD_INSERT)
         )
         self.replace_method = sa_replace_method(self._dialect, rename=rename)
         self._conn: Any = None
@@ -475,6 +483,12 @@ class SqlAlchemyStoreTarget:
             return
         # The driver's own connection, the one this build's SQLAlchemy connection wraps.
         raw = self._conn.connection.driver_connection
+        if self.load_method == LOAD_SINGLESTORE_INFILE:
+            from provisa.core.database import singlestore_load_data
+
+            singlestore_load_data(raw, self._sa.dialect, self._build_table, coerced)
+            raw.commit()
+            return
         names = [name for name, _ in self._columns]
         data = [tuple(_driver_value(row.get(name)) for name in names) for row in coerced]
         if self.load_method == LOAD_ODBC_ARRAY:
@@ -507,6 +521,61 @@ class SqlAlchemyStoreTarget:
         del batch  # this face writes rows
         if rows:
             await asyncio.to_thread(self._write, rows)
+
+    @property
+    def schema(self) -> str:
+        return self._schema
+
+    @property
+    def table(self) -> str:
+        return self._table
+
+    @property
+    def build_table_name(self) -> str:
+        """The table this build fills before it is swapped in."""
+        return self._build
+
+    @staticmethod
+    def _execute_raw(conn: Any, statements: list[str], *, tolerate: tuple[int, ...] = ()) -> None:
+        """Run ``statements`` in order on the driver's own connection under ``conn``, then commit.
+        A statement failing with an error number in ``tolerate`` is passed over."""
+        raw = conn.connection.driver_connection
+        cursor = raw.cursor()
+        try:
+            for sql in statements:
+                try:
+                    cursor.execute(sql)
+                except Exception as exc:  # noqa: BLE001 — only the named error numbers pass
+                    if getattr(exc, "errno", None) not in tolerate:
+                        raise
+        finally:
+            cursor.close()
+        raw.commit()
+
+    async def run_on_build(self, statements: list[str], *, tolerate: tuple[int, ...] = ()) -> None:
+        """Run store statements on this build's own connection (a SingleStore pipeline that loads
+        the build table, REQ-990), after :meth:`begin` and before :meth:`swap`."""
+        await asyncio.to_thread(self._execute_raw, self._conn, statements, tolerate=tolerate)
+
+    def _build_row_count(self) -> int:
+        from sqlalchemy import func, select
+
+        return int(
+            self._conn.execute(select(func.count()).select_from(self._build_table)).scalar_one()
+        )
+
+    async def build_row_count(self) -> int:
+        """How many rows the build table holds now."""
+        return await asyncio.to_thread(self._build_row_count)
+
+    def _store_value(self, sql: str) -> Any:
+        with self._sa.connect() as conn:
+            return conn.exec_driver_sql(sql).scalar()
+
+    async def store_value(self, sql: str) -> Any:
+        """One value the store answers ``sql`` with, on a connection of its own (a workspace
+        setting a build depends on, read before it begins)."""
+        return await asyncio.to_thread(self._store_value, sql)
 
     def _replace_rows(self, conn: Any, standing: bool) -> None:
         """Replace the replica's rows with the build table's in one transaction, in the
@@ -593,9 +662,25 @@ class SqlAlchemyStoreTarget:
         with self._sa.begin() as conn:
             for name in (self._build, self._previous, self._table):
                 self._drop_if_present(conn, name)
+        if self._dialect == "singlestoredb":
+            # REQ-990: a pipeline-built replica's pipeline and credential link go with it. Their
+            # names are the replica's; either may be absent (a build that never ran by pipeline).
+            from provisa.federation import singlestore_pipeline as sp
+
+            with self._sa.connect() as conn:
+                self._execute_raw(
+                    conn,
+                    sp.teardown(
+                        self._schema,
+                        sp.pipeline_name(self._schema, self._table),
+                        link=sp.link_name(self._schema, self._table),
+                    ),
+                    tolerate=(sp.NO_SUCH_LINK,),
+                )
 
     async def drop(self) -> None:
-        """Remove the replica and any build table left beside it."""
+        """Remove the replica and any build table left beside it (and, on SingleStore, the
+        pipeline and credential link that loaded it)."""
         from provisa.federation.replica_guard import require_replicas_schema
 
         require_replicas_schema(self._schema, self._table, action="drop the replica at")

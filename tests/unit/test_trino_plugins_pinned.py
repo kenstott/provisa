@@ -73,3 +73,38 @@ def test_a_borrowed_symlink_is_replaced_by_the_pinned_build(plugins, tmp_path):
     harness._populate_trino_plugins()
     assert "trino-file" in fetched and not os.path.islink(root / "trino-file")
     assert (elsewhere / "local.jar").exists()  # the borrowed directory itself is left alone
+
+
+def _earlier_pin_downloaded_here(root, name: str, body: str = "jar-0.106.2") -> None:
+    """What an earlier run of the harness left: its own fetch of the previous pin, recorded."""
+    (root / name).mkdir()
+    jar = root / name / f"{name}-0.106.2.jar"
+    jar.write_text(body)
+    harness._record_download(str(root), name, str(jar))
+
+
+def test_the_harness_own_fetch_of_an_earlier_pin_is_replaced_by_the_pinned_build(plugins):
+    """A repin must not leave every worktree refusing the jars the harness itself fetched."""
+    root, fetched = plugins
+    _earlier_pin_downloaded_here(root, "trino-splunk")
+    harness._populate_trino_plugins()
+    pinned = f"trino-splunk-{harness._TRINO_PLUGIN_VERSION}.jar"
+    assert sorted(os.listdir(root / "trino-splunk")) == [pinned]
+    assert "trino-splunk" in fetched
+    assert harness._downloads(str(root))["trino-splunk"]["file"] == pinned
+
+
+def test_an_earlier_pin_the_harness_did_not_fetch_is_refused(plugins):
+    root, _ = plugins
+    (root / "trino-splunk").mkdir()
+    (root / "trino-splunk" / "trino-splunk-0.106.2.jar").write_text("built somewhere else")
+    with pytest.raises(RuntimeError, match="trino-splunk.*not the pinned"):
+        harness._populate_trino_plugins()
+
+
+def test_a_fetched_jar_changed_since_is_refused(plugins):
+    root, _ = plugins
+    _earlier_pin_downloaded_here(root, "trino-file")
+    (root / "trino-file" / "trino-file-0.106.2.jar").write_text("rebuilt in place")
+    with pytest.raises(RuntimeError, match="trino-file.*not the pinned"):
+        harness._populate_trino_plugins()
