@@ -10,20 +10,21 @@
 
 """A Cypher read (HTTP and Bolt) runs on its own source's connection, or not at all.
 
-The Cypher direct dispatcher is the terminal Cypher over HTTP and Bolt hand a non-ENGINE plan to.
-A plan for a source this node holds no connection for must never run on the org's control-plane
-store; the role reading it has no right to that store."""
+Cypher hands every governed plan to the one pipeline terminal (``_execute_plan``), whose DIRECT
+terminal serves the provisa-admin source from the model store and refuses any other source it
+holds no connection for (``tests/unit/test_direct_terminal_reaches_its_source.py``). A plan for a
+source this node holds no connection for is routed to the engine, never run on the org's
+control-plane store; the role reading it has no right to that store."""
 
 # Requirements: REQ-825, REQ-1919, REQ-031
 
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
-from provisa.api.errors import ApiError
 
 from tests.unit.test_governed_sql_engine_internals import _state as gov_state
 
@@ -61,7 +62,6 @@ async def test_a_role_without_meta_reading_a_source_with_no_connection_never_rea
     monkeypatch,
 ):
     import provisa.api.app as app_mod
-    from provisa.api.rest.cypher_router import _dispatch_execution_direct
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled
     from provisa.transpiler.router import Route
@@ -71,33 +71,42 @@ async def test_a_role_without_meta_reading_a_source_with_no_connection_never_rea
     state.source_pools = _NoPools()
     state.tenant_db = store
     state.source_dialects = {"pg": "postgres"}
+    # The engine the read is routed to: it plans the statement (nothing here executes it).
+    state.federation_engine = SimpleNamespace(
+        engine=SimpleNamespace(catalog_qualified=True),
+        transpile_physical=lambda sql: sql,
+        dialect="trino",
+    )
     monkeypatch.setattr(app_mod, "state", state, raising=False)
     monkeypatch.setattr("provisa.audit.pipeline.write_audit", AsyncMock(return_value=None))
 
     # The statement Cypher's translator produces for MATCH (o:Orders) RETURN o.id, governed as
-    # the Cypher router governs it.
+    # the Cypher router governs it: with no connection to its source here, the engine reads it.
     plan = await _govern_and_route_compiled(
         'SELECT "o"."id" FROM "sales"."orders" AS "o"',
         "analyst",
         state=state,
         cache_hint=NO_CACHE_HINT,
+        sdl_joins=False,  # as the Cypher router governs it
     )
-    assert plan.route != Route.ENGINE and plan.source_id == "pg", plan
-
-    # The Cypher router and the Bolt session hand exactly this to the direct dispatcher.
-    with pytest.raises(ApiError) as refused:
-        await _dispatch_execution_direct(plan.exec_sql or "", plan.source_id, [], state)
-    assert (refused.value.status_code, refused.value.code) == (500, "data.no_direct_route")
+    assert plan.route == Route.ENGINE, plan
     assert store.ran == [], f"the read ran on the control-plane store: {store.ran}"
 
 
-async def test_the_admin_source_is_served_by_the_model_store_not_the_state_store():
-    from provisa.api.rest.cypher_router import _dispatch_execution_direct
+async def test_cypher_runs_its_plan_through_the_one_pipeline_terminal(monkeypatch):
+    """No Cypher-private dispatcher: the plan goes to ``_execute_plan``, where the DIRECT
+    terminal's source rules hold for every surface."""
+    from provisa.api.rest import cypher_router
 
-    model, tenant = _ControlPlane(), _ControlPlane()
-    state = type(
-        "_State", (), {"model_db": model, "tenant_db": tenant, "source_pools": _NoPools()}
-    )()
-    rows = await _dispatch_execution_direct("SELECT 1 AS id", "provisa-admin", [], state)
-    assert rows == [{"id": 1}]
-    assert (model.ran, tenant.ran) == (["SELECT 1 AS id"], [])
+    ran: list[object] = []
+
+    async def _terminal(plan, state):
+        ran.append(plan)
+        return "result"
+
+    monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _terminal)
+    monkeypatch.setattr("provisa.pgwire._pipeline.require_governed_plan", lambda _plan: None)
+    plan = type("_Plan", (), {"physical_sql": "SELECT 1", "exec_sql": "SELECT 1"})()
+    assert await cypher_router._run_plan(plan, object()) == "result"  # type: ignore[arg-type]
+    assert ran == [plan]
+    assert not hasattr(cypher_router, "_dispatch_execution_direct")
