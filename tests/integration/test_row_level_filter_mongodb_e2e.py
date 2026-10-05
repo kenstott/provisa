@@ -13,8 +13,8 @@
 The pg engine has no connector for MongoDB, so ``row_materialize`` is the collection's reach — the
 perf fragment's ``order_docs``. An unfiltered ``/data/sql`` read of it used to copy the collection
 into the worker and upsert it one row at a time (a 20M-document collection never finished and
-held the request open). It is refused at planning, naming the table and its key, and the
-collection is never read; a read that binds the key fetches exactly those documents.
+held the request open). It is refused at planning, naming the table, and the collection is never
+read; a read that binds the key fetches exactly those documents.
 
 Everything here is the ``test`` instance: a Postgres and a MongoDB this module starts on leased
 ports and removes, and an isolated server whose control plane and replica store are that
@@ -201,8 +201,8 @@ def test_an_unfiltered_read_is_refused_and_the_collection_is_not_read(stores, se
     resp = _sql(server, f"SELECT order_id FROM {_TABLE} LIMIT 1")
     assert resp.status_code == 400, resp.text
     body = resp.json()
-    assert body["code"] == "data.row_level_key_required", body
-    assert body["params"] == {"table": _TABLE, "key": "order_id"}
+    assert body["code"] == "data.row_level_filter_required", body
+    assert body["params"] == {"table": _TABLE}
     assert time.monotonic() - started < 10  # refused at planning, not after a copy
     assert len(stores.collection_reads()) == before
 
@@ -229,4 +229,4 @@ def test_a_keyed_read_fetches_exactly_its_documents(stores, server):
         held = conn.execute(f'SELECT order_id FROM "{schema}"."{name}" ORDER BY 1').fetchall()
     assert held == [(3,), (4,)]  # the replica holds the keys asked for, not the collection
     again = _sql(server, f"SELECT count(*) AS n FROM {_TABLE}")
-    assert again.status_code == 400 and again.json()["code"] == "data.row_level_key_required"
+    assert again.status_code == 400 and again.json()["code"] == "data.row_level_filter_required"

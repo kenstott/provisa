@@ -15,8 +15,9 @@ replicated that way because it is large, so it is never read whole. A statement 
 no filter used to behave three ways: the chokepoint surfaces copied the whole source table into
 the worker (a 20M-document collection never finished; Neo4j ran out of memory building the node
 set), pgwire and Flight answered from whatever rows happened to be replicated, and GraphQL read an
-API cache table that was never created. It is refused at planning, on every surface, naming the
-table. FILTERED means one of:
+API cache table that was never created. A read the engine federates is refused at planning, on
+every surface, naming the table; a single-source read through the source's own driver (DIRECT)
+reads the source live and is not refused (maintainer ruling 2026-10-05). FILTERED means one of:
 
 - a KEY filter: the statement's predicates resolve concrete values for the table's primary key —
   an equality, an IN list, or an OR of key equalities, with literals or bound parameters;
@@ -144,8 +145,8 @@ async def test_bolt_refuses_an_unfiltered_read_instead_of_replicating_the_node_s
 
 
 async def test_a_cached_answer_does_not_stand_in_for_the_refusal(planning, monkeypatch):
-    """The refusal precedes the cache read on both stages: an answer some earlier build cached
-    for the unbound statement is never served."""
+    """An unbound statement skips the cache read on both stages: an answer some earlier build
+    cached for it is never served, and its federated read is refused."""
     read = AsyncMock(return_value=(object(), ()))
     monkeypatch.setattr(_pipeline, "_cached_before_routing", read)
     sql = "-- @provisa cache=true\nSELECT o.id FROM sales.orders o LIMIT 1"
@@ -187,8 +188,8 @@ async def test_a_read_that_binds_the_key_is_planned_on_both_stages(planning, sql
 
 
 async def test_a_graphql_field_is_refused_before_its_cache_and_its_route(planning, monkeypatch):
-    """/data/graphql reads each field through the compiled pipeline: the same decision point,
-    ahead of the cache read and the route."""
+    """/data/graphql reads each field through the compiled pipeline: the same decision point. The
+    cache is never read for it; the route decides the refusal (a federated read is refused)."""
     from provisa.api.data import endpoint
     from provisa.compiler.directives import CacheHint
     from provisa.compiler.sql_types import ColumnRef, CompiledQuery
@@ -219,7 +220,41 @@ async def test_a_graphql_field_is_refused_before_its_cache_and_its_route(plannin
         )
     _assert_names_table_and_key(refused.value)
     cache_read.assert_not_awaited()
-    routed.assert_not_called()
+    routed.assert_awaited()  # the refusal is the ENGINE route's (maintainer ruling 2026-10-05)
+
+
+async def test_a_direct_unfiltered_read_is_planned_live_with_no_bound(planning, monkeypatch):
+    """Maintainer ruling 2026-10-05: a single-source read through the source's own driver reads
+    the source live -- no bound, so nothing is fetched into the copy, and it is not refused. Nor is
+    it answered from the cache: the statement binds the row-level table neither way."""
+    cache_read = AsyncMock(return_value=(object(), ()))
+    monkeypatch.setattr(_pipeline, "_cached_before_routing", cache_read)
+    sql = "-- @provisa cache=true\nSELECT o.id FROM sales.orders o LIMIT 1"
+    with patch.object(
+        _pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_decision("DIRECT"))
+    ):
+        raw = await _pipeline._govern_and_route(sql, "analyst", serve_cached=True)
+        compiled = await _pipeline._govern_and_route_compiled(
+            "SELECT o.id FROM sales.orders o LIMIT 1",
+            "analyst",
+            state=planning,
+            cache_hint=cache_hint_for("sql", sql),
+            serve_cached=True,
+            sdl_joins=True,
+        )
+    assert raw.route.name == "DIRECT" and raw.pk_bounds == ()
+    assert compiled.route.name == "DIRECT" and compiled.pk_bounds == ()
+    cache_read.assert_not_awaited()
+
+
+async def test_a_direct_filtered_read_fetches_nothing_into_the_copy(planning, monkeypatch):
+    with patch.object(
+        _pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_decision("DIRECT"))
+    ):
+        plan = await _pipeline._govern_and_route(
+            "SELECT o.id FROM sales.orders o WHERE o.customer_id = 5", "analyst"
+        )
+    assert plan.pk_bounds == ()
 
 
 async def test_the_flag_is_ignored_when_the_engine_attaches_the_source(planning):

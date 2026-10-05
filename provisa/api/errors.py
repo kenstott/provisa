@@ -80,9 +80,10 @@ class RowLevelFilterRequired(ApiError):
 
     Such a table is replicated row by row because it is large, so it is never read whole: a read
     must filter it (any predicate on its own columns, or a join that supplies its key), and the
-    rows the filter selects are fetched from the source. A read with no filter is refused at
-    planning, on every surface, never answered from whatever rows happen to be replicated and
-    never the trigger of a whole-table copy. ``params`` carry the table. ``str()`` is the plain
+    rows the filter selects are fetched from the source. A read the engine federates with no
+    filter is refused at planning, on every surface, never answered from whatever rows happen to
+    be replicated and never the trigger of a whole-table copy. A single-source read through the
+    source's own driver (DIRECT) reads the source live and is not refused. ``params`` carry the table. ``str()`` is the plain
     message, so the wire protocols that report an error as text (pgwire, Bolt, Flight, gRPC) say
     the same thing HTTP does."""
 

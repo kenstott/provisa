@@ -8,14 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""E2E: a row-level replica table of a Neo4j source is read by key or not at all (REQ-1915).
+"""E2E: a row-level replica table of a Neo4j source is read through a filter or not at all (REQ-1915).
 
 A real isolated server (DuckDB engine — no connector for neo4j, so row-level replication is the
 table's reach; SQLite control plane) over a real Neo4j. The table is declared
 ``row_materialize`` in the config, as the perf fragment's ``bench_order_node`` is. An unfiltered
 read used to copy every node of the label into the worker (Bolt; Neo4j ran out of memory) or fail
-with ``relation … does not exist`` (pgwire). It is refused at planning, naming the table and its
-key, over HTTP; a read that binds the key is answered from the source, by key."""
+with ``relation … does not exist`` (pgwire). It is refused at planning, naming the table, over
+HTTP; a read that binds the key is answered from the source, by key."""
 
 # Requirements: REQ-1915, REQ-1865
 
@@ -115,13 +115,13 @@ def _sql(server, sql: str) -> httpx.Response:
     )
 
 
-def test_an_unfiltered_read_is_refused_over_http_naming_the_table_and_key(server):
+def test_an_unfiltered_read_is_refused_over_http_naming_the_table(server):
     resp = _sql(server, f"SELECT order_id FROM rowlevel.{_TABLE} LIMIT 1")
     assert resp.status_code == 400, resp.text
     body = resp.json()
-    assert body["code"] == "data.row_level_key_required", body
-    assert body["params"] == {"table": _TABLE, "key": "order_id"}
-    assert _TABLE in body["detail"] and '"order_id"' in body["detail"]
+    assert body["code"] == "data.row_level_filter_required", body
+    assert body["params"] == {"table": _TABLE}
+    assert _TABLE in body["detail"] and "because it is large" in body["detail"]
 
 
 def test_a_keyed_read_is_answered_by_key(server):
@@ -139,4 +139,4 @@ def test_the_refusal_did_not_copy_the_table(server):
     """After the refusals above the replica holds only the keys the keyed reads fetched: a key no
     read asked for is fetched now, and the unfiltered read is still refused."""
     again = _sql(server, f"SELECT count(*) AS n FROM rowlevel.{_TABLE}")
-    assert again.status_code == 400 and again.json()["code"] == "data.row_level_key_required"
+    assert again.status_code == 400 and again.json()["code"] == "data.row_level_filter_required"

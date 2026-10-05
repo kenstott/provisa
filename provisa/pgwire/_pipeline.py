@@ -1416,14 +1416,18 @@ async def route_governed(
     # REQ-1897 (amended 2026-10-01): the cache before the route. Its key is the governed
     # statement, its bound values and the role, all known now.
     _cache_params = list(embedded_params or [])
-    # REQ-1915: the key bounds — and the refusal of a read of a row-level table that binds no
-    # key — before the cache and the route, so no surface answers such a read from anywhere.
-    # ``embedded_params`` are the values the governed statement's own placeholders number.
-    _pk_bounds_now = _kept_pk_bounds(
-        governed.memo, governed_semantic, state, embedded_params or None
+    # REQ-1915: the row-level bounds, taken before the cache; the route decides whether they
+    # apply (``_row_level_bounds``). A statement that binds a row-level table neither way is not
+    # answered from the cache: a read of it that federates is refused, one that goes DIRECT is
+    # read live. ``embedded_params`` are the values the governed statement's own placeholders
+    # number.
+    _row_level = _RowLevelBounds.of(
+        functools.partial(
+            _kept_pk_bounds, governed.memo, governed_semantic, state, embedded_params or None
+        )
     )
     _cache_missed: tuple[tuple[int, ...] | None, ...] = ()
-    if serve_cached and _raw_cacheable:
+    if serve_cached and _raw_cacheable and _row_level.unbound is None:
         _hit, _cache_missed = await _cached_before_routing(
             state,
             sql=governed_semantic,
@@ -1729,7 +1733,7 @@ async def route_governed(
             sources=frozenset(_sources),
             route_reason=decision.reason,
             optimizations=_opts,
-            pk_bounds=_pk_bounds_now,  # REQ-1865
+            pk_bounds=_row_level_bounds(Route.ENGINE, _row_level),  # REQ-1865, REQ-1915
             response_cacheable=_raw_cacheable,  # REQ-1897
             cache_sql=governed_semantic,
             cache_params=_cache_params,
@@ -1810,7 +1814,7 @@ async def route_governed(
             sources=frozenset(_sources),
             route_reason=decision.reason,
             optimizations=_opts,
-            pk_bounds=_pk_bounds_now,  # REQ-1865
+            pk_bounds=_row_level_bounds(decision.route, _row_level),  # REQ-1865, REQ-1915
             response_cacheable=_raw_cacheable,  # REQ-1897
             cache_sql=governed_semantic,
             cache_params=_cache_params,
@@ -1918,7 +1922,9 @@ def _pk_bounds(inputs: tuple[tuple[Any, ...], ...], params: list[Any] | None) ->
       IS [NOT] NULL, and AND/OR/NOT of those): the rows the filter selects are fetched from the
       source and served from the replica while the filter's fetch is within its TTL;
     - else it is NOT filtered, and the statement is refused: ``RowLevelFilterRequired`` names the
-      table. A predicate in an enclosing or nested query does not filter the reference."""
+      table. A predicate in an enclosing or nested query does not filter the reference.
+
+    Asked only for a read the ENGINE federates (``_row_level_bounds``)."""
     if not inputs:
         return ()
     from dataclasses import replace
@@ -1946,6 +1952,41 @@ def _pk_bounds(inputs: tuple[tuple[Any, ...], ...], params: list[Any] | None) ->
             raise RowLevelFilterRequired(table.table_name)
         filters.setdefault((table.table_name, filtered.predicate), filtered)
     return (*bounds.values(), *filters.values())
+
+
+@dataclass(frozen=True)
+class _RowLevelBounds:
+    """A statement's row-level bounds (REQ-1915), taken once when it is planned, before the cache
+    and the route: its key and filter bounds, or -- ``unbound`` -- the row-level table it binds
+    neither way."""
+
+    bounds: tuple[Any, ...] = ()
+    unbound: str | None = None
+
+    @classmethod
+    def of(cls, derive: Callable[[], tuple[Any, ...]]) -> "_RowLevelBounds":
+        from provisa.api.errors import RowLevelFilterRequired
+
+        try:
+            return cls(bounds=derive())
+        except RowLevelFilterRequired as refused:
+            return cls(unbound=refused.params["table"])
+
+
+def _row_level_bounds(route: Any, taken: _RowLevelBounds) -> tuple[Any, ...]:
+    """The ONE decision whether a plan reads its row-level tables through their row-level copy
+    (REQ-1915, maintainer ruling 2026-10-05): only a read the ENGINE federates does -- its key
+    and filter bounds, and a read that binds a row-level table neither way is refused. Any other
+    route (a single source read through its own driver, DIRECT) reads the source live: no bound,
+    so nothing is fetched into the copy and an unfiltered read is not refused."""
+    from provisa.api.errors import RowLevelFilterRequired
+    from provisa.transpiler.router import Route
+
+    if route != Route.ENGINE:
+        return ()
+    if taken.unbound is not None:
+        raise RowLevelFilterRequired(taken.unbound)
+    return taken.bounds
 
 
 def _kept_pk_bounds(
@@ -2274,7 +2315,8 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
     # predicate naming it directly, e.g. cypher_cross_engine's bench_contains_edge) has no PK bound
     # for ensure_rows_resident to key off -- narrow its fetch to the keys this query's OTHER,
     # already-resolvable tables actually need. A statement that binds a row-level table neither
-    # way was refused at planning (REQ-1915, _pk_bounds), so nothing here copies a whole table.
+    # way was refused when its ENGINE plan was built (REQ-1915, _row_level_bounds), so nothing
+    # here copies a whole table.
     # ENGINE-route only: this is a multi-table join concern, and only the ENGINE route has a
     # physical_sql to probe.
     if plan.route == Route.ENGINE and plan.physical_sql is not None:
@@ -3237,11 +3279,13 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     # REQ-1897 (amended 2026-10-01): the cache before the route (see route_governed). A sink
     # delivery returns a handle, not rows, and is never answered from it.
     _cache_params = list(exec_params or [])
-    # REQ-1915: key bounds and the unbound-read refusal before the cache and the route (see
-    # route_governed).
-    _pk_bounds_now = _kept_pk_bounds(_memo, governed_sql, state, exec_params)
+    # REQ-1915: the row-level bounds, taken before the cache; the route decides whether they
+    # apply (see route_governed).
+    _row_level = _RowLevelBounds.of(
+        functools.partial(_kept_pk_bounds, _memo, governed_sql, state, exec_params)
+    )
     _cache_missed: tuple[tuple[int, ...] | None, ...] = ()
-    if serve_cached and deliver is None:
+    if serve_cached and deliver is None and _row_level.unbound is None:
         _hit, _cache_missed = await _cached_before_routing(
             state,
             sql=governed_sql,
@@ -3284,7 +3328,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         memo=_memo,
         cache_params=_cache_params,
         cache_missed=_cache_missed,
-        pk_bounds=_pk_bounds_now,
+        row_level=_row_level,
         as_of=as_of,
         steward_hint=steward_hint,
         session_props=session_props,
@@ -3545,7 +3589,7 @@ async def _route_compiled(
     memo: dict[str, Any],
     cache_params: list,
     cache_missed: tuple[tuple[int, ...] | None, ...],
-    pk_bounds: tuple[Any, ...],
+    row_level: "_RowLevelBounds",
     as_of: str | None = None,
     steward_hint: str | None = None,
     session_props: dict[str, str] | None = None,
@@ -3771,7 +3815,7 @@ async def _route_compiled(
             sources=frozenset(sources),
             route_reason=decision.reason,
             optimizations=_opts,
-            pk_bounds=pk_bounds,  # REQ-1865
+            pk_bounds=_row_level_bounds(Route.ENGINE, row_level),  # REQ-1865, REQ-1915
             # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
             # hand this function a read the compiler built from a query AST; writes take the
             # mutation executor, never this path. A sink delivery returns a handle, not rows.
@@ -3841,7 +3885,7 @@ async def _route_compiled(
             sources=frozenset(sources),
             route_reason=decision.reason,
             optimizations=_opts,
-            pk_bounds=pk_bounds,  # REQ-1865
+            pk_bounds=_row_level_bounds(decision.route, row_level),  # REQ-1865, REQ-1915
             # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
             # hand this function a read the compiler built from a query AST; writes take the
             # mutation executor, never this path. A sink delivery returns a handle, not rows.

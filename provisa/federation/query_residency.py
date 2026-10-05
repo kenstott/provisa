@@ -305,8 +305,9 @@ async def ensure_resident(
     settled: an engine that reads the source in place ignores the flag)
     has no whole-table replica and is never built here. Its rows are fetched by key —
     ``ensure_rows_resident`` for a key the statement binds, ``pushdown_row_materialize`` for a key
-    a join supplies — and a statement that binds neither is refused at planning (REQ-1915,
-    ``pgwire._pipeline._pk_bounds``), so no read reaches this function needing the whole table.
+    a join supplies — and a federated statement that binds neither is refused at planning
+    (REQ-1915, ``pgwire._pipeline._row_level_bounds``), so no read reaches this function needing
+    the whole table.
     The whole-table path that used to live here (load the entire source table into the worker,
     upsert it one row at a time) is gone with that rule."""
     wanted = {s for s in source_ids if s}
