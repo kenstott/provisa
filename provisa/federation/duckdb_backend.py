@@ -29,6 +29,8 @@ class DuckDBBackend(NativeEngineBackend):
     physical SQL — already transpiled to the DuckDB dialect by transpile_physical — runs against its
     connection, whose catalog-physical views resolve the names the compiler emits."""
 
+    reads_other_regions = True  # REQ-1922: ATTACH of that region's store
+
     # UnreachableSource must stay in this tuple (base default in NativeEngineBackend) — REQ-841/REQ-947:
     # a leftover source of an unreachable type (e.g. a connector-only source left registered after a
     # Trino-bound test rebinds the engine back to DuckDB) must be skipped here, not raised uncaught into

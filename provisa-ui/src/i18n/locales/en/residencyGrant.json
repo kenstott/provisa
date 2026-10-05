@@ -1,0 +1,9 @@
+{
+  "residencyGrant": {
+    "right": "data_residency",
+    "help": "Set, change or remove where the data of a table, a source or a materialized view lives, for the values listed below. A change needs both the old and the new value covered; a draft object needs only the new one.",
+    "values": "Region values covered",
+    "valuesPlaceholder": "Choose regions",
+    "noRegion": "No region"
+  }
+}

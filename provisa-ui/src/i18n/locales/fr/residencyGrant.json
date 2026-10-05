@@ -1,0 +1,9 @@
+{
+  "residencyGrant": {
+    "right": "data_residency",
+    "help": "Définir, modifier ou retirer l'endroit où résident les données d'une table, d'une source ou d'une vue matérialisée, pour les valeurs listées ci-dessous. Une modification exige que l'ancienne et la nouvelle valeur soient couvertes ; un objet en brouillon n'exige que la nouvelle.",
+    "values": "Valeurs de région couvertes",
+    "valuesPlaceholder": "Choisir des régions",
+    "noRegion": "Aucune région"
+  }
+}

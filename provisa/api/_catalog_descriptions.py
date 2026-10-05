@@ -371,6 +371,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "sources": "Sources the statement read",
         "data_age": "How old the rows it was answered with were — a cache entry's age, or the "
         "time it was read as of; empty when read live",
+        "region": "The region whose data answered it — the answering node's, or the one another "
+        "region's data it read in place is kept in",
         "model_stamp": "The model version (stamp) the statement was governed under",
         "model_commit": "The environment repository commit that model equals, when proven",
         "enforced": "What was enforced on it — row filters (with the names of the session "

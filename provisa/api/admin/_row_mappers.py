@@ -111,6 +111,7 @@ def _source_from_row(row, *, connection: bool) -> SourceType:
         cache_enabled=row.get("cache_enabled", True),
         cache_ttl=row.get("cache_ttl"),
         replicate=row["replicate"],  # REQ-826
+        region=row["region"],  # REQ-1921
         load_protected=bool(row.get("load_protected", False)),  # REQ-1141
         off_peak_window=row.get("off_peak_window"),  # REQ-1141
         off_peak_tz=row.get("off_peak_tz") or "UTC",  # REQ-1141
@@ -152,6 +153,7 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
             capabilities=None,
             domain_access=None,
             demonstrated=None,
+            residency_values=None,
         )
     # REQ-1174: surface the per-role rate + query-complexity limits (JSON column) to the admin API.
     rl = row.get("rate_limit")
@@ -171,6 +173,7 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
         demonstrated=list(row["demonstrated"]),
         rate_limit=rate_limit,
         parent_role_id=row.get("parent_role_id"),  # REQ-1677
+        residency_values=list(row["residency_values"]),  # REQ-1921
     )
 
 

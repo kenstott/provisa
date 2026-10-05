@@ -97,7 +97,8 @@
       "unknown_action_field": "Champ d'action inconnu : « {{field}} »",
       "unknown_command": "Commande « {{name}} » inconnue",
       "write_not_admitted": "Le rôle '{{role}}' ne peut pas effectuer cette écriture : une écriture exige le droit d'écriture, l'accès en écriture à chaque colonne écrite et des lignes admises par le filtre de lignes du rôle.",
-      "write_not_supported": "'{{table}}' n'accepte pas {{operation}} : sa source ne peut pas l'exécuter"
+      "write_not_supported": "'{{table}}' n'accepte pas {{operation}} : sa source ne peut pas l'exécuter",
+      "table_is_draft": "{{table}} est un brouillon : hors service jusqu'à ce que les responsables de son domaine la publient"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
@@ -334,6 +335,9 @@
       "table_registered": "Table « {{table}} » enregistrée (id={{id}})",
       "table_registered_fields_omitted": "Table « {{table}} » enregistrée (id={{id}}). Omis, car les identifiants de la source ne permettent pas de les lire : {{fields}}",
       "table_replicate_set": "Répliquer défini pour la table {{table}}",
+      "table_region_set": "Région de la table {{table}} définie sur {{region}}",
+      "source_region_set": "Région de la source {{source}} définie sur {{region}}",
+      "region_refused": "La région n'a pas été définie : {{reason}}",
       "table_too_complex": "La table « {{table}} » n'a pas été enregistrée avec les colonnes sélectionnées : {{reason}}. Choisissez moins de colonnes.",
       "table_updated": "Table « {{table}} » mise à jour (id={{id}})",
       "task_deleted": "Tâche « {{task}} » supprimée",
@@ -352,13 +356,17 @@
       "webhook_approved": "Webhook « {{webhook}} » approuvé",
       "webhook_name_required": "webhook_name est requis pour un déclencheur webhook",
       "webhook_not_found": "Webhook « {{webhook}} » introuvable",
-      "change_streams_unavailable": "La source '{{source}}' est un serveur MongoDB autonome, qui ne fournit pas de change streams : le signal de modification native exige un replica set ou un cluster shardé. Exécutez-le en replica set ou utilisez le signal de modification poll."
+      "change_streams_unavailable": "La source '{{source}}' est un serveur MongoDB autonome, qui ne fournit pas de change streams : le signal de modification native exige un replica set ou un cluster shardé. Exécutez-le en replica set ou utilisez le signal de modification poll.",
+      "table_draft_set": "Table {{table}} mise en brouillon",
+      "table_released": "Table {{table}} publiée"
     },
     "secrets": {
       "still_referenced": "{{secret}} est encore nommé par {{count}} valeur(s) stockée(s) dans cette organisation. Modifiez ou retirez chacune, puis supprimez-le de nouveau."
     },
     "security": {
-      "unknown_mode": "mode de sécurité « {{mode}} » inconnu"
+      "unknown_mode": "mode de sécurité « {{mode}} » inconnu",
+      "data_residency_refused": "La région de {{object}} ne peut pas être définie : l'autorisation data_residency ne couvre pas {{value}} ; une autorisation data_residency qui l'inclut le permet",
+      "data_residency_missing": "La région de {{object}} ne peut pas être définie : aucune autorisation data_residency de l'appelant ne couvre {{value}} ; une autorisation data_residency qui l'inclut le permet"
     },
     "settings": {
       "auth_required": "{{field}} ne peut pas être modifié tant que l'authentification n'est pas configurée.",

@@ -74,12 +74,14 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
         # the write here is what makes "platform_admin has no rights to tenant org data" hold for a
         # deployment that loads a config, not just a bare one.
         return
+    await require_residency_grant_saved(conn, role.id, role.capabilities, role.residency_values)
     await conn.upsert(
         roles,
         {
             "id": role.id,
             "capabilities": role.capabilities,  # JSON column — list passes through
             "domain_access": role.domain_access,
+            "residency_values": role.residency_values,  # REQ-1921
             # REQ-1174: per-role rate + query-complexity limits; None = unlimited (column NULL).
             "rate_limit": role.rate_limit.model_dump() if role.rate_limit is not None else None,
             "parent_role_id": role.parent_role_id,  # REQ-1677
@@ -87,11 +89,35 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             "origin": origin,
         },
         index_elements=["id"],
-        update_columns=["capabilities", "domain_access", "rate_limit", "parent_role_id"],
+        update_columns=[
+            "capabilities",
+            "domain_access",
+            "residency_values",
+            "rate_limit",
+            "parent_role_id",
+        ],
     )
     await take_over(
         conn, roles, (roles.c.id == role.id,), kind="role", ident=role.id, origin=origin
     )
+
+
+async def require_residency_grant_saved(
+    conn: "Connection", role_id: str, capabilities: list[str], values: list[str]
+) -> None:
+    """The save refuses what the load refuses (REQ-1921, ``regions.require_residency_grant``):
+    data_residency only where the platform declares regions, naming only the org's regions and
+    "no region"."""
+    from provisa.core import process_region
+    from provisa.core.regions import DEFAULT_REGION, require_residency_grant
+    from provisa.core.repositories.region import list_regions
+
+    selected = (
+        None
+        if process_region.region() == DEFAULT_REGION
+        else [r.id for r in await list_regions(conn)]
+    )
+    require_residency_grant(role_id, capabilities, values, selected)
 
 
 async def get(conn: "Connection", role_id: str) -> dict | None:  # REQ-042, REQ-215

@@ -1,0 +1,9 @@
+{
+  "regionSelect": {
+    "label": "Région",
+    "helpTable": "Où résident les données de cette table : ses copies sont créées et conservées uniquement dans cette région, et les autres régions de l'organisation les lisent ici. Aucune région : une copie peut être conservée dans chaque région.",
+    "helpView": "Où résident les données de cette vue : elle est construite et actualisée uniquement dans cette région, et les autres régions de l'organisation lisent cette copie. Aucune région : elle est construite dans chaque région.",
+    "helpSource": "La région dans laquelle démarre une nouvelle table de cette source. Elle ne décide pas où résident les données — chaque table porte sa propre région — et la modifier ne déplace aucune table.",
+    "none": "Aucune région"
+  }
+}

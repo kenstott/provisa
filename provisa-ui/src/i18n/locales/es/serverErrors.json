@@ -97,7 +97,8 @@
       "unknown_action_field": "Campo de acción desconocido: '{{field}}'",
       "unknown_command": "Comando desconocido: '{{name}}'",
       "write_not_admitted": "El rol '{{role}}' no puede realizar esta escritura: una escritura requiere el derecho de escritura, acceso de escritura a cada columna que escribe y filas que admita el filtro de filas del rol.",
-      "write_not_supported": "'{{table}}' no admite {{operation}}: su origen no puede realizarlo"
+      "write_not_supported": "'{{table}}' no admite {{operation}}: su origen no puede realizarlo",
+      "table_is_draft": "{{table}} es un borrador: fuera de servicio hasta que los responsables de su dominio la liberen"
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
@@ -334,6 +335,9 @@
       "table_registered": "Tabla '{{table}}' registrada (id={{id}})",
       "table_registered_fields_omitted": "Tabla '{{table}}' registrada (id={{id}}). Se omitieron, porque la credencial del origen no puede leerlos: {{fields}}",
       "table_replicate_set": "Replicar establecido para la tabla {{table}}",
+      "table_region_set": "Región de la tabla {{table}} establecida en {{region}}",
+      "source_region_set": "Región del origen {{source}} establecida en {{region}}",
+      "region_refused": "No se estableció la región: {{reason}}",
       "table_too_complex": "La tabla '{{table}}' no se registró con las columnas seleccionadas: {{reason}}. Elija menos columnas.",
       "table_updated": "Tabla '{{table}}' actualizada (id={{id}})",
       "task_deleted": "Tarea '{{task}}' eliminada",
@@ -352,13 +356,17 @@
       "webhook_approved": "Webhook '{{webhook}}' aprobado",
       "webhook_name_required": "webhook_name es obligatorio para un desencadenador de webhook",
       "webhook_not_found": "No se encontró el webhook '{{webhook}}'",
-      "change_streams_unavailable": "El origen '{{source}}' es un servidor MongoDB independiente, que no ofrece change streams: la señal de cambio native requiere un replica set o un clúster fragmentado. Ejecútelo como replica set o use la señal de cambio poll."
+      "change_streams_unavailable": "El origen '{{source}}' es un servidor MongoDB independiente, que no ofrece change streams: la señal de cambio native requiere un replica set o un clúster fragmentado. Ejecútelo como replica set o use la señal de cambio poll.",
+      "table_draft_set": "Tabla {{table}} marcada como borrador",
+      "table_released": "Tabla {{table}} liberada"
     },
     "secrets": {
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."
     },
     "security": {
-      "unknown_mode": "modo de seguridad desconocido: '{{mode}}'"
+      "unknown_mode": "modo de seguridad desconocido: '{{mode}}'",
+      "data_residency_refused": "No se puede establecer la región de {{object}}: la concesión data_residency no cubre {{value}}; una concesión data_residency que lo incluya lo permite",
+      "data_residency_missing": "No se puede establecer la región de {{object}}: ninguna concesión data_residency del usuario cubre {{value}}; una concesión data_residency que lo incluya lo permite"
     },
     "settings": {
       "auth_required": "{{field}} no se puede cambiar hasta que se configure la autenticación.",

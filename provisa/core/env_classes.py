@@ -102,6 +102,7 @@ NEVER_SENSITIVE: frozenset[str] = frozenset({"org_secrets", "user_directory"})
 #: address another environment's external catalog.
 NEVER_RUNTIME: frozenset[str] = frozenset(
     {
+        "mv_build_state",
         "mv_refresh_log",
         "mv_delta_ledger",
         "relationship_candidates",

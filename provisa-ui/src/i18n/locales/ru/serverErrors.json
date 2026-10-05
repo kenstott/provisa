@@ -97,7 +97,8 @@
       "unknown_action_field": "Неизвестное поле действия: '{{field}}'",
       "unknown_command": "Неизвестная команда '{{name}}'",
       "write_not_admitted": "Роль '{{role}}' не может выполнить эту запись: для записи нужны право записи, доступ на запись к каждому записываемому столбцу и строки, которые допускает фильтр строк роли.",
-      "write_not_supported": "'{{table}}' не принимает {{operation}}: её источник не может это выполнить"
+      "write_not_supported": "'{{table}}' не принимает {{operation}}: её источник не может это выполнить",
+      "table_is_draft": "{{table}} — черновик: не в работе, пока владельцы её домена её не выпустят"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Адаптер для '{{source_type}}' не реализует discover_schema",
@@ -334,6 +335,9 @@
       "table_registered": "Таблица '{{table}}' зарегистрирована (id={{id}})",
       "table_registered_fields_omitted": "Таблица '{{table}}' зарегистрирована (id={{id}}). Пропущены, так как учётные данные источника не позволяют их читать: {{fields}}",
       "table_replicate_set": "Репликация задана для таблицы {{table}}",
+      "table_region_set": "Регион таблицы {{table}} установлен: {{region}}",
+      "source_region_set": "Регион источника {{source}} установлен: {{region}}",
+      "region_refused": "Регион не установлен: {{reason}}",
       "table_too_complex": "Таблица '{{table}}' не зарегистрирована с выбранными столбцами: {{reason}}. Выберите меньше столбцов.",
       "table_updated": "Таблица '{{table}}' обновлена (id={{id}})",
       "task_deleted": "Задача '{{task}}' удалена",
@@ -352,13 +356,17 @@
       "webhook_approved": "Вебхук '{{webhook}}' одобрен",
       "webhook_name_required": "для триггера-вебхука требуется webhook_name",
       "webhook_not_found": "Вебхук '{{webhook}}' не найден",
-      "change_streams_unavailable": "Источник '{{source}}' — автономный сервер MongoDB, который не поддерживает change streams: сигнал изменений native требует набора реплик или шардированного кластера. Запустите его как набор реплик или используйте сигнал изменений poll."
+      "change_streams_unavailable": "Источник '{{source}}' — автономный сервер MongoDB, который не поддерживает change streams: сигнал изменений native требует набора реплик или шардированного кластера. Запустите его как набор реплик или используйте сигнал изменений poll.",
+      "table_draft_set": "Таблица {{table}} отмечена как черновик",
+      "table_released": "Таблица {{table}} выпущена"
     },
     "secrets": {
       "still_referenced": "{{secret}} всё ещё называют сохранённые значения в этой организации: {{count}}. Измените или удалите каждое и повторите удаление."
     },
     "security": {
-      "unknown_mode": "неизвестный режим безопасности '{{mode}}'"
+      "unknown_mode": "неизвестный режим безопасности '{{mode}}'",
+      "data_residency_refused": "Нельзя задать регион {{object}}: разрешение data_residency не покрывает {{value}}; это позволяет разрешение data_residency, где оно указано",
+      "data_residency_missing": "Нельзя задать регион {{object}}: ни одно разрешение data_residency вызывающего не покрывает {{value}}; это позволяет разрешение data_residency, где оно указано"
     },
     "settings": {
       "auth_required": "{{field}} нельзя изменить, пока не настроена аутентификация.",

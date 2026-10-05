@@ -1,0 +1,9 @@
+{
+  "residencyGrant": {
+    "right": "data_residency",
+    "help": "Instellen, wijzigen of verwijderen waar de gegevens van een tabel, een bron of een gematerialiseerde view staan, voor de waarden hieronder. Een wijziging vereist dat de oude en de nieuwe waarde gedekt zijn; een object in concept vereist alleen de nieuwe.",
+    "values": "Gedekte regiowaarden",
+    "valuesPlaceholder": "Regio's kiezen",
+    "noRegion": "Geen regio"
+  }
+}

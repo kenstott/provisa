@@ -64,6 +64,7 @@ class _Conn:
                         "id": self.role_id,
                         "capabilities": ["query_development", "write"],
                         "domain_access": ["*"],
+                        "residency_values": [],  # REQ-1921: the router selects it
                         "org_id": None,  # seeded from the template, in THIS environment's schema
                         "parent_role_id": None,  # REQ-1677: the router selects it
                         "origin": "seed",  # REQ-1919: the router selects it

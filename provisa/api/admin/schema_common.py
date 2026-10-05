@@ -114,16 +114,27 @@ def _rebuild_source_input(payload: dict):  # REQ-1792
     return SourceInput(**data)
 
 
+def request_payload(input) -> dict:  # REQ-434
+    """A create's input as a stored creation request holds it. A field the caller left out
+    (UNSET — a table's region, REQ-1921) is left out of the request too, so its replay decides it
+    as a fresh registration would."""
+    import dataclasses
+
+    import strawberry
+
+    unset = type(strawberry.UNSET)
+    return {k: v for k, v in dataclasses.asdict(input).items() if not isinstance(v, unset)}
+
+
 async def _queue_creation_request(  # REQ-434
     info, request_type: str, capability: str, input
 ) -> MutationResult:
     """Persist a governed create the caller is not authorized to perform (REQ-434)."""
-    import dataclasses
 
     from provisa.api.admin.capabilities import _identity_from_info
     from provisa.core.repositories import creation_request as cr_repo
 
-    payload = dataclasses.asdict(input)
+    payload = request_payload(input)
     identity = _identity_from_info(info)
     requested_by = getattr(identity, "user_id", None) if identity is not None else None
     pool = await _get_pool()
@@ -566,8 +577,10 @@ async def _sync_view_mv(
     allowed_lateness: float = 0.0,  # REQ-961: seal-deadline slack (s)
     expected_events: list[str] | None = None,  # REQ-961: preflight freshness contract
     business_day_grain: bool = False,  # REQ-962: gate windows to business days
+    draft: bool,  # REQ-1921: checked as saved, registered for building only once released
 ) -> None:
-    """Register or update an MVDefinition for a materialized user-defined view."""
+    """Register or update an MVDefinition for a materialized user-defined view. A draft view is
+    held to every rule a saved view is, and is not registered: nothing builds it."""
     # REQ-879: consistency tier is a closed set — reject anything else loudly (no silent default).
     if consistency not in ("shared", "distributed"):
         raise ValueError(
@@ -653,8 +666,11 @@ async def _sync_view_mv(
         business_day_grain=business_day_grain,  # REQ-962
     )
     # Refused, and nothing registered, when the view reads an input the engine cannot read whole.
-    from provisa.mv.readable_inputs import register_view
+    from provisa.mv.readable_inputs import register_view, require_readable_inputs
 
+    if draft:
+        await require_readable_inputs(mv, state)
+        return
     await register_view(state, mv)
 
 

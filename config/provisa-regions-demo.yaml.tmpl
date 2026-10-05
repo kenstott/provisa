@@ -1,0 +1,157 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# REQ-1922 two-region demo (eu + us). This is a TEMPLATE: scripts/launch-demo-regions.sh substitutes
+# the @@TOKENS@@ with the shared embedded-Postgres URL, the per-region DuckDB engine files, the shared
+# fakeredis URL, and the two node addresses, then deploys the result to BOTH nodes' shared model store.
+#
+# The platform declares eu and us; the org selects both. Per the REQ-1922 amendment the two regions
+# share ONE embedded Postgres instance (region-qualified schema/cache names keep them from colliding —
+# that naming is replica-layout-2's work on regions-3c; do NOT prove this demo until it lands). Each
+# node runs its own DuckDB engine; the cache is one shared fakeredis.
+
+federation_engine: duckdb
+
+platform:
+  regions:
+    - { id: eu, address: "@@EU_ADDRESS@@" }
+    - { id: us, address: "@@US_ADDRESS@@" }
+
+# One embedded Postgres backs every pg store; each region keeps its DuckDB engine in its own file, and
+# the cache is the one shared fakeredis. replicas and views share a store (one materialize store per
+# region, REQ-1912). state/record also live in the shared pg.
+# Two declarations per region point at the one shared Postgres (its engine is DuckDB per node); the
+# cache is one shared fakeredis both regions name. Region-qualified schema/cache names keep the two
+# regions from colliding on the shared instances (replica-layout-2, regions-3c).
+stores:
+  - { id: eu_engine, url: "@@EU_ENGINE_URL@@", kind: duckdb }
+  - { id: us_engine, url: "@@US_ENGINE_URL@@", kind: duckdb }
+  - { id: eu_data, url: "@@PG_URL@@" }
+  - { id: us_data, url: "@@PG_URL@@" }
+  - { id: cache, url: "@@REDIS_URL@@" }
+
+regions:
+  - { id: eu, engine: eu_engine, replicas: eu_data, views: eu_data, cache: cache, state: eu_data, record: eu_data }
+  - { id: us, engine: us_engine, replicas: us_data, views: us_data, cache: cache, state: us_data, record: us_data }
+
+auth:
+  # REQ-124: basic auth so roles are ENFORCED (dev/no-auth skips admin enforcement, which would hide
+  # the data_residency refusal). allow_simple_auth lets the launcher's seed step register users. The
+  # break-glass superuser (control-plane only, no data capabilities) opens invites; /auth/register
+  # redeems them as the data-plane basic users `operator` (org_admin) and `resident` (eu_resident).
+  # A second org_admin, `grantor`, then assigns `residency_steward` to the operator through
+  # /admin/users (REQ-1308: a role is granted by another principal, never to yourself), so the
+  # operator holds org_admin PLUS the residency grant. All admin DATA work runs as `operator`, never
+  # the superuser. Passwords are the launcher's env.
+  provider: basic
+  allow_simple_auth: true
+  jwt_secret: "@@JWT_SECRET@@"
+  # admin is the break-glass superuser (REQ-125): /auth/superuser-login. The launcher sets these env
+  # vars; the seed step uses the superuser token only to open the invites the two users redeem.
+  superuser:
+    username: ${env:PROVISA_SUPERUSER_USERNAME}
+    password: ${env:PROVISA_SUPERUSER_PASSWORD}
+  assignments_source: provisa
+  default_assignments:
+    - { domain_id: "*", role_id: org_admin }
+
+naming:
+  domain_prefix: false
+  rules: []
+
+cache:
+  enabled: false
+
+domains:
+  - { id: shelter, description: "Animal shelter" }
+
+roles:
+  # REQ-1921: the operator who registers and administers the model is the SEED org_admin (a config
+  # cannot redefine org_admin/platform_admin -- that is refused at load, config.reserved_role_redefined).
+  # But with regions declared, creating or moving an object needs its destination region covered
+  # ("no region" included), and org_admin alone holds NO data_residency -- that is the design point:
+  # an administrator manages everything about an object but cannot move its data across a border
+  # without the separate grant. So the operator ALSO holds `residency_steward` below, which carries
+  # data_residency over every value and nothing else; the launcher seeds the operator with both.
+  - id: residency_steward
+    capabilities:
+      - data_residency
+    residency_values: ["eu", "us", "no_region"]
+    domain_access: ["*"]
+  # REQ-1921 data_residency: setting an object's region needs data_residency covering the value IN
+  # ADDITION TO owning the object through its domain. eu_resident owns objects (table_registration +
+  # domain reach) but its data_residency covers only eu and no_region. So as eu_resident: changing a
+  # us-homed table's region is refused BY NAME (naming us, not covered), while setting a no-region
+  # table's region to eu succeeds. It does NOT gate reads (reads are governed by RLS). Act as it by
+  # signing in as the `resident` basic-auth user the launcher seeds (the X-Provisa-Role header is
+  # ignored once auth is enforced).
+  - id: eu_resident
+    capabilities:
+      - query_development
+      - observability
+      - table_registration
+      - data_residency
+    residency_values: ["eu", "no_region"]
+    domain_access: ["*"]
+
+# One files source over a directory the launcher seeds with CSVs that carry a `region` column, so the
+# row rule below makes each region's view copy differ.
+sources:
+  - { id: shelter_files, type: files, path: "@@DATA_CSV_DIR@@" }
+
+tables:
+  # Homed in eu: replicated (replicate=0) so eu builds its replica, and a us read is served from it
+  # across regions. Without a built replica a cross-region read is refused by name.
+  - source_id: shelter_files
+    domain_id: shelter
+    schema: main
+    table: intake_eu
+    region: eu
+    replicate: 0
+    cache_ttl: 3600
+    file_glob: "intake_eu/*.csv"
+    columns:
+      - { name: id, data_type: integer, is_primary_key: true, visible_to: [org_admin] }
+      - { name: region, data_type: varchar, visible_to: [org_admin] }
+      - { name: animal, data_type: varchar, visible_to: [org_admin] }
+  # Homed in us (replicated, symmetric with intake_eu).
+  - source_id: shelter_files
+    domain_id: shelter
+    schema: main
+    table: intake_us
+    region: us
+    replicate: 0
+    cache_ttl: 3600
+    file_glob: "intake_us/*.csv"
+    columns:
+      - { name: id, data_type: integer, is_primary_key: true, visible_to: [org_admin] }
+      - { name: region, data_type: varchar, visible_to: [org_admin] }
+      - { name: animal, data_type: varchar, visible_to: [org_admin] }
+  # No region: built/served wherever it is read (shows under the connected region and under "no region").
+  - source_id: shelter_files
+    domain_id: shelter
+    schema: main
+    table: breeds
+    file_glob: "breeds/*.csv"
+    columns:
+      - { name: name, data_type: varchar, is_primary_key: true, visible_to: [org_admin] }
+      - { name: species, data_type: varchar, visible_to: [org_admin] }
+  # TODO(replica-layout-2 item 4, draft): one table left in draft. The `draft` field does not exist on
+  #   the table model yet; add `draft: true` to intake_eu's sibling here once draft lands on regions-3c.
+
+# A view homed in a region, and one with none. The homed view is read across regions (a us node reads
+# intake_eu from eu's replica), and the row rule makes each region's copy of the open view differ.
+relationships: []
+rls_rules: []
+# TODO(prove-after-region-qualified-names): add the cross-region demo pieces once replica-layout-2's
+# region-qualified naming lands and the exact semantics are confirmed against the running platform:
+#   - a view homed in a region plus one with no region;
+#   - a row rule on `region` so each region's copy of the open view differs (the predicate function
+#     for "the reader's connected region" must be taken from the shipped RLS vocabulary, not invented);
+#   - a us read of eu-homed `intake_eu`, served from eu's replica (attach_region_store).
+# Kept out until then so this template never declares an unproven predicate or a missing table.
+
+functions: []
+webhooks: []

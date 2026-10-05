@@ -1,0 +1,9 @@
+{
+  "residencyGrant": {
+    "right": "data_residency",
+    "help": "Festlegen, ändern oder entfernen, wo die Daten einer Tabelle, einer Quelle oder einer materialisierten Ansicht liegen – für die unten aufgeführten Werte. Eine Änderung erfordert, dass alter und neuer Wert abgedeckt sind; ein Objekt im Entwurf erfordert nur den neuen.",
+    "values": "Abgedeckte Regionswerte",
+    "valuesPlaceholder": "Regionen wählen",
+    "noRegion": "Keine Region"
+  }
+}

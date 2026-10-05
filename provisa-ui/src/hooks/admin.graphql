@@ -58,6 +58,7 @@ query RolesQuery {
     demonstrated
     domainAccess
     parentRoleId
+    residencyValues
     rateLimit {
       requestsPerSecond
       maxQueryComplexity
@@ -79,6 +80,7 @@ query SourcesQuery {
     cacheEnabled
     cacheTtl
     replicate
+    region
     loadProtected
     offPeakWindow
     offPeakTz
@@ -198,6 +200,8 @@ query TablesQuery {
     }
     pagingCeilingRows
     replicate
+    region
+    draft
     loadProtected
     offPeakWindow
     offPeakTz
@@ -681,6 +685,7 @@ query HotTables {
     schemaName
     rowCount
     kind
+    region
   }
 }
 
@@ -690,6 +695,7 @@ query ReplicaBuilds {
       sourceId
       schemaName
       tableName
+      region
       state
       requestedReason
       method
@@ -1132,6 +1138,34 @@ mutation DeleteScheduledTask($taskId: String!) {
 
 mutation PurgeCacheByTable($tableId: Int!) {
   purgeCacheByTable(tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+# REQ-1921: the org's regions and the one the operator is connected to (empty/null: none
+# declared, and the admin shows no region at all).
+query RegionChoices {
+  regionChoices {
+    regions
+    connected
+  }
+}
+
+mutation SetTableRegion($tableId: Int!, $region: String) {
+  setTableRegion(tableId: $tableId, region: $region) {
+    ...MutationResult
+  }
+}
+
+mutation SetSourceRegion($sourceId: String!, $region: String) {
+  setSourceRegion(sourceId: $sourceId, region: $region) {
+    ...MutationResult
+  }
+}
+
+# REQ-1921: put a table or view out of service (draft) or release it.
+mutation SetTableDraft($tableId: Int!, $draft: Boolean!) {
+  setTableDraft(tableId: $tableId, draft: $draft) {
     ...MutationResult
   }
 }

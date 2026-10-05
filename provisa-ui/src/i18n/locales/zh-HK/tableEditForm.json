@@ -258,6 +258,8 @@
     "pagingTypeRequired": "請選擇分頁類型，或清空分頁欄位。",
     "pagingPositive": "請使用不小於 1 的整數。",
     "pagingAboveCeiling": "最多 {{ceiling}}：資料表可以降低營運者的上限，但不能提高。",
-    "pagingFixErrors": "儲存前請修正分頁錯誤。"
+    "pagingFixErrors": "儲存前請修正分頁錯誤。",
+    "draftLabel": "草稿",
+    "draftHelp": "勾選期間停止服務：任何地方都不讀寫、任何模式中都不提供、也不複製——所有區域中已有的副本都會被刪除。在此登記的表或檢視以草稿開始；取消勾選即可發佈。"
   }
 }

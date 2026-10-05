@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { TablePlacementFields } from "./TablePlacementFields";
 import { Fragment, useEffect, useState } from "react";
 import { Check, X, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -222,6 +223,8 @@ export function TableEditForm({
           comboboxProps={{ withinPortal: true }}
           allowDeselect={false}
         />
+        {/* REQ-1921: its region and its draft flag, each saved on its own. */}
+        <TablePlacementFields table={editingTable} isView={isView} onChange={setEditingTable} />
         {!isView && (
           <CollapsibleSection
             title={t("tableEditForm.loadManagementTitle")}

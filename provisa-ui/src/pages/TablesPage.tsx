@@ -8,7 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, Fragment, useCallback, useRef } from "react";
+import { useSetTableDraft, useSetTableRegion, useRegionChoices } from "../hooks/useRegionQueries";
+import { useRegionSelection } from "../hooks/useRegionSelection";
+import { filterByRegion } from "../hooks/regionFilter";
+import { RegionSelector } from "../components/RegionSelector";
+import { useState, useEffect, Fragment, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Network, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, Layers, X } from "lucide-react";
@@ -113,6 +117,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { updateTableRoleTtl } = useUpdateTableRoleTtl();
   const { updateTablePaging } = useUpdateTablePaging();
   const { updateTableReplicate } = useUpdateTableReplicate();
+  const setTableRegion = useSetTableRegion();
+  const setTableDraft = useSetTableDraft();
   const { updateTableLoadProtection } = useUpdateTableLoadProtection();
   const { updateTableNaming } = useUpdateTableNaming();
   const { purgeCacheByTable } = usePurgeCacheByTable();
@@ -150,6 +156,28 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { checkedDomains, domainsEnabled } = useDomainFilter();
   const { domainAccess, role: activeRole } = useAuth();
+  // REQ-1922: the region selector filters the list; a name search crosses regions (filter off).
+  const { regions, connected, error: regionError } = useRegionChoices();
+  const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
+  const hasRegions = regions.length > 0;
+  const nameSearchActive = tableSearch.trim().length > 0;
+  const baseTables = useMemo(
+    () =>
+      tables.filter((t) => {
+        if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
+        if (viewsOnly && !t.viewSql) return false;
+        if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
+        const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        if (terms.length === 0) return true;
+        const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
+        return terms.every((term) => haystack.includes(term));
+      }),
+    [tables, viewsOnly, checkedDomains, tableSearch],
+  );
+  // A name search crosses regions; otherwise the region selection filters the list (REQ-1922).
+  const { visible: regionTables, hidden: regionHidden } = nameSearchActive
+    ? { visible: baseTables, hidden: 0 }
+    : filterByRegion(baseTables, regionSel, connected, (t) => t.region ?? null);
   // REQ-1592: the model-report download. Busy while the server builds the workbook.
   const [reportBusy, setReportBusy] = useState(false);
 
@@ -551,6 +579,28 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           return;
         }
       }
+      // REQ-1921: the region is saved on its own, and only when it changed.
+      // REQ-1921: draft and region are saved on their own, each only when it changed. Going to
+      // draft is saved before a region change and a release after it: a draft table is claimed
+      // by its destination alone, so a move between regions is draft, re-region, release.
+      const saved = tables.find((tbl) => tbl.id === editingTable.id);
+      const savedRegion = saved?.region ?? null;
+      const savedDraft = saved?.draft ?? false;
+      const saveDraft = async () => {
+        if (savedDraft === editingTable.draft) return true;
+        const draftResult = await setTableDraft(editingTable.id, editingTable.draft);
+        if (!draftResult.success) setError(serverMessage(draftResult, draftResult.message));
+        return draftResult.success;
+      };
+      if (editingTable.draft && !(await saveDraft())) return;
+      if (savedRegion !== editingTable.region) {
+        const regionResult = await setTableRegion(editingTable.id, editingTable.region);
+        if (!regionResult.success) {
+          setError(serverMessage(regionResult, regionResult.message));
+          return;
+        }
+      }
+      if (!editingTable.draft && !(await saveDraft())) return;
       // REQ-826 / REQ-1141: persist Replicate and load protection + off-peak window (the ≥1-gate
       // rule is validated server-side). The server refuses load protection with Replicate = Never,
       // judged against what is stored at each save, so the one that is being turned off goes
@@ -608,6 +658,14 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               ? translate("tablesPage.filterPlaceholderViews")
               : translate("tablesPage.filterPlaceholderTables")
           }
+        />
+        <RegionSelector
+          regions={regions}
+          connected={connected}
+          value={regionSel}
+          onChange={setRegionSel}
+          hidden={regionHidden}
+          error={regionError}
         />
         <div className="page-actions">
           {!viewsOnly && (
@@ -864,6 +922,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               <Table.Th>{translate("tablesPage.colNaming")}</Table.Th>
               <Table.Th>{translate("tablesPage.colCacheTtl")}</Table.Th>
               <Table.Th>{translate("tablesPage.colEffectiveTtl")}</Table.Th>
+              {hasRegions && <Table.Th>{translate("regionSelector.columnHeader")}</Table.Th>}
               <Table.Th style={{ whiteSpace: "nowrap" }}>
                 {(() => {
                   const label = translate("tablesPage.colCols");
@@ -920,18 +979,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           </Table.Thead>
           <Table.Tbody>
             {(() => {
-              const filtered = tables.filter((t) => {
-                if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
-                if (viewsOnly && !t.viewSql) return false;
-                if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId))
-                  return false;
-                const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
-                if (terms.length === 0) return true;
-                const haystack = [t.sourceId, t.tableName, t.domainId ?? ""]
-                  .join(" ")
-                  .toLowerCase();
-                return terms.every((term) => haystack.includes(term));
-              });
+              const filtered = [...regionTables];
 
               if (sortCol) {
                 filtered.sort((a, b) => {
@@ -1024,7 +1072,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                   return (
                     <Table.Tr key={`grp-${item.key}`}>
                       <Table.Td
-                        colSpan={domainsEnabled ? 9 : 8}
+                        colSpan={(domainsEnabled ? 9 : 8) + (hasRegions ? 1 : 0)}
                         role="button"
                         tabIndex={0}
                         aria-expanded={!isCollapsed}
@@ -1172,6 +1220,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                         {getEffectiveTableTtl(t)}
                       </Table.Td>
+                      {hasRegions && (
+                        <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                          {t.region ?? translate("regionSelector.noRegion")}
+                        </Table.Td>
+                      )}
                       <Table.Td>{t.columns.length}</Table.Td>
                       <Table.Td onClick={(e) => e.stopPropagation()}>
                         <Group gap="xs" wrap="nowrap">
@@ -1222,7 +1275,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     </Table.Tr>
                     {expanded === t.id && (
                       <Table.Tr key={`${t.id}-cols`}>
-                        <Table.Td colSpan={domainsEnabled ? 12 : 11} style={{ padding: 0 }}>
+                        <Table.Td colSpan={(domainsEnabled ? 12 : 11) + (hasRegions ? 1 : 0)} style={{ padding: 0 }}>
                           {!isEditing ? (
                             <TableReadView
                               t={t}

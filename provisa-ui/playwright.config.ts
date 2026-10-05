@@ -149,14 +149,40 @@ const TRINO_SPECS = [
 // sets up. Excluded from "core" the same way TRINO_SPECS is: a routine core-lane run has no Trino
 // backend at all and this spec would just fail on a missing PROVISA_E2E_TRINO_CONFIG.
 const SWAP_SPECS = ["**/engine-swap.spec.ts"];
+// Specs whose sources only an amd64 host can boot (exasol/docker-db never turns healthy under an
+// arm64 host's emulation). The core project collects them only on an amd64 host — ui-e2e-core.yml's
+// ubuntu-latest runner — so an arm64 dev box never collects them rather than skipping them.
+const AMD64_ONLY_SPECS = ["**/source-to-query-exasol.spec.ts"];
+// The same, for a case that shares its file with others: matched by title (druid, in
+// source-to-query-olap-lake-trino.spec.ts).
+const AMD64_ONLY_TITLES = /\bdruid: /;
+const IS_AMD64 = process.arch === "x64";
+// REQ-1922: the two-region demo spec owns its own servers (scripts/launch-demo-regions.sh --test),
+// so it never uses the core backend. Excluded from every default project and run only via
+// `--project regions-demo` (infra-features' CI lane). A skip would be a defect, so it is NOT gated by
+// an env flag -- selecting the project IS the gate.
+const REGIONS_SPECS = ["**/regions-demo.spec.ts"];
+// The webServer array below is process-global: Playwright boots every entry for ANY run, whatever
+// project is selected. The regions-demo project brings up its OWN two-region instance and addresses
+// none of the core backends, so for a run that selects ONLY regions-demo those core/vite/demo
+// servers are pure dead weight — and worse, the core DuckDB backend emits org_e2e MV-reclamation
+// errors into the very log the maintainer reads when proving the demo. When regions-demo is the only
+// project asked for, start no default webServers at all (the spec needs none).
+const SELECTED_PROJECTS = process.argv.flatMap((a, i) =>
+  a === "--project" ? [process.argv[i + 1]] : a.startsWith("--project=") ? [a.slice("--project=".length)] : [],
+);
+const ONLY_REGIONS_DEMO = SELECTED_PROJECTS.length > 0 && SELECTED_PROJECTS.every((p) => p === "regions-demo");
+// global-setup.ts runs unconditionally (Playwright has one global setup, not one per project). When
+// no default webServer is booted it has no core backend to PUT /admin/config to, so it must no-op.
+if (ONLY_REGIONS_DEMO) process.env.PROVISA_E2E_ONLY_REGIONS = "1";
 // The vault a source's password is stored in encrypts at rest, and the key is what authorizes
 // reading it back (REQ-685/REQ-1695). This host has no OS keychain for the store to mint one in,
 // so the key is supplied explicitly — exactly as every deployment that stores secrets must, and as
 // every secrets-store suite does (tests/integration/test_secrets_store.py). A fixed value: these
 // backends are torn down with their data directories, and nothing here is a real credential.
-const E2E_ENCRYPTION_KEY = Buffer.from(
-  Array.from({ length: 32 }, (_, i) => i + 1),
-).toString("base64");
+const E2E_ENCRYPTION_KEY = Buffer.from(Array.from({ length: 32 }, (_, i) => i + 1)).toString(
+  "base64",
+);
 
 const LANE = process.env.PROVISA_E2E_LANE ?? "all";
 if (!["core", "trino", "all"].includes(LANE)) {
@@ -391,7 +417,7 @@ export default defineConfig({
     baseURL: `http://localhost:${E2E_UI_PORT}`,
     headless: true,
   },
-  webServer: [
+  webServer: ONLY_REGIONS_DEMO ? [] : [
     {
       command: "npm run dev",
       port: E2E_UI_PORT,
@@ -521,8 +547,31 @@ export default defineConfig({
   // exhaustive list of specs that address the Trino backend (they import TRINO_BACKEND_URL from
   // ./coverage); everything else runs on the DuckDB backend and belongs to core.
   projects: [
-    ...(RUNS_CORE ? [{ name: "core", testIgnore: [...TRINO_SPECS, ...SWAP_SPECS] }] : []),
-    ...(RUNS_TRINO ? [{ name: "trino", testMatch: TRINO_SPECS }] : []),
+    ...(RUNS_CORE
+      ? [
+          {
+            name: "core",
+            testIgnore: [
+              ...TRINO_SPECS,
+              ...SWAP_SPECS,
+              ...REGIONS_SPECS,
+              ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
+            ],
+          },
+        ]
+      : []),
+    ...(RUNS_TRINO
+      ? [
+          {
+            name: "trino",
+            testMatch: TRINO_SPECS,
+            ...(IS_AMD64 ? {} : { grepInvert: AMD64_ONLY_TITLES }),
+          },
+        ]
+      : []),
+    // REQ-1922: selected explicitly with `--project regions-demo`; the spec brings up its own
+    // two-region instance, so it does not use the default webServer/backends.
+    { name: "regions-demo", testMatch: REGIONS_SPECS },
     // Requires RUNS_TRINO (the Trino webServer + its shared-org env overrides) exactly like the
     // "trino" project does — it is a separate project only so a routine core/trino run never
     // selects it by accident. See engine-swap.spec.ts's module doc for the invocation.

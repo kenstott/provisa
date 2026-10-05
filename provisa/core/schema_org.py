@@ -106,7 +106,7 @@ sources = Table(
     Column("cache_enabled", Boolean, nullable=False, server_default=true()),
     Column("cache_ttl", Integer),
     Column("replicate", Integer),  # REQ-826: NULL = global threshold; -1 never, N hot, 0 always
-    Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = no region
+    Column("region", Text),  # REQ-1921: the admin form's default region for its new tables
     Column("load_protected", Boolean, nullable=False, server_default=false()),  # REQ-1141
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text, nullable=False, server_default="UTC"),  # REQ-1141
@@ -203,7 +203,10 @@ registered_tables = Table(
     # REQ-1907: role -> TTL seconds; effective TTL = max(cache_ttl, role_ttl(role)).
     Column("role_ttl", JSON, nullable=False, default=dict, server_default="{}"),
     Column("replicate", Integer),  # REQ-826: NULL = inherit source
-    Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = its source's
+    Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = none
+    # REQ-1921: out of service while set — read and written nowhere, offered in no schema, copied
+    # nowhere; a table or view registered through the admin starts so.
+    Column("draft", Boolean, nullable=False, default=False, server_default=false()),
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text),  # REQ-1141
@@ -393,6 +396,8 @@ roles = Table(
     # absent feature demonstrates nothing. Disjoint from `capabilities` by construction.
     Column("demonstrated", JSON, nullable=False, default=list, server_default="[]"),
     Column("domain_access", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-1921: with data_residency, the region values the grant covers (regions, "no_region").
+    Column("residency_values", JSON, nullable=False, default=list, server_default="[]"),
     # REQ-1174: per-role rate + query limits {requests_per_second, max_query_complexity,
     # max_query_time_ms, ...}. None/absent = unlimited.
     Column("rate_limit", JSON),
@@ -632,19 +637,9 @@ materialized_views = Table(
     Column("custom_sql", Text),
     Column("expose_in_sdl", Boolean, nullable=False, server_default=false()),
     Column("sdl_config", JSON),
-    Column("status", Text, nullable=False, server_default="stale"),
-    Column("last_refresh_at", DateTime(timezone=True)),
-    Column("row_count", Integer),
-    Column("last_error", Text),
-    # REQ-879: authoritative SHARED refresh-coordination state for a load-balanced fleet.
-    # writer = the instance owning the in-flight refresh; lease_until = when its claim expires
-    # (a crashed refresher's lease times out so the MV is reclaimable). The version stamps are
-    # the REQ-862 dedup key: a claim skips when materialized_input_version already == target.
-    Column("writer", Text),
-    Column("lease_until", DateTime(timezone=True)),
-    Column("materialized_definition_version", Text),
-    Column("materialized_input_version", Text),
-    Column("snapshot_id", Text),
+    # REQ-1922: the view's DEFINITION, shared by the org's regions. Each region's build of it —
+    # status, the fleet's claim on it, what it was built from — is that region's own:
+    # ``mv_build_state`` in the region's state store.
     # REQ-961/962: temporal-processing declaration. calendar/grain name the shared, versioned
     # boundary source that yields [start,end) windows; allowed_lateness (seconds) extends the claim
     # deadline past window.end; expected_events is the freshness contract (inputs that must be
@@ -656,9 +651,34 @@ materialized_views = Table(
     Column("expected_events", JSON),
     Column("business_day_grain", Boolean, nullable=False, server_default=false()),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# REQ-879, REQ-1922: a region's build of a materialized view — the record of what that region
+# built (``region``: the one that built it) and the fleet's refresh coordination for it. Kept in
+# the region's STATE store: each region builds its own copy of a view that names no region, and
+# only its home builds one that names a region; one row shared by every region would have them
+# contend for one claim and report one status. writer = the instance owning the in-flight refresh;
+# lease_until = when its claim expires (a crashed refresher's lease times out so the view is
+# reclaimable). The version stamps are the REQ-862 dedup key: a claim skips when
+# materialized_input_version already == target. No foreign key crosses to the model
+# (integrity.remove_parts and the region's prune remove these with their view).
+mv_build_state = Table(
+    "mv_build_state",
+    metadata,
+    Column("mv_id", Text, primary_key=True),
+    Column("region", Text, nullable=False),
+    Column("status", Text, nullable=False, server_default="stale"),
+    Column("last_refresh_at", DateTime(timezone=True)),
+    Column("row_count", Integer),
+    Column("last_error", Text),
+    Column("writer", Text),
+    Column("lease_until", DateTime(timezone=True)),
+    Column("materialized_definition_version", Text),
+    Column("materialized_input_version", Text),
+    Column("snapshot_id", Text),
     CheckConstraint(
         "status IN ('fresh', 'stale', 'refreshing', 'disabled')",
-        name="materialized_views_status_check",
+        name="mv_build_state_status_check",
     ),
 )
 
@@ -1128,6 +1148,9 @@ query_audit_log = Table(
     Column("route_reason", Text),
     Column("sources", JSON(none_as_null=True)),
     Column("data_age", JSON(none_as_null=True)),
+    # REQ-1922: the region whose data answered the statement — the answering node's, unless the
+    # statement read only what another region keeps, in place there (its replicas, its views).
+    Column("region", Text, nullable=False),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

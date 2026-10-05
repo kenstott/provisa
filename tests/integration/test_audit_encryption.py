@@ -89,6 +89,7 @@ async def _log(db, encryption):
         status_code=200,
         duration_ms=12,
         encryption=encryption,
+        region="default",
     )
     row = await db.fetchrow(
         f"SELECT id, query_text_enc FROM {_SCHEMA}.query_audit_log ORDER BY id DESC LIMIT 1"

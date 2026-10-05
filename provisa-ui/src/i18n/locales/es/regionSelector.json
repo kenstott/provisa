@@ -1,0 +1,12 @@
+{
+  "regionSelector": {
+    "label": "Región",
+    "allRegions": "Todas las regiones",
+    "noRegion": "Sin región",
+    "connectedRegion": "{{region}} (conectada)",
+    "columnHeader": "Región",
+    "hidden_one": "{{count}} oculto por región",
+    "hidden_other": "{{count}} ocultos por región",
+    "loadError": "No se pudieron cargar las regiones"
+  }
+}

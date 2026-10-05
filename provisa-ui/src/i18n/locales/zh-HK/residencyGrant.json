@@ -1,0 +1,9 @@
+{
+  "residencyGrant": {
+    "right": "data_residency",
+    "help": "為下列取值設定、更改或移除表、資料來源或實體化檢視的資料所在位置。更改需要舊值和新值都被涵蓋；草稿物件只需新值。",
+    "values": "涵蓋的區域取值",
+    "valuesPlaceholder": "選擇區域",
+    "noRegion": "無區域"
+  }
+}

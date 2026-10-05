@@ -51,7 +51,7 @@ from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult, ResultStream
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterable, Iterator
 
     import pyarrow as pa
 from provisa.federation.engine import build_clickhouse_engine
@@ -532,6 +532,29 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         )
         if rows and rows[0][0] == "View":  # only what a live attach created is dropped
             self._backend.command(f'DROP VIEW "{schema}"."{source.table_name}"')
+
+    def drop_attached(self, prefixes: Iterable[str]) -> list[str]:
+        """Drop what this engine keeps for the catalog names starting with any of ``prefixes``
+        (an org's, or one of its environments', REQ-1921/1922): the databases a source is exposed
+        under (``naming.ATTACH_KINDS``), its live-view databases (``live_view_schema``) and its
+        staged engine tables. Returns the names dropped."""
+        from provisa.compiler.naming import ATTACH_KINDS
+        from provisa.federation.clickhouse_store import _lit
+
+        catalogs = tuple(prefixes)
+        owned = tuple(f"{kind}_{p}" for kind in ATTACH_KINDS for p in catalogs) + catalogs
+        dropped: list[str] = []
+        rows, _ = self._backend.query("SELECT name FROM system.databases")
+        for name in sorted(r[0] for r in rows if r[0].startswith(owned)):
+            self._backend.command(f'DROP DATABASE IF EXISTS "{name}"')
+            dropped.append(name)
+        rows, _ = self._backend.query(
+            f"SELECT name FROM system.tables WHERE database = {_lit(self._staging)}"
+        )
+        for name in sorted(r[0] for r in rows if r[0].startswith(catalogs)):
+            self._backend.command(f'DROP TABLE IF EXISTS "{self._staging}"."{name}"')
+            dropped.append(f"{self._staging}.{name}")
+        return dropped
 
     # -- replica terminals (REQ-1730/REQ-1633) ----------------------------------
 

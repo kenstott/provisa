@@ -61,6 +61,7 @@ async def _capture_insert(enc) -> dict:
         status_code=200,
         duration_ms=5,
         encryption=enc,
+        region="default",
     )
     conn.execute_core.assert_awaited_once()
     stmt = conn.execute_core.await_args.args[0]

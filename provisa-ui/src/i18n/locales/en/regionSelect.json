@@ -1,0 +1,9 @@
+{
+  "regionSelect": {
+    "label": "Region",
+    "helpTable": "Where this table's data lives: its copies are made and kept only in this region, and the org's other regions read them from here. No region: a copy may be kept in every region.",
+    "helpView": "Where this view's data lives: it is built and refreshed only in this region, and the org's other regions read that copy. No region: it is built in every region.",
+    "helpSource": "The region a new table of this source starts in. It decides nothing about where data lives — each table carries its own region — and changing it moves no table.",
+    "none": "No region"
+  }
+}

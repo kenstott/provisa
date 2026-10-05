@@ -46,6 +46,7 @@ class _Backend(NativeEngineBackend):
 def _src(source_id: str):
     return SimpleNamespace(
         id=source_id,
+        region=None,
         type=SimpleNamespace(value="postgresql"),
         host="h",
         port=5432,
@@ -65,8 +66,12 @@ def test_two_sources_same_named_tables_are_each_attached(monkeypatch):
     config = SimpleNamespace(
         sources=[_src("sales"), _src("crm")],
         tables=[
-            SimpleNamespace(source_id="sales", schema_name="public", table_name="orders"),
-            SimpleNamespace(source_id="crm", schema_name="public", table_name="orders"),
+            SimpleNamespace(
+                source_id="sales", schema_name="public", table_name="orders", region=None
+            ),
+            SimpleNamespace(
+                source_id="crm", schema_name="public", table_name="orders", region=None
+            ),
         ],
     )
     state = SimpleNamespace(

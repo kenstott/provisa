@@ -920,7 +920,10 @@ async def delete_org(org_id: str, request: Request, confirm: str | None = None):
     """
 
     from provisa.api.admin.invites_router import _require_org_admin
+    from provisa.core.env_store import list_envs
+    from provisa.core.environments import PROD
     from provisa.core.org_provisioning import deprovision_org
+    from provisa.core.region_purge import RegionStoreUnreachable, purge_org_regions
     from provisa.core.schema_admin import org_auto_join_optouts, org_invites
 
     await _require_org_admin(request, org_id)
@@ -945,6 +948,21 @@ async def delete_org(org_id: str, request: Request, confirm: str | None = None):
                 ),
                 org=org_id,
             )
+        # REQ-1921/REQ-1922: every environment of the org, in every region store its models
+        # declare, goes first — all of it or nothing: an unreachable store refuses the delete,
+        # naming its region, before anything here is removed.
+        envs = [e["name"] for e in await list_envs(_admin_pool(), org_id)]
+        try:
+            await purge_org_regions(_pool(), org_id, envs)
+        except RegionStoreUnreachable as refused:
+            raise ApiError(
+                409,
+                refused.code,
+                str(refused),
+                org=refused.params["org"],
+                region=refused.params["region"],
+                store=refused.params["store"],
+            ) from refused
         # Explicit deletes rather than relying on FK cascade: the platform control plane may be
         # backed by an engine where the registry tables were created without them.
         await conn.execute_core(
@@ -955,6 +973,10 @@ async def delete_org(org_id: str, request: Request, confirm: str | None = None):
             _delete(org_auto_join_optouts).where(org_auto_join_optouts.c.org_id == org_id)
         )
         await conn.execute_core(_delete(orgs).where(orgs.c.id == org_id))
+    # Every environment's schemas on the control plane, then the org's own (prod, role, ACL).
+    for env in envs:
+        if env != PROD:
+            await deprovision_org(_pool(), org_id, env=env)
     await deprovision_org(_pool(), org_id, redis_url=_redis_url())
     # Evict the cached runtime last: an in-flight request must not rebuild it from a registry row
     # that still exists.

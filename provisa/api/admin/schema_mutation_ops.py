@@ -315,6 +315,23 @@ async def register_table(
             await apply_dq_registration(_conn, model)
         except ValueError as _dq_err:
             return MutationResult(success=False, message=str(_dq_err))
+        from provisa.api.admin.region_defaults import registration_region
+
+        model.region = await registration_region(  # REQ-1921
+            _conn, input, is_view=bool(input.view_sql) or input.view_metrics is not None
+        )
+        # REQ-1921: registered through the admin, a table or view starts as draft — out of
+        # service until its domain's owners release it.
+        model.draft = True
+        from provisa.api.admin.capabilities import require_residency_change
+        from provisa.security.residency import CREATED, ResidencyRefused
+
+        try:
+            require_residency_change(info, f"table {model.table_name}", CREATED, model.region)
+        except ResidencyRefused as _refused:
+            return MutationResult(
+                success=False, message=str(_refused), code=_refused.code, params=_refused.params
+            )
         if model.view_metrics is not None:
             # REQ-1318: compile the spec into the view SELECT against the live registries —
             # the generated SQL persists in view_sql and flows everywhere free-hand SQL does.
@@ -531,6 +548,7 @@ async def register_table(
             allowed_lateness=input.mv_allowed_lateness,  # REQ-961
             expected_events=input.mv_expected_events,  # REQ-961
             business_day_grain=input.mv_business_day_grain,  # REQ-962
+            draft=model.draft,  # REQ-1921
         )
 
     await _rebuild_schemas()
@@ -571,7 +589,7 @@ async def register_table(
 
     # A newly-created materialized view is materialized immediately and its refresh job registered, so
     # it lands FRESH instead of STALE-until-restart (the event loop otherwise wires only at boot).
-    if _effective_view_sql and input.materialize:
+    if _effective_view_sql and input.materialize and not model.draft:
         from provisa.api.admin.schema_common import activate_view_mv
 
         await activate_view_mv(input.table_name)

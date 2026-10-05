@@ -1,0 +1,12 @@
+{
+  "regionSelector": {
+    "label": "Regio",
+    "allRegions": "Alle regio's",
+    "noRegion": "Geen regio",
+    "connectedRegion": "{{region}} (verbonden)",
+    "columnHeader": "Regio",
+    "hidden_one": "{{count}} verborgen door regio",
+    "hidden_other": "{{count}} verborgen door regio",
+    "loadError": "Regio's konden niet worden geladen"
+  }
+}

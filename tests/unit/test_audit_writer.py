@@ -75,6 +75,7 @@ def _record(
         route_reason=None,
         sources=(),
         data_age=None,
+        region="default",
     )
 
 
@@ -524,6 +525,7 @@ def _worker(path: str, worker: int, count: int) -> None:
                 route_reason=None,
                 sources=(),
                 data_age=None,
+                region="default",
             )
         )
     writer.close(20.0)

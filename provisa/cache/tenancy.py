@@ -40,17 +40,53 @@ from typing import Any
 
 
 def cache_place(state: Any) -> str:
-    """The acting org and environment: whose cached data this is, whatever model it holds."""
-    from provisa.api.org_runtime import runtime_key
+    """The acting org and environment — and this node's region (REQ-1922: regions may share one
+    Redis): whose cached data this is, whatever model it holds."""
+    from provisa.core import process_region
     from provisa.core.request_context import current_env, current_org
 
-    return runtime_key(current_org.get() or state.org_id, current_env.get())
+    return place_of(current_org.get() or state.org_id, current_env.get(), process_region.region())
+
+
+def place_key_patterns(place: str) -> list[str]:
+    """Every Redis key a place's response cache, table index and hot tables are kept under, as
+    scan patterns (REQ-1922: what an org's delete removes from a region's cache)."""
+    from provisa.cache.hot_tables import HOT_PREFIX
+    from provisa.cache.store import RedisCacheStore
+
+    return [
+        f"{RedisCacheStore.PREFIX}{place}:m*",
+        f"{RedisCacheStore.TABLE_PREFIX}{place}:m*",
+        f"{HOT_PREFIX}{place}:m*",
+    ]
+
+
+def place_of(org_id: str, env: str | None, region: str | None) -> str:
+    """The cache place of one org environment in one region (REQ-1922): the prefix its response
+    cache, table index and hot tables are keyed under."""
+    from provisa.api.org_runtime import runtime_key
+    from provisa.core.environments import region_part
+
+    return f"{runtime_key(org_id, env)}{region_part(region)}"
 
 
 def cache_tenant(state: Any) -> str:
     """The acting org, environment and loaded model — the prefix every response-cache key and
     table index is written under."""
     return f"{cache_place(state)}:m{state.model_stamp}"
+
+
+async def purge_when_drafted(state: Any, draft_ids: frozenset[int]) -> int:
+    """REQ-1921: when a table or view has gone draft since the runtime's last build, remove the
+    cached responses of this region's place — a draft keeps no copy anywhere. Entries are kept by
+    place, not by table, so the place is purged whole (every model it held). Records the draft
+    set for the next build. Returns how many entries went."""
+    runtime = state._active_runtime()
+    purged = 0
+    if draft_ids - runtime.draft_table_ids:
+        purged = await purge_acting_place(state)
+    runtime.draft_table_ids = draft_ids
+    return purged
 
 
 async def purge_acting_place(state: Any) -> int:

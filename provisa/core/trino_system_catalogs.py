@@ -213,6 +213,37 @@ def spec_for(name: str, url: URL, org_id: str) -> CatalogSpec:
     raise ValueError(f"{name!r} is not a Provisa system catalog ({', '.join(SYSTEM_CATALOGS)})")
 
 
+def store_catalog_spec(name: str, dsn: str) -> CatalogSpec:
+    """A PostgreSQL store reached by Trino as catalog ``name`` (REQ-1048, REQ-1922): an org's own
+    materialize store, or another region's replicas store its tables are read from. Trino reads
+    a store through its postgresql connector only; any other store is refused, naming it."""
+    from sqlalchemy import make_url
+
+    url = make_url(dsn)
+    if not url.get_backend_name().startswith("postgresql"):
+        raise ValueError(
+            f"Trino reads a store through its postgresql connector; store {name!r} is "
+            f"{url.get_backend_name()!r}"
+        )
+    if not url.host or not url.database or not url.username:
+        raise ValueError(
+            f"store {name!r} must name a host, a database and a user for Trino to reach it"
+        )
+    # A store reached without a password (trust auth) sets none.
+    password = {} if url.password is None else {"connection-password": url.password}
+    return CatalogSpec(
+        name=name,
+        connector="postgresql",
+        properties={
+            # Port omitted in the URL means the Postgres default, the same reading _pg_parts gives.
+            "connection-url": f"jdbc:postgresql://{url.host}:{url.port or 5432}/{url.database}",
+            "connection-user": url.username,
+            **password,
+            "statistics.enabled": "false",
+        },
+    )
+
+
 def register_catalog(conn: TrinoConnection, spec: CatalogSpec) -> None:
     """Drop and recreate one system catalog so its properties match ``spec`` exactly.
 

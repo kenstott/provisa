@@ -29,6 +29,8 @@ from provisa.core import process_mode
 from provisa.core.regions import DEFAULT_REGION, PlatformConfig
 
 _region: str | None = None
+#: The regions the platform declares, bound with the launch.
+_platform_regions: tuple[str, ...] = ()
 
 
 class LaunchRefused(SystemExit):
@@ -47,8 +49,9 @@ def bind_launch(platform: dict[str, Any] | None, *, requested: str | None) -> st
     """Check the region the node was launched with (``requested``, None for none) against the
     platform's declared regions (``platform``: the config's ``platform`` key) and make it the
     node's. Returns the node's region."""
-    global _region
+    global _region, _platform_regions
     declared = PlatformConfig.model_validate(platform or {}).regions
+    _platform_regions = tuple(r.id for r in declared)
     listed = ", ".join(f"{r.id} ({r.address})" for r in declared)
     if not declared:
         if requested is not None:
@@ -81,6 +84,13 @@ def bind_from_environment(raw_config: dict[str, Any]) -> None:
             )
         process_mode.set_mode(requested_mode)
     bind_launch(raw_config.get("platform"), requested=os.environ.get("PROVISA_REGION") or None)
+
+
+def platform_regions() -> tuple[str, ...]:
+    """The regions the platform declares (empty for none), bound with the launch."""
+    if _region is None:
+        raise RuntimeError("the platform's regions are read before the launch bound them")
+    return _platform_regions
 
 
 def region() -> str:

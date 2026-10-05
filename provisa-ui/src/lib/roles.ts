@@ -24,6 +24,7 @@ export interface RawRole {
   domainAccess?: string[] | null;
   rateLimit?: Role["rateLimit"];
   parentRoleId?: string | null;
+  residencyValues?: string[] | null; // REQ-1921
 }
 
 /**
@@ -53,5 +54,6 @@ export function normalizeRole(raw: RawRole): Role {
     domain_access: domainAccess,
     rateLimit: raw.rateLimit,
     parentRoleId: raw.parentRoleId,
+    residencyValues: raw.residencyValues ?? [],
   };
 }

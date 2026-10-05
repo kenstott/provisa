@@ -492,15 +492,15 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     assert isinstance(si, SchemaInput)
     ctx = CompilationContext()
 
-    tables = _build_visible_tables(si)
-    if not tables:
-        return ctx
-
     domain_alias_map = {
         d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))
         for d in si.domains
         if domain_gql_alias(d["id"], d.get("graphql_alias"))
     }
+    tables = _build_visible_tables(si)
+    if not tables:
+        _register_draft_names(si, ctx, domain_alias_map)  # REQ-1921: drafts are named still
+        return ctx
     _assign_names(
         tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
     )
@@ -521,8 +521,48 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     _register_ops_synthetic_joins(si, ctx, tables, physical_map, meta_rt)
 
     ctx.gql_governed_object_cols = si.gql_governed_object_cols or set()
+    _register_draft_names(si, ctx, domain_alias_map)
 
     return ctx
+
+
+def _register_draft_names(  # REQ-1921
+    si: object,  # object-ok: SchemaInput, imported inside build_context (circular boundary)
+    ctx: CompilationContext,
+    domain_alias_map: dict[str, str],
+) -> None:
+    """Every name a statement could give a draft table this role would otherwise read — its
+    field name (named as ``schema_gen._assign_names`` names a table), table name, alias and
+    ``schema.table`` — so a statement naming one is refused as draft, not as unknown. A draft
+    table in a domain the role does not reach, or with no column it sees, is not named: to that
+    role it does not exist, draft or not."""
+    from provisa.compiler.naming import active_gql_convention, domain_to_sql_name, generate_name
+    from provisa.compiler.schema_gen import SchemaInput
+    from provisa.security.rights import reaches_all_domains
+
+    assert isinstance(si, SchemaInput)
+    role = si.role
+    reach = set(role["domain_access"])
+    every = reaches_all_domains(role["domain_access"])
+    for row in si.draft_tables:
+        domain = row["domain_id"]
+        if not every and domain not in reach:
+            continue
+        if not any(not c["visible_to"] or role["id"] in c["visible_to"] for c in row["columns"]):
+            continue
+        name, alias = row["table_name"], row["alias"]
+        dp = f"{domain_to_sql_name(domain)}__"
+        base = name[len(dp) :] if (si.domain_prefix and not alias and name.startswith(dp)) else name
+        field_name = generate_name(
+            base, si.naming_rules, alias=alias, convention=active_gql_convention()
+        )
+        if si.domain_prefix:
+            prefix = domain_alias_map.get(domain) or domain_to_sql_name(domain)
+            if prefix:
+                field_name = f"{prefix}__{field_name}"
+        for said in {field_name, name, alias, f"{row['schema_name']}.{name}"}:
+            if said:
+                ctx.draft_names[said] = name
 
 
 # --- AST value extraction ---

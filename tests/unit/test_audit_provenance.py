@@ -138,6 +138,7 @@ def _audit_record(stamp: int | None, enforced: dict):
         route_reason=None,
         sources=(),
         data_age=None,
+        region="default",
     )
 
 

@@ -129,6 +129,9 @@ class CompilationContext:
 
     # Root query field_name → TableMeta
     tables: dict[str, TableMeta] = field(default_factory=dict)
+    # REQ-1921: every name a statement could give a draft table this role would see (field name,
+    # table name, alias, schema.table) → the table's name. In no schema; refused as draft.
+    draft_names: dict[str, str] = field(default_factory=dict)
     # (source_type_name, relationship_field_name) → JoinMeta
     joins: dict[tuple[str, str], JoinMeta] = field(default_factory=dict)
     # (table_id, graphql_field_name) → path expression (e.g. "payload.order_id")

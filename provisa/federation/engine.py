@@ -1687,15 +1687,21 @@ def engine_kinds() -> frozenset[str]:
     return frozenset(_ENGINE_BUILDERS)
 
 
+def configured_engine_kind() -> str:  # REQ-840/989
+    """The deployment's engine kind: ``$PROVISA_ENGINE``, then the persisted ``federation_engine``
+    config field, then ``duckdb`` — the zero-config embedded engine (REQ-989)."""
+    import os
+
+    selected = os.environ.get("PROVISA_ENGINE") or _engine_config().get("federation_engine")
+    return (selected or "duckdb").lower().replace("_", "-")
+
+
 def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/904/916
     """Select the federation engine by name — the one place the runtime picks an engine. Precedence:
     explicit arg > ``$PROVISA_ENGINE`` env > persisted ``federation_engine`` config > ``duckdb``. The
     zero-config default is the fully-embedded in-process DuckDB engine (REQ-989); external engines
     (trino / pg / clickhouse / sqlalchemy / …) are selected via any of the above."""
-    import os
-
-    selected = name or os.environ.get("PROVISA_ENGINE") or _engine_config().get("federation_engine")
-    key = (selected or "duckdb").lower().replace("_", "-")
+    key = (name or configured_engine_kind()).lower().replace("_", "-")
     if key not in _ENGINE_BUILDERS:
         raise ValueError(f"unknown federation engine {key!r}; valid: {sorted(_ENGINE_BUILDERS)}")
     # Complete the reach so the runtime engine's connectors include every configurable type (REQ-947):

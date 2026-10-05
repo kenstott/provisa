@@ -107,6 +107,46 @@ def require_capability(  # REQ-042, REQ-060
         require_domain(info, domain_id)
 
 
+def require_residency_change(  # REQ-1921
+    info: "strawberry.types.Info",
+    what: str,
+    before: object,
+    after: str | None,
+    *,
+    draft: bool = False,
+) -> None:
+    """Refuse a change of where ``what``'s data lives that the caller's data_residency grant does
+    not cover (``security.residency.require_change``; ``before`` is ``residency.CREATED`` for a
+    new object). Nothing to check when the platform declares no regions, and — as
+    ``require_capability`` — in dev mode (no identity, or the anonymous one)."""
+    _require_residency_of(_identity_from_info(info), what, before, after, draft=draft)
+
+
+def require_residency_change_request(  # REQ-1921
+    request, what: str, before: object, after: str | None, *, draft: bool = False
+) -> None:
+    """``require_residency_change`` for a REST admin router (a Request rather than an Info)."""
+    _require_residency_of(
+        getattr(request.state, "identity", None), what, before, after, draft=draft
+    )
+
+
+def _require_residency_of(
+    identity, what: str, before: object, after: str | None, *, draft: bool
+) -> None:
+    from provisa.api.admin.region_defaults import connected_region
+    from provisa.api.app import state
+    from provisa.security.residency import require_change
+    from provisa.security.rights import residency_values_for_claims
+
+    if connected_region() is None:
+        return
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return
+    covered = residency_values_for_claims(getattr(identity, "roles", []), state.roles)
+    require_change(covered, what, before, after, draft=draft)
+
+
 def require_inspectable_role(info: "strawberry.types.Info", role_id: str) -> None:  # REQ-273
     """May this caller ask what a query compiles to AS ``role_id``? See
     :func:`require_inspectable_role_request`."""

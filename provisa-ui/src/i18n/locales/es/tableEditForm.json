@@ -258,6 +258,8 @@
     "pagingTypeRequired": "Elija un tipo de paginación o vacíe los campos de paginación.",
     "pagingPositive": "Use un número entero de 1 o más.",
     "pagingAboveCeiling": "Como máximo {{ceiling}}: una tabla puede reducir el límite del operador, nunca aumentarlo.",
-    "pagingFixErrors": "Corrija los errores de paginación antes de guardar."
+    "pagingFixErrors": "Corrija los errores de paginación antes de guardar.",
+    "draftLabel": "Borrador",
+    "draftHelp": "Fuera de servicio mientras esté marcado: no se lee ni se escribe en ningún lugar, no aparece en ningún esquema y no se copia; las copias existentes en todas las regiones se eliminan. Una tabla o vista registrada aquí empieza como borrador; desmárquelo para liberarla."
   }
 }

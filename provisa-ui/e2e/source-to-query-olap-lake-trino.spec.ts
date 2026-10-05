@@ -35,10 +35,9 @@
 //        (matches ui-e2e-trino.yml's own invocation — the "trino" project's testMatch is
 //        TRINO_SPECS, so no extra flag is needed to select this file once it is a TRINO_SPECS entry)
 //
-//   - druid is CI-ONLY (REQ-1763's RUNNING_IN_CI pattern, same as saphana/greenplum in
-//     source-to-query-generic-rdbms.spec.ts): apache/druid is amd64-only, unbootable under arm64
-//     emulation, so it still skips on Apple Silicon local dev but runs for real on
-//     ui-e2e-trino.yml's ubuntu-latest runner (a genuine amd64 host).
+//   - druid is amd64-only (apache/druid is unbootable under arm64 emulation): an amd64 host's trino
+//     project runs it — ui-e2e-trino.yml's ubuntu-latest runner — and an arm64 host's does not
+//     collect it (playwright.config.ts AMD64_ONLY_TITLES).
 //   - plain `hive` (Hadoop/local-storage lakehouse read) needs docker-compose.core.yml's own live
 //     `trino` container to resolve the hive_warehouse volume it shares with demo/sources/hive's
 //     hive-metastore (resolveHiveWarehouseVolume() below) — guaranteed live here because the
@@ -59,6 +58,7 @@ import {
   openSourcesForm,
   pickSchemaAndTable,
   runSqlOnPage,
+  releaseDraftTables,
   submitSourceAndExpectListed,
 } from "./source-to-query-helpers";
 import { deleteSourceAndItsTables } from "./delete-source";
@@ -75,11 +75,6 @@ const DOCKER_NETWORK = process.env.PROVISA_E2E_DOCKER_NETWORK ?? "provisa_defaul
 
 const E2E_PINOT_CONTROLLER_PORT = Number(process.env.PROVISA_DEMO_PINOT_CONTROLLER_PORT ?? 36900);
 
-// druid only actually runs in CI (ubuntu-latest is a real amd64 Linux host) — the image is
-// amd64-only and unbootable under arm64 emulation (see that test's own comment below), the same
-// constraint source-to-query-generic-rdbms.spec.ts's RUNNING_IN_CI gate documents for
-// saphana/greenplum. process.env.CI is set to "true" by ui-e2e-trino.yml specifically.
-const RUNNING_IN_CI = process.env.CI === "true";
 const E2E_DRUID_COORD_PORT = Number(process.env.PROVISA_DEMO_DRUID_COORD_PORT ?? 36920);
 const E2E_DRUID_BROKER_PORT = Number(process.env.PROVISA_DEMO_DRUID_BROKER_PORT ?? 36921);
 
@@ -271,6 +266,8 @@ test.describe("source to query through the UI: pinot (REQ-1740)", () => {
     await page.getByTestId("register-table-submit").click();
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
+    // REQ-1921: registered through the admin, it starts as draft; released, it is read.
+    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(page, `SELECT count(*) AS cnt FROM pet_store.${registered}`);
@@ -361,11 +358,11 @@ test.describe("source to query through the UI: hive_s3 (REQ-229)", () => {
           // hive.metastore needs a double-quoted identifier ("hive.metastore" = 'thrift'), not a
           // single-quoted string ('hive.metastore'='thrift'), which trinodb/trino:481 rejects with
           // SYNTAX_ERROR "mismatched input ''hive.metastore''. Expecting: <identifier>".
-          'props = \'"hive.metastore"=\\\'thrift\\\', "hive.metastore.uri"=\\\'thrift://hive-s3:9083\\\', \' \\\n' +
-          '    \'"hive.non-managed-table-writes-enabled"=\\\'true\\\', "fs.native-s3.enabled"=\\\'true\\\', \' \\\n' +
-          '    \'"s3.endpoint"=\\\'http://minio:9000\\\', "s3.aws-access-key"=\\\'minioadmin\\\', \' \\\n' +
-          '    \'"s3.aws-secret-key"=\\\'minioadmin\\\', "s3.region"=\\\'us-east-1\\\', \' \\\n' +
-          '    \'"s3.path-style-access"=\\\'true\\\'\'\n' +
+          "props = '\"hive.metastore\"=\\'thrift\\', \"hive.metastore.uri\"=\\'thrift://hive-s3:9083\\', ' \\\n" +
+          "    '\"hive.non-managed-table-writes-enabled\"=\\'true\\', \"fs.native-s3.enabled\"=\\'true\\', ' \\\n" +
+          "    '\"s3.endpoint\"=\\'http://minio:9000\\', \"s3.aws-access-key\"=\\'minioadmin\\', ' \\\n" +
+          "    '\"s3.aws-secret-key\"=\\'minioadmin\\', \"s3.region\"=\\'us-east-1\\', ' \\\n" +
+          "    '\"s3.path-style-access\"=\\'true\\''\n" +
           "try:\n" +
           "    ex(f'DROP CATALOG IF EXISTS e2e_olap_hive_s3_seed')\n" +
           "except Exception:\n" +
@@ -424,6 +421,8 @@ test.describe("source to query through the UI: hive_s3 (REQ-229)", () => {
     await page.getByTestId("register-table-submit").click();
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
+    // REQ-1921: registered through the admin, it starts as draft; released, it is read.
+    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(
@@ -490,8 +489,8 @@ test.describe("source to query through the UI: hive (REQ-1763)", () => {
           // metastore makes a non-ACID managed table EXTERNAL, so the seed INSERT is refused
           // ("Cannot write to non-managed Hive table") without non-managed writes — the same
           // property the product's own hive catalog sets (trino_connectors._hive_metastore_props).
-          'props = \'"hive.metastore"=\\\'thrift\\\', "hive.metastore.uri"=\\\'thrift://hive:9083\\\', \' \\\n' +
-          '    \'"hive.non-managed-table-writes-enabled"=\\\'true\\\', "fs.hadoop.enabled"=\\\'true\\\'\'\n' +
+          "props = '\"hive.metastore\"=\\'thrift\\', \"hive.metastore.uri\"=\\'thrift://hive:9083\\', ' \\\n" +
+          "    '\"hive.non-managed-table-writes-enabled\"=\\'true\\', \"fs.hadoop.enabled\"=\\'true\\''\n" +
           "try:\n" +
           "    ex('DROP CATALOG IF EXISTS e2e_olap_hive_seed')\n" +
           "except Exception:\n" +
@@ -540,6 +539,8 @@ test.describe("source to query through the UI: hive (REQ-1763)", () => {
     await page.getByTestId("register-table-submit").click();
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
+    // REQ-1921: registered through the admin, it starts as draft; released, it is read.
+    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(
@@ -559,14 +560,11 @@ test.describe("source to query through the UI: hive (REQ-1763)", () => {
 // CI-only: apache/druid is amd64-only (linux/amd64 platform pin, same as exasol in the sibling
 // file); under QEMU emulation on an arm64 host the 6-service topology's cold boot realistically
 // exceeds a reasonable single e2e budget. ui-e2e-trino.yml's ubuntu-latest runner is a genuine
-// amd64 host, so demo/sources/druid runs for real there (RUNNING_IN_CI gate) — locally it skips.
+// amd64 host, so demo/sources/druid runs for real there; an arm64 host's trino project does not
+// collect this case (playwright.config.ts AMD64_ONLY_TITLES) rather than skipping it.
 // ---------------------------------------------------------------------------------------------
 test.describe("source to query through the UI: druid (REQ-1763)", () => {
   test.beforeAll(() => {
-    // Mirrors source-to-query-generic-rdbms.spec.ts's RUNNING_IN_CI pattern: no test.skip()
-    // signal inside beforeAll (a plain early return instead) — the per-test test.skip() below is
-    // what reports the actual skip; this only avoids provisioning a fixture nothing will use.
-    if (!RUNNING_IN_CI) return;
     // Apache Druid ships no perl-based single-container "quickstart" the way Pinot does, so this
     // is the full upstream multi-container layout (zookeeper + postgres metadata store +
     // coordinator + historical + middlemanager + broker) — demo/sources/druid/compose.yml lifts
@@ -580,34 +578,23 @@ test.describe("source to query through the UI: druid (REQ-1763)", () => {
     });
     // prime.py ingests through Druid's own native batch API and polls the broker until the
     // segment is loaded and queryable — see that script's module doc.
-    execFileSync(
-      PYTHON,
-      [path.join(ROOT, "demo", "sources", "druid", "prime.py")],
-      {
-        stdio: "inherit",
-        env: {
-          ...process.env,
-          PROVISA_DEMO_DRUID_COORD_PORT: String(E2E_DRUID_COORD_PORT),
-          PROVISA_DEMO_DRUID_BROKER_PORT: String(E2E_DRUID_BROKER_PORT),
-        },
+    execFileSync(PYTHON, [path.join(ROOT, "demo", "sources", "druid", "prime.py")], {
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        PROVISA_DEMO_DRUID_COORD_PORT: String(E2E_DRUID_COORD_PORT),
+        PROVISA_DEMO_DRUID_BROKER_PORT: String(E2E_DRUID_BROKER_PORT),
       },
-    );
+    });
   });
 
   test.afterAll(() => {
-    if (!RUNNING_IN_CI) return;
     provision("down", ["druid"]);
   });
 
   test("druid: add the source, register the widgets datasource, query it on the SQL page", async ({
     page,
   }) => {
-    test.skip(
-      !RUNNING_IN_CI,
-      "apache/druid is amd64-only; the 6-service topology's cold boot under QEMU emulation " +
-        "realistically exceeds a reasonable single e2e budget locally — runs for real in CI " +
-        "(ubuntu-latest is a genuine amd64 host)",
-    );
     test.setTimeout(300000);
     const stamp = Date.now();
     const sourceId = `e2e_druid_${stamp}`;
@@ -632,6 +619,8 @@ test.describe("source to query through the UI: druid (REQ-1763)", () => {
     await page.getByTestId("register-table-submit").click();
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
+    // REQ-1921: registered through the admin, it starts as draft; released, it is read.
+    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(

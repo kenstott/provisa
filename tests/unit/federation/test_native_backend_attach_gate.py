@@ -56,7 +56,7 @@ def _source(sid: str, type_value: str):
 
 
 def _table(sid: str, table: str):
-    return SimpleNamespace(source_id=sid, schema_name="api", table_name=table)
+    return SimpleNamespace(source_id=sid, schema_name="api", table_name=table, region=None)
 
 
 def test_the_walk_skips_fetch_sources_and_attaches_live_ones():

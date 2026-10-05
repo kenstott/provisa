@@ -1,0 +1,12 @@
+{
+  "regionSelector": {
+    "label": "אזור",
+    "allRegions": "כל האזורים",
+    "noRegion": "ללא אזור",
+    "connectedRegion": "{{region}} (מחובר)",
+    "columnHeader": "אזור",
+    "hidden_one": "{{count}} מוסתר לפי אזור",
+    "hidden_other": "{{count}} מוסתרים לפי אזור",
+    "loadError": "לא ניתן לטעון את האזורים"
+  }
+}

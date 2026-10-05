@@ -30,6 +30,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import type { Extension } from "@codemirror/state";
 import type { ViewColumnConfig } from "./types";
 import type { Domain } from "../../types/admin";
+import { RegionSelect } from "../../components/admin/RegionSelect";
 
 interface ViewModalProps {
   viewModal: boolean;
@@ -45,6 +46,10 @@ interface ViewModalProps {
   viewHasParams: boolean;
   viewDescription: string;
   setViewDescription: React.Dispatch<React.SetStateAction<string>>;
+  // REQ-1921: the view's region (null = none) and the org's regions (none = no field).
+  viewRegion: string | null;
+  setViewRegion: (region: string | null) => void;
+  regions: string[];
   viewSqlNormalized: string;
   viewSqlExtensions: Extension[];
   domainMap: Record<string, Domain>;
@@ -73,6 +78,9 @@ export function ViewModal({
   viewHasParams,
   viewDescription,
   setViewDescription,
+  viewRegion,
+  setViewRegion,
+  regions,
   viewSqlNormalized,
   viewSqlExtensions,
   domainMap,
@@ -174,6 +182,13 @@ export function ViewModal({
             resize="vertical"
             style={{ flexShrink: 0 }}
             data-testid="view-description-input"
+          />
+          <RegionSelect
+            value={viewRegion}
+            onChange={setViewRegion}
+            regions={regions}
+            scope="view"
+            testId="view-region-select"
           />
           {metricViewInfo && (
             <Checkbox

@@ -565,6 +565,23 @@ def _invalid_replicate(replicate: int | None) -> MutationResult | None:  # REQ-8
     return None
 
 
+def _residency_refusal(
+    info, what: str, before: object, after: str | None, *, draft: bool = False
+) -> MutationResult | None:  # REQ-1921
+    """The refusal of a region change the caller's data_residency grant does not cover, naming
+    the value; None when it may be made (``capabilities.require_residency_change``)."""
+    from provisa.api.admin.capabilities import require_residency_change
+    from provisa.security.residency import ResidencyRefused
+
+    try:
+        require_residency_change(info, what, before, after, draft=draft)
+    except ResidencyRefused as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params=refused.params
+        )
+    return None
+
+
 def _refuse_config_declared(source_id: str) -> MutationResult | None:  # REQ-826, REQ-030
     """The refusal for a replication setting on a source the configuration file declares, or None
     when the control plane owns the source.
@@ -806,6 +823,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if _soda_refusal is not None:
             return _soda_refusal
 
+        from provisa.security.residency import CREATED
+
+        _residency = _residency_refusal(info, f"source {input.id}", CREATED, input.region)
+        if _residency is not None:  # REQ-1921
+            return _residency
+
         if input.type == "govdata":
             _err = await _validate_govdata_api_key(input)
             if _err is not None:
@@ -892,6 +915,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             cache_enabled=input.cache_enabled,
             cache_ttl=input.cache_ttl,
             replicate=input.replicate,  # REQ-826
+            region=input.region,  # REQ-1921: its new tables' starting region
             max_live_concurrency=input.max_live_concurrency,  # REQ-1909
             sentinel_path=input.sentinel_path,  # REQ-1148
             freshness_gate=input.freshness_gate,  # REQ-860
@@ -1197,8 +1221,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 cache_enabled=input.cache_enabled,
                 cache_ttl=input.cache_ttl,
                 replicate=input.replicate,  # REQ-826
-                # REQ-1921: kept; the form carries no region, and writing NULL over the stored one
-                # changed it without anyone choosing to.
+                # REQ-1921: kept; a source's region changes only through setSourceRegion.
                 region=existing["region"],
                 max_live_concurrency=input.max_live_concurrency,  # REQ-1909
                 sentinel_path=input.sentinel_path,  # REQ-1148
@@ -2059,6 +2082,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             domain_access=input.domain_access,
             rate_limit=rate_limit,
             parent_role_id=parent_id,
+            residency_values=input.residency_values,  # REQ-1921
         )
         async with pool.acquire() as conn:
             _was = await origin_repo.of(cast("Connection", conn), "role", input.id)
@@ -2287,9 +2311,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 await apply_dq_registration(_conn, model)
             except ValueError as _dq_err:
                 return MutationResult(success=False, message=str(_dq_err))
-            from provisa.api.admin.region_defaults import kept_region
+            from provisa.api.admin.region_defaults import kept_placement
 
-            model.region = await kept_region(_conn, model)  # REQ-1921
+            model.region, model.draft = await kept_placement(_conn, model)  # REQ-1921
             _conflict = await _domain_table_conflict(
                 _conn,
                 model.domain_id,
@@ -2448,6 +2472,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     allowed_lateness=input.mv_allowed_lateness,  # REQ-961
                     expected_events=input.mv_expected_events,  # REQ-961
                     business_day_grain=input.mv_business_day_grain,  # REQ-962
+                    draft=model.draft,  # REQ-1921
                 )
             except ValueError as _det_err:  # REQ-964: reject non-deterministic MV SQL
                 return MutationResult(success=False, message=str(_det_err))
@@ -2471,7 +2496,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 "Landed-table reconcile failed after update_table", exc_info=True
             )
         # Materialize + wire a (re)materialized view immediately — FRESH now, not STALE-until-restart.
-        if input.view_sql and input.materialize:
+        if input.view_sql and input.materialize and not model.draft:
             from provisa.api.admin.schema_common import activate_view_mv
 
             await activate_view_mv(input.table_name)
@@ -3269,6 +3294,148 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"replicate set for table {table_id}",
             code="schema.table_replicate_set",
             params={"table": table_id},
+        )
+
+    @strawberry.mutation
+    async def set_table_region(
+        self, info: StrawberryInfo, table_id: int, region: str | None = None
+    ) -> MutationResult:  # REQ-1921
+        """Set where one table's data lives (None = no region): the one place a registered
+        table's region changes. Its copies follow — built in the new region, retired elsewhere."""
+        from provisa.core.repositories import region as region_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            _row = await conn.execute_core(
+                select(
+                    registered_tables.c.domain_id,
+                    registered_tables.c.table_name,
+                    registered_tables.c.region,
+                    registered_tables.c.draft,
+                ).where(registered_tables.c.id == table_id)
+            )
+            row = _row.fetchone()
+            if row is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_not_found",
+                    params={"table": table_id},
+                )
+            require_capability(info, "table_registration", domain_id=row.domain_id)
+            # A draft table is claimed: its destination alone is judged (REQ-1921).
+            refused_here = _residency_refusal(
+                info, f"table {row.table_name}", row.region, region, draft=row.draft
+            )
+            if refused_here is not None:
+                return refused_here
+            try:
+                name = await region_repo.set_table_region(conn, table_id, region)
+            except ValueError as refused:
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.region_refused",
+                    params={"table": table_id, "region": region, "reason": str(refused)},
+                )
+        await _rebuild_schemas()
+        return MutationResult(
+            success=True,
+            message=f"region of table {name!r} set to {region or 'none'}",
+            code="schema.table_region_set",
+            params={"table": table_id, "region": region},
+        )
+
+    @strawberry.mutation
+    async def set_table_draft(
+        self, info: StrawberryInfo, table_id: int, draft: bool
+    ) -> MutationResult:  # REQ-1921
+        """Put a table or view out of service (draft) or release it. While draft it is read and
+        written nowhere, offered in no schema and copied nowhere; its domain's owners set and
+        clear it, and no other right is needed."""
+        from sqlalchemy import update as _update
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            row = (
+                await conn.execute_core(
+                    select(
+                        registered_tables.c.domain_id,
+                        registered_tables.c.table_name,
+                        registered_tables.c.materialize,
+                    ).where(registered_tables.c.id == table_id)
+                )
+            ).fetchone()
+            if row is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_not_found",
+                    params={"table": table_id},
+                )
+            require_capability(info, "table_registration", domain_id=row.domain_id)
+            from provisa.core import model_change
+
+            model_change.name("update", "table draft", row.table_name)  # REQ-1524
+            await conn.execute_core(
+                _update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(draft=draft)
+            )
+        await _rebuild_schemas()
+        if not draft and row.materialize:
+            # Released: a materialized view is built now, as a newly saved one is.
+            from provisa.api.admin.schema_common import activate_view_mv
+
+            await activate_view_mv(row.table_name)
+        return MutationResult(
+            success=True,
+            message=f"table {row.table_name!r} {'set as draft' if draft else 'released'}",
+            code="schema.table_draft_set" if draft else "schema.table_released",
+            params={"table": row.table_name},
+        )
+
+    @strawberry.mutation
+    async def set_source_region(
+        self, info: StrawberryInfo, source_id: str, region: str | None = None
+    ) -> MutationResult:  # REQ-1921
+        """Set the region the admin form starts this source's new tables in (None = the
+        connected one). Moves no existing table."""
+        require_capability(info, "source_registration")
+        from provisa.core.repositories import region as region_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            stored = (
+                await conn.execute_core(select(sources.c.region).where(sources.c.id == source_id))
+            ).fetchone()
+            if stored is not None:
+                refused_here = _residency_refusal(
+                    info, f"source {source_id}", stored.region, region
+                )
+                if refused_here is not None:
+                    return refused_here
+            try:
+                await region_repo.set_source_region(conn, source_id, region)
+            except LookupError:
+                return MutationResult(
+                    success=False,
+                    message=f"Source {source_id!r} not found",
+                    code="schema.source_not_found",
+                    params={"source": source_id},
+                )
+            except ValueError as refused:
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.region_refused",
+                    params={"source": source_id, "region": region, "reason": str(refused)},
+                )
+        return MutationResult(
+            success=True,
+            message=f"region of source {source_id!r} set to {region or 'none'}",
+            code="schema.source_region_set",
+            params={"source": source_id, "region": region},
         )
 
     @strawberry.mutation

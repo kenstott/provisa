@@ -116,6 +116,11 @@ for _name in _MODEL_METADATA_READS:
         "model metadata read by every role's pages; holds no connection details or security rules"
     )
 EXEMPT[("graphql:query", "schemaVersion")] = "identifier hash only; no model content"
+# REQ-1921: the org's region ids and the node's region, read by every admin form with a region field
+# (tables, views, sources, roles); holds no store, connection or security detail.
+EXEMPT[("graphql:query", "regionChoices")] = (
+    "region ids only, read by every form with a region field; no store or connection detail"
+)
 # Pure text parse (parse_contract reads no source, credential or model row); called by DqRulesModal
 # on /data-products, opened with data_product_read.
 EXEMPT[("graphql:query", "dqContractParse")] = (

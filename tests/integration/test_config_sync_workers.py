@@ -47,6 +47,7 @@ from pathlib import Path
 import pytest
 import sqlalchemy as sa
 
+from tests.helpers import registered_id, release_mutation
 from tests.integration.cross_worker_evidence import Worker
 from tests.integration.test_settings_catalog_workers import _one_connection_per_worker
 from tests.integration.worker_boot_harness import WorkerBoot
@@ -204,6 +205,11 @@ def test_a_source_registered_through_one_worker_is_queryable_on_every_worker(wor
         "{ success message } }"
     )
     assert res["data"]["registerTable"]["success"], res
+    # REQ-1921: registered through the admin, it starts as draft; released, it is read.
+    released = author.admin(
+        release_mutation(registered_id(res["data"]["registerTable"]["message"]))
+    )
+    assert released["data"]["setTableDraft"]["success"], released
 
     def _reads_customers(w: Worker) -> tuple[bool, dict]:
         body = w.data("{ s__customers { id name } }")

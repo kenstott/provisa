@@ -102,6 +102,7 @@ def _plan(route, **kwargs):
         tier_caps=None,
         tier_plan=None,
         warnings=[],  # REQ-1350: what the statement's answer says about itself (nothing here)
+        answered_in=None,  # REQ-1922: this node's region answers (residency puts it on the plan)
         **kwargs,
     )
 

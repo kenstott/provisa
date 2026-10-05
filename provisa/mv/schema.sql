@@ -13,20 +13,26 @@ CREATE TABLE IF NOT EXISTS materialized_views (
     custom_sql      TEXT,           -- custom SELECT for the MV
     expose_in_sdl   BOOLEAN NOT NULL DEFAULT FALSE,
     sdl_config      JSONB,          -- {domain_id, governance, columns}
+    -- REQ-1922: the view's definition; each region's build of it is mv_build_state (state store).
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- REQ-879, REQ-1922: a region's build of a materialized view (its state store): the record of what
+-- the region built (region names it) and the fleet's refresh coordination (claim, lease, the
+-- REQ-862 version stamps the claim dedups on).
+CREATE TABLE IF NOT EXISTS mv_build_state (
+    mv_id           TEXT PRIMARY KEY,
+    region          TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'stale'
                     CHECK (status IN ('fresh', 'stale', 'refreshing', 'disabled')),
     last_refresh_at TIMESTAMPTZ,
     row_count       INTEGER,
     last_error      TEXT,
-    -- REQ-879: authoritative SHARED refresh-coordination state for a load-balanced fleet.
-    -- writer owns the in-flight refresh; lease_until is when its claim expires (crash reclaim).
-    -- The version stamps are the REQ-862 dedup key for the atomic claim (skip when already current).
     writer          TEXT,
     lease_until     TIMESTAMPTZ,
     materialized_definition_version TEXT,
     materialized_input_version      TEXT,
-    snapshot_id     TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    snapshot_id     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS mv_refresh_log (

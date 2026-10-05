@@ -74,6 +74,7 @@ from provisa.api.admin.types import (
     QueryPreviewType,
     HotTableStatType,
     ClusterNodeType,
+    RegionChoicesType,
     KaggleDatasetType,
     MaterializeStoreInfoType,
     ReplicaBuildsType,
@@ -256,6 +257,27 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
         )
         for r in src_res.fetchall()
     ]
+
+
+async def _table_region_maps(
+    state: Any,
+) -> tuple[dict[int, str | None], dict[tuple[str, str, str], str | None]]:
+    """REQ-1922: the stored home region of every registered table, by table id and by
+    (source_id, schema, table). The hot-tables and replica-status lists stamp each row with its
+    table's region from these, so they carry a region column and filter by region like the other
+    admin lists -- without a client-side join. Empty when the org's control plane is not open."""
+    from provisa.api.admin.db_queries import fetch_tables
+
+    by_id: dict[int, str | None] = {}
+    by_key: dict[tuple[str, str, str], str | None] = {}
+    tenant_db = getattr(state, "tenant_db", None)
+    if tenant_db is None:
+        return by_id, by_key
+    async with tenant_db.acquire() as conn:
+        for d in await fetch_tables(conn):
+            by_id[d["id"]] = d.get("region")
+            by_key[(d["source_id"], d["schema_name"], d["table_name"])] = d.get("region")
+    return by_id, by_key
 
 
 @strawberry.type
@@ -1264,6 +1286,21 @@ class Query:  # REQ-021, REQ-042
         return [CacheTableStatType(table_id=tid, cached_entries=n) for tid, n in counts.items()]
 
     @strawberry.field
+    async def region_choices(self) -> RegionChoicesType:  # REQ-1921
+        """The org's regions and the connected one, for the admin's region fields."""
+        from provisa.api.admin.region_defaults import connected_region
+        from provisa.api.app import state
+        from provisa.core.repositories.region import list_regions
+
+        connected = connected_region()
+        if connected is None:
+            return RegionChoicesType(regions=[], connected=None)
+        assert state.model_db is not None  # the org's model is open while it is served
+        async with state.model_db.acquire() as conn:
+            regions = [r.id for r in await list_regions(conn)]
+        return RegionChoicesType(regions=regions, connected=connected)
+
+    @strawberry.field
     async def cluster_nodes(self, info: StrawberryInfo) -> list[ClusterNodeType]:  # REQ-1916
         """The nodes now in the cluster, each with its mode and — when the platform declares
         regions — its region: whether any node does coordinator work, and where."""
@@ -1308,6 +1345,16 @@ class Query:  # REQ-021, REQ-042
             (e, "replica" if e["serving"] else "replica_building")
             for e in await busy_replicas(state)
         ]
+        # REQ-1922: carry each row's home region from the stored table region. A hot-tier entry
+        # carries its table_id; a busy-replica entry carries (source_id, schema, table) as
+        # catalog/schema/table_name (replica_hot keys the "catalog" field with the source id).
+        by_id, by_key = await _table_region_maps(state)
+
+        def _region_of(e: dict) -> str | None:
+            if "table_id" in e:
+                return by_id.get(e["table_id"])
+            return by_key.get((e["catalog"], e["schema"], e["table_name"]))
+
         return [
             HotTableStatType(
                 table_name=e["table_name"],
@@ -1315,6 +1362,7 @@ class Query:  # REQ-021, REQ-042
                 schema_name=e["schema"],
                 row_count=e["row_count"],
                 kind=kind,
+                region=_region_of(e),
             )
             for e, kind in entries
         ]
@@ -1340,8 +1388,16 @@ class Query:  # REQ-021, REQ-042
             records = await replica_state.read_all(conn)
         now = datetime.now(UTC)
         failure = replica_converge.last_error.get(current_org.get(None))
+        # REQ-1922: stamp each replica with its table's stored home region (key is source/schema/table).
+        _, by_key = await _table_region_maps(state)
         return ReplicaBuildsType(
-            builds=[ReplicaBuildType(**build_view(record, now)) for record in records],
+            builds=[
+                ReplicaBuildType(
+                    **build_view(record, now),
+                    region=by_key.get((record.key[0], record.key[1], record.key[2])),
+                )
+                for record in records
+            ],
             convergence_error=failure["cause"] if failure else None,
             convergence_error_at=failure["at"].isoformat() if failure else None,
         )

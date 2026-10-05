@@ -258,6 +258,8 @@
     "pagingTypeRequired": "Choisissez un type de pagination, ou videz les champs de pagination.",
     "pagingPositive": "Utilisez un nombre entier supérieur ou égal à 1.",
     "pagingAboveCeiling": "Au plus {{ceiling}} : une table peut abaisser la limite de l'opérateur, jamais la relever.",
-    "pagingFixErrors": "Corrigez les erreurs de pagination avant d'enregistrer."
+    "pagingFixErrors": "Corrigez les erreurs de pagination avant d'enregistrer.",
+    "draftLabel": "Brouillon",
+    "draftHelp": "Hors service tant que la case est cochée : lue et écrite nulle part, proposée dans aucun schéma et copiée nulle part ; les copies existantes dans chaque région sont supprimées. Une table ou une vue enregistrée ici commence en brouillon ; décochez pour la publier."
   }
 }

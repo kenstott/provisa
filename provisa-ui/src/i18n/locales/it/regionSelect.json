@@ -1,0 +1,9 @@
+{
+  "regionSelect": {
+    "label": "Regione",
+    "helpTable": "Dove risiedono i dati di questa tabella: le sue copie vengono create e conservate solo in questa regione, e le altre regioni dell'organizzazione le leggono da qui. Nessuna regione: una copia può essere conservata in ogni regione.",
+    "helpView": "Dove risiedono i dati di questa vista: viene costruita e aggiornata solo in questa regione, e le altre regioni dell'organizzazione leggono quella copia. Nessuna regione: viene costruita in ogni regione.",
+    "helpSource": "La regione in cui inizia una nuova tabella di questa origine. Non decide dove risiedono i dati — ogni tabella ha la propria regione — e modificarla non sposta alcuna tabella.",
+    "none": "Nessuna regione"
+  }
+}

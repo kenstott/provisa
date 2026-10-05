@@ -66,6 +66,7 @@ STATE: frozenset[str] = frozenset(
         # Builds into the region's own replica / MV stores (REQ-1912, REQ-1922).
         "replica_state",
         "preserved_snapshots",
+        "mv_build_state",
         "mv_refresh_log",
         "mv_delta_ledger",
         # The region's serving: change events and their delivery, live queries, freshness, and

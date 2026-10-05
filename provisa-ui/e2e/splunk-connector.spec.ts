@@ -302,6 +302,19 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   expect(registerResult.errors, `registerTable errors: ${JSON.stringify(registerResult.errors)}`).toBeUndefined();
   expect(registerResult.data?.registerTable?.success).toBe(true);
 
+  // REQ-1921: registered through the admin, the table starts as draft; released, it is read.
+  const registeredId = Number(
+    /\(id=(\d+)\)/.exec(String(registerResult.data?.registerTable?.message))?.[1],
+  );
+  const releaseResult = await gql(
+    `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
+    { id: registeredId },
+  );
+  expect(
+    releaseResult.data?.setTableDraft?.success,
+    `setTableDraft: ${JSON.stringify(releaseResult)}`,
+  ).toBe(true);
+
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 15000 });
   await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({ timeout: 15000 });

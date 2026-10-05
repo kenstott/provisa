@@ -155,6 +155,32 @@ def test_a_regions_engine_store_names_an_engine_kind():
     assert "names engine kind 'oracle-rac', which is not one of" in said
 
 
+def test_with_more_than_one_region_an_engine_store_is_a_server_the_others_reach():
+    """REQ-1922: the org's other regions reach each region's engine (an org's delete drops what
+    it keeps there, wherever the delete runs); an embedded ClickHouse file is reachable from the
+    node that opens it alone, so it is refused by name — with one platform region it is allowed."""
+    chdb = [*_STORES, {"id": "eu-ch", "url": "chdb:///var/lib/eu", "kind": "clickhouse"}]
+    said = _refused(
+        _config(platform=_PLATFORM, stores=chdb, regions=[_region("eu", engine="eu-ch")])
+    )
+    assert "region 'eu' engine store 'eu-ch' is an embedded chdb file" in said
+    one = {"regions": _PLATFORM["regions"][:1]}
+    ProvisaConfig.model_validate(
+        _config(platform=one, stores=chdb, regions=[_region("eu", engine="eu-ch")])
+    )
+    # A ClickHouse server, and a DuckDB engine (in memory, keeping nothing between processes),
+    # are what another region reaches or never needs to.
+    servers = [
+        *_STORES,
+        {"id": "eu-ch", "url": "clickhouse://default:p@eu:8123", "kind": "clickhouse-server"},
+        {"id": "eu-duck", "url": "duckdb:///var/lib/eu.duckdb", "kind": "duckdb"},
+    ]
+    for engine in ("eu-ch", "eu-duck"):
+        ProvisaConfig.model_validate(
+            _config(platform=_PLATFORM, stores=servers, regions=[_region("eu", engine=engine)])
+        )
+
+
 def test_a_region_keeps_its_replicas_and_views_in_one_store():
     """MAINTAINER (REQ-1922): one store for both, for now; the model keeps both fields."""
     stores = [*_STORES, {"id": "eu-pg2", "url": "postgresql://eu2/db"}]
@@ -182,6 +208,71 @@ def test_a_region_others_read_needs_a_replica_store_they_can_attach():
         )
     )
     assert "region 'eu' replicas store 'eu-duck' is an embedded DuckDB file" in said
+    assert "table crm/public.orders keeps its data there" in said
+
+
+def test_a_region_others_read_needs_a_postgresql_replica_store():
+    stores = [*_STORES, {"id": "eu-my", "url": "mysql://eu/db"}]
+    said = _refused(
+        _config(
+            platform=_PLATFORM,
+            stores=stores,
+            regions=[_region("eu", replicas="eu-my", views="eu-my"), _region("us")],
+            tables=[{**_config()["tables"][0], "region": "eu"}],
+        )
+    )
+    assert "region 'eu' replicas store 'eu-my' is not a PostgreSQL store" in said
+    assert "table crm/public.orders keeps its data there" in said
+
+
+def test_a_sources_region_is_a_form_default_where_no_data_lives():
+    """REQ-1921: a source's region decides nothing about where copies live, so it asks nothing
+    of the org's stores or engines; a table that names no region of its own has none."""
+    stores = [*_STORES, {"id": "us-snow", "url": "snowflake://acct/db", "kind": "snowflake"}]
+    cfg = ProvisaConfig.model_validate(
+        _config(
+            platform=_PLATFORM,
+            stores=stores,
+            regions=[_region("eu"), _region("us", engine="us-snow")],
+            sources=[{**_config()["sources"][0], "region": "eu"}],
+        )
+    )
+    assert cfg.sources[0].region == "eu" and cfg.tables[0].region is None
+
+
+def test_a_table_naming_no_region_is_homed_nowhere_whatever_its_source_names():
+    from types import SimpleNamespace
+
+    from provisa.federation.replica_converge import home_region
+
+    assert home_region({"region": None}) is None
+    assert home_region(SimpleNamespace(region="us")) == "us"
+
+
+def test_a_region_whose_engine_cannot_read_another_region_is_refused_naming_both():
+    """A table kept in eu is read by us in place: us's engine must be one that can."""
+    stores = [*_STORES, {"id": "us-snow", "url": "snowflake://acct/db", "kind": "snowflake"}]
+    said = _refused(
+        _config(
+            platform=_PLATFORM,
+            stores=stores,
+            regions=[_region("eu"), _region("us", engine="us-snow")],
+            tables=[{**_config()["tables"][0], "region": "eu"}],
+        )
+    )
+    assert (
+        "region 'us' runs the snowflake engine, which cannot read another region's replicas, "
+        "and table crm/public.orders keeps its data in region 'eu'"
+    ) in said
+    # One region, nothing is read elsewhere: any engine.
+    ProvisaConfig.model_validate(
+        _config(
+            platform=_PLATFORM,
+            stores=stores,
+            regions=[_region("us", engine="us-snow")],
+            tables=[{**_config()["tables"][0], "region": "us"}],
+        )
+    )
 
 
 # -- saved through the model store ---------------------------------------------------------------
@@ -246,6 +337,32 @@ async def test_a_region_saved_with_an_engine_store_of_no_kind_is_refused(model):
             )
 
 
+async def test_a_region_saved_with_an_embedded_engine_is_refused_with_more_than_one(model):
+    """The save refuses what the load refuses: with more than one platform region, a region's
+    engine store is one the other regions reach (REQ-1922)."""
+    from provisa.core import process_region
+    from provisa.core.regions import OrgRegion, StoreConfig
+    from provisa.core.repositories import region as region_repo
+
+    chdb = {"id": "eu-ch", "url": "chdb:///var/lib/eu", "kind": "clickhouse"}
+    was = process_region._region, process_region._platform_regions
+    try:
+        process_region.bind_launch(_PLATFORM, requested="eu")
+        async with model.acquire() as conn:
+            for s in [*_STORES[:3], chdb]:
+                await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
+            with pytest.raises(ValueError, match="engine store 'eu-ch' is an embedded chdb file"):
+                await region_repo.upsert_region(
+                    conn, OrgRegion(**_region("eu", engine="eu-ch")), origin="admin"
+                )
+            process_region.bind_launch({"regions": _PLATFORM["regions"][:1]}, requested="eu")
+            await region_repo.upsert_region(
+                conn, OrgRegion(**_region("eu", engine="eu-ch")), origin="admin"
+            )
+    finally:
+        process_region._region, process_region._platform_regions = was
+
+
 async def test_a_region_saved_with_replicas_and_views_apart_is_refused(model):
     from provisa.core.regions import OrgRegion, StoreConfig
     from provisa.core.repositories import region as region_repo
@@ -303,3 +420,56 @@ def test_the_engine_kinds_the_model_names_are_the_ones_built():
     from provisa.federation.engine import engine_kinds
 
     assert ENGINE_KINDS == engine_kinds()
+
+
+def test_the_engine_kinds_that_read_other_regions_are_the_backends_that_do(monkeypatch):
+    from provisa.core.engine_kinds import REGION_READERS
+    from provisa.federation.engine import build_engine, engine_kinds
+
+    # A generic SQLAlchemy engine kind is built only with a URL; none is dialed.
+    monkeypatch.setenv("PROVISA_ENGINE_URL", "postgresql://h/db")
+    readers = {k for k in engine_kinds() if build_engine(k).backend.reads_other_regions}
+    assert readers == REGION_READERS
+
+
+async def test_a_save_that_leaves_a_region_unreadable_by_the_others_is_refused(model):
+    """Saving refuses what loading refuses — from whichever side the change comes: the table
+    naming the region, the other region's engine, or the region's replicas store. A source's
+    region is a form default and is never refused for it."""
+    from provisa.core.models import Table
+    from provisa.core.regions import OrgRegion, StoreConfig
+    from provisa.core.repositories import region as region_repo
+    from provisa.core.repositories import source as source_repo
+    from provisa.core.repositories import table as table_repo
+
+    declared = _config()["tables"][0]
+    orders = Table.model_validate(
+        {
+            **declared,
+            "region": "eu",
+            "columns": [{**declared["columns"][0], "data_type": "integer"}],
+        }
+    )
+
+    snow = StoreConfig(id="us-snow", url="snowflake://acct/db", kind="snowflake")
+    async with model.acquire() as conn:
+        for s in _STORES:
+            await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
+        await region_repo.upsert_store(conn, snow, origin="admin")
+        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")), origin="admin")
+        await region_repo.upsert_region(
+            conn, OrgRegion(**_region("us", engine="us-snow")), origin="admin"
+        )
+        await source_repo.upsert(conn, _source("eu"), origin="admin")  # a form default
+        with pytest.raises(ValueError, match="region 'us' runs the snowflake engine"):
+            await table_repo.upsert(conn, orders, origin="admin")
+        await region_repo.upsert_region(conn, OrgRegion(**_region("us")), origin="admin")
+        await table_repo.upsert(conn, orders, origin="admin")
+        with pytest.raises(ValueError, match="region 'us' runs the snowflake engine"):
+            await region_repo.upsert_region(
+                conn, OrgRegion(**_region("us", engine="us-snow")), origin="admin"
+            )
+        with pytest.raises(ValueError, match="'eu-pg' is not a PostgreSQL store"):
+            await region_repo.upsert_store(
+                conn, StoreConfig(id="eu-pg", url="mysql://eu/db"), origin="admin"
+            )

@@ -362,7 +362,7 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
 
     def _exec_engine_flight(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
         from provisa.api.app import state
-        from provisa.federation.query_residency import ensure_resident
+        from provisa.federation.query_residency import ensure_resident, put_on_plan
         from provisa.pgwire._pipeline import require_governed_plan
 
         if plan.physical_sql is None:
@@ -375,12 +375,15 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         # a MATERIALIZED source this plan reads gets landed before the engine executes — mirrors
         # the identical ENGINE-route bypass fixes elsewhere (pgwire/server.py, api/flight/server.py,
         # api/airport/query.py).
-        plan.replicas_read = run_on_connection_loop(
-            ensure_resident(
-                state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+        put_on_plan(
+            plan,
+            run_on_connection_loop(
+                ensure_resident(
+                    state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+                ),
+                timeout=request_timeout_for("pgwire"),
             ),
-            timeout=request_timeout_for("pgwire"),
-        ).replicas_read
+        )
         # Arrow Flight is an advertised, engine-specific transport (REQ-825): route through the
         # bound engine, which fails closed if the engine lacks ARROW or the proxy is unconfigured.
         table = state.federation_engine.execute_engine_arrow(plan.physical_sql, plan.exec_params)

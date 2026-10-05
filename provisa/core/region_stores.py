@@ -30,24 +30,9 @@ from typing import TYPE_CHECKING, NamedTuple
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
-    from provisa.core.database import OrgStores
+    from provisa.core.database import Database, OrgStores
     from provisa.core.model_change import ModelPlane
     from provisa.core.regions import OrgRegion, StoreConfig
-
-
-class HomeRegionUnavailable(RuntimeError):
-    """A table that names another region is read from that region's replica, never live and
-    never from a copy here (REQ-1922): refused while that replica cannot be read from here."""
-
-    code = "query.home_region_unavailable"
-
-    def __init__(self, table: str, region: str, why: str) -> None:
-        self.table, self.region = table, region
-        self.params = {"table": table, "region": region}
-        super().__init__(
-            f"table {table!r} is kept in region {region!r} and is read only from its replica "
-            f"there, which {why}"
-        )
 
 
 class StoreNotDeclared(LookupError):
@@ -149,8 +134,11 @@ async def bind_region_stores(
         url = resolve_secrets(declared[store_id])
         return _engine_for(url, pool_size=pool_size, max_overflow=max_overflow)
 
-    search_path = model_db.search_path
-    assert search_path is not None  # an org handle is always scoped to its schema
+    # REQ-1922: the state and record a region keeps are named for it — two regions may keep them
+    # in one database instance; the model, every region's, keeps its own name.
+    from provisa.core.environments import org_schema
+
+    search_path = org_schema(org_id, env, region=region)
     tenant_db = Database(
         _engine("state", here.state), name="org-state", search_path=search_path, holds="state"
     )
@@ -165,8 +153,8 @@ async def bind_region_stores(
     if initialise:
         for db in {id(d.engine): d for d in (tenant_db, record_db)}.values():
             layout = Database(db.engine, name="org-layout", search_path=search_path)
-            await init_schema(layout, schema_sql, org_id=org_id, env=env)
-            await init_audit_schema(layout, org_id=org_id, env=env)
+            await init_schema(layout, schema_sql, org_id=org_id, env=env, region=region)
+            await init_audit_schema(layout, org_id=org_id, env=env, region=region)
     return OrgStores(model_db, tenant_db, record_db)
 
 
@@ -182,7 +170,7 @@ class RegionLane(NamedTuple):
     cache_url: str  # the org's response cache and Hot counts in this region
 
 
-_ENDPOINT_KINDS = frozenset({"trino", "trino-byo"})
+ENDPOINT_KINDS = frozenset({"trino", "trino-byo"})
 
 
 class RegionLaneConflict(RuntimeError):
@@ -235,7 +223,7 @@ def region_lane(
     require_engine_kind(region, store)
     assert store.kind is not None  # require_engine_kind refuses a store without one
     url = resolve_secrets(store.url)
-    if store.kind in _ENDPOINT_KINDS:
+    if store.kind in ENDPOINT_KINDS:
         parsed = make_url(url)
         if parsed.host is None or parsed.port is None:
             raise ValueError(
@@ -269,3 +257,87 @@ def refuse_lane_conflict(
     ]
     if fields:
         raise RegionLaneConflict(org_id, process_region.region(), fields)
+
+
+class ForeignRegion(NamedTuple):
+    """Another region of the org, as a node of this region reads it (REQ-1922): the store its
+    replicas are kept in (a table that names it is read from there), its state store, where
+    whether that replica is built is recorded, and its engine's kind, which decides whether it
+    keeps a replica of a table at all (REQ-1921). Read only."""
+
+    id: str
+    replicas_url: str
+    state_db: "Database"
+    engine_kind: str
+
+
+class HomeRegionUnavailable(RuntimeError):
+    """A table that names another region is read from that region's replica, never live: refused
+    while that replica is not built or that region's stores cannot be reached."""
+
+    code = "query.home_region_unavailable"
+
+    def __init__(self, table: str, region: str, why: str) -> None:
+        self.table, self.region = table, region
+        self.params = {"table": table, "region": region}
+        super().__init__(
+            f"table {table!r} is kept in region {region!r} and is read only from its replica "
+            f"there, which {why}"
+        )
+
+
+async def bind_foreign_regions(
+    org_id: str,
+    env: str | None,
+    model_db: "Database",
+    *,
+    pool_size: int,
+    max_overflow: int,
+) -> "dict[str, ForeignRegion]":
+    """The org's regions other than this node's, by id. Empty with no platform regions."""
+    from provisa.core import process_region
+    from provisa.core.database import Database
+    from provisa.core.regions import DEFAULT_REGION
+    from provisa.core.repositories.region import list_regions, list_stores
+    from provisa.core.secrets import resolve_secrets
+
+    here = process_region.region()
+    if here == DEFAULT_REGION:
+        return {}
+    async with model_db.acquire() as conn:
+        selected = await list_regions(conn)
+        stores = {s.id: s for s in await list_stores(conn)}
+    declared = {store_id: s.url for store_id, s in stores.items()}
+    out: dict[str, ForeignRegion] = {}
+    from provisa.core.environments import org_schema
+
+    for region in selected:
+        if region.id == here:
+            continue
+        for role, store_id in (
+            ("replicas", region.replicas),
+            ("state", region.state),
+            ("engine", region.engine),
+        ):
+            if store_id not in declared:
+                raise StoreNotDeclared(org_id, region.id, role, store_id)
+        from provisa.core.regions import require_engine_kind
+
+        require_engine_kind(region.id, stores[region.engine])
+        engine_kind = stores[region.engine].kind
+        assert engine_kind is not None  # require_engine_kind refuses a store without one
+        state_engine = _engine_for(
+            resolve_secrets(declared[region.state]), pool_size=pool_size, max_overflow=max_overflow
+        )
+        out[region.id] = ForeignRegion(
+            region.id,
+            resolve_secrets(declared[region.replicas]),
+            Database(  # REQ-1922: that region's state, under the name it keeps it by
+                state_engine,
+                name=f"org-state-{region.id}",
+                search_path=org_schema(org_id, env, region=region.id),
+                holds="state",
+            ),
+            engine_kind,
+        )
+    return out

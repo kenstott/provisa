@@ -81,13 +81,13 @@ _META_TABLE_VIEWS: dict[str, str] = {
                'table:' || CAST(rt.id AS TEXT) AS object_key,
                CAST(rt.tenant_id AS TEXT) AS tenant_id
         FROM registered_tables rt
-        WHERE rt.modeling_role IN ('fact', 'dimension')
+        WHERE rt.modeling_role IN ('fact', 'dimension') AND NOT rt.draft  -- REQ-1921
         UNION ALL
         SELECT 'data_quality', 'table', rt.source_id, rt.id, rt.table_name, rt.domain_id,
                'table:' || CAST(rt.id AS TEXT), CAST(rt.tenant_id AS TEXT)
         FROM registered_tables rt
         JOIN sources s ON s.id = rt.source_id
-        WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL
+        WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL AND NOT rt.draft
     """,
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS
@@ -201,6 +201,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                l1_cluster, l2_cluster, l3_cluster, clusters_computed_at,
                tenant_id
         FROM registered_tables
+        WHERE NOT draft  -- REQ-1921: a draft table is in no catalog
     """,
     "table_columns": """
         CREATE OR REPLACE VIEW table_columns_meta AS
@@ -219,6 +220,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
                writable_by,
                tenant_id
         FROM table_columns
+        -- REQ-1921: nor are a draft table's columns.
+        WHERE table_id IN (SELECT id FROM registered_tables WHERE NOT draft)
     """,
     "roles": """
         CREATE OR REPLACE VIEW roles_meta AS
@@ -275,7 +278,7 @@ _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW query_audit_log_ops AS
         SELECT q.id, q.user_id, ud.display_name AS user_name, q.role_id, q.query_hash,
                q.table_ids, q.source, q.status_code, q.duration_ms, q.logged_at,
-               q.route, q.row_count, q.route_reason, q.sources, q.data_age,
+               q.route, q.row_count, q.route_reason, q.sources, q.data_age, q.region,
                q.model_stamp, q.model_commit, q.enforced
         FROM query_audit_log q
         LEFT JOIN user_directory ud ON ud.user_id = q.user_id

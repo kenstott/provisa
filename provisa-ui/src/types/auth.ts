@@ -49,6 +49,9 @@ export type Capability =
   // page renders read-only without it. A curator is granted both.
   | "glossary_read"
   | "glossary_rw"
+  // REQ-1921: set, change or remove where data lives, for the region values the grant lists.
+  // Exists only when the platform declares regions.
+  | "data_residency"
   // REQ-1592: the org's glossary owner — curates any term whatever its domains and whoever
   // authored it, and is alone in being able to scope a term to the whole org ("*"). Seeded to
   // org_admin only; it widens what a curator may do rather than opening the surface, so a holder
@@ -81,6 +84,8 @@ export interface Role {
   domain_access: string[];
   rateLimit?: RoleRateLimit | null; // REQ-1174: per-role rate + query-complexity limits
   parentRoleId?: string | null; // REQ-1677: the role this one inherits from
+  /** REQ-1921: with data_residency, the region values its grant covers (regions, "no_region"). */
+  residencyValues?: string[];
   /** The server withheld this role's definition from the caller; the lists above are empty placeholders. */
   detailsHidden?: boolean;
 }

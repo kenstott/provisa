@@ -97,7 +97,8 @@
       "unknown_action_field": "Onbekend actieveld: '{{field}}'",
       "unknown_command": "Onbekende opdracht '{{name}}'",
       "write_not_admitted": "De rol '{{role}}' mag deze schrijfbewerking niet uitvoeren: een schrijfbewerking vereist het schrijfrecht, schrijftoegang tot elke kolom die wordt geschreven en rijen die het rijfilter van de rol toelaat.",
-      "write_not_supported": "'{{table}}' accepteert geen {{operation}}: de bron kan het niet uitvoeren"
+      "write_not_supported": "'{{table}}' accepteert geen {{operation}}: de bron kan het niet uitvoeren",
+      "table_is_draft": "{{table}} is een concept: buiten gebruik tot de eigenaren van haar domein haar vrijgeven"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -334,6 +335,9 @@
       "table_registered": "Tabel '{{table}}' geregistreerd (id={{id}})",
       "table_registered_fields_omitted": "Tabel '{{table}}' geregistreerd (id={{id}}). Weggelaten, omdat de inloggegevens van de bron ze niet mogen lezen: {{fields}}",
       "table_replicate_set": "Repliceren ingesteld voor tabel {{table}}",
+      "table_region_set": "Regio van tabel {{table}} ingesteld op {{region}}",
+      "source_region_set": "Regio van bron {{source}} ingesteld op {{region}}",
+      "region_refused": "De regio is niet ingesteld: {{reason}}",
       "table_too_complex": "Tabel '{{table}}' is niet geregistreerd met de geselecteerde kolommen: {{reason}}. Kies minder kolommen.",
       "table_updated": "Tabel '{{table}}' bijgewerkt (id={{id}})",
       "task_deleted": "Taak '{{task}}' verwijderd",
@@ -352,13 +356,17 @@
       "webhook_approved": "Webhook '{{webhook}}' goedgekeurd",
       "webhook_name_required": "webhook_name is vereist voor een webhooktrigger",
       "webhook_not_found": "Webhook '{{webhook}}' niet gevonden",
-      "change_streams_unavailable": "Bron '{{source}}' is een zelfstandige MongoDB-server, die geen change streams levert: het native wijzigingssignaal vereist een replica set of een sharded cluster. Draai hem als replica set, of gebruik het wijzigingssignaal poll."
+      "change_streams_unavailable": "Bron '{{source}}' is een zelfstandige MongoDB-server, die geen change streams levert: het native wijzigingssignaal vereist een replica set of een sharded cluster. Draai hem als replica set, of gebruik het wijzigingssignaal poll.",
+      "table_draft_set": "Tabel {{table}} als concept ingesteld",
+      "table_released": "Tabel {{table}} vrijgegeven"
     },
     "secrets": {
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."
     },
     "security": {
-      "unknown_mode": "onbekende beveiligingsmodus '{{mode}}'"
+      "unknown_mode": "onbekende beveiligingsmodus '{{mode}}'",
+      "data_residency_refused": "De regio van {{object}} kan niet worden ingesteld: de data_residency-toekenning dekt {{value}} niet; een data_residency-toekenning die het noemt, staat het toe",
+      "data_residency_missing": "De regio van {{object}} kan niet worden ingesteld: geen data_residency-toekenning van de aanroeper dekt {{value}}; een data_residency-toekenning die het noemt, staat het toe"
     },
     "settings": {
       "auth_required": "{{field}} kan pas worden gewijzigd als verificatie is geconfigureerd.",

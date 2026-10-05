@@ -434,6 +434,7 @@ async def test_report_views_functional(uri):
                         source="graphql",
                         status_code=status,
                         duration_ms=dur,
+                        region="default",
                     )
                 )
             dialect = conn.capabilities.dialect
@@ -642,6 +643,7 @@ async def test_the_queries_report_from_the_audit_log_matches_the_report_from_que
                     status_code=500 if failed else 200,
                     duration_ms=50,
                     trace_id=trace * 16,
+                    region="default",
                 )
             )
         dialect = conn.capabilities.dialect

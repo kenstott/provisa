@@ -97,7 +97,8 @@
       "unknown_action_field": "Unbekanntes Aktionsfeld: '{{field}}'",
       "unknown_command": "Unbekannter Befehl '{{name}}'",
       "write_not_admitted": "Die Rolle '{{role}}' darf diesen Schreibvorgang nicht ausführen: Ein Schreibvorgang erfordert das Schreibrecht, Schreibzugriff auf jede geschriebene Spalte und Zeilen, die der Zeilenfilter der Rolle zulässt.",
-      "write_not_supported": "'{{table}}' nimmt kein {{operation}} an: seine Quelle kann es nicht ausführen"
+      "write_not_supported": "'{{table}}' nimmt kein {{operation}} an: seine Quelle kann es nicht ausführen",
+      "table_is_draft": "{{table}} ist ein Entwurf: außer Betrieb, bis die Verantwortlichen ihrer Domäne sie freigeben"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
@@ -334,6 +335,9 @@
       "table_registered": "Tabelle '{{table}}' registriert (id={{id}})",
       "table_registered_fields_omitted": "Tabelle '{{table}}' registriert (id={{id}}). Ausgelassen, weil die Zugangsdaten der Quelle sie nicht lesen dürfen: {{fields}}",
       "table_replicate_set": "Replizieren für Tabelle {{table}} gesetzt",
+      "table_region_set": "Region der Tabelle {{table}} auf {{region}} gesetzt",
+      "source_region_set": "Region der Quelle {{source}} auf {{region}} gesetzt",
+      "region_refused": "Die Region wurde nicht gesetzt: {{reason}}",
       "table_too_complex": "Die Tabelle '{{table}}' wurde mit den ausgewählten Spalten nicht registriert: {{reason}}. Wählen Sie weniger Spalten.",
       "table_updated": "Tabelle '{{table}}' aktualisiert (id={{id}})",
       "task_deleted": "Aufgabe '{{task}}' gelöscht",
@@ -352,13 +356,17 @@
       "webhook_approved": "Webhook '{{webhook}}' genehmigt",
       "webhook_name_required": "webhook_name ist für einen Webhook-Trigger erforderlich",
       "webhook_not_found": "Webhook '{{webhook}}' nicht gefunden",
-      "change_streams_unavailable": "Quelle '{{source}}' ist ein eigenständiger MongoDB-Server, der keine Change Streams bereitstellt: Das native Änderungssignal erfordert ein Replica Set oder einen Sharded Cluster. Betreiben Sie ihn als Replica Set oder verwenden Sie das Änderungssignal poll."
+      "change_streams_unavailable": "Quelle '{{source}}' ist ein eigenständiger MongoDB-Server, der keine Change Streams bereitstellt: Das native Änderungssignal erfordert ein Replica Set oder einen Sharded Cluster. Betreiben Sie ihn als Replica Set oder verwenden Sie das Änderungssignal poll.",
+      "table_draft_set": "Tabelle {{table}} als Entwurf gesetzt",
+      "table_released": "Tabelle {{table}} freigegeben"
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."
     },
     "security": {
-      "unknown_mode": "unbekannter Sicherheitsmodus '{{mode}}'"
+      "unknown_mode": "unbekannter Sicherheitsmodus '{{mode}}'",
+      "data_residency_refused": "Die Region von {{object}} kann nicht gesetzt werden: die data_residency-Berechtigung deckt {{value}} nicht ab; eine data_residency-Berechtigung, die es aufführt, erlaubt es",
+      "data_residency_missing": "Die Region von {{object}} kann nicht gesetzt werden: keine data_residency-Berechtigung des Aufrufers deckt {{value}} ab; eine data_residency-Berechtigung, die es aufführt, erlaubt es"
     },
     "settings": {
       "auth_required": "{{field}} kann erst geändert werden, wenn die Authentifizierung konfiguriert ist.",

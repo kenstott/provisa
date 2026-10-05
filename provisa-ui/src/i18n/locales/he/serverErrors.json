@@ -97,7 +97,8 @@
       "unknown_action_field": "שדה פעולה לא מוכר: '{{field}}'",
       "unknown_command": "פקודה לא מוכרת '{{name}}'",
       "write_not_admitted": "התפקיד '{{role}}' אינו רשאי לבצע כתיבה זו: כתיבה דורשת את הרשאת הכתיבה, גישת כתיבה לכל עמודה שנכתבת, ושורות שמסנן השורות של התפקיד מתיר.",
-      "write_not_supported": "'{{table}}' אינה מקבלת {{operation}}: המקור שלה אינו יכול לבצע זאת"
+      "write_not_supported": "'{{table}}' אינה מקבלת {{operation}}: המקור שלה אינו יכול לבצע זאת",
+      "table_is_draft": "{{table}} היא טיוטה: מחוץ לשירות עד שבעלי התחום שלה ישחררו אותה"
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -334,6 +335,9 @@
       "table_registered": "הטבלה '{{table}}' נרשמה (id={{id}})",
       "table_registered_fields_omitted": "הטבלה '{{table}}' נרשמה (id={{id}}). הושמטו, מפני שאישורי הגישה של המקור אינם רשאים לקרוא אותם: {{fields}}",
       "table_replicate_set": "שכפול הוגדר עבור הטבלה {{table}}",
+      "table_region_set": "האזור של הטבלה {{table}} הוגדר ל-{{region}}",
+      "source_region_set": "האזור של המקור {{source}} הוגדר ל-{{region}}",
+      "region_refused": "האזור לא הוגדר: {{reason}}",
       "table_too_complex": "הטבלה '{{table}}' לא נרשמה עם העמודות שנבחרו: {{reason}}. בחרו פחות עמודות.",
       "table_updated": "הטבלה '{{table}}' עודכנה (id={{id}})",
       "task_deleted": "המשימה '{{task}}' נמחקה",
@@ -352,13 +356,17 @@
       "webhook_approved": "ה-Webhook '{{webhook}}' אושר",
       "webhook_name_required": "webhook_name נדרש עבור טריגר webhook",
       "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא",
-      "change_streams_unavailable": "המקור '{{source}}' הוא שרת MongoDB עצמאי, שאינו מספק change streams: אות השינוי native דורש replica set או אשכול מפוצל. הפעילו אותו כ-replica set, או השתמשו באות השינוי poll."
+      "change_streams_unavailable": "המקור '{{source}}' הוא שרת MongoDB עצמאי, שאינו מספק change streams: אות השינוי native דורש replica set או אשכול מפוצל. הפעילו אותו כ-replica set, או השתמשו באות השינוי poll.",
+      "table_draft_set": "הטבלה {{table}} הוגדרה כטיוטה",
+      "table_released": "הטבלה {{table}} שוחררה"
     },
     "secrets": {
       "still_referenced": "{{secret}} עדיין מצוין על ידי {{count}} ערכים שמורים בארגון זה. יש לשנות או להסיר כל אחד מהם ואז למחוק שוב."
     },
     "security": {
-      "unknown_mode": "מצב אבטחה לא מוכר '{{mode}}'"
+      "unknown_mode": "מצב אבטחה לא מוכר '{{mode}}'",
+      "data_residency_refused": "לא ניתן להגדיר את האזור של {{object}}: הרשאת data_residency אינה מכסה את {{value}}; הרשאת data_residency שכוללת אותו מתירה זאת",
+      "data_residency_missing": "לא ניתן להגדיר את האזור של {{object}}: אף הרשאת data_residency של המבקש אינה מכסה את {{value}}; הרשאת data_residency שכוללת אותו מתירה זאת"
     },
     "settings": {
       "auth_required": "לא ניתן לשנות את {{field}} עד שהאימות יוגדר.",

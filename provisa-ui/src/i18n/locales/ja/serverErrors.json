@@ -97,7 +97,8 @@
       "unknown_action_field": "不明なアクションフィールド：「{{field}}」",
       "unknown_command": "不明なコマンド「{{name}}」です",
       "write_not_admitted": "ロール '{{role}}' はこの書き込みを実行できません。書き込みには、書き込み権限、書き込む各列への書き込みアクセス、およびロールの行フィルターが許可する行が必要です。",
-      "write_not_supported": "'{{table}}' は {{operation}} を受け付けません: そのソースでは実行できません"
+      "write_not_supported": "'{{table}}' は {{operation}} を受け付けません: そのソースでは実行できません",
+      "table_is_draft": "{{table}} は下書きです: ドメインの所有者が公開するまで停止中です"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -334,6 +335,9 @@
       "table_registered": "テーブル「{{table}}」を登録しました（id={{id}}）",
       "table_registered_fields_omitted": "テーブル「{{table}}」を登録しました（id={{id}}）。ソースの資格情報では読み取れないため除外しました: {{fields}}",
       "table_replicate_set": "テーブル {{table}} にレプリケートを設定しました",
+      "table_region_set": "テーブル {{table}} のリージョンを {{region}} に設定しました",
+      "source_region_set": "ソース {{source}} のリージョンを {{region}} に設定しました",
+      "region_refused": "リージョンは設定されませんでした: {{reason}}",
       "table_too_complex": "テーブル「{{table}}」は選択した列では登録されませんでした: {{reason}}。列を減らしてください。",
       "table_updated": "テーブル「{{table}}」を更新しました（id={{id}}）",
       "task_deleted": "タスク「{{task}}」を削除しました",
@@ -352,13 +356,17 @@
       "webhook_approved": "Webhook「{{webhook}}」を承認しました",
       "webhook_name_required": "Webhook トリガーには webhook_name が必要です",
       "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
-      "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。"
+      "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。",
+      "table_draft_set": "テーブル {{table}} を下書きにしました",
+      "table_released": "テーブル {{table}} を公開しました"
     },
     "secrets": {
       "still_referenced": "{{secret}} は、この組織に保存されている {{count}} 件の値からまだ参照されています。それぞれを変更または削除してから、もう一度削除してください。"
     },
     "security": {
-      "unknown_mode": "不明なセキュリティモード「{{mode}}」です"
+      "unknown_mode": "不明なセキュリティモード「{{mode}}」です",
+      "data_residency_refused": "{{object}} のリージョンを設定できません: data_residency の付与は {{value}} を含みません。{{value}} を含む data_residency 付与があれば可能です",
+      "data_residency_missing": "{{object}} のリージョンを設定できません: 呼び出し元の data_residency 付与はいずれも {{value}} を含みません。{{value}} を含む data_residency 付与があれば可能です"
     },
     "settings": {
       "auth_required": "認証が設定されるまで {{field}} は変更できません。",

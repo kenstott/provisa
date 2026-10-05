@@ -37,6 +37,8 @@ import {
   openSourcesForm,
   pickSchemaAndTable,
   runSqlOnPage,
+  releaseDraftTables,
+  setSourceCacheTtl,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
   typeSql,
@@ -323,6 +325,8 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     await page.getByLabel(/^Host/).fill("localhost");
     await page.getByLabel(/^Port/).fill(String(E2E_RSS_PORT));
     await page.getByTestId("rss-use-ssl-checkbox").uncheck();
+    // REQ-1907: rss is polled (a pull source the engine lands), so it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form — REQ-1745's synthetic "default"/<sourceId> pick + the real
@@ -627,6 +631,8 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
       await new Promise((r) => setTimeout(r, 2000));
     }
     expect(registered, `no dataset name ever reported for ${sourceId}`).toBeTruthy();
+    // REQ-1921: registered through the admin, it starts as draft; released, it is read.
+    await releaseDraftTables(page, { sourceId });
 
     // 3. Prove the registry-discovered table is a real, queryable table (not just a UI display
     // artifact) — the SQL page accepts and runs a query against it, returning its real (empty,
@@ -761,6 +767,8 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
       await new Promise((r) => setTimeout(r, 2000));
     }
     expect(registered, `no dataset name ever reported for ${sourceId}`).toBeTruthy();
+    // REQ-1921: registered through the admin, it starts as draft; released, it is read.
+    await releaseDraftTables(page, { sourceId });
 
     // 4. Full CDC-landing round trip, same as the registry-discovery test's own step 4, to prove
     // the sample-discovered columns are real and queryable, not just a UI display artifact.

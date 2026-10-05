@@ -141,6 +141,9 @@ class OrgRuntime:
     tenant_db: "Database | None" = None
     # REQ-1922: this region's request record (query_audit_log, query_sla_log).
     record_db: "Database | None" = None
+    # REQ-1922: the org's other regions, by id (region_stores.ForeignRegion): a table one of them
+    # names is read from its replica there. Empty with no platform regions.
+    foreign_regions: dict[str, Any] = field(default_factory=dict)
 
     # Physical connection + source metadata (source_id → …).
     source_pools: SourcePool = field(default_factory=SourcePool)
@@ -210,6 +213,8 @@ class OrgRuntime:
 
     # Raw-SQL governance inputs (published once per org at schema-load time).
     tables: list[dict] = field(default_factory=list)
+    # REQ-1921: the ids of the tables and views out of service (draft) as the last build saw them.
+    draft_table_ids: frozenset[int] = frozenset()
     # REQ-1912: the tables served from a replica on the bound engine, by the name a lowered
     # statement gives them, published with the registry. Empty until the first rebuild: no table
     # is registered yet, so none is served from a replica.

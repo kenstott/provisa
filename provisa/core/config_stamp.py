@@ -54,9 +54,10 @@ TENANT_ADVANCED: tuple[str, ...] = (REPLICA,)
 # creates it on first use (an org that registered none has no such table), and every row it holds
 # is written beside the ``sources`` and ``registered_tables`` rows of the same registration.
 #
-# THE ONE PLACE a table is added: name it here with its kind and, when only some of its columns
-# are configuration, name those columns in UPDATE_COLUMNS below. The table must exist in the
-# plane's schema definition (schema.sql and schema_org.py, or schema_admin.py).
+# THE ONE PLACE a table is added: name it here with its kind. A table here holds configuration only
+# (a view's build state is mv_build_state, state, REQ-1922), so every write to it advances the
+# stamp. The table must exist in the plane's schema definition (schema.sql and schema_org.py, or
+# schema_admin.py).
 TENANT_TABLES: dict[str, str] = {
     "sources": MODEL,
     "domains": MODEL,
@@ -85,29 +86,6 @@ TENANT_TABLES: dict[str, str] = {
 }
 
 PLATFORM_TABLES: dict[str, str] = {"deployment_settings": SETTINGS}
-
-# A table whose UPDATEs advance the stamp only when they set one of these columns. A materialized
-# view's row also carries its refresh state (status, row count, lease, input versions), written on
-# every refresh; only its definition is configuration.
-UPDATE_COLUMNS: dict[str, tuple[str, ...]] = {
-    "materialized_views": (
-        "source_tables",
-        "target_catalog",
-        "target_schema",
-        "target_table",
-        "refresh_interval",
-        "enabled",
-        "join_pattern",
-        "custom_sql",
-        "expose_in_sdl",
-        "sdl_config",
-        "calendar",
-        "grain",
-        "allowed_lateness",
-        "expected_events",
-        "business_day_grain",
-    ),
-}
 
 # Serializes trigger creation across the worker processes of a launch (PostgreSQL). "PROVISA4".
 _INSTALL_LOCK_KEY = 0x50524F5649534134
@@ -173,15 +151,11 @@ def _install_postgresql(conn: Any, tables: dict[str, str], schema: str | None) -
     for table, kind in tables.items():
         target = f'"{schema}"."{table}"'
         call = f"EXECUTE FUNCTION {function}('{kind}')"
-        columns = UPDATE_COLUMNS.get(table)
-        update_of = f" OF {', '.join(columns)}" if columns else ""
         # A row rewritten with the values it already holds is not a change.
         changed = "" if table in uncomparable else "WHEN (OLD.* IS DISTINCT FROM NEW.*) "
         wanted = {
             "config_stamp_rows": f"AFTER INSERT OR DELETE ON {target} FOR EACH ROW {call}",
-            "config_stamp_update": (
-                f"AFTER UPDATE{update_of} ON {target} FOR EACH ROW {changed}{call}"
-            ),
+            "config_stamp_update": (f"AFTER UPDATE ON {target} FOR EACH ROW {changed}{call}"),
             "config_stamp_truncate": f"AFTER TRUNCATE ON {target} FOR EACH STATEMENT {call}",
         }
         for name, definition in wanted.items():
@@ -193,12 +167,10 @@ def _install_sqlite(conn: Any, tables: dict[str, str]) -> None:
     _seed(conn, "config_stamp", set(tables.values()))
     for table, kind in tables.items():
         advance = f"UPDATE config_stamp SET stamp = stamp + 1 WHERE kind = '{kind}'"
-        columns = UPDATE_COLUMNS.get(table)
-        update_of = f" OF {', '.join(columns)}" if columns else ""
         for name, event in (
             ("insert", "INSERT"),
             ("delete", "DELETE"),
-            ("update", f"UPDATE{update_of}"),
+            ("update", "UPDATE"),
         ):
             conn.exec_driver_sql(
                 f'CREATE TRIGGER IF NOT EXISTS "config_stamp_{table}_{name}" '

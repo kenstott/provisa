@@ -1,0 +1,9 @@
+{
+  "residencyGrant": {
+    "right": "data_residency",
+    "help": "Definir, alterar ou remover onde ficam os dados de uma tabela, de uma origem ou de uma visão materializada, para os valores listados abaixo. Uma alteração exige que o valor anterior e o novo estejam cobertos; um objeto em rascunho exige apenas o novo.",
+    "values": "Valores de região cobertos",
+    "valuesPlaceholder": "Escolher regiões",
+    "noRegion": "Sem região"
+  }
+}

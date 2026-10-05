@@ -66,6 +66,7 @@ def _registered(source_id: str, schema_name: str, table_name: str) -> dict:
         "table_name": table_name,
         "replicate": None,
         "load_protected": None,
+        "region": None,  # REQ-1921: a registration always carries its region
         "columns": [
             {
                 "column_name": "id",

@@ -153,9 +153,19 @@ class HotCounts:
         return out
 
 
-def count_scope(org_id: str, env: str) -> str:
-    """The key part naming one org environment: registered table ids are its own."""
-    return f"{org_id}:{env}"
+def count_scope(org_id: str, env: str, *, region: str | None = None) -> str:
+    """The key part naming one org environment in this node's region, or ``region`` (REQ-1922:
+    regions may share one Redis, and each counts its own reads): registered table ids are its own."""
+    from provisa.core import process_region
+    from provisa.core.environments import region_part
+
+    here = process_region.region() if region is None else region
+    return f"{org_id}:{env}{region_part(here)}"
+
+
+def count_key_patterns(scope: str) -> list[str]:
+    """Every Redis key a scope's Hot counts are kept under, as scan patterns (REQ-1922)."""
+    return [f"{_KEY_PREFIX}:{scope}:*", f"{_KEY_PREFIX}:too_large:{scope}:*"]
 
 
 def promotion_runs(counts: HotCounts, workers: int) -> bool:
@@ -258,7 +268,7 @@ def hot_candidates(
         if not attach[source.id]:
             continue
         key = (reg.source_id, reg.schema_name, reg.table_name)
-        if not builds_here(home_region(source, reg)):
+        if not builds_here(home_region(reg)):
             continue  # REQ-1922: promoted, built and counted only in the region it names
         if reg.id in hot_tier:
             skipped[key] = HOT_TIER

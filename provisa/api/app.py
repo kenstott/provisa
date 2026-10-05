@@ -456,6 +456,11 @@ class AppState:
         return self._active_runtime().tenant_db
 
     @property
+    def foreign_regions(self) -> dict[str, Any]:
+        """The active org's other regions (REQ-1922; ``OrgRuntime.foreign_regions``)."""
+        return self._active_runtime().foreign_regions
+
+    @property
     def record_db(self) -> Database | None:
         """The acting org's RECORD in this region (query_audit_log, query_sla_log) — REQ-1922."""
         return self._active_runtime().record_db
@@ -1588,6 +1593,11 @@ async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> Non
     assert state.model_db is not None  # opened with the runtime, before its model was loaded
     cp = load_control_plane(config_path_str())
     await _bind_region_cache(org_id)
+    from provisa.core.region_stores import bind_foreign_regions
+
+    state._active_runtime().foreign_regions = await bind_foreign_regions(
+        org_id, env, state.model_db, pool_size=cp.pool_max, max_overflow=cp.max_overflow
+    )
     state.model_db, state.tenant_db, state.record_db = await bind_region_stores(
         org_id,
         env,
@@ -2046,6 +2056,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     async with state.model_db.acquire() as conn:
         _pg = cast("Connection", conn)
         tables = await _fetch_tables(_pg)
+        # REQ-1921: out of service — offered in no schema, refused by name when named.
+        draft_tables = await _fetch_tables(_pg, draft=True)
         _assert_domain_table_unique(tables)
         relationships = await _fetch_relationships(_pg)
 
@@ -2226,6 +2238,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                         _roles_t.c.domain_access,
                         _roles_t.c.rate_limit,
                         _roles_t.c.parent_role_id,  # REQ-1677
+                        # REQ-1921: the data_residency grant's covered values. state.roles feeds
+                        # residency_values_for_claims (the region-edit gate); without this column a
+                        # role holding data_residency resolves to a dict with no residency_values
+                        # and every region change raises KeyError.
+                        _roles_t.c.residency_values,
                     )
                 )
             ).fetchall()
@@ -2386,6 +2403,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             rls_rules=rls_rules,
             metrics=_metric_dicts,  # REQ-1319
             field_numbers=_field_numbers,
+            draft_tables=draft_tables,  # REQ-1921
         )
 
         await persist_field_numbers(conn, _field_numbers)
@@ -2402,6 +2420,13 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # path can expand `metrics.<name>` queries into governed aggregates (loaded above,
     # same registry the admin surfaces read — runtime-registered metrics included).
     state.metrics = {m.name: m for m in _metric_models}
+
+    # REQ-1921: a table or view that has gone draft since the last build keeps no copy in this
+    # region: its cached responses go (its replicas retire with convergence, its view build with
+    # the reclamation sweep). Entries are kept by place, not by table, so the place is purged.
+    from provisa.cache.tenancy import purge_when_drafted
+
+    await purge_when_drafted(state, frozenset(t["id"] for t in draft_tables))
 
     # Cache raw build data for on-demand domain-filtered schema generation
     state.schema_build_cache = {
@@ -2920,6 +2945,18 @@ def create_app() -> FastAPI:
             headers=exc.headers,
         )
 
+    from provisa.core.region_stores import HomeRegionUnavailable as _HomeRegionUnavailable
+
+    @app.exception_handler(_HomeRegionUnavailable)
+    async def _home_region_handler(_req: _Request, exc: _HomeRegionUnavailable):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1922: a table kept in another region is read only from its replica there; while that
+        # replica is not built, or its region cannot be reached, the read is refused — 503, the
+        # answer exists but cannot be given from here now.
+        return _JSONResponse(
+            status_code=503,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     from provisa.core.operator_floor import OperatorFloorError as _OperatorFloorError
 
     from provisa.compiler.complexity import ComplexityLimitExceeded as _ComplexityLimitExceeded
@@ -2955,6 +2992,20 @@ def create_app() -> FastAPI:
             },
         )
 
+    from provisa.compiler.definitions import TableIsDraft as _TableIsDraft
+
+    @app.exception_handler(_TableIsDraft)
+    async def _table_is_draft_handler(_req: _Request, exc: _TableIsDraft):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1921: a draft table or view is out of service, and the refusal says so by name.
+        return _JSONResponse(
+            status_code=409,
+            content={
+                "detail": str(exc),
+                "code": "data.table_is_draft",
+                "params": {"table": exc.table},
+            },
+        )
+
     from provisa.compiler.definitions import DefinitionNotAvailable as _DefinitionNotAvailable
 
     @app.exception_handler(_DefinitionNotAvailable)
@@ -2977,18 +3028,6 @@ def create_app() -> FastAPI:
         return _JSONResponse(
             status_code=403,
             content={"detail": str(exc), "code": "query.operator_floor", "params": {}},
-        )
-
-    from provisa.core.region_stores import HomeRegionUnavailable as _HomeRegionUnavailable
-
-    @app.exception_handler(_HomeRegionUnavailable)
-    async def _home_region_handler(_req: _Request, exc: _HomeRegionUnavailable):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
-        # REQ-1922: a table kept in another region is read only from its replica there; while that
-        # replica cannot be read from here the read is refused — 503, the answer exists but
-        # cannot be given from here now.
-        return _JSONResponse(
-            status_code=503,
-            content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 
     @app.exception_handler(Exception)

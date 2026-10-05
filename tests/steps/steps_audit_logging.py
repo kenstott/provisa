@@ -125,6 +125,7 @@ def when_query_completes(shared_data: dict, audit_pool):
             status_code=shared_data["status_code"],
             duration_ms=shared_data["duration_ms"],
             encryption=NullEncryption(),
+            region="default",
         )
 
     asyncio.run(_do_log())

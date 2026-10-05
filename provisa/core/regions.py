@@ -14,9 +14,11 @@ The PLATFORM declares the physical regions its nodes run in (``platform.regions`
 address its nodes answer at). An ORG is a collection of regions: its model selects the platform
 regions it uses and declares, for each, the stores it keeps there — the engine, the replica and
 view storage, the cache, the state store and the request record (``regions``, naming entries of
-``stores``). A source, or a table (overriding its source's), may name one of the org's regions:
-its data is replicated and read only there, and the org's other regions read it from that
-region's replica.
+``stores``). A table may name one of the org's regions: its data is replicated and read only
+there, and the org's other regions read it from that region's replica. A table naming none may be
+copied in every region. A source may name one too, but only as the region the admin form starts
+a new table of it in: it decides nothing about where data lives (REQ-1921, "a table carries its
+own region; a source's region is its default").
 
 With no platform regions there is one implicit region (:data:`DEFAULT_REGION`) and nothing in a
 model may name a region.
@@ -94,6 +96,8 @@ def validate_regions(config: "ProvisaConfig") -> None:
             raise ValueError(
                 "the platform declares no regions, so the model may not select or name one"
             )
+        for role in config.roles:
+            require_residency_grant(role.id, role.capabilities, role.residency_values, None)
         return
     if not config.regions:
         listed = ", ".join(f"{r.id} ({r.address})" for r in config.platform.regions)
@@ -116,6 +120,7 @@ def validate_regions(config: "ProvisaConfig") -> None:
                     f"region {region.id!r} {role} store {store!r} is not declared in stores"
                 )
         require_engine_kind(region.id, stores[region.engine])
+        require_reachable_engine(region.id, stores[region.engine], len(platform))
         require_one_materialize_store(region)
     for what, region in named:
         if region not in selected:
@@ -123,17 +128,78 @@ def validate_regions(config: "ProvisaConfig") -> None:
                 f"{what} names region {region!r}, which the org does not select "
                 f"({', '.join(selected)})"
             )
-    # A table that names a region is read from that region's replica by the org's other regions:
-    # its replica store must be one their engines can attach.
-    if len(selected) > 1:
-        by_id = {r.id: r for r in config.regions}
-        for region in sorted({r for _, r in named}):
-            store = by_id[region].replicas
-            if _is_embedded_duckdb(stores[store].url):
-                raise ValueError(
-                    f"region {region!r} replicas store {store!r} is an embedded DuckDB file, "
-                    "which the org's other regions cannot read"
-                )
+    for role in config.roles:
+        require_residency_grant(role.id, role.capabilities, role.residency_values, selected)
+    # A table's region is where its data lives; a source's is only a form default.
+    for what, region in _named_table_regions(config):
+        require_readable_elsewhere(what, region, config.regions, stores)
+
+
+def require_residency_grant(
+    role_id: str,
+    capabilities: "list[str]",
+    values: "list[str]",
+    selected: "list[str] | None",
+) -> None:
+    """Refuse a role's data_residency grant that does not hold together (REQ-1921): the right
+    exists only when the platform declares regions (``selected`` None: it declares none), a grant
+    lists only the org's regions and "no region", and values are listed only with the right."""
+    from provisa.security.residency import NO_REGION
+
+    holds = "data_residency" in capabilities
+    if selected is None:
+        if holds or values:
+            raise ValueError(
+                f"role {role_id!r} holds data_residency, which exists only when the platform "
+                "declares regions"
+            )
+        return
+    if values and not holds:
+        raise ValueError(
+            f"role {role_id!r} lists residency values but does not hold data_residency"
+        )
+    unknown = sorted(set(values) - set(selected) - {NO_REGION})
+    if unknown:
+        raise ValueError(
+            f"role {role_id!r} data_residency grant names {', '.join(unknown)}, which the org "
+            f"does not select ({', '.join(selected)}, or {NO_REGION})"
+        )
+
+
+def require_readable_elsewhere(
+    what: str, region: str, regions: "list[OrgRegion]", stores: "dict[str, StoreConfig]"
+) -> None:
+    """Refuse ``what`` keeping its data in ``region`` when the org's other regions cannot read it
+    there (REQ-1922): they read it from that region's replica, in place, so that region's
+    replicas store must be a PostgreSQL server store and every other region's engine one that
+    reads another region's store (``engine_kinds.REGION_READERS``). Loaded and saved alike."""
+    from provisa.core.engine_kinds import REGION_READERS
+
+    if len(regions) < 2:
+        return
+    home = next(r for r in regions if r.id == region)  # the caller refused an unselected one
+    store = stores[home.replicas]
+    if _is_embedded_duckdb(store.url):
+        raise ValueError(
+            f"region {region!r} replicas store {store.id!r} is an embedded DuckDB file, which "
+            f"the org's other regions cannot read; {what} keeps its data there"
+        )
+    if not _is_postgresql(store.url):
+        raise ValueError(
+            f"region {region!r} replicas store {store.id!r} is not a PostgreSQL store, the one "
+            f"kind the org's other regions read in place; {what} keeps its data there"
+        )
+    for other in regions:
+        kind = stores[other.engine].kind
+        if other.id != region and kind not in REGION_READERS:
+            raise ValueError(
+                f"region {other.id!r} runs the {kind} engine, which cannot read another region's "
+                f"replicas, and {what} keeps its data in region {region!r}"
+            )
+
+
+def _is_postgresql(url: str) -> bool:
+    return url.split(":", 1)[0].split("+", 1)[0].lower() in ("postgresql", "postgres")
 
 
 def require_one_materialize_store(region: "OrgRegion") -> None:
@@ -144,6 +210,26 @@ def require_one_materialize_store(region: "OrgRegion") -> None:
         raise ValueError(
             f"region {region.id!r} names replicas store {region.replicas!r} and views store "
             f"{region.views!r}; a region keeps its replicas and its views in one store"
+        )
+
+
+#: Engine store schemes that are a file one node opens in-process (embedded ClickHouse, chdb):
+#: what the engine keeps for an org there is reachable from that node alone. (A DuckDB engine
+#: keeps nothing between processes — its runtime is in memory — so it is not among them.)
+_EMBEDDED_ENGINE_SCHEMES = frozenset({"chdb"})
+
+
+def require_reachable_engine(region: str, store: StoreConfig, platform_regions: int) -> None:
+    """Refuse an embedded engine store for a region of a platform that declares more than one
+    (REQ-1922): the org's other regions reach each region's engine — to drop what it keeps for an
+    org when the org or an environment is deleted, wherever the delete runs — and an embedded
+    file is reachable only from the node that opens it. One region may still use one."""
+    scheme = store.url.split(":", 1)[0].split("+", 1)[0].lower()
+    if platform_regions > 1 and scheme in _EMBEDDED_ENGINE_SCHEMES:
+        raise ValueError(
+            f"region {region!r} engine store {store.id!r} is an embedded {scheme} file, which "
+            "the platform's other regions cannot reach; with more than one region a region's "
+            "engine store is a server they can reach"
         )
 
 
@@ -166,14 +252,13 @@ def require_engine_kind(region: str, store: StoreConfig) -> None:
 def _named_regions(config: "ProvisaConfig") -> list[tuple[str, str]]:
     """``(what, region)`` for every source and table that names a region."""
     out = [(f"source {s.id}", s.region) for s in config.sources if s.region is not None]
-    out += [
+    return out + _named_table_regions(config)
+
+
+def _named_table_regions(config: "ProvisaConfig") -> list[tuple[str, str]]:
+    """``(what, region)`` for every table that names a region."""
+    return [
         (f"table {t.source_id}/{t.schema_name}.{t.table_name}", t.region)
         for t in config.tables
         if t.region is not None
     ]
-    return out
-
-
-def table_region(source_region: str | None, table_region_: str | None) -> str | None:
-    """The region a table's data lives in: its own, else its source's; None for no region."""
-    return table_region_ if table_region_ is not None else source_region

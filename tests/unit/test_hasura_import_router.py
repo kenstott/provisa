@@ -191,6 +191,11 @@ def _wire_apply(monkeypatch) -> dict:
         loaders, "_populate_source_catalog_names", lambda c: seen["order"].append("catalogs")
     )
     monkeypatch.setattr(seed, "_resolve_pk_from_sources", _pk)
+
+    async def _residency(request, conn, config):  # noqa: ARG001
+        seen["order"].append("residency")  # REQ-1921: judged before anything is loaded
+
+    monkeypatch.setattr(ir, "_require_residency_of_import", _residency)
     monkeypatch.setattr(app_mod, "_rebuild_schemas", _rebuild)
     monkeypatch.setattr(app_mod.state, "tenant_db", _FakePool(), raising=False)
     monkeypatch.setattr(app_mod.state, "model_db", app_mod.state.tenant_db, raising=False)
@@ -217,7 +222,7 @@ async def test_apply_runs_the_settled_sequence(monkeypatch):
     resp = await ir.apply_import(ir.ImportApplyRequest(config_yaml=CONFIG_YAML), _request())
 
     # Catalog names FIRST — sources must register under the org's own engine catalogs (REQ-1266).
-    assert seen["order"] == ["catalogs", "load_config", "pools", "pk", "rebuild"]
+    assert seen["order"] == ["catalogs", "residency", "load_config", "pools", "pk", "rebuild"]
     assert seen["catalog_names"] == {"pg1": "org_7_pg1"}
     # REQ-1919: an import through the admin is not a load of the deployment's file. What it
     # creates is the admin's, and the load takes nothing over and removes nothing.

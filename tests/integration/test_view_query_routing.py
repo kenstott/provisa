@@ -19,6 +19,8 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from tests.helpers import registered_id, release_mutation
+
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
 
@@ -65,6 +67,14 @@ async def test_select_from_provisa_view_routes_through_engine(client):
         },
     )
     assert reg.json()["data"]["registerTable"]["success"], reg.text
+    # REQ-1921: registered through the admin, the view starts as draft; released, it is read.
+    released = await client.post(
+        "/admin/graphql",
+        json={
+            "query": release_mutation(registered_id(reg.json()["data"]["registerTable"]["message"]))
+        },
+    )
+    assert released.json()["data"]["setTableDraft"]["success"], released.text
     # Rebuild so the view enters view_sql_map (inline-expansion source).
     rb = await client.post(
         "/admin/graphql", json={"query": "mutation { rebuildSchemas { success } }"}

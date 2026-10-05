@@ -30,6 +30,8 @@ class PgBackend(NativeEngineBackend):
     SQL runs against it. The engine runs on the configured ``federation_engine_url`` Postgres, else the
     platform database (its declared default store)."""
 
+    reads_other_regions = True  # REQ-1922: postgres_fdw import from that region's store
+
     # UnreachableSource must stay in this tuple (base default in NativeEngineBackend) — REQ-841/REQ-947:
     # a leftover source of an unreachable type must be skipped here, not raised uncaught into an
     # unrelated later query's attach pass (see duckdb_backend.py for the observed failure mode).

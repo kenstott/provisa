@@ -97,7 +97,8 @@
       "unknown_action_field": "未知操作字段：'{{field}}'",
       "unknown_command": "未知命令 '{{name}}'",
       "write_not_admitted": "角色 '{{role}}' 不能执行此写入：写入需要写入权限、对所写每一列的写入权限，以及该角色的行过滤器允许的行。",
-      "write_not_supported": "'{{table}}' 不接受 {{operation}}：其数据源无法执行"
+      "write_not_supported": "'{{table}}' 不接受 {{operation}}：其数据源无法执行",
+      "table_is_draft": "{{table}} 是草稿：在其域的所有者发布之前停止服务"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
@@ -334,6 +335,9 @@
       "table_registered": "表 '{{table}}' 已注册（id={{id}}）",
       "table_registered_fields_omitted": "表 '{{table}}' 已注册（id={{id}}）。因数据源的凭据无权读取而略过：{{fields}}",
       "table_replicate_set": "已为表 {{table}} 设置复制",
+      "table_region_set": "表 {{table}} 的区域已设为 {{region}}",
+      "source_region_set": "数据源 {{source}} 的区域已设为 {{region}}",
+      "region_refused": "未设置区域：{{reason}}",
       "table_too_complex": "表 '{{table}}' 未能以所选列注册：{{reason}}。请选择更少的列。",
       "table_updated": "表 '{{table}}' 已更新（id={{id}}）",
       "task_deleted": "任务 '{{task}}' 已删除",
@@ -352,13 +356,17 @@
       "webhook_approved": "已批准 Webhook '{{webhook}}'",
       "webhook_name_required": "Webhook 触发器需要 webhook_name",
       "webhook_not_found": "未找到 Webhook '{{webhook}}'",
-      "change_streams_unavailable": "源 '{{source}}' 是独立的 MongoDB 服务器，不提供 change streams：native 变更信号需要副本集或分片集群。请将其作为副本集运行，或使用 poll 变更信号。"
+      "change_streams_unavailable": "源 '{{source}}' 是独立的 MongoDB 服务器，不提供 change streams：native 变更信号需要副本集或分片集群。请将其作为副本集运行，或使用 poll 变更信号。",
+      "table_draft_set": "表 {{table}} 已设为草稿",
+      "table_released": "表 {{table}} 已发布"
     },
     "secrets": {
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"
     },
     "security": {
-      "unknown_mode": "未知的安全模式 '{{mode}}'"
+      "unknown_mode": "未知的安全模式 '{{mode}}'",
+      "data_residency_refused": "无法设置 {{object}} 的区域：data_residency 授权不覆盖 {{value}}；列出它的 data_residency 授权可允许此操作",
+      "data_residency_missing": "无法设置 {{object}} 的区域：调用者没有覆盖 {{value}} 的 data_residency 授权；列出它的 data_residency 授权可允许此操作"
     },
     "settings": {
       "auth_required": "在配置身份验证之前，无法更改 {{field}}。",

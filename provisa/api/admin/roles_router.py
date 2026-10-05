@@ -23,6 +23,7 @@ from sqlalchemy import insert, or_, select, update
 from provisa.api.admin._platform_guard import role_definition_problem
 from provisa.api.admin.capabilities import require_capability_request, role_definitions_visible
 from provisa.api.errors import ApiError
+from provisa.core.repositories import role as role_repo
 from provisa.core.repositories.origin import config_notices
 from provisa.core.repositories.origin import of as origin_of
 from provisa.core.schema_org import roles
@@ -71,12 +72,14 @@ class CreateRoleBody(BaseModel):
     capabilities: list[str]
     domain_access: list[str]
     parent_role_id: str | None = None  # REQ-1677
+    residency_values: list[str] = []  # REQ-1921: with data_residency, the values it covers
 
 
 class UpdateRoleBody(BaseModel):
     capabilities: list[str] | None = None
     domain_access: list[str] | None = None
     parent_role_id: str | None = None  # REQ-1677: None leaves the parent unchanged
+    residency_values: list[str] | None = None  # REQ-1921: None leaves them unchanged
 
 
 @router.get("/")
@@ -92,6 +95,7 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
                 # badges those surfaces instead of dropping them.
                 roles.c.demonstrated,
                 roles.c.domain_access,
+                roles.c.residency_values,  # REQ-1921
                 roles.c.org_id,
                 roles.c.parent_role_id,  # REQ-1677
                 roles.c.origin,  # REQ-1919
@@ -112,7 +116,6 @@ async def _require_reach_of_added(
     """The caller reaches every domain this change adds to what the role reaches — the domains
     it lists and the ones it inherits (REQ-1677). ``own_before`` is None for a new role."""
     from provisa.api.admin.capabilities import require_reach_of_added_domains_request
-    from provisa.core.repositories import role as role_repo
     from provisa.security.inheritance import effective_domain_access
 
     rows = await role_repo.list_all(conn)
@@ -140,11 +143,15 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
         await _require_reach_of_added(
             conn, request, None, None, body.domain_access, body.parent_role_id
         )
+        await role_repo.require_residency_grant_saved(  # REQ-1921
+            conn, body.id, body.capabilities, body.residency_values
+        )
         await conn.execute_core(
             insert(roles).values(
                 id=body.id,
                 capabilities=body.capabilities,
                 domain_access=body.domain_access,
+                residency_values=body.residency_values,
                 org_id=org_id,
                 parent_role_id=body.parent_role_id,
                 origin="admin",  # REQ-1919: made through the admin
@@ -158,6 +165,7 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
         "id": body.id,
         "capabilities": body.capabilities,
         "domain_access": body.domain_access,
+        "residency_values": body.residency_values,
         "org_id": org_id,
         "parent_role_id": body.parent_role_id,
         "origin": "admin",
@@ -224,6 +232,7 @@ async def update_role(
                 roles.c.id,
                 roles.c.capabilities,
                 roles.c.domain_access,
+                roles.c.residency_values,
                 roles.c.org_id,
                 roles.c.parent_role_id,
                 roles.c.origin,
@@ -246,6 +255,12 @@ async def update_role(
         new_parent = (
             body.parent_role_id if body.parent_role_id is not None else existing["parent_role_id"]
         )
+        new_values = (
+            body.residency_values
+            if body.residency_values is not None
+            else existing["residency_values"]
+        )
+        await role_repo.require_residency_grant_saved(conn, role_id, new_caps, new_values)
         if new_parent != existing["parent_role_id"]:
             await _check_parent(conn, role_id, new_parent)  # REQ-1677
         await _check_definition(conn, request, role_id, new_caps, new_domains, new_parent)
@@ -260,7 +275,12 @@ async def update_role(
         await conn.execute_core(
             update(roles)
             .where(roles.c.id == role_id)
-            .values(capabilities=new_caps, domain_access=new_domains, parent_role_id=new_parent)
+            .values(
+                capabilities=new_caps,
+                domain_access=new_domains,
+                residency_values=new_values,
+                parent_role_id=new_parent,
+            )
         )
     from provisa.api.app import _rebuild_schemas
 
@@ -270,6 +290,7 @@ async def update_role(
         "id": role_id,
         "capabilities": new_caps,
         "domain_access": new_domains,
+        "residency_values": new_values,
         "org_id": existing["org_id"],
         "parent_role_id": new_parent,
         "origin": existing["origin"],
@@ -282,7 +303,6 @@ async def update_role(
 async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-060, REQ-1531
     require_capability_request(request, "user_management")  # REQ-1531: see create_role
     from provisa.api.app import _rebuild_schemas
-    from provisa.core.repositories import role as role_repo
 
     pool = _pool(request)
     async with pool.acquire() as conn:

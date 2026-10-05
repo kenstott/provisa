@@ -27,6 +27,7 @@ export interface SourceFormState {
   cacheTtl: string;
   cacheEnabled: boolean;
   replicate: number | null; // REQ-826: null = Default
+  region: string | null; // REQ-1921: the region its new tables start in; null = none
   loadProtected: boolean; // REQ-1141: scheduled-refresh-only load protection (source default)
   offPeakWindow: string; // REQ-1141: "HH:MM-HH:MM" maintenance window ("" = none)
   offPeakTz: string; // REQ-1141: IANA zone for the window

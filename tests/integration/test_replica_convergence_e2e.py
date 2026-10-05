@@ -32,6 +32,8 @@ import psycopg
 import pytest
 import yaml
 
+from tests.helpers import registered_id, release_field
+
 from tests.integration.test_pg_engine_landing_never_writes_source_e2e import (
     _ROLE,
     _ROWS,
@@ -125,9 +127,10 @@ def _admin(srv, document: str) -> dict:
     return response.json()["data"]
 
 
-def _mutate(srv, mutation: str) -> None:
+def _mutate(srv, mutation: str) -> dict:
     (result,) = _admin(srv, "mutation { " + mutation + " { success message } }").values()
     assert result["success"], result["message"]
+    return result
 
 
 def _register(srv, pg: _SourceAndEngine) -> None:
@@ -136,13 +139,15 @@ def _register(srv, pg: _SourceAndEngine) -> None:
         'createSource(input: {id: "src", type: "postgresql", host: "127.0.0.1", '
         f'port: {pg.source_port}, database: "shop", username: "provisa", password: "provisa"}})',
     )
-    _mutate(
+    registered = _mutate(
         srv,
         'registerTable(input: {sourceId: "src", domainId: "shop", schemaName: "public", '
         'tableName: "orders", columns: ['
         '{name: "id", visibleTo: ["org_admin"], dataType: "integer", isPrimaryKey: true}, '
         '{name: "amount", visibleTo: ["org_admin"], dataType: "double"}]})',
     )
+    # REQ-1921: registered through the admin, it starts as draft; released, it is served.
+    _mutate(srv, release_field(registered_id(registered["message"])))
     # REQ-1907: a replicated table on the ttl change signal needs its refresh clock.
     _mutate(srv, 'updateSourceCache(sourceId: "src", cacheEnabled: true, cacheTtl: 3600)')
 

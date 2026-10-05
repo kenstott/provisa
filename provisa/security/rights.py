@@ -113,6 +113,11 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # The right the wire surfaces read off a role's list by name. A member here so that the
     # vocabulary a role may be given (unknown_capabilities) is the vocabulary the code consults.
     NO_AGGREGATIONS = "no_aggregations"  # REQ-197: withholds the _aggregate root fields
+    # REQ-1921: set, change or remove where the data of a table, a source or a materialized view
+    # lives (its region), for the region values the role's grant lists (``residency_values``),
+    # beside the domain ownership the edit needs anyway. Exists only when the platform declares
+    # regions; region is never an access dimension.
+    DATA_RESIDENCY = "data_residency"
 
 
 # REQ-1297: the four system role ids are the whole role vocabulary — every org schema seeds
@@ -221,6 +226,20 @@ def domain_access_for_claims(  # REQ-1530
             )
         out.update(access)
     return out
+
+
+def residency_values_for_claims(  # REQ-1921
+    claims: Iterable[str], roles: dict[str, dict] | None
+) -> set[str] | None:
+    """The region values the data_residency grants of those roles cover (the org's region ids
+    and ``residency.NO_REGION``), or None when none of them holds data_residency."""
+    covered: set[str] | None = None
+    for role_id in role_ids_from_claims(claims):
+        role = (roles or {}).get(role_id)
+        if role is None or Capability.DATA_RESIDENCY.value not in (role.get("capabilities") or []):
+            continue
+        covered = (covered or set()) | set(role["residency_values"])
+    return covered
 
 
 class UnknownRoleError(LookupError):

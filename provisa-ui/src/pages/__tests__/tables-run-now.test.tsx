@@ -78,6 +78,8 @@ function table(
     pagination: null,
     pagingCeilingRows: null,
     replicate: null,
+    region: null,
+    draft: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,

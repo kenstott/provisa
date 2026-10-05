@@ -234,6 +234,8 @@ def config_table_views(state: Any, raw_config: dict) -> list[MVDefinition]:
     for table in raw_config.get("tables") or []:
         if not (table.get("view_sql") and table.get("materialize")):
             continue
+        if table.get("draft"):
+            continue  # REQ-1921: out of service, registered for nothing (checked when released)
         name = table.get("table") or table["table_name"]
         mv = state.mv_registry.get(f"view-{name}")
         if mv is None:

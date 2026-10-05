@@ -71,6 +71,7 @@ def _state(monkeypatch, runtime: _Runtime):
         "table_name": "orders",
         "replicate": 0,
         "load_protected": None,
+        "region": None,  # REQ-1921: a registration always carries its region
         "columns": [{"column_name": "id", "native_filter_type": None}],
     }
     key = ("pg", "public", "orders")

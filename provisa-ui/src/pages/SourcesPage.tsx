@@ -8,6 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { useSetSourceRegion, useRegionChoices } from "../hooks/useRegionQueries";
+import { useRegionSelection } from "../hooks/useRegionSelection";
+import { filterByRegion } from "../hooks/regionFilter";
+import { RegionSelector } from "../components/RegionSelector";
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -101,6 +105,7 @@ export function SourcesPage() {
   const { deleteSource } = useDeleteSource();
   const { updateSourceCache } = useUpdateSourceCache();
   const { updateSourceReplicate } = useUpdateSourceReplicate();
+  const setSourceRegion = useSetSourceRegion();
   const { updateSourceLoadProtection } = useUpdateSourceLoadProtection();
   const { updateSourceNaming } = useUpdateSourceNaming();
   const { updateSourceAllowedDomains } = useUpdateSourceAllowedDomains();
@@ -119,6 +124,28 @@ export function SourcesPage() {
   const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+  // REQ-1922: the region selector filters the list; a name search crosses regions (region filter off).
+  const { regions, connected, error: regionError } = useRegionChoices();
+  const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
+  const hasRegions = regions.length > 0;
+  const searchActive = !!sourceSearch.trim();
+  const searchedSources = React.useMemo(
+    () =>
+      sources.filter((s) => {
+        if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
+        if (!searchActive) return true;
+        const q = sourceSearch.toLowerCase();
+        return (
+          s.id.toLowerCase().includes(q) ||
+          s.type.toLowerCase().includes(q) ||
+          (s.description ?? "").toLowerCase().includes(q)
+        );
+      }),
+    [sources, sourceSearch, searchActive],
+  );
+  const { visible: regionSources, hidden: regionHidden } = searchActive
+    ? { visible: searchedSources, hidden: 0 }
+    : filterByRegion(searchedSources, regionSel, connected, (s) => s.region ?? null);
   const [form, setForm] = useState<SourceFormState>({
     id: "",
     type: "postgresql",
@@ -131,6 +158,7 @@ export function SourcesPage() {
     cacheTtl: "",
     cacheEnabled: true,
     replicate: null,
+    region: null,
     loadProtected: false,
     offPeakWindow: "",
     offPeakTz: "UTC",
@@ -441,6 +469,7 @@ export function SourcesPage() {
       cacheTtl: s.cacheTtl != null ? String(s.cacheTtl) : "",
       cacheEnabled: s.cacheEnabled,
       replicate: s.replicate,
+      region: s.region,
       loadProtected: s.loadProtected ?? false,
       offPeakWindow: s.offPeakWindow ?? "",
       offPeakTz: s.offPeakTz ?? "UTC",
@@ -653,6 +682,7 @@ export function SourcesPage() {
       cacheTtl: "",
       cacheEnabled: true,
       replicate: null,
+      region: null,
       loadProtected: false,
       offPeakWindow: "",
       offPeakTz: "UTC",
@@ -698,6 +728,7 @@ export function SourcesPage() {
         cacheTtl: _ct,
         cacheEnabled: _ce,
         replicate: _rep,
+        region: _region, // REQ-1921: saved on its own (setSourceRegion)
         ...coreForm
       } = form;
       // Data-lake storage is a config choice, not a separate source type: the object store its tables
@@ -947,6 +978,12 @@ export function SourcesPage() {
           form.gqlNamingConvention === "" ? null : form.gqlNamingConvention,
         );
         if (!namingResult.success) throw new Error(namingResult.message);
+        // REQ-1921: the region its new tables start in, saved on its own when it changed.
+        const savedRegion = sources.find((s) => s.id === effectiveId)?.region ?? null;
+        if (form.region !== savedRegion) {
+          const regionResult = await setSourceRegion(effectiveId, form.region);
+          if (!regionResult.success) throw new Error(regionResult.message);
+        }
         const parsedDomains = form.allowedDomains
           .split(",")
           .map((d) => d.trim())
@@ -969,6 +1006,10 @@ export function SourcesPage() {
         if (!createCache.success) throw new Error(createCache.message);
         const createReplicate = await updateSourceReplicate(form.id, form.replicate);
         if (!createReplicate.success) throw new Error(createReplicate.message);
+        if (form.region !== null) {
+          const createRegion = await setSourceRegion(form.id, form.region); // REQ-1921
+          if (!createRegion.success) throw new Error(createRegion.message);
+        }
         if (form.loadProtected) {
           const lp = await updateSourceLoadProtection(
             form.id,
@@ -1323,6 +1364,14 @@ export function SourcesPage() {
           onChange={updateSearch}
           placeholder={t("sourcesPage.filterPlaceholder")}
         />
+        <RegionSelector
+          regions={regions}
+          connected={connected}
+          value={regionSel}
+          onChange={setRegionSel}
+          hidden={regionHidden}
+          error={regionError}
+        />
         <div className="page-actions">
           {!editingSourceId && (
             <Button
@@ -1442,6 +1491,7 @@ export function SourcesPage() {
               <Table.Th>{t("sourcesPage.colHost")}</Table.Th>
               <Table.Th>{t("sourcesPage.colPort")}</Table.Th>
               <Table.Th>{t("sourcesPage.colDatabase")}</Table.Th>
+              {hasRegions && <Table.Th>{t("regionSelector.columnHeader")}</Table.Th>}
               <Table.Th>{t("sourcesPage.colNaming")}</Table.Th>
               <Table.Th>{t("sourcesPage.colCache")}</Table.Th>
               <Table.Th>{t("sourcesPage.colEffectiveTtl")}</Table.Th>
@@ -1454,21 +1504,11 @@ export function SourcesPage() {
           </Table.Thead>
           <Table.Tbody>
             {(() => {
-              const filtered = sources.filter((s) => {
-                if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id))
-                  return false;
-                if (!sourceSearch.trim()) return true;
-                const q = sourceSearch.toLowerCase();
-                return (
-                  s.id.toLowerCase().includes(q) ||
-                  s.type.toLowerCase().includes(q) ||
-                  (s.description ?? "").toLowerCase().includes(q)
-                );
-              });
+              const filtered = regionSources;
               if (filtered.length === 0) {
                 return (
                   <Table.Tr>
-                    <Table.Td colSpan={9} ta="center" c="dimmed">
+                    <Table.Td colSpan={hasRegions ? 10 : 9} ta="center" c="dimmed">
                       {t("sourcesPage.empty")}
                     </Table.Td>
                   </Table.Tr>
@@ -1506,6 +1546,11 @@ export function SourcesPage() {
                       <Table.Td>{s.host}</Table.Td>
                       <Table.Td>{s.port || "—"}</Table.Td>
                       <Table.Td>{s.database || "—"}</Table.Td>
+                      {hasRegions && (
+                        <Table.Td c="dimmed" fz="0.85rem">
+                          {s.region ?? t("regionSelector.noRegion")}
+                        </Table.Td>
+                      )}
                       <Table.Td c="dimmed" fz="0.85rem">
                         {s.gqlNamingConvention || t("sourcesPage.naOrInherit")}
                       </Table.Td>
@@ -1565,7 +1610,7 @@ export function SourcesPage() {
                     {isExpanded && (
                       <Table.Tr key={`${s.id}-detail`}>
                         <Table.Td
-                          colSpan={9}
+                          colSpan={hasRegions ? 10 : 9}
                           style={{
                             padding: "0.75rem 1rem",
                             background: "var(--bg)",

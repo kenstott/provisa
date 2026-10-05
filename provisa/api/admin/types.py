@@ -88,6 +88,7 @@ class SourceType:  # REQ-012
     cache_enabled: bool
     cache_ttl: int | None
     replicate: int | None  # REQ-826: NULL = Default; -1 never, N hot, 0 always
+    region: str | None  # REQ-1921: the region its new tables start in; null = none
     load_protected: bool = False  # REQ-1141: scheduled-refresh-only load protection
     off_peak_window: str | None = None  # REQ-1141: "HH:MM-HH:MM" maintenance window
     off_peak_tz: str = "UTC"  # REQ-1141: IANA zone for the window
@@ -317,6 +318,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     description: str | None
     cache_ttl: int | None
     replicate: int | None  # REQ-826: NULL = inherit source
+    region: str | None  # REQ-1921: where its data lives; null = no region
+    draft: bool  # REQ-1921: out of service until its domain's owners release it
     load_protected: bool | None  # REQ-1141: NULL = inherit source
     off_peak_window: str | None  # REQ-1141: per-table window override
     off_peak_tz: str | None  # REQ-1141: per-table window zone override
@@ -634,6 +637,8 @@ class RoleType:  # REQ-042
     demonstrated: list[str] | None = strawberry.field(default_factory=list)  # REQ-1602
     rate_limit: RoleRateLimitType | None = None  # REQ-1174
     parent_role_id: str | None = None  # REQ-1677
+    # REQ-1921: with data_residency, the region values its grant covers; null as capabilities is.
+    residency_values: list[str] | None = strawberry.field(default_factory=list)
 
 
 @strawberry.type
@@ -714,6 +719,9 @@ class SourceInput:  # REQ-012
     cache_enabled: bool = True
     cache_ttl: int | None = None
     replicate: int | None = None  # REQ-826: None = Default; -1 never, N hot, 0 always
+    # REQ-1921: the region the admin form starts this source's new tables in (None = the
+    # connected one). Ignored by updateSource: it changes through setSourceRegion.
+    region: str | None = None
     max_live_concurrency: int | None = None  # REQ-1909: None = no cap; else >= 1
     sentinel_path: str | None = None  # REQ-1148
     freshness_gate: bool = False  # REQ-860
@@ -883,6 +891,10 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
         default_factory=list
     )  # REQ-1093
     view_sql: str | None = None
+    # REQ-1921: the region the table's data lives in. Left out, a new table starts in its
+    # source's region, else the connected one (a view: the connected one); null = no region.
+    # Ignored by updateTable: a region changes through setTableRegion.
+    region: str | None = strawberry.UNSET
     # REQ-1443: the data-quality contract (soda contract / GX suite) this table's rows are the scan
     # results of. The contract names what it scans, so the observed target is DERIVED from it
     # (REQ-939) and the results columns are replaced by the shipped schema at load.
@@ -1198,6 +1210,8 @@ class RoleInput:  # REQ-042
     domain_access: list[str]
     rate_limit: RoleRateLimitInput | None = None  # REQ-1174
     parent_role_id: str | None = None  # REQ-1677
+    # REQ-1921: with data_residency, the region values its grant covers (regions, "no_region").
+    residency_values: list[str] = strawberry.field(default_factory=list)
 
 
 @strawberry.input
@@ -1271,6 +1285,9 @@ class HotTableStatType:
     # "replica_building" (past its threshold, read live while its replica is built; no row
     # count yet). REQ-241 makes the tiers exclusive.
     kind: str
+    # REQ-1922: the home region of the underlying table (null when none / no regions declared), so
+    # the admin hot-tables list carries a region column and filters by region like the other lists.
+    region: str | None = None
 
 
 @strawberry.type
@@ -1280,6 +1297,9 @@ class ReplicaBuildType:  # REQ-1915
     source_id: str
     schema_name: str
     table_name: str
+    # REQ-1922: the home region of this replica's table (null when none / no regions declared), so
+    # the replica-status list carries a region column and filters by region like the other lists.
+    region: str | None = None
     # idle (built, nothing pending) | requested | building | failed | retired (the model no
     # longer declares it; it is dropped after a grace period)
     state: str
@@ -1395,6 +1415,15 @@ class GrantKind(enum.Enum):  # REQ-1918
     METRIC = "metric"
     COMMAND = "command"
     WEBHOOK = "webhook"
+
+
+@strawberry.type
+class RegionChoicesType:  # REQ-1921
+    """The regions an object of the org may name, and the one the operator is connected to;
+    both empty/null when the platform declares no regions (the admin then shows none)."""
+
+    regions: list[str]
+    connected: str | None
 
 
 @strawberry.type

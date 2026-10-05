@@ -1,0 +1,12 @@
+{
+  "regionSelector": {
+    "label": "क्षेत्र",
+    "allRegions": "सभी क्षेत्र",
+    "noRegion": "कोई क्षेत्र नहीं",
+    "connectedRegion": "{{region}} (कनेक्टेड)",
+    "columnHeader": "क्षेत्र",
+    "hidden_one": "{{count}} क्षेत्र द्वारा छिपाया गया",
+    "hidden_other": "{{count}} क्षेत्र द्वारा छिपाए गए",
+    "loadError": "क्षेत्र लोड नहीं किए जा सके"
+  }
+}

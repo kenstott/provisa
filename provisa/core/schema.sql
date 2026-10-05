@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS sources (
     cache_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     cache_ttl     INTEGER,
     replicate   INTEGER,  -- REQ-826: when this source's tables are served from replicas; NULL = global threshold, -1 never, N hot, 0 always
-    region      TEXT,     -- REQ-1921: the org region its data lives in; NULL = no region
+    region      TEXT,     -- REQ-1921: the region the admin form starts its new tables in
     load_protected BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1141: scheduled-refresh-only; query path never pulls the source
     off_peak_window TEXT,  -- REQ-1141: "HH:MM-HH:MM" maintenance window for the scheduler; NULL = no window gate
     off_peak_tz   TEXT NOT NULL DEFAULT 'UTC',  -- REQ-1141: IANA zone the off_peak_window is evaluated in
@@ -152,7 +152,10 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     cache_ttl   INTEGER,
     role_ttl    JSONB NOT NULL DEFAULT '{}',  -- REQ-1907: role -> TTL seconds; effective = max(cache_ttl, role_ttl)
     replicate   INTEGER,  -- REQ-826: NULL = inherit source; -1 never, N > 0 once it passes N statements per interval, 0 always
-    region      TEXT,     -- REQ-1921: the org region its data lives in; NULL = its source's
+    region      TEXT,     -- REQ-1921: the org region its data lives in; NULL = no region
+    -- REQ-1921: out of service while set — read and written nowhere, offered in no schema,
+    -- copied nowhere; a table or view registered through the admin starts so.
+    draft       BOOLEAN NOT NULL DEFAULT FALSE,
     load_protected BOOLEAN,  -- REQ-1141: NULL = inherit source; overrides scheduled-refresh-only load protection
     off_peak_window TEXT,    -- REQ-1141: per-table "HH:MM-HH:MM" window override; NULL = inherit source
     off_peak_tz TEXT,        -- REQ-1141: per-table window zone override; NULL = inherit source
@@ -421,6 +424,8 @@ CREATE TABLE IF NOT EXISTS roles (
     -- A right may never appear in both lists; the holder of a right needs no explanation of it.
     demonstrated    JSONB NOT NULL DEFAULT '[]',
     domain_access   JSONB NOT NULL DEFAULT '[]',
+    -- REQ-1921: with data_residency, the region values the grant covers (regions, "no_region").
+    residency_values JSONB NOT NULL DEFAULT '[]',
     rate_limit      JSONB,  -- REQ-1174: per-role rate + burst; mirrors schema_org.roles.rate_limit
     parent_role_id  TEXT REFERENCES roles(id),
     -- REQ-1597/REQ-1624: this row's capabilities are DERIVED from the named role's, in this schema
@@ -693,19 +698,7 @@ CREATE TABLE IF NOT EXISTS materialized_views (
     custom_sql      TEXT,           -- custom SELECT for the MV
     expose_in_sdl   BOOLEAN NOT NULL DEFAULT FALSE,
     sdl_config      JSONB,          -- {domain_id, columns}
-    status          TEXT NOT NULL DEFAULT 'stale'
-                    CHECK (status IN ('fresh', 'stale', 'refreshing', 'disabled')),
-    last_refresh_at TIMESTAMPTZ,
-    row_count       INTEGER,
-    last_error      TEXT,
-    -- REQ-879: authoritative SHARED refresh-coordination state for a load-balanced fleet.
-    -- writer owns the in-flight refresh; lease_until is when its claim expires (crash reclaim).
-    -- The version stamps are the REQ-862 dedup key for the atomic claim (skip when already current).
-    writer          TEXT,
-    lease_until     TIMESTAMPTZ,
-    materialized_definition_version TEXT,
-    materialized_input_version      TEXT,
-    snapshot_id     TEXT,
+    -- REQ-1922: the view's definition; each region's build of it is mv_build_state (state store).
     -- REQ-961/962: temporal-processing declaration (calendar-bounded windows + freshness contract).
     calendar          TEXT,
     grain             TEXT,
@@ -713,6 +706,24 @@ CREATE TABLE IF NOT EXISTS materialized_views (
     expected_events   JSONB,          -- freshness-contract inputs; NULL = all SQL-lineage inputs
     business_day_grain BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- REQ-879, REQ-1922: a region's build of a materialized view (its state store): the record of what
+-- the region built (region names it) and the fleet's refresh coordination (claim, lease, the
+-- REQ-862 version stamps the claim dedups on).
+CREATE TABLE IF NOT EXISTS mv_build_state (
+    mv_id           TEXT PRIMARY KEY,
+    region          TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'stale'
+                    CHECK (status IN ('fresh', 'stale', 'refreshing', 'disabled')),
+    last_refresh_at TIMESTAMPTZ,
+    row_count       INTEGER,
+    last_error      TEXT,
+    writer          TEXT,
+    lease_until     TIMESTAMPTZ,
+    materialized_definition_version TEXT,
+    materialized_input_version      TEXT,
+    snapshot_id     TEXT
 );
 
 -- REQ-1317: governed metric definitions — named aggregates with query-time grain.

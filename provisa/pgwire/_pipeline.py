@@ -138,6 +138,10 @@ class _Plan:
     # its read was answered from (``query_residency.Residency.replicas_read``) — the audit
     # record's data age. Empty: no replica was read (a live read, or residency never ran).
     replicas_read: dict[tuple[str, str, str], datetime] = field(default_factory=dict)
+    # REQ-1922: the region whose data answered, when the statement read only what one other
+    # region keeps, in place there (``query_residency.Residency.answered_in``); the audit record
+    # names it. None: this node's region answered.
+    answered_in: str | None = None
     # REQ-1350: what this statement's answer must say about itself (an API answer cut at its
     # max_pages), collected while it was governed (``core.statement_warnings``); every surface
     # reports them in its own warning channel. A warned result is never stored in the response
@@ -2088,6 +2092,7 @@ async def finalize_audit(
     _outcome = {
         "route_reason": plan.route_reason,
         "sources": plan.sources,
+        "answered_in": plan.answered_in,
         "data_age": (
             data_age(plan, cache_entry if cache_hit else None)
             if status_code == 200  # noqa: PLR2004 - HTTP OK
@@ -2230,6 +2235,7 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
         ensure_resident,
         ensure_rows_resident,
         pushdown_row_materialize,
+        put_on_plan,
     )
     from provisa.transpiler.router import Route
 
@@ -2259,7 +2265,7 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
     residency = await ensure_resident(
         state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
     )
-    plan.replicas_read = residency.replicas_read
+    put_on_plan(plan, residency)
     # REQ-1897: the one response cache, at the chokepoint every surface that reaches it shares: a
     # hit is served without touching the engine -- with the same audit row and tier/egress
     # accounting a live execution would have written, not a silent skip.

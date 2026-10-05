@@ -222,6 +222,19 @@ test("sharepoint connector: add source and verify calendar list is available", a
     `registerTable message: ${registerResult.data?.registerTable?.message}`,
   ).toBe(true);
 
+  // REQ-1921: registered through the admin, the table starts as draft; released, it is read.
+  const registeredId = Number(
+    /\(id=(\d+)\)/.exec(String(registerResult.data?.registerTable?.message))?.[1],
+  );
+  const releaseResult = await gql(
+    `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
+    { id: registeredId },
+  );
+  expect(
+    releaseResult.data?.setTableDraft?.success,
+    `setTableDraft: ${JSON.stringify(releaseResult)}`,
+  ).toBe(true);
+
   // ── 4. Verify the registered table appears in the UI ─────────────────────
   // Reload the page to show the registered tables list
   await page.goto("/tables");

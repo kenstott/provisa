@@ -230,6 +230,49 @@ async def preview_import(req: ImportPreviewRequest, request: Request) -> ImportP
     )
 
 
+async def _require_residency_of_import(request: Request, conn, config: ProvisaConfig) -> None:
+    """Refuse an import that sets, changes or removes a source's or a table's region beyond the
+    caller's data_residency grant (REQ-1921) — the same rule as an edit in the admin, judged
+    against what the org holds now (an object it does not hold yet is created)."""
+    from sqlalchemy import select
+
+    from provisa.api.admin.capabilities import require_residency_change_request
+    from provisa.core.schema_org import registered_tables, sources
+    from provisa.security.residency import CREATED, ResidencyRefused
+
+    held_sources = {
+        r.id: r.region for r in (await conn.execute_core(select(sources.c.id, sources.c.region)))
+    }
+    t = registered_tables
+    held_tables = {
+        (r.source_id, r.schema_name, r.table_name): r.region
+        for r in await conn.execute_core(
+            select(t.c.source_id, t.c.schema_name, t.c.table_name, t.c.region)
+        )
+    }
+    try:
+        for s in config.sources:
+            before = held_sources[s.id] if s.id in held_sources else CREATED
+            require_residency_change_request(request, f"source {s.id}", before, s.region)
+        for tbl in config.tables:
+            key = (tbl.source_id, tbl.schema_name, tbl.table_name)
+            before = held_tables[key] if key in held_tables else CREATED
+            require_residency_change_request(
+                request,
+                f"table {tbl.source_id}/{tbl.schema_name}.{tbl.table_name}",
+                before,
+                tbl.region,
+            )
+    except ResidencyRefused as refused:
+        raise ApiError(
+            403,
+            refused.code,
+            str(refused),
+            object=refused.params["object"],
+            value=refused.params["value"],
+        ) from refused
+
+
 @router.post("/apply", response_model=ImportApplyResponse)
 async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApplyResponse:
     """Load the approved config into the acting org, then rebuild its schemas.
@@ -266,6 +309,7 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
 
     _populate_source_catalog_names(config)
     async with model_db.acquire() as conn:
+        await _require_residency_of_import(request, conn, config)  # REQ-1921
         await load_config(
             config,
             conn,

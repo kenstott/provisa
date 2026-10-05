@@ -116,6 +116,8 @@ class AuditRecord:
     route_reason: str | None = field(kw_only=True)
     sources: tuple[str, ...] = field(kw_only=True)
     data_age: dict[str, Any] | None = field(kw_only=True)
+    # REQ-1922: the region whose data answered the statement (query_audit_log.region).
+    region: str = field(kw_only=True)
     # REQ-1454: the control-plane pool and org the statement is metered against; no pool = a
     # deployment without a control plane, which has nothing to meter.
     meter_pool: Any = None  # Any: the control-plane Database handle
@@ -153,6 +155,7 @@ class AuditRecord:
             "route_reason": self.route_reason,
             "sources": sorted(self.sources),
             "data_age": self.data_age,
+            "region": self.region,
             "trace_id": self.trace_id,
             "logged_at": self.logged_at,
         }

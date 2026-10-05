@@ -99,11 +99,12 @@ def replica_table_name(source_id: str, schema_name: str, table_name: str) -> str
     return f"{head}__{digest}"
 
 
-def replica_schema(org_id: str) -> str:
-    """The schema that holds the replicas of ``org_id`` in the environment being served."""
+def replica_schema(org_id: str, *, region: str | None = None) -> str:
+    """The schema that holds the replicas of ``org_id`` in the environment being served — this
+    node's region's, or ``region``'s (REQ-1922: where another region's replica is read)."""
     from provisa.core.environments import active_org_schema
 
-    return active_org_schema(org_id, REPLICAS_SUFFIX)
+    return active_org_schema(org_id, REPLICAS_SUFFIX, region=region)
 
 
 def mv_schema(org_id: str) -> str:
@@ -128,15 +129,33 @@ def active_org_id(state: Any) -> str:
     return current_org.get() or state.org_id
 
 
+def region_read_name(state: Any, region: Any) -> str:
+    """The name this org environment's engine reads ``region``'s replicas store by (REQ-1922):
+    ``naming.region_read_catalog`` for the org and environment served."""
+    from provisa.compiler.naming import region_read_catalog
+    from provisa.core.request_context import active_env
+
+    return region_read_catalog(
+        active_org_id(state), region.id, default_org=state.org_id, env=active_env()
+    )
+
+
 def replica_address(
-    *, org_id: str, source_id: str, schema_name: str, table_name: str
+    *,
+    org_id: str,
+    source_id: str,
+    schema_name: str,
+    table_name: str,
+    region: str | None = None,
 ) -> ReplicaAddress:
     """The address of the replica of ``source_id``'s table ``schema_name.table_name``, for
-    ``org_id`` in the environment being served. One rule on every engine: the engine decides only
-    which store the address is in (``FederationEngine.materialize_store``, which refuses a store
-    with no schemas). Pure — no store is opened and nothing is read."""
+    ``org_id`` in the environment being served — in this node's region, or ``region``'s (REQ-1922:
+    another region's replica, read where that region wrote it). One rule on every engine: the
+    engine decides only which store the address is in (``FederationEngine.materialize_store``,
+    which refuses a store with no schemas). Pure — no store is opened and nothing is read."""
     return ReplicaAddress(
-        replica_schema(org_id), replica_table_name(source_id, schema_name, table_name)
+        replica_schema(org_id, region=region),
+        replica_table_name(source_id, schema_name, table_name),
     )
 
 

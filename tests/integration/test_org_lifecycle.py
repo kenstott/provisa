@@ -664,6 +664,7 @@ def test_account_deletion_leaves_orgs_and_tombstones_references(planes):  # REQ-
                 source="test",
                 status_code=200,
                 duration_ms=1,
+                region="default",
             )
         )
 

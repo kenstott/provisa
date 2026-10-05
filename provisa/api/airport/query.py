@@ -106,6 +106,7 @@ def governed_table_scan_stream(
                 ensure_resident,
                 ensure_rows_resident,
                 pushdown_row_materialize,
+                put_on_plan,
             )
 
             async def _prep_residency() -> set[str]:
@@ -119,11 +120,14 @@ def governed_table_scan_stream(
                 )
 
             run_on_connection_loop(_prep_residency())
-            plan.replicas_read = run_on_connection_loop(
-                ensure_resident(
-                    state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
-                )
-            ).replicas_read
+            put_on_plan(
+                plan,
+                run_on_connection_loop(
+                    ensure_resident(
+                        state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+                    )
+                ),
+            )
             # REQ-1909: the permits ride the batch generator until the scan is fully pulled.
             permits = acquire_plan_permits(state, plan)
             schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
@@ -216,6 +220,7 @@ def governed_table_scan_schema(
         # — same fix required.
         from provisa.federation.query_residency import (
             ensure_resident,
+            put_on_plan,
             ensure_rows_resident,
             pushdown_row_materialize,
         )
@@ -231,9 +236,14 @@ def governed_table_scan_schema(
             )
 
         run_on_connection_loop(_prep_residency())
-        plan.replicas_read = run_on_connection_loop(
-            ensure_resident(state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids)
-        ).replicas_read
+        put_on_plan(
+            plan,
+            run_on_connection_loop(
+                ensure_resident(
+                    state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+                )
+            ),
+        )
         from provisa.federation.live_concurrency import acquire_plan_permits
 
         # REQ-1909: binding the probe reads the live source too; held only while it opens.

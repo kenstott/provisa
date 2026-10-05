@@ -252,8 +252,9 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # never (live wherever a live path exists); N > 0 = once a table passes N governed statements
     # per interval; 0 = always (the only guarantee; the source then has no live attach at all).
     replicate: int | None = None
-    # REQ-1921: the org region this source's data lives in (one of the org's ``regions``);
-    # None = no region. A table may name its own.
+    # REQ-1921: one of the org's ``regions``, or None: the region the admin form starts a new
+    # table of this source in. It decides nothing about where copies live — each table carries
+    # its own — and changing it later moves no table.
     region: str | None = None
     # REQ-1141: mark this source LOAD-PROTECTED. Like replicate 0 it removes the live route
     # AND selects the SCHEDULED freshness discipline: the query path NEVER pulls the source — reads
@@ -1007,8 +1008,13 @@ class Table(
     # REQ-826: when this table is served from its replica (provisa.core.replicate): -1 never,
     # N > 0 once it passes N governed statements per interval, 0 always. None = its source's value.
     replicate: int | None = None
-    # REQ-1921: the org region this table's data lives in; None = its source's region.
+    # REQ-1921: the org region this table's data lives in; None = no region (a copy may be kept in
+    # every region). Its source's region is only the admin form's default for a new table.
     region: str | None = None
+    # REQ-1921: out of service while set — read and written nowhere, offered in no schema, copied
+    # nowhere. A table or view registered through the admin starts as draft; one a config file
+    # declares is draft only when the file says so.
+    draft: bool = False
     # REQ-1141: per-table load-protection override; None = inherit the source's load_protected.
     load_protected: bool | None = None
     # REQ-1141: per-table off-peak window override ("HH:MM-HH:MM"); None = inherit source window.
@@ -1354,6 +1360,9 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
         True  # when False (+ SQL opt-out), V002 join approval check is skipped
     )
     max_rows: int | None = None  # REQ-005: per-role result-size ceiling (LIMIT injected by Stage 2)
+    # REQ-1921: with the data_residency right, the region values its grant covers — the org's
+    # region ids and "no_region" (security/residency.NO_REGION).
+    residency_values: list[str] = Field(default_factory=list)
 
 
 def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042

@@ -48,9 +48,13 @@ async def drop_env_store(dsn: str, org_id: str, env: str) -> str | None:
     from provisa.federation.replica_address import EXPORT_SUFFIX, REPLICAS_SUFFIX
     from provisa.federation.store_writer import store_connection
 
-    schema = org_schema(org_id, env, REPLICAS_SUFFIX)
+    from provisa.core import process_region
+
+    # REQ-1922: this node's region's stores, named for it.
+    region = process_region.region()
+    schema = org_schema(org_id, env, REPLICAS_SUFFIX, region=region)
     # The export views first: each selects from a replica the next statement drops.
-    export = org_schema(org_id, env, EXPORT_SUFFIX)
+    export = org_schema(org_id, env, EXPORT_SUFFIX, region=region)
     async with store_connection(dsn) as conn:
         await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{export}" CASCADE'))
         await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))

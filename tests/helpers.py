@@ -274,3 +274,24 @@ def attaching(source, catalog: str):
     from types import SimpleNamespace
 
     return SimpleNamespace(**dict(source), catalog=catalog)
+
+
+# -- REQ-1921: a table or view registered through the admin starts as draft ---------------------
+
+
+def registered_id(message: str) -> int:
+    """The id a successful ``registerTable`` answer names (``... registered (id=N)``)."""
+    found = re.search(r"\(id=(\d+)\)", message)
+    assert found is not None, f"registerTable named no id: {message!r}"
+    return int(found.group(1))
+
+
+def release_field(table_id: int) -> str:
+    """The admin GraphQL field that releases a draft table or view into service: what a domain
+    owner does after registering one through the admin, before anything reads it."""
+    return f"setTableDraft(tableId: {table_id}, draft: false)"
+
+
+def release_mutation(table_id: int) -> str:
+    """:func:`release_field` as a whole mutation document."""
+    return f"mutation {{ {release_field(table_id)} {{ success message }} }}"

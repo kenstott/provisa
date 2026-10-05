@@ -38,6 +38,24 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
+class RegionStoreUnreachable(RuntimeError):
+    """Another region's replicas store could not be attached to read from (REQ-1922): the read
+    is refused naming the table and its region (``HomeRegionUnavailable``)."""
+
+
+class EngineReadsNoOtherRegion(RuntimeError):
+    """An engine that cannot attach another region's replicas store (REQ-1922)."""
+
+    code = "query.engine_reads_no_other_region"
+
+    def __init__(self, engine: str, region: str) -> None:
+        self.params = {"engine": engine, "region": region}
+        super().__init__(
+            f"the {engine} engine cannot read region {region!r}'s replicas store, so a table kept "
+            "there cannot be read from this region on it"
+        )
+
+
 class EngineBackend:
     """Default backend for native in-process engines (duckdb/pg/clickhouse/sqlalchemy).
 
@@ -46,6 +64,10 @@ class EngineBackend:
     ENGINE-terminal execution binding for native engines is separate feature work — ``execute``
     raises until an engine wires it, rather than silently falling back to another engine.
     """
+
+    #: REQ-1922: whether this engine reads another region's replicas in place
+    #: (``region_read_address``). The model's ``engine_kinds.REGION_READERS`` is held equal to it.
+    reads_other_regions = False
 
     # `native_store` (engine.py's generic `_RDB_KINDS` loop) is the SQLAlchemy URL scheme name —
     # the identity used for landing/storage-backend comparisons (materialization.py,
@@ -144,11 +166,18 @@ class EngineBackend:
         del state
 
     def replica_address(
-        self, state: Any, *, source_id: str, schema_name: str, table_name: str
+        self,
+        state: Any,
+        *,
+        source_id: str,
+        schema_name: str,
+        table_name: str,
+        region: str | None = None,
     ) -> ReplicaAddress:
         """Where the replica of a source table is written in this engine's store (REQ-1912): the
         replicas schema of the org and environment being served, under the one replica name. The
-        same on every engine — no engine places a replica at its table's registered address."""
+        same on every engine — no engine places a replica at its table's registered address.
+        ``region`` names another region's replica: where that region wrote it (REQ-1922)."""
         from provisa.federation.replica_address import active_org_id, replica_address
 
         return replica_address(
@@ -156,6 +185,7 @@ class EngineBackend:
             source_id=source_id,
             schema_name=schema_name,
             table_name=table_name,
+            region=region,
         )
 
     def export_view_address(
@@ -233,6 +263,27 @@ class EngineBackend:
     def _store_catalog(self, state: Any, org_id: str) -> str:
         """The catalog this engine names its materialization store by: that of its MV target."""
         return self.materialize_store_target(state, org_id)[0]
+
+    def region_read_address(
+        self, state: Any, region: Any, schema: str, table: str
+    ) -> tuple[str | None, str, str]:
+        """Where a statement reads ``schema.table`` of another region's replicas store
+        (REQ-1922): a name only — the read map is published without dialing any other region.
+        ``attach_region_read`` makes it readable when a read finds that replica built.
+        ``region`` is a ``region_stores.ForeignRegion``. An engine with no way to attach another
+        store refuses, naming itself — it is never read live in its place."""
+        del state, schema, table
+        raise EngineReadsNoOtherRegion(self.engine.name, region.id)
+
+    def attach_region_read(
+        self, state: Any, region: Any, schema: str, table: str, build: object
+    ) -> None:
+        """Make ``schema.table`` of another region's replicas store readable at
+        ``region_read_address`` (REQ-1922), for the build of it ``build`` identifies (a replica
+        rebuilt with other columns is attached again). Called by a read that found the replica
+        built there. Raises ``RegionStoreUnreachable`` when that store cannot be attached."""
+        del state, schema, table, build
+        raise EngineReadsNoOtherRegion(self.engine.name, region.id)
 
     def pending_lands(
         self,
@@ -817,6 +868,8 @@ class TrinoBackend(EngineBackend):
     """The Trino engine's backend — the ONE backend that references Trino. Delegates to the Trino
     implementation modules (trino_lifecycle / core.catalog / compiler.introspect / executor.trino)."""
 
+    reads_other_regions = True  # REQ-1922: a catalog of that region's store
+
     @property
     def dialect(self) -> str:
         return "trino"
@@ -841,6 +894,60 @@ class TrinoBackend(EngineBackend):
             sql = rewrite_prometheus_labels_for_trino(sql, label_columns)
         return sql
 
+    def _store_catalog_named(self, state: Any, name: str, dsn: str) -> str:
+        """Register (once per process) and return the catalog Trino reads the store ``dsn`` under
+        (REQ-1048, REQ-1922): an org's own store, or another region's replicas store."""
+        import re
+
+        from provisa.core.trino_system_catalogs import (
+            one_registrar,
+            register_catalog,
+            store_catalog_spec,
+        )
+
+        name = re.sub(r"[^a-z0-9_]", "_", name.lower())
+        registered: dict[str, str] = self.__dict__.setdefault("_store_catalogs", {})
+        if registered.get(name) == dsn:
+            return name
+        with self._provisioning_conn(state) as conn:
+            if conn is None:
+                raise RuntimeError(
+                    f"no Trino terminal to register store catalog {name!r} on; the engine is "
+                    "not bound"
+                )
+            # One process of the deployment registers at a time (drop-then-create interleaves).
+            with one_registrar(state.tenant_engine.url):
+                register_catalog(conn, store_catalog_spec(name, dsn))
+        registered[name] = dsn
+        return name
+
+    def region_read_address(
+        self, state: Any, region: Any, schema: str, table: str
+    ) -> tuple[str | None, str, str]:
+        """REQ-1922: another region's replicas store, as catalog ``org_<org>__region_<id>``."""
+        return self._region_catalog(state, region), schema, table
+
+    def attach_region_read(
+        self, state: Any, region: Any, schema: str, table: str, build: object
+    ) -> None:
+        """REQ-1922: the catalog of that region's store, registered once per process (it reads
+        the store's tables as they are, so a rebuild needs nothing more)."""
+        import trino.exceptions
+
+        del schema, table, build
+        try:
+            self._store_catalog_named(
+                state, self._region_catalog(state, region), region.replicas_url
+            )
+        except (trino.exceptions.Error, OSError) as exc:
+            raise RegionStoreUnreachable(str(exc)) from exc
+
+    @staticmethod
+    def _region_catalog(state: Any, region: Any) -> str:
+        from provisa.federation.replica_address import region_read_name
+
+        return region_read_name(state, region)
+
     def materialize_store_target(self, state: Any, org_id: str) -> tuple[str, str]:
         """Trino reaches its materialization store through the ``provisa_admin`` catalog.
 
@@ -854,6 +961,15 @@ class TrinoBackend(EngineBackend):
         from provisa.core.environments import active_org_schema  # REQ-1623
         from provisa.core.trino_system_catalogs import PROVISA_ADMIN_CATALOG
 
+        from provisa.storage.byo import org_store_dsn
+
+        # REQ-1048 / REQ-1922: an org with a store of its own (brought, or its region's) keeps its
+        # replicas and views there, where store_writer writes them (engine.materialize_store), so
+        # Trino reads them through that store's catalog, not the control plane's.
+        own = org_store_dsn(org_id)
+        if own is not None:
+            catalog = self._store_catalog_named(state, f"org_{org_id}__store", own)
+            return catalog, active_org_schema(org_id, "_mv_cache")
         return PROVISA_ADMIN_CATALOG, active_org_schema(org_id, "_mv_cache")
 
     # -- replicas --------------------------------------------------------------

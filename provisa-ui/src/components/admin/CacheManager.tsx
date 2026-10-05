@@ -44,6 +44,10 @@ import {
 import { RedirectSettingsCard } from "./settingsCards";
 import { fetchSettings } from "../../api/admin";
 import { FilterInput } from "./FilterInput";
+import { useRegionChoices } from "../../hooks/useRegionQueries";
+import { useRegionSelection } from "../../hooks/useRegionSelection";
+import { filterByRegion } from "../../hooks/regionFilter";
+import { RegionSelector } from "../RegionSelector";
 import { displayMvName } from "./mvDisplay";
 
 const PAGE_SIZE = 50;
@@ -363,6 +367,16 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
   const busy = hotTables.filter((h) => h.kind === "replica" || h.kind === "replica_building");
   const candidates = hotTables.filter((h) => h.kind === "hot_candidate");
   const totalRows = [...loaded, ...busy].reduce((n, h) => n + h.rowCount, 0);
+  // REQ-1922: the shared region selector filters the list (the stat totals stay whole-estate).
+  const { regions, connected, error: regionError } = useRegionChoices();
+  const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
+  const hasRegions = regions.length > 0;
+  const { visible: shownHot, hidden: hotHidden } = filterByRegion(
+    hotTables,
+    regionSel,
+    connected,
+    (h) => h.region ?? null,
+  );
   return (
     <Stack gap="md">
       <Text size="sm" c="dimmed">
@@ -377,6 +391,14 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
         <StatCard value={candidates.length} label={t("cacheManager.hot.hotCandidates")} />
         <StatCard value={totalRows} label={t("cacheManager.hot.cachedRows")} />
       </SimpleGrid>
+      <RegionSelector
+        regions={regions}
+        connected={connected}
+        value={regionSel}
+        onChange={setRegionSel}
+        hidden={hotHidden}
+        error={regionError}
+      />
       {hotTables.length === 0 ? (
         <Text c="dimmed">{t("cacheManager.hot.empty")}</Text>
       ) : (
@@ -386,16 +408,18 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
               <Table.Th>{t("cacheManager.hot.table")}</Table.Th>
               <Table.Th>{t("cacheManager.hot.catalog")}</Table.Th>
               <Table.Th>{t("cacheManager.hot.schema")}</Table.Th>
+              {hasRegions && <Table.Th>{t("regionSelector.columnHeader")}</Table.Th>}
               <Table.Th>{t("cacheManager.hot.rows")}</Table.Th>
               <Table.Th>{t("cacheManager.hot.kind")}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {hotTables.map((h) => (
+            {shownHot.map((h) => (
               <Table.Tr key={`${h.kind}:${h.catalog}.${h.schemaName}.${h.tableName}`}>
                 <Table.Td>{h.tableName}</Table.Td>
                 <Table.Td>{h.catalog}</Table.Td>
                 <Table.Td>{h.schemaName}</Table.Td>
+                {hasRegions && <Table.Td>{h.region ?? t("regionSelector.noRegion")}</Table.Td>}
                 {/* A candidate has nothing mirrored yet, and a replica still being built has
                     nothing to read yet: neither has a row count to report. */}
                 <Table.Td>
