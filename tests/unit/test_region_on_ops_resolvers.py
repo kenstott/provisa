@@ -60,7 +60,7 @@ async def test_table_region_maps_builds_id_and_key_maps(monkeypatch):
         ]
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch)
-    by_id, by_key = await sq._table_region_maps(SimpleNamespace(tenant_db=_TenantDb()))
+    by_id, by_key = await sq._table_region_maps(SimpleNamespace(model_db=_TenantDb()))
     assert by_id == {1: "eu", 2: None}
     assert by_key == {("src", "public", "t"): "eu", ("src2", "public", "r"): None}
 
