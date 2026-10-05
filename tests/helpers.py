@@ -29,10 +29,15 @@ def unscoped_role(role_id: str, *capabilities: str) -> dict:
     return {"id": role_id, "capabilities": list(capabilities), "domain_access": ["*"]}
 
 
+# Every data right a role can hold in a deployment with no platform regions: data_residency
+# exists only where the platform declares regions (REQ-1921), and a config granting it without
+# them is refused at load, so a test that needs it declares regions and grants it by name.
 ALL_DATA_CAPABILITIES: list[str] = sorted(
     c.value
     for c in Capability
-    if c.value not in PLATFORM_RIGHTS and c is not Capability.NO_AGGREGATIONS
+    if c.value not in PLATFORM_RIGHTS
+    and c is not Capability.NO_AGGREGATIONS
+    and c is not Capability.DATA_RESIDENCY
 )
 
 _ALIAS_RE = re.compile(r"\b(t|a|j|n|sub|cte)\d+\b", re.IGNORECASE)

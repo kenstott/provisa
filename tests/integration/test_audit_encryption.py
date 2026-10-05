@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS {_SCHEMA}.query_audit_log (
     status_code INT NOT NULL,
     duration_ms INT NOT NULL,
     trace_id TEXT,
+    region TEXT NOT NULL,  -- REQ-1922: the region whose data answered
     logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 """

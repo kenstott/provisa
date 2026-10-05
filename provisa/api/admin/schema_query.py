@@ -265,15 +265,16 @@ async def _table_region_maps(
     """REQ-1922: the stored home region of every registered table, by table id and by
     (source_id, schema, table). The hot-tables and replica-status lists stamp each row with its
     table's region from these, so they carry a region column and filter by region like the other
-    admin lists -- without a client-side join. Empty when the org's control plane is not open."""
+    admin lists -- without a client-side join. Empty when the org's control plane is not open.
+    Registered tables are the model: read through the org's model store, never its state store."""
     from provisa.api.admin.db_queries import fetch_tables
 
     by_id: dict[int, str | None] = {}
     by_key: dict[tuple[str, str, str], str | None] = {}
-    tenant_db = getattr(state, "tenant_db", None)
-    if tenant_db is None:
+    model_db = getattr(state, "model_db", None)
+    if model_db is None:
         return by_id, by_key
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         for d in await fetch_tables(conn):
             by_id[d["id"]] = d.get("region")
             by_key[(d["source_id"], d["schema_name"], d["table_name"])] = d.get("region")
