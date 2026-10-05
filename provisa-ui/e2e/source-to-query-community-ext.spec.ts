@@ -228,10 +228,11 @@ test.describe("source to query through the UI, community-extension sources (REQ-
     // DATABASE in .env), same standing infrastructure engine-swap.spec.ts's registerSinglestore
     // uses — no local docker-db container, no skip gate: this is the only singlestore source Provisa
     // now tests against (REQ-1746).
-    test.skip(
-      !process.env.SINGLESTORE_HOST,
-      "needs SINGLESTORE_HOST/USERNAME/PASSWORD/DATABASE for the SingleStore Cloud workspace",
-    );
+    expect(
+      process.env.SINGLESTORE_HOST,
+      "needs SINGLESTORE_HOST/USERNAME/PASSWORD/DATABASE for the SingleStore Cloud workspace " +
+        "(root .env locally; ui-e2e-core.yml passes the secrets)",
+    ).toBeTruthy();
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_cext_singlestore_${stamp}`;

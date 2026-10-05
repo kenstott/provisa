@@ -121,10 +121,36 @@ jobs:
         timeout-minutes: 6
         run: npx playwright install chromium
 
+      # source-to-query.spec.ts's sharepoint case registers a certificate-authenticated source; the
+      # certificate is gitignored and arrives as a base64 secret (as in ui-e2e-trino.yml).
+      - name: Materialize the SharePoint client certificate
+        env:
+          SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
+        run: |
+          if [ -z "$SP_CERT_P12_BASE64" ]; then
+            echo "SP_CERT_P12_BASE64 is not set; the sharepoint case cannot authenticate." >&2
+            exit 1
+          fi
+          printf '%s' "$SP_CERT_P12_BASE64" | base64 -d > sharepoint.pfx
+
       - name: Run Playwright core lane
         working-directory: provisa-ui
         run: npx playwright test --project=core --reporter=list,html
         env:
+          # The live-service cases fail by name without their credentials (custom AI endpoint,
+          # Kaggle, SharePoint, SingleStore Cloud). This workflow runs on release pushes, tags and
+          # dispatch only (no pull_request trigger), so no fork's code sees them.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
+          SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
+          SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
+          SP_CERT_PATH: ${{ github.workspace }}/sharepoint.pfx
+          SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}
+          SINGLESTORE_PORT: ${{ secrets.SINGLESTORE_PORT }}
+          SINGLESTORE_USERNAME: ${{ secrets.SINGLESTORE_USERNAME }}
+          SINGLESTORE_PASSWORD: ${{ secrets.SINGLESTORE_PASSWORD }}
+          SINGLESTORE_DATABASE: ${{ secrets.SINGLESTORE_DATABASE }}
           # chat-panel-streaming.spec.ts drives a live model and fails by name without it. This
           # workflow runs on release pushes, tags and dispatch only (no pull_request trigger), so
           # the secret never reaches a fork's code.

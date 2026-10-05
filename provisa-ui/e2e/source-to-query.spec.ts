@@ -464,10 +464,11 @@ test.describe("source to query through the UI (REQ-1671)", () => {
   test("sharepoint: add the source, register a list, query it on the SQL page", async ({
     page,
   }) => {
-    test.skip(
-      !process.env.SP_SITE_URL,
-      "no live SharePoint credentials: set the SP_* block in the root .env",
-    );
+    expect(
+      process.env.SP_SITE_URL,
+      "no live SharePoint credentials: the SP_* block in the root .env locally; ui-e2e-core.yml " +
+        "passes the secrets and materializes the certificate",
+    ).toBeTruthy();
     test.setTimeout(300000);
     const stamp = Date.now();
     const sourceId = `e2e_sharepoint_${stamp}`;

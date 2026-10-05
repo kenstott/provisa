@@ -19,15 +19,18 @@ import { test, expect } from "./coverage";
  * same /admin/mcp/chat backend ChatPanel.tsx's docked panel uses) and asserts a real governed tool
  * call actually executed through it — not a stub, not a mock.
  *
- * Skipped with no live OPENROUTER_API_KEY (repo-root .env, loaded by playwright.config.ts) —
- * this is a live-vendor test, not something an offline environment can run.
+ * Needs a live OPENROUTER_API_KEY (repo-root .env, loaded by playwright.config.ts; the ui-e2e-core
+ * workflow passes the repo secret) and fails by name without one: a live-vendor test.
  */
 
 test.describe("custom AI endpoint via a Secrets-vault key, verified through /explore chat", () => {
-  test.skip(
-    !process.env.OPENROUTER_API_KEY,
-    "no live OPENROUTER_API_KEY in this environment — see repo-root .env",
-  );
+  // A live vendor is the point: a missing key fails by name (ui-e2e-core.yml passes the secret).
+  test.beforeEach(() => {
+    expect(
+      process.env.OPENROUTER_API_KEY,
+      "OPENROUTER_API_KEY is not set: repo-root .env locally; ui-e2e-core.yml passes the secret",
+    ).toBeTruthy();
+  });
 
   test("secret-backed OpenRouter endpoint answers a real /explore chat turn with a tool call", async ({
     page,

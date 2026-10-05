@@ -44,7 +44,13 @@ import {
 const KAGGLE_TOKEN = process.env.KAGGLE_API_TOKEN;
 
 test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781/1782/1783)", () => {
-  test.skip(!KAGGLE_TOKEN, "KAGGLE_API_TOKEN not set in the environment");
+  // The live Kaggle API is the point: a missing token fails by name (ui-e2e-core.yml passes it).
+  test.beforeEach(() => {
+    expect(
+      KAGGLE_TOKEN,
+      "KAGGLE_API_TOKEN is not set: repo-root .env locally; ui-e2e-core.yml passes the secret",
+    ).toBeTruthy();
+  });
   // The Sources form is long (every source-type's fields render into one page, hidden/shown by
   // type) and Mantine's Combobox.Dropdown is a floating-positioned portal — on the default
   // 1280x720 test viewport it renders its option below the visible viewport even after
