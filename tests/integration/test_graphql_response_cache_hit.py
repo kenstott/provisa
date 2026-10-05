@@ -23,7 +23,13 @@ from unittest.mock import patch
 
 import pytest
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+# Each test mounts the data router alone, without the middleware that binds a request's org: the
+# test stands in for that request, served as the org its state names (_with_provisa_directives).
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.asyncio(loop_scope="session"),
+    pytest.mark.deployment_org("graphql-cache-itest"),
+]
 
 
 def _with_provisa_directives(state):
