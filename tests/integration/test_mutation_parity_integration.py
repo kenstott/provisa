@@ -188,6 +188,7 @@ class TestDistinctOn:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
+                "write_ops": ["delete", "insert", "update"],
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             }
         ]
@@ -227,6 +228,7 @@ class TestDistinctOn:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
+                "write_ops": ["delete", "insert", "update"],
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "region", "visible_to": ["admin"]},
