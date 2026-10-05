@@ -509,6 +509,8 @@ async def _call_discover(
             records = await sample_topic_records(
                 bootstrap_servers, topic, max_records=hints.sample_limit
             )
+        except TimeoutError:
+            raise  # the request's own deadline: answered as the request timeout, not a 502
         except Exception as e:
             raise ApiError(
                 502,
@@ -516,6 +518,15 @@ async def _call_discover(
                 f"Failed to sample topic {topic!r} for schema inference: {e}",
                 topic=topic,
                 error=str(e),
+            )
+        if not records:
+            # A silent empty schema would read as "this topic has no fields": refuse by name.
+            raise ApiError(
+                422,
+                "discovery.kafka_sample_empty",
+                f"Topic {topic!r} has no JSON messages to infer a schema from — produce one, or "
+                "give a Schema Registry URL.",
+                topic=topic,
             )
         columns = infer_columns_from_records(records)
         return adapter.discover_schema(columns)
