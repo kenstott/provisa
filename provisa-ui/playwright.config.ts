@@ -588,7 +588,8 @@ export default defineConfig({
     { name: "regions-demo", testMatch: REGIONS_SPECS },
     // REQ-1285/1298/1306: selected explicitly with `--project auth-flows`; each spec brings up its
     // own basic-auth instance.
-    { name: "auth-flows", testMatch: AUTH_FLOWS_SPECS },
+    // A failure keeps its screenshot: the instance is gone by the time anyone reads the report.
+    { name: "auth-flows", testMatch: AUTH_FLOWS_SPECS, use: { screenshot: "only-on-failure" } },
     // Requires RUNS_TRINO (the Trino webServer + its shared-org env overrides) exactly like the
     // "trino" project does — it is a separate project only so a routine core/trino run never
     // selects it by accident. See engine-swap.spec.ts's module doc for the invocation.

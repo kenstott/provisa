@@ -43,6 +43,7 @@ PROVISA="$PY -m provisa.cli"
 
 MODE="start"
 AUTH_FLOWS=0
+BOOTSTRAP=false
 for arg in "$@"; do
   case "$arg" in
     --reset) MODE="reset" ;;
@@ -50,11 +51,16 @@ for arg in "$@"; do
     --test) MODE="test" ;;
     --check) MODE="check" ;;
     --auth-flows) AUTH_FLOWS=1 ;;
+    # REQ-1290: the platform-admin slot is open for the first identity to claim (auth-flows only).
+    --bootstrap) BOOTSTRAP=true ;;
     *) echo "unknown arg: $arg" >&2; exit 2 ;;
   esac
 done
 if [[ "$AUTH_FLOWS" == "1" && "$MODE" != "test" ]]; then
   echo "--auth-flows is spec-owned: use it with --test" >&2; exit 2
+fi
+if [[ "$BOOTSTRAP" == "true" && "$AUTH_FLOWS" != "1" ]]; then
+  echo "--bootstrap applies to --auth-flows only" >&2; exit 2
 fi
 
 # --- ports & dirs (distinct from local-dev 8001/8009/5439/5173 and demo-snowflake-live 8200/3200) ---
@@ -144,17 +150,22 @@ _ensure_ui_built() {
 # Its superuser password is --test's fresh per-run one, read by the spec from TEST_CREDS.
 if [[ "$AUTH_FLOWS" == "1" ]]; then
   FLOWS_CONFIG="$INSTANCE_DIR/provisa-auth-flows.yaml"
-  JWT_SECRET="$JWT_SECRET" "$PY" - "$REPO/config/provisa-auth-flows.yaml.tmpl" "$FLOWS_CONFIG" <<'PY'
+  JWT_SECRET="$JWT_SECRET" BOOTSTRAP="$BOOTSTRAP" \
+    "$PY" - "$REPO/config/provisa-auth-flows.yaml.tmpl" "$FLOWS_CONFIG" <<'PY'
 import os, sys
 src, out = sys.argv[1], sys.argv[2]
-open(out, "w").write(open(src).read().replace("@@JWT_SECRET@@", os.environ["JWT_SECRET"]))
+text = open(src).read().replace("@@JWT_SECRET@@", os.environ["JWT_SECRET"])
+open(out, "w").write(text.replace("@@BOOTSTRAP@@", os.environ["BOOTSTRAP"]))
 PY
   _ensure_ui_built
   mkdir -p "$INSTANCE_DIR/node"
+  # The spec names where the node logs (AUTH_FLOWS_NODE_LOG) so the log outlives the EXIT trap that
+  # wipes this dir: a failed spec's server-side traceback is in it.
+  NODE_LOG="${AUTH_FLOWS_NODE_LOG:-$INSTANCE_DIR/node.log}"
   PROVISA_CONFIG="$FLOWS_CONFIG" PROVISA_CONFIG_REPLACE="true" \
   PROVISA_SUPERUSER_USERNAME="admin" PROVISA_SUPERUSER_PASSWORD="$ADMIN_PW" \
     $PROVISA run --api-port "$EU_API" --ui-port "$EU_UI" --data-dir "$INSTANCE_DIR/node" \
-      --no-browser >"$INSTANCE_DIR/node.log" 2>&1 &
+      --no-browser >"$NODE_LOG" 2>&1 &
   echo $! >>"$PIDS_FILE"
   _ready=0
   for _i in $(seq 1 60); do
@@ -165,7 +176,7 @@ PY
   done
   if [[ "$_ready" != "1" ]]; then
     echo "auth-flows node did not answer /auth/provider-type in 300s; its log:" >&2
-    tail -n 80 "$INSTANCE_DIR/node.log" >&2
+    tail -n 80 "$NODE_LOG" >&2
     exit 1
   fi
   echo "PORTS ui=$EU_UI api=$EU_API"

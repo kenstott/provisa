@@ -55,10 +55,20 @@ test("a member leaves their only org from the profile and lands on onboarding", 
   await page.addInitScript((t) => localStorage.setItem("provisa_token", t as string), member.token);
   await page.goto(`${instance.ui}/`);
 
+  // REQ-1478: an invited member is first told which org they joined and why; they take it in
+  // and stay -- the leave this spec proves is the later, deliberate one from the profile.
+  // (The modal's own testid sits on Mantine's wrapper, which is never "visible"; its button is.)
+  const acknowledge = page.getByTestId("join-notice-ack");
+  await expect(acknowledge).toBeVisible({ timeout: 30_000 });
+  await acknowledge.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
   await page.getByTestId("navbar-user-trigger").click();
   await page.getByRole("menuitem", { name: "Profile" }).click();
-  await expect(page.getByTestId("user-profile-modal")).toBeVisible();
-  await page.getByTestId("profile-leave-default").click();
+  // (The modal's own testid sits on Mantine's wrapper; its leave button is what is visible.)
+  const leave = page.getByTestId("profile-leave-default");
+  await expect(leave).toBeVisible();
+  await leave.click();
 
   // The modal reloads into identity bootstrap; with no membership the app routes to onboarding.
   await expect(page.getByTestId("onboard-org-page")).toBeVisible({ timeout: 30_000 });

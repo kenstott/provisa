@@ -8,7 +8,8 @@
 # (REQ-1306), auto-join on sign-in (REQ-1285), a backup platform_admin made by invite (REQ-1298) —
 # only exist for a real signed-in identity, which the core Playwright backend (auth.provider: none)
 # never has. Nothing but the break-glass superuser is configured: each spec creates the users and
-# orgs it needs through the authenticated admin API. @@JWT_SECRET@@ is the launcher's.
+# orgs it needs through the authenticated admin API. @@JWT_SECRET@@ and @@BOOTSTRAP@@ are the
+# launcher's.
 
 federation_engine: duckdb
 
@@ -27,6 +28,9 @@ auth:
     username: ${env:PROVISA_SUPERUSER_USERNAME}
     password: ${env:PROVISA_SUPERUSER_PASSWORD}
   assignments_source: provisa
+  # REQ-1290: true only for the spec that needs a platform_admin (launcher --bootstrap); it claims
+  # the slot itself. Elsewhere an open slot would put the first-login disclosure in every sign-in.
+  bootstrap_superadmin: @@BOOTSTRAP@@
 
 cache:
   enabled: false

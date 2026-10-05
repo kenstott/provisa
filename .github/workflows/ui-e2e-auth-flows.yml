@@ -1,0 +1,96 @@
+name: UI e2e (auth-flows lane)
+
+# playwright.config.ts's "auth-flows" project — the membership flows that exist only for a real
+# signed-in identity, which the core lane's backend (auth.provider: none) never has: leaving an
+# org (REQ-1306), auto-join on sign-in (REQ-1285), a backup platform_admin made by invite and
+# role assignment (REQ-1298). Each spec brings up its own one-node basic-auth instance
+# (scripts/launch-demo-regions.sh --test --auth-flows) with an embedded control plane, so this
+# lane starts no containers and no core webServers (PROVISA_E2E_ONLY_SELF_HOSTED).
+#
+# The superuser password is generated per run by the launcher into a 0600 file the spec reads;
+# it never reaches stdout. This workflow takes no secrets.
+#
+# REQ-1759: like the other ui-e2e lanes, it runs on release branches/tags and on demand, not on
+# every push; unit-tests.yml is the per-commit gate.
+
+on:
+  push:
+    branches: ["release/**"]
+    tags: ["v*"]
+    paths:
+      - "provisa-ui/e2e/auth-flows-*.ts"
+      - "provisa-ui/e2e/coverage.ts"
+      - "provisa-ui/e2e/global-setup.ts"
+      - "provisa-ui/playwright.config.ts"
+      - "provisa-ui/src/**"
+      - "provisa/auth/**"
+      - "provisa/api/**"
+      - "provisa/core/org_membership.py"
+      - "scripts/launch-demo-regions.sh"
+      - "config/provisa-auth-flows.yaml.tmpl"
+      - ".github/workflows/ui-e2e-auth-flows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-e2e-auth-flows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Playwright auth-flows lane
+    runs-on: ubuntu-latest
+    # Three specs, each booting its own node (540s beforeAll budget, the first one including the
+    # one-time UI bundle build), serially on one worker.
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      # Only self-hosted projects: playwright.config.ts boots none of the core webServers.
+      PROVISA_E2E_ONLY_SELF_HOSTED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      # The launcher runs the node with the repo-root .venv's python by path.
+      - name: Install Python deps
+        run: uv sync --frozen --extra dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: provisa-ui/package-lock.json
+
+      - name: Install UI deps
+        working-directory: provisa-ui
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: provisa-ui
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright auth-flows lane
+        working-directory: provisa-ui
+        run: npx playwright test --project=auth-flows --workers=1 --reporter=list,html
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-auth-flows
+          path: provisa-ui/playwright-report/
+          retention-days: 7
+
+      # Each spec's node logs beside the results (auth-flows-instance.ts); a failure's server
+      # traceback is there, not in the report.
+      - name: Upload auth-flows node logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-flows-node-logs
+          path: provisa-ui/test-results/auth-flows-node-*.log
+          retention-days: 7

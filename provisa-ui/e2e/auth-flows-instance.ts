@@ -31,11 +31,19 @@ export interface AuthFlowsInstance {
 let proc: ChildProcess | null = null;
 let adminPassword = "";
 
-/** Start the instance; resolves once the node answers and its credentials file is written. */
-export function launch(): Promise<AuthFlowsInstance> {
+/** Start the instance; resolves once the node answers and its credentials file is written.
+ * ``bootstrap`` leaves the platform-admin slot open for the spec to claim (REQ-1290). */
+export function launch(opts: { bootstrap?: boolean } = {}): Promise<AuthFlowsInstance> {
   const script = path.resolve(HERE, "../../scripts/launch-demo-regions.sh");
-  proc = spawn("bash", [script, "--test", "--auth-flows"], {
+  const args = [script, "--test", "--auth-flows", ...(opts.bootstrap ? ["--bootstrap"] : [])];
+  // The node's log lands beside the spec's results so a failure's server traceback survives the
+  // launcher's cleanup (and the CI lane uploads it).
+  const logDir = path.resolve(HERE, "../test-results");
+  fs.mkdirSync(logDir, { recursive: true });
+  const nodeLog = path.join(logDir, `auth-flows-node-${process.pid}-${Date.now()}.log`);
+  proc = spawn("bash", args, {
     stdio: ["ignore", "pipe", "inherit"],
+    env: { ...process.env, AUTH_FLOWS_NODE_LOG: nodeLog },
   });
   return new Promise<AuthFlowsInstance>((resolve, reject) => {
     // Generous: a fresh worktree builds the UI bundle once (provisa/_ui) before the node starts.
@@ -62,18 +70,25 @@ export function launch(): Promise<AuthFlowsInstance> {
   });
 }
 
+/** The org a tenant-plane request is addressed to. A multitenant node reads it from the Host
+ * subdomain, or from this header on a bare host (127.0.0.1) such as this instance's. */
+function headers(token?: string, org?: string): Record<string, string> {
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(org ? { "x-org-provisa": org } : {}),
+  };
+}
+
 async function post(
   api: string,
   route: string,
   body: unknown,
   token?: string,
+  org?: string,
 ): Promise<Record<string, unknown>> {
   const ctx: APIRequestContext = await pwRequest.newContext();
   try {
-    const r = await ctx.post(`${api}${route}`, {
-      data: body,
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const r = await ctx.post(`${api}${route}`, { data: body, headers: headers(token, org) });
     expect(r.ok(), `POST ${route}: ${r.status()} ${await r.text()}`).toBeTruthy();
     return (await r.json()) as Record<string, unknown>;
   } finally {
@@ -91,7 +106,7 @@ export async function superuserToken(api: string): Promise<string> {
 }
 
 /** A basic-auth user created the way a person joins: an invite into ``orgId``, redeemed at
- * /auth/register. Returns the new user's id and bearer. */
+ * /auth/register. Returns the new user's id, password and bearer. */
 export async function inviteAndRegister(
   api: string,
   inviterToken: string,
@@ -99,12 +114,13 @@ export async function inviteAndRegister(
   roleId: string,
   username: string,
   email: string,
-): Promise<{ userId: string; token: string }> {
+): Promise<{ userId: string; password: string; token: string }> {
   const invite = await post(
     api,
     "/admin/invites/",
     { org_id: orgId, role_id: roleId },
     inviterToken,
+    orgId,
   );
   const password = `pw-${Math.random().toString(36).slice(2)}-${Date.now()}`;
   const reg = await post(api, "/auth/register", {
@@ -114,7 +130,7 @@ export async function inviteAndRegister(
     invite_token: invite.token,
   });
   const login = await post(api, "/auth/login", { username, password });
-  return { userId: reg.user_id as string, token: login.access_token as string };
+  return { userId: reg.user_id as string, password, token: login.access_token as string };
 }
 
 /** GET with a bearer, parsed. */
@@ -122,15 +138,40 @@ export async function getJson(
   api: string,
   route: string,
   token: string,
+  org?: string,
 ): Promise<Record<string, unknown>> {
   const ctx = await pwRequest.newContext();
   try {
-    const r = await ctx.get(`${api}${route}`, { headers: { Authorization: `Bearer ${token}` } });
+    const r = await ctx.get(`${api}${route}`, { headers: headers(token, org) });
     expect(r.ok(), `GET ${route}: ${r.status()} ${await r.text()}`).toBeTruthy();
     return (await r.json()) as Record<string, unknown>;
   } finally {
     await ctx.dispose();
   }
+}
+
+/** PATCH with a bearer, parsed. */
+export async function patch(
+  api: string,
+  route: string,
+  body: unknown,
+  token: string,
+  org?: string,
+): Promise<Record<string, unknown>> {
+  const ctx = await pwRequest.newContext();
+  try {
+    const r = await ctx.patch(`${api}${route}`, { data: body, headers: headers(token, org) });
+    expect(r.ok(), `PATCH ${route}: ${r.status()} ${await r.text()}`).toBeTruthy();
+    return (await r.json()) as Record<string, unknown>;
+  } finally {
+    await ctx.dispose();
+  }
+}
+
+/** A basic-auth user's bearer. */
+export async function login(api: string, username: string, password: string): Promise<string> {
+  const r = await post(api, "/auth/login", { username, password });
+  return r.access_token as string;
 }
 
 export { post };
