@@ -72,6 +72,16 @@ def test_an_exported_value_wins_over_the_file(tmp_path, clean_env, monkeypatch):
     assert os.environ["SNOWFLAKE_ACCOUNT"] == "exported"
 
 
+def test_an_exported_empty_value_wins_over_the_file_too(tmp_path, clean_env, monkeypatch):
+    """Exporting a variable empty is how a run says "this credential has no value" (a
+    password-less certificate); the file's value must not fill it back in."""
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("SP_CERT_PASSWORD=from-file\n")
+    monkeypatch.setenv("SP_CERT_PASSWORD", "")
+    assert load_provider_creds(dotenv) == []
+    assert os.environ["SP_CERT_PASSWORD"] == ""
+
+
 def test_local_stack_vars_are_never_loaded_from_env_file(tmp_path, clean_env, monkeypatch):
     """The whitelist must not pull in anything that repoints the isolated Docker stack."""
     dotenv = tmp_path / ".env"
