@@ -19,6 +19,8 @@ could see in the view's inputs.
   none of the view's inputs are narrower than "everything"; any other role reads the governed
   expansion, never the stored rows.
 * The view table's own declared rules apply on top, in both cases.
+* A view that names another region (REQ-1921) is read from the copy that region keeps, by every
+  reader, with the view's own rules on top: its inputs are not read here.
 
 This is the only place a view's body is chosen for a reader; the pipeline's expansion sites and
 the GraphQL endpoint's call it."""
@@ -81,6 +83,17 @@ def _stored_rows(view: str, state: Any) -> str | None:
     return f'SELECT * FROM "{mv.target_catalog}"."{mv.target_schema}"."{mv.target_table}"'
 
 
+def _home_copy(view: str, state: Any) -> str | None:
+    """REQ-1921, A VIEW MAY NAME A REGION: a read of the copy another region keeps of ``view`` —
+    it names that region, which alone builds it — whoever reads it and whatever they could see in
+    its inputs; None for a view this region builds. Whether that copy is built, and its store
+    attached, is the statement's residency (``query_residency.read_home_views``)."""
+    from provisa.federation.query_residency import home_view_read  # noqa: PLC0415
+
+    mv = state.mv_registry.get(f"view-{view}")
+    return None if mv is None else home_view_read(state, mv)
+
+
 def _with_own_rules(view: str, body: str, gov: "GovernanceContext") -> str:
     """``body`` under the rules declared on the view's own table (its row filter, masks and
     column visibility), when it has any."""
@@ -114,7 +127,10 @@ def view_bodies(
             if view in bodies or view not in text:
                 continue
             stored = _stored_rows(view, state)
-            if stored is not None and sees_everything(view, view_sql_map, gov):
+            home = _home_copy(view, state)
+            if home is not None:
+                body = home  # its region's copy, with the view's own rules on it below
+            elif stored is not None and sees_everything(view, view_sql_map, gov):
                 body = stored
             else:
                 body = govern_fragment(view_sql, gov)
@@ -135,7 +151,7 @@ def unnarrowed_view_bodies(sql: str, view_sql_map: dict[str, str], state: Any) -
         for view, view_sql in view_sql_map.items():
             if view in bodies or view not in text:
                 continue
-            stored = _stored_rows(view, state)
+            stored = _home_copy(view, state) or _stored_rows(view, state)
             if stored is None:
                 bodies[view] = view_sql
                 pending.append(view_sql)

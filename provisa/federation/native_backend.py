@@ -203,7 +203,7 @@ class NativeEngineBackend(EngineBackend):
 
         name = region_read_name(state, region)
         try:
-            runtime.attach_region_read(name, region.replicas_url, schema, table, build)
+            runtime.attach_region_read(name, region.store_url(), schema, table, build)
         except self._attach_errors as exc:
             raise RegionStoreUnreachable(str(exc)) from exc
 

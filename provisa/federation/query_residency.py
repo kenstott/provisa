@@ -269,6 +269,89 @@ async def read_home_replica(state: Any, backend: Any, table: Any, home: str) -> 
         raise HomeRegionUnavailable(table.table_name, home, "cannot be reached") from exc
 
 
+async def read_home_views(state: Any, backend: Any, table_ids: Iterable[int]) -> set[str]:
+    """Make the read of each view in ``table_ids`` that names another region possible (REQ-1921,
+    A VIEW MAY NAME A REGION): such a view is read only from its copy there — refused naming the
+    region while that copy is not built (that region's record) or its store cannot be reached,
+    else that region's views store is attached for it. Returns the regions read."""
+    from provisa.core.models import DERIVED_SOURCE_ID
+    from provisa.federation.registry_view import registered_tables
+    from provisa.federation.replica_converge import builds_here
+
+    registry = getattr(state, "mv_registry", None)
+    ids = frozenset(table_ids)
+    if registry is None or not ids:
+        return set()
+    homes: set[str] = set()
+    for t in await registered_tables(state):
+        if t.id not in ids or t.source_id != DERIVED_SOURCE_ID:
+            continue
+        mv = registry.get(f"view-{t.table_name}")
+        if mv is None or builds_here(mv.region):
+            continue
+        assert mv.region is not None  # builds_here is True for a view naming no region
+        await read_home_view(state, backend, mv, t.table_name)
+        homes.add(mv.region)
+    return homes
+
+
+async def read_home_view(state: Any, backend: Any, mv: Any, view: str) -> None:
+    """The copy of ``mv`` (view ``view``) its region keeps is built there, and attached here."""
+    import asyncio
+
+    from sqlalchemy import select
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from provisa.core.region_stores import HomeRegionUnavailable
+    from provisa.core.schema_org import mv_build_state
+    from provisa.federation.backend import RegionStoreUnreachable
+    from provisa.federation.replica_address import active_org_id, mv_schema
+
+    home = mv.region
+    region = state.foreign_regions[home]  # bound with the org: a view names a selected region
+    try:
+        async with region.state_db.acquire() as conn:
+            row = (
+                await conn.execute_core(
+                    select(mv_build_state.c.last_refresh_at).where(mv_build_state.c.mv_id == mv.id)
+                )
+            ).fetchone()
+    except (SQLAlchemyError, OSError) as exc:
+        raise HomeRegionUnavailable(view, home, "cannot be reached", kept_as="copy") from exc
+    if row is None or row[0] is None:
+        raise HomeRegionUnavailable(view, home, "is not built", kept_as="copy")
+    try:
+        await asyncio.to_thread(
+            backend.attach_region_read,
+            state,
+            region.views(),
+            mv_schema(active_org_id(state), region=home),
+            mv.target_table,
+            row[0],
+        )
+    except RegionStoreUnreachable as exc:
+        raise HomeRegionUnavailable(view, home, "cannot be reached", kept_as="copy") from exc
+
+
+def home_view_read(state: Any, mv: Any) -> str | None:
+    """A read of the copy of ``mv`` another region keeps — the view names that region — at the
+    address this engine reads that region's views store by; None for a view built here."""
+    from provisa.federation.replica_address import active_org_id, mv_schema
+    from provisa.federation.replica_converge import builds_here
+    from provisa.federation.runtime import quoted_name
+
+    if builds_here(mv.region):
+        return None
+    backend = state.federation_engine.engine.backend
+    address = backend.region_read_address(
+        state,
+        state.foreign_regions[mv.region].views(),
+        mv_schema(active_org_id(state), region=mv.region),
+        mv.target_table,
+    )
+    return f"SELECT * FROM {quoted_name(address)}"
+
+
 async def ensure_resident(
     state: Any,
     source_ids: Iterable[str],
@@ -313,6 +396,9 @@ async def ensure_resident(
     engine = getattr(state, "federation_engine", None)  # the EngineRuntime (write face + engine)
     backend = getattr(getattr(engine, "engine", None), "backend", None)
     config = getattr(state, "config", None)
+    # REQ-1921: a view the statement reads that names another region is read from its copy there.
+    view_homes = await read_home_views(state, backend, table_ids) if backend is not None else set()
+    only_there = next(iter(view_homes)) if len(view_homes) == 1 else None
     # REQ-1922: the registry is read from the model store (registry_view); what is built and
     # promoted is this region's state (replica_state), read and written through ``db``.
     model_db = getattr(state, "model_db", None)
@@ -325,7 +411,7 @@ async def ensure_resident(
         or model_db is None
         or db is None
     ):
-        return Residency()
+        return Residency(answered_in=only_there)
     from provisa.federation.registry_view import registered_sources, registered_tables
 
     # REQ-1674: the registry, not the config file — see registry_view. A built-in source
@@ -333,7 +419,7 @@ async def ensure_resident(
     # tables is not judged here.
     sources = [s for s in await registered_sources(state) if s.id in wanted]
     if not sources:
-        return Residency()
+        return Residency(answered_in=only_there)
     wanted = {s.id for s in sources}
     from provisa.federation.strategy import engine_attaches
 
@@ -399,7 +485,7 @@ async def ensure_resident(
             tables_by_source.setdefault(t.source_id, []).append(t)
     for t, home in elsewhere:
         await read_home_replica(state, backend, t, home)
-    homes = {home for _t, home in elsewhere}
+    homes = {home for _t, home in elsewhere} | view_homes
     answered_in = next(iter(homes)) if len(homes) == 1 and read_here == 0 else None
     # REQ-826 / REQ-1141: a table the operator's settings put on its replica moves its source's
     # read there for this statement, even where the engine could attach the source.

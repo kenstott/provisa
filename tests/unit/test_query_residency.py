@@ -746,7 +746,11 @@ async def test_a_table_its_region_keeps_a_replica_of_is_read_from_it_never_built
     pets = _table("pets-db", "pets")
     pets.region = "eu"
     state = _state([_source("pets-db")], [pets], _Backend(), plane)
-    state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, "snowflake")}
+    state.foreign_regions = {
+        "eu": ForeignRegion(
+            "eu", "postgresql://eu/db", plane, "snowflake", "postgresql://eu/db", "replicas"
+        )
+    }
     with pytest.raises(HomeRegionUnavailable) as refused:
         await _ensure(state, {"pets-db"})
     assert refused.value.code == "query.home_region_unavailable"
@@ -768,7 +772,11 @@ async def test_a_table_its_region_reads_in_place_is_never_built_here_for_a_read(
     pets = _table("pets-db", "pets")
     pets.region = "eu"
     state = _state([_source("pets-db")], [pets], _Backend(), plane)
-    state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, "duckdb")}
+    state.foreign_regions = {
+        "eu": ForeignRegion(
+            "eu", "postgresql://eu/db", plane, "duckdb", "postgresql://eu/db", "replicas"
+        )
+    }
     with pytest.raises(HomeRegionUnavailable, match="does not keep") as refused:
         await _ensure(state, {"pets-db"})
     assert refused.value.params == {"table": "pets", "region": "eu"}
@@ -803,14 +811,22 @@ async def test_a_read_only_of_what_another_region_keeps_is_answered_in_that_regi
     pets = _table("pets-db", "pets")
     pets.region = "eu"
     state = _state([_source("pets-db")], [pets], _Backend(), plane)
-    state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, "snowflake")}
+    state.foreign_regions = {
+        "eu": ForeignRegion(
+            "eu", "postgresql://eu/db", plane, "snowflake", "postgresql://eu/db", "replicas"
+        )
+    }
     assert (await _residency(state, {"pets-db"})).answered_in == "eu"
     assert read_there == [("pets", "eu")]
 
     owners = _table("pets-db", "owners")
     owners.region = "us"
     state = _state([_source("pets-db")], [pets, owners], _Backend(), plane)
-    state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, "snowflake")}
+    state.foreign_regions = {
+        "eu": ForeignRegion(
+            "eu", "postgresql://eu/db", plane, "snowflake", "postgresql://eu/db", "replicas"
+        )
+    }
     assert (await _residency(state, {"pets-db"})).answered_in is None
 
 
@@ -826,7 +842,11 @@ async def test_a_row_level_table_its_region_keeps_by_key_is_refused_naming_it(
     pets = _table("pets-db", "pets", row_materialize=True)
     pets.region = "eu"
     state = _state([_source("pets-db")], [pets], _Backend(), plane)
-    state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, "snowflake")}
+    state.foreign_regions = {
+        "eu": ForeignRegion(
+            "eu", "postgresql://eu/db", plane, "snowflake", "postgresql://eu/db", "replicas"
+        )
+    }
     with pytest.raises(HomeRegionUnavailable, match="fetched by key") as refused:
         await _ensure(state, {"pets-db"})
     assert refused.value.params == {"table": "pets", "region": "eu"}
@@ -851,7 +871,11 @@ async def test_a_row_level_table_kept_in_another_region_lands_no_row_here(
     owners = _table("pets-db", "owners")
     state = _state([_source("pets-db")], [pets, owners], _Backend(), plane)
     for kind in ("snowflake", "duckdb"):
-        state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, kind)}
+        state.foreign_regions = {
+            "eu": ForeignRegion(
+                "eu", "postgresql://eu/db", plane, kind, "postgresql://eu/db", "replicas"
+            )
+        }
         assert await active_row_materialize_tables(state) == []
         # The engine stand-in has no execute_engine: a probe would fail the test.
         replica = replica_table_name("pets-db", "pet_store", "pets")

@@ -107,11 +107,12 @@ def replica_schema(org_id: str, *, region: str | None = None) -> str:
     return active_org_schema(org_id, REPLICAS_SUFFIX, region=region)
 
 
-def mv_schema(org_id: str) -> str:
-    """The schema that holds the materialized views of ``org_id`` in the environment served."""
+def mv_schema(org_id: str, *, region: str | None = None) -> str:
+    """The schema that holds the materialized views of ``org_id`` in the environment served —
+    this node's region's, or ``region``'s (REQ-1921: where a view that names it is read)."""
     from provisa.core.environments import active_org_schema
 
-    return active_org_schema(org_id, MVS_SUFFIX)
+    return active_org_schema(org_id, MVS_SUFFIX, region=region)
 
 
 def export_schema(org_id: str) -> str:
@@ -131,13 +132,15 @@ def active_org_id(state: Any) -> str:
 
 def region_read_name(state: Any, region: Any) -> str:
     """The name this org environment's engine reads ``region``'s replicas store by (REQ-1922):
-    ``naming.region_read_catalog`` for the org and environment served."""
+    ``naming.region_read_catalog`` for the org and environment served — and its views store
+    (REQ-1921), a store of its own, by that name with ``__views``."""
     from provisa.compiler.naming import region_read_catalog
     from provisa.core.request_context import active_env
 
-    return region_read_catalog(
+    name = region_read_catalog(
         active_org_id(state), region.id, default_org=state.org_id, env=active_env()
     )
+    return f"{name}__views" if region.reads == "views" else name
 
 
 def replica_address(

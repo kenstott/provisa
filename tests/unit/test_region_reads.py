@@ -42,7 +42,16 @@ def eu_state(tmp_path) -> Database:
 
 def _state(eu: Database) -> SimpleNamespace:
     return SimpleNamespace(
-        foreign_regions={"eu": ForeignRegion("eu", "postgresql://eu-replicas/db", eu, "pg")}
+        foreign_regions={
+            "eu": ForeignRegion(
+                "eu",
+                "postgresql://eu-replicas/db",
+                eu,
+                "pg",
+                "postgresql://eu-replicas/db",
+                "replicas",
+            )
+        }
     )
 
 
@@ -98,7 +107,7 @@ def test_an_engine_without_an_attach_for_another_region_refuses_naming_itself():
 
     backend = EngineBackend.__new__(EngineBackend)
     backend.engine = SimpleNamespace(name="snowflake")  # type: ignore[assignment]
-    region = ForeignRegion("eu", "postgresql://eu/db", None, "pg")  # type: ignore[arg-type]
+    region = ForeignRegion("eu", "postgresql://eu/db", None, "pg", "postgresql://eu/db", "replicas")  # type: ignore[arg-type]
     with pytest.raises(EngineReadsNoOtherRegion, match="snowflake engine cannot read region 'eu'"):
         backend.region_read_address(SimpleNamespace(), region, "org_acme_replicas", "orders")
 
@@ -185,7 +194,11 @@ async def test_a_table_kept_in_another_region_is_read_where_that_region_reads_it
         tenant_db=db,
         federation_engine=SimpleNamespace(engine=engine),
         source_catalogs={"src": "src"},
-        foreign_regions={"eu": ForeignRegion("eu", "postgresql://eu/db", None, "trino")},  # type: ignore[arg-type]
+        foreign_regions={
+            "eu": ForeignRegion(
+                "eu", "postgresql://eu/db", None, "trino", "postgresql://eu/db", "replicas"
+            )
+        },  # type: ignore[arg-type]
     )
     import provisa.api.app as app_mod
     from provisa.api.org_runtime import OrgRegistry, OrgRuntime
@@ -271,7 +284,14 @@ def _trino(monkeypatch):
 
 def test_trino_reads_another_regions_replicas_through_a_catalog_of_that_store(monkeypatch, acme):
     backend, state, conn = _trino(monkeypatch)
-    region = ForeignRegion("eu", "postgresql://reader:pw@eu-replicas:5433/replicas", None, "pg")  # type: ignore[arg-type]
+    region = ForeignRegion(
+        "eu",
+        "postgresql://reader:pw@eu-replicas:5433/replicas",
+        None,
+        "pg",
+        "postgresql://reader:pw@eu-replicas:5433/replicas",
+        "replicas",
+    )  # type: ignore[arg-type]
     where = ("org_acme__region_eu", "org_acme_replicas", "orders")
     # The read map names it without dialing anything.
     assert backend.region_read_address(state, region, "org_acme_replicas", "orders") == where
@@ -339,7 +359,9 @@ def test_the_pg_engine_names_the_import_at_publish_and_imports_once_per_build(mo
     backend = NativeEngineBackend.__new__(NativeEngineBackend)
     backend._attach_errors = (RuntimeError,)
     monkeypatch.setattr(backend, "_store_runtime", lambda: runtime)
-    region = ForeignRegion("eu", "postgresql://r@eu/db", None, "pg")  # type: ignore[arg-type]
+    region = ForeignRegion(
+        "eu", "postgresql://r@eu/db", None, "pg", "postgresql://r@eu/db", "replicas"
+    )  # type: ignore[arg-type]
     state = SimpleNamespace(org_id="boot")
     where = backend.region_read_address(state, region, "org_acme_replicas", "orders")
     # REQ-1266/1529: the foreign server carries the org (and environment) reading it.
@@ -361,7 +383,9 @@ def test_a_store_that_cannot_be_attached_is_unreachable(monkeypatch):
     backend = NativeEngineBackend.__new__(NativeEngineBackend)
     backend._attach_errors = (RuntimeError,)
     monkeypatch.setattr(backend, "_store_runtime", lambda: _Runtime())
-    region = ForeignRegion("eu", "postgresql://r@eu/db", None, "pg")  # type: ignore[arg-type]
+    region = ForeignRegion(
+        "eu", "postgresql://r@eu/db", None, "pg", "postgresql://r@eu/db", "replicas"
+    )  # type: ignore[arg-type]
     with pytest.raises(RegionStoreUnreachable, match="could not connect"):
         backend.attach_region_read(SimpleNamespace(org_id="acme"), region, "s", "t", ("h", "[]"))
 

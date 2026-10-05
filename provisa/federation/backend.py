@@ -937,7 +937,7 @@ class TrinoBackend(EngineBackend):
         del schema, table, build
         try:
             self._store_catalog_named(
-                state, self._region_catalog(state, region), region.replicas_url
+                state, self._region_catalog(state, region), region.store_url()
             )
         except (trino.exceptions.Error, OSError) as exc:
             raise RegionStoreUnreachable(str(exc)) from exc

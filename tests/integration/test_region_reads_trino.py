@@ -97,7 +97,7 @@ def test_trino_reads_another_regions_replica_through_a_catalog_of_its_store(stor
     from provisa.core.request_context import reset_current_org, set_current_org
 
     backend, state, conn = trino_state
-    region = ForeignRegion("eu", store.engine_dsn, None, "pg")  # type: ignore[arg-type]
+    region = ForeignRegion("eu", store.engine_dsn, None, "pg", store.engine_dsn, "replicas")  # type: ignore[arg-type]
     token = set_current_org(_ORG)
     try:
         catalog, schema, table = backend.region_read_address(

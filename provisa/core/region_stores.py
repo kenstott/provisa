@@ -262,13 +262,25 @@ def refuse_lane_conflict(
 class ForeignRegion(NamedTuple):
     """Another region of the org, as a node of this region reads it (REQ-1922): the store its
     replicas are kept in (a table that names it is read from there), its state store, where
-    whether that replica is built is recorded, and its engine's kind, which decides whether it
-    keeps a replica of a table at all (REQ-1921). Read only."""
+    whether that replica — or a view's copy — is built is recorded, its engine's kind, which
+    decides whether it keeps a replica of a table at all (REQ-1921), and the store its views are
+    kept in (a view that names it is read from there, REQ-1921). ``reads`` is which of its two
+    stores a read of it attaches: ``"replicas"``, or ``"views"`` (:meth:`views`). Read only."""
 
     id: str
     replicas_url: str
     state_db: "Database"
     engine_kind: str
+    views_url: str
+    reads: str
+
+    def store_url(self) -> str:
+        """The store a read of this region attaches."""
+        return self.views_url if self.reads == "views" else self.replicas_url
+
+    def views(self) -> "ForeignRegion":
+        """This region, as the store its views are kept in."""
+        return self._replace(reads="views")
 
 
 class HomeRegionUnavailable(RuntimeError):
@@ -277,11 +289,11 @@ class HomeRegionUnavailable(RuntimeError):
 
     code = "query.home_region_unavailable"
 
-    def __init__(self, table: str, region: str, why: str) -> None:
+    def __init__(self, table: str, region: str, why: str, *, kept_as: str = "replica") -> None:
         self.table, self.region = table, region
         self.params = {"table": table, "region": region}
         super().__init__(
-            f"table {table!r} is kept in region {region!r} and is read only from its replica "
+            f"table {table!r} is kept in region {region!r} and is read only from its {kept_as} "
             f"there, which {why}"
         )
 
@@ -339,5 +351,7 @@ async def bind_foreign_regions(
                 holds="state",
             ),
             engine_kind,
+            resolve_secrets(declared[region.views]),
+            "replicas",
         )
     return out
