@@ -6,12 +6,13 @@
 
 """E2E: pg_duckdb attaches csv + parquet IN PLACE inside a stock embedded PG, federated natively (REQ-901, REQ-902).
 
-No docker. Provisions a pgserver embedded PG 16.2, installs pg_duckdb v1.0.0 (built against the cached
-PG 16.2 source by scripts/build_pg_duckdb.sh — HEAD needs a backend symbol 16.2 lacks), then drives the
-REAL connectors — PgDuckdbCsvConnector + PgDuckdbParquetConnector — whose read_csv/read_parquet views
-expose the demo files as native PG relations. A native orders table joins BOTH file sources with a
-governance (RLS) predicate; pg_duckdb executes the whole join inside PG via its embedded DuckDB, so the
-DuckDB engine's file reach collapses into one containerless Postgres engine.
+No docker. Provisions a pgserver embedded PG 16, stages pg_duckdb v1.0.0 into it the way the product's
+embedded tier does (stage_bundled_pg_extensions, from the provisa-pg-ext wheel's bundle for this
+platform: darwin-arm64, linux-x64), then drives the REAL connectors — PgDuckdbCsvConnector +
+PgDuckdbParquetConnector — whose read_csv/read_parquet views expose the demo files as native PG
+relations. A native orders table joins BOTH file sources with a governance (RLS) predicate; pg_duckdb
+executes the whole join inside PG via its embedded DuckDB, so the DuckDB engine's file reach collapses
+into one containerless Postgres engine.
 
 Scope / honest boundary: this proves the CONNECTORS + in-engine federation + governance filtering. It
 does NOT run the compiler's nested-JSON GraphQL shape through pg_duckdb: pg_duckdb's transparent path
@@ -20,15 +21,12 @@ satisfies neither (DuckDB rejects the colon form; PG rejects DuckDB's comma json
 not map json_build_object). Federating the nested pipeline through pg_duckdb needs a pg_duckdb-specific
 JSON emission in the transpiler — separate compiler work, not built here.
 
-Skips unless the pg_duckdb artifact is prebuilt in the cache (the ~25-min build is a release/CI step).
+A platform the wheel ships no bundle for fails loudly (BundledPgExtensionsMissing), never skips.
 """
 
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -45,40 +43,20 @@ from provisa.federation.connector_duckdb import (  # noqa: E402
     PgDuckdbJsonConnector,
     PgDuckdbParquetConnector,
 )
+from provisa.pg_extensions.staging import stage_bundled_pg_extensions  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
-_CACHE = Path.home() / ".cache" / "provisa-fdw" / "pg162"
-_PGDUCKDB_SO = _CACHE / "lib" / "postgresql" / "pg_duckdb.dylib"  # prebuilt marker (macOS suffix)
 
 
 def _install_pg_duckdb_into_pgserver() -> None:
-    """Copy pg_duckdb + libduckdb into pgserver, adding an @loader_path rpath so libduckdb resolves."""
-    src_lib = _CACHE / "lib" / "postgresql"
-    src_ext = _CACHE / "share" / "postgresql" / "extension"
-    pginstall = Path(pgserver.__file__).parent / "pginstall"
-    dst_lib = pginstall / "lib" / "postgresql"
-    dst_ext = pginstall / "share" / "postgresql" / "extension"
-    suffix = "dylib" if (dst_lib / "plpgsql.dylib").exists() else "so"
-    for lib in ("pg_duckdb", "libduckdb"):
-        shutil.copy(src_lib / f"{lib}.{suffix}", dst_lib / f"{lib}.{suffix}")
-    # the fresh copy carries only the cache rpath; add @loader_path so the sibling libduckdb is found
-    subprocess.run(
-        ["install_name_tool", "-add_rpath", "@loader_path", str(dst_lib / f"pg_duckdb.{suffix}")],
-        check=True, stderr=subprocess.DEVNULL,
-    )  # fmt: skip
-    shutil.copy(src_ext / "pg_duckdb.control", dst_ext / "pg_duckdb.control")
-    for f in src_ext.glob("pg_duckdb--*.sql"):
-        shutil.copy(f, dst_ext / f.name)
+    """Stage the wheel's pg_duckdb + libduckdb into pgserver's install, as the embedded tier does
+    at control-plane bootstrap (control_plane_pg). The bundle's pg_duckdb carries an @loader_path /
+    $ORIGIN rpath, so the sibling libduckdb resolves with no patching."""
+    stage_bundled_pg_extensions(Path(pgserver.__file__).parent / "pginstall")
 
 
 @pytest.fixture(scope="session")
 def embedded_pg_duckdb():
-    if sys.platform != "darwin":
-        pytest.skip("prebuilt pg_duckdb artifact in this cache is macOS/arm64")
-    if not _PGDUCKDB_SO.exists():
-        pytest.skip(
-            "pg_duckdb not prebuilt — run scripts/build_pg_duckdb.sh (a ~25-min release/CI step)"
-        )
     _install_pg_duckdb_into_pgserver()
     base = tempfile.mkdtemp(prefix="provisa_pgduckdb_")
     server = pgserver.get_server(base)
@@ -169,10 +147,6 @@ async def test_discover_reports_pg_duckdb_only_after_preload():
     This is the case a static 'is it installed' flag gets wrong: the .dylib is present the whole time,
     but pg_duckdb only works once it is in shared_preload_libraries. discover() reflects that live.
     """
-    if sys.platform != "darwin" or not _PGDUCKDB_SO.exists():
-        pytest.skip(
-            "pg_duckdb not prebuilt — run scripts/build_pg_duckdb.sh (a ~25-min release/CI step)"
-        )
     from provisa.federation.engine import build_pg_engine
 
     _install_pg_duckdb_into_pgserver()  # the extension files are present the whole test

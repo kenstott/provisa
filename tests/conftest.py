@@ -270,6 +270,30 @@ _HEAVY_MARKERS = frozenset(
 _SERVICE_WAIT_TIMEOUT: dict[str, int] = {"atlas": 900, "splunk": 600}
 _DEFAULT_WAIT_TIMEOUT = 180
 
+# The splunk service bind-mounts the vendored CIM add-on (docker-compose.test.yml). Splunk loads
+# apps once, at boot, so the models must be on disk before the container starts; an absent
+# directory mounts empty, the container offers only its two sample models, and the CIM test then
+# fails far downstream as "no data type could be resolved". The same three models
+# scripts/fetch-splunk-cim.sh keys its idempotence on.
+_SPLUNK_CIM_MODELS = os.path.join(
+    _REPO_ROOT, ".splunk-cim", "Splunk_SA_CIM", "default", "data", "models"
+)
+_SPLUNK_CIM_REQUIRED = ("Authentication.json", "Web.json", "Network_Traffic.json")
+
+
+def _require_vendored_splunk_cim() -> None:
+    missing = [
+        m for m in _SPLUNK_CIM_REQUIRED if not os.path.isfile(os.path.join(_SPLUNK_CIM_MODELS, m))
+    ]
+    if missing:
+        pytest.fail(
+            f"Splunk CIM add-on not vendored: {', '.join(missing)} absent from "
+            f"{os.path.normpath(_SPLUNK_CIM_MODELS)}. Run scripts/fetch-splunk-cim.sh "
+            f"(SPLUNKBASE_USERNAME/SPLUNKBASE_PASSWORD/SPLUNK_CIM_VERSION) before starting splunk.",
+            pytrace=False,
+        )
+
+
 # Host-published services whose ephemeral port the in-process app / test clients
 # read from these env vars. compose interpolates the same ${VAR} at `up` time.
 _ITEST_PORT_ENV = [
@@ -693,6 +717,8 @@ def _heavy_db_service(request):  # pyright: ignore
     if not services:
         yield
         return
+    if "splunk" in services:
+        _require_vendored_splunk_cim()
     try:
         # `--wait-timeout` bounds each attempt so a still-booting engine fails fast and
         # deterministically instead of hanging until an external harness timeout kills the

@@ -13,8 +13,9 @@ name: Integration suite (containers)
 # nightly against the integration branch and on demand, not on every push. A warehouse test that
 # cannot run because something is not set FAILS, naming what (tests/skip_is_failure.py).
 #
-# Secrets reach only the jobs that need them (warehouse, e2e), and only on pushes to this
-# repository's own branches and on schedule/dispatch; there is no pull_request trigger here.
+# Secrets reach only the jobs and steps that need them (warehouse, e2e, the suite's Splunk CIM
+# fetch), and only on pushes to this repository's own branches and on schedule/dispatch; there is
+# no pull_request trigger here.
 
 on:
   push:
@@ -142,6 +143,32 @@ jobs:
         name: Load images
         if: steps.images.outputs.cache-hit == 'true'
         run: zstd -dc ~/images.tar.zst | docker load
+
+      # The itest splunk service bind-mounts the Splunk CIM add-on (docker-compose.test.yml), which
+      # is licensed from Splunkbase and gitignored, so it is fetched here for a shard that runs a
+      # requires_splunk test. Without it the mount is empty and Splunk serves only its two sample
+      # models (tests/conftest.py refuses to boot splunk then). The Splunkbase credentials reach
+      # this step only. The tarball is cached by version, so Splunkbase is hit once per version.
+      - name: Restore Splunk CIM add-on
+        id: splunk-cim-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/provisa-splunk-cim
+          key: splunk-cim-6.1.0
+
+      - name: Vendor Splunk CIM add-on
+        env:
+          SPLUNK_CIM_VERSION: "6.1.0"
+          SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
+          SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
+        run: |
+          files=$(uv run python scripts/ci/run_lane.py ${{ matrix.lane }} \
+            ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} --files)
+          if [ -n "$files" ] && grep -l "requires_splunk" $files; then
+            scripts/fetch-splunk-cim.sh
+          else
+            echo "no requires_splunk test in this shard"
+          fi
 
       - &stack-slots
         name: Stack slots on this runner

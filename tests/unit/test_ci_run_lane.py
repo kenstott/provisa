@@ -113,3 +113,20 @@ def test_every_lane_bounds_each_test(lane):
     cmd = run_lane.command(lane, None, [])
     assert cmd[cmd.index("--timeout") + 1] == str(run_lane.TEST_TIMEOUT_S)
     assert cmd[cmd.index("--timeout-method") + 1] == "signal"
+
+
+def test_files_lists_exactly_the_modules_the_shard_runs(capsys):
+    """The workflow's Splunk CIM step reads --files to decide whether this shard boots splunk; the
+    list must be the shard's own files, or a shard that runs a splunk test would boot it empty."""
+    run_lane = _runner()
+    assert run_lane.main(["app", "--shard", "3/3", "--files"]) == 0
+    listed = capsys.readouterr().out.split()
+    assert listed == run_lane.shard(run_lane.test_files(("tests/integration", "tests/steps")), 3, 3)
+
+
+def test_files_expands_an_unsharded_lane_to_its_modules(capsys):
+    run_lane = _runner()
+    assert run_lane.main(["e2e", "--files"]) == 0
+    listed = capsys.readouterr().out.split()
+    assert listed == run_lane.test_files(("tests/e2e",))
+    assert listed and all(f.endswith(".py") for f in listed)
