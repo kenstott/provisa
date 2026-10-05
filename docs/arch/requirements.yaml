@@ -37039,7 +37039,18 @@
     applies to the buffered transports only (GraphQL, REST, JSON:API, Bolt, gRPC unary reads, MCP, natural-language
     queries, Cypher over HTTP). A streaming transport (pgwire, Arrow Flight, and any other streaming terminal)
     is already a bulk transport: it never redirects on the threshold or any default, only when the caller
-    forces it.'
+    forces it.
+
+    (Amended 2026-10-04, THE STREAMING ANSWER:) A forced redirect over pgwire or Arrow Flight answers
+    one row with the columns url, format, row_count and expires_at (a timestamp with time zone): over
+    pgwire as the statement''s result set (its Describe reports that shape), over Flight as the
+    do_get table. pgwire takes the setting as a startup parameter, in `options` (`-c provisa.redirect=on`),
+    or with `SET provisa.redirect = on|off`, `SET provisa.redirect_format = parquet|orc|DEFAULT` and
+    `RESET`; Flight takes the ticket options `redirect` (a boolean) and `redirect_format`. A value that
+    cannot be read is refused by name (pgwire refuses the connection or the SET; Flight refuses the
+    ticket). A data write asked to be delivered is refused by the pipeline, on every surface, because it
+    answers a count and has no result set to land; a registered command called with a forced redirect is
+    refused, because its output is answered inline.'
   use_case: Buffered transports cannot stream incrementally to the wire and require materialization. An
     automatic threshold at the terminal (not per-caller) prevents memory OOM on unexpectedly large results
     by using engine-native CTAS for large sets while keeping small results inline for latency.
@@ -37049,9 +37060,20 @@
   - provisa/api/jsonapi/generator.py
   - provisa/api/rest/generator.py
   - provisa/bolt/session.py
+  - provisa/pgwire/server.py
+  - provisa/api/flight/server.py
+  - provisa/api/mcp/tools.py
+  - provisa/nl/executor.py
+  - provisa/grpc/server.py
+  - provisa/api/redirect_headers.py
   tests:
   - tests/unit/test_buffered_auto_threshold.py
   - tests/unit/test_graphql_field_on_pipeline.py
+  - tests/unit/pgwire/test_pgwire_redirect.py
+  - tests/unit/test_flight_redirect.py
+  - tests/unit/test_nl_redirect.py
+  - tests/unit/test_redirect_headers.py
+  - tests/integration/test_redirect_every_transport_e2e.py
   since: 2026-07
   related_reqs:
   - REQ-1203

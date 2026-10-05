@@ -709,6 +709,29 @@ def parse_redirect_format(value: str) -> str:  # REQ-1194
     return fmt
 
 
+# REQ-1194/REQ-1224 (amended 2026-10-04): a streaming transport (pgwire, Flight) answers a forced
+# delivery with one row naming where the result was delivered, and until when.
+REDIRECT_ROW_SHAPE: list[tuple[str, str]] = [
+    ("url", "VARCHAR"),
+    ("format", "VARCHAR"),
+    ("row_count", "BIGINT"),
+    ("expires_at", "TIMESTAMPTZ"),
+]
+COMMAND_NOT_REDIRECTED = (
+    "a registered command's output is answered inline; ask for no redirect to call it"
+)
+
+
+def redirect_row(handle: dict, delivery: Delivery) -> tuple:  # REQ-1194
+    """The one row, in :data:`REDIRECT_ROW_SHAPE`'s columns, a delivery's handle is answered as."""
+    import datetime as _dt
+
+    expires_at = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(
+        seconds=int(handle["expires_in"])
+    )
+    return (handle["redirect_url"], delivery.output_format, handle["row_count"], expires_at)
+
+
 def delivery_from_request(  # REQ-1194, REQ-1195
     *,
     force_redirect: bool,

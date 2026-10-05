@@ -126,7 +126,7 @@ async def test_govern_batch_final_plan_runs_leading_returns_final(monkeypatch):
     monkeypatch.setattr(_pipeline, "_execute_plan", _exec)
 
     final = await _pipeline.govern_batch_final_plan(
-        "SELECT 1; SELECT 2; SELECT 3", "admin", object()
+        "SELECT 1; SELECT 2; SELECT 3", "admin", object(), deliver=None
     )
 
     assert executed == ["SELECT 1", "SELECT 2"]  # leading statements executed (governed)
@@ -136,4 +136,4 @@ async def test_govern_batch_final_plan_runs_leading_returns_final(monkeypatch):
 
 async def test_govern_batch_final_plan_empty_batch_raises(monkeypatch):
     with pytest.raises(ValueError, match="empty SQL batch"):
-        await _pipeline.govern_batch_final_plan("   ", "admin", object())
+        await _pipeline.govern_batch_final_plan("   ", "admin", object(), deliver=None)

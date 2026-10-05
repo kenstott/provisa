@@ -166,7 +166,7 @@ class TestWireParamBinding:
         travels bound alongside it — never spliced into the SQL text."""
         captured = {}
 
-        async def _mock_pipeline(sql, role_id, params=None, wire_formats=None):
+        async def _mock_pipeline(sql, role_id, params=None, wire_formats=None, *, deliver):
             captured["sql"] = sql
             captured["params"] = params
             from provisa.executor.result import QueryResult
