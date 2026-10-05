@@ -49,6 +49,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from types import SimpleNamespace
 import os
 import uuid
 from datetime import datetime, timezone
@@ -155,7 +156,17 @@ def given_provisa_registered_pg_table(shared_data: dict) -> None:
     table = f"provisa_req565_{uuid.uuid4().hex[:8]}"
 
     async def _setup() -> None:
-        pool = await _make_pool()
+        # The walk runs on a control-plane connection (provisa.core.database), as at startup.
+        from provisa.core.database import Database, create_engine_from_url
+
+        env = _pg_env()
+        pool = Database(
+            create_engine_from_url(
+                f"postgresql+psycopg://{env['user']}:{env['password']}@{env['host']}:"
+                f"{env['port']}/{env['database']}"
+            ),
+            name="req565-control-plane",
+        )
         try:
             async with pool.acquire() as conn:
                 await conn.execute(
@@ -300,8 +311,15 @@ class _PrivilegeError(Exception):
 class _FailingConn:
     """Connection whose execute() raises, simulating lack of CREATE privilege."""
 
+    # A PostgreSQL control-plane connection: it carries LISTEN/NOTIFY.
+    capabilities = SimpleNamespace(dialect="postgresql", listen_notify=True)
+
     def __init__(self) -> None:
         self.attempts: list[str] = []
+
+    async def fetch(self, _sql: str, schemas: list[str], names: list[str]) -> list[dict]:
+        # The catalog's answer to the base-table lookup: the table is an ordinary table.
+        return [{"schema": s, "name": n} for s, n in zip(schemas, names)]
 
     async def execute(self, sql: str, *args) -> None:
         self.attempts.append(sql)
@@ -969,8 +987,6 @@ def then_change_streamed_as_sse(shared_data: dict) -> None:
     assert delete_evt.operation == "delete"
     assert delete_evt.row == {"id": 1, "name": "Alicia"}
 
-
-from types import SimpleNamespace  # noqa: E402
 
 from provisa.api.data.subscribe import _resolve_provider_type  # noqa: E402
 from provisa.subscriptions.registry import get_provider  # noqa: E402

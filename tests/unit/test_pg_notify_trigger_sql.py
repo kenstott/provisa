@@ -19,6 +19,8 @@ transaction.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from provisa.subscriptions.pg_provider import CHANNEL_PREFIX
 from provisa.subscriptions.pg_triggers import MAX_NOTIFY_BYTES, _trigger_sql
 
@@ -71,7 +73,7 @@ def test_a_view_is_served_by_polling_without_attempting_a_trigger(caplog) -> Non
     from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
     class _FakeConn:
-        dialect = "postgresql"
+        capabilities = SimpleNamespace(dialect="postgresql", listen_notify=True)
 
         def __init__(self, base: set[tuple[str, str]]) -> None:
             self._base = base
@@ -117,7 +119,7 @@ def test_a_non_postgres_control_plane_installs_no_triggers_and_does_not_query_pg
     from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
     class _SqliteConn:
-        dialect = "sqlite"
+        capabilities = SimpleNamespace(dialect="sqlite", listen_notify=False)
 
         async def fetch(self, *_a, **_k):  # noqa: ANN002, ANN003
             raise AssertionError("pg_class probe must not run on a non-postgres control plane")
