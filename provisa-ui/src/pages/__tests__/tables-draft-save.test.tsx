@@ -13,7 +13,7 @@
 // change, a release after it (a draft table is claimed by its destination alone).
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "../../test-utils/render";
+import { render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { RegisteredTable, RoleTtl } from "../../types/admin";
 
@@ -211,8 +211,12 @@ async function openEditor(name: string) {
 }
 
 async function pickRegion(region: string) {
-  await userEvent.click(screen.getByTestId("table-region-select"));
-  await userEvent.click(await screen.findByRole("option", { name: region, hidden: true }));
+  const select = screen.getByTestId("table-region-select");
+  await userEvent.click(select);
+  // The page's region filter offers the same regions; pick from this field's own list.
+  const list = document.getElementById(select.getAttribute("aria-controls") ?? "");
+  if (list === null) throw new Error("the table's region field opened no option list");
+  await userEvent.click(await within(list).findByRole("option", { name: region, hidden: true }));
 }
 
 describe("TablesPage — draft (REQ-1921)", () => {
