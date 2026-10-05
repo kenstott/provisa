@@ -33,7 +33,7 @@ from provisa.core.connection_loop import spawn_background
 
 
 if TYPE_CHECKING:
-    from provisa.scheduler.holder import SchedulerHolder
+    from provisa.scheduler.holder import Holders
 
 # Jobs that are this PROCESS's own work and so run in every worker (REQ-1900). Every other job is
 # the deployment's and runs only in the worker that holds the scheduler lock.
@@ -45,6 +45,11 @@ if TYPE_CHECKING:
 #                    are what keep builds single, not the scheduler's holder.
 PER_WORKER_JOB_IDS = frozenset({"egress_drain", "engine_watch", "replica:builds"})
 
+# Jobs that build into, or serve from, the stores of the node's region (REQ-1922): the event loop's
+# view builds and source polls, and the row caches' refresh and reap. Every region runs its own, so
+# their holder is the region's (``Holders.region``); every other job's is the deployment's.
+REGION_JOB_PREFIXES = ("events:", "poll:", "row_materialize:")
+
 
 def runs_in_every_worker(job_id: str) -> bool:
     """Whether the job ``job_id`` runs in every worker, not only the scheduler's holder. An
@@ -52,17 +57,23 @@ def runs_in_every_worker(job_id: str) -> bool:
     return job_id.partition(":org_")[0] in PER_WORKER_JOB_IDS
 
 
+def runs_in_each_region(job_id: str) -> bool:
+    """Whether the job ``job_id`` is its region's work, run by each region's holder."""
+    return job_id.startswith(REGION_JOB_PREFIXES)
+
+
 class BackgroundJobExecutor(BaseExecutor):
     """Run each APScheduler job on a background worker's connection loop.
 
-    With a ``holder`` (the server's own scheduler), the deployment's jobs run only in the worker
-    that holds the scheduler lock — see ``provisa.scheduler.holder``. Without one, every job runs:
+    With ``holders`` (the server's own scheduler), a deployment job runs only in the worker that
+    holds the deployment's lock, and a region job only in the one that holds its region's — see
+    ``provisa.scheduler.holder``. Without them, every job runs:
     a scheduler whose jobs all belong to this process (the live-query engine's polls feed
     subscribers connected to THIS process)."""
 
-    def __init__(self, holder: "SchedulerHolder | None" = None) -> None:
+    def __init__(self, holders: "Holders | None" = None) -> None:
         super().__init__()
-        self._holder = holder
+        self._holders = holders
 
     def _do_submit_job(self, job: Any, run_times: list[Any]) -> None:
         logger_name = self._logger.name
@@ -70,8 +81,12 @@ class BackgroundJobExecutor(BaseExecutor):
         async def _run() -> None:
             # Asked here, on the background worker: the question is a control-plane statement,
             # and the process loop that submitted this job must not wait on one.
-            holder = self._holder
-            if holder is not None and not runs_in_every_worker(job.id) and not holder.holds():
+            holders = self._holders
+            if holders is not None and not runs_in_every_worker(job.id):
+                holder = holders.region if runs_in_each_region(job.id) else holders.deployment
+            else:
+                holder = None
+            if holder is not None and not holder.holds():
                 # Another worker holds the lock and runs this firing. Reported as a run with no
                 # events so the scheduler releases the job's instance slot.
                 self._run_job_success(job.id, [])
@@ -93,6 +108,6 @@ class BackgroundJobExecutor(BaseExecutor):
         spawn_background(_run(), name=f"scheduled:{job.id}")
 
 
-def background_scheduler(holder: "SchedulerHolder | None" = None) -> AsyncIOScheduler:
+def background_scheduler(holders: "Holders | None" = None) -> AsyncIOScheduler:
     """An ``AsyncIOScheduler`` whose jobs run on background worker threads."""
-    return AsyncIOScheduler(executors={"default": BackgroundJobExecutor(holder)})
+    return AsyncIOScheduler(executors={"default": BackgroundJobExecutor(holders)})

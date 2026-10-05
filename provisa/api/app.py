@@ -265,6 +265,9 @@ class AppState:
     table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
     _scheduler: Any | None = None  # APScheduler instance for scheduled queries
     _scheduler_holder: Any | None = None  # SchedulerHolder: one worker runs the jobs (REQ-1900)
+    # SchedulerHolder: one worker of this node's region runs its region's jobs (REQ-1922); the
+    # deployment's own holder when the platform declares no regions.
+    _region_holder: Any | None = None
     global_gql_naming_convention: str = (
         "apollo_graphql"  # runtime override; set via updateNamingConvention
     )
@@ -2837,6 +2840,9 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
             state._scheduler.shutdown(wait=False)
     # REQ-1900: end the holder's control-plane session, so a worker that held the scheduler lock
     # hands it on at shutdown rather than when its process is finally reaped.
+    if state._region_holder is not None and state._region_holder is not state._scheduler_holder:
+        state._region_holder.close()
+    state._region_holder = None
     if state._scheduler_holder is not None:
         state._scheduler_holder.close()
         state._scheduler_holder = None

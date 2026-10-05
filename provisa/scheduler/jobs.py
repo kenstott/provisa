@@ -36,7 +36,7 @@ from provisa.core.trino_system_catalogs import OTEL_CATALOG
 from provisa.observability.ops_schema import REQUEST_SPAN_ATTR
 
 if TYPE_CHECKING:
-    from provisa.scheduler.holder import SchedulerHolder
+    from provisa.scheduler.holder import Holders
     from provisa.core.models import ScheduledTrigger
 
 logger = logging.getLogger(__name__)
@@ -872,11 +872,11 @@ async def _audit_reaped(org_id: str, name: str, outcome: dict) -> None:
     )
 
 
-def new_scheduler(holder: "SchedulerHolder | None" = None) -> AsyncIOScheduler:
+def new_scheduler(holders: "Holders | None" = None) -> AsyncIOScheduler:
     """An AsyncIOScheduler whose wakeup chain never inherits a request's trace context.
 
-    ``holder`` (REQ-1900): the server's scheduler passes its ``SchedulerHolder``, so the
-    deployment's jobs run in one worker process only.
+    ``holders`` (REQ-1900, REQ-1922): the server's scheduler passes its ``Holders``, so the
+    deployment's jobs run in one worker process only, and each region's jobs in one of its own.
 
     ``add_job`` on a running scheduler calls ``wakeup`` synchronously, and ``wakeup`` re-arms the
     timer with ``call_later`` -- which copies the CALLER's contextvars. A job registered from inside
@@ -890,7 +890,7 @@ def new_scheduler(holder: "SchedulerHolder | None" = None) -> AsyncIOScheduler:
     from provisa.scheduler.executor import background_scheduler
 
     # REQ-1882: jobs run on background worker threads, never on the process (front) loop.
-    scheduler = background_scheduler(holder)
+    scheduler = background_scheduler(holders)
     inner = scheduler.wakeup
 
     def wakeup() -> None:
