@@ -12,9 +12,11 @@
 """Canary UUID stamper — injects per-file canary UUIDs into copyright headers,
 builds .canary_registry.json, and generates canary-site/ static JSON files."""
 
+import fcntl
 import json
 import os
 import re
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +25,12 @@ PROJECT_NAME = "provisa"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = PROJECT_ROOT / ".canary_registry.json"
 SITE_DIR = Path(os.environ["CANARY_SITE_DIR"]).expanduser()
+# Every checkout and agent worktree of this repo shares SITE_DIR, and each one's post-commit hook
+# runs this script. One lock serializes them, so two hooks never prune or deploy the directory at
+# the same time.
+SITE_LOCK = SITE_DIR.parent / f".{SITE_DIR.name}.lock"
+# A worktree's .git is a file pointing at the main repository; the main checkout's is a directory.
+IS_MAIN_CHECKOUT = (PROJECT_ROOT / ".git").is_dir()
 EXCLUDE_DIRS = {
     ".venv",
     "venv",
@@ -200,6 +208,10 @@ def write_site(registry: dict) -> None:
         site_file = SITE_DIR / f"{canary_id}.json"
         site_file.write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8")
 
+    # Only the main checkout prunes. A worktree's registry holds only its own branch's files, so
+    # pruning against it would delete every other branch's entries from the shared directory.
+    if not IS_MAIN_CHECKOUT:
+        return
     # Drop entries for canary ids the registry no longer carries — a renamed, deleted or
     # re-stamped source leaves its old id behind, and the orphans accumulate without bound.
     # Cloudflare Pages rejects a deployment over 20,000 files, which is what the unpruned
@@ -214,7 +226,24 @@ def write_site(registry: dict) -> None:
         print(f"Pruned {removed} stale site entries")
 
 
+def deploy_site() -> None:
+    """Publish SITE_DIR to Cloudflare Pages when its credentials are configured."""
+    if not (os.environ.get("CLOUDFLARE_API_TOKEN") and os.environ.get("CLOUDFLARE_ACCOUNT_ID")):
+        return
+    subprocess.run(
+        ["npx", "wrangler", "pages", "deploy", str(SITE_DIR), "--project-name=simpleishard-canary"],
+        check=True,
+    )
+
+
 def main() -> None:
+    SITE_DIR.mkdir(exist_ok=True)
+    with open(SITE_LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        stamp_and_publish()
+
+
+def stamp_and_publish() -> None:
     source_files = find_source_files()
     file_canaries: dict[str, str] = {}
 
@@ -240,6 +269,7 @@ def main() -> None:
     print(f"Stamped {len(file_canaries)} files")
     print(f"Registry: {REGISTRY_PATH}")
     print(f"Site: {SITE_DIR}/")
+    deploy_site()
 
 
 if __name__ == "__main__":
