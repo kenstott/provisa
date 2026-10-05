@@ -421,6 +421,14 @@ class TableProcessor(ABC):
             return None
         return my_event
 
+    async def post_landed(self, conn: Any, event_type: str, payload: dict) -> int | None:
+        """A landing into this node's table that its processor did not run (a push listener's batch,
+        a store pipeline's batch): post and route it as the processor posts its own change, and stamp
+        the node's refresh (REQ-961), on ``conn`` inside the caller's transaction."""
+        eid = await self._post_and_route(conn, event_type, payload)
+        await queue.record_refresh(conn, self.node, at=datetime.now(timezone.utc), ok=True)
+        return eid
+
     async def _post_and_route(self, conn: Any, event_type: str, payload: dict) -> int | None:
         """Post this node's change and fan it to the right dependents. Two modes:
 
