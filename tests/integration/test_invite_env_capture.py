@@ -48,7 +48,8 @@ from provisa.core.schema_org import user_directory
 from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
-pytestmark = [pytest.mark.integration]
+# The app serves 'root' as its own org, re-pointed and bound by the harness (REQ-1266).
+pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("root")]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
@@ -145,7 +146,6 @@ def planes(monkeypatch):
     )
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
-    monkeypatch.setattr(app_state, "org_id", _ROOT_ORG, raising=False)
 
     from types import SimpleNamespace
 

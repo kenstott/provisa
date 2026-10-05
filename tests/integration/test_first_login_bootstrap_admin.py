@@ -41,7 +41,8 @@ from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles, user_directory, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
-pytestmark = [pytest.mark.integration]
+# The app serves 'default' as its own org, re-pointed and bound by the harness (REQ-1266).
+pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("default")]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
@@ -103,7 +104,6 @@ def planes(monkeypatch):
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
     monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
     monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
-    monkeypatch.setattr(app_state, "org_id", _ORG, raising=False)
     # /auth/bootstrap-status and /auth/claim-bootstrap read the SAME dict the middleware resolves
     # its own flag from, so the endpoint can never disagree with the grant it warns about.
     monkeypatch.setattr(
@@ -265,7 +265,10 @@ def test_platform_admin_may_request_the_platform_admin_role(planes):
     admin_db, tenant_db = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         client.post("/auth/claim-bootstrap", headers=_hdr("tok-first"))
-        resp = client.get("/whoami", headers=_hdr("tok-first", "platform_admin"))
+        # REQ-1935: a request off the platform plane names its org.
+        resp = client.get(
+            "/whoami", headers={**_hdr("tok-first", "platform_admin"), "x-org-provisa": _ORG}
+        )
     assert resp.status_code == 200, resp.text
     # REQ-1327: platform_admin is a control-plane role (cross_org right) and is NEVER the acting
     # data role while the caller holds a data-plane role. Requesting it via X-Provisa-Role is

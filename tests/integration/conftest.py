@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
+
 import pytest
 import pytest_asyncio
 
@@ -331,6 +332,10 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "unbound: run with no org bound -- for entrypoints that bind one themselves (REQ-1266)",
     )
+    config.addinivalue_line(
+        "markers",
+        "deployment_org(org_id): the app state serves org_id as its own org, bound for the test",
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -344,6 +349,16 @@ def _deployment_org_bound(request: pytest.FixtureRequest):
         return
     from tests.conftest import as_deployment_org
 
+    served = request.node.get_closest_marker("deployment_org")
+    if served is not None:
+        # The app's own org is re-pointed BEFORE it is bound (its runtime moves with it,
+        # AppState.org_id), here in the test's own context: a binding made inside an async fixture
+        # stays in that fixture's task.
+        import provisa.api.app as app_mod
+
+        request.getfixturevalue("monkeypatch").setattr(
+            app_mod.state, "org_id", served.args[0], raising=False
+        )
     with as_deployment_org():
         yield
         if "monkeypatch" in request.fixturenames:
