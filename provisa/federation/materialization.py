@@ -77,13 +77,19 @@ class WriteFace(str, Enum):  # REQ-848
 
 
 def select_write_face(engine: FederationEngine, backend_type: str) -> WriteFace:  # REQ-848
-    """Pick the write face for landing into ``backend_type`` on ``engine``.
+    """Pick the write face for landing into ``backend_type`` on ``engine`` — the ONE land-face
+    decision, wired into ``NativeEngineBackend.land_source_table``.
 
-    Validates the backend first (REQ-846). Collapses into the engine when the backend is its
-    own store; uses SQLAlchemy upsert for a separate attach-able relational store; else app-land.
+    Validates the backend first (REQ-846). An engine with a native store (every NativeEngineBackend
+    engine) lands through its OWN runtime (``runtime.land_table``), so it collapses into the engine —
+    this is what the runtime does today for every such engine regardless of the store's SQLAlchemy
+    backend NAME, so the face is keyed on ``native_store is not None``, not on ``backend_type ==
+    native_store`` (which mis-fired for Postgres, whose native_store is ``postgres`` while its store
+    backend is ``postgresql``). A broad federator with no native store (Trino) lands into a separate
+    attach-able relational store via SQLAlchemy upsert; anything else is app-land.
     """
     validate_materialization_backend(engine, backend_type)
-    if backend_type == engine.native_store:
+    if engine.native_store is not None:
         return WriteFace.ENGINE_NATIVE
     if backend_type in _RELATIONAL:
         return WriteFace.SQLALCHEMY_UPSERT

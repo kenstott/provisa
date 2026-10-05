@@ -16,7 +16,10 @@ import pytest
 
 from provisa.core.models import Source, SourceType
 from provisa.federation.engine import (
+    build_clickhouse_engine,
     build_duckdb_engine,
+    build_pg_engine,
+    build_snowflake_engine,
     build_sqlalchemy_engine,
     build_trino_engine,
 )
@@ -76,6 +79,34 @@ def test_separate_relational_store_uses_sqlalchemy_upsert():
 def test_write_face_validates_backend_first():
     with pytest.raises(InvalidMaterializationBackend):
         select_write_face(build_trino_engine(), "parquet")
+
+
+# REQ-848: select_write_face is the ONE land-face decision, wired into land_source_table
+# (native_backend.py). This table asserts the face for every (engine kind, store backend) the code
+# supports equals what the runtime does today: a native engine landing into its OWN store collapses
+# into the engine (ENGINE_NATIVE, through its runtime's land_table); a separate attach-able
+# relational store uses store_writer (SQLALCHEMY_UPSERT). Nothing here is PIPELINE_LAND yet.
+@pytest.mark.parametrize(
+    ("engine_factory", "store_backend", "expected"),
+    [
+        (lambda: build_duckdb_engine(), "duckdb", WriteFace.ENGINE_NATIVE),
+        (lambda: build_pg_engine(), "postgresql", WriteFace.ENGINE_NATIVE),
+        (lambda: build_clickhouse_engine(), "clickhouse", WriteFace.ENGINE_NATIVE),
+        (lambda: build_snowflake_engine(), "snowflake", WriteFace.ENGINE_NATIVE),
+        (lambda: build_sqlalchemy_engine("mysql://h/db"), "mysql", WriteFace.ENGINE_NATIVE),
+        # REQ-990: a SingleStore store-engine lands into its own store (its bulk path there is the
+        # streaming LOAD DATA, but the FACE is still engine-native — same as every other own store).
+        (
+            lambda: build_sqlalchemy_engine("singlestoredb://h/db"),
+            "singlestoredb",
+            WriteFace.ENGINE_NATIVE,
+        ),
+        # Trino attaches a separate relational store and lands through store_writer.
+        (lambda: build_trino_engine(), "postgresql", WriteFace.SQLALCHEMY_UPSERT),
+    ],
+)
+def test_write_face_table_matches_runtime(engine_factory, store_backend, expected):
+    assert select_write_face(engine_factory(), store_backend) is expected
 
 
 # ---- reactive-replica set (REQ-845) -----------------------------------------

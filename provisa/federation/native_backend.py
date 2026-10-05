@@ -568,11 +568,21 @@ class NativeEngineBackend(EngineBackend):
         match_floor: float = 0.0,
         shape: str | None = None,
     ) -> str:
-        """Land ``rows`` through the runtime when it holds the store's own connection (DuckDB, REQ-989
-        — a second connection cannot open a file the engine already ATTACHed); otherwise the base
-        ``store_writer`` DSN path (every other native store) applies unchanged."""
+        """Land ``rows`` by the one land-face decision (REQ-848): ``select_write_face`` picks
+        ENGINE_NATIVE — land through the runtime's own connection, into the engine's own store (the
+        DuckDB single-connection case, REQ-989, and every other native store whose runtime lands
+        itself) — or the base ``store_writer`` DSN path (a separate relational store). The selector
+        replaces the former ``hasattr(runtime, 'land_table')`` probe so the face is chosen in one
+        place; ENGINE_NATIVE still requires a runtime that lands itself."""
+        from sqlalchemy import make_url
+
+        from provisa.federation.materialization import WriteFace, select_write_face
+
+        backend_type = make_url(self.engine.materialize_store()).get_backend_name()
         runtime = self._runtime_for(state)
-        if hasattr(runtime, "land_table"):
+        if select_write_face(self.engine, backend_type) is WriteFace.ENGINE_NATIVE and hasattr(
+            runtime, "land_table"
+        ):
             return await runtime.land_table(
                 schema=schema,
                 table=table,

@@ -286,6 +286,12 @@ def test_databricks_source_land_writes_its_replica_on_the_request_thread(monkeyp
     monkeypatch.setattr(databricks_store, "land_databricks_native", write)
     backend = DatabricksBackend.__new__(DatabricksBackend)
     backend._runtime = _databricks_runtime()
+    # land_source_table now resolves the one land-face via select_write_face (REQ-848); for a
+    # Databricks store (backend == the engine's native store) that is ENGINE_NATIVE, so the land
+    # still goes through the runtime's land_table on the request thread.
+    backend.engine = SimpleNamespace(
+        native_store="databricks", materialize_store=lambda: "databricks://host/db"
+    )
     replica = replica_table_name("src", "sales", "orders")
     landed = _run_as_request(
         lambda: backend.land_source_table(
