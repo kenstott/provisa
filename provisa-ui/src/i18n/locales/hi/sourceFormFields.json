@@ -55,6 +55,8 @@
     "awsS3AccessKey": "AWS S3 (एक्सेस कुंजी)",
     "azureAdls": "Azure ADLS",
     "googleCloudStorage": "Google Cloud Storage",
+    "gcsHmacAccessId": "HMAC एक्सेस ID",
+    "gcsHmacSecret": "HMAC सीक्रेट",
     "s3EndpointMinio": "S3 एंडपॉइंट (MinIO)",
     "storageAccount": "स्टोरेज खाता",
     "accessKey": "एक्सेस कुंजी",

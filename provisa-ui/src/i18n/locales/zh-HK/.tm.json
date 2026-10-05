@@ -4873,5 +4873,7 @@
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor.",
   "regionSelector.json::regionSelector.loadError": "Regions could not be loaded",
-  "zh-HK/replicaBuild.json::replicaBuild.method.store_pipeline": "loaded by the store's own pipeline"
+  "zh-HK/replicaBuild.json::replicaBuild.method.store_pipeline": "loaded by the store's own pipeline",
+  "zh-HK/sourceFormFields.json::sourceFormFields.gcsHmacAccessId": "HMAC Access ID",
+  "zh-HK/sourceFormFields.json::sourceFormFields.gcsHmacSecret": "HMAC Secret"
 }

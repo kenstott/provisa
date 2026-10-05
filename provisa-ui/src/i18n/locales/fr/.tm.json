@@ -4872,5 +4872,7 @@
   "tablesPage.json::tablesPage.modelingRole.impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table",
   "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
   "regionSelector.json::regionSelector.loadError": "Regions could not be loaded",
-  "fr/replicaBuild.json::replicaBuild.method.store_pipeline": "loaded by the store's own pipeline"
+  "fr/replicaBuild.json::replicaBuild.method.store_pipeline": "loaded by the store's own pipeline",
+  "fr/sourceFormFields.json::sourceFormFields.gcsHmacAccessId": "HMAC Access ID",
+  "fr/sourceFormFields.json::sourceFormFields.gcsHmacSecret": "HMAC Secret"
 }

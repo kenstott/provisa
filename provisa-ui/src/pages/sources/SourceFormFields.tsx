@@ -13,6 +13,8 @@ import { useTranslation } from "react-i18next";
 import type { Domain } from "../../types/admin";
 import { DATA_LAKE, FILE_SOURCES, HOST_PORT_ONLY, SIMPLE_RDBMS } from "./constants";
 import { AuthUserPass } from "./AuthUserPass";
+import { ObjectStoreCredentialFields } from "./ObjectStoreCredentialFields";
+import { CLOUD_FILE_TYPES, objectStoreOf } from "./objectStoreHints";
 import { SourceFormFieldsExtended } from "./SourceFormFieldsExtended";
 
 export interface SourceFormState {
@@ -277,6 +279,13 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
                 ? "./demo/files/customers.csv"
                 : "./demo/files/products.parquet"
           }
+        />
+      )}
+      {CLOUD_FILE_TYPES.has(form.type) && objectStoreOf(form.path) && (
+        <ObjectStoreCredentialFields
+          store={objectStoreOf(form.path)!}
+          fields={authFields}
+          setFields={setAuthFields}
         />
       )}
       {form.type === "snowflake" && (

@@ -55,6 +55,8 @@
     "awsS3AccessKey": "AWS S3 (chiave di accesso)",
     "azureAdls": "Azure ADLS",
     "googleCloudStorage": "Google Cloud Storage",
+    "gcsHmacAccessId": "ID di accesso HMAC",
+    "gcsHmacSecret": "Segreto HMAC",
     "s3EndpointMinio": "Endpoint S3 (MinIO)",
     "storageAccount": "Account di archiviazione",
     "accessKey": "Chiave di accesso",

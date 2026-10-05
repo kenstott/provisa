@@ -77,6 +77,12 @@ import {
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
 import { sourceLoadFieldsValid } from "./sources/loadManagement";
 import { SourceFormFields } from "./sources/SourceFormFields";
+import {
+  CLOUD_FILE_TYPES,
+  objectStoreFields,
+  objectStoreHints,
+  objectStoreOf,
+} from "./sources/objectStoreHints";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
@@ -517,6 +523,16 @@ export function SourcesPage() {
     // Secrets themselves (password/access_token/private key) are never sent back by the read
     // query, same as every other source type's password field — only the non-secret extras
     // (warehouse/schema/role/http_path/credentials_path/access_key_id/endpoint) round-trip.
+    // REQ-990: a CSV/Parquet file's object-store credentials come back into the form's fields for
+    // the store its path names.
+    if (CLOUD_FILE_TYPES.has(s.type) && objectStoreOf(s.path) && s.federationHintsJson) {
+      try {
+        const hints = JSON.parse(s.federationHintsJson) as Record<string, string>;
+        setAuthFields(objectStoreFields(objectStoreOf(s.path)!, hints));
+      } catch {
+        setAuthFields({});
+      }
+    }
     if (
       (s.type === "delta_lake" || s.type === "iceberg" ||
         s.type === "snowflake" || s.type === "databricks" || s.type === "bigquery" ||
@@ -761,17 +777,17 @@ export function SourcesPage() {
             ? { http_path: authFields.http_path }
             : form.type === "bigquery" && authType === "service_account" && authFields.credentials_json
               ? { credentials_path: authFields.credentials_json }
-              : // delta_lake/iceberg: DuckDB's _s3_secret_ddl (connector_duckdb.py) reads S3 creds from
-                // federation_hints, never from mapping — unlike hive, which keeps its storage.aws
-                // creds in mapping (Trino's hive connector props). Only "aws" is wired here: DuckDB's
-                // delta_scan/iceberg_scan have no azure/gcs SECRET support yet.
-                (form.type === "delta_lake" || form.type === "iceberg") &&
-                  authType === "aws"
-                ? Object.fromEntries(
-                    (["access_key_id", "secret_access_key", "endpoint"] as const)
-                      .filter((k) => authFields[k])
-                      .map((k) => [k, authFields[k]]),
-                  )
+              : // REQ-990: a CSV/Parquet file in an object store carries that store's credentials,
+                // the store named by its path (S3, GCS HMAC keys, an Azure account key).
+                CLOUD_FILE_TYPES.has(form.type) && objectStoreOf(form.path)
+                ? objectStoreHints(objectStoreOf(form.path)!, authFields)
+                : // delta_lake/iceberg: DuckDB's _s3_secret_ddl (connector_duckdb.py) reads S3 creds
+                  // from federation_hints, never from mapping — unlike hive, which keeps its
+                  // storage.aws creds in mapping (Trino's hive connector props). Only "aws" is wired
+                  // here: DuckDB's delta_scan/iceberg_scan have no azure/gcs SECRET support yet. The
+                  // region is saved with them (it was shown and then dropped).
+                  (form.type === "delta_lake" || form.type === "iceberg") && authType === "aws"
+                  ? objectStoreHints("S3", authFields)
                 : // exasol: an optional TLS-fingerprint pin for a self-signed cert the truststore
                   // can't chain (models.py's Source.jdbc_url reads federation_hints["tls_fingerprint"]).
                   form.type === "exasol" && authType === "tls_fingerprint" && authFields.tls_fingerprint

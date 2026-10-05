@@ -55,6 +55,8 @@
     "awsS3AccessKey": "AWS S3（存取金鑰）",
     "azureAdls": "Azure ADLS",
     "googleCloudStorage": "Google Cloud Storage",
+    "gcsHmacAccessId": "HMAC 存取 ID",
+    "gcsHmacSecret": "HMAC 密鑰",
     "s3EndpointMinio": "S3 端點 (MinIO)",
     "storageAccount": "儲存體帳戶",
     "accessKey": "存取金鑰",

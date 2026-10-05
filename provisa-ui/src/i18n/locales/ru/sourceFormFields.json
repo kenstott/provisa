@@ -55,6 +55,8 @@
     "awsS3AccessKey": "AWS S3 (ключ доступа)",
     "azureAdls": "Azure ADLS",
     "googleCloudStorage": "Google Cloud Storage",
+    "gcsHmacAccessId": "Идентификатор доступа HMAC",
+    "gcsHmacSecret": "Секрет HMAC",
     "s3EndpointMinio": "Конечная точка S3 (MinIO)",
     "storageAccount": "Учётная запись хранилища",
     "accessKey": "Ключ доступа",
