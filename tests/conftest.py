@@ -8,6 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
+import json
 import logging
 import os
 import subprocess
@@ -505,14 +506,57 @@ def _download_trino_plugin(target: str, name: str) -> None:
     )
 
 
+# What _populate_trino_plugins itself downloaded, per plugin: {name: {"file", "sha256"}}. It sits
+# beside the plugin directories, never in one (each is bind-mounted into Trino on its own), and it
+# is what separates "a build this harness fetched for an earlier pin" -- replaced by the current
+# pin, the designed fetch path -- from "a jar it did not fetch" -- refused by name.
+_PLUGIN_DOWNLOADS = ".conftest-downloads.json"
+
+
+def _downloads(plugins: str) -> dict[str, dict[str, str]]:
+    path = os.path.join(plugins, _PLUGIN_DOWNLOADS)
+    if not os.path.isfile(path):
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
+def _sha256(path: str) -> str:
+    import hashlib
+
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def _record_download(plugins: str, name: str, jar: str) -> None:
+    record = _downloads(plugins)
+    record[name] = {"file": os.path.basename(jar), "sha256": _sha256(jar)}
+    with open(os.path.join(plugins, _PLUGIN_DOWNLOADS), "w") as f:
+        json.dump(record, f, indent=1, sort_keys=True)
+
+
+def _downloaded_here(plugins: str, name: str, target: str, present: list[str]) -> bool:
+    """Whether ``target`` holds exactly the one jar this harness downloaded for ``name``, unchanged
+    since: its file name and bytes are the record's."""
+    entry = _downloads(plugins).get(name)
+    return (
+        entry is not None
+        and present == [entry["file"]]
+        and _sha256(os.path.join(target, entry["file"])) == entry["sha256"]
+    )
+
+
 def _populate_trino_plugins() -> None:
     """Make each plugin directory the stack mounts hold exactly the pinned build.
 
     A directory holding exactly ``<name>-<version>.jar`` is used; an empty or missing one is
-    filled from Maven Central. Anything else -- another version's jar, or a locally built plugin
-    (many jars) -- is refused by name: a test that ran against it would test a connector other
-    than the one pinned, and say nothing. A symlink is the old borrowing of the primary checkout's
-    locally built plugins; it is removed and the pinned build downloaded in its place.
+    filled from Maven Central. A directory holding the jar this harness downloaded for an earlier
+    pin (its name and bytes as recorded in _PLUGIN_DOWNLOADS) is a fetch to bring up to date: it is
+    replaced with the pinned build. Anything else -- a jar the harness did not fetch, one changed
+    since, or a locally built plugin (many jars) -- is refused by name: a test that ran against it
+    would test a connector other than the one pinned, and say nothing. A symlink is the old
+    borrowing of the primary checkout's locally built plugins; it is removed and the pinned build
+    downloaded in its place.
     """
     plugins = os.path.join(_REPO_ROOT, "trino", "plugins")
     if not os.path.isdir(plugins):
@@ -528,6 +572,9 @@ def _populate_trino_plugins() -> None:
         present = sorted(os.listdir(target)) if os.path.isdir(target) else []
         if present == [pinned]:
             continue
+        if present and _downloaded_here(plugins, name, target, present):
+            os.unlink(os.path.join(target, present[0]))  # this harness's fetch for an earlier pin
+            present = []
         if present:
             raise RuntimeError(
                 f"{target} holds {present[:3]}{' ...' if len(present) > 3 else ''}, not the "
@@ -535,6 +582,7 @@ def _populate_trino_plugins() -> None:
                 "build is downloaded on the next run."
             )
         _download_trino_plugin(target, name)
+        _record_download(plugins, name, os.path.join(target, pinned))
 
 
 def _marker_batches(items) -> list[list[str]]:
