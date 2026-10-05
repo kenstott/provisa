@@ -21,8 +21,10 @@ materializes into Iceberg or a plain RDB target:
   the refresh wall-clock. The kind is recorded alongside the value so a lineage
   query knows the fidelity.
 
-These land in the refresh span (and the ``mv_refresh_log`` ledger); users derive
-point-in-time, column-level lineage by querying those records (REQ-862).
+Every refresh records both (and the input version's kind) on its refresh span; users derive
+point-in-time, column-level lineage by querying those spans (REQ-862). A coordinated refresh
+also keeps the latest pair on the region's ``mv_build_state`` row, where its claim dedups on
+the input version.
 """
 
 from __future__ import annotations
