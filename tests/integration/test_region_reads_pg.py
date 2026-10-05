@@ -26,6 +26,11 @@ import sqlalchemy as sa
 
 pytestmark = [pytest.mark.integration]
 
+#: The org environment's name for eu's store (replica_address.region_read_name), and the foreign
+#: server the engine reaches it by (named like every attach object, REQ-1266/1529).
+_NAME = "org_acme__region_eu"
+_SERVER = f"fdw_{_NAME}"
+
 
 @pytest.fixture
 def eu(docker_postgres):
@@ -56,8 +61,8 @@ def eu(docker_postgres):
     dsn = f"postgresql://provisa:{password}@localhost:5432/{store_db}"
     yield runtime, store, dsn, schema
     cur = runtime._con.cursor()
-    cur.execute('DROP SERVER IF EXISTS "region_eu" CASCADE')
-    cur.execute(f'DROP SCHEMA IF EXISTS "region_eu__{schema}" CASCADE')
+    cur.execute(f'DROP SERVER IF EXISTS "{_SERVER}" CASCADE')
+    cur.execute(f'DROP SCHEMA IF EXISTS "{_SERVER}__{schema}" CASCADE')
     runtime.close()
     store.dispose()
     with admin.connect() as conn:
@@ -73,8 +78,8 @@ def _rows(runtime, sql: str) -> list[tuple]:
 
 def test_the_pg_engine_reads_another_regions_replica_through_postgres_fdw(eu):
     runtime, _store, dsn, schema = eu
-    catalog, local, table = runtime.attach_region_table("eu", dsn, schema, "orders")
-    assert (local, table) == (f"region_eu__{schema}", "orders")
+    catalog, local, table = runtime.attach_region_table(_NAME, dsn, schema, "orders")
+    assert (local, table) == (f"{_SERVER}__{schema}", "orders")
     assert _rows(
         runtime, f'SELECT id, region FROM "{catalog}"."{local}"."{table}" ORDER BY id'
     ) == [
@@ -88,11 +93,11 @@ def test_the_pg_engine_reads_another_regions_replica_through_postgres_fdw(eu):
 
 def test_a_replica_whose_columns_changed_is_read_as_it_is_now(eu):
     runtime, store, dsn, schema = eu
-    runtime.attach_region_table("eu", dsn, schema, "orders")
+    runtime.attach_region_table(_NAME, dsn, schema, "orders")
     with store.begin() as conn:
         conn.execute(sa.text(f'ALTER TABLE "{schema}".orders ADD COLUMN total numeric'))
         conn.execute(sa.text(f'UPDATE "{schema}".orders SET total = id * 10'))
-    _catalog, local, table = runtime.attach_region_table("eu", dsn, schema, "orders")
+    _catalog, local, table = runtime.attach_region_table(_NAME, dsn, schema, "orders")
     assert _rows(runtime, f'SELECT id, total FROM "{local}"."{table}" ORDER BY id') == [
         (1, 10),
         (2, 20),
@@ -102,8 +107,10 @@ def test_a_replica_whose_columns_changed_is_read_as_it_is_now(eu):
 def test_a_store_that_moved_is_dialed_at_its_new_address(eu):
     runtime, _store, dsn, schema = eu
     stale = dsn.replace("@localhost:5432/", "@127.0.0.1:5432/")
-    runtime.attach_region_table("eu", stale, schema, "orders")
-    runtime.attach_region_table("eu", dsn, schema, "orders")
-    options = _rows(runtime, "SELECT srvoptions FROM pg_foreign_server WHERE srvname = 'region_eu'")
+    runtime.attach_region_table(_NAME, stale, schema, "orders")
+    runtime.attach_region_table(_NAME, dsn, schema, "orders")
+    options = _rows(
+        runtime, f"SELECT srvoptions FROM pg_foreign_server WHERE srvname = '{_SERVER}'"
+    )
     assert "host=localhost" in options[0][0]
     assert "updatable=false" in options[0][0]

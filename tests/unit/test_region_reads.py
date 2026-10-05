@@ -209,6 +209,16 @@ async def test_a_table_kept_in_another_region_is_read_where_that_region_reads_it
 # -- Trino: a store is a catalog of its own ------------------------------------------------------
 
 
+@pytest.fixture
+def acme():
+    """The request is acme's (not the boot org's)."""
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org("acme")
+    yield
+    reset_current_org(token)
+
+
 class _TrinoConn:
     def __init__(self) -> None:
         self.statements: list[str] = []
@@ -241,7 +251,7 @@ def _trino(monkeypatch):
 
     monkeypatch.setattr("provisa.core.trino_system_catalogs.one_registrar", _registrar)
     state = SimpleNamespace(
-        org_id="acme",
+        org_id="boot",  # the served org (acme, bound by the test) is not the boot org
         engine_conn=conn,
         engine_conn_kwargs={},
         tenant_engine=SimpleNamespace(url="postgresql://cp/db"),
@@ -249,7 +259,7 @@ def _trino(monkeypatch):
     return engine.backend, state, conn
 
 
-def test_trino_reads_another_regions_replicas_through_a_catalog_of_that_store(monkeypatch):
+def test_trino_reads_another_regions_replicas_through_a_catalog_of_that_store(monkeypatch, acme):
     backend, state, conn = _trino(monkeypatch)
     region = ForeignRegion("eu", "postgresql://reader:pw@eu-replicas:5433/replicas", None, "pg")  # type: ignore[arg-type]
     where = ("org_acme__region_eu", "org_acme_replicas", "orders")
@@ -270,7 +280,9 @@ def test_trino_reads_another_regions_replicas_through_a_catalog_of_that_store(mo
     ]
 
 
-def test_trino_reads_an_orgs_own_store_through_its_catalog_not_the_control_planes(monkeypatch):
+def test_trino_reads_an_orgs_own_store_through_its_catalog_not_the_control_planes(
+    monkeypatch, acme
+):
     backend, state, conn = _trino(monkeypatch)
     monkeypatch.setattr(
         "provisa.storage.byo.org_store_dsn",
@@ -298,7 +310,7 @@ def test_trino_reaches_a_store_without_a_password_setting_none():
     assert spec.properties["connection-url"] == "jdbc:postgresql://eu:5432/db"
 
 
-def test_the_pg_engine_names_the_import_at_publish_and_imports_once_per_build(monkeypatch):
+def test_the_pg_engine_names_the_import_at_publish_and_imports_once_per_build(monkeypatch, acme):
     """PostgreSQL has no catalog per store: it imports the table through postgres_fdw into a
     schema of its own. The read map names that schema without dialing the other region; a read
     that finds the replica built imports it — again only when that region rebuilt it."""
@@ -312,18 +324,20 @@ def test_the_pg_engine_names_the_import_at_publish_and_imports_once_per_build(mo
     monkeypatch.setattr(
         runtime,
         "attach_region_table",
-        lambda region_id, dsn, schema, table: imported.append((region_id, schema, table)),
+        lambda name, dsn, schema, table: imported.append((name, schema, table)),
     )
     backend = NativeEngineBackend.__new__(NativeEngineBackend)
     backend._attach_errors = (RuntimeError,)
     monkeypatch.setattr(backend, "_store_runtime", lambda: runtime)
     region = ForeignRegion("eu", "postgresql://r@eu/db", None, "pg")  # type: ignore[arg-type]
-    where = backend.region_read_address(SimpleNamespace(), region, "org_acme_replicas", "orders")
-    assert where == ("provisa", "region_eu__org_acme_replicas", "orders")
+    state = SimpleNamespace(org_id="boot")
+    where = backend.region_read_address(state, region, "org_acme_replicas", "orders")
+    # REQ-1266/1529: the foreign server carries the org (and environment) reading it.
+    assert where == ("provisa", "fdw_org_acme__region_eu__org_acme_replicas", "orders")
     assert imported == []
     for build in (("h1", "[id]"), ("h1", "[id]"), ("h2", "[id, total]")):
-        backend.attach_region_read(SimpleNamespace(), region, "org_acme_replicas", "orders", build)
-    assert imported == [("eu", "org_acme_replicas", "orders")] * 2
+        backend.attach_region_read(state, region, "org_acme_replicas", "orders", build)
+    assert imported == [("org_acme__region_eu", "org_acme_replicas", "orders")] * 2
 
 
 def test_a_store_that_cannot_be_attached_is_unreachable(monkeypatch):
@@ -339,7 +353,7 @@ def test_a_store_that_cannot_be_attached_is_unreachable(monkeypatch):
     monkeypatch.setattr(backend, "_store_runtime", lambda: _Runtime())
     region = ForeignRegion("eu", "postgresql://r@eu/db", None, "pg")  # type: ignore[arg-type]
     with pytest.raises(RegionStoreUnreachable, match="could not connect"):
-        backend.attach_region_read(SimpleNamespace(), region, "s", "t", ("h", "[]"))
+        backend.attach_region_read(SimpleNamespace(org_id="acme"), region, "s", "t", ("h", "[]"))
 
 
 async def test_a_read_of_a_built_home_replica_attaches_it_and_an_unreachable_one_is_refused(

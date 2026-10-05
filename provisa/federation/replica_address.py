@@ -129,6 +129,17 @@ def active_org_id(state: Any) -> str:
     return current_org.get() or state.org_id
 
 
+def region_read_name(state: Any, region: Any) -> str:
+    """The name this org environment's engine reads ``region``'s replicas store by (REQ-1922):
+    ``naming.region_read_catalog`` for the org and environment served."""
+    from provisa.compiler.naming import region_read_catalog
+    from provisa.core.request_context import active_env
+
+    return region_read_catalog(
+        active_org_id(state), region.id, default_org=state.org_id, env=active_env()
+    )
+
+
 def replica_address(
     *,
     org_id: str,

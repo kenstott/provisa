@@ -54,9 +54,10 @@ def test_a_node_reads_another_regions_replica_through_its_attached_store(eu_repl
     runtime = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
     runtime._con = duckdb.connect()
     runtime._region_stores = set()
-    alias = runtime.attach_region_store("eu", url)
-    assert alias == "region_eu"
-    assert runtime.attach_region_store("eu", url) == alias  # attached once
+    # The org environment's name for eu's store (replica_address.region_read_name).
+    alias = runtime.attach_region_store("org_acme__region_eu", url)
+    assert alias == "org_acme__region_eu"
+    assert runtime.attach_region_store("org_acme__region_eu", url) == alias  # attached once
     rows = runtime._con.execute(
         f'SELECT id, region FROM "{alias}"."{schema}".crm__public__orders ORDER BY id'
     ).fetchall()

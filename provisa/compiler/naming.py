@@ -213,13 +213,21 @@ def source_to_catalog(source_id: str) -> str:  # REQ-471
     return source_id.replace("-", "_")
 
 
+#: The kinds of object an engine keeps to reach a source live, each named ``<kind>_<catalog>``:
+#: a pg engine's foreign servers and staging schemas (postgres_fdw and the other FDWs, the
+#: connector-pgwire bridge, file_fdw) and a ClickHouse engine's databases.
+ATTACH_KINDS: tuple[str, ...] = ("fdw", "fdw_pgwire", "fdw_file", "ch", "ch_pgwire")
+
+
 def engine_attach_name(kind: str, catalog: str) -> str:  # REQ-1266, REQ-1529
     """The name of an object an engine database keeps to reach a source live — its foreign
     server (and so its user mapping), and the schema its foreign tables are imported into —
     from the source's catalog name (:func:`org_prefixed_catalog`, the name the compiler emits).
     It carries the org and the environment as that catalog does, so two orgs, or two
     environments, keeping one engine database never share one. ``kind`` is the connector's
-    prefix (``fdw``, ``ch``, ``fdw_pgwire``, ``fdw_file``)."""
+    prefix (one of :data:`ATTACH_KINDS`)."""
+    if kind not in ATTACH_KINDS:
+        raise ValueError(f"{kind!r} is not an attach kind ({', '.join(ATTACH_KINDS)})")
     return f"{kind}_{catalog}"
 
 
@@ -228,6 +236,15 @@ def attach_catalog(source: object) -> str:  # REQ-1266, REQ-1529
     source its caller builds (``native_backend._walk_registry``, ``pg_backend``) from the org's
     ``source_catalogs``. A source that was not handed over that way has none (KeyError)."""
     return vars(source)["catalog"]
+
+
+def region_read_catalog(
+    org_id: str, region_id: str, *, default_org: str, env: str | None
+) -> str:  # REQ-1922, REQ-1266, REQ-1529
+    """The name an engine reads another region's replicas store by — a Trino catalog, a DuckDB
+    ATTACH alias, the stem of a pg engine's foreign server — carrying the org and the environment
+    as a source's catalog name does (:func:`org_prefixed_catalog`)."""
+    return org_prefixed_catalog(org_id, f"region_{region_id}", default_org=default_org, env=env)
 
 
 def live_view_schema(catalog: str, schema: str) -> str:  # REQ-1730

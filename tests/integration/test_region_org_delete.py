@@ -12,7 +12,8 @@
 (REQ-1921, REQ-1922), against a real PostgreSQL and Redis — with each region's stores in a
 database of its own, and with both regions in ONE database: its schemas on the control plane, its
 state, record, replicas, views, caches and exports in each region store (under the region's
-names), what another region's engine imported from them, its cache and Hot-count keys in
+names), what eu's pg engine keeps to reach the org's sources and us's replicas (foreign servers,
+their user mappings and foreign tables, staging and live-view schemas), its cache and Hot-count keys in
 Redis, and every catalog a region's Trino coordinator holds for it (region ``us`` runs on Trino,
 ``eu`` on its Postgres). Another org's are untouched. A region store that cannot be reached refuses the delete,
 naming its region, and nothing is removed."""
@@ -43,6 +44,41 @@ _PLATFORM = {
 _ENVS = ["prod", "dev"]
 #: Each region's engine: eu's is its Postgres store, us's a Trino coordinator.
 _ENGINE = {"eu": "eu-pg", "us": "us-trino"}
+
+
+def _pg_engine_attach(conn, org: str, env: str, other: str) -> None:
+    """What eu's pg engine keeps for ``org``'s ``env``: a source's foreign server (its user
+    mapping, a foreign table in its staging schema) and live view, and the foreign server and
+    import of the other region's replica — all named after the org's catalog names."""
+    from provisa.compiler.naming import (
+        engine_attach_name,
+        live_view_schema,
+        org_prefixed_catalog,
+        region_read_catalog,
+    )
+
+    source = org_prefixed_catalog(org, "sales", default_org="boot", env=env)
+    region = engine_attach_name("fdw", region_read_catalog(org, other, default_org="boot", env=env))
+    imported = f"{region}__{org_schema(org, env, '_replicas', region=other)}"
+    staging, live = engine_attach_name("fdw", source), live_view_schema(source, "public")
+    conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS postgres_fdw"))
+    for server in (engine_attach_name("fdw", source), region):
+        conn.execute(
+            sa.text(
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
+                "OPTIONS (host 'nowhere', dbname 'd')"
+            )
+        )
+        conn.execute(
+            sa.text(
+                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
+                "OPTIONS (user 'u', password 'p')"
+            )
+        )
+    for schema in (staging, live, imported):
+        conn.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    conn.execute(sa.text(f'CREATE FOREIGN TABLE "{staging}".orders (id int) SERVER "{staging}"'))
+    conn.execute(sa.text(f'CREATE VIEW "{live}".orders AS SELECT * FROM "{staging}".orders'))
 
 
 def _ddl(conn, statement: str) -> None:
@@ -194,11 +230,8 @@ class _Estate:
                             name = org_schema(org, env, suffix, region=region)
                             conn.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS "{name}"'))
                             conn.execute(sa.text(f'CREATE TABLE "{name}".t (id int)'))
-                        if _ENGINE[region] == f"{region}-pg":  # a Postgres engine imports
-                            imported = org_schema(org, env, "_replicas", region=other)
-                            conn.execute(
-                                sa.text(f'CREATE SCHEMA IF NOT EXISTS "region_{other}__{imported}"')
-                            )
+                        if _ENGINE[region] == f"{region}-pg":
+                            _pg_engine_attach(conn, org, env, other)
                 engine.dispose()
                 for env in _ENVS:
                     from provisa.cache.tenancy import place_of
@@ -231,6 +264,20 @@ class _Estate:
                     )
         finally:
             conn.close()
+
+    def servers_of(self, org: str) -> set[str]:
+        """Every foreign server of ``org`` left in any store database."""
+        found: set[str] = set()
+        for db in set(self.store_dbs.values()):
+            engine = sa.create_engine(self.url(db, "+psycopg"))
+            with engine.connect() as conn:
+                found |= {
+                    r[0]
+                    for r in conn.execute(sa.text("SELECT srvname FROM pg_foreign_server"))
+                    if f"org_{org}_" in r[0]
+                }
+            engine.dispose()
+        return found
 
     def schemas_of(self, org: str) -> set[str]:
         """Every schema of ``org`` left in any database."""
@@ -279,10 +326,12 @@ async def test_an_org_delete_leaves_nothing_of_it_in_any_region_or_environment(e
     before = estate.schemas_of(estate.org)
     assert len(before) > 20 and estate.keys_of(estate.org)
     assert len(estate.catalogs_of(estate.org)) == 4
+    assert len(estate.servers_of(estate.org)) == 4  # a source's and a region's, prod and dev
     bystander = (
         estate.schemas_of(estate.bystander),
         sorted(estate.keys_of(estate.bystander)),
         estate.catalogs_of(estate.bystander),
+        estate.servers_of(estate.bystander),
     )
 
     await _delete(estate)
@@ -290,10 +339,12 @@ async def test_an_org_delete_leaves_nothing_of_it_in_any_region_or_environment(e
     assert estate.schemas_of(estate.org) == set()
     assert estate.keys_of(estate.org) == []
     assert estate.catalogs_of(estate.org) == set()
+    assert estate.servers_of(estate.org) == set()
     assert (
         estate.schemas_of(estate.bystander),
         sorted(estate.keys_of(estate.bystander)),
         estate.catalogs_of(estate.bystander),
+        estate.servers_of(estate.bystander),
     ) == bystander
 
 

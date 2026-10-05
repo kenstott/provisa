@@ -682,28 +682,37 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
     #: region's store: they share its foreign servers and foreign tables.
     _REGION_ATTACH_LOCK_KEY = 7339
 
-    def region_table_address(self, region_id: str, schema: str, table: str) -> tuple[str, str, str]:
+    @staticmethod
+    def _region_server(name: str) -> str:
+        """The foreign server for another region's store, ``name`` being the org environment's
+        name for it (``replica_address.region_read_name``) — named like every attach object."""
+        from provisa.compiler.naming import engine_attach_name
+
+        return engine_attach_name("fdw", name)
+
+    def region_table_address(self, name: str, schema: str, table: str) -> tuple[str, str, str]:
         """Where a statement reads ``schema.table`` of another region's store (REQ-1922): the
         schema this engine imports it into."""
-        return self.ensure_materialize_attached(), f"region_{region_id}__{schema}", table
+        local = f"{self._region_server(name)}__{schema}"
+        return self.ensure_materialize_attached(), local, table
 
     def attach_region_read(
-        self, region_id: str, dsn: str, schema: str, table: str, build: object
+        self, name: str, dsn: str, schema: str, table: str, build: object
     ) -> None:
         """REQ-1922: import the table for ``build`` — once per build of it in that region, so a
         replica rebuilt with other columns is imported again."""
-        key = (region_id, schema, table)
+        key = (name, schema, table)
         if self._region_imports.get(key) == build:
             return
-        self.attach_region_table(region_id, dsn, schema, table)
+        self.attach_region_table(name, dsn, schema, table)
         self._region_imports[key] = build
 
     def attach_region_table(
-        self, region_id: str, dsn: str, schema: str, table: str
+        self, name: str, dsn: str, schema: str, table: str
     ) -> tuple[str, str, str]:
         """Import ``schema.table`` of another region's replicas store through postgres_fdw and
-        return where a statement reads it (REQ-1922): ``(current database, region_<id>__<schema>,
-        table)``. The foreign server ``region_<id>`` is read only (``updatable 'false'``): the
+        return where a statement reads it (REQ-1922): ``(current database, <server>__<schema>,
+        table)``. The foreign server (``_region_server``) is read only (``updatable 'false'``): the
         region's replicas are its own to build. Its address and credentials, and the foreign
         table's columns, are set afresh on each call — a call comes with each publish of the read
         map, so a store that moved, or a replica whose columns changed with the model, is read
@@ -713,14 +722,14 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         url = make_url(dsn)
         if not url.get_backend_name().startswith("postgresql"):
             raise RuntimeError(
-                f"region {region_id!r} replicas store is {url.get_backend_name()!r}; the pg "
+                f"{name!r}: that region's replicas store is {url.get_backend_name()!r}; the pg "
                 "engine reads another region's store through postgres_fdw only"
             )
         if not url.host or not url.database or not url.username:
             raise RuntimeError(
-                f"region {region_id!r} replicas store must name a host, a database and a user"
+                f"{name!r}: that region's replicas store must name a host, a database and a user"
             )
-        server = f"region_{region_id}"
+        server = self._region_server(name)
         local = f"{server}__{schema}"
         options = {"host": url.host, "port": str(url.port or 5432), "dbname": url.database}
         user = {"user": url.username}

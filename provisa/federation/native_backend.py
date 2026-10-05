@@ -184,10 +184,12 @@ class NativeEngineBackend(EngineBackend):
         """REQ-1922: where another region's replica is read on the runtime — DuckDB under its
         ATTACH of that region's store; PostgreSQL in the schema it imports the table into
         through postgres_fdw. A native runtime with neither refuses, naming the engine."""
+        from provisa.federation.replica_address import region_read_name
+
         runtime = self._store_runtime()
         if not hasattr(runtime, "region_table_address"):
             return super().region_read_address(state, region, schema, table)
-        return runtime.region_table_address(region.id, schema, table)
+        return runtime.region_table_address(region_read_name(state, region), schema, table)
 
     def attach_region_read(
         self, state: Any, region: Any, schema: str, table: str, build: object
@@ -197,9 +199,11 @@ class NativeEngineBackend(EngineBackend):
         if not hasattr(runtime, "attach_region_read"):
             return super().attach_region_read(state, region, schema, table, build)
         from provisa.federation.backend import RegionStoreUnreachable
+        from provisa.federation.replica_address import region_read_name
 
+        name = region_read_name(state, region)
         try:
-            runtime.attach_region_read(region.id, region.replicas_url, schema, table, build)
+            runtime.attach_region_read(name, region.replicas_url, schema, table, build)
         except self._attach_errors as exc:
             raise RegionStoreUnreachable(str(exc)) from exc
 

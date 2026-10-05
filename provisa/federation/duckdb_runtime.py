@@ -756,36 +756,39 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._store_attached = True
         return self._MAT_STORE
 
-    def region_table_address(self, region_id: str, schema: str, table: str) -> tuple[str, str, str]:
-        """Where a statement reads ``schema.table`` of another region's store (REQ-1922)."""
-        return f"region_{region_id}", schema, table
+    def region_table_address(self, name: str, schema: str, table: str) -> tuple[str, str, str]:
+        """Where a statement reads ``schema.table`` of another region's store (REQ-1922): under
+        the store's ATTACH, ``name`` (``replica_address.region_read_name``)."""
+        return name, schema, table
 
     def attach_region_read(
-        self, region_id: str, dsn: str, schema: str, table: str, build: object
+        self, name: str, dsn: str, schema: str, table: str, build: object
     ) -> None:
         """REQ-1922: the store is ATTACHed once; it reads that store's tables as they are."""
         del schema, table, build
-        self.attach_region_store(region_id, dsn)
+        self.attach_region_store(name, dsn)
 
-    def attach_region_store(self, region_id: str, dsn: str) -> str:
-        """ATTACH another region's replicas store READ_ONLY under ``region_<id>`` (idempotent) and
-        return the alias (REQ-1922): a table that region names is read from its replica there.
-        Only a server store attaches: an embedded DuckDB file belongs to the nodes of its own
-        region (refused at load — ``regions.validate_regions``)."""
+    def attach_region_store(self, name: str, dsn: str) -> str:
+        """ATTACH another region's replicas store READ_ONLY under ``name`` — the org
+        environment's name for that region's store (``replica_address.region_read_name``) —
+        idempotent, and return it (REQ-1922): a table that region names is read from its replica
+        there. Only a server store attaches: an embedded DuckDB file belongs to the nodes of its
+        own region (refused at load — ``regions.validate_regions``)."""
         from sqlalchemy import make_url
 
-        alias = f"region_{region_id}"
+        alias = name
         if alias in self._region_stores:
             return alias
         store_type = self._ATTACH_TYPE_BY_SCHEME.get(make_url(dsn).get_backend_name())
         if store_type is None or store_type in self._FILE_ATTACH_TYPES:
             raise RuntimeError(
-                f"region {region_id!r} replicas store is not a server store this engine can attach"
+                f"{name!r}: that region's replicas store is not a server store this engine can "
+                "attach"
             )
         if store_type not in self._NO_EXTENSION_TYPES:
             self._con.execute(f"INSTALL {store_type}")
             self._con.execute(f"LOAD {store_type}")
-        self._con.execute(f"ATTACH '{dsn}' AS {alias} (TYPE {store_type}, READ_ONLY)")
+        self._con.execute(f"ATTACH '{dsn}' AS \"{alias}\" (TYPE {store_type}, READ_ONLY)")
         self._region_stores.add(alias)
         return alias
 

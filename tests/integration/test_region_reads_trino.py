@@ -73,7 +73,7 @@ def trino_state(store):
         http_scheme="http",
     )
     state = SimpleNamespace(
-        org_id=_ORG,
+        org_id="boot",  # the served org (acme, bound by the test) is not the boot org
         engine_conn=conn,
         engine_conn_kwargs={},
         tenant_engine=SimpleNamespace(url=store.app_url),
@@ -94,13 +94,19 @@ def _rows(conn, sql: str) -> list:
 
 
 def test_trino_reads_another_regions_replica_through_a_catalog_of_its_store(store, trino_state):
+    from provisa.core.request_context import reset_current_org, set_current_org
+
     backend, state, conn = trino_state
     region = ForeignRegion("eu", store.engine_dsn, None, "pg")  # type: ignore[arg-type]
-    catalog, schema, table = backend.region_read_address(
-        state, region, store.schema, "crm__public__orders"
-    )
-    # A read that finds the replica built attaches it (registers the catalog).
-    backend.attach_region_read(state, region, store.schema, "crm__public__orders", ("h", "[]"))
+    token = set_current_org(_ORG)
+    try:
+        catalog, schema, table = backend.region_read_address(
+            state, region, store.schema, "crm__public__orders"
+        )
+        # A read that finds the replica built attaches it (registers the catalog).
+        backend.attach_region_read(state, region, store.schema, "crm__public__orders", ("h", "[]"))
+    finally:
+        reset_current_org(token)
     assert (catalog, schema, table) == (
         f"org_{_ORG}__region_eu",
         store.schema,

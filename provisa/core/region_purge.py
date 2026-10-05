@@ -13,11 +13,14 @@ REQ-1922).
 
 Deleting an org or an environment removes, in every region store the org declares, every schema
 of that environment (its state, record, replicas, views, caches and exports, under the
-region-qualified names — ``environments.org_schema``), the tables another region's engine imported
-from those replicas, every Redis key of its cache and Hot counts, and every catalog a region's Trino
-coordinator (with no platform regions, the deployment's own) holds for it (its sources, its stores and the other regions' replicas: ``org_<org>_...``
-— an org id has no underscore, REQ-1309, so the prefix names that org alone). The deleting node reaches
-each store through the model's declarations — the same reach cross-region reads use.
+region-qualified names — ``environments.org_schema``); every Redis key of its cache and Hot
+counts; everything a region's engine keeps to reach the org's sources and the other regions'
+replicas — a Trino coordinator's catalogs (with no platform regions, the deployment's own), a pg
+engine's foreign servers (their user mappings and foreign tables with them) and its staging and
+live-view schemas. Those are all named after the org's catalog names, ``org_<org>_...`` (an org
+id has no underscore, REQ-1309, so the prefix names that org alone; ``naming.org_prefixed_catalog``,
+``engine_attach_name``). The deleting node reaches each store through the model's declarations —
+the same reach cross-region reads use.
 
 All of it or none: every store is reached first, and a store that cannot be reached refuses the
 delete, naming its region, before anything is removed.
@@ -61,6 +64,8 @@ class _Purge:
     keys: dict[str, set[str]] = field(default_factory=dict)
     #: Trino coordinators (``trino://host:port``) -> the prefixes of the catalogs that go.
     catalogs: dict[str, set[str]] = field(default_factory=dict)
+    #: A pg engine's database -> the prefixes of the catalog names whose attach objects go.
+    attached: dict[str, set[str]] = field(default_factory=dict)
     reach: dict[str, tuple[str, str]] = field(default_factory=dict)  # url -> (region, role)
 
 
@@ -75,6 +80,7 @@ async def purge_org_regions(control_plane: "Database", org_id: str, envs: list[s
         return []
     await asyncio.to_thread(_require_reachable, plan, org_id)
     dropped = await asyncio.to_thread(_drop_schemas, plan)
+    dropped += await asyncio.to_thread(_drop_attached, plan)
     dropped += await asyncio.to_thread(_drop_catalogs, plan, org_id)
     await _delete_keys(plan)
     log.info("org %s: removed %d region schema(s) for %s", org_id, len(dropped), envs)
@@ -87,7 +93,6 @@ async def _plan(control_plane: "Database", org_id: str, envs: list[str]) -> _Pur
     from provisa.core.environments import PROD, SCHEMA_SUFFIXES, org_schema
     from provisa.core.repositories.region import list_regions, list_stores
     from provisa.core.secrets import resolve_secrets
-    from provisa.federation.replica_address import REPLICAS_SUFFIX
     from provisa.federation.replica_hot import count_key_patterns, count_scope
 
     from provisa.core import process_region
@@ -137,22 +142,20 @@ async def _plan(control_plane: "Database", org_id: str, envs: list[str]) -> _Pur
                 coordinator = _coordinator(declared[region.engine])
                 plan.reach.setdefault(coordinator, (region.id, "engine"))
                 plan.catalogs.setdefault(coordinator, set()).update(catalog_prefixes)
+            elif kinds[region.engine] == "pg":
+                # What the engine keeps to reach the org's sources live, and the other regions'
+                # replicas: foreign servers (their user mappings and foreign tables with them),
+                # staging and live-view schemas — each named after a catalog name of the org.
+                engine_url = declared[region.engine]
+                plan.reach.setdefault(engine_url, (region.id, "engine"))
+                plan.attached.setdefault(engine_url, set()).update(catalog_prefixes)
             names = {org_schema(org_id, env, s, region=region.id) for s in SCHEMA_SUFFIXES}
-            # What the org's other regions' engines imported from this region's replicas.
-            imported = {
-                f"region_{region.id}__{org_schema(org_id, env, REPLICAS_SUFFIX, region=region.id)}"
-            }
             for role in _SQL_ROLES:
                 url = declared[getattr(region, role)]
                 if not _is_sql(url):
                     continue
                 plan.reach.setdefault(url, (region.id, role))
                 plan.schemas.setdefault(url, set()).update(names)
-            for other in regions:
-                url = declared[other.engine]
-                if other.id != region.id and _is_sql(url):
-                    plan.reach.setdefault(url, (other.id, "engine"))
-                    plan.schemas.setdefault(url, set()).update(imported)
             cache = declared[region.cache]
             plan.reach.setdefault(cache, (region.id, "cache"))
             plan.keys.setdefault(cache, set()).update(
@@ -251,6 +254,35 @@ def _require_reachable(plan: _Purge, org_id: str) -> None:
                     engine.dispose()
         except Exception as exc:  # allow-ble: any failure to reach the store refuses the delete, naming it; nothing has been removed
             raise RegionStoreUnreachable(org_id, region, role, type(exc).__name__) from exc
+
+
+def _drop_attached(plan: _Purge) -> list[str]:
+    """Drop, in each pg engine database, the foreign servers (with their user mappings and
+    foreign tables) and the schemas named after the org's catalog names: ``<kind>_<catalog>``
+    (``naming.ATTACH_KINDS``) and the live-view schemas ``<catalog>_<schema>``."""
+    from sqlalchemy import create_engine, text
+
+    from provisa.compiler.naming import ATTACH_KINDS
+
+    dropped: list[str] = []
+    for url, prefixes in plan.attached.items():
+        owned = tuple(f"{kind}_{p}" for kind in ATTACH_KINDS for p in prefixes)
+        engine = create_engine(_sync(url), connect_args=_timeout(url))
+        try:
+            with engine.begin() as conn:
+                servers = [
+                    r[0] for r in conn.execute(text("SELECT srvname FROM pg_foreign_server"))
+                ]
+                for name in sorted(s for s in servers if s.startswith(owned)):
+                    conn.execute(text(f'DROP SERVER IF EXISTS "{name}" CASCADE'))
+                    dropped.append(name)
+                schemas = [r[0] for r in conn.execute(text("SELECT nspname FROM pg_namespace"))]
+                for name in sorted(s for s in schemas if s.startswith(owned + tuple(prefixes))):
+                    conn.execute(text(f'DROP SCHEMA IF EXISTS "{name}" CASCADE'))
+                    dropped.append(name)
+        finally:
+            engine.dispose()
+    return dropped
 
 
 def _drop_schemas(plan: _Purge) -> list[str]:

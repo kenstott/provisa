@@ -944,9 +944,9 @@ class TrinoBackend(EngineBackend):
 
     @staticmethod
     def _region_catalog(state: Any, region: Any) -> str:
-        from provisa.federation.replica_address import active_org_id
+        from provisa.federation.replica_address import region_read_name
 
-        return f"org_{active_org_id(state)}__region_{region.id}"
+        return region_read_name(state, region)
 
     def materialize_store_target(self, state: Any, org_id: str) -> tuple[str, str]:
         """Trino reaches its materialization store through the ``provisa_admin`` catalog.
