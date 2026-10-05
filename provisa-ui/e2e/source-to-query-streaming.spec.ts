@@ -38,6 +38,7 @@ import {
   pickSchemaAndTable,
   runSqlOnPage,
   releaseDraftTables,
+  setSourceCacheTtl,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
   typeSql,
@@ -324,6 +325,8 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     await page.getByLabel(/^Host/).fill("localhost");
     await page.getByLabel(/^Port/).fill(String(E2E_RSS_PORT));
     await page.getByTestId("rss-use-ssl-checkbox").uncheck();
+    // REQ-1907: rss is polled (a pull source the engine lands), so it needs a landing clock.
+    await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form — REQ-1745's synthetic "default"/<sourceId> pick + the real
