@@ -99,30 +99,34 @@ async def _load_config(tenant_db, _init_schema, platform_admin_db):
     prior_env = os.environ.get("PROVISA_ENGINE")
     os.environ["PROVISA_ENGINE"] = "trino"
     os.environ.setdefault("PG_PASSWORD", "provisa")
-    prior_engine = app_mod.state.federation_engine
-    prior_conn = app_mod.state.engine_conn
-    app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
-    # bind_terminal only stores connection kwargs (wake-on-traffic, REQ-1043) — it does NOT
-    # connect. register_source/introspect_columns both no-op when state.engine_conn is None
-    # (backend.py:569, 613), so a real boot's blocking provision()/connect_infra() path is
-    # what actually populates it. Connect directly here instead of pulling in that whole path.
-    app_mod.state.engine_conn = trino.dbapi.connect(
-        host=os.environ.get("TRINO_HOST", "localhost"),
-        port=int(os.environ.get("TRINO_PORT", "8080")),
-        user="test",
-    )
-    try:
-        _populate_source_catalog_names(config)
-        async with tenant_db.acquire() as conn:
-            await conn.execute("SET search_path TO org_default")
-            await load_config(config, conn, app_mod.state.federation_engine, origin="config")
-    finally:
-        app_mod.state.federation_engine = prior_engine
-        app_mod.state.engine_conn = prior_conn
-        if prior_env is None:
-            os.environ.pop("PROVISA_ENGINE", None)
-        else:
-            os.environ["PROVISA_ENGINE"] = prior_env
+    from tests.conftest import as_deployment_org
+
+    # The module's config load is the deployment org's work, bound like the boot's (REQ-1266).
+    with as_deployment_org():
+        prior_engine = app_mod.state.federation_engine
+        prior_conn = app_mod.state.engine_conn
+        app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
+        # bind_terminal only stores connection kwargs (wake-on-traffic, REQ-1043) — it does NOT
+        # connect. register_source/introspect_columns both no-op when state.engine_conn is None
+        # (backend.py:569, 613), so a real boot's blocking provision()/connect_infra() path is
+        # what actually populates it. Connect directly here instead of pulling in that whole path.
+        app_mod.state.engine_conn = trino.dbapi.connect(
+            host=os.environ.get("TRINO_HOST", "localhost"),
+            port=int(os.environ.get("TRINO_PORT", "8080")),
+            user="test",
+        )
+        try:
+            _populate_source_catalog_names(config)
+            async with tenant_db.acquire() as conn:
+                await conn.execute("SET search_path TO org_default")
+                await load_config(config, conn, app_mod.state.federation_engine, origin="config")
+        finally:
+            app_mod.state.federation_engine = prior_engine
+            app_mod.state.engine_conn = prior_conn
+            if prior_env is None:
+                os.environ.pop("PROVISA_ENGINE", None)
+            else:
+                os.environ["PROVISA_ENGINE"] = prior_env
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")

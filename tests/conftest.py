@@ -1213,15 +1213,6 @@ def as_deployment_org():
         reset_current_org(token)
 
 
-@pytest.fixture()
-def deployment_org_bound():
-    """Run the test as work for the deployment's own org, bound as the boot or an admin request
-    binds it (REQ-1266): a test that drives a core path directly (load_config, a resolver) stands in
-    for that entrypoint. Sync, so an async test's task copies the binding."""
-    with as_deployment_org():
-        yield
-
-
 @pytest_asyncio.fixture(scope="session")
 async def graphql_client(docker_postgres):
     """ASGI test client backed by a real Postgres pool.

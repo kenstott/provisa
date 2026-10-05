@@ -326,6 +326,31 @@ def _disable_auth_for_integration(tmp_path_factory):
     yield from pin_no_auth_config(tmp_path_factory.mktemp("noauth-cfg"))
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "unbound: run with no org bound -- for entrypoints that bind one themselves (REQ-1266)",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _deployment_org_bound(request: pytest.FixtureRequest):
+    """Integration tests run as work for the deployment's own org (REQ-1266), as the unit harness
+    does: a test that drives a core path directly (load_config, a resolver, a repository) stands in
+    for the boot or the request that binds it. An entrypoint under test binds for itself either way;
+    ``@pytest.mark.unbound`` runs a test with nothing bound."""
+    if request.node.get_closest_marker("unbound") is not None:
+        yield
+        return
+    from tests.conftest import as_deployment_org
+
+    with as_deployment_org():
+        yield
+        if "monkeypatch" in request.fixturenames:
+            # A routed AppState attribute monkeypatch replaced is put back while the org is bound.
+            request.getfixturevalue("monkeypatch").undo()
+
+
 @pytest.fixture(autouse=True, scope="module")
 def _reset_app_state():
     """Reset global app state between test modules.
