@@ -37,7 +37,14 @@ pytestmark = [pytest.mark.e2e, pytest.mark.cluster]
 CHART_DIR = Path(__file__).parents[2] / "helm" / "provisa"
 RELEASE = "provisa-test"
 NAMESPACE = "provisa-e2e"
-TIMEOUT = "1200s"
+# Every test here runs under the CI lane's per-test bound (scripts/ci/run_lane.py TEST_TIMEOUT_S,
+# 900 s, pytest-timeout). helm's own --wait must end inside it, so a release that never turns Ready
+# fails as helm's error with _why_not_ready()'s pod report, not as a bare pytest timeout that hides
+# both. The install (a cold pull of every image into minikube) gets the longer wait; the scaling
+# test runs two upgrades, so 2 x (HELM_WAIT_S + slack) stays under the bound.
+HELM_INSTALL_WAIT_S = 600
+HELM_WAIT_S = 360
+_RUN_SLACK_S = 60
 # This run's own minikube profile, and so its own kube context. Never the default profile, and
 # never the machine's current context, which may name a production cluster.
 PROFILE = f"provisa-itest-{os.getpid()}"
@@ -53,6 +60,68 @@ _AUTH_SETS = [
     "auth.breakGlass.username=platform-admin",
     "--set",
     "auth.breakGlass.existingSecret=provisa-break-glass",
+]
+
+# What this test deploys, stated once and passed whole to the install AND every upgrade. A
+# `helm upgrade` re-renders from the chart defaults plus exactly the values it is given, so an
+# upgrade that repeated only some of the install's values redeployed the rest at production sizes
+# (2Gi Trino requests, 2GB per node, mongodb on, no exchange store) on this 6 GiB minikube, and
+# the release never turned Ready.
+# Minimal values: single replicas, no autoscaling, no ingress. flightService.type=ClusterIP avoids
+# the LoadBalancer pending-IP stall in minikube. Trino probe timeouts are generous because minikube
+# JVM startup is slow.
+_CHART_SETS = [
+    "--set",
+    "encryption.existingSecret=provisa-master-key",
+    *_AUTH_SETS,
+    "--set",
+    "provisa.replicaCount=1",
+    "--set",
+    "provisa.hpa.enabled=false",
+    "--set",
+    "trino.worker.autoscaling.enabled=false",
+    "--set",
+    "ingress.enabled=false",
+    "--set",
+    "provisa.flightService.type=ClusterIP",
+    "--set",
+    "trino.coordinator.resources.requests.memory=512Mi",
+    "--set",
+    "trino.coordinator.resources.limits.memory=1Gi",
+    "--set",
+    "trino.worker.resources.requests.memory=512Mi",
+    "--set",
+    "trino.worker.resources.limits.memory=1Gi",
+    # Trino query/FTE memory must fit inside the 1Gi container limit
+    # above (query.max-memory-per-node must not exceed the JVM heap);
+    # the chart defaults (2GB per node, 5GB FTE task) are sized for
+    # production nodes and fail config validation on these minikube pods.
+    "--set",
+    "trino.memory.maxMemory=1GB",
+    "--set",
+    "trino.memory.maxMemoryPerNode=512MB",
+    "--set",
+    "trino.memory.maxTotalMemory=1GB",
+    "--set",
+    "trino.fte.taskMemory=512MB",
+    "--set",
+    "trino.coordinator.livenessProbe.initialDelaySeconds=180",
+    "--set",
+    "trino.coordinator.livenessProbe.periodSeconds=30",
+    "--set",
+    "trino.coordinator.livenessProbe.failureThreshold=10",
+    "--set",
+    "trino.coordinator.readinessProbe.initialDelaySeconds=60",
+    "--set",
+    "trino.coordinator.readinessProbe.failureThreshold=20",
+    "--set",
+    "mongodb.enabled=false",
+    # Trino fault-tolerant execution (REQ-817) requires a shared exchange
+    # store; the chart fails render if neither minio.enabled nor an
+    # external trino.exchange.s3.endpoint is provided (no silent
+    # fallback). Deploy in-cluster MinIO as that exchange store.
+    "--set",
+    "minio.enabled=true",
 ]
 
 _LOCAL_BIN = Path.home() / ".local" / "bin"
@@ -124,8 +193,30 @@ def _assert_own_context() -> None:
         pytest.fail(f"minikube profile {PROFILE!r} has no kube context; refusing to run")
 
 
-def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
-    return subprocess.run(_pin(cmd), capture_output=True, text=True, timeout=1260, **kwargs)
+def _run(cmd: list[str], wait_s: int = HELM_WAIT_S) -> subprocess.CompletedProcess:
+    return subprocess.run(_pin(cmd), capture_output=True, text=True, timeout=wait_s + _RUN_SLACK_S)
+
+
+def _helm_deploy(*, worker_replicas: int, install: bool = False) -> subprocess.CompletedProcess:
+    """Install or upgrade the release with _CHART_SETS and this many Trino workers, waiting for it
+    to turn Ready."""
+    wait_s = HELM_INSTALL_WAIT_S if install else HELM_WAIT_S
+    return _run(
+        [
+            "helm",
+            "upgrade",
+            *(["--install"] if install else []),
+            RELEASE,
+            str(CHART_DIR),
+            f"--namespace={NAMESPACE}",
+            *_CHART_SETS,
+            "--set",
+            f"trino.worker.replicaCount={worker_replicas}",
+            "--wait",
+            f"--timeout={wait_s}s",
+        ],
+        wait_s,
+    )
 
 
 def _why_not_ready() -> str:
@@ -291,74 +382,7 @@ def helm_install(request):
             ]
         )
 
-    # Use minimal values: single replicas, no autoscaling, no ingress.
-    # flightService.type=ClusterIP avoids LoadBalancer pending-IP stall in minikube.
-    # Trino probe timeouts are generous because minikube JVM startup is slow.
-    result = _run(
-        [
-            "helm",
-            "upgrade",
-            "--install",
-            RELEASE,
-            str(CHART_DIR),
-            f"--namespace={NAMESPACE}",
-            "--set",
-            "encryption.existingSecret=provisa-master-key",
-            *_AUTH_SETS,
-            "--set",
-            "provisa.replicaCount=1",
-            "--set",
-            "provisa.hpa.enabled=false",
-            "--set",
-            "trino.worker.replicaCount=1",
-            "--set",
-            "trino.worker.autoscaling.enabled=false",
-            "--set",
-            "ingress.enabled=false",
-            "--set",
-            "provisa.flightService.type=ClusterIP",
-            "--set",
-            "trino.coordinator.resources.requests.memory=512Mi",
-            "--set",
-            "trino.coordinator.resources.limits.memory=1Gi",
-            "--set",
-            "trino.worker.resources.requests.memory=512Mi",
-            "--set",
-            "trino.worker.resources.limits.memory=1Gi",
-            # Trino query/FTE memory must fit inside the 1Gi container limit
-            # above (query.max-memory-per-node must not exceed the JVM heap);
-            # the chart defaults (2GB per node, 5GB FTE task) are sized for
-            # production nodes and fail config validation on these minikube pods.
-            "--set",
-            "trino.memory.maxMemory=1GB",
-            "--set",
-            "trino.memory.maxMemoryPerNode=512MB",
-            "--set",
-            "trino.memory.maxTotalMemory=1GB",
-            "--set",
-            "trino.fte.taskMemory=512MB",
-            "--set",
-            "trino.coordinator.livenessProbe.initialDelaySeconds=180",
-            "--set",
-            "trino.coordinator.livenessProbe.periodSeconds=30",
-            "--set",
-            "trino.coordinator.livenessProbe.failureThreshold=10",
-            "--set",
-            "trino.coordinator.readinessProbe.initialDelaySeconds=60",
-            "--set",
-            "trino.coordinator.readinessProbe.failureThreshold=20",
-            "--set",
-            "mongodb.enabled=false",
-            # Trino fault-tolerant execution (REQ-817) requires a shared exchange
-            # store; the chart fails render if neither minio.enabled nor an
-            # external trino.exchange.s3.endpoint is provided (no silent
-            # fallback). Deploy in-cluster MinIO as that exchange store.
-            "--set",
-            "minio.enabled=true",
-            "--wait",
-            f"--timeout={TIMEOUT}",
-        ]
-    )
+    result = _helm_deploy(worker_replicas=1, install=True)
     if result.returncode != 0:
         pytest.fail(f"helm install failed:\n{result.stdout}\n{result.stderr}\n{_why_not_ready()}")
 
@@ -494,32 +518,7 @@ class TestWorkerScaling:
 
     def test_helm_upgrade_scales_worker_replicas(self):
         """helm upgrade --set trino.worker.replicaCount=2 adds a second worker pod."""
-        result = _run(
-            [
-                "helm",
-                "upgrade",
-                RELEASE,
-                str(CHART_DIR),
-                f"--namespace={NAMESPACE}",
-                "--set",
-                "encryption.existingSecret=provisa-master-key",
-                *_AUTH_SETS,
-                "--set",
-                "provisa.replicaCount=1",
-                "--set",
-                "provisa.hpa.enabled=false",
-                "--set",
-                "trino.worker.replicaCount=2",
-                "--set",
-                "trino.worker.autoscaling.enabled=false",
-                "--set",
-                "ingress.enabled=false",
-                "--set",
-                "provisa.flightService.type=ClusterIP",
-                "--wait",
-                f"--timeout={TIMEOUT}",
-            ]
-        )
+        result = _helm_deploy(worker_replicas=2)
         assert result.returncode == 0, f"helm upgrade failed:\n{result.stderr}\n{_why_not_ready()}"
 
         pods = _get_pods()
@@ -528,32 +527,10 @@ class TestWorkerScaling:
             f"Expected ≥2 worker pods after scaling to replicaCount=2, got {len(worker_pods)}"
         )
 
-        # Scale back to 1
-        _run(
-            [
-                "helm",
-                "upgrade",
-                RELEASE,
-                str(CHART_DIR),
-                f"--namespace={NAMESPACE}",
-                "--set",
-                "encryption.existingSecret=provisa-master-key",
-                *_AUTH_SETS,
-                "--set",
-                "provisa.replicaCount=1",
-                "--set",
-                "provisa.hpa.enabled=false",
-                "--set",
-                "trino.worker.replicaCount=1",
-                "--set",
-                "trino.worker.autoscaling.enabled=false",
-                "--set",
-                "ingress.enabled=false",
-                "--set",
-                "provisa.flightService.type=ClusterIP",
-                "--wait",
-                f"--timeout={TIMEOUT}",
-            ]
+        # Scale back to 1, so the module's later tests see the release as installed.
+        result = _helm_deploy(worker_replicas=1)
+        assert result.returncode == 0, (
+            f"helm upgrade (scale back) failed:\n{result.stderr}\n{_why_not_ready()}"
         )
 
 
