@@ -154,9 +154,9 @@ def test_ttl_mv_poll_job_is_registered():
     ]
     procs = build_processors(specs, db=object(), dependents_of=lambda n: [])
     sched = _Sched()
-    register_runtime(sched, db=object(), processors=procs, specs=specs)
-    assert "poll:mv.ttl" in sched.jobs
-    assert "poll:mv.driven" not in sched.jobs
+    register_runtime(sched, db=object(), processors=procs, specs=specs, org_id="default")
+    assert "poll:mv.ttl:org_default" in sched.jobs
+    assert "poll:mv.driven:org_default" not in sched.jobs
 
 
 def test_register_runtime_adds_tick_reaper_and_poll_jobs():
@@ -167,11 +167,18 @@ def test_register_runtime_adds_tick_reaper_and_poll_jobs():
     ]
     procs = build_processors(specs, db=object(), dependents_of=lambda n: [])
     sched = _Sched()
-    register_runtime(sched, db=object(), processors=procs, specs=specs)
-    assert "events:tick" in sched.jobs and "events:reaper" in sched.jobs
-    assert "events:boot" in sched.jobs  # one-shot boot-create job (build replicas at boot)
-    assert "poll:s.poll" in sched.jobs  # only the poll node with a cadence gets its own job
-    assert "poll:s.kafka" not in sched.jobs and "poll:mv.driven" not in sched.jobs
+    register_runtime(sched, db=object(), processors=procs, specs=specs, org_id="default")
+    assert "events:tick:org_default" in sched.jobs and "events:reaper:org_default" in sched.jobs
+    assert (
+        "events:boot:org_default" in sched.jobs
+    )  # one-shot boot-create job (build replicas at boot)
+    assert (
+        "poll:s.poll:org_default" in sched.jobs
+    )  # only the poll node with a cadence gets its own job
+    assert (
+        "poll:s.kafka:org_default" not in sched.jobs
+        and "poll:mv.driven:org_default" not in sched.jobs
+    )
 
 
 def test_register_runtime_seed_false_skips_boot_create():
@@ -180,10 +187,12 @@ def test_register_runtime_seed_false_skips_boot_create():
     specs = [_spec("mv.ttl", "mv", poll=300, pf=lambda: _probe)]
     procs = build_processors(specs, db=object(), dependents_of=lambda n: [])
     sched = _Sched()
-    register_runtime(sched, db=object(), processors=procs, specs=specs, seed=False)
-    assert "events:boot" not in sched.jobs  # no source re-seed on a re-wire
-    assert "events:tick" in sched.jobs and "events:reaper" in sched.jobs
-    assert "poll:mv.ttl" in sched.jobs  # the new MV's refresh cadence is registered
+    register_runtime(
+        sched, db=object(), processors=procs, specs=specs, seed=False, org_id="default"
+    )
+    assert "events:boot:org_default" not in sched.jobs  # no source re-seed on a re-wire
+    assert "events:tick:org_default" in sched.jobs and "events:reaper:org_default" in sched.jobs
+    assert "poll:mv.ttl:org_default" in sched.jobs  # the new MV's refresh cadence is registered
 
 
 @pytest.mark.asyncio

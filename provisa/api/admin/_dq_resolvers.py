@@ -220,7 +220,7 @@ async def run_dq_check_now(
     conn: "Connection",
     *,
     scheduler: Any,
-    org_id: str | None,
+    org_id: str,
     table_id: int | None = None,
     schema_name: str | None = None,
     table_name: str | None = None,
@@ -284,7 +284,7 @@ async def run_dq_check_now(
     from provisa.events.nodes import source_node
 
     node = source_node(fetched._mapping["source_id"], schema, table)
-    suffix = f":org_{org_id}" if org_id else ""
+    suffix = f":org_{org_id}"
     job = scheduler.get_job(f"poll:{node}{suffix}")
     if job is None:
         return {

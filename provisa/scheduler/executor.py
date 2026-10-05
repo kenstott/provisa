@@ -68,6 +68,13 @@ class BackgroundJobExecutor(BaseExecutor):
         logger_name = self._logger.name
 
         async def _run() -> None:
+            from provisa.core.request_context import current_env, current_org
+
+            # REQ-1266: a job serves the org IT binds, never whichever org last re-armed the
+            # scheduler's wakeup (add_job from inside a request copies that request's context into
+            # the chain). Each firing starts with no org bound; a job that needs one binds it.
+            current_org.set(None)  # this task's own context: nothing to reset
+            current_env.set(None)
             # Asked here, on the background worker: the question is a control-plane statement,
             # and the process loop that submitted this job must not wait on one.
             holder = self._holder
@@ -88,8 +95,8 @@ class BackgroundJobExecutor(BaseExecutor):
                 return
             self._run_job_success(job.id, events)
 
-        # Submitted from the scheduler's detached wakeup chain (new_scheduler), so the job's copied
-        # context carries no request trace or org binding — each job binds its own.
+        # Submitted from the scheduler's detached wakeup chain (new_scheduler): no request trace, and
+        # _run unbinds the org -- each job binds its own.
         spawn_background(_run(), name=f"scheduled:{job.id}")
 
 

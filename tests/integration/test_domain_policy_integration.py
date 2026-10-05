@@ -43,7 +43,8 @@ from provisa.core.repositories import (
 )
 from tests.helpers import ALL_DATA_CAPABILITIES
 
-pytestmark = [pytest.mark.integration]
+# load_config runs as the deployment org's work, as the boot or PUT /admin/config runs it (REQ-1266).
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("deployment_org_bound")]
 
 SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql").read_text()
 MAIN_CONFIG = Path(
@@ -64,9 +65,12 @@ async def _restore_config_after_module(tenant_db, _init_schema, platform_admin_d
     # The reload at the module's end binds the request org's vault from the platform plane too, so
     # the plane is set up before this fixture and torn down after it.
     yield
+    from tests.conftest import as_deployment_org
+
     domain_policy.reset()
-    async with tenant_db.acquire() as conn:
-        await load_config_from_yaml(MAIN_CONFIG, conn)
+    with as_deployment_org():  # the restore is the deployment org's config load (REQ-1266)
+        async with tenant_db.acquire() as conn:
+            await load_config_from_yaml(MAIN_CONFIG, conn)
 
 
 @pytest_asyncio.fixture(autouse=True)

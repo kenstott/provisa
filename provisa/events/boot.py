@@ -464,7 +464,7 @@ def register_runtime(
     tick_seconds: int = 5,
     lease_seconds: int = 60,
     seed: bool = True,
-    org_id: str | None = None,
+    org_id: str,
 ) -> None:
     """Register the event-loop jobs on the embedded scheduler (APScheduler): one tick (drain all
     processors' pending work), one reaper (reclaim stale leases), and each POLL node's own interval
@@ -475,27 +475,22 @@ def register_runtime(
     at boot; False on a RE-wire (e.g. after a runtime MV create) so poll jobs get (re)registered
     WITHOUT re-landing every source. Re-registration is idempotent (replace_existing throughout).
 
-    REQ-1266: ``org_id`` (non-default org) namespaces every job id (``events:tick:org_<id>`` …) so a
-    second org's wiring never clobbers the first's under ``replace_existing``, and binds the org's
-    ``current_org`` ContextVar for the duration of each fire so any routed ``state.X`` read inside a
-    processor resolves that org's runtime. ``None`` (single-org / default org) keeps the bare ids and
-    binds nothing — behavior identical to before multi-org."""
+    REQ-1266: ``org_id`` namespaces every job id (``events:tick:org_<id>`` …) so one org's wiring
+    never clobbers another's under ``replace_existing``, and binds the org's ``current_org``
+    ContextVar for the duration of each fire so any routed ``state.X`` read inside a processor
+    resolves that org's runtime. The deployment's own org is bound like every other: a job fires
+    with nothing bound, so a job that bound nothing would be served no org's runtime."""
     from apscheduler.triggers.interval import IntervalTrigger
 
-    suffix = f":org_{org_id}" if org_id else ""
+    from provisa.core.request_context import reset_current_org, set_current_org
 
-    def _bind():  # REQ-1266: bind this org on the scheduler thread for one fire; None → no-op
-        if org_id is None:
-            return None
-        from provisa.core.request_context import set_current_org
+    suffix = f":org_{org_id}"
 
+    def _bind():  # REQ-1266: bind this org on the scheduler thread for one fire
         return set_current_org(org_id)
 
     def _unbind(tok) -> None:
-        if tok is not None:
-            from provisa.core.request_context import reset_current_org
-
-            reset_current_org(tok)
+        reset_current_org(tok)
 
     async def _tick() -> None:
         tok = _bind()

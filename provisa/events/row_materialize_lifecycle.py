@@ -246,9 +246,18 @@ async def wire_row_materialize_background(
     longer be resolved is skipped and logged, never aborts wiring for every other table."""
     from apscheduler.triggers.interval import IntervalTrigger
 
+    from provisa.core.request_context import (
+        require_current_org,
+        reset_current_org,
+        set_current_org,
+    )
     from provisa.events.nodes import source_node
     from provisa.federation.query_residency import row_materialized_tables_by_name
 
+    # REQ-1266: wired for the org bound now (the boot's, or the runtime build's); each fire binds
+    # it again -- a scheduled job fires with nothing bound -- and the job ids carry it, so one
+    # org's wiring never replaces another's.
+    org_id = require_current_org()
     db = getattr(state, "tenant_db", None)
     engine = getattr(state, "federation_engine", None)
     if db is None or engine is None:
@@ -270,14 +279,18 @@ async def wire_row_materialize_background(
             _table: str = table_name,
             _pk: list[str] = pk_columns,
         ) -> None:
-            await process_row_refresh_events(
-                state,
-                node=_node,
-                source_id=_sid,
-                schema_name=_schema,
-                table_name=_table,
-                pk_columns=_pk,
-            )
+            token = set_current_org(org_id)
+            try:
+                await process_row_refresh_events(
+                    state,
+                    node=_node,
+                    source_id=_sid,
+                    schema_name=_schema,
+                    table_name=_table,
+                    pk_columns=_pk,
+                )
+            finally:
+                reset_current_org(token)
 
         async def _reap(
             _node: str = node,
@@ -285,26 +298,30 @@ async def wire_row_materialize_background(
             _table: str = table_name,
             _pk: list[str] = pk_columns,
         ) -> None:
-            await reap_expired_rows(
-                state,
-                node=_node,
-                schema_name=_schema,
-                table_name=_table,
-                pk_columns=_pk,
-                reap_grace_period=reap_grace_period,
-                batch_size=reap_batch_size,
-            )
+            token = set_current_org(org_id)
+            try:
+                await reap_expired_rows(
+                    state,
+                    node=_node,
+                    schema_name=_schema,
+                    table_name=_table,
+                    pk_columns=_pk,
+                    reap_grace_period=reap_grace_period,
+                    batch_size=reap_batch_size,
+                )
+            finally:
+                reset_current_org(token)
 
         scheduler.add_job(
             _refresh,
             trigger=IntervalTrigger(seconds=tick_seconds),
-            id=f"row_materialize:refresh:{node}",
+            id=f"row_materialize:refresh:{node}:org_{org_id}",
             replace_existing=True,
         )
         scheduler.add_job(
             _reap,
             trigger=IntervalTrigger(seconds=reap_interval_seconds),
-            id=f"row_materialize:reap:{node}",
+            id=f"row_materialize:reap:{node}:org_{org_id}",
             replace_existing=True,
         )
         wired += 1

@@ -27,7 +27,7 @@ def given_live_config_in_db(shared_data):
         ),
         LiveSpec(query_id="events", sql="SELECT 2", watermark_column="ts", poll_interval=15),
     ]
-    shared_data["engine"] = LiveEngine(tenant_db=None, engine=None)
+    shared_data["engine"] = LiveEngine(tenant_db=None, engine=None, org_id="default")
 
 
 @when("the LiveEngine starts")
@@ -45,7 +45,7 @@ def then_rebuilds_poll_jobs(shared_data):
 
 @given("live config modified via admin GraphQL API")
 def given_live_config_modified(shared_data):
-    engine = LiveEngine(tenant_db=None, engine=None)
+    engine = LiveEngine(tenant_db=None, engine=None, org_id="default")
     engine.reconcile(
         [
             LiveSpec(

@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 import logging
+import contextlib
 import os
 import subprocess
 import sys
@@ -1197,6 +1198,30 @@ def docker_postgres():
         )
 
 
+@contextlib.contextmanager
+def as_deployment_org():
+    """Set up the app state the way its boot does: with the deployment's own org bound (REQ-1266).
+    Bound around each write only -- an async fixture's setup and teardown may run in different
+    contexts -- so a request the client then sends is bound by the app's own middleware."""
+    import provisa.api.app as app_mod
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org(app_mod.state.org_id)
+    try:
+        yield
+    finally:
+        reset_current_org(token)
+
+
+@pytest.fixture()
+def deployment_org_bound():
+    """Run the test as work for the deployment's own org, bound as the boot or an admin request
+    binds it (REQ-1266): a test that drives a core path directly (load_config, a resolver) stands in
+    for that entrypoint. Sync, so an async test's task copies the binding."""
+    with as_deployment_org():
+        yield
+
+
 @pytest_asyncio.fixture(scope="session")
 async def graphql_client(docker_postgres):
     """ASGI test client backed by a real Postgres pool.
@@ -1235,8 +1260,9 @@ async def graphql_client(docker_postgres):
     _sp.remove = AsyncMock()
     _sp.close_all = AsyncMock()
     _sp.close = AsyncMock()
-    app_mod.state.tenant_db = pool
-    app_mod.state.source_pools = _sp
+    with as_deployment_org():
+        app_mod.state.tenant_db = pool
+        app_mod.state.source_pools = _sp
 
     # Platform control plane (global org/user/invite registry). This fixture
     # bypasses the app lifespan, so build + seed it here the way startup does.
@@ -1254,7 +1280,8 @@ async def graphql_client(docker_postgres):
 
     await pool.close()
     await admin_db.close()
-    app_mod.state.tenant_db = None
+    with as_deployment_org():
+        app_mod.state.tenant_db = None
     app_mod.state.admin_db = None
 
 
@@ -1280,10 +1307,12 @@ def test_client(docker_postgres):  # pyright: ignore[reportUnusedParameter]
     _sp.close_all = AsyncMock()
     _sp.close = AsyncMock()
     the_app = create_app()
-    app_mod.state.source_pools = _sp
+    with as_deployment_org():
+        app_mod.state.source_pools = _sp
     with TestClient(the_app, raise_server_exceptions=False) as client:
         yield client
-    app_mod.state.tenant_db = None
+    with as_deployment_org():
+        app_mod.state.tenant_db = None
 
 
 @pytest.fixture(scope="session")

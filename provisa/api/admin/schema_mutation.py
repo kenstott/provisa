@@ -645,12 +645,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         require_capability(info, "table_registration")
         from provisa.api.app import state
         from provisa.api.admin._dq_resolvers import run_dq_check_now as _run_now
-        from provisa.core.request_context import current_org
+        from provisa.core.request_context import require_current_org
 
         # REQ-1266: the scheduler namespaces a poll job's id by the org bound when it was
         # registered (register_poll_job/register_runtime read `current_org`), and the boot and
         # every request bind theirs, so the bound org names the job this request registered.
-        org_id = current_org.get()
+        org_id = require_current_org()
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await _run_now(

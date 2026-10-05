@@ -22,6 +22,11 @@ from provisa.events.boot import (
 )
 
 
+# The org the runtime is wired for; its job ids carry it (REQ-1266: every org, the deployment's own
+# included, is bound by id).
+_ORG = "default"
+_SUFFIX = f":org_{_ORG}"
+
 # ---------------------------------------------------------------------------
 # Scenario registration
 # ---------------------------------------------------------------------------
@@ -159,6 +164,7 @@ def application_boots(shared_data: dict) -> None:
         specs=shared_data["all_specs"],
         tick_seconds=5,
         lease_seconds=60,
+        org_id=_ORG,
     )
     shared_data["scheduler"] = sched
 
@@ -176,9 +182,11 @@ def application_boots(shared_data: dict) -> None:
 def assert_boot_job_registered(shared_data: dict, monkeypatch) -> None:
     sched: _CapturingScheduler = shared_data["scheduler"]
     job_ids = sched.job_ids()
-    assert job_ids.count("events:boot") == 1, f"expected one events:boot job, found {job_ids}"
+    assert job_ids.count(f"events:boot{_SUFFIX}") == 1, (
+        f"expected one events:boot job, found {job_ids}"
+    )
 
-    boot_job = sched.job("events:boot")
+    boot_job = sched.job(f"events:boot{_SUFFIX}")
     assert boot_job["trigger"] is None, "events:boot must be a one-shot (no trigger)"
     assert callable(boot_job["fn"])
 
@@ -221,7 +229,7 @@ def assert_drain_idempotent(shared_data: dict, monkeypatch) -> None:
     """The boot job drains the full DAG (all processors) exactly once, and re-running it re-posts
     the same replace events (idempotent by design — replace re-lands current state)."""
     sched: _CapturingScheduler = shared_data["scheduler"]
-    boot_fn = sched.job("events:boot")["fn"]
+    boot_fn = sched.job(f"events:boot{_SUFFIX}")["fn"]
 
     posted_runs: list[list[str]] = []
     drain_processor_counts: list[int] = []
@@ -279,7 +287,7 @@ def assert_poll_injectors_scheduled(shared_data: dict) -> None:
     from apscheduler.triggers.interval import IntervalTrigger
 
     for spec in poll_specs:
-        job_id = f"poll:{spec.node}"
+        job_id = f"poll:{spec.node}{_SUFFIX}"
         assert job_id in job_ids, f"expected poll job {job_id!r}, found {job_ids}"
         trigger = sched.job(job_id)["trigger"]
         assert isinstance(trigger, IntervalTrigger), f"{job_id} must use an IntervalTrigger"
@@ -295,9 +303,9 @@ def assert_push_sources_refreshed_by_listeners(shared_data: dict) -> None:
     assert push_specs, "test requires at least one push source"
 
     for spec in push_specs:
-        assert f"poll:{spec.node}" not in job_ids, (
+        assert f"poll:{spec.node}{_SUFFIX}" not in job_ids, (
             f"push source {spec.node!r} must not have a poll job"
         )
 
-    assert "events:tick" in job_ids, "events:tick must always be registered"
-    assert "events:reaper" in job_ids, "events:reaper must always be registered"
+    assert f"events:tick{_SUFFIX}" in job_ids, "events:tick must always be registered"
+    assert f"events:reaper{_SUFFIX}" in job_ids, "events:reaper must always be registered"

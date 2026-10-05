@@ -99,9 +99,12 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
                  (LISTEN/NOTIFY) and are never polled here.
     """
 
-    def __init__(self, tenant_db, engine=None) -> None:
+    def __init__(self, tenant_db, engine=None, *, org_id: str) -> None:
         self._tenant_db = tenant_db
         self._engine = engine
+        # REQ-1266: the org whose tenant plane and engine this engine polls; each poll binds it --
+        # a scheduled job fires with nothing bound.
+        self._org_id = org_id
         self._jobs: dict[str, _LiveJob] = {}
         self._scheduler = None
 
@@ -246,7 +249,16 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
         return query_id in self._jobs
 
     async def _poll(self, query_id: str) -> None:  # REQ-260, REQ-283, REQ-286, REQ-287
-        """Poll for new rows and deliver to outputs."""
+        """Poll for new rows and deliver to outputs, as the work of the engine's org."""
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(self._org_id)
+        try:
+            await self._poll_bound(query_id)
+        finally:
+            reset_current_org(token)
+
+    async def _poll_bound(self, query_id: str) -> None:
         job = self._jobs.get(query_id)
         if job is None:
             return

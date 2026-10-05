@@ -79,7 +79,7 @@ def _make_engine(pool=None, trino_conn=None) -> LiveEngine:
         pool = MagicMock()
     if trino_conn is None:
         trino_conn = MagicMock()
-    return LiveEngine(tenant_db=pool, engine=_BridgeEngine(trino_conn))
+    return LiveEngine(tenant_db=pool, engine=_BridgeEngine(trino_conn), org_id="default")
 
 
 def _trino_qr(rows):

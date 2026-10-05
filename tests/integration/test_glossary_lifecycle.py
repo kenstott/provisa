@@ -28,7 +28,8 @@ from provisa.core.config_loader import load_config, parse_config_dict
 from provisa.core.repositories import glossary as glossary_repo
 from tests.helpers import ALL_DATA_CAPABILITIES
 
-pytestmark = [pytest.mark.integration]
+# load_config runs as the deployment org's work, as the boot or PUT /admin/config runs it (REQ-1266).
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("deployment_org_bound")]
 
 SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql").read_text()
 
