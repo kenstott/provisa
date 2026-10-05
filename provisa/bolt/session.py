@@ -407,6 +407,11 @@ class BoltSession:
         self.state = State.AUTHENTICATION
         self.send_success({})
 
+    def close(self) -> None:
+        """The connection has ended (GOODBYE, the client gone, or the session defunct): a request
+        whose records were never pulled ends with it — its deadline stops (REQ-1905)."""
+        self._end_request()
+
     def handle_reset(self) -> None:
         self._end_request()
         self._result_columns = []

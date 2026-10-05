@@ -125,8 +125,14 @@ async def _bolt_handshake_and_serve(
     log.info("[BOLT] negotiated Bolt %d.%d", *chosen)
 
     session = BoltSession(writer, chosen)
+    try:
+        await _serve(session, reader, writer)
+    finally:
+        session.close()  # a request left unpulled ends with its connection (REQ-1905)
 
-    # 4. Message loop
+
+async def _serve(session: BoltSession, reader: BoltReader, writer: BoltWriter) -> None:
+    """The message loop of one negotiated connection."""
     while True:
         data = await read_message(reader)
         if not data:
