@@ -65,17 +65,21 @@ const E2E_SAPHANA_PASSWORD = process.env.PROVISA_DEMO_SAPHANA_PASSWORD ?? "HXEHa
 
 // pyodbc/unixODBC + "ODBC Driver 18 for SQL Server" must be present on the HOST running this
 // Playwright process's backend (provisa/executor/drivers/sqlserver.py links libodbc at import) —
-// a host dependency this file cannot install. Detected once at module load so a host missing it
-// skips cleanly instead of failing every assertion after a broken registration.
-function hasSqlServerOdbcDriver(): boolean {
+// a host dependency this file cannot install (ui-e2e-core.yml installs it, as
+// integration-suite.yml does). Read once at module load: the drivers pyodbc has registered, so a
+// host missing the driver fails the sqlserver case by name before a broken registration, instead of
+// skipping it (a skip hid that the CI lane never installed the driver).
+const SQLSERVER_ODBC_DRIVER = "ODBC Driver 18 for SQL Server";
+function registeredOdbcDrivers(): string {
   try {
-    execFileSync(PYTHON, ["-c", "import pyodbc; pyodbc.drivers()"], { stdio: "pipe" });
-    return true;
-  } catch {
-    return false;
+    return execFileSync(PYTHON, ["-c", "import pyodbc; print(pyodbc.drivers())"], {
+      stdio: "pipe",
+    }).toString();
+  } catch (e) {
+    return `pyodbc cannot load: ${(e as { stderr?: Buffer }).stderr?.toString() ?? String(e)}`;
   }
 }
-const SQLSERVER_ODBC_AVAILABLE = hasSqlServerOdbcDriver();
+const ODBC_DRIVERS = registeredOdbcDrivers();
 
 const SOURCES = [
   "mariadb",
@@ -342,12 +346,11 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   test("sqlserver: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    test.skip(
-      !SQLSERVER_ODBC_AVAILABLE,
-      "host running the backend has no unixODBC / ODBC Driver 18 for SQL Server registered " +
-        "(provisa/executor/drivers/sqlserver.py links libodbc at import) — same host dependency " +
-        "tests/integration/test_sqlserver_source_e2e.py's importorskip guards against",
-    );
+    expect(
+      ODBC_DRIVERS,
+      `the host running the backend has no "${SQLSERVER_ODBC_DRIVER}" registered with unixODBC ` +
+        "(provisa/executor/drivers/sqlserver.py links libodbc at import); install msodbcsql18",
+    ).toContain(SQLSERVER_ODBC_DRIVER);
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_sqlserver_${stamp}`;

@@ -86,6 +86,19 @@ jobs:
       # demo/sources/saphana/prime.py's own dependency and the product's own hana+hdbcli driver —
       # source-to-query-generic-rdbms.spec.ts's saphana case runs for real on this runner (a genuine
       # amd64 host, see that spec's RUNNING_IN_CI gate).
+      # source-to-query-generic-rdbms.spec.ts's sqlserver case: provisa/executor/drivers/sqlserver.py
+      # connects through Microsoft's ODBC Driver 18, which the runner image does not ship (the same
+      # step integration-suite.yml runs). Without it the case fails by name.
+      - name: Install Microsoft ODBC Driver 18 for SQL Server
+        run: |
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+            | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          curl -fsSL "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
+            | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+          sudo apt-get update -q
+          sudo ACCEPT_EULA=Y apt-get install -y -q msodbcsql18 unixodbc-dev
+          odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
+
       - name: Install Python deps
         run: uv sync --frozen --extra dev --extra cassandra --extra saphana
 
