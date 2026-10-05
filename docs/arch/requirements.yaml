@@ -30684,7 +30684,7 @@
     snapshot/archive patterns (REQ-996). [END SUPERSEDED BLOCK] (Amended 2026-10-03, A SCHEDULED STATEMENT
     WRITES TO EXISTING TABLES ONLY:) A scheduled statement may not create a table (REQ-1926). It may only
     insert into, update or delete from existing registered tables, through the one write admission (REQ-1925),
-    acting as the trigger's role. A snapshot or an archive is an INSERT ... SELECT into a declared table.
+    acting as the trigger's role. A snapshot or an archive is an INSERT ... SELECT into a declared table. (Amended 2026-10-05, per-org triggers:) A scheduled trigger belongs to the org whose model holds it and runs bound to that org, with that org's roles and data; it never runs in another org. Triggers are stored in the org's model store (REQ-1919), versioned and branchable like every other definition, and are never written to the shared config file. Their job ids carry the org (`<id>:org_<org>`), so two orgs may use the same trigger id; creating, deleting, enabling or replacing a trigger touches only the caller's org's triggers. Triggers declared in the deployment's config file are loaded into the deployment org's model store when the config is read (origin config), so the deployment org's are stated at load, not defaulted when they fire. Only an org's prod triggers are scheduled; an environment's triggers are definitions that run once promoted to prod.
   use_case: Scheduled CTAS (CREATE TABLE ... AS SELECT) is the primary derived pattern from one-time CTAS
     (REQ-996), enabling snapshot and archive tables that update on a regular schedule without requiring
     external ETL orchestrators or manual user intervention. Users express scheduled snapshots as declarative
