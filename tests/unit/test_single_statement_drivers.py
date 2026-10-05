@@ -125,6 +125,9 @@ class _Cursor:
 
 
 class _Statement:
+    # pyexasol names a statement that returns rows by its result_type; these all do.
+    result_type = "resultSet"
+
     def __init__(self, rows) -> None:
         self._rows = rows
 
