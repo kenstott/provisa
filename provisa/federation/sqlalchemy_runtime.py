@@ -113,9 +113,12 @@ def _deadline_bounded(cancel: Callable[[], None] | None) -> Iterator[None]:
 
 class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
     def __init__(self, *, url: str, catalog_qualified: bool = True) -> None:
-        from sqlalchemy import create_engine
+        from sqlalchemy import create_engine, make_url
 
-        self._sa = create_engine(url)
+        # REQ-990: a SingleStore store's bulk write streams through LOAD DATA LOCAL INFILE, which
+        # the client only honours when local_infile is enabled on the connection.
+        local_infile = make_url(url).get_backend_name() == "singlestoredb"
+        self._sa = create_engine(url, connect_args={"local_infile": True} if local_infile else {})
         self._con = self._sa.raw_connection()  # a DBAPI connection (cursor) — cache terminal + run
         self._catalog_qualified = catalog_qualified
 
@@ -361,13 +364,13 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
                 if landing_shape == REPLACE:
                     conn.execute(tbl.delete())
                     if coerced:
-                        conn.execute(tbl.insert(), coerced)
+                        _sync_bulk_insert(conn, tbl, coerced)
                 elif landing_shape == APPEND:
                     if pk:
                         for row in coerced:
                             _sync_upsert(conn, tbl, row, index_elements=pk)
                     elif coerced:
-                        conn.execute(tbl.insert(), coerced)
+                        _sync_bulk_insert(conn, tbl, coerced)
                 elif landing_shape == CDC:
                     if not pk:
                         raise ValueError(
@@ -506,6 +509,17 @@ def _reconcile_table_shape(conn: Any, table: Any) -> str:
     conn.execute(DropTable(table))
     conn.execute(CreateTable(table))
     return "recreated"
+
+
+def _sync_bulk_insert(conn: Any, table: Any, rows: list[dict]) -> None:
+    """Bulk-insert ``rows`` on ``conn``, inside its transaction: SingleStore streams one LOAD DATA
+    LOCAL INFILE (REQ-990, never executemany); every other store takes SQLAlchemy's executemany."""
+    if conn.dialect.name == "singlestoredb":
+        from provisa.core.database import singlestore_load_data
+
+        singlestore_load_data(conn.connection.driver_connection, conn.dialect, table, rows)
+        return
+    conn.execute(table.insert(), rows)
 
 
 def _and_eq(table: Any, cols: list[str], row: dict) -> Any:

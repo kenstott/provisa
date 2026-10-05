@@ -275,18 +275,23 @@ SA_NO_ATOMIC_REPLACE = frozenset(
 LOAD_INSERT = "insert"  # SQLAlchemy executemany: the floor every driver has
 LOAD_ODBC_ARRAY = "odbc_array"  # pyodbc parameter arrays (``fast_executemany``) on the raw cursor
 LOAD_ORACLE_DIRECT_PATH = "oracle_direct_path"  # python-oracledb Direct Path Load
+LOAD_SINGLESTORE_INFILE = "singlestore_infile"  # streamed LOAD DATA LOCAL INFILE (REQ-990)
 
 #: What each load method is, as the store declares it (``TargetCaps.load``).
 _SA_LOAD_KIND = {
     LOAD_INSERT: TargetLoad.ROW_COPY,
     LOAD_ODBC_ARRAY: TargetLoad.ROW_COPY,
     LOAD_ORACLE_DIRECT_PATH: TargetLoad.BULK_STREAM,
+    LOAD_SINGLESTORE_INFILE: TargetLoad.BULK_STREAM,
 }
 
 _SA_NATIVE_LOAD = {
     ("mssql", "pyodbc"): LOAD_ODBC_ARRAY,
     ("oracle", "oracledb"): LOAD_ORACLE_DIRECT_PATH,
 }
+#: Dialects with one client only, whose bulk call is keyed on the dialect alone: the singlestoredb
+#: dialect names no driver until it connects, then names the wire protocol (``mysql``).
+_SA_DIALECT_LOAD = {"singlestoredb": LOAD_SINGLESTORE_INFILE}
 
 
 def sa_replace_method(dialect: str, *, rename: bool = True) -> str | None:
@@ -340,6 +345,7 @@ class SqlAlchemyStoreTarget:
 
     - SQL Server over pyodbc: parameter arrays on the raw cursor (``fast_executemany``);
     - Oracle over python-oracledb: Direct Path Load;
+    - SingleStore: one streamed ``LOAD DATA LOCAL INFILE`` per batch (REQ-990), never executemany;
     - any other driver: SQLAlchemy's ``executemany``, the floor (PyMySQL sends it as multi-row
       ``INSERT`` statements; its ``LOAD DATA LOCAL`` reads a named file and is not used).
 
@@ -380,8 +386,10 @@ class SqlAlchemyStoreTarget:
         self._pk = tuple(pk_columns)
         self._build = build_table_name(table)
         self._previous = previous_table_name(table)
-        self.load_method = load or _SA_NATIVE_LOAD.get(
-            (self._dialect, sa_engine.dialect.driver), LOAD_INSERT
+        self.load_method = (
+            load
+            or _SA_DIALECT_LOAD.get(self._dialect)
+            or _SA_NATIVE_LOAD.get((self._dialect, sa_engine.dialect.driver), LOAD_INSERT)
         )
         self.replace_method = sa_replace_method(self._dialect, rename=rename)
         self._conn: Any = None
@@ -475,6 +483,12 @@ class SqlAlchemyStoreTarget:
             return
         # The driver's own connection, the one this build's SQLAlchemy connection wraps.
         raw = self._conn.connection.driver_connection
+        if self.load_method == LOAD_SINGLESTORE_INFILE:
+            from provisa.core.database import singlestore_load_data
+
+            singlestore_load_data(raw, self._sa.dialect, self._build_table, coerced)
+            raw.commit()
+            return
         names = [name for name, _ in self._columns]
         data = [tuple(_driver_value(row.get(name)) for name in names) for row in coerced]
         if self.load_method == LOAD_ODBC_ARRAY:

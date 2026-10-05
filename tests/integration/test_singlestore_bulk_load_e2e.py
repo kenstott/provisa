@@ -134,3 +134,102 @@ async def test_singlestore_bulk_copy_streams_load_data_and_round_trips():
             assert by_id[3]["payload"] is None
         finally:
             await conn.execute(f"DROP TABLE IF EXISTS `{_TABLE}`")
+
+
+_ENGINE_COLUMNS = [("id", "integer"), ("name", "varchar"), ("payload", "json")]
+_ENGINE_ROWS = [
+    {"id": 1, "name": "tab\tnew\nline\\back", "payload": {"a": [1, 2]}},
+    {"id": 2, "name": "", "payload": None},
+    {"id": 3, "name": None, "payload": {"x": "y"}},
+]
+
+
+def _engine_rows(sa_engine, table: str) -> dict[int, dict]:
+    import json as _json
+
+    from sqlalchemy import text
+
+    with sa_engine.connect() as conn:
+        got = conn.execute(text(f"SELECT id, name, payload FROM `{table}` ORDER BY id")).mappings()
+        out = {}
+        for r in got:
+            payload = r["payload"]
+            out[r["id"]] = {
+                "name": r["name"],
+                "payload": _json.loads(payload) if isinstance(payload, (str, bytes)) else payload,
+            }
+        return out
+
+
+def _drop(sa_engine, *tables: str) -> None:
+    from sqlalchemy import text
+
+    with sa_engine.begin() as conn:
+        for t in tables:
+            conn.execute(text(f"DROP TABLE IF EXISTS `{t}`"))
+
+
+async def test_engine_runtime_replace_land_streams_load_data_and_round_trips():
+    """SingleStore as the ENGINE's own store: the runtime's REPLACE land (delete + bulk insert in
+    one transaction) streams LOAD DATA, and a second REPLACE leaves exactly the second rows."""
+    from provisa.federation.sqlalchemy_runtime import SqlAlchemyFederationRuntime
+
+    runtime = SqlAlchemyFederationRuntime(url=_dsn())
+    db_name = os.environ["SINGLESTORE_DATABASE"]
+    table = "__provisa_ss_engine_land_e2e"
+    _drop(runtime._sa, table)
+    try:
+        await runtime.land_table(
+            schema=db_name,
+            table=table,
+            columns=_ENGINE_COLUMNS,
+            rows=_ENGINE_ROWS,
+            change_signal="ttl",
+            shape="replace",
+        )
+        got = _engine_rows(runtime._sa, table)
+        assert set(got) == {1, 2, 3}
+        assert got[1] == {"name": "tab\tnew\nline\\back", "payload": {"a": [1, 2]}}
+        assert got[2] == {"name": "", "payload": None}  # empty string distinct from NULL
+        assert got[3] == {"name": None, "payload": {"x": "y"}}
+
+        await runtime.land_table(
+            schema=db_name,
+            table=table,
+            columns=_ENGINE_COLUMNS,
+            rows=_ENGINE_ROWS[:1],
+            change_signal="ttl",
+            shape="replace",
+        )
+        assert set(_engine_rows(runtime._sa, table)) == {1}
+    finally:
+        _drop(runtime._sa, table)
+
+
+def test_replica_build_target_streams_load_data_and_swaps():
+    """SingleStore as the ENGINE's own store: a replica build writes its batches through LOAD DATA
+    into the build table and swaps it in (rows in one transaction). Driven on the target's own
+    synchronous steps against the instance's one database: the shared tier grants no CREATE
+    DATABASE, so no replicas-named schema can stand there."""
+    from provisa.federation.replica_target import LOAD_SINGLESTORE_INFILE, SqlAlchemyStoreTarget
+    from provisa.federation.sqlalchemy_runtime import SqlAlchemyFederationRuntime
+
+    runtime = SqlAlchemyFederationRuntime(url=_dsn())
+    db_name = os.environ["SINGLESTORE_DATABASE"]
+    table = "__provisa_ss_replica_build_e2e"
+    target = SqlAlchemyStoreTarget(
+        runtime._sa, schema=db_name, table=table, columns=_ENGINE_COLUMNS, pk_columns=["id"]
+    )
+    assert target.load_method == LOAD_SINGLESTORE_INFILE
+    _drop(runtime._sa, table, target._build)
+    try:
+        target._begin()
+        target._write(_ENGINE_ROWS[:2])
+        target._write(_ENGINE_ROWS[2:])
+        target._swap()
+        got = _engine_rows(runtime._sa, table)
+        assert set(got) == {1, 2, 3}
+        assert got[1]["name"] == "tab\tnew\nline\\back"
+        assert got[2] == {"name": "", "payload": None}
+    finally:
+        _drop(runtime._sa, table, target._build)
