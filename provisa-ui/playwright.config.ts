@@ -162,19 +162,30 @@ const IS_AMD64 = process.arch === "x64";
 // `--project regions-demo` (infra-features' CI lane). A skip would be a defect, so it is NOT gated by
 // an env flag -- selecting the project IS the gate.
 const REGIONS_SPECS = ["**/regions-demo.spec.ts"];
+// REQ-1285/1298/1306: membership flows that exist only for a real signed-in identity, which the core
+// backend (auth.provider: none) never has. Each spec owns a one-node, basic-auth instance
+// (scripts/launch-demo-regions.sh --test --auth-flows) and seeds its users and orgs through the
+// authenticated admin API. Selected only via `--project auth-flows`, like regions-demo.
+const AUTH_FLOWS_SPECS = ["**/auth-flows-*.spec.ts"];
+// Projects that bring up their own instance and address none of the default backends.
+const SELF_HOSTED_PROJECTS = ["regions-demo", "auth-flows"];
 // The webServer array below is process-global: Playwright boots every entry for ANY run, whatever
 // project is selected. The regions-demo project brings up its OWN two-region instance and addresses
-// none of the core backends, so for a run that selects ONLY regions-demo those core/vite/demo
-// servers are pure dead weight — and worse, the core DuckDB backend emits org_e2e MV-reclamation
-// errors into the very log the maintainer reads when proving the demo. When regions-demo is the only
-// project asked for, start no default webServers at all (the spec needs none).
+// none of the core backends, so for a run that selects ONLY self-hosted projects (regions-demo,
+// auth-flows) those core/vite/demo servers are pure dead weight — and worse, the core DuckDB backend
+// emits org_e2e MV-reclamation errors into the very log the maintainer reads when proving the demo.
+// When only self-hosted projects are asked for, start no default webServers at all.
 const SELECTED_PROJECTS = process.argv.flatMap((a, i) =>
   a === "--project" ? [process.argv[i + 1]] : a.startsWith("--project=") ? [a.slice("--project=".length)] : [],
 );
-const ONLY_REGIONS_DEMO = SELECTED_PROJECTS.length > 0 && SELECTED_PROJECTS.every((p) => p === "regions-demo");
+// Test workers load this config again without the runner's --project arguments; they inherit the
+// runner's environment, which carries the decision below.
+const ONLY_SELF_HOSTED =
+  process.env.PROVISA_E2E_ONLY_SELF_HOSTED === "1" ||
+  (SELECTED_PROJECTS.length > 0 && SELECTED_PROJECTS.every((p) => SELF_HOSTED_PROJECTS.includes(p)));
 // global-setup.ts runs unconditionally (Playwright has one global setup, not one per project). When
 // no default webServer is booted it has no core backend to PUT /admin/config to, so it must no-op.
-if (ONLY_REGIONS_DEMO) process.env.PROVISA_E2E_ONLY_REGIONS = "1";
+if (ONLY_SELF_HOSTED) process.env.PROVISA_E2E_ONLY_SELF_HOSTED = "1";
 // The vault a source's password is stored in encrypts at rest, and the key is what authorizes
 // reading it back (REQ-685/REQ-1695). This host has no OS keychain for the store to mint one in,
 // so the key is supplied explicitly — exactly as every deployment that stores secrets must, and as
@@ -390,7 +401,9 @@ function postgresControlPlaneEnv(dataDir: string, port: string): Record<string, 
 
 // Only resolved on the Postgres path — the Trino webServer below also needs the raw port for
 // PROVISA_ENGINE_CONTROL_PLANE_PORT, and that webServer only exists when the control plane is PG.
-const pgPort = E2E_CONTROL_PLANE === "postgres" ? resolveControlPlanePort() : null;
+// A run of only self-hosted projects boots none of these servers, so it asks for no port.
+const pgPort =
+  E2E_CONTROL_PLANE === "postgres" && !ONLY_SELF_HOSTED ? resolveControlPlanePort() : null;
 const controlPlaneEnvFor = (dataDir: string) =>
   pgPort === null ? sqliteControlPlaneEnv(dataDir) : postgresControlPlaneEnv(dataDir, pgPort);
 const controlPlaneEnv = controlPlaneEnvFor(E2E_DATA_DIR);
@@ -417,7 +430,7 @@ export default defineConfig({
     baseURL: `http://localhost:${E2E_UI_PORT}`,
     headless: true,
   },
-  webServer: ONLY_REGIONS_DEMO ? [] : [
+  webServer: ONLY_SELF_HOSTED ? [] : [
     {
       command: "npm run dev",
       port: E2E_UI_PORT,
@@ -555,6 +568,7 @@ export default defineConfig({
               ...TRINO_SPECS,
               ...SWAP_SPECS,
               ...REGIONS_SPECS,
+              ...AUTH_FLOWS_SPECS,
               ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
             ],
           },
@@ -572,6 +586,9 @@ export default defineConfig({
     // REQ-1922: selected explicitly with `--project regions-demo`; the spec brings up its own
     // two-region instance, so it does not use the default webServer/backends.
     { name: "regions-demo", testMatch: REGIONS_SPECS },
+    // REQ-1285/1298/1306: selected explicitly with `--project auth-flows`; each spec brings up its
+    // own basic-auth instance.
+    { name: "auth-flows", testMatch: AUTH_FLOWS_SPECS },
     // Requires RUNS_TRINO (the Trino webServer + its shared-org env overrides) exactly like the
     // "trino" project does — it is a separate project only so a routine core/trino run never
     // selects it by accident. See engine-swap.spec.ts's module doc for the invocation.
