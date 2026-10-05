@@ -122,12 +122,21 @@ async def test_ensure_mv_row_is_idempotent_on_postgresql(db):
         enabled=True,
         sql="SELECT 1",
     )
-    await ensure_mv_row(db, mv)
-    await ensure_mv_row(db, mv)  # the duplicate is the success case, and must not poison release
+    # One database plays the model (the definition) and the region's state (its build, REQ-1922).
+    await ensure_mv_row(db, db, mv)
+    await ensure_mv_row(
+        db, db, mv
+    )  # the duplicate is the success case, and must not poison release
     async with db.acquire() as conn:
         rows = (
             await conn.execute_core(
                 text("SELECT count(*) FROM materialized_views WHERE id = 'view-dim_pet'")
             )
         ).fetchall()
+        builds = (
+            await conn.execute_core(
+                text("SELECT count(*) FROM mv_build_state WHERE mv_id = 'view-dim_pet'")
+            )
+        ).fetchall()
     assert rows[0][0] == 1
+    assert builds[0][0] == 1

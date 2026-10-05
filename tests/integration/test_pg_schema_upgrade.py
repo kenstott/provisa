@@ -223,6 +223,7 @@ async def test_a_table_schema_sql_does_not_create_lands_in_the_org_schema(own_da
         "route_reason",
         "sources",
         "data_age",
+        "region",  # REQ-1922: the region whose data answered
         "logged_at",
     }
     assert _column_shapes(db, _SCHEMA, "query_audit_log") == declared

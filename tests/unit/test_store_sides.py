@@ -179,3 +179,35 @@ async def test_the_platform_registry_handle_and_the_org_handles_keep_apart(tmp_p
             match="orgs is a platform_admin table, use the deployment's admin_db",
         ):
             await conn.execute_core(select(orgs.c.id))
+
+
+async def test_the_admin_lists_stamp_regions_from_the_model_store(handles):
+    """REQ-1922: hotTables and replicaStatus stamp each row with its table's region, read from
+    the registered tables — the model — through the org's model handle. Through the state handle
+    the guard refused it and both lists answered null (CI: test_schema_query_api::test_hot_tables)."""
+    from types import SimpleNamespace
+
+    from sqlalchemy import insert
+
+    from provisa.api.admin.schema_query import _table_region_maps
+    from provisa.core.schema_org import sources
+
+    model_db, tenant_db = handles
+    async with model_db.acquire() as conn:
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
+        await conn.execute_core(
+            insert(registered_tables).values(
+                id=7,
+                source_id="pg",
+                domain_id="sales",
+                schema_name="public",
+                table_name="orders",
+                region="eu",
+                origin="admin",
+            )
+        )
+    by_id, by_key = await _table_region_maps(
+        SimpleNamespace(model_db=model_db, tenant_db=tenant_db)
+    )
+    assert by_id == {7: "eu"}
+    assert by_key == {("pg", "public", "orders"): "eu"}
