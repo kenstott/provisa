@@ -308,7 +308,10 @@ export function SourcesPage() {
       .catch((e) => setError(String(e)));
   }, []);
 
-  const loading = sourcesLoading || settingsLoading;
+  // The page loader is for the first load only. A refetch (after a save, a registration, a
+  // delete) keeps the page mounted, so an open Schema Discovery panel keeps what is typed and
+  // discovered in it (REQ-150); the refetched rows replace the old ones in place.
+  const loading = sourcesLoading || (settingsLoading && settings === null);
 
   const getEffectiveTtl = (source: Source): string => {
     if (source.cacheTtl != null) return `${source.cacheTtl}s (custom)`;
