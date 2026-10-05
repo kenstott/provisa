@@ -1586,6 +1586,8 @@ async def route_governed(
     async def _engine_physical(_qualified: str) -> str:
         """The routed catalog-physical statement in the engine's own SQL (see
         :func:`_kept_engine_form`, which keeps it with the governed statement)."""
+        from provisa.federation.query_residency import other_region_read_catalogs
+
         _known_cats_pgwire = (
             set(getattr(state, "source_catalogs", {}).values())
             | {
@@ -1594,6 +1596,8 @@ async def route_governed(
                 "results",
                 "mat_store",  # REQ-1163: the materialization store an expanded bitemporal view reconstructs over
             }
+            # REQ-1921/1922: another region's stores, where a view naming it is read in place
+            | other_region_read_catalogs(state)
         )
         from provisa.api.data.materialization import _lookup_gql_remote_table as _lookup_gql
         import sqlglot as _sg
@@ -3677,11 +3681,13 @@ async def _route_compiled(
         """The routed catalog-physical statement as the engine runs it: the literal-predicate
         carry and catalog fold applied, and that text in the engine's own SQL (see
         :func:`_kept_engine_form`, which keeps both with the governed statement)."""
-        _known_cats = set(getattr(state, "source_catalogs", {}).values()) | {
-            "iceberg",
-            "otel",
-            "results",
-        }
+        from provisa.federation.query_residency import other_region_read_catalogs
+
+        _known_cats = (
+            set(getattr(state, "source_catalogs", {}).values())
+            | {"iceberg", "otel", "results"}
+            | other_region_read_catalogs(state)  # REQ-1921/1922: another region's stores
+        )
         import sqlglot as _sg2
         import sqlglot.expressions as _exp2
         from provisa.api.data.materialization import _lookup_gql_remote_table as _lookup_gql2

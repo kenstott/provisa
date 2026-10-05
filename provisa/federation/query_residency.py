@@ -333,6 +333,30 @@ async def read_home_view(state: Any, backend: Any, mv: Any, view: str) -> None:
         raise HomeRegionUnavailable(view, home, "cannot be reached", kept_as="copy") from exc
 
 
+def other_region_read_catalogs(state: Any) -> set[str]:
+    """The catalogs a statement may name to read the org's other regions' stores — each region's
+    replicas store and views store, as this engine names them (REQ-1922): the catalog of
+    ``backend.region_read_address``. Empty with no other region, or on an engine that addresses
+    them under its own store's catalog — or that reads no other region at all, whose reads of one
+    are refused by name where they are attached (``read_home_replica``, ``read_home_view``)."""
+    from provisa.federation.backend import EngineReadsNoOtherRegion
+
+    regions = getattr(state, "foreign_regions", None) or {}
+    if not regions:
+        return set()
+    backend = state.federation_engine.engine.backend
+    catalogs: set[str] = set()
+    for region in regions.values():
+        for store in (region, region.views()):
+            try:
+                catalog = backend.region_read_address(state, store, "_", "_")[0]
+            except EngineReadsNoOtherRegion:
+                continue
+            if catalog is not None:
+                catalogs.add(catalog)
+    return catalogs
+
+
 def home_view_read(state: Any, mv: Any) -> str | None:
     """A read of the copy of ``mv`` another region keeps — the view names that region — at the
     address this engine reads that region's views store by; None for a view built here."""

@@ -196,3 +196,14 @@ def test_a_regions_views_store_is_read_under_a_name_of_its_own():
     state = SimpleNamespace(org_id="acme", active_org_id="acme")
     replicas, views = region_read_name(state, region), region_read_name(state, region.views())
     assert views == f"{replicas}__views"
+
+
+def test_a_statement_may_name_the_other_regions_stores_as_this_engine_reads_them(
+    eu_state_db, monkeypatch, node_in_us
+):
+    """The pipeline refuses a statement naming an unknown catalog; the stores of the org's other
+    regions — replicas and views, as this engine names them — are known ones."""
+    from provisa.federation.query_residency import other_region_read_catalogs
+
+    state = _state(eu_state_db, _Backend(), monkeypatch)
+    assert other_region_read_catalogs(state) == {"eu:replicas", "eu:views"}
