@@ -178,16 +178,15 @@ async def test_watchdog_no_op_when_healthy():
 
 @pytest.mark.asyncio
 async def test_watchdog_calls_docker_start_when_unresponsive():
-    """The Trino watchdog issues 'docker start provisa-trino-1' when ping fails."""
+    """The Trino watchdog starts the compose trino container publishing the engine's port when the
+    ping fails -- whatever project it was brought up under."""
     from provisa.federation import trino_lifecycle
 
     mock_state = MagicMock()
     mock_state.engine_conn = MagicMock()
-    mock_state.engine_conn_kwargs = {}
+    mock_state.engine_conn_kwargs = {"host": "localhost", "port": 18080}
 
-    mock_proc = AsyncMock()
-    mock_proc.returncode = 0
-    mock_proc.communicate = AsyncMock(return_value=(b"", b""))
+    calls, exec_ = _docker_cli({"itest-a-trino-1": 18080}, start_rc=0)
 
     ping_calls = []
 
@@ -199,17 +198,44 @@ async def test_watchdog_calls_docker_start_when_unresponsive():
     with (
         patch("asyncio.to_thread", side_effect=_run_in_thread),
         patch("provisa.federation.trino_lifecycle._ping", side_effect=ping_side_effect),
-        patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
+        patch("asyncio.create_subprocess_exec", side_effect=exec_),
         patch("asyncio.sleep", new_callable=AsyncMock),
         patch("trino.dbapi.connect", return_value=MagicMock()),
     ):
         await trino_lifecycle.watchdog(mock_state)
 
-    mock_exec.assert_called_once()
-    args = mock_exec.call_args[0]
-    assert "docker" in args
-    assert "start" in args
-    assert "provisa-trino-1" in args
+    assert ("docker", "start", "itest-a-trino-1") in calls
+    assert len(ping_calls) == 2  # the replacement connection was pinged
+
+
+def _docker_cli(published: dict[str, int], *, start_rc: int):
+    """A stand-in docker CLI: ``published`` is container name -> the host port it binds."""
+    import json
+
+    calls: list[tuple] = []
+
+    def _proc(rc: int, out: str, err: str = ""):
+        proc = AsyncMock()
+        proc.returncode = rc
+        proc.communicate = AsyncMock(return_value=(out.encode(), err.encode()))
+        return proc
+
+    async def exec_(*args, **_kwargs):
+        calls.append(args)
+        if args[1] == "ps":
+            return _proc(0, "".join(f"id-{n}\n" for n in published))
+        if args[1] == "inspect":
+            return _proc(
+                0,
+                "".join(
+                    f"/{n}\t" + json.dumps({"8080/tcp": [{"HostPort": str(published[n])}]}) + "\n"
+                    for n in (a.removeprefix("id-") for a in args[4:])
+                ),
+            )
+        assert args[1] == "start", args
+        return _proc(start_rc, "", "" if start_rc == 0 else "container not found")
+
+    return calls, exec_
 
 
 @pytest.mark.asyncio
@@ -227,31 +253,24 @@ async def test_watchdog_skips_when_no_conn():
 
 
 @pytest.mark.asyncio
-async def test_watchdog_logs_error_on_docker_failure():
-    """The Trino watchdog returns without raising when docker start fails."""
+async def test_watchdog_logs_error_on_docker_failure(caplog):
+    """The Trino watchdog returns without raising when docker start fails, and says so."""
     from provisa.federation import trino_lifecycle
 
     mock_state = MagicMock()
     mock_state.engine_conn = MagicMock()
+    mock_state.engine_conn_kwargs = {"host": "localhost", "port": 18080}
 
-    mock_proc = AsyncMock()
-    mock_proc.returncode = 1
-    mock_proc.communicate = AsyncMock(return_value=(b"", b"container not found"))
+    calls, exec_ = _docker_cli({"itest-a-trino-1": 18080}, start_rc=1)
 
     with (
+        caplog.at_level("ERROR", logger="provisa.federation.trino_lifecycle"),
         patch("asyncio.to_thread", side_effect=_run_in_thread),
         patch("provisa.federation.trino_lifecycle._ping", side_effect=ConnectionError("down")),
-        patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
+        patch("asyncio.create_subprocess_exec", side_effect=exec_),
     ):
         await trino_lifecycle.watchdog(mock_state)
 
-    # docker start was attempted
-    mock_exec.assert_called_once()
-    args = mock_exec.call_args[0]
-    assert "docker" in args
-    assert "start" in args
-    assert "provisa-trino-1" in args
-    # stderr was consumed
-    mock_proc.communicate.assert_called_once()
-    # non-zero returncode — function returned cleanly without raising
-    assert mock_proc.returncode == 1
+    # docker start was attempted on the container serving the engine's port
+    assert ("docker", "start", "itest-a-trino-1") in calls
+    assert any("container not found" in r.getMessage() for r in caplog.records)

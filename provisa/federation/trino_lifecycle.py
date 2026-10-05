@@ -23,6 +23,7 @@ introspect.py) import the ``Trino*`` re-exports below instead of ``trino`` direc
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from typing import Any
@@ -354,6 +355,46 @@ def _ping(conn: trino.dbapi.Connection) -> None:
     cur.fetchone()
 
 
+async def _docker(*args: str) -> str:
+    """Run the docker CLI; any way it cannot do what was asked is a LookupError naming why."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "docker", *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+    except FileNotFoundError as exc:
+        raise LookupError("the docker CLI is not on this host") from exc
+    out, err = await proc.communicate()
+    if proc.returncode != 0:
+        raise LookupError(f"docker {args[0]} failed: {err.decode().strip()}")
+    return out.decode()
+
+
+async def _engine_container(port: int) -> str:
+    """The compose ``trino`` container that publishes ``port`` -- the one this process connects to.
+
+    Its name is ``<project>-trino-1``, and the project is whatever the deployment was brought up
+    under (the directory, ``-p``, an isolated test project), so it is found by what it serves, not
+    by a fixed name. Read from each container's port BINDINGS, which a stopped container keeps --
+    the container to restart is a stopped one. None, or more than one, is a LookupError."""
+    ids = (await _docker("ps", "-aq", "--filter", "label=com.docker.compose.service=trino")).split()
+    if not ids:
+        raise LookupError("no compose trino container on this host")
+    out = await _docker("inspect", "--format", "{{.Name}}\t{{json .HostConfig.PortBindings}}", *ids)
+    matches = []
+    for line in out.splitlines():
+        name, _, bindings = line.partition("\t")
+        published = {
+            b.get("HostPort")
+            for binds in (json.loads(bindings) or {}).values()
+            for b in binds or []
+        }
+        if str(port) in published:
+            matches.append(name.lstrip("/"))
+    if len(matches) != 1:
+        raise LookupError(f"{len(matches)} compose trino containers publish port {port}: {matches}")
+    return matches[0]
+
+
 async def watchdog(state: Any) -> None:
     """Restart the Trino container if it stops responding, then replace the dead connection."""
     if state.engine_conn is None:
@@ -367,21 +408,12 @@ async def watchdog(state: Any) -> None:
 
     log.warning("watchdog: Trino unresponsive — attempting restart")
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "docker",
-            "start",
-            "provisa-trino-1",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            log.error("watchdog: docker start failed: %s", stderr.decode().strip())
-            return
-        log.info("watchdog: provisa-trino-1 started, waiting for healthy state")
-    except Exception:
-        log.exception("watchdog: docker start provisa-trino-1 failed")
+        container = await _engine_container(int(state.engine_conn_kwargs["port"]))
+        await _docker("start", container)
+    except LookupError as exc:
+        log.error("watchdog: Trino not restarted: %s", exc)
         return
+    log.info("watchdog: %s started, waiting for healthy state", container)
 
     # Wait up to 120 s for Trino to accept connections, then replace the dead conn.
     deadline = asyncio.get_event_loop().time() + 120
