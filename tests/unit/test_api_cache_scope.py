@@ -71,23 +71,32 @@ def test_the_call_still_decides_the_table(scope):
 def test_the_scope_is_the_one_every_cache_uses():
     import provisa.api.app as appmod
     from provisa.cache.tenancy import cache_tenant
+    from provisa.core.request_context import current_org
 
-    assert engine_cache._scope() == cache_tenant(appmod.state)
+    token = current_org.set(appmod.state.org_id)  # the deployment's own org, bound (REQ-1266)
+    try:
+        assert engine_cache._scope() == cache_tenant(appmod.state)
+    finally:
+        current_org.reset(token)
 
 
 # --- the schema the tables are written to --------------------------------------------------------
 
 
 def test_two_orgs_api_cache_tables_land_in_two_schemas():
-    """The deployment's own org is ``state.org_id``; the org a request acts in is bound in the
-    context. The cache schema follows the acting org and its environment."""
+    """The org a request acts in is bound in the context -- the deployment's own org (``root``)
+    included (REQ-1266). The cache schema follows the acting org and its environment."""
     from types import SimpleNamespace
 
     from provisa.api_source.engine_cache import org_cache_schema
     from provisa.core.request_context import current_env, current_org
 
     state = SimpleNamespace(org_id="root")
-    assert org_cache_schema(state) == "org_root_api_cache"
+    own = current_org.set("root")
+    try:
+        assert org_cache_schema(state) == "org_root_api_cache"
+    finally:
+        current_org.reset(own)
 
     org = current_org.set("acme")
     try:

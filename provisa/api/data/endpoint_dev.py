@@ -971,7 +971,9 @@ async def engine_state_endpoint(raw_request: Request):  # REQ-1516
     from provisa.api.app import state
     from provisa.federation.engine_wake import engine_state
 
-    org_id = getattr(raw_request.state, "active_org_id", None)
+    from provisa.core.request_context import require_current_org
+
+    org_id = require_current_org()
     return {"org_id": org_id, "state": await engine_state(state, org_id)}
 
 
@@ -991,7 +993,9 @@ async def engine_prewarm_endpoint(raw_request: Request):  # REQ-1516
     from provisa.api.app import state
     from provisa.federation.engine_wake import prewarm_engine
 
-    org_id = getattr(raw_request.state, "active_org_id", None)
+    from provisa.core.request_context import require_current_org
+
+    org_id = require_current_org()
     prewarm_engine(state, org_id)
     return {"org_id": org_id, "accepted": True}
 

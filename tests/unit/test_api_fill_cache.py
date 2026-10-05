@@ -48,7 +48,8 @@ def _clean():
 
 
 @pytest.fixture
-def store():
+def store(bind_org):
+    bind_org("o1")  # the org the state serves, bound as its request binds it (REQ-1266)
     con = duckdb.connect()
 
     @contextmanager

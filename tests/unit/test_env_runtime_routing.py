@@ -388,13 +388,22 @@ class _FakeState:
 
 
 class TestActiveRuntimeSelectsTheEnvironment:
+    @pytest.fixture(autouse=True)
+    def _bound_to_acme(self):
+        """The work is acme's, bound as an entrypoint binds it (REQ-1266)."""
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org("acme")
+        yield
+        reset_current_org(token)
+
     def _state(self) -> _FakeState:
         reg = OrgRegistry()
         reg.set("acme", OrgRuntime(org_id="acme", env=PROD))
         reg.set("acme_env_feature", OrgRuntime(org_id="acme", env="feature"))
         return _FakeState(reg)
 
-    def test_unbound_env_resolves_prod(self):
+    def test_an_org_bound_with_no_env_resolves_prod(self):
         from provisa.api.app import AppState
 
         assert AppState._active_runtime(self._state()).env == PROD

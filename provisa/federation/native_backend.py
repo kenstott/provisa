@@ -246,7 +246,8 @@ class NativeEngineBackend(EngineBackend):
         import asyncio
 
         if self._runtime is not None and self._covers(self._registry_of(state)):
-            return await asyncio.get_running_loop().run_in_executor(None, self._runtime_for, state)
+            # to_thread carries the bound org into the worker: the walk reads its registry.
+            return await asyncio.to_thread(self._runtime_for, state)
         from provisa.federation.registry_view import registered_sources
         from provisa.federation.source_vault import org_vault
 

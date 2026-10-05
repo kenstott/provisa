@@ -23,6 +23,8 @@ request no window covers gets the process default rather than a forced ``normal`
 
 from __future__ import annotations
 
+import contextlib
+
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -84,12 +86,28 @@ def served(tmp_path, monkeypatch):
     ts.invalidate()
 
 
+@contextlib.contextmanager
+def _request_of_the_served_org():
+    """A request for the org the state serves, bound as the org-routing middleware binds it
+    (REQ-1266). Read per request: a test re-points ``state.org_id`` to serve another org."""
+    import provisa.api.app as app_mod
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org(app_mod.state.org_id)
+    try:
+        yield
+    finally:
+        reset_current_org(token)
+
+
 async def _raw(sql: str = _SQL) -> None:
-    await _pipeline._govern_and_route(sql, "analyst")
+    with _request_of_the_served_org():
+        await _pipeline._govern_and_route(sql, "analyst")
 
 
 async def _compiled(hint: CacheHint = NO_CACHE_HINT) -> None:
-    await _pipeline._govern_and_route_compiled(_SQL, "analyst", cache_hint=hint)
+    with _request_of_the_served_org():
+        await _pipeline._govern_and_route_compiled(_SQL, "analyst", cache_hint=hint)
 
 
 async def _window(db, scope: str, org_id: str, target: str | None = None, **kw) -> None:
@@ -225,10 +243,11 @@ async def test_a_prepared_statement_resolves_at_each_execution(served):
     # pgwire governs a prepared statement once and routes it per Execute: a window opened between
     # two executions covers the second.
     db, _state, at_routing = served
-    governed = await _pipeline.govern_statement(_SQL, "analyst")
-    await _pipeline.route_governed(governed)
-    await _window(db, "org", "acme")
-    await _pipeline.route_governed(governed)
+    with _request_of_the_served_org():  # the pgwire session's org, bound for each statement
+        governed = await _pipeline.govern_statement(_SQL, "analyst")
+        await _pipeline.route_governed(governed)
+        await _window(db, "org", "acme")
+        await _pipeline.route_governed(governed)
     assert at_routing == ["normal", "debug"]
 
 

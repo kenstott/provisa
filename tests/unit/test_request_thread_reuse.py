@@ -311,6 +311,7 @@ def test_a_request_that_waits_past_its_budget_for_a_thread_fails_loudly(front):
         holder.join(10)
 
 
+@pytest.mark.unbound  # nothing bound on the caller, so anything seen leaked from a request
 def test_a_reused_thread_carries_nothing_from_the_request_before(front):
     """Request B on the thread request A used sees none of A's role, org, audit identity, trace
     detail or deadline."""

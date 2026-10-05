@@ -108,6 +108,7 @@ from provisa.core.request_context import (
     current_env,
     current_org,
     reset_current_env,
+    require_current_org,
     reset_current_org,
     set_current_env,
     set_current_org,
@@ -299,14 +300,16 @@ class AppState:
 
         # REQ-1266: per-request multi-org data plane. The routed maps below (source
         # pools, roles, compiled schemas/contexts, catalog names, masking, …) live on
-        # a per-org OrgRuntime; the properties resolve the ContextVar-selected runtime,
-        # defaulting to the default-org runtime when unset (startup / background boot /
-        # single-org tests). The default runtime is registered here so build-time writes
-        # (which run before any request sets the ContextVar) always have a target.
+        # a per-org OrgRuntime; the properties resolve the runtime of the org the work is bound
+        # to and refuse unbound work. The deployment org's runtime is registered here so startup,
+        # which binds that org once its id is resolved, has a target to build.
         self.org_registry = OrgRegistry()
-        self.org_registry.set(self.org_id, OrgRuntime(org_id=self.org_id))
+        deployment = OrgRuntime(org_id=self.org_id)
+        self.org_registry.set(self.org_id, deployment)
+        # The deployment-wide stores below are held on the deployment org's runtime and written
+        # there directly: nothing is bound yet, and the routed setters serve bound work only.
         # The deployment's response cache, until startup builds the configured one (REQ-829).
-        self.response_cache_store = NoopCacheStore()
+        deployment.response_cache_store = NoopCacheStore()
         # REQ-1909: every AppState is born with its live-read permit store — embedded (per process)
         # until startup rebinds it to the deployment's Redis once redis_url is resolved.
         from provisa.federation.live_concurrency import LivePermitStore
@@ -315,12 +318,10 @@ class AppState:
         # REQ-826: and with its Hot-count store, rebound to the deployment's Redis the same way.
         from provisa.federation.replica_hot import HotCounts
 
-        self.hot_counts = HotCounts(None)
+        deployment.hot_counts = HotCounts(None)
 
-        # The registry must exist first: federation_engine is a routed property (REQ-1244) and
-        # this assignment lands on the default-org runtime — the SHARED engine every org without
-        # a dedicated binding resolves to.
-        self.federation_engine = EngineRuntime(build_engine(), self)
+        # REQ-1244: the SHARED engine every org without a dedicated binding resolves to.
+        deployment.federation_engine = EngineRuntime(build_engine(), self)
 
     # --- Per-request org routing (REQ-1266) -----------------------------------
     @property
@@ -349,37 +350,60 @@ class AppState:
             self.org_registry.invalidate(old)
 
     def _active_runtime(self) -> OrgRuntime:
-        """The OrgRuntime for the current request's org AND environment, or the default-org
-        runtime when no org is bound. Never fabricates a runtime for an unbuilt org — a
-        tenant-data path with an unbuilt selected org is a routing defect that the
-        entrypoint must have caught (see require_current_org).
+        """The OrgRuntime for the org AND environment the current work is bound to.
+
+        REQ-1266: every org is served by its own runtime and by no other. There is no default:
+        work with no org bound is refused, and work bound to an org whose runtime is not built in
+        this process (never yet, or dropped by an engine wake or an org deletion while a job for
+        it kept running) is refused by name -- the entrypoint or job binds its org and builds the
+        runtime first (ensure_org_runtime). Answering either from the deployment org's runtime
+        would serve that org's roles, model and data to work that is not its own.
 
         REQ-1488/REQ-1529: the environment is part of the identity of a runtime, not a variation
         within one. A branch holds a separate copy of the model in a separate schema and reaches
         its sources through bindings it may have inherited read-only, so serving it from its base's
         runtime would hand it the base's pools and compiled schemas. ``runtime_key`` keys prod on
         the bare org id, so an org that never created an environment resolves exactly as before."""
-        org_id = current_org.get() or self.org_id
+        org_id = require_current_org()
         env = current_env.get()
         rt = self.org_registry.get(runtime_key(org_id, env))
         if rt is None:
             if env is not None and env != PROD:
-                # REQ-1529: NOT the default runtime. A branch whose runtime was never built must
-                # fail, because the default one is prod's — falling back would serve the branch
-                # prod's pools and prod's bindings, which is the exact reach the binding rules
-                # exist to bound. The entrypoint builds the runtime before binding the env.
                 raise RuntimeError(
                     f"no runtime built for environment {env!r} of org {org_id!r}; "
                     "ensure_org_runtime must build it before the environment is bound"
                 )
-            rt = self.org_registry.get(self.org_id)
-            assert rt is not None, "default-org runtime missing — AppState not initialized"
+            raise RuntimeError(
+                f"no runtime built for org {org_id!r}; ensure_org_runtime must build it "
+                "before work is bound to the org"
+            )
         return rt
 
     def _default_runtime(self) -> OrgRuntime:
         rt = self.org_registry.get(self.org_id)
         assert rt is not None, "default-org runtime missing — AppState not initialized"
         return rt
+
+    @property
+    def shared_federation_engine(self) -> Any:
+        """REQ-1243/REQ-1244: the deployment's SHARED engine -- the pooled lane every org without
+        a dedicated one runs on, held on the deployment org's runtime. Named explicitly for the
+        deployment-level work that serves no org (writing the engine's config at app creation)."""
+        return self._default_runtime().federation_engine
+
+    @property
+    def platform_model_db(self) -> Database | None:
+        """REQ-1297/REQ-1327: the model store the platform plane's roles are read from -- the
+        deployment org's, where the platform grants live. Named explicitly for a request that acts
+        in no org (a signed-in user with no membership yet); an org-bound request reads its own."""
+        return self._default_runtime().model_db
+
+    @property
+    def platform_roles(self) -> dict[str, dict]:
+        """REQ-1327/REQ-1337: the role definitions a caller's PLATFORM rights (cross_org) are read
+        from before any org is bound -- the deployment org's, where the platform grants live. Named
+        explicitly rather than routed: the org the caller acts in is what these rights decide."""
+        return self._default_runtime().roles
 
     def _engine_runtime(self) -> OrgRuntime:
         """The runtime OWNING the engine terminal for the current context (REQ-1244): the active
@@ -419,8 +443,8 @@ class AppState:
 
     @property
     def active_org_id(self) -> str:
-        """The org id the current context is bound to, or the default org when none is bound."""
-        return current_org.get() or self.org_id
+        """The org id the current work is bound to; refused when none is bound (REQ-1266)."""
+        return require_current_org()
 
     @property
     def active_isolated_org(self) -> str | None:
@@ -447,7 +471,10 @@ class AppState:
         default org's runtime is registered, and in processes that never build one (desktop,
         tooling). An unregistered runtime means no org has claimed an engine of its own; that is the
         answer, not a value gone missing."""
-        rt = self.org_registry.get(self.active_org_id) or self.org_registry.get(self.org_id)
+        bound = current_org.get()
+        if bound is None:
+            return None
+        rt = self.org_registry.get(bound)
         return rt.engine_url if rt is not None else None
 
     @property
@@ -558,7 +585,7 @@ class AppState:
         if catalog is None:
             raise KeyError(
                 f"source {source_id!r} has no catalog in org "
-                f"{current_org.get() or self.org_id!r} — source not registered for this org"
+                f"{require_current_org()!r} — source not registered for this org"
             )
         return catalog
 
@@ -853,12 +880,12 @@ domain_policy.set_scope_resolver(current_org.get)
 def _request_org_for_secrets() -> tuple[Database, str]:
     """Which org's vault a ``${secret:NAME}`` stored in tenant data resolves against (REQ-1580).
 
-    The same org the request's tenant data came from: ``current_org`` when one is bound, the boot
-    org otherwise, exactly as ``_active_runtime`` resolves it. An environment resolves to its base
+    The same org the request's tenant data came from: the bound ``current_org``, exactly as
+    ``_active_runtime`` resolves it -- refused when none is bound. An environment resolves to its base
     org -- a branch is a copy of the model, not a second organization, and the vault is the org's.
     """
     assert state.admin_db is not None
-    return state.admin_db, current_org.get() or state.org_id
+    return state.admin_db, require_current_org()
 
 
 secrets_store.set_request_org_resolver(_request_org_for_secrets)
@@ -985,7 +1012,12 @@ async def _load_and_build(
 
     if apply:
         await _seed_built_in_sources(
-            pg_host, pg_port, pg_database, pg_user, engine_addressable=not engine_deferred
+            pg_host,
+            pg_port,
+            pg_database,
+            pg_user,
+            org_id=state.org_id,
+            engine_addressable=not engine_deferred,
         )
 
     _mark("pg+schema+seed")
@@ -1423,6 +1455,14 @@ async def ensure_org_encryption(org_id: str) -> None:  # REQ-1574
         return
     assert state.admin_db is not None, "the admin plane is required to resolve an org's key ring"
     set_org_encryption(org_id, await load_org_ring(state.admin_db, org_id))
+
+
+async def ensure_serving_runtime(org_id: str, env: str | None = None) -> None:  # REQ-1266
+    """Make the runtime an entrypoint is about to bind ready: the deployment org's prod runtime is
+    the one the boot built, every other is built here on first use (``ensure_org_runtime``)."""
+    if org_id == state.org_id and (env is None or env == PROD):
+        return
+    await ensure_org_runtime(org_id, env)
 
 
 async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:  # REQ-1266
@@ -2617,6 +2657,11 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         _cp = load_control_plane(config_path_str())
         _scope = _cp.resolved_org_id()
+        # REQ-1266: the boot builds and serves the deployment's own org, so it runs bound to it,
+        # and so does the background work it starts (spawned work copies the binding). Nothing
+        # reads an org's runtime unbound.
+        state.org_id = _scope
+        _boot_org_token = set_current_org(_scope)
         _launch = launch_id()
         # A launcher that names a launch names its worker count with it; one without the other
         # fails here, at boot, rather than in the first /health request.
@@ -2835,7 +2880,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     if state.tenant_db:
         await state.tenant_db.close()
     # REQ-1244: every org with a dedicated federation engine owns a live terminal — close each,
-    # then the shared engine (the default runtime's, reached by the unrouted property below).
+    # then the shared engine (the deployment org's, reached through the boot's binding below).
     # Each non-default org runtime also owns its own tenant_db pool (the default's is state.tenant_db,
     # already closed above) — leaving it open leaks a pool's worth of connections per org built
     # during this process's life.
@@ -2859,6 +2904,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         model_change.detach()
         with tolerate_shutdown_failure("admin_db close"):
             await state.admin_db.close()
+    reset_current_org(_boot_org_token)
 
 
 async def _stop_long_lived(handle: Any, timeout: float = 10.0) -> None:
@@ -2894,7 +2940,7 @@ def create_app() -> FastAPI:
         openapi_url="/data/openapi/openapi.json",
         default_response_class=OrjsonResponse,
     )
-    state.federation_engine.write_config(config_path_str())
+    state.shared_federation_engine.write_config(config_path_str())
     _setup_otel(app)
 
     app.add_middleware(
@@ -3065,12 +3111,18 @@ def create_app() -> FastAPI:
 
             request_state = scope.setdefault("state", {})
             active_org = request_state.get("active_org_id")
+            if active_org is None:
+                # REQ-1266: no org -- an unauthenticated route, or a user not yet a member of any
+                # org. Served bound to nothing: a per-org read on it is refused, never answered
+                # from some org's runtime, and no org's environment or trace window applies.
+                await self.app(scope, receive, send)
+                return
             # REQ-1487: the environment the request names, checked against the org that owns it
             # BEFORE anything is bound to it — see provisa.api.env_routing for why an unknown name
             # is a refusal and not a quiet fall back to prod. Read for the default org too: a
             # single-org deployment branches its model exactly as a multitenant one does.
             requested_env = env_header_value(scope.get("headers") or [])
-            env_org = active_org or state.org_id
+            env_org = active_org
             import logging as _logging
 
             _log = _logging.getLogger(__name__)
@@ -3081,7 +3133,12 @@ def create_app() -> FastAPI:
             # where the environment is bound — one gate for every surface. ``None`` means dev/no-auth
             # (no identity resolved), the exemption every capability gate makes.
             identity = request_state.get("identity")
-            env_caps = env_gate_capabilities(identity, state)
+            # Read on the platform plane, as AuthMiddleware reads it: the deployment org's roles.
+            _platform_token = set_current_org(state.org_id)
+            try:
+                env_caps = env_gate_capabilities(identity, state)
+            finally:
+                reset_current_org(_platform_token)
             # REQ-1602/REQ-1596: sandbox ephemeral auto-select and the membership pin both live in
             # resolve_selected_env, shared with AuthMiddleware's role read (provisa.auth.middleware)
             # so the two always agree on which environment's schema a request is served from.
@@ -3120,24 +3177,17 @@ def create_app() -> FastAPI:
                 )(scope, receive, send)
                 return
 
-            # No org bound (unauthenticated, or a default-org request) AND prod: the AppState shims
-            # resolve the default-org runtime. Never fabricate a non-default org here.
-            if (active_org is None or active_org == state.org_id) and selected_env == PROD:
-                # REQ-1910: the org and role are bound and the body is unread — the request is
-                # served under its debug-trace window from here, so its ASGI receive span follows it.
-                async with http_trace_scope(state, scope):
-                    await self.app(scope, receive, send)
-                return
             # Keep existing tenant cache-key call sites (which read request.state.tenant_id)
             # pointed at the same id space as the org router.
-            if active_org is not None:
-                request_state["tenant_id"] = active_org
+            request_state["tenant_id"] = active_org
 
-            await ensure_org_runtime(env_org, selected_env)
+            # REQ-1266: every org is bound to its own runtime, the deployment's own org included.
+            await ensure_serving_runtime(env_org, selected_env)
             token = set_current_org(env_org)
             env_token = set_current_env(selected_env)
             try:
-                # REQ-1910: as on the default-org path above, now with this org bound.
+                # REQ-1910: the org and role are bound and the body is unread — the request is
+                # served under its debug-trace window from here, so its ASGI receive span follows it.
                 async with http_trace_scope(state, scope):
                     await self.app(scope, receive, send)
             finally:

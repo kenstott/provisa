@@ -22,6 +22,12 @@ from provisa.federation.engine import build_duckdb_engine
 from tests.helpers import no_engine_store, no_promoted_tables
 
 
+@pytest.fixture(autouse=True)
+def _bound_to_acme(bind_org):
+    """The work is acme's, the org the test state serves, bound as its entrypoint binds it (REQ-1266)."""
+    bind_org("acme")
+
+
 def _rcol(name, data_type: str | None = "bigint", pk=False, nf=None):
     return {
         "column_name": name,

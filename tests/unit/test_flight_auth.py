@@ -35,6 +35,7 @@ class FakeState:
         self.auth_config = auth_config
         self.auth_middleware_active = auth_middleware_active
         self.multitenancy = False
+        self.org_id = "default"
         self.admin_db = None
         self.roles = {}
 

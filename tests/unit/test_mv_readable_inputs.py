@@ -69,6 +69,8 @@ def state(monkeypatch):
             }
         },
         mv_registry=MVRegistry(),
+        # The bound org's runtime: it keeps no materialization store of its own (REQ-1048).
+        org_registry=SimpleNamespace(get=lambda _org_id: SimpleNamespace(storage_url=None)),
         # The model a view's inputs resolve against (provisa/mv/view_inputs.py).
         tables=[
             {"id": 1, "source_id": "sales", "schema_name": "sales", "table_name": "orders"},

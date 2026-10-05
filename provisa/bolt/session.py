@@ -193,6 +193,21 @@ class BoltSession:
     async def _resolve_user(
         self, scheme: str, principal: str, credentials: str
     ) -> tuple[str, list[str]] | None:
+        """Authenticate on the platform plane (REQ-1266/REQ-1327): the session's org is not known
+        until its first RUN names a database, so the credential and the selectable roles are read
+        with the deployment org bound, as HTTP's AuthMiddleware reads them."""
+        from provisa.api.app import state as app_state
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(app_state.org_id)
+        try:
+            return await self._resolve_platform_user(scheme, principal, credentials)
+        finally:
+            reset_current_org(token)
+
+    async def _resolve_platform_user(
+        self, scheme: str, principal: str, credentials: str
+    ) -> tuple[str, list[str]] | None:
         """Return (user_id, role_ids) on success, None on failure (REQ-124, REQ-1263).
 
         The role set becomes the user's selectable databases (provisa_<role>). Selecting
@@ -295,16 +310,21 @@ class BoltSession:
         ordered = [mapped, *[r for r in held if r != mapped]]
         return [r for r in ordered if r in app_state.contexts]
 
+    def _bound_org(self) -> str:
+        """The org this session resolved (_ensure_org runs before any RUN reaches here)."""
+        if self.org_id is None:
+            raise RuntimeError("bolt session has no org resolved; _ensure_org must run first")
+        return self.org_id
+
     def _meta_role(self, app_state: Any, named: str) -> str:
         from provisa.core.request_context import reset_current_org, set_current_org
         from provisa.security.meta_role import resolve_requested_role
 
-        token = set_current_org(self.org_id) if self.org_id is not None else None
+        token = set_current_org(self._bound_org())
         try:
             return resolve_requested_role(app_state, set(self.roles), named)
         finally:
-            if token is not None:
-                reset_current_org(token)
+            reset_current_org(token)
 
     def _resolve_db(self, db: Any) -> tuple[str, bool] | None:
         """Map a Bolt `db` value to (role_id, include_ops), or None if unauthorized.
@@ -489,11 +509,11 @@ class BoltSession:
                     f"open a new session for {database_org!r}"
                 )
             return
-        from provisa.api.app import ensure_org_runtime, state as app_state
+        from provisa.api.app import ensure_serving_runtime, state as app_state
         from provisa.api.org_resolve import org_named_by_host_or_database, resolve_session_org
 
         # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
-        caps = capabilities_for_claims(self.roles, getattr(app_state, "roles", {}))
+        caps = capabilities_for_claims(self.roles, app_state.platform_roles)
         org_id = await resolve_session_org(
             app_state,
             user_id=self.user_id,
@@ -505,8 +525,7 @@ class BoltSession:
                 "hostname (<org>.<domain>)"
             ),
         )
-        if org_id is not None:
-            await ensure_org_runtime(org_id)
+        await ensure_serving_runtime(org_id)
         self.org_id = org_id
         self._org_resolved = True
 
@@ -591,7 +610,7 @@ class BoltSession:
         from provisa.core.request_context import reset_current_org, set_current_org
         from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
 
-        _org_token = set_current_org(self.org_id) if self.org_id is not None else None
+        _org_token = set_current_org(self._bound_org())
         # REQ-074/REQ-1386: attribute this RUN's governed statements to the authenticated principal.
         # Bolt executes on the event loop (no thread hop), so a plain scope binds it. A connection
         # that named no principal (an unsecured deployment) is audited as the anonymous one.
@@ -651,8 +670,7 @@ class BoltSession:
             with shield.lock:  # execution is over: this thread is inside no deadline's scope
                 shield.settle()
                 shield.quiesce()
-            if _org_token is not None:
-                reset_current_org(_org_token)
+            reset_current_org(_org_token)
 
         self._result_columns = columns
         self._result_rows = rows

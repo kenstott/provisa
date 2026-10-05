@@ -111,6 +111,7 @@ async def test_explicit_conn_bypasses_cache(monkeypatch):
     assert calls["n"] == 2  # never cached: a caller-supplied conn always re-fetches
 
 
+@pytest.mark.unbound  # the cache generation of work bound to no org
 @pytest.mark.asyncio
 async def test_two_state_instances_never_share_a_cache(monkeypatch):
     """Guards the cross-instance-pollution risk a naive module-global cache would have had: two
@@ -133,6 +134,7 @@ async def test_two_state_instances_never_share_a_cache(monkeypatch):
     assert cache_b.get(generation) is None  # state_b's cache was never touched
 
 
+@pytest.mark.unbound  # the cache generation of work bound to no org
 @pytest.mark.asyncio
 async def test_sources_cache_and_tables_cache_never_collide_on_same_state(monkeypatch):
     """`registered_sources` and `registered_tables` each cache onto the same `state` instance under

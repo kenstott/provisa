@@ -141,7 +141,7 @@ async def _validate_flight_credential(state, token: str):
     return await throttled(validator, token, principal=None)
 
 
-async def _resolve_identity_org(state, identity, request: dict[str, object]) -> str | None:
+async def _resolve_identity_org(state, identity, request: dict[str, object]) -> str:
     """The org an authenticated Flight session binds (REQ-1266, REQ-1337).
 
     The same membership rule MCP and pgwire use: the principal's own memberships decide, and a
@@ -150,7 +150,7 @@ async def _resolve_identity_org(state, identity, request: dict[str, object]) -> 
     from provisa.api.org_resolve import resolve_session_org
     from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
-    caps = capabilities_for_claims(identity.roles or [], getattr(state, "roles", {}))
+    caps = capabilities_for_claims(identity.roles or [], state.platform_roles)
     requested = request.get("org")
     return await resolve_session_org(
         state,
@@ -316,6 +316,26 @@ class ProvisaFlightServer(
             finalize_audit(plan, status_code, self._state, defer_to_drain=defer_to_drain)
         )
 
+    def _in_catalog_org(self, fn: Callable[[], Any]) -> Any:
+        """Run a metadata RPC's ``fn`` in the org whose catalog it describes (REQ-1266).
+
+        list_flights, get_flight_info and get_schema carry no ticket and no credential, so they
+        name no org. A single-org deployment answers them from its one org; under multitenancy
+        they are refused by name -- the catalog is an org's, and no org's catalog is everyone's.
+        A do_get catalog ticket names its org and answers the same question."""
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        if getattr(self._state, "multitenancy", False):
+            raise _flight_error(
+                "catalog metadata names no org under multitenancy; fetch it with a do_get "
+                "catalog ticket that names the org"
+            )
+        token = set_current_org(self._state.org_id)
+        try:
+            return fn()
+        finally:
+            reset_current_org(token)
+
     def _resolve_and_bind_org(self, request: dict[str, object], identity=None):
         """Resolve the org for this ticket and bind it on this worker thread; return the reset token.
 
@@ -323,21 +343,22 @@ class ProvisaFlightServer(
         membership (the same rule MCP and pgwire use), so a ticket cannot name someone else's org.
         Unsecured deployments have no principal to resolve, so the org is taken from an explicit
         ``org`` in the ticket; under multitenancy it is REQUIRED — a missing org raises rather than
-        silently binding the default (no cross-tenant default). Single-org deployments return
-        ``None`` and leave the ContextVar unset (default runtime)."""
+        silently binding the default (no cross-tenant default). A single-org deployment binds its
+        one org."""
+        from provisa.core.request_context import set_current_org
+
         if not getattr(self._state, "multitenancy", False):
-            return None
+            return set_current_org(self._state.org_id)
         if identity is not None:
             org_id = self._run_on_loop(_resolve_identity_org(self._state, identity, request))
         else:
             org_id = request.get("org")
             if not org_id or not isinstance(org_id, str):
                 raise _flight_error("org is required under multitenancy")
-        from provisa.api.app import ensure_org_runtime
-        from provisa.core.request_context import set_current_org
+        from provisa.api.app import ensure_serving_runtime
 
         # Build the org runtime (idempotent) on this RPC's connection loop, on this thread.
-        run_on_connection_loop(ensure_org_runtime(org_id))
+        run_on_connection_loop(ensure_serving_runtime(org_id))
         return set_current_org(org_id)
 
     # ------------------------------------------------------------------
@@ -456,11 +477,13 @@ class ProvisaFlightServer(
         the listing is role-agnostic, matching the table catalog's broadest view."""
         from provisa.api.data.action_exec import list_visible_commands
 
-        tables = build_catalog_tables(self._state)
-        for table in tables:
-            yield catalog_table_to_flight_info(table)
-        for command in list_visible_commands(self._state, None):
-            yield command_to_flight_info(command)
+        def _infos() -> list[flight.FlightInfo]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return [
+                *(catalog_table_to_flight_info(t) for t in build_catalog_tables(self._state)),
+                *(command_to_flight_info(c) for c in list_visible_commands(self._state, None)),
+            ]
+
+        yield from self._in_catalog_org(_infos)
 
     # ------------------------------------------------------------------
     # get_flight_info — metadata for a specific flight
@@ -475,6 +498,9 @@ class ProvisaFlightServer(
 
         Descriptor path: [domain_id, table_name].
         """
+        return self._in_catalog_org(lambda: self._flight_info(descriptor))
+
+    def _flight_info(self, descriptor: flight.FlightDescriptor) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         path = [p.decode("utf-8") if isinstance(p, bytes) else p for p in descriptor.path]
 
         # REQ-1156: a command descriptor is ["commands", domain, name] — resolve it to the command
@@ -530,7 +556,7 @@ class ProvisaFlightServer(
         domain_id = path[0].decode("utf-8") if isinstance(path[0], bytes) else path[0]
         table_name = path[1].decode("utf-8") if isinstance(path[1], bytes) else path[1]
 
-        tables = build_catalog_tables(self._state)
+        tables = self._in_catalog_org(lambda: build_catalog_tables(self._state))
         for t in tables:
             if t.domain_id == domain_id and t.table_name == table_name:
                 schema = catalog_table_to_arrow_schema(t)

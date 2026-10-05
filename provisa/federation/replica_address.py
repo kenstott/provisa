@@ -121,11 +121,11 @@ def export_schema(org_id: str) -> str:
 
 
 def active_org_id(state: Any) -> str:
-    """The org a store address is named for: the one bound to this request, else the boot org —
-    the runtime ``state`` resolves to when no org is bound (``AppState._active_runtime``)."""
-    from provisa.core.request_context import current_org
+    """The org a store address is named for: the one bound to this work, as
+    ``AppState._active_runtime`` resolves it; refused when none is bound (REQ-1266)."""
+    from provisa.core.request_context import require_current_org
 
-    return current_org.get() or state.org_id
+    return require_current_org()
 
 
 def replica_address(

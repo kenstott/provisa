@@ -16,6 +16,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from provisa.core.request_context import current_org
+
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_org import metadata, replica_state as replica_state_table
 from provisa.federation import replica_converge, replica_state
@@ -275,24 +277,25 @@ def test_the_standing_replica_serves_only_while_it_can_answer_the_model():
 
 
 async def test_a_replica_that_can_no_longer_answer_is_not_served_until_rebuilt(model):
+    org = current_org.get()  # the org the converge ran for (REQ-1266)
     key = model.declare("orders")
     await converge_replicas(model.state)
     await model.build(key)
     view = view_for(model.state)
-    assert view.serves(None, key, await model.record(key))
+    assert view.serves(org, key, await model.record(key))
 
     model.declare("orders", columns=COLUMNS + [("added", "text")])
     done = await converge_replicas(model.state)
     assert done.not_serving == [key] and done.requested == [key]
-    assert not view.serves(None, key, await model.record(key))  # the old shape is not read
+    assert not view.serves(org, key, await model.record(key))  # the old shape is not read
     await model.build(key)  # the rebuild of the model's definition lands
-    assert view.serves(None, key, await model.record(key))
+    assert view.serves(org, key, await model.record(key))
 
     # a column removed: the old rows can answer everything, and are served until the swap
     model.declare("orders", columns=[("id", "bigint")])
     done = await converge_replicas(model.state)
     assert done.requested == [key] and done.not_serving == []
-    assert view.serves(None, key, await model.record(key))
+    assert view.serves(org, key, await model.record(key))
 
 
 async def test_a_replica_the_model_no_longer_declares_is_retired_then_dropped(model, monkeypatch):
@@ -395,10 +398,11 @@ async def test_a_failed_pass_is_recorded_for_the_operator_and_cleared_by_the_nex
         raise RuntimeError("store unreachable")
 
     monkeypatch.setattr("provisa.federation.replica_routing.landing_worklist", _boom)
+    org = current_org.get()  # the org the converge ran for (REQ-1266)
     with caplog.at_level(logging.ERROR):
         await converge_logged(model.state)  # never raises into the model build it runs after
     assert "did not converge" in caplog.text and "store unreachable" in caplog.text
-    error = replica_converge.last_error[None]
+    error = replica_converge.last_error[org]
     assert error["cause"] == "RuntimeError: store unreachable" and error["at"] is not None
 
     async def _ok(engine, state):
@@ -406,7 +410,7 @@ async def test_a_failed_pass_is_recorded_for_the_operator_and_cleared_by_the_nex
 
     monkeypatch.setattr("provisa.federation.replica_routing.landing_worklist", _ok)
     await converge_logged(model.state)
-    assert None not in replica_converge.last_error
+    assert org not in replica_converge.last_error
 
 
 def test_the_drop_waits_out_two_reloads_and_the_longest_request(monkeypatch):

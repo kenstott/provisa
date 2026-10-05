@@ -273,6 +273,7 @@ def _state(auth_config: dict) -> SimpleNamespace:
         auth_config=auth_config,
         auth_middleware_active=True,
         multitenancy=False,
+        org_id="default",
         # The simple provider keeps its users' ids on the platform plane.
         admin_db=platform_db(),
     )

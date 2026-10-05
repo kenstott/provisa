@@ -14,8 +14,8 @@ happens when a query lands in the middle of a stop.
 from __future__ import annotations
 
 import asyncio
-import threading
 import contextlib
+import threading
 
 from types import SimpleNamespace
 
@@ -253,6 +253,19 @@ async def _noop_rebuild(oid: str, env: str | None = None) -> None:
     """Stands in for ensure_org_runtime: a cold start rebuilds the org, which needs a database."""
 
 
+@contextlib.contextmanager
+def _as_deployment_org():
+    """Work for the deployment's own org ("default" in these states), bound as the routing
+    middleware binds it (REQ-1266): unbound work is served no org's engine."""
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org("default")
+    try:
+        yield
+    finally:
+        reset_current_org(token)
+
+
 def _state_with(runtime, rebuilt: list, default=None):
     """A state whose default org owns the shared terminal, as AppState._engine_runtime arranges."""
     from provisa.api.org_runtime import OrgRuntime
@@ -377,16 +390,16 @@ async def test_bound_org_without_a_runtime_raises(fake_k8s):
 
 
 async def test_default_org_query_wakes_and_restores_the_shared_terminal(fake_k8s):
-    """The deployment's own org is NOT bound by the routing middleware, so its queries arrive with
-    current_org unset. Treating that as "boot handles it" left the shared lane asleep and the
-    terminal dialing a released pod IP: the first query worked and every one after the idle reaper
-    ran timed out at the old address (REQ-1448)."""
+    """The deployment's own org owns the shared terminal. Treating its queries as "boot handles it"
+    left the shared lane asleep and the terminal dialing a released pod IP: the first query worked
+    and every one after the idle reaper ran timed out at the old address (REQ-1448)."""
     from provisa.api.org_runtime import OrgRuntime
 
     default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
     state = _state_with(None, [], default=default)
 
-    await engine_wake.ensure_engine_awake(state)
+    with _as_deployment_org():
+        await engine_wake.ensure_engine_awake(state)
 
     assert fake_k8s.wakes == ["shared_1"]
     assert state.federation_engine.provisions == 1  # reconnected at the new coordinator
@@ -408,7 +421,8 @@ async def test_default_org_query_on_a_warm_shard_leaves_the_terminal_alone(fake_
     )
     state = _state_with(None, [], default=default)
 
-    await engine_wake.ensure_engine_awake(state)
+    with _as_deployment_org():
+        await engine_wake.ensure_engine_awake(state)
 
     assert fake_k8s.wakes == []
     assert state.federation_engine.provisions == 0
@@ -543,8 +557,8 @@ async def test_a_warm_shard_leaves_the_environment_runtime_alone(fake_k8s, monke
 
 
 async def test_the_default_orgs_environment_is_rebuilt_too(fake_k8s, monkeypatch):
-    """current_org is unbound for the deployment's own org, and its environments are still its own
-    schemas with their own catalogs. Restoring the shared terminal reissues prod's, not theirs."""
+    """The deployment's own org's environments are still its own schemas with their own catalogs.
+    Restoring the shared terminal reissues prod's, not theirs."""
     from provisa.api.org_runtime import OrgRuntime
     from provisa.core.request_context import set_current_env
 
@@ -568,7 +582,8 @@ async def test_the_default_orgs_environment_is_rebuilt_too(fake_k8s, monkeypatch
 
     env_token = set_current_env("review")
     try:
-        await engine_wake.ensure_engine_awake(state)
+        with _as_deployment_org():
+            await engine_wake.ensure_engine_awake(state)
     finally:
         env_token.var.reset(env_token)
 
@@ -813,7 +828,7 @@ async def test_prewarm_wakes_the_shard_without_blocking_the_caller(fake_k8s, mon
 
     monkeypatch.setattr(engine_wake.k8s, "ensure_shared_shard", _held_wake)
 
-    fut = engine_wake.prewarm_engine(state, None)
+    fut = engine_wake.prewarm_engine(state, "default")
     assert fut is not None
     assert fake_k8s.wakes == []  # returned before the wake ran
 
@@ -838,10 +853,10 @@ async def test_prewarm_binds_the_org_it_was_given(fake_k8s, monkeypatch):
     assert "shared_2" in fake_k8s.wakes
 
 
-async def test_prewarm_does_not_bind_the_deployments_own_org(fake_k8s, monkeypatch):
-    """/auth/me reports the default org by NAME, but the routing middleware leaves current_org
-    unset for it. Binding the name sends it down the tenant branch, which invalidates the registry
-    entry and rebuilds the runtime — and every data surface then answers "No schema available"."""
+async def test_prewarm_does_not_rebuild_the_deployments_own_org(fake_k8s, monkeypatch):
+    """/auth/me reports the default org by NAME, and the prewarm binds it. Sending it down the
+    tenant branch would invalidate the registry entry and rebuild the runtime — and every data
+    surface would then answer "No schema available"."""
     from provisa.api.org_runtime import OrgRuntime
 
     default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
@@ -874,8 +889,8 @@ async def test_prewarm_does_not_start_a_second_wake_for_the_same_org(fake_k8s, m
 
     monkeypatch.setattr(engine_wake.k8s, "ensure_shared_shard", _held_wake)
 
-    first = engine_wake.prewarm_engine(state, None)
-    second = engine_wake.prewarm_engine(state, None)
+    first = engine_wake.prewarm_engine(state, "default")
+    second = engine_wake.prewarm_engine(state, "default")
     assert first is not None and second is None  # the in-flight wake is not duplicated
     assert len(engine_wake._prewarm_tasks) == 1
 
@@ -1089,7 +1104,7 @@ async def test_a_desktop_engine_reports_always_on(monkeypatch):
 
 async def test_the_default_org_reports_the_boot_shard(fake_k8s):
     fake_k8s.state = "stopped"
-    assert await engine_wake.engine_state(_state_with(None, []), None) == "stopped"
+    assert await engine_wake.engine_state(_state_with(None, []), "default") == "stopped"
     fake_k8s.state = "ready"
     assert await engine_wake.engine_state(_state_with(None, []), "default") == "ready"
 
@@ -1097,7 +1112,7 @@ async def test_the_default_org_reports_the_boot_shard(fake_k8s):
 async def test_reporting_the_state_never_wakes_or_stamps_activity(fake_k8s):
     """A browser polls this while it waits. A poll that woke the shard — or counted as traffic —
     would let an idle tab hold a pod up indefinitely."""
-    await engine_wake.engine_state(_state_with(None, []), None)
+    await engine_wake.engine_state(_state_with(None, []), "default")
     assert fake_k8s.wakes == []
     assert "shared_1" not in engine_wake._last_activity
 
@@ -1141,7 +1156,7 @@ async def test_a_draining_shard_reports_starting(fake_k8s):
     engine_wake._stop_tasks["shared_1"] = asyncio.create_task(_drain())
     await asyncio.sleep(0)
     try:
-        assert await engine_wake.engine_state(_state_with(None, []), None) == "starting"
+        assert await engine_wake.engine_state(_state_with(None, []), "default") == "starting"
     finally:
         engine_wake._stop_tasks["shared_1"].cancel()
 
@@ -1176,7 +1191,8 @@ async def test_a_moved_coordinator_is_re_resolved_and_the_query_redispatched(fak
     fake_k8s.state = "ready"
     default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
     state = _state_with(None, [], default=default)
-    await engine_wake.ensure_engine_awake(state)
+    with _as_deployment_org():
+        await engine_wake.ensure_engine_awake(state)
     stale = k8s.recorded_shard_address("shared_1")
     assert stale is not None
 
@@ -1184,7 +1200,8 @@ async def test_a_moved_coordinator_is_re_resolved_and_the_query_redispatched(fak
     fake_k8s.land_pod("shared_1")
     k8s._pod_ips["shared_1"] = stale  # what this process still holds
 
-    assert await engine_wake.readdress_lost_coordinator(_timeout_error(), state) is True
+    with _as_deployment_org():
+        assert await engine_wake.readdress_lost_coordinator(_timeout_error(), state) is True
     assert k8s.recorded_shard_address("shared_1") != stale
 
 
@@ -1195,9 +1212,9 @@ async def test_an_unmoved_coordinator_is_not_redispatched(fake_k8s):
 
     fake_k8s.state = "ready"
     state = _state_with(None, [], default=OrgRuntime(org_id="default", shard="shared_1"))
-    await engine_wake.ensure_engine_awake(state)
-
-    assert await engine_wake.readdress_lost_coordinator(_timeout_error(), state) is False
+    with _as_deployment_org():
+        await engine_wake.ensure_engine_awake(state)
+        assert await engine_wake.readdress_lost_coordinator(_timeout_error(), state) is False
 
 
 async def test_a_statement_error_does_not_re_resolve(fake_k8s):
@@ -1207,10 +1224,13 @@ async def test_a_statement_error_does_not_re_resolve(fake_k8s):
 
     fake_k8s.state = "ready"
     state = _state_with(None, [], default=OrgRuntime(org_id="default", shard="shared_1"))
-    await engine_wake.ensure_engine_awake(state)
-    before = fake_k8s.status_calls
+    with _as_deployment_org():
+        await engine_wake.ensure_engine_awake(state)
+        before = fake_k8s.status_calls
 
-    assert await engine_wake.readdress_lost_coordinator(ValueError("SYNTAX_ERROR"), state) is False
+        assert (
+            await engine_wake.readdress_lost_coordinator(ValueError("SYNTAX_ERROR"), state) is False
+        )
     assert fake_k8s.status_calls == before
 
 

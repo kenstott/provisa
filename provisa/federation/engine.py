@@ -373,12 +373,12 @@ class FederationEngine:  # REQ-840
         disk and its bill, and that decision outranks the deployment's configuration. An org that
         registered none is on the platform store by design, where the REQ-1046 quota applies.
         """
-        from provisa.core.request_context import current_org
+        from provisa.core.request_context import require_current_org
         from provisa.storage.byo import org_store_dsn
 
-        org_id = current_org.get()
+        # REQ-1266: the store is the bound org's to decide; work bound to no org has none.
         dsn = (
-            (org_store_dsn(org_id) if org_id else None)
+            org_store_dsn(require_current_org())
             or configured_materialize_url()
             or self.default_materialize_store()
         )

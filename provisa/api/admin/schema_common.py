@@ -766,13 +766,13 @@ async def store_source_password(actor: str | None, source_id: str, password: str
         return password
     from provisa.api.app import state
     from provisa.core import secrets_store
-    from provisa.core.request_context import current_org
+    from provisa.core.request_context import require_current_org
 
     assert state.admin_db is not None, "the platform control plane holds every org's vault"
     name = source_password_secret_name(source_id)
     await secrets_store.put(
         state.admin_db,
-        current_org.get() or state.org_id,
+        require_current_org(),
         name,
         password,
         owner_id=secrets_store.ORG_OWNER,
@@ -794,12 +794,12 @@ async def forget_source_password(source_id: str, password_ref: str) -> None:
         return
     from provisa.api.app import state
     from provisa.core import secrets_store
-    from provisa.core.request_context import current_org
+    from provisa.core.request_context import require_current_org
 
     from provisa.api.admin.secrets_router import _environment_planes
 
     assert state.admin_db is not None, "the platform control plane holds every org's vault"
-    org_id = current_org.get() or state.org_id
+    org_id = require_current_org()
     name = source_password_secret_name(source_id)
     try:
         await secrets_store.remove(

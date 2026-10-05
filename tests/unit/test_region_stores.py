@@ -199,7 +199,18 @@ def test_the_admin_plane_row_may_not_name_an_engine_or_store_beside_the_region()
         )
 
 
-def test_the_boot_orgs_engine_is_the_one_its_region_names(monkeypatch):
+@pytest.fixture()
+def deployment_org():
+    """The boot's work is the deployment org's ("default" on a fresh AppState), bound as the boot
+    binds it (REQ-1266)."""
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org("default")
+    yield
+    reset_current_org(token)
+
+
+def test_the_boot_orgs_engine_is_the_one_its_region_names(deployment_org, monkeypatch):
     """REQ-1922: the boot org binds the engine its region names in the config file, the lane
     every other org in a region deployment is built on."""
     from provisa.api import app as app_mod
@@ -234,7 +245,7 @@ def test_the_boot_orgs_engine_is_the_one_its_region_names(monkeypatch):
     )
 
 
-def test_with_no_platform_regions_the_boot_engine_is_left_as_it_is(monkeypatch):
+def test_with_no_platform_regions_the_boot_engine_is_left_as_it_is(deployment_org, monkeypatch):
     from provisa.api import app as app_mod
 
     state = app_mod.AppState()
@@ -245,7 +256,7 @@ def test_with_no_platform_regions_the_boot_engine_is_left_as_it_is(monkeypatch):
     assert state.federation_engine is before and not state._active_runtime().isolated_engine
 
 
-def test_an_org_without_its_own_cache_is_served_the_deployments(monkeypatch):
+def test_an_org_without_its_own_cache_is_served_the_deployments(deployment_org, monkeypatch):
     """REQ-1922: with no platform regions no runtime holds a cache of its own."""
     from provisa.api import app as app_mod
     from provisa.api.org_runtime import OrgRuntime
@@ -267,7 +278,7 @@ def test_an_org_without_its_own_cache_is_served_the_deployments(monkeypatch):
 
 
 async def test_in_a_region_an_org_keeps_its_cache_on_the_store_its_region_names(
-    monkeypatch, control_plane, tmp_path
+    deployment_org, monkeypatch, control_plane, tmp_path
 ):
     from provisa.api import app as app_mod
     from provisa.core.database import Database

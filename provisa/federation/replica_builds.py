@@ -263,12 +263,11 @@ async def run_build(state: Any, key: ReplicaKey, progress: Progress) -> BuildOut
     return outcome
 
 
-def make_runner(state: Any, org_id: str | None, platform_url: str) -> ReplicaRunner:
+def make_runner(state: Any, org_id: str, platform_url: str) -> ReplicaRunner:
     """This process's runner for the org ``state`` serves."""
     from provisa.core import settings_registry
     from provisa.core.connection_loop import spawn_background
     from provisa.federation.engine import configured_engine_url
-    from provisa.federation.replica_address import active_org_id
     from provisa.federation.replica_locks import BuildLocks
 
     engine = state.federation_engine.engine
@@ -278,7 +277,7 @@ def make_runner(state: Any, org_id: str | None, platform_url: str) -> ReplicaRun
 
     return ReplicaRunner(
         db=state.tenant_db,
-        org_id=org_id if org_id is not None else active_org_id(state),
+        org_id=org_id,
         locks=BuildLocks(platform_url),
         engine_key=lambda: engine_job_key(engine.name, configured_engine_url()),
         build=build,
@@ -301,26 +300,25 @@ def wire_replica_runner(scheduler: Any, *, state: Any, platform_url: str) -> Non
     from apscheduler.triggers.interval import IntervalTrigger
 
     from provisa.core import process_mode
-    from provisa.core.request_context import current_org, reset_current_org, set_current_org
+    from provisa.core.request_context import require_current_org, reset_current_org, set_current_org
 
     if not process_mode.runs_background_work():
         return
-    org_id = current_org.get(None)
+    org_id = require_current_org()
     runner = make_runner(state, org_id, platform_url)
     _runners[org_id] = runner
 
     async def _pass() -> None:
-        token = set_current_org(org_id) if org_id is not None else None
+        token = set_current_org(org_id)
         try:
             await runner.run_pass()
         finally:
-            if token is not None:
-                reset_current_org(token)
+            reset_current_org(token)
 
     scheduler.add_job(
         _pass,
         trigger=IntervalTrigger(seconds=_PASS_SECONDS),
-        id=f"{RUNNER_JOB_ID}:org_{org_id}" if org_id else RUNNER_JOB_ID,
+        id=f"{RUNNER_JOB_ID}:org_{org_id}",
         replace_existing=True,
         next_run_time=datetime.now(UTC),
     )

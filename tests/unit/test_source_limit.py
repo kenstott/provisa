@@ -84,6 +84,15 @@ class TestCountBillable:
 class TestCreatePathRefusal:
     """``_refuse_over_source_limit`` — the gate ``create_source`` runs before it persists."""
 
+    @pytest.fixture(autouse=True)
+    def _acting_for_acme(self):
+        """create_source runs inside acme's request, with acme bound (REQ-1266)."""
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org("acme")
+        yield
+        reset_current_org(token)
+
     @pytest.fixture
     def gate(self, monkeypatch):
         from provisa.api.admin import schema_mutation
@@ -120,9 +129,6 @@ class TestCreatePathRefusal:
             monkeypatch.setattr(source_repo, "count_billable", _count)
             monkeypatch.setattr(source_repo, "get", _get)
             monkeypatch.setattr(schema_mutation, "_get_pool", _pool)
-            from provisa.api.app import state as app_state
-
-            monkeypatch.setattr(app_state, "org_id", "acme", raising=False)
             return schema_mutation._refuse_over_source_limit
 
         return _apply

@@ -154,6 +154,7 @@ class TestWhatTheRouterDoesWithTheAnswer:
         await er._refresh(ORG, "feature-x", connectivity=False)
         assert recompiled == [(ORG, "feature-x")]
 
+    @pytest.mark.unbound  # nothing bound before, so nothing may be bound after
     async def test_the_binding_is_released_afterwards(self, registry):
         from provisa.core.request_context import current_env, current_org
 

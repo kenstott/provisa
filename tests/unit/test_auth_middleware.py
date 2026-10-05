@@ -22,6 +22,12 @@ from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.models import AuthIdentity, AuthProvider
 
 
+@pytest.fixture(autouse=True)
+def _deployment_org_is_root(serve_deployment_org):
+    """The middleware's deployment org is 'root'; the app state serves it (REQ-1266)."""
+    serve_deployment_org("root")
+
+
 class MockProvider(AuthProvider):
     """Test provider that accepts 'valid-token' and rejects everything else."""
 

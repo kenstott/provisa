@@ -310,7 +310,7 @@ def catalog_name_for_source(state: "AppState", source_type: str, source_id: str)
     (prometheus, whose rows Trino scrapes directly; google_sheets is the same case, ATTACH_R).
     """
     from provisa.compiler.naming import org_prefixed_catalog
-    from provisa.core.request_context import active_env, current_org
+    from provisa.core.request_context import active_env, require_current_org
     from provisa.federation.connector_base import LIVE_IN_PLACE
 
     fixed = fixed_catalog_for_engine(state)
@@ -333,10 +333,10 @@ def catalog_name_for_source(state: "AppState", source_type: str, source_id: str)
 
         connector = TRINO_CONNECTORS.get(source_type)
         if connector is None or connector.mechanism not in LIVE_IN_PLACE:
-            org_id = current_org.get() or state.org_id
+            org_id = require_current_org()
             return engine_rt.materialize_store_target(org_id)[0]
     return org_prefixed_catalog(
-        current_org.get() or state.org_id,
+        require_current_org(),
         source_to_catalog(source_id),
         default_org=state.org_id,
         env=active_env(),

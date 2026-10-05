@@ -18,6 +18,8 @@ reaches the caller on every surface, in that surface's own channel:
 
 from __future__ import annotations
 
+import contextlib
+
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -42,6 +44,20 @@ def _cut(message: str = "the answer for pets was cut at max_pages=1 (2 rows)") -
 
 
 # -- HTTP ------------------------------------------------------------------------------------------
+
+
+@contextlib.contextmanager
+def _bound_to_the_requests_org():
+    """A Cypher statement runs inside a request, with its org bound (REQ-1266): here the
+    deployment's own org, whose runtime the app state holds."""
+    import provisa.api.app as appmod
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org(appmod.state.org_id)
+    try:
+        yield
+    finally:
+        reset_current_org(token)
 
 
 async def test_every_http_response_carries_the_requests_warnings_as_an_ascii_header():
@@ -260,6 +276,7 @@ async def test_a_cypher_statement_reads_a_cut_answer_from_its_own_table_and_neve
             engine_cache, "cache_location", lambda *a, **k: CacheLocation("c", "s", "relational")
         ),
         patch.object(engine_cache, "cache_table_name", lambda *a: "pets_whole"),
+        _bound_to_the_requests_org(),
     ):
         rows = await cypher_exec._execute_with_api(
             "SELECT id FROM pets", [], {}, state, table_ids=[5], authorization=_AUTH
@@ -329,6 +346,7 @@ async def test_a_cypher_statement_lands_a_remote_graphql_answer_cut_at_max_rows_
         patch.object(engine_cache, "org_cache_schema", lambda state, suffix=None: "s"),
         patch.object(engine_cache, "analyze_cache_table", lambda *a: None),
         patch.object(cypher_exec, "spawn_background", lambda coro: None),
+        _bound_to_the_requests_org(),
     ):
         for _ in range(2):
             await cypher_exec._execute_with_gql_remote(

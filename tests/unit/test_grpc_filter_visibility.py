@@ -122,7 +122,10 @@ def _servicer():
         OrdersAggregateResult=MagicMock(),
     )
     state = SimpleNamespace(
-        contexts={"analyst": _ctx()}, schemas={"analyst": MagicMock()}, multitenancy=False
+        org_id="default",
+        contexts={"analyst": _ctx()},
+        schemas={"analyst": MagicMock()},
+        multitenancy=False,
     )
     return ProvisaServicer(state, pb2, MagicMock())
 

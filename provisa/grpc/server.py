@@ -302,7 +302,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         from provisa.api.org_resolve import resolve_session_org
         from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
-        caps = capabilities_for_claims(identity.roles or [], getattr(self._state, "roles", {}))
+        caps = capabilities_for_claims(identity.roles or [], self._state.platform_roles)
         return await resolve_session_org(
             self._state,
             user_id=identity.user_id,
@@ -320,20 +320,21 @@ class ProvisaServicer:  # REQ-045, REQ-143
         principal holding the cross-org right, and a caller cannot name someone else's org. An
         unsecured deployment has no principal to resolve, so the metadata org stands; under
         multitenancy it is REQUIRED — a missing org raises ``ValueError`` (the caller aborts) rather
-        than silently binding the default. Returns the reset token, or None for single-org
-        deployments (ContextVar left unset → default runtime). Each RPC runs in its own context
-        (``provisa.grpc.rpc_scope``), so a plain set/reset isolates the binding."""
+        than silently binding the default. A single-org deployment binds its one org. Returns the
+        reset token. Each RPC runs in its own context (``provisa.grpc.rpc_scope``), so a plain
+        set/reset isolates the binding."""
+        from provisa.core.request_context import set_current_org
+
         if not getattr(self._state, "multitenancy", False):
-            return None
+            return set_current_org(self._state.org_id)
         raw = metadata.get("x-provisa-org")
         requested = raw.decode() if isinstance(raw, bytes) else raw
         org_id = await self._resolve_org(requested)
         if not org_id:
             raise ValueError("Missing x-provisa-org metadata")
-        from provisa.api.app import ensure_org_runtime
-        from provisa.core.request_context import set_current_org
+        from provisa.api.app import ensure_serving_runtime
 
-        await ensure_org_runtime(org_id)
+        await ensure_serving_runtime(org_id)
         return set_current_org(org_id)
 
     def __getattr__(self, name: str):

@@ -92,8 +92,15 @@ def audited(monkeypatch):
     harness.state.contexts = {"analyst": _CTX}
 
     def call(*args, **kwargs):
-        with audit_identity_scope("alice", "http"):
-            return harness.call(*args, **kwargs)
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        # acme's request, bound as the org-routing middleware binds it (REQ-1266)
+        token = set_current_org("acme")
+        try:
+            with audit_identity_scope("alice", "http"):
+                return harness.call(*args, **kwargs)
+        finally:
+            reset_current_org(token)
 
     def rows() -> list[dict]:
         assert flush_audit(5.0), audit_writer_status()

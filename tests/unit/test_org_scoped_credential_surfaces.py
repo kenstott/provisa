@@ -58,8 +58,10 @@ class _AdminDb:
 
 class _State:
     multitenancy = True
+    org_id = "root"
     admin_db = _AdminDb()
     roles: dict = {}
+    platform_roles: dict = {}
 
 
 def _identity() -> AuthIdentity:
@@ -160,6 +162,7 @@ class TestBolt:
         from provisa.bolt.session import BoltSession
 
         class _AppState:
+            org_id = "root"
             auth_config = {"provider": "basic"}
             auth_middleware_active = True
             contexts = {"analyst": object()}
@@ -239,11 +242,14 @@ class TestAnUnnamedOrgIsRefused:
 
 
 class _SingleTenantState:
-    """A single-tenant deployment. It has no org to name: reading memberships here is a defect,
-    so the platform plane raises if any surface touches it."""
+    """A single-tenant deployment. Its one org is the only org there is, so nothing names it:
+    reading memberships here is a defect, so the platform plane raises if any surface touches it.
+    Every surface binds that one org (REQ-1266) -- a session bound to no org is served nothing."""
 
     multitenancy = False
+    org_id = "root"
     roles: dict = {}
+    platform_roles: dict = {}
 
     @property
     def admin_db(self):
@@ -254,24 +260,30 @@ class TestSingleTenantNeverReferencesAnOrg:
     async def test_pgwire(self):
         from provisa.pgwire.server import _resolve_and_build_org
 
-        assert await _resolve_and_build_org(_SingleTenantState(), _person(), None) is None
+        assert await _resolve_and_build_org(_SingleTenantState(), _person(), None) == "root"
 
     async def test_flight(self):
         from provisa.api.flight.server import _resolve_identity_org
 
-        assert await _resolve_identity_org(_SingleTenantState(), _person(), {}) is None
+        assert await _resolve_identity_org(_SingleTenantState(), _person(), {}) == "root"
 
     async def test_grpc(self, monkeypatch):
         from provisa.grpc.server import ProvisaServicer
 
         monkeypatch.setattr("provisa.grpc.auth.authenticated_identity", _person)
+        from provisa.core.request_context import current_org, reset_current_org
+
         servicer = ProvisaServicer(_SingleTenantState(), None, None)
-        assert await servicer._bind_org({}) is None
+        token = await servicer._bind_org({})
+        try:
+            assert current_org.get() == "root"
+        finally:
+            reset_current_org(token)
 
     async def test_mcp(self):
         from provisa.api.mcp.server import _org_for_identity
 
-        assert await _org_for_identity(_person(), _SingleTenantState()) is None
+        assert await _org_for_identity(_person(), _SingleTenantState()) == "root"
 
     async def test_bolt(self, monkeypatch):
         from provisa.bolt.session import BoltSession
@@ -285,7 +297,7 @@ class TestSingleTenantNeverReferencesAnOrg:
         session._credential_org = None
         monkeypatch.setattr(session, "_requested_org", lambda: None)
         await session._ensure_org()
-        assert session.org_id is None
+        assert session.org_id == "root"
 
 
 # --- MCP names an org the way HTTP does --------------------------------------------------------
@@ -361,7 +373,7 @@ class TestPgwireDatabaseNamesTheOrg:
     async def test_single_tenant_ignores_the_database_name(self):
         from provisa.pgwire.server import _resolve_and_build_org
 
-        assert await _resolve_and_build_org(_SingleTenantState(), _person(), "x", "y") is None
+        assert await _resolve_and_build_org(_SingleTenantState(), _person(), "x", "y") == "root"
 
 
 # --- pgwire: the catalog shows the connected org as the database -------------------------------

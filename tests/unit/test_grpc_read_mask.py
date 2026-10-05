@@ -239,7 +239,7 @@ def _servicer():
     descriptor = SimpleNamespace(fields=fields, fields_by_name={f.name: f for f in fields})
     msg_cls = MagicMock(DESCRIPTOR=descriptor)
     pb2 = SimpleNamespace(Orders=msg_cls)
-    state = SimpleNamespace(contexts={"admin": _ctx()}, multitenancy=False)
+    state = SimpleNamespace(org_id="default", contexts={"admin": _ctx()}, multitenancy=False)
     servicer = ProvisaServicer(state, pb2, MagicMock())
     servicer._emit_trailing_metadata = MagicMock()
     servicer._meter_msg = lambda msg: msg

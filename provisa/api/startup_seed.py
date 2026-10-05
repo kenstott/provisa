@@ -778,7 +778,8 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     pg_port: int,
     pg_database: str,
     pg_user: str,
-    org_id: str | None = None,
+    *,
+    org_id: str,
     env: str | None = None,
     engine_addressable: bool = True,
 ) -> None:
@@ -787,16 +788,15 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     The provisa-admin source is the control-plane self-catalog; its ``type``/``dialect`` follow the
     control plane's actual backend (``postgresql`` for PG, ``sqlite`` for the file-based demo).
 
-    ``org_id`` scopes the seeded meta/ops domain rows to the org being built (REQ-1266). It defaults
-    to ``state.org_id`` (the default/bootstrap org) for the single-org startup path; the per-org
-    builder passes the new org's id so meta/ops belong to that org, not the default.
+    ``org_id`` scopes the seeded meta/ops domain rows to the org being built (REQ-1266): the boot
+    passes the deployment org's id, the per-org builder the new org's, so meta/ops belong to the
+    org named and never to another.
 
     ``engine_addressable=False`` (REQ-1619) says the coordinator has no address this boot, because
     the shard could not be allocated. The only thing that reads it is provisa-otel's recorded
     host/port, so those two columns are left as the last boot wrote them rather than the seed
     inventing an address: everything the seed exists for — the source rows, the meta domain, ops —
     is control-plane state and is written either way."""
-    eff_org = org_id or state.org_id
     assert state.model_db is not None
     cp_dialect = state.model_db.dialect
     from provisa.federation.engine import configured_engine_endpoint
@@ -918,9 +918,9 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
             _seed_lock_held = True
         try:
             await _seed_tag_param_values(_conn)  # REQ-1467
-            await _seed_meta_domain(_conn, org_id=eff_org, env=env)
+            await _seed_meta_domain(_conn, org_id=org_id, env=env)
             await _seed_ops_pg(_conn)
-            await _seed_ops_domain(_conn, org_id=eff_org, env=env)  # REQ-884
+            await _seed_ops_domain(_conn, org_id=org_id, env=env)  # REQ-884
             await _ensure_ops_steward_grant(_conn)  # REQ-1386
             await _seed_meta_relationships(_conn)
         finally:
@@ -938,7 +938,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     # REQ-1301: the org registry is a dataset of the root org only — it describes the deployment,
     # and no tenant may read another tenant's roster. Runs outside the connection above because it
     # opens both planes.
-    if eff_org == state.org_id:
+    if org_id == state.org_id:
         await seed_org_registry_view()
 
 

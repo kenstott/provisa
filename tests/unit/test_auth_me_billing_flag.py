@@ -46,20 +46,37 @@ class _Db:
         return False
 
 
+class _BindsTheOrg:
+    """Stands in for the org-routing middleware: the request is acme's, bound (REQ-1266)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org("acme")
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            reset_current_org(token)
+
+
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, serve_deployment_org):
     from provisa.api import app as app_module
     from provisa.api.auth_router import router
 
     # Unsecured branch: auth_config is None, so /me answers without an identity or the control
     # plane, and the billing flag is the only thing under test.
+    serve_deployment_org("acme")
     monkeypatch.setattr(app_module.state, "auth_config", None, raising=False)
     monkeypatch.setattr(app_module.state, "tenant_db", _Db(), raising=False)
     monkeypatch.setattr(app_module.state, "model_db", app_module.state.tenant_db, raising=False)
-    monkeypatch.setattr(app_module.state, "org_id", "acme", raising=False)
 
     api = FastAPI()
     api.include_router(router)
+    api.add_middleware(_BindsTheOrg)
     return TestClient(api, raise_server_exceptions=False)
 
 

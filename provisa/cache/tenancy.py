@@ -42,9 +42,9 @@ from typing import Any
 def cache_place(state: Any) -> str:
     """The acting org and environment: whose cached data this is, whatever model it holds."""
     from provisa.api.org_runtime import runtime_key
-    from provisa.core.request_context import current_env, current_org
+    from provisa.core.request_context import current_env, require_current_org
 
-    return runtime_key(current_org.get() or state.org_id, current_env.get())
+    return runtime_key(require_current_org(), current_env.get())
 
 
 def cache_tenant(state: Any) -> str:

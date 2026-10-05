@@ -103,9 +103,9 @@ def org_cache_schema(state: Any, suffix: str = "_api_cache") -> str:  # REQ-1623
     or a gRPC remote source are API cache tables and go to ``_api_cache``; a GraphQL remote's
     go to ``_gql_cache``."""
     from provisa.core.environments import active_org_schema
-    from provisa.core.request_context import current_org
+    from provisa.core.request_context import require_current_org
 
-    return active_org_schema(current_org.get() or state.org_id, suffix)
+    return active_org_schema(require_current_org(), suffix)
 
 
 def resolved_cache_catalog(engine: Any) -> str:  # REQ-318

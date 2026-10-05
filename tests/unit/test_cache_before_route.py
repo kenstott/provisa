@@ -50,9 +50,11 @@ class _CountingStore(FakeCacheStore):
 
 
 @pytest.fixture
-def pipe(monkeypatch):
+def pipe(monkeypatch, bind_org):
     """The one pipeline over a stand-in state: a counting cache store, a control plane that fails
-    on any statement, and every route-stage function counted."""
+    on any statement, and every route-stage function counted. The work is org-a's, the org the
+    stand-in serves, bound as every surface binds its org (REQ-1266)."""
+    bind_org("org-a")
     import provisa.api.app as app_mod
     import sqlglot.parser
     from provisa.api.data import materialization
