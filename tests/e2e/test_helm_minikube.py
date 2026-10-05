@@ -377,18 +377,24 @@ def helm_install(request):
 
 class TestPodsRunning:
     def test_all_pods_are_running(self):
-        """All Provisa pods reach Running phase after helm install."""
+        """Every long-running pod is Running after helm install; a Job's pod (the exchange bucket
+        job) ends Succeeded, which is its healthy end."""
         pods = _get_pods()
         assert len(pods) > 0, "No pods found in namespace"
         for pod in pods:
             phase = pod["status"].get("phase", "Unknown")
             name = pod["metadata"]["name"]
-            assert phase == "Running", f"Pod {name!r} is in phase {phase!r}, not Running"
+            owners = {o["kind"] for o in pod["metadata"].get("ownerReferences", [])}
+            healthy = ("Running", "Succeeded") if "Job" in owners else ("Running",)
+            assert phase in healthy, (
+                f"Pod {name!r} is in phase {phase!r}, not {' or '.join(healthy)}"
+            )
 
     def test_provisa_deployment_pod_exists(self):
-        """At least one pod with 'provisa' in its name is running."""
+        """At least one pod of the API Deployment (app: provisa) is running. Selected by label:
+        every pod of the release has "provisa" in its name, a completed Job's among them."""
         pods = _get_pods()
-        provisa_pods = [p for p in pods if "provisa" in p["metadata"]["name"]]
+        provisa_pods = [p for p in pods if p["metadata"].get("labels", {}).get("app") == "provisa"]
         assert len(provisa_pods) >= 1, "No provisa pods found"
         for pod in provisa_pods:
             assert pod["status"]["phase"] == "Running"
@@ -514,7 +520,7 @@ class TestWorkerScaling:
                 f"--timeout={TIMEOUT}",
             ]
         )
-        assert result.returncode == 0, f"helm upgrade failed:\n{result.stderr}"
+        assert result.returncode == 0, f"helm upgrade failed:\n{result.stderr}\n{_why_not_ready()}"
 
         pods = _get_pods()
         worker_pods = [p for p in pods if "trino-worker" in p["metadata"]["name"]]

@@ -352,7 +352,13 @@ class WorkerBoot:
         return {int(p) for p in _READY_RE.findall(self.log_text())}
 
     def _accepting(self) -> bool:
-        """Whether a connection to the launch's HTTP port is accepted."""
+        """Whether the launch accepts on its HTTP port: with a socket per worker (REQ-1900), every
+        worker listens on it -- any one accepting says nothing about the others, each of which
+        binds only after its own startup returns; with one shared socket, a connection is
+        accepted."""
+        if self._per_worker_http:
+            pids = set(self.worker_pids())
+            return len(pids) == self.workers and self.listeners(self.ports["http"]) == pids
         try:
             socket.create_connection(("127.0.0.1", self.ports["http"]), timeout=1).close()
         except OSError:
@@ -362,7 +368,7 @@ class WorkerBoot:
     def wait_all_ready(self, timeout: float = 600.0) -> float:
         """Seconds from launch until every worker has finished its startup (each worker's own
         "worker ready" log line — independent of what /health reports) AND the launch accepts
-        connections on its HTTP port.
+        connections on its HTTP port (every worker listening on it, when each has its own socket).
 
         The ready line is logged inside the application's startup. A single uvicorn process
         binds its socket only after that startup has returned — after the line, the worker's

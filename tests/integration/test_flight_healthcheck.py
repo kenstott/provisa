@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 
 import pyarrow.flight as fl
 import pytest
@@ -45,7 +46,13 @@ def test_flight_healthcheck_reports_what_http_health_reports():
     try:
         boot.start()
         boot.wait_all_ready(timeout=300)
+        # A worker logs "ready" and then registers in the control plane, which is what /health
+        # counts; read /health once every worker has registered (bounded), not at the log line.
+        deadline = time.monotonic() + 60
         http = boot.health()
+        while (http is None or http["workers"]["ready"] < _WORKERS) and time.monotonic() < deadline:
+            time.sleep(0.5)
+            http = boot.health()
         assert http is not None
         assert http["workers"] == {"ready": _WORKERS, "expected": _WORKERS}
         # Fresh connections, so the action is answered by whichever worker the kernel hands

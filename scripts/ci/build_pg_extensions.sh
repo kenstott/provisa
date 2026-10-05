@@ -260,6 +260,18 @@ for f in "$OUT"/lib/*."$SUF"; do
   done
 done
 
+echo "== manifest checksums: of the files as they ship =="
+# Relocation (install_name_tool, patchelf, codesign) rewrites a module after its row was written,
+# so every checksum is taken again here, from the final file, and the manifest is valid JSON.
+python3 - "$OUT" <<'PY'
+import hashlib, json, pathlib, sys
+out = pathlib.Path(sys.argv[1])
+manifest = json.loads((out / "manifest.json").read_text())
+for artifact in manifest["artifacts"]:
+    artifact["sha256"] = hashlib.sha256((out / artifact["file"]).read_bytes()).hexdigest()
+(out / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
+PY
+
 echo "== package =="
 TARBALL="${TARBALL:-$ROOT/dist/provisa-pg-ext-$OS-$ARCH.tar.gz}"
 tar -czf "$TARBALL" -C "$OUT" .
