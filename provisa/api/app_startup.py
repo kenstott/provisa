@@ -38,7 +38,7 @@ from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 
 if TYPE_CHECKING:
-    from provisa.scheduler.holder import SchedulerHolder
+    from provisa.scheduler.holder import Holders
 
     pass
 
@@ -130,16 +130,30 @@ def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
     _threading.Thread(target=_prewarm_jvm, daemon=True, name="govdata-jvm-prewarm").start()
 
 
-def _scheduler_holder(state: Any) -> "SchedulerHolder":  # REQ-1900
-    """This process's claim on the deployment's scheduled and shared background work, created on
-    first use and closed at shutdown (app.py lifespan)."""
+def _scheduler_holders(state: Any) -> "Holders":  # REQ-1900, REQ-1922
+    """This process's claims on the scheduled and shared background work — the deployment's and
+    its region's (``provisa.scheduler.holder.Holders``) — created on first use and closed at
+    shutdown (app.py lifespan). A region's claim is scoped by the region's name part, so each
+    region of a deployment holds its own; with no regions that part is empty and the region's claim
+    IS the deployment's (a second session asking for the same lock would never get it)."""
     if state._scheduler_holder is None:
+        from provisa.core import process_region
         from provisa.core.config_loader import load_control_plane
+        from provisa.core.environments import region_part
         from provisa.scheduler.holder import SchedulerHolder
 
         cp = load_control_plane(config_path_str())
-        state._scheduler_holder = SchedulerHolder(cp.resolved_platform_url(), cp.resolved_org_id())
-    return state._scheduler_holder
+        org_id = cp.resolved_org_id()
+        state._scheduler_holder = SchedulerHolder(cp.resolved_platform_url(), org_id)
+        part = region_part(process_region.region())
+        state._region_holder = (
+            SchedulerHolder(cp.resolved_platform_url(), f"{org_id}{part}")
+            if part
+            else state._scheduler_holder
+        )
+    from provisa.scheduler.holder import Holders as _Holders
+
+    return _Holders(deployment=state._scheduler_holder, region=state._region_holder)
 
 
 async def _start_background_tasks(_log: logging.Logger) -> None:
@@ -153,15 +167,16 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
     # is None for native engines (DuckDB), which still register MVs and accumulate orphan tables.
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
 
-    # REQ-1900: every worker process starts these loops. The ones that act on SHARED state run
-    # only in the worker holding the scheduler lock (provisa/scheduler/holder.py):
-    #   mv-reclamation     shared — drops tables in the shared materialization store.
-    #   hot-table-refresh  shared when a Redis is configured (it rewrites the cached rows there);
-    #                      this process's own when Redis is the embedded, in-process one.
-    #   replica-hot        shared — it promotes and demotes busy tables in the shared replica
+    # REQ-1900, REQ-1922: every worker process starts these loops. The ones that act on SHARED
+    # state run only in the worker holding its region's scheduler lock (provisa/scheduler/holder.py,
+    # ``Holders.region``) — each works against the region's own stores, so every region runs its own:
+    #   mv-reclamation     shared — drops tables in the region's materialization store.
+    #   hot-table-refresh  shared when a Redis is configured (it rewrites the region's cached rows
+    #                      there); this process's own when Redis is the embedded, in-process one.
+    #   replica-hot        shared — it promotes and demotes busy tables in the region's replica
     #                      state (federation/replica_hot.evaluation_loop).
     #   idle reaper        NOT gated — it measures idleness from THIS process's activity.
-    _holder = _scheduler_holder(state)
+    _holder = _scheduler_holders(state).region
 
     # REQ-1915: spool files a build left when its process died are removed at node start. A
     # file another worker's running build holds is locked and left alone.
@@ -598,9 +613,10 @@ def _start_scheduler(_log: logging.Logger) -> None:
 
         # REQ-1900: every worker process starts this scheduler, and the deployment's jobs must
         # run once, not once per worker: the worker holding the scheduler lock on the platform
-        # control plane runs them (provisa/scheduler/holder.py).
+        # control plane runs them (provisa/scheduler/holder.py). REQ-1922: a region's jobs (its
+        # view builds, source polls, row caches) run once per region, under its region's lock.
         # new_scheduler: a wakeup chain that never inherits a request's trace context -- see there.
-        scheduler = new_scheduler(_scheduler_holder(state))
+        scheduler = new_scheduler(_scheduler_holders(state))
         _cfg_triggers = []
         try:
             # REQ-1669: includes-aware, so a wrapper config's fragments are seen.

@@ -22,7 +22,7 @@ import pytest
 
 from provisa.scheduler import executor
 from provisa.scheduler.executor import PER_WORKER_JOB_IDS, BackgroundJobExecutor
-from provisa.scheduler.holder import SchedulerHolder
+from provisa.scheduler.holder import Holders, SchedulerHolder
 
 
 class _Holder:
@@ -39,7 +39,7 @@ def _submit(holder, job_id: str) -> tuple[list[str], list]:
     """Submit one sync job through the executor; return (what ran, what was reported)."""
     ran: list[str] = []
     reported: list = []
-    ex = BackgroundJobExecutor(holder)
+    ex = BackgroundJobExecutor(None if holder is None else Holders(holder, holder))
     ex._logger = SimpleNamespace(name="test")
     ex._run_job_success = lambda jid, events: reported.append(("success", jid, events))
     ex._run_job_error = lambda jid, *exc: reported.append(("error", jid, exc))
@@ -98,7 +98,7 @@ def test_the_servers_scheduler_is_the_one_given_the_holder():
     from provisa.api import app_startup
     from provisa.live import engine as live_engine
 
-    assert "new_scheduler(_scheduler_holder(state))" in inspect.getsource(
+    assert "new_scheduler(_scheduler_holders(state))" in inspect.getsource(
         app_startup._start_scheduler
     )
     # The live-query engine's polls feed THIS process's subscribers: never gated.
@@ -159,3 +159,78 @@ def test_the_server_gives_its_shared_loops_the_holder():
     # shared replica state and requests builds: the holder's.
     hot = src[src.index("_hot_evaluation_loop(") :]
     assert "should_run=_holder.holds," in hot[: hot.index('name="replica-hot"')]
+
+
+# --- a region's work runs under its region's claim (REQ-1922) ------------------------------------
+
+
+@pytest.mark.parametrize(
+    "job_id", ["events:tick", "events:boot:org_acme", "poll:orders", "row_materialize:reap:x"]
+)
+def test_a_region_job_asks_the_regions_claim_not_the_deployments(job_id):
+    deployment, region = _Holder(False), _Holder(True)
+    ran: list[str] = []
+    ex = BackgroundJobExecutor(Holders(deployment, region))
+    ex._logger = SimpleNamespace(name="test")
+    ex._run_job_success = lambda jid, events: None
+    job = SimpleNamespace(id=job_id, func=lambda: ran.append(job_id), _jobstore_alias="default")
+
+    def _run_now(coro, name):  # noqa: ARG001 - spawn_background's signature
+        asyncio.run(coro)
+
+    with (
+        patch.object(executor, "spawn_background", _run_now),
+        patch.object(executor, "run_job", lambda job, *_a: (job.func(), [])[1]),
+    ):
+        ex._do_submit_job(job, [])
+    assert ran == [job_id]
+    assert (deployment.asked, region.asked) == (0, 1)
+
+
+def test_each_region_holds_its_own_claim_and_one_region_holds_it_once(tmp_path):
+    """Two regions on one control plane each hold their region's claim; a second worker of a
+    region does not."""
+    url = f"sqlite+pysqlite:///{tmp_path / 'cp.db'}"
+    eu, us, eu_again = (
+        SchedulerHolder(url, scope) for scope in ("acme_rg_eu", "acme_rg_us", "acme_rg_eu")
+    )
+    try:
+        assert eu.holds() and us.holds()
+        assert not eu_again.holds()
+    finally:
+        for holder in (eu, us, eu_again):
+            holder.close()
+
+
+@pytest.mark.parametrize(("region", "scope"), [(None, None), ("eu", "acme_rg_eu")])
+def test_a_nodes_region_claim_is_its_regions_and_with_no_regions_the_deployments(
+    tmp_path, monkeypatch, region, scope
+):
+    from provisa.api import app_startup
+    from provisa.core import process_region
+
+    platform = {"regions": [{"id": "eu", "address": "https://eu.example.com"}]} if region else None
+    was = process_region._region
+    process_region.bind_launch(platform, requested=region)
+    url = f"sqlite+pysqlite:///{tmp_path / 'cp.db'}"
+    monkeypatch.setattr(
+        "provisa.core.config_loader.load_control_plane",
+        lambda _path: SimpleNamespace(
+            resolved_platform_url=lambda: url, resolved_org_id=lambda: "acme"
+        ),
+    )
+    monkeypatch.setattr(app_startup, "config_path_str", lambda: "config.yaml")
+    state = SimpleNamespace(_scheduler_holder=None, _region_holder=None)
+    try:
+        holders = app_startup._scheduler_holders(state)
+        assert holders.deployment._scope == "acme"
+        if scope is None:
+            assert holders.region is holders.deployment
+        else:
+            assert holders.region._scope == scope
+            assert holders.deployment.holds() and holders.region.holds()
+    finally:
+        process_region._region = was
+        if state._region_holder is not state._scheduler_holder:
+            state._region_holder.close()
+        state._scheduler_holder.close()

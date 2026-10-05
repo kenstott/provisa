@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from typing import NamedTuple
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -129,3 +130,16 @@ class SchedulerHolder:
             if self._file is not None:
                 self._file.release()
         self._engine.dispose()
+
+
+class Holders(NamedTuple):
+    """The two claims a server process asks before running a scheduled job (REQ-1900, REQ-1922).
+
+    ``deployment``: the deployment's own work (the model's exports, the environment reaper, config
+    triggers, telemetry upkeep, billing), one holder for the whole deployment. ``region``: the work
+    done against this node's region's stores (its view builds and source polls, its row caches, its
+    view reclamation and Hot promotion), one holder per region, so every region builds its own.
+    In a deployment with no regions both are the same claim."""
+
+    deployment: SchedulerHolder
+    region: SchedulerHolder
