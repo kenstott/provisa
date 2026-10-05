@@ -99,11 +99,19 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
                  (LISTEN/NOTIFY) and are never polled here.
     """
 
-    def __init__(self, tenant_db, engine=None) -> None:
+    def __init__(self, tenant_db, engine=None, *, org_id: str) -> None:
         self._tenant_db = tenant_db
         self._engine = engine
+        # REQ-1266: the org whose tenant plane and engine this engine polls; each poll binds it --
+        # a scheduled job fires with nothing bound.
+        self._org_id = org_id
         self._jobs: dict[str, _LiveJob] = {}
         self._scheduler = None
+
+    @property
+    def org_id(self) -> str:
+        """The org this engine polls for (REQ-1266)."""
+        return self._org_id
 
     async def start(self) -> None:  # REQ-565
         """Start the APScheduler scheduler."""
@@ -173,7 +181,8 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
                 "interval",
                 seconds=poll_interval,
                 args=[query_id],
-                id=f"live_{query_id}",
+                # REQ-1266: the job is the engine's org's; its id says so.
+                id=f"live_{query_id}:org_{self._org_id}",
                 replace_existing=True,
             )
             job.scheduler_job_id = sched_job.id
@@ -246,7 +255,16 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
         return query_id in self._jobs
 
     async def _poll(self, query_id: str) -> None:  # REQ-260, REQ-283, REQ-286, REQ-287
-        """Poll for new rows and deliver to outputs."""
+        """Poll for new rows and deliver to outputs, as the work of the engine's org."""
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(self._org_id)
+        try:
+            await self._poll_bound(query_id)
+        finally:
+            reset_current_org(token)
+
+    async def _poll_bound(self, query_id: str) -> None:
         job = self._jobs.get(query_id)
         if job is None:
             return

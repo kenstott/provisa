@@ -64,9 +64,12 @@ async def _restore_config_after_module(tenant_db, _init_schema, platform_admin_d
     # The reload at the module's end binds the request org's vault from the platform plane too, so
     # the plane is set up before this fixture and torn down after it.
     yield
+    from tests.conftest import as_deployment_org
+
     domain_policy.reset()
-    async with tenant_db.acquire() as conn:
-        await load_config_from_yaml(MAIN_CONFIG, conn)
+    with as_deployment_org():  # the restore is the deployment org's config load (REQ-1266)
+        async with tenant_db.acquire() as conn:
+            await load_config_from_yaml(MAIN_CONFIG, conn)
 
 
 @pytest_asyncio.fixture(autouse=True)

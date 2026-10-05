@@ -119,7 +119,19 @@ class ReplicaRunner:
         self._holder = f"{socket.gethostname()}:{os.getpid()}"
 
     async def run_pass(self) -> int:
-        """Start as many requested builds as the limits allow. Returns how many it started."""
+        """Start as many requested builds as the limits allow. Returns how many it started.
+
+        REQ-1266: the pass is its org's work, bound here whoever started it (the scheduled pass, or
+        a read's kick); the builds it spawns copy the binding."""
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(self._org_id)
+        try:
+            return await self._run_pass_bound()
+        finally:
+            reset_current_org(token)
+
+    async def _run_pass_bound(self) -> int:
         if not process_mode.runs_background_work():
             return 0
         if self._housekeeping is not None:

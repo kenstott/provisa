@@ -50,7 +50,9 @@ def _state(monkeypatch, runtime: _Runtime) -> None:
         otel_s3_endpoint="https://object-store.invalid",
         otel_compact_file_chunk=50,
         otel_compact_max_files_per_run=500,
-        federation_engine=runtime,
+        # The deployment's shared engine, which the jobs name and run as the deployment org.
+        org_id="default",
+        shared_federation_engine=runtime,
     )
     monkeypatch.setattr("provisa.api.app.state", state, raising=False)
 

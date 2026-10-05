@@ -332,11 +332,11 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
 def _replica_build_factory(state: Any, db: Any) -> Callable[[tuple[str, str, str]], Any]:
     """What gives a whole-copy source node its handle (REQ-1915): the node asks the data
     replicator for the build and re-posts the change once the build has completed."""
-    from provisa.core.request_context import current_org
+    from provisa.core.request_context import require_current_org
     from provisa.events.handlers import make_source_build
     from provisa.federation import replica_builds
 
-    org_id = current_org.get(None)
+    org_id = require_current_org()
 
     def build(key: tuple[str, str, str]) -> Any:
         return make_source_build(
@@ -628,11 +628,10 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot-create
         # job: replicas are BUILT at boot (that job lands every source + fans out to its MVs), then
         # REFRESHED by the poll/push events.
-        # REQ-1266: a non-default org wires under the org bound by build_org_runtime — its job ids get
-        # an org suffix and each fire binds current_org. The default org (ContextVar unset) → None →
-        # bare ids, unchanged single-org behavior. db/processors already carry this org's tenant plane.
+        # REQ-1266: wired under the org bound by the boot or build_org_runtime — its job ids carry
+        # the org and each fire binds it. db/processors already carry this org's tenant plane.
         from provisa.core.change_signal import is_push
-        from provisa.core.request_context import current_org
+        from provisa.core.request_context import require_current_org
 
         register_runtime(
             scheduler,
@@ -640,7 +639,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             processors=processors,
             specs=specs,
             seed=seed,
-            org_id=current_org.get(None),
+            org_id=require_current_org(),
         )
         # A node recorded here already has its poll job registered (or is a push node, not this
         # mechanism's job) — wire_new_poll_jobs skips anything in this set, mirroring
@@ -729,7 +728,7 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
         if not candidates:
             return 0
 
-        from provisa.core.request_context import current_org
+        from provisa.core.request_context import require_current_org
         from provisa.events import supervisor
         from provisa.events.boot import build_processors, build_source_node_spec
         from provisa.events.source_loader import SourceRowLoader, UnsupportedSourceFetch
@@ -774,7 +773,7 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
             return 0
 
         bare_engine = getattr(engine, "engine", engine)
-        org_id = current_org.get(None)
+        org_id = require_current_org()
         registered_count = 0
         for src, tbl, node in candidates:
             spec = build_source_node_spec(

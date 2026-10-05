@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
+
 import pytest
 import pytest_asyncio
 
@@ -324,6 +325,45 @@ def _disable_auth_for_integration(tmp_path_factory):
     """Integration tests build the in-process app and call it with a `role` but no
     bearer token; force auth off so create_app() does not install AuthMiddleware."""
     yield from pin_no_auth_config(tmp_path_factory.mktemp("noauth-cfg"))
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "unbound: run with no org bound -- for entrypoints that bind one themselves (REQ-1266)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "deployment_org(org_id): the app state serves org_id as its own org, bound for the test",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _deployment_org_bound(request: pytest.FixtureRequest):
+    """Integration tests run as work for the deployment's own org (REQ-1266), as the unit harness
+    does: a test that drives a core path directly (load_config, a resolver, a repository) stands in
+    for the boot or the request that binds it. An entrypoint under test binds for itself either way;
+    ``@pytest.mark.unbound`` runs a test with nothing bound."""
+    if request.node.get_closest_marker("unbound") is not None:
+        yield
+        return
+    from tests.conftest import as_deployment_org
+
+    served = request.node.get_closest_marker("deployment_org")
+    if served is not None:
+        # The app's own org is re-pointed BEFORE it is bound (its runtime moves with it,
+        # AppState.org_id), here in the test's own context: a binding made inside an async fixture
+        # stays in that fixture's task.
+        import provisa.api.app as app_mod
+
+        request.getfixturevalue("monkeypatch").setattr(
+            app_mod.state, "org_id", served.args[0], raising=False
+        )
+    with as_deployment_org():
+        yield
+        if "monkeypatch" in request.fixturenames:
+            # A routed AppState attribute monkeypatch replaced is put back while the org is bound.
+            request.getfixturevalue("monkeypatch").undo()
 
 
 @pytest.fixture(autouse=True, scope="module")

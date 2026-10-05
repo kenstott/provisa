@@ -126,6 +126,7 @@ class TestReconcileLiveEngine:
         _result.fetchall.return_value = [MagicMock(_mapping=r) for r in rows]
         conn.execute_core = AsyncMock(return_value=_result)
         engine = MagicMock()
+        engine.org_id = "default"  # the deployment org's engine, reconciled by its own rebuild
 
         with patch.object(app_mod, "state", SimpleNamespace(live_engine=engine)):
             await app_rebuild._reconcile_live_engine(conn)

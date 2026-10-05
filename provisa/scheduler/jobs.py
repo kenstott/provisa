@@ -15,13 +15,15 @@ internal function names. Reuses existing async patterns.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 from provisa.federation.execution_auth import system_auth
 
@@ -75,6 +77,25 @@ async def _execute_webhook(
 # internal SQL (same default used by the Flight server, provisa/api/flight/server.py).
 # Scheduled triggers carry no per-run identity, so scheduled SQL runs under it.
 # REQ-1003: governed execution requires a role; this is the documented system role.
+def _in_deployment_org(job: Callable[..., Awaitable[None]]) -> Callable[..., Awaitable[None]]:
+    """Run a scheduled job as the deployment org's work (REQ-1266): a job fires with nothing bound,
+    and these are the deployment's own -- its config triggers, its shared engine's upkeep, its
+    platform registry's sweeps -- so each binds the deployment org by name for its run."""
+
+    @functools.wraps(job)
+    async def _bound(*args: Any, **kwargs: Any) -> None:
+        from provisa.api.app import state
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(state.org_id)
+        try:
+            await job(*args, **kwargs)
+        finally:
+            reset_current_org(token)
+
+    return _bound
+
+
 async def _execute_sql(sql: str, trigger_id: str, role: str) -> None:  # REQ-1003, REQ-1004
     """Run a scheduled SQL trigger: one insert, update or delete of registered tables, its date
     tokens rendered as values for this run (scheduler/trigger_sql.py), through the shared
@@ -94,6 +115,7 @@ async def _execute_sql(sql: str, trigger_id: str, role: str) -> None:  # REQ-100
     logger.info("Trigger %s: scheduled SQL executed (%d rows)", trigger_id, len(result.rows))
 
 
+@_in_deployment_org
 async def compact_otel_signals() -> None:  # REQ-302, REQ-303
     """Compact today's OTEL Parquet from MinIO into Iceberg vithe engine.
 
@@ -109,7 +131,10 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
     # The Parquet is compacted into the Iceberg ``otel.signals`` tables, which only an engine that
     # declares the ``otel`` catalog has (Trino). A native engine's telemetry is the dedicated ops
     # store, written directly — there is nothing to compact into (REQ-302, REQ-303).
-    if state.federation_engine is None or not state.federation_engine.has_otel_catalog:
+    if (
+        state.shared_federation_engine is None
+        or not state.shared_federation_engine.has_otel_catalog
+    ):
         logger.debug("compact_otel: the engine has no otel Iceberg catalog — nothing to compact")
         return
 
@@ -132,7 +157,7 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
     otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
     file_chunk = state.otel_compact_file_chunk
     max_files = state.otel_compact_max_files_per_run
-    engine = state.federation_engine
+    engine = state.shared_federation_engine
 
     loop = asyncio.get_event_loop()
     if loop.is_closed() or not loop.is_running():
@@ -705,6 +730,7 @@ def _execute_batch_inserts(
         )
 
 
+@_in_deployment_org
 async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
     """Reclaim the OTel Iceberg tables' object-store footprint (scheduled).
 
@@ -726,7 +752,7 @@ async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
     if retention_hours is None:
         logger.debug("reclaim_otel: no ops_snapshot_retention_hours configured — skipping")
         return
-    engine = state.federation_engine
+    engine = state.shared_federation_engine
     if engine is None:
         return
     # Snapshots and orphan files are the Iceberg ``otel`` catalog's, and ALTER TABLE ... EXECUTE is
@@ -816,6 +842,7 @@ def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> 
     _execute_batch_inserts(engine, signal, rows, col_names, placeholders, batch_size)
 
 
+@_in_deployment_org
 async def watch_engine() -> None:
     """Engine-terminal liveness watchdog (scheduled job). Delegates to the bound engine's
     watchdog through the seam — the engine restarts its container and replaces a dead connection;
@@ -831,9 +858,10 @@ async def watch_engine() -> None:
     if not await attach_if_serving(state):
         return
 
-    await state.federation_engine.watchdog()
+    await state.shared_federation_engine.watchdog()
 
 
+@_in_deployment_org
 async def reap_environments() -> None:  # REQ-1523
     """Delete the environments whose expiry has passed, with their schemas and their stores.
 
@@ -846,9 +874,9 @@ async def reap_environments() -> None:  # REQ-1523
     from provisa.core.env_reaper import reap_expired
 
     assert state.admin_db is not None  # the job is registered only when the admin plane is bound
-    assert state.model_db is not None
+    assert state.platform_model_db is not None
 
-    reaped = await reap_expired(state.model_db, state.admin_db, audit=_audit_reaped)
+    reaped = await reap_expired(state.platform_model_db, state.admin_db, audit=_audit_reaped)
     if reaped:
         logger.info("reaped %d expired environment(s)", len(reaped))
 

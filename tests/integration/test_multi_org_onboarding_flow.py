@@ -290,7 +290,15 @@ def test_full_multi_org_onboarding_lifecycle(planes):
             "claimed_by": "super1",
             "org_id": app_state.org_id,
         }
-        who = client.get("/whoami", headers={**_basic("super1"), "host": _CONTROL_HOST})
+        # REQ-1935: on the control-plane host the claimant names the org it was seated in.
+        who = client.get(
+            "/whoami",
+            headers={
+                **_basic("super1"),
+                "host": _CONTROL_HOST,
+                "x-org-provisa": app_state.org_id,
+            },
+        )
         assert who.status_code == 200, who.text
         # REQ-1297: _seat_claimant_in_root grants BOTH platform_admin and org_admin; the claimant
         # holds both — platform_admin for control-plane access, org_admin for data-plane access.
@@ -395,7 +403,17 @@ def test_second_user_cannot_claim_superadmin(planes):
             "/auth/claim-bootstrap", headers={**_basic("super1"), "host": _CONTROL_HOST}
         )
         assert claimed.json()["claimed"] is True
-        first = client.get("/whoami", headers={**_basic("super1"), "host": _CONTROL_HOST})
+        from provisa.api.app import state as app_state
+
+        # REQ-1935: on the control-plane host the claimant names the org it was seated in.
+        first = client.get(
+            "/whoami",
+            headers={
+                **_basic("super1"),
+                "host": _CONTROL_HOST,
+                "x-org-provisa": app_state.org_id,
+            },
+        )
         assert first.status_code == 200, first.text
         # REQ-1297: _seat_claimant_in_root grants BOTH platform_admin and org_admin.
         assert "platform_admin" in first.json()["roles"]

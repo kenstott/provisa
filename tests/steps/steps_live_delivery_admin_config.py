@@ -54,14 +54,14 @@ def when_update_table_with_live_config(shared_data):
 def then_config_persisted_and_engine_notified(shared_data):
     assert shared_data["validated"] is True
     # The live engine is notified by reconciling the desired poll spec — no restart involved.
-    engine = LiveEngine(tenant_db=None, engine=None)
+    engine = LiveEngine(tenant_db=None, engine=None, org_id="default")
     engine.reconcile([LiveSpec(query_id="orders", sql="SELECT 1", watermark_column="updated_at")])
     assert engine.is_registered("orders")
 
 
 @given("the admin UI TablesPage")
 def given_admin_ui_tablespage(shared_data):
-    shared_data["engine"] = LiveEngine(tenant_db=None, engine=None)
+    shared_data["engine"] = LiveEngine(tenant_db=None, engine=None, org_id="default")
     shared_data["engine"].reconcile(
         [
             LiveSpec(

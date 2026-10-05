@@ -73,35 +73,3 @@ def _deployment_org_bound(request: pytest.FixtureRequest):
         # A routed AppState attribute monkeypatch replaced is put back while the org is bound.
         request.getfixturevalue("monkeypatch").undo()
     reset_current_org(token)
-
-
-@pytest.fixture()
-def bind_org(monkeypatch: pytest.MonkeyPatch):
-    """``bind_org(org_id)`` binds the org a test's work is for -- a fake state's own org, or a
-    tenant's. Unbound at teardown, after monkeypatch has put back what it replaced. Call it from a
-    sync fixture or test: an async test body runs in a task context of its own."""
-    from provisa.core.request_context import reset_current_org, set_current_org
-
-    tokens: list = []
-
-    def _bind(org_id: str) -> None:
-        tokens.append(set_current_org(org_id))
-
-    yield _bind
-    monkeypatch.undo()
-    for token in reversed(tokens):
-        reset_current_org(token)
-
-
-@pytest.fixture()
-def serve_deployment_org(monkeypatch: pytest.MonkeyPatch, bind_org):
-    """``serve_deployment_org(org_id)`` re-points the app state's own org (its runtime moves with
-    it, AppState.org_id) and binds it, as the boot does once it has read the org id."""
-
-    def _serve(org_id: str) -> None:
-        from provisa.api import app
-
-        monkeypatch.setattr(app.state, "org_id", org_id, raising=False)
-        bind_org(org_id)
-
-    return _serve

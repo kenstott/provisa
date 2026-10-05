@@ -345,7 +345,7 @@ def when_live_engine_starts(shared_data: dict) -> None:
     from provisa.live.engine import LiveEngine
 
     tenant_db = shared_data["mock_pg_pool"]
-    engine = LiveEngine(tenant_db=tenant_db)
+    engine = LiveEngine(tenant_db=tenant_db, org_id="default")
 
     reconcile_calls: list[str] = []
     registered_queries: list[str] = []
@@ -447,7 +447,7 @@ def given_live_config_modified_via_admin(shared_data: dict) -> None:
 
     from provisa.live.engine import LiveEngine
 
-    engine = LiveEngine(tenant_db=tenant_db)
+    engine = LiveEngine(tenant_db=tenant_db, org_id="default")
 
     async def _start_with_old_config() -> None:
         await engine.start()

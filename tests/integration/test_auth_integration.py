@@ -48,7 +48,9 @@ from provisa.auth.providers.simple import SimpleAuthProvider
 from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 from tests.platform_plane import simple_user_ids
 
-pytestmark = [pytest.mark.integration]
+# The app serves "root" as its own org -- the middleware's deployment org here -- re-pointed and
+# bound by the harness (REQ-1266).
+pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("root")]
 
 # ---------------------------------------------------------------------------
 # Constants

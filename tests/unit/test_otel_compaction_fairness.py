@@ -41,8 +41,10 @@ def compaction_state(monkeypatch):
         otel_s3_endpoint="https://object-store.invalid",
         otel_compact_file_chunk=50,
         otel_compact_max_files_per_run=500,
-        # Trino's runtime: compaction writes into the otel Iceberg catalog only it declares.
-        federation_engine=types.SimpleNamespace(has_otel_catalog=True),
+        # Trino's runtime: compaction writes into the otel Iceberg catalog only it declares. The
+        # deployment's shared engine, which the job names and runs as the deployment org (REQ-1266).
+        org_id="default",
+        shared_federation_engine=types.SimpleNamespace(has_otel_catalog=True),
     )
     monkeypatch.setattr("provisa.api.app.state", state, raising=False)
     return state
@@ -89,7 +91,7 @@ async def test_every_signal_is_compacted_with_its_own_budget(compaction_state, m
             "provisa-otel",
             50,
             500,
-            compaction_state.federation_engine,
+            compaction_state.shared_federation_engine,
         ), f"{signal} did not get the configured per-signal budget"
 
 

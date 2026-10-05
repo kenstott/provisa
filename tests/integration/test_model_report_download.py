@@ -213,17 +213,23 @@ async def served(
         # reason that has nothing to do with the report.
         for term in await glossary_repo.list_terms(conn):
             await glossary_repo.set_definition(conn, term["id"], f"The {term['name']}.")
-    monkeypatch.setattr(app_module.state, "tenant_db", tenant_db, raising=False)
-    # The report reads the registered model from the model store (REQ-1922); the fixture's one
-    # plane holds it.
-    monkeypatch.setattr(app_module.state, "model_db", tenant_db, raising=False)
+    # The report is acme's request, served by acme's runtime (REQ-1266), built as
+    # ensure_org_runtime builds it: the fixture's one plane holds its tenant data and its model
+    # (REQ-1922), and its roles are the ones the requests act as.
+    from provisa.api.org_runtime import OrgRegistry, OrgRuntime
+
+    acme = OrgRuntime(org_id=ORG_ID)
+    acme.tenant_db = tenant_db
+    acme.model_db = tenant_db
+    acme.roles = {rid: {"id": rid, **spec} for rid, spec in _ROLES.items()}
+    registry = OrgRegistry()
+    for key in app_module.state.org_registry.all_org_ids():
+        rt = app_module.state.org_registry.get(key)
+        assert rt is not None
+        registry.set(key, rt)
+    registry.set(ORG_ID, acme)
+    monkeypatch.setattr(app_module.state, "org_registry", registry)
     monkeypatch.setattr(app_module.state, "config", None, raising=False)
-    monkeypatch.setattr(
-        app_module.state,
-        "roles",
-        {rid: {"id": rid, **spec} for rid, spec in _ROLES.items()},
-        raising=False,
-    )
     # The file base build_live_config starts from: the DB-backed sections it rebuilds are the ones
     # this test is about, and pointing at the repo's own config file would make the assertions
     # depend on whatever ships there.
@@ -232,7 +238,13 @@ async def served(
 
 
 async def _book(role: str, domains: "list[str] | None" = None):
-    response = await report_router.model_report(_request(role), domains=domains)
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org(ORG_ID)  # acme's request, as the org-routing middleware binds it
+    try:
+        response = await report_router.model_report(_request(role), domains=domains)
+    finally:
+        reset_current_org(token)
     assert response.media_type == report_router.XLSX_MEDIA_TYPE
     return response, openpyxl.load_workbook(io.BytesIO(response.body))
 

@@ -44,7 +44,8 @@ from provisa.core.schema_org import roles, user_directory, user_role_assignments
 from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
-pytestmark = [pytest.mark.integration]
+# The app serves 'root' as its own org, re-pointed and bound by the harness (REQ-1266).
+pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("root")]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
@@ -101,7 +102,6 @@ def planes(monkeypatch):
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
     monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
     monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
-    monkeypatch.setattr(app_state, "org_id", _ORG, raising=False)
     monkeypatch.setattr(app_state, "auth_config", {"bootstrap_superadmin": True}, raising=False)
     # The roles registry is what turns a role id into its rights; in a real process it comes from
     # the schema.sql seed the DDL above mirrors.
@@ -184,7 +184,10 @@ def test_claimant_acts_as_org_admin_on_a_data_request(planes):
     admin_db, tenant_db, _ = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         _claim(client)
-        resp = client.get("/data/probe", headers={"Authorization": "Bearer tok-first"})
+        # REQ-1935: a data request names its org (the one the claim seated the claimant in).
+        resp = client.get(
+            "/data/probe", headers={"Authorization": "Bearer tok-first", "x-org-provisa": _ORG}
+        )
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -206,6 +209,7 @@ def test_claimant_naming_platform_admin_still_acts_as_org_admin(planes):
             headers={
                 "Authorization": "Bearer tok-first",
                 "X-Provisa-Role": PLATFORM_ADMIN_ROLE,
+                "x-org-provisa": _ORG,  # REQ-1935: a data request names its org
             },
         )
 

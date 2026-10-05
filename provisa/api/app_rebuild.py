@@ -59,11 +59,26 @@ def compile_registry_mvs_to_physical(mv_registry, ctx) -> None:
 
 
 async def _reconcile_live_engine(conn: "Connection") -> None:  # REQ-565, REQ-813
-    """Reconcile the LiveEngine poll jobs from persisted per-table live config."""
+    """Reconcile the LiveEngine poll jobs from persisted per-table live config.
+
+    REQ-1266: the engine polls for ONE org (the deployment's, built at boot) and reconciles only
+    from that org's model. Another org's rebuild would hand it that org's live tables -- polled in
+    the engine's org, rows delivered to the other org's outputs -- and drop the engine's own jobs,
+    so it is refused by name here and the engine is left as it is."""
     from provisa.api.app import state
+    from provisa.core.request_context import require_current_org
     from provisa.live.reconcile import reconcile_live_engine
 
-    await reconcile_live_engine(conn, state.live_engine)
+    engine = state.live_engine
+    org_id = require_current_org()
+    if engine is not None and org_id != engine.org_id:
+        log.error(
+            "live delivery for org %r is not served: the live-query engine polls for org %r only",
+            org_id,
+            engine.org_id,
+        )
+        return
+    await reconcile_live_engine(conn, engine)
 
 
 async def _register_user_views_in_state(conn: "Connection", raw_config: dict | None) -> None:

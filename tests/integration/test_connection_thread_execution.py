@@ -63,6 +63,7 @@ def _flight_state(**extra) -> SimpleNamespace:
         auth_config=None,
         auth_middleware_active=False,
         multitenancy=False,
+        org_id="default",  # the one org a single-org deployment binds (REQ-1266)
         security_high=False,
         rate_limiter=None,
         flight_global_cap=None,
@@ -334,7 +335,11 @@ def test_grpc_governance_runs_on_the_rpc_thread_in_parallel():
     from provisa.grpc.server import ProvisaServicer
 
     state = SimpleNamespace(
-        auth_config=None, auth_middleware_active=False, multitenancy=False, security_high=False
+        auth_config=None,
+        auth_middleware_active=False,
+        multitenancy=False,
+        org_id="default",  # the one org a single-org deployment binds (REQ-1266)
+        security_high=False,
     )
     servicer = ProvisaServicer(state, SimpleNamespace(), SimpleNamespace())
     behavior_idents: set[int] = set()
@@ -509,7 +514,7 @@ async def test_mcp_run_sql_governs_on_the_request_thread_in_parallel(monkeypatch
         both_governing.wait(timeout=10)  # blocks this call's thread AND its loop
         return {"rows": [{"role": role}]}
 
-    mcp = mcp_server.build_mcp_server(SimpleNamespace())
+    mcp = mcp_server.build_mcp_server(SimpleNamespace(org_id="default"))
     front_ident = threading.get_ident()
     with (
         patch.object(tools, "run_sql", _blocking_run_sql),

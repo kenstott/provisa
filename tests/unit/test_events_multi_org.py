@@ -52,10 +52,15 @@ def test_register_runtime_namespaces_job_ids_per_org():
     }
 
 
-def test_register_runtime_default_org_keeps_bare_ids():
+def test_register_runtime_names_the_deployments_own_org_like_any_other():
+    # REQ-1266: the deployment's org is bound by id like every other; a bare id would fire unbound.
     sched = _FakeScheduler()
-    register_runtime(sched, db=None, processors=[], specs=[], org_id=None)
-    assert set(sched.jobs) == {"events:boot", "events:tick", "events:reaper"}
+    register_runtime(sched, db=None, processors=[], specs=[], org_id="default")
+    assert set(sched.jobs) == {
+        "events:boot:org_default",
+        "events:tick:org_default",
+        "events:reaper:org_default",
+    }
 
 
 def test_two_orgs_do_not_clobber_each_other():
@@ -85,7 +90,7 @@ async def test_tick_job_binds_current_org_for_the_fire(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_default_org_tick_binds_nothing(monkeypatch):
+async def test_the_deployment_orgs_tick_binds_its_org(monkeypatch):
     seen: list[str | None] = []
 
     async def _capture_tick(_db, _processors):
@@ -94,9 +99,10 @@ async def test_default_org_tick_binds_nothing(monkeypatch):
     monkeypatch.setattr(supervisor, "tick", _capture_tick)
 
     sched = _FakeScheduler()
-    register_runtime(sched, db=None, processors=[], specs=[], org_id=None, seed=False)
-    await sched.jobs["events:tick"]()
-    assert seen == [None]
+    register_runtime(sched, db=None, processors=[], specs=[], org_id="default", seed=False)
+    await sched.jobs["events:tick:org_default"]()
+    assert seen == ["default"]
+    assert current_org.get() is None
 
 
 class _FakeProc:
@@ -124,12 +130,15 @@ async def test_poll_job_namespaces_id_and_binds_org():
 
 
 @pytest.mark.asyncio
-async def test_poll_job_default_org_bare_id_no_bind():
+async def test_the_deployment_orgs_poll_job_binds_its_org():
+    # The defect: a default-org poll job fired with nothing bound, and its injector's routed reads
+    # were refused (REQ-1266).
     proc = _FakeProc()
     sched = _FakeScheduler()
     TableProcessor.register_poll_job(
-        proc, sched, seconds=5, probe_factory=lambda: None, org_id=None
+        proc, sched, seconds=5, probe_factory=lambda: None, org_id="default"
     )
-    assert "poll:sales.orders" in sched.jobs
-    await sched.jobs["poll:sales.orders"]()
-    assert proc.bound_during_inject is None
+    assert "poll:sales.orders:org_default" in sched.jobs
+    await sched.jobs["poll:sales.orders:org_default"]()
+    assert proc.bound_during_inject == "default"
+    assert current_org.get() is None

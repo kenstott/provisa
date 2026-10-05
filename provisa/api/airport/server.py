@@ -125,6 +125,23 @@ def _err(msg: str) -> Exception:
     return flight.FlightServerError(msg)  # pyright: ignore[reportPrivateImportUsage]
 
 
+def _bound_batches(org_id: str, batches: Any) -> Any:
+    """Pull ``batches`` with ``org_id`` bound for each pull (REQ-1266): pyarrow pulls a stream's
+    batches on its own thread after do_get has returned and unbound the RPC."""
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    pulled = iter(batches)
+    while True:
+        token = set_current_org(org_id)
+        try:
+            batch = next(pulled)
+        except StopIteration:
+            return
+        finally:
+            reset_current_org(token)
+        yield batch
+
+
 class ProvisaAirportServer(
     flight.FlightServerBase  # pyright: ignore[reportPrivateImportUsage]
 ):
@@ -166,6 +183,27 @@ class ProvisaAirportServer(
                 v = vals[0]
                 return v.decode("utf-8") if isinstance(v, bytes) else v
         return None
+
+    def _serving_org(self) -> str:
+        """The org an Airport RPC is served in (REQ-1266). Airport names no org -- an ATTACH carries
+        a role, never an org -- so a single-org deployment serves its one org, and under
+        multitenancy the RPC is refused by name rather than given some org's catalog."""
+        if getattr(self._state, "multitenancy", False):
+            raise _err(
+                "airport: names no org under multitenancy; query a multi-tenant deployment "
+                "through a surface that names its org (Flight SQL, pgwire, HTTP)"
+            )
+        return self._state.org_id
+
+    def _in_serving_org(self, body: Any) -> Any:
+        """Run one RPC's ``body`` with the serving org bound on this handler thread."""
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(self._serving_org())
+        try:
+            return body()
+        finally:
+            reset_current_org(token)
 
     def _role(self, context: flight.ServerCallContext) -> str:  # pyright: ignore[reportPrivateImportUsage]
         headers = self._headers(context)
@@ -369,7 +407,9 @@ class ProvisaAirportServer(
         action: flight.Action,  # pyright: ignore[reportPrivateImportUsage]
     ):
         # REQ-1882: the whole RPC runs on this handler thread's own loop.
-        return run_rpc(lambda: self._do_action_on_loop(context, action))
+        return run_rpc(
+            lambda: self._in_serving_org(lambda: self._do_action_on_loop(context, action))
+        )
 
     def _do_action_on_loop(
         self,
@@ -524,7 +564,9 @@ class ProvisaAirportServer(
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]
     ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]
         # REQ-1882: the whole RPC runs on this handler thread's own loop.
-        return run_rpc(lambda: self._get_flight_info_on_loop(context, descriptor))
+        return run_rpc(
+            lambda: self._in_serving_org(lambda: self._get_flight_info_on_loop(context, descriptor))
+        )
 
     def _get_flight_info_on_loop(
         self,
@@ -550,7 +592,7 @@ class ProvisaAirportServer(
         ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]
     ) -> flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]
         # REQ-1882: the whole RPC — and the stream it returns — runs on this handler thread's loop.
-        return run_rpc(lambda: self._do_get_on_loop(context, ticket))
+        return run_rpc(lambda: self._in_serving_org(lambda: self._do_get_on_loop(context, ticket)))
 
     def _do_get_on_loop(
         self,
@@ -600,7 +642,9 @@ class ProvisaAirportServer(
         # appended per batch when the table has a PK, so DuckDB can echo it back on UPDATE/DELETE.
         # REQ-1882: pyarrow pulls the batches after do_get returns (a DIRECT scan's cursor fetches
         # on this RPC's loop), so the stream holds the loop until it ends.
-        out_gen = hold_loop_for_stream(self._reshape_batches(scan.batches, base, pk))
+        out_gen = hold_loop_for_stream(
+            _bound_batches(self._serving_org(), self._reshape_batches(scan.batches, base, pk))
+        )
         # REQ-1350: what the scan's answer says about itself rides ahead of the rows.
         return generator_stream(advertised, out_gen, scan.warnings)  # pyright: ignore[reportPrivateImportUsage]
 
@@ -622,7 +666,9 @@ class ProvisaAirportServer(
         writer,
     ) -> None:
         # REQ-1882: the whole RPC runs on this handler thread's own loop.
-        run_rpc(lambda: self._do_exchange_on_loop(context, reader, writer))
+        run_rpc(
+            lambda: self._in_serving_org(lambda: self._do_exchange_on_loop(context, reader, writer))
+        )
 
     def _do_exchange_on_loop(
         self,

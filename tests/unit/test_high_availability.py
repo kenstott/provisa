@@ -150,12 +150,13 @@ async def test_watch_engine_delegates_to_engine_watchdog():
     from provisa.scheduler.jobs import watch_engine
 
     mock_state = MagicMock()
-    mock_state.federation_engine.watchdog = AsyncMock()
+    mock_state.org_id = "default"  # the job runs as the deployment org (REQ-1266)
+    mock_state.shared_federation_engine.watchdog = AsyncMock()
 
     with patch.dict(sys.modules, {"provisa.api.app": _app_module(mock_state)}):
         await watch_engine()
 
-    mock_state.federation_engine.watchdog.assert_awaited_once()
+    mock_state.shared_federation_engine.watchdog.assert_awaited_once()
 
 
 @pytest.mark.asyncio

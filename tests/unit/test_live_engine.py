@@ -138,7 +138,7 @@ class TestSSEFanout:
 class TestLiveEngine:
     def _make_engine(self) -> LiveEngine:
         pool = AsyncMock()
-        return LiveEngine(tenant_db=pool)
+        return LiveEngine(tenant_db=pool, org_id="default")
 
     @pytest.mark.asyncio
     async def test_register_and_is_registered(self):
@@ -238,7 +238,7 @@ class TestLiveEngine:
             )
         )
         trino_conn = MagicMock()
-        engine = LiveEngine(tenant_db=pool, engine=_BridgeEngine(trino_conn))
+        engine = LiveEngine(tenant_db=pool, engine=_BridgeEngine(trino_conn), org_id="default")
 
         with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
             mock_sched = MagicMock()
@@ -279,7 +279,7 @@ class TestLiveEngine:
                 __aexit__=AsyncMock(return_value=False),
             )
         )
-        engine = LiveEngine(tenant_db=pool, engine=None)
+        engine = LiveEngine(tenant_db=pool, engine=None, org_id="default")
         with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
             mock_sched = MagicMock()
             mock_sched.add_job.return_value = MagicMock(id="live_q1")
@@ -302,7 +302,9 @@ class TestLiveEngine:
 
 class TestReconcile:
     def _started_engine(self, stack) -> LiveEngine:
-        engine = LiveEngine(tenant_db=AsyncMock(), engine=_BridgeEngine(MagicMock()))
+        engine = LiveEngine(
+            tenant_db=AsyncMock(), engine=_BridgeEngine(MagicMock()), org_id="default"
+        )
         mock_sched = MagicMock()
         mock_sched.add_job.return_value = MagicMock(id="live_x")
         stack.enter_context(patch("provisa.live.engine.AsyncIOScheduler", return_value=mock_sched))

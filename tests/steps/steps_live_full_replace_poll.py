@@ -75,7 +75,7 @@ def _run_replace_poll(rows, monkeypatch, watermark_state):
         kafka_outputs=[],
         mode="replace",
     )
-    eng = LiveEngine(tenant_db=_NullTenantDB(), engine=_FakeEngineRuntime(rows))
+    eng = LiveEngine(tenant_db=_NullTenantDB(), engine=_FakeEngineRuntime(rows), org_id="default")
     asyncio.run(eng._poll_replace(job))
     return fanout
 

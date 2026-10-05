@@ -571,7 +571,9 @@ async def _start_servers(_log: logging.Logger) -> None:
     try:
         from provisa.live.engine import LiveEngine
 
-        live_engine = LiveEngine(tenant_db=state.tenant_db, engine=state.federation_engine)
+        live_engine = LiveEngine(
+            tenant_db=state.tenant_db, engine=state.federation_engine, org_id=state.org_id
+        )
         await live_engine.start()
         state.live_engine = live_engine
         _log.info("Live Query Engine started")

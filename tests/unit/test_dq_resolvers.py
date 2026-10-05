@@ -313,17 +313,15 @@ def _checker_row(source_id: str, dq_contract: str | None = "dataset: provisa/sal
 
 
 @pytest.mark.asyncio
-async def test_run_now_finds_the_bare_job_id_in_single_org_mode():
-    """REQ-1266: register_poll_job/register_runtime namespace a job id by org ONLY when
-    explicitly multi-org (current_org.get(None) → None in single-org/demo mode), so the caller
-    must pass org_id=None here, not a resolved "default" org string — that would look up a
-    ':org_default'-suffixed id the scheduler never registered."""
+async def test_run_now_finds_the_deployment_orgs_job_by_its_org():
+    """REQ-1266: every org's poll job is registered under its org, the deployment's own included
+    (it is bound by id like any other), so the bound org names the job to fire."""
     job = _Job()
-    scheduler = _Scheduler("poll:dq/sales.orders", job)
+    scheduler = _Scheduler("poll:dq/sales.orders:org_default", job)
     result = await run_dq_check_now(
         cast("Connection", _contract_conn()),
         scheduler=scheduler,
-        org_id=None,
+        org_id="default",
         schema_name="sales",
         table_name="orders",
     )
@@ -347,11 +345,10 @@ async def test_run_now_namespaces_the_job_id_when_an_org_is_given():
 
 
 @pytest.mark.asyncio
-async def test_run_now_reports_the_missing_job_by_its_own_id_not_a_mismatched_one():
-    """Regression: resolving org_id via `current_org.get() or state.org_id` in single-org mode
-    produced the string "default", which looks up a suffixed id the bare-id job never has —
-    this is the exact bug behind "quality.pets_scan has no scheduled poll job yet"."""
-    scheduler = _Scheduler("poll:dq/sales.orders", _Job())
+async def test_run_now_never_fires_another_orgs_job():
+    """The bound org's job, or a refusal naming the job it looked for -- never another org's job
+    under the same table name."""
+    scheduler = _Scheduler("poll:dq/sales.orders:org_acme", _Job())
     result = await run_dq_check_now(
         cast("Connection", _contract_conn()),
         scheduler=scheduler,
@@ -367,7 +364,7 @@ async def test_run_now_reports_the_missing_job_by_its_own_id_not_a_mismatched_on
 async def test_run_now_refuses_a_name_two_sources_register():
     """A checker table is one source's ``sales.orders``; when two sources both register it, the
     name alone does not say whose poll job to fire."""
-    scheduler = _Scheduler("poll:dq/sales.orders", _Job())
+    scheduler = _Scheduler("poll:dq/sales.orders:org_default", _Job())
     both = _Conn(
         _Rows(
             [
@@ -379,7 +376,7 @@ async def test_run_now_refuses_a_name_two_sources_register():
     result = await run_dq_check_now(
         cast("Connection", both),
         scheduler=scheduler,
-        org_id=None,
+        org_id="default",
         schema_name="sales",
         table_name="orders",
     )
@@ -396,8 +393,8 @@ async def test_run_now_by_table_id_fires_that_tables_job():
     job = _Job()
     result = await run_dq_check_now(
         cast("Connection", _Conn(_Rows([_checker_row("dq2")]))),
-        scheduler=_Scheduler("poll:dq2/sales.orders", job),
-        org_id=None,
+        scheduler=_Scheduler("poll:dq2/sales.orders:org_default", job),
+        org_id="default",
         table_id=42,
     )
     assert result == {"success": True, "message": "ran dq2/sales.orders now"}
@@ -416,8 +413,8 @@ async def test_run_now_by_table_id_fires_that_tables_job():
 async def test_run_now_needs_the_id_or_both_names(named):
     result = await run_dq_check_now(
         cast("Connection", _contract_conn()),
-        scheduler=_Scheduler("poll:dq/sales.orders", _Job()),
-        org_id=None,
+        scheduler=_Scheduler("poll:dq/sales.orders:org_default", _Job()),
+        org_id="default",
         **named,
     )
     assert result == {
