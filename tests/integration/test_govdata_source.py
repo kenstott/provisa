@@ -154,7 +154,7 @@ def test_tables_in_fec(govdata_conn):
 
 def test_columns_for_candidates(govdata_conn):
     """candidates table must have at least candidate_id and candidate_name columns (the pinned
-    engine release's FEC schema, engine-v0.106.2)."""
+    engine release's FEC schema, engine-v0.106.3)."""
     meta = govdata_conn.getMetaData()
     rs = meta.getColumns(None, _FEC, "candidates", "%")
     cols = []
