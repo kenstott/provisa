@@ -16557,6 +16557,7 @@
   - tests/unit/test_redirect_bucket_lazy.py
   - tests/unit/test_infra_requirements.py
   - tests/integration/test_redirect_encryption_minio.py
+  - tests/integration/test_redirect_bucket_first_redirect_e2e.py
   since: 2026-01
   scenario: 'Given the Provisa stack starts for the first time
 
@@ -64824,6 +64825,7 @@
   - provisa-ui/src/hooks/useMcpChat.ts
   tests:
   - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  - provisa-ui/e2e/chat-panel-streaming.spec.ts
   e2e: true
   e2e_reason: Message accumulation during multi-turn tool-call sequences is only verifiable through full
     chat UI interaction with actual tool execution and streaming responses.
@@ -75878,6 +75880,7 @@
   - tests/unit/test_sql_address_one_per_domain.py
   - tests/unit/test_naming.py
   - tests/unit/test_load_manages_what_config_declared.py
+  - tests/integration/test_sql_address_one_per_domain_api.py
   since: 2026-10
   scenario: 'Given a table registered in domain pet-store whose SQL address is pet_store.get_inventory
 
@@ -75979,3 +75982,62 @@
     up to 2000 rows and computes measures in the browser, stores nothing and is admin-only. The idea of a numeric
     fake drawn from a profile (numeric(profile_table)) is SHELVED by the maintainer, so nothing here depends on
     fakes.'
+- id: REQ-1935
+  status: accepted
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Org Selection
+  priority: MUST
+  type: behavioral
+  description: 'Under multitenancy a request acts in the org it names, and there is no implied org. A principal
+    holding the cross_org right who names no org is refused by name on every surface, as any principal is: HTTP
+    answers 401 naming the subdomain and the X-Org-Provisa header, with the code auth.org_selection_required, which
+    the UI answers with a prompt to select one of the caller''s orgs (or, when the caller belongs to none, to ask
+    an organization administrator for an invitation); pgwire, Bolt, Flight, gRPC and MCP refuse the session naming
+    how that surface names an org. The break-glass account likewise names its org by its subdomain and is refused
+    when it names none. The platform-plane routes (/auth/, /setup, /admin/orgs, /billing) still serve a request
+    that names no org, with no org bound. A cross_org principal naming an org acts in it. A single-tenant deployment
+    is unchanged -- its one org is the answer.'
+  use_case: 'A platform operator signs in with no org selected and opens the data explorer: instead of silently
+    reading the deployment org''s data, the UI asks which org to act in.'
+  scenario: 'Given multitenancy and a principal holding cross_org who belongs to no org
+
+
+    When it calls /data/graphql naming no org
+
+
+    Then the response is 401 with code auth.org_selection_required
+
+
+    And no org''s data is read
+
+
+
+    Given the same principal
+
+
+    When it opens a pgwire session naming no org
+
+
+    Then the session is refused, naming how pgwire names an org
+
+
+
+    Given the same principal naming org acme
+
+
+    When it calls /data/graphql
+
+
+    Then it acts in acme
+
+    '
+  related_reqs:
+  - REQ-1234
+  - REQ-1327
+  - REQ-1266
+  - REQ-1540
+  target: 2026-Q4
+  notes: 'Maintainer ruling 2026-10-05: a cross_org principal or break-glass account that names no org is refused
+    by name under multitenancy; the UI shows a select-an-org prompt. Replaces the implied deployment org that code
+    labelled REQ-1318 (REQ-1318 is metric-composed views; the label was wrong).'

@@ -5222,7 +5222,7 @@ Trino 480 with Iceberg results catalog (JDBC on PG, native S3 filesystem).
 
 **Code:** `provisa/executor/redirect.py`, `provisa/federation/backend.py`, `docker-compose.core.yml`
 
-**Tests:** `tests/unit/test_redirect_bucket_lazy.py`, `tests/unit/test_infra_requirements.py`, `tests/integration/test_redirect_encryption_minio.py`
+**Tests:** `tests/unit/test_redirect_bucket_lazy.py`, `tests/unit/test_infra_requirements.py`, `tests/integration/test_redirect_encryption_minio.py`, `tests/integration/test_redirect_bucket_first_redirect_e2e.py`
 
 ### REQ-223 · Installer & Packaging {#REQ-223}
 
@@ -19404,7 +19404,7 @@ During multi-step tool-call sequences (search → present_choice → propose_sou
 
 **Code:** `provisa-ui/src/hooks/useMcpChat.ts`
 
-**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`, `provisa-ui/e2e/chat-panel-streaming.spec.ts`
 
 ### REQ-1824 · Federation Engine {#REQ-1824}
 
@@ -22170,7 +22170,7 @@ A registered table's SQL address is unique within its domain. The address is the
 
 **Code:** `provisa/compiler/naming.py`, `provisa/compiler/schema_gen.py`, `provisa/core/repositories/table.py`, `provisa/core/config_loader.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/api/admin/schema_mutation.py`
 
-**Tests:** `tests/unit/test_sql_address_one_per_domain.py`, `tests/unit/test_naming.py`, `tests/unit/test_load_manages_what_config_declared.py`
+**Tests:** `tests/unit/test_sql_address_one_per_domain.py`, `tests/unit/test_naming.py`, `tests/unit/test_load_manages_what_config_declared.py`, `tests/integration/test_sql_address_one_per_domain_api.py`
 
 ## 4. Source Connectors
 
@@ -22181,6 +22181,20 @@ A registered table's SQL address is unique within its domain. The address is the
 A DATA PROFILER is a source type, registered and used the way the data-quality checker sources are ([REQ-1443](#REQ-1443), [REQ-1663](#REQ-1663)). A profile is an observation about a governed table, so it is DATA, and it lands through the ordinary source path and inherits cadence, freshness, events, lineage, governance, row and column rules, the grid and export instead of building them. Registering a table on a profiler source names the governed table to profile, as a checker registration names the table to scan; the source is never introspected and shows no schema or table picker. Lineage runs from the profiled table to the profile, derived from the registration and never hand-declared. One results table per profiled table, never one shared table for the estate; an estate-wide view is a materialized view over them. Timing uses the existing fields -- change signal and cache TTL for cadence, debounce, a calendar grain -- and no new ones. THE PROFILER IS BUILT IN: unlike a checker it is not an external prerequisite. Each run is one statement of aggregates pushed down to the engine (row count, null count, approximate distinct count, minimum, maximum, mean, standard deviation, quantiles, a histogram, the most frequent values, and for text the length range), over the whole table or a sample whose fraction the registration states and the results record. The run reads the table through the one governed pipeline as the organisation's administrator, with the region of the node that runs it as its region attribute ([REQ-1921](#REQ-1921)), so a profile describes only what that region may see, and each region profiles for itself; no region's profile is copied to another. THE RESULTS SCHEMA IS FIXED AND SHIPPED, one row per column per run -- run identifier, run time (the watermark, so runs accumulate as history), region, profiled table, column, data type, sampled and sample fraction, then the measures above; quantiles, histogram and most frequent values are each one JSON column. A PROFILE CARRIES THE GOVERNANCE OF THE COLUMN IT DESCRIBES. Counts, null share and distinct count describe shape and are shown to every reader the profile table is granted to. The measures that hold real values -- minimum, maximum, quantiles, histogram bounds and most frequent values -- are shown as recorded only to a reader who sees the column unmasked. To any other reader, and for every column tagged pii, they are shown in a safe form: most frequent values withheld, the tails clipped at operator-set percentiles, and every histogram bucket and quantile step covering at least k rows, or the measure is withheld. The clip percentiles and k are operator settings with a place in the admin UI. Who may read a profile table is a grant like any registered table's; registering it offers nothing to anyone by itself. The table view's profile panel shows the latest run of the table's profile when one exists.
 
 **Use case:** A steward registers the orders table on the profiler and gives analysts read access to its profile: they see each column's null share, distinct count and spread without reading a row, and a masked column's profile shows its shape but never a real value. A data-quality check written over the profile history flags a column whose null share jumps between runs.
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-1935 · Org Selection {#REQ-1935}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
+
+Under multitenancy a request acts in the org it names, and there is no implied org. A principal holding the cross_org right who names no org is refused by name on every surface, as any principal is: HTTP answers 401 naming the subdomain and the X-Org-Provisa header, with the code auth.org_selection_required, which the UI answers with a prompt to select one of the caller's orgs (or, when the caller belongs to none, to ask an organization administrator for an invitation); pgwire, Bolt, Flight, gRPC and MCP refuse the session naming how that surface names an org. The break-glass account likewise names its org by its subdomain and is refused when it names none. The platform-plane routes (/auth/, /setup, /admin/orgs, /billing) still serve a request that names no org, with no org bound. A cross_org principal naming an org acts in it. A single-tenant deployment is unchanged -- its one org is the answer.
+
+**Use case:** A platform operator signs in with no org selected and opens the data explorer: instead of silently reading the deployment org's data, the UI asks which org to act in.
 
 **Code:** —
 
