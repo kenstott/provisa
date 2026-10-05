@@ -67,10 +67,10 @@
     "resumeTitle": "完成註冊",
     "resumeBody": "您已開始註冊 {{name}}，但未完成結帳。該名稱會保留至 {{expires}}。",
     "resumeButton": "繼續結帳",
-    "checkoutNotSettled": "我們尚未收到你的付款。請在一分鐘後重新載入此頁面，以完成組織設定。"
-  },
-  "autoJoinChoiceTitle": "有多個組織符合你的電郵",
-  "autoJoinChoiceBody": "你的電郵地址符合多個組織的加入規則。請選擇你所屬的組織，或全部拒絕並建立自己的組織。",
-  "joinOfferedOrg": "加入",
-  "declineAutoJoin": "全部不是"
+    "checkoutNotSettled": "我們尚未收到你的付款。請在一分鐘後重新載入此頁面，以完成組織設定。",
+    "autoJoinChoiceTitle": "有多個組織符合你的電郵",
+    "autoJoinChoiceBody": "你的電郵地址符合多個組織的加入規則。請選擇你所屬的組織，或全部拒絕並建立自己的組織。",
+    "joinOfferedOrg": "加入",
+    "declineAutoJoin": "全部不是"
+  }
 }

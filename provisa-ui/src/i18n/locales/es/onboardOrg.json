@@ -67,10 +67,10 @@
     "resumeTitle": "Complete su registro",
     "resumeBody": "Comenzó a registrar {{name}} pero no completó el pago. El nombre queda reservado hasta {{expires}}.",
     "resumeButton": "Reanudar el pago",
-    "checkoutNotSettled": "Su pago aún no nos ha llegado. Vuelva a cargar esta página en un minuto para terminar de configurar su organización."
-  },
-  "autoJoinChoiceTitle": "Más de una organización coincide con su correo electrónico",
-  "autoJoinChoiceBody": "Su dirección de correo electrónico coincide con las reglas de unión de varias organizaciones. Elija a la que pertenece, o rechace todas y cree la suya.",
-  "joinOfferedOrg": "Unirse",
-  "declineAutoJoin": "Ninguna de estas"
+    "checkoutNotSettled": "Su pago aún no nos ha llegado. Vuelva a cargar esta página en un minuto para terminar de configurar su organización.",
+    "autoJoinChoiceTitle": "Más de una organización coincide con su correo electrónico",
+    "autoJoinChoiceBody": "Su dirección de correo electrónico coincide con las reglas de unión de varias organizaciones. Elija a la que pertenece, o rechace todas y cree la suya.",
+    "joinOfferedOrg": "Unirse",
+    "declineAutoJoin": "Ninguna de estas"
+  }
 }
