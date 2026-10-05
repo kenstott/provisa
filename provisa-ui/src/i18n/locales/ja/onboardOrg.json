@@ -67,10 +67,10 @@
     "resumeTitle": "サインアップを完了する",
     "resumeBody": "{{name}} のサインアップを開始しましたが、チェックアウトが完了していません。この名前は {{expires}} まで確保されます。",
     "resumeButton": "チェックアウトを再開",
-    "checkoutNotSettled": "お支払いがまだ確認できていません。1 分後にこのページを再読み込みして、組織のセットアップを完了してください。"
-  },
-  "autoJoinChoiceTitle": "メールアドレスに一致する組織が複数あります",
-  "autoJoinChoiceBody": "あなたのメールアドレスは複数の組織の参加ルールに一致します。所属する組織を選択するか、すべて辞退して自分の組織を作成してください。",
-  "joinOfferedOrg": "参加",
-  "declineAutoJoin": "いずれも該当しない"
+    "checkoutNotSettled": "お支払いがまだ確認できていません。1 分後にこのページを再読み込みして、組織のセットアップを完了してください。",
+    "autoJoinChoiceTitle": "メールアドレスに一致する組織が複数あります",
+    "autoJoinChoiceBody": "あなたのメールアドレスは複数の組織の参加ルールに一致します。所属する組織を選択するか、すべて辞退して自分の組織を作成してください。",
+    "joinOfferedOrg": "参加",
+    "declineAutoJoin": "いずれも該当しない"
+  }
 }

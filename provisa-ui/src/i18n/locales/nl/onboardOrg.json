@@ -67,10 +67,10 @@
     "resumeTitle": "Aanmelding afronden",
     "resumeBody": "U bent begonnen met aanmelden voor {{name}} maar hebt de checkout niet afgerond. De naam blijft gereserveerd tot {{expires}}.",
     "resumeButton": "Checkout hervatten",
-    "checkoutNotSettled": "Je betaling is nog niet bij ons aangekomen. Laad deze pagina over een minuut opnieuw om het instellen van je organisatie af te ronden."
-  },
-  "autoJoinChoiceTitle": "Meer dan één organisatie komt overeen met je e-mailadres",
-  "autoJoinChoiceBody": "Je e-mailadres komt overeen met de deelnameregels van meerdere organisaties. Kies de organisatie waartoe je behoort, of wijs ze allemaal af en maak je eigen organisatie aan.",
-  "joinOfferedOrg": "Deelnemen",
-  "declineAutoJoin": "Geen van deze"
+    "checkoutNotSettled": "Je betaling is nog niet bij ons aangekomen. Laad deze pagina over een minuut opnieuw om het instellen van je organisatie af te ronden.",
+    "autoJoinChoiceTitle": "Meer dan één organisatie komt overeen met je e-mailadres",
+    "autoJoinChoiceBody": "Je e-mailadres komt overeen met de deelnameregels van meerdere organisaties. Kies de organisatie waartoe je behoort, of wijs ze allemaal af en maak je eigen organisatie aan.",
+    "joinOfferedOrg": "Deelnemen",
+    "declineAutoJoin": "Geen van deze"
+  }
 }

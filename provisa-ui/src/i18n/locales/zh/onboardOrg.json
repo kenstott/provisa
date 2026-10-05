@@ -67,10 +67,10 @@
     "resumeTitle": "完成注册",
     "resumeBody": "您已开始注册 {{name}}，但尚未完成结账。该名称将保留至 {{expires}}。",
     "resumeButton": "继续结账",
-    "checkoutNotSettled": "我们尚未收到您的付款。请在一分钟后重新加载此页面，以完成组织的设置。"
-  },
-  "autoJoinChoiceTitle": "有多个组织与您的电子邮件匹配",
-  "autoJoinChoiceBody": "您的电子邮件地址符合多个组织的加入规则。请选择您所属的组织，或全部拒绝并创建您自己的组织。",
-  "joinOfferedOrg": "加入",
-  "declineAutoJoin": "都不是"
+    "checkoutNotSettled": "我们尚未收到您的付款。请在一分钟后重新加载此页面，以完成组织的设置。",
+    "autoJoinChoiceTitle": "有多个组织与您的电子邮件匹配",
+    "autoJoinChoiceBody": "您的电子邮件地址符合多个组织的加入规则。请选择您所属的组织，或全部拒绝并创建您自己的组织。",
+    "joinOfferedOrg": "加入",
+    "declineAutoJoin": "都不是"
+  }
 }

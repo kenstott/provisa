@@ -67,10 +67,10 @@
     "resumeTitle": "Conclua seu cadastro",
     "resumeBody": "Você começou a cadastrar {{name}} mas não concluiu o pagamento. O nome fica reservado até {{expires}}.",
     "resumeButton": "Retomar o pagamento",
-    "checkoutNotSettled": "Seu pagamento ainda não chegou até nós. Recarregue esta página em um minuto para concluir a configuração da sua organização."
-  },
-  "autoJoinChoiceTitle": "Mais de uma organização corresponde ao seu e-mail",
-  "autoJoinChoiceBody": "Seu endereço de e-mail corresponde às regras de entrada de várias organizações. Escolha a que você pertence ou recuse todas e crie a sua.",
-  "joinOfferedOrg": "Entrar",
-  "declineAutoJoin": "Nenhuma delas"
+    "checkoutNotSettled": "Seu pagamento ainda não chegou até nós. Recarregue esta página em um minuto para concluir a configuração da sua organização.",
+    "autoJoinChoiceTitle": "Mais de uma organização corresponde ao seu e-mail",
+    "autoJoinChoiceBody": "Seu endereço de e-mail corresponde às regras de entrada de várias organizações. Escolha a que você pertence ou recuse todas e crie a sua.",
+    "joinOfferedOrg": "Entrar",
+    "declineAutoJoin": "Nenhuma delas"
+  }
 }

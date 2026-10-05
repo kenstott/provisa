@@ -67,10 +67,10 @@
     "resumeTitle": "Finish signing up",
     "resumeBody": "You started signing up for {{name}} but did not finish checkout. The name is held until {{expires}}.",
     "resumeButton": "Resume checkout",
-    "checkoutNotSettled": "Your payment has not reached us yet. Reload this page in a minute to finish setting up your organization."
-  },
-  "autoJoinChoiceTitle": "More than one org matches your email",
-  "autoJoinChoiceBody": "Your email address matches the join rules of several organizations. Pick the one you belong to, or turn them all down and create your own.",
-  "joinOfferedOrg": "Join",
-  "declineAutoJoin": "None of these"
+    "checkoutNotSettled": "Your payment has not reached us yet. Reload this page in a minute to finish setting up your organization.",
+    "autoJoinChoiceTitle": "More than one org matches your email",
+    "autoJoinChoiceBody": "Your email address matches the join rules of several organizations. Pick the one you belong to, or turn them all down and create your own.",
+    "joinOfferedOrg": "Join",
+    "declineAutoJoin": "None of these"
+  }
 }

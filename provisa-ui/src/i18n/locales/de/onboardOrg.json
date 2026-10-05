@@ -67,10 +67,10 @@
     "resumeTitle": "Registrierung abschließen",
     "resumeBody": "Sie haben die Registrierung für {{name}} begonnen, den Checkout aber nicht abgeschlossen. Der Name wird bis {{expires}} reserviert.",
     "resumeButton": "Checkout fortsetzen",
-    "checkoutNotSettled": "Ihre Zahlung ist bei uns noch nicht eingegangen. Laden Sie diese Seite in einer Minute neu, um die Einrichtung Ihrer Organisation abzuschließen."
-  },
-  "autoJoinChoiceTitle": "Mehr als eine Organisation passt zu Ihrer E-Mail",
-  "autoJoinChoiceBody": "Ihre E-Mail-Adresse entspricht den Beitrittsregeln mehrerer Organisationen. Wählen Sie die, zu der Sie gehören, oder lehnen Sie alle ab und erstellen Sie Ihre eigene.",
-  "joinOfferedOrg": "Beitreten",
-  "declineAutoJoin": "Keine davon"
+    "checkoutNotSettled": "Ihre Zahlung ist bei uns noch nicht eingegangen. Laden Sie diese Seite in einer Minute neu, um die Einrichtung Ihrer Organisation abzuschließen.",
+    "autoJoinChoiceTitle": "Mehr als eine Organisation passt zu Ihrer E-Mail",
+    "autoJoinChoiceBody": "Ihre E-Mail-Adresse entspricht den Beitrittsregeln mehrerer Organisationen. Wählen Sie die, zu der Sie gehören, oder lehnen Sie alle ab und erstellen Sie Ihre eigene.",
+    "joinOfferedOrg": "Beitreten",
+    "declineAutoJoin": "Keine davon"
+  }
 }
