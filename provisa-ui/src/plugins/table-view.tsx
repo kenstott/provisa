@@ -26,6 +26,7 @@ import { lastQueryElapsedMs } from "../query-timing";
 import { setCurrentQueryStats, subscribeQueryStats, type QueryStats } from "../query-stats";
 import { useAuth } from "../context/AuthContext";
 import { MermaidDiagram } from "../components/MermaidDiagram";
+import { actingRoleHeader } from "../lib/actingRole";
 
 type ViewMode = "json" | "table" | "stats";
 
@@ -208,7 +209,9 @@ export function ResponseTableOverlay() {
   const strippingRef = useRef(false);
   const lastStrippedRef = useRef<string | null>(null);
   const editorContext = useEditorContext();
-  const { role } = useAuth();
+  const { selectedRoles } = useAuth();
+  // REQ-1620: the acting role set (the meta-role under "Role: All"), as the explorer sends it.
+  const roleHeader = actingRoleHeader(selectedRoles);
   const [page, setPage] = useState(0);
   const [pagedResponseText, setPagedResponseText] = useState<string | null>(null);
 
@@ -382,13 +385,13 @@ export function ResponseTableOverlay() {
       headers: {
         "Content-Type": "application/json",
         Accept: "text/csv",
-        "X-Provisa-Role": role?.id ?? "",
+        "X-Provisa-Role": roleHeader ?? "",
       },
       body: JSON.stringify({ query, variables }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
-  }, [editorContext.queryEditor, editorContext.variableEditor, role?.id]);
+  }, [editorContext.queryEditor, editorContext.variableEditor, roleHeader]);
 
   const handleCopyCSV = useCallback(() => {
     void fetchServerCsv().then((csv) => {
@@ -421,7 +424,7 @@ export function ResponseTableOverlay() {
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
-          "X-Provisa-Role": role?.id ?? "",
+          "X-Provisa-Role": roleHeader ?? "",
         },
         body: JSON.stringify({
           query: injectLimitOffset(query, PAGE_SIZE, p * PAGE_SIZE),
@@ -430,7 +433,7 @@ export function ResponseTableOverlay() {
       });
       setPagedResponseText(await res.text());
     },
-    [editorContext.queryEditor, editorContext.variableEditor, role?.id],
+    [editorContext.queryEditor, editorContext.variableEditor, roleHeader],
   );
 
   const handleNextPage = useCallback(() => {

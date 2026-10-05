@@ -50,6 +50,7 @@ import { Explorer } from "graphiql-explorer";
 import { useDomains } from "../hooks/useAdminQueries";
 import { serverMessage } from "../i18n/serverMessage";
 import { domainGqlAlias } from "../types/admin";
+import { actingRoleHeader } from "../lib/actingRole";
 
 /** Register # @provisa hint completions in the GraphQL Monaco editor. */
 monaco.languages.registerCompletionItemProvider("graphql", {
@@ -556,7 +557,10 @@ export function QueryPage() {
   const { colorScheme } = useMantineColorScheme();
   // GraphiQL has its own light/dark theme — force it to follow the app scheme.
   const graphiqlTheme = colorScheme === "light" ? "light" : "dark";
-  const { role } = useAuth();
+  const { role, selectedRoles } = useAuth();
+  // REQ-1620: the acting role set -- under "Role: All", every active role, which the server serves
+  // as their meta-role. The explorer's schema, its queries and its tools all run as that set.
+  const roleHeader = actingRoleHeader(selectedRoles);
   const { checkedDomains } = useDomainFilter();
   const [domainSchema, setDomainSchema] = useState<GraphQLSchema | null>(null);
   // A query handed to the page (NL "Open in GraphQL", Polly), whether the page was just opened or
@@ -666,13 +670,13 @@ export function QueryPage() {
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- deliberate reset of externally-fetched schema state when prerequisites are absent; the effect's job is to sync domainSchema to a network introspection fetch */
-    if (!role || checkedDomains.size === 0 || serverSchemaVersion === null) {
+    if (roleHeader === null || checkedDomains.size === 0 || serverSchemaVersion === null) {
       setDomainSchema(null);
       return;
     }
     /* eslint-enable react-hooks/set-state-in-effect */
     const domain = [...checkedDomains].sort().join(",");
-    const cacheKey = `introspection:${role.id}:${domain}:${serverSchemaVersion}`;
+    const cacheKey = `introspection:${roleHeader}:${domain}:${serverSchemaVersion}`;
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) {
       try {
@@ -686,7 +690,7 @@ export function QueryPage() {
     const controller = new AbortController();
     setSchemaError(null);
     fetch(`/data/introspection?domain=${encodeURIComponent(domain)}`, {
-      headers: { "X-Provisa-Role": role.id },
+      headers: { "X-Provisa-Role": roleHeader },
       signal: controller.signal,
     })
       .then((r) => r.json())
@@ -708,9 +712,7 @@ export function QueryPage() {
         if (err.name !== "AbortError") setSchemaError(err.message ?? "Schema fetch failed");
       });
     return () => controller.abort();
-    /* eslint-disable-next-line react-hooks/exhaustive-deps --
-       keyed on role.id only; the full role object identity must not retrigger the introspection fetch */
-  }, [role?.id, checkedDomains, serverSchemaVersion]);
+  }, [roleHeader, checkedDomains, serverSchemaVersion]);
 
   const settingsRef = useRef<RedirectSettings>({
     format: redirectFormat,
@@ -728,8 +730,8 @@ export function QueryPage() {
   };
 
   const fetcher = useMemo((): Fetcher | null => {
-    if (!role) return null;
-    const roleId = role.id;
+    if (roleHeader === null) return null;
+    const roleId = roleHeader;
     const base = createGraphiQLFetcher({
       url: `/data/graphql`,
       headers: { "X-Provisa-Role": roleId },
@@ -808,16 +810,12 @@ export function QueryPage() {
         yield result;
       }
     };
-    /* eslint-disable-next-line react-hooks/exhaustive-deps --
-       keyed on role.id only; the full role object identity changes on unrelated field updates and must not recreate the fetcher */
-  }, [role?.id]);
+  }, [roleHeader]);
 
   const provisaPlugin = useMemo(() => {
-    if (!role) return null;
-    return provisaToolsPlugin(role.id);
-    /* eslint-disable-next-line react-hooks/exhaustive-deps --
-       keyed on role.id only; recreating the plugin on full role identity changes is unnecessary and disruptive */
-  }, [role?.id]);
+    if (roleHeader === null) return null;
+    return provisaToolsPlugin(roleHeader);
+  }, [roleHeader]);
 
   const plugins = useMemo(
     () => (provisaPlugin ? [syncedExplorerPlugin, provisaPlugin] : null),
