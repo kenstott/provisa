@@ -1,0 +1,7 @@
+{
+  "orgSelectionPrompt": {
+    "title": "Organisation auswählen",
+    "description": "Jede Anfrage erfolgt in einer Organisation. Wählen Sie eine aus, um fortzufahren.",
+    "noMemberships": "Sie sind kein Mitglied einer Organisation, daher gibt es keine Organisation, in der Anfragen gestellt werden können. Bitten Sie eine Organisationsadministratorin oder einen Organisationsadministrator um eine Einladung."
+  }
+}

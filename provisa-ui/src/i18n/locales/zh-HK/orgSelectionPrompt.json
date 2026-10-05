@@ -1,0 +1,7 @@
+{
+  "orgSelectionPrompt": {
+    "title": "選擇組織",
+    "description": "每個請求都在某個組織中進行。請選擇一個組織以繼續。",
+    "noMemberships": "您不是任何組織的成員，因此沒有可發出請求的組織。請向組織管理員申請邀請。"
+  }
+}

@@ -17,6 +17,7 @@ import { useRoles, useDomains } from "../hooks/useAdminQueries";
 import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../lib/domainFilterKeys";
 import { unionDemonstrated } from "../lib/capabilities";
 import { normalizeRole, type RawRole } from "../lib/roles";
+import { clearOrgSelectionRequired } from "../lib/orgSelection";
 
 // REQ-1297: dev/no-auth mirrors what the server grants an unsecured caller, and that is now
 // org_admin — the DATA-plane administrator — not platform_admin. The no-auth configs' single
@@ -383,6 +384,7 @@ export function AuthProvider({
     localStorage.removeItem(KNOWN_DOMAINS_KEY);
     if (orgId) localStorage.setItem("provisa_org", orgId);
     else localStorage.removeItem("provisa_org");
+    if (orgId) clearOrgSelectionRequired();
   }
 
   // For control-plane roles on first login, default to "default" org (control plane)

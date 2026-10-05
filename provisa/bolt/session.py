@@ -494,9 +494,9 @@ class BoltSession:
         Bolt's org request is the hostname the driver dialed, carried in TLS SNI (REQ-1234) — the
         same string an HTTP client puts in ``Host``. It names an org without granting one: an org
         the principal is not a member of is refused below, so the org is still derived from
-        membership (REQ-1235: an org nobody named is refused, a lone membership included; platform
-        admin → default runtime — no silent cross-tenant default). Runs on the event loop, so a plain set/reset
-        around handle_run's execution binds it (no thread hop, unlike pgwire).
+        membership (REQ-1235: an org nobody named is refused, a lone membership and a cross_org
+        principal included -- no implied org). Runs on the event loop, so a plain set/reset around
+        handle_run's execution binds it (no thread hop, unlike pgwire).
 
         REQ-1235: ``database_org`` is the org the database name names (``<org>.provisa_<role>``).
         A session is bound to one org: a later database naming another is refused."""

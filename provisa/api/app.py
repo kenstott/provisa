@@ -3097,7 +3097,6 @@ def create_app() -> FastAPI:
         EnvironmentSelectionError,
         env_header_value,
     )
-    from provisa.api.admin.capabilities import env_gate_capabilities
     from provisa.api.http_trace_scope import http_trace_scope
 
     class _OrgRoutingMiddleware:
@@ -3133,12 +3132,10 @@ def create_app() -> FastAPI:
             # where the environment is bound — one gate for every surface. ``None`` means dev/no-auth
             # (no identity resolved), the exemption every capability gate makes.
             identity = request_state.get("identity")
-            # Read on the platform plane, as AuthMiddleware reads it: the deployment org's roles.
-            _platform_token = set_current_org(state.org_id)
-            try:
-                env_caps = env_gate_capabilities(identity, state)
-            finally:
-                reset_current_org(_platform_token)
+            # REQ-1266: judged by the named org's own PROD role definitions.
+            from provisa.auth.middleware import org_env_capabilities
+
+            env_caps = await org_env_capabilities(identity, env_org)
             # REQ-1602/REQ-1596: sandbox ephemeral auto-select and the membership pin both live in
             # resolve_selected_env, shared with AuthMiddleware's role read (provisa.auth.middleware)
             # so the two always agree on which environment's schema a request is served from.
