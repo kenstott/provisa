@@ -111,12 +111,28 @@ def planes(monkeypatch):
     # here the tenant schema IS the org's schema, so resolve the runtime to a stub carrying tenant_db.
     from types import SimpleNamespace
 
-    async def _org_runtime(_org_id: str, _env: str | None = None):
-        return SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
+    # REQ-1337: the org's own role registry -- read from ITS runtime -- judges its assignments. The
+    # stub is registered as acme's runtime so every read bound to acme resolves to it. Left
+    # unregistered, AppState resolves an unbuilt prod org to the default org's runtime, whose roles
+    # are whatever an earlier test in the session loaded: a single-tenant config's org_admin
+    # carries platform_settings, which drops alice's org_admin assignment (roles []).
+    acme_runtime = SimpleNamespace(
+        model_db=tenant_db,
+        tenant_db=tenant_db,
+        roles={"org_admin": {"id": "org_admin", "capabilities": []}},
+        federation_engine=None,
+    )
+
+    async def _org_runtime(org_id: str, _env: str | None = None):
+        assert org_id == "acme", org_id
+        return acme_runtime
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
+    app_state.org_registry.set("acme", acme_runtime)  # type: ignore[arg-type]
 
     yield admin_db, tenant_db, sync_engine
+
+    app_state.org_registry.invalidate("acme")
 
     with sync_engine.begin() as conn:
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_ADMIN_SCHEMA} CASCADE"))
