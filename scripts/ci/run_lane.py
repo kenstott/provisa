@@ -72,6 +72,10 @@ LANES: dict[str, Lane] = {
 }
 
 
+# The longest one test may run in a lane. Generous: a heavy engine's provisioning happens inside its
+# first test's setup.
+TEST_TIMEOUT_S = 900
+
 # The suite job's matrix: lane -> (file shards, timeout minutes). cluster and warehouse are their
 # own jobs, not matrix entries.
 SUITE: dict[str, tuple[int, int]] = {
@@ -141,7 +145,10 @@ def command(lane_name: str, shard_spec: str | None, extra: list[str]) -> list[st
     if lane.clear_addopts:
         cmd += ["-o", "addopts="]
     cmd += [f"--ignore={path}" for path in lane.ignore]
-    return cmd + ["-ra", "-p", "no:cacheprovider", "--durations=50", *extra]
+    # Every test is bounded: one that waits past this fails by name with every thread's stack,
+    # instead of holding the shard until the job's own timeout cancels it and its log is lost.
+    bound = ["--timeout", str(TEST_TIMEOUT_S), "--timeout-method", "signal"]
+    return cmd + ["-ra", "-p", "no:cacheprovider", "--durations=50", *bound, *extra]
 
 
 def main(argv: list[str]) -> int:

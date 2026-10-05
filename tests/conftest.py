@@ -442,8 +442,8 @@ _TRINO_PLUGIN_VERSION = "0.106.2"
 _TRINO_PLUGINS = ("trino-sharepoint", "trino-splunk", "trino-file")
 
 
-def _download_trino_plugins(plugins: str, missing: list[str]) -> None:
-    """Fetch the plugin jars for ``missing`` into ``plugins``.
+def _download_trino_plugin(target: str, name: str) -> None:
+    """Fetch the pinned plugin jar into ``target`` (an empty directory).
 
     Tests provision the services they need, and Trino is no exception: without these jars it
     aborts with "No service providers of type io.trino.spi.Plugin", which surfaces only as an
@@ -453,73 +453,44 @@ def _download_trino_plugins(plugins: str, missing: list[str]) -> None:
     import urllib.request
 
     version = _TRINO_PLUGIN_VERSION
-    for name in missing:
-        url = f"{_TRINO_PLUGIN_MAVEN}/{name}/{version}/{name}-{version}.jar"
-        target = os.path.join(plugins, name)
-        os.makedirs(target, exist_ok=True)
-        print(f"[conftest] downloading Trino plugin {name} from {url}")
-        urllib.request.urlretrieve(  # noqa: S310 — pinned https Maven Central URL
-            url, os.path.join(target, f"{name}-{version}.jar")
-        )
-        if not _has_jars(target):
-            raise RuntimeError(f"{url} produced no jars in {target}")
-
-
-def _has_jars(path: str) -> bool:
-    return os.path.isdir(path) and any(f.endswith(".jar") for f in os.listdir(path))
+    url = f"{_TRINO_PLUGIN_MAVEN}/{name}/{version}/{name}-{version}.jar"
+    os.makedirs(target, exist_ok=True)
+    print(f"[conftest] downloading Trino plugin {name} from {url}")
+    urllib.request.urlretrieve(  # noqa: S310 — pinned https Maven Central URL
+        url, os.path.join(target, f"{name}-{version}.jar")
+    )
 
 
 def _populate_trino_plugins() -> None:
-    # Gitignored plugin jars exist only where built. Resolve the primary checkout from
-    # the git common dir (worktree-agnostic) and symlink any missing/empty plugin dir;
-    # whatever is still missing afterwards is downloaded from the pinned release.
+    """Make each plugin directory the stack mounts hold exactly the pinned build.
+
+    A directory holding exactly ``<name>-<version>.jar`` is used; an empty or missing one is
+    filled from Maven Central. Anything else -- another version's jar, or a locally built plugin
+    (many jars) -- is refused by name: a test that ran against it would test a connector other
+    than the one pinned, and say nothing. A symlink is the old borrowing of the primary checkout's
+    locally built plugins; it is removed and the pinned build downloaded in its place.
+    """
     plugins = os.path.join(_REPO_ROOT, "trino", "plugins")
     if not os.path.isdir(plugins):
         return
-    _link_trino_plugins_from_primary(plugins)
-    # Docker bind-mounts create an empty root-owned directory for a missing source, so an
-    # empty dir is indistinguishable from "never populated" — check for jars, not existence.
-    missing = [name for name in _TRINO_PLUGINS if not _has_jars(os.path.join(plugins, name))]
-    if missing:
-        _download_trino_plugins(plugins, missing)
-
-
-def _link_trino_plugins_from_primary(plugins: str) -> None:
-    common = subprocess.run(
-        ["git", "rev-parse", "--git-common-dir"],
-        cwd=_REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-    primary = os.path.dirname(os.path.abspath(os.path.join(_REPO_ROOT, common)))
-    primary_plugins = os.path.join(primary, "trino", "plugins")
-    # Identity by inode, not by path string. On macOS the same directory is reachable under
-    # two distinct real paths (/Users/... and /Volumes/<root-volume>/Users/...), and a string
-    # compare called the primary checkout "different" — so every plugin dir was symlinked to
-    # ITSELF, and Docker then refused to mount them ("mkdir ...: file exists").
-    if os.path.isdir(primary_plugins) and os.path.samefile(primary_plugins, plugins):
-        return  # already the primary checkout
-    if not os.path.isdir(primary_plugins):
-        return  # nothing to borrow; the caller downloads what is missing
-    for name in os.listdir(primary_plugins):
-        src = os.path.join(primary_plugins, name)
-        dst = os.path.join(plugins, name)
-        if not os.path.isdir(src) or not any(f.endswith(".jar") for f in os.listdir(src)):
+    version = _TRINO_PLUGIN_VERSION
+    for name in _TRINO_PLUGINS:
+        target = os.path.join(plugins, name)
+        pinned = f"{name}-{version}.jar"
+        if os.path.islink(target):
+            os.unlink(target)
+        # Docker bind-mounts create an empty root-owned directory for a missing source, so an
+        # empty directory is "never populated", not "populated with nothing".
+        present = sorted(os.listdir(target)) if os.path.isdir(target) else []
+        if present == [pinned]:
             continue
-        if os.path.islink(dst):
-            # A link that no longer reaches jars (dangling, or self-referential from the
-            # path-string bug above) is worse than nothing: Docker fails the bind mount. Clear
-            # it and re-link rather than skipping it forever.
-            if os.path.isdir(dst) and any(f.endswith(".jar") for f in os.listdir(dst)):
-                continue
-            os.unlink(dst)
-        if os.path.isdir(dst) and any(f.endswith(".jar") for f in os.listdir(dst)):
-            continue
-        if os.path.isdir(dst):
-            os.rmdir(dst) if not os.listdir(dst) else None
-        if not os.path.exists(dst):
-            os.symlink(src, dst)
+        if present:
+            raise RuntimeError(
+                f"{target} holds {present[:3]}{' ...' if len(present) > 3 else ''}, not the "
+                f"pinned {pinned} (_TRINO_PLUGIN_VERSION). Empty that directory and the pinned "
+                "build is downloaded on the next run."
+            )
+        _download_trino_plugin(target, name)
 
 
 def _marker_batches(items) -> list[list[str]]:

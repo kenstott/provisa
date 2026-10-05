@@ -102,3 +102,14 @@ def test_the_workflow_takes_its_matrix_from_the_runner():
     workflow = (REPO / ".github" / "workflows" / "integration-suite.yml").read_text()
     assert "run_lane.py --matrix" in workflow
     assert "fromJSON(needs.plan.outputs.matrix)" in workflow
+
+
+@pytest.mark.parametrize("lane", ["core", "app", "e2e", "warehouse"])
+def test_every_lane_bounds_each_test(lane):
+    """A hung test failed nothing: core 6/6 held its runner until the job was cancelled, and a
+    cancelled job's log is gone. Every lane command now bounds each test (pytest-timeout), so a hang
+    fails by name with every thread's stack."""
+    run_lane = _runner()
+    cmd = run_lane.command(lane, None, [])
+    assert cmd[cmd.index("--timeout") + 1] == str(run_lane.TEST_TIMEOUT_S)
+    assert cmd[cmd.index("--timeout-method") + 1] == "signal"
