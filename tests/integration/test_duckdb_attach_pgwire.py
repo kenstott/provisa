@@ -145,8 +145,21 @@ def pgwire_port():
     async def _fake_plan(sql: str, role_id: str):
         return _pl._Plan(route=Route.DIRECT, sql=sql, source_id="sales-pg", dialect="postgres")
 
+    async def _fake_govern(sql: str, role_id: str, params=None, wire_formats=None, *, deliver):
+        return _pl._Plan(route=Route.DIRECT, sql=sql, source_id="sales-pg", dialect="postgres")
+
     async def _fake_execute_plan(plan, _state=None):
-        return QueryResult(rows=_ROWS, column_names=_COL_NAMES, column_types=_COL_WIRE_TYPES)
+        if "orders" in plan.sql:
+            return QueryResult(rows=_ROWS, column_names=_COL_NAMES, column_types=_COL_WIRE_TYPES)
+        # Any other statement the extension sends that the catalog does not answer (its enum
+        # probe, a constant SELECT ... LIMIT 0) is answered as an engine would answer it: with
+        # the statement's own columns, so every statement of a batch returns its result set.
+        cur = duckdb.connect().execute(plan.sql)
+        return QueryResult(
+            rows=cur.fetchall(),
+            column_names=[d[0] for d in cur.description],
+            column_types=[str(d[1]) for d in cur.description],
+        )
 
     async def _fake_execute_sql(sql: str, role_id: str):
         return QueryResult(rows=_ROWS, column_names=_COL_NAMES, column_types=_COL_WIRE_TYPES)
@@ -166,6 +179,7 @@ def pgwire_port():
         patch("provisa.api.app.state", state),
         patch.object(_srv, "state", state, create=True),
         patch.object(_pl, "plan_pgwire_sql", _fake_plan),
+        patch.object(_pl, "govern_pgwire_plan", _fake_govern),
         patch.object(_pl, "_execute_plan", _fake_execute_plan),
         patch.object(_pl, "execute_pgwire_sql", _fake_execute_sql),
     ):
