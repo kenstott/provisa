@@ -19,8 +19,11 @@ gap, not a dodge.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import platform
+import socket
+import ssl
 
 import pytest
 
@@ -46,9 +49,26 @@ _TABLE = "DIRECT_DRIVER_WIDGETS"
 _WIDGETS = [(1, "Widget A"), (2, "Widget B"), (3, "Widget C")]
 
 
+def _served_fingerprint(host: str, port: int) -> str:
+    """The SHA-256 fingerprint of the certificate the server presents -- what an operator reads
+    off the server and enters as the source's ``tls_fingerprint``. Exasol 8 generates its
+    certificate at boot, so there is no CA to trust; the driver verifies it by this pin, and an
+    unpinned connect fails certificate verification (the self-signed chain)."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE  # reading the certificate in order to pin it, not trusting it
+    with socket.create_connection((host, port), timeout=30) as raw:
+        with ctx.wrap_socket(raw, server_hostname=host) as tls:
+            der = tls.getpeercert(binary_form=True)
+    assert der is not None
+    return hashlib.sha256(der).hexdigest().upper()
+
+
 async def test_exasol_direct_driver_ddl_dml_select() -> None:
-    """Real CREATE SCHEMA/TABLE, INSERT, SELECT through ExasolDriver against a real Exasol."""
+    """Real CREATE SCHEMA/TABLE, INSERT, SELECT through ExasolDriver against a real Exasol,
+    reached the way a configured source reaches it: TLS pinned to the server's fingerprint."""
     driver = ExasolDriver()
+    driver.configure({"tls_fingerprint": _served_fingerprint(_HOST, _PORT)})
     await driver.connect(host=_HOST, port=_PORT, database="", user=_USER, password=_PASSWORD)
     try:
         await driver.execute(f"CREATE SCHEMA IF NOT EXISTS {_SCHEMA}")

@@ -137,6 +137,30 @@ async def test_delayed_entries_not_yet_due_are_dropped_at_shutdown(caplog):
     assert any("far-future" in r.getMessage() for r in caplog.records)
 
 
+async def test_running_work_is_cancelled_and_has_ended_when_shutdown_returns():
+    """What a running task uses closes once shutdown returns (the lifespan closes its pools and
+    engines next), so the task is cancelled and its own cleanup has run by then -- not left
+    streaming from a Flight client, or connecting through a pool, that is about to close."""
+    started = threading.Event()
+    events: list[str] = []
+
+    async def _long_build() -> None:
+        started.set()
+        try:
+            for _batch in range(10_000):
+                await asyncio.sleep(0.01)  # one batch at a time, as a replica build streams
+            events.append("finished")
+        finally:
+            events.append("cleaned up")
+
+    spawn_background(_long_build(), name="replica-build")
+    assert await asyncio.to_thread(started.wait, 5)
+    began = time.monotonic()
+    await asyncio.to_thread(shutdown_background, 30)
+    assert events == ["cleaned up"]
+    assert time.monotonic() - began < 5  # cancelled, not waited out
+
+
 async def test_a_long_lived_loop_runs_on_its_own_thread_and_stops_at_shutdown():
     beats: list[int] = []
 

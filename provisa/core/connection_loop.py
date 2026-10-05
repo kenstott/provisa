@@ -424,7 +424,7 @@ DEFAULT_BACKGROUND_WORKERS = 16
 _bg_lock = threading.Lock()
 _bg_workers = DEFAULT_BACKGROUND_WORKERS
 _bg_pool: concurrent.futures.ThreadPoolExecutor | None = None
-_bg_inflight: dict[concurrent.futures.Future[Any], str] = {}
+_bg_inflight: "dict[concurrent.futures.Future[Any], tuple[str, _TaskSlot]]" = {}
 _bg_timer: "_TimerThread | None" = None
 _bg_long_lived: "set[LongLived]" = set()
 
@@ -469,11 +469,59 @@ def _pool() -> concurrent.futures.ThreadPoolExecutor:
         return _bg_pool
 
 
-def _run_detached(coro: Coroutine[Any, Any, Any], name: str, ctx: contextvars.Context) -> None:
+class _TaskSlot:
+    """The task a background thread runs on its own connection loop, cancellable from any thread.
+
+    Shutdown cancels running work through this before the databases and engines it uses close:
+    a replica build still streaming when its Flight client was closed, or still connecting when
+    its pools were, died in native code and took the process with it. Cancellation lands at the
+    task's next await -- between batches, after a bounded connect."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._task: asyncio.Task[Any] | None = None
+        self._cancel_requested = False
+
+    def run(
+        self,
+        cl: "ConnectionLoop",
+        coro: Coroutine[Any, Any, Any],
+        name: str,
+        ctx: contextvars.Context,
+    ) -> None:
+        """Run ``coro`` to completion as ``cl``'s task; a cancellation ends it quietly."""
+        with self._lock:
+            task = cl.loop.create_task(coro, name=name, context=ctx)
+            self._loop, self._task = cl.loop, task
+            if self._cancel_requested:
+                task.cancel()
+        try:
+            cl.loop.run_until_complete(task)
+        except asyncio.CancelledError:
+            log.info("background task %s cancelled at shutdown", name)
+        finally:
+            with self._lock:
+                self._loop = None
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._cancel_requested = True
+            loop, task = self._loop, self._task
+        if loop is not None and task is not None:
+            try:
+                loop.call_soon_threadsafe(task.cancel)
+            except RuntimeError:
+                pass  # the loop closed as the task finished on its own — nothing left to cancel
+
+
+def _run_detached(
+    coro: Coroutine[Any, Any, Any], name: str, ctx: contextvars.Context, slot: _TaskSlot
+) -> None:
     """Worker-thread body: run ``coro`` to completion on this worker's own connection loop."""
     try:
         with connection_loop() as cl:
-            cl.run(coro, context=ctx)
+            slot.run(cl, coro, name, ctx)
     except BaseException:
         log.exception("background task %s failed", name)
 
@@ -481,13 +529,14 @@ def _run_detached(coro: Coroutine[Any, Any, Any], name: str, ctx: contextvars.Co
 def _submit(
     coro: Coroutine[Any, Any, Any], name: str, ctx: contextvars.Context
 ) -> concurrent.futures.Future[None]:
+    slot = _TaskSlot()
     try:
-        fut = _pool().submit(_run_detached, coro, name, ctx)
+        fut = _pool().submit(_run_detached, coro, name, ctx, slot)
     except RuntimeError:
         coro.close()
         raise
     with _bg_lock:
-        _bg_inflight[fut] = name
+        _bg_inflight[fut] = (name, slot)
     fut.add_done_callback(_forget_inflight)
     return fut
 
@@ -608,10 +657,7 @@ class LongLived:
         self.name = name
         self._coro: Coroutine[Any, Any, Any] | None = coro
         self._ctx = ctx
-        self._lock = threading.Lock()
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._task: asyncio.Task[Any] | None = None
-        self._cancel_requested = False
+        self._slot = _TaskSlot()
         self._done = threading.Event()
         self._thread = threading.Thread(target=self._main, name=f"provisa-bg:{name}", daemon=True)
 
@@ -624,34 +670,17 @@ class LongLived:
             with connection_loop() as cl:
                 coro, self._coro = self._coro, None
                 assert coro is not None
-                with self._lock:
-                    task = cl.loop.create_task(coro, name=self.name, context=self._ctx)
-                    self._loop, self._task = cl.loop, task
-                    if self._cancel_requested:
-                        task.cancel()
                 try:
-                    cl.loop.run_until_complete(task)
-                except asyncio.CancelledError:
-                    pass  # stopped by cancel() — the requested outcome, not a failure
+                    self._slot.run(cl, coro, self.name, self._ctx)
                 except BaseException:
                     log.exception("long-lived task %s failed", self.name)
-                finally:
-                    with self._lock:
-                        self._loop = None
         finally:
             self._done.set()
             with _bg_lock:
                 _bg_long_lived.discard(self)
 
     def cancel(self) -> None:
-        with self._lock:
-            self._cancel_requested = True
-            loop, task = self._loop, self._task
-        if loop is not None and task is not None:
-            try:
-                loop.call_soon_threadsafe(task.cancel)
-            except RuntimeError:
-                pass  # the loop closed as the task finished on its own — nothing left to cancel
+        self._slot.cancel()
 
     def done(self) -> bool:
         return self._done.is_set()
@@ -674,8 +703,8 @@ def spawn_long_lived(coro: Coroutine[Any, Any, Any], *, name: str) -> LongLived:
 
 def shutdown_background(timeout: float = 10.0) -> None:
     """Stop background work (process shutdown): drop delayed entries not yet due, cancel queued
-    submissions, give running ones and long-lived threads ``timeout`` seconds, and log whatever
-    did not finish. Resets so a later start (tests re-running the lifespan) begins clean."""
+    submissions, cancel running ones and long-lived threads and give them ``timeout`` seconds to
+    end, and log whatever did not finish. Resets so a later start (tests re-running the lifespan) begins clean."""
     global _bg_pool, _bg_timer
     with _bg_lock:
         timer, _bg_timer = _bg_timer, None
@@ -692,12 +721,15 @@ def shutdown_background(timeout: float = 10.0) -> None:
         handle.cancel()
     deadline = time.monotonic() + timeout
     if pool is not None:
-        cancelled = [name for fut, name in inflight.items() if fut.cancel()]
+        cancelled = [name for fut, (name, _slot) in inflight.items() if fut.cancel()]
         if cancelled:
             log.warning(
                 "shutdown: %d queued background task(s) cancelled: %s", len(cancelled), cancelled
             )
-        running = {fut: name for fut, name in inflight.items() if not fut.cancelled()}
+        running = {fut: name for fut, (name, _slot) in inflight.items() if not fut.cancelled()}
+        # Running work is cancelled too, and waited for: what it uses closes once this returns.
+        for fut in running:
+            inflight[fut][1].cancel()
         _done, not_done = concurrent.futures.wait(
             running, timeout=max(0.0, deadline - time.monotonic())
         )
