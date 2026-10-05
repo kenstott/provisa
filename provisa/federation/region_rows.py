@@ -52,6 +52,30 @@ class RowRuleNotEvaluable(RuntimeError):
         )
 
 
+def fetch_predicate(state: Any, table: Any) -> str | None:
+    """The administrator's row rule on ``table`` with this region's values resolved — PostgreSQL
+    text a source's own keyed fetch can carry, so a row this region may not keep never leaves the
+    source. None with no platform regions, no rule, or a rule that reads another relation (no
+    source fetch of this one table can evaluate it; the rows are judged after the fetch)."""
+    from provisa.core import region_admin
+
+    if not region_admin.governs_region_work():
+        return None
+    rule = region_admin.row_rule(state, table)
+    if rule is None:
+        return None
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.pgwire._pipeline import _resolve_session_settings
+
+    resolved = _resolve_session_settings(rule, region_admin.session_vars(state), "postgres")
+    tree = sqlglot.parse_one(resolved, read="postgres")
+    if tree.find(exp.Select) is not None or tree.find(exp.Table) is not None:
+        return None
+    return resolved
+
+
 def admit_rows(state: Any, table: Any, data: "pa.Table") -> "pa.Table":
     """The rows of ``data`` (fetched by key for ``table``) this region may keep: all of them with
     no platform regions or no administrator row rule on the table, else those the rule admits."""

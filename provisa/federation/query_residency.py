@@ -945,12 +945,17 @@ async def pushdown_row_materialize(
             # A failed keyed fetch propagates: swallowing it left the table unlanded and the
             # query answered from whatever the row cache already held -- confirmed live,
             # large_federated_join returned 3030 rows instead of ~3.03M with no error.
-            fetched = await loader.load_keys_arrow(
-                source, table, [target_col], [(v,) for v in stale_or_missing]
-            )
-            # REQ-1921/1922: only what this region's administrator may keep is landed here.
-            from provisa.federation.region_rows import admit_rows
+            # REQ-1921/1922: only what this region's administrator may keep is landed here — asked
+            # of the source where its fetch takes a predicate, and judged after the fetch always.
+            from provisa.federation.region_rows import admit_rows, fetch_predicate
 
+            fetched = await loader.load_keys_arrow(
+                source,
+                table,
+                [target_col],
+                [(v,) for v in stale_or_missing],
+                admit=fetch_predicate(state, table),
+            )
             fetched = admit_rows(state, table, fetched)
             if fetched.num_rows == 0:
                 landed_this_call.add(name)
@@ -1335,11 +1340,14 @@ async def ensure_rows_resident(
                 results.append((source.id, table.table_name, 0))
                 continue
 
-            fetched = await loader.load_keys(source, table, pk_columns, still_needed)
-            # REQ-1921/1922: only what this region's administrator may keep is landed here; a key
-            # it does not admit is tombstoned below like one the source no longer has.
-            from provisa.federation.region_rows import admit_row_dicts
+            # REQ-1921/1922: only what this region's administrator may keep is landed here — asked
+            # of the source where its fetch takes a predicate, and judged after the fetch always;
+            # a key it does not admit is tombstoned below like one the source no longer has.
+            from provisa.federation.region_rows import admit_row_dicts, fetch_predicate
 
+            fetched = await loader.load_keys(
+                source, table, pk_columns, still_needed, admit=fetch_predicate(state, table)
+            )
             fetched = admit_row_dicts(state, table, fetched)
             fetched_keys = {tuple(row.get(pk) for pk in pk_columns) for row in fetched}
             # Tombstone: a requested key the source returned no row for (section 6a) -- deleted

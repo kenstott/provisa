@@ -74,9 +74,11 @@ class _FakeLoader:
     def __init__(self, rows_by_key: dict[tuple, dict]):
         self.rows_by_key = rows_by_key
         self.calls: list[list[tuple]] = []
+        self.admitted: list[str | None] = []  # the predicate each fetch was asked to carry
 
-    async def load_keys(self, source, table, pk_columns, keys):
+    async def load_keys(self, source, table, pk_columns, keys, *, admit=None):
         self.calls.append(list(keys))
+        self.admitted.append(admit)
         return [self.rows_by_key[k] for k in keys if k in self.rows_by_key]
 
 
@@ -447,3 +449,45 @@ def test_with_no_platform_regions_every_fetched_row_is_kept():
         assert admit_rows(state, _regional_table(), batch) is batch
     finally:
         process_region._region = was
+
+
+@pytest.mark.asyncio
+async def test_a_sources_keyed_fetch_is_asked_for_only_what_this_region_may_keep(
+    sqlite_dsn, patched_registry, node_in_us
+):
+    """REQ-1921/1922: where the source's fetch takes a predicate, the administrator's rule with
+    this region's values goes with it, so the eu row never leaves the source; a rule reading
+    another relation cannot go with a one-table fetch and is judged after it instead."""
+    from provisa.federation.query_residency import ensure_rows_resident
+
+    patched_registry.table = _regional_table()
+    patched_registry.source = _source()
+    patched_registry.loader = _FakeLoader({(2,): {"id": 2, "status": "new", "home": "us"}})
+    state = _admin_ruled_state(sqlite_dsn, "home = current_setting('provisa.region')")
+    await ensure_rows_resident(state, [_bound(2)], reader_role=None)
+    assert patched_registry.loader.admitted == ["home = 'us'"]
+
+    state = _admin_ruled_state(sqlite_dsn, "home IN (SELECT region FROM allowed_regions)")
+    await ensure_rows_resident(state, [_bound(3)], reader_role=None)
+    assert patched_registry.loader.admitted[-1] is None
+
+
+@pytest.mark.asyncio
+async def test_the_engine_fetch_carries_the_admission_predicate_in_its_own_dialect():
+    from provisa.events.source_loader import SourceRowLoader
+
+    sent: list[str] = []
+
+    class _Engine:
+        dialect = "duckdb"
+
+        async def execute_engine(self, sql, *, authorization):
+            sent.append(sql)
+            return types.SimpleNamespace(column_names=["id"], rows=[(2,)])
+
+    loader = SourceRowLoader(_Engine())
+    rows = await loader.load_keys(_source(), _table(), ["id"], [(1,), (2,)], admit="home = 'us'")
+    assert rows == [{"id": 2}]
+    assert sent == [
+        'SELECT * FROM "pg1"."public"."orders" WHERE ("id" IN (1, 2)) AND (home = \'us\')'
+    ]

@@ -546,7 +546,7 @@ class _Loader:
     def __init__(self):
         self.calls: list[list[tuple]] = []
 
-    async def load_keys(self, source, table, pk_columns, keys):
+    async def load_keys(self, source, table, pk_columns, keys, *, admit=None):
         self.calls.append(list(keys))
         return [{"id": k[0], "status": "new"} for k in keys]
 

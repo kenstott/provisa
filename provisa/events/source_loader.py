@@ -237,7 +237,13 @@ class SourceRowLoader:
         return EngineTableSource(self._engine, ref, in_place=engine_attaches(self._engine, stype))
 
     async def load_keys(
-        self, source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+        self,
+        source: Any,
+        table: Any,
+        pk_columns: list[str],
+        keys: list[tuple[Any, ...]],
+        *,
+        admit: str | None = None,
     ) -> list[dict]:
         """Fetch exactly the rows whose ``pk_columns`` match one of ``keys``, full row, from the
         live source -- never a scan (REQ-1865, design doc section 3d).
@@ -251,6 +257,12 @@ class SourceRowLoader:
         in ``_ADAPTER_FETCH_ONLY`` with no keyed entry has no keyed-fetch translation at all and
         raises rather than falling back to a full ``load()`` per lookup, which would defeat the
         mechanism.
+
+        ``admit`` (REQ-1921/1922): a row predicate, PostgreSQL text over the table's own columns,
+        that the rows this fetch may return must satisfy (``region_rows.fetch_predicate``). The
+        engine-terminal fetch carries it, so a row it rejects never leaves the source; a type's
+        own keyed loader takes no predicate, and its rows are judged after the fetch instead
+        (``region_rows.admit_rows``, the guard every fetch passes through either way).
         """
         if not keys:
             return []
@@ -268,13 +280,24 @@ class SourceRowLoader:
         catalog = source_to_catalog(source.id)
         ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
         where = _pk_in_clause(pk_columns, keys, self._engine.dialect)
+        if admit is not None:
+            import sqlglot
+
+            rule = sqlglot.parse_one(admit, read="postgres").sql(dialect=self._engine.dialect)
+            where = f"({where}) AND ({rule})"
         result = await self._engine.execute_engine(
             f"SELECT * FROM {ref} WHERE {where}", authorization=system_auth("source row load")
         )
         return [dict(zip(result.column_names, row)) for row in result.rows]
 
     async def load_keys_arrow(
-        self, source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+        self,
+        source: Any,
+        table: Any,
+        pk_columns: list[str],
+        keys: list[tuple[Any, ...]],
+        *,
+        admit: str | None = None,
     ) -> Any:
         """``load_keys`` as a ``pyarrow.Table``. A type with a registered ``keyed_arrow_loaders``
         entry fetches columnar end to end (REQ-1865: millions of keyed rows never become Python
@@ -284,7 +307,9 @@ class SourceRowLoader:
         arrow_loader = self._keyed_arrow_loaders.get(_source_type(source))
         if arrow_loader is not None:
             return await arrow_loader(source, table, pk_columns, keys)
-        return pa.Table.from_pylist(await self.load_keys(source, table, pk_columns, keys))
+        return pa.Table.from_pylist(
+            await self.load_keys(source, table, pk_columns, keys, admit=admit)
+        )
 
 
 def _pk_in_clause(pk_columns: list[str], keys: list[tuple[Any, ...]], dialect: str) -> str:
