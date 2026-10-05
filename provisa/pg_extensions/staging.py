@@ -24,6 +24,8 @@ landed via ``provisa.federation.fdw_artifact_catalog.discover_bundled_artifacts(
 
 from __future__ import annotations
 
+import hashlib
+import json
 import platform as _platform
 import shutil
 import sys
@@ -91,14 +93,34 @@ def stage_bundled_pg_extensions(pginstall: str | Path) -> Path:
     pkglibdir.mkdir(parents=True, exist_ok=True)
     extdir.mkdir(parents=True, exist_ok=True)
 
+    # A module already staged is replaced when it is not the one this wheel ships: pgserver has one
+    # install dir that outlives a package upgrade, so keeping whatever was there first left an
+    # upgraded deployment loading the previous release's modules (provisa-pg-ext 0.1.1's stale
+    # postgres_fdw among them). The manifest row names the shipped file's sha256.
+    shipped = _shipped_sha256(src)
     for module in modules:
+        rel = f"lib/{module.name}"
+        if rel not in shipped:
+            raise BundledPgExtensionsMissing(
+                f"provisa-pg-ext {platform} ships {rel} without a manifest row; rebuild the package"
+            )
         out = pkglibdir / module.name
-        if not out.exists():
+        if not out.exists() or _sha256(out) != shipped[rel]:
             shutil.copy2(module, out)
     ext_share = src / "share" / "extension"
     if ext_share.is_dir():
         for control in sorted(ext_share.iterdir()):
             out = extdir / control.name
-            if not out.exists():
+            if not out.exists() or out.read_bytes() != control.read_bytes():
                 shutil.copy2(control, out)
     return pkglibdir
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _shipped_sha256(bundle: Path) -> dict[str, str]:
+    """The bundle's manifest rows as {file: sha256} (``lib/<name>.<suf>`` keys)."""
+    manifest = json.loads((bundle / "manifest.json").read_text())
+    return {a["file"]: a["sha256"] for a in manifest["artifacts"]}
