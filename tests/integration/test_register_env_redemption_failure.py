@@ -97,16 +97,29 @@ def planes(monkeypatch):
 
     from provisa.api.app import state as app_state
 
+    from provisa.api.org_runtime import OrgRegistry, OrgRuntime
+
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
-    monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
     monkeypatch.setattr(
         app_state, "config", types.SimpleNamespace(auth={"provider": "basic"}), raising=False
     )
 
-    from types import SimpleNamespace
+    # REQ-1266: the invited org's runtime, as ensure_org_runtime builds it before the redemption
+    # binds the org; its tenant plane is this test's schema. Every other runtime is the app's own.
+    sandbox = OrgRuntime(org_id="sandbox")
+    sandbox.tenant_db = tenant_db
+    sandbox.model_db = tenant_db
+    registry = OrgRegistry()
+    for key in app_state.org_registry.all_org_ids():
+        rt = app_state.org_registry.get(key)
+        assert rt is not None
+        registry.set(key, rt)
+    registry.set("sandbox", sandbox)
+    monkeypatch.setattr(app_state, "org_registry", registry)
 
-    async def _org_runtime(_org_id: str, _env: str | None = None):
-        return SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
+    async def _org_runtime(org_id: str, env: str | None = None):
+        assert org_id == "sandbox", org_id
+        return sandbox
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
 
