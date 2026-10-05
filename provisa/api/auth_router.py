@@ -445,13 +445,19 @@ async def my_invites(request: Request):  # REQ-1287
 async def _auto_join_offers(request: Request) -> list[dict]:
     """The auto-join orgs claiming the caller's address that they are not already a member of.
 
-    REQ-1568. A single claim never reaches here — the sign-in path joined it, so the membership
-    filter below removes it. What is left is the set nobody could choose between on the caller's
-    behalf.
+    REQ-1568. On a multitenant deployment a single claim never reaches here — the sign-in path
+    joined it, so the membership filter below removes it. What is left is the set nobody could
+    choose between on the caller's behalf.
+
+    Auto-join is a multitenant act: the middleware joins only inside its multitenant branch, so a
+    single-tenant deployment offers nothing either. Offering there would put to the person a choice
+    sign-in never makes, for an org the single-tenant path never joins.
     """
     from provisa.api.app import state
     from provisa.core.org_membership import resolve_auto_join_orgs
 
+    if not state.multitenancy:
+        return []
     identity = getattr(request.state, "identity", None)
     if identity is None or identity.user_id == "anonymous":
         return []
@@ -484,8 +490,9 @@ async def _auto_join_offers(request: Request) -> list[dict]:
 async def auto_join_offers(request: Request):  # REQ-1568
     """The orgs the caller may join on the strength of their email address alone.
 
-    Non-empty only when more than one org claimed the address, because a lone claim is joined at
-    sign-in. The page shows the list and the person picks; nothing is joined by reading this.
+    Non-empty only on a multitenant deployment and only when more than one org claimed the
+    address, because a lone claim is joined at sign-in. The page shows the list and the person
+    picks; nothing is joined by reading this.
     """
     return {"offers": await _auto_join_offers(request)}
 
