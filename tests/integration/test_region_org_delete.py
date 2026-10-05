@@ -23,7 +23,6 @@ naming its region, and nothing is removed."""
 from __future__ import annotations
 
 import os
-import tempfile
 import uuid
 
 import pytest
@@ -106,7 +105,12 @@ class _Estate:
     def __init__(self, pg: dict, *, shared: bool, engines: dict[str, str] | None = None) -> None:
         #: Each region's engine store: by default eu's Postgres and us's Trino.
         self.engines = engines or _ENGINE
-        self.chdb_path = os.path.join(tempfile.mkdtemp(prefix="region-purge-ch-"), "chdb")
+        #: us's ClickHouse engine, when a test names one: a server the other region reaches.
+        self.clickhouse_url = (
+            f"clickhouse://default:{os.environ.get('CLICKHOUSE_PASSWORD', '')}@"
+            f"{os.environ.get('CLICKHOUSE_HOST', 'localhost')}:"
+            f"{os.environ.get('CLICKHOUSE_PORT', '8123')}"
+        )
         self.password = os.environ.get("PG_PASSWORD", "provisa")
         self.host, self.port = pg["host"], pg["port"]
         self.tag = uuid.uuid4().hex[:6]
@@ -148,9 +152,12 @@ class _Estate:
         admin.dispose()
 
     def drop(self) -> None:
-        import shutil
-
-        shutil.rmtree(os.path.dirname(self.chdb_path), ignore_errors=True)
+        if self.engines.get("us") == "us-ch":  # what a failed test left in the shared server
+            runtime = self._clickhouse()
+            try:
+                runtime.drop_attached([f"org_{self.org}_", f"org_{self.bystander}_"])
+            finally:
+                runtime.close()
         admin = sa.create_engine(self.url("provisa", "+psycopg"), isolation_level="AUTOCOMMIT")
         with admin.connect() as conn:
             for db in {self.cp_db, *self.store_dbs.values()}:
@@ -184,7 +191,7 @@ class _Estate:
                     url=f"trino://{self.trino_host}:{trino_port}",
                     kind="trino",
                 ),
-                StoreConfig(id=f"{region}-ch", url=f"chdb://{self.chdb_path}", kind="clickhouse"),
+                StoreConfig(id=f"{region}-ch", url=self.clickhouse_url, kind="clickhouse-server"),
             ]
         return out
 
@@ -280,7 +287,7 @@ class _Estate:
     def _clickhouse(self):
         from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 
-        return ClickHouseFederationRuntime.embedded(path=self.chdb_path)
+        return ClickHouseFederationRuntime.from_url(self.clickhouse_url)
 
     def _clickhouse_attach(self, org: str, env: str) -> None:
         """What a ClickHouse engine keeps for ``org``'s ``env``: the database a source is exposed
@@ -357,13 +364,14 @@ def estate(request, docker_postgres, node_in_eu):
 
 @pytest.fixture
 def estate_on_clickhouse(docker_postgres, node_in_eu):
-    """The same org and bystander, with us's engine an embedded ClickHouse store."""
+    """The same org and bystander, with us's engine a ClickHouse server."""
     e = _Estate(docker_postgres, shared=False, engines={"eu": "eu-pg", "us": "us-ch"})
     e.create()
     yield e
     e.drop()
 
 
+@pytest.mark.requires_clickhouse
 async def test_an_org_delete_drops_what_a_clickhouse_engine_keeps_for_it(estate_on_clickhouse):
     estate = estate_on_clickhouse
     await estate.lay_out()

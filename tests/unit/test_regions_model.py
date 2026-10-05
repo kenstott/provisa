@@ -155,6 +155,32 @@ def test_a_regions_engine_store_names_an_engine_kind():
     assert "names engine kind 'oracle-rac', which is not one of" in said
 
 
+def test_with_more_than_one_region_an_engine_store_is_a_server_the_others_reach():
+    """REQ-1922: the org's other regions reach each region's engine (an org's delete drops what
+    it keeps there, wherever the delete runs); an embedded ClickHouse file is reachable from the
+    node that opens it alone, so it is refused by name — with one platform region it is allowed."""
+    chdb = [*_STORES, {"id": "eu-ch", "url": "chdb:///var/lib/eu", "kind": "clickhouse"}]
+    said = _refused(
+        _config(platform=_PLATFORM, stores=chdb, regions=[_region("eu", engine="eu-ch")])
+    )
+    assert "region 'eu' engine store 'eu-ch' is an embedded chdb file" in said
+    one = {"regions": _PLATFORM["regions"][:1]}
+    ProvisaConfig.model_validate(
+        _config(platform=one, stores=chdb, regions=[_region("eu", engine="eu-ch")])
+    )
+    # A ClickHouse server, and a DuckDB engine (in memory, keeping nothing between processes),
+    # are what another region reaches or never needs to.
+    servers = [
+        *_STORES,
+        {"id": "eu-ch", "url": "clickhouse://default:p@eu:8123", "kind": "clickhouse-server"},
+        {"id": "eu-duck", "url": "duckdb:///var/lib/eu.duckdb", "kind": "duckdb"},
+    ]
+    for engine in ("eu-ch", "eu-duck"):
+        ProvisaConfig.model_validate(
+            _config(platform=_PLATFORM, stores=servers, regions=[_region("eu", engine=engine)])
+        )
+
+
 def test_a_region_keeps_its_replicas_and_views_in_one_store():
     """MAINTAINER (REQ-1922): one store for both, for now; the model keeps both fields."""
     stores = [*_STORES, {"id": "eu-pg2", "url": "postgresql://eu2/db"}]
@@ -309,6 +335,32 @@ async def test_a_region_saved_with_an_engine_store_of_no_kind_is_refused(model):
             await region_repo.upsert_region(
                 conn, OrgRegion(**_region("eu", state="eu-mysql")), origin="admin"
             )
+
+
+async def test_a_region_saved_with_an_embedded_engine_is_refused_with_more_than_one(model):
+    """The save refuses what the load refuses: with more than one platform region, a region's
+    engine store is one the other regions reach (REQ-1922)."""
+    from provisa.core import process_region
+    from provisa.core.regions import OrgRegion, StoreConfig
+    from provisa.core.repositories import region as region_repo
+
+    chdb = {"id": "eu-ch", "url": "chdb:///var/lib/eu", "kind": "clickhouse"}
+    was = process_region._region, process_region._platform_regions
+    try:
+        process_region.bind_launch(_PLATFORM, requested="eu")
+        async with model.acquire() as conn:
+            for s in [*_STORES[:3], chdb]:
+                await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
+            with pytest.raises(ValueError, match="engine store 'eu-ch' is an embedded chdb file"):
+                await region_repo.upsert_region(
+                    conn, OrgRegion(**_region("eu", engine="eu-ch")), origin="admin"
+                )
+            process_region.bind_launch({"regions": _PLATFORM["regions"][:1]}, requested="eu")
+            await region_repo.upsert_region(
+                conn, OrgRegion(**_region("eu", engine="eu-ch")), origin="admin"
+            )
+    finally:
+        process_region._region, process_region._platform_regions = was
 
 
 async def test_a_region_saved_with_replicas_and_views_apart_is_refused(model):

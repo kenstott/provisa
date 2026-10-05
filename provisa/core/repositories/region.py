@@ -85,7 +85,9 @@ async def upsert_region(conn: "Connection", region: OrgRegion, *, origin: str) -
         STORE_ROLES,
         require_engine_kind,
         require_one_materialize_store,
+        require_reachable_engine,
     )
+    from provisa.core import process_region
 
     declared = {s.id: s for s in await list_stores(conn)}
     for role in STORE_ROLES:
@@ -95,6 +97,9 @@ async def upsert_region(conn: "Connection", region: OrgRegion, *, origin: str) -
                 "in stores"
             )
     require_engine_kind(region.id, declared[region.engine])
+    require_reachable_engine(
+        region.id, declared[region.engine], len(process_region.platform_regions())
+    )
     require_one_materialize_store(region)
     regions = [r for r in await list_regions(conn) if r.id != region.id]
     await _require_named_readable(conn, [*regions, region], declared)

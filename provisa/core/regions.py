@@ -120,6 +120,7 @@ def validate_regions(config: "ProvisaConfig") -> None:
                     f"region {region.id!r} {role} store {store!r} is not declared in stores"
                 )
         require_engine_kind(region.id, stores[region.engine])
+        require_reachable_engine(region.id, stores[region.engine], len(platform))
         require_one_materialize_store(region)
     for what, region in named:
         if region not in selected:
@@ -209,6 +210,26 @@ def require_one_materialize_store(region: "OrgRegion") -> None:
         raise ValueError(
             f"region {region.id!r} names replicas store {region.replicas!r} and views store "
             f"{region.views!r}; a region keeps its replicas and its views in one store"
+        )
+
+
+#: Engine store schemes that are a file one node opens in-process (embedded ClickHouse, chdb):
+#: what the engine keeps for an org there is reachable from that node alone. (A DuckDB engine
+#: keeps nothing between processes — its runtime is in memory — so it is not among them.)
+_EMBEDDED_ENGINE_SCHEMES = frozenset({"chdb"})
+
+
+def require_reachable_engine(region: str, store: StoreConfig, platform_regions: int) -> None:
+    """Refuse an embedded engine store for a region of a platform that declares more than one
+    (REQ-1922): the org's other regions reach each region's engine — to drop what it keeps for an
+    org when the org or an environment is deleted, wherever the delete runs — and an embedded
+    file is reachable only from the node that opens it. One region may still use one."""
+    scheme = store.url.split(":", 1)[0].split("+", 1)[0].lower()
+    if platform_regions > 1 and scheme in _EMBEDDED_ENGINE_SCHEMES:
+        raise ValueError(
+            f"region {region!r} engine store {store.id!r} is an embedded {scheme} file, which "
+            "the platform's other regions cannot reach; with more than one region a region's "
+            "engine store is a server they can reach"
         )
 
 
