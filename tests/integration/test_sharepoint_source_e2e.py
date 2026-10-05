@@ -177,6 +177,16 @@ def test_sharepoint_catalog_created_and_lists_visible():
             f"Expected list {_LIST_NAME!r} among SharePoint lists (tables under "
             f"{_DATA_SCHEMA!r}), got {sorted(tables)}"
         )
+    except trino.exceptions.TrinoQueryError as exc:
+        # Trino reports the connector's failure as "Error instantiating JsonCustomSchema" and keeps
+        # the reason (the auth or certificate error) in failureInfo's causes, which its message
+        # drops; attach the chain so the report names it.
+        causes, info = [], exc.failure_info
+        while info:
+            causes.append(f"{info.get('type')}: {info.get('message')}")
+            info = info.get("cause")
+        exc.add_note("caused by " + "\n  caused by ".join(causes))
+        raise
     finally:
         _drop(cur, catalog)
         conn.close()

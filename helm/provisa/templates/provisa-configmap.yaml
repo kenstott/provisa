@@ -42,6 +42,8 @@ data:
         - pattern: "^prod_pg_"
           replace: ""
 
+    # REQ-1426: a column's data_type is design-time metadata the config carries; nothing infers it
+    # at load, and an untyped column is refused (it stopped the API's boot in the cluster lane).
     tables:
       - source_id: sales-pg
         domain_id: sales-analytics
@@ -50,18 +52,25 @@ data:
         governance: pre-approved
         columns:
           - name: id
+            data_type: integer
             visible_to: [org_admin, analyst]
           - name: customer_id
+            data_type: integer
             visible_to: [org_admin, analyst]
           - name: product_id
+            data_type: integer
             visible_to: [org_admin]
           - name: amount
+            data_type: numeric
             visible_to: [org_admin]
           - name: region
+            data_type: varchar
             visible_to: [org_admin, analyst]
           - name: status
+            data_type: varchar
             visible_to: [org_admin, analyst]
           - name: created_at
+            data_type: timestamp
             visible_to: [org_admin, analyst]
       - source_id: sales-pg
         domain_id: sales-analytics
@@ -70,12 +79,16 @@ data:
         governance: pre-approved
         columns:
           - name: id
+            data_type: integer
             visible_to: [org_admin, analyst]
           - name: name
+            data_type: varchar
             visible_to: [org_admin, analyst]
           - name: email
+            data_type: varchar
             visible_to: [org_admin]
           - name: region
+            data_type: varchar
             visible_to: [org_admin, analyst]
       - source_id: sales-pg
         domain_id: product-catalog
@@ -84,12 +97,16 @@ data:
         governance: registry-required
         columns:
           - name: id
+            data_type: integer
             visible_to: [org_admin, analyst]
           - name: name
+            data_type: varchar
             visible_to: [org_admin, analyst]
           - name: price
+            data_type: numeric
             visible_to: [org_admin]
           - name: category
+            data_type: varchar
             visible_to: [org_admin, analyst]
       {{- if .Values.mongodb.enabled }}
       - source_id: reviews-mongo
@@ -99,12 +116,16 @@ data:
         governance: pre-approved
         columns:
           - name: product_id
+            data_type: integer
             visible_to: [org_admin, analyst]
           - name: reviewer
+            data_type: varchar
             visible_to: [org_admin, analyst]
           - name: rating
+            data_type: integer
             visible_to: [org_admin, analyst]
           - name: comment
+            data_type: varchar
             visible_to: [org_admin]
       {{- end }}
       - source_id: analytics-pg
@@ -114,10 +135,13 @@ data:
         governance: pre-approved
         columns:
           - name: customer_id
+            data_type: integer
             visible_to: [org_admin, analyst]
           - name: segment
+            data_type: varchar
             visible_to: [org_admin, analyst]
           - name: score
+            data_type: numeric
             visible_to: [org_admin]
 
     relationships:
