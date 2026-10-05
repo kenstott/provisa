@@ -204,7 +204,6 @@ test.beforeAll(() => {
   [deltaTablePath, icebergTablePath] = out.trim().split("\n");
 });
 
-
 test.afterAll(sweepZombieSwapSources);
 
 test.describe("engine swap: one registration answers every engine (REQ-1730)", () => {
@@ -314,10 +313,12 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   });
 
   test.describe("sharepoint", () => {
-    test.skip(
-      !process.env.SP_SITE_URL,
-      "no live SharePoint credentials: set the SP_* block in the root .env",
-    );
+    test.beforeEach(() => {
+      expect(
+        !process.env.SP_SITE_URL,
+        "no live SharePoint credentials: set the SP_* block in the root .env",
+      ).toBe(false);
+    });
 
     test("sharepoint: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
@@ -348,10 +349,12 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   }) => runSwapCase(page, () => registerIngest(page)));
 
   test.describe("govdata", () => {
-    test.skip(
-      !process.env.FREE_ASKAMERICA_KEY,
-      "no live AskAmerica/govdata credentials: set FREE_ASKAMERICA_KEY in the root .env",
-    );
+    test.beforeEach(() => {
+      expect(
+        !process.env.FREE_ASKAMERICA_KEY,
+        "no live AskAmerica/govdata credentials: set FREE_ASKAMERICA_KEY in the root .env",
+      ).toBe(false);
+    });
 
     test("govdata: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
@@ -371,8 +374,18 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     // "landed" 0 rows every time, with no error anywhere in the pipeline (store_writer.land() was
     // reached and executed a genuine 0-row replace) — this fixture must not regress that.
     const RSS_ITEMS = [
-      { guid: "item-1", title: "First item", link: "https://example.com/1", pubDate: "Mon, 01 Jan 2024 00:00:00 GMT" },
-      { guid: "item-2", title: "Second item", link: "https://example.com/2", pubDate: "Tue, 02 Jan 2024 00:00:00 GMT" },
+      {
+        guid: "item-1",
+        title: "First item",
+        link: "https://example.com/1",
+        pubDate: "Mon, 01 Jan 2024 00:00:00 GMT",
+      },
+      {
+        guid: "item-2",
+        title: "Second item",
+        link: "https://example.com/2",
+        pubDate: "Tue, 02 Jan 2024 00:00:00 GMT",
+      },
     ];
     function rssFeedXml(): string {
       const items = RSS_ITEMS.map(
@@ -478,10 +491,12 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   });
 
   test.describe("singlestore", () => {
-    test.skip(
-      !SINGLESTORE_AVAILABLE,
-      "needs SINGLESTORE_HOST/USERNAME/PASSWORD/DATABASE for the SingleStore Cloud workspace",
-    );
+    test.beforeEach(() => {
+      expect(
+        !SINGLESTORE_AVAILABLE,
+        "needs SINGLESTORE_HOST/USERNAME/PASSWORD/DATABASE for the SingleStore Cloud workspace",
+      ).toBe(false);
+    });
 
     test("singlestore: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
@@ -595,14 +610,16 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   });
 
   test.describe("snowflake", () => {
-    test.skip(
-      !(
-        process.env.SNOWFLAKE_ACCOUNT &&
-        process.env.SNOWFLAKE_USER &&
-        process.env.SNOWFLAKE_PASSWORD
-      ),
-      "no live Snowflake credentials in this environment (SNOWFLAKE_ACCOUNT/SNOWFLAKE_USER/SNOWFLAKE_PASSWORD)",
-    );
+    test.beforeEach(() => {
+      expect(
+        !(
+          process.env.SNOWFLAKE_ACCOUNT &&
+          process.env.SNOWFLAKE_USER &&
+          process.env.SNOWFLAKE_PASSWORD
+        ),
+        "no live Snowflake credentials in this environment (SNOWFLAKE_ACCOUNT/SNOWFLAKE_USER/SNOWFLAKE_PASSWORD)",
+      ).toBe(false);
+    });
     test.beforeAll(() => {
       execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "snowflake", "up"], { stdio: "pipe" });
     });
@@ -617,14 +634,16 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   });
 
   test.describe("databricks", () => {
-    test.skip(
-      !(
-        process.env.DATABRICKS_SERVER_HOSTNAME &&
-        process.env.DATABRICKS_HTTP_PATH &&
-        process.env.DATABRICKS_TOKEN
-      ),
-      "no live Databricks credentials in this environment (DATABRICKS_SERVER_HOSTNAME/DATABRICKS_HTTP_PATH/DATABRICKS_TOKEN)",
-    );
+    test.beforeEach(() => {
+      expect(
+        !(
+          process.env.DATABRICKS_SERVER_HOSTNAME &&
+          process.env.DATABRICKS_HTTP_PATH &&
+          process.env.DATABRICKS_TOKEN
+        ),
+        "no live Databricks credentials in this environment (DATABRICKS_SERVER_HOSTNAME/DATABRICKS_HTTP_PATH/DATABRICKS_TOKEN)",
+      ).toBe(false);
+    });
     test.beforeAll(() => {
       execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "databricks", "up"], { stdio: "pipe" });
     });
@@ -639,19 +658,23 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   });
 
   test.describe("fabric", () => {
-    test.skip(
-      !(process.env.FABRIC_SQL_SERVER && process.env.FABRIC_DATABASE),
-      "no live Fabric credentials in this environment (FABRIC_SQL_SERVER/FABRIC_DATABASE)",
-    );
+    test.beforeEach(() => {
+      expect(
+        !(process.env.FABRIC_SQL_SERVER && process.env.FABRIC_DATABASE),
+        "no live Fabric credentials in this environment (FABRIC_SQL_SERVER/FABRIC_DATABASE)",
+      ).toBe(false);
+    });
     // REQ-1775: a paused Fabric capacity rejects the SQL connection outright — needs the ARM
     // capacity identifiers to resume it, same gate source-to-query-cloud-warehouse.spec.ts's own
     // fabric case uses.
-    test.skip(
-      !(process.env.FABRIC_RESOURCE_GROUP && process.env.FABRIC_CAPACITY_NAME),
-      "no FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME configured — a Fabric capacity must be " +
-        "created once (a real-money Azure resource), see tests/integration/fabric_capacity.py's " +
-        "module docstring for the one-time az CLI command",
-    );
+    test.beforeEach(() => {
+      expect(
+        !(process.env.FABRIC_RESOURCE_GROUP && process.env.FABRIC_CAPACITY_NAME),
+        "no FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME configured — a Fabric capacity must be " +
+          "created once (a real-money Azure resource), see tests/integration/fabric_capacity.py's " +
+          "module docstring for the one-time az CLI command",
+      ).toBe(false);
+    });
     test.beforeAll(() => {
       execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "fabric", "up"], { stdio: "pipe" });
     });
@@ -666,10 +689,12 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   });
 
   test.describe("bigquery", () => {
-    test.skip(
-      !(process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_APPLICATION_CREDENTIALS),
-      "no live GCP credentials in this environment (GOOGLE_CLOUD_PROJECT/GOOGLE_APPLICATION_CREDENTIALS)",
-    );
+    test.beforeEach(() => {
+      expect(
+        !(process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_APPLICATION_CREDENTIALS),
+        "no live GCP credentials in this environment (GOOGLE_CLOUD_PROJECT/GOOGLE_APPLICATION_CREDENTIALS)",
+      ).toBe(false);
+    });
     test.beforeAll(() => {
       execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "bigquery", "up"], { stdio: "pipe" });
     });
@@ -880,7 +905,12 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
       page,
     }) =>
       runSwapCase(page, () =>
-        registerSynapse(page, synapseConn!.sql_server, synapseConn!.database, synapseConn!.adls_url),
+        registerSynapse(
+          page,
+          synapseConn!.sql_server,
+          synapseConn!.database,
+          synapseConn!.adls_url,
+        ),
       ));
   });
 
@@ -888,12 +918,12 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test("google_sheets: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
     }) => {
-      test.skip(
+      expect(
         !process.env.GOOGLE_APPLICATION_CREDENTIALS || !process.env.GSHEETS_TEST_SHEET_ID,
         "GOOGLE_APPLICATION_CREDENTIALS / GSHEETS_TEST_SHEET_ID not set to the durable fixture " +
           "sheet (see gsheets-e2e-fixture project memory) — the service account has zero Drive " +
           "quota so no throwaway sheet can be created; this test reads the existing shared fixture.",
-      );
+      ).toBe(false);
       await runSwapCase(page, () => registerGsheets(page));
     });
   });
@@ -923,11 +953,13 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     // (a retry re-invokes beforeAll on a fresh worker without calling the failed attempt's
     // afterAll, leaking a billable Serverless workgroup).
     test.describe.configure({ retries: 0 });
-    test.skip(
-      !process.env.REDSHIFT_AWS_ACCESS_KEY_ID || !process.env.REDSHIFT_AWS_SECRET_ACCESS_KEY,
-      "no AWS credentials for the ephemeral Redshift Serverless lane (REDSHIFT_AWS_* in .env) — " +
-        "see scripts/redshift_e2e.py's own module doc",
-    );
+    test.beforeEach(() => {
+      expect(
+        !process.env.REDSHIFT_AWS_ACCESS_KEY_ID || !process.env.REDSHIFT_AWS_SECRET_ACCESS_KEY,
+        "no AWS credentials for the ephemeral Redshift Serverless lane (REDSHIFT_AWS_* in .env) — " +
+          "see scripts/redshift_e2e.py's own module doc",
+      ).toBe(false);
+    });
     let redshiftConn: RedshiftConnection | undefined;
     test.beforeAll(() => {
       test.setTimeout(900000); // Serverless namespace+workgroup create + TCP-ready can run ~10min
@@ -1132,7 +1164,12 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
         );
       }
       hiveWarehouseVolume = mount.Name;
-      return provisionSwapSource("hive", "up", { PROVISA_HIVE_WAREHOUSE_VOLUME: hiveWarehouseVolume }, DOCKER_NETWORK);
+      return provisionSwapSource(
+        "hive",
+        "up",
+        { PROVISA_HIVE_WAREHOUSE_VOLUME: hiveWarehouseVolume },
+        DOCKER_NETWORK,
+      );
     });
     test.afterAll(async () => {
       if (!hiveWarehouseVolume) return;
@@ -1240,10 +1277,12 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
   });
 
   test.describe("sharepoint", () => {
-    test.skip(
-      !process.env.SP_SITE_URL,
-      "no live SharePoint credentials: set the SP_* block in the root .env",
-    );
+    test.beforeEach(() => {
+      expect(
+        !process.env.SP_SITE_URL,
+        "no live SharePoint credentials: set the SP_* block in the root .env",
+      ).toBe(false);
+    });
 
     test("sharepoint registered once under DuckDB resolves under every rebooted engine, no replay", async ({
       page,
@@ -1272,10 +1311,12 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
   }) => runRebootCase(page, (p) => registerIngest(p), { trino: "ingest" }));
 
   test.describe("govdata", () => {
-    test.skip(
-      !process.env.FREE_ASKAMERICA_KEY,
-      "no live AskAmerica/govdata credentials: set FREE_ASKAMERICA_KEY in the root .env",
-    );
+    test.beforeEach(() => {
+      expect(
+        !process.env.FREE_ASKAMERICA_KEY,
+        "no live AskAmerica/govdata credentials: set FREE_ASKAMERICA_KEY in the root .env",
+      ).toBe(false);
+    });
 
     test("govdata registered once under DuckDB resolves under every rebooted engine, no replay", async ({
       page,
@@ -1284,8 +1325,18 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
 
   test.describe("rss", () => {
     const RSS_ITEMS = [
-      { guid: "item-1", title: "First item", link: "https://example.com/1", pubDate: "Mon, 01 Jan 2024 00:00:00 GMT" },
-      { guid: "item-2", title: "Second item", link: "https://example.com/2", pubDate: "Tue, 02 Jan 2024 00:00:00 GMT" },
+      {
+        guid: "item-1",
+        title: "First item",
+        link: "https://example.com/1",
+        pubDate: "Mon, 01 Jan 2024 00:00:00 GMT",
+      },
+      {
+        guid: "item-2",
+        title: "Second item",
+        link: "https://example.com/2",
+        pubDate: "Tue, 02 Jan 2024 00:00:00 GMT",
+      },
     ];
     function rssFeedXml(): string {
       const items = RSS_ITEMS.map(
@@ -1350,14 +1401,19 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
 
     test("grpc_remote registered once under DuckDB resolves under every rebooted engine, no replay", async ({
       page,
-    }) => runRebootCase(page, (p) => registerGrpcRemote(p, E2E_GRPC_REMOTE_PORT), { trino: "grpc_remote" }));
+    }) =>
+      runRebootCase(page, (p) => registerGrpcRemote(p, E2E_GRPC_REMOTE_PORT), {
+        trino: "grpc_remote",
+      }));
   });
 
   test.describe("singlestore", () => {
-    test.skip(
-      !SINGLESTORE_AVAILABLE,
-      "needs SINGLESTORE_HOST/USERNAME/PASSWORD/DATABASE for the SingleStore Cloud workspace",
-    );
+    test.beforeEach(() => {
+      expect(
+        !SINGLESTORE_AVAILABLE,
+        "needs SINGLESTORE_HOST/USERNAME/PASSWORD/DATABASE for the SingleStore Cloud workspace",
+      ).toBe(false);
+    });
 
     test("singlestore registered once under DuckDB resolves under every rebooted engine, no replay", async ({
       page,
@@ -1390,7 +1446,8 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
 
     test("exasol registered once under DuckDB resolves under every rebooted engine, no replay", async ({
       page,
-    }) => runRebootCase(page, (p) => registerExasol(p, () => exasolFingerprint), { trino: "exasol" }));
+    }) =>
+      runRebootCase(page, (p) => registerExasol(p, () => exasolFingerprint), { trino: "exasol" }));
   });
 
   test.describe("kafka", () => {
@@ -1420,14 +1477,16 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
   });
 
   test.describe("snowflake", () => {
-    test.skip(
-      !(
-        process.env.SNOWFLAKE_ACCOUNT &&
-        process.env.SNOWFLAKE_USER &&
-        process.env.SNOWFLAKE_PASSWORD
-      ),
-      "no live Snowflake credentials in this environment",
-    );
+    test.beforeEach(() => {
+      expect(
+        !(
+          process.env.SNOWFLAKE_ACCOUNT &&
+          process.env.SNOWFLAKE_USER &&
+          process.env.SNOWFLAKE_PASSWORD
+        ),
+        "no live Snowflake credentials in this environment",
+      ).toBe(false);
+    });
     test.beforeAll(() => {
       execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "snowflake", "up"], { stdio: "pipe" });
     });
@@ -1441,14 +1500,16 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
   });
 
   test.describe("databricks", () => {
-    test.skip(
-      !(
-        process.env.DATABRICKS_SERVER_HOSTNAME &&
-        process.env.DATABRICKS_HTTP_PATH &&
-        process.env.DATABRICKS_TOKEN
-      ),
-      "no live Databricks credentials in this environment",
-    );
+    test.beforeEach(() => {
+      expect(
+        !(
+          process.env.DATABRICKS_SERVER_HOSTNAME &&
+          process.env.DATABRICKS_HTTP_PATH &&
+          process.env.DATABRICKS_TOKEN
+        ),
+        "no live Databricks credentials in this environment",
+      ).toBe(false);
+    });
     test.beforeAll(() => {
       execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "databricks", "up"], { stdio: "pipe" });
     });
@@ -1462,14 +1523,18 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
   });
 
   test.describe("fabric", () => {
-    test.skip(
-      !(process.env.FABRIC_SQL_SERVER && process.env.FABRIC_DATABASE),
-      "no live Fabric credentials in this environment",
-    );
-    test.skip(
-      !(process.env.FABRIC_RESOURCE_GROUP && process.env.FABRIC_CAPACITY_NAME),
-      "no FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME configured",
-    );
+    test.beforeEach(() => {
+      expect(
+        !(process.env.FABRIC_SQL_SERVER && process.env.FABRIC_DATABASE),
+        "no live Fabric credentials in this environment",
+      ).toBe(false);
+    });
+    test.beforeEach(() => {
+      expect(
+        !(process.env.FABRIC_RESOURCE_GROUP && process.env.FABRIC_CAPACITY_NAME),
+        "no FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME configured",
+      ).toBe(false);
+    });
     test.beforeAll(() => {
       execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "fabric", "up"], { stdio: "pipe" });
     });
@@ -1483,10 +1548,12 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
   });
 
   test.describe("bigquery", () => {
-    test.skip(
-      !(process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_APPLICATION_CREDENTIALS),
-      "no live GCP credentials in this environment",
-    );
+    test.beforeEach(() => {
+      expect(
+        !(process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_APPLICATION_CREDENTIALS),
+        "no live GCP credentials in this environment",
+      ).toBe(false);
+    });
     test.beforeAll(() => {
       execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "bigquery", "up"], { stdio: "pipe" });
     });
@@ -1506,11 +1573,13 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
     // guards against this independently (state-file reuse), but never rely on a single layer for
     // a real-money resource — see that script's own comment for the live incident this fixed.
     test.describe.configure({ retries: 0 });
-    test.skip(
-      !process.env.REDSHIFT_AWS_ACCESS_KEY_ID || !process.env.REDSHIFT_AWS_SECRET_ACCESS_KEY,
-      "no AWS credentials for the ephemeral Redshift Serverless lane (REDSHIFT_AWS_* in .env) — " +
-        "see scripts/redshift_e2e.py's own module doc",
-    );
+    test.beforeEach(() => {
+      expect(
+        !process.env.REDSHIFT_AWS_ACCESS_KEY_ID || !process.env.REDSHIFT_AWS_SECRET_ACCESS_KEY,
+        "no AWS credentials for the ephemeral Redshift Serverless lane (REDSHIFT_AWS_* in .env) — " +
+          "see scripts/redshift_e2e.py's own module doc",
+      ).toBe(false);
+    });
     let redshiftConn: RedshiftConnection | undefined;
     test.beforeAll(() => {
       test.setTimeout(900000); // Serverless namespace+workgroup create + TCP-ready can run ~10min
@@ -1531,7 +1600,15 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
     // genuine kill+respawn, not whether DuckDB can see it.
     test("redshift registered once under Trino resolves after a genuine reboot, no replay", async ({
       page,
-    }) => runRebootCase(page, (p) => registerRedshift(redshiftConn!)(p), {}, ["trino"], false, "trino"));
+    }) =>
+      runRebootCase(
+        page,
+        (p) => registerRedshift(redshiftConn!)(p),
+        {},
+        ["trino"],
+        false,
+        "trino",
+      ));
   });
 
   test.describe("synapse", () => {
@@ -1626,7 +1703,8 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
   test.describe("great_expectations", () => {
     test("checker source scan (great_expectations) survives an engine change + reboot, no replay", async ({
       page,
-    }) => runRebootCase(page, (p) => registerGreatExpectations(p), { trino: "great_expectations" }));
+    }) =>
+      runRebootCase(page, (p) => registerGreatExpectations(p), { trino: "great_expectations" }));
   });
 
   // REQ-1730: sqlite/firebird/airport were previously excluded from this whole scenario ("no
@@ -1832,7 +1910,12 @@ test.describe("scenario 1 extended: same source survives an engine change to a w
   test.use({ allowedBrowserErrors: ["ERR_CONNECTION_REFUSED"] });
 
   test.describe("mongodb -> snowflake", () => {
-    test.skip(!SNOWFLAKE_ENGINE_AVAILABLE, "no live Snowflake credentials (SNOWFLAKE_ACCOUNT/USER/PASSWORD)");
+    test.beforeEach(() => {
+      expect(
+        !SNOWFLAKE_ENGINE_AVAILABLE,
+        "no live Snowflake credentials (SNOWFLAKE_ACCOUNT/USER/PASSWORD)",
+      ).toBe(false);
+    });
     test.beforeAll(() => startDemoSources(["mongodb"]));
     test.afterAll(() => removeDemoSources(["mongodb"]));
 
@@ -1845,10 +1928,12 @@ test.describe("scenario 1 extended: same source survives an engine change to a w
   });
 
   test.describe("redis -> databricks", () => {
-    test.skip(
-      !DATABRICKS_ENGINE_AVAILABLE,
-      "no live Databricks credentials (DATABRICKS_SERVER_HOSTNAME/HTTP_PATH/TOKEN)",
-    );
+    test.beforeEach(() => {
+      expect(
+        !DATABRICKS_ENGINE_AVAILABLE,
+        "no live Databricks credentials (DATABRICKS_SERVER_HOSTNAME/HTTP_PATH/TOKEN)",
+      ).toBe(false);
+    });
     test.beforeAll(() => startDemoSources(["redis"]));
     test.afterAll(() => removeDemoSources(["redis"]));
 
@@ -1861,10 +1946,12 @@ test.describe("scenario 1 extended: same source survives an engine change to a w
   });
 
   test.describe("cassandra -> bigquery", () => {
-    test.skip(
-      !BIGQUERY_ENGINE_AVAILABLE,
-      "no live GCP credentials (GOOGLE_CLOUD_PROJECT/GOOGLE_APPLICATION_CREDENTIALS)",
-    );
+    test.beforeEach(() => {
+      expect(
+        !BIGQUERY_ENGINE_AVAILABLE,
+        "no live GCP credentials (GOOGLE_CLOUD_PROJECT/GOOGLE_APPLICATION_CREDENTIALS)",
+      ).toBe(false);
+    });
     test.beforeAll(() => startDemoSources(["cassandra"]));
     test.afterAll(() => removeDemoSources(["cassandra"]));
 
@@ -1909,10 +1996,12 @@ test.describe("scenario 1 extended: same source survives an engine change to a w
   });
 
   test.describe("elasticsearch -> fabric", () => {
-    test.skip(
-      !(process.env.FABRIC_SQL_SERVER && process.env.FABRIC_DATABASE),
-      "no live Fabric credentials: set FABRIC_SQL_SERVER/FABRIC_DATABASE in the root .env",
-    );
+    test.beforeEach(() => {
+      expect(
+        !(process.env.FABRIC_SQL_SERVER && process.env.FABRIC_DATABASE),
+        "no live Fabric credentials: set FABRIC_SQL_SERVER/FABRIC_DATABASE in the root .env",
+      ).toBe(false);
+    });
     test.beforeAll(() => startDemoSources(["elasticsearch"]));
     test.afterAll(() => removeDemoSources(["elasticsearch"]));
 
@@ -2056,8 +2145,6 @@ test.describe("scenario 2: real UI flow works when a non-default engine is prima
     test.setTimeout(240000);
     // "host.docker.internal", not "localhost" — Trino is primary from the very first
     // schema-introspection call here, made from INSIDE its own container.
-    await runFreshEngineCase(page, "trino", (p) =>
-      registerMongodb(p, "", "host.docker.internal"),
-    );
+    await runFreshEngineCase(page, "trino", (p) => registerMongodb(p, "", "host.docker.internal"));
   });
 });

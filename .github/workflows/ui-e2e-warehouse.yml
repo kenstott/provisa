@@ -1,0 +1,119 @@
+name: UI e2e (warehouse lane, live cloud warehouses)
+
+# source-to-query-cloud-warehouse.spec.ts drives the UI against live Snowflake, Databricks, BigQuery
+# and Fabric. Those are billed, so -- the integration warehouse lane's policy -- this runs nightly
+# against `integration` and on demand, never on a release push. Each case fails by name when its
+# credentials are absent (a skip hid that no lane ran them). The warehouse project runs on the core
+# backend (PROVISA_E2E_LANE=core); playwright.config.ts keeps it out of the core project.
+#
+# Secrets reach only the Playwright step, and only on schedule/dispatch: there is no pull_request
+# trigger, so no fork's code sees them.
+
+on:
+  schedule:
+    # Nightly (06:30 UTC). Scheduled runs use the default branch's copy of this file; the job
+    # checks out `integration`, as integration-suite.yml's warehouse job does.
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or commit to test (default: integration)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-e2e-warehouse-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Playwright warehouse lane
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CI: "true"
+      PROVISA_E2E_LANE: core
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'integration' }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      # Fabric's SQL endpoint is reached through Microsoft's ODBC Driver 18 (as in
+      # integration-suite.yml's warehouse job).
+      - name: Install Microsoft ODBC Driver 18 for SQL Server
+        run: |
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+            | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          curl -fsSL "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
+            | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+          sudo apt-get update -q
+          sudo ACCEPT_EULA=Y apt-get install -y -q msodbcsql18 unixodbc-dev
+          odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
+
+      - name: Install Python deps
+        run: uv sync --frozen --extra dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: provisa-ui/package-lock.json
+
+      - name: Install UI deps
+        working-directory: provisa-ui
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: provisa-ui
+        timeout-minutes: 6
+        run: npx playwright install chromium
+
+      # BigQuery reads its service-account key from a file, as integration-suite.yml's warehouse
+      # job materializes it.
+      - name: Materialize the GCP service-account key
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+        run: |
+          if [ -z "$GOOGLE_APPLICATION_CREDENTIALS_JSON" ]; then
+            echo "GOOGLE_APPLICATION_CREDENTIALS_JSON is not set; the bigquery case cannot run." >&2
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/gcp-key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
+
+      - name: Run Playwright warehouse lane
+        working-directory: provisa-ui
+        run: npx playwright test --project=warehouse --reporter=list,html
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+          BIGQUERY_LOCATION: ${{ secrets.BIGQUERY_LOCATION }}
+          FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
+          FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
+          FABRIC_WORKSPACE_ID: ${{ secrets.FABRIC_WORKSPACE_ID }}
+          FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
+          FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-warehouse
+          path: provisa-ui/playwright-report/
+          retention-days: 7

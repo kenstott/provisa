@@ -66,7 +66,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const PYTHON = path.join(ROOT, ".venv", "bin", "python");
 const SEED = path.join(ROOT, "provisa-ui", "e2e", "cloud_warehouse_seed.py");
 
-function seed(engine: "snowflake" | "databricks" | "bigquery" | "fabric", action: "up" | "down"): void {
+function seed(
+  engine: "snowflake" | "databricks" | "bigquery" | "fabric",
+  action: "up" | "down",
+): void {
   execFileSync(PYTHON, [SEED, engine, action], { stdio: "pipe" });
 }
 
@@ -77,15 +80,17 @@ const WIDGET_ROWS = [
 ];
 
 test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
-  test("snowflake: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    test.skip(
+  test("snowflake: add the source, register a table, query it on the SQL page", async ({
+    page,
+  }) => {
+    expect(
       !(
         process.env.SNOWFLAKE_ACCOUNT &&
         process.env.SNOWFLAKE_USER &&
         process.env.SNOWFLAKE_PASSWORD
       ),
       "no live Snowflake credentials in this environment (SNOWFLAKE_ACCOUNT/SNOWFLAKE_USER/SNOWFLAKE_PASSWORD)",
-    );
+    ).toBe(false);
     test.setTimeout(300000);
     seed("snowflake", "up");
     try {
@@ -134,14 +139,14 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
   test("databricks: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    test.skip(
+    expect(
       !(
         process.env.DATABRICKS_SERVER_HOSTNAME &&
         process.env.DATABRICKS_HTTP_PATH &&
         process.env.DATABRICKS_TOKEN
       ),
       "no live Databricks credentials in this environment (DATABRICKS_SERVER_HOSTNAME/HTTP_PATH/TOKEN)",
-    );
+    ).toBe(false);
     // 2026-09-15: was unconditionally skipped here after a live repro showed the workspace
     // gatekept INACTIVE (DENY_NEW_AND_EXISTING_RESOURCES) on every warehouse start attempt for
     // ~73h (external Databricks-side suspension, not a code/creds gap). Confirmed live-queryable
@@ -189,13 +194,11 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
     }
   });
 
-  test("bigquery: add the source, register a table, query it on the SQL page", async ({
-    page,
-  }) => {
-    test.skip(
+  test("bigquery: add the source, register a table, query it on the SQL page", async ({ page }) => {
+    expect(
       !(process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_APPLICATION_CREDENTIALS),
       "no live GCP credentials in this environment (GOOGLE_CLOUD_PROJECT/GOOGLE_APPLICATION_CREDENTIALS)",
-    );
+    ).toBe(false);
     test.setTimeout(300000);
     seed("bigquery", "up");
     try {
@@ -239,10 +242,10 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
   });
 
   test("fabric: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    test.skip(
+    expect(
       !(process.env.FABRIC_SQL_SERVER && process.env.FABRIC_DATABASE),
       "no live Fabric credentials in this environment (FABRIC_SQL_SERVER/FABRIC_DATABASE)",
-    );
+    ).toBe(false);
     // The prior "18456 system update" failure (reproduced repeatedly through 2026-09-15) is
     // consistent with the Fabric capacity backing this warehouse being paused/not provisioned,
     // not a code or credentials gap — a paused capacity rejects the SQL connection outright.
@@ -253,12 +256,12 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
     // `az login` session, same as tests/integration/synapse_provision.py — no separate env var),
     // which are not yet configured in this environment (no capacity has been created — see
     // fabric_capacity.py's docstring for the one-time `az fabric capacity create` command).
-    test.skip(
+    expect(
       !(process.env.FABRIC_RESOURCE_GROUP && process.env.FABRIC_CAPACITY_NAME),
       "no FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME configured — a Fabric capacity must be " +
         "created once (a real-money Azure resource), see tests/integration/fabric_capacity.py's " +
         "module docstring for the one-time az CLI command",
-    );
+    ).toBe(false);
     test.setTimeout(300000);
     seed("fabric", "up");
     try {
@@ -281,7 +284,10 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       // listbox — a strict-mode violation. Scope to the textbox role.
       await page.getByRole("textbox", { name: "Authentication" }).click();
       await page
-        .getByRole("option", { name: "Ambient Credential (az login / managed identity)", exact: true })
+        .getByRole("option", {
+          name: "Ambient Credential (az login / managed identity)",
+          exact: true,
+        })
         .click();
       await submitSourceAndExpectListed(page, sourceId);
 

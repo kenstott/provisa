@@ -29,7 +29,23 @@ on:
       - "config/provisa-trino-e2e.yaml"
       - "docker-compose.core.yml"
       - ".github/workflows/ui-e2e-swap-amd64.yml"
+  # Every swap case (live Snowflake, Databricks, BigQuery, Fabric, Redshift, SharePoint, govdata,
+  # SingleStore): billed, so -- the integration warehouse lane's policy -- nightly against
+  # `integration` and on demand, never on a release push. Scheduled runs use the default branch's
+  # copy of this file.
+  schedule:
+    - cron: "0 7 * * *"
   workflow_dispatch:
+    inputs:
+      all_cases:
+        description: "Run every swap case (live, billed services), not only exasol|saphana"
+        type: boolean
+        required: false
+        default: false
+      ref:
+        description: "Branch or commit to test (default: this ref; a scheduled run tests integration)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -40,12 +56,13 @@ concurrency:
 
 jobs:
   playwright:
-    name: Playwright swap lane (exasol, saphana)
+    name: Playwright swap lane
+    # exasol|saphana on a release push; every case nightly and on an all_cases dispatch.
     runs-on: ubuntu-latest
     # exasol's EXAStorage cold init and saphana's HXE tenant boot each budget up to 15m in their
     # own beforeAll (engine-swap.spec.ts), and both run twice (swap describe + reboot describe) on
     # this job's single worker, on top of the core stack's own Trino cold boot.
-    timeout-minutes: 90
+    timeout-minutes: ${{ (github.event_name == 'schedule' || inputs.all_cases) && 300 || 90 }}
     env:
       # playwright.config.ts keys `reuseExistingServer` off this: under CI every webServer must
       # be started by the harness, never adopted from a stale process.
@@ -57,6 +74,8 @@ jobs:
       TRINO_PORT: "8080"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'integration' || inputs.ref || github.sha }}
 
       # A skip caused by the wrong arch would be a green run that executed nothing — exactly what
       # this workflow exists to prevent (both sources are gated on RUNNING_IN_CI, not arch, so a
@@ -94,7 +113,22 @@ jobs:
       # through it — an empty placeholder is enough to let the mount (and Trino's boot) succeed,
       # same approach as amd64-engines.yml.
       - name: Placeholder for the gitignored SharePoint cert mount
+        if: "!(github.event_name == 'schedule' || inputs.all_cases)"
         run: touch sharepoint.pfx
+
+      # The every-case run registers a certificate-authenticated SharePoint source that Trino
+      # authenticates with through this mount, so the real certificate replaces the placeholder
+      # before Trino starts (the ownership dance is ui-e2e-trino.yml's: Trino reads it as uid 1000).
+      - name: Materialize the SharePoint client certificate (every-case run)
+        if: github.event_name == 'schedule' || inputs.all_cases
+        env:
+          SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
+        run: |
+          [ -n "$SP_CERT_P12_BASE64" ] || { echo "SP_CERT_P12_BASE64 is not set" >&2; exit 1; }
+          printf '%s' "$SP_CERT_P12_BASE64" | base64 -d > sharepoint.pfx
+          sudo chown 1000:1000 sharepoint.pfx
+          sudo chmod 600 sharepoint.pfx
+          echo "SP_CERT_PATH=$GITHUB_WORKSPACE/sharepoint.pfx" >> "$GITHUB_ENV"
 
       # docker-compose.core.yml also mounts these plugin dirs into Trino unconditionally; Trino
       # aborts with "No service providers of type io.trino.spi.Plugin" without them, surfacing
@@ -137,10 +171,70 @@ jobs:
           docker compose -f docker-compose.core.yml up minio-init
 
       - name: Run Playwright swap lane (exasol, saphana only)
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.all_cases)
         working-directory: provisa-ui
         env:
           PROVISA_OTEL_S3_ENDPOINT: http://localhost:9000
         run: npx playwright test --project=swap -g "exasol|saphana" --reporter=list,html
+
+      # The every-case run's live services. Each case fails by name without its credentials.
+      - name: Install Microsoft ODBC Driver 18 for SQL Server (Fabric)
+        if: github.event_name == 'schedule' || inputs.all_cases
+        run: |
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+            | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          curl -fsSL "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
+            | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+          sudo apt-get update -q
+          sudo ACCEPT_EULA=Y apt-get install -y -q msodbcsql18 unixodbc-dev
+          odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
+
+      - name: Materialize the GCP service-account key
+        if: github.event_name == 'schedule' || inputs.all_cases
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+        run: |
+          [ -n "$GOOGLE_APPLICATION_CREDENTIALS_JSON" ] || { echo "GOOGLE_APPLICATION_CREDENTIALS_JSON is not set" >&2; exit 1; }
+          printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/gcp-key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
+
+      - name: Run Playwright swap lane (every case)
+        if: github.event_name == 'schedule' || inputs.all_cases
+        working-directory: provisa-ui
+        env:
+          PROVISA_OTEL_S3_ENDPOINT: http://localhost:9000
+          SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
+          SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
+          SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
+          FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+          SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}
+          SINGLESTORE_PORT: ${{ secrets.SINGLESTORE_PORT }}
+          SINGLESTORE_USERNAME: ${{ secrets.SINGLESTORE_USERNAME }}
+          SINGLESTORE_PASSWORD: ${{ secrets.SINGLESTORE_PASSWORD }}
+          SINGLESTORE_DATABASE: ${{ secrets.SINGLESTORE_DATABASE }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+          BIGQUERY_LOCATION: ${{ secrets.BIGQUERY_LOCATION }}
+          GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
+          FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
+          FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
+          FABRIC_WORKSPACE_ID: ${{ secrets.FABRIC_WORKSPACE_ID }}
+          FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
+          FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          REDSHIFT_AWS_ACCESS_KEY_ID: ${{ secrets.REDSHIFT_AWS_ACCESS_KEY_ID }}
+          REDSHIFT_AWS_SECRET_ACCESS_KEY: ${{ secrets.REDSHIFT_AWS_SECRET_ACCESS_KEY }}
+          REDSHIFT_AWS_REGION: ${{ secrets.REDSHIFT_AWS_REGION }}
+        run: npx playwright test --project=swap --reporter=list,html
 
       - name: Upload Playwright report
         if: always()

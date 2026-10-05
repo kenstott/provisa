@@ -149,6 +149,10 @@ const TRINO_SPECS = [
 // sets up. Excluded from "core" the same way TRINO_SPECS is: a routine core-lane run has no Trino
 // backend at all and this spec would just fail on a missing PROVISA_E2E_TRINO_CONFIG.
 const SWAP_SPECS = ["**/engine-swap.spec.ts"];
+// Live cloud warehouses (Snowflake, Databricks, BigQuery, Fabric): billed, so they run nightly and on
+// dispatch (ui-e2e-warehouse.yml), never on a release push -- the integration warehouse lane's
+// policy. On the core backend, as their own project so the core lane never selects them.
+const WAREHOUSE_SPECS = ["**/source-to-query-cloud-warehouse.spec.ts"];
 // Specs whose sources only an amd64 host can boot (exasol/docker-db never turns healthy under an
 // arm64 host's emulation). The core project collects them only on an amd64 host — ui-e2e-core.yml's
 // ubuntu-latest runner — so an arm64 dev box never collects them rather than skipping them.
@@ -554,12 +558,14 @@ export default defineConfig({
             testIgnore: [
               ...TRINO_SPECS,
               ...SWAP_SPECS,
+              ...WAREHOUSE_SPECS,
               ...REGIONS_SPECS,
               ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
             ],
           },
         ]
       : []),
+    ...(RUNS_CORE ? [{ name: "warehouse", testMatch: WAREHOUSE_SPECS }] : []),
     ...(RUNS_TRINO
       ? [
           {
