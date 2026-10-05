@@ -134,7 +134,7 @@ def _register(ctx, monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "provisa.api.app", mod)
     ctx["registered"] = registered
     try:
-        asyncio.run(schema_common._sync_view_mv("v", ctx["sql"], 300))
+        asyncio.run(schema_common._sync_view_mv("v", ctx["sql"], 300, draft=False))
         ctx["error"] = None
     except ValueError as e:
         ctx["error"] = str(e)
