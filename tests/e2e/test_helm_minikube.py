@@ -134,6 +134,13 @@ _CHART_SETS = [
     "ingress.enabled=false",
     "--set",
     "provisa.flightService.type=ClusterIP",
+    # CPU requests sized to the 4-CPU minikube: at the chart's production default (1 CPU per Trino
+    # pod) the scaling test's second worker never schedules ("0/1 nodes are available: Insufficient
+    # cpu", run 37318305658) beside the coordinator, the first worker and the rest of the release.
+    "--set",
+    "trino.coordinator.resources.requests.cpu=250m",
+    "--set",
+    "trino.worker.resources.requests.cpu=250m",
     "--set",
     "trino.coordinator.resources.requests.memory=512Mi",
     "--set",
