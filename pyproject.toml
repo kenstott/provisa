@@ -226,6 +226,7 @@ dev = [
     "provisa-pg-ext==0.1.1",
     "pytest",
     "pytest-asyncio",
+    "pytest-timeout",  # scripts/ci/run_lane.py bounds every test, so a hang fails by name
     "pytest-bdd",
     "pytest-cov",
     # REQ-1759: tests/unit/ alone collects ~12K tests, single-process at ~1%/19s (~50min
