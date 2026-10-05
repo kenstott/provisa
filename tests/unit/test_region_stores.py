@@ -341,3 +341,15 @@ def test_the_boot_reconcile_runs_once_the_orgs_regions_are_bound():
 
     boot = inspect.getsource(app_mod._load_and_build)
     assert boot.index("await _bind_region_stores(") < boot.index("reconcile_landed_tables()")
+
+
+def test_a_duckdb_lanes_runtime_attaches_the_store_pinned_on_its_engine():
+    """REQ-1922: the DuckDB runtime that executes a lane's writes resolves its store through the
+    engine it serves — the one the lane pinned — never a private engine of its own, which would
+    attach the deployment's embedded default (where a region's views were being written)."""
+    from provisa.federation.engine import build_engine
+
+    lane = "postgresql://reader@eu-store:5432/eu"
+    engine = build_engine("duckdb")
+    engine.pin_materialize_store(lane)
+    assert engine.backend._store_runtime()._store_dsn() == lane

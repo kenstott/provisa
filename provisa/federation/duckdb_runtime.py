@@ -172,7 +172,9 @@ def _local_store_name(schema: str, table: str) -> str:
 
 
 class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
-    def __init__(self, *, materialize_dsn: str | None = None) -> None:
+    def __init__(
+        self, *, materialize_dsn: str | None = None, store_engine: Any | None = None
+    ) -> None:
         # When PROVISA_DUCKDB_EXT_DIR is set (the embedded tier stages the pinned extension blobs there
         # from the provisa-duckdb-ext PyPI package), load extensions from it and DISABLE network
         # autoinstall — an air-gapped/enterprise install must never silently reach extensions.duckdb.org;
@@ -185,6 +187,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         )
         self._con = duckdb.connect(config=_cfg)
         self._engine = build_duckdb_engine()
+        # REQ-1922: the FederationEngine whose store this runtime lands in — the backend's own, so
+        # the store an org lane pins on it (``pin_materialize_store``) is the one attached. A
+        # runtime built on its own (a test, introspection) lands where its own engine resolves.
+        self._store_engine = store_engine if store_engine is not None else self._engine
         # An explicit materialize-store DSN override (tests). When None it is resolved lazily via the
         # engine's invariant (configured store → declared default → error) only when a materialize
         # operation actually needs it — the runtime is also built for introspection, which does not.
@@ -700,7 +706,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         return (
             self._materialize_dsn
             if self._materialize_dsn is not None
-            else (self._engine.materialize_store())
+            else self._store_engine.materialize_store()
         )
 
     def _store_is_duckdb(self) -> bool:

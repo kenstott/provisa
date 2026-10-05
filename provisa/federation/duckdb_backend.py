@@ -84,7 +84,8 @@ class DuckDBBackend(NativeEngineBackend):
         return transpile_to_duckdb(pg_sql)
 
     def _new_runtime(self) -> Any:
-        return DuckDBFederationRuntime()
+        # REQ-1922: the runtime lands in this engine's store — the one an org lane pins on it.
+        return DuckDBFederationRuntime(store_engine=self.engine)
 
 
 class LocalEvaluationFailed(RuntimeError):
