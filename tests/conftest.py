@@ -836,6 +836,21 @@ def _otlp_log_handlers_end_with_their_module():
         root.removeHandler(handler)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _grpc_client_instrumentation_ends_with_its_module():
+    """An application built in this process instruments the PROCESS's gRPC client when it sets up
+    telemetry (provisa/api/otel_setup.py) and never undoes it. OTel's client interceptor hands a
+    server-streaming call back as a bare generator, so a later test's own client lost the call
+    object -- ``trailing_metadata()`` raised AttributeError. A module's instrumentation is undone
+    when the module is done."""
+    yield
+    from opentelemetry.instrumentation.grpc import GrpcInstrumentorClient
+
+    client = GrpcInstrumentorClient()
+    if client.is_instrumented_by_opentelemetry:
+        client.uninstrument()
+
+
 @pytest.fixture(autouse=True)
 def _audit_writer_settled_between_tests():
     """Every test starts with a running writer and leaves nothing queued behind it. A record a
