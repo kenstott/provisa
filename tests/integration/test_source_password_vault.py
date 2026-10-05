@@ -99,7 +99,7 @@ async def _row(source_id: str) -> dict:
     from provisa.api.app import state
     from provisa.core.repositories import source as source_repo
 
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:  # sources is a model table (REQ-1922)
         row = await source_repo.get(conn, source_id)
     assert row is not None, f"source {source_id!r} was not persisted"
     return row
