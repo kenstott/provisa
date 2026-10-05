@@ -22199,3 +22199,31 @@ Under multitenancy a request acts in the org it names, and there is no implied o
 **Code:** —
 
 **Tests:** —
+
+## 2. Authentication & Identity
+
+### REQ-1936 · Session {#REQ-1936}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
+
+A browser session's stored bearer is cleared only when the identity provider says the credential is dead (signed out, revoked, or a refresh rejected for the credential itself). A failure to reach the provider -- a network error, a timeout, rate limiting, or the provider's internal error (Firebase auth/network-request-failed, auth/timeout, auth/too-many-requests, auth/internal-error) -- is not a signed-out state: the stored bearer is kept, the request that needed a fresh one uses it, and the next request asks the provider again ([REQ-1434](#REQ-1434)). Treating a transient failure as sign-out deleted a still-valid bearer on a network blip and forced a sign-in the user did not ask for.
+
+**Use case:** A user on a flaky network keeps working; a momentary failure to reach the identity provider does not sign them out.
+
+**Code:** —
+
+**Tests:** `provisa-ui/src/__tests__/firebaseTokenSync.test.ts`, `provisa-ui/src/__tests__/requestTimeToken.test.ts`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1937 · UI {#REQ-1937}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+
+Every results grid -- the SQL explorer's results, the admin reports and the governed table viewer, which share one grid -- filters each column Excel-style, typed by the column's type, beyond today's case-insensitive contains. Each column's filter offers operators for its type: text (contains, equals, starts with, ends with, does not contain, is empty); numbers (=, not =, <, <=, >, >=, between); dates and times (before, after, between, and relative periods such as the last N days or this month); booleans and enumerations a checklist; every type is-empty and is-not-empty. A value checklist lists the column's distinct values in the rows the grid holds, with their counts and a search box, and filters to the values ticked. The column's filter box also takes a quick syntax -- >100, 10..20, !text, a, b, c, =exact -- and plain text keeps meaning contains, so nothing a reader types today changes meaning. A column's type comes from the result's column types, or is inferred from its values when the result carries none. Active filters show as removable chips above the grid, next to the clear-filters control ([REQ-1442](#REQ-1442)). Filters on several columns combine with AND. When the grid holds only part of the result -- cut at the row limit or with more pages to fetch -- it says the filter applies to the rows loaded, naming their count, so a filtered page is never read as the whole answer; the server-paged governed viewer sends the same typed filters into its query. A table-level builder with OR and nested groups is not part of this requirement. Every new label is translated in every locale.
+
+**Use case:** An operator reading the request-log report filters duration to >500 and status to the ticked values error and timeout, and sees how many of the loaded rows match, without writing SQL.
+
+**Code:** —
+
+**Tests:** —
