@@ -24,9 +24,21 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from provisa.compiler.context import build_context
+from provisa.compiler.introspect import ColumnMetadata
+from provisa.compiler.parser import parse_query
+from provisa.compiler.rls import RLSContext
+from provisa.compiler.schema_gen import SchemaInput, generate_schema
+from provisa.compiler.sql_gen import compile_query
+from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
+from provisa.compiler.stage2 import apply_governance, build_governance_context
 from provisa.core.models import Source, SourceType
 from provisa.federation import pgwire_replica as pr
 from provisa.federation.connector_duckdb import _DuckDBPgwireConnector
+from provisa.transpiler.transpile import transpile
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops
+
+_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
 
 pytestmark = [pytest.mark.integration]
 
@@ -103,3 +115,59 @@ def test_attach_is_read_only(attached):
     rel = f'"{details["raw_alias"]}"."{details["remote_schema"]}"."items"'
     with pytest.raises(duckdb.Error):
         con.execute(f"INSERT INTO {rel} VALUES (4, 'delta', 40)")
+
+
+def _governed_sql(schema: str, gql: str, rls: RLSContext) -> tuple[str, list]:
+    """The pipeline's SQL and parameters for ``gql`` over ``schema.items``, governed by ``rls``, in
+    DuckDB's dialect."""
+    col = lambda n, t: ColumnMetadata(column_name=n, data_type=t, is_nullable=True)  # noqa: E731
+    si = SchemaInput(
+        tables=[
+            {
+                "id": 1,
+                "source_id": "probe-files",
+                "domain_id": "files",
+                "schema_name": schema,
+                "table_name": "items",
+                "write_ops": registry_write_ops("files"),
+                "columns": [
+                    {"column_name": c, "visible_to": ["admin"]} for c in ("id", "name", "qty")
+                ],
+            }
+        ],
+        relationships=[],
+        column_types={1: [col("id", "integer"), col("name", "varchar"), col("qty", "integer")]},
+        naming_rules=[],
+        role=_ADMIN,
+        domains=[{"id": "files", "description": "Files"}],
+        source_types={"probe-files": "files"},
+    )
+    ctx = build_context(si)
+    compiled = compile_query(parse_query(generate_schema(si), gql, {}, ctx=ctx), ctx)[0]
+    gov = build_governance_context("admin", rls, {}, ctx, si.tables, role=_ADMIN)
+    sql = transpile(
+        rewrite_semantic_to_physical(apply_governance(compiled.sql, gov), ctx), "duckdb"
+    )
+    return sql, list(compiled.params)
+
+
+def test_a_string_filter_and_a_string_row_rule_read_through_the_attach(attached):
+    """DuckDB pushes every string comparison to the pgwire server as ``= 'v' COLLATE "C"``; the
+    Calcite bundle must answer it with the filtered rows (it refused COLLATE: "Failed to prepare
+    COPY ..."), so a string filter and a string row rule both read live through the attach."""
+    con, details = attached
+    rel = f'"{details["raw_alias"]}"."{details["remote_schema"]}"."items"'
+    con.execute("CREATE SCHEMA files_src")
+    con.execute(f"CREATE VIEW files_src.items AS SELECT * FROM {rel}")
+    rls = RLSContext(rules={1: "name <> 'gamma'"}, domain_rules={})
+
+    sql, params = _governed_sql(
+        "files_src", '{ items(where: {name: {eq: "beta"}}) { id name qty } }', rls
+    )
+    assert params == ["beta"] and "gamma" in sql  # both string predicates reach the attached scan
+    rows = con.execute(sql, params).fetchall()
+    assert len(rows) == 1 and "beta" in str(rows[0]), rows
+
+    governed, params = _governed_sql("files_src", "{ items { id name qty } }", rls)
+    names = str(con.execute(governed, params).fetchall())
+    assert "alpha" in names and "beta" in names and "gamma" not in names, names
