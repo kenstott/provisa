@@ -99,10 +99,19 @@ is_wsl() { grep -qiE "microsoft|wsl" /proc/version 2>/dev/null; }
 
 # Probe the MCP port's REAL scheme — never guess from env. The runtime scheme depends on more than
 # PROVISA_MCP_TLS (TLS also needs a cert to have been created, else the server falls back to http),
-# so the only truth is what's listening: a successful TLS handshake => https, otherwise http.
+# so the only truth is what's listening. Plain HTTP is asked first: a TLS ClientHello sent to the
+# plain-HTTP server (the usual setup) made uvicorn log "Invalid HTTP request received." on every
+# start. Any HTTP status back => http; otherwise a successful TLS handshake => https.
 _mcp_scheme() {
-  local port="$1"
-  curl -sk -o /dev/null --max-time 2 "https://localhost:$port/mcp" 2>/dev/null && echo https || echo http
+  local port="$1" code
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://localhost:$port/mcp" 2>/dev/null)
+  if [ -n "$code" ] && [ "$code" != "000" ]; then
+    echo http
+  elif curl -sk -o /dev/null --max-time 2 "https://localhost:$port/mcp" 2>/dev/null; then
+    echo https
+  else
+    echo http
+  fi
 }
 
 # Print the MCP connect line + (under WSL) the explanation the WSL/Windows split demands.
