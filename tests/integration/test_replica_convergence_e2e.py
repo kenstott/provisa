@@ -152,7 +152,11 @@ def _replica_rows(pg: _SourceAndEngine) -> int | None:
     with psycopg.connect(pg.url(pg.engine_port, "provisa"), autocommit=True) as conn:
         if conn.execute("SELECT to_regclass(%s)", (_REPLICA,)).fetchone()[0] is None:
             return None
-        return conn.execute(f"SELECT COUNT(*) FROM {_REPLICA}").fetchone()[0]
+        try:
+            return conn.execute(f"SELECT COUNT(*) FROM {_REPLICA}").fetchone()[0]
+        except psycopg.errors.UndefinedTable:
+            # Dropped (the retirement this module waits for) between the lookup and the count.
+            return None
 
 
 def _wait(condition, *, seconds: float, what: str) -> None:
