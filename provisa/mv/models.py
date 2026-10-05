@@ -120,6 +120,10 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # this through the one pipeline (``mv.governed_build``); set wherever ``sql`` is set from a
     # definition.
     semantic_sql: str | None = None
+    # REQ-1921: the org region the view names, None for none. One that names a region is built,
+    # refreshed and kept only by that region (``replica_converge.builds_here``); other regions
+    # read that copy where it is kept. One naming none is built by every region into its own.
+    region: str | None = None
     # The registered tables (bare names) a SQL-defined view reads, from its SEMANTIC SQL — taken
     # before ``sql`` is lowered to physical. A write to any of them marks the view stale
     # (registry.mark_stale); ``source_tables`` stays what the event graph is built from.

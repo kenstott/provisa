@@ -402,6 +402,16 @@ def _wire_replica_builds(scheduler: Any, state: Any, log: Any) -> None:
         )
 
 
+def _views_built_here(registry: Any) -> list[Any]:
+    """The enabled views this region builds (REQ-1921): every one naming no region, and those
+    naming this one. One naming another region is built and kept only there."""
+    from provisa.federation.replica_converge import builds_here
+
+    if registry is None:
+        return []
+    return [mv for mv in registry.get_enabled() if builds_here(mv.region)]
+
+
 def _lineage(mvs: list[Any], state: Any, log: Any) -> dict[str, set[str]]:
     """The views' edges, resolved against the model (``events.nodes.lineage_graph``). A view
     whose input does not resolve was refused when it was declared, so meeting one here is a
@@ -444,8 +454,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # below can skip the event loop (an MV lineage cycle must not leave replicas unbuilt).
         _wire_replica_builds(scheduler, state, log)
 
-        registry = getattr(state, "mv_registry", None)
-        mvs = registry.get_enabled() if registry is not None else []
+        mvs = _views_built_here(getattr(state, "mv_registry", None))
 
         # The fan-out set: each view's inputs resolved against the model (REQ-939), never matched
         # by the spelling its SQL uses. A view whose input does not resolve was refused when it was
@@ -779,8 +788,7 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
 
             return _scalar
 
-        registry = getattr(state, "mv_registry", None)
-        mvs = registry.get_enabled() if registry is not None else []
+        mvs = _views_built_here(getattr(state, "mv_registry", None))
         graph = _lineage(mvs, state, log)
         try:
             dependents_of = supervisor.dependents_of(graph)

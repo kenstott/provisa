@@ -2477,6 +2477,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     expected_events=input.mv_expected_events,  # REQ-961
                     business_day_grain=input.mv_business_day_grain,  # REQ-962
                     draft=model.draft,  # REQ-1921
+                    region=model.region,  # REQ-1921
                 )
             except ValueError as _det_err:  # REQ-964: reject non-deterministic MV SQL
                 return MutationResult(success=False, message=str(_det_err))

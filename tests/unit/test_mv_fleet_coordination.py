@@ -346,3 +346,26 @@ async def test_each_region_builds_its_own_copy_of_a_view_against_its_own_state(
     async with model.acquire() as conn:
         definitions = (await conn.execute_core(select(DEFINITIONS.c.id))).fetchall()
     assert [d.id for d in definitions] == [MV_ID]
+
+
+@pytest.mark.asyncio
+async def test_a_view_naming_another_region_is_never_claimed_or_recorded_here(
+    tmp_path, monkeypatch
+):
+    """REQ-1921: a refresh on a us node of a view naming eu is refused before anything is claimed
+    or written to us's state, with the reason as the view's error."""
+    from provisa.core import process_region
+
+    model = _plain_db(tmp_path / "model.db", DEFINITIONS)
+    us = _plain_db(tmp_path / "us.db", MVT)
+    mv = _mv()
+    mv.region = "eu"
+    reg = MVRegistry()
+    reg.register(mv)
+    monkeypatch.setattr(process_region, "_region", "us")
+    engine = _FakeEngine(count=3)
+    await refresh_mv(engine, mv, reg, store=model, writer=INST_A, ledger=us)
+    assert engine.sqls == []
+    async with us.acquire() as conn:
+        assert (await conn.execute_core(select(MVT))).fetchall() == []
+    assert "names region 'eu'" in (reg.get(MV_ID).last_error or "")

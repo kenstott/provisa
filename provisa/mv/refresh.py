@@ -558,9 +558,14 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
         require_readable_inputs,
     )
 
+    # REQ-1921: a view naming another region is built and refreshed only there — refused here
+    # before anything is claimed or recorded in this region's state.
+    from provisa.mv.governed_build import ViewNotBuildable, require_built_here  # noqa: PLC0415
+
     try:
+        require_built_here(mv)
         await require_readable_inputs(mv, state)
-    except ViewInputNotReadable as refused:
+    except (ViewNotBuildable, ViewInputNotReadable) as refused:
         registry.mark_refresh_failed(mv.id, str(refused))
         log.error("MV %s not refreshed: %s", mv.id, refused)
         return
@@ -924,7 +929,11 @@ async def detect_orphans(  # REQ-234
     )
     actual_tables = {row[0] for row in rows}
 
-    known_tables = {mv.target_table for mv in registry.all()}
+    # REQ-1921: a view naming another region is kept only there — a copy of it here (left when
+    # its region changed) is an orphan of this region's store like a removed view's.
+    from provisa.federation.replica_converge import builds_here
+
+    known_tables = {mv.target_table for mv in registry.all() if builds_here(mv.region)}
     orphans = actual_tables - known_tables
     if orphans:
         log.warning(

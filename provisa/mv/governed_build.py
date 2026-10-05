@@ -41,6 +41,7 @@ async def view_build_sql(mv: "MVDefinition", engine: Any) -> str:
     from provisa.api.app import state
     from provisa.core import region_admin
 
+    require_built_here(mv)
     if engine is not None and region_admin.governs_region_work():
         from provisa.federation.query_residency import prepare_engine_residency
 
@@ -59,6 +60,7 @@ async def view_build_rows(mv: "MVDefinition", engine: Any) -> list[dict]:
     from provisa.api.app import state
     from provisa.core import region_admin
 
+    require_built_here(mv)
     if region_admin.governs_region_work():
         from provisa.pgwire._pipeline import _execute_plan
 
@@ -108,6 +110,17 @@ class ViewNotBuildable(RuntimeError):
         self.view = view
         self.params = {"view": view}
         super().__init__(f"view {view!r} cannot be built in this region: {why}")
+
+
+def require_built_here(mv: "MVDefinition") -> None:
+    """Refuse a build of ``mv`` here when it names another region, which alone builds it
+    (REQ-1921, A VIEW MAY NAME A REGION)."""
+    from provisa.federation.replica_converge import builds_here
+
+    if not builds_here(mv.region):
+        raise ViewNotBuildable(
+            mv.id, f"it names region {mv.region!r}, which alone builds and refreshes it"
+        )
 
 
 async def _governed_plan(state: Any, mv: "MVDefinition") -> Any:

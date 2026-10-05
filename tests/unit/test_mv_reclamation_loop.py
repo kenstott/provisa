@@ -70,3 +70,32 @@ async def test_detect_orphans_returns_untracked_tables():
     orphans = await refresh.detect_orphans(engine, reg, schema_name="s", catalog="c")
 
     assert orphans == ["mv_stray"]
+
+
+@pytest.mark.asyncio
+async def test_a_copy_of_a_view_another_region_keeps_is_an_orphan_here():
+    """REQ-1921: a view naming eu is kept only in eu — on a us node its table (left when its
+    region changed) is reaped like a removed view's."""
+    from provisa.core import process_region
+
+    platform = {
+        "regions": [
+            {"id": "eu", "address": "https://eu.example.com"},
+            {"id": "us", "address": "https://us.example.com"},
+        ]
+    }
+    reg = MVRegistry()
+    for mv_id, region in (("here", None), ("ours", "us"), ("theirs", "eu")):
+        reg.register(
+            MVDefinition(
+                id=mv_id, source_tables=["t"], target_catalog="c", target_schema="s", region=region
+            )
+        )
+    engine = _RecordingEngine(tables=["mv_here", "mv_ours", "mv_theirs"])
+    was = process_region._region
+    try:
+        process_region.bind_launch(platform, requested="us")
+        orphans = await refresh.detect_orphans(engine, reg, schema_name="s", catalog="c")
+    finally:
+        process_region._region = was
+    assert orphans == ["mv_theirs"]

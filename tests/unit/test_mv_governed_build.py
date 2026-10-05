@@ -238,3 +238,34 @@ async def test_a_join_view_over_a_table_the_model_cannot_name_is_refused(model, 
     del app.state.view_context.tables["orders"]
     with pytest.raises(ViewNotBuildable, match="'orders' has no name in the model"):
         await view_build_sql(_join_view(), _Engine())
+
+
+@pytest.mark.asyncio
+async def test_a_view_naming_another_region_is_built_only_there(pipeline, node_in):
+    """REQ-1921, A VIEW MAY NAME A REGION: built and refreshed only by its region."""
+    from provisa.mv.governed_build import ViewNotBuildable, view_build_rows, view_build_sql
+
+    node_in("us")
+    view = _view()
+    view.region = "eu"
+    with pytest.raises(ViewNotBuildable, match="names region 'eu'"):
+        await view_build_sql(view, _Engine())
+    with pytest.raises(ViewNotBuildable, match="names region 'eu'"):
+        await view_build_rows(view, _Engine())
+    assert pipeline.routed == []
+    view.region = "us"
+    await view_build_sql(view, _Engine())
+    assert len(pipeline.routed) == 1
+
+
+def test_the_event_loop_wires_only_the_views_this_region_builds(node_in):
+    from provisa.events.app_wiring import _views_built_here
+    from provisa.mv.registry import MVRegistry
+
+    node_in("us")
+    reg = MVRegistry()
+    for mv_id, region in (("everywhere", None), ("ours", "us"), ("theirs", "eu")):
+        view = _view()
+        view.id, view.target_table, view.region = mv_id, f"mv_{mv_id}", region
+        reg.register(view)
+    assert sorted(v.id for v in _views_built_here(reg)) == ["everywhere", "ours"]

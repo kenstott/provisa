@@ -224,6 +224,7 @@ def _state_with_mv(*, column_types):
         refresh_interval=600,
         debounce_quiet=0.0,
         debounce_max_delay=None,
+        region=None,  # REQ-1921: names no region — built by every region
     )
     return SimpleNamespace(
         model_db=(_one_db := _fake_db([])),

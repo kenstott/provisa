@@ -549,6 +549,7 @@ async def register_table(
             expected_events=input.mv_expected_events,  # REQ-961
             business_day_grain=input.mv_business_day_grain,  # REQ-962
             draft=model.draft,  # REQ-1921
+            region=model.region,  # REQ-1921
         )
 
     await _rebuild_schemas()

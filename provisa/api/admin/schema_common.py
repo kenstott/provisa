@@ -578,6 +578,7 @@ async def _sync_view_mv(
     expected_events: list[str] | None = None,  # REQ-961: preflight freshness contract
     business_day_grain: bool = False,  # REQ-962: gate windows to business days
     draft: bool,  # REQ-1921: checked as saved, registered for building only once released
+    region: str | None,  # REQ-1921: the region the view names (None: none), where it is built
 ) -> None:
     """Register or update an MVDefinition for a materialized user-defined view. A draft view is
     held to every rule a saved view is, and is not registered: nothing builds it."""
@@ -648,6 +649,7 @@ async def _sync_view_mv(
         enabled=True,
         sql=view_sql,
         semantic_sql=view_sql,  # REQ-1921/1922
+        region=region,  # REQ-1921
         read_tables=read_table_names(view_sql),
         expose_in_sdl=False,
         status=existing.status if existing is not None else MVStatus.STALE,

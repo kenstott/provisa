@@ -705,6 +705,7 @@ def _load_mv_and_views_config(
             join_pattern=jp,
             sql=mvc.get("sql"),
             semantic_sql=mvc.get("sql"),  # REQ-1921/1922
+            region=mvc.get("region"),  # REQ-1921
             expose_in_sdl=mvc.get("expose_in_sdl", False),
             sdl_config=sdl_cfg,
             preprocess=mvc.get("preprocess"),  # REQ-957 (purity-checked at boot compile)
