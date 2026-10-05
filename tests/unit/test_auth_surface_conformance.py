@@ -112,8 +112,10 @@ def _state() -> SimpleNamespace:
         auth_config=_auth_config(),
         auth_middleware_active=True,
         multitenancy=False,
+        org_id="default",
         admin_db=_ADMIN_POOL,
         roles={},
+        platform_roles={},
         contexts={"analyst": object(), "steward": object()},
     )
 
@@ -211,6 +213,7 @@ def _http(cred: Credential, secret: str) -> str:
         provider=build_auth_provider(_auth_config(), admin_pool=_ADMIN_POOL),
         mapping_rules=[],
         default_role="analyst",
+        default_org_id="default",  # the deployment org the platform plane is read in (REQ-1266)
     )
 
     @app.get("/conformance")

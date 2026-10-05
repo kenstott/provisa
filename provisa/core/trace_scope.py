@@ -315,7 +315,7 @@ async def request_is_debug(
 
     A process with no control plane (tooling, a unit under test) has no operator settings: no
     window is open and no role is permitted the hint."""
-    from provisa.core.request_context import current_org
+    from provisa.core.request_context import require_current_org
 
     admin_db = state.admin_db
     if admin_db is None:
@@ -324,9 +324,8 @@ async def request_is_debug(
         return False
     snapshot = await current_snapshot(admin_db)
     return snapshot.debug_for(
-        # A default-org request leaves the ContextVar unset and is served by the deployment's own
-        # org (the same resolution the tier caps use).
-        org_id=current_org.get() or state.org_id,
+        # The org the request is bound to; unbound work has no org to answer for (REQ-1266).
+        org_id=require_current_org(),
         role_id=role_id,
         source_ids=source_ids,
         hint=hint,

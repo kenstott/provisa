@@ -147,19 +147,27 @@ def test_multi_root_graphql_query_runs_its_fields_as_one_task_on_the_request_thr
     request_thread: list[int] = []
 
     async def _request():
+        import provisa.api.app as app_mod
+        from provisa.core.request_context import reset_current_org, set_current_org
+
         request_thread.append(threading.get_ident())
-        return await endpoint._handle_query(
-            None,
-            None,
-            state,
-            {},
-            {},
-            "json",
-            "analyst",
-            cache_ttl=None,
-            cache_opt_in=False,
-            debug_trace=False,
-        )
+        # the request's org, bound on its thread as the org-routing middleware binds it (REQ-1266)
+        token = set_current_org(app_mod.state.org_id)
+        try:
+            return await endpoint._handle_query(
+                None,
+                None,
+                state,
+                {},
+                {},
+                "json",
+                "analyst",
+                cache_ttl=None,
+                cache_opt_in=False,
+                debug_trace=False,
+            )
+        finally:
+            reset_current_org(token)
 
     with (
         patch.object(endpoint, "_split_action_fields", lambda _document, _state: ([], ["a", "b"])),

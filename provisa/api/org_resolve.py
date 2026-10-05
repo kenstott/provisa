@@ -18,8 +18,8 @@ protocols (pgwire/bolt/flight/gRPC) authenticate a
 principal but have no middleware chain, so they resolve the org here — once, at session
 establishment — using the SAME membership rule as the HTTP middleware:
 
-  - single-org (multitenancy off): every session binds the default org (``state.org_id``);
-    the ContextVar is left unset and the AppState shims resolve the default runtime.
+  - single-org (multitenancy off): every session binds the deployment's one org (``state.org_id``),
+    explicitly -- an unbound session is served no org's runtime.
   - multitenant: the authenticated ``user_id`` is looked up in ``user_org_memberships``.
     A platform admin (``admin``/``superadmin``) or a client-supplied org they belong to is
     honored; an org-scoped credential binds its own org; an org nobody named, or a non-member
@@ -69,12 +69,12 @@ async def resolve_session_org(
     requested_org: str | None = None,
     credential_org: str | None = None,
     named_by: str = "name the org in the request",
-) -> str | None:
-    """Resolve the org a protocol session should bind, or None to use the default runtime.
+) -> str:
+    """Resolve the org a protocol session binds.
 
-    Returns None for single-org deployments (caller leaves ``current_org`` unset → default
-    runtime). Under multitenancy, returns the org id to bind; raises :class:`OrgResolutionError`
-    when the principal is unresolvable to exactly one permitted org.
+    Single-org deployments bind the deployment's one org. Under multitenancy, returns the org id
+    to bind; raises :class:`OrgResolutionError` when the principal is unresolvable to exactly one
+    permitted org.
 
     REQ-1235: ``requested_org`` is what the client NAMED (SNI host, ticket or metadata org) and
     authorizes nothing. ``credential_org`` is the org a credential was issued for (a personal
@@ -87,7 +87,7 @@ async def resolve_session_org(
     calling surface names one; it goes into the refusal so the client is told what to send.
     """
     if not getattr(state, "multitenancy", False):
-        return None
+        return state.org_id
 
     member_org_ids: list[str] = []
     if user_id is not None and state.admin_db is not None:
@@ -108,9 +108,9 @@ async def resolve_session_org(
             return requested_org
         raise OrgResolutionError(f"principal not a member of org {requested_org!r}")
     if can_act_any_org:
-        # A cross_org principal with no single membership and no explicit request acts on the
-        # default org's data plane (org CRUD is a separate platform-plane concern).
-        return None
+        # REQ-1318: a cross_org principal naming no org acts in the deployment org, as on HTTP
+        # (org CRUD is a separate platform-plane concern).
+        return state.org_id
     raise OrgResolutionError(
         "org selection required: authenticated principal belongs to "
         f"{len(member_org_ids)} orgs and none was requested. To name one, {named_by}, "

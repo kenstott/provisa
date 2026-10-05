@@ -46,6 +46,13 @@ from provisa.pgwire._pipeline import (
 from provisa.transpiler.router import Route
 from tests.unit.test_response_cache_shared import FakeCacheStore
 
+
+@pytest.fixture(autouse=True)
+def _bound_to_org_a(bind_org):
+    """The work is org-a's, the org the test state serves, bound as its entrypoint binds it (REQ-1266)."""
+    bind_org("org-a")
+
+
 _TS = datetime.datetime(2026, 1, 2, 3, 4, 5, 678000, tzinfo=datetime.UTC)
 _ROWS = [(1, decimal.Decimal("0.50"), _TS), (2, decimal.Decimal("123456789.01"), _TS)]
 _NAMES = ["id", "amount", "ts"]

@@ -25,6 +25,12 @@ from provisa.auth.models import AuthIdentity, AuthProvider
 
 
 @pytest.fixture(autouse=True)
+def _deployment_org_is_root(serve_deployment_org):
+    """The middleware's deployment org is 'root'; the app state serves it (REQ-1266)."""
+    serve_deployment_org("root")
+
+
+@pytest.fixture(autouse=True)
 def _stub_org_runtime(monkeypatch):
     """REQ-1266: for a non-default org member the middleware re-reads assignments from that org's
     schema, pre-building its data-plane runtime via ensure_org_runtime. That build is an integration

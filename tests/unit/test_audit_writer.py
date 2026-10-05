@@ -468,7 +468,7 @@ def _logged(path: str) -> list[tuple]:
         con.close()
 
 
-def test_write_audit_lands_one_row_in_the_tenant_database(tmp_path, monkeypatch, caplog):
+def test_write_audit_lands_one_row_in_the_tenant_database(tmp_path, monkeypatch, caplog, bind_org):
     """The whole seam: write_audit returns, the writer inserts through the real Database."""
     from types import SimpleNamespace
 
@@ -479,6 +479,7 @@ def test_write_audit_lands_one_row_in_the_tenant_database(tmp_path, monkeypatch,
     from provisa.federation.replica_hot import HotCounts
 
     org = f"audit-seam-{uuid.uuid4().hex}"
+    bind_org(org)  # the statement's org, bound as its surface binds it (REQ-1266)
     counts = HotCounts(None)
     state = SimpleNamespace(
         record_db=_tenant_db(path), org_id=org, admin_db=None, hot_counts=counts

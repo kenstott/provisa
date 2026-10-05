@@ -20,6 +20,7 @@ test_materialization_api.py, TestMatApiEpTableCut and TestMatGqlRemoteTableCut.)
 
 from __future__ import annotations
 
+
 import json
 from types import SimpleNamespace
 from unittest.mock import patch

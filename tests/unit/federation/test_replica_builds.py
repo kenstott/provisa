@@ -16,6 +16,7 @@ import pyarrow as pa
 import pytest
 
 from provisa.core import process_mode
+from provisa.core.request_context import reset_current_org, set_current_org
 from provisa.federation import replica_builds
 from provisa.federation.data_replicator import (
     EngineCaps,
@@ -317,16 +318,19 @@ def test_a_process_that_does_background_work_registers_its_build_pass(monkeypatc
     scheduler = _Scheduler()
     url = f"sqlite+pysqlite:///{tmp_path / 'cp.db'}"
     process_mode.set_mode(process_mode.EVERY)
+    # The boot wires it with the org it serves bound (REQ-1266); the pass is that org's.
+    org_token = set_current_org("acme")
     try:
         replica_builds.wire_replica_runner(scheduler, state=object(), platform_url=url)
-        assert list(scheduler.jobs) == ["replica:builds"] and made == [(None, url)]
-        assert scheduler.jobs["replica:builds"]["replace_existing"] is True
+        assert list(scheduler.jobs) == ["replica:builds:org_acme"] and made == [("acme", url)]
+        assert scheduler.jobs["replica:builds:org_acme"]["replace_existing"] is True
         # a process that only answers queries builds nothing (REQ-1916)
         process_mode.set_mode(process_mode.QUERY)
         other = _Scheduler()
         replica_builds.wire_replica_runner(other, state=object(), platform_url=url)
         assert other.jobs == {} and len(made) == 1
     finally:
+        reset_current_org(org_token)
         process_mode.set_mode(process_mode.EVERY)
 
 

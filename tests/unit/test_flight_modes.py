@@ -39,6 +39,7 @@ class FakeState:
     """Minimal AppState substitute for testing."""
 
     def __init__(self):
+        self.org_id = "default"
         self.schemas = {}
         self.contexts = {}
         self.rls_contexts = {}

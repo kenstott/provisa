@@ -43,9 +43,9 @@ def cache_place(state: Any) -> str:
     """The acting org and environment — and this node's region (REQ-1922: regions may share one
     Redis): whose cached data this is, whatever model it holds."""
     from provisa.core import process_region
-    from provisa.core.request_context import current_env, current_org
+    from provisa.core.request_context import current_env, require_current_org
 
-    return place_of(current_org.get() or state.org_id, current_env.get(), process_region.region())
+    return place_of(require_current_org(), current_env.get(), process_region.region())
 
 
 def place_key_patterns(place: str) -> list[str]:

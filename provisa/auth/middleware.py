@@ -457,13 +457,26 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             current_acting_role.reset(ar_token)
 
     async def _process(self, request: Request):  # REQ-486
-        # Where this request's org runtime is, when it is not the default one: a meta-role is
-        # built in it (_meta_role).
-        _org_binding: tuple[str, str | None] | None = None
         if request.url.path in _SKIP_PATHS or request.url.path.startswith("/public/invite-info/"):
             return None
 
         await self._ensure_resolved()
+
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        # REQ-1266/REQ-1327: the platform plane -- the assignments and role definitions that say
+        # who the caller is and whether they hold cross_org -- lives in the deployment org's
+        # schema, so it is read with that org bound. A tenant org's own reads rebind to it below.
+        token = set_current_org(self._default_org_id)
+        try:
+            return await self._resolve_identity(request)
+        finally:
+            reset_current_org(token)
+
+    async def _resolve_identity(self, request: Request):  # REQ-486
+        # Where this request's org runtime is, when it is not the default one: a meta-role is
+        # built in it (_meta_role).
+        _org_binding: tuple[str, str | None] | None = None
 
         # No auth configured — dev mode. REQ-273 caveat: when the server is unsecured, a
         # client-supplied role IS honored (there is no auth to validate against), so

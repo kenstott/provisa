@@ -41,14 +41,18 @@ def org_store_dsn(org_id: str) -> str | None:
 
     Read off the built ``OrgRuntime`` rather than the control-plane row: the DSN is decrypted once
     at runtime-build time, so a per-write lookup here would decrypt on every landing. An org with
-    no runtime built yet returns None — not because the value is unknown, but because no query has
-    run for that org, and the runtime is built before the first one does.
+    no runtime built is refused by name (REQ-1266): its store is unknown here, and answering "the
+    platform's" would land a BYO org's data in the platform store. The runtime is built before any
+    work is bound to the org.
     """
     from provisa.api.app import state
 
     runtime = state.org_registry.get(org_id)
     if runtime is None:
-        return None
+        raise RuntimeError(
+            f"no runtime built for org {org_id!r}, so its materialization store is unknown; "
+            "ensure_org_runtime must build it before work is bound to the org"
+        )
     return runtime.storage_url
 
 

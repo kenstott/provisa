@@ -499,11 +499,11 @@ async def _refuse_over_source_limit(source_id: str) -> MutationResult | None:  #
     None on a self-hosted deployment — there is no subscription, so there is no ceiling (REQ-1513).
     """
     from provisa.api.app import state
-    from provisa.core.request_context import current_org
+    from provisa.core.request_context import require_current_org
     from provisa.core.commerce import source_limit_for_org
     from provisa.core.repositories import source as source_repo
 
-    org_id = current_org.get() or state.org_id
+    org_id = require_current_org()
     limit = await source_limit_for_org(state, org_id)
     if limit is None:
         return None
@@ -672,12 +672,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin._dq_resolvers import run_dq_check_now as _run_now
         from provisa.core.request_context import current_org
 
-        # REQ-1266: the scheduler namespaces a poll job's id by org ONLY when explicitly
-        # multi-org (register_poll_job/register_runtime use `current_org.get(None)`, so
-        # single-org/default gets the bare `poll:<node>` id with no suffix). `current_org.get()
-        # or state.org_id` is the DB-routing convention used elsewhere in this module — it
-        # resolves to the "default" org string even in single-org mode, which would look up
-        # `poll:<node>:org_default` and never find the bare id boot registered.
+        # REQ-1266: the scheduler namespaces a poll job's id by the org bound when it was
+        # registered (register_poll_job/register_runtime read `current_org`), and the boot and
+        # every request bind theirs, so the bound org names the job this request registered.
         org_id = current_org.get()
         pool = await _get_pool()
         async with pool.acquire() as conn:

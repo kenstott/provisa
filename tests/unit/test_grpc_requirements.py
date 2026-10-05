@@ -298,6 +298,7 @@ class TestREQ617RoleSelectionViaMetadata:
         # REQ-617: Unrecognised role metadata causes the call to be rejected.
         pb2, _ = _make_pb2_module("Orders", ["id"])
         state = SimpleNamespace(
+            org_id="default",
             schemas={"admin": MagicMock()},
             contexts={"admin": MagicMock()},
         )
@@ -322,6 +323,7 @@ class TestREQ617RoleSelectionViaMetadata:
 
         pb2, _ = _make_pb2_module("Orders", ["id", "amount"])
         state = SimpleNamespace(
+            org_id="default",
             schemas={"admin": MagicMock()},
             contexts={"admin": MagicMock()},
             rls_contexts={"admin": RLSContext.empty()},
@@ -445,6 +447,8 @@ def _make_pb2_module(type_name: str = "Orders", fields: list[str] | None = None)
         fields_by_name={fd.name: fd for fd in field_descriptors},
     )
     msg_cls = MagicMock()
+    # A message has a serialized size: its egress is metered to the org bound (REQ-1452).
+    msg_cls.return_value.ByteSize.return_value = 1
     msg_cls.DESCRIPTOR = descriptor
     pb2 = SimpleNamespace(
         **{type_name: msg_cls, "DESCRIPTOR": SimpleNamespace(services_by_name={})}

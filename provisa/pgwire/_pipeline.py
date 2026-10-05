@@ -800,10 +800,10 @@ async def _attach_tier_caps(plan: _Plan, state: Any) -> _Plan:
     — resolves no caps and the plan runs as authored; the tier gate is a SaaS monetization boundary,
     not a safety limit.
     """
-    from provisa.core.request_context import current_org
+    from provisa.core.request_context import require_current_org
     from provisa.core.commerce import caps_for_org, tier_session_hints
 
-    resolved = await caps_for_org(state, current_org.get() or getattr(state, "org_id", None))
+    resolved = await caps_for_org(state, require_current_org())
     if resolved is None:
         return plan
     caps, tier = resolved

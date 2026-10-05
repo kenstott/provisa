@@ -180,7 +180,7 @@ async def _run_with_org(org_id: str | None, coro):  # REQ-1266
     The connection loop's task copies this thread's context when it starts, so an org bound on the
     thread is already visible; binding it here makes the coroutine's org explicit where the caller
     holds a session org rather than a thread binding (COPY, CTAS, audit finalization). ``None``
-    (single-org / default) awaits unbound → the default runtime."""
+    (a session not yet admitted) awaits unbound, where every per-org read is refused."""
     if org_id is None:
         return await coro
     from provisa.core.request_context import reset_current_org, set_current_org
@@ -203,20 +203,18 @@ async def _resolve_and_build_org(
     REQ-1234: ``requested_org`` is the org the TLS SNI hostname named, when the client dialed one.
     It is a request and nothing more — ``resolve_session_org`` refuses an org the principal is not
     a member of, so dialing acme.provisa.dev does not put anyone inside acme."""
-    from provisa.api.app import ensure_org_runtime
+    from provisa.api.app import ensure_serving_runtime
     from provisa.api.org_resolve import org_named_by_host_or_database, resolve_session_org
 
     if not getattr(state_, "multitenancy", False):
-        # A single-tenant deployment has no org to name; neither the hostname nor the database
-        # name is read (REQ-1235).
-        return None
+        # A single-tenant deployment has one org, and nothing names it: neither the hostname nor
+        # the database name is read (REQ-1235).
+        return state_.org_id
     # REQ-1235: the database name (psql -d acme, a BI tool's database field) names the org too.
     requested_org = org_named_by_host_or_database(requested_org, database)
 
     # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
-    caps = capabilities_for_claims(
-        getattr(identity, "roles", []) or [], getattr(state_, "roles", {})
-    )
+    caps = capabilities_for_claims(getattr(identity, "roles", []) or [], state_.platform_roles)
     org_id = await resolve_session_org(
         state_,
         user_id=getattr(identity, "user_id", None),
@@ -228,8 +226,7 @@ async def _resolve_and_build_org(
             "org's own hostname (<org>.<domain>)"
         ),
     )
-    if org_id is not None:
-        await ensure_org_runtime(org_id)
+    await ensure_serving_runtime(org_id)
     return org_id
 
 
@@ -868,8 +865,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # user_id. Set wherever role_id is set (trust mode: the startup packet's user; secured
         # modes: the validated identity), so an authenticated session always has both.
         self.user_id: str | None = None
-        # REQ-1266: the org this session is bound to (multitenant OIDC sessions only). None → the
-        # single-org default runtime (trust/simple modes, or a platform admin with no single org).
+        # REQ-1266: the org this session is bound to, set when it is admitted. None until then: a
+        # session not yet admitted is served no org's runtime.
         self.org_id: str | None = None
         # REQ-1862: named SQL cursors DECLAREd on this connection, keyed by normalized name.
         self.cursors: dict[str, _CursorState] = {}
@@ -1007,7 +1004,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-1266: bind this session's org on the connection thread so the sync state.X reads
         # below (answer/INTERCEPT, execute_engine_sync, source_pools) route to its runtime; the
         # governance/execute coroutines run on this thread's loop and are bound again explicitly via
-        # _run_with_org. None → default runtime (no bind).
+        # _run_with_org. None (not yet admitted) runs unbound, where per-org reads are refused.
         if self.org_id is None:
             self._ensure_acting_role()
             return fn()
@@ -1754,6 +1751,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             acting = named[0] if len(named) == 1 else meta_role_id(named)
             ctx.session.act_as(acting, tuple(named))  # type: ignore[attr-defined]
             ctx.session.user_id = username  # type: ignore[attr-defined]
+            # REQ-1266: an unsecured deployment serves its own org, as the unsecured HTTP path does.
+            ctx.session.org_id = _state.org_id  # type: ignore[attr-defined]
             self.send_authentication_ok()
             self.handle_post_auth(ctx)
             return
@@ -2035,6 +2034,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             except OrgResolutionError as exc:
                 self._send_pg_error("FATAL", "28000", f"org selection failed: {exc}")
                 return
+        else:
+            ctx.session.org_id = _state.org_id  # type: ignore[attr-defined]
         # REQ-1452: attribute this connection's writes from here on.
         self._meter.bind_org(getattr(ctx.session, "org_id", None))
         members: tuple[str, ...] = (role,)

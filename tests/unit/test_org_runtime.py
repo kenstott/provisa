@@ -100,6 +100,7 @@ def test_two_branches_of_one_org_get_distinct_catalogs():
     assert a != b
 
 
+@pytest.mark.unbound
 def test_require_current_org_raises_when_unset():
     # A tenant-data path that reaches this with no org bound is a routing defect — it must raise,
     # never silently default (no-fallback rule).
@@ -108,6 +109,7 @@ def test_require_current_org_raises_when_unset():
         require_current_org()
 
 
+@pytest.mark.unbound
 def test_set_and_reset_current_org_round_trips():
     token = set_current_org("acme")
     try:

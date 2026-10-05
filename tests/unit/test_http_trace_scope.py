@@ -75,7 +75,7 @@ def served(tmp_path):
     provider.shutdown()
 
 
-async def _request(served, *, role: str | None, org: str | None = None) -> list[str]:
+async def _request(served, *, role: str | None, org: str = "acme") -> list[str]:
     """One HTTP request as the stack serves it: the instrumentor opens the server span and binds
     it, the middleware runs, then the framework reads the body (the ``receive`` span) and the
     endpoint runs. Returns the names of the spans that were recorded."""
@@ -85,15 +85,14 @@ async def _request(served, *, role: str | None, org: str | None = None) -> list[
         scope["state"]["role"] = role
     with served.tracer.start_as_current_span("POST /data/graphql", kind=SpanKind.SERVER) as server:
         _bind_http_request_span(server, scope)
-        token = set_current_org(org) if org is not None else None
+        token = set_current_org(org)  # as the org-routing middleware binds it (REQ-1266)
         try:
             async with http_trace_scope(served.state, scope):
                 with served.tracer.start_as_current_span("POST /data/graphql http receive"):
                     pass
             after_dispatch.append(otel_compat._request_detail.get())
         finally:
-            if token is not None:
-                reset_current_org(token)
+            reset_current_org(token)
     return [s.name for s in served.exporter.get_finished_spans()]
 
 
@@ -163,8 +162,9 @@ async def test_the_detail_is_unbound_when_the_dispatch_returns(served):
 
 
 def test_the_org_routing_middleware_serves_every_dispatch_inside_the_scope():
-    """Both dispatches of the org-routing middleware — the default-org path and the bound-org
-    path — run inside the request's trace scope."""
+    """Every org-bound dispatch of the org-routing middleware — the deployment's own org included
+    (REQ-1266) — runs inside the request's trace scope. The one dispatch before it serves a request
+    with no org, which no org's debug window covers."""
     import provisa.api.app as app_mod
 
     source = inspect.getsource(app_mod.create_app)
@@ -175,7 +175,7 @@ def test_the_org_routing_middleware_serves_every_dispatch_inside_the_scope():
     ]
     routed = middleware[middleware.index("selected_env = await resolve_selected_env") :]
     dispatches = routed.split("await self.app(scope, receive, send)")[:-1]
-    assert len(dispatches) == 2
+    assert len(dispatches) == 1
     for chunk in dispatches:
         assert chunk.rstrip().endswith("async with http_trace_scope(state, scope):")
 

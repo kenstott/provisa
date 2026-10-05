@@ -36,6 +36,7 @@ from provisa.core import request_deadline, settings_registry
 
 class _State:
     def __init__(self, cap: int | None, request_timeout: float) -> None:
+        self.org_id = "default"
         self.roles = {"analyst": {}}
         self.rate_limiter = None
         self.flight_global_cap = cap

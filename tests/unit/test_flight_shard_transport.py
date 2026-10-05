@@ -36,6 +36,7 @@ def _backend() -> TrinoBackend:
 
 def _state(registry: dict) -> SimpleNamespace:
     return SimpleNamespace(
+        org_id="default",
         flight_client=None,
         flight_clients={},
         org_registry=SimpleNamespace(get=registry.get),
@@ -119,10 +120,10 @@ def test_pooled_org_dials_the_shard_its_runtime_records(cluster, connections, se
     assert connections == [("10.0.0.14", 8480)]
 
 
-def test_unselected_org_dials_the_boot_shard(cluster, connections, set_org):
+def test_the_deployments_own_org_dials_the_boot_shard(cluster, connections, set_org):
     backend = _backend()
     state = _state({})
-    set_org(None)
+    set_org("default")  # the deployment org, bound by its id like every other (REQ-1266)
 
     backend._flight_transport(state)
 

@@ -245,7 +245,7 @@ def build_audit_record(
     from provisa.audit.writer import AuditRecord
     from provisa.core import process_region
     from provisa.core.environments import PROD
-    from provisa.core.request_context import active_env, current_env, current_org
+    from provisa.core.request_context import active_env, current_env, require_current_org
     from provisa.encryption.runtime import encryption_service
     from provisa.federation.replica_hot import count_scope
     from provisa.otel_compat import current_udf_correlation_id
@@ -256,12 +256,11 @@ def build_audit_record(
             "audit write has no record database — query_audit_log lives in the org's record "
             "in this region and the org runtime must be bound before a governed statement runs"
         )
-    # The tenant IS the org (REQ-594): `current_org` when a surface bound one, the default org
-    # otherwise — the same resolution AppState._active_runtime uses to pick the tenant_db this row
-    # is about to land in, so the recorded tenant always names the schema holding the row. The
+    # The tenant IS the org (REQ-594): the bound `current_org` — the same resolution
+    # AppState._active_runtime uses to pick the tenant_db this row is about to land in, so the recorded tenant always names the schema holding the row. The
     # meta-RLS ContextVar that used to be read here is set by nothing in production, so every
     # audit row carried a NULL tenant and every ops report showed a NULL tenant column.
-    org_id = current_org.get() or state.org_id
+    org_id = require_current_org()
     return AuditRecord(
         record_db=record_db,
         tenant_id=org_id,

@@ -356,7 +356,7 @@ def hot_view(state: Any, source: Any, table: Any) -> "HotView":
     from provisa.core import settings_registry
     from provisa.core.boot_lock import expected_workers
     from provisa.core.environments import PROD
-    from provisa.core.request_context import current_env, current_org
+    from provisa.core.request_context import current_env, require_current_org
     from provisa.federation.policy_summary import HotView
     from provisa.federation.replica_converge import whole_copy
     from provisa.federation.role_ttl import missing_landing_ttl
@@ -367,7 +367,7 @@ def hot_view(state: Any, source: Any, table: Any) -> "HotView":
     key = (source.id, table.schema_name, table.table_name)
     skipped: str | None = None
     if threshold_of(source, table, default_threshold) is not None:
-        scope = count_scope(current_org.get() or state.org_id, current_env.get() or PROD)
+        scope = count_scope(require_current_org(), current_env.get() or PROD)
         if _registered_id(state, key) in hot_tier_tables(state):
             skipped = HOT_TIER
         elif not whole_copy(source, table, state.federation_engine):
@@ -458,7 +458,7 @@ async def evaluate(state: Any, *, workers: int) -> Evaluation:
     per deployment. ``workers``: how many processes serve requests (``promotion_runs``)."""
     from provisa.core import settings_registry
     from provisa.core.environments import PROD
-    from provisa.core.request_context import current_env, current_org
+    from provisa.core.request_context import current_env, require_current_org
     from provisa.federation import replica_state
     from provisa.federation.registry_view import registered_sources, registered_tables
     from provisa.federation.replica_builds import store_identity
@@ -469,7 +469,7 @@ async def evaluate(state: Any, *, workers: int) -> Evaluation:
     interval = settings_registry.value("replication.hot_interval")
     max_rows = settings_registry.value("replication.hot_max_rows")
     default_threshold = settings_registry.value("replication.hot_threshold")
-    scope = count_scope(current_org.get() or state.org_id, current_env.get() or PROD)
+    scope = count_scope(require_current_org(), current_env.get() or PROD)
 
     # REQ-1922: the registry is the model (model store); what is promoted is this region's state.
     async with state.model_db.acquire() as conn:
