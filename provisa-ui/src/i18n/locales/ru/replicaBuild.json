@@ -12,6 +12,7 @@
     "method": {
       "engine_statement": "скопирована движком",
       "stream_batches": "передана пакетами",
+      "store_pipeline": "загружена собственным конвейером хранилища",
       "delta": "delta"
     },
     "loadKind": {

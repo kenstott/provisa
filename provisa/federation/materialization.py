@@ -19,7 +19,7 @@ federation engine + connector contract:
   backend with no connector, or only a LAND connector, is a land-into-land regress → rejected.
 - REQ-848: the write face is pluggable — engine-native CTAS/load (collapses in when the
   backend is the engine's own store), SQLAlchemy upsert (a separate attach-able relational
-  store), or app-side land.
+  store), app-side land, or a pipeline the store runs itself (SingleStore, REQ-990).
 - REQ-845: the reactive-replica set is engine-relative — the sources that federate() resolves
   to MATERIALIZED (reach == land) for the configured engine.
 """
@@ -36,6 +36,7 @@ from provisa.federation.strategy import Strategy, federate
 if TYPE_CHECKING:
     from provisa.core.models import Source
     from provisa.federation.engine import FederationEngine
+    from provisa.federation.singlestore_pipeline import LandOrigin
 
 # Relational store types that can back a materialization store via SQLAlchemy upsert.
 _RELATIONAL = frozenset(
@@ -74,9 +75,12 @@ class WriteFace(str, Enum):  # REQ-848
     ENGINE_NATIVE = "engine_native"  # CTAS/load into the engine's own store
     SQLALCHEMY_UPSERT = "sqlalchemy_upsert"  # a separate attach-able relational store
     APP_LAND = "app_land"  # app-side land (non-relational / no upsert face)
+    PIPELINE_LAND = "pipeline_land"  # the store loads the origin itself (SingleStore PIPELINE)
 
 
-def select_write_face(engine: FederationEngine, backend_type: str) -> WriteFace:  # REQ-848
+def select_write_face(
+    engine: FederationEngine, backend_type: str, origin: LandOrigin | None = None
+) -> WriteFace:  # REQ-848
     """Pick the write face for landing into ``backend_type`` on ``engine`` — the ONE land-face
     decision, wired into ``NativeEngineBackend.land_source_table``.
 
@@ -87,8 +91,17 @@ def select_write_face(engine: FederationEngine, backend_type: str) -> WriteFace:
     native_store`` (which mis-fired for Postgres, whose native_store is ``postgres`` while its store
     backend is ``postgresql``). A broad federator with no native store (Trino) lands into a separate
     attach-able relational store via SQLAlchemy upsert; anything else is app-land.
+
+    PIPELINE_LAND (REQ-990): when the engine's own store is SingleStore and ``origin`` (where the
+    table's rows come from) is in the pipeline's scope, the store loads the origin itself through a
+    ``CREATE PIPELINE`` and no row passes through Provisa. An origin outside that scope keeps its
+    face, decided by type; one in scope that cannot land yet raises ``PipelineRefused`` by name.
     """
+    from provisa.federation.singlestore_pipeline import PIPELINE_STORE, lands_by_pipeline
+
     validate_materialization_backend(engine, backend_type)
+    if engine.native_store == PIPELINE_STORE and origin is not None and lands_by_pipeline(origin):
+        return WriteFace.PIPELINE_LAND
     if engine.native_store is not None:
         return WriteFace.ENGINE_NATIVE
     if backend_type in _RELATIONAL:

@@ -72,6 +72,9 @@ class _FakeState:
         # the real object and every push listener silently never started. Spec'ing to the real
         # class makes an attribute typo/API drift fail the test instead of masking it.
         self.federation_engine = MagicMock(spec=EngineRuntime)
+        # EngineRuntime.engine is an instance attribute (set in __init__), invisible to a class
+        # spec: the bound FederationEngine, here one whose store is not SingleStore (REQ-990).
+        self.federation_engine.engine = MagicMock(native_store=None)
         self.federation_engine.materialize_store_dsn = MagicMock(return_value="duckdb:///x")
         self.federation_engine.landing_target = MagicMock(return_value=("mat", "orders__x"))
 

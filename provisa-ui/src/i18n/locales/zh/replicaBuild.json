@@ -12,6 +12,7 @@
     "method": {
       "engine_statement": "由引擎复制",
       "stream_batches": "分批流式传输",
+      "store_pipeline": "由存储自身的管道加载",
       "delta": "delta"
     },
     "loadKind": {

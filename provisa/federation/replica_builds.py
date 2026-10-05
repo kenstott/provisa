@@ -33,7 +33,7 @@ from typing import Any
 from provisa.federation import replica_state
 from provisa.federation.data_replicator import BuildOutcome, Progress, data_replicator
 from provisa.federation.replica_runner import ReplicaRunner, engine_job_key
-from provisa.federation.data_replicator import SourceCaps, SourceRead
+from provisa.federation.data_replicator import Method, SourceCaps, SourceRead, TargetLoad
 from provisa.federation.replica_errors import BuildFailure
 from provisa.federation.replica_converge import definition_hash, drop_retired, whole_copy
 from provisa.federation.replica_source import BATCH_ROWS
@@ -166,6 +166,12 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
     async with state.tenant_db.acquire() as conn:
         record = await replica_state.read(conn, key)
 
+    # REQ-990/REQ-848: a SingleStore store whose write face for this origin is PIPELINE_LAND loads
+    # the origin itself through a one-shot pipeline; no row passes through Provisa.
+    pipelined = await _build_by_pipeline(state, key, source, table, sources, args, address)
+    if pipelined is not None:
+        return pipelined
+
     # REQ-874: a declared delta refreshes the whole-copy replica incrementally -- read only the
     # rows past the stored cursor from the SQL source and apply them by key -- when the rule allows;
     # otherwise the whole rebuild below runs and records WHY (delta_skipped). SQL sources only; the
@@ -276,6 +282,57 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
             definition_hash=definition_hash(source, address, args.columns, args.pk_columns),
             built_columns=[[name, ir_type] for name, ir_type in args.columns],
         )
+
+
+async def _build_by_pipeline(
+    state: Any,
+    key: ReplicaKey,
+    source: Any,
+    table: Any,
+    sources: Any,
+    args: Any,
+    address: Any,
+) -> BuildOutcome | None:
+    """The build, when the store's write face for this table's origin is PIPELINE_LAND (REQ-848,
+    REQ-990); None when it is not, and the build streams as every other one does."""
+    from sqlalchemy import make_url
+
+    from provisa.events.land_lock import land_lock
+    from provisa.federation.materialization import WriteFace, select_write_face
+    from provisa.federation.singlestore_pipeline import PIPELINE_STORE, origin_of
+    from provisa.federation.singlestore_pipeline_build import build_by_pipeline
+    from provisa.federation.source_vault import org_vault
+
+    engine = state.federation_engine
+    bare = engine.engine
+    if bare.native_store != PIPELINE_STORE:
+        return None
+    origin = origin_of(source, table)
+    store = make_url(bare.materialize_store()).get_backend_name()
+    if select_write_face(bare, store, origin) is not WriteFace.PIPELINE_LAND:
+        return None
+    backend = bare.backend
+    async with org_vault(state, sources):
+        target = backend.replica_target(state, address=address, args=args, engine=None)
+        async with state.tenant_db.acquire() as conn:
+            await replica_state.record_started(
+                conn,
+                key,
+                method=Method.STORE_PIPELINE.value,
+                load_kind=TargetLoad.BULK_STREAM.value,
+            )
+        async with land_lock(f"{address.schema}.{address.table}"):
+            outcome = await build_by_pipeline(
+                source=source,
+                origin=origin,
+                target=target,
+                columns=[name for name, _ in args.columns],
+            )
+    return replace(
+        outcome,
+        definition_hash=definition_hash(source, address, args.columns, args.pk_columns),
+        built_columns=[[name, ir_type] for name, ir_type in args.columns],
+    )
 
 
 def _next_refresh_at(state: Any) -> Any:

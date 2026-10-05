@@ -188,7 +188,10 @@ def _state(backend, sources=None, tables=None):
             sources=[_source()] if sources is None else sources,
             tables=[_table()] if tables is None else tables,
         ),
-        federation_engine=SimpleNamespace(engine=SimpleNamespace(backend=backend, name="fake")),
+        # native_store=None: a fake engine with no store of its own (not SingleStore, REQ-990).
+        federation_engine=SimpleNamespace(
+            engine=SimpleNamespace(backend=backend, name="fake", native_store=None)
+        ),
         tenant_db=_Db(),
     )
 
