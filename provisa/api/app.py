@@ -1570,6 +1570,7 @@ def _bind_boot_engine(raw_config: dict) -> None:
     # REQ-1048 precedence: the org's own store first (provisa/storage/byo.py).
     rt.storage_url = bound.materialize_url
     rt.federation_engine = EngineRuntime(build_engine(bound.kind), state)
+    rt.federation_engine.engine.pin_materialize_store(bound.materialize_url)
     rt.federation_engine.bind_terminal()
 
 
@@ -1856,6 +1857,9 @@ async def _build_org_runtime(
             rt.engine_kind = engine_kind
             rt.engine_url = engine_url
             rt.federation_engine = EngineRuntime(build_engine(engine_kind), state)
+            if storage_url is not None:
+                # REQ-1922: the lane's engine lands in the lane's store, whoever its first user is.
+                rt.federation_engine.engine.pin_materialize_store(storage_url)
             rt.federation_engine.bind_terminal()
         elif isolated_engine:
             # REQ-1043/REQ-1067/REQ-1244: this org runs on its OWN federation engine. Bind a
@@ -1871,6 +1875,9 @@ async def _build_org_runtime(
 
             rt.isolated_engine = True
             rt.federation_engine = EngineRuntime(build_engine(), state)
+            if storage_url is not None:
+                # REQ-1048: the org's own store, whoever the engine's first user is.
+                rt.federation_engine.engine.pin_materialize_store(storage_url)
             rt.federation_engine.bind_terminal()
         # Tenant plane for THIS org: its own Database scoped to org_<id>. The platform/admin plane
         # (state.admin_db) is global and already up — never rebuilt here.

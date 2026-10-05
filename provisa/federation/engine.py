@@ -165,6 +165,8 @@ class FederationEngine:  # REQ-840
         # A zero-arg callable returning this engine's DECLARED default materialization-store DSN (or
         # None). Set per engine in build_*_engine — the ONE place an engine names its own default.
         self._default_store_fn = default_materialize_store
+        # REQ-1922: the store of the org lane this engine was built for (``pin_materialize_store``).
+        self._pinned_store: str | None = None
         # The SQLAlchemy backend names (``make_url(dsn).get_backend_name()``) this engine's own
         # connector can actually write a materialization into — None means unrestricted (not yet
         # verified either way for this engine, so no check is asserted rather than guessed). Trino's
@@ -363,6 +365,14 @@ class FederationEngine:  # REQ-840
         declares none returns None (then a store must be explicitly configured, else error)."""
         return self._default_store_fn() if self._default_store_fn is not None else None
 
+    def pin_materialize_store(self, dsn: str) -> None:
+        """Make ``dsn`` this engine's materialization store, whatever org a caller is bound to
+        (REQ-1922): an engine built for one org's lane — its region's engine — lands that org's
+        replicas and views in the store the lane names. An engine attaches its store once, at its
+        first use, and that use (a boot reconcile, a background loop) may come with no org bound,
+        which would otherwise have it attach the deployment's default instead."""
+        self._pinned_store = dsn
+
     def materialize_store(self) -> str:
         """The materialization store DSN. A store MUST exist: the bound org's OWN store wins, else
         the explicitly-configured ``materialize_store_url``, else the engine's declared default; if
@@ -378,7 +388,10 @@ class FederationEngine:  # REQ-840
 
         # REQ-1266: the store is the bound org's to decide; work bound to no org has none.
         dsn = (
-            org_store_dsn(require_current_org())
+            # REQ-1922: an engine built for one org's lane lands where the lane pinned — the
+            # engine is that org's, so its first user need not be bound to it.
+            self._pinned_store
+            or org_store_dsn(require_current_org())
             or configured_materialize_url()
             or self.default_materialize_store()
         )

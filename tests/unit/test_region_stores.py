@@ -217,16 +217,24 @@ def test_the_boot_orgs_engine_is_the_one_its_region_names(deployment_org, monkey
 
     built: list = []
 
+    class _Engine:
+        def __init__(self, kind):
+            self.kind = kind
+
+        def pin_materialize_store(self, dsn):
+            built.append(f"store:{dsn}")
+
     class _Runtime:
         def __init__(self, engine, _state):
-            built.append(engine)
+            self.engine = engine
+            built.append(f"engine:{engine.kind}")
 
         def bind_terminal(self):
             built.append("bound")
 
     state = app_mod.AppState()
     monkeypatch.setattr(app_mod, "state", state)
-    monkeypatch.setattr("provisa.federation.engine.build_engine", lambda kind: f"engine:{kind}")
+    monkeypatch.setattr("provisa.federation.engine.build_engine", _Engine)
     monkeypatch.setattr("provisa.federation.runtime.EngineRuntime", _Runtime)
     process_region.bind_launch(_PLATFORM, requested="eu")
     app_mod._bind_boot_engine(
@@ -236,7 +244,8 @@ def test_the_boot_orgs_engine_is_the_one_its_region_names(deployment_org, monkey
         }
     )
     rt = state._active_runtime()
-    assert built == ["engine:snowflake", "bound"]
+    # Its engine lands in the region's store, pinned before its first use (REQ-1922).
+    assert built == ["engine:snowflake", "store:postgresql://eu/db", "bound"]
     assert (rt.isolated_engine, rt.engine_kind, rt.engine_url, rt.storage_url) == (
         True,
         "snowflake",
@@ -301,3 +310,22 @@ async def test_in_a_region_an_org_keeps_its_cache_on_the_store_its_region_names(
     assert rt.response_cache_store is not None and rt.hot_counts is not None
     assert app_mod._region_caches.keys() == {"rediss://cache.eu:6379/0"}
     assert state.response_cache_store is rt.response_cache_store
+
+
+def test_a_lanes_engine_lands_in_the_lanes_store_whoever_uses_it_first():
+    """REQ-1922: an engine attaches its store once, at its first use — a boot reconcile or a
+    background loop, with no org bound. A lane's engine is pinned to the lane's store, so that
+    first use attaches the region's store, not the deployment's embedded default."""
+    from provisa.core.request_context import current_org
+    from provisa.federation.engine import build_engine
+
+    lane = "postgresql://reader@eu-store:5432/eu"
+    engine = build_engine("duckdb")
+    unbound = current_org.set(None)  # a boot reconcile, a background loop: no org bound
+    try:
+        with pytest.raises(RuntimeError, match="No active org bound"):
+            engine.materialize_store()  # unpinned: the store is a bound org's to decide (REQ-1266)
+        engine.pin_materialize_store(lane)
+        assert engine.materialize_store() == lane
+    finally:
+        current_org.reset(unbound)
