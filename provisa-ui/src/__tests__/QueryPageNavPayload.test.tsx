@@ -35,7 +35,9 @@ vi.mock("@graphiql/react", async (importOriginal) => ({
     selector({ queryEditor: editor, schema: null, tabs: [], activeTabIndex: 0 }),
   useGraphiQLActions: () => actions,
 }));
-vi.mock("../context/AuthContext", () => ({ useAuth: () => ({ role: { id: "org_admin" } }) }));
+vi.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ role: { id: "org_admin" }, selectedRoles: [{ id: "org_admin" }] }),
+}));
 vi.mock("../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({ checkedDomains: new Set<string>() }),
 }));
