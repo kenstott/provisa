@@ -162,7 +162,9 @@ def _wait(srv, store, want: dict[int, int], *, seconds: float = 120) -> dict:
 
     deadline = time.monotonic() + seconds
     while True:
-        _poke(srv)
+        # The store is read BEFORE the next poke: a poke after the build that produced ``want``
+        # would start another (an empty delta once the cursor has caught up), and the record read
+        # below is the table's latest build, so it would report that one's 0 rows instead.
         try:
             got = _store_ids(store)
         except duckdb.IOException:
@@ -172,6 +174,7 @@ def _wait(srv, store, want: dict[int, int], *, seconds: float = 120) -> dict:
         assert time.monotonic() < deadline, (
             f"timed out: replica holds {got}, want {want}; last build: {_last_build(srv)}"
         )
+        _poke(srv)
         time.sleep(2)
 
 

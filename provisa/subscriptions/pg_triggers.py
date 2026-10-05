@@ -67,6 +67,10 @@ FOR EACH ROW EXECUTE FUNCTION {fn}();
 """
 
 
+# The advisory-lock key serializing the notify-trigger walk across the servers of a launch.
+_TRIGGER_INSTALL_LOCK_KEY = 0x50524F5649534135
+
+
 async def _base_tables(conn: Any, pairs: list[tuple[str, str]]) -> set[tuple[str, str]]:
     """The subset of ``(schema, table)`` pairs that are ordinary or partitioned base tables
     (``pg_class.relkind`` in ``r``/``p``) — the only relations a row-level AFTER trigger can be
@@ -120,8 +124,19 @@ async def ensure_pg_notify_triggers(  # REQ-258
         for tbl in tables
         if source_types.get(tbl["source_id"], "") == "postgresql"
     ]
-    base = await _base_tables(conn, pg_tables)
     installed: set[str] = set()
+    # Every server of a launch walks the same tables at boot; CREATE OR REPLACE FUNCTION and
+    # DROP/CREATE TRIGGER on one relation from two sessions at once fails "tuple concurrently
+    # updated". One walk at a time, on the plane's advisory lock.
+    async with conn.advisory_lock(_TRIGGER_INSTALL_LOCK_KEY):
+        base = await _base_tables(conn, pg_tables)
+        await _install(conn, pg_tables, base, installed)
+    return installed
+
+
+async def _install(
+    conn: Any, pg_tables: list[tuple[str, str]], base: set[tuple[str, str]], installed: set[str]
+) -> None:
     for schema, table in pg_tables:
         if (schema, table) not in base:
             # A view/matview (or a not-yet-created relation): polling serves it, by design.
@@ -139,4 +154,3 @@ async def ensure_pg_notify_triggers(  # REQ-258
                 table,
                 exc,
             )
-    return installed

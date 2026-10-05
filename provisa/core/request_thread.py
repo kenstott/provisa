@@ -47,11 +47,18 @@ import json
 import logging
 import queue
 import threading
+import time
 from collections.abc import Awaitable, Callable, Coroutine, MutableMapping
 from typing import Any, TypeVar
 
 from provisa.core import request_deadline
 from provisa.core.connection_loop import connection_loop
+from provisa.otel_compat import (
+    RECEIVE_RECORD,
+    ReceiveRecord,
+    http_server_span,
+    live_receive_span,
+)
 
 log = logging.getLogger(__name__)
 
@@ -443,6 +450,9 @@ class RequestThreadMiddleware:
             return
         front = asyncio.get_running_loop()
         pool = self._pool_for(scope)
+        # REQ-1910: the request's server span, opened by the ASGI instrumentation outside this
+        # middleware; its receive spans are this middleware's (provisa.otel_compat).
+        server_span = http_server_span()
 
         # Async on the request thread's loop by necessity: the ASGI receive/send channels belong to
         # the front loop's transport; the request loop awaits their completion there.
@@ -457,9 +467,13 @@ class RequestThreadMiddleware:
                 await send(message)
 
         async def relayed_receive() -> Message:
-            return await asyncio.wrap_future(
-                asyncio.run_coroutine_threadsafe(_front_receive(), front)
-            )
+            with live_receive_span(server_span, scope["type"]) as span:
+                message = await asyncio.wrap_future(
+                    asyncio.run_coroutine_threadsafe(_front_receive(), front)
+                )
+                if span is not None:
+                    span.set_attribute("asgi.event.type", message["type"])
+            return message
 
         if scope["type"] == "websocket":
             # REQ-1882 sanctioned hop, per message: a WebSocket is a conversation — each frame is
@@ -484,11 +498,21 @@ class RequestThreadMiddleware:
         # the hand-off instead of costing a relay back.
         first: list[Message] = []
         if _small_body(scope):
+            started_ns = time.time_ns()
             while True:
                 message = await receive()
                 first.append(message)
                 if message["type"] != "http.request" or not message.get("more_body"):
                     break
+            # REQ-1910 (amended 2026-10-05): no span is opened here -- the request's debug-trace
+            # window is resolved further in. The read's timing travels with the hand-off and the
+            # receive span is emitted once the window is known (provisa.api.http_trace_scope).
+            scope.setdefault("state", {})[RECEIVE_RECORD] = ReceiveRecord(
+                server_span,
+                started_ns,
+                time.time_ns(),
+                sum(len(m.get("body", b"")) for m in first if m["type"] == "http.request"),
+            )
 
         async def thread_receive() -> Message:
             if first:

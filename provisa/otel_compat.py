@@ -247,6 +247,77 @@ def _current_server_span() -> Any:
     return None
 
 
+# ---------------------------------------------------------------------------
+# REQ-1910 (amended 2026-10-05): an HTTP request's receive span. The ASGI instrumentation's own
+# receive span is turned off (otel_setup), because the accepting loop reads a small body before
+# the request reaches the middleware that resolves its debug-trace window, and a span opened then
+# could not follow that window. The read's timing is recorded on the hand-off instead and the span
+# is emitted once the window is known, with the measured times; a body read as it arrives (large or
+# chunked, and every later receive) keeps a live span.
+RECEIVE_RECORD = "provisa_receive"
+
+
+@dataclass(frozen=True)
+class ReceiveRecord:
+    """A pre-read request body: the server span it belongs to, when the read began and ended
+    (epoch ns), and how many bytes it carried."""
+
+    server_span: Any
+    start_ns: int
+    end_ns: int
+    body_bytes: int
+
+
+def http_server_span() -> Any:
+    """The HTTP server span current at request entry (the ASGI instrumentation's), or None."""
+    return _current_server_span()
+
+
+def _http_tracer() -> Any:
+    """The tracer of the process's provider -- the one the ASGI instrumentation's server span
+    comes from."""
+    from opentelemetry import trace as _trace
+
+    return _trace.get_tracer("provisa.http")
+
+
+def _receive_span_name(server_span: Any, scope_type: str) -> str:
+    return f"{server_span.name} {scope_type} receive"
+
+
+@contextmanager
+def live_receive_span(server_span: Any, scope_type: str) -> Iterator[Any]:
+    """A receive span around a body read as it arrives, a child of the request's server span;
+    None (no span) when the request has no recording server span."""
+    if server_span is None:
+        yield None
+        return
+    from opentelemetry import trace as _trace
+
+    with _http_tracer().start_as_current_span(
+        _receive_span_name(server_span, scope_type),
+        context=_trace.set_span_in_context(server_span),
+    ) as span:
+        yield span
+
+
+def emit_recorded_receive(record: ReceiveRecord, scope_type: str) -> None:
+    """Emit a pre-read body's receive span with its measured times, as a child of the request's
+    server span -- in debug detail only (normal detail gives a request one span)."""
+    if record.server_span is None or trace_detail() != "debug":
+        return
+    from opentelemetry import trace as _trace
+
+    span = _http_tracer().start_span(
+        _receive_span_name(record.server_span, scope_type),
+        context=_trace.set_span_in_context(record.server_span),
+        start_time=record.start_ns,
+    )
+    span.set_attribute("asgi.event.type", "http.request")
+    span.set_attribute("http.request.body.size", record.body_bytes)
+    span.end(end_time=record.end_ns)
+
+
 class _RequestFacts:
     """What a pipeline stage sees in normal detail: its attributes go onto the request span, and
     statement text is not recorded."""

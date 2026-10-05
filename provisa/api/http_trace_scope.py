@@ -16,7 +16,10 @@ read. Resolved only there, a request an open debug window covers lost its receiv
 sampled as a normal-detail child before anything had bound the detail.
 
 So an HTTP request's WINDOW is resolved in middleware, at the first point where its org and role
-are both bound and nothing has been read: the org-routing middleware, around its dispatch.
+are both bound: the org-routing middleware, around its dispatch. A small body has already been
+read by then, on the accepting loop (REQ-1882), with no span opened: the read's start, end and
+size travel with the hand-off, and the receive span is emitted here, with those times, when the
+resolved detail is debug (REQ-1910, amended 2026-10-05).
 The request's own hint (``@debugTrace``, a ``-- @provisa trace=debug`` comment, the
 ``X-Provisa-Trace`` header) is still resolved — and, for a role the operator has not permitted,
 rejected (REQ-030) — where it is read, by the endpoint and the pipeline: most hints travel in the
@@ -38,8 +41,16 @@ async def http_trace_scope(state: Any, scope: dict) -> AsyncGenerator[None]:
     operator's debug-trace windows on its org and role, unbound on exit — the scope is the block,
     so the detail cannot outlive the request it was resolved for. A request for which
     authentication resolved no role (health, docs, an unauthenticated path) is not decided here."""
-    role_id = (scope.get("state") or {}).get("role")
+    from provisa.otel_compat import RECEIVE_RECORD, emit_recorded_receive
+
+    request_state = scope.get("state") or {}
+    # REQ-1910 (amended 2026-10-05): a body the accepting loop read before this point carries its
+    # read's timing; its receive span is emitted here, once the request's detail is known.
+    received = request_state.pop(RECEIVE_RECORD, None)
+    role_id = request_state.get("role")
     if role_id is None:
+        if received is not None:
+            emit_recorded_receive(received, scope["type"])
         yield
         return
     from provisa.otel_compat import clear_trace_detail
@@ -47,6 +58,8 @@ async def http_trace_scope(state: Any, scope: dict) -> AsyncGenerator[None]:
 
     await resolve_trace_scope(state, role_id, hint=False)
     try:
+        if received is not None:
+            emit_recorded_receive(received, scope["type"])
         yield
     finally:
         clear_trace_detail()

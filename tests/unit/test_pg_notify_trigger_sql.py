@@ -19,6 +19,7 @@ transaction.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 from provisa.subscriptions.pg_provider import CHANNEL_PREFIX
@@ -78,6 +79,12 @@ def test_a_view_is_served_by_polling_without_attempting_a_trigger(caplog) -> Non
         def __init__(self, base: set[tuple[str, str]]) -> None:
             self._base = base
             self.executed: list[str] = []
+            self.locked: list[int] = []
+
+        @asynccontextmanager
+        async def advisory_lock(self, key):  # noqa: ANN001
+            self.locked.append(key)  # the walk runs under the plane's lock
+            yield self
 
         async def fetch(self, sql, schemas, names):  # noqa: ANN001
             assert "relkind" in sql  # the up-front base-table decision
@@ -107,6 +114,7 @@ def test_a_view_is_served_by_polling_without_attempting_a_trigger(caplog) -> Non
 
     assert installed == {"orders"}  # only the base table got a trigger
     assert len(conn.executed) == 1 and "org_default.orders" in conn.executed[0]
+    assert len(conn.locked) == 1  # one walk at a time across a launch's servers
     # The view triggered no CREATE and no "failed ... fall back to polling" warning.
     assert not [r for r in caplog.records if "roles_domain_access" in r.getMessage()]
 

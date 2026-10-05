@@ -22,6 +22,7 @@ Nothing reads the table and nothing asks for a build:
 
 from __future__ import annotations
 
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -151,7 +152,11 @@ def _replica_rows(pg: _SourceAndEngine) -> int | None:
     with psycopg.connect(pg.url(pg.engine_port, "provisa"), autocommit=True) as conn:
         if conn.execute("SELECT to_regclass(%s)", (_REPLICA,)).fetchone()[0] is None:
             return None
-        return conn.execute(f"SELECT COUNT(*) FROM {_REPLICA}").fetchone()[0]
+        try:
+            return conn.execute(f"SELECT COUNT(*) FROM {_REPLICA}").fetchone()[0]
+        except psycopg.errors.UndefinedTable:
+            # Dropped (the retirement this module waits for) between the lookup and the count.
+            return None
 
 
 def _wait(condition, *, seconds: float, what: str) -> None:
@@ -169,12 +174,19 @@ def _builds(srv) -> dict:
     )["replicaBuilds"]
 
 
-def _full_reads_of_orders(pg: _SourceAndEngine) -> list[str]:
-    """Statements the SOURCE executed that read ``orders`` in full."""
+def _builds_of_orders(pg: _SourceAndEngine) -> list[str]:
+    """Statements the ENGINE ran that copy ``orders`` from the source into a replica: one per build.
+
+    The source's own log cannot count builds: every server that attaches the source ANALYZEs its
+    foreign table, and postgres_fdw samples a small table with a full read of it; and the build's
+    read reaches the source as a multi-line extended-protocol statement."""
+    done = subprocess.run(
+        ["docker", "logs", pg._engine], check=True, capture_output=True, text=True
+    )
     return [
-        line.split("db=shop ", 1)[1]
-        for line in pg._source_log()
-        if "db=shop " in line and "FROM public.orders" in line  # the copy's read, not the catalog's
+        line
+        for line in (done.stdout + done.stderr).splitlines()
+        if f'INSERT INTO "org_{_NAME}_replicas".' in line and 'FROM "fdw_src"."orders"' in line
     ]
 
 
@@ -255,5 +267,5 @@ def test_two_servers_that_see_the_declaration_build_the_replica_once(databases):
         finally:
             first.stop_process()
             second.stop_process()
-    reads = _full_reads_of_orders(pg)
-    assert len(reads) == 1, reads
+    builds = _builds_of_orders(pg)
+    assert len(builds) == 1, builds

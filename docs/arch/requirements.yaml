@@ -70876,7 +70876,17 @@
     record (as a column or attribute), each report is repointed to it, and each report returns the same
     results in normal mode as it did when every span was stored. A report that needs per-statement or
     per-stage rows that one record cannot express is listed explicitly with how it is served (attributes
-    holding the list, or the debug-detail table), never silently degraded.'
+    holding the list, or the debug-detail table), never silently degraded.
+
+    (Amended 2026-10-05, A PRE-READ BODY''S RECEIVE SPAN:) An HTTP request''s debug-trace window is
+    resolved in the org-routing middleware, and a small request body is read before that, on the
+    accepting loop (REQ-1882). That read opens no span: its start time, end time and body size travel
+    with the hand-off to the request thread, and once the window is resolved the "<request span> http
+    receive" span is recorded with those measured times, as a child of the request span, when the
+    request''s detail is debug; in normal detail nothing is recorded for it. A body too large to read
+    up front, or chunked, and every later receive on the request (a disconnect watch, a WebSocket frame)
+    keep a live receive span opened when the read happens. The ASGI instrumentation''s own receive span
+    is turned off; these are the request''s receive spans.'
   use_case: Span creation runs on the request thread and span export shares the interpreter lock with
     request threads, so every span is CPU taken from the request path even though export never blocks;
     the collector and its trace store then pay again for each span. On the 2026-09-30 single-VM benchmark,
@@ -70900,6 +70910,8 @@
   code:
   - provisa/otel_compat.py
   - provisa/api/otel_setup.py
+  - provisa/api/http_trace_scope.py
+  - provisa/core/request_thread.py
   - provisa/observability/request_facts.py
   - provisa/pgwire/server.py
   - provisa/transpiler/router.py

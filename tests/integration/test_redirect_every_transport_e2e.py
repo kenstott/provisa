@@ -11,13 +11,13 @@
 """A forced redirect, on every transport, on a real server (REQ-1194, REQ-1224 amended
 2026-10-04).
 
-One real server (DuckDB engine) over the stack's Postgres, with a MinIO container of this module's
-own as the results store. Each transport asks for its result to be delivered there instead of
+One real server (DuckDB engine) over the stack's Postgres, with the stack's MinIO as the results
+store. Each transport asks for its result to be delivered there instead of
 answered inline, in its own side-channel; the answer is the delivery's handle, and the presigned
 link it names returns the rows as Parquet -- the rows the same read answers inline.
 
-Lands on the TEST instance only: a database the harness creates, a MinIO container on a leased
-port, both removed at the end."""
+Lands on the TEST instance only: a database the harness creates and a bucket of this module's
+own on the test stack's MinIO, both removed at the end."""
 
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ import asyncio
 import io
 import json
 import os
-import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -41,7 +40,9 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
-_KEY, _SECRET, _BUCKET = "provisa-test", "provisa-test-secret", "provisa-results"
+# The test stack's MinIO credentials (docker-compose.core.yml); the bucket is this module's own.
+_KEY, _SECRET = "minioadmin", "minioadmin"
+_BUCKET = f"redirect-every-transport-{os.getpid()}"
 _ROLE = "org_admin"
 _IDS = {1, 2}  # the harness seeds two orders
 _FORCE = {"X-Provisa-Redirect": "true", "X-Provisa-Redirect-Format": "parquet"}
@@ -49,40 +50,22 @@ _FORCE = {"X-Provisa-Redirect": "true", "X-Provisa-Redirect-Format": "parquet"}
 
 @pytest.fixture(scope="module")
 def results_store():
-    """A MinIO container on a leased port, with the bucket the deliveries land in."""
+    """The test stack's MinIO (the session wires its endpoint, PROVISA_REDIRECT_ENDPOINT), with a
+    bucket of this module's own that the deliveries land in, removed at the end."""
     import boto3
     from botocore.config import Config as BotoConfig
 
-    from tests.port_lease import lease_ports
-
-    (port,) = lease_ports(1)
-    name = f"provisa-itest-redirect-minio-{os.getpid()}"
-    subprocess.run(
-        ["docker", "run", "-d", "--rm", "--memory", "512m", "--name", name]
-        + ["-e", f"MINIO_ROOT_USER={_KEY}", "-e", f"MINIO_ROOT_PASSWORD={_SECRET}"]
-        + ["-p", f"127.0.0.1:{port}:9000", "minio/minio", "server", "/data"],
-        check=True,
-        capture_output=True,
+    endpoint = os.environ["PROVISA_REDIRECT_ENDPOINT"]
+    client = boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=_KEY,
+        aws_secret_access_key=_SECRET,
+        region_name="us-east-1",
+        config=BotoConfig(signature_version="s3v4"),
     )
-    endpoint = f"http://127.0.0.1:{port}"
+    client.create_bucket(Bucket=_BUCKET)
     try:
-        client = boto3.client(
-            "s3",
-            endpoint_url=endpoint,
-            aws_access_key_id=_KEY,
-            aws_secret_access_key=_SECRET,
-            region_name="us-east-1",
-            config=BotoConfig(signature_version="s3v4"),
-        )
-        deadline = time.monotonic() + 60
-        while True:
-            try:
-                client.list_buckets()
-                break
-            except Exception:  # noqa: BLE001 — the container is still starting
-                assert time.monotonic() < deadline, "MinIO did not come up within 60s"
-                time.sleep(1)
-        client.create_bucket(Bucket=_BUCKET)
         yield {
             "PROVISA_REDIRECT_ENDPOINT": endpoint,
             "PROVISA_REDIRECT_BUCKET": _BUCKET,
@@ -94,7 +77,10 @@ def results_store():
             "PROVISA_REDIRECT_ENABLED": "false",
         }
     finally:
-        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+        listed = client.list_objects_v2(Bucket=_BUCKET).get("Contents", [])
+        for obj in listed:
+            client.delete_object(Bucket=_BUCKET, Key=obj["Key"])
+        client.delete_bucket(Bucket=_BUCKET)
 
 
 # NL generation needs a model. The test serves one of its own: an OpenAI-style chat-completions
