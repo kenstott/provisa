@@ -12,8 +12,9 @@
 too, under the reader's governance (REQ-1921, REQ-1922).
 
 Two real DuckDB-engine nodes of one org, one in region ``eu`` and one in ``us``, over a shared
-model store in Postgres. A CSV source's table names ``eu``; eu's DuckDB scans the file in place,
-so eu keeps no replica of it. A read on us goes to the file itself — never refused for a replica
+model store in Postgres. A file source's table names ``eu`` — a CSV DuckDB scans itself, and a
+files source read through its Calcite pgwire bridge — and eu's DuckDB reads it in place, so eu
+keeps no replica of it. A read on us goes to the file itself — never refused for a replica
 that was never meant to exist, never copied into us — with the row-level rule applied for the
 reader: each region sees only its own rows (``provisa.region``)."""
 
@@ -44,7 +45,19 @@ _MASTER_KEY = base64.b64encode(os.urandom(32)).decode()
 _RELOAD_S, _TIMEOUT_S = 0.5, 20
 
 
-def _config(stack: "_Stack", files: Path, work: Path) -> dict:
+#: The two sources DuckDB reads in place: a CSV file it scans itself, and a files source read
+#: through its bundled Calcite pgwire server (filters, the row rule's among them, pushed down).
+_SOURCES = {
+    "csv": lambda path: ({"id": "orders_src", "type": "csv", "path": str(path)}, {}),
+    "files": lambda path: (
+        {"id": "orders_src", "type": "files", "path": str(path.parent)},
+        {"file_glob": "*.csv"},
+    ),
+}
+
+
+def _config(stack: "_Stack", files: Path, work: Path, kind: str) -> dict:
+    source, table_extra = _SOURCES[kind](files)
     v = {"visible_to": [_ROLE]}
     stores, regions = [], []
     for region in ("eu", "us"):
@@ -93,10 +106,11 @@ def _config(stack: "_Stack", files: Path, work: Path) -> dict:
                 "domain_access": ["*"],
             }
         ],
-        "sources": [{"id": "orders_csv", "type": "csv", "path": str(files)}],
+        "sources": [source],
         "tables": [
             {
-                "source_id": "orders_csv",
+                **table_extra,
+                "source_id": "orders_src",
                 "domain_id": "sales",
                 "schema": "main",
                 "table": "orders",
@@ -216,13 +230,15 @@ def stack():
         s.stop()
 
 
-def test_a_table_its_region_reads_in_place_is_read_in_place_by_another_region(stack):
+@pytest.mark.parametrize("kind", sorted(_SOURCES))
+def test_a_table_its_region_reads_in_place_is_read_in_place_by_another_region(stack, kind):
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
-        files = work / "orders.csv"
+        (work / "orders").mkdir()
+        files = work / "orders" / "orders.csv"
         files.write_text("id,amount,region\n1,10,eu\n2,20,us\n3,30,us\n4,40,eu\n")
         config = work / "config.yaml"
-        config.write_text(yaml.safe_dump(_config(stack, files, work)))
+        config.write_text(yaml.safe_dump(_config(stack, files, work, kind)))
         eu, us = _server(stack, "eu", config), _server(stack, "us", config)
         try:
             eu.start()
