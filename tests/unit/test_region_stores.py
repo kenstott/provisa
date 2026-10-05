@@ -329,3 +329,15 @@ def test_a_lanes_engine_lands_in_the_lanes_store_whoever_uses_it_first():
         assert engine.materialize_store() == lane
     finally:
         current_org.reset(unbound)
+
+
+def test_the_boot_reconcile_runs_once_the_orgs_regions_are_bound():
+    """REQ-1922: the boot's landed-table reconcile asks, per table, whether it is read here or
+    from another region's store — which reads the org's other regions. It ran before they were
+    bound, so a node of one region raised KeyError naming another at boot."""
+    import inspect
+
+    from provisa.api import app as app_mod
+
+    boot = inspect.getsource(app_mod._load_and_build)
+    assert boot.index("await _bind_region_stores(") < boot.index("reconcile_landed_tables()")

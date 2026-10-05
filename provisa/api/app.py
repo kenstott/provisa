@@ -1264,18 +1264,6 @@ async def _load_and_build(
     if apply:
         await _resolve_pk_from_sources()
 
-    # Schema-currency reconcile (REQ-846/932): converge the materialization store's landing tables
-    # to config for every MATERIALIZED source and attach their read views — DDL only, no data landed
-    # (that is the refresh's job). Best-effort at boot so a store hiccup never bricks startup (matches
-    # the live-engine reconcile pattern); materialized sources become queryable once it succeeds.
-    try:
-        _landed = await state.federation_engine.reconcile_landed_tables()
-        if _landed:
-            log.info("reconciled %d landed table(s) into the materialization store", len(_landed))
-    except Exception:
-        log.exception("landed-table schema reconcile failed")
-    _mark("reconcile landed tables")
-
     # Reload OpenAPI specs from DB into state (survives hot reloads and restarts)
     await _load_openapi_specs()
 
@@ -1305,6 +1293,20 @@ async def _load_and_build(
         from provisa.api.model_reload import prune_region_state
 
         await prune_region_state(state._active_runtime())  # REQ-1922
+
+    # Schema-currency reconcile (REQ-846/932), after the org's regions are bound (REQ-1922: which
+    # tables are read here, and which from another region's store, asks for those regions):
+    # converge the materialization store's landing tables to config for every MATERIALIZED source
+    # and attach their read views — DDL only, no data landed (that is the refresh's job).
+    # Best-effort at boot so a store hiccup never bricks startup (matches the live-engine reconcile
+    # pattern); materialized sources become queryable once it succeeds.
+    try:
+        _landed = await state.federation_engine.reconcile_landed_tables()
+        if _landed:
+            log.info("reconciled %d landed table(s) into the materialization store", len(_landed))
+    except Exception:
+        log.exception("landed-table schema reconcile failed")
+    _mark("reconcile landed tables")
 
     await _rebuild_schemas(raw_config)
 
