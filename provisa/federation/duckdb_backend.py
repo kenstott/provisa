@@ -87,6 +87,26 @@ class DuckDBBackend(NativeEngineBackend):
         return DuckDBFederationRuntime()
 
 
+class LocalEvaluationFailed(RuntimeError):
+    """A statement evaluated in-process over a batch (:func:`evaluate_over_arrow`) failed; the
+    message is DuckDB's own first line."""
+
+
+def evaluate_over_arrow(sql: str, relation: str, data: Any) -> Any:
+    """Run DuckDB-dialect ``sql`` over the Arrow table ``data`` bound as ``relation``, on a private
+    in-memory connection, and return the result as an Arrow table — a statement over rows already
+    in this process (REQ-1921/1922: a region's admission of rows it fetched by key), never a read
+    of any store or source."""
+    con = duckdb.connect()
+    try:
+        con.register(relation, data)
+        return con.execute(sql).to_arrow_table()
+    except duckdb.Error as exc:
+        raise LocalEvaluationFailed(str(exc).splitlines()[0]) from exc
+    finally:
+        con.close()
+
+
 def local_catalog_connection() -> duckdb.DuckDBPyConnection:
     """Private in-memory DuckDB connection for pgwire's pg_catalog emulation (REQ-127,
     REQ-128, REQ-363). Independent of any federated engine's dialect — this connection
