@@ -23,16 +23,21 @@ import { test, expect } from "./coverage";
  * polls the rendered message text over time and asserts it actually grows well past a first
  * fragment and reaches a substantial final length — the exact way that bug would fail.
  *
- * Skipped with no live ANTHROPIC_API_KEY (repo-root .env, loaded by playwright.config.ts) —
- * mcp_chat defaults to the anthropic vendor/claude-opus-4-8 model with no AI Models configuration
- * needed (see _resolve_vendor/_resolve_model's own defaults), so this test only needs the key.
+ * Needs a live ANTHROPIC_API_KEY (repo-root .env, loaded by playwright.config.ts; the ui-e2e-core
+ * workflow passes the repo secret) and fails by name without one — mcp_chat defaults to the
+ * anthropic vendor/claude-opus-4-8 model with no AI Models configuration needed (see
+ * _resolve_vendor/_resolve_model's own defaults), so this test only needs the key.
  */
 
 test.describe("ChatPanel streaming does not freeze mid-reply", () => {
-  test.skip(
-    !process.env.ANTHROPIC_API_KEY,
-    "no live ANTHROPIC_API_KEY in this environment — see repo-root .env",
-  );
+  // A live model is the point of these tests, so a missing key fails them by name rather than
+  // skipping them: a skip here hid that the CI lane never passed the key, and the spec never ran.
+  test.beforeEach(() => {
+    expect(
+      process.env.ANTHROPIC_API_KEY,
+      "ANTHROPIC_API_KEY is not set: repo-root .env locally; ui-e2e-core.yml passes the repo secret",
+    ).toBeTruthy();
+  });
 
   test("a real multi-round Anthropic turn keeps growing until it finishes, not stuck on the first word", async ({
     page,

@@ -111,6 +111,11 @@ jobs:
       - name: Run Playwright core lane
         working-directory: provisa-ui
         run: npx playwright test --project=core --reporter=list,html
+        env:
+          # chat-panel-streaming.spec.ts drives a live model and fails by name without it. This
+          # workflow runs on release pushes, tags and dispatch only (no pull_request trigger), so
+          # the secret never reaches a fork's code.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Upload Playwright report
         if: always()
