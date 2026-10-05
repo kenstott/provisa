@@ -353,9 +353,9 @@ def replica_write_lock_factory(state: Any) -> Callable[[tuple[str, str, str]], A
     """What gives a writer of deltas (an append land, a batch of change events) the lock of the
     replica it writes: the one a build of that replica holds (REQ-1915). The control plane and
     the org are resolved when a delta first takes a lock, in the org the wiring ran under."""
-    from provisa.core.request_context import current_org
+    from provisa.core.request_context import require_current_org
 
-    org_bound = current_org.get(None)
+    org_bound = require_current_org()
     resolved: list[tuple[str, str]] = []
 
     def lock(key: tuple[str, str, str]) -> Any:
@@ -365,7 +365,7 @@ def replica_write_lock_factory(state: Any) -> Callable[[tuple[str, str, str]], A
 
         if not resolved:
             platform_url = load_control_plane(config_path_str()).resolved_platform_url()
-            resolved.append((platform_url, org_bound if org_bound is not None else state.org_id))
+            resolved.append((platform_url, org_bound))
         return replica_write_lock(*resolved[0], key)
 
     return lock

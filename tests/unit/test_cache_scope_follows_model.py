@@ -84,6 +84,14 @@ async def _read(worker: _Worker, key: str):
     return await check_cache(worker.response_cache_store, key, cache_tenant(worker))
 
 
+@pytest.fixture(autouse=True)
+def _serving_acme():
+    """The workers serve acme's requests, bound as the routing middleware binds them (REQ-1266)."""
+    token = current_org.set("acme")
+    yield
+    current_org.reset(token)
+
+
 @pytest.fixture
 def key() -> str:
     """The key of a read of a view (the one response cache's, REQ-1897). It does not change when
@@ -151,6 +159,7 @@ async def test_a_write_invalidates_the_entries_of_the_model_it_ran_under(key):
 def test_the_runtime_publishes_the_stamp_its_model_was_loaded_at():
     import provisa.api.app as appmod
 
+    org = current_org.set(appmod.state.org_id)  # the deployment's own org, bound
     runtime = appmod.state._active_runtime()
     held = runtime.model_stamp
     runtime.model_stamp = 1234
@@ -159,3 +168,4 @@ def test_the_runtime_publishes_the_stamp_its_model_was_loaded_at():
         assert cache_tenant(appmod.state).endswith(":m1234")
     finally:
         runtime.model_stamp = held
+        current_org.reset(org)

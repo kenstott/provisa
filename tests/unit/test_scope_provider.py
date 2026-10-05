@@ -53,6 +53,7 @@ def test_an_unbound_context_is_prod():
     assert expand_scope("${scope:ENV}") == PROD
 
 
+@pytest.mark.unbound
 def test_an_unbound_org_raises_rather_than_resolving_empty():
     with pytest.raises(KeyError):
         expand_scope("${scope:ORG}")

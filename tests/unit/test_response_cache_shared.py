@@ -33,6 +33,12 @@ from provisa.pgwire._pipeline import _Plan, check_response_cache
 from provisa.transpiler.router import Route
 
 
+@pytest.fixture(autouse=True)
+def _bound_to_org_1(bind_org):
+    """The work is org-1's, the org the test state serves, bound as its entrypoint binds it (REQ-1266)."""
+    bind_org("org-1")
+
+
 class FakeCacheStore(CacheStore):
     """In-memory CacheStore -- no Redis dependency for a unit test."""
 

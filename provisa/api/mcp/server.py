@@ -35,7 +35,7 @@ from typing import Any
 from provisa.api.mcp import tools
 from provisa.api.org_resolve import OrgResolutionError
 from provisa.core import request_deadline
-from provisa.core.request_context import reset_current_org, set_current_org
+from provisa.core.request_context import require_current_org, reset_current_org, set_current_org
 from provisa.core.request_thread import run_on_request_thread
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import in_request_span as _in_request_span
@@ -121,15 +121,14 @@ def _role_for_identity(identity: Any, state: Any) -> str:
     return resolve_role(identity, auth_config.get("role_mapping", []), default_role)
 
 
-async def _resolve_token_org_async(token: str, state: Any) -> str | None:
+async def _resolve_token_org_async(token: str, state: Any) -> str:
     """Resolve the org a remote MCP session binds from its bearer token (REQ-1266).
 
-    Returns None for single-org deployments (leave ``current_org`` unset → default runtime).
-    Under multitenancy, validates the token and maps its subject to an org via the shared
+    A single-org deployment binds its one org. Under multitenancy, validates the token and maps its subject to an org via the shared
     membership rule (:func:`resolve_session_org`); raises on an unresolvable principal.
     """
     if not getattr(state, "multitenancy", False):
-        return None
+        return state.org_id
     return await _org_for_identity(await _validate_mcp_token(token, state), state)
 
 
@@ -153,18 +152,14 @@ def requested_org_from_scope(scope: dict) -> str | None:  # REQ-1235
     return raw.decode("latin-1") if raw else None
 
 
-async def _org_for_identity(
-    identity: Any, state: Any, requested_org: str | None = None
-) -> str | None:
-    """The org a validated MCP identity binds, or None on a single-org deployment (REQ-1266)."""
+async def _org_for_identity(identity: Any, state: Any, requested_org: str | None = None) -> str:
+    """The org a validated MCP identity binds; a single-org deployment's one org (REQ-1266)."""
     if not getattr(state, "multitenancy", False):
-        return None
+        return state.org_id
     from provisa.api.org_resolve import resolve_session_org
 
     # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
-    caps = capabilities_for_claims(
-        getattr(identity, "roles", []) or [], getattr(state, "roles", {})
-    )
+    caps = capabilities_for_claims(getattr(identity, "roles", []) or [], state.platform_roles)
     return await resolve_session_org(
         state,
         user_id=getattr(identity, "user_id", None),
@@ -325,7 +320,8 @@ def build_mcp_server(state: Any):
             # not on anything else the identity carries), so a synthetic identity naming just
             # that one role resolves correctly.
             identity = SimpleNamespace(user_id="mcp-stdio", roles=[resolved_role])
-            org_id = org_id or getattr(state, "org_id", None)
+            # The loopback request's org, bound by _wrap_role_auth (REQ-1266).
+            org_id = require_current_org()
         return SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=org_id))
 
     @_tool
@@ -732,17 +728,22 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             if require_token:
                 await _send_401(send, "bearer token required")
                 return
-            await app(scope, receive, send)  # loopback stdio-style: pinned role applies
+            # Loopback stdio-style: the pinned role applies, in the deployment's own org -- the
+            # unsecured HTTP path's org (REQ-1266).
+            loopback_token = set_current_org(state.org_id)
+            try:
+                await app(scope, receive, send)
+            finally:
+                reset_current_org(loopback_token)
             return
 
-        async def _resolve_principal() -> tuple[Any, str, str | None]:
+        async def _resolve_principal() -> tuple[Any, str, str]:
             identity = await _validate_mcp_token(token, state)
             role = _role_for_identity(identity, state)
             org_id = await _org_for_identity(identity, state, requested_org_from_scope(scope))
-            if org_id is not None:
-                from provisa.api.app import ensure_org_runtime
+            from provisa.api.app import ensure_serving_runtime
 
-                await ensure_org_runtime(org_id)
+            await ensure_serving_runtime(org_id)
             return identity, role, org_id
 
         try:
@@ -762,10 +763,8 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
         identity_reset = _request_identity.set(identity)
         org_id_reset = _request_org_id.set(org_id)
         # REQ-1266: bind the org's data-plane runtime for the request so the tools' state.X reads
-        # route to it. None (single-org / default) leaves current_org unset → default runtime.
-        org_token = None
-        if org_id is not None:
-            org_token = set_current_org(org_id)
+        # route to it.
+        org_token = set_current_org(org_id)
         # REQ-074/REQ-1386: attribute the tools' governed statements to the token's principal. The
         # MCP transport runs on its own event loop in-process, so a plain scope binds it for the
         # request; the pipeline's terminals write the audit row.
@@ -782,8 +781,7 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             _request_role.reset(reset)
             _request_identity.reset(identity_reset)
             _request_org_id.reset(org_id_reset)
-            if org_token is not None:
-                reset_current_org(org_token)
+            reset_current_org(org_token)
 
     return _middleware
 

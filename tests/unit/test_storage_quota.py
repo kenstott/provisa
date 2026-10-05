@@ -118,10 +118,17 @@ class TestByo:
         assert org_store_dsn("acme") == _ORG_STORE
         assert org_has_byo_store("acme")
 
-    def test_an_org_on_the_platform_store_and_an_unbuilt_org_have_none(self, app_state):
+    def test_an_org_on_the_platform_store_has_none(self, app_state):
         assert org_store_dsn("acme") is None
         assert not org_has_byo_store("acme")
-        assert not org_has_byo_store("never-built")
+
+    def test_an_unbuilt_org_is_refused_by_name_not_given_the_platform_store(self, app_state):
+        """REQ-1266: its store is unknown until its runtime is built; "the platform's" would land
+        a BYO org's data in the platform store."""
+        with pytest.raises(RuntimeError, match="'never-built'"):
+            org_store_dsn("never-built")
+        with pytest.raises(RuntimeError, match="'never-built'"):
+            org_has_byo_store("never-built")
 
     async def test_a_byo_org_has_no_ceiling_even_on_a_capped_plan(self, app_state, monkeypatch):
         _cap(monkeypatch, (_GB, "trial"))
@@ -336,6 +343,16 @@ class TestMaterializeStorePrecedence:
     def test_with_nothing_configured_the_engine_default_stands(self, app_state):
         current_org.set("acme")
         assert self._engine("engine-default").materialize_store() == "engine-default"
+
+    @pytest.mark.unbound
+    def test_work_bound_to_no_org_has_no_store(self, app_state, monkeypatch):
+        """REQ-1266: the store is the bound org's to decide, so with none bound there is no answer
+        -- not the platform's store by default."""
+        monkeypatch.setattr(
+            "provisa.federation.engine.configured_materialize_url", lambda: _PLATFORM_STORE
+        )
+        with pytest.raises(RuntimeError, match="No active org bound"):
+            self._engine("engine-default").materialize_store()
 
     def test_no_store_anywhere_is_a_hard_error_not_a_fallback(self, app_state):
         current_org.set("acme")

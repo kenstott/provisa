@@ -77,14 +77,23 @@ async def test_the_old_request_removed_nothing(store):
 
 
 async def test_the_mutation_purges_the_callers_org_and_environment_only(store, monkeypatch):
-    monkeypatch.setattr(appmod.state, "response_cache_store", store, raising=False)
-    monkeypatch.setattr(tenancy, "cache_place", lambda _state: "acme")
-    request = types.SimpleNamespace(
-        state=types.SimpleNamespace(identity=None, active_org_id="acme")
-    )
-    info: Any = types.SimpleNamespace(context={"request": request})
+    from provisa.core.request_context import reset_current_org, set_current_org
 
-    result = await schema_mutation.Mutation().purge_cache(info)
+    # The request's org is bound, as the routing middleware binds it (REQ-1266): the deployment's
+    # own org, whose runtime holds the store; the place it purges is stubbed to acme's.
+    token = set_current_org(appmod.state.org_id)
+    try:
+        monkeypatch.setattr(appmod.state, "response_cache_store", store, raising=False)
+        monkeypatch.setattr(tenancy, "cache_place", lambda _state: "acme")
+        request = types.SimpleNamespace(
+            state=types.SimpleNamespace(identity=None, active_org_id="acme")
+        )
+        info: Any = types.SimpleNamespace(context={"request": request})
+
+        result = await schema_mutation.Mutation().purge_cache(info)
+    finally:
+        monkeypatch.undo()  # the routed store is put back while the org is still bound
+        reset_current_org(token)
 
     assert (result.success, result.code, result.params) == (
         True,

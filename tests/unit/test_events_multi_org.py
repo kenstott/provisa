@@ -30,6 +30,9 @@ from provisa.events import supervisor
 from provisa.events.boot import register_runtime
 from provisa.events.processor import TableProcessor
 
+# APScheduler fires a job with nothing bound: each job binds the org it was registered for.
+pytestmark = pytest.mark.unbound
+
 
 class _FakeScheduler:
     def __init__(self) -> None:

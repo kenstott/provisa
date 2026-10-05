@@ -225,7 +225,7 @@ async def attach_if_serving(state: Any) -> bool:
     return True
 
 
-async def engine_state(state: Any, org_id: str | None) -> str:
+async def engine_state(state: Any, org_id: str) -> str:
     """What the engine behind ``org_id`` is doing right now, WITHOUT starting it (REQ-1516).
 
     One of ``always-on``, ``ready``, ``starting``, ``stopped``. A cold start is ~2-4min of Autopilot
@@ -245,7 +245,7 @@ async def engine_state(state: Any, org_id: str | None) -> str:
     if not k8s.provisioning_available():
         return "always-on"
 
-    if org_id is None or org_id == state.org_id:
+    if org_id == state.org_id:
         shard = boot_shard()
     else:
         runtime = state.org_registry.get(org_id)
@@ -370,7 +370,7 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
     default.engine_generation = generation(shard)
 
 
-def prewarm_engine(state: Any, org_id: str | None) -> concurrent.futures.Future[None] | None:
+def prewarm_engine(state: Any, org_id: str) -> concurrent.futures.Future[None] | None:
     """REQ-1471: start the shard's cold start at SIGN-IN, so the first query does not pay for it.
 
     A cold start is ~2-4min of Autopilot node provision plus Trino start, and the query path pays
@@ -386,23 +386,13 @@ def prewarm_engine(state: Any, org_id: str | None) -> concurrent.futures.Future[
     if not k8s.provisioning_available():
         return None
 
-    # /auth/me reports the deployment's own org by NAME, but _OrgRoutingMiddleware binds
-    # current_org only for a non-default org (auth/middleware.py:601-604) — unset IS the default
-    # org, and ensure_engine_awake's unset branch is the one that serves it. Binding the name here
-    # instead sent the default org down the tenant branch, which invalidates the registry entry and
-    # rebuilds the runtime; that rebuild replaced the org's compiled state with a build the boot
-    # path had assembled differently, and every surface answered "No schema available for role".
-    if org_id == state.org_id:
-        org_id = None
-
     async def _run() -> None:
         from provisa.core.request_context import reset_current_org, set_current_org
         from provisa.otel_compat import detached_trace_context
 
         # ensure_engine_awake reads the active org off the ContextVar, and this task does not
-        # inherit the request's binding — the middleware resets it before the response. None is
-        # meaningful there (the deployment's own org), so it is passed through, not defaulted.
-        token = set_current_org(org_id) if org_id is not None else None
+        # inherit the request's binding — the middleware resets it before the response.
+        token = set_current_org(org_id)
         try:
             # The task DOES inherit the request's span: every Kubernetes poll of a minutes-long wake
             # was parented under the sign-in that asked for it. The wake is its own trace.
@@ -415,8 +405,7 @@ def prewarm_engine(state: Any, org_id: str | None) -> concurrent.futures.Future[
             # surfaces whatever this hit, so the failure is reported where it can be acted on.
             log.exception("prewarming the engine for org %r failed", org_id)
         finally:
-            if token is not None:
-                reset_current_org(token)
+            reset_current_org(token)
 
     if _prewarm_tasks.get(org_id) is not None:
         return None
@@ -496,10 +485,10 @@ def active_shard(state: Any) -> str | None:
         return None
 
     from provisa.api.org_runtime import runtime_key
-    from provisa.core.request_context import active_env, current_org
+    from provisa.core.request_context import active_env, require_current_org
 
-    org_id = current_org.get()
-    if org_id is None:
+    org_id = require_current_org()
+    if org_id == state.org_id:
         return boot_shard()
 
     # The environment's key, because that is the runtime the request bound: an org whose queries all
@@ -652,19 +641,18 @@ async def ensure_engine_awake(state: Any) -> None:
         return
 
     from provisa.api.org_runtime import runtime_key
-    from provisa.core.request_context import active_env, current_org
+    from provisa.core.request_context import active_env, require_current_org
 
-    org_id = current_org.get()
+    org_id = require_current_org()
     # REQ-1488/REQ-1529: which COPY of the model this query reads. It selects the runtime whose
     # generation is compared and whose catalogs are reissued -- see _rebuild_env_runtime.
     env = active_env()
-    if org_id is None:
-        # NOT only boot and background: _OrgRoutingMiddleware binds current_org only when a
-        # NON-default org is selected, so the deployment's own org — the one a single-tenant
-        # install and every unselected request queries — arrives here. It is served by the control
-        # plane's own shard, and it owns the shared terminal, so both the wake and the restore are
-        # this branch's to do. Treating it as "boot already handled it" is what left the terminal
-        # dialing a pod IP that had been released hours earlier.
+    if org_id == state.org_id:
+        # The deployment's own org — the one a single-tenant install queries. It is served by the
+        # control plane's own shard, and it owns the shared terminal, so both the wake and the
+        # restore are this branch's to do; the tenant branch below would invalidate and rebuild
+        # its runtime, replacing the compiled state the boot assembled. Treating it as "boot
+        # already handled it" is what left the terminal dialing a pod IP released hours earlier.
         shard = boot_shard()
         await ensure_shard_awake(shard)
         default = state.org_registry.get(state.org_id)

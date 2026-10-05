@@ -1027,11 +1027,11 @@ class TrinoBackend(EngineBackend):
         already exists rather than caching its ABSENCE moments before it is created."""
         try:
             from provisa.core.environments import active_org_schema
-            from provisa.core.request_context import current_org
+            from provisa.core.request_context import require_current_org
             from provisa.federation.store_writer import store_connection
             from sqlalchemy.schema import CreateSchema
 
-            org_id = current_org.get() or state.org_id
+            org_id = require_current_org()
             cache_schema = active_org_schema(org_id, "_api_cache")
             async with store_connection(self.engine.materialize_store()) as store_conn:
                 await store_conn.execute_core(CreateSchema(cache_schema, if_not_exists=True))

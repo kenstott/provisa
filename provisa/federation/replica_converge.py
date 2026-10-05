@@ -254,7 +254,7 @@ async def converge_logged(state: Any) -> None:
         }
         log.error(
             "replicas of org %s did not converge (%s): %s",
-            org_id or "default",
+            org_id,
             ".".join(getattr(exc, "key", None) or ("-",)),
             exc,
             exc_info=exc,

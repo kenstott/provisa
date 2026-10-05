@@ -62,43 +62,51 @@ def test_the_generation_is_left_unstamped_so_the_first_query_restores():
 def test_the_settings_are_applied_without_connecting_the_terminal(monkeypatch):
     """The server config is not engine state: hostname, limits and security mode are read by every
     non-engine surface, so they are applied on the deferred path too."""
-    calls: list[str] = []
+    from provisa.core.request_context import reset_current_org, set_current_org
 
-    class _Engine:
-        def provision(self, _views):
-            calls.append("provision")
+    # The boot applies the config with the deployment's own org bound (REQ-1266).
+    token = set_current_org(app_module.state.org_id)
+    try:
+        calls: list[str] = []
 
-        def configure_session(self, _cfg):
-            calls.append("configure_session")
+        class _Engine:
+            def provision(self, _views):
+                calls.append("provision")
 
-    monkeypatch.setattr(app_module.state, "federation_engine", _Engine())
-    monkeypatch.delenv("PROVISA_HOSTNAME", raising=False)
-    # Everything the call publishes is process-wide — the app state's settings and the limits
-    # module the compiler reads the default row cap from — so it is put back when the test ends;
-    # left in place, the row limit of 7 governed every later test in the same worker.
-    from provisa.core import limits
+            def configure_session(self, _cfg):
+                calls.append("configure_session")
 
-    for attr in ("server_cfg", "security_high", "hostname", "server_limits"):
-        monkeypatch.setattr(app_module.state, attr, getattr(app_module.state, attr))
-    monkeypatch.setattr(limits, "_server_limits", limits.server_limits())
-    # REQ-1913: applying the server config also installs the encryption provider and selects the
-    # secrets service (a stored secret setting is read as the restart settings are fixed).
-    from provisa.core import secrets_runtime
-    from provisa.encryption import runtime as encryption_runtime
+        monkeypatch.setattr(app_module.state, "federation_engine", _Engine())
+        monkeypatch.delenv("PROVISA_HOSTNAME", raising=False)
+        # Everything the call publishes is process-wide — the app state's settings and the limits
+        # module the compiler reads the default row cap from — so it is put back when the test ends;
+        # left in place, the row limit of 7 governed every later test in the same worker.
+        from provisa.core import limits
 
-    monkeypatch.setattr(encryption_runtime, "_service", encryption_runtime._service)
-    monkeypatch.setattr(secrets_runtime, "_selected", secrets_runtime._selected)
-    monkeypatch.setattr(secrets_runtime, "_backend", secrets_runtime._backend)
-    monkeypatch.delenv("PROVISA_DEFAULT_ROW_LIMIT", raising=False)
+        for attr in ("server_cfg", "security_high", "hostname", "server_limits"):
+            monkeypatch.setattr(app_module.state, attr, getattr(app_module.state, attr))
+        monkeypatch.setattr(limits, "_server_limits", limits.server_limits())
+        # REQ-1913: applying the server config also installs the encryption provider and selects the
+        # secrets service (a stored secret setting is read as the restart settings are fixed).
+        from provisa.core import secrets_runtime
+        from provisa.encryption import runtime as encryption_runtime
 
-    app_loaders._apply_server_and_engine_config(
-        {"server": {"hostname": "example.test", "limits": {"default_row_limit": 7}}},
-        connect_engine=False,
-    )
+        monkeypatch.setattr(encryption_runtime, "_service", encryption_runtime._service)
+        monkeypatch.setattr(secrets_runtime, "_selected", secrets_runtime._selected)
+        monkeypatch.setattr(secrets_runtime, "_backend", secrets_runtime._backend)
+        monkeypatch.delenv("PROVISA_DEFAULT_ROW_LIMIT", raising=False)
 
-    assert calls == []
-    assert app_module.state.hostname == "example.test"
-    assert app_module.state.server_limits["default_row_limit"] == 7
+        app_loaders._apply_server_and_engine_config(
+            {"server": {"hostname": "example.test", "limits": {"default_row_limit": 7}}},
+            connect_engine=False,
+        )
+
+        assert calls == []
+        assert app_module.state.hostname == "example.test"
+        assert app_module.state.server_limits["default_row_limit"] == 7
+    finally:
+        monkeypatch.undo()  # routed attributes are put back while the org is still bound
+        reset_current_org(token)
 
 
 def test_the_seed_asks_for_an_address_only_when_there_is_one():

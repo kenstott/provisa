@@ -27,10 +27,19 @@ from sqlalchemy.exc import SQLAlchemyError
 
 async def health_report(state: Any) -> dict[str, Any]:
     """The health of the worker answering, in the shape of ``GET /health``."""
+    from provisa.core.request_context import reset_current_org, set_current_org
+
     pg_status = "unavailable"
-    if state.tenant_db is not None:
+    # The probe asks for no org (it needs no credential): the dependency it reports is the state
+    # store of the deployment's own org, named here rather than reached through an unbound read.
+    token = set_current_org(state.org_id)
+    try:
+        tenant_db = state.tenant_db
+    finally:
+        reset_current_org(token)
+    if tenant_db is not None:
         try:
-            async with state.tenant_db.acquire() as conn:
+            async with tenant_db.acquire() as conn:
                 await conn.fetchval("SELECT 1")
             pg_status = "ok"
         except (SQLAlchemyError, OSError, asyncio.TimeoutError):

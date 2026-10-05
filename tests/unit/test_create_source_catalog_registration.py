@@ -46,15 +46,21 @@ class _NativeEngine:
 @pytest.fixture()
 def state(monkeypatch):
     from provisa.api.app import state as app_state
+    from provisa.core.request_context import reset_current_org, set_current_org
 
+    # The work is the deployment org's, bound as an entrypoint binds it (REQ-1266) -- and still
+    # bound while monkeypatch restores the routed attributes below.
+    token = set_current_org("default")
+    monkeypatch.setattr(app_state, "org_id", "default", raising=False)
     monkeypatch.setattr(app_state, "source_catalogs", {}, raising=False)
     monkeypatch.setattr(app_state, "source_types", {}, raising=False)
     monkeypatch.setattr(app_state, "source_dialects", {}, raising=False)
     monkeypatch.setattr(app_state, "source_cache", {}, raising=False)
     monkeypatch.setattr(app_state, "source_federation_hints", {}, raising=False)
     monkeypatch.setattr(app_state, "federation_engine", _NativeEngine(), raising=False)
-    monkeypatch.setattr(app_state, "org_id", "default", raising=False)
-    return app_state
+    yield app_state
+    monkeypatch.undo()
+    reset_current_org(token)
 
 
 @pytest.mark.parametrize(
@@ -85,15 +91,22 @@ def test_non_default_org_prefixes_the_source_id_derived_name(state):
     from provisa.api.app_loaders import _populate_source_catalog_names
     from provisa.core.request_context import current_org
 
+    from provisa.api.org_runtime import OrgRuntime
+
+    # The org's own runtime, as ensure_org_runtime builds it: work bound to an org is served by
+    # that org's runtime, never the default one (REQ-1266).
+    tenant = OrgRuntime(org_id="tenant-a")
+    tenant.federation_engine = state.federation_engine
+    state.org_registry.set("tenant-a", tenant)
     token = current_org.set("tenant-a")
     try:
         _populate_source_catalog_names(
             _config(Source(id="e2e-sharepoint", type=SourceType.sharepoint, database="tenant-guid"))
         )
+        assert state.source_catalogs["e2e-sharepoint"] == "org_tenant-a__e2e_sharepoint"
     finally:
         current_org.reset(token)
-
-    assert state.source_catalogs["e2e-sharepoint"] == "org_tenant-a__e2e_sharepoint"
+        state.org_registry.invalidate("tenant-a")
 
 
 def test_fixed_catalog_warehouse_pins_every_source_to_the_warehouse_database(state, monkeypatch):

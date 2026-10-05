@@ -39,6 +39,14 @@ from provisa.federation.replica_address import (
 )
 
 _STATE = SimpleNamespace(org_id="acme")
+
+
+@pytest.fixture(autouse=True)
+def _serving_acme(bind_org):
+    """The work is acme's, the org _STATE serves, bound as its entrypoint binds it (REQ-1266)."""
+    bind_org("acme")
+
+
 _ENGINES = sorted(_ENGINE_BUILDERS)
 
 

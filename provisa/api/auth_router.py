@@ -58,7 +58,13 @@ async def me(request: Request):
 
     identity = getattr(request.state, "identity", None)
 
-    model_db = state.model_db
+    # REQ-1266: an org-bound request reads its own org's roles. A request that acts in no org (a
+    # signed-in user with no membership yet, REQ-1327) holds only platform assignments, so their
+    # roles are read on the platform plane, named as such.
+    if getattr(request.state, "active_org_id", None) is None:
+        model_db = state.platform_model_db
+    else:
+        model_db = state.model_db
     assert model_db is not None
     async with model_db.acquire() as conn:
         result = await conn.execute_core(select(roles.c.id))
@@ -138,7 +144,8 @@ async def me(request: Request):
     # ~2-4min node provision the first query would otherwise pay for inside the request.
     from provisa.federation.engine_wake import prewarm_engine
 
-    prewarm_engine(state, active_org_id)
+    if active_org_id is not None:  # a user with no org yet has no engine to warm
+        prewarm_engine(state, active_org_id)
     return {
         "user_id": identity.user_id,
         "email": identity.email,

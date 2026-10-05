@@ -35,6 +35,7 @@ _HASH = bcrypt.hashpw(_PASSWORD.encode(), bcrypt.gensalt()).decode()
 
 def _app_state(**overrides):
     state = SimpleNamespace(
+        org_id="default",
         auth_config={"provider": "simple", "default_role": "analyst", "role_mapping": []},
         auth_middleware_active=True,
         contexts={"analyst": object(), "steward": object()},

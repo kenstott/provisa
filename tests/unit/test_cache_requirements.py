@@ -150,14 +150,20 @@ class TestREQ595InlineResultWritesTenantScoped:
 
         monkeypatch.setattr("provisa.audit.pipeline.write_audit", _noop)
         monkeypatch.setattr("provisa.pgwire._pipeline._response_cache_bound", lambda: 100)
+        from provisa.core.request_context import reset_current_org, set_current_org
+
         store = FakeCacheStore()
         state = _state(store)
-        tee = response_cache_tee(_plan(), state, run=None)
-        assert tee is not None
-        for _ in tee.rows(_stream([_ROWS])).batches():
-            pass
-        await tee.commit()
+        token = set_current_org("org-a")  # the request's org, bound (REQ-1266)
+        try:
+            tee = response_cache_tee(_plan(), state, run=None)
+            assert tee is not None
+            for _ in tee.rows(_stream([_ROWS])).batches():
+                pass
+            await tee.commit()
 
-        assert all(k.startswith("org-a:m1:") for k in store._data), list(store._data)
-        hit = await check_response_cache(_plan(), state)
+            assert all(k.startswith("org-a:m1:") for k in store._data), list(store._data)
+            hit = await check_response_cache(_plan(), state)
+        finally:
+            reset_current_org(token)
         assert hit is not None and hit.rows == _ROWS

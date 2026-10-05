@@ -101,9 +101,9 @@ def _info(*role_ids: str) -> Any:
 
 
 @pytest.fixture(autouse=True)
-def _seeded_registry(monkeypatch):
+def _seeded_registry(monkeypatch, serve_deployment_org):
+    serve_deployment_org(ROOT_ORG)
     monkeypatch.setattr(appmod.state, "roles", ROLES, raising=False)
-    monkeypatch.setattr(appmod.state, "org_id", ROOT_ORG, raising=False)
     from provisa.core import domain_policy
 
     monkeypatch.setattr(domain_policy, "single_domain", lambda: False)

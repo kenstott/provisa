@@ -151,6 +151,16 @@ def _state(*, ready=True):
     )
 
 
+@pytest.fixture(autouse=True)
+def _boot_org():
+    """The boot wires the event loop with the deployment's org bound (REQ-1266)."""
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org("default")
+    yield
+    reset_current_org(token)
+
+
 @pytest.mark.asyncio
 async def test_skips_when_prerequisites_missing():
     sched = _Sched()
@@ -183,7 +193,8 @@ async def test_registers_source_node_and_runtime_jobs():
     sched = _Sched()
     n = await wire_event_loop(sched, state=_state(), log=_LOG)
     assert n == 1  # the one MATERIALIZED source table (openapi) → a source node
-    assert "events:tick" in sched.jobs and "events:reaper" in sched.jobs
+    # the org the boot serves names its jobs (REQ-1266: it is bound, like every other org)
+    assert "events:tick:org_default" in sched.jobs and "events:reaper:org_default" in sched.jobs
 
 
 def _state_with_mv(*, column_types):

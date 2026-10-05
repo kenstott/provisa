@@ -39,7 +39,11 @@ def test_the_report_of_a_worker_with_no_control_plane_has_the_health_shape(monke
     report = asyncio.run(
         health_report_mod.health_report(
             SimpleNamespace(
-                model_db=None, tenant_db=None, admin_db=object(), platform_state_db=object()
+                org_id="default",
+                model_db=None,
+                tenant_db=None,
+                admin_db=object(),
+                platform_state_db=object(),
             )
         )
     )

@@ -187,11 +187,21 @@ async def test_a_table_kept_in_another_region_is_read_where_that_region_reads_it
         source_catalogs={"src": "src"},
         foreign_regions={"eu": ForeignRegion("eu", "postgresql://eu/db", None, "trino")},  # type: ignore[arg-type]
     )
+    import provisa.api.app as app_mod
+    from provisa.api.org_runtime import OrgRegistry, OrgRuntime
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    # acme's runtime is built, as before any work is bound to it; it keeps no store of its own.
+    registry = OrgRegistry()
+    registry.set("acme", OrgRuntime(org_id="acme"))
+    monkeypatch.setattr(app_mod.state, "org_registry", registry)
     was = process_region._region
+    org = set_current_org("acme")  # acme's routes, published with acme bound (REQ-1266)
     try:
         process_region.bind_launch(platform, requested="us")
         routes = await replica_routes(state)
     finally:
+        reset_current_org(org)
         process_region._region = was
     sql = 'SELECT "o"."id" FROM "src"."public"."orders" AS "o"'
     if routed:

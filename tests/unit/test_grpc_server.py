@@ -74,6 +74,8 @@ def _make_pb2_module(type_name: str = "Orders", fields: list[str] | None = None)
         fields_by_name={fd.name: fd for fd in field_descriptors},
     )
     msg_cls = MagicMock()
+    # A message has a serialized size: its egress is metered to the org bound (REQ-1452).
+    msg_cls.return_value.ByteSize.return_value = 1
     msg_cls.DESCRIPTOR = descriptor
 
     pb2 = SimpleNamespace(
@@ -88,6 +90,7 @@ def _make_state(role_id: str = "admin", schema=None, ctx=None):
     from provisa.compiler.rls import RLSContext
 
     state = SimpleNamespace(
+        org_id="default",
         schemas={role_id: schema or MagicMock()},
         contexts={role_id: ctx or MagicMock()},
         rls_contexts={role_id: RLSContext.empty()},
@@ -185,6 +188,7 @@ class TestHandleQuery:
 
         pb2, _ = _make_pb2_module("Orders", ["id", "amount"])
         batch_cls = MagicMock()
+        batch_cls.return_value.ByteSize.return_value = 1  # metered as egress (REQ-1452)
         pb2.OrdersBatch = batch_cls
         state = _make_state()
 
@@ -244,6 +248,7 @@ class TestHandleQuery:
         whether a bigger batch is safe for that table's row width."""
         pb2, _ = _make_pb2_module("Orders", ["id", "amount"])
         batch_cls = MagicMock()
+        batch_cls.return_value.ByteSize.return_value = 1  # metered as egress (REQ-1452)
         pb2.OrdersBatch = batch_cls
         state = _make_state()
 

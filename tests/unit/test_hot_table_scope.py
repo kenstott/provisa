@@ -219,15 +219,18 @@ def test_the_scope_is_read_from_the_acting_runtime():
     import provisa.api.app as appmod
     from provisa.core.request_context import current_org
 
-    runtime = appmod.state._active_runtime()
-    held = runtime.model_stamp
+    from provisa.api.org_runtime import OrgRuntime
+
+    # acme's own runtime, as ensure_org_runtime builds it (REQ-1266: never the default one).
+    runtime = OrgRuntime(org_id="acme")
     runtime.model_stamp = 4321
+    appmod.state.org_registry.set("acme", runtime)
     token = current_org.set("acme")
     try:
         assert hot_tables._scope_parts() == ("acme", 4321)
     finally:
         current_org.reset(token)
-        runtime.model_stamp = held
+        appmod.state.org_registry.invalidate("acme")
 
 
 async def test_rows_a_caller_hands_over_are_held_under_their_table(manager, acting):

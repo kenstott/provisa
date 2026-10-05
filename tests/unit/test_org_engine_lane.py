@@ -90,7 +90,11 @@ def test_saas_isolated_org_still_uses_the_host_template(saas_isolated_org, monke
 
 
 def test_active_engine_endpoint_is_none_off_the_external_lane(saas_isolated_org):
-    assert state.active_engine_endpoint is None
+    token = set_current_org(state.org_id)  # the deployment's own org
+    try:
+        assert state.active_engine_endpoint is None
+    finally:
+        reset_current_org(token)
     token = set_current_org(saas_isolated_org[0])
     try:
         assert state.active_engine_endpoint is None

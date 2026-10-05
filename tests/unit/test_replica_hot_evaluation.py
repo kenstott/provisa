@@ -99,7 +99,16 @@ class _Engine:
 
 
 @pytest.fixture
-async def world(tmp_path, monkeypatch):
+def world_org(bind_org) -> str:
+    """The org the world serves, its own per test, bound as the evaluation loop binds each org it
+    evaluates (REQ-1266). Bound here, in a sync fixture, so the test's own context carries it."""
+    org = f"org-{uuid.uuid4().hex}"
+    bind_org(org)
+    return org
+
+
+@pytest.fixture
+async def world(tmp_path, monkeypatch, world_org):
     """One org environment: a real replica-state control plane, a registry of two tables on a
     source the engine reads in place, an embedded count store with its own clock."""
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
@@ -123,7 +132,7 @@ async def world(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "provisa.federation.replica_builds.store_identity", lambda _state: "store-a"
     )
-    org = f"org-{uuid.uuid4().hex}"
+    org = world_org
     state = SimpleNamespace(
         model_db=db,
         tenant_db=db,

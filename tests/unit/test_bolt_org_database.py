@@ -97,8 +97,10 @@ class _AdminDb:
 
 class _State:
     multitenancy = True
+    org_id = "default"
     admin_db = _AdminDb()
     roles: dict = {}
+    platform_roles: dict = {}
 
 
 class TestTheDatabaseOrgBindsTheSession:
@@ -184,6 +186,6 @@ class TestRoleSetDatabase:
         assert built == [("acme", ["analyst", "auditor"])]
 
     def test_a_role_not_held_is_refused_by_name(self):
-        session = self._session(["analyst"])
+        session = self._session(["analyst"], org_id="acme")  # resolved before any RUN (REQ-1266)
         with pytest.raises(PermissionError, match="'org_admin'"):
             session._meta_role(object(), "analyst,org_admin")

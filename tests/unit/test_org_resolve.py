@@ -66,14 +66,15 @@ class _FakeAdminDB:
 class _FakeState:
     def __init__(self, *, multitenancy: bool, org_ids: list[str] | None = None) -> None:
         self.multitenancy = multitenancy
+        self.org_id = "root"  # the deployment's own org
         self.admin_db = _FakeAdminDB(org_ids or [])
 
 
 @pytest.mark.asyncio
-async def test_single_org_returns_none_even_with_user():
-    # multitenancy off → always None; caller leaves current_org unset → default runtime.
+async def test_single_org_binds_the_deployment_org_whatever_is_requested():
+    # multitenancy off → the deployment's one org, bound explicitly (REQ-1266): nothing names it.
     state = _FakeState(multitenancy=False, org_ids=["acme"])
-    assert await resolve_session_org(state, user_id="u1", requested_org="acme") is None
+    assert await resolve_session_org(state, user_id="u1", requested_org="acme") == "root"
 
 
 @pytest.mark.asyncio
@@ -117,10 +118,11 @@ async def test_platform_admin_requested_non_member_is_honored():
 
 
 @pytest.mark.asyncio
-async def test_platform_admin_no_membership_no_request_returns_none():
+async def test_platform_admin_no_membership_no_request_acts_in_the_deployment_org():
+    # REQ-1318: as on HTTP, a cross_org principal naming no org acts in the deployment org.
     state = _FakeState(multitenancy=True, org_ids=[])
     resolved = await resolve_session_org(state, user_id="admin", can_act_any_org=True)
-    assert resolved is None
+    assert resolved == "root"
 
 
 @pytest.mark.asyncio
@@ -179,4 +181,4 @@ class TestOrgScopedCredential:
 
     async def test_single_org_deployments_are_unaffected(self):
         state = _FakeState(multitenancy=False)
-        assert await resolve_session_org(state, user_id="u1", credential_org="acme") is None
+        assert await resolve_session_org(state, user_id="u1", credential_org="acme") == "root"

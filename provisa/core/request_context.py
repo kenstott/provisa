@@ -38,10 +38,10 @@ from contextvars import ContextVar, Token
 
 from provisa.core.environments import PROD
 
-# The org selected for the current request/task. Unset (None) at startup, on
-# background-boot paths, and in single-org tests — the AppState shims then
-# resolve the default-org runtime. A tenant-data entrypoint that sees None must
-# raise (see require_current_org); it must never silently pick an org.
+# The org selected for the current request/task. Every entrypoint binds it -- startup binds the
+# deployment org, requests bind the org they act in, background jobs bind the org they serve.
+# Unset (None) means no org: every per-org read refuses (see require_current_org); nothing ever
+# silently picks an org.
 current_org: ContextVar[str | None] = ContextVar("current_org", default=None)
 
 # REQ-1487/REQ-1529: the ENVIRONMENT selected for the current request/task, alongside the org. Unset
@@ -90,8 +90,7 @@ def require_current_org() -> str:
 
     A tenant-data path that reaches this with no org selected is a routing bug
     (or an unauthenticated request that slipped past the org gate) — never a
-    case to paper over with a default. Callers on the default-org fast path use
-    the AppState shims instead, which fall back explicitly to the default org.
+    case to paper over with a default (REQ-1266).
     """
     org_id = current_org.get()
     if org_id is None:
