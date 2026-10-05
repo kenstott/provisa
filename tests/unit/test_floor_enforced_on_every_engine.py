@@ -106,6 +106,14 @@ def _state(monkeypatch, engine, source, registered: list[dict], *, catalog: str)
     monkeypatch.setattr("provisa.federation.replica_state.promotion", no_promoted_tables)
     monkeypatch.setattr("provisa.federation.replica_builds.store_identity", no_engine_store)
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
+    # The org's runtime is built, as it is before any work is bound to it (REQ-1266); it keeps no
+    # store of its own (REQ-1048), so its replicas are on the platform's.
+    import provisa.api.app as app_mod
+    from provisa.api.org_runtime import OrgRegistry, OrgRuntime
+
+    registry = OrgRegistry()
+    registry.set(_ORG, OrgRuntime(org_id=_ORG))
+    monkeypatch.setattr(app_mod.state, "org_registry", registry)
     return SimpleNamespace(
         org_id=_ORG,
         config=SimpleNamespace(sources=[source], tables=[]),

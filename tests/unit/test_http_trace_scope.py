@@ -196,8 +196,12 @@ async def _preread_request(served, monkeypatch, *, role: str) -> list:
         scope["state"][otel_compat.RECEIVE_RECORD] = otel_compat.ReceiveRecord(
             server, 1_000, 2_000, 42
         )
-        async with http_trace_scope(served.state, scope):
-            pass
+        token = set_current_org("acme")  # as the org-routing middleware binds it (REQ-1266)
+        try:
+            async with http_trace_scope(served.state, scope):
+                pass
+        finally:
+            reset_current_org(token)
     assert otel_compat.RECEIVE_RECORD not in scope["state"]  # emitted (or not) once
     return list(served.exporter.get_finished_spans())
 
