@@ -650,7 +650,12 @@ def setup_otel(
         # detail is resolved per request; _trace_detail_sampler is what gives a normal-detail
         # request no per-command and no per-message span from any of them.
         if _subsystems.http_api:
-            FastAPIInstrumentor.instrument_app(app, server_request_hook=_bind_http_request_span)
+            # REQ-1910 (amended 2026-10-05): the receive spans are Provisa's own
+            # (provisa.otel_compat.live_receive_span / emit_recorded_receive), so a small body
+            # read before the request's debug-trace window is resolved still follows it.
+            FastAPIInstrumentor.instrument_app(
+                app, server_request_hook=_bind_http_request_span, exclude_spans=["receive"]
+            )
         if _subsystems.outbound_http:
             try:
                 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor

@@ -178,3 +178,45 @@ def test_the_org_routing_middleware_serves_every_dispatch_inside_the_scope():
     assert len(dispatches) == 2
     for chunk in dispatches:
         assert chunk.rstrip().endswith("async with http_trace_scope(state, scope):")
+
+
+# REQ-1910 (amended 2026-10-05): a small body is read on the accepting loop before this middleware
+# resolves the window (REQ-1882). No span is opened at that read; its timing travels with the
+# hand-off and the receive span is emitted here, with those times, when the detail is debug.
+
+
+async def _preread_request(served, monkeypatch, *, role: str) -> list:
+    """A request whose small body the accepting loop already read: the hand-off carries the
+    read's record and nothing reads the body again. Returns the recorded spans."""
+    monkeypatch.setattr(otel_compat, "_http_tracer", lambda: served.tracer)
+    served.exporter.clear()
+    scope = {"type": "http", "path": "/data/graphql", "state": {"role": role}}
+    with served.tracer.start_as_current_span(_SERVER, kind=SpanKind.SERVER) as server:
+        _bind_http_request_span(server, scope)
+        scope["state"][otel_compat.RECEIVE_RECORD] = otel_compat.ReceiveRecord(
+            server, 1_000, 2_000, 42
+        )
+        async with http_trace_scope(served.state, scope):
+            pass
+    assert otel_compat.RECEIVE_RECORD not in scope["state"]  # emitted (or not) once
+    return list(served.exporter.get_finished_spans())
+
+
+@pytest.mark.asyncio
+async def test_a_preread_body_under_a_window_gets_its_receive_span_with_the_measured_times(
+    served, monkeypatch
+):
+    await _window(served.db, "org", "acme")
+    ts.invalidate()
+    spans = await _preread_request(served, monkeypatch, role="analyst")
+    (receive,) = [s for s in spans if s.name == _RECEIVE]
+    (server,) = [s for s in spans if s.name == _SERVER]
+    assert (receive.start_time, receive.end_time) == (1_000, 2_000)
+    assert receive.parent is not None and receive.parent.span_id == server.context.span_id
+    assert receive.attributes["http.request.body.size"] == 42
+
+
+@pytest.mark.asyncio
+async def test_a_preread_body_no_window_covers_gets_no_receive_span(served, monkeypatch):
+    spans = await _preread_request(served, monkeypatch, role="analyst")
+    assert [s.name for s in spans] == [_SERVER]
