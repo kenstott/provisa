@@ -165,13 +165,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("lane", choices=sorted(LANES))
     parser.add_argument("--shard", help="K/N: the Kth of N file shards of the lane")
-    # Print the test modules the lane would run instead of running them, so a CI step can provision
-    # only what this shard's tests use (the Splunk CIM add-on).
-    parser.add_argument("--files", action="store_true", help="list the lane's test modules")
     args, extra = parser.parse_known_args(argv)
-    if args.files:
-        print("\n".join(test_files(tuple(targets(args.lane, args.shard)))))
-        return 0
     cmd = command(args.lane, args.shard, extra)
     print("+", " ".join(cmd), flush=True)
     return subprocess.call(cmd, cwd=REPO, env=os.environ.copy())  # noqa: S603 - fixed argv

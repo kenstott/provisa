@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import copy
+
 import pytest
 from pytest_bdd import given, when, then, parsers, scenario
 
@@ -20,11 +22,28 @@ def shared_data() -> dict:
 
 
 @pytest.fixture(autouse=True)
-def _no_transport_is_declared_by_the_environment(monkeypatch):
-    """Several tests here are about an endpoint whose transport NOTHING declares. The test session
-    declares one for its own receiver (tests/conftest.py), as an operator's shell might; a test
-    that wants a declared transport passes it explicitly."""
-    monkeypatch.delenv("OTEL_EXPORTER_OTLP_PROTOCOL", raising=False)
+def _no_transport_is_declared(monkeypatch):
+    """Several tests here are about an endpoint whose transport NOTHING declares, so every layer
+    otel.protocol resolves from must state nothing: stored, environment, config (REQ-1913). The test
+    session declares one in the environment for its own receiver (tests/conftest.py), and an app
+    booted earlier in the same process leaves the process bound to its config file, whose
+    observability.protocol is http/protobuf — clearing only the environment variable left the
+    default answering http/protobuf in every shard that booted an app first. A test that wants a
+    declared transport passes it explicitly."""
+    from provisa.core import settings_registry
+
+    setting = settings_registry.setting("otel.protocol")
+    monkeypatch.setenv(settings_registry.IGNORE_STORED_ENV, "1")
+    assert setting.env is not None and setting.config_path is not None
+    monkeypatch.delenv(setting.env, raising=False)
+    config = copy.deepcopy(settings_registry._config)
+    node = config
+    for part in setting.config_path[:-1]:
+        node = node.get(part) if isinstance(node, dict) else None
+    if isinstance(node, dict):
+        node.pop(setting.config_path[-1], None)
+    monkeypatch.setattr(settings_registry, "_config", config)
+    assert settings_registry.resolve("otel.protocol").source == "default"
 
 
 @scenario(

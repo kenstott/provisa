@@ -13,9 +13,9 @@ name: Integration suite (containers)
 # nightly against the integration branch and on demand, not on every push. A warehouse test that
 # cannot run because something is not set FAILS, naming what (tests/skip_is_failure.py).
 #
-# Secrets reach only the jobs and steps that need them (warehouse, e2e, the suite's Splunk CIM
-# fetch), and only on pushes to this repository's own branches and on schedule/dispatch; there is
-# no pull_request trigger here.
+# Secrets reach only the jobs and steps that need them (warehouse, e2e, the suite lane's
+# Splunk CIM fetch), and only on pushes to this repository's own branches and on schedule/dispatch;
+# there is no pull_request trigger here.
 
 on:
   push:
@@ -50,6 +50,8 @@ concurrency:
 env:
   # The harness tears its own stacks down at session end; nothing is kept between steps.
   PYTEST_DOCKER_KEEP: ""
+  # The Splunk CIM add-on release scripts/fetch-splunk-cim.sh vendors (and the cache key names).
+  SPLUNK_CIM_VERSION: "6.1.0"
 
 jobs:
   # Which lanes this run tests: every one on a push, the dispatcher's choice on demand, none of the
@@ -145,30 +147,17 @@ jobs:
         run: zstd -dc ~/images.tar.zst | docker load
 
       # The itest splunk service bind-mounts the Splunk CIM add-on (docker-compose.test.yml), which
-      # is licensed from Splunkbase and gitignored, so it is fetched here for a shard that runs a
-      # requires_splunk test. Without it the mount is empty and Splunk serves only its two sample
-      # models (tests/conftest.py refuses to boot splunk then). The Splunkbase credentials reach
-      # this step only. The tarball is cached by version, so Splunkbase is hit once per version.
-      - name: Restore Splunk CIM add-on
-        id: splunk-cim-cache
-        uses: actions/cache@v4
+      # is licensed from Splunkbase and gitignored. tests/conftest.py fetches it
+      # (scripts/fetch-splunk-cim.sh) only when it is about to start splunk, so only a
+      # requires_splunk test needs it, and one that cannot get it fails by name while the rest of
+      # the lane runs. The tarball is cached by version: restored here, saved after the lane
+      # whatever the lane's outcome, so Splunkbase is hit once per version.
+      - name: Restore Splunk CIM tarball
+        id: splunk-cim
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/provisa-splunk-cim
-          key: splunk-cim-6.1.0
-
-      - name: Vendor Splunk CIM add-on
-        env:
-          SPLUNK_CIM_VERSION: "6.1.0"
-          SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
-          SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
-        run: |
-          files=$(uv run python scripts/ci/run_lane.py ${{ matrix.lane }} \
-            ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} --files)
-          if [ -n "$files" ] && grep -l "requires_splunk" $files; then
-            scripts/fetch-splunk-cim.sh
-          else
-            echo "no requires_splunk test in this shard"
-          fi
+          key: splunk-cim-${{ env.SPLUNK_CIM_VERSION }}
 
       - &stack-slots
         name: Stack slots on this runner
@@ -184,6 +173,28 @@ jobs:
         env:
           # The e2e lane's LLM-evaluation tests reach the live model.
           ANTHROPIC_API_KEY: ${{ matrix.lane == 'e2e' && secrets.ANTHROPIC_API_KEY || '' }}
+          # For the Splunk CIM fetch tests/conftest.py runs before starting splunk.
+          SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
+          SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
+
+      # A fetch inside the lane leaves the tarball at the restored path; save it under the same key,
+      # also when the lane failed (actions/cache's own post-step saves only on success).
+      - name: Splunk CIM tarball fetched
+        id: splunk-cim-fetched
+        if: always() && steps.splunk-cim.outputs.cache-hit != 'true'
+        run: |
+          if [ -s ~/.cache/provisa-splunk-cim/Splunk_SA_CIM-${SPLUNK_CIM_VERSION}.tgz ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache Splunk CIM tarball
+        if: always() && steps.splunk-cim-fetched.outputs.present == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/provisa-splunk-cim
+          key: splunk-cim-${{ env.SPLUNK_CIM_VERSION }}
 
       - &why
         name: Containers that were not healthy
