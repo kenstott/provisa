@@ -30257,6 +30257,11 @@
   - REQ-987
   - REQ-988
   - REQ-989
+  notes: '(2026-10-05) Pipeline landing (Kafka continuous, S3 CSV/Parquet one-shot) ships with SQL-level proof (every generated
+  statement parse-checked on the live shared-tier workspace) and unit proof. OPEN: live end-to-end proof needs a
+  Kafka broker and an object store reachable from the workspace. Iceberg on S3 is refused by name unless the workspace
+  enables enable_iceberg_ingest; it ships unproven. Maintainer 2026-10-05: GCS via HMAC keys, Azure via account
+  key (SAS later).'
 - id: REQ-991
   status: complete
   since: 2026-07
