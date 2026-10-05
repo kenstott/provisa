@@ -113,6 +113,18 @@ def home_keeps_replica(source: Any, table: Any, region: Any) -> bool:
     return reads_replica(source, table, _judging_engine(region.engine_kind), promoted=False)
 
 
+def home_keeps_by_key(source: Any, table: Any, region: Any) -> bool:
+    """Whether ``region`` — the other region of the org ``table`` names — keeps ``table``'s rows by
+    key (REQ-1865, REQ-1921): it is row-level there, and that region's engine cannot read its
+    source in place. Such a region holds only the rows its own reads fetched, so no other region
+    reads the table from it."""
+    from provisa.federation.strategy import engine_attaches
+
+    return bool(getattr(table, "row_materialize", False)) and not engine_attaches(
+        _judging_engine(region.engine_kind), _source_type(source)
+    )
+
+
 @functools.cache
 def _judging_engine(kind: str) -> Any:
     """The engine of ``kind``, built once per process to judge another region's replicas by (it

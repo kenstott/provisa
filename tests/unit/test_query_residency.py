@@ -812,3 +812,53 @@ async def test_a_read_only_of_what_another_region_keeps_is_answered_in_that_regi
     state = _state([_source("pets-db")], [pets, owners], _Backend(), plane)
     state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, "snowflake")}
     assert (await _residency(state, {"pets-db"})).answered_in is None
+
+
+@pytest.mark.asyncio
+async def test_a_row_level_table_its_region_keeps_by_key_is_refused_naming_it(
+    wiring, plane, node_in_us
+):
+    """REQ-1921/1922: eu's engine (Snowflake) cannot read the source in place, so eu keeps the
+    row-level table's rows by key — only what eu's own reads fetched. A us read is refused naming
+    eu, and nothing is fetched or built here."""
+    from provisa.core.region_stores import ForeignRegion, HomeRegionUnavailable
+
+    pets = _table("pets-db", "pets", row_materialize=True)
+    pets.region = "eu"
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, "snowflake")}
+    with pytest.raises(HomeRegionUnavailable, match="fetched by key") as refused:
+        await _ensure(state, {"pets-db"})
+    assert refused.value.params == {"table": "pets", "region": "eu"}
+    assert wiring.built == [] and wiring.kicks == 0
+
+
+@pytest.mark.asyncio
+async def test_a_row_level_table_kept_in_another_region_lands_no_row_here(
+    wiring, plane, node_in_us
+):
+    """REQ-1921/1922: a row-level table naming eu is never one this region lands rows of — not
+    by a key predicate's fetch, not by key pushdown — whichever way eu keeps it."""
+    from provisa.core.region_stores import ForeignRegion
+    from provisa.federation.query_residency import (
+        active_row_materialize_tables,
+        pushdown_row_materialize,
+    )
+    from provisa.federation.replica_address import replica_table_name
+
+    pets = _table("pets-db", "pets", row_materialize=True)
+    pets.region = "eu"
+    owners = _table("pets-db", "owners")
+    state = _state([_source("pets-db")], [pets, owners], _Backend(), plane)
+    for kind in ("snowflake", "duckdb"):
+        state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, kind)}
+        assert await active_row_materialize_tables(state) == []
+        # The engine stand-in has no execute_engine: a probe would fail the test.
+        replica = replica_table_name("pets-db", "pet_store", "pets")
+        landed = await pushdown_row_materialize(
+            state,
+            f"SELECT o.id FROM owners o JOIN {replica} p ON p.owner_id = o.id",
+            "postgres",
+            reader_role=None,
+        )
+        assert landed == set()

@@ -229,7 +229,10 @@ def test_duckdb_declares_clickhouse_live_so_row_materialize_is_ignored():
 
 def _row_materialized_clickhouse(monkeypatch):
     table = SimpleNamespace(
-        source_id="bench-clickhouse", table_name="order_events", row_materialize=True
+        source_id="bench-clickhouse",
+        table_name="order_events",
+        row_materialize=True,
+        region=None,  # REQ-1921
     )
     source = SimpleNamespace(id="bench-clickhouse", type=SimpleNamespace(value="clickhouse"))
 

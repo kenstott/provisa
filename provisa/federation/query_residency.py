@@ -350,7 +350,7 @@ async def ensure_resident(
         return t.id in floored or not _attached_types[t.source_id]
 
     from provisa.federation.replica_converge import builds_here, home_region, whole_copy
-    from provisa.federation.replica_routing import home_keeps_replica
+    from provisa.federation.replica_routing import home_keeps_by_key, home_keeps_replica
 
     by_id = {s.id: s for s in sources}
     tables_by_source: dict[str, list[Any]] = {}
@@ -367,6 +367,15 @@ async def ensure_resident(
             # too, under the reader's governance (REQ-1921). Here it must be readable in place:
             # a copy here would be one kept outside its region.
             assert home is not None  # builds_here is True for a table naming no region
+            if home_keeps_by_key(by_id[t.source_id], t, state.foreign_regions[home]):
+                from provisa.core.region_stores import HomeRegionUnavailable
+
+                raise HomeRegionUnavailable(
+                    t.table_name,
+                    home,
+                    "holds only the rows that region's own reads fetched by key, so it is not "
+                    "read from another region",
+                )
             if home_keeps_replica(by_id[t.source_id], t, state.foreign_regions[home]):
                 elsewhere.append((t, home))
                 continue
@@ -600,11 +609,21 @@ async def active_row_materialize_tables(state: Any) -> list[Any]:
     attach is then an error, never a detour through the row cache. Every row-materialize consumer
     (bound extraction, key pushdown, row fetch, background refresh/reap wiring) selects its tables
     here, so a declared-attach engine never pays a probe, a keyed fetch or a cache land it would
-    not read."""
+    not read.
+
+    REQ-1921/1922: only a table this region keeps rows of. One that names another region never has
+    a row fetched into this region's store; its read is judged by ``ensure_resident`` — refused
+    naming its home when that region keeps its rows by key, read in place when it reads the source
+    in place."""
     from provisa.federation.registry_view import registered_sources, registered_tables
+    from provisa.federation.replica_converge import builds_here, home_region
     from provisa.federation.strategy import engine_attaches
 
-    flagged = [t for t in await registered_tables(state) if getattr(t, "row_materialize", False)]
+    flagged = [
+        t
+        for t in await registered_tables(state)
+        if getattr(t, "row_materialize", False) and builds_here(home_region(t))
+    ]
     if not flagged:
         return []
     engine = getattr(state, "federation_engine", None)
@@ -1227,7 +1246,7 @@ async def ensure_rows_resident(
     from provisa.events.app_wiring import build_adapter_loaders, build_keyed_adapter_loaders
     from provisa.events.row_lock import row_lock
     from provisa.events.source_loader import SourceRowLoader
-    from provisa.federation.registry_view import registered_sources, registered_tables
+    from provisa.federation.registry_view import registered_sources
     from provisa.federation.residency import resolve_landing_args
 
     bounds = [b for b in pk_bounds if b.values]
@@ -1239,7 +1258,8 @@ async def ensure_rows_resident(
         return []
 
     sources_by_id = {s.id: s for s in await registered_sources(state)}
-    tables_by_name = {t.table_name: t for t in await registered_tables(state)}
+    # The tables row-level applies to here — the one selector every row-level consumer shares.
+    tables_by_name = {t.table_name: t for t in await active_row_materialize_tables(state)}
     loader = SourceRowLoader(
         engine,
         adapter_loaders=build_adapter_loaders(state, engine),
@@ -1251,7 +1271,7 @@ async def ensure_rows_resident(
 
     for bound in bounds:
         table = tables_by_name.get(bound.table_name)
-        if table is None or not getattr(table, "row_materialize", False):
+        if table is None:
             continue
         source = sources_by_id.get(bound.source_id)
         if source is None:
