@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS query_audit_log (
     route_reason TEXT,
     sources JSONB,
     data_age JSONB,
+    region TEXT NOT NULL,
     logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -113,6 +114,7 @@ async def log_query(  # REQ-074, REQ-689
     status_code: int,
     duration_ms: int,
     encryption: "EncryptionService",
+    region: str,
     trace_id: str | None = None,
 ) -> None:
     """Append an audit row. The query text is stored ENCRYPTED (REQ-689) — query text
@@ -139,6 +141,7 @@ async def log_query(  # REQ-074, REQ-689
                 source=source,
                 status_code=status_code,
                 duration_ms=duration_ms,
+                region=region,
                 trace_id=trace_id if trace_id is not None else current_udf_correlation_id(),
             )
         )

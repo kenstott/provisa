@@ -56,6 +56,7 @@ async def audit_id(tmp_path, monkeypatch) -> int:
         status_code=200,
         duration_ms=4,
         encryption=_Reversing(),
+        region="default",
     )
     monkeypatch.setattr(router, "_record_pool", lambda: db)
     monkeypatch.setattr(router, "encryption_service", lambda: _Reversing())

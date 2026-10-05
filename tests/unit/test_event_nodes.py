@@ -345,13 +345,13 @@ async def test_the_refresh_record_names_the_tables_a_join_pattern_view_is_bound_
     from sqlalchemy import select
 
     from provisa.core.database import Database, create_engine_from_url
-    from provisa.core.schema_org import materialized_views, metadata
+    from provisa.core.schema_org import materialized_views, metadata, mv_build_state
     from provisa.mv.coordination import ensure_mv_row
     from provisa.mv.models import JoinPattern, MVDefinition, TableIdentity
 
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
     with engine.begin() as c:
-        metadata.create_all(c, tables=[materialized_views])
+        metadata.create_all(c, tables=[materialized_views, mv_build_state])
     store = Database(engine, name="cp")
     mv = MVDefinition(
         id="jp",
@@ -367,7 +367,7 @@ async def test_the_refresh_record_names_the_tables_a_join_pattern_view_is_bound_
             left_table="orders", left_column="id", right_table="lines", right_column="order_id"
         ),
     )
-    await ensure_mv_row(store, mv)
+    await ensure_mv_row(store, store, mv)  # one db plays the model and the region's state
     async with store.acquire() as conn:
         row = (
             await conn.execute_core(

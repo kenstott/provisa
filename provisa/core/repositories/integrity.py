@@ -259,6 +259,7 @@ REFERENCES: tuple[Reference, ...] = (
     ),
     _dep("registered_tables", "view_sql", "metric", "table", "id", match=Match.MENTIONS),
     # --- to a materialized view ----------------------------------------------------------------
+    _part("mv_build_state", "mv_id", "materialized_view"),
     _part("mv_refresh_log", "mv_id", "materialized_view"),
     _part("mv_delta_ledger", "mv_id", "materialized_view"),
     # --- to a store or a region (REQ-1921/1922) ------------------------------------------------

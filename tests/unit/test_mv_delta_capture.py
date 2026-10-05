@@ -73,7 +73,6 @@ async def store(tmp_path):
                 target_catalog="postgresql",
                 target_schema="mv_cache",
                 target_table="mv_orders",
-                status="stale",
             )
         )
     yield db

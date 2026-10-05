@@ -178,12 +178,19 @@ async def test_runtime_bookkeeping_does_not_advance_the_stamp(engine):
                 target_table="t",
             )
         )
+    builds = schema_org.mv_build_state.to_metadata(sa.MetaData(), schema=db.search_path)
     before = await config_stamp.read(db)
     with engine.begin() as conn:
+        # What a refresh writes: the region's build of the view (REQ-1922), not its definition.
         conn.execute(
-            sa.update(views)
-            .where(views.c.id == "mv1")
-            .values(status="fresh", row_count=10, writer="w1", materialized_input_version="v2")
+            sa.insert(builds).values(
+                mv_id="mv1",
+                region="default",
+                status="fresh",
+                row_count=10,
+                writer="w1",
+                materialized_input_version="v2",
+            )
         )
     assert await config_stamp.read(db) == before
     with engine.begin() as conn:

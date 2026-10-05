@@ -72,8 +72,6 @@ def test_every_plane_table_named_for_a_stamp_exists():
     ]
     assert undeclared == []
     assert set(config_stamp.PLATFORM_TABLES) <= {t.name for t in schema_admin.REGISTRY_TABLES}
-    for table, columns in config_stamp.UPDATE_COLUMNS.items():
-        assert set(columns) <= set(schema_org.metadata.tables[table].columns.keys())
 
 
 _TENANT_KINDS = {config_stamp.MODEL, config_stamp.SETTINGS, config_stamp.REPLICA}
@@ -184,11 +182,16 @@ def test_runtime_bookkeeping_does_not_advance_the_stamp(tenant_db):
         )
     before = _stamps(tenant_db)
     with tenant_db.engine.begin() as conn:
-        # What a refresh writes on a materialized view's row: its state, not its definition.
+        # What a refresh writes: the region's build of the view (REQ-1922), not its definition.
         conn.execute(
-            sa.update(schema_org.materialized_views)
-            .where(schema_org.materialized_views.c.id == "mv1")
-            .values(status="fresh", row_count=10, writer="w1", materialized_input_version="v2")
+            sa.insert(schema_org.mv_build_state).values(
+                mv_id="mv1",
+                region="default",
+                status="fresh",
+                row_count=10,
+                writer="w1",
+                materialized_input_version="v2",
+            )
         )
         conn.execute(
             sa.insert(schema_org.mv_refresh_log).values(mv_id="mv1", status="success", row_count=1)

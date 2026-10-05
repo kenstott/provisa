@@ -10,9 +10,9 @@
 
 """Cross-instance MV refresh coordination (REQ-879).
 
-Two fleet instances share one control-plane catalog (a single SQLite ``materialized_views``
-table). The tests drive the real CAS on that shared row — no per-instance in-memory state — to
-prove: exactly one instance claims a given MV, a crashed instance's lease expires and is
+Two fleet instances of one region share its state store (a single SQLite ``mv_build_state``
+table, REQ-1922: the region's build of the view). The tests drive the real CAS on that row — no
+per-instance in-memory state — to prove: exactly one instance claims a given MV, a crashed instance's lease expires and is
 reclaimed, a released claim frees the next refresh, a fenced commit rejects a superseded writer,
 and ``refresh_mv`` consults the shared row (not the registry) so a second instance skips.
 """
@@ -28,12 +28,14 @@ from sqlalchemy import insert, select, update
 from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
-from provisa.core.schema_org import materialized_views as MVT
+from provisa.core.schema_org import materialized_views as DEFINITIONS
+from provisa.core.schema_org import mv_build_state as MVT
 from provisa.core.schema_org import metadata
 from provisa.executor.result import QueryResult
 from provisa.mv.coordination import (
     claim_refresh,
     commit_refresh,
+    ensure_mv_row,
     release_refresh,
     renew_lease,
 )
@@ -48,29 +50,21 @@ INST_B = "instance-b"
 
 @pytest.fixture
 async def store(tmp_path):
-    """A single shared control-plane catalog (one file DB both 'instances' talk to)."""
+    """The region's state store, shared by both 'instances' (one file DB), holding the view's
+    build row; the model's definition table sits beside it (one DB plays both stores here)."""
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
     with engine.begin() as c:
-        metadata.create_all(c, tables=[MVT])
+        metadata.create_all(c, tables=[DEFINITIONS, MVT])
     db = Database(engine, name="cp")
     async with db.acquire() as conn:
-        await conn.execute_core(
-            insert(MVT).values(
-                id=MV_ID,
-                source_tables=["orders"],
-                target_catalog="postgresql",
-                target_schema="mv_cache",
-                target_table="mv_orders",
-                status="stale",
-            )
-        )
+        await conn.execute_core(insert(MVT).values(mv_id=MV_ID, region="default", status="stale"))
     yield db
     engine.dispose()
 
 
 async def _row(store):
     async with store.acquire() as conn:
-        res = await conn.execute_core(select(MVT).where(MVT.c.id == MV_ID))
+        res = await conn.execute_core(select(MVT).where(MVT.c.mv_id == MV_ID))
         return res.fetchone()._mapping
 
 
@@ -78,7 +72,7 @@ async def _set_lease(store, *, writer, lease_until, status="refreshing"):
     async with store.acquire() as conn:
         await conn.execute_core(
             update(MVT)
-            .where(MVT.c.id == MV_ID)
+            .where(MVT.c.mv_id == MV_ID)
             .values(writer=writer, lease_until=lease_until, status=status)
         )
 
@@ -91,8 +85,6 @@ async def test_ensure_mv_row_seeds_catalog_so_claim_can_win(store):
     """Regression: the in-memory registry never writes the control-plane catalog row, so a
     shared-tier MV had no row for claim_refresh to elect on — the claim matched 0 rows and the
     MV stayed STALE forever. ensure_mv_row seeds it (idempotently) so the claim can win."""
-    from provisa.mv.coordination import ensure_mv_row
-
     mv = MVDefinition(
         id="mv-unseeded",
         source_tables=["orders"],
@@ -104,8 +96,8 @@ async def test_ensure_mv_row_seeds_catalog_so_claim_can_win(store):
     # No catalog row yet → claim cannot win (the bug).
     assert await claim_refresh(store, mv.id, INST_A, target_input_version=None) is False
     # Seed the row → claim now wins; a second ensure is idempotent (no duplicate/raise).
-    await ensure_mv_row(store, mv)
-    await ensure_mv_row(store, mv)
+    await ensure_mv_row(store, store, mv)
+    await ensure_mv_row(store, store, mv)
     assert await claim_refresh(store, mv.id, INST_A, target_input_version=None) is True
 
 
@@ -124,7 +116,7 @@ async def test_claim_is_exclusive_across_two_instances(store):
 async def test_claim_dedups_on_already_materialized_version(store):
     async with store.acquire() as conn:
         await conn.execute_core(
-            update(MVT).where(MVT.c.id == MV_ID).values(materialized_input_version="v9")
+            update(MVT).where(MVT.c.mv_id == MV_ID).values(materialized_input_version="v9")
         )
     # Same version already in the store → nothing to do → claim denied.
     assert await claim_refresh(store, MV_ID, INST_A, target_input_version="v9") is False
@@ -283,7 +275,7 @@ async def test_refresh_mv_skips_when_shared_row_already_claimed(store):
     reg.register(mv)
     engine = _FakeEngine()
 
-    await refresh_mv(engine, mv, reg, store=store, writer=INST_A)
+    await refresh_mv(engine, mv, reg, store=store, writer=INST_A, ledger=store)
 
     # No materialization SQL was issued — the shared claim gated it, not the local registry.
     assert not any("CREATE TABLE" in s or "INSERT INTO" in s for s in engine.sqls)
@@ -299,7 +291,7 @@ async def test_refresh_mv_claims_commits_and_marks_fresh(store):
     reg.register(mv)
     engine = _FakeEngine(count=7)
 
-    await refresh_mv(engine, mv, reg, store=store, writer=INST_A)
+    await refresh_mv(engine, mv, reg, store=store, writer=INST_A, ledger=store)
 
     assert any("INSERT INTO" in s or "CREATE TABLE" in s for s in engine.sqls)
     row = await _row(store)
@@ -307,3 +299,42 @@ async def test_refresh_mv_claims_commits_and_marks_fresh(store):
     assert row["writer"] is None
     assert row["row_count"] == 7
     assert reg.get(MV_ID).status == MVStatus.FRESH
+
+
+def _plain_db(path, *tables):
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{path}")
+    with engine.begin() as c:
+        metadata.create_all(c, tables=list(tables))
+    return Database(engine, name=path.stem)
+
+
+@pytest.mark.asyncio
+async def test_each_region_builds_its_own_copy_of_a_view_against_its_own_state(
+    tmp_path, monkeypatch
+):
+    """REQ-1922: one view definition in the model; each region's fleet claims, builds and records
+    its own copy in its own state store, naming the region — eu building it neither blocks nor
+    reports for us."""
+    from provisa.core import process_region
+
+    model = _plain_db(tmp_path / "model.db", DEFINITIONS)
+    eu, us = (_plain_db(tmp_path / f"{r}.db", MVT) for r in ("eu", "us"))
+    mv = _mv()
+
+    async def _build(region, state, writer):
+        monkeypatch.setattr(process_region, "_region", region)
+        reg = MVRegistry()
+        reg.register(mv)
+        await refresh_mv(_FakeEngine(count=3), mv, reg, store=model, writer=writer, ledger=state)
+
+    # eu holds a live claim on its copy: us still claims and builds its own.
+    monkeypatch.setattr(process_region, "_region", "eu")
+    await ensure_mv_row(model, eu, mv)
+    assert await claim_refresh(eu, MV_ID, INST_A, target_input_version=None) is True
+    await _build("us", us, INST_B)
+    built_us, held_eu = await _row(us), await _row(eu)
+    assert (built_us["region"], built_us["status"], built_us["row_count"]) == ("us", "fresh", 3)
+    assert (held_eu["region"], held_eu["status"], held_eu["writer"]) == ("eu", "refreshing", INST_A)
+    async with model.acquire() as conn:
+        definitions = (await conn.execute_core(select(DEFINITIONS.c.id))).fetchall()
+    assert [d.id for d in definitions] == [MV_ID]

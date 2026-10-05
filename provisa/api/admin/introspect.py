@@ -171,6 +171,7 @@ PROVISA_INTERNAL_TABLES: frozenset[str] = frozenset(
         "roles",
         "rls_rules",
         "materialized_views",
+        "mv_build_state",
         "mv_refresh_log",
         "relationship_candidates",
         "kafka_sources",

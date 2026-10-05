@@ -819,6 +819,7 @@ def when_the_query_is_executed(shared_data, audit_pool):
             status_code=shared_data["status_code"],
             duration_ms=shared_data["duration_ms"],
             encryption=NullEncryption(),  # REQ-689: query text stored encrypted; NullEncryption in test
+            region="default",
         )
 
     shared_data["_audit_loop"].run_until_complete(_do_log())

@@ -278,7 +278,7 @@ _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW query_audit_log_ops AS
         SELECT q.id, q.user_id, ud.display_name AS user_name, q.role_id, q.query_hash,
                q.table_ids, q.source, q.status_code, q.duration_ms, q.logged_at,
-               q.route, q.row_count, q.route_reason, q.sources, q.data_age,
+               q.route, q.row_count, q.route_reason, q.sources, q.data_age, q.region,
                q.model_stamp, q.model_commit, q.enforced
         FROM query_audit_log q
         LEFT JOIN user_directory ud ON ud.user_id = q.user_id

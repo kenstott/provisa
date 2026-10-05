@@ -524,9 +524,10 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
     always runs unrestricted by design (REQ-1756), with governance enforced on read of the MV,
     not on this landing write.
 
-    REQ-879: when ``store`` (the shared control-plane catalog) is provided and the MV is on the
-    ``shared`` consistency tier, the refresh is driven off an ATOMIC CLAIM on the shared
-    ``materialized_views`` row — exactly one fleet instance refreshes a given MV at a time. A
+    REQ-879, REQ-1922: when ``store`` (the org's MODEL store) and ``ledger`` (its region's STATE
+    store) are provided and the MV is on the ``shared`` consistency tier, the refresh is driven
+    off an ATOMIC CLAIM on the region's ``mv_build_state`` row — exactly one instance of the
+    region's fleet refreshes a given MV at a time, and the row names the region that built it. A
     second concurrent instance sees the live lease, its claim returns 0 rows, and it skips. The
     result is finalized with a FENCED COMMIT (only while this instance still owns a live lease);
     a lost lease discards the result rather than clobbering a newer refresh. When ``store`` is
@@ -556,7 +557,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
 
     authorization = SystemAuth(mint_system_token(), reason=f"mv_refresh:{mv.id}")
 
-    coordinated = store is not None and mv.consistency == "shared"
+    coordinated = store is not None and ledger is not None and mv.consistency == "shared"
     if coordinated and writer is None:
         from provisa.mv.coordination import INSTANCE_WRITER  # noqa: PLC0415
 
@@ -574,13 +575,14 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
     target_token = input_token(input_signals, inputs)
 
     if coordinated:
-        assert store is not None and writer is not None  # coordinated ⇒ both set (see above)
+        assert ledger is not None and writer is not None  # coordinated ⇒ both set (see above)
         from provisa.mv.coordination import claim_refresh, ensure_mv_row  # noqa: PLC0415
 
         # The in-memory registry never writes the control-plane catalog row; seed it here so
         # the atomic claim below has a row to elect on (else 0 rows → permanent STALE).
-        await ensure_mv_row(store, mv)
-        claimed = await claim_refresh(store, mv.id, writer, target_token)
+        assert store is not None  # coordinated ⇒ both stores
+        await ensure_mv_row(store, ledger, mv)
+        claimed = await claim_refresh(ledger, mv.id, writer, target_token)
         if not claimed:
             # 0 rows: another fleet instance owns this refresh, or the store already holds this
             # exact input version. Skip — never race a second writer onto the same relation.
@@ -598,12 +600,12 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
         if mv.freshness_mode in ("probe", "ttl_probe"):
             if target_token is not None and target_token == mv.last_input_token:
                 if coordinated:
-                    assert store is not None and writer is not None
+                    assert ledger is not None and writer is not None
                     # Advance the shared version + release the lease without a rebuild.
                     from provisa.mv.coordination import commit_refresh  # noqa: PLC0415
 
                     await commit_refresh(
-                        store,
+                        ledger,
                         mv.id,
                         writer,
                         row_count=mv.row_count if mv.row_count is not None else 0,
@@ -634,10 +636,10 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 # there is no request to answer with a 507. The message is the one the org sees on
                 # the MV, and it names the same two exits the API rejection does.
                 if coordinated:
-                    assert store is not None and writer is not None
+                    assert ledger is not None and writer is not None
                     from provisa.mv.coordination import release_refresh  # noqa: PLC0415
 
-                    await release_refresh(store, mv.id, writer, quota_exc.detail)
+                    await release_refresh(ledger, mv.id, writer, quota_exc.detail)
                 mv.status = MVStatus.SKIPPED_QUOTA
                 mv.last_error = str(quota_exc.detail)
                 log.warning("MV %s: %s", mv.id, quota_exc.detail)
@@ -653,10 +655,10 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 mv.max_rows,
             )
             if coordinated:
-                assert store is not None and writer is not None
+                assert ledger is not None and writer is not None
                 from provisa.mv.coordination import release_refresh  # noqa: PLC0415
 
-                await release_refresh(store, mv.id, writer, None)
+                await release_refresh(ledger, mv.id, writer, None)
             mv.status = MVStatus.SKIPPED_SIZE
             mv.last_error = f"Source row count {source_count} exceeds max_rows {mv.max_rows}"
             return
@@ -674,10 +676,10 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
         verdict = await _evaluate_preflight(engine, mv, select_sql)
         if verdict is not None and not verdict.is_continue:
             if coordinated:
-                assert store is not None and writer is not None
+                assert ledger is not None and writer is not None
                 from provisa.mv.coordination import release_refresh  # noqa: PLC0415
 
-                await release_refresh(store, mv.id, writer, verdict.reason)
+                await release_refresh(ledger, mv.id, writer, verdict.reason)
             detail = f"preflight {verdict.decision.value}" + (
                 f": {verdict.reason}" if verdict.reason else ""
             )
@@ -808,13 +810,13 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
 
         duration = time.time() - start
         if coordinated:
-            assert store is not None and writer is not None
+            assert ledger is not None and writer is not None
             # FENCED COMMIT: finalize only while this instance still owns a live lease. A lost
             # lease (slow / crashed-then-revived) discards the result — never clobber a newer refresh.
             from provisa.mv.coordination import commit_refresh  # noqa: PLC0415
 
             committed = await commit_refresh(
-                store,
+                ledger,
                 mv.id,
                 writer,
                 row_count=row_count,
@@ -838,10 +840,10 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
         )  # REQ-877
     except Exception as e:
         if coordinated:
-            assert store is not None and writer is not None
+            assert ledger is not None and writer is not None
             from provisa.mv.coordination import release_refresh  # noqa: PLC0415
 
-            await release_refresh(store, mv.id, writer, str(e))
+            await release_refresh(ledger, mv.id, writer, str(e))
         registry.mark_refresh_failed(mv.id, str(e))
         log.exception("Failed to refresh MV %s", mv.id)
 

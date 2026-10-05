@@ -234,6 +234,7 @@ class TestREQ596AuditLogSchema:
                 status_code=200,
                 duration_ms=42,
                 encryption=EnvelopeEncryption(LocalKeychain(os.urandom(32))),
+                region="default",
             )
         )
 
@@ -265,6 +266,7 @@ class TestREQ596AuditLogSchema:
                 status_code=200,
                 duration_ms=15,
                 encryption=NullEncryption(),
+                region="default",
             )
         )
 
@@ -303,6 +305,7 @@ class TestREQ596AuditLogSchema:
                     status_code=200,
                     duration_ms=1,
                     encryption=NullEncryption(),
+                    region="default",
                     **extra,
                 )
             )

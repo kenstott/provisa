@@ -403,3 +403,15 @@ def test_require_governed_plan_callers_are_the_known_surface_set():
     assert set(out) - known == set(), (
         "a new surface verifies a governed plan but is not in the audited set"
     )
+
+
+def test_the_row_names_the_region_whose_data_answered(captured, monkeypatch):
+    """REQ-1922: a statement's row names the answering node's region, unless the statement read
+    only what another region keeps, in place there — then that region."""
+    from provisa.core import process_region
+
+    monkeypatch.setattr(process_region, "_region", "us")
+    pending = PendingAudit("alice", "pgwire", "analyst", "SELECT 1", [], 0.0, 1, {})
+    _audited(write_audit(pending, 200, _CapturingState()))
+    _audited(write_audit(pending, 200, _CapturingState(), answered_in="eu"))
+    assert [row["region"] for row in captured] == ["us", "eu"]

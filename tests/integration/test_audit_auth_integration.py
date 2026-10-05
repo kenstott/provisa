@@ -401,6 +401,7 @@ class TestREQ596AuditLogWriterBoundary:
             status_code=200,
             duration_ms=42,
             encryption=EnvelopeEncryption(LocalKeychain(os.urandom(32))),
+            region="default",
         )
 
         values = self._values(pool)
@@ -428,6 +429,7 @@ class TestREQ596AuditLogWriterBoundary:
             status_code=200,
             duration_ms=10,
             encryption=NullEncryption(),
+            region="default",
         )
         await log_query(
             pool_b,
@@ -440,6 +442,7 @@ class TestREQ596AuditLogWriterBoundary:
             status_code=200,
             duration_ms=10,
             encryption=NullEncryption(),
+            region="default",
         )
 
         hash_a = self._values(pool_a)["query_hash"]
@@ -465,6 +468,7 @@ class TestREQ596AuditLogWriterBoundary:
             status_code=200,
             duration_ms=1,
             encryption=NullEncryption(),
+            region="default",
         )
         await log_query(
             pool_b,
@@ -477,6 +481,7 @@ class TestREQ596AuditLogWriterBoundary:
             status_code=200,
             duration_ms=1,
             encryption=NullEncryption(),
+            region="default",
         )
 
         hash_a = self._values(pool_a)["query_hash"]
@@ -500,6 +505,7 @@ class TestREQ596AuditLogWriterBoundary:
             status_code=200,
             duration_ms=15,
             encryption=NullEncryption(),
+            region="default",
         )
 
         assert len(pool.conn.captured) == 1  # exactly one INSERT
@@ -534,6 +540,7 @@ class TestREQ596AuditLogWriterBoundary:
             status_code=200,
             duration_ms=5,
             encryption=NullEncryption(),
+            region="default",
         )
 
         assert self._values(pool)["tenant_id"] is None
@@ -555,6 +562,7 @@ class TestREQ596AuditLogWriterBoundary:
             status_code=200,
             duration_ms=99,
             encryption=NullEncryption(),
+            region="default",
         )
 
         duration = self._values(pool)["duration_ms"]
@@ -623,6 +631,7 @@ class TestREQ596AuditLogWriterBoundary:
             status_code=200,
             duration_ms=1,
             encryption=NullEncryption(),
+            region="default",
         )
 
         query_hash = self._values(pool)["query_hash"]

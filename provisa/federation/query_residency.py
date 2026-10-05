@@ -192,6 +192,16 @@ class Residency:
 
     built: list[tuple[str, str]] = field(default_factory=list)
     replicas_read: dict[ReplicaKey, datetime] = field(default_factory=dict)
+    #: REQ-1922: the region whose data answers the statement when it reads only what that one
+    #: other region keeps, in place there; None when this node's region answers it.
+    answered_in: str | None = None
+
+
+def put_on_plan(plan: Any, residency: Residency) -> None:
+    """Put what ``residency`` says the statement was answered from on ``plan``, where its audit
+    record reads it: the replicas read (its data age) and the region whose data answered it."""
+    plan.replicas_read = residency.replicas_read
+    plan.answered_in = residency.answered_in
 
 
 class ReplicaAgeUnknown(RuntimeError):
@@ -345,6 +355,7 @@ async def ensure_resident(
     by_id = {s.id: s for s in sources}
     tables_by_source: dict[str, list[Any]] = {}
     elsewhere: list[tuple[Any, str]] = []
+    read_here = 0  # tables this statement reads in this region (live or from its own replica)
     for t in await registered_tables(state):
         if t.source_id not in wanted or t.id not in read:
             continue
@@ -358,7 +369,9 @@ async def ensure_resident(
             assert home is not None  # builds_here is True for a table naming no region
             if home_keeps_replica(by_id[t.source_id], t, state.foreign_regions[home]):
                 elsewhere.append((t, home))
-            elif _lands(t):
+                continue
+            read_here += 1
+            if _lands(t):
                 from provisa.core.region_stores import HomeRegionUnavailable
 
                 raise HomeRegionUnavailable(
@@ -368,6 +381,7 @@ async def ensure_resident(
                     "region's engine cannot read the source in place",
                 )
             continue
+        read_here += 1
         if not _lands(t):
             continue
         # Only a whole copy is built for a read: not a row-level table's (its rows come by
@@ -376,6 +390,8 @@ async def ensure_resident(
             tables_by_source.setdefault(t.source_id, []).append(t)
     for t, home in elsewhere:
         await read_home_replica(state, backend, t, home)
+    homes = {home for _t, home in elsewhere}
+    answered_in = next(iter(homes)) if len(homes) == 1 and read_here == 0 else None
     # REQ-826 / REQ-1141: a table the operator's settings put on its replica moves its source's
     # read there for this statement, even where the engine could attach the source.
     replicated_by = {s.id: _replicated(state, tables_by_source.get(s.id, [])) for s in sources}
@@ -508,7 +524,7 @@ async def ensure_resident(
                 continue  # read live while the build runs; the build is requested, not awaited
             waiting.append((source, t, key))
     if not waiting:
-        return Residency(replicas_read=replicas_read)
+        return Residency(replicas_read=replicas_read, answered_in=answered_in)
     replica_builds.kick(org_id)
     built = [(key[0], key[2]) for _source, _table, key in waiting]
     started = time.monotonic()
@@ -535,7 +551,7 @@ async def ensure_resident(
             raise replica_state.ReplicaBuilding(".".join(waiting[0][2]), waited)
         await asyncio.sleep(_BUILD_POLL_S)
     log.info("query residency: %s built before the read", built)
-    return Residency(built=built, replicas_read=replicas_read)
+    return Residency(built=built, replicas_read=replicas_read, answered_in=answered_in)
 
 
 #: How often a read waiting for a build looks at its record.
@@ -1348,7 +1364,9 @@ async def prepare_engine_residency(state: Any, plan: Any) -> None:
         plan.exec_params,
         reader_role=plan.role_id,
     )
-    residency = await ensure_resident(
-        state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+    put_on_plan(
+        plan,
+        await ensure_resident(
+            state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+        ),
     )
-    plan.replicas_read = residency.replicas_read

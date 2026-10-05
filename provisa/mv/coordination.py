@@ -8,12 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Cross-instance MV refresh coordination (REQ-879).
+"""Cross-instance MV refresh coordination (REQ-879, REQ-1922).
 
-The ``materialized_views`` control-plane catalog is the AUTHORITATIVE SHARED refresh state
-for a load-balanced fleet against one materialization store. Every fleet instance drives its
-refresh off this shared row, not its per-instance ``MVRegistry``, so exactly one instance
-refreshes a given MV at a time.
+A region's build of a materialized view is recorded in that region's STATE store
+(``mv_build_state``, the region that built it named on the row): the AUTHORITATIVE refresh state
+for the region's load-balanced fleet against its materialization store. Every instance of the
+region drives its refresh off this row, not its per-instance ``MVRegistry``, so exactly one
+instance of a region refreshes a given view at a time — and each region builds, and reports, its
+own. The view's definition is the model's (``materialized_views``).
 
 Protocol (leases + fencing, NOT held pessimistic locks):
 
@@ -46,25 +48,29 @@ from typing import TYPE_CHECKING
 from sqlalchemy import and_, insert, or_, update
 from sqlalchemy.exc import IntegrityError
 
-from provisa.core.schema_org import materialized_views as _mvt
+from provisa.core.schema_org import materialized_views as _definitions
+from provisa.core.schema_org import mv_build_state as _mvt
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
     from provisa.mv.models import MVDefinition
 
 
-async def ensure_mv_row(store: "Database", mv: "MVDefinition") -> None:
-    """Seed the shared coordination row for ``mv`` if absent (idempotent).
+async def ensure_mv_row(model: "Database", state: "Database", mv: "MVDefinition") -> None:
+    """Seed ``mv``'s definition row in the ``model`` store and this region's build row in its
+    ``state`` store, each if absent (idempotent).
 
-    The MV registry is in-memory; the control-plane ``materialized_views`` catalog row —
-    the one ``claim_refresh`` runs its atomic election on — is created lazily here on the
-    first coordinated refresh. Without it a ``shared``-tier MV has no row to claim, so the
-    claim UPDATE matches 0 rows and the MV can never refresh (stays STALE forever).
+    The MV registry is in-memory; the build row — the one ``claim_refresh`` runs its atomic
+    election on — is created lazily here on the first coordinated refresh. Without it a
+    ``shared``-tier MV has no row to claim, so the claim UPDATE matches 0 rows and the MV can
+    never refresh (stays STALE forever).
 
-    Dialect-agnostic (the control plane is PostgreSQL in production, SQLite in tests): a
-    plain INSERT whose duplicate-key IntegrityError — the row already exists, or a concurrent
-    fleet instance seeded it first — is the success case and is swallowed."""
-    stmt = insert(_mvt).values(
+    Dialect-agnostic (the control plane is PostgreSQL in production, SQLite in tests): a plain
+    INSERT whose duplicate-key IntegrityError — the row already exists, or a concurrent fleet
+    instance seeded it first — is the success case and is passed over."""
+    from provisa.core import process_region
+
+    definition = insert(_definitions).values(
         id=mv.id,
         # A join-pattern view's tables as it was bound to them (source/schema.table), so the
         # record — and an export of it — names exactly the tables it reads (REQ-939).
@@ -75,13 +81,14 @@ async def ensure_mv_row(store: "Database", mv: "MVDefinition") -> None:
         refresh_interval=mv.refresh_interval,
         enabled=mv.enabled,
         custom_sql=mv.sql,
-        status="stale",
     )
-    try:
-        async with store.acquire() as conn:
-            await conn.execute_core(stmt)
-    except IntegrityError:
-        pass  # row already present (or seeded concurrently) — the desired end state
+    build = insert(_mvt).values(mv_id=mv.id, region=process_region.region(), status="stale")
+    for store, stmt in ((model, definition), (state, build)):
+        try:
+            async with store.acquire() as conn:
+                await conn.execute_core(stmt)
+        except IntegrityError:
+            pass  # row already present (or seeded concurrently) — the desired end state
 
 
 # One stable id per process: this instance's fencing/ownership token.
@@ -99,7 +106,8 @@ async def claim_refresh(
     target_input_version: str | None,
     lease_seconds: int = DEFAULT_LEASE_SECONDS,
 ) -> bool:
-    """Atomically claim the shared refresh of ``mv_id`` for ``writer``.
+    """Atomically claim this region's refresh of ``mv_id`` for ``writer`` (``store``: the
+    region's state store).
 
     Returns True iff this instance won the per-MV election (exactly one caller can). The
     single conditional UPDATE:
@@ -114,7 +122,7 @@ async def claim_refresh(
     now = datetime.now(UTC)
     lease_until = now + timedelta(seconds=lease_seconds)
     conds = [
-        _mvt.c.id == mv_id,
+        _mvt.c.mv_id == mv_id,
         # Free unless another writer holds a live lease.
         or_(
             _mvt.c.status != "refreshing",
@@ -148,7 +156,7 @@ async def renew_lease(
     stmt = (
         update(_mvt)
         .where(
-            _mvt.c.id == mv_id,
+            _mvt.c.mv_id == mv_id,
             _mvt.c.writer == writer,
             _mvt.c.lease_until >= now,
         )
@@ -176,7 +184,7 @@ async def commit_refresh(
     stmt = (
         update(_mvt)
         .where(
-            _mvt.c.id == mv_id,
+            _mvt.c.mv_id == mv_id,
             _mvt.c.writer == writer,
             _mvt.c.lease_until >= now,
         )
@@ -208,7 +216,7 @@ async def release_refresh(
     a superseded writer never resets a row a newer claim already owns."""
     stmt = (
         update(_mvt)
-        .where(_mvt.c.id == mv_id, _mvt.c.writer == writer)
+        .where(_mvt.c.mv_id == mv_id, _mvt.c.writer == writer)
         .values(status="stale", last_error=error, writer=None, lease_until=None)
     )
     async with store.acquire() as conn:

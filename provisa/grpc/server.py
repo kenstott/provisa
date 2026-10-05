@@ -794,6 +794,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 ensure_resident,
                 ensure_rows_resident,
                 pushdown_row_materialize,
+                put_on_plan,
             )
 
             await ensure_rows_resident(state, plan.pk_bounds, reader_role=plan.role_id)
@@ -804,8 +805,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 plan.exec_params,
                 reader_role=plan.role_id,
             )
-            await ensure_resident(
-                state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+            put_on_plan(
+                plan,
+                await ensure_resident(
+                    state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+                ),
             )
             # REQ-1897: this streaming terminal bypasses _execute_plan_in_org entirely. A HIT was
             # served above from the plan itself; a plan that reaches here is a MISS (or did not

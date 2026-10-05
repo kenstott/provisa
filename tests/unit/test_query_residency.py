@@ -685,8 +685,8 @@ async def test_a_replica_read_with_no_build_in_this_store_is_refused_not_left_ou
 
 @pytest.mark.asyncio
 async def test_the_engine_residency_step_puts_what_was_read_on_the_plan(monkeypatch):
-    """pgwire and Flight SQL share this step: what the statement read from replicas goes on the
-    plan, where the audit record takes its data age from."""
+    """pgwire and Flight SQL share this step: what the statement read from replicas, and the region
+    whose data answered it (REQ-1922), go on the plan, where the audit record takes them from."""
     from provisa.federation import query_residency
     from provisa.federation.query_residency import Residency, prepare_engine_residency
 
@@ -696,7 +696,7 @@ async def test_the_engine_residency_step_puts_what_was_read_on_the_plan(monkeypa
         return None
 
     async def resident(*args, **kwargs):
-        return Residency(built=[], replicas_read=read)
+        return Residency(built=[], replicas_read=read, answered_in="eu")
 
     monkeypatch.setattr(query_residency, "ensure_rows_resident", nothing)
     monkeypatch.setattr(query_residency, "pushdown_row_materialize", nothing)
@@ -713,6 +713,7 @@ async def test_the_engine_residency_step_puts_what_was_read_on_the_plan(monkeypa
     state = SimpleNamespace(federation_engine=SimpleNamespace(dialect="postgres"))
     await prepare_engine_residency(state, plan)
     assert plan.replicas_read == read
+    assert plan.answered_in == "eu"
 
 
 _PLATFORM = {
@@ -781,3 +782,33 @@ async def test_a_table_kept_in_this_region_is_built_for_its_read(wiring, plane, 
     pets.region = "us"
     state = _state([_source("pets-db")], [pets], _Backend(), plane)
     assert await _ensure(state, {"pets-db"}) == [("pets-db", "pets")]
+
+
+@pytest.mark.asyncio
+async def test_a_read_only_of_what_another_region_keeps_is_answered_in_that_region(
+    wiring, plane, node_in_us, monkeypatch
+):
+    """REQ-1922: the residency names the region whose data answers the statement when it reads
+    only what that one other region keeps, in place there; a read that also reads here is this
+    node's region's (None)."""
+    from provisa.core.region_stores import ForeignRegion
+    from provisa.federation import query_residency
+
+    read_there: list[tuple[str, str]] = []
+
+    async def _read_home_replica(_state, _backend, table, home):
+        read_there.append((table.table_name, home))
+
+    monkeypatch.setattr(query_residency, "read_home_replica", _read_home_replica)
+    pets = _table("pets-db", "pets")
+    pets.region = "eu"
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, "snowflake")}
+    assert (await _residency(state, {"pets-db"})).answered_in == "eu"
+    assert read_there == [("pets", "eu")]
+
+    owners = _table("pets-db", "owners")
+    owners.region = "us"
+    state = _state([_source("pets-db")], [pets, owners], _Backend(), plane)
+    state.foreign_regions = {"eu": ForeignRegion("eu", "postgresql://eu/db", plane, "snowflake")}
+    assert (await _residency(state, {"pets-db"})).answered_in is None
