@@ -317,9 +317,17 @@ async def test_each_region_builds_its_own_copy_of_a_view_against_its_own_state(
     reports for us."""
     from provisa.core import process_region
 
+    from provisa.mv import governed_build
+
     model = _plain_db(tmp_path / "model.db", DEFINITIONS)
     eu, us = (_plain_db(tmp_path / f"{r}.db", MVT) for r in ("eu", "us"))
     mv = _mv()
+
+    # What the build reads is test_mv_governed_build's; here, who claims and records it.
+    async def _select(view, _engine):
+        return view.sql
+
+    monkeypatch.setattr(governed_build, "view_build_sql", _select)
 
     async def _build(region, state, writer):
         monkeypatch.setattr(process_region, "_region", region)

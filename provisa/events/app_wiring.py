@@ -532,11 +532,12 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
 
         def mv_run_query(mv: Any) -> Any:
             async def _run() -> list[dict]:
-                # REQ-1912: a replica-served input is read at its replica's address.
-                result = await engine.execute_engine(
-                    engine.address_replicas(mv.sql), authorization=system_auth("event signal")
-                )
-                return [dict(zip(result.column_names, row)) for row in result.rows]
+                # REQ-1912, REQ-1921/1922: what every build of a view reads — a replica-served
+                # input at its replica's address; governed as the region's administrator, through
+                # the one pipeline, where the platform declares regions.
+                from provisa.mv.governed_build import view_build_rows
+
+                return await view_build_rows(mv, engine)
 
             return _run
 

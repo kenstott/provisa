@@ -201,6 +201,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                             refresh_interval=int(_vr.get("mv_refresh_interval") or _mv_default_ttl),
                             enabled=True,
                             sql=_semantic_sql,
+                            semantic_sql=_semantic_sql,  # REQ-1921/1922
                             read_tables=read_table_names(_semantic_sql),
                             expose_in_sdl=False,
                             status=MVStatus.STALE,
@@ -231,6 +232,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                             "lower its SQL against"
                         )
                     _existing.sql = compile_view_sql_to_physical(_semantic_sql, state.view_context)
+                    _existing.semantic_sql = _semantic_sql  # REQ-1921/1922
                     _existing.read_tables = read_table_names(_semantic_sql)
                     _existing.preprocess = _vr.get("mv_preprocess")  # REQ-957
                     _existing.bitemporal = _bt_spec  # REQ-1162

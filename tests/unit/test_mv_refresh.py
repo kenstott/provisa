@@ -107,10 +107,19 @@ class TestBuildRefreshSQL:
         result = await _build_refresh_sql(mv)
         assert result == mv.sql
 
-    async def test_a_views_region_setting_is_the_building_regions(self):
-        """REQ-1922: each region builds its own copy of a view; a view whose SQL reads
-        ``provisa.region`` holds that region's rows, and any other setting resolves to NULL."""
+    async def test_a_views_region_setting_is_the_building_regions(self, monkeypatch):
+        """REQ-1922: each region builds its own copy of a view, governed as its administrator
+        with that region as its region attribute: a view whose SQL reads ``provisa.region``
+        holds that region's rows, and any setting the administrator is not given resolves to
+        NULL. The pipeline stands in for the one pipeline, which resolves the session values it
+        is handed (``_resolve_session_settings``)."""
+        from types import SimpleNamespace
+
+        from provisa.api import app
         from provisa.core import process_region
+        from provisa.federation import query_residency
+        from provisa.pgwire import _pipeline
+        from provisa.transpiler.router import Route
 
         platform = {
             "regions": [
@@ -119,10 +128,21 @@ class TestBuildRefreshSQL:
             ]
         }
         mv = _sql_mv()
-        mv.sql = (
+        mv.semantic_sql = (
             "SELECT id FROM orders WHERE region = current_setting('provisa.region') "
             "AND team = current_setting('provisa.team')"
         )
+
+        async def _govern_and_route(sql, _role, *, session_vars, route_hint):
+            resolved = _pipeline._resolve_session_settings(sql, session_vars, "postgres")
+            return SimpleNamespace(route=Route.ENGINE, physical_sql=resolved, exec_params=None)
+
+        async def _residency(*_a):
+            return None
+
+        monkeypatch.setattr(app, "state", SimpleNamespace(roles={}, view_sql_map={}))
+        monkeypatch.setattr(_pipeline, "_govern_and_route", _govern_and_route)
+        monkeypatch.setattr(query_residency, "prepare_engine_residency", _residency)
         was = process_region._region
         try:
             process_region.bind_launch(platform, requested="eu")

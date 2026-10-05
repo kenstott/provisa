@@ -970,10 +970,11 @@ async def _govern_and_route(
     params: list | None = None,
     serve_cached: bool = False,
     wire_formats: list[int] | None = None,
+    route_hint: str | None = None,
 ) -> _Plan:
     """The top of the ONE pipeline: govern, route, then bind the org's tier ceilings (REQ-1044).
 
-    ``serve_cached`` / ``wire_formats``: see :func:`route_governed`."""
+    ``serve_cached`` / ``wire_formats`` / ``route_hint``: see :func:`route_governed`."""
     from provisa.api.app import state
 
     from provisa.core.statement_warnings import collecting
@@ -991,6 +992,7 @@ async def _govern_and_route(
             params=params,
             serve_cached=serve_cached,
             wire_formats=wire_formats,
+            route_hint=route_hint,
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
@@ -1016,6 +1018,7 @@ async def _govern_and_route_planned(
     params: list | None = None,
     serve_cached: bool = False,
     wire_formats: list[int] | None = None,
+    route_hint: str | None = None,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     """Govern, then route: the two stages of the one pipeline, run back to back."""
     if explain is not None and opening_write_verb(sql) is not None:
@@ -1032,6 +1035,7 @@ async def _govern_and_route_planned(
         explain=explain,
         serve_cached=serve_cached,
         wire_formats=wire_formats,
+        route_hint=route_hint,
     )
 
 
@@ -1334,10 +1338,15 @@ async def route_governed(
     explain: bool | None = None,
     serve_cached: bool = False,
     wire_formats: list[int] | None = None,
+    route_hint: str | None = None,
 ) -> _Plan:
     """Stage two of the one pipeline: bind the statement's parameter values, optimize, route and
     build the executable plan. Runs against live state, so it runs once per execution; it accepts
     only a statement ``govern_statement`` produced.
+
+    ``route_hint`` (REQ-1203): the caller's route override, ``"engine"`` or ``"direct"`` — the
+    operator's floor still binds. A view's build passes ``"engine"``: what it reads lands through
+    the engine into the view's storage (REQ-1921/1922, ``mv.governed_build``).
 
     ``serve_cached`` (REQ-1897, amended 2026-10-01): the caller's terminal serves a Route.CACHE
     plan (``cached_result`` / ``_execute_plan``). The response cache is then read HERE, before any
@@ -1500,6 +1509,7 @@ async def route_governed(
         has_json_extract="->>" in governed_semantic,
         is_mutation=_is_mutation,
         nf_args=_nf_args,
+        steward_hint=route_hint,
     )
     # REQ-1910: the sources are known now — a window opened on one of them covers this request.
     await extend_trace_scope_to_sources(state, role_id, frozenset(_sources))

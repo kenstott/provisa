@@ -647,6 +647,7 @@ async def _sync_view_mv(
         refresh_interval=refresh_interval,
         enabled=True,
         sql=view_sql,
+        semantic_sql=view_sql,  # REQ-1921/1922
         read_tables=read_table_names(view_sql),
         expose_in_sdl=False,
         status=existing.status if existing is not None else MVStatus.STALE,

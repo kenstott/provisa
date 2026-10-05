@@ -307,28 +307,10 @@ async def _build_refresh_sql(
     path compiles view SQL, so the engine never sees an unresolved semantic schema.
     """
     if mv.sql:
-        # REQ-133/REQ-135: a view this one reads (pets -> A -> B) is lowered to the __derived__
-        # sentinel, which is no engine catalog. The refresh acts for no role, so each is read by
-        # the one view rule with nothing narrowed: its stored rows when fresh, else its own SQL.
-        from provisa.api.app import state  # noqa: PLC0415
-        from provisa.compiler.view_expand import expand_view_refs  # noqa: PLC0415
-        from provisa.mv.view_read import unnarrowed_view_bodies  # noqa: PLC0415
+        # REQ-1921/1922: the one statement every build of a SQL-defined view reads with.
+        from provisa.mv.governed_build import view_build_sql
 
-        sql = expand_view_refs(mv.sql, unnarrowed_view_bodies(mv.sql, state.view_sql_map, state))
-        # REQ-1912: a table the view reads that is served from its replica is addressed there —
-        # the same rewrite every statement bound for the engine gets.
-        sql = engine.address_replicas(sql) if engine is not None else sql
-        if engine is None:
-            return sql
-        # REQ-1922: a view's ``current_setting('provisa.<var>')`` is resolved as every statement
-        # bound for the engine is (the engine has no such function). A refresh acts for no caller
-        # and no role, so what it resolves against is the node's own facts: in a region
-        # deployment ``provisa.region`` is the building region, and each region's copy of the
-        # view holds what that region's rule keeps. Any other name resolves to NULL.
-        from provisa.core.request_context import session_vars_for
-        from provisa.pgwire._pipeline import _resolve_session_settings
-
-        return _resolve_session_settings(sql, session_vars_for(None), engine.dialect)
+        return await view_build_sql(mv, engine)
 
     if mv.join_pattern:
         jp = mv.join_pattern
