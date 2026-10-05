@@ -530,6 +530,20 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         def mv_columns(mv: Any) -> list[tuple[str, str]] | None:
             return _mv_cols.get(view_node(mv))
 
+        def mv_admit_deltas(mv: Any) -> Any:
+            # REQ-1921/1922: the input an incremental view's deltas are rows of (an incremental
+            # view reads one table), whose administrator's rule decides what this region keeps.
+            from provisa.federation.region_rows import admit_row_dicts
+
+            inputs = [t for t in registered_tables_ if t.table_name in mv.read_tables]
+
+            def _admit(rows: list[dict]) -> list[dict]:
+                for table in inputs:
+                    rows = admit_row_dicts(state, table, rows)
+                return rows
+
+            return _admit
+
         def mv_run_query(mv: Any) -> Any:
             async def _run() -> list[dict]:
                 # REQ-1912, REQ-1921/1922: what every build of a view reads — a replica-served
@@ -617,6 +631,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             # REQ-961: a periodic view's contract checks the input nodes it names, resolved
             # against the model like its edges.
             expected_events_of=lambda mv: expected_event_nodes(mv, state, graph),
+            mv_admit_deltas=mv_admit_deltas,  # REQ-1921/1922
         )
         processors = build_processors(specs, db=db, dependents_of=dependents_of)
         # REQ-<NEW>: publish the live processors list AND which nodes already have a poll job so a

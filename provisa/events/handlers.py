@@ -354,6 +354,7 @@ def make_mv_incremental(
     run_query: Callable[[], Awaitable[list[dict]]],
     pk_columns: list[str],
     persist: str = "upsert",
+    admit: Callable[[list[dict]], list[dict]] | None = None,
 ) -> Callable[..., Awaitable[tuple[str, dict, str | None] | None]]:
     """REQ-969 (MAY): build an INCREMENTALLY-MAINTAINED ``MVTableProcessor.generate``. When an input
     arrives as a delta/append carrying its changed rows, apply ONLY those rows to the MV's prior
@@ -394,6 +395,13 @@ def make_mv_incremental(
     ) -> tuple[str, dict, str | None] | None:
         del ctx, preprocess
         delta_rows = _collect_delta_rows(pending)
+        if delta_rows and not forced and admit is not None:
+            # REQ-1921/1922: a delta is what a full build would have read of its input, so it is
+            # held to the same governance — the rows the region's administrator may keep. A delta
+            # none of whose rows it may keep changes nothing here: it is not a reason to recompute.
+            delta_rows = admit(delta_rows)
+            if not delta_rows:
+                return None
         if delta_rows and not forced:
             loc = await engine.persist_mv_table(
                 schema=schema,

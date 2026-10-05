@@ -449,6 +449,38 @@ async def test_incremental_applies_only_the_delta(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_an_incremental_delta_lands_only_what_the_region_may_keep(tmp_path):
+    """REQ-1921/1922: a delta is held to the same governance as a full build's read: only the
+    rows ``admit`` keeps land; a delta it keeps none of changes nothing and recomputes nothing."""
+    dsn = _store(tmp_path)
+
+    async def run_query():
+        raise AssertionError("a delta is never a reason to recompute")
+
+    gen = make_mv_incremental(
+        DsnEngine(dsn),
+        schema="",
+        table="mvi",
+        columns=_COLS,
+        sql=_INCR_SQL,
+        run_query=run_query,
+        pk_columns=["id"],
+        admit=lambda rows: [r for r in rows if r["status"] != "eu-only"],
+    )
+    pending = [
+        {
+            "event_type": "delta",
+            "payload": {"delta": [{"id": 1, "status": "a"}, {"id": 2, "status": "eu-only"}]},
+        }
+    ]
+    et, payload, _digest = await gen(pending, prior_hash=None)
+    assert et == "delta" and payload["delta"] == [{"id": 1, "status": "a"}]
+    rejected = [{"event_type": "delta", "payload": {"delta": [{"id": 3, "status": "eu-only"}]}}]
+    assert await gen(rejected, prior_hash=None) is None
+    assert [(r[0], r[1]) for r in await _rows(dsn, "mvi")] == [(1, "a")]
+
+
+@pytest.mark.asyncio
 async def test_incremental_full_recompute_when_no_delta(tmp_path):
     dsn = _store(tmp_path)
 

@@ -280,6 +280,7 @@ def specs_from_config(
     replica_build: Callable[[tuple[str, str, str]], Any] | None = None,
     write_lock: Callable[[tuple[str, str, str]], Any] | None = None,
     expected_events_of: Callable[[Any], list[str]] | None = None,
+    mv_admit_deltas: Callable[[Any], Callable[[list[dict]], list[dict]]] | None = None,
 ) -> list[NodeSpec]:
     """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==
     MATERIALIZED) becomes a source spec — its landing args resolved from config, its ``fetch`` the
@@ -348,6 +349,7 @@ def specs_from_config(
                 run_query=mv_run_query(mv),
                 pk_columns=pk_cols,
                 persist=persist if persist != "replace" else "upsert",
+                admit=mv_admit_deltas(mv) if mv_admit_deltas is not None else None,
             )
         else:
             from provisa.events.handlers import make_mv_generate
