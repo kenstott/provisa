@@ -84,11 +84,6 @@ async def build_by_pipeline(
     from provisa.federation.replica_target import ROWS_IN_TRANSACTION
 
     sp.refuse_region_filter(region_filter, table=f"{target.schema}.{target.table}")
-    if origin.source_type == "iceberg":
-        raise sp.PipelineRefused(
-            f"iceberg on S3 ({origin.location}) lands into SingleStore only on a workspace that "
-            f"enables enable_iceberg_ingest, and its catalog configuration is not modelled yet"
-        )
     if target.replace_method != ROWS_IN_TRANSACTION:
         raise sp.PipelineRefused(
             f"a SingleStore pipeline loads an unkeyed build table; this store replaces by "
@@ -97,27 +92,46 @@ async def build_by_pipeline(
     hints = resolve_secrets_in_dict(dict(getattr(source, "federation_hints", None) or {}))
     schema = target.schema
     pipeline = sp.pipeline_name(schema, target.table)
-    link = sp.link_name(schema, target.table)
-    link_ddl = sp.object_store_link_ddl(schema, link, origin.location, hints)
-    header = csv_header(origin.location, hints) if origin.format == "csv" else None
-    pipe_ddl = sp.file_pipeline_ddl(
-        schema=schema,
-        pipeline=pipeline,
-        link=link,
-        origin=origin,
-        into_table=target.build_table_name,
-        columns=columns,
-        csv_header=header,
-    )
-    finish = sp.teardown(schema, pipeline, link=link)
+    if origin.source_type == "iceberg":
+        # REQ-990: only a workspace that enables Iceberg ingest takes the pipeline, and an Iceberg
+        # pipeline takes no LINK (its credentials are inline, see iceberg_pipeline_ddl).
+        if not await target.store_value(sp.ICEBERG_GATE_QUERY):
+            raise sp.PipelineRefused(
+                f"iceberg ({origin.location}) lands into SingleStore only on a workspace that "
+                f"enables enable_iceberg_ingest; this workspace does not"
+            )
+        prepare = [
+            sp.iceberg_pipeline_ddl(
+                schema=schema,
+                pipeline=pipeline,
+                hints=hints,
+                into_table=target.build_table_name,
+                columns=columns,
+            )
+        ]
+        finish = sp.teardown(schema, pipeline)
+    else:
+        link = sp.link_name(schema, target.table)
+        header = csv_header(origin.location, hints) if origin.format == "csv" else None
+        prepare = [
+            sp.object_store_link_ddl(schema, link, origin.location, hints),
+            sp.file_pipeline_ddl(
+                schema=schema,
+                pipeline=pipeline,
+                link=link,
+                origin=origin,
+                into_table=target.build_table_name,
+                columns=columns,
+                csv_header=header,
+            ),
+        ]
+        finish = sp.teardown(schema, pipeline, link=link)
 
     await target.begin()
     try:
         # A pipeline left by a build that died is dropped first (its name is the replica's); the
         # link is created OR REPLACED for the same reason.
-        await target.run_on_build(
-            [finish[0], link_ddl, pipe_ddl, sp.start_foreground(schema, pipeline)]
-        )
+        await target.run_on_build([finish[0], *prepare, sp.start_foreground(schema, pipeline)])
         rows = await target.build_row_count()
         await target.run_on_build(finish)
     except BaseException:

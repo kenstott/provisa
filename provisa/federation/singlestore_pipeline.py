@@ -24,8 +24,9 @@ Scope (maintainer, 2026-10-04):
   source's ``federation_hints`` (maintainer, 2026-10-05): S3 access keys, GCS HMAC keys, an Azure
   account key. Without them the landing is refused by name. A local file never lands by pipeline
   (the database cannot read it); it keeps the relay.
-- Iceberg on S3 lands by pipeline (a workspace must enable ``enable_iceberg_ingest``). Iceberg
-  elsewhere, Delta Lake, Hive and every other type keep the relay.
+- Iceberg on S3 lands by pipeline from a GLUE, REST, JDBC or SNOWFLAKE catalog, only on a workspace
+  that enables ``enable_iceberg_ingest`` (refused by name otherwise). Iceberg elsewhere, Delta Lake,
+  Hive and every other type keep the relay.
 - A copy that needs a region filter is refused by name until the filtered regional copy exists.
 
 A pipeline that fails raises with SingleStore's own error; it is never retried through the relay.
@@ -234,6 +235,90 @@ def s3_link_ddl(schema: str, link: str, hints: dict) -> str:
     return (
         f"CREATE OR REPLACE LINK {_qualified(schema, link)} AS S3 "
         f"CREDENTIALS {_json_literal(credentials)} CONFIG {_json_literal(config)}"
+    )
+
+
+# -- Iceberg ---------------------------------------------------------------------------------------
+
+#: The workspace setting an Iceberg pipeline needs; read before a build, refused by name when off.
+ICEBERG_GATE_QUERY = "SELECT @@enable_iceberg_ingest"
+
+#: The catalog types an Iceberg source may name, and the federation_hints each one requires on top
+#: of the S3 credentials and region (maintainer, 2026-10-05: all four). JDBC's user and password
+#: are optional (a catalog database without login takes none).
+ICEBERG_CATALOG_HINTS = {
+    "GLUE": (),
+    "REST": ("iceberg_catalog_uri",),
+    "JDBC": ("iceberg_catalog_name", "iceberg_catalog_warehouse", "iceberg_catalog_uri"),
+    "SNOWFLAKE": (
+        "iceberg_catalog_uri",
+        "iceberg_catalog_user",
+        "iceberg_catalog_password",
+        "iceberg_catalog_role",
+    ),
+}
+
+# federation_hint → the CONFIG key SingleStore reads it from.
+_ICEBERG_CONFIG_KEYS = {
+    "iceberg_catalog_name": "catalog_name",
+    "iceberg_catalog_uri": "catalog.uri",
+    "iceberg_catalog_warehouse": "catalog.warehouse",
+    "iceberg_catalog_user": "catalog.jdbc.user",
+    "iceberg_catalog_password": "catalog.jdbc.password",
+    "iceberg_catalog_role": "catalog.jdbc.role",
+}
+
+
+def iceberg_pipeline_ddl(
+    *, schema: str, pipeline: str, hints: dict, into_table: str, columns: list[str]
+) -> str:
+    """``CREATE PIPELINE`` that loads the latest snapshot of an Iceberg table, once, into
+    ``into_table`` (``ingest_mode`` ``one_time``). The table is named by ``iceberg_table_id`` in
+    the catalog ``iceberg_catalog_type`` names, reached with the source's S3 credentials.
+
+    SingleStore takes no LINK with an Iceberg pipeline's CONFIG, so the credentials are inline. The
+    S3 keys are in CREDENTIALS, which SingleStore redacts in its pipeline metadata. A JDBC or
+    Snowflake catalog's password is a CONFIG key, which it does NOT redact: while the build's
+    pipeline exists, that password is readable in information_schema.PIPELINES (maintainer,
+    2026-10-05: accepted and documented)."""
+    catalog = (hints.get("iceberg_catalog_type") or "").upper()
+    if catalog not in ICEBERG_CATALOG_HINTS:
+        raise PipelineRefused(
+            "an Iceberg pipeline needs federation_hints iceberg_catalog_type, one of "
+            + ", ".join(ICEBERG_CATALOG_HINTS)
+        )
+    required = (
+        "iceberg_table_id",
+        "access_key_id",
+        "secret_access_key",
+        "region",
+        *ICEBERG_CATALOG_HINTS[catalog],
+    )
+    missing = [k for k in required if not hints.get(k)]
+    if missing:
+        raise PipelineRefused(
+            f"an Iceberg {catalog} pipeline needs federation_hints {', '.join(missing)} on the source"
+        )
+    config: dict[str, str] = {
+        "region": hints["region"],
+        "catalog_type": catalog,
+        "ingest_mode": "one_time",
+    }
+    if hints.get("endpoint"):
+        config["endpoint_url"] = hints["endpoint"]
+    for hint, key in _ICEBERG_CONFIG_KEYS.items():
+        if hints.get(hint):
+            config[key] = hints[hint]
+    credentials = {
+        "aws_access_key_id": hints["access_key_id"],
+        "aws_secret_access_key": hints["secret_access_key"],
+    }
+    fields = ", ".join(f"{_ident(c)} <- {_ident(c)}" for c in columns)
+    return (
+        f"CREATE PIPELINE {_qualified(schema, pipeline)} AS "
+        f"LOAD DATA S3 {_literal(hints['iceberg_table_id'])} "
+        f"CONFIG {_json_literal(config)} CREDENTIALS {_json_literal(credentials)} "
+        f"INTO TABLE {_qualified(schema, into_table)} ({fields}) FORMAT ICEBERG"
     )
 
 

@@ -77,6 +77,7 @@ import {
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
 import { sourceLoadFieldsValid } from "./sources/loadManagement";
 import { SourceFormFields } from "./sources/SourceFormFields";
+import { icebergCatalogHints } from "./sources/icebergCatalog";
 import {
   CLOUD_FILE_TYPES,
   objectStoreFields,
@@ -785,8 +786,14 @@ export function SourcesPage() {
                   // from federation_hints, never from mapping — unlike hive, which keeps its
                   // storage.aws creds in mapping (Trino's hive connector props). Only "aws" is wired
                   // here: DuckDB's delta_scan/iceberg_scan have no azure/gcs SECRET support yet. The
-                  // region is saved with them (it was shown and then dropped).
-                  (form.type === "delta_lake" || form.type === "iceberg") && authType === "aws"
+                  // region is saved with them (it was shown and then dropped). An iceberg source also
+                  // saves its catalog (REQ-990), whatever its storage authentication.
+                  form.type === "iceberg"
+                  ? {
+                      ...(authType === "aws" ? objectStoreHints("S3", authFields) : {}),
+                      ...icebergCatalogHints(authFields),
+                    }
+                  : form.type === "delta_lake" && authType === "aws"
                   ? objectStoreHints("S3", authFields)
                 : // exasol: an optional TLS-fingerprint pin for a self-signed cert the truststore
                   // can't chain (models.py's Source.jdbc_url reads federation_hints["tls_fingerprint"]).

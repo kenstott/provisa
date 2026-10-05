@@ -14,7 +14,9 @@ import pytest
 from provisa.federation.singlestore_pipeline import (
     LandOrigin,
     PipelineRefused,
+    ICEBERG_CATALOG_HINTS,
     file_pipeline_ddl,
+    iceberg_pipeline_ddl,
     kafka_pipeline_ddl,
     lands_by_pipeline,
     link_name,
@@ -275,3 +277,107 @@ def test_s3_link_is_the_s3_rendering():
 def test_a_missing_store_credential_is_refused_by_name(location, hints, missing):
     with pytest.raises(PipelineRefused, match=f"needs federation_hints {missing} on the source"):
         object_store_link_ddl("db", "ln", location, hints)
+
+
+_S3 = {"access_key_id": "AKIA1", "secret_access_key": "s3cr3t", "region": "us-west-2"}
+
+
+@pytest.mark.parametrize(
+    ("catalog", "extra", "config"),
+    [
+        ("GLUE", {}, {}),
+        ("REST", {"iceberg_catalog_uri": "http://c:8181"}, {"catalog.uri": "http://c:8181"}),
+        (
+            "JDBC",
+            {
+                "iceberg_catalog_name": "cat",
+                "iceberg_catalog_warehouse": "s3://wh",
+                "iceberg_catalog_uri": "jdbc:mysql://h:3306/default",
+                "iceberg_catalog_user": "u",
+                "iceberg_catalog_password": "p",
+            },
+            {
+                "catalog_name": "cat",
+                "catalog.warehouse": "s3://wh",
+                "catalog.uri": "jdbc:mysql://h:3306/default",
+                "catalog.jdbc.user": "u",
+                "catalog.jdbc.password": "p",
+            },
+        ),
+        (
+            "SNOWFLAKE",
+            {
+                "iceberg_catalog_uri": "jdbc:snowflake://acct.snowflakecomputing.com",
+                "iceberg_catalog_user": "u",
+                "iceberg_catalog_password": "p",
+                "iceberg_catalog_role": "r",
+            },
+            {
+                "catalog.uri": "jdbc:snowflake://acct.snowflakecomputing.com",
+                "catalog.jdbc.user": "u",
+                "catalog.jdbc.password": "p",
+                "catalog.jdbc.role": "r",
+            },
+        ),
+    ],
+)
+def test_iceberg_pipeline_per_catalog_type(catalog, extra, config):
+    import json
+
+    hints = {**_S3, "iceberg_catalog_type": catalog.lower(), "iceberg_table_id": "db.t", **extra}
+    ddl = iceberg_pipeline_ddl(
+        schema="db", pipeline="pl", hints=hints, into_table="build__t", columns=["id", "name"]
+    )
+    head = "CREATE PIPELINE `db`.`pl` AS LOAD DATA S3 'db.t' CONFIG '"
+    assert ddl.startswith(head)
+    config_json, rest = ddl[len(head) :].split("' CREDENTIALS '", 1)
+    assert json.loads(config_json) == {
+        "region": "us-west-2",
+        "catalog_type": catalog,
+        "ingest_mode": "one_time",
+        **config,
+    }
+    credentials, tail = rest.split("' INTO TABLE ", 1)
+    assert json.loads(credentials) == {
+        "aws_access_key_id": "AKIA1",
+        "aws_secret_access_key": "s3cr3t",
+    }
+    assert tail == "`db`.`build__t` (`id` <- `id`, `name` <- `name`) FORMAT ICEBERG"
+
+
+@pytest.mark.parametrize(
+    ("hints", "message"),
+    [
+        ({**_S3, "iceberg_table_id": "db.t"}, "needs federation_hints iceberg_catalog_type"),
+        (
+            {**_S3, "iceberg_catalog_type": "HADOOP", "iceberg_table_id": "db.t"},
+            "iceberg_catalog_type, one of GLUE, REST, JDBC, SNOWFLAKE",
+        ),
+        (
+            {**_S3, "iceberg_catalog_type": "GLUE"},
+            "GLUE pipeline needs federation_hints iceberg_table_id",
+        ),
+        (
+            {**_S3, "iceberg_catalog_type": "SNOWFLAKE", "iceberg_table_id": "d.s.t"},
+            "iceberg_catalog_uri, iceberg_catalog_user, iceberg_catalog_password, "
+            "iceberg_catalog_role",
+        ),
+        (
+            {
+                "iceberg_catalog_type": "REST",
+                "iceberg_table_id": "db.t",
+                "iceberg_catalog_uri": "u",
+            },
+            "access_key_id, secret_access_key, region",
+        ),
+    ],
+)
+def test_iceberg_pipeline_refusals_name_the_missing_hints(hints, message):
+    with pytest.raises(PipelineRefused, match=message):
+        iceberg_pipeline_ddl(
+            schema="db", pipeline="pl", hints=hints, into_table="b", columns=["id"]
+        )
+
+
+def test_the_four_catalog_types_are_the_ruled_set():
+    assert list(ICEBERG_CATALOG_HINTS) == ["GLUE", "REST", "JDBC", "SNOWFLAKE"]

@@ -4875,5 +4875,15 @@
   "regionSelector.json::regionSelector.loadError": "Regions could not be loaded",
   "it/replicaBuild.json::replicaBuild.method.store_pipeline": "loaded by the store's own pipeline",
   "it/sourceFormFields.json::sourceFormFields.gcsHmacAccessId": "HMAC Access ID",
-  "it/sourceFormFields.json::sourceFormFields.gcsHmacSecret": "HMAC Secret"
+  "it/sourceFormFields.json::sourceFormFields.gcsHmacSecret": "HMAC Secret",
+  "it/sourceFormFields.json::sourceFormFields.icebergCatalogType": "Iceberg Catalog",
+  "it/sourceFormFields.json::sourceFormFields.icebergCatalogTypeHelp": "Read when a SingleStore store lands this table by pipeline (a workspace with enable_iceberg_ingest).",
+  "it/sourceFormFields.json::sourceFormFields.icebergTableId": "Table Identifier",
+  "it/sourceFormFields.json::sourceFormFields.icebergCatalogUri": "Catalog URI",
+  "it/sourceFormFields.json::sourceFormFields.icebergCatalogName": "Catalog Name",
+  "it/sourceFormFields.json::sourceFormFields.icebergCatalogWarehouse": "Catalog Warehouse",
+  "it/sourceFormFields.json::sourceFormFields.icebergCatalogUser": "Catalog User",
+  "it/sourceFormFields.json::sourceFormFields.icebergCatalogPassword": "Catalog Password",
+  "it/sourceFormFields.json::sourceFormFields.icebergCatalogRole": "Catalog Role",
+  "it/sourceFormFields.json::sourceFormFields.icebergCatalogPasswordExposure": "SingleStore keeps this catalog password in the pipeline's CONFIG, which it does not redact: while a build's pipeline exists, the password can be read in its pipeline metadata."
 }

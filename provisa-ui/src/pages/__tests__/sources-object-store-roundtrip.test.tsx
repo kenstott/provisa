@@ -109,6 +109,34 @@ describe("object-store credentials round-trip through the source form", () => {
     });
   });
 
+  it("reopens and saves an iceberg source's catalog with its S3 credentials", async () => {
+    const catalog = {
+      iceberg_catalog_type: "REST",
+      iceberg_table_id: "sales.orders",
+      iceberg_catalog_uri: "http://catalog:8181",
+    };
+    SOURCES = [
+      source({
+        federationHintsJson: JSON.stringify({
+          access_key_id: "AKIA1",
+          region: "eu-west-1",
+          ...catalog,
+        }),
+      } as Partial<Source>),
+    ];
+    updateSource.mockClear();
+    await openForEdit("lake");
+    expect(screen.getByTestId("iceberg-iceberg_catalog_uri")).toHaveValue("http://catalog:8181");
+    await userEvent.type(screen.getByLabelText(/Secret Access Key/), "${{secret:aws_secret}");
+    const hints = await saved();
+    expect(hints).toEqual({
+      access_key_id: "AKIA1",
+      secret_access_key: "${secret:aws_secret}",
+      region: "eu-west-1",
+      ...catalog,
+    });
+  });
+
   it("reopens and saves a CSV on GCS with its HMAC keys", async () => {
     SOURCES = [
       source({

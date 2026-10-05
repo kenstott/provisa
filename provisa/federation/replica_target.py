@@ -568,6 +568,15 @@ class SqlAlchemyStoreTarget:
         """How many rows the build table holds now."""
         return await asyncio.to_thread(self._build_row_count)
 
+    def _store_value(self, sql: str) -> Any:
+        with self._sa.connect() as conn:
+            return conn.exec_driver_sql(sql).scalar()
+
+    async def store_value(self, sql: str) -> Any:
+        """One value the store answers ``sql`` with, on a connection of its own (a workspace
+        setting a build depends on, read before it begins)."""
+        return await asyncio.to_thread(self._store_value, sql)
+
     def _replace_rows(self, conn: Any, standing: bool) -> None:
         """Replace the replica's rows with the build table's in one transaction, in the
         replica's own table; the first build creates that table, with its key."""
