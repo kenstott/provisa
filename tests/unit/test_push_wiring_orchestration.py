@@ -56,6 +56,7 @@ class _FakeState:
     def __init__(self) -> None:
         self.push_listener_disconnects: dict = {}
         self.push_listener_tasks: list = []
+        self.push_listener_handles: dict = {}
         self.tenant_db = MagicMock()
         self.model_db = self.tenant_db
         self.tenant_db.acquire = MagicMock(
@@ -177,3 +178,43 @@ async def test_no_materialize_store_configured_returns_empty():
     )
     tasks = await wire_push_listeners(state=state, log=logging.getLogger("test"))
     assert tasks == []
+
+
+@pytest.mark.asyncio
+async def test_a_listener_whose_table_goes_draft_is_stopped_on_the_next_wire():
+    """REQ-1921: a drafted (or deleted) table leaves fetch_tables, and the rebuild's re-wire stops
+    the listener that was landing it; a table that stays keeps its listener."""
+    import asyncio
+
+    state = _FakeState()
+    src = Source(id="kafka_src", type=SourceType.kafka, host="broker:9092")
+
+    async def _runs_until_stopped(**kwargs):
+        await asyncio.sleep(3600)
+
+    tables = [_kafka_table("orders"), _kafka_table("refunds")]
+    fetch = AsyncMock(side_effect=[tables, tables[1:]])  # "orders" goes draft before the 2nd wire
+    with (
+        patch("provisa.api.admin.db_queries.fetch_tables", fetch),
+        patch(
+            "provisa.federation.registry_view.registered_sources",
+            AsyncMock(return_value=[src]),
+        ),
+        patch("provisa.subscriptions.registry.get_provider", return_value=MagicMock()),
+        patch("provisa.events.push_wiring._run_listener", _runs_until_stopped),
+    ):
+        started = await wire_push_listeners(state=state, log=logging.getLogger("test"))
+        orders = state.push_listener_handles["kafka_src/s.orders"]
+        refunds = state.push_listener_handles["kafka_src/s.refunds"]
+        orders_disconnect = state.push_listener_disconnects["kafka_src/s.orders"]
+
+        again = await wire_push_listeners(state=state, log=logging.getLogger("test"))
+
+    assert len(started) == 2 and again == []
+    assert orders.done() and orders_disconnect.is_set()
+    assert "kafka_src/s.orders" not in state.push_listener_disconnects
+    assert "kafka_src/s.orders" not in state.push_listener_handles
+    assert orders not in state.push_listener_tasks
+    assert not refunds.done() and "kafka_src/s.refunds" in state.push_listener_disconnects
+    await shutdown_push_listeners(state)
+    assert refunds.done()

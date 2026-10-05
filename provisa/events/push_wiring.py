@@ -132,7 +132,12 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
     Idempotent: a node already running (tracked in ``state.push_listener_disconnects``) is
     skipped, so calling this again after a runtime re-wire (e.g. a new table registered) only
     starts listeners for tables that don't have one yet. Returns the tasks started THIS call
-    (empty on a pure re-wire where every push table already has a listener)."""
+    (empty on a pure re-wire where every push table already has a listener).
+
+    REQ-1921: a listener whose table is no longer wired is stopped. That covers a table set
+    as draft (it leaves ``fetch_tables``), a deleted one, and a change stream whose signal no
+    longer opts in. Every schema rebuild re-runs this, so a table that goes draft stops landing
+    there."""
     db = getattr(state, "model_db", None)
     engine = getattr(state, "federation_engine", None)
     if db is None or engine is None:
@@ -155,6 +160,8 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
         state.push_listener_disconnects = {}
     if not hasattr(state, "push_listener_tasks"):
         state.push_listener_tasks = []
+    if not hasattr(state, "push_listener_handles"):
+        state.push_listener_handles = {}
 
     started: list[LongLived] = []
 
@@ -162,12 +169,15 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
     from provisa.events.nodes import source_node
 
     locks = replica_write_lock_factory(state)
+    wired: set[str] = set()  # every node this pass wants running, started now or before
     for tbl in tables:
         src = sources.get(tbl["source_id"])
         if src is None:
             continue
         source_type = src.type.value if hasattr(src.type, "value") else str(src.type)
         if source_type in _CHANGE_STREAM_SOURCE_TYPES:
+            if _change_feed_opted_in(src, tbl):
+                wired.add(source_node(tbl["source_id"], tbl["schema_name"], tbl["table_name"]))
             task = _start_change_stream(state, src, tbl, log=log)
             if task is not None:
                 started.append(task)
@@ -175,6 +185,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
         if source_type not in _LISTENER_SOURCE_TYPES:
             continue
         node = source_node(tbl["source_id"], tbl["schema_name"], tbl["table_name"])
+        wired.add(node)
         if node in state.push_listener_disconnects:
             continue  # already running from a prior wire
 
@@ -237,6 +248,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
         )
         started.append(task)
         state.push_listener_tasks.append(task)
+        state.push_listener_handles[node] = task
         log.info(
             "push listener started for %s (source=%r type=%s, debounce_quiet=%.1fs "
             "debounce_max_delay=%.1fs)",
@@ -247,7 +259,37 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
             debounce_max_delay,
         )
 
+    await _stop_unwired(state, wired, log=log)
     return started
+
+
+async def _stop_unwired(state: Any, wired: set[str], *, log: Any, timeout: float = 10.0) -> None:
+    """Stop every running listener whose node is not in ``wired`` (REQ-1921): its table went
+    draft, was deleted, or no longer opts into its change feed. The disconnect flag lets a
+    listener between events flush its partial batch and exit; the cancel ends one blocked
+    waiting for the next event. A later wire starts it again if its table comes back."""
+    handles = state.push_listener_handles
+    for node in [n for n in state.push_listener_disconnects if n not in wired]:
+        state.push_listener_disconnects.pop(node).set()
+        handle = handles.pop(node, None)
+        if handle is None:
+            continue
+        handle.cancel()
+        if handle in state.push_listener_tasks:
+            state.push_listener_tasks.remove(handle)
+        if not await handle.wait(timeout):
+            log.warning("push listener %s did not stop within %.0fs", node, timeout)
+        log.info(
+            "push listener stopped for %s: its table is no longer wired (draft, deleted, or "
+            "its change feed is off)",
+            node,
+        )
+
+
+def _change_feed_opted_in(src: Any, tbl: dict) -> bool:
+    """Whether a change-feed source's table opts into its change stream (REQ-1861)."""
+    signal = tbl["change_signal"] if tbl["change_signal"] is not None else src.change_signal
+    return signal == _CHANGE_FEED_SIGNAL
 
 
 def _start_change_stream(state: Any, src: Any, tbl: dict, *, log: Any) -> LongLived | None:
@@ -255,8 +297,7 @@ def _start_change_stream(state: Any, src: Any, tbl: dict, *, log: Any) -> LongLi
     table's effective change signal opts it in and no listener is running for it."""
     from provisa.events.nodes import source_node
 
-    signal = tbl["change_signal"] if tbl["change_signal"] is not None else src.change_signal
-    if signal != _CHANGE_FEED_SIGNAL:
+    if not _change_feed_opted_in(src, tbl):
         return None
     node = source_node(tbl["source_id"], tbl["schema_name"], tbl["table_name"])
     if node in state.push_listener_disconnects:
@@ -281,6 +322,7 @@ def _start_change_stream(state: Any, src: Any, tbl: dict, *, log: Any) -> LongLi
         name=f"change-stream:{node}",
     )
     state.push_listener_tasks.append(task)
+    state.push_listener_handles[node] = task
     log.info(
         "change stream listener started for %s (source=%r, debounce_quiet=%.1fs "
         "debounce_max_delay=%.1fs)",
