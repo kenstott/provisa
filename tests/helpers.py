@@ -32,7 +32,11 @@ def unscoped_role(role_id: str, *capabilities: str) -> dict:
 ALL_DATA_CAPABILITIES: list[str] = sorted(
     c.value
     for c in Capability
-    if c.value not in PLATFORM_RIGHTS and c is not Capability.NO_AGGREGATIONS
+    if c.value not in PLATFORM_RIGHTS
+    and c is not Capability.NO_AGGREGATIONS
+    # REQ-1921: data_residency exists only when the platform declares regions; a role granted it
+    # elsewhere is refused at load, so it is a region test's to grant, not every role's.
+    and c is not Capability.DATA_RESIDENCY
 )
 
 _ALIAS_RE = re.compile(r"\b(t|a|j|n|sub|cte)\d+\b", re.IGNORECASE)
