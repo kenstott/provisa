@@ -29,7 +29,14 @@ class _Source:
 class _Target:
     """The replica target's build-connection surface, recording what the build runs."""
 
-    def __init__(self, *, fail_on: str | None = None, replace_method: str = ROWS_IN_TRANSACTION):
+    def __init__(
+        self,
+        *,
+        fail_on: str | None = None,
+        replace_method: str = ROWS_IN_TRANSACTION,
+        iceberg_ingest: int = 0,
+    ):
+        self.iceberg_ingest = iceberg_ingest
         self.schema = "org_a_replicas"
         self.table = "s__default__t"
         self.build_table_name = "build__t"
@@ -55,11 +62,19 @@ class _Target:
     async def abort(self) -> None:
         self.calls.append("abort")
 
+    async def store_value(self, sql: str):
+        assert sql == sp.ICEBERG_GATE_QUERY
+        return self.iceberg_ingest
 
-def _build(target: _Target, origin: sp.LandOrigin, **kwargs):
+
+def _build(target: _Target, origin: sp.LandOrigin, source=None, **kwargs):
     return asyncio.run(
         spb.build_by_pipeline(
-            source=_Source(), origin=origin, target=target, columns=["id", "name"], **kwargs
+            source=source or _Source(),
+            origin=origin,
+            target=target,
+            columns=["id", "name"],
+            **kwargs,
         )
     )
 
@@ -266,3 +281,82 @@ def test_a_local_file_on_a_singlestore_engine_keeps_the_relay(monkeypatch):
         )
     )
     assert outcome is None and seen == {}
+
+
+@pytest.mark.parametrize(
+    ("location", "hints", "expected"),
+    [
+        (
+            "gs://bucket/dir/k.csv",
+            {"gcs_access_id": "GOOG1", "gcs_secret_key": "k"},
+            ("S3FileSystem", "bucket/dir/k.csv", "https://storage.googleapis.com"),
+        ),
+        (
+            "abfss://cont@acct.dfs.core.windows.net/k.csv",
+            {"azure_account_name": "acct", "azure_account_key": "a2V5"},
+            ("AzureFileSystem", "cont/k.csv", None),
+        ),
+        (
+            "s3://bucket/k.csv",
+            {"access_key_id": "a", "secret_access_key": "b", "region": "us-east-1"},
+            ("S3FileSystem", "bucket/k.csv", None),
+        ),
+    ],
+)
+def test_the_csv_header_is_read_from_each_store_with_its_credentials(
+    monkeypatch, location, hints, expected
+):
+    import io
+
+    opened: list = []
+
+    class _Fs:
+        def __init__(self, kind, **kwargs):
+            self.kind, self.kwargs = kind, kwargs
+
+        def open_input_stream(self, path):
+            opened.append((self.kind, path, self.kwargs.get("endpoint_override")))
+            return io.BytesIO(b"id,name\n1,a\n")
+
+    monkeypatch.setattr("pyarrow.fs.S3FileSystem", lambda **k: _Fs("S3FileSystem", **k))
+    monkeypatch.setattr("pyarrow.fs.AzureFileSystem", lambda **k: _Fs("AzureFileSystem", **k))
+    assert spb.csv_header(location, hints) == ["id", "name"]
+    assert opened == [expected]
+
+
+_ICEBERG = sp.LandOrigin("iceberg", "s3://b/warehouse/orders", "iceberg")
+_ICEBERG_HINTS = {
+    **_HINTS,
+    "iceberg_catalog_type": "REST",
+    "iceberg_catalog_uri": "http://catalog:8181",
+    "iceberg_table_id": "sales.orders",
+}
+
+
+class _IcebergSource:
+    type = "iceberg"
+    federation_hints = _ICEBERG_HINTS
+
+
+def test_iceberg_on_a_workspace_with_ingest_loads_the_latest_snapshot_once_then_swaps():
+    target = _Target(iceberg_ingest=1)
+    outcome = _build(target, _ICEBERG, source=_IcebergSource())
+
+    schema, table = target.schema, target.table
+    pipeline = sp.pipeline_name(schema, table)
+    finish = sp.teardown(schema, pipeline)  # no LINK: an Iceberg pipeline's credentials are inline
+    ddl = sp.iceberg_pipeline_ddl(
+        schema=schema,
+        pipeline=pipeline,
+        hints=_ICEBERG_HINTS,
+        into_table="build__t",
+        columns=["id", "name"],
+    )
+    assert target.calls == [
+        "begin",
+        ("run", [finish[0], ddl, sp.start_foreground(schema, pipeline)], ()),
+        "count",
+        ("run", finish, ()),
+        "swap",
+    ]
+    assert outcome.method == "store_pipeline"

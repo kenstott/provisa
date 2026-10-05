@@ -4875,5 +4875,17 @@
   "tablesPage.json::tablesPage.modelingRole.impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table",
   "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
   "regionSelector.json::regionSelector.loadError": "Regions could not be loaded",
-  "replicaBuild.json::replicaBuild.method.store_pipeline": "loaded by the store's own pipeline"
+  "pt/replicaBuild.json::replicaBuild.method.store_pipeline": "loaded by the store's own pipeline",
+  "pt/sourceFormFields.json::sourceFormFields.gcsHmacAccessId": "HMAC Access ID",
+  "pt/sourceFormFields.json::sourceFormFields.gcsHmacSecret": "HMAC Secret",
+  "pt/sourceFormFields.json::sourceFormFields.icebergCatalogType": "Iceberg Catalog",
+  "pt/sourceFormFields.json::sourceFormFields.icebergCatalogTypeHelp": "Read when a SingleStore store lands this table by pipeline (a workspace with enable_iceberg_ingest).",
+  "pt/sourceFormFields.json::sourceFormFields.icebergTableId": "Table Identifier",
+  "pt/sourceFormFields.json::sourceFormFields.icebergCatalogUri": "Catalog URI",
+  "pt/sourceFormFields.json::sourceFormFields.icebergCatalogName": "Catalog Name",
+  "pt/sourceFormFields.json::sourceFormFields.icebergCatalogWarehouse": "Catalog Warehouse",
+  "pt/sourceFormFields.json::sourceFormFields.icebergCatalogUser": "Catalog User",
+  "pt/sourceFormFields.json::sourceFormFields.icebergCatalogPassword": "Catalog Password",
+  "pt/sourceFormFields.json::sourceFormFields.icebergCatalogRole": "Catalog Role",
+  "pt/sourceFormFields.json::sourceFormFields.icebergCatalogPasswordExposure": "SingleStore keeps this catalog password in the pipeline's CONFIG, which it does not redact: while a build's pipeline exists, the password can be read in its pipeline metadata."
 }

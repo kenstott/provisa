@@ -141,13 +141,17 @@ def test_singlestore_engine_lands_in_scope_origins_by_pipeline(origin, expected)
     assert select_write_face(engine, "singlestoredb", _origin(*origin)) is expected
 
 
-@pytest.mark.parametrize("location", ["gs://b/k.csv", "abfss://c@acct.dfs.core.windows.net/k.csv"])
-def test_singlestore_engine_refuses_gcs_and_azure_files_by_name(location):
-    from provisa.federation.singlestore_pipeline import PipelineRefused
-
+@pytest.mark.parametrize(
+    "location",
+    ["gs://b/k.csv", "abfss://c@acct.dfs.core.windows.net/k.csv", "azure://c/k.parquet"],
+)
+def test_singlestore_engine_lands_gcs_and_azure_files_by_pipeline(location):
+    # Maintainer, 2026-10-05: GCS (HMAC keys) and Azure (account key) are in the pipeline's scope;
+    # a missing credential is refused by name when the pipeline's link is rendered.
     engine = build_sqlalchemy_engine("singlestoredb://h/db")
-    with pytest.raises(PipelineRefused, match="no (GCS|Azure) credential model"):
-        select_write_face(engine, "singlestoredb", _origin("csv", location, "csv"))
+    fmt = "parquet" if location.endswith(".parquet") else "csv"
+    face = select_write_face(engine, "singlestoredb", _origin(fmt, location, fmt))
+    assert face is WriteFace.PIPELINE_LAND
 
 
 def test_only_a_singlestore_store_lands_by_pipeline():
