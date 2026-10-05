@@ -18,6 +18,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useTables, useAllRelationships, useDomains } from "../hooks/useAdminQueries";
 import { ErdPanel } from "../components/erd/ErdPanel";
+import { actingRoleHeader } from "../lib/actingRole";
 
 /**
  * Schema Explorer — SDL sub-tab renders GraphQL Voyager in an iframe.
@@ -29,7 +30,9 @@ import { ErdPanel } from "../components/erd/ErdPanel";
  */
 export function SchemaExplorer() {
   const { t } = useTranslation();
-  const { role } = useAuth();
+  const { role, selectedRoles } = useAuth();
+  // REQ-1620: under "Role: All" the schema shown is the active set's (their meta-role's).
+  const roleHeader = actingRoleHeader(selectedRoles);
   const { domains, checkedDomains } = useDomainFilter();
   const { node: subnavExtraNode } = useSubnavExtraSlot();
   const [view, setView] = useState<"sdl" | "erd">("sdl");
@@ -48,7 +51,7 @@ export function SchemaExplorer() {
   const erdCheckedDomains = domainFiltered ? checkedDomains : null;
 
   useEffect(() => {
-    if (!role) return;
+    if (!role || roleHeader === null) return;
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
        data-fetch effect: resets loading/error state before fetching introspection by design */
     setError(null);
@@ -56,7 +59,7 @@ export function SchemaExplorer() {
     setLoading(true);
 
     fetch(`/data/introspection${domainParam}`, {
-      headers: { "X-Provisa-Role": role.id },
+      headers: { "X-Provisa-Role": roleHeader },
     })
       .then((r) => r.json())
       .then((json) => {
@@ -87,8 +90,8 @@ setTimeout(function() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
     /* eslint-disable-next-line react-hooks/exhaustive-deps --
-       depend on role.id only; the full role object identity changes on unrelated auth refreshes and would refetch needlessly */
-  }, [role?.id, domainParam]);
+       depend on the acting role set's ids only; the role objects' identity changes on unrelated auth refreshes and would refetch needlessly */
+  }, [roleHeader, domainParam]);
 
   if (!role)
     return (

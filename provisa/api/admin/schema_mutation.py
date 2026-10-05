@@ -3959,10 +3959,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin import dev_queries
         from provisa.api.admin.capabilities import require_inspectable_role
 
-        require_inspectable_role(info, input.role)
+        # REQ-1620: the role may be a comma-separated set (the explorer under "Role: All"); each
+        # named role must be one the caller may inspect, and several compile as their meta-role --
+        # the role a request naming that set is served as.
+        from provisa.api.app import state as _state
+        from provisa.security.meta_role import ensure_meta_role, refuse_named_meta_role
+
+        named = sorted({r.strip() for r in input.role.split(",") if r.strip()})
+        refuse_named_meta_role(named)
+        for role_name in named:
+            require_inspectable_role(info, role_name)
+        role_id = named[0] if len(named) == 1 else ensure_meta_role(_state, named)
         variables = cast(dict, input.variables) if input.variables else None
         results = await dev_queries.compile_query(
-            input.role,
+            role_id,
             input.query,
             variables,
             flat_sql=input.flat_sql,
