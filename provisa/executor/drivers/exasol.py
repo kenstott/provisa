@@ -87,7 +87,41 @@ class ExasolDriver(SingleStatementConnectionDriver):
             rows = stmt.fetchall()
         return QueryResult(rows=[tuple(r) for r in rows], column_names=cols)
 
+    # -- REQ-1190: pyexasol is not DB-API; its statement is read through a cursor-shaped adapter --
+
+    def _stream_cursor(self, conn: Any) -> Any:
+        return _ExaStatementCursor(conn)
+
+    def _stream_execute(self, cursor: Any, sql: str, params: list | None) -> None:  # pyright: ignore[reportUnusedParameter]
+        cursor.execute(sql)
+
+    def _stream_cancel(self, conn: Any, cursor: Any) -> None:
+        conn.abort_query()  # pyexasol's own cross-thread cancel; the connection stays usable
+
     def _is_broken(self, exc: BaseException) -> bool:
         import pyexasol  # pyright: ignore[reportMissingImports]
 
         return isinstance(exc, (pyexasol.ExaCommunicationError, pyexasol.ExaConnectionError))
+
+
+class _ExaStatementCursor:
+    """A pyexasol statement read as ``PooledCursorStream`` reads a DB-API cursor (REQ-1190):
+    ``description`` is None for a statement that answered a row count, else its columns, and
+    ``fetchmany`` reads the next batch from the server."""
+
+    def __init__(self, conn: Any) -> None:
+        self._conn = conn
+        self._stmt: Any = None
+        self.description: list[tuple[str]] | None = None
+
+    def execute(self, sql: str) -> None:
+        self._stmt = self._conn.execute(sql)
+        if self._stmt.result_type == "resultSet":
+            self.description = [(name,) for name in self._stmt.column_names()]
+
+    def fetchmany(self, size: int) -> list[tuple]:
+        return list(self._stmt.fetchmany(size)) if self.description is not None else []
+
+    def close(self) -> None:
+        if self._stmt is not None:
+            self._stmt.close()

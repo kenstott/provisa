@@ -85,6 +85,25 @@ class BigQueryDriver(DirectDriver):
 
         return await asyncio.to_thread(_run)
 
+    @property
+    def supports_streaming(self) -> bool:  # REQ-1190
+        return True
+
+    async def open_stream(self, sql: str, params: list | None = None) -> Any:  # REQ-1190
+        """The result a batch at a time: the query job's rows are read page by page as
+        ``fetchmany`` asks, and ``job.cancel()`` stops a job still running."""
+        del params  # BigQuery read SQL arrives fully formed from the governed pipeline
+        from provisa.executor.drivers.cursor_stream import CursorStream
+
+        client = self._client
+        if client is None:
+            raise RuntimeError("BigQueryDriver is not connected")
+        return CursorStream(
+            open_cursor=lambda: _JobCursor(client),
+            execute=lambda cur: cur.execute(sql),
+            cancel=lambda cur: cur.cancel(),
+        )
+
     async def close(self) -> None:
         if self._client is not None:
             await asyncio.to_thread(self._client.close)
@@ -93,3 +112,35 @@ class BigQueryDriver(DirectDriver):
     @property
     def is_connected(self) -> bool:
         return self._client is not None
+
+
+class _JobCursor:
+    """A BigQuery query job read as a DB-API cursor (REQ-1190): ``description`` names the result's
+    fields, and ``fetchmany`` takes the next rows from the job's row iterator, which fetches one
+    page at a time."""
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+        self._job: Any = None
+        self._rows: Any = None
+        self.description: list[tuple[str]] | None = None
+
+    def execute(self, sql: str) -> None:
+        self._job = self._client.query(sql)
+        result = self._job.result()
+        self._rows = iter(result)
+        self.description = [(field.name,) for field in result.schema] if result.schema else None
+
+    def fetchmany(self, size: int) -> list[tuple]:
+        import itertools
+
+        if self._rows is None:
+            return []
+        return [tuple(row.values()) for row in itertools.islice(self._rows, size)]
+
+    def cancel(self) -> None:
+        if self._job is not None:
+            self._job.cancel()
+
+    def close(self) -> None:
+        self._rows = None

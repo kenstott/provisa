@@ -76,6 +76,24 @@ class SnowflakeDriver(DirectDriver):  # REQ-988
 
         return await asyncio.to_thread(_run)
 
+    @property
+    def supports_streaming(self) -> bool:  # REQ-1190
+        return True
+
+    async def open_stream(self, sql: str, params: list | None = None) -> Any:  # REQ-1190
+        """The result a batch at a time: the connector's cursor fetches result chunks as
+        ``fetchmany`` asks; ``abort_query`` stops a statement still running."""
+        from provisa.executor.drivers.cursor_stream import CursorStream
+
+        conn = self._conn
+        if conn is None:
+            raise RuntimeError("SnowflakeDriver is not connected")
+        return CursorStream(
+            open_cursor=conn.cursor,
+            execute=lambda cur: cur.execute(sql, params or None),
+            cancel=lambda cur: cur.abort_query(cur.sfqid) if cur.sfqid else None,
+        )
+
     async def close(self) -> None:
         if self._conn is not None:
             await asyncio.to_thread(self._conn.close)

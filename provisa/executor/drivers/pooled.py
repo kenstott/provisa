@@ -68,6 +68,46 @@ class SingleStatementConnectionDriver(DirectDriver):
         with self._pool.connection(is_broken=self._is_broken) as conn:
             return self._run(conn, sql, params)
 
+    # -- REQ-1190: a DIRECT read a batch at a time ----------------------------------------------
+
+    @property
+    def supports_streaming(self) -> bool:  # REQ-1190
+        return True
+
+    def _stream_cursor(self, conn: Any) -> Any:
+        """The cursor a stream reads through: the connection's DB-API cursor, which fetches from
+        the server as ``fetchmany`` asks."""
+        return conn.cursor()
+
+    def _stream_execute(self, cursor: Any, sql: str, params: list | None) -> None:
+        if params:
+            cursor.execute(sql, params)
+        else:
+            cursor.execute(sql)
+
+    def _stream_cancel(self, conn: Any, cursor: Any) -> None:
+        """Stop a statement still sending rows (the request's deadline, or a stream closed
+        early). The DB-API driver's own cursor cancel by default."""
+        cursor.cancel()
+
+    async def open_stream(  # REQ-1190
+        self, sql: str, params: list | None = None
+    ) -> Any:
+        """The result a batch at a time on a pooled connection (``PooledCursorStream``): one
+        batch held, never the result. A stream read to its end gives the connection back; one
+        closed early has its statement cancelled and the connection discarded."""
+        from provisa.executor.drivers.cursor_stream import PooledCursorStream
+
+        if self._pool is None:
+            raise RuntimeError(f"{type(self).__name__} is not connected")
+        return PooledCursorStream(
+            self._pool,
+            open_cursor=self._stream_cursor,
+            execute=lambda cursor: self._stream_execute(cursor, sql, params),
+            columns=lambda cursor: [d[0] for d in cursor.description],
+            cancel=self._stream_cancel,
+        )
+
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:
         pool, self._pool = self._pool, None

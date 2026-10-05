@@ -84,6 +84,23 @@ class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068
         return QueryResult(rows=rows, column_names=columns)
 
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
+    @property
+    def supports_streaming(self) -> bool:  # REQ-1190
+        return True
+
+    async def open_stream(self, sql: str, params: list | None = None) -> Any:  # REQ-1190
+        """The result a batch at a time: a cursor of the pooled connection, read by
+        ``fetchmany``; DuckDB's own ``interrupt`` stops a statement still running."""
+        from provisa.executor.drivers.cursor_stream import PooledCursorStream
+
+        return PooledCursorStream(
+            self._require_pool(),
+            open_cursor=lambda conn: conn.cursor(),
+            execute=lambda cur: cur.execute(sql, params) if params else cur.execute(sql),
+            columns=lambda cur: [desc[0] for desc in cur.description],
+            cancel=lambda _conn, cur: cur.interrupt(),
+        )
+
     async def close(self) -> None:
         pool, self._pool = self._pool, None
         root, self._root = self._root, None

@@ -138,6 +138,37 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
         )
 
     # Async only for the awaitable call-site contract; executes synchronously in-thread.
+    @property
+    def supports_streaming(self) -> bool:  # REQ-1190
+        return True
+
+    async def open_stream(self, sql: str, params: list | None = None) -> Any:  # REQ-1190
+        """The result a batch at a time: ClickHouse's row-block stream, read block by block as
+        ``fetchmany`` asks, on a pooled client; ``KILL QUERY`` by the statement's id stops one
+        still sending blocks."""
+        from provisa.compiler.params import (
+            extract_params_comment,
+            substitute_positional_placeholders,
+        )
+        from provisa.executor.drivers.cursor_stream import PooledCursorStream
+
+        exec_sql, embedded = extract_params_comment(sql)
+        effective_params = params if params is not None else embedded
+        ch_params: dict[str, Any] | None = None
+        if effective_params:
+            exec_sql = substitute_positional_placeholders(
+                exec_sql, effective_params, lambda i: f"%(p{i})s"
+            )
+            ch_params = {f"p{i}": v for i, v in enumerate(effective_params, start=1)}
+        query_id = uuid.uuid4().hex
+        return PooledCursorStream(
+            self._require_pool(),
+            open_cursor=lambda client: _BlockStreamCursor(client),
+            execute=lambda cur: cur.execute(exec_sql, ch_params, query_id),
+            columns=lambda cur: [d[0] for d in cur.description],
+            cancel=lambda _client, _cur: self._kill_query(query_id),
+        )
+
     async def execute_arrow(self, sql: str, params: dict[str, Any] | None = None) -> Any:
         """Run ``sql`` and return the result as a ``pyarrow.Table`` in ClickHouse's native Arrow
         format -- no per-row Python objects (REQ-1865: a keyed row-materialize fetch lands
@@ -177,3 +208,43 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
     @property
     def is_connected(self) -> bool:
         return self._pool is not None
+
+
+class _BlockStreamCursor:
+    """A ClickHouse row-block stream read as a DB-API cursor (REQ-1190): ``description`` names the
+    columns, and ``fetchmany`` returns the next rows, taking the next block from the server only
+    when the one in hand is used up."""
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+        self._context: Any = None
+        self._blocks: Any = None
+        self._pending: list[Any] = []
+        self.description: list[tuple[str]] | None = None
+
+    def execute(self, sql: str, parameters: dict[str, Any] | None, query_id: str) -> None:
+        self._context = self._client.query_row_block_stream(
+            sql, parameters=parameters, settings={"query_id": query_id}
+        )
+        stream = self._context.__enter__()
+        self._blocks = iter(stream)
+        self.description = [(name,) for name in stream.source.column_names]
+
+    def fetchmany(self, size: int) -> list[tuple]:
+        rows: list[tuple] = []
+        while len(rows) < size:
+            if not self._pending:
+                block = next(self._blocks, None) if self._blocks is not None else None
+                if block is None:
+                    break
+                self._pending = list(block)
+            take = size - len(rows)
+            rows.extend(tuple(r) for r in self._pending[:take])
+            self._pending = self._pending[take:]
+        return rows
+
+    def close(self) -> None:
+        context, self._context = self._context, None
+        self._blocks, self._pending = None, []
+        if context is not None:
+            context.__exit__(None, None, None)

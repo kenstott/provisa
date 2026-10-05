@@ -28,7 +28,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from provisa.executor.drivers.base import DirectDriver
+from provisa.executor.drivers.base import DirectDriver, DirectResultStream
 from provisa.executor.result import QueryResult
 
 
@@ -108,6 +108,24 @@ class SQLAlchemyDriver(DirectDriver):  # REQ-229, REQ-550
                 rows=[], column_names=[], rowcount=rowcount if rowcount >= 0 else None
             )
 
+    # -- REQ-1190: a DIRECT read a batch at a time ------------------------------------------------
+
+    @property
+    def supports_streaming(self) -> bool:  # REQ-1190
+        return True
+
+    async def open_stream(self, sql: str, params: list | None = None) -> "SqlAlchemyResultStream":
+        """The result a batch at a time on a ``stream_results`` connection: the dialect reads
+        from the server as ``fetchmany`` asks (a server-side cursor where the DBAPI has one),
+        so one batch is held, never the result."""
+        named_sql, bind = _to_named_params(sql, params)
+        engine = self._engine
+        if engine is None:
+            raise RuntimeError("SQLAlchemyDriver is not connected")
+        # In-thread, as every DIRECT stream is (PooledCursorStream): the request's deadline is
+        # bound to this thread, and the statement's cancel is registered with it here.
+        return SqlAlchemyResultStream(engine, named_sql, bind)
+
     async def close(self) -> None:
         engine = self._engine
         if engine is not None:
@@ -118,3 +136,82 @@ class SQLAlchemyDriver(DirectDriver):  # REQ-229, REQ-550
     @property
     def is_connected(self) -> bool:
         return self._engine is not None
+
+
+class SqlAlchemyResultStream(DirectResultStream):  # REQ-1190
+    """One statement's result read a batch at a time from a ``stream_results`` connection. A read
+    to its end closes the connection back to its pool; one closed early, failed, or cut by the
+    request's deadline has its statement cancelled where the DBAPI cursor can be, and the
+    connection invalidated (its protocol state is unknown) -- never pooled again."""
+
+    def __init__(self, engine: Any, sql: str, bind: dict[str, Any]) -> None:
+        from sqlalchemy import text
+
+        from provisa.core import request_deadline
+
+        self.column_names = []
+        self.column_types = None
+        self._conn: Any = engine.connect().execution_options(stream_results=True)
+        self._result: Any = None
+        try:
+            with request_deadline.cancel_on_deadline(self._cancel):
+                self._result = self._conn.execute(text(sql), bind)
+            if not self._result.returns_rows:
+                self._release(completed=True)
+            else:
+                self.column_names = list(self._result.keys())
+        except BaseException:
+            self._release(completed=False)
+            raise
+
+    def _cancel(self) -> None:
+        """Stop a statement still sending rows, through the DBAPI cursor's own cancel where the
+        driver offers one (trino, psycopg2, hdbcli...); otherwise invalidating the connection on
+        release ends it."""
+        cancel = getattr(getattr(self._result, "cursor", None), "cancel", None)
+        if callable(cancel):
+            cancel()
+
+    def _release(self, *, completed: bool) -> None:
+        conn, self._conn = self._conn, None
+        result, self._result = self._result, None
+        if conn is None:
+            return
+        if completed:
+            if result is not None:
+                result.close()
+            conn.close()
+            return
+        cancel = getattr(getattr(result, "cursor", None), "cancel", None)
+        try:
+            if callable(cancel):
+                cancel()
+        except Exception:  # noqa: BLE001 — the connection is invalidated whatever the cancel did
+            pass
+        finally:
+            conn.invalidate()
+            conn.close()
+
+    # Async only for the DirectResultStream awaitable contract; fetches synchronously in-thread.
+    async def fetch(self, size: int) -> list[tuple]:
+        from provisa.core import request_deadline
+
+        result = self._result
+        if result is None:
+            return []
+        try:
+            with request_deadline.cancel_on_deadline(self._cancel):
+                rows = [tuple(r) for r in result.fetchmany(size)]
+        except BaseException:
+            self._release(completed=False)
+            raise
+        if not rows:
+            self._release(completed=True)
+        return rows
+
+    async def close(self) -> None:
+        self._release(completed=False)
+
+    def __del__(self) -> None:
+        if self._conn is not None:
+            self._release(completed=False)

@@ -77,6 +77,9 @@ class HiveDriver(SingleStatementConnectionDriver):
     def _run(self, conn: Any, sql: str, params: list | None) -> QueryResult:
         return run_dbapi(conn, sql, params, lambda cur: cur.cancel_operation)
 
+    def _stream_cancel(self, conn: Any, cursor: Any) -> None:
+        cursor.cancel_operation()  # impyla's cancel of the running HiveServer2 operation
+
     def _is_broken(self, exc: BaseException) -> bool:
         # The Thrift transport or the HTTP transport failed, or the session is gone. A statement
         # HiveServer2 rejected is HiveServer2Error, which leaves the connection usable.

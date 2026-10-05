@@ -151,3 +151,69 @@ class PooledCursorStream(DirectResultStream):
         # have closed it — still frees its pool slot.
         if self._conn is not None:
             self._release(completed=False)
+
+
+class CursorStream(DirectResultStream):
+    """One statement's result, read a batch at a time from a cursor on a connection the driver
+    keeps for itself (no pool to give back to): a thread-safe client such as Snowflake's, or a
+    per-statement job such as BigQuery's. ``open_cursor()`` makes the cursor; ``execute(cursor)``
+    runs the statement; ``cancel(cursor)`` stops a statement still sending rows. The cursor needs
+    ``description`` (None for a statement with no result), ``fetchmany`` and ``close``."""
+
+    def __init__(
+        self,
+        *,
+        open_cursor: Callable[[], Any],
+        execute: Callable[[Any], None],
+        cancel: Callable[[Any], None],
+    ) -> None:
+        self._cancel = cancel
+        self.column_names = []
+        self.column_types = None
+        cursor = open_cursor()
+        self._cursor: Any = cursor
+        try:
+            with request_deadline.cancel_on_deadline(lambda: cancel(cursor)):
+                execute(cursor)
+            if cursor.description is None:
+                self._release(completed=True)
+            else:
+                self.column_names = [d[0] for d in cursor.description]
+        except BaseException:
+            self._release(completed=False)
+            raise
+
+    def _release(self, *, completed: bool) -> None:
+        cursor, self._cursor = self._cursor, None
+        if cursor is None:
+            return
+        if not completed:
+            try:
+                self._cancel(cursor)
+            except Exception as exc:  # allow-ble: the cursor is closed whatever the cancel did
+                log.warning("cancelling an abandoned DIRECT stream failed: %s", exc)
+        cursor.close()
+
+    # Async only for the DirectResultStream awaitable contract; fetches synchronously in-thread.
+    async def fetch(self, size: int) -> list[tuple]:
+        cursor = self._cursor
+        if cursor is None:
+            return []
+        try:
+            with request_deadline.cancel_on_deadline(lambda: self._cancel(cursor)):
+                rows = cursor.fetchmany(size)
+        except BaseException:
+            self._release(completed=False)
+            raise
+        if not rows:
+            self._release(completed=True)
+            return []
+        return [tuple(r) for r in rows]
+
+    # Async only for the DirectResultStream awaitable contract; closes synchronously in-thread.
+    async def close(self) -> None:
+        self._release(completed=False)
+
+    def __del__(self) -> None:
+        if self._cursor is not None:
+            self._release(completed=False)
