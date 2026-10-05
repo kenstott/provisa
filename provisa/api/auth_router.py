@@ -545,7 +545,9 @@ async def decline_auto_join(request: Request):  # REQ-1568
 
 @router.get("/invite/{token}")
 async def get_invite(token: str):  # REQ-516
-    """Fetch invite info without authentication. Invites are public until redeemed."""
+    """An invite's org, org name and role, for a signed-in caller. Not a public path: the bearer gate
+    (provisa/auth/middleware.py) covers it like every /auth route but sign-in and credential-less
+    self-registration, which validates the invite itself."""
     from provisa.api.app import state
 
     # org_invites/orgs live in the platform control plane.
