@@ -1386,6 +1386,19 @@ export function SourcesPage() {
               data-testid="sources-type-select"
               value={form.type}
               onChange={(e) => handleTypeChange(e.target.value)}
+              // REQ-1938: clicking the field, or opening it from the keyboard, shows the picker
+              // dialog instead of the long native list. The select still holds the value, so
+              // setting it programmatically (selectOption) works unchanged.
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setTypePickerOpen(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " " || (e.altKey && e.key === "ArrowDown")) {
+                  e.preventDefault();
+                  setTypePickerOpen(true);
+                }
+              }}
             >
               {typeSelectData().map((group) => (
                 <optgroup key={group.group} label={group.group}>
