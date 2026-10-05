@@ -222,7 +222,7 @@ def register_catalog(conn: TrinoConnection, spec: CatalogSpec) -> None:
     raised, never worked around: a silently stale catalog is what pointed the SaaS control plane at
     the wrong database.
     """
-    from provisa.core.catalog import _escape_sql_string, _validate_identifier
+    from provisa.core.catalog import _escape_sql_string, _validate_identifier, drop_refused
 
     name = _validate_identifier(spec.name)
     connector = _validate_identifier(spec.connector)
@@ -231,11 +231,7 @@ def register_catalog(conn: TrinoConnection, spec: CatalogSpec) -> None:
         cur.execute(f"DROP CATALOG IF EXISTS {name}")
         cur.fetchall()
     except TrinoQueryError as exc:
-        raise RuntimeError(
-            f"Trino catalog {name!r} cannot be dropped ({exc}) — it is loaded from a static "
-            f"/etc/trino/catalog/{name}.properties file, which shadows the runtime definition. "
-            "Remove that file from the mounted catalog directory."
-        ) from exc
+        raise drop_refused(name, exc) from exc
 
     props_sql = ", ".join(
         f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in spec.properties.items()

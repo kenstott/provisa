@@ -223,6 +223,25 @@ def test_a_catalog_that_cannot_be_dropped_is_reported_not_worked_around():
     assert len(conn.executed) == 1
 
 
+def test_a_coordinator_on_the_static_catalog_store_is_named_as_such():
+    """A whole static store refuses every DROP CATALOG; the fix is catalog.management=dynamic, not
+    a file to delete (the chart's Trino ran the static store and the message sent the operator
+    looking for a provisa_admin.properties that did not exist)."""
+    conn = _Conn(
+        drop_error=trino.exceptions.TrinoQueryError(
+            {
+                "errorName": "NOT_SUPPORTED",
+                "message": "DROP CATALOG is not supported by the static catalog store",
+            }
+        )
+    )
+    with pytest.raises(RuntimeError) as raised:
+        tsc.register_catalog(conn, tsc.otel_spec(_URL))
+    assert "catalog.management=dynamic" in str(raised.value)
+    assert ".properties file" not in str(raised.value)
+    assert len(conn.executed) == 1
+
+
 class _ShowCatalogsCursor(_Cursor):
     def __init__(self, log: list[str], live: set[str]):
         super().__init__(log, None)

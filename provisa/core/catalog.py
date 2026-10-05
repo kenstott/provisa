@@ -34,6 +34,26 @@ log = logging.getLogger(__name__)
 _STARTING_UP = "SERVER_STARTING_UP"
 
 
+def drop_refused(catalog: str, exc: TrinoQueryError) -> RuntimeError:
+    """Why Trino would not drop ``catalog``, for the operator who has to fix it.
+
+    Two different deployments refuse a DROP CATALOG. A coordinator on the static catalog store
+    refuses every one — Provisa registers its catalogs at runtime, so it needs
+    ``catalog.management=dynamic``. A dynamic store refuses only a catalog loaded from a file in its
+    catalog directory, which shadows the runtime definition until the file is removed."""
+    if "static catalog store" in str(exc):
+        return RuntimeError(
+            f"Trino catalog {catalog!r} cannot be dropped ({exc}) — this coordinator runs the static "
+            "catalog store, and Provisa registers its catalogs at runtime. Set "
+            "catalog.management=dynamic in the coordinator's and workers' config.properties."
+        )
+    return RuntimeError(
+        f"Trino catalog {catalog!r} cannot be dropped ({exc}) — it is loaded from a static "
+        f"/etc/trino/catalog/{catalog}.properties file, which shadows the runtime definition. "
+        "Remove that file from the mounted catalog directory."
+    )
+
+
 def _ready_timeout_secs() -> float:
     from provisa.core import settings_registry  # REQ-1913: the operator setting
 
@@ -158,11 +178,7 @@ def create_catalog(
         cur.execute(f"DROP CATALOG IF EXISTS {catalog_name}")
         cur.fetchall()
     except TrinoQueryError as exc:
-        raise RuntimeError(
-            f"Trino catalog {catalog_name!r} cannot be dropped ({exc}) — it is loaded from a "
-            f"static /etc/trino/catalog/{catalog_name}.properties file, which shadows the runtime "
-            "definition. Remove that file from the mounted catalog directory."
-        ) from exc
+        raise drop_refused(catalog_name, exc) from exc
 
     cur.execute(f"CREATE CATALOG {catalog_name} USING {connector} WITH ({props_sql})")
     cur.fetchall()
