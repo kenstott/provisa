@@ -78,6 +78,11 @@ class ExasolDriver(SingleStatementConnectionDriver):
         # aborts the request running on this connection, which stays usable.
         with request_deadline.cancel_on_deadline(conn.abort_query):
             stmt = conn.execute(sql)
+            # pyexasol names what a statement answered: "resultSet" (a query) or "rowCount" (DDL,
+            # DML). Fetching from a rowCount statement raises "Attempt to fetch from statement
+            # without result set", so a CREATE/INSERT failed after it had already run.
+            if stmt.result_type != "resultSet":
+                return QueryResult(rows=[], column_names=[], rowcount=stmt.rowcount())
             cols = list(stmt.column_names())
             rows = stmt.fetchall()
         return QueryResult(rows=[tuple(r) for r in rows], column_names=cols)
