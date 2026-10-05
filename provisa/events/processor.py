@@ -648,6 +648,22 @@ class MVTableProcessor(TableProcessor):
             generate  # async (pending, *, prior_hash) -> (event_type, payload, hash) | None
         )
 
+    async def inject(self, probe: injector.Probe) -> int | None:
+        """A view's own cadence (its poll job): a request to recompute THE VIEW. The tick is fanned
+        to the view itself, which claims it, recomputes, and re-posts its own change to its
+        dependents. Fanned to its dependents instead, a view that no input signals — every input
+        read in place, so no source node ripples into it — was never built on its schedule."""
+        async with self._db.acquire() as conn:
+            return await injector.check_node(
+                conn,
+                node=self.node,
+                change_signal=self.change_signal,
+                watermark_column=self.watermark_column,
+                probe=probe,
+                dependents=[self.node],
+                probe_type=self.probe_type,
+            )
+
     async def handle(
         self, pending: list[dict], *, prior_hash: str | None, ctx: NodeContext | None = None
     ) -> tuple[str, dict, str | None] | None:

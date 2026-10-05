@@ -362,3 +362,37 @@ async def test_debounce_collapses_burst_into_one_recompute(tmp_path, monkeypatch
                 r for r in await queue.read_since(conn, cursor=0) if r["source_table"] == "mv.live"
             ]
             assert len(posted) == 1  # a single downstream ripple, not three
+
+
+@pytest.mark.asyncio
+async def test_a_views_own_cadence_recomputes_the_view_with_no_input_signalling_it(tmp_path):
+    """A view no input signals (every input read in place, so no source node ripples into it) is
+    built on its own schedule: its poll job's tick is work for THE VIEW, which recomputes and then
+    re-posts its change to its dependents — never only to the dependents, where it never ran."""
+    generated: list[int] = []
+
+    async def generate(pending, *, prior_hash, ctx=None, preprocess=None, forced=False):
+        generated.append(len(pending))
+        return ("replace", {"rows": 2}, f"h{len(generated)}")
+
+    async def cadence() -> None:
+        return None  # a cadence-only probe: every tick is a request to recompute
+
+    async with _db(tmp_path) as db:
+        view = MVTableProcessor(
+            "mv.every_orders",
+            change_signal="ttl",
+            watermark_column=None,
+            dependents_of=lambda n: ["mv.downstream"],
+            db=db,
+            name="box-1",
+            generate=generate,
+        )
+        await view.inject(cadence)
+        async with db.acquire() as conn:
+            assert await queue.peek_pending(conn, dependent_table="mv.downstream") == []
+            reposted = await view.process_pending(conn)
+            assert generated == [1]
+            assert reposted is not None
+            downstream = await queue.peek_pending(conn, dependent_table="mv.downstream")
+            assert [p["event_id"] for p in downstream] == [reposted]
