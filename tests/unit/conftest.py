@@ -39,6 +39,18 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_otel_log_pipeline_outlives_its_test():
+    """A test that builds an app without running its lifespan installs the app's OTLP log
+    pipeline (setup_otel at create_app) and never reaches the lifespan's shutdown_otel: its root
+    handler and exporter thread would ship every later test's log records over HTTP. It is shut
+    down here, as the lifespan would."""
+    yield
+    otel = sys.modules.get("provisa.api.otel_setup")
+    if otel is not None and otel._log_provider is not None:
+        otel.shutdown_otel()
+
+
+@pytest.fixture(autouse=True)
 def _deployment_org_bound(request: pytest.FixtureRequest):
     if request.node.get_closest_marker("unbound") is not None:
         yield
