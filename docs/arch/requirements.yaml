@@ -30200,6 +30200,8 @@
   tests:
   - tests/unit/test_store_writer.py
   - tests/unit/test_databricks_store.py
+  - tests/unit/test_singlestore_bulk_encoding.py
+  - tests/integration/test_singlestore_bulk_load_e2e.py
   group: 6. Execution, Routing, Caching & Performance
   category: Materialization Writes
   priority: MUST
@@ -30207,7 +30209,9 @@
   description: Materialization-store writes MUST use the target store's columnar or bulk-COPY ingest path
     wherever available, instead of row-by-row INSERT. Row INSERT is permitted only for targets without
     bulk support or tiny writes where staging overhead dominates, and this choice must be explicit/capability-gated,
-    never a silent fallback.
+    never a silent fallback. SingleStore is ingest-only (no in-place external scan), so its bulk path is a streaming
+    LOAD DATA LOCAL INFILE through the singlestoredb client (no temp file, NULL distinct from empty string), capability
+    -gated on the singlestoredb dialect and never a row-by-row executemany; the region filter is applied at land.
   use_case: Row-by-row INSERT serializes writes, defeats vectorization, and forces Python row tuples through
     the network. Bulk columnar paths (Arrow, COPY, adbc_ingest) maintain end-to-end columnar efficiency,
     reduce network overhead, and leverage target-store parallelization. This is especially critical for
@@ -30216,6 +30220,7 @@
   - provisa/federation/store_writer.py
   - provisa/federation/store_connection.py
   - provisa/federation/backend.py
+  - provisa/core/database.py
   target: 2026-Q4
   related_reqs:
   - REQ-986
