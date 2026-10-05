@@ -1587,6 +1587,7 @@ class ScheduledTrigger(BaseModel):
 
     id: str
     cron: str  # cron expression (e.g. "0 * * * *" for hourly)
+    name: str | None = None  # display name; the id when unset
     url: str | None = None  # webhook URL (mutually exclusive with function)
     webhook_name: str | None = None  # display name for the webhook
     args: dict = Field(default_factory=dict)  # arg name → value for webhook POST body

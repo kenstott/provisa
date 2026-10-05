@@ -747,32 +747,20 @@ async def invalidate_file_source(table_id: int) -> MutationResult:
     )
 
 
-def _register_trigger_live(trigger_dict: dict) -> None:  # REQ-1003
-    """Add a newly-created trigger to the running scheduler, if one exists.
+async def reschedule_org_triggers() -> None:  # REQ-1003
+    """Reschedule the bound org's triggers from its model, if this process runs a scheduler.
 
-    No-op when no scheduler is running (e.g. unit tests, or startup with no prior
-    triggers). Fresh runs pick the trigger up from config regardless.
-    """
+    No-op when none runs (unit tests, a process that does no background work); the scheduler's
+    holder picks the change up when the org's runtime is next built."""
     from provisa.api.app import state
-    from provisa.core.models import ScheduledTrigger
-    from provisa.scheduler.jobs import build_scheduler
+    from provisa.core.request_context import current_env, require_current_org
+    from provisa.scheduler.jobs import register_org_triggers
 
-    live = getattr(state, "_scheduler", None)
-    if live is None:
+    scheduler = state._scheduler
+    if scheduler is None:
         return
-    model = ScheduledTrigger(**{k: v for k, v in trigger_dict.items() if k != "name"})
-    built = build_scheduler([model])
-    if built is None:
-        return
-    for job in built.get_jobs():
-        live.add_job(
-            job.func,
-            trigger=job.trigger,
-            args=job.args,
-            id=job.id,
-            name=job.name,
-            replace_existing=True,
-        )
+    # An edit in an environment other than prod schedules nothing (register_org_triggers).
+    await register_org_triggers(scheduler, require_current_org(), current_env.get())
 
 
 async def create_scheduled_task_op(  # REQ-1003, REQ-1004
@@ -786,25 +774,21 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
     sql: str | None,
     role: str | None = None,
 ) -> MutationResult:
-    """Create a scheduled trigger (webhook or SQL) and register it live. Persists to config
-    and (if a scheduler is running) adds the job so it fires without a restart. url/sql are
-    mutually exclusive — supplying both fails loudly (REQ-1003). ``request`` is the caller's: a
-    SQL trigger runs as its role, so saving one needs that role held or ``cross_org``."""
+    """Create a scheduled trigger (webhook or SQL) in the CALLER's org and schedule it (REQ-1003).
+
+    The trigger is stored in the org's model store (REQ-1919) -- never the shared config file --
+    and runs bound to that org. url/sql are mutually exclusive — supplying both fails loudly.
+    ``request`` is the caller's: a SQL trigger runs as its role, so saving one needs that role
+    held or ``cross_org``."""
     import json as _json
 
-    import yaml
     from sqlalchemy import select
 
-    from provisa.api.admin._config_io import read_config
     from provisa.api.admin._table_ops import _get_pool
-    from provisa.api.admin.schema_query import _config_path
+    from provisa.core.models import ScheduledTrigger
+    from provisa.core.repositories import scheduled_trigger as trigger_repo
+    from provisa.core.repositories.origin import ADMIN
     from provisa.core.schema_org import tracked_webhooks
-
-    path = _config_path()
-    if not path.exists():
-        return MutationResult(
-            success=False, message="Config file not found", code="schema.config_not_found"
-        )
 
     kind = kind.strip().lower()
     if kind not in ("webhook", "sql"):
@@ -822,6 +806,7 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
         )
 
     trigger: dict = {"id": id.strip(), "name": name.strip(), "cron": cron.strip(), "enabled": True}
+    pool = await _get_pool()
 
     if kind == "webhook":
         if not webhook_name:
@@ -836,13 +821,6 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
                 message="url and sql are mutually exclusive",
                 code="schema.url_sql_exclusive",
             )
-        pool = await _get_pool()
-        if pool is None:
-            return MutationResult(
-                success=False,
-                message="Database pool not available",
-                code="schema.db_pool_unavailable",
-            )
         async with pool.acquire() as conn:
             res = await conn.execute_core(
                 select(tracked_webhooks.c.url).where(tracked_webhooks.c.name == webhook_name)
@@ -855,7 +833,7 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
                 code="schema.webhook_not_found",
                 params={"webhook": webhook_name},
             )
-        trigger["url"] = row[0]
+        # The webhook's URL is resolved in the org when the trigger fires, not copied here.
         trigger["webhook_name"] = webhook_name
         if args_json:
             trigger["args"] = _json.loads(args_json)
@@ -893,21 +871,18 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
         trigger["sql"] = sql.strip()
         trigger["role"] = role
 
-    cfg = read_config()
-    triggers = cfg.setdefault("scheduled_triggers", [])
-    if any(t.get("id") == trigger["id"] for t in triggers):
-        return MutationResult(
-            success=False,
-            message=f"Trigger {trigger['id']!r} already exists",
-            code="schema.trigger_exists",
-            params={"trigger": trigger["id"]},
-        )
-    triggers.append(trigger)
+    model = ScheduledTrigger(**trigger)
+    async with pool.acquire() as conn:
+        if await trigger_repo.get(conn, model.id) is not None:
+            return MutationResult(
+                success=False,
+                message=f"Trigger {model.id!r} already exists",
+                code="schema.trigger_exists",
+                params={"trigger": model.id},
+            )
+        await trigger_repo.create(conn, model, origin=ADMIN)
 
-    with open(path, "w") as f:
-        yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
-
-    _register_trigger_live(trigger)
+    await reschedule_org_triggers()
     return MutationResult(
         success=True,
         message=f"Scheduled task {trigger['id']!r} created",
@@ -917,42 +892,22 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
 
 
 async def delete_scheduled_task_op(task_id: str) -> MutationResult:  # REQ-1003
-    """Remove a scheduled trigger from config and the live scheduler."""
-    import yaml
-    from apscheduler.jobstores.base import JobLookupError
+    """Remove one of the CALLER's org's triggers from its model and unschedule it. Another org's
+    trigger of the same id is a different trigger and is not touched."""
+    from provisa.api.admin._table_ops import _get_pool
+    from provisa.core.repositories import scheduled_trigger as trigger_repo
 
-    from provisa.api.admin._config_io import read_config
-    from provisa.api.admin.schema_query import _config_path
-    from provisa.api.app import state
-
-    path = _config_path()
-    if not path.exists():
-        return MutationResult(
-            success=False, message="Config file not found", code="schema.config_not_found"
-        )
-
-    cfg = read_config()
-    triggers = cfg.get("scheduled_triggers", [])
-    remaining = [t for t in triggers if t.get("id") != task_id]
-    if len(remaining) == len(triggers):
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        removed = await trigger_repo.delete_one(conn, task_id)
+    if not removed:
         return MutationResult(
             success=False,
             message=f"Task {task_id!r} not found",
             code="schema.task_not_found",
             params={"task": task_id},
         )
-    cfg["scheduled_triggers"] = remaining
-
-    with open(path, "w") as f:
-        yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
-
-    live = getattr(state, "_scheduler", None)
-    if live is not None:
-        try:
-            live.remove_job(task_id)
-        except JobLookupError:
-            # Disabled triggers are persisted but never scheduled — absence is expected.
-            pass
+    await reschedule_org_triggers()
     return MutationResult(
         success=True,
         message=f"Task {task_id!r} deleted",

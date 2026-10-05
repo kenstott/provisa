@@ -1124,6 +1124,13 @@ async def _load_after_tables(  # REQ-1919
         await function_repo.upsert_webhook(conn, wh, origin=origin)
         await cr_repo.ensure_executed(conn, "webhook", wh.name, "config")
 
+    # 9b. Scheduled triggers (REQ-1003): the file's are the loading org's -- at boot, the
+    # deployment org's -- written to its model store, never scheduled from the file. Its own
+    # admin-made triggers are left as they are.
+    from provisa.core.repositories import scheduled_trigger as trigger_repo
+
+    await trigger_repo.load_from_config(conn, list(config.scheduled_triggers), origin=origin)
+
     # 10. Policy sweep: dynamically-registered rows (openapi/hasura/graphql_remote) are not
     # in this config file, so the model validator can't catch them. In single-domain mode any
     # surviving row with a foreign domain_id is a hard error — re-register the offending source.

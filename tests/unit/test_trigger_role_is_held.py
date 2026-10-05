@@ -13,7 +13,8 @@
 A SQL trigger's statement runs as its role on every firing, so saving one is acting as that role.
 Scheduling needs only ``org_settings``; without this rule that right would run statements as any
 role of the org, ``org_admin`` included. It holds wherever a trigger is saved: the GraphQL create,
-enabling a trigger, and the uploaded config. The refusal names the role.
+enabling a trigger, and the uploaded config. The refusal names the role. The GraphQL create and
+toggle act on the org's model store (REQ-1919); the uploaded config is the deployment's file.
 """
 
 # Requirements: REQ-1003
@@ -25,7 +26,6 @@ import types
 import pytest
 import yaml
 
-import provisa.api.admin.schema_mutation_ops as sm_ops
 import provisa.api.app as appmod
 from provisa.api.admin import settings_router
 from provisa.api.admin.schema_mutation import Mutation
@@ -40,7 +40,14 @@ def cfg_path(tmp_path, monkeypatch):
     path = tmp_path / "provisa.yaml"
     path.write_text("scheduled_triggers: []\n")
     monkeypatch.setenv("PROVISA_CONFIG", str(path))
-    monkeypatch.setattr(sm_ops, "_register_trigger_live", lambda _t: None)
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_org import metadata, scheduled_triggers
+
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'model.db'}")
+    with engine.begin() as raw:
+        metadata.create_all(raw, tables=[scheduled_triggers])
+    monkeypatch.setattr(appmod.state, "model_db", Database(engine, "model"), raising=False)
+    monkeypatch.setattr(appmod.state, "_scheduler", None, raising=False)
     monkeypatch.setattr(
         appmod.state,
         "roles",
@@ -67,7 +74,16 @@ def _caller(*held: str):
 
 
 def _triggers(path):
+    """The triggers the deployment's config file declares."""
     return yaml.safe_load(path.read_text())["scheduled_triggers"]
+
+
+async def _held() -> list[dict]:
+    """The triggers the org's model store holds."""
+    from provisa.core.repositories import scheduled_trigger as trigger_repo
+
+    async with appmod.state.model_db.acquire() as conn:
+        return await trigger_repo.list_all(conn)
 
 
 def _refused(err: pytest.ExceptionInfo[ApiError], role_id: str) -> None:
@@ -89,13 +105,14 @@ async def test_a_trigger_cannot_run_as_a_role_its_creator_does_not_hold(cfg_path
     with pytest.raises(ApiError) as err:
         await _create(info, "org_admin")
     _refused(err, "org_admin")
+    assert await _held() == []
     assert _triggers(cfg_path) == []
 
 
 async def test_a_trigger_runs_as_a_role_its_creator_holds(cfg_path):
     info, _ = _caller("scheduler", "ops")
     assert (await _create(info, "ops")).success is True
-    assert _triggers(cfg_path)[0]["role"] == "ops"
+    assert (await _held())[0]["role"] == "ops"
 
 
 async def test_the_cross_org_right_saves_a_trigger_as_any_role(cfg_path):
@@ -107,24 +124,35 @@ async def test_the_cross_org_right_saves_a_trigger_as_any_role(cfg_path):
 
 
 def _write_trigger(path, role: str, enabled: bool) -> None:
+    """A trigger the deployment's config file declares."""
     trigger = {"id": "t1", "cron": "0 2 * * *", "sql": _WRITE, "role": role, "enabled": enabled}
     path.write_text(yaml.dump({"scheduled_triggers": [trigger]}))
 
 
+async def _hold_trigger(role: str, enabled: bool) -> None:
+    """A trigger the org's model store holds."""
+    from provisa.core.models import ScheduledTrigger
+    from provisa.core.repositories import scheduled_trigger as trigger_repo
+
+    trigger = ScheduledTrigger(id="t1", cron="0 2 * * *", sql=_WRITE, role=role, enabled=enabled)
+    async with appmod.state.model_db.acquire() as conn:
+        await trigger_repo.create(conn, trigger, origin="admin")
+
+
 async def test_enabling_a_trigger_needs_its_role(cfg_path):
-    _write_trigger(cfg_path, "org_admin", enabled=False)
+    await _hold_trigger("org_admin", enabled=False)
     info, _ = _caller("scheduler")
     with pytest.raises(ApiError) as err:
         await Mutation().toggle_scheduled_task(info, task_id="t1", enabled=True)
     _refused(err, "org_admin")
-    assert _triggers(cfg_path)[0]["enabled"] is False
+    assert (await _held())[0]["enabled"] is False
 
 
 async def test_disabling_a_trigger_needs_no_role(cfg_path):
-    _write_trigger(cfg_path, "org_admin", enabled=True)
+    await _hold_trigger("org_admin", enabled=True)
     info, _ = _caller("scheduler")
     assert (await Mutation().toggle_scheduled_task(info, task_id="t1", enabled=False)).success
-    assert _triggers(cfg_path)[0]["enabled"] is False
+    assert (await _held())[0]["enabled"] is False
 
 
 # --- the uploaded config -------------------------------------------------------------------------

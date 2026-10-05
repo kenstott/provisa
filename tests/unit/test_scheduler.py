@@ -12,23 +12,23 @@ from provisa.scheduler.jobs import build_scheduler
 
 class TestBuildScheduler:
     def test_no_triggers_returns_none(self):
-        assert build_scheduler([]) is None
+        assert build_scheduler([], "default") is None
 
     def test_all_disabled_returns_none(self):
         triggers = [
             ScheduledTrigger(id="t1", cron="0 * * * *", url="http://example.com", enabled=False),
         ]
-        assert build_scheduler(triggers) is None
+        assert build_scheduler(triggers, "default") is None
 
     def test_webhook_trigger_registered(self):
         triggers = [
             ScheduledTrigger(id="hourly", cron="0 * * * *", url="http://example.com/hook"),
         ]
-        scheduler = build_scheduler(triggers)
+        scheduler = build_scheduler(triggers, "default")
         assert scheduler is not None
         jobs = scheduler.get_jobs()
         assert len(jobs) == 1
-        assert jobs[0].id == "hourly"
+        assert jobs[0].id == "hourly:org_default"
         assert jobs[0].name == "trigger:hourly"
 
     def test_multiple_triggers(self):
@@ -37,12 +37,12 @@ class TestBuildScheduler:
             ScheduledTrigger(id="t2", cron="*/5 * * * *", url="http://b.com"),
             ScheduledTrigger(id="t3", cron="0 0 * * *", url="http://c.com", enabled=False),
         ]
-        scheduler = build_scheduler(triggers)
+        scheduler = build_scheduler(triggers, "default")
         assert scheduler is not None
         jobs = scheduler.get_jobs()
         assert len(jobs) == 2  # t3 is disabled
         job_ids = {j.id for j in jobs}
-        assert job_ids == {"t1", "t2"}
+        assert job_ids == {"t1:org_default", "t2:org_default"}
 
     def test_model_validation(self):
         t = ScheduledTrigger(id="test", cron="0 * * * *", url="http://example.com")

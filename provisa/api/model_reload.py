@@ -177,8 +177,23 @@ async def reload_model(rt: "OrgRuntime") -> None:
         await _rebuild_schemas(announce=False)
         # REQ-1922: this region's state rows whose model owner the change removed.
         await prune_region_state(rt)
+        # REQ-1003: the org's triggers are its model, so a trigger made or changed on another
+        # worker reaches this worker's scheduler here -- the holder's among them.
+        await reschedule_triggers(rt)
 
     await _bound(rt, _rebuild)
+
+
+async def reschedule_triggers(rt: "OrgRuntime") -> None:
+    """Schedule ``rt``'s org's triggers, as its model now holds them, on this worker's scheduler
+    (REQ-1003). Every worker holds the jobs; only the scheduler's holder runs them (REQ-1900).
+    Only prod's triggers are scheduled (``register_org_triggers``)."""
+    from provisa.api.app import state
+    from provisa.scheduler.jobs import register_org_triggers
+
+    if state._scheduler is None:
+        return  # this process runs no scheduler
+    await register_org_triggers(state._scheduler, rt.org_id, rt.env)
 
 
 async def prune_region_state(rt: "OrgRuntime") -> None:

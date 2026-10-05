@@ -96,23 +96,58 @@ def _in_deployment_org(job: Callable[..., Awaitable[None]]) -> Callable[..., Awa
     return _bound
 
 
-async def _execute_sql(sql: str, trigger_id: str, role: str) -> None:  # REQ-1003, REQ-1004
+async def _execute_sql(  # REQ-1003, REQ-1004
+    sql: str, trigger_id: str, role: str, org_id: str
+) -> None:
     """Run a scheduled SQL trigger: one insert, update or delete of registered tables, its date
     tokens rendered as values for this run (scheduler/trigger_sql.py), through the shared
-    pipeline and its write admission as the trigger's role. Failures are logged and re-raised —
-    never silently swallowed.
+    pipeline and its write admission as the trigger's role -- in ``org_id``, the org whose model
+    holds the trigger, bound for the run (a scheduled job fires with nothing bound). Failures are
+    logged and re-raised — never silently swallowed.
     """
+    from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
     from provisa.scheduler.trigger_sql import checked_trigger_sql
 
     rendered = checked_trigger_sql(sql, trigger_id, datetime.now(timezone.utc))
+    token = set_current_org(org_id)
     try:
         plan = await _govern_and_route(rendered, role)
         result = await _execute_plan(plan)
     except Exception:
         logger.exception("Trigger %s: scheduled SQL failed: %s", trigger_id, rendered)
         raise
+    finally:
+        reset_current_org(token)
     logger.info("Trigger %s: scheduled SQL executed (%d rows)", trigger_id, len(result.rows))
+
+
+async def _execute_named_webhook(  # REQ-1003, REQ-209
+    webhook_name: str, trigger_id: str, args: dict | None, org_id: str
+) -> None:
+    """Fire ``org_id``'s tracked webhook ``webhook_name`` for a scheduled trigger, resolving its URL
+    in that org's model when it fires -- the webhook may have been edited since the trigger was."""
+    from sqlalchemy import select
+
+    from provisa.api.app import state
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.core.schema_org import tracked_webhooks
+
+    token = set_current_org(org_id)
+    try:
+        assert state.model_db is not None, "the org's model store is bound with its runtime"
+        async with state.model_db.acquire() as conn:
+            result = await conn.execute_core(
+                select(tracked_webhooks.c.url).where(tracked_webhooks.c.name == webhook_name)
+            )
+            row = result.fetchone()
+    finally:
+        reset_current_org(token)
+    if row is None:
+        raise LookupError(
+            f"Trigger {trigger_id!r}: org {org_id!r} has no tracked webhook {webhook_name!r}"
+        )
+    await _execute_webhook(row[0], trigger_id, args)
 
 
 @_in_deployment_org
@@ -929,10 +964,15 @@ def new_scheduler(holder: "SchedulerHolder | None" = None) -> AsyncIOScheduler:
     return scheduler
 
 
+def trigger_job_id(trigger_id: str, org_id: str) -> str:
+    """REQ-1003: the job of ``org_id``'s trigger ``trigger_id`` -- two orgs may share a trigger id."""
+    return f"{trigger_id}:org_{org_id}"
+
+
 def build_scheduler(
-    triggers: list[ScheduledTrigger],
+    triggers: list[ScheduledTrigger], org_id: str
 ) -> AsyncIOScheduler | None:  # REQ-216, REQ-177
-    """Build an APScheduler instance from config triggers.
+    """Build an APScheduler instance from ``org_id``'s triggers; each job runs in that org.
 
     Returns None if no enabled triggers exist.
     """
@@ -941,8 +981,12 @@ def build_scheduler(
         return None
 
     scheduler = new_scheduler()
+    _add_trigger_jobs(scheduler, enabled, org_id)
+    return scheduler
 
-    for trigger in enabled:
+
+def _add_trigger_jobs(scheduler: Any, triggers: list[ScheduledTrigger], org_id: str) -> None:
+    for trigger in triggers:
         # Mutual exclusivity: exactly one action type per trigger (REQ-1003).
         _set = [n for n in ("url", "function", "sql") if getattr(trigger, n)]
         if len(_set) > 1:
@@ -950,26 +994,40 @@ def build_scheduler(
                 f"Trigger {trigger.id}: url/function/sql are mutually exclusive, got {_set}"
             )
         cron = CronTrigger.from_crontab(trigger.cron)
+        job_id = trigger_job_id(trigger.id, org_id)
         if trigger.url:
             scheduler.add_job(
                 _execute_webhook,
                 trigger=cron,
                 args=[trigger.url, trigger.id, trigger.args or None],
-                id=trigger.id,
+                id=job_id,
                 name=f"trigger:{trigger.id}",
                 replace_existing=True,
             )
-            logger.info("Scheduled trigger %s: %s -> %s", trigger.id, trigger.cron, trigger.url)
+            logger.info("Scheduled trigger %s: %s -> %s", job_id, trigger.cron, trigger.url)
+        elif trigger.webhook_name:
+            scheduler.add_job(
+                _execute_named_webhook,
+                trigger=cron,
+                args=[trigger.webhook_name, trigger.id, trigger.args or None, org_id],
+                id=job_id,
+                name=f"trigger:{trigger.id}",
+                replace_existing=True,
+            )
+            logger.info(
+                "Scheduled trigger %s: %s -> %s", job_id, trigger.cron, trigger.webhook_name
+            )
         elif trigger.sql:  # REQ-1003, REQ-1004
+            assert trigger.role is not None  # ScheduledTrigger's validator: a SQL trigger has one
             scheduler.add_job(
                 _execute_sql,
                 trigger=cron,
-                args=[trigger.sql, trigger.id, trigger.role],
-                id=trigger.id,
+                args=[trigger.sql, trigger.id, trigger.role, org_id],
+                id=job_id,
                 name=f"trigger:{trigger.id}",
                 replace_existing=True,
             )
-            logger.info("Scheduled trigger %s: %s -> SQL", trigger.id, trigger.cron)
+            logger.info("Scheduled trigger %s: %s -> SQL", job_id, trigger.cron)
         elif trigger.function:
             logger.warning(
                 "Trigger %s: internal function %s not yet supported",
@@ -977,4 +1035,56 @@ def build_scheduler(
                 trigger.function,
             )
 
-    return scheduler
+
+async def register_org_triggers(  # REQ-1003, REQ-1266
+    scheduler: Any, org_id: str, env: str | None
+) -> int:
+    """Schedule ``org_id``'s prod triggers, as its model holds them, and unschedule the ones it no
+    longer holds or has disabled. Only prod's are scheduled: an environment's triggers are
+    definitions that run once promoted, so a runtime built for any other ``env`` schedules none.
+    Returns how many are scheduled."""
+    from provisa.api.app import state
+    from provisa.core.environments import PROD
+
+    if env is not None and env != PROD:
+        return 0
+    from provisa.core.models import ScheduledTrigger
+    from provisa.core.repositories import scheduled_trigger as trigger_repo
+    from provisa.core.request_context import (
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
+
+    org_token = set_current_org(org_id)
+    env_token = set_current_env(None)
+    try:
+        assert state.model_db is not None, "the org's model store is bound with its runtime"
+        async with state.model_db.acquire() as conn:
+            rows = await trigger_repo.list_all(conn)
+    finally:
+        reset_current_env(env_token)
+        reset_current_org(org_token)
+    triggers = [
+        ScheduledTrigger(
+            id=r["id"],
+            name=r["name"],
+            cron=r["cron"],
+            url=r["url"],
+            webhook_name=r["webhook_name"],
+            args=r["args"],
+            sql=r["sql"],
+            role=r["role"],
+            enabled=r["enabled"],
+        )
+        for r in rows
+    ]
+    enabled = [t for t in triggers if t.enabled]
+    wanted = {trigger_job_id(t.id, org_id) for t in enabled}
+    suffix = f":org_{org_id}"
+    for job in scheduler.get_jobs():
+        if job.name.startswith("trigger:") and job.id.endswith(suffix) and job.id not in wanted:
+            scheduler.remove_job(job.id)
+    _add_trigger_jobs(scheduler, enabled, org_id)
+    return len(enabled)

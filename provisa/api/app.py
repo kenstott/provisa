@@ -1982,6 +1982,10 @@ async def _build_org_runtime(
                 from provisa.events.app_wiring import wire_event_loop
 
                 await wire_event_loop(scheduler, state=state, log=logging.getLogger(__name__))
+                # REQ-1003: the org's own scheduled triggers -- its prod ones only.
+                from provisa.scheduler.jobs import register_org_triggers
+
+                await register_org_triggers(scheduler, org_id, env)
 
             # REQ-1733: start (or, on a re-wire, top up) the kafka/websocket push-source CDC landing
             # listeners — a separate mechanism from wire_event_loop's poll/MV tick loop (CDC upsert/
@@ -2724,6 +2728,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     state._warmup_task = spawn_long_lived(_warmup_readiness(_log), name="readiness-warmup")
 
     _start_scheduler(_log)
+    # REQ-1003: the deployment org's scheduled triggers, from the model the boot just loaded (the
+    # config file's among them, origin config). The boot runs bound to this org.
+    if state._scheduler is not None:
+        from provisa.scheduler.jobs import register_org_triggers
+
+        await register_org_triggers(state._scheduler, state.org_id, None)
 
     # Snapshot the config AFTER all boot-time auto-derivation, so the admin config-diff baseline
     # excludes runtime-derived entities (REQ-164). Opt-in; best-effort (the helper degrades and the

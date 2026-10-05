@@ -1,0 +1,22 @@
+# REQ-1003: per-org scheduled triggers fixture. One source on the pytest-host-reachable Postgres;
+# each org registers its own table under the same governed name (trigs.marks) after its runtime is
+# built, so one trigger SQL means a different physical table in each org.
+sources:
+  - id: trig-pg
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: provisa
+    username: provisa
+    password: ${env:PG_PASSWORD}
+
+domains:
+  - id: trigs
+    description: Scheduled-trigger targets
+
+tables: []
+
+roles:
+  - id: trig_writer
+    capabilities: [query_development, full_results, write]
+    domain_access: ["*"]

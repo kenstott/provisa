@@ -947,6 +947,36 @@ tracked_webhooks = Table(
     Column("requires_approval", Boolean, nullable=False, server_default=false()),
 )
 
+# REQ-1003, REQ-1004: the org's scheduled triggers. Model rows (REQ-1919): the org schema is the org,
+# so a trigger belongs to the org whose model holds it and runs bound to it; versioned and
+# branchable like every definition, and only prod's are scheduled.
+scheduled_triggers = Table(
+    "scheduled_triggers",
+    metadata,
+    Column("id", Text, primary_key=True),
+    # REQ-1919: where the row came from — "config" or "admin" (see ``sources.origin``).
+    Column("origin", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("cron", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    # kind "webhook": the URL it calls (a config trigger), or the org's tracked webhook by name,
+    # resolved when it fires (an admin-made one).
+    Column("url", Text),
+    Column("webhook_name", Text),
+    Column("args", JSON, nullable=False, default=dict, server_default="{}"),
+    # kind "sql" (REQ-1003/1004): the statement and the role of this org it runs as.
+    Column("sql", Text),
+    Column("role", Text),
+    Column("enabled", Boolean, nullable=False, server_default=true()),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint(
+        "(kind = 'sql' AND sql IS NOT NULL AND role IS NOT NULL)"
+        " OR (kind = 'webhook' AND (url IS NOT NULL OR webhook_name IS NOT NULL))",
+        name="scheduled_triggers_kind_fields",
+    ),
+)
+
 # REQ-1742 gap: grpc_remote_router.py's _register_schema has always written its per-table
 # registration log here via a raw INSERT (ON CONFLICT (source_id, table_name)) — but this table
 # was never defined anywhere in the codebase (confirmed: no other file references

@@ -68,13 +68,13 @@ class TestScheduledTriggers:
     async def test_trigger_interval_creates_job(self):
         """build_scheduler creates an APScheduler job for an enabled trigger."""
         trigger = _make_trigger(cron="*/5 * * * *")
-        scheduler = build_scheduler([trigger])
+        scheduler = build_scheduler([trigger], "default")
 
         assert scheduler is not None
         jobs = scheduler.get_jobs()
         assert len(jobs) == 1
         job = jobs[0]
-        assert job.id == "trigger-1"
+        assert job.id == "trigger-1:org_default"
         assert job.name == "trigger:trigger-1"
 
     async def test_cron_trigger_creates_job(self):
@@ -84,16 +84,16 @@ class TestScheduledTriggers:
             cron="0 2 * * *",
             url="https://example.com/daily",
         )
-        scheduler = build_scheduler([trigger])
+        scheduler = build_scheduler([trigger], "default")
 
         assert scheduler is not None
         jobs = scheduler.get_jobs()
-        assert any(j.id == "daily-export" for j in jobs)
+        assert any(j.id == "daily-export:org_default" for j in jobs)
 
     async def test_trigger_disabled_does_not_fire(self):
         """Disabled triggers are excluded; build_scheduler returns None."""
         trigger = _make_trigger(enabled=False)
-        scheduler = build_scheduler([trigger])
+        scheduler = build_scheduler([trigger], "default")
         assert scheduler is None
 
     async def test_trigger_error_does_not_crash_scheduler(self):
@@ -124,12 +124,12 @@ class TestScheduledTriggers:
             _make_trigger(id="t2", cron="30 * * * *", url="https://example.com/t2"),
             _make_trigger(id="t3", cron="0 0 * * *", enabled=False, url="https://example.com/t3"),
         ]
-        scheduler = build_scheduler(triggers)
+        scheduler = build_scheduler(triggers, "default")
         assert scheduler is not None
         job_ids = {j.id for j in scheduler.get_jobs()}
-        assert "t1" in job_ids
-        assert "t2" in job_ids
-        assert "t3" not in job_ids
+        assert "t1:org_default" in job_ids
+        assert "t2:org_default" in job_ids
+        assert "t3:org_default" not in job_ids
 
     async def test_trigger_without_url_does_not_create_job(self):
         """A trigger with only a function name (no URL) is warned but not scheduled."""
@@ -140,8 +140,8 @@ class TestScheduledTriggers:
             function="my_internal_fn",
             enabled=True,
         )
-        scheduler = build_scheduler([trigger])
+        scheduler = build_scheduler([trigger], "default")
         # No webhook URL — no job added; scheduler returned but empty
         if scheduler is not None:
             job_ids = {j.id for j in scheduler.get_jobs()}
-            assert "fn-trigger" not in job_ids
+            assert "fn-trigger:org_default" not in job_ids

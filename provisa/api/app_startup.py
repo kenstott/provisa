@@ -603,32 +603,9 @@ def _start_scheduler(_log: logging.Logger) -> None:
         # control plane runs them (provisa/scheduler/holder.py).
         # new_scheduler: a wakeup chain that never inherits a request's trace context -- see there.
         scheduler = new_scheduler(_scheduler_holder(state))
-        _cfg_triggers = []
-        try:
-            # REQ-1669: includes-aware, so a wrapper config's fragments are seen.
-            from provisa.core.config_loader import read_config_with_includes
-
-            _raw = read_config_with_includes(config_path_str())
-            if isinstance(_raw, dict):
-                from provisa.core.config_loader import parse_config_dict
-
-                _cfg = parse_config_dict(_raw)
-                _cfg_triggers = _cfg.scheduled_triggers if _cfg.scheduled_triggers else []
-        except Exception:
-            pass
-        from provisa.scheduler.jobs import build_scheduler
-
-        _cfg_scheduler = build_scheduler(_cfg_triggers)
-        if _cfg_scheduler:
-            for job in _cfg_scheduler.get_jobs():
-                scheduler.add_job(
-                    job.func,
-                    trigger=job.trigger,
-                    args=job.args,
-                    id=job.id,
-                    name=job.name,
-                    replace_existing=True,
-                )
+        # REQ-1003: scheduled triggers are each org's, in its model store, scheduled per org by
+        # register_org_triggers (the deployment org's once the boot has loaded its model, every
+        # other org's when its runtime is built) -- never read from the config file here.
         from provisa.scheduler.jobs import (
             compact_otel_signals,
             reclaim_otel_storage,
