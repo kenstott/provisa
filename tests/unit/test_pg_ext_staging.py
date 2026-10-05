@@ -13,6 +13,8 @@ so the test is hermetic (no dependency on the provisa-pg-ext wheel being install
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 import types
 
@@ -31,12 +33,14 @@ def _install_fake_package(monkeypatch, ext_root):
     monkeypatch.setitem(sys.modules, "provisa_pg_ext", mod)
 
 
-def _seed_bundle(pkg, platform, suffix):
+def _seed_bundle(pkg, platform, suffix, module=b"FAKE-SO"):
     plat = pkg / platform
-    (plat / "lib").mkdir(parents=True)
-    (plat / "share" / "extension").mkdir(parents=True)
-    (plat / "manifest.json").write_text("{}")
-    (plat / "lib" / f"sqlite_fdw.{suffix}").write_bytes(b"FAKE-SO")
+    (plat / "lib").mkdir(parents=True, exist_ok=True)
+    (plat / "share" / "extension").mkdir(parents=True, exist_ok=True)
+    (plat / "lib" / f"sqlite_fdw.{suffix}").write_bytes(module)
+    row = {"name": "sqlite_fdw", "key": "sqlite_fdw", "file": f"lib/sqlite_fdw.{suffix}"}
+    row["sha256"] = hashlib.sha256(module).hexdigest()
+    (plat / "manifest.json").write_text(json.dumps({"artifacts": [row]}))
     (plat / "share" / "extension" / "sqlite_fdw.control").write_text("comment = 'x'")
 
 
@@ -70,4 +74,33 @@ def test_package_absent_raises_module_not_found(tmp_path, monkeypatch):
     # A dev checkout without the provisa-pg-ext wheel: caller decides whether a network fetch is ok.
     monkeypatch.setitem(sys.modules, "provisa_pg_ext", None)  # force ModuleNotFoundError on import
     with pytest.raises(ModuleNotFoundError):
+        stage_bundled_pg_extensions(tmp_path / "pginstall")
+
+
+def test_an_upgrade_replaces_a_staged_module_the_wheel_no_longer_ships(tmp_path, monkeypatch):
+    """pgserver's install dir outlives a package upgrade: a module staged by an earlier release is
+    replaced when its sha256 is not the manifest's, never kept because a file of that name exists."""
+    platform = bundle_platform()
+    suffix = "dylib" if platform.startswith("darwin") else "so"
+    pkg = tmp_path / "pkg"
+    _seed_bundle(pkg, platform, suffix, module=b"OLD-RELEASE")
+    _install_fake_package(monkeypatch, pkg)
+    pginstall = tmp_path / "pginstall"
+    staged = stage_bundled_pg_extensions(pginstall) / f"sqlite_fdw.{suffix}"
+    assert staged.read_bytes() == b"OLD-RELEASE"
+
+    _seed_bundle(pkg, platform, suffix, module=b"NEW-RELEASE")  # the upgraded wheel
+    stage_bundled_pg_extensions(pginstall)
+
+    assert staged.read_bytes() == b"NEW-RELEASE"
+
+
+def test_a_module_without_a_manifest_row_is_a_packaging_defect(tmp_path, monkeypatch):
+    platform = bundle_platform()
+    suffix = "dylib" if platform.startswith("darwin") else "so"
+    pkg = tmp_path / "pkg"
+    _seed_bundle(pkg, platform, suffix)
+    (pkg / platform / "lib" / f"unlisted.{suffix}").write_bytes(b"X")
+    _install_fake_package(monkeypatch, pkg)
+    with pytest.raises(BundledPgExtensionsMissing, match="without a manifest row"):
         stage_bundled_pg_extensions(tmp_path / "pginstall")

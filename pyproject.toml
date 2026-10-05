@@ -223,7 +223,7 @@ kms-all = ["hvac", "azure-keyvault-keys", "google-cloud-kms"]
 dev = [
     # REQ-1873: the bundled extension binaries the pg-ext install command stages; its tests
     # install them into real Postgres containers.
-    "provisa-pg-ext==0.1.1",
+    "provisa-pg-ext==0.1.2",
     "pytest",
     "pytest-asyncio",
     "pytest-timeout",  # scripts/ci/run_lane.py bounds every test, so a hang fails by name
