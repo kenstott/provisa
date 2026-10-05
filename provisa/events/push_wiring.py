@@ -205,6 +205,12 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
         if not columns:
             log.warning("push listener %s: no typed columns — skipping", node)
             continue
+        if _lands_by_pipeline(engine, src, tbl):
+            # REQ-990: the store lands this topic through its own pipeline; no listener relays it.
+            await _wire_pipeline(
+                state, engine, src, tbl, node=node, columns=columns, pk_columns=pk_columns, log=log
+            )
+            continue
 
         built = _build_provider(src, tbl, node=node)
         if built is None:
@@ -261,7 +267,176 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
         )
 
     await _stop_unwired(state, wired, log=log)
+    await _settle_pipelines(state, engine, wired, log=log)
     return started
+
+
+def _lands_by_pipeline(engine: Any, src: Any, tbl: dict) -> bool:
+    """Whether this Kafka table lands through a SingleStore pipeline: the engine's own store is
+    SingleStore and the table's origin is in the pipeline's scope (REQ-848 PIPELINE_LAND)."""
+    from sqlalchemy import make_url
+
+    from provisa.federation.materialization import WriteFace, select_write_face
+    from provisa.federation.singlestore_pipeline import PIPELINE_STORE, origin_of
+
+    bare = engine.engine
+    if bare.native_store != PIPELINE_STORE:
+        return False
+    store = make_url(bare.materialize_store()).get_backend_name()
+    return select_write_face(bare, store, origin_of(src, tbl)) is WriteFace.PIPELINE_LAND
+
+
+def _pipeline_store(state: Any, engine: Any) -> Any:
+    """The SingleStore store's SQLAlchemy engine the pipelines are managed on (one per runtime)."""
+    store = getattr(state, "kafka_pipeline_store", None)
+    if store is None:
+        from provisa.core.database import create_engine_from_url
+
+        store = create_engine_from_url(engine.materialize_store_dsn())
+        state.kafka_pipeline_store = store
+    return store
+
+
+async def _wire_pipeline(
+    state: Any,
+    engine: Any,
+    src: Any,
+    tbl: dict,
+    *,
+    node: str,
+    columns: list[tuple[str, str]],
+    pk_columns: list[str],
+    log: Any,
+) -> None:
+    """Make the table's continuous pipeline exist and run, recorded by node. A table whose
+    pipeline is already recorded with the same definition is left alone. A pipeline that cannot
+    be created is logged by name; the table does not land, and is never handed to the relay."""
+    import asyncio
+
+    from provisa.federation import singlestore_kafka, singlestore_pipeline as sp
+
+    kafka = (
+        ((tbl.get("live") or {}).get("kafka") or {}) if isinstance(tbl.get("live"), dict) else {}
+    )
+    origin = sp.origin_of(src, tbl)
+    address = engine.replica_address(
+        source_id=src.id, schema_name=tbl["schema_name"], table_name=tbl["table_name"]
+    )
+    bootstrap = f"{src.host}:{src.port}" if src.port else src.host
+    registry = src.cdc.schema_registry_url if getattr(src, "cdc", None) else None
+    field_mapping = kafka.get("field_mapping") or None
+    expected = sp.kafka_pipeline_name(
+        address.schema,
+        address.table,
+        sp.kafka_definition(origin, columns, pk_columns, field_mapping, registry, bootstrap),
+    )
+    if not hasattr(state, "kafka_pipelines"):
+        state.kafka_pipelines = {}
+        state.kafka_pipeline_delays = {}
+        state.kafka_pipeline_tables = {}
+    state.kafka_pipeline_delays[node] = float(tbl.get("push_debounce_max_delay") or 5.0)
+    state.kafka_pipeline_tables[node] = (address.schema, address.table)
+    if state.kafka_pipelines.get(node) == expected:
+        return
+    try:
+        name = await asyncio.to_thread(
+            singlestore_kafka.ensure,
+            _pipeline_store(state, engine),
+            schema=address.schema,
+            table=address.table,
+            columns=columns,
+            pk_columns=pk_columns,
+            origin=origin,
+            bootstrap=bootstrap,
+            field_mapping=field_mapping,
+            schema_registry=registry,
+        )
+    except Exception:
+        log.exception(
+            "kafka pipeline for %s (topic %r) could not be created or started; the table does "
+            "not land until it can",
+            node,
+            origin.location,
+        )
+        state.kafka_pipelines.setdefault(node, None)  # keep whatever pipeline it had
+        return
+    state.kafka_pipelines[node] = name
+    log.info("kafka pipeline %s lands %s (topic %r)", name, node, origin.location)
+
+
+async def _settle_pipelines(state: Any, engine: Any, wired: set[str], *, log: Any) -> None:
+    """After a wiring pass on a SingleStore store: forget and drop the pipelines of tables no
+    longer wired (draft, deleted, retired), only in this org and region's replicas schema, and keep
+    the region's batch poll scheduled while any pipeline lands (REQ-990, REQ-1922)."""
+    import asyncio
+
+    from provisa.federation import singlestore_kafka, singlestore_pipeline as sp
+
+    if engine.engine.native_store != sp.PIPELINE_STORE:
+        return
+    from provisa.core.request_context import require_current_org
+    from provisa.federation.replica_address import replica_schema
+
+    pipelines: dict = getattr(state, "kafka_pipelines", {}) or {}
+    delays: dict = getattr(state, "kafka_pipeline_delays", {}) or {}
+    tables: dict = getattr(state, "kafka_pipeline_tables", {}) or {}
+    for node in [n for n in pipelines if n not in wired]:
+        pipelines.pop(node)
+        delays.pop(node, None)
+        tables.pop(node, None)
+    # REQ-1935: the org being wired is bound (no implied org); its replicas schema in this region
+    # is the only one swept.
+    org_id = require_current_org()
+    schema = replica_schema(org_id)
+    # A wired table whose pipeline could not be (re)created this pass keeps any it already has.
+    failed = {
+        sp.kafka_table_prefix(*tables[node]) for node, name in pipelines.items() if name is None
+    }
+    keep = {name for name in pipelines.values() if name is not None}
+    store = _pipeline_store(state, engine)
+
+    def _sweep() -> list[str]:
+        return singlestore_kafka.sweep(store, schema=schema, keep=keep, keep_prefixes=failed)
+
+    dropped = await asyncio.to_thread(_sweep)
+    for name in dropped:
+        log.info("kafka pipeline %s dropped: its table is no longer wired", name)
+    _schedule_batch_poll(state, store, schema, delays, org_id=org_id)
+
+
+def _schedule_batch_poll(state: Any, store: Any, schema: str, delays: dict, *, org_id: str) -> None:
+    """The region's one scheduled poll of ``org_id``'s pipeline batches (``poll:`` runs on the
+    region's claim). Its cadence is the shortest push_debounce_max_delay among the pipeline
+    tables; with no pipeline left, the job is removed."""
+    scheduler = getattr(state, "_scheduler", None)
+    if scheduler is None:
+        return
+    job_id = f"poll:singlestore-kafka-pipelines:org_{org_id}"
+    if not delays:
+        if scheduler.get_job(job_id) is not None:
+            scheduler.remove_job(job_id)
+        return
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    from provisa.federation import singlestore_kafka
+
+    async def _fire() -> None:
+        # A scheduled fire runs outside any request: it binds the org it was wired for
+        # (REQ-1935), every time, so its reads and ripples are that org's and no other's.
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        tok = set_current_org(org_id)
+        try:
+            await singlestore_kafka.ripple_new_batches(state, store, schema=schema)
+        finally:
+            reset_current_org(tok)
+
+    scheduler.add_job(
+        _fire,
+        trigger=IntervalTrigger(seconds=min(delays.values())),
+        id=job_id,
+        replace_existing=True,
+    )
 
 
 async def _stop_unwired(state: Any, wired: set[str], *, log: Any, timeout: float = 10.0) -> None:

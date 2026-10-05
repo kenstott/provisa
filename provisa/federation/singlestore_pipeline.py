@@ -324,3 +324,88 @@ def teardown(
 
 #: SingleStore's error number for ``DROP LINK`` of a link that does not exist.
 NO_SUCH_LINK = 2332
+
+
+# -- continuous Kafka pipelines ----------------------------------------------------------------------
+
+#: Every continuous Kafka pipeline Provisa runs starts with this; a one-shot file build's pipeline
+#: (``provisa_pl_``) never does, so the sweep of Kafka pipelines can never touch a running build.
+KAFKA_PIPELINE_PREFIX = "provisa_kp_"
+_KAFKA_PROCEDURE_PREFIX = "provisa_kq_"
+
+#: SingleStore's error number for ``START PIPELINE`` of a pipeline that is already running.
+ALREADY_RUNNING = 1939
+
+
+def kafka_definition(
+    origin: LandOrigin,
+    columns: list[tuple[str, str]],
+    pk_columns: list[str],
+    field_mapping: dict[str, str] | None,
+    schema_registry: str | None,
+    bootstrap: str,
+) -> str:
+    """A digest of everything a Kafka pipeline's DDL is made from. A table whose digest changes
+    gets a new pipeline (and loses the old one), and an unchanged table keeps its running
+    pipeline and its offsets."""
+    body = json.dumps(
+        [
+            origin.location,
+            origin.format,
+            columns,
+            sorted(pk_columns),
+            sorted((field_mapping or {}).items()),
+            schema_registry,
+            bootstrap,
+        ],
+        sort_keys=True,
+    )
+    return hashlib.sha256(body.encode()).hexdigest()[:8]
+
+
+def kafka_table_prefix(schema: str, table: str) -> str:
+    """The name prefix every Kafka pipeline of ``schema.table`` carries, whatever its definition."""
+    digest = hashlib.sha256(f"{schema}.{table}".encode()).hexdigest()[:16]
+    return f"{KAFKA_PIPELINE_PREFIX}{digest}_"
+
+
+def kafka_pipeline_name(schema: str, table: str, definition: str) -> str:
+    """The continuous pipeline that lands ``schema.table`` with this ``definition`` digest."""
+    return f"{kafka_table_prefix(schema, table)}{definition}"
+
+
+def kafka_procedure_for(pipeline: str) -> str:
+    """The stored procedure a JSON Kafka pipeline applies its batches through (one per pipeline)."""
+    return _KAFKA_PROCEDURE_PREFIX + pipeline[len(KAFKA_PIPELINE_PREFIX) :]
+
+
+def offsets_latest(schema: str, pipeline: str) -> str:
+    """A new Kafka pipeline starts at the topic's latest offsets, as the relay consumer does
+    (``auto_offset_reset="latest"``): it lands what is produced from now on."""
+    return f"ALTER PIPELINE {_qualified(schema, pipeline)} SET OFFSETS LATEST"
+
+
+def kafka_pipelines_query(schema: str) -> str:
+    """The continuous Kafka pipelines Provisa runs in ``schema`` and their state, by name."""
+    return (
+        "SELECT PIPELINE_NAME, STATE FROM information_schema.PIPELINES "
+        f"WHERE DATABASE_NAME = {_literal(schema)} "
+        f"AND PIPELINE_NAME LIKE {_literal(KAFKA_PIPELINE_PREFIX.replace('_', chr(92) + '_') + '%')}"
+    )
+
+
+def batches_since_query(schema: str, pipelines: dict[str, int]) -> str:
+    """The successful batches each of ``pipelines`` (name → last batch id already seen) has
+    landed since, with the rows each changed."""
+    if not pipelines:
+        raise ValueError("no pipelines to read batches of")
+    since = " OR ".join(
+        f"(PIPELINE_NAME = {_literal(name)} AND BATCH_ID > {int(last)})"
+        for name, last in sorted(pipelines.items())
+    )
+    return (
+        "SELECT PIPELINE_NAME, BATCH_ID, ROWS_INSERTED, ROWS_UPDATED, ROWS_DELETED "
+        "FROM information_schema.PIPELINES_BATCHES_SUMMARY "
+        f"WHERE DATABASE_NAME = {_literal(schema)} AND BATCH_STATE = 'Succeeded' AND ({since}) "
+        "ORDER BY PIPELINE_NAME, BATCH_ID"
+    )
