@@ -132,6 +132,45 @@ def make_floored_direct_loader(state: Any, engine: Any) -> AdapterLoader:  # REQ
     return _load
 
 
+def direct_keyed_sql(
+    table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]], dialect: str | None
+) -> str:
+    """``SELECT * FROM <schema>.<table> WHERE <key> IN (...)`` naming exactly ``keys`` in the
+    source's own ``dialect`` -- identifiers quoted and values rendered by that dialect, never a
+    range."""
+    import sqlglot.expressions as exp
+
+    if len(pk_columns) == 1:
+        target: exp.Expr = exp.column(pk_columns[0], quoted=True)
+        values = [exp.convert(k[0]) for k in keys]
+    else:
+        target = exp.Tuple(expressions=[exp.column(c, quoted=True) for c in pk_columns])
+        values = [exp.Tuple(expressions=[exp.convert(v) for v in k]) for k in keys]
+    return (
+        exp.select("*")
+        .from_(exp.table_(table.table_name, db=table.schema_name, quoted=True))
+        .where(exp.In(this=target, expressions=values))
+        .sql(dialect=dialect)
+    )
+
+
+def make_direct_keyed_loader(state: Any, engine: Any) -> AdapterKeyedLoader:  # REQ-1865, REQ-1915
+    """The keyed row fetch for a direct-driver source the engine cannot attach: through the
+    source's OWN pool, in its own dialect (``engine.execute_native``), never the engine terminal --
+    a source the engine cannot attach has no relation there for a keyed SELECT to address."""
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        if not keys:
+            return []
+        sql = direct_keyed_sql(table, pk_columns, keys, state.source_dialects[source.id] or None)
+        result = await engine.execute_native(state.source_pools, source.id, sql, [])
+        return [dict(zip(result.column_names, row)) for row in result.rows]
+
+    return _load
+
+
 class SourceRowLoader:
     """Reads a MATERIALIZED source table's current rows (REQ-941/846).
 

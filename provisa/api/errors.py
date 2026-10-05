@@ -53,27 +53,47 @@ class ApiError(HTTPException):
         self.params = params
 
 
-class RowLevelKeyRequired(ApiError):
-    """REQ-1915: a statement read a table replicated ROW BY ROW without binding its key.
+class RowLevelFilterNotPushable(ApiError):
+    """REQ-1915: a row-level table was read through a filter its source cannot apply itself.
 
-    Such a table holds only the rows keyed reads have fetched, so an unfiltered read has no
-    complete answer to give: it is refused at planning, on every surface, never answered from
-    whatever rows happen to be replicated and never the trigger of a whole-table copy. ``params``
-    carry the table and its key column(s). ``str()`` is the plain message, so the wire protocols
-    that report an error as text (pgwire, Bolt, Flight, gRPC) say the same thing HTTP does."""
+    A row-level table is never fetched whole, so a filter the source cannot evaluate natively is
+    refused by name -- naming the table, the source type and why -- rather than fetching every row
+    to filter them here."""
 
-    def __init__(self, table: str, key_columns: tuple[str, ...]) -> None:
-        key = ", ".join(key_columns)
-        quoted = ", ".join(f'"{c}"' for c in key_columns)
+    def __init__(self, table: str, source_type: str, why: str) -> None:
         super().__init__(
             400,
-            "data.row_level_key_required",
-            f"Table {table!r} is replicated row by row and can only be read by its key: filter "
-            f"on {quoted} with an equality or an IN list, or join it on a single column to a "
-            "relation that is filtered. An unfiltered read is not answered from a partial "
-            "replica and does not copy the table.",
+            "data.row_level_filter_not_pushable",
+            f"Table {table!r} is replicated row by row and its source ({source_type}) cannot "
+            f"apply this filter itself: {why}. Filter on its key instead.",
             table=table,
-            key=key,
+            source_type=source_type,
+            reason=why,
+        )
+
+    def __str__(self) -> str:
+        return str(self.detail)
+
+
+class RowLevelFilterRequired(ApiError):
+    """REQ-1915: a statement read a table replicated ROW BY ROW with no filter on it.
+
+    Such a table is replicated row by row because it is large, so it is never read whole: a read
+    must filter it (any predicate on its own columns, or a join that supplies its key), and the
+    rows the filter selects are fetched from the source. A read with no filter is refused at
+    planning, on every surface, never answered from whatever rows happen to be replicated and
+    never the trigger of a whole-table copy. ``params`` carry the table. ``str()`` is the plain
+    message, so the wire protocols that report an error as text (pgwire, Bolt, Flight, gRPC) say
+    the same thing HTTP does."""
+
+    def __init__(self, table: str) -> None:
+        super().__init__(
+            400,
+            "data.row_level_filter_required",
+            f"Table {table!r} is replicated row by row because it is large, so it is not read "
+            "whole: add a filter on its columns, or join it on its key to a relation that is "
+            "filtered.",
+            table=table,
         )
 
     def __str__(self) -> str:

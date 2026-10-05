@@ -360,6 +360,57 @@ class _SyncedStore:
             ),
         )
 
+    def replace_filtered_rows(
+        self,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str],
+        *,
+        where_sql: str,
+        spool_path: str,
+        filter_hash: str,
+        filter_sql: str,
+        fetched_at: Any,
+    ) -> int:
+        """Replace a filter's rows in a row-level replica, and record the fetch, under one lock
+        hold and in one transaction (REQ-1915). The rows were spooled to ``spool_path`` before
+        the lock was taken: the store's single writer is never held while a source is read."""
+        from provisa.federation.store_connection import replace_filtered_rows_duckdb_native
+
+        return _with_store(
+            self._db_path,
+            lambda con: replace_filtered_rows_duckdb_native(
+                con,
+                catalog=_MAT_STORE_ALIAS,
+                schema=schema,
+                table=table,
+                columns=columns,
+                pk_columns=pk_columns,
+                where_sql=where_sql,
+                spool_path=spool_path,
+                filter_hash=filter_hash,
+                filter_sql=filter_sql,
+                fetched_at=fetched_at,
+            ),
+        )
+
+    def filter_fetched_at(self, schema: str, table: str, filter_hash: str) -> Any:
+        """When a filter was last fetched into a row-level replica, or None (REQ-1915)."""
+        from provisa.federation.store_connection import filter_fetched_at_duckdb_native
+
+        return _with_store(
+            self._db_path,
+            lambda con: filter_fetched_at_duckdb_native(
+                con,
+                catalog=_MAT_STORE_ALIAS,
+                schema=schema,
+                table=table,
+                filter_hash=filter_hash,
+            ),
+            read_only=True,
+        )
+
     def tombstone_row_cache(
         self,
         schema: str,

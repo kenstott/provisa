@@ -1235,7 +1235,8 @@ async def ensure_rows_resident(
     state: Any, pk_bounds: Iterable[Any], *, reader_role: str | None, force: bool = False
 ) -> list[tuple[str, str, int]]:
     """Serve exactly the rows ``pk_bounds`` names from the row cache, fetching from source only the
-    missing/stale ones (REQ-1865). Returns (source_id, table_name, n_rows_fetched) per bound
+    missing/stale ones (REQ-1865). A ``FilterBound`` (REQ-1915, a non-key filter) is served by
+    ``row_filter.ensure_filtered_rows_resident``. Returns (source_id, table_name, n_rows_fetched) per bound
     touched. A no-op for a bound with no values (``extract_pk_bounds`` already filters those out) or
     when the named table is not ``row_materialize`` (defensive: a stale/mismatched bound is just
     skipped, since the compiler is the sole authority on which tables qualify). ``force=True`` (used
@@ -1253,13 +1254,23 @@ async def ensure_rows_resident(
     from provisa.federation.registry_view import registered_sources
     from provisa.federation.residency import resolve_landing_args
 
-    bounds = [b for b in pk_bounds if b.values]
+    from provisa.compiler.pk_bounds import FilterBound
+
+    every = list(pk_bounds)
+    # REQ-1915: a read through a filter that is not a key is served by its own path.
+    filters = [b for b in every if isinstance(b, FilterBound)]
+    bounds = [b for b in every if not isinstance(b, FilterBound) and b.values]
+    results: list[tuple[str, str, int]] = []
+    if filters:
+        from provisa.federation.row_filter import ensure_filtered_rows_resident
+
+        results += await ensure_filtered_rows_resident(state, filters, reader_role=reader_role)
     if not bounds:
-        return []
+        return results
     engine = getattr(state, "federation_engine", None)
     backend = getattr(getattr(engine, "engine", None), "backend", None)
     if engine is None or backend is None:
-        return []
+        return results
 
     sources_by_id = {s.id: s for s in await registered_sources(state)}
     # The tables row-level applies to here — the one selector every row-level consumer shares.
@@ -1271,7 +1282,6 @@ async def ensure_rows_resident(
     )
 
     now = datetime.now(UTC)
-    results: list[tuple[str, str, int]] = []
 
     for bound in bounds:
         table = tables_by_name.get(bound.table_name)

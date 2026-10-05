@@ -124,3 +124,31 @@ def test_config_loader_rejects_query_template_on_non_neo4j_source():
     config = _FakeConfig([table], [_FakeSource(cache_ttl=None, type="sparql")])
     with pytest.raises(ValueError, match="no keyed-fetch translation"):
         _validate_row_materialize(config)
+
+
+@pytest.mark.parametrize(
+    ("source_type", "why"),
+    [
+        ("openapi", "filtered by its own parameters"),
+        ("graphql_remote", "filtered by its own parameters"),
+        ("grpc_remote", "filtered by its own parameters"),
+        ("govdata", "read live on every request"),
+        ("dynamodb", "no connector or driver reaches"),
+        ("stripe", "no connector or driver reaches"),
+    ],
+)
+def test_config_loader_refuses_row_materialize_on_a_type_it_cannot_apply_to(source_type, why):
+    """REQ-1915: an API source is filtered by its parameters, govdata is never replicated, and a
+    type nothing reaches yet has no rows to fetch: a row-level flag on any of them is refused by
+    name at registration, naming the type."""
+    table = _table(row_materialize=True, cache_ttl=60)
+    config = _FakeConfig([table], [_FakeSource(cache_ttl=60, type=source_type)])
+    with pytest.raises(ValueError, match=f"source type '{source_type}': .*{why}"):
+        _validate_row_materialize(config)
+
+
+@pytest.mark.parametrize("source_type", ["postgresql", "mongodb", "sparql", "prometheus"])
+def test_config_loader_accepts_row_materialize_on_a_fetchable_type(source_type):
+    table = _table(row_materialize=True, cache_ttl=60)
+    config = _FakeConfig([table], [_FakeSource(cache_ttl=60, type=source_type)])
+    _validate_row_materialize(config)  # does not raise

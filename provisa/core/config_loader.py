@@ -1740,6 +1740,44 @@ def _validate_file_globs(config) -> None:  # REQ-788
         validate_glob_table(glob, files, columns_of_file)
 
 
+#: REQ-1915: source types a table cannot be replicated row by row from, and why. An API source is
+#: filtered by its own parameters (its parameter sets are its row-level reads); govdata is read live
+#: on every request and never replicated; the remaining types have no connector or driver that
+#: reaches them yet (REQ-1874), so nothing can read their rows at all.
+_ROW_LEVEL_REFUSED: dict[str, str] = {
+    **{
+        t: "an API source is filtered by its own parameters, not replicated row by row"
+        for t in ("openapi", "graphql_remote", "grpc_remote")
+    },
+    "govdata": "a govdata source is read live on every request and is never replicated",
+    **{
+        t: "no connector or driver reaches this source type yet"
+        for t in (
+            "airtable",
+            "auth0",
+            "aws_cognito",
+            "dynamodb",
+            "firebase",
+            "logflare",
+            "s3_vectors",
+            "stripe",
+            "calcom",
+            "calendly",
+            "clerk",
+            "cloudflare_d1",
+            "gravatar",
+            "hubspot",
+            "infura",
+            "notion",
+            "orb",
+            "paddle",
+            "shopify",
+            "slack",
+        )
+    },
+}
+
+
 def _validate_row_materialize(config) -> None:  # REQ-1865
     """row_materialize needs a resolved cache_ttl (table's own OR inherited from its source) to
     drive each cached row's independent freshness clock (Table's own model_validator cannot see
@@ -1763,6 +1801,14 @@ def _validate_row_materialize(config) -> None:  # REQ-1865
         if not getattr(table, "row_materialize", False):
             continue
         source = sources_by_id.get(table.source_id)
+        if source is not None:
+            stype = source.type.value if hasattr(source.type, "value") else str(source.type)
+            refused = _ROW_LEVEL_REFUSED.get(stype)
+            if refused is not None:
+                raise ValueError(
+                    f"table {table.table_name!r}: row_materialize=True is refused for source type "
+                    f"{stype!r}: {refused} (REQ-1915)"
+                )
         eff_ttl = (
             table.cache_ttl
             if table.cache_ttl is not None

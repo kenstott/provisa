@@ -448,6 +448,101 @@ def read_row_cache_duckdb_native(
         cur.close()
 
 
+def filter_record_table(table: str) -> str:
+    """The table, beside a row-level replica, recording which filters were fetched into it and
+    when (REQ-1915)."""
+    return f"{table}__filters"
+
+
+def replace_filtered_rows_duckdb_native(
+    con: Any,
+    *,
+    catalog: str,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    pk_columns: list[str],
+    where_sql: str,
+    spool_path: str,
+    filter_hash: str,
+    filter_sql: str,
+    fetched_at: Any,
+) -> int:
+    """Replace the rows a filter selects in the DuckDB store's row-level replica with the rows the
+    source returned for it (REQ-1915), in ONE transaction: delete what ``where_sql`` (DuckDB text
+    over the replica's own columns) selects -- rows that no longer match, or were deleted at the
+    source, go --, upsert the fetched rows read batch by batch from the Arrow IPC file at
+    ``spool_path`` (already stamped with the cache's columns), and record the filter's fetch time.
+    A reader sees all of the old rows for the filter or all of the new. Returns the rows landed."""
+    import pyarrow as pa
+
+    dialect = _duckdb_dialect()
+    _ensure_schema(con, catalog, schema, dialect)
+    require_duckdb_replica_table(con, catalog, schema, table, action="write the row-level replica")
+    con.execute(_create_ddl(catalog, schema, table, columns))
+    qualified = _qualified(catalog, schema, table)
+    record = _qualified(catalog, schema, filter_record_table(table))
+    pk_list = ", ".join(f'"{c}"' for c in pk_columns)
+    collist = ", ".join(f'"{name}"' for name, _ in columns)
+    landed = 0
+    con.execute("BEGIN TRANSACTION")
+    try:
+        con.execute(
+            f"CREATE TABLE IF NOT EXISTS {record} (filter_hash VARCHAR PRIMARY KEY, "
+            "filter_sql VARCHAR, fetched_at TIMESTAMP)"
+        )
+        con.execute(f"DELETE FROM {qualified} WHERE {where_sql}")
+        import uuid
+
+        with pa.memory_map(spool_path) as source:
+            reader = pa.ipc.open_file(source)
+            for index in range(reader.num_record_batches):
+                batch = reader.get_batch(index)
+                view = f"_filtered_{uuid.uuid4().hex}"
+                con.register(view, pa.Table.from_batches([batch]))
+                try:
+                    con.execute(
+                        f"DELETE FROM {qualified} WHERE ({pk_list}) IN "
+                        f'(SELECT {pk_list} FROM "{view}")'
+                    )
+                    con.execute(
+                        f'INSERT INTO {qualified} ({collist}) SELECT {collist} FROM "{view}"'
+                    )
+                finally:
+                    con.unregister(view)
+                landed += batch.num_rows
+        con.execute(f"DELETE FROM {record} WHERE filter_hash = ?", [filter_hash])
+        con.execute(
+            f"INSERT INTO {record} (filter_hash, filter_sql, fetched_at) VALUES (?, ?, ?)",
+            [filter_hash, filter_sql, fetched_at],
+        )
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
+    return landed
+
+
+def filter_fetched_at_duckdb_native(
+    con: Any, *, catalog: str, schema: str, table: str, filter_hash: str
+) -> Any:
+    """When the filter ``filter_hash`` was last fetched into the row-level replica ``table``
+    (REQ-1915), or None when it never was (or no filter has been recorded at all)."""
+    record = filter_record_table(table)
+    exists = con.execute(
+        "SELECT 1 FROM duckdb_tables() WHERE database_name = ? AND schema_name = ? "
+        "AND table_name = ?",
+        [catalog, schema, record],
+    ).fetchone()
+    if exists is None:
+        return None
+    row = con.execute(
+        f"SELECT fetched_at FROM {_qualified(catalog, schema, record)} WHERE filter_hash = ?",
+        [filter_hash],
+    ).fetchone()
+    return None if row is None else row[0]
+
+
 def tombstone_row_cache_duckdb_native(
     con: Any,
     *,

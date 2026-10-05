@@ -326,6 +326,18 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
             continue
         if needs_pgwire_replica(src, bare_engine):
             keyed_loaders[stype] = make_pgwire_keyed_loader(allocator=allocator)
+    # REQ-1865/REQ-1915: a direct-driver source the engine cannot attach is read by key through its
+    # own pool, in its own dialect -- the engine has no relation for it to address.
+    from provisa.executor.drivers.registry import has_driver
+    from provisa.events.source_loader import make_direct_keyed_loader
+    from provisa.transpiler.router import API_SOURCES, VIRTUAL_SOURCES
+
+    direct_keyed = make_direct_keyed_loader(state, engine)
+    for stype in set(getattr(state, "source_types", {}).values()):
+        if stype in keyed_loaders or stype in VIRTUAL_SOURCES or stype in API_SOURCES:
+            continue
+        if has_driver(stype) and not engine_attaches(bare_engine, stype):
+            keyed_loaders[stype] = direct_keyed
     return keyed_loaders
 
 

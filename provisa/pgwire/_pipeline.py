@@ -42,7 +42,7 @@ from provisa.otel_compat import stage as _stage
 
 if TYPE_CHECKING:
     from provisa.compiler.directives import CacheHint
-    from provisa.compiler.pk_bounds import PkBound
+    from provisa.compiler.pk_bounds import FilterBound, PkBound
     from provisa.executor.redirect import Delivery
     from provisa.transpiler.router import Route
 
@@ -187,7 +187,8 @@ class _Plan:
     # compiled plan resolved against every row_materialize table it references (empty when the
     # statement touches no such table, or none of its predicates resolve to a bounded PK set).
     # Populated at the same construction points `sources` itself is populated.
-    pk_bounds: tuple["PkBound", ...] = field(default_factory=tuple)
+    # REQ-1865/REQ-1915: the row-level reads the statement makes, by key or by filter.
+    pk_bounds: tuple["PkBound | FilterBound", ...] = field(default_factory=tuple)
     # REQ-1897: whether this plan's result may be served from / written to the raw-SQL response
     # cache — a read with no sink delivery and no EXPLAIN. False (the dataclass default) is the
     # fail-closed answer for any plan a constructor does not positively mark as a cacheable read.
@@ -1827,9 +1828,9 @@ async def route_governed(
 async def _resolve_pk_bounds(
     semantic_sql: str, state: Any, params: list[Any] | None = None
 ) -> tuple[Any, ...]:
-    """REQ-1865 / REQ-1915: the concrete PK bound(s) this statement resolves against the
-    row-level tables it reads — and the refusal of a statement that reads one without binding its
-    key (``_pk_bounds``). Empty when the statement reads no row-level table, or reaches each one
+    """REQ-1865 / REQ-1915: the key or filter bound(s) this statement resolves against the
+    row-level tables it reads — and the refusal of a statement that reads one with no filter
+    (``_pk_bounds``). Empty when the statement reads no row-level table, or reaches each one
     through a join that pushes its key down.
 
     ``params`` is the statement's own bind-parameter values, in bind order: a Bolt/Cypher
@@ -1884,45 +1885,67 @@ def _pk_bounds_inputs(semantic_sql: str, state: Any) -> tuple[tuple[Any, ...], .
             and _join_key_column(join, ref.alias_or_name) is not None
         ):
             continue  # bound by key pushdown
-        reads.append((table, ref.name, exp.select("1").from_(ref.copy()), scope_predicates(ref)))
+        select = ref.find_ancestor(exp.Select)
+        relations = list(select.find_all(exp.Table)) if select is not None else [ref]
+        reads.append(
+            (
+                table,
+                ref.name,
+                exp.select("1").from_(ref.copy()),
+                scope_predicates(ref),
+                frozenset({ref.alias_or_name, ref.name}),
+                len(relations) == 1,
+            )
+        )
     return tuple(reads)
 
 
 def _pk_bounds(inputs: tuple[tuple[Any, ...], ...], params: list[Any] | None) -> tuple[Any, ...]:
-    """The statement's key bounds — and THE decision point of REQ-1915. Every surface resolves
-    its bounds through here (the raw stage, the compiled stage, and the GraphQL executors via
-    ``_resolve_pk_bounds``), so every surface refuses the same statements.
+    """The statement's row-level bounds -- and THE decision point of REQ-1915. Every surface
+    resolves its bounds through here (the raw stage, the compiled stage, and the GraphQL executors
+    via ``_resolve_pk_bounds``), so every surface refuses the same statements.
 
-    A reference to a row-level table is BOUND when the SELECT that names it carries, as a
-    top-level AND term of its own WHERE or of one of its JOIN ... ON conditions, a predicate that
-    resolves concrete values for the table's primary key: ``key = value``, ``key IN (values)``, or
-    an OR made only of such equalities on the one key column — each value a literal or a bound
-    parameter; a composite key needs exactly one value per column. Or when a join pushes its key
-    down (``_pk_bounds_inputs``). Anything else — no predicate, a predicate on another column, a
-    range, a key predicate in an enclosing or nested query — reads rows no key names, and is
-    refused: ``RowLevelKeyRequired`` names the table and its key."""
+    Each reference to a row-level table resolves, in this order, to:
+
+    - a KEY bound (``PkBound``), when the SELECT that names it carries, as a top-level AND term of
+      its own WHERE or of one of its JOIN ... ON conditions, a predicate giving concrete values for
+      the table's primary key: ``key = value``, ``key IN (values)``, or an OR made only of such
+      equalities on the one key column, each value a literal or a bound parameter (a composite key
+      needs one value per column) -- the cheapest read, with per-row freshness. A reference whose
+      key a join pushes down (``_pk_bounds_inputs``) needs no bound at all;
+    - else a FILTER bound (``FilterBound``), when such a term is any predicate reading only the
+      table's own columns with literals or bound parameters (= <> < <= > >= IN BETWEEN LIKE,
+      IS [NOT] NULL, and AND/OR/NOT of those): the rows the filter selects are fetched from the
+      source and served from the replica while the filter's fetch is within its TTL;
+    - else it is NOT filtered, and the statement is refused: ``RowLevelFilterRequired`` names the
+      table. A predicate in an enclosing or nested query does not filter the reference."""
     if not inputs:
         return ()
     from dataclasses import replace
 
-    from provisa.compiler.pk_bounds import extract_pk_bounds
+    from provisa.compiler.pk_bounds import extract_filter_bound, extract_pk_bounds
 
     bounds: dict[str, Any] = {}
-    for table, name, reference, predicates in inputs:
+    filters: dict[tuple[str, str], Any] = {}
+    for table, name, reference, predicates, aliases, sole_table in inputs:
         found = extract_pk_bounds(reference, {name: table}, params, predicates)
-        if not found or not found[0].values:
-            from provisa.api.errors import RowLevelKeyRequired
-
-            raise RowLevelKeyRequired(
-                table.table_name, tuple(c.name for c in table.columns if c.is_primary_key)
+        if found and found[0].values:
+            seen = bounds.get(table.table_name)
+            bounds[table.table_name] = (
+                found[0]
+                if seen is None
+                else replace(seen, values=tuple(dict.fromkeys(seen.values + found[0].values)))
             )
-        seen = bounds.get(table.table_name)
-        bounds[table.table_name] = (
-            found[0]
-            if seen is None
-            else replace(seen, values=tuple(dict.fromkeys(seen.values + found[0].values)))
+            continue
+        filtered = extract_filter_bound(
+            table, set(aliases), predicates, params, sole_table=sole_table
         )
-    return tuple(bounds.values())
+        if filtered is None:
+            from provisa.api.errors import RowLevelFilterRequired
+
+            raise RowLevelFilterRequired(table.table_name)
+        filters.setdefault((table.table_name, filtered.predicate), filtered)
+    return (*bounds.values(), *filters.values())
 
 
 def _kept_pk_bounds(

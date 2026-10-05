@@ -350,3 +350,153 @@ def extract_pk_bounds(
         )
 
     return bounds
+
+
+# -- REQ-1915: a row-level table read by any filter -------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FilterBound:
+    """A row-level table this statement reads through a filter that is not a key: the rows the
+    filter selects are fetched from the source, written into the row-level replica and recorded
+    with the filter, which is served from the replica until its TTL passes (REQ-1915).
+
+    ``predicate`` is the filter as PostgreSQL text over the table's own (unqualified) column
+    names, every bound parameter inlined as a literal: the one canonical form the filter is
+    recorded, compared and pushed to the source by."""
+
+    source_id: str
+    schema_name: str
+    table_name: str
+    pk_columns: tuple[str, ...]
+    predicate: str
+
+
+#: The predicate shapes a row-level filter may be made of (maintainer, 2026-10-05).
+_FILTER_COMPARISONS = (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)
+_FILTER_CONNECTIVES = (exp.And, exp.Or, exp.Not, exp.Paren)
+
+
+def _filter_value(e: exp.Expr, params: list[Any] | None) -> exp.Expr | None:
+    """``e`` as a literal the filter can carry: a literal as written, or a bound parameter
+    resolved from ``params``. None for anything else (a column, a function, a subquery)."""
+    if isinstance(e, (exp.Literal, exp.Boolean, exp.Null)):
+        return e.copy()
+    if isinstance(e, exp.Neg) and isinstance(e.this, exp.Literal):
+        return e.copy()
+    value, ok = _literal_value(e, params)
+    return exp.convert(value) if ok else None
+
+
+def _filter_column(
+    e: exp.Expr, aliases: set[str], columns: frozenset[str], sole_table: bool
+) -> exp.Expr | None:
+    """``e`` as one of the table's own columns, unqualified, or None when it is not one: a
+    qualified column must name one of the table's aliases; an unqualified one is the table's only
+    when the table is the one relation its SELECT reads (a join could make it another's)."""
+    if not isinstance(e, exp.Column) or e.name not in columns:
+        return None
+    if e.table:
+        if e.table not in aliases:
+            return None
+    elif not sole_table:
+        return None
+    return exp.column(e.name, quoted=True)
+
+
+def _filter_term(
+    cond: exp.Expr,
+    aliases: set[str],
+    columns: frozenset[str],
+    sole_table: bool,
+    params: list[Any] | None,
+) -> exp.Expr | None:
+    """``cond`` rewritten as a filter over the table's own columns, or None when any part of it
+    is not in the accepted set (= <> < <= > >= IN BETWEEN LIKE, IS [NOT] NULL, AND/OR/NOT of
+    those), reads another relation, or names a value that is not a literal or bound parameter."""
+
+    def column(e: exp.Expr) -> exp.Expr | None:
+        return _filter_column(e, aliases, columns, sole_table)
+
+    def term(e: exp.Expr) -> exp.Expr | None:
+        if isinstance(e, exp.Paren):
+            inner = term(e.this)
+            return None if inner is None else exp.Paren(this=inner)
+        if isinstance(e, (exp.And, exp.Or)):
+            left, right = term(e.left), term(e.right)
+            if left is None or right is None:
+                return None
+            return type(e)(this=left, expression=right)
+        if isinstance(e, exp.Not):
+            inner = term(e.this)
+            return None if inner is None else exp.Not(this=inner)
+        if isinstance(e, _FILTER_COMPARISONS):
+            for col_side, val_side in ((e.left, e.right), (e.right, e.left)):
+                col, val = column(col_side), _filter_value(val_side, params)
+                if col is not None and val is not None:
+                    left, right = (col, val) if col_side is e.left else (val, col)
+                    return type(e)(this=left, expression=right)
+            return None
+        if isinstance(e, exp.In):
+            col = column(e.this)
+            if col is None or e.args.get("query") is not None:
+                return None
+            values = [_filter_value(v, params) for v in e.args.get("expressions") or []]
+            if not values or any(v is None for v in values):
+                return None
+            return exp.In(this=col, expressions=values)
+        if isinstance(e, exp.Between):
+            col = column(e.this)
+            low = _filter_value(e.args["low"], params)
+            high = _filter_value(e.args["high"], params)
+            if col is None or low is None or high is None:
+                return None
+            return exp.Between(this=col, low=low, high=high)
+        if isinstance(e, exp.Like):
+            col, pattern = column(e.this), _filter_value(e.expression, params)
+            if col is None or pattern is None or e.args.get("escape") is not None:
+                return None
+            return exp.Like(this=col, expression=pattern)
+        if isinstance(e, exp.Is):
+            col = column(e.this)
+            if col is None or not isinstance(e.expression, exp.Null):
+                return None
+            return exp.Is(this=col, expression=exp.Null())
+        return None
+
+    return term(cond)
+
+
+def extract_filter_bound(
+    table: "Table",
+    aliases: set[str],
+    predicates: list[exp.Expr],
+    params: list[Any] | None = None,
+    *,
+    sole_table: bool,
+) -> FilterBound | None:
+    """The filter one reference to a row-level ``table`` is read through (REQ-1915): every
+    top-level AND term of its SELECT's WHERE and JOIN ... ON conditions that reads only this table's
+    own columns, with literals and bound parameters, in the accepted predicate set — ANDed, in
+    canonical PostgreSQL. None when no term qualifies: the reference is not filtered.
+
+    A term that does not qualify (it reads another relation, or uses an operator outside the set)
+    is left to the statement; the filter fetched is then wider than the statement needs, never
+    narrower, and the statement's own WHERE still applies to what the replica returns."""
+    columns = frozenset(c.name for c in table.columns)
+    terms: list[exp.Expr] = []
+    for pred in predicates:
+        for cond in _flatten_and(pred):
+            rewritten = _filter_term(cond, aliases, columns, sole_table, params)
+            if rewritten is not None:
+                terms.append(rewritten)
+    if not terms:
+        return None
+    combined = terms[0] if len(terms) == 1 else exp.and_(*terms)
+    return FilterBound(
+        source_id=table.source_id,
+        schema_name=table.schema_name,
+        table_name=table.table_name,
+        pk_columns=tuple(c.name for c in table.columns if c.is_primary_key),
+        predicate=combined.sql(dialect="postgres"),
+    )
