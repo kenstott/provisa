@@ -24593,12 +24593,22 @@
     behind it (pyiceberg for an Iceberg store). The "collapse into the engine" applies only to an engine
     writing its OWN native store, never a separate/attached one. Read-only engines (Databricks/Snowflake
     external-linking Iceberg) are first-class readers. DONE (2026-07): provisa/federation/store_writer.py,
-    provisa/federation/materialize_exec.py, provisa/api_source/engine_cache.py (land_api_cache), provisa/federation/duckdb_runtime.py.'
+    provisa/federation/materialize_exec.py, provisa/api_source/engine_cache.py (land_api_cache), provisa/federation/duckdb_runtime.py.
+    (Amended 2026-10-05, SELECT_WRITE_FACE IS THE RUNTIME DECISION:) select_write_face is now THE
+    one land-face decision, made in NativeEngineBackend.land_source_table (it replaced the
+    hasattr(runtime, "land_table") probe). Its ENGINE_NATIVE test is keyed on the engine HAVING a
+    native store (native_store is not None), matching what every NativeEngineBackend engine does at
+    runtime — land through its own runtime''s land_table — rather than on backend_type == native_store,
+    which mis-fired for Postgres (native_store "postgres" vs the "postgresql" store backend name) and
+    is superseded. PIPELINE_LAND (SingleStore server-side CREATE PIPELINE) is a new face added beside
+    these, chosen only for the scoped object-store/Kafka matrix.'
   code:
   - provisa/federation/materialization.py
   - provisa/federation/engine.py
+  - provisa/federation/native_backend.py
   tests:
   - tests/unit/test_federation_materialization.py
+  - tests/unit/federation/test_land_on_request_thread.py
   - tests/integration/test_materialization_store_lifecycle_e2e.py
   related_reqs:
   - REQ-844
