@@ -398,15 +398,29 @@ async def _dispatch_execution_direct(
     resolved_params: list,
     state: Any,
 ) -> list[dict] | Response:
-    """Execute SQL against a direct (non-the engine) source. Returns rows or error Response."""
+    """Execute SQL against a direct (non-the engine) source. Returns rows or error Response.
+
+    The statement runs on its own source's connection, or not at all: the org's model store
+    serves the ``provisa-admin`` source (REQ-1919) and no other, as the pipeline's DIRECT terminal
+    does. A source this node holds no connection for is refused by name (``data.no_direct_route``)
+    -- never handed to a control-plane store, where a read would answer from the control plane."""
+    from provisa.api.errors import ApiError
     from provisa.executor.result import QueryResult
 
+    if source_id != "provisa-admin" and not state.source_pools.has(source_id):
+        raise ApiError(
+            500,
+            "data.no_direct_route",
+            f"source {source_id!r} has no direct connection on this node, so a statement "
+            "routed to it directly cannot run",
+            source=source_id,
+        )
     try:
-        if source_id == "provisa-admin" or not state.source_pools.has(source_id):
-            tenant_db = state.tenant_db
-            if tenant_db is None:
-                raise RuntimeError("Admin tenant_db not available")
-            async with tenant_db.acquire() as _conn:
+        if source_id == "provisa-admin":
+            model_db = state.model_db
+            if model_db is None:
+                raise RuntimeError("Admin model_db not available")
+            async with model_db.acquire() as _conn:
                 # Column names come from the result itself, so an empty result still has them.
                 col_names, _rows = await _conn.fetch_with_columns(exec_sql)
                 rows = [tuple(r) for r in _rows]
