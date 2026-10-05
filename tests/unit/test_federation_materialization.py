@@ -85,7 +85,8 @@ def test_write_face_validates_backend_first():
 # (native_backend.py). This table asserts the face for every (engine kind, store backend) the code
 # supports equals what the runtime does today: a native engine landing into its OWN store collapses
 # into the engine (ENGINE_NATIVE, through its runtime's land_table); a separate attach-able
-# relational store uses store_writer (SQLALCHEMY_UPSERT). Nothing here is PIPELINE_LAND yet.
+# relational store uses store_writer (SQLALCHEMY_UPSERT). With no origin named, no face is
+# PIPELINE_LAND (the origin-keyed cases follow).
 @pytest.mark.parametrize(
     ("engine_factory", "store_backend", "expected"),
     [
@@ -107,6 +108,58 @@ def test_write_face_validates_backend_first():
 )
 def test_write_face_table_matches_runtime(engine_factory, store_backend, expected):
     assert select_write_face(engine_factory(), store_backend) is expected
+
+
+# REQ-990: with SingleStore as the engine's own store, an origin in the pipeline's scope lands
+# through a SingleStore PIPELINE; any other origin keeps the engine's own face (decided by type);
+# an in-scope origin that cannot land yet is refused by name.
+def _origin(source_type: str, location: str, fmt: str):
+    from provisa.federation.singlestore_pipeline import LandOrigin
+
+    return LandOrigin(source_type, location, fmt)
+
+
+@pytest.mark.parametrize(
+    ("origin", "expected"),
+    [
+        (("kafka", "orders", "json"), WriteFace.PIPELINE_LAND),
+        (("kafka", "orders", "avro"), WriteFace.PIPELINE_LAND),
+        (("kafka", "orders", "protobuf"), WriteFace.ENGINE_NATIVE),
+        (("csv", "s3://b/k.csv", "csv"), WriteFace.PIPELINE_LAND),
+        (("parquet", "s3://b/k.parquet", "parquet"), WriteFace.PIPELINE_LAND),
+        (("iceberg", "s3://b/warehouse/t", "iceberg"), WriteFace.PIPELINE_LAND),
+        (("csv", "/data/local.csv", "csv"), WriteFace.ENGINE_NATIVE),
+        (("iceberg", "gs://b/t", "iceberg"), WriteFace.ENGINE_NATIVE),
+        (("delta_lake", "s3://b/t", "delta_lake"), WriteFace.ENGINE_NATIVE),
+        (("hive_s3", "s3://b/t", "hive_s3"), WriteFace.ENGINE_NATIVE),
+        (("mysql", "", "mysql"), WriteFace.ENGINE_NATIVE),
+        (("mongodb", "", "mongodb"), WriteFace.ENGINE_NATIVE),
+    ],
+)
+def test_singlestore_engine_lands_in_scope_origins_by_pipeline(origin, expected):
+    engine = build_sqlalchemy_engine("singlestoredb://h/db")
+    assert select_write_face(engine, "singlestoredb", _origin(*origin)) is expected
+
+
+@pytest.mark.parametrize("location", ["gs://b/k.csv", "abfss://c@acct.dfs.core.windows.net/k.csv"])
+def test_singlestore_engine_refuses_gcs_and_azure_files_by_name(location):
+    from provisa.federation.singlestore_pipeline import PipelineRefused
+
+    engine = build_sqlalchemy_engine("singlestoredb://h/db")
+    with pytest.raises(PipelineRefused, match="no (GCS|Azure) credential model"):
+        select_write_face(engine, "singlestoredb", _origin("csv", location, "csv"))
+
+
+def test_only_a_singlestore_store_lands_by_pipeline():
+    origin = _origin("parquet", "s3://b/k.parquet", "parquet")
+    assert select_write_face(build_duckdb_engine(), "duckdb", origin) is WriteFace.ENGINE_NATIVE
+    assert (
+        select_write_face(build_sqlalchemy_engine("mysql://h/db"), "mysql", origin)
+        is WriteFace.ENGINE_NATIVE
+    )
+    assert select_write_face(build_trino_engine(), "postgresql", origin) is (
+        WriteFace.SQLALCHEMY_UPSERT
+    )
 
 
 # ---- reactive-replica set (REQ-845) -----------------------------------------
