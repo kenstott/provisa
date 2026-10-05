@@ -152,7 +152,7 @@ class TestMiddleware:
         monkeypatch.setattr(app_module, "state", fake_state)
 
         mw = RateLimitMiddleware(app=lambda *a, **k: None)
-        scope = {"type": "http", "state": {"role": "analyst"}}
+        scope = {"type": "http", "state": {"role": "analyst", "active_org_id": "default"}}
 
         resp = await mw._process(scope)
         assert resp.status_code == 429
@@ -169,7 +169,7 @@ class TestMiddleware:
         monkeypatch.setattr(app_module, "state", fake_state)
 
         mw = RateLimitMiddleware(app=lambda *a, **k: None)
-        scope = {"type": "http", "state": {"role": "analyst"}}
+        scope = {"type": "http", "state": {"role": "analyst", "active_org_id": "default"}}
 
         resp = await mw._process(scope)
         assert resp is None  # pass-through: __call__ falls through to self.app
@@ -186,7 +186,7 @@ class TestMiddleware:
         monkeypatch.setattr(app_module, "state", fake_state)
 
         mw = RateLimitMiddleware(app=lambda *a, **k: None)
-        scope = {"type": "http", "state": {"role": "admin"}}
+        scope = {"type": "http", "state": {"role": "admin", "active_org_id": "default"}}
 
         resp = await mw._process(scope)
         assert resp.status_code == 403
@@ -204,7 +204,132 @@ class TestMiddleware:
         monkeypatch.setattr(app_module, "state", fake_state)
 
         mw = RateLimitMiddleware(app=lambda *a, **k: None)
-        scope = {"type": "http", "state": {"role": "admin"}}
+        scope = {"type": "http", "state": {"role": "admin", "active_org_id": "default"}}
 
         resp = await mw._process(scope)
         assert resp is None  # pass-through: __call__ falls through to self.app
+
+
+# --- the plane a request acts on (REQ-1266, REQ-1327) --------------------------------------------
+
+
+@pytest.fixture
+def two_planes(monkeypatch):
+    """The deployment org 'root' holds the platform roles; tenant org 'acme' holds its own."""
+    from provisa.api.app import AppState
+    from provisa.api.org_runtime import OrgRuntime
+
+    state = AppState()
+    state.org_id = "root"
+    root = state.org_registry.get("root")
+    assert root is not None
+    root.roles = {"platform_admin": {"id": "platform_admin"}}
+    acme = OrgRuntime(org_id="acme")
+    acme.roles = {"analyst": {"id": "analyst", "rate_limit": {"requests_per_second": 1}}}
+    state.org_registry.set("acme", acme)
+    monkeypatch.setattr("provisa.api.app.state", state)
+    return state
+
+
+class _Seen:
+    def __init__(self) -> None:
+        self.keys: list[str] = []
+
+    async def allow(self, key, limit, window_s):
+        self.keys.append(key)
+        return True, 0.0
+
+
+@pytest.mark.unbound
+@pytest.mark.asyncio
+async def test_a_request_acting_in_no_org_is_judged_on_the_platform_plane(two_planes):
+    """No org named (or none held): nothing is bound, and the role is a platform role. Reading the
+    tenant registry here refused every such request with a 500."""
+    from provisa.api.middleware.rate_limit_middleware import RateLimitMiddleware
+
+    two_planes.rate_limiter = NoopRateLimiter()
+    mw = RateLimitMiddleware(app=lambda *a, **k: None)
+    ok = {"type": "http", "state": {"role": "platform_admin", "active_org_id": None}}
+    assert await mw._process(ok) is None
+    # A tenant's role is not a platform role.
+    other = {"type": "http", "state": {"role": "analyst", "active_org_id": None}}
+    assert (await mw._process(other)).status_code == 403
+
+
+@pytest.mark.unbound
+@pytest.mark.asyncio
+async def test_a_request_acting_in_an_org_is_judged_by_that_orgs_roles(two_planes):
+    from provisa.api.middleware.rate_limit_middleware import RateLimitMiddleware
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    seen = _Seen()
+    two_planes.rate_limiter = seen
+    mw = RateLimitMiddleware(app=lambda *a, **k: None)
+    token = set_current_org("acme")  # as the org-routing middleware binds it
+    try:
+        assert (
+            await mw._process(
+                {"type": "http", "state": {"role": "analyst", "active_org_id": "acme"}}
+            )
+            is None
+        )
+        denied = await mw._process(
+            {"type": "http", "state": {"role": "platform_admin", "active_org_id": "acme"}}
+        )
+    finally:
+        reset_current_org(token)
+    assert seen.keys == ["rl:req:acme:analyst"]  # acme's limit, in acme's bucket
+    assert denied.status_code == 403  # a platform role is not one of acme's
+
+
+class _OnePerBucket:
+    """Admits one request per bucket, then refuses: a limit of one, held per key."""
+
+    def __init__(self) -> None:
+        self.spent: set[str] = set()
+
+    async def allow(self, key, limit, window_s):
+        if key in self.spent:
+            return False, 1.0
+        self.spent.add(key)
+        return True, 0.0
+
+
+@pytest.mark.unbound
+@pytest.mark.asyncio
+async def test_one_orgs_role_cannot_spend_another_orgs_limit(two_planes):
+    """Two orgs each define 'analyst' with a limit of one request. acme's analyst spending its
+    limit leaves beta's analyst its own; the platform plane's buckets are apart from both."""
+    from provisa.api.middleware.rate_limit_middleware import RateLimitMiddleware
+    from provisa.api.org_runtime import OrgRuntime
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    beta = OrgRuntime(org_id="beta")
+    beta.roles = {"analyst": {"id": "analyst", "rate_limit": {"requests_per_second": 1}}}
+    two_planes.org_registry.set("beta", beta)
+    root = two_planes.org_registry.get("root")
+    assert root is not None
+    root.roles = {"analyst": {"id": "analyst", "rate_limit": {"requests_per_second": 1}}}
+    limiter = _OnePerBucket()
+    two_planes.rate_limiter = limiter
+    mw = RateLimitMiddleware(app=lambda *a, **k: None)
+
+    async def _as(org: str | None):
+        scope = {"type": "http", "state": {"role": "analyst", "active_org_id": org}}
+        if org is None:
+            return await mw._process(scope)
+        token = set_current_org(org)
+        try:
+            return await mw._process(scope)
+        finally:
+            reset_current_org(token)
+
+    assert await _as("acme") is None
+    assert (await _as("acme")).status_code == 429  # acme's analyst has spent acme's limit
+    assert await _as("beta") is None  # beta's analyst still has its own
+    assert await _as(None) is None  # and the platform plane its own
+    assert limiter.spent == {
+        "rl:req:acme:analyst",
+        "rl:req:beta:analyst",
+        "rl:platform:req:analyst",
+    }
