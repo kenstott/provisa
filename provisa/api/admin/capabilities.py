@@ -60,9 +60,15 @@ def env_gate_capabilities(identity, state) -> set[str] | None:
     (``require_capability``) — and returning an empty set there would refuse a branch to the only
     principal a demo install has. A real user with no rights returns an empty set and is refused.
     """
+    return env_gate_capabilities_for(identity, getattr(state, "roles", {}))
+
+
+def env_gate_capabilities_for(identity, roles: dict) -> set[str] | None:  # REQ-1573
+    """``env_gate_capabilities`` judged by the role definitions ``roles`` -- those of the org whose
+    environment is being selected (REQ-1266)."""
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
         return None
-    return _resolved_capabilities(identity, state)
+    return capabilities_for_claims(getattr(identity, "roles", []), roles)
 
 
 def _domain_access(identity, state) -> set[str]:

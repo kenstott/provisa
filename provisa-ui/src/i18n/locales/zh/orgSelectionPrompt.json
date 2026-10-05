@@ -1,0 +1,7 @@
+{
+  "orgSelectionPrompt": {
+    "title": "选择组织",
+    "description": "每个请求都在某个组织中进行。请选择一个组织以继续。",
+    "noMemberships": "您不是任何组织的成员，因此没有可发起请求的组织。请向组织管理员申请邀请。"
+  }
+}

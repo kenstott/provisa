@@ -138,6 +138,7 @@ class TestRegistration:
         self, monkeypatch
     ):
         from types import SimpleNamespace
+        from typing import Any, cast
 
         from provisa.api.app import state
         from provisa.api.auth_router import RegisterRequest, register
@@ -150,6 +151,8 @@ class TestRegistration:
         )
         monkeypatch.setattr(state, "admin_db", None)  # a write would fail on this, loudly
         with pytest.raises(ApiError) as refused:
-            await register(RegisterRequest(username="mallory", password="pw"))
+            # A request with no identity: the one the middleware lets through to this handler.
+            no_identity = cast("Any", SimpleNamespace(state=SimpleNamespace()))
+            await register(RegisterRequest(username="mallory", password="pw"), no_identity)
         assert refused.value.status_code == 403
         assert refused.value.code == "auth.registration_disabled"

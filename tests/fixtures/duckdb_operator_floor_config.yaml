@@ -19,17 +19,6 @@ cache:
 domains:
   - id: floor
     description: Operator floor
-roles:
-  - id: org_admin
-    capabilities:
-      - source_registration
-      - table_registration
-      - access_config
-      - query_development
-      - full_results
-      - usage
-    domain_access:
-      - '*'
 sources:
   - id: floor-protected
     type: postgresql
@@ -134,3 +123,4 @@ relationships:
     source_column: id
     target_column: id
     cardinality: one-to-one
+roles: []

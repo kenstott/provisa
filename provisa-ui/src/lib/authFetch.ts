@@ -16,6 +16,7 @@ import {
   setReachabilityProbeFetch,
 } from "./serverReachability";
 import { isEngineProbePath, noteRequestEnd, noteRequestStart } from "./engineWake";
+import { noteOrgSelectionRefusal } from "./orgSelection";
 
 // REQ-1267: on an auth-enforced deploy (firebase/basic) the bearer token lives in
 // localStorage and must ride on EVERY same-origin request. The Apollo link already adds it
@@ -159,6 +160,8 @@ export function installAuthFetch(): void {
     if (env !== null && !headers.has(ENV_HEADER)) headers.set(ENV_HEADER, env);
     const res = await sampled(input, { ...init, headers }, sameOrigin, url);
     if (env !== null) await repairStaleEnv(res);
+    // REQ-1935: a request naming no org is refused; the app answers with a prompt to select one.
+    if (token) await noteOrgSelectionRefusal(res);
     return res;
   };
 }

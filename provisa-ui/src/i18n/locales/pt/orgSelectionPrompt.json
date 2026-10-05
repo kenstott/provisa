@@ -1,0 +1,7 @@
+{
+  "orgSelectionPrompt": {
+    "title": "Selecione uma organização",
+    "description": "Cada solicitação é feita em uma organização. Escolha uma para continuar.",
+    "noMemberships": "Você não é membro de nenhuma organização, portanto não há organização em que fazer solicitações. Peça um convite a um administrador da organização."
+  }
+}

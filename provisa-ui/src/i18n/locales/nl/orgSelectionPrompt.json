@@ -1,0 +1,7 @@
+{
+  "orgSelectionPrompt": {
+    "title": "Selecteer een organisatie",
+    "description": "Elk verzoek wordt in een organisatie uitgevoerd. Kies er een om verder te gaan.",
+    "noMemberships": "U bent geen lid van een organisatie, dus er is geen organisatie om verzoeken in uit te voeren. Vraag een organisatiebeheerder om een uitnodiging."
+  }
+}

@@ -48,18 +48,18 @@ def _seeded_roles(monkeypatch):
     to the RIGHTS those roles carry. That resolution reads the loaded roles registry, which in a real
     process comes from the schema.sql seed; these tests never build app state, so mirror the seed
     here. ``cross_org`` is what makes platform_admin control-plane."""
-    monkeypatch.setattr(
-        "provisa.auth.middleware._loaded_roles",
-        lambda: {
-            "platform_admin": {
-                "id": "platform_admin",
-                "capabilities": ["platform_settings", "cross_org"],
-            },
-            "org_admin": {"id": "org_admin", "capabilities": ["user_management"]},
-            "developer": {"id": "developer", "capabilities": ["query_development"]},
-            "analyst": {"id": "analyst", "capabilities": ["usage"]},
+    seeded = {
+        "platform_admin": {
+            "id": "platform_admin",
+            "capabilities": ["platform_settings", "cross_org"],
         },
-    )
+        "org_admin": {"id": "org_admin", "capabilities": ["user_management"]},
+        "developer": {"id": "developer", "capabilities": ["query_development"]},
+        "analyst": {"id": "analyst", "capabilities": ["usage"]},
+    }
+    monkeypatch.setattr("provisa.auth.middleware._loaded_roles", lambda: seeded)
+    # The platform plane's definitions are the deployment org's, the same seed (REQ-1327).
+    monkeypatch.setattr("provisa.auth.middleware._platform_roles", lambda: seeded)
 
 
 class _Provider(AuthProvider):
@@ -264,12 +264,20 @@ def test_member_less_user_blocked_on_tenant_plane():
 
 
 def test_bootstrap_claimant_is_granted_platform_admin():
-    admin = _Pool(rows_by_table={"user_org_memberships": []}, claimant="first")
+    # The claim seats the claimant in the bootstrap org (_seat_claimant_in_root), which every
+    # request then names (REQ-1935: no org is implied).
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "root"}]}, claimant="first")
     # A tenant pool is bound on every real request — REQ-1439 writes the user_directory mirror
     # through it on the same sign-in that upserts the platform profile.
     db = _Pool(rows_by_table={"user_role_assignments": []})
-    app = _make_app(bootstrap_superadmin=True, db_pool=db, admin_pool=admin, multitenancy=True)
-    resp = TestClient(app).get("/test", headers=_auth("first"))
+    app = _make_app(
+        bootstrap_superadmin=True,
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_org_id="root",
+    )
+    resp = TestClient(app).get("/test", headers=_auth_in("first", "root"))
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["platform_admin"]  # REQ-1297
 
@@ -304,7 +312,7 @@ _SEATED = [
 
 
 def test_bootstrap_claimant_keeps_the_org_admin_seat_granted_by_the_claim():
-    resp = TestClient(_claimant_app(_SEATED)).get("/test", headers=_auth("first"))
+    resp = TestClient(_claimant_app(_SEATED)).get("/test", headers=_auth_in("first", "root"))
     assert resp.status_code == 200
     assert sorted(resp.json()["roles"]) == ["org_admin", "platform_admin"]
     assert resp.json()["active_org_id"] == "root"
@@ -314,7 +322,7 @@ def test_the_acting_role_is_one_the_caller_holds_not_the_configured_default():
     # REQ-1338: default_role answers from deployment config, not from this user. With no header the
     # claimant acted as "analyst" — a role nobody granted them — instead of their org_admin seat.
     resp = TestClient(_claimant_app(_SEATED, default_role="analyst")).get(
-        "/test", headers=_auth("first")
+        "/test", headers=_auth_in("first", "root")
     )
     assert resp.status_code == 200
     assert resp.json()["role"] == "org_admin"
@@ -341,7 +349,7 @@ def test_bootstrap_claimant_acts_as_a_data_plane_role_not_platform_admin():
     # The acting role is what data/endpoint.py resolves the schema by. platform_admin here is the
     # 400 the user saw.
     resp = TestClient(_claimant_app(_SEATED, default_role="platform_admin")).get(
-        "/test", headers=_auth("first")
+        "/test", headers=_auth_in("first", "root")
     )
     assert resp.status_code == 200
     assert resp.json()["role"] == "org_admin"
@@ -351,7 +359,7 @@ def test_bootstrap_claimant_asking_for_platform_admin_gets_their_data_role():
     # REQ-1327 at the header: the UI may send platform_admin (it is a genuinely assigned role); the
     # data surfaces must still act as the caller's data-plane role rather than refuse the request.
     resp = TestClient(_claimant_app(_SEATED)).get(
-        "/test", headers={**_auth("first"), "X-Provisa-Role": "platform_admin"}
+        "/test", headers={**_auth_in("first", "root"), "X-Provisa-Role": "platform_admin"}
     )
     assert resp.status_code == 200
     assert resp.json()["role"] == "org_admin"
@@ -359,7 +367,7 @@ def test_bootstrap_claimant_asking_for_platform_admin_gets_their_data_role():
 
 def test_bootstrap_claimant_may_still_name_a_specific_data_role():
     resp = TestClient(_claimant_app([*_SEATED, {"role_id": "analyst", "domain_id": "*"}])).get(
-        "/test", headers={**_auth("first"), "X-Provisa-Role": "analyst"}
+        "/test", headers={**_auth_in("first", "root"), "X-Provisa-Role": "analyst"}
     )
     assert resp.status_code == 200
     assert resp.json()["role"] == "analyst"
@@ -368,7 +376,7 @@ def test_bootstrap_claimant_may_still_name_a_specific_data_role():
 def test_holding_the_bootstrap_slot_grants_platform_admin_even_with_no_tenant_row():
     # The slot IS the grant (REQ-1297): on a deployment whose tenant plane holds nothing for the
     # claimant, the control plane must still be reachable.
-    resp = TestClient(_claimant_app([])).get("/test", headers=_auth("first"))
+    resp = TestClient(_claimant_app([])).get("/test", headers=_auth_in("first", "root"))
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["platform_admin"]
 
@@ -546,7 +554,7 @@ def test_platform_admin_subdomain_nonmember_org_denied_req1327():
     assert "anyorg" in resp.json()["detail"]
 
 
-# --- REQ-1318: a session must be usable on EVERY plane, not just /auth/me ------
+# --- REQ-1935: a session names its org on every plane but the platform plane ---
 #
 # The class of defect these cover: the client decides "am I signed in?" from one endpoint and then
 # issues requests to another. When the two planes disagree — /auth/me says platform_admin, the data
@@ -555,10 +563,10 @@ def test_platform_admin_subdomain_nonmember_org_denied_req1327():
 # actually broken; asserting only the happy endpoint is what let it ship.
 
 
-def test_platform_admin_without_memberships_is_usable_on_tenant_plane():
-    # REQ-1318: the platform operator is not a tenant, so they hold zero org memberships. They named
-    # no org (apex host, no header) and matched no membership, so they fell to the tenant-path 401 —
-    # /auth/me returned 200 with platform_admin while /admin/graphql 401'd on the same token.
+def test_platform_admin_naming_no_org_is_refused_by_name_on_the_tenant_plane():
+    # REQ-1935: no org is implied, the deployment's own included. The platform
+    # operator's session works on the platform plane (/auth/me) and is refused, by name and with the
+    # code the UI answers with a prompt to select an org, on every request that needs an org.
     db = _Pool(
         rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
     )
@@ -573,14 +581,15 @@ def test_platform_admin_without_memberships_is_usable_on_tenant_plane():
     client = TestClient(app)
     assert client.get("/auth/me", headers=_auth("root")).status_code == 200
     tenant = client.get("/test", headers=_auth("root"))
-    assert tenant.status_code == 200, "platform admin 401'd on the tenant plane"
-    assert tenant.json()["active_org_id"] == "root", "with no org named, acts in the default org"
+    assert tenant.status_code == 401
+    assert tenant.json()["code"] == "auth.org_selection_required"
+    assert "X-Org-Provisa" in tenant.json()["detail"]
 
 
-def test_bootstrap_platform_admin_is_usable_on_tenant_plane_immediately():
-    # REQ-1318: the same agreement for the identity that just claimed the bootstrap slot. This is the
-    # reported symptom — claim platform_admin, get no access, sign out and back in, and it works. The
-    # claimant has no membership either, so it took the same 401 branch.
+def test_bootstrap_platform_admin_naming_no_org_is_refused_by_name():
+    # REQ-1935: the identity that just claimed the bootstrap slot is a platform
+    # principal like any other: usable on the platform plane, and refused by name where an org is
+    # needed until it names one.
     admin = _Pool(rows_by_table={"user_org_memberships": []}, claimant="first")
     db = _Pool(rows_by_table={"user_role_assignments": []})
     app = _make_app(
@@ -593,8 +602,8 @@ def test_bootstrap_platform_admin_is_usable_on_tenant_plane_immediately():
     client = TestClient(app)
     assert client.get("/auth/me", headers=_auth("first")).status_code == 200
     tenant = client.get("/test", headers=_auth("first"))
-    assert tenant.status_code == 200
-    assert tenant.json()["roles"] == ["platform_admin"]
+    assert tenant.status_code == 401
+    assert tenant.json()["code"] == "auth.org_selection_required"
 
 
 def test_platform_admin_named_org_requires_membership_req1327():
@@ -698,7 +707,7 @@ def test_platform_admin_survives_in_the_root_org():
         multitenancy=True,
         default_org_id="root",
     )
-    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    resp = TestClient(app).get("/test", headers=_auth_in("u1", "root"))
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["platform_admin"]
     assert resp.json()["active_org_id"] == "root"
@@ -822,3 +831,60 @@ def test_single_tenant_request_names_no_org_and_none_is_looked_up():
     )
     assert plain.status_code == named.status_code == 200
     assert plain.json()["active_org_id"] == named.json()["active_org_id"] == "root"
+
+
+# --- REQ-1266: a tenant's role ids are judged by the tenant's own definitions ---------------------
+
+
+def test_a_tenant_role_is_judged_by_the_tenants_definition_not_the_deployments(monkeypatch):
+    """The deployment org defines ``org_admin`` with cross_org; acme defines it as a data role. A
+    member of acme acting as acme's org_admin keeps it: acme's definition decides, and the
+    deployment's would have stripped it as a control-plane role."""
+    from provisa.core.request_context import current_org
+
+    deployment = {"org_admin": {"id": "org_admin", "capabilities": ["cross_org"]}}
+    acme = {"org_admin": {"id": "org_admin", "capabilities": ["user_management"]}}
+    monkeypatch.setattr(
+        "provisa.auth.middleware._loaded_roles",
+        lambda: acme if current_org.get() == "acme" else deployment,
+    )
+    monkeypatch.setattr("provisa.auth.middleware._platform_roles", lambda: deployment)
+
+    async def _prod(*_a, **_k):
+        return None
+
+    monkeypatch.setattr("provisa.api.env_routing.resolve_selected_env", _prod)
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]}
+    )
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_org_id="root",
+    )
+    resp = TestClient(app, base_url="http://cloud.provisa.dev").get(
+        "/test", headers={**_auth("u1"), "x-org-provisa": "acme", "x-provisa-role": "org_admin"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["active_org_id"] == "acme"
+    assert resp.json()["role"] == "org_admin"
+
+
+def test_break_glass_naming_no_org_under_multitenancy_is_refused_by_name():
+    """REQ-1935: break-glass names its org by its subdomain like everyone; with
+    none it is refused, never placed in the deployment's own org."""
+    import base64
+
+    app = _make_app(
+        multitenancy=True,
+        default_org_id="root",
+        superuser={"username": "breakglass", "password": "pw"},
+        admin_pool=_Pool(),
+    )
+    basic = base64.b64encode(b"breakglass:pw").decode()
+    resp = TestClient(app).get("/test", headers={"Authorization": f"Basic {basic}"})
+    assert resp.status_code == 401
+    assert resp.json()["code"] == "auth.org_selection_required"
