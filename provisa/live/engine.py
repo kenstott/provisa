@@ -108,6 +108,11 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
         self._jobs: dict[str, _LiveJob] = {}
         self._scheduler = None
 
+    @property
+    def org_id(self) -> str:
+        """The org this engine polls for (REQ-1266)."""
+        return self._org_id
+
     async def start(self) -> None:  # REQ-565
         """Start the APScheduler scheduler."""
         if AsyncIOScheduler is None:

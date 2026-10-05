@@ -189,3 +189,27 @@ def test_airport_stream_batches_are_pulled_in_the_serving_org():
 
     assert list(_bound_batches("root", _batches())) == ["root", "root"]
     assert current_org.get() is None
+
+
+async def test_the_live_engine_reconciles_only_from_its_own_orgs_model(monkeypatch):
+    """Another org's rebuild must not hand the deployment org's engine its live tables (they would
+    be polled in the engine's org and delivered to the other org's outputs) nor drop its jobs."""
+    from provisa.api import app_rebuild
+    from provisa.live.engine import LiveEngine
+
+    engine = LiveEngine(tenant_db=None, engine=None, org_id="root")
+    reconciled: list[str | None] = []
+
+    async def _reconcile(_conn, _engine):
+        reconciled.append(current_org.get())
+
+    monkeypatch.setattr("provisa.live.reconcile.reconcile_live_engine", _reconcile)
+    monkeypatch.setattr("provisa.api.app.state", SimpleNamespace(live_engine=engine), raising=False)
+
+    for org in ("acme", "root"):
+        token = set_current_org(org)
+        try:
+            await app_rebuild._reconcile_live_engine(cast("Any", None))
+        finally:
+            reset_current_org(token)
+    assert reconciled == ["root"]
