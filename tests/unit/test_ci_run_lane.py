@@ -115,18 +115,48 @@ def test_every_lane_bounds_each_test(lane):
     assert cmd[cmd.index("--timeout-method") + 1] == "signal"
 
 
-def test_files_lists_exactly_the_modules_the_shard_runs(capsys):
-    """The workflow's Splunk CIM step reads --files to decide whether this shard boots splunk; the
-    list must be the shard's own files, or a shard that runs a splunk test would boot it empty."""
-    run_lane = _runner()
-    assert run_lane.main(["app", "--shard", "3/3", "--files"]) == 0
-    listed = capsys.readouterr().out.split()
-    assert listed == run_lane.shard(run_lane.test_files(("tests/integration", "tests/steps")), 3, 3)
+def _suite_steps() -> list[dict]:
+    import yaml
+
+    workflow = yaml.safe_load(
+        (REPO / ".github" / "workflows" / "integration-suite.yml").read_text()
+    )
+    return workflow["jobs"]["suite"]["steps"]
 
 
-def test_files_expands_an_unsharded_lane_to_its_modules(capsys):
-    run_lane = _runner()
-    assert run_lane.main(["e2e", "--files"]) == 0
-    listed = capsys.readouterr().out.split()
-    assert listed == run_lane.test_files(("tests/e2e",))
-    assert listed and all(f.endswith(".py") for f in listed)
+def test_no_suite_step_fetches_the_splunk_cim_add_on():
+    """A suite step that fetched it failed every lane whose files merely mention splunk, before any
+    test ran, while the Splunkbase secrets were absent (run 37315768931: nine lanes, zero tests).
+    tests/conftest.py fetches it when it is about to start splunk, so only a splunk test can fail."""
+    runs = [step.get("run", "") for step in _suite_steps()]
+    assert not [r for r in runs if "fetch-splunk-cim" in r]
+
+
+def test_the_lane_gets_the_splunkbase_credentials_for_that_fetch():
+    lane = next(step for step in _suite_steps() if step.get("name") == "Run lane")
+    assert {"SPLUNKBASE_USERNAME", "SPLUNKBASE_PASSWORD"} <= set(lane["env"])
+
+
+def test_a_tarball_fetched_inside_the_lane_is_saved_under_the_restored_key():
+    """actions/cache's own post-step saves only when the job succeeded; the save is explicit, runs
+    whatever the lane's outcome, and names the same path and key the restore does."""
+    steps = _suite_steps()
+    restore = next(
+        s
+        for s in steps
+        if str(s.get("uses", "")).startswith("actions/cache/restore")
+        and "splunk" in s["with"]["path"]
+    )
+    save = next(
+        s
+        for s in steps
+        if str(s.get("uses", "")).startswith("actions/cache/save") and "splunk" in s["with"]["path"]
+    )
+    assert (save["with"]["path"], save["with"]["key"]) == (
+        restore["with"]["path"],
+        restore["with"]["key"],
+    )
+    assert "always()" in save["if"]
+    fetch = (REPO / "scripts" / "fetch-splunk-cim.sh").read_text()
+    assert 'CACHE="${PROVISA_SPLUNK_CIM_CACHE:-$HOME/.cache/provisa-splunk-cim}"' in fetch
+    assert restore["with"]["path"] == "~/.cache/provisa-splunk-cim"

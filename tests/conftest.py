@@ -279,17 +279,37 @@ _SPLUNK_CIM_MODELS = os.path.join(
     _REPO_ROOT, ".splunk-cim", "Splunk_SA_CIM", "default", "data", "models"
 )
 _SPLUNK_CIM_REQUIRED = ("Authentication.json", "Web.json", "Network_Traffic.json")
+_SPLUNK_CIM_FETCH = os.path.join(_REPO_ROOT, "scripts", "fetch-splunk-cim.sh")
+_SPLUNK_CIM_FETCH_TIMEOUT_S = 600
 
 
-def _require_vendored_splunk_cim() -> None:
-    missing = [
+def _missing_splunk_cim_models() -> list[str]:
+    return [
         m for m in _SPLUNK_CIM_REQUIRED if not os.path.isfile(os.path.join(_SPLUNK_CIM_MODELS, m))
     ]
-    if missing:
+
+
+def _vendor_splunk_cim() -> None:
+    """Vendor the CIM add-on before splunk starts, when it is not already on disk: only a test that
+    starts splunk needs it, so one that cannot get it (no Splunkbase credentials, say) fails here,
+    by name, and nothing else in the run is held up. The script reads its credentials and version
+    from the environment or .env, and reuses a cached tarball without credentials."""
+    if not _missing_splunk_cim_models():
+        return
+    fetched = subprocess.run(
+        [_SPLUNK_CIM_FETCH],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=_SPLUNK_CIM_FETCH_TIMEOUT_S,
+        check=False,
+    )
+    missing = _missing_splunk_cim_models()
+    if fetched.returncode != 0 or missing:
         pytest.fail(
-            f"Splunk CIM add-on not vendored: {', '.join(missing)} absent from "
-            f"{os.path.normpath(_SPLUNK_CIM_MODELS)}. Run scripts/fetch-splunk-cim.sh "
-            f"(SPLUNKBASE_USERNAME/SPLUNKBASE_PASSWORD/SPLUNK_CIM_VERSION) before starting splunk.",
+            f"Splunk CIM add-on not vendored ({', '.join(missing) or 'models present'} absent from "
+            f"{os.path.normpath(_SPLUNK_CIM_MODELS)}): scripts/fetch-splunk-cim.sh exited "
+            f"{fetched.returncode}:\n{fetched.stdout}{fetched.stderr}",
             pytrace=False,
         )
 
@@ -718,7 +738,7 @@ def _heavy_db_service(request):  # pyright: ignore
         yield
         return
     if "splunk" in services:
-        _require_vendored_splunk_cim()
+        _vendor_splunk_cim()
     try:
         # `--wait-timeout` bounds each attempt so a still-booting engine fails fast and
         # deterministically instead of hanging until an external harness timeout kills the
