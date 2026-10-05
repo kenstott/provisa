@@ -126,6 +126,7 @@ async def test_pyexasol_reads_the_pinned_dsn_as_host_port_and_fingerprint() -> N
 @pytest.mark.asyncio
 async def test_exasol_driver_execute_maps_result() -> None:
     mock_stmt = MagicMock()
+    mock_stmt.result_type = "resultSet"
     mock_stmt.column_names.return_value = ["ID", "NAME"]
     mock_stmt.fetchall.return_value = [(1, "Widget A")]
     mock_conn = MagicMock()
@@ -139,6 +140,27 @@ async def test_exasol_driver_execute_maps_result() -> None:
     assert result.column_names == ["ID", "NAME"]
     assert result.rows == [(1, "Widget A")]
     mock_conn.execute.assert_called_once_with("SELECT * FROM widgets")
+
+
+@pytest.mark.asyncio
+async def test_exasol_driver_executes_a_statement_without_a_result_set() -> None:
+    """DDL and DML answer a row count, not a result set; pyexasol raises "Attempt to fetch from
+    statement without result set" on a fetch from one (the direct-driver e2e, run 37318305658)."""
+    mock_stmt = MagicMock()
+    mock_stmt.result_type = "rowCount"
+    mock_stmt.rowcount.return_value = 3
+    mock_stmt.fetchall.side_effect = AssertionError("fetched from a statement without a result set")
+    mock_stmt.column_names.side_effect = AssertionError("read columns of a statement without one")
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value = mock_stmt
+
+    driver = ExasolDriver()
+    with patch("pyexasol.connect", MagicMock(return_value=mock_conn)):
+        await driver.connect(host="exa.local", port=8563, database="T", user="sys", password="x")
+    result = await driver.execute("INSERT INTO widgets VALUES (1), (2), (3)")
+
+    assert result.rows == [] and result.column_names == []
+    assert result.rowcount == 3
 
 
 def test_registry_wires_new_source_types() -> None:
