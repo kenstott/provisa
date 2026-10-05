@@ -266,3 +266,44 @@ def test_a_local_file_on_a_singlestore_engine_keeps_the_relay(monkeypatch):
         )
     )
     assert outcome is None and seen == {}
+
+
+@pytest.mark.parametrize(
+    ("location", "hints", "expected"),
+    [
+        (
+            "gs://bucket/dir/k.csv",
+            {"gcs_access_id": "GOOG1", "gcs_secret_key": "k"},
+            ("S3FileSystem", "bucket/dir/k.csv", "https://storage.googleapis.com"),
+        ),
+        (
+            "abfss://cont@acct.dfs.core.windows.net/k.csv",
+            {"azure_account_name": "acct", "azure_account_key": "a2V5"},
+            ("AzureFileSystem", "cont/k.csv", None),
+        ),
+        (
+            "s3://bucket/k.csv",
+            {"access_key_id": "a", "secret_access_key": "b", "region": "us-east-1"},
+            ("S3FileSystem", "bucket/k.csv", None),
+        ),
+    ],
+)
+def test_the_csv_header_is_read_from_each_store_with_its_credentials(
+    monkeypatch, location, hints, expected
+):
+    import io
+
+    opened: list = []
+
+    class _Fs:
+        def __init__(self, kind, **kwargs):
+            self.kind, self.kwargs = kind, kwargs
+
+        def open_input_stream(self, path):
+            opened.append((self.kind, path, self.kwargs.get("endpoint_override")))
+            return io.BytesIO(b"id,name\n1,a\n")
+
+    monkeypatch.setattr("pyarrow.fs.S3FileSystem", lambda **k: _Fs("S3FileSystem", **k))
+    monkeypatch.setattr("pyarrow.fs.AzureFileSystem", lambda **k: _Fs("AzureFileSystem", **k))
+    assert spb.csv_header(location, hints) == ["id", "name"]
+    assert opened == [expected]

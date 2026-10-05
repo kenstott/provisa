@@ -18,6 +18,8 @@ from provisa.federation.singlestore_pipeline import (
     kafka_pipeline_ddl,
     lands_by_pipeline,
     link_name,
+    object_store,
+    object_store_link_ddl,
     origin_of,
     pipeline_name,
     procedure_name,
@@ -25,6 +27,7 @@ from provisa.federation.singlestore_pipeline import (
     s3_link_ddl,
     start,
     start_foreground,
+    store_path,
     teardown,
 )
 
@@ -215,3 +218,60 @@ def test_start_and_teardown_statements():
         "DROP PROCEDURE IF EXISTS `db`.`pp`",
         "DROP LINK `db`.`ln`",
     ]
+
+
+@pytest.mark.parametrize(
+    ("location", "store", "path"),
+    [
+        ("s3://bucket/dir/k.csv", "S3", "bucket/dir/k.csv"),
+        ("gs://bucket/dir/k.csv", "GCS", "bucket/dir/k.csv"),
+        ("azure://container/dir/k.csv", "AZURE", "container/dir/k.csv"),
+        ("abfss://container@acct.dfs.core.windows.net/dir/k.csv", "AZURE", "container/dir/k.csv"),
+        ("wasbs://container@acct.blob.core.windows.net/k.csv", "AZURE", "container/k.csv"),
+    ],
+)
+def test_each_object_store_and_its_path_as_a_pipeline_names_it(location, store, path):
+    assert object_store(location) == store
+    assert store_path(location) == path
+
+
+def test_a_local_or_other_transport_is_no_object_store():
+    assert object_store("/data/k.csv") is None
+    assert object_store("sftp://h/k.csv") is None
+
+
+def test_gcs_link_holds_its_hmac_keys():
+    hints = {"gcs_access_id": "GOOG1", "gcs_secret_key": "s3cr3t"}
+    assert object_store_link_ddl("db", "ln", "gs://b/k.csv", hints) == (
+        "CREATE OR REPLACE LINK `db`.`ln` AS GCS "
+        """CREDENTIALS '{"access_id":"GOOG1","secret_key":"s3cr3t"}' CONFIG '{}'"""
+    )
+
+
+def test_azure_link_holds_its_account_key():
+    hints = {"azure_account_name": "acct", "azure_account_key": "a2V5"}
+    assert object_store_link_ddl("db", "ln", "azure://c/k.csv", hints) == (
+        "CREATE OR REPLACE LINK `db`.`ln` AS AZURE "
+        """CREDENTIALS '{"account_key":"a2V5","account_name":"acct"}' CONFIG '{}'"""
+    )
+
+
+def test_s3_link_is_the_s3_rendering():
+    assert object_store_link_ddl("db", "ln", "s3://b/k.csv", _HINTS) == s3_link_ddl(
+        "db", "ln", _HINTS
+    )
+
+
+@pytest.mark.parametrize(
+    ("location", "hints", "missing"),
+    [
+        ("gs://b/k.csv", {"gcs_access_id": "GOOG1"}, "gcs_secret_key"),
+        # The service-account JSON other engines read is not what a pipeline takes.
+        ("gs://b/k.csv", {"credentials_path": "/sa.json"}, "gcs_access_id, gcs_secret_key"),
+        ("azure://c/k.csv", {"azure_account_name": "acct"}, "azure_account_key"),
+        ("s3://b/k.csv", {"access_key_id": "a", "secret_access_key": "b"}, "region"),
+    ],
+)
+def test_a_missing_store_credential_is_refused_by_name(location, hints, missing):
+    with pytest.raises(PipelineRefused, match=f"needs federation_hints {missing} on the source"):
+        object_store_link_ddl("db", "ln", location, hints)

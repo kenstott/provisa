@@ -33,17 +33,32 @@ _HEADER_PROBE_BYTES = 65_536
 
 
 def csv_header(location: str, hints: dict) -> list[str]:
-    """The header line of the CSV file at ``location`` (``s3://bucket/key``), read with the source's
-    resolved S3 hints. Only the head of the file is read; the rows are loaded by the pipeline."""
+    """The header line of the CSV file at ``location`` (S3, GCS or Azure), read with the source's
+    resolved credentials. Only the head of the file is read; the rows are loaded by the pipeline.
+    GCS is read through its S3-compatible endpoint with the same HMAC keys the pipeline uses."""
     from pyarrow import fs as pafs
 
-    s3 = pafs.S3FileSystem(
-        access_key=hints.get("access_key_id"),
-        secret_key=hints.get("secret_access_key"),
-        region=hints.get("region"),
-        endpoint_override=hints.get("endpoint") or None,
-    )
-    with s3.open_input_stream(location.split("://", 1)[1]) as stream:
+    store = sp.object_store(location)
+    path = sp.store_path(location)
+    if store == "AZURE":
+        filesystem: Any = pafs.AzureFileSystem(
+            account_name=hints.get("azure_account_name"),
+            account_key=hints.get("azure_account_key"),
+        )
+    elif store == "GCS":
+        filesystem = pafs.S3FileSystem(
+            access_key=hints.get("gcs_access_id"),
+            secret_key=hints.get("gcs_secret_key"),
+            endpoint_override="https://storage.googleapis.com",
+        )
+    else:
+        filesystem = pafs.S3FileSystem(
+            access_key=hints.get("access_key_id"),
+            secret_key=hints.get("secret_access_key"),
+            region=hints.get("region"),
+            endpoint_override=hints.get("endpoint") or None,
+        )
+    with filesystem.open_input_stream(path) as stream:
         head = stream.read(_HEADER_PROBE_BYTES).decode("utf-8-sig")
     first = head.splitlines()[0] if head else ""
     if not first:
@@ -83,7 +98,7 @@ async def build_by_pipeline(
     schema = target.schema
     pipeline = sp.pipeline_name(schema, target.table)
     link = sp.link_name(schema, target.table)
-    link_ddl = sp.s3_link_ddl(schema, link, hints)
+    link_ddl = sp.object_store_link_ddl(schema, link, origin.location, hints)
     header = csv_header(origin.location, hints) if origin.format == "csv" else None
     pipe_ddl = sp.file_pipeline_ddl(
         schema=schema,

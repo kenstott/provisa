@@ -13,15 +13,17 @@ Kafka topic or an object-store file lands through a ``CREATE PIPELINE … LOAD D
 itself, instead of Provisa relaying the rows.
 
 This module is pure: it decides which origins land by pipeline (:func:`lands_by_pipeline`) and
-renders the DDL (:func:`s3_link_ddl`, :func:`file_pipeline_ddl`, :func:`kafka_pipeline_ddl`). Running
+renders the DDL (:func:`object_store_link_ddl`, :func:`file_pipeline_ddl`, :func:`kafka_pipeline_ddl`).
+Running
 it belongs to the build and the push wiring.
 
 Scope (maintainer, 2026-10-04):
 
 - Kafka JSON and Avro land by pipeline. Kafka Protobuf never does; it keeps the Provisa relay.
-- CSV and Parquet on S3 land by pipeline. On GCS or Azure they are refused by name until their
-  credential model is decided. A local file never lands by pipeline (the database cannot read it);
-  it keeps the relay.
+- CSV and Parquet on S3, GCS or Azure land by pipeline, reading the store's credentials from the
+  source's ``federation_hints`` (maintainer, 2026-10-05): S3 access keys, GCS HMAC keys, an Azure
+  account key. Without them the landing is refused by name. A local file never lands by pipeline
+  (the database cannot read it); it keeps the relay.
 - Iceberg on S3 lands by pipeline (a workspace must enable ``enable_iceberg_ingest``). Iceberg
   elsewhere, Delta Lake, Hive and every other type keep the relay.
 - A copy that needs a region filter is refused by name until the filtered regional copy exists.
@@ -95,18 +97,23 @@ def lands_by_pipeline(origin: LandOrigin) -> bool:
         return origin.format in _KAFKA_PIPELINE_FORMATS
     if origin.source_type not in _FILE_PIPELINE_FORMATS | {"iceberg"}:
         return False
-    scheme = _scheme(origin.location)
+    store = object_store(origin.location)
+    if origin.source_type == "iceberg":
+        return store == "S3"  # iceberg off S3: the relay
+    return store is not None  # a local file: the relay
+
+
+def object_store(location: str) -> str | None:
+    """The object store a file location is in, as SingleStore names it (``S3``, ``GCS``,
+    ``AZURE``), or None for a local path or any other transport."""
+    scheme = _scheme(location)
     if scheme == "s3":
-        return True
-    if origin.source_type == "iceberg" or scheme == "":
-        return False  # iceberg off S3, or a local file: the relay
-    if scheme in _GCS_SCHEMES | _AZURE_SCHEMES:
-        store = "GCS" if scheme in _GCS_SCHEMES else "Azure"
-        raise PipelineRefused(
-            f"{origin.source_type} on {store} ({origin.location}) cannot land into SingleStore yet: "
-            f"no {store} credential model is decided for file sources"
-        )
-    return False
+        return "S3"
+    if scheme in _GCS_SCHEMES:
+        return "GCS"
+    if scheme in _AZURE_SCHEMES:
+        return "AZURE"
+    return None
 
 
 def refuse_region_filter(region_filter: str | None, *, table: str) -> None:
@@ -161,9 +168,50 @@ def _json_literal(value: dict) -> str:
     return _literal(json.dumps(value, separators=(",", ":"), sort_keys=True))
 
 
-def _bucket_path(location: str) -> str:
-    """``s3://bucket/key`` as a SingleStore S3 pipeline names it: ``bucket/key``."""
-    return location.split("://", 1)[1]
+def store_path(location: str) -> str:
+    """A file location as a SingleStore pipeline names it: ``bucket/key`` (S3, GCS) or
+    ``container/path`` (Azure). An ADLS/WASB URL names its container before the ``@``:
+    ``abfss://container@account.dfs.core.windows.net/path`` is ``container/path``."""
+    rest = location.split("://", 1)[1]
+    if _scheme(location) in {"abfs", "abfss", "wasb", "wasbs"}:
+        authority, _, path = rest.partition("/")
+        return f"{authority.split('@', 1)[0]}/{path}"
+    return rest
+
+
+#: The federation_hints each object store's pipeline credentials are read from (REQ-990).
+_STORE_HINTS = {
+    "S3": ("access_key_id", "secret_access_key", "region"),
+    "GCS": ("gcs_access_id", "gcs_secret_key"),
+    "AZURE": ("azure_account_name", "azure_account_key"),
+}
+
+
+def object_store_link_ddl(schema: str, link: str, location: str, hints: dict) -> str:
+    """``CREATE OR REPLACE LINK`` holding the credentials of the object store ``location`` is in,
+    so the pipeline DDL carries none. ``hints`` are the source's ``federation_hints`` with secret
+    references already resolved. A missing credential is refused by name."""
+    store = object_store(location)
+    if store is None:
+        raise PipelineRefused(f"{location} is not in an object store a SingleStore pipeline reads")
+    missing = [k for k in _STORE_HINTS[store] if not hints.get(k)]
+    if missing:
+        raise PipelineRefused(
+            f"a {store} pipeline needs federation_hints {', '.join(missing)} on the source"
+        )
+    if store == "S3":
+        return s3_link_ddl(schema, link, hints)
+    if store == "GCS":
+        credentials = {"access_id": hints["gcs_access_id"], "secret_key": hints["gcs_secret_key"]}
+    else:
+        credentials = {
+            "account_name": hints["azure_account_name"],
+            "account_key": hints["azure_account_key"],
+        }
+    return (
+        f"CREATE OR REPLACE LINK {_qualified(schema, link)} AS {store} "
+        f"CREDENTIALS {_json_literal(credentials)} CONFIG '{{}}'"
+    )
 
 
 def s3_link_ddl(schema: str, link: str, hints: dict) -> str:
@@ -205,7 +253,7 @@ def file_pipeline_ddl(
     file) names what each position is: a header column the table does not declare is skipped, and
     a declared column the header lacks is refused by name. A Parquet file is read by field name.
     ``into_table`` has no key (the build table), so no duplicate-key policy is needed."""
-    source = f"LOAD DATA LINK {_qualified(schema, link)} {_literal(_bucket_path(origin.location))}"
+    source = f"LOAD DATA LINK {_qualified(schema, link)} {_literal(store_path(origin.location))}"
     target = f"INTO TABLE {_qualified(schema, into_table)}"
     if origin.format == "parquet":
         fields = ", ".join(f"{_ident(c)} <- {_ident(c)}" for c in columns)
