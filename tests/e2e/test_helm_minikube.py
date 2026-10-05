@@ -22,6 +22,7 @@ import os
 import platform
 import shutil
 import subprocess
+import time
 import urllib.request
 from pathlib import Path
 
@@ -32,19 +33,68 @@ import pytest
 # Every minikube, kubectl and helm call is pinned to that profile's context (see _pin), so it can
 # never reach whatever cluster the machine's current kube context names. Runs in its own lane
 # (pytest -m cluster); deselected from the default suite (see pyproject addopts).
-pytestmark = [pytest.mark.e2e, pytest.mark.cluster]
-
 CHART_DIR = Path(__file__).parents[2] / "helm" / "provisa"
 RELEASE = "provisa-test"
 NAMESPACE = "provisa-e2e"
-# Every test here runs under the CI lane's per-test bound (scripts/ci/run_lane.py TEST_TIMEOUT_S,
-# 900 s, pytest-timeout). helm's own --wait must end inside it, so a release that never turns Ready
-# fails as helm's error with _why_not_ready()'s pod report, not as a bare pytest timeout that hides
-# both. The install (a cold pull of every image into minikube) gets the longer wait; the scaling
-# test runs two upgrades, so 2 x (HELM_WAIT_S + slack) stays under the bound.
+# Every external call here has its own deadline, named below, so a stall fails with the call's own
+# message ("minikube image load failed", "helm install failed" + the pod report). The module-scoped
+# install runs inside the first test's pytest-timeout and its teardown inside the last's, so the
+# per-test bound (CLUSTER_TEST_BOUND_S, the module's timeout mark; it replaces the lane's 900 s) is
+# the sum of every deadline one test can be charged, and each named deadline fires before it.
+# tests/unit/test_helm_minikube_bounds.py holds this sum and the cluster job's timeout-minutes to
+# it.
+DOWNLOAD_S = 300  # the minikube binary, when it is not on PATH
+MINIKUBE_STATUS_S = 10
+MINIKUBE_START_S = 600
+KUBE_CONTEXT_S = 10
+DOCKER_BUILD_S = 600
+DOCKER_TAG_S = 10
+# A fresh profile holds no image yet, so the whole image is copied in: a deadline sized for a
+# multi-gigabyte copy on a loaded machine.
+IMAGE_LOAD_S = 1500
+MINIKUBE_SSH_S = 30
+MINIKUBE_DELETE_S = 300
+NAMESPACE_DELETE_S = 300  # --wait=true: its PVCs must be gone before the hostpath dir is wiped
+KUBECTL_S = 60
+# helm's own --wait. The install (a cold pull of every image into minikube) gets the longer one.
 HELM_INSTALL_WAIT_S = 600
 HELM_WAIT_S = 360
-_RUN_SLACK_S = 60
+_HELM_SLACK_S = 60  # past helm's --wait, for helm to report and exit
+# _why_not_ready stops issuing kubectl calls once this is spent; the call in flight may add one
+# KUBECTL_S.
+REPORT_BUDGET_S = 180
+_REPORT_S = REPORT_BUDGET_S + KUBECTL_S
+_SECRETS = 3  # master key, session key, break-glass password
+
+_SETUP_S = (
+    DOWNLOAD_S
+    + MINIKUBE_STATUS_S
+    + MINIKUBE_START_S
+    + KUBE_CONTEXT_S
+    + DOCKER_BUILD_S
+    + IMAGE_LOAD_S
+    + DOCKER_TAG_S
+    + IMAGE_LOAD_S
+    + NAMESPACE_DELETE_S
+    + MINIKUBE_SSH_S
+    + KUBECTL_S  # create namespace
+    + _SECRETS * KUBECTL_S
+    + HELM_INSTALL_WAIT_S
+    + _HELM_SLACK_S
+    + _REPORT_S
+)
+# The longest test body: test_helm_upgrade_scales_worker_replicas, two upgrades, each of which may
+# end in a pod report, plus the pod listing between them.
+_LONGEST_TEST_S = 2 * (HELM_WAIT_S + _HELM_SLACK_S + _REPORT_S) + KUBECTL_S
+_TEARDOWN_S = (
+    KUBECTL_S  # helm uninstall
+    + KUBECTL_S  # delete namespace
+    + MINIKUBE_SSH_S
+    + MINIKUBE_DELETE_S
+)
+CLUSTER_TEST_BOUND_S = _SETUP_S + _LONGEST_TEST_S + _TEARDOWN_S
+
+pytestmark = [pytest.mark.e2e, pytest.mark.cluster, pytest.mark.timeout(CLUSTER_TEST_BOUND_S)]
 # This run's own minikube profile, and so its own kube context. Never the default profile, and
 # never the machine's current context, which may name a production cluster.
 PROFILE = f"provisa-itest-{os.getpid()}"
@@ -135,7 +185,8 @@ def _acquire_minikube() -> None:
     url = f"https://storage.googleapis.com/minikube/releases/latest/minikube-{system}-{arch}"
     _LOCAL_BIN.mkdir(parents=True, exist_ok=True)
     dest = _LOCAL_BIN / "minikube"
-    urllib.request.urlretrieve(url, str(dest))
+    with urllib.request.urlopen(url, timeout=DOWNLOAD_S) as resp:  # noqa: S310 - fixed https URL
+        dest.write_bytes(resp.read())
     dest.chmod(0o755)
     os.environ["PATH"] = f"{_LOCAL_BIN}:{os.environ['PATH']}"
 
@@ -152,7 +203,7 @@ def _ensure_tools() -> None:
             _pin(["minikube", "status", "--format={{.Host}}"]),
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=MINIKUBE_STATUS_S,
         )
         running = status.returncode == 0 and status.stdout.strip() == "Running"
     except subprocess.TimeoutExpired:
@@ -163,7 +214,7 @@ def _ensure_tools() -> None:
             _pin(["minikube", "start", "--driver=docker", "--memory=6144", "--cpus=4"]),
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=MINIKUBE_START_S,
         )
         if start.returncode != 0:
             pytest.fail(f"minikube start failed:\n{start.stderr}")
@@ -187,14 +238,14 @@ def _assert_own_context() -> None:
         ["kubectl", "config", "get-contexts", "-o", "name"],
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=KUBE_CONTEXT_S,
     ).stdout.split()
     if PROFILE not in names:
         pytest.fail(f"minikube profile {PROFILE!r} has no kube context; refusing to run")
 
 
-def _run(cmd: list[str], wait_s: int = HELM_WAIT_S) -> subprocess.CompletedProcess:
-    return subprocess.run(_pin(cmd), capture_output=True, text=True, timeout=wait_s + _RUN_SLACK_S)
+def _run(cmd: list[str], timeout_s: int = KUBECTL_S) -> subprocess.CompletedProcess:
+    return subprocess.run(_pin(cmd), capture_output=True, text=True, timeout=timeout_s)
 
 
 def _helm_deploy(*, worker_replicas: int, install: bool = False) -> subprocess.CompletedProcess:
@@ -215,47 +266,65 @@ def _helm_deploy(*, worker_replicas: int, install: bool = False) -> subprocess.C
             "--wait",
             f"--timeout={wait_s}s",
         ],
-        wait_s,
+        wait_s + _HELM_SLACK_S,
     )
 
 
 def _why_not_ready() -> str:
     """What a timed-out ``helm install --wait`` was waiting on: every pod's state, and for each pod
     that is not Ready its events and the end of each container's log (the previous run's too, for
-    one that restarted). "context deadline exceeded" alone names nothing."""
-    pods = _kubectl("get", "pods", "-o", "wide")
-    lines = [f"=== pods\n{pods.stdout}{pods.stderr}"]
-    listed = _kubectl("get", "pods", "-o", "json")
-    if listed.returncode != 0:
-        lines.append(f"=== kubectl get pods -o json failed\n{listed.stderr}")
-        return "\n".join(lines)
-    for pod in json.loads(listed.stdout)["items"]:
-        ready = any(
-            c["type"] == "Ready" and c["status"] == "True"
-            for c in pod["status"].get("conditions", [])
-        )
-        if ready:
-            continue
-        name = pod["metadata"]["name"]
-        described = _kubectl("describe", "pod", name)
-        lines.append(f"=== describe {name}\n{described.stdout[-4000:]}")
-        # Per container: `--all-containers --previous` returns nothing at all when any container
-        # (an init container) has no previous run, which hid a crash-looping container's last log.
-        for container in pod["spec"]["containers"]:
-            for previous in (False, True):
-                flags = ["--previous"] if previous else []
-                logs = _kubectl("logs", name, "-c", container["name"], "--tail=120", *flags)
-                label = "previous logs" if previous else "logs"
-                lines.append(f"=== {label} {name}/{container['name']}\n{logs.stdout}{logs.stderr}")
-    # Reachability between pods: which services have ready endpoints, and what the chart's network
-    # policies admit (a policy that leaves out a client shows up as a connect timeout).
-    endpoints = _kubectl("get", "endpoints", "-o", "wide")
-    lines.append(f"=== endpoints\n{endpoints.stdout}{endpoints.stderr}")
-    policies = _kubectl("get", "networkpolicy", "-o", "yaml")
-    lines.append(f"=== network policies\n{policies.stdout[-6000:]}{policies.stderr}")
-    # The API's boot provisions catalogs on the Trino coordinator; its side of a stalled boot.
-    trino = _kubectl("logs", "-l", "app=trino,role=coordinator", "--tail=120")
-    lines.append(f"=== trino coordinator logs\n{trino.stdout}{trino.stderr}")
+    one that restarted). "context deadline exceeded" alone names nothing. Stops issuing calls once
+    REPORT_BUDGET_S is spent, saying so, so the report itself stays inside the test's bound."""
+    deadline = time.monotonic() + REPORT_BUDGET_S
+    lines: list[str] = []
+
+    class _Spent(Exception):
+        pass
+
+    def kubectl(*args: str) -> subprocess.CompletedProcess:
+        if time.monotonic() >= deadline:
+            raise _Spent
+        return _kubectl(*args)
+
+    try:
+        pods = kubectl("get", "pods", "-o", "wide")
+        lines.append(f"=== pods\n{pods.stdout}{pods.stderr}")
+        listed = kubectl("get", "pods", "-o", "json")
+        if listed.returncode != 0:
+            lines.append(f"=== kubectl get pods -o json failed\n{listed.stderr}")
+            return "\n".join(lines)
+        for pod in json.loads(listed.stdout)["items"]:
+            ready = any(
+                c["type"] == "Ready" and c["status"] == "True"
+                for c in pod["status"].get("conditions", [])
+            )
+            if ready:
+                continue
+            name = pod["metadata"]["name"]
+            described = kubectl("describe", "pod", name)
+            lines.append(f"=== describe {name}\n{described.stdout[-4000:]}")
+            # Per container: `--all-containers --previous` returns nothing at all when any
+            # container (an init container) has no previous run, which hid a crash-looping
+            # container's last log.
+            for container in pod["spec"]["containers"]:
+                for previous in (False, True):
+                    flags = ["--previous"] if previous else []
+                    logs = kubectl("logs", name, "-c", container["name"], "--tail=120", *flags)
+                    label = "previous logs" if previous else "logs"
+                    lines.append(
+                        f"=== {label} {name}/{container['name']}\n{logs.stdout}{logs.stderr}"
+                    )
+        # Reachability between pods: which services have ready endpoints, and what the chart's
+        # network policies admit (a policy that leaves out a client shows up as a connect timeout).
+        endpoints = kubectl("get", "endpoints", "-o", "wide")
+        lines.append(f"=== endpoints\n{endpoints.stdout}{endpoints.stderr}")
+        policies = kubectl("get", "networkpolicy", "-o", "yaml")
+        lines.append(f"=== network policies\n{policies.stdout[-6000:]}{policies.stderr}")
+        # The API's boot provisions catalogs on the Trino coordinator; its side of a stalled boot.
+        trino = kubectl("logs", "-l", "app=trino,role=coordinator", "--tail=120")
+        lines.append(f"=== trino coordinator logs\n{trino.stdout}{trino.stderr}")
+    except _Spent:
+        lines.append(f"=== report stopped: its {REPORT_BUDGET_S} s budget is spent")
     return "\n".join(lines)
 
 
@@ -281,7 +350,9 @@ def helm_install(request):
     os.environ["KUBECONFIG"] = str(Path(tempfile.mkdtemp(prefix="kubeconfig-")) / "config")
 
     def _cleanup() -> None:
-        subprocess.run(["minikube", "delete", "-p", PROFILE], capture_output=True, timeout=300)
+        subprocess.run(
+            ["minikube", "delete", "-p", PROFILE], capture_output=True, timeout=MINIKUBE_DELETE_S
+        )
         if previous is None:
             os.environ.pop("KUBECONFIG", None)
         else:
@@ -306,7 +377,7 @@ def helm_install(request):
         ],
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=DOCKER_BUILD_S,
     )
     if build.returncode != 0:
         pytest.fail(f"docker build failed:\n{build.stdout}\n{build.stderr}")
@@ -315,9 +386,7 @@ def helm_install(request):
         _pin(["minikube", "image", "load", "provisa:latest"]),
         capture_output=True,
         text=True,
-        # A fresh profile holds no image yet, so the whole image is copied in: a deadline sized
-        # for a multi-gigabyte copy on a loaded machine.
-        timeout=1500,
+        timeout=IMAGE_LOAD_S,
     )
     if load.returncode != 0:
         pytest.fail(f"minikube image load failed:\n{load.stdout}\n{load.stderr}")
@@ -327,15 +396,13 @@ def helm_install(request):
     subprocess.run(
         ["docker", "tag", "provisa-zaychik:latest", "zaychik:latest"],
         capture_output=True,
-        timeout=10,
+        timeout=DOCKER_TAG_S,
     )
     zload = subprocess.run(
         _pin(["minikube", "image", "load", "zaychik:latest"]),
         capture_output=True,
         text=True,
-        # A fresh profile holds no image yet, so the whole image is copied in: a deadline sized
-        # for a multi-gigabyte copy on a loaded machine.
-        timeout=1500,
+        timeout=IMAGE_LOAD_S,
     )
     if zload.returncode != 0:
         pytest.fail(f"minikube image load (zaychik) failed:\n{zload.stdout}\n{zload.stderr}")
@@ -343,12 +410,15 @@ def helm_install(request):
     # Delete any existing namespace+PVCs from a prior run, then wipe the
     # hostpath dir. Order matters: PVCs must be gone before the dir is removed
     # so the provisioner doesn't re-claim stale data with wrong permissions.
-    _run(["kubectl", "delete", "namespace", NAMESPACE, "--ignore-not-found=true", "--wait=true"])
+    _run(
+        ["kubectl", "delete", "namespace", NAMESPACE, "--ignore-not-found=true", "--wait=true"],
+        NAMESPACE_DELETE_S,
+    )
     subprocess.run(
         _pin(["minikube", "ssh", f"sudo rm -rf /tmp/hostpath-provisioner/{NAMESPACE}/"]),
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=MINIKUBE_SSH_S,
     )
 
     _run(["kubectl", "create", "namespace", NAMESPACE])
@@ -395,7 +465,7 @@ def helm_install(request):
         _pin(["minikube", "ssh", f"sudo rm -rf /tmp/hostpath-provisioner/{NAMESPACE}/"]),
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=MINIKUBE_SSH_S,
     )
 
 

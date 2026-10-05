@@ -221,7 +221,10 @@ jobs:
     needs: plan
     if: github.event_name != 'schedule' && needs.plan.outputs.cluster == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Past tests/e2e/test_helm_minikube.py's per-test bound (CLUSTER_TEST_BOUND_S, the sum of its
+    # named deadlines) plus these prep steps, so a stalled call fails with its own message before
+    # the job is cancelled and its log lost. tests/unit/test_helm_minikube_bounds.py holds this.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
         with:
