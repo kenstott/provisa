@@ -28,6 +28,12 @@
 #                                              #   dir, print machine-readable PORTS line and the
 #                                              #   CREDS_FILE path (never a password), stay up
 #   scripts/launch-demo-regions.sh --check     # scaffold self-check (paths/tokens), no launch
+#   scripts/launch-demo-regions.sh --test --auth-flows
+#                                              # spec-owned, ONE node, no regions, basic auth and
+#                                              #   the break-glass superuser only: the auth-flows
+#                                              #   Playwright project seeds its own users and orgs
+#                                              #   through the authenticated admin API. Prints
+#                                              #   PORTS ui=.. api=.. and CREDS_FILE <path>
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -36,15 +42,20 @@ PY="$REPO/.venv/bin/python3"
 PROVISA="$PY -m provisa.cli"
 
 MODE="start"
+AUTH_FLOWS=0
 for arg in "$@"; do
   case "$arg" in
     --reset) MODE="reset" ;;
     --stop) MODE="stop" ;;
     --test) MODE="test" ;;
     --check) MODE="check" ;;
+    --auth-flows) AUTH_FLOWS=1 ;;
     *) echo "unknown arg: $arg" >&2; exit 2 ;;
   esac
 done
+if [[ "$AUTH_FLOWS" == "1" && "$MODE" != "test" ]]; then
+  echo "--auth-flows is spec-owned: use it with --test" >&2; exit 2
+fi
 
 # --- ports & dirs (distinct from local-dev 8001/8009/5439/5173 and demo-snowflake-live 8200/3200) ---
 if [[ "$MODE" == "test" ]]; then
@@ -113,6 +124,56 @@ else
   { echo "ADMIN_PW=$ADMIN_PW"; echo "OPERATOR_PW=$OPERATOR_PW"; echo "RESIDENT_PW=$RESIDENT_PW"; echo "JWT_SECRET=$JWT_SECRET"; } >"$CREDS_FILE"
 fi
 
+# --- the UI bundle `provisa run` serves (ui_server.py reads provisa/_ui) ---
+# A dev worktree ships no bundle, so `provisa run` would serve "Provisa UI not bundled" and none of
+# the region admin UX would render. Build it once into provisa/_ui (gitignored, staged exactly as
+# scripts/build-wheel.sh does); subsequent launches reuse it.
+_ensure_ui_built() {
+  [[ -f "$REPO/provisa/_ui/index.html" ]] && return 0
+  echo "demo-regions: building the UI bundle once (provisa/_ui)..." >&2
+  ( cd "$REPO/provisa-ui" && npm run build ) >&2
+  test -f "$REPO/provisa-ui/dist/index.html" || { echo "UI build produced no dist/index.html" >&2; return 1; }
+  mkdir -p "$REPO/provisa/_ui"
+  cp -r "$REPO/provisa-ui/dist/." "$REPO/provisa/_ui/"
+}
+
+# --- --auth-flows: one node, no regions, basic auth (the auth-flows Playwright project) ---
+# The node starts its own embedded control plane and cache under the throwaway data dir. Nothing
+# but the break-glass superuser is configured: the spec creates every user and org it needs through
+# the authenticated admin API, so what it proves is the product's own path, not a seed shortcut.
+# Its superuser password is --test's fresh per-run one, read by the spec from TEST_CREDS.
+if [[ "$AUTH_FLOWS" == "1" ]]; then
+  FLOWS_CONFIG="$INSTANCE_DIR/provisa-auth-flows.yaml"
+  JWT_SECRET="$JWT_SECRET" "$PY" - "$REPO/config/provisa-auth-flows.yaml.tmpl" "$FLOWS_CONFIG" <<'PY'
+import os, sys
+src, out = sys.argv[1], sys.argv[2]
+open(out, "w").write(open(src).read().replace("@@JWT_SECRET@@", os.environ["JWT_SECRET"]))
+PY
+  _ensure_ui_built
+  mkdir -p "$INSTANCE_DIR/node"
+  PROVISA_CONFIG="$FLOWS_CONFIG" PROVISA_CONFIG_REPLACE="true" \
+  PROVISA_SUPERUSER_USERNAME="admin" PROVISA_SUPERUSER_PASSWORD="$ADMIN_PW" \
+    $PROVISA run --api-port "$EU_API" --ui-port "$EU_UI" --data-dir "$INSTANCE_DIR/node" \
+      --no-browser >"$INSTANCE_DIR/node.log" 2>&1 &
+  echo $! >>"$PIDS_FILE"
+  _ready=0
+  for _i in $(seq 1 60); do
+    if [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$EU_API/auth/provider-type" 2>/dev/null)" == "200" ]]; then
+      _ready=1; break
+    fi
+    sleep 5
+  done
+  if [[ "$_ready" != "1" ]]; then
+    echo "auth-flows node did not answer /auth/provider-type in 300s; its log:" >&2
+    tail -n 80 "$INSTANCE_DIR/node.log" >&2
+    exit 1
+  fi
+  echo "PORTS ui=$EU_UI api=$EU_API"
+  echo "CREDS_FILE $TEST_CREDS"
+  wait
+  exit 0
+fi
+
 # --- one shared fakeredis TCP server (cache for both regions) ---
 "$PY" - "$REDIS_PORT" <<'PY' &
 import sys, fakeredis
@@ -145,18 +206,7 @@ for tok in ("EU_ADDRESS","US_ADDRESS","EU_ENGINE_URL","US_ENGINE_URL","PG_URL","
 open(out, "w").write(text)
 PY
 
-# --- the UI bundle `provisa run` serves (ui_server.py reads provisa/_ui) ---
-# A dev worktree ships no bundle, so `provisa run` would serve "Provisa UI not bundled" and none of
-# the region admin UX would render. Build it once into provisa/_ui (gitignored, staged exactly as
-# scripts/build-wheel.sh does); subsequent launches reuse it.
-_ensure_ui_built() {
-  [[ -f "$REPO/provisa/_ui/index.html" ]] && return 0
-  echo "demo-regions: building the UI bundle once (provisa/_ui)..." >&2
-  ( cd "$REPO/provisa-ui" && npm run build ) >&2
-  test -f "$REPO/provisa-ui/dist/index.html" || { echo "UI build produced no dist/index.html" >&2; return 1; }
-  mkdir -p "$REPO/provisa/_ui"
-  cp -r "$REPO/provisa-ui/dist/." "$REPO/provisa/_ui/"
-}
+
 _ensure_ui_built
 
 # --- launch a node per region, BOTH on the one shared model store and shared cache ---

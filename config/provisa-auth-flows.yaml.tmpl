@@ -1,0 +1,38 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# The auth-flows Playwright project's instance (scripts/launch-demo-regions.sh --test --auth-flows):
+# one node, no regions, basic auth ENFORCED. The membership flows those specs walk — leaving an org
+# (REQ-1306), auto-join on sign-in (REQ-1285), a backup platform_admin made by invite (REQ-1298) —
+# only exist for a real signed-in identity, which the core Playwright backend (auth.provider: none)
+# never has. Nothing but the break-glass superuser is configured: each spec creates the users and
+# orgs it needs through the authenticated admin API. @@JWT_SECRET@@ is the launcher's.
+
+federation_engine: duckdb
+
+auth:
+  provider: basic
+  # /auth/register: users join by redeeming an invite, or (for the auto-join flow) sign up and are
+  # admitted by an org's email rule.
+  allow_simple_auth: true
+  jwt_secret: "@@JWT_SECRET@@"
+  # REQ-125: the break-glass superuser (/auth/superuser-login), control-plane only.
+  superuser:
+    username: ${env:PROVISA_SUPERUSER_USERNAME}
+    password: ${env:PROVISA_SUPERUSER_PASSWORD}
+  assignments_source: provisa
+
+cache:
+  enabled: false
+
+domains:
+  - { id: flows, description: "Auth flows" }
+
+sources: []
+tables: []
+relationships: []
+rls_rules: []
+functions: []
+webhooks: []
