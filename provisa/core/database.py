@@ -121,7 +121,7 @@ class Capabilities:
             return None
         if self.dialect == "postgresql":
             return f'SET search_path TO "{schema}"'
-        if self.dialect in ("mysql", "mariadb"):
+        if self.dialect in ("mysql", "mariadb", "singlestoredb"):
             return f"USE `{schema}`"
         if self.dialect == "oracle":
             return f'ALTER SESSION SET CURRENT_SCHEMA = "{schema}"'
@@ -153,6 +153,21 @@ class Capabilities:
                 savepoints=True,
             )
         if d in ("mysql", "mariadb"):
+            return cls(
+                d,
+                listen_notify=False,
+                advisory_lock=True,
+                arrays=False,
+                rules=False,
+                returning=False,
+                schemas=True,
+                savepoints=True,
+            )
+        if d == "singlestoredb":
+            # REQ-990: SingleStore as a materialization store, reached through the singlestoredb
+            # SQLAlchemy dialect. Wire-compatible with MySQL (USE <db> scoping, GET_LOCK advisory
+            # locks, no RETURNING, no arrays); its bulk path is a streaming LOAD DATA LOCAL INFILE,
+            # not executemany (see bulk_copy).
             return cls(
                 d,
                 listen_notify=False,
@@ -644,6 +659,46 @@ def _array_elem(value: Any) -> str:
     return f'"{body}"'
 
 
+def _singlestore_field(value: Any, proc: Any) -> str:
+    """One field rendered for SingleStore ``LOAD DATA`` (REQ-990): the default tab-separated,
+    backslash-escaped text format. NULL is ``\\N`` (distinct from an empty string, which is an empty
+    field); the value is rendered through its column type's bind processor first (JSON serialises,
+    Decimal/`datetime` keep their exact text), then the format's special characters are escaped so
+    the row round-trips byte-for-byte."""
+    if value is None:
+        return "\\N"
+    if proc is not None:
+        value = proc(value)
+    return (
+        _copy_text(value)
+        .replace("\\", "\\\\")
+        .replace("\t", "\\t")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+    )
+
+
+def _singlestore_tsv_chunks(
+    rows: list[dict[str, Any]],
+    colnames: list[str],
+    procs: list[Any],
+    *,
+    chunk_bytes: int = 262_144,
+) -> "Iterator[bytes]":
+    """``rows`` as UTF-8 byte chunks of the SingleStore ``LOAD DATA`` TSV, flushed at ``chunk_bytes``
+    (~256 KiB) so a large batch never materialises a second full copy and each wire packet stays
+    under the client's cap."""
+    buf = bytearray()
+    for r in rows:
+        line = "\t".join(_singlestore_field(r.get(cn), proc) for cn, proc in zip(colnames, procs))
+        buf += (line + "\n").encode("utf-8")
+        if len(buf) >= chunk_bytes:
+            yield bytes(buf)
+            buf = bytearray()
+    if buf:
+        yield bytes(buf)
+
+
 class StoreSideViolation(RuntimeError):
     """A statement on one store's handle touched another store's tables (REQ-1922): the model
     store (``model_db``), an org region's state store (``tenant_db``) and its record
@@ -1005,10 +1060,47 @@ class Connection:
                 cur.close()
             self._commit_if_autocommit()
             return len(rows)
+        if self.capabilities.dialect == "singlestoredb":
+            # REQ-990: SingleStore's bulk path is a streaming LOAD DATA LOCAL INFILE — one statement
+            # that streams every row in memory through the singlestoredb client (no temp file, no
+            # per-row INSERT). Never falls back to executemany: a refused local-infile raises by name.
+            return self._bulk_load_singlestore(table, rows, colnames)
         param_list = [{cn: r.get(cn) for cn in colnames} for r in rows]
         self._exec(table.insert(), param_list)
         self._commit_if_autocommit()
         return len(param_list)
+
+    def _bulk_load_singlestore(
+        self, table: Table, rows: list[dict[str, Any]], colnames: list[str]
+    ) -> int:
+        """Stream ``rows`` into ``table`` via ``LOAD DATA LOCAL INFILE ':stream:'`` through the
+        singlestoredb client (REQ-990). Tab-separated, backslash-escaped, ``\\N`` for NULL so a NULL
+        stays distinct from an empty string; each value is rendered through its column type's bind
+        processor first (JSON serialises, Decimal/`datetime` keep their exact text). The rows are
+        emitted as bounded byte chunks so a large batch never materialises a second full copy, and
+        the client caps each wire packet. A refused LOCAL INFILE raises by name — no executemany."""
+        dialect = self._sc.dialect
+        procs = [c.type.dialect_impl(dialect).bind_processor(dialect) for c in table.columns]
+        qualified = f"`{table.schema}`.`{table.name}`" if table.schema else f"`{table.name}`"
+        cols_sql = ", ".join(f"`{cn}`" for cn in colnames)
+        load_sql = f"LOAD DATA LOCAL INFILE ':stream:' INTO TABLE {qualified} ({cols_sql})"
+        dbapi_conn = self._sc.connection.dbapi_connection
+        assert dbapi_conn is not None
+        try:
+            with self._cancellable():
+                dbapi_conn.query(
+                    load_sql, infile_stream=_singlestore_tsv_chunks(rows, colnames, procs)
+                )
+        except Exception as exc:  # noqa: BLE001 — re-raised by name; never silently downgraded
+            msg = str(exc).lower()
+            if "local infile" in msg or "local_infile" in msg or "load_local" in msg:
+                raise RuntimeError(
+                    f"SingleStore bulk load into {qualified} was refused: LOAD DATA LOCAL INFILE is "
+                    f"not permitted (enable local_infile on the connection and server) — {exc}"
+                ) from exc
+            raise
+        self._commit_if_autocommit()
+        return len(rows)
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def upsert(
@@ -1428,6 +1520,10 @@ _ADMIN_DRIVER: dict[str, str] = {
     "duckdb": "provisa",
     "mysql": "pymysql",
     "mariadb": "pymysql",
+    # REQ-990: SingleStore runs on its own dialect's default DBAPI (the singlestoredb client), so
+    # the URI carries no ``+driver`` — the streaming LOAD DATA LOCAL INFILE bulk path needs that
+    # client, not pymysql.
+    "singlestoredb": "",
 }
 
 
@@ -1464,7 +1560,9 @@ def sync_store_url(url: str) -> str:
         )
     # ``str(url)``/``URL.__str__`` renders with the password masked (``***``) — the right
     # default for logging, wrong here since this string becomes the actual connect URI.
-    return parsed.set(drivername=f"{backend}+{sync_driver}").render_as_string(hide_password=False)
+    # An empty sync_driver (singlestoredb) runs on the dialect's default DBAPI — no ``+driver``.
+    drivername = f"{backend}+{sync_driver}" if sync_driver else backend
+    return parsed.set(drivername=drivername).render_as_string(hide_password=False)
 
 
 def _pool_kwargs_for(url: str) -> dict[str, Any]:
@@ -1523,6 +1621,10 @@ def create_engine_from_url(
     if backend == "sqlite":
         # The pooled sqlite3 connection is handed between request threads (one at a time).
         kwargs["connect_args"] = {"check_same_thread": False}
+    if backend == "singlestoredb":
+        # REQ-990: the store's bulk path streams rows through LOAD DATA LOCAL INFILE, which the
+        # client only honours when local_infile is enabled on the connection.
+        kwargs["connect_args"] = {**kwargs.get("connect_args", {}), "local_infile": True}
     if parsed.database in (None, "", ":memory:"):
         kwargs["poolclass"] = StaticPool
     else:

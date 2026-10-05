@@ -3147,6 +3147,18 @@ wheels = [
 ]
 
 [[package]]
+name = "parsimonious"
+version = "0.11.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "regex" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3c/0b/8a3b9f4a4943b56e67247c65e1b0564ec9bf0718b85f3fd9502d70afaf32/parsimonious-0.11.0.tar.gz", hash = "sha256:e080377d98957beec053580d38ae54fcdf7c470fb78670ba4bf8b5f9d5cad2a9", size = 54238, upload-time = "2025-11-12T01:33:48.172Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f1/a9/a10a10f12e50993b5a3568a1a90fd70b85f83edc451875d312bf60cd39b8/parsimonious-0.11.0-py3-none-any.whl", hash = "sha256:32e3818abf9f05b3b9f3b6d87d128645e30177e91f614d2277d88a0aea98fae2", size = 54351, upload-time = "2025-11-12T01:33:46.652Z" },
+]
+
+[[package]]
 name = "pathspec"
 version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3390,10 +3402,12 @@ dependencies = [
     { name = "redis", extra = ["hiredis"] },
     { name = "scipy" },
     { name = "signxml" },
+    { name = "singlestoredb" },
     { name = "snowflake-connector-python", extra = ["pandas"] },
     { name = "snowflake-sqlalchemy" },
     { name = "sqlalchemy" },
     { name = "sqlalchemy-redshift" },
+    { name = "sqlalchemy-singlestoredb" },
     { name = "sqlglot" },
     { name = "strawberry-graphql", extra = ["fastapi"] },
     { name = "trino" },
@@ -3631,6 +3645,7 @@ requires-dist = [
     { name = "scipy" },
     { name = "sentence-transformers", marker = "extra == 'vector'" },
     { name = "signxml", specifier = ">=4,<5" },
+    { name = "singlestoredb" },
     { name = "snowflake-connector-python", extras = ["pandas"] },
     { name = "snowflake-sqlalchemy" },
     { name = "soda-postgres", marker = "extra == 'soda'" },
@@ -3638,6 +3653,7 @@ requires-dist = [
     { name = "sqlalchemy-hana", marker = "extra == 'all-drivers'" },
     { name = "sqlalchemy-hana", marker = "extra == 'saphana'" },
     { name = "sqlalchemy-redshift" },
+    { name = "sqlalchemy-singlestoredb" },
     { name = "sqlglot" },
     { name = "strawberry-graphql", extras = ["fastapi"] },
     { name = "syrupy", marker = "extra == 'dev'" },
@@ -4600,6 +4616,26 @@ wheels = [
 ]
 
 [[package]]
+name = "singlestoredb"
+version = "1.18.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "parsimonious" },
+    { name = "pyjwt" },
+    { name = "requests" },
+    { name = "sqlparams" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1f/a4/895f128d3282fbd2830d3c8a15b6aa41db26c9e69c62911e96378d4de21d/singlestoredb-1.18.1.tar.gz", hash = "sha256:5822c9423a01261fb26ebda8b932aa9d78e041fee56875759347016b8262c118", size = 615273, upload-time = "2026-10-02T17:18:01.432Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9c/cd/9c50989061153d1ed7513a51326b7869f272203983ba14599a33c704c0ba/singlestoredb-1.18.1-cp38-abi3-macosx_10_9_universal2.whl", hash = "sha256:fc7a733b3422159b83763ca8be6211e5b57477f1645e4cb7df6669eeb075b697", size = 745362, upload-time = "2026-10-02T17:17:52.168Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/9e/fd18faba47cc1b52d0afb1130a5161ef1acdd324f3e16280d9903fd18b06/singlestoredb-1.18.1-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:452766636f52f58e1afc38c6632d7e9ec1db2d588843dce720e3895ff811b94d", size = 1475766, upload-time = "2026-10-02T17:17:53.942Z" },
+    { url = "https://files.pythonhosted.org/packages/21/4d/61e1ccb0017fabdd32a2b7e723ffa9cbc78f6d281e01e5351f0e2793d2d9/singlestoredb-1.18.1-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1223db86712a82eedabf16325dea8eee5cfcf0e4884eca347cdb0c8f7b454197", size = 1481088, upload-time = "2026-10-02T17:17:55.426Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/1e/3fa9830c798fbf16664bc4d4c92dd3dbb0d509b803d8c03d82e281a09934/singlestoredb-1.18.1-cp38-abi3-win32.whl", hash = "sha256:96d4ffbb3786244534e1a4dd9fe236be5f4a6990a08a86665d84cac6261eafca", size = 715300, upload-time = "2026-10-02T17:17:57.138Z" },
+    { url = "https://files.pythonhosted.org/packages/42/8e/4cbf7c47562b5228ed6e2ba85175270d792cf5579b5cbe10097ed12d7220/singlestoredb-1.18.1-cp38-abi3-win_amd64.whl", hash = "sha256:d525616355a32f6f9896fec049035ec10ae3b018a6166db07b0f9cb167ccd11d", size = 712964, upload-time = "2026-10-02T17:17:58.501Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/a3/cff371690f4301a7390864d624d33db8b63bb96c763a32323352edc922c5/singlestoredb-1.18.1-py3-none-any.whl", hash = "sha256:7b66cb0dad296bb6a2151f2a2aee9fc9cdddd1de62c4adc9f65ff7aa67c71448", size = 673066, upload-time = "2026-10-02T17:17:59.892Z" },
+]
+
+[[package]]
 name = "six"
 version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4757,12 +4793,34 @@ wheels = [
 ]
 
 [[package]]
+name = "sqlalchemy-singlestoredb"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "singlestoredb" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/62/e3/f893cb96763e4d0bdcfd5a6661c5db405fd1c1997d420cd65106a2f60a66/sqlalchemy_singlestoredb-1.2.1.tar.gz", hash = "sha256:9cbb92278265487b64ab0b915e72d7cf7beb6f592b73a426bddceae509d06b69", size = 86889, upload-time = "2026-01-28T20:32:37.201Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/53/fe/03ee0908b8bdfa229266e923aed136f0ba98a519ba5c0154d87323e6dcf2/sqlalchemy_singlestoredb-1.2.1-py3-none-any.whl", hash = "sha256:88c51cb2cbb3a731938a1217dfab45f4a6431b607fca0ef94d0b45f5915ebedf", size = 106753, upload-time = "2026-01-28T20:32:35.499Z" },
+]
+
+[[package]]
 name = "sqlglot"
 version = "30.9.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/04/1d/b1380b3ee8fb63c50d7507e956a1228ddefff1a2601d79806c998ef6547b/sqlglot-30.9.0.tar.gz", hash = "sha256:20bed04b6482bf13560206cae517f451f46c321e04956ad71271ed1f12ce8802", size = 5885862, upload-time = "2026-06-04T15:33:52.268Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/13/4c/41b222c130950a077e1a0ba311df84a29b818db7c136ecc1aafbfad42e26/sqlglot-30.9.0-py3-none-any.whl", hash = "sha256:59b5f74f4d391e32e6980e8cd23cca8d47beac3c0140b711ead9ed05a824a8b5", size = 695762, upload-time = "2026-06-04T15:33:49.526Z" },
+]
+
+[[package]]
+name = "sqlparams"
+version = "6.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/ec/5d6a5ca217ecd7b08d404b7dc2025c752bdb393c9b34fcc6d48e1f70bb7e/sqlparams-6.2.0.tar.gz", hash = "sha256:3744a2ad16f71293db6505b21fd5229b4757489a9b09f3553656a1ae97ba7ca5", size = 34932, upload-time = "2025-01-25T16:21:59.646Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/97/e2/f1355629bb1eeb274babc947e2ba4e2e49250e934c86adcce3e54943bc8a/sqlparams-6.2.0-py3-none-any.whl", hash = "sha256:63b32ed9051bdc52e7e8b38bc4f78aed51796cdd9135e730f4c6a7db1048dedf", size = 17629, upload-time = "2025-01-25T16:21:58.272Z" },
 ]
 
 [[package]]

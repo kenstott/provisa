@@ -100,6 +100,9 @@ dependencies = [
     "impyla",  # REQ-1731: HiveServer2 direct driver (Thrift TCLIService)
     "pyexasol",  # REQ-1731: Exasol direct driver (Exasol's own WebSocket client)
     "pymysql",  # demo/sources/singlestore/prime.py — a plain sync client for a one-shot seed script
+    "singlestoredb",  # REQ-990: the SingleStore client — the `singlestoredb://` engine DSN
+    # (federation/engine.py _RDB_KINDS) and the store's streaming LOAD DATA LOCAL INFILE bulk path.
+    "sqlalchemy-singlestoredb",  # the SQLAlchemy dialect for `singlestoredb://` (separate package)
     "dulwich",  # REQ-1524: the per-org model repository. Pure Python — no git binary on the
     # host (GitPython shells out) and no native build (pygit2 needs libgit2), which REQ-294's
     # airgap-capable distribution cannot carry a compiler for.
