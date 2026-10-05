@@ -100,7 +100,9 @@ def _wired(monkeypatch, *, table_signal, source_signal):
         return SimpleNamespace(name=name)
 
     monkeypatch.setattr(push_wiring, "spawn_long_lived", _spawn)
-    state = SimpleNamespace(push_listener_disconnects={}, push_listener_tasks=[])
+    state = SimpleNamespace(
+        push_listener_disconnects={}, push_listener_tasks=[], push_listener_handles={}
+    )
     src = SimpleNamespace(id="shop", database="shop", change_signal=source_signal)
     tbl = {
         "id": 7,
