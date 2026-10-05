@@ -149,14 +149,18 @@ const TRINO_SPECS = [
 // sets up. Excluded from "core" the same way TRINO_SPECS is: a routine core-lane run has no Trino
 // backend at all and this spec would just fail on a missing PROVISA_E2E_TRINO_CONFIG.
 const SWAP_SPECS = ["**/engine-swap.spec.ts"];
+// Specs whose sources only an amd64 host can boot (exasol/docker-db never turns healthy under an
+// arm64 host's emulation). The core project collects them only on an amd64 host — ui-e2e-core.yml's
+// ubuntu-latest runner — so an arm64 dev box never collects them rather than skipping them.
+const AMD64_ONLY_SPECS = ["**/source-to-query-exasol.spec.ts"];
 // The vault a source's password is stored in encrypts at rest, and the key is what authorizes
 // reading it back (REQ-685/REQ-1695). This host has no OS keychain for the store to mint one in,
 // so the key is supplied explicitly — exactly as every deployment that stores secrets must, and as
 // every secrets-store suite does (tests/integration/test_secrets_store.py). A fixed value: these
 // backends are torn down with their data directories, and nothing here is a real credential.
-const E2E_ENCRYPTION_KEY = Buffer.from(
-  Array.from({ length: 32 }, (_, i) => i + 1),
-).toString("base64");
+const E2E_ENCRYPTION_KEY = Buffer.from(Array.from({ length: 32 }, (_, i) => i + 1)).toString(
+  "base64",
+);
 
 const LANE = process.env.PROVISA_E2E_LANE ?? "all";
 if (!["core", "trino", "all"].includes(LANE)) {
@@ -521,7 +525,18 @@ export default defineConfig({
   // exhaustive list of specs that address the Trino backend (they import TRINO_BACKEND_URL from
   // ./coverage); everything else runs on the DuckDB backend and belongs to core.
   projects: [
-    ...(RUNS_CORE ? [{ name: "core", testIgnore: [...TRINO_SPECS, ...SWAP_SPECS] }] : []),
+    ...(RUNS_CORE
+      ? [
+          {
+            name: "core",
+            testIgnore: [
+              ...TRINO_SPECS,
+              ...SWAP_SPECS,
+              ...(process.arch === "x64" ? [] : AMD64_ONLY_SPECS),
+            ],
+          },
+        ]
+      : []),
     ...(RUNS_TRINO ? [{ name: "trino", testMatch: TRINO_SPECS }] : []),
     // Requires RUNS_TRINO (the Trino webServer + its shared-org env overrides) exactly like the
     // "trino" project does — it is a separate project only so a routine core/trino run never

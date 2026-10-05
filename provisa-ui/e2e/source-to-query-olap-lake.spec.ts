@@ -27,12 +27,8 @@
 //   - hiveserver2 has a real DIRECT driver (provisa/executor/drivers/hive.py's HiveDriver, over
 //     impyla) and runs against the plain core-lane DuckDB backend, exactly like every other
 //     source-to-query.spec.ts case.
-//   - exasol has a real DIRECT driver (provisa/executor/drivers/exasol.py's ExasolDriver, over
-//     pyexasol/TLS) and is CI-ONLY (REQ-1763's RUNNING_IN_CI pattern, same as
-//     source-to-query-generic-rdbms.spec.ts's saphana/greenplum): its image is amd64-only,
-//     unbootable under arm64 emulation, so it still skips on Apple Silicon local dev but runs for
-//     real on ui-e2e-core.yml's ubuntu-latest runner (a genuine amd64 host). See that
-//     test.describe's own comment for the fixture-specific detail.
+//   - exasol (a real DIRECT driver too) lives in source-to-query-exasol.spec.ts: its image is
+//     amd64-only, so only an amd64 host collects that file (playwright.config.ts AMD64_ONLY_SPECS).
 //
 //   Run: cd provisa-ui && npx playwright test source-to-query-olap-lake --project=core
 //
@@ -41,8 +37,6 @@
 // RDBMS block (33xxx).
 
 import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,19 +57,6 @@ const PYTHON = path.join(ROOT, ".venv", "bin", "python");
 const PREFIX = "provisa-s2q-olap-lake";
 
 const E2E_HIVESERVER2_PORT = Number(process.env.PROVISA_DEMO_HIVESERVER2_PORT ?? 36910);
-
-// exasol only actually runs in CI (ubuntu-latest is a real amd64 Linux host) — the image is
-// amd64-only and unbootable under arm64 emulation (see that test's own comment below), the same
-// constraint source-to-query-generic-rdbms.spec.ts's RUNNING_IN_CI gate documents for
-// saphana/greenplum. process.env.CI is set to "true" by ui-e2e-core.yml specifically.
-const RUNNING_IN_CI = process.env.CI === "true";
-const E2E_EXASOL_PORT = Number(process.env.PROVISA_DEMO_EXASOL_PORT ?? 36930);
-// Exasol's TLS certificate is regenerated every container boot (see demo/sources/exasol/prime.py's
-// module doc) — there is no fixed fingerprint to hardcode, so prime.py writes the one THIS run's
-// container actually presents to a file this test reads back after provisioning.
-const E2E_EXASOL_FINGERPRINT_FILE =
-  process.env.PROVISA_DEMO_EXASOL_FINGERPRINT_FILE ??
-  path.join(os.tmpdir(), "provisa-e2e-olap-lake-exasol-fingerprint.txt");
 
 function provision(cmd: "up" | "down", names: string[], env: Record<string, string> = {}): void {
   try {
@@ -150,99 +131,6 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
     await releaseDraftTables(page, { sourceId });
-    const res = await page.request.post("/admin/graphql", {
-      data: { query: "{ tables { sourceId dqDataset } }" },
-    });
-    const tables = (await res.json()).data.tables as {
-      sourceId: string;
-      dqDataset: string | null;
-    }[];
-    const mine = tables.find((t) => t.sourceId === sourceId);
-    expect(mine?.dqDataset).toBeTruthy();
-    const registered = mine!.dqDataset!.split("/").pop()!;
-
-    const rows = await runSqlOnPage(
-      page,
-      `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
-    );
-    expect(rows).toHaveLength(3);
-    expect(rows[0]).toEqual(["1", "Widget A"]);
-    expect(rows[2]).toEqual(["3", "Widget C"]);
-  });
-});
-
-// ---------------------------------------------------------------------------------------------
-// exasol — DIRECT driver (pyexasol, executor/drivers/exasol.py), core lane / DuckDB backend, no
-// Trino routing needed. CI-only: exasol/docker-db needs privileged mode + shm_size 2g + several
-// GB RAM and a multi-minute cold EXAStorage init, and is amd64-only — under QEMU emulation on an
-// arm64 host it never becomes healthy (same constraint tests/integration/test_exasol_source_e2e.py
-// arch-gates on). ui-e2e-core.yml's ubuntu-latest runner is a genuine amd64 host, so this runs for
-// real there (RUNNING_IN_CI gate) — locally it still skips.
-// ---------------------------------------------------------------------------------------------
-test.describe("source to query through the UI: exasol (REQ-1731, REQ-1763)", () => {
-  let exasolFingerprint = "";
-
-  test.beforeAll(() => {
-    // Mirrors source-to-query-generic-rdbms.spec.ts's RUNNING_IN_CI pattern (and
-    // source-to-query-olap-lake-trino.spec.ts's druid beforeAll): no test.skip() signal inside
-    // beforeAll (a plain early return instead) — the per-test test.skip() below is what reports
-    // the actual skip; this only avoids provisioning a fixture nothing will use.
-    if (!RUNNING_IN_CI) return;
-    // EXAStorage cold init genuinely takes minutes, not seconds (see demo/sources/exasol/
-    // compose.yml's own healthcheck budget: 60 retries at 10s = up to 600s past container start).
-    test.setTimeout(900000);
-    if (fs.existsSync(E2E_EXASOL_FINGERPRINT_FILE)) fs.rmSync(E2E_EXASOL_FINGERPRINT_FILE);
-    provision("up", ["exasol"], {
-      PROVISA_DEMO_EXASOL_PORT: String(E2E_EXASOL_PORT),
-      PROVISA_DEMO_EXASOL_FINGERPRINT_FILE: E2E_EXASOL_FINGERPRINT_FILE,
-    });
-    exasolFingerprint = fs.readFileSync(E2E_EXASOL_FINGERPRINT_FILE, "utf8").trim();
-  });
-
-  test.afterAll(() => {
-    if (!RUNNING_IN_CI) return;
-    provision("down", ["exasol"]);
-    if (fs.existsSync(E2E_EXASOL_FINGERPRINT_FILE)) fs.rmSync(E2E_EXASOL_FINGERPRINT_FILE);
-  });
-
-  test("exasol: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    test.skip(
-      !RUNNING_IN_CI,
-      "exasol/docker-db needs privileged mode + several GB RAM + a multi-minute cold init, and " +
-        "is amd64-only (unbootable under arm64 emulation, verified — see " +
-        "tests/integration/test_exasol_source_e2e.py's identical arch gate); runs for real in " +
-        "CI (ubuntu-latest is a genuine amd64 host)",
-    );
-    test.setTimeout(180000);
-    const stamp = Date.now();
-    const sourceId = `e2e_exasol_${stamp}`;
-
-    await openSourcesForm(page);
-    await page.getByTestId("sources-id-input").fill(sourceId);
-    await page.getByTestId("sources-type-select").selectOption("exasol");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_EXASOL_PORT));
-    await page.getByLabel(/^Username/).fill("sys");
-    await page.getByLabel(/^Password/).fill("exasol");
-    await page.getByLabel(/^Database/).fill("PROVISA");
-    // Exasol always serves TLS with a self-signed, per-boot certificate — pin the fingerprint
-    // THIS run's container actually presents (read back from prime.py's output file above),
-    // exactly the same pin ExasolDriver.connect() (executor/drivers/exasol.py) needs to validate.
-    await page.getByLabel(/^Authentication/).selectOption("tls_fingerprint");
-    await page.getByLabel(/TLS Fingerprint/).fill(exasolFingerprint);
-    await submitSourceAndExpectListed(page, sourceId);
-
-    await openRegisterForm(page, sourceId);
-    await pickSchemaAndTable(page, "PROVISA", "WIDGETS");
-    await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
-      timeout: 60000,
-    });
-    await page.getByTestId("register-table-submit").click();
-    const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
-    await expect(row).toBeVisible({ timeout: 120000 });
-    // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId });
-
     const res = await page.request.post("/admin/graphql", {
       data: { query: "{ tables { sourceId dqDataset } }" },
     });
