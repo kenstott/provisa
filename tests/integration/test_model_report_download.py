@@ -214,6 +214,9 @@ async def served(
         for term in await glossary_repo.list_terms(conn):
             await glossary_repo.set_definition(conn, term["id"], f"The {term['name']}.")
     monkeypatch.setattr(app_module.state, "tenant_db", tenant_db, raising=False)
+    # The report reads the registered model from the model store (REQ-1922); the fixture's one
+    # plane holds it.
+    monkeypatch.setattr(app_module.state, "model_db", tenant_db, raising=False)
     monkeypatch.setattr(app_module.state, "config", None, raising=False)
     monkeypatch.setattr(
         app_module.state,

@@ -58,6 +58,8 @@ from provisa.otel_compat import annotate_request as _annotate_request
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.otel_compat import HeldRequestSpan
+from provisa.executor.redirect import COMMAND_NOT_REDIRECTED as _COMMAND_NOT_REDIRECTED
+from provisa.executor.redirect import REDIRECT_ROW_SHAPE as _REDIRECT_SHAPE
 from provisa.executor.result import ResultStream
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
@@ -76,11 +78,20 @@ def requested_role(params: dict) -> str | None:  # REQ-1620
     """The role, or comma-separated set of held roles, a connection names: ``provisa.role`` as a
     startup parameter, or set in ``options`` (``-c provisa.role=a,b``). Naming it both ways with
     different values is refused."""
+    named = _startup_setting(params, "provisa.role")
+    if len(named) > 1:
+        raise PermissionError(f"the connection names two roles to act as: {sorted(named)}")
+    return named.pop() if named else None
+
+
+def _startup_setting(params: dict, key_named: str) -> set[str]:
+    """The values a connection's startup packet gives ``key_named``: as a startup parameter of that
+    name, or set in ``options`` (``-c key=value``)."""
     import shlex
 
     named: set[str] = set()
-    if params.get("provisa.role"):
-        named.add(params["provisa.role"])
+    if params.get(key_named):
+        named.add(params[key_named])
     tokens = shlex.split(params.get("options") or "")
     for i, tok in enumerate(tokens):
         if tok == "-c" and i + 1 < len(tokens):
@@ -92,11 +103,75 @@ def requested_role(params: dict) -> str | None:  # REQ-1620
         else:
             continue
         key, sep, value = setting.partition("=")
-        if sep and key.strip() == "provisa.role" and value.strip():
+        if sep and key.strip() == key_named and value.strip():
             named.add(value.strip())
-    if len(named) > 1:
-        raise PermissionError(f"the connection names two roles to act as: {sorted(named)}")
-    return named.pop() if named else None
+    return named
+
+
+# REQ-1194/REQ-1224 (amended 2026-10-04): pgwire's forced redirect is a session setting. A
+# connection turns it on with ``provisa.redirect`` (and names the file with
+# ``provisa.redirect_format``) as a startup parameter, in ``options``, or with SET / RESET.
+_REDIRECT_KEYS = ("provisa.redirect", "provisa.redirect_format")
+_REDIRECT_SET_RE = re.compile(
+    r"^\s*(?:SET\s+(?:SESSION\s+)?(?P<key>provisa\.redirect(?:_format)?)\s*(?:=|\s+TO\s+)\s*"
+    r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.redirect(?:_format)?))\s*;?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_TRUE_WORDS = frozenset({"on", "true", "yes", "1"})
+_FALSE_WORDS = frozenset({"off", "false", "no", "0"})
+
+
+def _redirect_row(handle: dict | None, delivery: Any):
+    """The one row a delivered statement answers, in :data:`_REDIRECT_SHAPE`'s columns."""
+    from provisa.executor.redirect import redirect_row
+    from provisa.executor.result import QueryResult
+
+    if handle is None:
+        raise RuntimeError("the materialize terminal answered rows instead of a delivery handle")
+    return QueryResult(
+        rows=[redirect_row(handle, delivery)],
+        column_names=[name for name, _ in _REDIRECT_SHAPE],
+        column_types=[sql_type for _, sql_type in _REDIRECT_SHAPE],
+    )
+
+
+class RedirectSettingInvalid(ValueError):
+    """A ``provisa.redirect*`` value that cannot be read; refused by name, never defaulted."""
+
+
+def _redirect_setting(key: str, value: str | None) -> bool | str | None:
+    """The value ``key`` holds once set to ``value`` (None: reset). ``provisa.redirect`` is a
+    boolean; ``provisa.redirect_format`` a format name or media type (``DEFAULT`` resets it)."""
+    from provisa.executor.redirect import RedirectFormatUnknown, parse_redirect_format
+
+    if value is None:
+        return False if key == "provisa.redirect" else None
+    word = value.strip().strip("'\"").strip()
+    if key == "provisa.redirect":
+        if word.lower() in _TRUE_WORDS:
+            return True
+        if word.lower() in _FALSE_WORDS:
+            return False
+        raise RedirectSettingInvalid(f"provisa.redirect must be on or off, not {word!r}")
+    if word.lower() == "default":
+        return None
+    try:
+        return parse_redirect_format(word)
+    except RedirectFormatUnknown as exc:
+        raise RedirectSettingInvalid(str(exc)) from exc
+
+
+def startup_redirect_settings(params: dict) -> dict[str, bool | str | None]:
+    """The ``provisa.redirect*`` settings a startup packet gives (only those it names). Naming one
+    twice with different values, or a value that cannot be read, is refused."""
+    settings: dict[str, bool | str | None] = {}
+    for key in _REDIRECT_KEYS:
+        named = _startup_setting(params, key)
+        if len(named) > 1:
+            raise RedirectSettingInvalid(f"the connection gives {key} two values: {sorted(named)}")
+        if named:
+            settings[key] = _redirect_setting(key, named.pop())
+    return settings
 
 
 async def _run_with_org(org_id: str | None, coro):  # REQ-1266
@@ -801,6 +876,39 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-1882: the connection thread that created this session and runs its loop.
         self._owner_thread: int | None = threading.get_ident()
         self._close_requested = False
+        # REQ-1194/REQ-1224 (amended 2026-10-04): the forced redirect this connection asked for
+        # (startup parameter, ``options`` or SET); never automatic on this streaming transport.
+        self.redirect: bool = False
+        self.redirect_format: str | None = None
+
+    def apply_redirect_settings(self, settings: dict[str, bool | str | None]) -> None:
+        """Hold the ``provisa.redirect*`` settings read from the startup packet or a SET."""
+        for key, value in settings.items():
+            if key == "provisa.redirect":
+                self.redirect = bool(value)
+            else:
+                self.redirect_format = value if isinstance(value, str) else None
+
+    def forced_delivery(self):
+        """The delivery every read this session runs is landed by, or None (rows are answered)."""
+        from provisa.executor.redirect import delivery_from_request
+
+        return delivery_from_request(
+            force_redirect=self.redirect,
+            redirect_format=self.redirect_format,
+            threshold=None,
+            role=self.role_id,
+        )
+
+    def _set_redirect(self, sql: str) -> bool:
+        """Apply ``SET provisa.redirect* ...`` / ``RESET provisa.redirect*``; False when ``sql`` is
+        not one of those."""
+        m = _REDIRECT_SET_RE.match(sql)
+        if m is None:
+            return False
+        key = (m.group("key") or m.group("reset")).lower()
+        self.apply_redirect_settings({key: _redirect_setting(key, m.group("value"))})
+        return True
 
     def cursor(self):
         return None
@@ -887,6 +995,12 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         except Exception as exc:
             log.warning("[PGWIRE] DESCRIBE EXCEPTION sql=%r", stripped[:300], exc_info=True)
             raise RuntimeError(str(exc)) from exc
+        if self.redirect:
+            # REQ-1194: a redirected statement answers where its result was delivered, not its
+            # rows; that one row is the shape the client is told.
+            if described.governed is None:
+                raise RuntimeError(_COMMAND_NOT_REDIRECTED)
+            return _StatementDescription(_REDIRECT_SHAPE, described.governed, stripped)
         return _StatementDescription(described.shape, described.governed, stripped)
 
     def _with_org(self, fn: Callable[[], Any]) -> Any:
@@ -936,6 +1050,10 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # query) reads the values inline.
         stripped = sql.strip()
         bound = list(params) if params else None
+        if self._set_redirect(stripped):  # REQ-1194: SET / RESET provisa.redirect*
+            from provisa.executor.result import QueryResult
+
+            return ProvisaQueryResult(QueryResult(rows=[], column_names=[]), stripped)
         disposition = classify(stripped)
         if disposition == "INTERCEPT":
             from provisa.api.app import state
@@ -978,10 +1096,13 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # is served by the _execute_plan branch below (decoded rows, or the raw DataRow replay
         # written for these codes).
         _formats = list(result_fmt) if result_fmt else None
+        # REQ-1194/REQ-1224 (amended 2026-10-04): a forced redirect is the session's setting; this
+        # streaming transport is never delivered automatically.
+        delivery = self.forced_delivery()
         if prepared is not None and governed_statement_is_current(prepared, state):
-            to_plan = plan_pgwire_statement(prepared, bound, _formats)
+            to_plan = plan_pgwire_statement(prepared, bound, _formats, deliver=delivery)
         else:
-            to_plan = govern_pgwire_plan(stripped, self.role_id, bound, _formats)
+            to_plan = govern_pgwire_plan(stripped, self.role_id, bound, _formats, deliver=delivery)
 
         # Govern on this connection's loop, then — for the ENGINE route — drain the engine's SYNC
         # streaming terminal on this same thread (REQ-028). Mirrors Flight SQL's govern-then-stream
@@ -1033,7 +1154,17 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         with _stage(_tracer, "pgwire.execute", name="execute"):  # REQ-1910
             try:
-                if isinstance(governed, _Plan) and governed.writes_tables:
+                if delivery is not None and not isinstance(governed, _Plan):
+                    raise RuntimeError(_COMMAND_NOT_REDIRECTED)
+                if isinstance(governed, _Plan) and governed.materialize is not None:
+                    # REQ-1194: the result is landed in the results store by the one materialize
+                    # terminal; the statement answers one row naming where.
+                    delivered = cl.run(
+                        _run_with_org(self.org_id, _execute_plan(governed)),
+                        timeout=request_timeout_for("pgwire"),
+                    )
+                    result = _redirect_row(delivered.redirect, governed.materialize)
+                elif isinstance(governed, _Plan) and governed.writes_tables:
                     # A data write executes once, through the one terminal every surface's write
                     # passes (its after-write step and audit), and answers its count. It never
                     # streams: a server-side cursor cannot be declared over a write.
@@ -1521,6 +1652,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             )
             ctx = BVContext(conn.create_session(), None, params)
             self._session = ctx.session  # type: ignore[assignment]
+            try:
+                # REQ-1194: provisa.redirect / provisa.redirect_format named at connect.
+                ctx.session.apply_redirect_settings(startup_redirect_settings(params))  # type: ignore[attr-defined]
+            except RedirectSettingInvalid as exc:
+                self._send_pg_error("FATAL", "22023", str(exc))
+                return None
             self.send_auth_request(ctx)
             return ctx
         else:

@@ -226,6 +226,12 @@ class TestDatasetChangeEvents:
 # ---------------------------------------------------------------------------
 
 
+async def _every_pair_is_a_base_table(_sql, schemas, names):
+    """The catalog's answer to the trigger walk's base-table lookup: every named relation is an
+    ordinary table (relkind r)."""
+    return [{"schema": s, "name": n} for s, n in zip(schemas, names)]
+
+
 class TestSubscriptionTriggerFallback:
     async def test_trigger_install_failure_returns_partial_installed_set(self):
         # REQ-566: when trigger installation fails for a table, it is omitted from
@@ -234,6 +240,8 @@ class TestSubscriptionTriggerFallback:
 
         # Mock connection that always raises on execute (simulates insufficient privilege)
         failing_conn = MagicMock()
+        failing_conn.capabilities.listen_notify = True  # a PostgreSQL control plane
+        failing_conn.fetch = AsyncMock(side_effect=_every_pair_is_a_base_table)
         failing_conn.execute = AsyncMock(side_effect=Exception("permission denied"))
 
         tables = [
@@ -251,6 +259,8 @@ class TestSubscriptionTriggerFallback:
 
         # Mock connection where execute succeeds
         ok_conn = MagicMock()
+        ok_conn.capabilities.listen_notify = True  # a PostgreSQL control plane
+        ok_conn.fetch = AsyncMock(side_effect=_every_pair_is_a_base_table)
         ok_conn.execute = AsyncMock(return_value=None)
 
         tables = [
@@ -266,6 +276,8 @@ class TestSubscriptionTriggerFallback:
         from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
         conn = MagicMock()
+        conn.capabilities.listen_notify = True  # a PostgreSQL control plane
+        conn.fetch = AsyncMock(side_effect=_every_pair_is_a_base_table)
         conn.execute = AsyncMock(return_value=None)
 
         tables = [
@@ -292,6 +304,8 @@ class TestSubscriptionTriggerFallback:
             # customers succeeds
 
         conn = MagicMock()
+        conn.capabilities.listen_notify = True  # a PostgreSQL control plane
+        conn.fetch = AsyncMock(side_effect=_every_pair_is_a_base_table)
         conn.execute = _execute_side_effect
 
         tables = [

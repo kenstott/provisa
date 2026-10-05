@@ -146,6 +146,7 @@ def _state(db: Database, backend: _Backend) -> SimpleNamespace:
         freshness_gate=False,
         replicate=None,
         load_protected=False,
+        region=None,  # REQ-1921: a source and a table each carry their region
     )
     table = SimpleNamespace(
         id=_TABLE_ID,
@@ -159,6 +160,7 @@ def _state(db: Database, backend: _Backend) -> SimpleNamespace:
         change_signal=None,
         replicate=None,
         load_protected=None,
+        region=None,
     )
     engine = SimpleNamespace(
         engine=SimpleNamespace(

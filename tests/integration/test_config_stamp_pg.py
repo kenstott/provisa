@@ -122,7 +122,7 @@ async def test_a_row_rewritten_with_the_values_it_holds_is_not_a_change(engine):
         )
         conn.execute(
             sa.text(
-                f"INSERT INTO \"{db.search_path}\".roles (id) VALUES ('risk_reviewer') "
+                f"INSERT INTO \"{db.search_path}\".roles (id, origin) VALUES ('risk_reviewer', 'admin') "
                 "ON CONFLICT DO NOTHING"
             )
         )
@@ -136,7 +136,9 @@ async def test_a_second_boot_of_the_same_schema_does_not_advance_the_stamp(engin
     await init_schema(db, _SCHEMA_SQL, org_id="acme")
     assert await config_stamp.read(db) == before
     with engine.begin() as conn:
-        conn.execute(sa.insert(_roles(db)).values(id="risk_reviewer", capabilities=[]))
+        conn.execute(
+            sa.insert(_roles(db)).values(id="risk_reviewer", capabilities=[], origin="admin")
+        )
     assert await _model(db) == before[config_stamp.MODEL] + 1  # one trigger per event, not two
 
 
@@ -147,7 +149,9 @@ async def test_each_org_schema_has_its_own_stamp(engine):
     # The writer's connection carries NO org search_path: the trigger finds the stamp of the
     # schema the written table lives in.
     with engine.begin() as conn:
-        conn.execute(sa.insert(_roles(acme)).values(id="risk_reviewer", capabilities=[]))
+        conn.execute(
+            sa.insert(_roles(acme)).values(id="risk_reviewer", capabilities=[], origin="admin")
+        )
     assert await _model(globex) == before
     # ...and a writer whose connection is scoped to ANOTHER org still advances the right one.
     acme_before = await _model(acme)

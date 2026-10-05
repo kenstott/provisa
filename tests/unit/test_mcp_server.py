@@ -307,7 +307,7 @@ async def test_run_sql_routes_through_govern_and_route(state, monkeypatch):
         session_vars=None,
         as_of=None,
         deliver=None,
-        buffered=False,
+        buffered=True,  # REQ-1224: an MCP tool result is buffered
         serve_cached=True,  # REQ-1897: the batch executes at the chokepoint, which serves a hit
     )
     assert result["columns"] == ["id", "name"]
@@ -370,7 +370,7 @@ async def test_run_sql_composed_command_routes_to_pipeline(state, monkeypatch):
         session_vars=None,
         as_of=None,
         deliver=None,
-        buffered=False,
+        buffered=True,  # REQ-1224: an MCP tool result is buffered
         serve_cached=True,  # REQ-1897: the batch executes at the chokepoint, which serves a hit
     )
 
@@ -742,7 +742,9 @@ async def test_generate_explore_queries_returns_per_target_queries_and_errors(st
     state.config.nl = SimpleNamespace(rate_limit=None)  # no rate_limiter configured -> skipped
     fake_store = _FakeJobStore()
 
-    async def fake_run_nl_job(job_id, question, role, app_state, job_store, llm, strict=False):
+    async def fake_run_nl_job(
+        job_id, question, role, app_state, job_store, llm, strict=False, *, deliver
+    ):
         job = await job_store.get(job_id)
         job.branches["sql"] = BranchResult(query="SELECT 1", error=None)
         job.branches["graphql"] = BranchResult(query=None, error="NOT_APPLICABLE")
@@ -784,3 +786,34 @@ async def test_mcp_server_not_started_in_high_security_mode(monkeypatch):
 
     monkeypatch.setenv("PROVISA_MCP_PORT", "8100")
     assert server.start_mcp_server(SimpleNamespace(security_high=True)) is None
+
+
+async def test_run_sql_forces_a_delivery_and_answers_its_handle(state, monkeypatch):
+    """REQ-1194: ``redirect`` delivers the whole result to the results store; the tool answers the
+    handle and no rows. A format that is no format is refused by name."""
+    import provisa.pgwire._pipeline as pipeline
+
+    plan = pipeline._Plan(
+        route=Route.ENGINE, sql="SELECT 1", source_id="pg", dialect="trino", physical_sql="SELECT 1"
+    )
+    govern = AsyncMock(return_value=plan)
+    handle = {"sink": "object-store", "redirect_url": "https://x/r", "row_count": 2}
+    execute = AsyncMock(return_value=QueryResult(rows=[], column_names=[], redirect=handle))
+    monkeypatch.setattr(pipeline, "_govern_and_route", govern)
+    monkeypatch.setattr(pipeline, "_execute_plan", execute)
+    monkeypatch.setattr(
+        "provisa.executor.redirect.request_redirect_config",
+        lambda threshold: SimpleNamespace(default_format=None, threshold=threshold),
+    )
+
+    result = await tools.run_sql(
+        state, "analyst", "SELECT * FROM sales.orders", redirect=True, redirect_format="parquet"
+    )
+    assert result["redirect"] == handle and result["rows"] == [] and result["total_rows"] == 2
+    deliver = govern.await_args.kwargs["deliver"]
+    assert deliver is not None and deliver.output_format == "parquet"
+
+    from provisa.executor.redirect import RedirectFormatUnknown
+
+    with pytest.raises(RedirectFormatUnknown):
+        await tools.run_sql(state, "analyst", "SELECT 1", redirect=True, redirect_format="xlsx")

@@ -204,6 +204,7 @@ class TestFlightSqlDispatchHopCount:
 
         plan = SimpleNamespace(
             warnings=[],  # REQ-1350: nothing to say
+            materialize=None,  # as _Plan: no delivery asked for (REQ-1194)
             route=Route.DIRECT,
             source_id="src1",
             sql="SELECT 1",
@@ -248,6 +249,7 @@ class TestFlightSqlDispatchHopCount:
 
         plan = SimpleNamespace(
             warnings=[],  # REQ-1350: nothing to say
+            materialize=None,  # as _Plan: no delivery asked for (REQ-1194)
             route=Route.ENGINE,
             physical_sql="SELECT 1",
             sources=["src1"],

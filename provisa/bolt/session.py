@@ -577,16 +577,22 @@ class BoltSession:
         # REQ-1194/REQ-1195: a caller requests materialization via Bolt transaction metadata — the
         # side-channel that rides RUN's `extra` map without touching the record stream. The handle is
         # surfaced in the trailing PULL SUCCESS metadata.
-        from provisa.executor.redirect import delivery_from_request
+        from provisa.executor.redirect import delivery_from_request, parse_redirect_format
 
         tx_meta = extra.get("tx_metadata") or {}
         _redir_thr = tx_meta.get("provisa_redirect_threshold")
-        delivery = delivery_from_request(
-            force_redirect=str(tx_meta.get("provisa_redirect", "")).lower() == "true",
-            redirect_format=tx_meta.get("provisa_redirect_format"),
-            threshold=int(_redir_thr) if _redir_thr is not None else None,
-            role=role_id,
-        )
+        _redir_fmt = tx_meta.get("provisa_redirect_format")
+        try:
+            # A format or threshold that cannot be read is refused by name, never defaulted.
+            delivery = delivery_from_request(
+                force_redirect=str(tx_meta.get("provisa_redirect", "")).lower() == "true",
+                redirect_format=parse_redirect_format(str(_redir_fmt)) if _redir_fmt else None,
+                threshold=int(_redir_thr) if _redir_thr is not None else None,
+                role=role_id,
+            )
+        except ValueError as exc:
+            self.send_failure(_ARGUMENT_ERROR, f"invalid redirect metadata: {exc}")
+            return
 
         from provisa.core.request_context import reset_current_org, set_current_org
         from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope

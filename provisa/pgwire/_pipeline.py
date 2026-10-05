@@ -1451,6 +1451,10 @@ async def route_governed(
             raise ValueError("EXPLAIN cannot be combined with result delivery")
         if _is_mutation:
             raise ValueError("EXPLAIN is only supported for read statements")
+    if deliver is not None and _is_mutation:
+        # REQ-1194: a delivery lands a result set; a write answers a count and has none to land.
+        # Refused by name rather than handed to the engine's CTAS terminal.
+        raise ValueError("a write has no result set to deliver to the results store")
 
     # REQ-301: strip _nf_* WHERE conditions (native API params, e.g. _nf_petId) before routing,
     # same as the compiled path (_govern_and_route_compiled) — without this, an API table with a
@@ -2996,13 +3000,15 @@ async def govern_batch_final_plan(
     *,
     session_vars: dict[str, str] | None = None,
     serve_cached: bool = False,
+    deliver: Delivery | None,
 ) -> _Plan:
     """Govern+execute all but the LAST statement of a batch, and return the governed+stamped plan for
     the last statement — for Arrow/streaming surfaces (Flight SQL, airport) that render the final
     statement's rows themselves. Guarantees a multi-statement batch's leading statements still run
     (governed), rather than being silently dropped by ``parse_one``. A single statement runs nothing
     extra and just returns its plan. ``serve_cached``: the caller serves a Route.CACHE final plan
-    (see :func:`route_governed`)."""
+    (see :func:`route_governed`). ``deliver``: the forced redirect the request asked for
+    (REQ-1194), applied to the last statement -- the one whose result is answered."""
     from provisa.compiler.sql_rewrite import split_sql_statements
 
     if state is None:
@@ -3014,7 +3020,11 @@ async def govern_batch_final_plan(
         plan = await _govern_and_route(stmt, role_id, session_vars=session_vars, serve_cached=True)
         await _execute_plan(plan, state)
     return await _govern_and_route(
-        statements[-1], role_id, session_vars=session_vars, serve_cached=serve_cached
+        statements[-1],
+        role_id,
+        session_vars=session_vars,
+        serve_cached=serve_cached,
+        deliver=deliver,
     )
 
 
@@ -3025,6 +3035,7 @@ async def govern_batch_final_plan_with_fn(
     *,
     session_vars: dict[str, str] | None = None,
     serve_cached: bool = False,
+    deliver: Delivery | None,
 ) -> _Plan | QueryResult:
     """``govern_batch_final_plan`` with the registered-function check folded into the SAME
     coroutine (REQ-1887).
@@ -3040,9 +3051,19 @@ async def govern_batch_final_plan_with_fn(
         from provisa.api.app import state  # type: ignore[assignment]
     fn_result = await maybe_invoke_registered_function(sql, role_id, state)
     if fn_result is not None:
+        if deliver is not None:
+            # REQ-1194: a command's output is not a governed read the results store lands.
+            from provisa.executor.redirect import COMMAND_NOT_REDIRECTED
+
+            raise ValueError(COMMAND_NOT_REDIRECTED)
         return fn_result
     return await govern_batch_final_plan(
-        sql, role_id, state, session_vars=session_vars, serve_cached=serve_cached
+        sql,
+        role_id,
+        state,
+        session_vars=session_vars,
+        serve_cached=serve_cached,
+        deliver=deliver,
     )
 
 
@@ -3825,9 +3846,17 @@ async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:  # REQ-267
 
 
 async def govern_pgwire_plan(  # REQ-028, REQ-266
-    sql: str, role_id: str, params: list | None = None, wire_formats: list[int] | None = None
+    sql: str,
+    role_id: str,
+    params: list | None = None,
+    wire_formats: list[int] | None = None,
+    *,
+    deliver: Delivery | None,
 ) -> _Plan | QueryResult:
     """Govern a pgwire statement to its last-mile plan WITHOUT executing the ENGINE terminal.
+
+    ``deliver`` — the forced redirect the session asked for (REQ-1194), or None; pgwire is a
+    streaming transport and is never delivered automatically (REQ-1224 amended 2026-10-04).
 
     ``wire_formats`` — the Bind's result format codes, when the client stated them. pgwire serves
     a Route.CACHE plan (its last terminal branch is ``_execute_plan``), so an opted-in read is
@@ -3873,7 +3902,7 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
         return fn_result
 
     plan = await _govern_and_route(
-        sql, role_id, params=params, serve_cached=True, wire_formats=wire_formats
+        sql, role_id, params=params, serve_cached=True, wire_formats=wire_formats, deliver=deliver
     )
     return plan
 
@@ -3941,15 +3970,19 @@ async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # RE
 
 
 async def plan_pgwire_statement(  # REQ-589
-    governed: _Governed, params: list | None, wire_formats: list[int] | None = None
+    governed: _Governed,
+    params: list | None,
+    wire_formats: list[int] | None = None,
+    *,
+    deliver: Delivery | None,
 ) -> _Plan:
     """The executable plan for a statement :func:`describe_pgwire_statement` already governed, with
     the Bind's parameter values. Routing runs here, against live state; governance does not run
-    again. ``wire_formats``: see :func:`govern_pgwire_plan`."""
+    again. ``wire_formats`` and ``deliver``: see :func:`govern_pgwire_plan`."""
     from provisa.api.app import state
 
     plan = await route_governed(
-        governed, params=params, serve_cached=True, wire_formats=wire_formats
+        governed, params=params, serve_cached=True, wire_formats=wire_formats, deliver=deliver
     )
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
 
@@ -3966,7 +3999,7 @@ async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266,
         ValueError       – SQL parse / validation error
         RuntimeError     – routing / execution error
     """
-    res = await govern_pgwire_plan(sql, role_id)
+    res = await govern_pgwire_plan(sql, role_id, deliver=None)
     if isinstance(res, _Plan):
         return await _execute_plan(res)
     return res

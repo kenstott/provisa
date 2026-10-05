@@ -121,7 +121,7 @@ def job_id_and_pollable_result(shared_data: dict) -> None:
 
         executed: list[str] = []
 
-        async def _fake_execute(_query, target, _role, _app_state):
+        async def _fake_execute(_query, target, _role, _app_state, *, deliver):
             executed.append(target)
             return {"columns": ["n"], "rows": [{"n": 1}]}
 
@@ -133,6 +133,7 @@ def job_id_and_pollable_result(shared_data: dict) -> None:
                 shared_data["app_state"],
                 store,
                 shared_data["llm"],
+                deliver=None,
             )
 
         polled = await store.get(job_id)
@@ -340,7 +341,7 @@ def results_are_returned(shared_data: dict) -> None:
 
         executed: list[str] = []
 
-        async def _fake_execute(_query, target, _role, _app_state):
+        async def _fake_execute(_query, target, _role, _app_state, *, deliver):
             executed.append(target)
             if target == "graphql":
                 return {"data": {"persons": [{"id": "1", "name": "Alice"}]}}
@@ -371,6 +372,7 @@ def results_are_returned(shared_data: dict) -> None:
                             shared_data["app_state"],
                             store,
                             shared_data["llm"],
+                            deliver=None,
                         )
 
         job = await store.get(job_id)

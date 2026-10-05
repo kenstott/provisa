@@ -147,7 +147,9 @@ class TestHandleQuery:
         # New pipeline seam: _handle_query lowers the request to a semantic SELECT, then
         # governs/routes/executes via provisa.pgwire._pipeline. Mock at that boundary.
         # cache_hit=None: routed to the API cache, not answered from the response cache.
-        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None, cache_hit=None, warnings=[])
+        fake_plan = SimpleNamespace(
+            route=Route.CACHE, source_id=None, cache_hit=None, warnings=[], materialize=None
+        )
         fake_result = SimpleNamespace(column_names=["id", "amount"], rows=[[1, 100.0], [2, 200.0]])
 
         with (
@@ -199,7 +201,9 @@ class TestHandleQuery:
         from provisa.transpiler.router import Route
 
         # cache_hit=None: routed to the API cache, not answered from the response cache.
-        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None, cache_hit=None, warnings=[])
+        fake_plan = SimpleNamespace(
+            route=Route.CACHE, source_id=None, cache_hit=None, warnings=[], materialize=None
+        )
         # One more row than _GRPC_BATCH_ROWS so two batch messages are emitted: a full one, then
         # a one-row remainder — proves both the full-batch flush and the trailing partial flush.
         n_rows = _GRPC_BATCH_ROWS + 1
@@ -253,7 +257,9 @@ class TestHandleQuery:
         from provisa.transpiler.router import Route
 
         # cache_hit=None: routed to the API cache, not answered from the response cache.
-        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None, cache_hit=None, warnings=[])
+        fake_plan = SimpleNamespace(
+            route=Route.CACHE, source_id=None, cache_hit=None, warnings=[], materialize=None
+        )
         fake_rows = [[i, float(i)] for i in range(7)]
         fake_result = SimpleNamespace(column_names=["id", "amount"], rows=fake_rows)
 
@@ -305,6 +311,7 @@ class TestHandleQuery:
 
         fake_plan = SimpleNamespace(
             warnings=[],
+            materialize=None,  # no delivery forced
             route=Route.DIRECT,
             source_id="pg1",
             sql="SELECT id, amount FROM orders",
@@ -403,6 +410,7 @@ class TestHandleQuery:
 
         fake_plan = SimpleNamespace(
             warnings=[],
+            materialize=None,  # no delivery forced
             route=Route.DIRECT,
             source_id="pg1",
             sql="SELECT id, amount FROM orders",

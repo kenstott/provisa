@@ -452,11 +452,11 @@ class TestExecutorRouting:
                 new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]), None)]),
             ) as fake_exec,
         ):
-            result = await executor._execute_grpc("QueryPetsAggregate", "admin", app_state)
+            result = await executor._execute_grpc("QueryPetsAggregate", "admin", app_state, None)
         # _execute_grpc calls _grpc_aggregate_graphql_text(ctx, "Pets", None) — funcs is None
         # when the query text carries no funcs= suffix (aggregate=true case).
         fake_text.assert_called_once_with(app_state.contexts["admin"], "Pets", None)
-        fake_exec.assert_awaited_once_with("{ pets_aggregate { count } }", "admin", app_state)
+        fake_exec.assert_awaited_once_with("{ pets_aggregate { count } }", "admin", app_state, None)
         # split_agg_columns: nested_in="aggregate" → len==1 → top-level scalar
         assert result == {"count": 5}
 
@@ -478,7 +478,7 @@ class TestExecutorRouting:
             ) as fake_exec,
         ):
             result = await executor._execute_grpc(
-                "QueryPetsGroupBy(by=[species])", "admin", app_state
+                "QueryPetsGroupBy(by=[species])", "admin", app_state, None
             )
         # _execute_grpc calls _grpc_group_by_graphql_text(ctx, "Pets", ["species"], None, False, None) —
         # funcs is None and include_nodes/include are absent when the query text carries no
@@ -506,7 +506,7 @@ class TestExecutorRouting:
                 executor, "_execute_sql", new=AsyncMock(return_value={"columns": [], "rows": []})
             ) as fake_exec,
         ):
-            await executor._execute_grpc("QueryPets", "admin", app_state)
+            await executor._execute_grpc("QueryPets", "admin", app_state, None)
         fake_exec.assert_awaited_once()
 
     async def test_execute_jsonapi_aggregate_routes_through_graphql(self):
@@ -527,11 +527,11 @@ class TestExecutorRouting:
             ) as fake_exec,
         ):
             result = await executor._execute_jsonapi(
-                "/data/jsonapi/pet_store/pets?aggregate=true", "admin", app_state
+                "/data/jsonapi/pet_store/pets?aggregate=true", "admin", app_state, None
             )
         # aggregate=true → _parse_aggregate_funcs("true") = None → called with (ctx, "Pets", None)
         fake_text.assert_called_once_with(app_state.contexts["admin"], "Pets", None)
-        fake_exec.assert_awaited_once_with("{ pets_aggregate { count } }", "admin", app_state)
+        fake_exec.assert_awaited_once_with("{ pets_aggregate { count } }", "admin", app_state, None)
         # serialize_aggregate: nested_in="aggregate" → agg_alias path → {"count": 5}
         # _execute_domain_table_aggregate wraps as {"data": None, "meta": {"aggregate": ...}}
         assert result == {"data": None, "meta": {"aggregate": {"count": 5}}}
@@ -554,7 +554,10 @@ class TestExecutorRouting:
             ) as fake_exec,
         ):
             result = await executor._execute_jsonapi(
-                "/data/jsonapi/pet_store/pets?groupBy=species&aggregate=true", "admin", app_state
+                "/data/jsonapi/pet_store/pets?groupBy=species&aggregate=true",
+                "admin",
+                app_state,
+                None,
             )
         # aggregate=true, no includeNodes param → funcs=None, include_nodes=False
         fake_text.assert_called_once_with(
@@ -607,6 +610,7 @@ class TestExecutorRouting:
                 "/data/jsonapi/pet_store/pets?groupBy=species&aggregate=true&includeNodes=true",
                 "admin",
                 app_state,
+                None,
             )
         fake_text.assert_called_once_with(
             app_state.contexts["admin"], "Pets", ["species"], None, True, []
@@ -653,6 +657,7 @@ class TestExecutorRouting:
                 "GET /data/rest/pet_store/pets?groupBy=species&aggregate=true&includeNodes=true",
                 "admin",
                 app_state,
+                None,
             )
         fake_text.assert_called_once_with(
             app_state.contexts["admin"], "Pets", ["species"], None, True, []
@@ -677,9 +682,9 @@ class TestExecutorRouting:
             new=AsyncMock(return_value={"columns": [], "rows": []}),
         ) as fake_exec:
             await executor._execute_jsonapi(
-                "/data/jsonapi/pet_store/pets?page[size]=20", "admin", app_state
+                "/data/jsonapi/pet_store/pets?page[size]=20", "admin", app_state, None
             )
-        fake_exec.assert_awaited_once_with("pet_store", "pets", "admin", app_state)
+        fake_exec.assert_awaited_once_with("pet_store", "pets", "admin", app_state, None)
 
     async def test_execute_openapi_aggregate_routes_through_graphql(self):
         from provisa.nl import executor
@@ -699,11 +704,11 @@ class TestExecutorRouting:
             ) as fake_exec,
         ):
             result = await executor._execute_openapi(
-                "GET /data/rest/pet_store/pets?aggregate=true", "admin", app_state
+                "GET /data/rest/pet_store/pets?aggregate=true", "admin", app_state, None
             )
         # aggregate=true → _parse_aggregate_funcs("true") = None → called with (ctx, "Pets", None)
         fake_text.assert_called_once_with(app_state.contexts["admin"], "Pets", None)
-        fake_exec.assert_awaited_once_with("{ pets_aggregate { count } }", "admin", app_state)
+        fake_exec.assert_awaited_once_with("{ pets_aggregate { count } }", "admin", app_state, None)
         # _execute_domain_table_aggregate for openapi: {"data": agg_payload}
         assert result == {"data": {"count": 5}}
 
@@ -725,7 +730,10 @@ class TestExecutorRouting:
             ) as fake_exec,
         ):
             result = await executor._execute_openapi(
-                "GET /data/rest/pet_store/pets?groupBy=species&aggregate=true", "admin", app_state
+                "GET /data/rest/pet_store/pets?groupBy=species&aggregate=true",
+                "admin",
+                app_state,
+                None,
             )
         # aggregate=true, no includeNodes param → funcs=None, include_nodes=False
         fake_text.assert_called_once_with(
@@ -744,8 +752,10 @@ class TestExecutorRouting:
             "_execute_domain_table",
             new=AsyncMock(return_value={"columns": [], "rows": []}),
         ) as fake_exec:
-            await executor._execute_openapi("GET /data/rest/pet_store/pets", "admin", app_state)
-        fake_exec.assert_awaited_once_with("pet_store", "pets", "admin", app_state)
+            await executor._execute_openapi(
+                "GET /data/rest/pet_store/pets", "admin", app_state, None
+            )
+        fake_exec.assert_awaited_once_with("pet_store", "pets", "admin", app_state, None)
 
 
 class TestAggregationPlanFromGraphql:

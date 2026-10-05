@@ -199,12 +199,23 @@ def _count_batch_rows(batches: Any, tag: str) -> int:
 
 
 def _peak_rss_bytes() -> int:
-    """Peak resident-set size of this process so far, normalized to BYTES. ``ru_maxrss`` is KiB on Linux
-    and bytes on macOS — normalize so the reported metric is cross-platform comparable (REQ-1220)."""
+    """Peak resident-set size of this process's own image so far, in BYTES (REQ-1220).
+
+    Linux: ``VmHWM`` from ``/proc/self/status`` (KiB), the high-water mark of the address space the
+    worker runs in. ``ru_maxrss`` is not usable there: Linux carries it across fork and exec, so a
+    spawned worker reports the parent test process's resident size at the spawn (every variant read
+    the same 1056 MiB in CI; a spawned child of a 600 MiB parent reads ru_maxrss 617 MiB against
+    VmHWM 17 MiB). macOS has no ``/proc``; its ``ru_maxrss`` (bytes) is the spawned process's own
+    peak there."""
+    if sys.platform.startswith("linux"):
+        with open("/proc/self/status") as fh:
+            for line in fh:
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1]) * 1024
+        raise RuntimeError("/proc/self/status has no VmHWM line")
     import resource
 
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    return peak if sys.platform == "darwin" else peak * 1024
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 
 
 def _mem_worker(dsn: str, variant: str, q: "mp.Queue", cap: bool, trace_path: str) -> None:
