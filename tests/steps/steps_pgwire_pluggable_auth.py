@@ -92,6 +92,7 @@ def _authenticate(shared_data, *, user: str = "alice") -> None:
         auth_config=shared_data["auth_config"],
         auth_middleware_active=True,
         multitenancy=False,
+        org_id="default",  # the one org a single-org deployment binds (REQ-1266)
         # The simple provider keeps its users' ids on the platform plane.
         admin_db=platform_db(),
     )
