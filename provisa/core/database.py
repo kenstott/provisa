@@ -256,6 +256,19 @@ _PLACEHOLDER = re.compile(r"\$(\d+)")
 _CAST_ON_BIND = re.compile(r"(:p\d+)::\w+(?:\[\])?")
 
 
+def _literal_colons_escaped(sql: str) -> str:
+    """``sql`` with every colon inside a string literal, quoted identifier or dollar-quoted body
+    written ``\\:``. SQLAlchemy ``text()`` reads ``:name`` as a bind parameter wherever it appears,
+    quotes included, so a literal such as ``'%:02%'`` (a time a reader filtered on) became an
+    unbound parameter ``02`` and the statement failed. ``\\:`` is text()'s escape for a literal
+    colon; binds (``:pN``) are written outside quotes and are left as they are."""
+
+    def _escape(m: re.Match[str]) -> str:
+        return m.group(0).replace(":", "\\:")
+
+    return _QUOTED_OR_DOLLAR.sub(_escape, sql)
+
+
 def _translate(sql: str, args: tuple, dialect: str = "") -> tuple[str, dict[str, Any]]:
     """Convert asyncpg ``$1``-style SQL + positional args to SQLAlchemy
     ``:pN``-style SQL + a param dict.
@@ -264,6 +277,7 @@ def _translate(sql: str, args: tuple, dialect: str = "") -> tuple[str, dict[str,
     placeholder's type from the server and its jsonb codec JSON-encoded these, whereas psycopg
     dumps a list as an ARRAY and cannot dump a dict at all. Every control-plane column such a
     value lands in is ``jsonb`` (the schema has no array columns), so JSONB is the old semantics."""
+    sql = _literal_colons_escaped(sql)
     if not args:
         return sql, {}
     if dialect == "postgresql":
@@ -283,6 +297,8 @@ _DOLLAR_QUOTE = re.compile(r"\$\$.*?\$\$", re.DOTALL)
 # A string literal or a quoted identifier, matched in one pass so a quote character of one kind
 # inside the other is never read as a delimiter.
 _SQL_QUOTED = re.compile(r"""'(?:[^']|'')*'|"(?:[^"]|"")*\"""")
+# Every quoted span in one pass, so a quote inside a dollar-quoted body is never matched twice.
+_QUOTED_OR_DOLLAR = re.compile(f"{_DOLLAR_QUOTE.pattern}|{_SQL_QUOTED.pattern}", re.DOTALL)
 _LINE_COMMENT = re.compile(r"--[^\n]*")
 
 
