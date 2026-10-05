@@ -22,6 +22,7 @@ Exit non-zero if any REQUIRED extension fails to load.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -68,6 +69,16 @@ def _postgres_fdw_reads(db) -> list[str]:
 def main(bundle: Path) -> int:
     manifest = json.loads((bundle / "manifest.json").read_text())
     keys = {a["key"] for a in manifest["artifacts"]}
+    # The external installer refuses a file whose checksum does not match its row, so a stale row
+    # ships a bundle that cannot be installed (0.1.1: relocation rewrote files after their rows).
+    stale = [
+        a["file"]
+        for a in manifest["artifacts"]
+        if hashlib.sha256((bundle / a["file"]).read_bytes()).hexdigest() != a["sha256"]
+    ]
+    if stale:
+        print("SMOKE FAILED: manifest checksums do not match the files:", *stale, sep="\n  ")
+        return 1
 
     pg = Path(pgserver.__file__).parent / "pginstall"
     dl = pg / "lib" / "postgresql"

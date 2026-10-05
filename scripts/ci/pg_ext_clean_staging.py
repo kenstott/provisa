@@ -22,6 +22,7 @@ Usage: pg_ext_clean_staging.py <darwin-arm64 | linux-x64>
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -44,6 +45,12 @@ def main(platform: str) -> int:
     for f in (src / "share" / "extension").iterdir():
         shutil.copy2(f, pginstall / "share" / "postgresql" / "extension" / f.name)
     manifest = json.loads((src / "manifest.json").read_text())
+    stale = [
+        a["file"]
+        for a in manifest["artifacts"]
+        if hashlib.sha256((src / a["file"]).read_bytes()).hexdigest() != a["sha256"]
+    ]
+    assert not stale, f"manifest checksums do not match the published files: {stale}"
     extensions = sorted(
         a["key"]
         for a in manifest["artifacts"]
