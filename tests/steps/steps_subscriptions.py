@@ -49,6 +49,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 import os
 import uuid
@@ -316,6 +317,10 @@ class _FailingConn:
 
     def __init__(self) -> None:
         self.attempts: list[str] = []
+
+    @asynccontextmanager
+    async def advisory_lock(self, _key: int):
+        yield self
 
     async def fetch(self, _sql: str, schemas: list[str], names: list[str]) -> list[dict]:
         # The catalog's answer to the base-table lookup: the table is an ordinary table.
