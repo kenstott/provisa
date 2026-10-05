@@ -28,6 +28,7 @@ duckdb = pytest.importorskip("duckdb")
 openpyxl = pytest.importorskip("openpyxl")
 chdb = pytest.importorskip("chdb")
 
+from provisa.compiler.naming import live_view_schema, source_to_catalog  # noqa: E402
 from provisa.core.catalog import _to_catalog_name  # noqa: E402
 from provisa.federation.custom_connectors import (  # noqa: E402
     _probe_clickhouse_engine,
@@ -205,6 +206,9 @@ def _pg_fdw(cc_ctx, tmp_path, monkeypatch):
     engine = build_pg_engine()
     src = SimpleNamespace(
         id="wid",
+        # REQ-1266/1529: the catalog the engine names its attach objects after; the attach view
+        # of a source carries it (compiler.naming.attach_catalog).
+        catalog=source_to_catalog("wid"),
         type=SimpleNamespace(value="pgfdw_custom"),
         host="db.internal",
         port=5432,
@@ -265,6 +269,9 @@ def _ch_sqlite_ootb(cc_ctx, tmp_path):
     cc_ctx["runtimes"].append(rt)
     src = SimpleNamespace(
         id="shop",
+        # REQ-1266/1529: the catalog the engine names its attach objects after; the attach view
+        # of a source carries it (compiler.naming.attach_catalog).
+        catalog=source_to_catalog("shop"),
         type=SimpleNamespace(value="sqlite"),
         path=str(db),
         schema_name="inv",
@@ -273,13 +280,15 @@ def _ch_sqlite_ootb(cc_ctx, tmp_path):
     )
     rt.attach_source(src)
     cc_ctx["ch_ootb"] = rt
+    cc_ctx["ch_ootb_src"] = src
 
 
 @then("the engine reaches sqlite live and the runtime returns its federated rows")
 def _ch_sqlite_rows(cc_ctx):
     rt = cc_ctx["ch_ootb"]
+    src = cc_ctx["ch_ootb_src"]
     assert rt._engine.reachable("sqlite")
-    rows = rt.run_sync('SELECT "name" FROM "inv"."widget" WHERE "qty" >= 20 ORDER BY "id"')
+    rows = rt.run_sync(f'SELECT "name" FROM {_phys_ch(src)} WHERE "qty" >= 20 ORDER BY "id"')
     assert [r[0] for r in rows.rows] == ["gear", "cog"]
 
 
@@ -305,6 +314,9 @@ def _ch_config_driven(cc_ctx, tmp_path, monkeypatch):
     cc_ctx["runtimes"].append(rt)
     src = SimpleNamespace(
         id="ledger",
+        # REQ-1266/1529: the catalog the engine names its attach objects after; the attach view
+        # of a source carries it (compiler.naming.attach_catalog).
+        catalog=source_to_catalog("ledger"),
         type=SimpleNamespace(value="sqlite_custom"),
         path=str(db),
         schema_name="fin",
@@ -324,7 +336,8 @@ def _ch_config_rows(cc_ctx):
 
 
 def _phys_ch(source) -> str:
-    return f'"{source.schema_name}"."{source.table_name}"'
+    # REQ-1730: the schema the route's SQL names a live view by on this catalog-incapable engine.
+    return f'"{live_view_schema(source.catalog, source.schema_name)}"."{source.table_name}"'
 
 
 @then("an absent ClickHouse integration engine fails loud at attach time")
