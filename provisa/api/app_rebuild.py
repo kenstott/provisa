@@ -18,7 +18,7 @@ go through tolerate_startup_failure.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
@@ -59,26 +59,41 @@ def compile_registry_mvs_to_physical(mv_registry, ctx) -> None:
 
 
 async def _reconcile_live_engine(conn: "Connection") -> None:  # REQ-565, REQ-813
-    """Reconcile the LiveEngine poll jobs from persisted per-table live config.
+    """Reconcile the bound org's LiveEngine from its persisted per-table live config.
 
-    REQ-1266: the engine polls for ONE org (the deployment's, built at boot) and reconciles only
-    from that org's model. Another org's rebuild would hand it that org's live tables -- polled in
-    the engine's org, rows delivered to the other org's outputs -- and drop the engine's own jobs,
-    so it is refused by name here and the engine is left as it is."""
+    REQ-1266: each org's prod runtime holds its own engine, so the bound org's engine is the one
+    reconciled, from the bound org's model."""
     from provisa.api.app import state
     from provisa.core.request_context import require_current_org
     from provisa.live.reconcile import reconcile_live_engine
 
     engine = state.live_engine
-    org_id = require_current_org()
-    if engine is not None and org_id != engine.org_id:
-        log.error(
-            "live delivery for org %r is not served: the live-query engine polls for org %r only",
-            org_id,
-            engine.org_id,
-        )
-        return
+    assert engine is None or engine.org_id == require_current_org(), (
+        "an org's runtime holds that org's live engine"
+    )
     await reconcile_live_engine(conn, engine)
+
+
+async def start_org_live_engine(scheduler: Any) -> None:  # REQ-286, REQ-1266
+    """Start the bound org's live-query engine on its prod runtime and reconcile it from its
+    model. Prod only: an environment's live config runs once promoted. A runtime that already
+    holds one keeps it."""
+    from provisa.api.app import state
+    from provisa.core.environments import PROD
+    from provisa.core.request_context import current_env, require_current_org
+    from provisa.live.engine import LiveEngine
+
+    env = current_env.get()
+    if (env is not None and env != PROD) or state.live_engine is not None:
+        return
+    engine = LiveEngine(
+        tenant_db=state.tenant_db, org_id=require_current_org(), scheduler=scheduler
+    )
+    await engine.start()
+    state.live_engine = engine
+    assert state.model_db is not None, "the org's model store is bound with its runtime"
+    async with state.model_db.acquire() as conn:
+        await _reconcile_live_engine(conn)
 
 
 async def _register_user_views_in_state(conn: "Connection", raw_config: dict | None) -> None:

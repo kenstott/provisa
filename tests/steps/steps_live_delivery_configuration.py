@@ -13,8 +13,10 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+from sqlalchemy import select
+
 import pytest
-from pytest_bdd import given, then, when
+from pytest_bdd import given, scenarios, then, when
 
 # ---------------------------------------------------------------------------
 # Shared state fixture
@@ -37,21 +39,15 @@ _LIVE_CONFIG = {
     "strategy": "poll",
     "outputs": [
         {"type": "sse", "path": "/live/orders"},
-        {"type": "kafka", "topic": "orders.live"},
+        # REQ-286: a Kafka output publishes as the role it names.
+        {
+            "type": "kafka",
+            "topic": "orders.live",
+            "bootstrap_servers": "k:9092",
+            "role": "publisher",
+        },
     ],
 }
-
-
-def _build_update_table_mutation(table_id: int, live_config: dict) -> str:
-    live_json = json.dumps(json.dumps(live_config))  # double-encode for GQL string literal
-    return f"""
-    mutation {{
-        updateTableLive(tableId: {table_id}, live: {live_json}) {{
-            ok
-            error
-        }}
-    }}
-    """
 
 
 def _make_mock_pg_pool() -> MagicMock:
@@ -89,16 +85,12 @@ def _make_live_row(query_id: str = "live_orders_query") -> dict:
 
 
 @given("the admin GraphQL API for table mutations")
-def given_admin_graphql_api(shared_data: dict) -> None:
-    """Verify the admin GraphQL schema exposes a live-config mutation."""
-    try:
-        from provisa.api.admin import schema as admin_schema  # noqa: F401
+def given_admin_graphql_api(shared_data: dict, tmp_path) -> None:
+    """The real admin mutation, over an org model store holding one registered table."""
+    from provisa.api.admin.schema_mutation import Mutation
 
-        shared_data["admin_schema_module"] = admin_schema
-    except ImportError as exc:
-        pytest.fail(f"Cannot import admin schema module: {exc}")
-
-    shared_data["table_id"] = 1
+    shared_data["mutation"] = Mutation()
+    shared_data["tmp_path"] = tmp_path
     shared_data["live_config"] = _LIVE_CONFIG.copy()
 
 
@@ -106,115 +98,71 @@ def given_admin_graphql_api(shared_data: dict) -> None:
     "updateTable is called with live configuration (query_id, watermark_column, poll_interval, delivery, outputs)"
 )
 def when_update_table_live_config(shared_data: dict) -> None:
-    """Invoke the updateTableLive mutation via the in-process Strawberry schema."""
-    import inspect
+    """Call the real ``updateTable`` resolver with the live configuration."""
+    from contextlib import ExitStack
 
-    admin_schema_module = shared_data["admin_schema_module"]
+    from provisa.api.admin.types import LiveDeliveryConfigInput, LiveOutputConfigInput
+    from provisa.core.schema_org import registered_tables
+    from tests.unit.test_landing_ttl_admin import _db, _table_input, _table_patches
 
-    strawberry_schema = None
-    for attr_name in ("schema", "admin_schema"):
-        obj = getattr(admin_schema_module, attr_name, None)
-        if obj is not None:
-            strawberry_schema = obj
-            break
-
-    if strawberry_schema is None and hasattr(admin_schema_module, "get_schema"):
-        strawberry_schema = admin_schema_module.get_schema()
-
-    if strawberry_schema is None:
-        resolver_found = any(
-            name in dir(admin_schema_module)
-            for name in ("update_table_live", "updateTableLive", "update_live_config")
-        )
-        mutation_cls = getattr(admin_schema_module, "Mutation", None)
-        if mutation_cls is not None:
-            resolver_found = resolver_found or any(
-                "live" in name.lower() for name in dir(mutation_cls)
+    live = shared_data["live_config"]
+    live_input = LiveDeliveryConfigInput(
+        strategy=live["strategy"],
+        watermark_column=live["watermark_column"],
+        poll_interval=live["poll_interval"],
+        query_id=live["query_id"],
+        outputs=[
+            LiveOutputConfigInput(
+                type=o["type"],
+                topic=o.get("topic"),
+                bootstrap_servers=o.get("bootstrap_servers"),
+                role=o.get("role"),
             )
-        assert resolver_found, (
-            "No live-config mutation resolver found in admin schema module. "
-            "Expected one of: update_table_live, updateTableLive, update_live_config "
-            "or a Mutation class with a 'live' method."
-        )
-        shared_data["mutation_result"] = {"ok": True, "error": None, "skipped_schema_exec": True}
-        return
-
-    live_config = shared_data["live_config"]
-    table_id = shared_data["table_id"]
-    live_json_str = json.dumps(live_config)
-
-    mutation_cls = getattr(strawberry_schema, "mutation_type", None) or getattr(
-        admin_schema_module, "Mutation", None
+            for o in live["outputs"]
+        ],
     )
 
-    update_fn = None
-    if mutation_cls is not None:
-        for candidate in ("update_table_live", "updateTableLive", "update_live_config"):
-            fn = getattr(mutation_cls, candidate, None)
-            if fn is not None:
-                update_fn = fn
-                break
+    async def _run() -> None:
+        # A TTL-signalled source lands, so it carries a landing TTL (REQ-1907).
+        async with _db(shared_data["tmp_path"], source_ttl=60) as db:
+            with ExitStack() as stack:
+                patches = _table_patches(db)
+                for p in patches:
+                    stack.enter_context(p)
+                result = await shared_data["mutation"].update_table(
+                    MagicMock(), _table_input(live=live_input)
+                )
+                # _table_patches stands in the schema rebuild; it is what notifies the engine.
+                rebuild = patches[5].new
+            async with db.acquire() as conn:
+                stored = (await conn.execute_core(select(registered_tables.c.live))).scalar_one()
+        shared_data["mutation_result"] = result
+        shared_data["stored_live"] = stored
+        shared_data["rebuild_called"] = rebuild.await_count
 
-    if update_fn is not None:
-        try:
-            result = update_fn(table_id=table_id, live=live_json_str)
-            if inspect.isawaitable(result):
-                result = asyncio.get_event_loop().run_until_complete(result)
-            shared_data["mutation_result"] = result
-        except Exception as exc:  # pragma: no cover
-            shared_data["mutation_result"] = {"ok": False, "error": str(exc)}
-    else:
-        shared_data["mutation_result"] = {
-            "ok": True,
-            "error": None,
-            "live_config": live_config,
-            "table_id": table_id,
-        }
+    asyncio.run(_run())
 
 
 @then("the configuration is persisted to registered_tables.live and the live engine is notified")
 def then_config_persisted_and_engine_notified(shared_data: dict) -> None:
-    """Assert persistence contract and engine-notification contract."""
-    result = shared_data.get("mutation_result", {})
+    """The mutation succeeded, stored the live configuration, and rebuilt the schemas -- the
+    rebuild reconciles the org's live engine from the stored configuration."""
+    result = shared_data["mutation_result"]
+    assert result.success is True, result.message
+    stored = shared_data["stored_live"]
+    live = shared_data["live_config"]
+    assert stored["query_id"] == live["query_id"]
+    assert stored["watermark_column"] == live["watermark_column"]
+    assert stored["poll_interval"] == live["poll_interval"]
+    assert [o["type"] for o in stored["outputs"]] == [o["type"] for o in live["outputs"]]
+    assert stored["outputs"][1]["role"] == "publisher"  # REQ-286: the Kafka output's role
+    assert shared_data["rebuild_called"] >= 1, "the mutation did not rebuild the schemas"
 
-    error = result.get("error") if isinstance(result, dict) else getattr(result, "error", None)
-    assert error is None, f"Mutation returned an error: {error}"
+    import inspect
 
-    ok = result.get("ok", True) if isinstance(result, dict) else getattr(result, "ok", True)
-    assert ok, "Mutation reported ok=False"
+    from provisa.api import app_rebuild
 
-    try:
-        import pathlib
-
-        import provisa.core as _core_pkg
-
-        core_path = pathlib.Path(_core_pkg.__file__).parent
-        schema_sql_path = core_path / "schema.sql"
-        if schema_sql_path.exists():
-            ddl = schema_sql_path.read_text()
-            assert "live" in ddl or True, "registered_tables.live column not found in schema.sql"
-    except Exception:
-        pass
-
-    try:
-        from provisa.core.repositories import table as table_repo
-
-        assert hasattr(table_repo, "upsert"), "table repository missing upsert()"
-    except ImportError as exc:
-        pytest.fail(f"Cannot import table repository: {exc}")
-
-    try:
-        from provisa.live import engine as live_engine  # type: ignore[import]
-
-        assert (
-            hasattr(live_engine, "notify")
-            or hasattr(live_engine, "reload")
-            or hasattr(live_engine, "refresh")
-        ), "live engine module lacks a notification hook (notify/reload/refresh)"
-    except ImportError:
-        pass
-
-    shared_data["persistence_verified"] = True
+    assert "_reconcile_live_engine(" in inspect.getsource(app_rebuild._finalize_rebuild_state)
 
 
 # ---------------------------------------------------------------------------
@@ -222,104 +170,89 @@ def then_config_persisted_and_engine_notified(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _save_live(db, mutation, poll_interval: int):
+    """Save the table's live configuration through the real ``updateTable`` (what TablesPage
+    calls), and return the mutation's result."""
+    from contextlib import ExitStack
+
+    from provisa.api.admin.types import LiveDeliveryConfigInput, LiveOutputConfigInput
+    from tests.unit.test_landing_ttl_admin import _table_input, _table_patches
+
+    live_input = LiveDeliveryConfigInput(
+        strategy="poll",
+        watermark_column="created_at",
+        poll_interval=poll_interval,
+        query_id="ui_live_query",
+        outputs=[LiveOutputConfigInput(type="sse")],
+    )
+
+    async def _run():
+        with ExitStack() as stack:
+            for p in _table_patches(db):
+                stack.enter_context(p)
+            return await mutation.update_table(MagicMock(), _table_input(live=live_input))
+
+    return _run()
+
+
 @given("the admin UI TablesPage")
-def given_admin_ui_tables_page(shared_data: dict) -> None:
-    """Assert the TablesPage component or its backing API endpoint is reachable."""
-    try:
-        from provisa.api.admin import schema as admin_schema
+def given_admin_ui_tables_page(shared_data: dict, tmp_path) -> None:
+    """A table whose live configuration TablesPage saved (poll every 10 s), and the org's running
+    live engine reconciled from it."""
+    from provisa.api.admin.schema_mutation import Mutation
+    from provisa.live.engine import LiveEngine
+    from provisa.live.reconcile import reconcile_live_engine
+    from tests.unit.test_landing_ttl_admin import _db
 
-        module_attrs = dir(admin_schema)
-        query_cls = getattr(admin_schema, "Query", None)
-        tables_exposed = any("table" in a.lower() for a in module_attrs)
-        if query_cls is not None:
-            tables_exposed = tables_exposed or any("table" in m.lower() for m in dir(query_cls))
-        assert tables_exposed, (
-            "Admin schema does not expose a tables query — TablesPage cannot function."
-        )
-    except ImportError as exc:
-        pytest.fail(f"Cannot import admin schema for TablesPage validation: {exc}")
+    shared_data["mutation"] = Mutation()
+    engine = LiveEngine(tenant_db=None, org_id="default", scheduler=MagicMock())
+    shared_data["ui_engine"] = engine
+    # Its own store: the GraphQL half of this scenario has one of its own under tmp_path.
+    (tmp_path / "ui").mkdir()
+    shared_data["ui_db_cm"] = _db(tmp_path / "ui", source_ttl=60)
 
-    shared_data["ui_table_id"] = 1
-    shared_data["ui_live_config"] = {
-        "query_id": "ui_live_query",
-        "watermark_column": "created_at",
-        "poll_interval": 30,
-        "strategy": "debezium",
-        "outputs": [{"type": "sse", "path": "/live/ui-stream"}],
-    }
+    async def _setup() -> None:
+        db = await shared_data["ui_db_cm"].__aenter__()
+        shared_data["ui_db"] = db
+        result = await _save_live(db, shared_data["mutation"], 10)
+        assert result.success is True, result.message
+        async with db.acquire() as conn:
+            await reconcile_live_engine(conn, engine)
+
+    asyncio.run(_setup())
+    assert engine._specs["s.orders"].poll_interval == 10
 
 
 @when("an operator edits live config for a table")
 def when_operator_edits_live_config(shared_data: dict) -> None:
-    """Simulate the operator save action by calling the update mutation or repository."""
-    shared_data["ui_table_id"]
-    live_config = shared_data["ui_live_config"]
+    """The operator changes the poll interval and saves: TablesPage's ``updateTable``."""
+    from provisa.live.reconcile import reconcile_live_engine
 
-    try:
-        from provisa.core.repositories import table as table_repo
+    async def _edit() -> None:
+        db = shared_data["ui_db"]
+        result = await _save_live(db, shared_data["mutation"], 30)
+        shared_data["ui_result"] = result
+        async with db.acquire() as conn:
+            shared_data["ui_stored"] = (
+                await conn.execute_core(select(registered_tables.c.live))
+            ).scalar_one()
+            # The schema rebuild the mutation runs reconciles the engine the same way.
+            await reconcile_live_engine(conn, shared_data["ui_engine"])
+        await shared_data["ui_db_cm"].__aexit__(None, None, None)
 
-        update_live_fn = getattr(table_repo, "update_live_config", None)
-        if update_live_fn is not None:
-            shared_data["ui_update_fn"] = "update_live_config"
-        else:
-            shared_data["ui_update_fn"] = "upsert"
+    from provisa.core.schema_org import registered_tables
 
-    except ImportError as exc:
-        pytest.fail(f"Cannot import table repository for UI edit simulation: {exc}")
-
-    shared_data["ui_submitted_live"] = live_config
-    shared_data["ui_edit_completed"] = True
+    asyncio.run(_edit())
 
 
 @then("changes are reflected in the database and take effect without server restart")
 def then_changes_reflected_without_restart(shared_data: dict) -> None:
-    """Assert runtime-reload semantics and database persistence contract."""
-    assert shared_data.get("ui_edit_completed"), "UI edit step did not complete."
-
-    live_config = shared_data.get("ui_submitted_live", {})
-
-    required_keys = {"query_id", "watermark_column", "poll_interval", "strategy", "outputs"}
-    missing = required_keys - set(live_config.keys())
-    assert not missing, f"Live config is missing required keys: {missing}"
-
-    assert live_config["strategy"] in ("poll", "native", "debezium", "kafka"), (
-        f"Unsupported strategy: {live_config['strategy']!r}. "
-        f"Expected one of poll|native|debezium|kafka."
-    )
-
-    outputs = live_config.get("outputs", [])
-    assert isinstance(outputs, list) and len(outputs) > 0, "outputs must be a non-empty list."
-
-    for output in outputs:
-        assert "type" in output, f"Output entry missing 'type': {output}"
-        assert output["type"] in ("sse", "kafka"), (
-            f"Unknown output type: {output['type']!r}. Expected 'sse' or 'kafka'."
-        )
-
-    try:
-        from provisa.live import engine as live_engine  # type: ignore[import]
-
-        has_hot_reload = (
-            hasattr(live_engine, "reload")
-            or hasattr(live_engine, "notify")
-            or hasattr(live_engine, "refresh")
-            or hasattr(live_engine, "apply_config")
-        )
-        assert has_hot_reload, (
-            "Live engine lacks a hot-reload hook. Server restart would be required — "
-            "this violates REQ-819."
-        )
-    except ImportError:
-        pass
-
-    update_fn = shared_data.get("ui_update_fn")
-    assert update_fn in ("update_live_config", "upsert"), (
-        f"Unexpected update function: {update_fn!r}"
-    )
-
-    assert isinstance(live_config["poll_interval"], int) and live_config["poll_interval"] > 0, (
-        "poll_interval must be a positive integer."
-    )
+    """The edit is stored, and the same running engine now polls at the new interval."""
+    result = shared_data["ui_result"]
+    assert result.success is True, result.message
+    assert shared_data["ui_stored"]["poll_interval"] == 30
+    engine = shared_data["ui_engine"]
+    assert engine._specs["s.orders"].poll_interval == 30  # the running instance, reconciled
 
 
 # ---------------------------------------------------------------------------
@@ -342,10 +275,10 @@ def given_live_config_in_db(shared_data: dict) -> None:
 @when("the LiveEngine starts")
 def when_live_engine_starts(shared_data: dict) -> None:
     """Instantiate LiveEngine, start it, and drive startup reconciliation."""
-    from provisa.live.engine import LiveEngine
+    from provisa.live.engine import LiveEngine, LiveSpec
 
     tenant_db = shared_data["mock_pg_pool"]
-    engine = LiveEngine(tenant_db=tenant_db, org_id="default")
+    engine = LiveEngine(tenant_db=tenant_db, org_id="default", scheduler=MagicMock())
 
     reconcile_calls: list[str] = []
     registered_queries: list[str] = []
@@ -358,9 +291,9 @@ def when_live_engine_starts(shared_data: dict) -> None:
         rows = await conn.fetch(
             "SELECT * FROM registered_tables WHERE live IS NOT NULL AND live->>'active' = 'true'"
         )
+        specs = []
         for row in rows:
             query_id = row["query_id"] if isinstance(row, dict) else row.get("query_id")
-            sql = row["sql"] if isinstance(row, dict) else row.get("sql", "SELECT 1")
             watermark_column = (
                 row["watermark_column"]
                 if isinstance(row, dict)
@@ -369,21 +302,23 @@ def when_live_engine_starts(shared_data: dict) -> None:
             poll_interval = (
                 row["poll_interval"] if isinstance(row, dict) else row.get("poll_interval", 30)
             )
-            if not engine.is_registered(query_id):
-                engine.register(
+            specs.append(
+                LiveSpec(
                     query_id=query_id,
-                    sql=sql,
+                    table_id=1,
                     watermark_column=watermark_column,
                     poll_interval=poll_interval,
                 )
+            )
             registered_queries.append(query_id)
+        engine.reconcile(specs)
 
     async def _run() -> None:
         await engine.start()
         # Simulate startup reconciliation (_rebuild_schemas called at startup).
         await _fake_rebuild_schemas()
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
     shared_data["engine"] = engine
     shared_data["reconcile_calls"] = reconcile_calls
@@ -418,7 +353,7 @@ def then_engine_queries_db_and_rebuilds(shared_data: dict) -> None:
     conn_mock.fetch.assert_called()
 
     # Clean up the engine.
-    asyncio.get_event_loop().run_until_complete(shared_data["engine"].stop())
+    asyncio.run(shared_data["engine"].stop())
     shared_data["startup_reconcile_verified"] = True
 
 
@@ -445,20 +380,24 @@ def given_live_config_modified_via_admin(shared_data: dict) -> None:
     tenant_db = _make_mock_pg_pool()
     shared_data["mutation_pg_pool"] = tenant_db
 
-    from provisa.live.engine import LiveEngine
+    from provisa.live.engine import LiveEngine, LiveSpec
 
-    engine = LiveEngine(tenant_db=tenant_db, org_id="default")
+    engine = LiveEngine(tenant_db=tenant_db, org_id="default", scheduler=MagicMock())
 
     async def _start_with_old_config() -> None:
         await engine.start()
-        engine.register(
-            query_id="live_orders_query",
-            sql="SELECT * FROM orders",
-            watermark_column="updated_at",
-            poll_interval=10,  # Old interval.
+        engine.reconcile(
+            [
+                LiveSpec(
+                    query_id="live_orders_query",
+                    table_id=42,
+                    watermark_column="updated_at",
+                    poll_interval=10,  # Old interval.
+                )
+            ]
         )
 
-    asyncio.get_event_loop().run_until_complete(_start_with_old_config())
+    asyncio.run(_start_with_old_config())
     shared_data["mutation_engine"] = engine
     shared_data["rebuild_calls"] = []
 
@@ -478,19 +417,21 @@ def when_admin_mutation_completes(shared_data: dict) -> None:
 
         rebuild_calls.append("_rebuild_schemas")
 
-        # Unregister old job and re-register with new config (reconcile semantics).
-        query_id = modified_config["query_id"]
-        if engine.is_registered(query_id):
-            engine.unregister(query_id)
+        # Reconcile to the new config: a changed fingerprint replaces the spec in place.
+        from provisa.live.engine import LiveSpec
 
-        engine.register(
-            query_id=query_id,
-            sql=modified_config["sql"],
-            watermark_column=modified_config["watermark_column"],
-            poll_interval=modified_config["poll_interval"],
+        engine.reconcile(
+            [
+                LiveSpec(
+                    query_id=modified_config["query_id"],
+                    table_id=shared_data["mutation_table_id"],
+                    watermark_column=modified_config["watermark_column"],
+                    poll_interval=modified_config["poll_interval"],
+                )
+            ]
         )
 
-    asyncio.get_event_loop().run_until_complete(_simulate_mutation_and_rebuild())
+    asyncio.run(_simulate_mutation_and_rebuild())
     shared_data["post_mutation_engine"] = engine
 
 
@@ -527,9 +468,9 @@ def then_new_poll_schedule_takes_effect(shared_data: dict) -> None:
         f"Query {query_id!r} is not registered after _rebuild_schemas() reconciliation."
     )
 
-    # The registered job must carry the new poll interval.
-    job = engine._jobs.get(query_id)
-    assert job is not None, f"No _LiveJob found for query_id={query_id!r}"
+    # The registered spec must carry the new poll interval.
+    job = engine._specs.get(query_id)
+    assert job is not None, f"No LiveSpec found for query_id={query_id!r}"
     assert job.poll_interval == expected_interval, (
         f"Expected poll_interval={expected_interval}, got {job.poll_interval}. "
         "New schedule did not take effect."
@@ -541,17 +482,7 @@ def then_new_poll_schedule_takes_effect(shared_data: dict) -> None:
         f"got {job.watermark_column!r}"
     )
 
-    # If the APScheduler job was registered, verify its interval matches.
-    if engine._scheduler is not None and job.scheduler_job_id:
-        sched_job = engine._scheduler.get_job(job.scheduler_job_id)
-        if sched_job is not None:
-            # APScheduler IntervalTrigger stores interval as a timedelta.
-            trigger = sched_job.trigger
-            if hasattr(trigger, "interval"):
-                actual_seconds = trigger.interval.total_seconds()
-                assert actual_seconds == expected_interval, (
-                    f"APScheduler job interval is {actual_seconds}s, expected {expected_interval}s."
-                )
+    # A poll is scheduled per subscriber key, at the spec's interval, when one subscribes.
 
     # Confirm no server restart occurred — the engine object is the same instance
     # that was running before the mutation (identity check via shared_data).
@@ -561,5 +492,9 @@ def then_new_poll_schedule_takes_effect(shared_data: dict) -> None:
     )
 
     # Tear down.
-    asyncio.get_event_loop().run_until_complete(engine.stop())
+    asyncio.run(engine.stop())
     assert engine._scheduler is None, "Engine scheduler still running after stop()."
+
+
+# This module's steps were defined but bound to no scenario, so they never ran.
+scenarios("../features/REQ-819.feature", "../features/REQ-823.feature")

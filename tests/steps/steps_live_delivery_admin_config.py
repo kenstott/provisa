@@ -54,20 +54,16 @@ def when_update_table_with_live_config(shared_data):
 def then_config_persisted_and_engine_notified(shared_data):
     assert shared_data["validated"] is True
     # The live engine is notified by reconciling the desired poll spec — no restart involved.
-    engine = LiveEngine(tenant_db=None, engine=None, org_id="default")
-    engine.reconcile([LiveSpec(query_id="orders", sql="SELECT 1", watermark_column="updated_at")])
+    engine = LiveEngine(tenant_db=None, org_id="default", scheduler=None)
+    engine.reconcile([LiveSpec(query_id="orders", table_id=1, watermark_column="updated_at")])
     assert engine.is_registered("orders")
 
 
 @given("the admin UI TablesPage")
 def given_admin_ui_tablespage(shared_data):
-    shared_data["engine"] = LiveEngine(tenant_db=None, engine=None, org_id="default")
+    shared_data["engine"] = LiveEngine(tenant_db=None, org_id="default", scheduler=None)
     shared_data["engine"].reconcile(
-        [
-            LiveSpec(
-                query_id="orders", sql="SELECT 1", watermark_column="updated_at", poll_interval=10
-            )
-        ]
+        [LiveSpec(query_id="orders", table_id=1, watermark_column="updated_at", poll_interval=10)]
     )
 
 
@@ -75,17 +71,13 @@ def given_admin_ui_tablespage(shared_data):
 def when_operator_edits_live_config(shared_data):
     # Change the poll interval — a config fingerprint change the engine must pick up live.
     shared_data["engine"].reconcile(
-        [
-            LiveSpec(
-                query_id="orders", sql="SELECT 1", watermark_column="updated_at", poll_interval=30
-            )
-        ]
+        [LiveSpec(query_id="orders", table_id=1, watermark_column="updated_at", poll_interval=30)]
     )
 
 
 @then("changes are reflected in the database and take effect without server restart")
 def then_changes_take_effect_without_restart(shared_data):
-    job = shared_data["engine"]._jobs["orders"]
+    job = shared_data["engine"]._specs["orders"]
     assert job.poll_interval == 30  # re-registered in place, no process restart
 
 

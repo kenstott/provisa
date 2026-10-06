@@ -91,6 +91,7 @@ import { OriginBadge } from "../components/OriginBadge";
 import { KeptTablesNotice } from "../components/KeptTablesNotice";
 import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
+import { SourceTypePicker } from "../components/SourceTypePicker";
 
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -119,6 +120,7 @@ export function SourcesPage() {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [typePickerOpen, setTypePickerOpen] = useState(false);
   // Only the type-specific branches below (snowflake/databricks/.../sparql) rebuild
   // federation_hints on submit -- any OTHER type's hints (e.g. kaggle_owner/kaggle_ref, stashed on
   // create by KaggleFormSection with no UI field of its own to reconstruct them from) fell through
@@ -338,6 +340,9 @@ export function SourcesPage() {
         return {
           value: s.value,
           label: `${pickerTypeLabel(s)}${reachSuffix(info)}`,
+          // REQ-1938: the picker shows the plain name with a reach icon instead of the suffix.
+          name: pickerTypeLabel(s),
+          reach: info,
           disabled: !info.selectable,
         };
       }),
@@ -1476,6 +1481,19 @@ export function SourcesPage() {
               data-testid="sources-type-select"
               value={form.type}
               onChange={(e) => handleTypeChange(e.target.value)}
+              // REQ-1938: clicking the field, or opening it from the keyboard, shows the picker
+              // dialog instead of the long native list. The select still holds the value, so
+              // setting it programmatically (selectOption) works unchanged.
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setTypePickerOpen(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " " || (e.altKey && e.key === "ArrowDown")) {
+                  e.preventDefault();
+                  setTypePickerOpen(true);
+                }
+              }}
             >
               {typeSelectData().map((group) => (
                 <optgroup key={group.group} label={group.group}>
@@ -1488,6 +1506,13 @@ export function SourcesPage() {
               ))}
             </select>
           </label>
+          <SourceTypePicker
+            opened={typePickerOpen}
+            onClose={() => setTypePickerOpen(false)}
+            groups={typeSelectData()}
+            value={form.type}
+            onPick={handleTypeChange}
+          />
           <SourceFormFields {...sourceFormFieldsProps} />
           {form.type !== "kaggle" && (
             <Button type="submit" loading={submitting} data-testid="sources-submit">

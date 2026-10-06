@@ -145,6 +145,9 @@ def _write(record: dict[str, Any]) -> None:
     record["t"] = time.time()
     record["ident"] = threading.get_ident()
     record["thread"] = threading.current_thread().name
+    detached = getattr(_tls, "detached", None)
+    if detached is not None:
+        record["detached_from"] = detached
     os.write(_out_fd, (json.dumps(record) + "\n").encode())  # O_APPEND: one atomic line
 
 
@@ -245,19 +248,38 @@ def _profiled() -> bool:
     return sys.getprofile() is _profile
 
 
-def _carry(fn: Any, tag: str | None) -> Any:
-    """Run ``fn`` on the receiving thread with profiling on and the sender's tag."""
+def _carry(fn: Any, tag: str | None, detached_from: str | None = None) -> Any:
+    """Run ``fn`` on the receiving thread with profiling on and the sender's tag -- or, for work
+    the request detached from itself, with no tag and a note of the request it came from. The
+    receiving thread's own tag is restored afterwards: a pooled thread outlives the work."""
 
     def _inner(*args: Any, **kwargs: Any) -> Any:
         previous = sys.getprofile()
+        prev_tag = getattr(_tls, "tag", None)
+        prev_detached = getattr(_tls, "detached", None)
         _tls.tag = tag
+        _tls.detached = detached_from
         sys.setprofile(_profile)
         try:
             return fn(*args, **kwargs)
         finally:
             sys.setprofile(previous)
+            _tls.tag = prev_tag
+            _tls.detached = prev_detached
 
     return _inner
+
+
+# The one hop that detaches work from the request that started it (REQ-1882): the background
+# worker pool (``provisa.core.connection_loop.spawn_background``). What runs there outlives the
+# request and is not part of it, so it does not carry the request's tag.
+_DETACHING_SITE = ("provisa/core/connection_loop.py", "_submit")
+
+
+def _detaches(at: str) -> bool:
+    innermost = at.split(" <- ")[0]
+    path, _line, func = innermost.rsplit(":", 2)
+    return (path, func) == _DETACHING_SITE
 
 
 def install(path: str) -> None:
@@ -274,16 +296,17 @@ def install(path: str) -> None:
     def submit(self, fn, /, *args, **kwargs):  # type: ignore[no-untyped-def]
         if _profiled():
             tag = getattr(_tls, "tag", None)
+            at = _caller()
             _write(
                 {
                     "kind": "hop",
                     "via": "ThreadPoolExecutor.submit",
                     "pool": getattr(self, "_thread_name_prefix", ""),
                     "tag": tag,
-                    "at": _caller(),
+                    "at": at,
                 }
             )
-            fn = _carry(fn, tag)
+            fn = _carry(fn, None, detached_from=tag) if _detaches(at) else _carry(fn, tag)
         return real_submit(self, fn, *args, **kwargs)
 
     concurrent.futures.ThreadPoolExecutor.submit = submit  # type: ignore[method-assign]

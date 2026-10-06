@@ -200,7 +200,10 @@ async def test_a_config_write_takes_over_what_the_admin_made_and_says_so(plane, 
         async with plane.acquire() as conn:
             await write(conn, "config")
     assert await _origin(plane, table, where) == "config"
-    assert [r.getMessage().split(" '")[0] for r in caplog.records] == [
+    # Only this logger's records: caplog also collects any other logger's WARNING (e.g. a pooled
+    # HTTP client's "Resetting dropped connection" from a thread an earlier test left running).
+    origin_records = [r for r in caplog.records if r.name == "provisa.core.repositories.origin"]
+    assert [r.getMessage().split(" '")[0] for r in origin_records] == [
         f"config load takes over {kind}"
     ]
 

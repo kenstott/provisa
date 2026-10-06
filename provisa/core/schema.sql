@@ -994,6 +994,28 @@ CREATE TABLE IF NOT EXISTS tracked_webhooks (
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- REQ-1003, REQ-1004: the org's scheduled triggers, in its model (REQ-1919). The schema is the org:
+-- a trigger runs bound to the org whose model holds it, and only prod's are scheduled.
+CREATE TABLE IF NOT EXISTS scheduled_triggers (
+    id            TEXT PRIMARY KEY,
+    origin        TEXT NOT NULL,          -- REQ-1919: 'config' or 'admin'
+    name          TEXT NOT NULL,
+    cron          TEXT NOT NULL,
+    kind          TEXT NOT NULL,          -- 'webhook' | 'sql'
+    url           TEXT,                   -- webhook: the URL it calls (a config trigger)
+    webhook_name  TEXT,                   -- webhook: the org's tracked webhook, resolved at fire time
+    args          JSONB NOT NULL DEFAULT '{}',
+    sql           TEXT,                   -- sql: the statement (REQ-1003/1004)
+    role          TEXT,                   -- sql: the role of this org it runs as
+    enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT scheduled_triggers_kind_fields CHECK (
+        (kind = 'sql' AND sql IS NOT NULL AND role IS NOT NULL)
+        OR (kind = 'webhook' AND (url IS NOT NULL OR webhook_name IS NOT NULL))
+    )
+);
+
 -- Migration: add kind column to tracked_functions and tracked_webhooks
 DO $$ BEGIN
     ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'mutation';

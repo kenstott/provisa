@@ -1,0 +1,14 @@
+{
+  "sourceTypePicker": {
+    "title": "Quelltyp auswählen",
+    "searchPlaceholder": "Quelltypen suchen (Name, z. B. postgres, mssql, kafka)",
+    "all": "Alle",
+    "recent": "Zuletzt verwendet",
+    "noMatch": "Kein Quelltyp passt.",
+    "browse": "Durchsuchen…",
+    "reachLive": "Live (direkt gelesen)",
+    "reachReplica": "Replikat (aktualisierte Kopie)",
+    "reachLiveOn": "Live nur auf {{engines}}",
+    "reachNone": "Von dieser Engine nicht erreichbar"
+  }
+}

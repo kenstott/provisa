@@ -40,7 +40,6 @@ from provisa.compiler.sql_types import key_list
 from provisa.core.paging import stored_paging
 from provisa.core.repositories import rls as rls_repo
 from provisa.core.repositories import origin as origin_repo
-from provisa.api.admin._config_io import config_path as _config_path, read_config
 from provisa.api.admin.capabilities import require_capability
 from provisa.api.admin.types import (
     CalendarInput,
@@ -3982,41 +3981,29 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def toggle_scheduled_task(
         self, info: StrawberryInfo, task_id: str, enabled: bool
     ) -> MutationResult:
-        """Enable or disable a scheduled trigger in the config."""
+        """Enable or disable one of the caller's org's scheduled triggers (REQ-1003)."""
         require_capability(info, "org_settings")
-        import yaml
+        from provisa.api.admin._table_ops import _get_pool
+        from provisa.core.repositories import scheduled_trigger as trigger_repo
 
-        path = _config_path()
-        if not path.exists():
-            return MutationResult(
-                success=False, message="Config file not found", code="schema.config_not_found"
-            )
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            held = await trigger_repo.get(conn, task_id)
+            if held is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Task {task_id!r} not found",
+                    code="schema.task_not_found",
+                    params={"task": task_id},
+                )
+            if enabled and held["kind"] == "sql":
+                from provisa.api.admin.capabilities import require_trigger_role
 
-        cfg = read_config()
-        triggers = cfg.get("scheduled_triggers", [])
-        found = False
-        for t in triggers:
-            if t["id"] == task_id:
-                if enabled and t.get("sql") is not None:
-                    from provisa.api.admin.capabilities import require_trigger_role
-
-                    # Enabling a SQL trigger sets it running as its role, so it is the same act
-                    # as saving one. Disabling one runs nothing and needs no role.
-                    require_trigger_role(info.context["request"], t["role"])
-                t["enabled"] = enabled
-                found = True
-                break
-
-        if not found:
-            return MutationResult(
-                success=False,
-                message=f"Task {task_id!r} not found",
-                code="schema.task_not_found",
-                params={"task": task_id},
-            )
-
-        with open(path, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+                # Enabling a SQL trigger sets it running as its role, so it is the same act
+                # as saving one. Disabling one runs nothing and needs no role.
+                require_trigger_role(info.context["request"], held["role"])
+            await trigger_repo.set_enabled(conn, task_id, enabled)
+        await _ops.reschedule_org_triggers()
 
         return MutationResult(
             success=True,

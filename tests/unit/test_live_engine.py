@@ -17,24 +17,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from provisa.live.engine import LiveEngine, _build_incremental_sql
+from provisa.live.engine import _build_incremental_sql
 from provisa.live.outputs.sse import SSEFanout
-
-
-class _BridgeEngine:
-    """Fake EngineRuntime whose ENGINE terminal delegates to the module-level ``execute_trino``,
-    so ``execute_trino`` patches + call-arg assertions still work after LiveEngine moved to the seam."""
-
-    def __init__(self, conn) -> None:
-        self._conn = conn
-
-    def address_replicas(self, sql):
-        return sql  # this stand-in's tables are all read where the statement names them
-
-    async def execute_engine(self, sql, params=None, **_kw):
-        from provisa.executor.trino import execute_trino
-
-        return execute_trino(self._conn, sql)
+from tests.unit.live_engine_doubles import (
+    KEY,
+    governed,
+    make_engine,
+    make_pool_with_conn,
+    spec,
+    sse_type,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -136,244 +128,115 @@ class TestSSEFanout:
 
 
 class TestLiveEngine:
-    def _make_engine(self) -> LiveEngine:
-        pool = AsyncMock()
-        return LiveEngine(tenant_db=pool, org_id="default")
-
     @pytest.mark.asyncio
     async def test_register_and_is_registered(self):
-        engine = self._make_engine()
-        with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
-            mock_sched = MagicMock()
-            mock_sched.add_job.return_value = MagicMock(id="live_q1")
-            mock_sched_cls.return_value = mock_sched
-            await engine.start()
-
-        engine.register(
-            "q1",
-            sql="SELECT id, updated_at FROM orders",
-            watermark_column="updated_at",
-            poll_interval=5,
-        )
+        engine = make_engine(started=True)
+        engine.reconcile([spec()])
         assert engine.is_registered("q1")
 
     @pytest.mark.asyncio
     async def test_subscribe_returns_queue(self):
-        engine = self._make_engine()
-        with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
-            mock_sched = MagicMock()
-            mock_sched.add_job.return_value = MagicMock(id="live_q1")
-            mock_sched_cls.return_value = mock_sched
-            await engine.start()
-
-        engine.register(
-            "q1",
-            sql="SELECT id, updated_at FROM orders",
-            watermark_column="updated_at",
-            poll_interval=5,
-        )
-        q = engine.subscribe("q1")
+        engine = make_engine(started=True)
+        engine.reconcile([spec()])
+        with governed():
+            q = await engine.subscribe("q1", KEY)
         assert isinstance(q, asyncio.Queue)
 
     @pytest.mark.asyncio
     async def test_subscribe_unknown_raises(self):
-        engine = self._make_engine()
+        engine = make_engine()
         with pytest.raises(KeyError, match="q_unknown"):
-            engine.subscribe("q_unknown")
+            await engine.subscribe("q_unknown", KEY)
 
     @pytest.mark.asyncio
     async def test_unregister_removes_job(self):
-        engine = self._make_engine()
-        with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
-            mock_sched = MagicMock()
-            mock_sched.add_job.return_value = MagicMock(id="live_q1")
-            mock_sched_cls.return_value = mock_sched
-            await engine.start()
-
-        engine.register(
-            "q1",
-            sql="SELECT id, updated_at FROM orders",
-            watermark_column="updated_at",
-            poll_interval=5,
-        )
-        engine.unregister("q1")
+        engine = make_engine(started=True)
+        engine.reconcile([spec()])
+        engine.reconcile([])
         assert not engine.is_registered("q1")
 
     @pytest.mark.asyncio
     async def test_double_register_is_idempotent(self):
-        engine = self._make_engine()
-        with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
-            mock_sched = MagicMock()
-            mock_sched.add_job.return_value = MagicMock(id="live_q1")
-            mock_sched_cls.return_value = mock_sched
-            await engine.start()
-
-        engine.register(
-            "q1",
-            sql="SELECT id, updated_at FROM orders",
-            watermark_column="updated_at",
-            poll_interval=5,
-        )
-        engine.register(
-            "q1",
-            sql="SELECT id, updated_at FROM orders",
-            watermark_column="updated_at",
-            poll_interval=5,
-        )
-        assert mock_sched.add_job.call_count == 1
+        sched = MagicMock()
+        engine = make_engine(scheduler=sched, started=True)
+        engine.reconcile([spec()])
+        engine.reconcile([spec()])
+        with governed():
+            await engine.subscribe("q1", KEY)
+            await engine.subscribe("q1", KEY)
+        assert sched.add_job.call_count == 1
 
     @pytest.mark.asyncio
     async def test_poll_routes_through_trino_and_delivers(self):
-        # Poll data comes from Trino (federated), not the PG pool. PG is used
-        # only for watermark bookkeeping.
-        from provisa.executor.result import QueryResult
-
-        # PG pool: watermark bookkeeping only.
+        """A poll is a read through the one governed pipeline, as the subscriber's key; the
+        org's store is used only for watermark bookkeeping."""
         conn_mock = AsyncMock()
-        pool = MagicMock()
-        pool.acquire = MagicMock(
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=conn_mock),
-                __aexit__=AsyncMock(return_value=False),
-            )
-        )
-        trino_conn = MagicMock()
-        engine = LiveEngine(tenant_db=pool, engine=_BridgeEngine(trino_conn), org_id="default")
-
-        with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
-            mock_sched = MagicMock()
-            mock_sched.add_job.return_value = MagicMock(id="live_q1")
-            mock_sched_cls.return_value = mock_sched
-            await engine.start()
-
-        engine.register(
-            "q1",
-            sql='SELECT * FROM cat."public"."orders"',
-            watermark_column="updated_at",
-            poll_interval=5,
-        )
-        q = engine.subscribe("q1")
-
-        engine_result = QueryResult(rows=[(1, "2026-01-02")], column_names=["id", "updated_at"])
-        exec_mock = MagicMock(return_value=engine_result)
+        engine = make_engine(make_pool_with_conn(conn_mock), started=True)
+        engine.reconcile([spec(watermark_column="updated_at")])
+        with governed():
+            q = await engine.subscribe("q1", KEY)
         with (
-            patch("provisa.executor.trino.execute_trino", exec_mock),
+            governed([{"id": 1, "updated_at": "2026-01-02"}]) as reads,
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
             patch("provisa.live.watermark.set_watermark", AsyncMock()),
         ):
-            await engine._poll("q1")
-
-        # Data query ran against the Trino connection, never the PG pool.
-        assert exec_mock.call_args.args[0] is trino_conn
+            await engine._poll("q1", sse_type())
+        assert [key for _sql, key, _p in reads] == [KEY]
         conn_mock.fetch.assert_not_called()
-        received = q.get_nowait()
-        assert received == [{"id": 1, "updated_at": "2026-01-02"}]
+        assert q.get_nowait() == [{"id": 1, "updated_at": "2026-01-02"}]
 
     @pytest.mark.asyncio
     async def test_poll_without_trino_conn_raises_and_is_caught(self):
-        # No Trino connection → poll logs and swallows (never crashes scheduler).
-        pool = MagicMock()
-        pool.acquire = MagicMock(
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=AsyncMock()),
-                __aexit__=AsyncMock(return_value=False),
-            )
-        )
-        engine = LiveEngine(tenant_db=pool, engine=None, org_id="default")
-        with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
-            mock_sched = MagicMock()
-            mock_sched.add_job.return_value = MagicMock(id="live_q1")
-            mock_sched_cls.return_value = mock_sched
-            await engine.start()
-        engine.register(
-            "q1",
-            sql="SELECT * FROM cat.public.orders",
-            watermark_column="updated_at",
-            poll_interval=5,
-        )
-        q = engine.subscribe("q1")
+        # A failed read -> the poll logs and swallows (never crashes the scheduler).
+        engine = make_engine(make_pool_with_conn(AsyncMock()), started=True)
+        engine.reconcile([spec()])
+        with governed():
+            q = await engine.subscribe("q1", KEY)
         with (
+            governed(RuntimeError("no engine bound")),
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
             patch("provisa.live.watermark.set_watermark", AsyncMock()),
         ):
-            await engine._poll("q1")  # must not raise
+            await engine._poll("q1", sse_type())  # must not raise
         assert q.empty()
 
 
 class TestReconcile:
-    def _started_engine(self, stack) -> LiveEngine:
-        engine = LiveEngine(
-            tenant_db=AsyncMock(), engine=_BridgeEngine(MagicMock()), org_id="default"
-        )
-        mock_sched = MagicMock()
-        mock_sched.add_job.return_value = MagicMock(id="live_x")
-        stack.enter_context(patch("provisa.live.engine.AsyncIOScheduler", return_value=mock_sched))
-        return engine
-
     @pytest.mark.asyncio
     async def test_reconcile_registers_and_unregisters(self):
-        from contextlib import ExitStack
-        from provisa.live.engine import LiveSpec
+        engine = make_engine(started=True)
+        engine.reconcile([spec("a", table_id=1)])
+        assert engine.is_registered("a")
 
-        with ExitStack() as stack:
-            engine = self._started_engine(stack)
-            await engine.start()
-
-            engine.reconcile(
-                [LiveSpec(query_id="a", sql="SELECT * FROM cat.s.a", watermark_column="ts")]
-            )
-            assert engine.is_registered("a")
-
-            # 'a' dropped, 'b' added
-            engine.reconcile(
-                [LiveSpec(query_id="b", sql="SELECT * FROM cat.s.b", watermark_column="ts")]
-            )
-            assert not engine.is_registered("a")
-            assert engine.is_registered("b")
+        # 'a' dropped, 'b' added
+        engine.reconcile([spec("b", table_id=2)])
+        assert not engine.is_registered("a")
+        assert engine.is_registered("b")
 
     @pytest.mark.asyncio
     async def test_reconcile_unchanged_preserves_job_and_subscribers(self):
-        from contextlib import ExitStack
-        from provisa.live.engine import LiveSpec
-
-        with ExitStack() as stack:
-            engine = self._started_engine(stack)
-            await engine.start()
-            spec = LiveSpec(query_id="a", sql="SELECT * FROM cat.s.a", watermark_column="ts")
-            engine.reconcile([spec])
-            q = engine.subscribe("a")
-            engine.reconcile([spec])  # identical signature → no churn
-            # Same fanout queue survived (subscriber preserved).
-            assert q in [sq for _, sq in engine._jobs["a"].fanout._queues]
+        engine = make_engine(started=True)
+        engine.reconcile([spec("a")])
+        with governed():
+            q = await engine.subscribe("a", KEY)
+        engine.reconcile([spec("a")])  # identical signature → no churn
+        fanout = engine._groups[("a", sse_type())].output
+        assert q in [sq for _, sq in fanout._queues]  # subscriber preserved
 
     @pytest.mark.asyncio
     async def test_reconcile_changed_signature_reregisters(self):
-        from contextlib import ExitStack
-        from provisa.live.engine import LiveSpec
-
-        with ExitStack() as stack:
-            engine = self._started_engine(stack)
-            await engine.start()
-            engine.reconcile(
-                [
-                    LiveSpec(
-                        query_id="a",
-                        sql="SELECT * FROM cat.s.a",
-                        watermark_column="ts",
-                        poll_interval=10,
-                    )
-                ]
-            )
-            first_fanout = engine._jobs["a"].fanout
-            engine.reconcile(
-                [
-                    LiveSpec(
-                        query_id="a",
-                        sql="SELECT * FROM cat.s.a",
-                        watermark_column="ts",
-                        poll_interval=30,
-                    )
-                ]
-            )
-            assert engine._jobs["a"].poll_interval == 30
-            assert engine._jobs["a"].fanout is not first_fanout
+        engine = make_engine(started=True)
+        engine.reconcile([spec("a", poll_interval=10)])
+        with governed():
+            q = await engine.subscribe("a", KEY)
+        spawned: list = []
+        with patch(
+            "provisa.core.connection_loop.spawn_background", lambda coro, **_k: spawned.append(coro)
+        ):
+            engine.reconcile([spec("a", poll_interval=30)])
+        for coro in spawned:
+            await coro
+        assert engine._specs["a"].poll_interval == 30
+        # The changed spec ends the old subscribers' stream; a new subscriber starts afresh.
+        assert ("a", sse_type()) not in engine._groups
+        assert q.get_nowait() is None

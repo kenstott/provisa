@@ -1,0 +1,14 @@
+{
+  "sourceTypePicker": {
+    "title": "स्रोत प्रकार चुनें",
+    "searchPlaceholder": "स्रोत प्रकार खोजें (नाम, जैसे postgres, mssql, kafka)",
+    "all": "सभी",
+    "recent": "हाल ही में उपयोग किए गए",
+    "noMatch": "कोई स्रोत प्रकार मेल नहीं खाता।",
+    "browse": "ब्राउज़ करें…",
+    "reachLive": "लाइव (स्थान पर पढ़ा गया)",
+    "reachReplica": "प्रतिकृति (ताज़ा की गई प्रति)",
+    "reachLiveOn": "केवल {{engines}} पर लाइव",
+    "reachNone": "इस इंजन से पहुँच योग्य नहीं"
+  }
+}

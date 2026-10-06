@@ -69,12 +69,12 @@ _PURGE = "DELETE FROM sales.events WHERE day < '{{YYYY-MM-DD}}'"
 
 def test_build_scheduler_creates_sql_job():
     trig = ScheduledTrigger(id="nightly", cron="0 0 * * *", sql=_PURGE, role="ops")
-    scheduler = jobs.build_scheduler([trig])
+    scheduler = jobs.build_scheduler([trig], "default")
     assert scheduler is not None
-    job = scheduler.get_job("nightly")
+    job = scheduler.get_job("nightly:org_default")
     assert job is not None
     assert job.func is jobs._execute_sql
-    assert list(job.args) == [_PURGE, "nightly", "ops"]
+    assert list(job.args) == [_PURGE, "nightly", "ops", "default"]
 
 
 def test_a_sql_trigger_names_the_role_it_runs_as():
@@ -107,7 +107,7 @@ async def test_a_create_is_refused_when_the_trigger_runs(monkeypatch):
 
     monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route", _never)
     with pytest.raises(TriggerSqlRefused, match="trigger 'snap': creates an object"):
-        await jobs._execute_sql("CREATE TABLE s.x AS SELECT 1", "snap", "ops")
+        await jobs._execute_sql("CREATE TABLE s.x AS SELECT 1", "snap", "ops", "default")
 
 
 def test_row_writes_are_admitted_with_their_tokens_as_values():
@@ -123,7 +123,7 @@ def test_row_writes_are_admitted_with_their_tokens_as_values():
 def test_build_scheduler_mutual_exclusivity_raises():
     trig = ScheduledTrigger(id="bad", cron="0 0 * * *", sql=_PURGE, role="ops", url="http://x/hook")
     with pytest.raises(ValueError, match="mutually exclusive"):
-        jobs.build_scheduler([trig])
+        jobs.build_scheduler([trig], "default")
 
 
 @pytest.mark.asyncio
@@ -145,7 +145,7 @@ async def test_execute_sql_substitutes_and_routes(monkeypatch):
     monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route", _fake_govern)
     monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _fake_execute)
 
-    await jobs._execute_sql(_PURGE, "t1", "ops")
+    await jobs._execute_sql(_PURGE, "t1", "ops", "default")
 
     # Token substituted before routing (REQ-1004) and routed as governed (REQ-1003), as the
     # trigger's own role — through the one write admission.

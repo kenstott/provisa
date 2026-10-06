@@ -34,7 +34,18 @@ _log_provider: "object | None" = None
 
 
 def shutdown_otel() -> None:  # REQ-545
-    """Flush and shut down OTel log provider before interpreter teardown."""
+    """Stop every OTel export -- logs, spans, metrics -- before interpreter teardown."""
+    _shutdown_log_pipeline()
+    # The trace and meter providers stay installed (OTel accepts one per process); what stops is
+    # their exporting -- each export thread and its HTTP client.
+    if _span_exports is not None:
+        _span_exports.clear()
+    if _metric_exports is not None:
+        _metric_exports.stop()
+
+
+def _shutdown_log_pipeline() -> None:
+    """Remove the OTLP log handler and shut down the log provider (its thread and exporter)."""
     global _log_provider
     # Detach the OTLP LoggingHandler from the root logger first. Otherwise Python's
     # atexit logging.shutdown() flushes it during interpreter teardown, and the
@@ -57,6 +68,181 @@ def shutdown_otel() -> None:  # REQ-545
         except Exception:
             pass
         _log_provider = None
+
+
+# ── The process's one trace and meter pipeline (REQ-302, REQ-303, REQ-549) ──────────────────────
+# OpenTelemetry installs ONE trace and ONE meter provider per process; a provider built after the
+# first is never installed, but its export thread runs all the same. So the providers are built
+# once, by the first setup, and every later setup or endpoint change replaces only what exports:
+# the span processor of a channel, the metric exporter. The one replaced is shut down -- its thread
+# and its HTTP client with it.
+
+_tracer_provider: "object | None" = None
+_span_exports: "_SpanExports | None" = None
+_metric_exports: "_MetricExports | None" = None
+
+
+class _SpanExports:
+    """The process provider's export processors, one per channel ("internal", "support")."""
+
+    def __init__(self) -> None:
+        self._by_channel: dict[str, Any] = {}
+        self._lock = Lock()
+
+    def set(self, channel: str, processor: Any) -> None:
+        with self._lock:
+            old = self._by_channel.pop(channel, None)
+            if processor is not None:
+                self._by_channel[channel] = processor
+        if old is not None:
+            old.shutdown()
+
+    def clear(self) -> None:
+        with self._lock:
+            old, self._by_channel = list(self._by_channel.values()), {}
+        for processor in old:
+            processor.shutdown()
+
+    def current(self) -> list[Any]:
+        with self._lock:
+            return list(self._by_channel.values())
+
+
+def _span_switch(exports: "_SpanExports") -> Any:
+    """The one span processor the process provider holds: it hands each span to the channels'
+    current export processors."""
+    from opentelemetry.sdk.trace import SpanProcessor
+
+    class _Switch(SpanProcessor):
+        def on_start(self, span: Any, parent_context: Any = None) -> None:
+            for processor in exports.current():
+                processor.on_start(span, parent_context)
+
+        def on_end(self, span: Any) -> None:
+            for processor in exports.current():
+                processor.on_end(span)
+
+        def shutdown(self) -> None:
+            exports.clear()
+
+        def force_flush(self, timeout_millis: int = 30000) -> bool:
+            return all(p.force_flush(timeout_millis) for p in exports.current())
+
+    return _Switch()
+
+
+class _MetricExports:
+    """The process meter provider's one reader, collected by an export thread whose exporter is
+    replaced on an endpoint change. A meter provider's readers are fixed when it is built, so the
+    reader stays and what it exports through is what changes."""
+
+    def __init__(self, exporter: Any, interval_millis: int) -> None:
+        from opentelemetry.sdk.metrics.export import MetricReader
+
+        exports = self
+
+        class _Reader(MetricReader):
+            def _receive_metrics(
+                self, metrics_data: Any, timeout_millis: float = 10_000, **_kw: Any
+            ) -> None:
+                current = exports._exporter
+                if current is not None and metrics_data is not None:
+                    current.export(metrics_data, timeout_millis=timeout_millis)
+
+            def shutdown(self, timeout_millis: float = 30_000, **_kw: Any) -> None:
+                exports.stop()
+
+        self.reader = _Reader(
+            preferred_temporality=exporter._preferred_temporality,
+            preferred_aggregation=exporter._preferred_aggregation,
+        )
+        self._exporter: Any = None
+        self._interval = interval_millis / 1000
+        self._thread: Any = None
+        self._stop: Any = None
+        self._lock = Lock()
+
+    def start(self, exporter: Any) -> None:
+        """Export through ``exporter`` from now on; the exporter it replaces is shut down."""
+        import threading
+
+        self.stop()
+        with self._lock:
+            self._exporter = exporter
+            stop = threading.Event()
+            reader, interval = self.reader, self._interval
+
+            def _tick() -> None:
+                while not stop.wait(interval):
+                    try:
+                        reader.collect()
+                    except Exception:  # allow-ble: an export thread's boundary -- next tick retries
+                        import logging
+
+                        logging.getLogger(__name__).exception("OTel metric export failed")
+
+            self._stop = stop
+            self._thread = threading.Thread(target=_tick, name="provisa-otel-metrics", daemon=True)
+            self._thread.start()
+
+    def stop(self) -> None:
+        with self._lock:
+            stop, thread, exporter = self._stop, self._thread, self._exporter
+            self._stop = self._thread = self._exporter = None
+        if stop is not None:
+            stop.set()
+        if thread is not None:
+            thread.join(timeout=5)
+        if exporter is not None:
+            exporter.shutdown()
+
+
+def _process_tracer_provider(sampler: Any, resource: Any) -> Any:
+    """The process's trace provider, built and installed by the first call. It always buffers
+    spans in memory for the live trace panel, and exports through ``_span_exports``."""
+    global _tracer_provider, _span_exports
+    if _tracer_provider is not None:
+        return _tracer_provider
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
+
+    provider = TracerProvider(sampler=sampler, resource=resource)
+    _buf = span_buffer
+
+    class _BufferProcessor(SpanProcessor):
+        def on_start(self, span: Any, parent_context: Any = None) -> None:  # noqa: ARG002
+            pass
+
+        def on_end(self, span: Any) -> None:
+            _buf.push(span)
+
+        def shutdown(self) -> None:
+            pass
+
+        def force_flush(self, timeout_millis: int = 30000) -> bool:
+            return True
+
+    provider.add_span_processor(_BufferProcessor())
+    _span_exports = _SpanExports()
+    provider.add_span_processor(_span_switch(_span_exports))
+    trace.set_tracer_provider(provider)
+    _tracer_provider = provider
+    return provider
+
+
+def _export_metrics(exporter: Any, resource: Any) -> None:
+    """Export the process's metrics through ``exporter``: the meter provider is built and
+    installed on the first call, and every call replaces the exporter (the old one shut down)."""
+    global _metric_exports
+    if _metric_exports is None:
+        from opentelemetry import metrics
+        from opentelemetry.sdk.metrics import MeterProvider
+
+        _metric_exports = _MetricExports(exporter, _metric_export_interval_millis())
+        metrics.set_meter_provider(
+            MeterProvider(resource=resource, metric_readers=[_metric_exports.reader])
+        )
+    _metric_exports.start(exporter)
 
 
 class SpanBuffer:  # REQ-302, REQ-303
@@ -324,37 +510,31 @@ def attach_otlp_exporters(
 
     _log = logging.getLogger(__name__)
     try:
-        from opentelemetry import trace, metrics
+        from opentelemetry import metrics
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.sdk.metrics import MeterProvider
-        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
         from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
         from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
         from opentelemetry._logs import set_logger_provider
 
         resource = Resource.create({"service.name": service_name})
 
-        from typing import cast as _cast
-        from opentelemetry.sdk.trace import TracerProvider as _SdkTracerProvider
+        # The endpoint now in force replaces the one the process exported to: its span processor
+        # and metric exporter are swapped, the old ones shut down.
+        from provisa.core import settings_registry
 
-        provider = trace.get_tracer_provider()
-        if hasattr(provider, "add_span_processor"):
-            from provisa.core import settings_registry
-
-            _delay = settings_registry.value("otel.span_export_delay_millis")
-            _cast(_SdkTracerProvider, provider).add_span_processor(
-                BatchSpanProcessor(
-                    _make_span_exporter(endpoint, otlp_protocol), schedule_delay_millis=_delay
-                )
-            )
-
-        metric_reader = PeriodicExportingMetricReader(
-            _make_metric_exporter(endpoint, otlp_protocol),
-            export_interval_millis=_metric_export_interval_millis(),
+        _process_tracer_provider(
+            _trace_detail_sampler(settings_registry.value("otel.sample_rate")), resource
         )
-        meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
-        metrics.set_meter_provider(meter_provider)
+        assert _span_exports is not None  # built with the provider
+        _span_exports.set(
+            "internal",
+            BatchSpanProcessor(
+                _make_span_exporter(endpoint, otlp_protocol),
+                schedule_delay_millis=settings_registry.value("otel.span_export_delay_millis"),
+            ),
+        )
+        _export_metrics(_make_metric_exporter(endpoint, otlp_protocol), resource)
         _meter = metrics.get_meter("provisa")
         _self.query_counter = _meter.create_counter(
             "provisa.query.executed", description="Total queries executed"
@@ -368,11 +548,16 @@ def attach_otlp_exporters(
 
         import logging as _logging
 
+        # The process's one log pipeline: the one in place (set up at start or by an earlier
+        # change) is shut down and its handler removed before this endpoint's replaces it.
+        global _log_provider
+        _shutdown_log_pipeline()
         log_provider = LoggerProvider(resource=resource)
         log_provider.add_log_record_processor(
             BatchLogRecordProcessor(_make_log_exporter(endpoint, otlp_protocol))
         )
         set_logger_provider(log_provider)
+        _log_provider = log_provider
         handler = LoggingHandler(level=_logging.WARNING, logger_provider=log_provider)
         _logging.getLogger().addHandler(handler)
 
@@ -524,35 +709,13 @@ def setup_otel(
     _attached = (endpoint, service_name, otlp_protocol) if endpoint else None
     _write_otlp2parquet_toml(otlp2parquet_max_age_secs, config_path)
     try:
-        from opentelemetry import trace
         from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
         resource = Resource.create({"service.name": service_name})
-        provider = TracerProvider(
-            sampler=_trace_detail_sampler(sample_rate),
-            resource=resource,
-        )
-        # Always buffer spans in-memory for the live trace panel
-        from opentelemetry.sdk.trace import SpanProcessor
-
-        _buf = span_buffer
-
-        class _BufferProcessor(SpanProcessor):
-            def on_start(self, span: Any, parent_context: Any = None) -> None:  # noqa: ARG002
-                pass
-
-            def on_end(self, span: Any) -> None:
-                _buf.push(span)
-
-            def shutdown(self) -> None:
-                pass
-
-            def force_flush(self, timeout_millis: int = 30000) -> bool:
-                return True
-
-        provider.add_span_processor(_BufferProcessor())
+        # The process's provider: built by the first setup, reused by every later one.
+        _process_tracer_provider(_trace_detail_sampler(sample_rate), resource)
+        assert _span_exports is not None  # built with the provider
         if endpoint:
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
@@ -561,10 +724,11 @@ def setup_otel(
                 _internal_redact_sql,
                 _internal_redact_attrs,
             )
-            provider.add_span_processor(
+            _span_exports.set(
+                "internal",
                 BatchSpanProcessor(
                     _internal_exporter, schedule_delay_millis=span_export_delay_millis
-                )
+                ),
             )
             _log.info(
                 "OTel tracing → %s (service=%s, redact_sql=%s)",
@@ -580,10 +744,11 @@ def setup_otel(
                 _support_redact_sql,
                 _support_redact_attrs,
             )
-            provider.add_span_processor(
+            _span_exports.set(
+                "support",
                 BatchSpanProcessor(
                     _support_exporter, schedule_delay_millis=span_export_delay_millis
-                )
+                ),
             )
             _log.info(
                 "OTel support tracing → %s (redact_sql=%s)", support_endpoint, _support_redact_sql
@@ -593,20 +758,11 @@ def setup_otel(
                 "OTel tracing active (no collector; spans dropped). "
                 "Set OTEL_EXPORTER_OTLP_ENDPOINT to export."
             )
-        trace.set_tracer_provider(provider)
-
         # ── Metrics ──────────────────────────────────────────────────────────
         if endpoint:
             from opentelemetry import metrics
-            from opentelemetry.sdk.metrics import MeterProvider
-            from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
-            metric_reader = PeriodicExportingMetricReader(
-                _make_metric_exporter(endpoint, otlp_protocol),
-                export_interval_millis=_metric_export_interval_millis(),
-            )
-            meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
-            metrics.set_meter_provider(meter_provider)
+            _export_metrics(_make_metric_exporter(endpoint, otlp_protocol), resource)
             _log.info("OTel metrics → %s (service=%s)", endpoint, service_name)
 
             import provisa.api.otel_setup as _self
@@ -632,6 +788,9 @@ def setup_otel(
             from opentelemetry._logs import set_logger_provider
             from opentelemetry.sdk._logs import LoggingHandler
 
+            # A process holds ONE log pipeline: one set up before (an app built again in the same
+            # process) is shut down and its root handler removed, never left exporting beside this.
+            _shutdown_log_pipeline()
             log_provider = LoggerProvider(resource=resource)
             log_provider.add_log_record_processor(
                 BatchLogRecordProcessor(_make_log_exporter(endpoint, otlp_protocol))

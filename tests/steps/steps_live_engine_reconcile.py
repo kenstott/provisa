@@ -22,12 +22,10 @@ def shared_data():
 def given_live_config_in_db(shared_data):
     # Two active live configs as they would be read from registered_tables.live.
     shared_data["db_specs"] = [
-        LiveSpec(
-            query_id="orders", sql="SELECT 1", watermark_column="updated_at", poll_interval=10
-        ),
-        LiveSpec(query_id="events", sql="SELECT 2", watermark_column="ts", poll_interval=15),
+        LiveSpec(query_id="orders", table_id=1, watermark_column="updated_at", poll_interval=10),
+        LiveSpec(query_id="events", table_id=2, watermark_column="ts", poll_interval=15),
     ]
-    shared_data["engine"] = LiveEngine(tenant_db=None, engine=None, org_id="default")
+    shared_data["engine"] = LiveEngine(tenant_db=None, org_id="default", scheduler=None)
 
 
 @when("the LiveEngine starts")
@@ -45,18 +43,14 @@ def then_rebuilds_poll_jobs(shared_data):
 
 @given("live config modified via admin GraphQL API")
 def given_live_config_modified(shared_data):
-    engine = LiveEngine(tenant_db=None, engine=None, org_id="default")
+    engine = LiveEngine(tenant_db=None, org_id="default", scheduler=None)
     engine.reconcile(
-        [
-            LiveSpec(
-                query_id="orders", sql="SELECT 1", watermark_column="updated_at", poll_interval=10
-            )
-        ]
+        [LiveSpec(query_id="orders", table_id=1, watermark_column="updated_at", poll_interval=10)]
     )
     shared_data["engine"] = engine
     # An operator changed the poll interval and removed a job.
     shared_data["new_specs"] = [
-        LiveSpec(query_id="orders", sql="SELECT 1", watermark_column="updated_at", poll_interval=45)
+        LiveSpec(query_id="orders", table_id=1, watermark_column="updated_at", poll_interval=45)
     ]
 
 
@@ -68,7 +62,7 @@ def when_mutation_completes(shared_data):
 @then("_rebuild_schemas() is called to reconcile the engine immediately")
 def then_reconcile_called_immediately(shared_data):
     # Reconciliation applied the changed fingerprint in place.
-    assert shared_data["engine"]._jobs["orders"].poll_interval == 45
+    assert shared_data["engine"]._specs["orders"].poll_interval == 45
 
 
 @then("the new poll schedule takes effect without restart")

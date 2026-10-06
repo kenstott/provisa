@@ -133,6 +133,7 @@ def live_model_from_input(inp):  # REQ-565, REQ-813
                 topic=o.topic,
                 key_column=o.key_column,
                 bootstrap_servers=o.bootstrap_servers,
+                role=o.role,
             )
             for o in inp.outputs
         ],

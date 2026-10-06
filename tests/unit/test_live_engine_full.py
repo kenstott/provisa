@@ -12,8 +12,8 @@
 
 Covers:
 - _build_incremental_sql  (SQL watermark injection)
-- LiveEngine lifecycle    (register, unregister, subscribe, start, stop)
-- LiveEngine._poll        (row fetching, watermark update, fanout delivery)
+- LiveEngine lifecycle    (reconcile, subscribe, unsubscribe, start, stop)
+- LiveEngine._poll        (governed reads, watermark update, fanout delivery)
 - SSEFanout               (subscribe, send, unsubscribe, close)
 - Watermark persistence   (get_watermark, set_watermark)
 - KafkaSinkOutput         (send, close)
@@ -27,9 +27,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from provisa.live.engine import LiveEngine, _build_incremental_sql
-from provisa.live.outputs.sse import SSEFanout
+from provisa.live.engine import _build_incremental_sql
 from provisa.live.outputs.kafka import KafkaSinkOutput
+from provisa.live.outputs.sse import SSEFanout
+from tests.unit.live_engine_doubles import (
+    KEY,
+    OTHER_KEY,
+    governed,
+    make_engine,
+    make_pool_with_conn,
+    spec,
+    sse_job_id,
+    sse_type,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -37,83 +47,13 @@ from provisa.live.outputs.kafka import KafkaSinkOutput
 # ---------------------------------------------------------------------------
 
 
-def _make_pool_with_conn(conn_mock):
-    """Build a minimal asyncpg pool mock whose acquire() context manager
-    yields *conn_mock*."""
-    pool = MagicMock()
-    cm = MagicMock()
-    cm.__aenter__ = AsyncMock(return_value=conn_mock)
-    cm.__aexit__ = AsyncMock(return_value=False)
-    pool.acquire = MagicMock(return_value=cm)
-    return pool
-
-
 def _make_conn():
-    """Return a fresh asyncpg connection mock with the most-used methods."""
+    """Return a fresh store connection mock with the most-used methods."""
     conn = AsyncMock()
     conn.fetchrow = AsyncMock(return_value=None)
     conn.fetch = AsyncMock(return_value=[])
     conn.execute = AsyncMock(return_value=None)
     return conn
-
-
-class _BridgeEngine:
-    """Fake EngineRuntime whose ENGINE terminal delegates to the module-level ``execute_trino``,
-    so the existing ``_patch_trino`` patches (and call-arg assertions) keep working after LiveEngine
-    was switched from a raw Trino connection to the engine seam."""
-
-    def __init__(self, conn) -> None:
-        self._conn = conn
-
-    def address_replicas(self, sql):
-        return sql  # this stand-in's tables are all read where the statement names them
-
-    async def execute_engine(self, sql, params=None, **_kw):
-        from provisa.executor.trino import execute_trino
-
-        return execute_trino(self._conn, sql)
-
-
-def _make_engine(pool=None, trino_conn=None) -> LiveEngine:
-    if pool is None:
-        pool = MagicMock()
-    if trino_conn is None:
-        trino_conn = MagicMock()
-    return LiveEngine(tenant_db=pool, engine=_BridgeEngine(trino_conn), org_id="default")
-
-
-def _trino_qr(rows):
-    """Build a Trino QueryResult from a list of dict rows."""
-    from provisa.executor.result import QueryResult
-
-    if not rows:
-        return QueryResult(rows=[], column_names=[])
-    cols = list(rows[0].keys())
-    return QueryResult(rows=[tuple(r[c] for c in cols) for r in rows], column_names=cols)
-
-
-def _patch_trino(rows):
-    """Patch execute_trino to return *rows* as a Trino QueryResult."""
-    return patch("provisa.executor.trino.execute_trino", MagicMock(return_value=_trino_qr(rows)))
-
-
-def _sched_ctx():
-    """Context-manager helper: patches AsyncIOScheduler and returns
-    (mock_sched_cls, mock_sched) for use inside a ``with`` block."""
-
-    class _Ctx:
-        def __enter__(self):
-            self._patcher = patch("provisa.live.engine.AsyncIOScheduler")
-            mock_cls = self._patcher.start()
-            self.mock_sched = MagicMock()
-            self.mock_sched.add_job.return_value = MagicMock(id="live_q1")
-            mock_cls.return_value = self.mock_sched
-            return mock_cls, self.mock_sched
-
-        def __exit__(self, *_args):
-            self._patcher.stop()
-
-    return _Ctx()
 
 
 # ---------------------------------------------------------------------------
@@ -211,203 +151,155 @@ class TestBuildIncrementalSql:
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestLiveEngineLifecycle:
-    """Tests covering register/unregister/subscribe/start/stop semantics."""
+    """Specs (reconcile), subscriber groups (subscribe/unsubscribe), start and stop."""
 
     async def test_register_adds_to_jobs_dict(self):
-        engine = _make_engine()
-        engine.register(
-            "q1",
-            sql="SELECT id, updated_at FROM orders",
-            watermark_column="updated_at",
-            poll_interval=5,
-        )
+        engine = make_engine()
+        engine.reconcile([spec()])
         assert engine.is_registered("q1")
-        assert "q1" in engine._jobs
+        assert "q1" in engine._specs
 
     async def test_register_with_scheduler_adds_scheduler_job(self):
-        engine = _make_engine()
-        with _sched_ctx() as (_mock_cls, mock_sched):
-            await engine.start()
-            engine.register(
-                "q1",
-                sql="SELECT id, updated_at FROM orders",
-                watermark_column="updated_at",
-                poll_interval=10,
-            )
-        mock_sched.add_job.assert_called_once()
-        call_kwargs = mock_sched.add_job.call_args
-        assert call_kwargs[1]["seconds"] == 10 or call_kwargs[0][2] == 10 or True
-        assert engine._jobs["q1"].scheduler_job_id == "live_q1"
+        sched = MagicMock()
+        engine = make_engine(scheduler=sched, started=True)
+        engine.reconcile([spec(poll_interval=10)])
+        with governed():
+            await engine.subscribe("q1", KEY)
+        sched.add_job.assert_called_once()
+        assert sched.add_job.call_args.kwargs["seconds"] == 10
+        assert sched.add_job.call_args.kwargs["id"] == sse_job_id()
+        assert engine._groups[("q1", sse_type())].job_id == sse_job_id()
 
     async def test_register_before_start_no_scheduler_job(self):
-        engine = _make_engine()
-        # No start() called — scheduler is None
-        engine.register(
-            "q1",
-            sql="SELECT id, updated_at FROM orders",
-            watermark_column="updated_at",
-            poll_interval=5,
-        )
+        sched = MagicMock()
+        engine = make_engine(scheduler=sched)  # start() not called
+        engine.reconcile([spec()])
+        with governed():
+            await engine.subscribe("q1", KEY)
         assert engine.is_registered("q1")
-        # scheduler_job_id stays empty because scheduler is None
-        assert engine._jobs["q1"].scheduler_job_id == ""
+        sched.add_job.assert_not_called()
 
     async def test_register_second_time_is_noop(self):
-        engine = _make_engine()
-        with _sched_ctx() as (_, mock_sched):
-            await engine.start()
-            engine.register(
-                "q1",
-                sql="SELECT id, updated_at FROM orders",
-                watermark_column="updated_at",
-                poll_interval=5,
-            )
-            engine.register(
-                "q1",
-                sql="SELECT id, updated_at FROM orders",
-                watermark_column="updated_at",
-                poll_interval=5,
-            )
-        assert mock_sched.add_job.call_count == 1
+        sched = MagicMock()
+        engine = make_engine(scheduler=sched, started=True)
+        engine.reconcile([spec()])
+        engine.reconcile([spec()])
+        with governed():
+            await engine.subscribe("q1", KEY)
+            await engine.subscribe("q1", KEY)  # the same key shares the one poll
+        assert sched.add_job.call_count == 1
 
     async def test_unregister_removes_from_jobs(self):
-        engine = _make_engine()
-        engine.register(
-            "q1",
-            sql="SELECT id, updated_at FROM orders",
-            watermark_column="updated_at",
-            poll_interval=5,
-        )
-        engine.unregister("q1")
+        engine = make_engine()
+        engine.reconcile([spec()])
+        engine.reconcile([])
         assert not engine.is_registered("q1")
-        assert "q1" not in engine._jobs
+        assert "q1" not in engine._specs
 
     async def test_unregister_nonexistent_is_silent(self):
-        engine = _make_engine()
-        # Must not raise; engine state must remain empty
-        engine.unregister("nonexistent-query")
+        engine = make_engine()
+        engine.reconcile([])
         assert not engine.is_registered("nonexistent-query")
-        assert engine._jobs == {}
+        assert engine._specs == {} and engine._groups == {}
 
     async def test_unregister_calls_remove_job_on_scheduler(self):
-        engine = _make_engine()
-        with _sched_ctx() as (_, mock_sched):
-            await engine.start()
-            engine.register(
-                "q1",
-                sql="SELECT id, updated_at FROM orders",
-                watermark_column="updated_at",
-                poll_interval=5,
-            )
-            engine.unregister("q1")
-        mock_sched.remove_job.assert_called_once_with("live_q1")
-        assert mock_sched.remove_job.call_count == 1
+        sched = MagicMock()
+        engine = make_engine(scheduler=sched, started=True)
+        engine.reconcile([spec()])
+        with governed():
+            await engine.subscribe("q1", KEY)
+        engine.reconcile([])
+        sched.remove_job.assert_called_once_with(sse_job_id())
 
     async def test_is_registered_returns_false_for_unknown(self):
-        engine = _make_engine()
+        engine = make_engine()
         assert not engine.is_registered("no-such-query")
 
     async def test_is_registered_returns_true_after_register(self):
-        engine = _make_engine()
-        engine.register(
-            "q2", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=30
-        )
+        engine = make_engine()
+        engine.reconcile([spec("q2", poll_interval=30)])
         assert engine.is_registered("q2")
 
     async def test_subscribe_returns_asyncio_queue(self):
-        engine = _make_engine()
-        engine.register(
-            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
-        )
-        q = engine.subscribe("q1")
+        engine = make_engine()
+        engine.reconcile([spec()])
+        with governed():
+            q = await engine.subscribe("q1", KEY)
         assert isinstance(q, asyncio.Queue)
 
     async def test_subscribe_on_unregistered_raises_key_error(self):
-        engine = _make_engine()
+        engine = make_engine()
         with pytest.raises(KeyError, match="q_unknown"):
-            engine.subscribe("q_unknown")
+            await engine.subscribe("q_unknown", KEY)
 
     async def test_unsubscribe_removes_queue_from_fanout(self):
-        engine = _make_engine()
-        engine.register(
-            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
-        )
-        q = engine.subscribe("q1")
-        assert engine._jobs["q1"].fanout.subscriber_count == 1
-        engine.unsubscribe("q1", q)
-        assert engine._jobs["q1"].fanout.subscriber_count == 0
+        sched = MagicMock()
+        engine = make_engine(scheduler=sched, started=True)
+        engine.reconcile([spec()])
+        with governed():
+            q = await engine.subscribe("q1", KEY)
+        fanout = engine._groups[("q1", sse_type())].output
+        assert fanout.subscriber_count == 1
+        engine.unsubscribe("q1", KEY, q)
+        assert fanout.subscriber_count == 0
+        # The key's last subscriber stops its poll.
+        assert ("q1", sse_type()) not in engine._groups
+        sched.remove_job.assert_called_once_with(sse_job_id())
 
     async def test_unsubscribe_unknown_query_is_silent(self):
-        engine = _make_engine()
-        q = asyncio.Queue()
-        # Must not raise even though query does not exist; engine has no jobs
-        engine.unsubscribe("no-such-query", q)
-        assert engine._jobs == {}
+        engine = make_engine()
+        engine.unsubscribe("no-such-query", KEY, asyncio.Queue())
+        assert engine._groups == {}
 
     async def test_start_creates_and_starts_scheduler(self):
-        engine = _make_engine()
-        with _sched_ctx() as (mock_cls, mock_sched):
-            await engine.start()
-            mock_cls.assert_called_once()
-            mock_sched.start.assert_called_once()
-            assert engine._scheduler is mock_sched
+        """The engine schedules on the process's scheduler; it starts none of its own."""
+        sched = MagicMock()
+        engine = make_engine(scheduler=sched)
+        await engine.start()
+        assert engine._scheduler is sched
+        sched.start.assert_not_called()
 
     async def test_stop_shuts_down_scheduler_and_clears_jobs(self):
-        conn = _make_conn()
-        pool = _make_pool_with_conn(conn)
-        engine = _make_engine(pool)
-
-        with _sched_ctx() as (_, mock_sched):
-            await engine.start()
-            engine.register(
-                "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
-            )
-            await engine.stop()
-
-        mock_sched.shutdown.assert_called_once_with(wait=False)
+        sched = MagicMock()
+        engine = make_engine(make_pool_with_conn(_make_conn()), sched)
+        await engine.start()
+        engine.reconcile([spec()])
+        with governed():
+            await engine.subscribe("q1", KEY)
+        await engine.stop()
+        # Its own polls are removed; the process's scheduler runs on for everything else.
+        sched.remove_job.assert_called_once_with(sse_job_id())
+        sched.shutdown.assert_not_called()
         assert engine._scheduler is None
-        assert engine._jobs == {}
+        assert engine._specs == {} and engine._groups == {}
 
     async def test_stop_with_kafka_outputs_calls_close(self):
-        conn = _make_conn()
-        pool = _make_pool_with_conn(conn)
-        engine = _make_engine(pool)
-
+        engine = make_engine(make_pool_with_conn(_make_conn()))
         mock_kafka = AsyncMock()
-        mock_kafka.close = AsyncMock()
-
-        with _sched_ctx() as (_, __sched):
+        with patch("provisa.live.engine.KafkaSinkOutput", return_value=mock_kafka), governed():
             await engine.start()
-            engine.register(
-                "q1",
-                sql="SELECT id, ts FROM events",
-                watermark_column="ts",
-                poll_interval=5,
-                kafka_outputs=[mock_kafka],
-            )
+            engine.reconcile([spec(kafka_outputs=[_kafka_output()])])
             await engine.stop()
-
         mock_kafka.close.assert_called_once()
-        assert mock_kafka.close.call_count == 1
 
     async def test_register_with_kafka_outputs(self):
-        engine = _make_engine()
+        engine = make_engine()
         mock_kafka = AsyncMock()
-        engine.register(
-            "q1",
-            sql="SELECT id, ts FROM events",
-            watermark_column="ts",
-            poll_interval=5,
-            kafka_outputs=[mock_kafka],
-        )
-        assert engine._jobs["q1"].kafka_outputs == [mock_kafka]
+        with patch("provisa.live.engine.KafkaSinkOutput", return_value=mock_kafka), governed():
+            engine.reconcile([spec(kafka_outputs=[_kafka_output(role="publisher")])])
+        [group] = engine._groups.values()
+        assert group.output is mock_kafka
+        assert group.key.role_id == "publisher"  # it publishes as the role it names
 
     async def test_register_default_kafka_outputs_is_empty_list(self):
-        engine = _make_engine()
-        engine.register(
-            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
-        )
-        assert engine._jobs["q1"].kafka_outputs == []
+        engine = make_engine()
+        engine.reconcile([spec()])
+        assert engine._specs["q1"].kafka_outputs == []
+        assert engine._groups == {}  # no output and no subscriber: nothing is polled
+
+
+def _kafka_output(role: str = "publisher") -> dict:
+    return {"bootstrap_servers": "k:9092", "topic": "events", "key_column": "id", "role": role}
 
 
 # ---------------------------------------------------------------------------
@@ -417,169 +309,122 @@ class TestLiveEngineLifecycle:
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestLiveEnginePoll:
-    """Tests for the internal _poll() method."""
+    """Tests for the internal _poll() method: every poll is a governed read as its key."""
 
-    def _patch_poll_deps(self, watermark=None, _rows=None):
+    def _patch_poll_deps(self, watermark=None):
         """Return a combined patch context supplying watermark mocks."""
         return (
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=watermark)),
             patch("provisa.live.watermark.set_watermark", AsyncMock()),
         )
 
+    async def _subscribed(self, pool=None, key=KEY):
+        engine = make_engine(pool if pool is not None else make_pool_with_conn(_make_conn()))
+        engine.reconcile([spec()])
+        with governed():
+            q = await engine.subscribe("q1", key)
+        return engine, q
+
     async def test_poll_on_unregistered_query_returns_immediately(self):
-        engine = _make_engine()
-        # No query registered — _poll must return without touching pool
+        engine = make_engine()
         pool = MagicMock()
         engine._tenant_db = pool
-        await engine._poll("nonexistent-q")
+        await engine._poll("nonexistent-q", sse_type())
         pool.acquire.assert_not_called()
-        assert pool.acquire.call_count == 0
 
     async def test_poll_with_no_rows_does_not_deliver(self):
-        conn = _make_conn()
-        pool = _make_pool_with_conn(conn)
-        engine = _make_engine(pool)
-        engine.register(
-            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
-        )
-        q = engine.subscribe("q1")
-
-        p1, p2 = self._patch_poll_deps(watermark="2026-01-01", _rows=[])
-        with _patch_trino([]), p1, p2:
-            await engine._poll("q1")
-
+        engine, q = await self._subscribed()
+        p1, p2 = self._patch_poll_deps(watermark="2026-01-01")
+        with governed([]), p1, p2:
+            await engine._poll("q1", sse_type())
         assert q.empty()
 
     async def test_poll_fetches_rows_and_delivers_to_fanout(self):
-        raw_rows = [{"id": 1, "ts": "2026-02-01"}, {"id": 2, "ts": "2026-02-02"}]
-        conn = _make_conn()
-        pool = _make_pool_with_conn(conn)
-        engine = _make_engine(pool)
-        engine.register(
-            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
-        )
-        q = engine.subscribe("q1")
-
+        rows = [{"id": 1, "ts": "2026-02-01"}, {"id": 2, "ts": "2026-02-02"}]
+        engine, q = await self._subscribed()
         p1, p2 = self._patch_poll_deps(watermark="2026-01-01")
-        with _patch_trino(raw_rows), p1, p2:
-            await engine._poll("q1")
-
-        received = q.get_nowait()
-        assert received == [dict(r) for r in raw_rows]
+        with governed(rows) as reads, p1, p2:
+            await engine._poll("q1", sse_type())
+        assert q.get_nowait() == rows
+        # The poll was the governed pipeline's read, as the subscriber's key.
+        assert [key for _sql, key, _p in reads] == [KEY]
 
     async def test_poll_updates_watermark_to_max_value(self):
-        raw_rows = [{"id": 1, "ts": "2026-02-01"}, {"id": 2, "ts": "2026-02-10"}]
+        rows = [{"id": 1, "ts": "2026-02-01"}, {"id": 2, "ts": "2026-02-10"}]
         conn = _make_conn()
-        pool = _make_pool_with_conn(conn)
-        engine = _make_engine(pool)
-        engine.register(
-            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
-        )
-
+        engine, _q = await self._subscribed(make_pool_with_conn(conn))
         mock_set_wm = AsyncMock()
         with (
-            _patch_trino(raw_rows),
+            governed(rows),
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
             patch("provisa.live.watermark.set_watermark", mock_set_wm),
         ):
-            await engine._poll("q1")
-
-        # max string comparison: "2026-02-10" > "2026-02-01"
-        # conn is the mock returned directly by the pool's acquire() context manager
-        mock_set_wm.assert_called_once_with(conn, "q1", "sse", "2026-02-10")
-        assert mock_set_wm.call_count == 1
-        assert mock_set_wm.call_args[0][3] == "2026-02-10"
+            await engine._poll("q1", sse_type())
+        # max string comparison: "2026-02-10" > "2026-02-01"; kept for this key alone.
+        mock_set_wm.assert_called_once_with(conn, "q1", sse_type(), "2026-02-10")
 
     async def test_poll_delivers_rows_to_kafka_outputs(self):
-        raw_rows = [{"id": 1, "ts": "2026-02-01"}]
-        conn = _make_conn()
-        pool = _make_pool_with_conn(conn)
-        engine = _make_engine(pool)
-
+        rows = [{"id": 1, "ts": "2026-02-01"}]
+        engine = make_engine(make_pool_with_conn(_make_conn()))
         mock_kafka = AsyncMock()
-        mock_kafka.send = AsyncMock()
-        engine.register(
-            "q1",
-            sql="SELECT id, ts FROM events",
-            watermark_column="ts",
-            poll_interval=5,
-            kafka_outputs=[mock_kafka],
-        )
-
+        with patch("provisa.live.engine.KafkaSinkOutput", return_value=mock_kafka), governed():
+            engine.reconcile([spec(kafka_outputs=[_kafka_output()])])
+        [(qid, output_type)] = engine._groups
         with (
-            _patch_trino(raw_rows),
+            governed(rows) as reads,
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
             patch("provisa.live.watermark.set_watermark", AsyncMock()),
         ):
-            await engine._poll("q1")
-
-        mock_kafka.send.assert_called_once_with([dict(r) for r in raw_rows])
-        assert mock_kafka.send.call_count == 1
-        assert mock_kafka.send.call_args[0][0] == [dict(r) for r in raw_rows]
+            await engine._poll(qid, output_type)
+        mock_kafka.send.assert_called_once_with(rows)
+        assert [key.role_id for _sql, key, _p in reads] == ["publisher"]
 
     async def test_poll_handles_exception_gracefully(self):
         """_poll must catch exceptions and not propagate them."""
-        conn = _make_conn()
-        pool = _make_pool_with_conn(conn)
-        engine = _make_engine(pool)
-        engine.register(
-            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
-        )
-        q = engine.subscribe("q1")
-
-        with (
-            patch(
-                "provisa.executor.trino.execute_trino",
-                MagicMock(side_effect=RuntimeError("Trino exploded")),
-            ),
-            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
-            patch("provisa.live.watermark.set_watermark", AsyncMock()),
-        ):
-            # Must not raise
-            await engine._poll("q1")
-
-        # Exception was swallowed; query still registered and queue still empty
+        engine, q = await self._subscribed()
+        p1, p2 = self._patch_poll_deps()
+        with governed(RuntimeError("engine exploded")), p1, p2:
+            await engine._poll("q1", sse_type())  # must not raise
         assert engine.is_registered("q1")
         assert q.empty()
 
     async def test_poll_with_none_record_returns_early(self):
-        conn = _make_conn()
-        pool = _make_pool_with_conn(conn)
-        engine = _make_engine(pool)
-        engine.register(
-            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
-        )
-        q = engine.subscribe("q1")
-
-        with (
-            _patch_trino([]),
-            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
-            patch("provisa.live.watermark.set_watermark", AsyncMock()),
-        ):
-            await engine._poll("q1")
-
+        engine, q = await self._subscribed()
+        p1, p2 = self._patch_poll_deps()
+        with governed([]), p1, p2:
+            await engine._poll("q1", sse_type())
         assert q.empty()
 
     async def test_poll_incremental_sql_uses_watermark(self):
-        """Verify that the SQL passed to execute_trino includes the watermark filter."""
-        raw_rows = [{"id": 1, "ts": "2026-03-01"}]
-        conn = _make_conn()
-        pool = _make_pool_with_conn(conn)
-        engine = _make_engine(pool)
-        engine.register(
-            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
-        )
-
-        exec_mock = MagicMock(return_value=_trino_qr(raw_rows))
+        """The governed read carries the key's watermark filter."""
+        engine, _q = await self._subscribed()
         with (
-            patch("provisa.executor.trino.execute_trino", exec_mock),
+            governed([{"id": 1, "ts": "2026-03-01"}]) as reads,
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value="2026-01-15")),
             patch("provisa.live.watermark.set_watermark", AsyncMock()),
         ):
-            await engine._poll("q1")
+            await engine._poll("q1", sse_type())
+        assert "\"ts\" > '2026-01-15'" in reads[0][0]
 
-        executed_sql = exec_mock.call_args.args[1]
-        assert "ts > '2026-01-15'" in executed_sql
+    async def test_two_keys_never_share_rows_or_a_watermark(self):
+        """Each key is its own poll, its own rows and its own watermark."""
+        engine = make_engine(make_pool_with_conn(_make_conn()))
+        engine.reconcile([spec()])
+        with governed():
+            q_us = await engine.subscribe("q1", KEY)
+            q_eu = await engine.subscribe("q1", OTHER_KEY)
+        by_key = {KEY: [{"id": 1, "ts": "a"}], OTHER_KEY: [{"id": 2, "ts": "b"}]}
+        set_wm = AsyncMock()
+        with (
+            governed(lambda _sql, key: by_key[key]),
+            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
+            patch("provisa.live.watermark.set_watermark", set_wm),
+        ):
+            await engine._poll("q1", sse_type(KEY))
+            await engine._poll("q1", sse_type(OTHER_KEY))
+        assert q_us.get_nowait() == [{"id": 1, "ts": "a"}] and q_us.empty()
+        assert q_eu.get_nowait() == [{"id": 2, "ts": "b"}] and q_eu.empty()
+        assert {c.args[2] for c in set_wm.call_args_list} == {sse_type(KEY), sse_type(OTHER_KEY)}
 
 
 # ---------------------------------------------------------------------------

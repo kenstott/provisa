@@ -1,0 +1,24 @@
+# REQ-286: governed live delivery fixture. One source on the pytest-host-reachable Postgres; each
+# org registers its own live table under the same id (live-pg.marks) after its runtime is built.
+sources:
+  - id: live-pg
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: provisa
+    username: provisa
+    password: ${env:PG_PASSWORD}
+
+domains:
+  - id: lv
+    description: Governed live delivery targets
+
+tables: []
+
+roles:
+  - id: reader
+    capabilities: [query_development, full_results]
+    domain_access: ["*"]
+  - id: restricted
+    capabilities: [query_development, full_results]
+    domain_access: ["*"]

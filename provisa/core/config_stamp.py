@@ -74,6 +74,7 @@ TENANT_TABLES: dict[str, str] = {
     "tag_assignments": MODEL,
     "tracked_functions": MODEL,
     "tracked_webhooks": MODEL,
+    "scheduled_triggers": MODEL,
     "api_sources": MODEL,
     "api_endpoints": MODEL,
     "kafka_sources": MODEL,

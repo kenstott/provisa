@@ -114,8 +114,9 @@ def _sqlite_config(work: Path, source_extra: dict) -> Path:
             "domain_id": "thread-x",
             "schema": "default",
             "table": "events",
+            # REQ-336: a subscription reads each change back by the table's key.
             "columns": [
-                {"name": n, "data_type": t, "visible_to": [_ROLE]}
+                {"name": n, "data_type": t, "visible_to": [_ROLE], "is_primary_key": n == "id"}
                 for n, t in (("id", "integer"), ("amount", "varchar"), ("ts", "varchar"))
             ],
         }
@@ -426,6 +427,12 @@ def _assert_exclusive(server: _Server, name: str, tag: int, entry_transport: str
     for s in stages:
         by_thread.setdefault(s["ident"], set()).add(s["stage"])
     assert len(by_thread) == 1, f"{name}: stages ran on {len(by_thread)} threads: {by_thread}"
+    # Work the request detached (a read-cued hot-table promotion, REQ-236) builds a shared copy:
+    # it reads as the system, never governed as the requesting role.
+    detached = [
+        r for r in server.records() if r.get("detached_from") == str(tag) and r["kind"] == "stage"
+    ]
+    assert not [d for d in detached if d["stage"].startswith("govern:")], detached
     (ident,) = by_thread
     entries = [
         r
@@ -536,6 +543,8 @@ def test_a_read_triggered_land_runs_on_the_request_thread(landed_server):
     request_threads = {r["ident"] for r in records if r.get("tag") == str(tag)}
     lands = [r for r in records if r["kind"] == "stage" and r["stage"].startswith("land:")]
     assert lands, "the read did not land the source"
+    # The land is the request's own work: none of it was detached to the background pool.
+    assert not [r for r in lands if r.get("detached_from") == str(tag)]
     hops = _unsanctioned([r for r in records if r["kind"] == "hop" and r.get("tag") == str(tag)])
     assert not hops, f"the land was handed to another thread: {hops}"
     stage_threads = {

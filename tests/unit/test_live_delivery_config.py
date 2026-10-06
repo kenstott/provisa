@@ -84,7 +84,7 @@ class TestValidateLiveDelivery:
 
 class TestReconcileLiveEngine:
     @pytest.mark.asyncio
-    async def test_builds_trino_qualified_poll_specs(self):
+    async def test_builds_governed_poll_specs(self):
         from provisa.api import app as app_mod
         from provisa.api import app_rebuild
 
@@ -92,6 +92,7 @@ class TestReconcileLiveEngine:
         # top-level watermark_column.
         rows = [
             {
+                "id": 11,
                 "source_id": "sales-db",
                 "schema_name": "public",
                 "table_name": "orders",
@@ -107,12 +108,14 @@ class TestReconcileLiveEngine:
                             "topic": "orders",
                             "bootstrap_servers": "k:9092",
                             "key_column": "id",
+                            "role": "publisher",
                         }
                     ],
                 },
             },
             # debezium rows are handled by providers, not the poll engine → excluded
             {
+                "id": 12,
                 "source_id": "pg",
                 "schema_name": "public",
                 "table_name": "events",
@@ -136,12 +139,18 @@ class TestReconcileLiveEngine:
         assert len(specs) == 1
         spec = specs[0]
         assert spec.query_id == "sales-db.orders"
-        # catalog = sanitized source id (hyphen → underscore), Trino-qualified
-        assert spec.sql == 'SELECT * FROM sales_db."public"."orders"'
+        # REQ-286: the spec names the model table, read governed per key -- never a raw
+        # physical statement fanned out to every subscriber.
+        assert spec.table_id == 11
         assert spec.watermark_column == "updated_at"
         assert spec.poll_interval == 20
         assert spec.kafka_outputs == [
-            {"bootstrap_servers": "k:9092", "topic": "orders", "key_column": "id"}
+            {
+                "bootstrap_servers": "k:9092",
+                "topic": "orders",
+                "key_column": "id",
+                "role": "publisher",
+            }
         ]
 
     @pytest.mark.asyncio
@@ -171,7 +180,11 @@ class TestRepoUpsertSerializesLive:
             watermark_column="updated_at",
             poll_interval=15,
             strategy="poll",
-            outputs=[LiveOutputConfig(type="kafka", topic="orders", bootstrap_servers="k:9092")],
+            outputs=[
+                LiveOutputConfig(
+                    type="kafka", topic="orders", bootstrap_servers="k:9092", role="publisher"
+                )
+            ],
         )
         tbl = Table(
             source_id="s1",
@@ -234,7 +247,11 @@ class TestAdminLiveMapping:
             strategy="poll",
             outputs=[
                 LiveOutputConfigInput(
-                    type="kafka", topic="orders", key_column="id", bootstrap_servers="k:9092"
+                    type="kafka",
+                    topic="orders",
+                    key_column="id",
+                    bootstrap_servers="k:9092",
+                    role="publisher",
                 )
             ],
         )
@@ -250,6 +267,7 @@ class TestAdminLiveMapping:
         assert len(out.outputs) == 1
         assert out.outputs[0].type == "kafka"
         assert out.outputs[0].bootstrap_servers == "k:9092"
+        assert out.outputs[0].role == "publisher"
 
     def test_none_input_and_row_map_to_none(self):
         from provisa.api.admin._live_mappers import live_model_from_input
@@ -257,3 +275,15 @@ class TestAdminLiveMapping:
 
         assert live_model_from_input(None) is None
         assert _live_type_from_row(None) is None
+
+
+def test_a_kafka_output_naming_no_role_is_refused_by_name():
+    """REQ-286: a Kafka output publishes rows governed as the role it names; one naming none is
+    refused when the config is loaded, naming the output."""
+    from pydantic import ValidationError
+
+    from provisa.core.models import LiveOutputConfig
+
+    with pytest.raises(ValidationError, match="topic 'orders' names no role"):
+        LiveOutputConfig(type="kafka", topic="orders", bootstrap_servers="k:9092")
+    assert LiveOutputConfig(type="sse").role is None  # an SSE output is governed per subscriber

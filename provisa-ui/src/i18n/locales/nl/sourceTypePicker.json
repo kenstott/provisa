@@ -1,0 +1,14 @@
+{
+  "sourceTypePicker": {
+    "title": "Kies een brontype",
+    "searchPlaceholder": "Brontypen zoeken (naam, bijv. postgres, mssql, kafka)",
+    "all": "Alle",
+    "recent": "Recent gebruikt",
+    "noMatch": "Geen brontype komt overeen.",
+    "browse": "Bladeren…",
+    "reachLive": "Live (ter plaatse gelezen)",
+    "reachReplica": "Replica (een ververste kopie)",
+    "reachLiveOn": "Alleen live op {{engines}}",
+    "reachNone": "Niet bereikbaar vanaf deze engine"
+  }
+}

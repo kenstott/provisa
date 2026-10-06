@@ -313,9 +313,8 @@ def _resolve_tls(cert_env: str, key_env: str) -> tuple[str, str] | None:
 
 
 async def _start_servers(_log: logging.Logger) -> None:
-    """Start gRPC, Arrow Flight, pgwire, Live Query Engine, and APQ cache servers."""
+    """Start gRPC, Arrow Flight, pgwire, and APQ cache servers."""
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
-    from provisa.api.app_rebuild import _reconcile_live_engine
 
     _evaluate_licensing(_log)  # REQ-1135–1139: offline trial/license check + shell banner
 
@@ -568,24 +567,8 @@ async def _start_servers(_log: logging.Logger) -> None:
         # unexpected and propagates loudly.
         _log.exception("airport server startup failed")
 
-    try:
-        from provisa.live.engine import LiveEngine
-
-        live_engine = LiveEngine(
-            tenant_db=state.tenant_db, engine=state.federation_engine, org_id=state.org_id
-        )
-        await live_engine.start()
-        state.live_engine = live_engine
-        _log.info("Live Query Engine started")
-
-        # Reconcile poll jobs from persisted per-table live config (Phase AY).
-        # Data polls route through the engine; CDC-delivered tables are driven by
-        # subscription providers, not the poll engine.
-        if state.model_db is not None:
-            async with state.model_db.acquire() as _lc:
-                await _reconcile_live_engine(_lc)
-    except Exception:
-        _log.exception("Live Query Engine startup failed")
+    # Live Query Engines are each org's, started with its prod runtime once the process's
+    # scheduler runs (provisa.api.app_rebuild.start_org_live_engine; REQ-1266).
 
     # REQ-289: APQ cache uses the resolved cache.redis_url and apq.ttl (not raw env vars).
     # REQ-829: with no URL, RedisAPQCache(None) uses embedded fakeredis so desktop
@@ -619,32 +602,9 @@ def _start_scheduler(_log: logging.Logger) -> None:
         # view builds, source polls, row caches) run once per region, under its region's lock.
         # new_scheduler: a wakeup chain that never inherits a request's trace context -- see there.
         scheduler = new_scheduler(_scheduler_holders(state))
-        _cfg_triggers = []
-        try:
-            # REQ-1669: includes-aware, so a wrapper config's fragments are seen.
-            from provisa.core.config_loader import read_config_with_includes
-
-            _raw = read_config_with_includes(config_path_str())
-            if isinstance(_raw, dict):
-                from provisa.core.config_loader import parse_config_dict
-
-                _cfg = parse_config_dict(_raw)
-                _cfg_triggers = _cfg.scheduled_triggers if _cfg.scheduled_triggers else []
-        except Exception:
-            pass
-        from provisa.scheduler.jobs import build_scheduler
-
-        _cfg_scheduler = build_scheduler(_cfg_triggers)
-        if _cfg_scheduler:
-            for job in _cfg_scheduler.get_jobs():
-                scheduler.add_job(
-                    job.func,
-                    trigger=job.trigger,
-                    args=job.args,
-                    id=job.id,
-                    name=job.name,
-                    replace_existing=True,
-                )
+        # REQ-1003: scheduled triggers are each org's, in its model store, scheduled per org by
+        # register_org_triggers (the deployment org's once the boot has loaded its model, every
+        # other org's when its runtime is built) -- never read from the config file here.
         from provisa.scheduler.jobs import (
             compact_otel_signals,
             reclaim_otel_storage,

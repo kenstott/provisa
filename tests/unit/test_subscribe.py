@@ -15,15 +15,16 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from provisa.api.data.subscribe import (
     CHANNEL_PREFIX,
-    _rls_matches,
+    _governed_changes,
     _sse_generator,
 )
+from provisa.live.governed import GovernanceKey
 
 
 # ---------------------------------------------------------------------------
@@ -74,36 +75,112 @@ class FakePool:
 
 
 # ---------------------------------------------------------------------------
-# _rls_matches
+# _governed_changes: every change is read back, governed as the subscriber (REQ-336, REQ-286)
 # ---------------------------------------------------------------------------
 
+_KEY = GovernanceKey("acme", "analyst", (("region", "us"),))
+_REF = '"sales"."orders"'
 
-class TestRLSMatches:
-    def test_no_rules_passes(self):
-        rls = MagicMock()
-        rls.rules = {}
-        assert _rls_matches({"id": 1}, rls, "orders") is True
 
-    def test_matching_rule_passes(self):
-        rls = MagicMock()
-        rls.rules = {1: "region = 'us'"}
-        assert _rls_matches({"region": "us"}, rls, "orders") is True
+async def _events(*events):
+    for event in events:
+        yield event
 
-    def test_non_matching_rule_fails(self):
-        rls = MagicMock()
-        rls.rules = {1: "region = 'us'"}
-        assert _rls_matches({"region": "eu"}, rls, "orders") is False
 
-    def test_missing_column_passes(self):
-        rls = MagicMock()
-        rls.rules = {1: "region = 'us'"}
-        assert _rls_matches({"id": 1}, rls, "orders") is True
+def _governed(monkeypatch, answers: dict):
+    """governed_rows as the pipeline answers the subscriber: ``answers`` maps a key value to the
+    rows the subscriber's governed read returns for it (absent: the read returns nothing)."""
+    calls: list[tuple] = []
 
-    def test_complex_expr_passes(self):
-        """Non-simple expressions are treated as permissive."""
-        rls = MagicMock()
-        rls.rules = {1: "region IN ('us', 'eu')"}
-        assert _rls_matches({"region": "jp"}, rls, "orders") is True
+    async def _rows(sql, key, params=None):
+        calls.append((sql, key, params))
+        return answers.get(params[0], []) if params else []
+
+    monkeypatch.setattr("provisa.live.governed.governed_rows", _rows)
+    return calls
+
+
+async def _collect(gen) -> list:
+    out = []
+    async for chunk in gen:
+        out.append(chunk)
+    return out
+
+
+def _data(chunks) -> list[dict]:
+    return [json.loads(c.removeprefix("data: ").strip()) for c in chunks if c.startswith("data:")]
+
+
+class TestGovernedChanges:
+    @pytest.mark.asyncio
+    async def test_the_raw_row_is_never_forwarded(self, monkeypatch):
+        """The change event's row is read back through the pipeline as the subscriber's key;
+        what the subscriber receives is that read, not the event."""
+        calls = _governed(monkeypatch, {1: [{"id": 1, "region": "us", "ssn": "XXX-XX"}]})
+        events = _events(("INSERT", {"id": 1, "region": "us", "ssn": "123-45", "secret": "s"}))
+        chunks = await _collect(_governed_changes(events, _KEY, _REF, ["id"]))
+        assert chunks[0] == ": connected\n\n"
+        assert _data(chunks) == [
+            {"op": "INSERT", "row": {"id": 1, "region": "us", "ssn": "XXX-XX"}}
+        ]
+        assert calls == [(f'SELECT * FROM {_REF} WHERE "id" = $1', _KEY, [1])]
+
+    @pytest.mark.asyncio
+    async def test_a_row_the_key_may_not_read_is_not_delivered(self, monkeypatch):
+        """A row outside the subscriber's row rules is not delivered -- whatever the rule's form;
+        no rule is ever treated as passing."""
+        _governed(monkeypatch, {2: [{"id": 2, "region": "us"}]})  # id 1 is outside the rules
+        events = _events(
+            ("INSERT", {"id": 1, "region": "jp"}), ("INSERT", {"id": 2, "region": "us"})
+        )
+        assert _data(await _collect(_governed_changes(events, _KEY, _REF, ["id"]))) == [
+            {"op": "INSERT", "row": {"id": 2, "region": "us"}}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_delete_is_delivered_only_for_a_row_this_stream_delivered(self, monkeypatch):
+        _governed(monkeypatch, {1: [{"id": 1}]})
+        events = _events(
+            ("DELETE", {"id": 9}),  # never delivered: its deletion says nothing to this key
+            ("INSERT", {"id": 1}),
+            ("DELETE", {"id": 1}),
+        )
+        assert _data(await _collect(_governed_changes(events, _KEY, _REF, ["id"]))) == [
+            {"op": "INSERT", "row": {"id": 1}},
+            {"op": "DELETE", "row": {"id": 1}},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_row_that_leaves_the_keys_view_is_delivered_as_a_delete(self, monkeypatch):
+        answers = {1: [{"id": 1, "region": "us"}]}
+        calls: list = []
+
+        async def _rows(sql, key, params=None):
+            calls.append(params)
+            # The second read finds the row moved out of the key's rules.
+            return answers.get(params[0], []) if len(calls) == 1 else []
+
+        monkeypatch.setattr("provisa.live.governed.governed_rows", _rows)
+        events = _events(
+            ("INSERT", {"id": 1, "region": "us"}), ("UPDATE", {"id": 1, "region": "jp"})
+        )
+        assert _data(await _collect(_governed_changes(events, _KEY, _REF, ["id"]))) == [
+            {"op": "INSERT", "row": {"id": 1, "region": "us"}},
+            {"op": "DELETE", "row": {"id": 1}},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_an_event_without_its_key_is_dropped(self, monkeypatch):
+        calls = _governed(monkeypatch, {})
+        events = _events(("INSERT", {"region": "us"}))
+        assert _data(await _collect(_governed_changes(events, _KEY, _REF, ["id"]))) == []
+        assert calls == []
+
+    @pytest.mark.asyncio
+    async def test_a_keepalive_tick_is_a_comment(self, monkeypatch):
+        _governed(monkeypatch, {})
+        chunks = await _collect(_governed_changes(_events((None, None)), _KEY, _REF, ["id"]))
+        assert chunks == [": connected\n\n", ": keepalive\n\n"]
 
 
 # ---------------------------------------------------------------------------
@@ -113,34 +190,21 @@ class TestRLSMatches:
 
 class TestSSEGenerator:
     @pytest.mark.asyncio
-    async def test_emits_connected_comment(self):
-        conn = FakeConnection()
-        pool = FakePool(conn)
-        disconnect = asyncio.Event()
-        disconnect.set()  # Disconnect immediately after first yield
-
-        gen = _sse_generator(pool, "orders", None, None, {}, {}, disconnect)
-        first = await gen.__anext__()
-        assert first == ": connected\n\n"
-
-    @pytest.mark.asyncio
     async def test_emits_data_event(self):
         conn = FakeConnection()
         pool = FakePool(conn)
         disconnect = asyncio.Event()
 
-        gen = _sse_generator(pool, "orders", None, None, {}, {}, disconnect)
-        # Get the connected comment
-        await gen.__anext__()
+        gen = _sse_generator(pool, "orders", disconnect)
+        task = asyncio.ensure_future(gen.__anext__())
+        await asyncio.sleep(0)  # the listener is registered
 
         # Fire a notification on the channel
         channel = f"{CHANNEL_PREFIX}orders"
-        payload = json.dumps({"op": "INSERT", "row": {"id": 1, "name": "test"}})
-        conn.fire(channel, payload)
+        conn.fire(channel, json.dumps({"op": "INSERT", "row": {"id": 1, "name": "test"}}))
 
-        # Get the data event
-        event = await gen.__anext__()
-        assert event == f"data: {payload}\n\n"
+        # The change event, as the channel reported it
+        assert await task == ("INSERT", {"id": 1, "name": "test"})
 
         disconnect.set()
 
@@ -150,12 +214,9 @@ class TestSSEGenerator:
         pool = FakePool(conn)
         disconnect = asyncio.Event()
 
-        gen = _sse_generator(pool, "orders", None, None, {}, {}, disconnect)
-        await gen.__anext__()  # connected
+        gen = _sse_generator(pool, "orders", disconnect)
 
         # Patch wait_for to simulate timeout quickly
-        asyncio.wait_for
-
         async def fast_timeout(coro, timeout):
             coro.close()
             raise asyncio.TimeoutError()
@@ -163,70 +224,49 @@ class TestSSEGenerator:
         with patch("asyncio.wait_for", side_effect=fast_timeout):
             event = await gen.__anext__()
 
-        assert event == ": keepalive\n\n"
+        assert event == (None, None)  # a keepalive tick
         disconnect.set()
 
     @pytest.mark.asyncio
-    async def test_rls_filters_events(self):
+    async def test_rls_filters_events(self, monkeypatch):
+        """A notification outside the subscriber's row rules never reaches it (REQ-336)."""
         conn = FakeConnection()
         pool = FakePool(conn)
         disconnect = asyncio.Event()
+        _governed(monkeypatch, {2: [{"id": 2, "region": "us"}]})  # the key reads id 2 only
 
-        rls_ctx = MagicMock()
-        rls_ctx.has_rules.return_value = True
-        rls_ctx.rules = {1: "region = 'us'"}
-        rls_contexts = {"analyst": rls_ctx}
-
-        gen = _sse_generator(pool, "orders", None, "analyst", rls_contexts, {}, disconnect)
-        await gen.__anext__()  # connected
-
+        stream = _governed_changes(_sse_generator(pool, "orders", disconnect), _KEY, _REF, ["id"])
+        assert await stream.__anext__() == ": connected\n\n"
+        pending = asyncio.ensure_future(stream.__anext__())
+        await asyncio.sleep(0)
         channel = f"{CHANNEL_PREFIX}orders"
+        conn.fire(channel, json.dumps({"op": "INSERT", "row": {"id": 1, "region": "eu"}}))
+        conn.fire(channel, json.dumps({"op": "INSERT", "row": {"id": 2, "region": "us"}}))
 
-        # This event should be filtered out (region = eu, rule requires us)
-        conn.fire(channel, json.dumps({"op": "INSERT", "row": {"region": "eu"}}))
-        # This event should pass (region = us)
-        conn.fire(channel, json.dumps({"op": "INSERT", "row": {"region": "us"}}))
-
-        event = await gen.__anext__()
-        parsed = json.loads(event.removeprefix("data: ").strip())
-        assert parsed["row"]["region"] == "us"
-
+        event = await pending
+        assert json.loads(event.removeprefix("data: ").strip())["row"] == {"id": 2, "region": "us"}
         disconnect.set()
 
     @pytest.mark.asyncio
-    async def test_masking_applied_to_streamed_row(self):
-        # REQ-336: a column masked for the role is transformed in the SSE payload,
-        # matching local-table governance.
-        from provisa.security.masking import MaskingRule, MaskType
-
+    async def test_masking_applied_to_streamed_row(self, monkeypatch):
+        """REQ-336: a masked column reaches the subscriber as the governed read masks it, never as
+        the notification carried it."""
         conn = FakeConnection()
         pool = FakePool(conn)
         disconnect = asyncio.Event()
+        _governed(monkeypatch, {1: [{"id": 1, "ssn": "XXX-XX", "salary": "REDACTED"}]})
 
-        ssn_rule = MaskingRule(mask_type=MaskType.regex, pattern=r"\d", replace="X")
-        const_rule = MaskingRule(mask_type=MaskType.constant, value="REDACTED")
-        masking_rules = {
-            (7, "analyst"): {
-                "ssn": (ssn_rule, "varchar"),
-                "salary": (const_rule, "varchar"),
-            }
-        }
-
-        gen = _sse_generator(pool, "orders", 7, "analyst", {}, masking_rules, disconnect)
-        await gen.__anext__()  # connected
-
-        channel = f"{CHANNEL_PREFIX}orders"
+        stream = _governed_changes(_sse_generator(pool, "orders", disconnect), _KEY, _REF, ["id"])
+        await stream.__anext__()  # connected
+        pending = asyncio.ensure_future(stream.__anext__())
+        await asyncio.sleep(0)
         conn.fire(
-            channel,
+            f"{CHANNEL_PREFIX}orders",
             json.dumps({"op": "INSERT", "row": {"id": 1, "ssn": "123-45", "salary": "90000"}}),
         )
 
-        event = await gen.__anext__()
-        parsed = json.loads(event.removeprefix("data: ").strip())
-        assert parsed["row"]["ssn"] == "XXX-XX"  # regex mask applied
-        assert parsed["row"]["salary"] == "REDACTED"  # constant mask applied
-        assert parsed["row"]["id"] == 1  # unmasked column untouched
-
+        parsed = json.loads((await pending).removeprefix("data: ").strip())
+        assert parsed["row"] == {"id": 1, "ssn": "XXX-XX", "salary": "REDACTED"}
         disconnect.set()
 
     @pytest.mark.asyncio
@@ -236,7 +276,7 @@ class TestSSEGenerator:
         disconnect = asyncio.Event()
         disconnect.set()
 
-        gen = _sse_generator(pool, "orders", None, None, {}, {}, disconnect)
+        gen = _sse_generator(pool, "orders", disconnect)
         # Exhaust the generator
         chunks = []
         async for chunk in gen:
@@ -254,21 +294,16 @@ class TestSSEGenerator:
         pool = FakePool(conn)
         disconnect = asyncio.Event()
 
-        gen = _sse_generator(pool, "orders", None, None, {}, {}, disconnect)
-        await gen.__anext__()  # connected
+        gen = _sse_generator(pool, "orders", disconnect)
+        first = asyncio.ensure_future(gen.__anext__())
+        await asyncio.sleep(0)  # the listener is registered
 
         channel = f"{CHANNEL_PREFIX}orders"
-        payloads = [json.dumps({"op": "INSERT", "row": {"id": i}}) for i in range(3)]
-        for p in payloads:
-            conn.fire(channel, p)
+        for i in range(3):
+            conn.fire(channel, json.dumps({"op": "INSERT", "row": {"id": i}}))
 
-        received = []
-        for _ in range(3):
-            event = await gen.__anext__()
-            received.append(event)
-
-        for i, event in enumerate(received):
-            assert event == f"data: {payloads[i]}\n\n"
+        received = [await first] + [await gen.__anext__() for _ in range(2)]
+        assert received == [("INSERT", {"id": i}) for i in range(3)]
 
         disconnect.set()
 
@@ -280,22 +315,33 @@ class TestSSEGenerator:
 
 class TestSubscribeEndpoint:
     @pytest.mark.asyncio
-    async def test_returns_503_without_pool(self):
-        """Endpoint returns 503 when tenant_db is None."""
-        from fastapi.testclient import TestClient
-        from fastapi import FastAPI
+    async def test_returns_503_without_pool(self, monkeypatch):
+        """Endpoint returns 503 when the org's tenant_db is not bound -- after the subscriber's
+        governed check, which every subscription passes first."""
+        from types import SimpleNamespace
 
-        app = FastAPI()
-        from provisa.api.data.subscribe import router
+        from provisa.api.data.subscribe import subscribe
+        from provisa.api.errors import ApiError
+        from provisa.core.request_context import reset_current_org, set_current_org
 
-        app.include_router(router)
-
-        with patch("provisa.api.app.state") as mock_state:
-            mock_state.tenant_db = None
-            mock_state.rls_contexts = {}
-            client = TestClient(app)
-            resp = client.get("/data/subscribe/orders")
-            assert resp.status_code == 503
+        meta = SimpleNamespace(table_id=7, source_id="pg", domain_id="sales")
+        state = SimpleNamespace(
+            tenant_db=None,
+            roles={"analyst": {}},
+            view_context=SimpleNamespace(tables={"orders": meta}, pk_columns={7: ["id"]}),
+            table_path_maps={},
+            source_types={"pg": "postgresql"},
+        )
+        monkeypatch.setattr("provisa.api.app.state", state)
+        monkeypatch.setattr("provisa.live.governed.table_ref", lambda _m: _REF)
+        _governed(monkeypatch, {})
+        token = set_current_org("acme")
+        try:
+            with pytest.raises(ApiError) as err:
+                await subscribe("orders", SimpleNamespace(state=SimpleNamespace(role="analyst")))
+        finally:
+            reset_current_org(token)
+        assert err.value.status_code == 503
 
     def test_channel_prefix_format(self):
         """Channel name uses the expected prefix."""

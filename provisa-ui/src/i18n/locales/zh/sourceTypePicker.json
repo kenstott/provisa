@@ -1,0 +1,14 @@
+{
+  "sourceTypePicker": {
+    "title": "选择数据源类型",
+    "searchPlaceholder": "搜索数据源类型（名称，例如 postgres、mssql、kafka）",
+    "all": "全部",
+    "recent": "最近使用",
+    "noMatch": "没有匹配的数据源类型。",
+    "browse": "浏览…",
+    "reachLive": "实时（就地读取）",
+    "reachReplica": "副本（定期刷新的副本）",
+    "reachLiveOn": "仅在 {{engines}} 上实时",
+    "reachNone": "此引擎无法访问"
+  }
+}

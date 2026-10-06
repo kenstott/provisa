@@ -885,13 +885,26 @@ class KafkaSinkAttachment(BaseModel):  # REQ-565
     triggers: list[str] = Field(default_factory=lambda: ["change_event"])
 
 
-class LiveOutputConfig(BaseModel):  # REQ-565
-    """Single output destination for a live query (SSE fanout or Kafka sink)."""
+class LiveOutputConfig(BaseModel):  # REQ-565, REQ-286
+    """Single output destination for a live query (SSE fanout or Kafka sink).
+
+    A Kafka output publishes the table's rows governed as ``role`` -- its row rules, column
+    visibility and masks -- so it names one; an output naming none is refused by name."""
 
     type: str  # "sse" | "kafka"
     topic: str | None = None  # Kafka topic (required when type="kafka")
     key_column: str | None = None  # Kafka message key column
     bootstrap_servers: str | None = None  # Kafka bootstrap (required when type="kafka")
+    role: str | None = None  # the role a Kafka output publishes as (required when type="kafka")
+
+    @model_validator(mode="after")
+    def _kafka_publishes_as_a_role(self) -> "LiveOutputConfig":
+        if self.type == "kafka" and not self.role:
+            raise ValueError(
+                f"live Kafka output to topic {self.topic!r} names no role: a Kafka output "
+                "publishes rows governed as the role it names (outputs[].role)"
+            )
+        return self
 
 
 class LiveKafkaParams(BaseModel):  # REQ-813
@@ -1616,6 +1629,7 @@ class ScheduledTrigger(BaseModel):
 
     id: str
     cron: str  # cron expression (e.g. "0 * * * *" for hourly)
+    name: str | None = None  # display name; the id when unset
     url: str | None = None  # webhook URL (mutually exclusive with function)
     webhook_name: str | None = None  # display name for the webhook
     args: dict = Field(default_factory=dict)  # arg name → value for webhook POST body

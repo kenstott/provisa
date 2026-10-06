@@ -4,12 +4,12 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""create_scheduled_task / delete_scheduled_task admin mutations (REQ-1003, REQ-1004)."""
+"""create_scheduled_task / delete_scheduled_task admin mutations (REQ-1003, REQ-1004).
+
+A trigger is written to the caller's org's model store (REQ-1919), never the config file."""
 
 import pytest
-import yaml
 
-import provisa.api.admin.schema_mutation_ops as sm_ops
 from provisa.api.admin.schema_mutation import Mutation
 from provisa.core.models import ScheduledTrigger
 from provisa.scheduler import jobs
@@ -17,16 +17,30 @@ from provisa.scheduler import jobs
 
 @pytest.fixture
 def cfg_path(tmp_path, monkeypatch):
+    """The bound org's model store, holding the triggers table; no scheduler runs here."""
+    import provisa.api.app as app_mod
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_org import metadata, scheduled_triggers, tracked_webhooks
+
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'model.db'}")
+    with engine.begin() as raw:
+        metadata.create_all(raw, tables=[scheduled_triggers, tracked_webhooks])
+    db = Database(engine, "model")
+    monkeypatch.setattr(app_mod.state, "model_db", db, raising=False)
+    monkeypatch.setattr(app_mod.state, "_scheduler", None, raising=False)
+    # A config file is present and must stay untouched: triggers are never written to it.
     path = tmp_path / "provisa.yaml"
     path.write_text("scheduled_triggers: []\n")
     monkeypatch.setenv("PROVISA_CONFIG", str(path))
-    # Avoid importing the running app / scheduler in a unit test.
-    monkeypatch.setattr(sm_ops, "_register_trigger_live", lambda _t: None)
-    return path
+    yield db
+    assert path.read_text() == "scheduled_triggers: []\n"
 
 
-def _read(path):
-    return yaml.safe_load(path.read_text())
+async def _read(db):
+    from provisa.core.repositories import scheduled_trigger as trigger_repo
+
+    async with db.acquire() as conn:
+        return {"scheduled_triggers": await trigger_repo.list_all(conn)}
 
 
 def _info(monkeypatch):
@@ -58,19 +72,21 @@ async def test_create_sql_trigger_persists(cfg_path, monkeypatch):
     )
     assert res.success is True
 
-    triggers = _read(cfg_path)["scheduled_triggers"]
+    triggers = (await _read(cfg_path))["scheduled_triggers"]
     assert len(triggers) == 1
     t = triggers[0]
     assert t["id"] == "nightly"
     assert t["cron"] == "0 2 * * *"
     assert t["sql"] == _WRITE
     assert t["role"] == "ops"
-    assert "url" not in t
+    assert t["url"] is None
+    assert t["origin"] == "admin"
 
-    # The persisted trigger feeds build_scheduler as a SQL job.
-    model = ScheduledTrigger(**{k: v for k, v in t.items() if k != "name"})
-    scheduler = jobs.build_scheduler([model])
-    job = scheduler.get_job("nightly")
+    # The persisted trigger feeds build_scheduler as a SQL job of the org that made it.
+    fields = ("id", "name", "cron", "url", "webhook_name", "args", "sql", "role", "enabled")
+    model = ScheduledTrigger(**{k: t[k] for k in fields})
+    scheduler = jobs.build_scheduler([model], "default")
+    job = scheduler.get_job("nightly:org_default")
     assert job.func is jobs._execute_sql
 
 
@@ -81,7 +97,7 @@ async def test_create_sql_trigger_requires_sql(cfg_path, monkeypatch):
     )
     assert res.success is False
     assert "sql is required" in res.message
-    assert _read(cfg_path)["scheduled_triggers"] == []
+    assert (await _read(cfg_path))["scheduled_triggers"] == []
 
 
 async def test_create_unknown_kind_fails(cfg_path, monkeypatch):
@@ -115,7 +131,7 @@ async def test_create_duplicate_id_fails(cfg_path, monkeypatch):
     )
     assert res.success is False
     assert "already exists" in res.message
-    assert len(_read(cfg_path)["scheduled_triggers"]) == 1
+    assert len((await _read(cfg_path))["scheduled_triggers"]) == 1
 
 
 async def test_delete_scheduled_task(cfg_path, monkeypatch):
@@ -129,14 +145,9 @@ async def test_delete_scheduled_task(cfg_path, monkeypatch):
         sql=_WRITE,
         role="ops",
     )
-    # delete_scheduled_task imports app state; force the no-scheduler branch.
-    import provisa.api.app as app_mod
-
-    monkeypatch.setattr(app_mod.state, "_scheduler", None, raising=False)
-
     res = await m.delete_scheduled_task(_info(monkeypatch), task_id="gone")
     assert res.success is True
-    assert _read(cfg_path)["scheduled_triggers"] == []
+    assert (await _read(cfg_path))["scheduled_triggers"] == []
 
     res2 = await m.delete_scheduled_task(_info(monkeypatch), task_id="missing")
     assert res2.success is False
@@ -156,7 +167,7 @@ async def test_a_sql_trigger_without_a_role_of_this_org_is_refused(cfg_path, mon
             role=role,
         )
         assert res.success is False and res.code == "schema.trigger_role_required"
-    assert _read(cfg_path)["scheduled_triggers"] == []
+    assert (await _read(cfg_path))["scheduled_triggers"] == []
 
 
 async def test_a_create_is_refused_when_saved_naming_the_trigger(cfg_path, monkeypatch):
@@ -172,4 +183,4 @@ async def test_a_create_is_refused_when_saved_naming_the_trigger(cfg_path, monke
     )
     assert res.success is False and res.code == "schema.trigger_sql_refused"
     assert "trigger 'snap': creates an object" in res.message
-    assert _read(cfg_path)["scheduled_triggers"] == []
+    assert (await _read(cfg_path))["scheduled_triggers"] == []

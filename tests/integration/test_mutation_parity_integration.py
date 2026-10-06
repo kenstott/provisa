@@ -448,7 +448,7 @@ class TestScheduledTriggers:
             ),
         ]
 
-        scheduler = build_scheduler(triggers)
+        scheduler = build_scheduler(triggers, "default")
 
         assert scheduler is not None
         jobs = scheduler.get_jobs()
@@ -475,12 +475,12 @@ class TestScheduledTriggers:
             ),
         ]
 
-        scheduler = build_scheduler(triggers)
+        scheduler = build_scheduler(triggers, "default")
 
         assert scheduler is not None
         jobs = scheduler.get_jobs()
         assert len(jobs) == 1
-        assert jobs[0].id == "active"
+        assert jobs[0].id == "active:org_default"
 
     def test_build_scheduler_returns_none_when_no_enabled_triggers(self):
         # REQ-216: no enabled triggers → build_scheduler returns None
@@ -497,7 +497,7 @@ class TestScheduledTriggers:
             )
         ]
 
-        result = build_scheduler(triggers)
+        result = build_scheduler(triggers, "default")
 
         assert result is None
 

@@ -41,7 +41,6 @@ if TYPE_CHECKING:
 from provisa.core.repositories import rls as rls_repo
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
-from provisa.api.admin._config_io import config_path as _config_path, read_config
 from provisa.api.admin.capabilities import (
     has_capability,
     require_capability,
@@ -1432,45 +1431,41 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def scheduled_tasks(self, info: StrawberryInfo) -> list[ScheduledTaskType]:
-        """List scheduled triggers from config with runtime state."""
+        """List the caller's org's scheduled triggers, from its model, with their next run."""
         require_capability(info, "observability")
-        path = _config_path()
-        if not path.exists():
-            return []
+        from provisa.api.admin._table_ops import _get_pool
+        from provisa.api.app import state
+        from provisa.core.repositories import scheduled_trigger as trigger_repo
+        from provisa.core.request_context import require_current_org
+        from provisa.scheduler.jobs import trigger_job_id
 
-        cfg = read_config()
-        triggers = cfg.get("scheduled_triggers", [])
-
-        # Try to get runtime info from the APScheduler instance
-        from apscheduler.job import Job as _APSJob
-
-        job_map: dict[str, _APSJob] = {}
-        with discovery_fallback("scheduler jobs"):
-            from provisa.api.app import state
-
-            scheduler = getattr(state, "scheduler", None)
-            if scheduler is not None:
-                for job in scheduler.get_jobs():
-                    job_map[job.id] = job
-
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await trigger_repo.list_all(conn)
+        org_id = require_current_org()
+        scheduler = state._scheduler
         result = []
-        for t in triggers:
-            tid = t["id"]
-            job = job_map.get(tid)
-            next_run = None
-            if job is not None and job.next_run_time is not None:
-                next_run = job.next_run_time.isoformat()
-            sql = t.get("sql")
+        for row in rows:
+            job = (
+                scheduler.get_job(trigger_job_id(row["id"], org_id))
+                if scheduler is not None
+                else None
+            )
+            next_run = (
+                job.next_run_time.isoformat()
+                if job is not None and job.next_run_time is not None
+                else None
+            )
             result.append(
                 ScheduledTaskType(
-                    id=tid,
-                    name=t.get("name", tid),
-                    cron_expression=t["cron"],
-                    webhook_url=t.get("url"),
-                    kind="sql" if sql else "webhook",  # REQ-1003
-                    sql=sql,
-                    role=t.get("role"),
-                    enabled=t.get("enabled", True),
+                    id=row["id"],
+                    name=row["name"],
+                    cron_expression=row["cron"],
+                    webhook_url=row["url"],
+                    kind=row["kind"],  # REQ-1003
+                    sql=row["sql"],
+                    role=row["role"],
+                    enabled=row["enabled"],
                     last_run_at=None,
                     next_run_at=next_run,
                 )

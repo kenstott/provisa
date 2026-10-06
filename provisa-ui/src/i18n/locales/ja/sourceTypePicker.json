@@ -1,0 +1,14 @@
+{
+  "sourceTypePicker": {
+    "title": "ソースの種類を選択",
+    "searchPlaceholder": "ソースの種類を検索（名前、例: postgres、mssql、kafka）",
+    "all": "すべて",
+    "recent": "最近使用したもの",
+    "noMatch": "一致するソースの種類はありません。",
+    "browse": "参照…",
+    "reachLive": "ライブ（その場で読み取り）",
+    "reachReplica": "レプリカ（更新されるコピー）",
+    "reachLiveOn": "{{engines}} でのみライブ",
+    "reachNone": "このエンジンからは到達できません"
+  }
+}

@@ -60,6 +60,7 @@ CARRIED: frozenset[str] = frozenset(
         "api_endpoints",
         "tracked_functions",
         "tracked_webhooks",
+        "scheduled_triggers",  # REQ-1003: a branch's triggers are definitions until promoted
         "table_meta_links",
         # REQ-1919: which seeded roles and domains a config file redefined. It travels with the
         # rows it speaks about, and like ``roles`` only when an environment is created.

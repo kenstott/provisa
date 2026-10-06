@@ -219,6 +219,9 @@ class OrgRuntime:
     # statement gives them, published with the registry. Empty until the first rebuild: no table
     # is registered yet, so none is served from a replica.
     replica_routes: ReplicaRoutes = field(default_factory=ReplicaRoutes)
+    # REQ-1266/REQ-286: the org's live-query engine -- its prod runtime's only; an environment's
+    # live config runs once promoted. None until the runtime is built, and for an environment.
+    live_engine: Any = None
     relationships: list[dict] = field(default_factory=list)
     # REQ-1317: config-declared metric registry (name → Metric), published alongside tables
     # so the raw-SQL path can expand `metrics.<name>` queries before governance.
@@ -286,10 +289,19 @@ class OrgRegistry:
         return self._runtimes.get(org_id)
 
     def set(self, org_id: str, runtime: OrgRuntime) -> None:
+        old = self._runtimes.get(org_id)
         self._runtimes[org_id] = runtime
+        if old is not None and old is not runtime:
+            _retire(old)
 
     def invalidate(self, org_id: str) -> None:
-        self._runtimes.pop(org_id, None)
+        old = self._runtimes.pop(org_id, None)
+        if old is not None:
+            _retire(old)
+
+    def live_engines(self) -> list[Any]:
+        """Every org's running live-query engine (REQ-1266), for shutdown."""
+        return [rt.live_engine for rt in self._runtimes.values() if rt.live_engine is not None]
 
     def invalidate_org(self, org_id: str) -> None:
         """Drop the org's runtime AND every environment runtime built from it (REQ-1488).
@@ -300,7 +312,7 @@ class OrgRegistry:
         """
         prefix = f"{org_id}_env_"
         for key in [k for k in self._runtimes if k.startswith(prefix)]:
-            self._runtimes.pop(key, None)
+            self.invalidate(key)
         self.invalidate(org_id)
 
     def env_keys(self, org_id: str) -> list[str]:
@@ -378,3 +390,15 @@ class ActiveOrgPool:  # REQ-1266
                 "built (ensure_org_runtime) before its control plane is read."
             )
         return db.acquire()
+
+
+def _retire(runtime: OrgRuntime) -> None:
+    """A runtime no longer served stops its live-query engine: its polls are its org's, and a
+    replaced runtime's subscribers end with it (the replacement starts its own)."""
+    engine = runtime.live_engine
+    if engine is None:
+        return
+    runtime.live_engine = None
+    from provisa.core.connection_loop import spawn_background
+
+    spawn_background(engine.stop(), name=f"live-engine-stop-{runtime.org_id}")
