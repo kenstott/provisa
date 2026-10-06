@@ -26,6 +26,8 @@
     "correlationMaxLabel": "Numero massimo di colonne numeriche correlate",
     "correlationMaxDescription": "Quante colonne numeriche, della tabella e delle sue tabelle padre, entrano nella matrice di correlazione e nella rete delle dipendenze.",
     "jointMaxDistinctLabel": "Numero massimo di valori di categoria",
-    "jointMaxDistinctDescription": "Una colonna di testo con non più valori distinti di questo entra nelle correlazioni e nei conteggi congiunti come categoria."
+    "jointMaxDistinctDescription": "Una colonna di testo con non più valori distinti di questo entra nelle correlazioni e nei conteggi congiunti come categoria.",
+    "categoryMaxLabel": "Numero massimo di colonne di categoria",
+    "categoryMaxDescription": "Quante colonne di categoria entrano nelle correlazioni e nei conteggi congiunti; si tengono quelle con un valore nel maggior numero di righe."
   }
 }

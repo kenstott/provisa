@@ -26,6 +26,8 @@
     "correlationMaxLabel": "Höchstzahl korrelierter numerischer Spalten",
     "correlationMaxDescription": "Wie viele numerische Spalten der Tabelle und ihrer übergeordneten Tabellen in die Korrelationsmatrix und das Abhängigkeitsnetz eingehen.",
     "jointMaxDistinctLabel": "Höchstzahl an Kategoriewerten",
-    "jointMaxDistinctDescription": "Eine Textspalte mit höchstens so vielen unterschiedlichen Werten geht als Kategorie in die Korrelationen und gemeinsamen Häufigkeiten ein."
+    "jointMaxDistinctDescription": "Eine Textspalte mit höchstens so vielen unterschiedlichen Werten geht als Kategorie in die Korrelationen und gemeinsamen Häufigkeiten ein.",
+    "categoryMaxLabel": "Höchstzahl an Kategoriespalten",
+    "categoryMaxDescription": "Wie viele Kategoriespalten in die Korrelationen und gemeinsamen Häufigkeiten eingehen; behalten werden die, die in den meisten Zeilen einen Wert haben."
   }
 }

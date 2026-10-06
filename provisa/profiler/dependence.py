@@ -78,48 +78,70 @@ def parent_column_name(parent: ParentSpec, column: str) -> str:
 
 
 def distinct_sql(parent: ParentSpec, columns: list[ColumnSpec]) -> str:
-    """The distinct counts of ``parent``'s text and boolean ``columns``."""
+    """The distinct and non-null counts of ``parent``'s text and boolean ``columns``, and its rows:
+    ``n<i>`` and ``h<i>`` per column, then ``rows``."""
     parts = ", ".join(
-        f"COUNT(DISTINCT p.{_ident(c.name)}) AS {_ident(f'n{i}')}" for i, c in enumerate(columns)
+        f"COUNT(DISTINCT p.{_ident(c.name)}) AS {_ident(f'n{i}')}, "
+        f"COUNT(p.{_ident(c.name)}) AS {_ident(f'h{i}')}"
+        for i, c in enumerate(columns)
     )
-    return f"SELECT {parts} FROM {qualified(parent.table)} p"
+    return f"SELECT {parts}, COUNT(*) AS {_ident('rows')} FROM {qualified(parent.table)} p"
+
+
+def parse_distinct(
+    names: list[str], row: tuple, columns: list[ColumnSpec]
+) -> dict[str, tuple[int, float]]:
+    """``distinct_sql``'s one row as ``{column: (distinct values, share of rows holding one)}``."""
+    r = dict(zip(names, row))
+    rows = int(r["rows"])
+    return {
+        c.name: (int(r[f"n{i}"]), int(r[f"h{i}"]) / rows if rows else 0.0)
+        for i, c in enumerate(columns)
+    }
 
 
 def choose_columns(
-    own: list[tuple[ColumnSpec, int]],
-    parents: list[tuple[ParentSpec, dict[str, int]]],
+    own: list[tuple[ColumnSpec, int, float]],
+    parents: list[tuple[ParentSpec, dict[str, tuple[int, float]]]],
     max_numbers: int,
     max_distinct: int,
+    max_categories: int,
 ) -> list[DepColumn]:
-    """The columns entering the measures, own first: numbers (numeric, temporal) up to
-    ``max_numbers`` in column order, own and parent together; categories (text, boolean) with no
-    more than ``max_distinct`` distinct values. ``own``: each own column with its distinct count;
-    ``parents``: each parent with its text columns' distinct counts."""
-    out: list[DepColumn] = []
-    numbers = 0
-
-    def _add(name: str, expr: str, spec: ColumnSpec, distinct: int | None, own_col: bool) -> None:
-        nonlocal numbers
-        if spec.family in ("numeric", "temporal"):
-            if numbers < max_numbers:
-                out.append(DepColumn(name, expr, "number", spec.family, own_col))
-                numbers += 1
-        elif spec.family in ("text", "boolean"):
-            if distinct is not None and 0 < distinct <= max_distinct:
-                out.append(DepColumn(name, expr, "category", spec.family, own_col))
-
-    for i, (spec, distinct) in enumerate(own):
-        _add(spec.name, f"j.{_ident(f'c{i}')}", spec, distinct, True)
+    """The columns entering the measures, in column order, own first: numbers (numeric, temporal)
+    up to ``max_numbers`` in column order; categories (text, boolean) with no more than
+    ``max_distinct`` distinct values, up to ``max_categories`` of them -- the most frequently held
+    kept (the largest share of rows holding a value), then the fewest distinct values, then column
+    order. ``own``: each own column with its distinct count and share of rows holding a value;
+    ``parents``: each parent with the same of its text and boolean columns."""
+    candidates: list[tuple[DepColumn, tuple[int, float] | None]] = []
+    for i, (spec, distinct, held) in enumerate(own):
+        col = _dep_column(spec.name, f"j.{_ident(f'c{i}')}", spec, True)
+        candidates.append((col, (distinct, held)))
     for r, (parent, counts) in enumerate(parents):
         for i, spec in enumerate(parent.columns):
-            _add(
-                parent_column_name(parent, spec.name),
-                f"j.{_ident(f'p{r}_{i}')}",
-                spec,
-                counts.get(spec.name),
-                False,
-            )
-    return out
+            name = parent_column_name(parent, spec.name)
+            col = _dep_column(name, f"j.{_ident(f'p{r}_{i}')}", spec, False)
+            candidates.append((col, counts.get(spec.name)))
+    numbers = [i for i, (c, _) in enumerate(candidates) if c.kind == "number"][:max_numbers]
+    categories = [
+        (-counts[1], counts[0], i)
+        for i, (c, counts) in enumerate(candidates)
+        if c.kind == "category" and counts is not None and 0 < counts[0] <= max_distinct
+    ]
+    kept = set(numbers) | {i for _, _, i in sorted(categories)[:max_categories]}
+    return [c for i, (c, _) in enumerate(candidates) if i in kept]
+
+
+def _dep_column(name: str, expr: str, spec: ColumnSpec, own: bool) -> DepColumn:
+    """``spec`` as a candidate; a family that is neither a number nor a category is ``other``,
+    never entered."""
+    if spec.family in ("numeric", "temporal"):
+        kind = "number"
+    elif spec.family in ("text", "boolean"):
+        kind = "category"
+    else:
+        kind = "other"
+    return DepColumn(name, expr, kind, spec.family, own)
 
 
 def _joined(table: str, own: list[ColumnSpec], parents: list[ParentSpec], sample: Sample) -> str:

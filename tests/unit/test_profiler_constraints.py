@@ -84,8 +84,8 @@ def test_a_profile_proposes_what_its_evidence_supports(con):
 
 
 def test_an_ordering_is_proposed_from_the_row_by_row_comparison(con):
-    own = list(zip(_COLUMNS, [300, 3, 300, 300, 150]))
-    cols = dep.choose_columns(own, [], max_numbers=20, max_distinct=20)
+    own = list(zip(_COLUMNS, [300, 3, 300, 300, 150], [1.0, 1.0, 1.0, 1.0, 0.5]))
+    cols = dep.choose_columns(own, [], max_numbers=20, max_distinct=20, max_categories=10)
     pairs = dep.parse_pairs(
         *_run(con, dep.pairs_sql("d.orders", _COLUMNS, [], cols, Sample("whole"))), cols
     )
@@ -97,7 +97,7 @@ def test_an_ordering_is_proposed_from_the_row_by_row_comparison(con):
 
 def test_every_run_checks_the_accepted_constraints(con):
     accepted = [
-        pc.AcceptedConstraint(str(i), c, "evidence", 1.0, False)
+        pc.AcceptedConstraint(str(i), c, "evidence", 1.0, False, c.column, c.other)
         for i, c in enumerate(
             [
                 pc.Constraint("not_null", "note", None, {}),

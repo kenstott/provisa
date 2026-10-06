@@ -590,20 +590,24 @@ async def read_dependence(
     statements over the run's sample (``provisa.profiler.dependence``); ``wanted``: the rows the
     run's sample asked for."""
     empty = {"correlations": [], "dependencies": [], "joint_counts": []}
-    distinct = {c.spec.name: c.distinct for c in read.agg.columns}
+    profiled = read.agg.profiled_rows
+    own = [
+        (c.spec, c.distinct, c.non_null / profiled if profiled else 0.0) for c in read.agg.columns
+    ]
     parents = []
     for p in target.parents:
         texts = [c for c in p.columns if c.family in ("text", "boolean")]
-        counts: dict[str, int] = {}
+        counts: dict[str, tuple[int, float]] = {}
         if texts:
-            _, rows = await _governed(dependence.distinct_sql(p, texts))
-            counts = {c.name: int(n) for c, n in zip(texts, rows[0])}
+            names, rows = await _governed(dependence.distinct_sql(p, texts))
+            counts = dependence.parse_distinct(names, rows[0], texts)
         parents.append((p, counts))
     cols = dependence.choose_columns(
-        [(c, distinct[c.name]) for c in target.columns],
+        own,
         parents,
         settings.correlation_max_columns,
         settings.joint_max_distinct,
+        settings.category_max_columns,
     )
     if len(cols) < 2:
         return DependenceRead(empty, None, None, None, None, [], [])

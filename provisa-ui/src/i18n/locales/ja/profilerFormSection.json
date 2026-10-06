@@ -26,6 +26,8 @@
     "correlationMaxLabel": "相関をとる数値列の上限",
     "correlationMaxDescription": "テーブルとその親テーブルの数値列のうち、相関行列と依存関係ネットワークに入る列の数。",
     "jointMaxDistinctLabel": "カテゴリ値の上限",
-    "jointMaxDistinctDescription": "異なる値がこの数以下のテキスト列は、カテゴリとして相関と同時度数に入ります。"
+    "jointMaxDistinctDescription": "異なる値がこの数以下のテキスト列は、カテゴリとして相関と同時度数に入ります。",
+    "categoryMaxLabel": "カテゴリ列の上限",
+    "categoryMaxDescription": "相関と同時度数に入るカテゴリ列の数。値を持つ行が最も多い列が残されます。"
   }
 }

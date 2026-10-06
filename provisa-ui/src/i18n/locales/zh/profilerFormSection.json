@@ -26,6 +26,8 @@
     "correlationMaxLabel": "参与相关性的数值列上限",
     "correlationMaxDescription": "表及其父表中有多少数值列进入相关矩阵和依赖网络。",
     "jointMaxDistinctLabel": "类别值上限",
-    "jointMaxDistinctDescription": "不同值不超过此数的文本列作为类别进入相关性和联合计数。"
+    "jointMaxDistinctDescription": "不同值不超过此数的文本列作为类别进入相关性和联合计数。",
+    "categoryMaxLabel": "类别列上限",
+    "categoryMaxDescription": "进入相关性和联合计数的类别列数量；保留有值行数最多的列。"
   }
 }

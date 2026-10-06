@@ -237,10 +237,13 @@ class AcceptedConstraint:
     """An accepted constraint as synthetic generation reads it (REQ-1939)."""
 
     id: str
-    constraint: Constraint
+    constraint: Constraint  # its columns as the org admin reads the table (published names)
     evidence: str
     share: float | None
     sampled: bool
+    # The constraint's columns by their registered (physical) names, so the generator never maps.
+    physical_column: str
+    physical_other_column: str | None
 
 
 def _row_constraint(r: Any) -> Constraint:
@@ -258,7 +261,15 @@ async def accepted_constraints(conn: Any, table_id: int) -> list[AcceptedConstra
         .order_by(pc.c.signature)
     )
     return [
-        AcceptedConstraint(r.id, _row_constraint(r), r.evidence, r.share, r.sampled)
+        AcceptedConstraint(
+            r.id,
+            _row_constraint(r),
+            r.evidence,
+            r.share,
+            r.sampled,
+            r.physical_column,
+            r.physical_other_column,
+        )
         for r in result.fetchall()
     ]
 
@@ -286,19 +297,26 @@ async def decide(
     share: float | None,
     sampled: bool,
     run_id: str,
+    physical: dict[str, str],
 ) -> str:
     """Record the operator's decision on ``constraint`` -- accepted as given (an edit is an accept
-    with the edited definition) or dismissed -- replacing any earlier one. Returns its id."""
+    with the edited definition) or dismissed -- replacing any earlier one. Returns its id.
+    ``physical``: each published column name of the table to its registered name."""
     from datetime import UTC, datetime
 
     from provisa.core.schema_org import profiler_constraints as pc
 
     if status not in DECISION_STATUSES:
         raise ValueError(f"a decision is one of {DECISION_STATUSES}, got {status!r}")
+    unknown = [c for c in constraint.involved if c not in physical]
+    if unknown:
+        raise ValueError(f"{unknown} are not columns the org admin reads on this table")
     values = {
         "kind": constraint.kind,
         "column_name": constraint.column,
         "other_column": constraint.other,
+        "physical_column": physical[constraint.column],
+        "physical_other_column": None if constraint.other is None else physical[constraint.other],
         "definition": json.dumps(constraint.definition),
         "evidence": evidence,
         "share": share,

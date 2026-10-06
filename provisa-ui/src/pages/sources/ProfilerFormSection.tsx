@@ -23,6 +23,7 @@ const NUMBER_FIELDS: { key: string; stem: string; whole: boolean; min: number }[
   { key: "drift_psi", stem: "driftPsi", whole: false, min: 0 },
   { key: "correlation_max_columns", stem: "correlationMax", whole: true, min: 1 },
   { key: "joint_max_distinct", stem: "jointMaxDistinct", whole: true, min: 1 },
+  { key: "category_max_columns", stem: "categoryMax", whole: true, min: 1 },
 ];
 
 // REQ-1934: a Data Profiler source holds a name, a schedule and its run defaults, nothing else. The

@@ -33,6 +33,7 @@ const STORED = {
   drift_psi: 0.2,
   correlation_max_columns: 10,
   joint_max_distinct: 15,
+  category_max_columns: 4,
 };
 
 describe("Data Profiler source fields", () => {

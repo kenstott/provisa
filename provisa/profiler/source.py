@@ -54,6 +54,8 @@ class ProfilerSettings:
     # the most distinct values a category may have to enter it and a joint count.
     correlation_max_columns: int
     joint_max_distinct: int
+    # The most category columns entered, the most frequently held kept.
+    category_max_columns: int
 
 
 # none: every previous run; daily: runs at the same hour of the day; weekly: on the same weekday;
@@ -72,6 +74,7 @@ _SETTINGS = (
     "drift_psi",
     "correlation_max_columns",
     "joint_max_distinct",
+    "category_max_columns",
 )
 
 
@@ -135,6 +138,7 @@ def profiler_settings(source_id: str, mapping: dict) -> ProfilerSettings:
         drift_psi=_positive_number(source_id, mapping, "drift_psi"),
         correlation_max_columns=_positive_int(source_id, mapping, "correlation_max_columns"),
         joint_max_distinct=_positive_int(source_id, mapping, "joint_max_distinct"),
+        category_max_columns=_positive_int(source_id, mapping, "category_max_columns"),
     )
 
 

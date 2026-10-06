@@ -67,6 +67,20 @@ def _checker_doc(c: Any) -> dict:
     return {"id": c.id, "tableName": c.table_name, "sourceId": c.source_id, "checker": c.checker}
 
 
+def _physical_names(table_id: int) -> dict[str, str]:
+    """Each column of the table as the org admin reads it (published) to its registered name."""
+    from provisa.profiler.run import PROFILE_ROLE
+
+    ctx = state.contexts.get(PROFILE_ROLE)
+    if ctx is None:
+        raise ApiError(503, "profile.schema_unavailable", "No compiled schema for the org admin")
+    return {
+        exposed: physical
+        for (tid, physical), exposed in ctx.physical_to_sql.items()
+        if tid == table_id
+    }
+
+
 @router.get("/tables/{table_id}/profile-constraints")
 async def list_constraints(request: Request, table_id: int) -> dict:
     require_capability_request(request, "table_registration")
@@ -108,6 +122,7 @@ async def decide_constraint(request: Request, table_id: int, body: DecisionInput
                 share=body.share,
                 sampled=body.sampled,
                 run_id=body.runId,
+                physical=_physical_names(table_id),
             )
         except ValueError as exc:
             raise ApiError(422, "profile.constraint_invalid", str(exc)) from exc

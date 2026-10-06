@@ -71,9 +71,11 @@ def _run(con, sql: str):
 
 def _columns(con):
     names, rows = _run(con, dep.distinct_sql(_PARENT, [_PARENT.columns[1]]))
-    parent_counts = {"tier": int(rows[0][0])}
-    own = list(zip(_OWN, [1000, 2, 14, 101, 50, 1000]))
-    return dep.choose_columns(own, [(_PARENT, parent_counts)], max_numbers=20, max_distinct=20)
+    parent_counts = dep.parse_distinct(names, rows[0], [_PARENT.columns[1]])
+    own = list(zip(_OWN, [1000, 2, 14, 101, 50, 1000], [1.0] * 6))
+    return dep.choose_columns(
+        own, [(_PARENT, parent_counts)], max_numbers=20, max_distinct=20, max_categories=10
+    )
 
 
 def test_columns_enter_as_numbers_or_categories_within_the_bounds(con):
@@ -88,9 +90,25 @@ def test_columns_enter_as_numbers_or_categories_within_the_bounds(con):
         ("customer.tier", "category"),
     ]
     # code has a distinct value per row: not a category. At most two numbers when bounded so.
-    own = list(zip(_OWN, [1000, 2, 14, 101, 50, 1000]))
-    bounded = dep.choose_columns(own, [], max_numbers=2, max_distinct=20)
+    own = list(zip(_OWN, [1000, 2, 14, 101, 50, 1000], [1.0] * 6))
+    bounded = dep.choose_columns(own, [], max_numbers=2, max_distinct=20, max_categories=10)
     assert [c.name for c in bounded] == ["id", "region", "amount"]
+
+
+def test_categories_are_bounded_keeping_the_most_frequently_held():
+    """REQ-1934: the run default bounds the category columns entered; the ones holding a value in
+    the most rows are kept, then the fewest distinct values, then column order -- and the columns
+    still enter in column order."""
+    specs = [ColumnSpec(n, "varchar", "text", n) for n in ("a", "b", "c", "d")]
+    own = list(zip(specs, [5, 3, 4, 2], [0.5, 1.0, 1.0, 0.9]))
+    kept = dep.choose_columns(own, [], max_numbers=20, max_distinct=20, max_categories=2)
+    assert [c.name for c in kept] == ["b", "c"]
+    parent = dep.ParentSpec("p", "d.p", 2, "a", "id", [ColumnSpec("t", "varchar", "text", "t")])
+    with_parent = dep.choose_columns(
+        own, [(parent, {"t": (2, 1.0)})], max_numbers=20, max_distinct=20, max_categories=2
+    )
+    # b, c and p.t all hold a value in every row; b and p.t have the fewest values.
+    assert [c.name for c in with_parent] == ["b", "p.t"]
 
 
 def test_rank_correlation_correlation_ratio_and_the_dependency_network(con):

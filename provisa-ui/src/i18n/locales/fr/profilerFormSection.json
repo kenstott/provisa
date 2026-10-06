@@ -26,6 +26,8 @@
     "correlationMaxLabel": "Nombre maximal de colonnes numériques corrélées",
     "correlationMaxDescription": "Combien de colonnes numériques, de la table et de ses tables parentes, entrent dans la matrice de corrélation et le réseau de dépendances.",
     "jointMaxDistinctLabel": "Nombre maximal de valeurs de catégorie",
-    "jointMaxDistinctDescription": "Une colonne de texte n'ayant pas plus de valeurs distinctes que ce nombre entre dans les corrélations et les effectifs conjoints comme catégorie."
+    "jointMaxDistinctDescription": "Une colonne de texte n'ayant pas plus de valeurs distinctes que ce nombre entre dans les corrélations et les effectifs conjoints comme catégorie.",
+    "categoryMaxLabel": "Nombre maximal de colonnes de catégorie",
+    "categoryMaxDescription": "Combien de colonnes de catégorie entrent dans les corrélations et les effectifs conjoints ; celles qui ont une valeur dans le plus de lignes sont conservées."
   }
 }

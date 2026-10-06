@@ -5051,5 +5051,7 @@
   "zh/viewDefinitionForm.json::viewDefinitionForm.save": "Save view",
   "zh/viewDefinitionForm.json::viewDefinitionForm.saveFailed": "Save failed",
   "zh/viewDefinitionForm.json::viewDefinitionForm.sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
-  "zh/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor."
+  "zh/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor.",
+  "zh/profilerFormSection.json::profilerFormSection.categoryMaxDescription": "How many category columns enter the correlations and joint counts; those holding a value in the most rows are kept.",
+  "zh/profilerFormSection.json::profilerFormSection.categoryMaxLabel": "Most category columns"
 }

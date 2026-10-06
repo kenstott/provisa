@@ -562,6 +562,8 @@ def parse_profile_result(
             fanouts=[FanoutAggregates(spec=f) for f in fanouts],
             rows=DuplicateAggregates(key=None, repeated=0, extra=0, top_counts=[]),
             keys=[DuplicateAggregates(key=k, repeated=0, extra=0, top_counts=[]) for k in keys],
+            # No row read breaks a constraint.
+            violations=[0 for _ in checks],
         )
     scalar = [r for r in records if r["k"] == 0]
     if len(scalar) != 1:

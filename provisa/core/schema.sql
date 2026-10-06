@@ -1036,6 +1036,8 @@ CREATE TABLE IF NOT EXISTS profiler_constraints (
     kind          TEXT NOT NULL,
     column_name   TEXT NOT NULL,
     other_column  TEXT,
+    physical_column        TEXT NOT NULL,
+    physical_other_column  TEXT,
     definition    TEXT NOT NULL,
     evidence      TEXT NOT NULL,
     share         DOUBLE PRECISION,

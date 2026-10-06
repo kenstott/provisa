@@ -26,6 +26,8 @@
     "correlationMaxLabel": "Máximo de colunas numéricas correlacionadas",
     "correlationMaxDescription": "Quantas colunas numéricas, da tabela e das suas tabelas-mãe, entram na matriz de correlação e na rede de dependências.",
     "jointMaxDistinctLabel": "Máximo de valores de categoria",
-    "jointMaxDistinctDescription": "Uma coluna de texto com no máximo este número de valores distintos entra nas correlações e contagens conjuntas como categoria."
+    "jointMaxDistinctDescription": "Uma coluna de texto com no máximo este número de valores distintos entra nas correlações e contagens conjuntas como categoria.",
+    "categoryMaxLabel": "Máximo de colunas de categoria",
+    "categoryMaxDescription": "Quantas colunas de categoria entram nas correlações e contagens conjuntas; mantêm-se as que têm valor no maior número de linhas."
   }
 }

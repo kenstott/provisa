@@ -41,6 +41,7 @@ PROFILER_RUN_DEFAULTS: dict = {
     "drift_psi": 0.25,
     "correlation_max_columns": 20,
     "joint_max_distinct": 20,
+    "category_max_columns": 10,
 }
 
 

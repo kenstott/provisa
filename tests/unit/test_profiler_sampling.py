@@ -475,13 +475,15 @@ def test_the_profile_statement_over_no_rows_returns_no_row_and_reads_as_zero():
 
     con = duckdb.connect()
     _orders(con, 0)
-    names, rows = _duck(con, profile_sql("sales.orders", _COLUMNS, [], Sample("whole"), 100))
+    names, rows = _duck(
+        con, profile_sql("sales.orders", _COLUMNS, [], Sample("whole"), 100, [], [])
+    )
     assert rows == []
-    agg = parse_profile_result(names, rows, _COLUMNS, [])
+    agg = parse_profile_result(names, rows, _COLUMNS, [], [], [])
     assert agg.profiled_rows == 0
     assert [c.spec for c in agg.columns] == _COLUMNS
     # An empty table read whole still records its (empty) profile.
-    target = Target(7, "orders", "sales.orders", _COLUMNS, [], {}, _META, "id")
+    target = Target(7, "orders", "sales.orders", _COLUMNS, [], {}, _META, "id", [], [], [])
     out = result_rows(target, agg, "r", datetime.now(UTC), 100)
     assert [r["row_count"] for r in out["columns"]] == [0, 0]
 

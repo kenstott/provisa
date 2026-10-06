@@ -1039,6 +1039,9 @@ profiler_constraints = Table(
     Column("kind", Text, nullable=False),  # not_null | unique | value_set | range | ordering
     Column("column_name", Text, nullable=False),
     Column("other_column", Text),
+    # The same columns by their registered (physical) names, for synthetic generation (REQ-1939).
+    Column("physical_column", Text, nullable=False),
+    Column("physical_other_column", Text),
     Column("definition", Text, nullable=False),  # JSON
     Column("evidence", Text, nullable=False),
     Column("share", Float),

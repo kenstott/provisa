@@ -26,6 +26,8 @@
     "correlationMaxLabel": "Most numeric columns correlated",
     "correlationMaxDescription": "How many numeric columns, the table's and its parent tables', enter the correlation matrix and the dependency network.",
     "jointMaxDistinctLabel": "Most category values",
-    "jointMaxDistinctDescription": "A text column with no more distinct values than this enters the correlations and joint counts as a category."
+    "jointMaxDistinctDescription": "A text column with no more distinct values than this enters the correlations and joint counts as a category.",
+    "categoryMaxLabel": "Most category columns",
+    "categoryMaxDescription": "How many category columns enter the correlations and joint counts; those holding a value in the most rows are kept."
   }
 }
