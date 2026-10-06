@@ -108,6 +108,16 @@ async def check_membership(conn: Any, table: Any) -> None:
     sid = getattr(table, "profiler_source_id", None)
     if sid is None:
         return
+    # A table whose rows are reachable only with a value for a required filter (an OpenAPI path
+    # parameter, its _nf_* column) has no whole table to profile.
+    required = [
+        c.name for c in table.columns if getattr(c, "native_filter_type", None) == "path_param"
+    ]
+    if required:
+        raise ValueError(
+            f"table {table.table_name!r} cannot join a Data Profiler: its rows need a value for "
+            f"the required filter(s) {required}"
+        )
     found = (await conn.execute_core(select(sources.c.type).where(sources.c.id == sid))).fetchone()
     if found is None or found[0] != PROFILER_SOURCE_TYPE:
         raise ValueError(f"table {table.table_name!r}: {sid!r} is not a Data Profiler source")

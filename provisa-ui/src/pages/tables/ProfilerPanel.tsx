@@ -15,6 +15,7 @@ import type { RegisteredTable } from "../../types/admin";
 import { fetchProfilers, runProfileNow, type Profiler } from "../../api/profiler";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { ProfileRunsModal } from "./ProfileRunsModal";
+import { requiredParamColumns } from "../../components/nativeParams";
 
 // REQ-1934: a table's Data Profiler membership. Joining or leaving is a field of the table, saved
 // with it; Run Profile Now and View Profile Runs act on the saved member. The editor is shown only to
@@ -30,6 +31,9 @@ export function ProfilerPanel({
   setEditingTable: React.Dispatch<React.SetStateAction<RegisteredTable | null>>;
 }) {
   const { t } = useTranslation();
+  // A table whose rows need a value for a required filter (_nf_* path parameters) has no whole
+  // table to profile, so it cannot join a profiler.
+  const needsFilter = requiredParamColumns(editingTable).length > 0;
   const [profilers, setProfilers] = useState<Profiler[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -70,6 +74,7 @@ export function ProfilerPanel({
     }
   };
 
+  if (needsFilter) return null;
   return (
     <div style={{ paddingInline: "1.5rem" }}>
       <CollapsibleSection

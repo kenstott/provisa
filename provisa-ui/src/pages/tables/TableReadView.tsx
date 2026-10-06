@@ -22,6 +22,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import type { NavigateFunction } from "react-router-dom";
+import { requiredParamColumns } from "../../components/nativeParams";
 import type { RegisteredTable, DataProduct } from "../../types/admin";
 import { computeProfile } from "./helpers";
 import { TagControl } from "../../components/TagControl";
@@ -80,6 +81,9 @@ export function TableReadView({
   profileColumnsTable,
 }: TableReadViewProps) {
   const { t } = useTranslation();
+  // A table whose rows need a value for a required filter (_nf_* path parameters) has no whole
+  // table to preview or profile.
+  const needsFilter = requiredParamColumns(table).length > 0;
 
   return (
     <>
@@ -331,33 +335,37 @@ export function TableReadView({
               : t("tableReadView.deployToDbButton")}
           </Button>
         )}
-        <Button
-          size="compact-sm"
-          variant="default"
-          data-testid="table-read-view-preview"
-          onClick={(e) => {
-            e.stopPropagation();
-            onPreview(table);
-          }}
-          title={t("tableReadView.previewTitle")}
-        >
-          {t("tableReadView.previewButton")}
-        </Button>
-        <Button
-          size="compact-sm"
-          variant="default"
-          data-testid="table-read-view-profile"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleProfile(table.id);
-          }}
-          title={t("tableReadView.profileTitle")}
-          disabled={tableProfiles[table.id] === "loading"}
-        >
-          {tableProfiles[table.id] === "loading"
-            ? t("tableReadView.profilingButton")
-            : t("tableReadView.profileButton")}
-        </Button>
+        {!needsFilter && (
+          <Button
+            size="compact-sm"
+            variant="default"
+            data-testid="table-read-view-preview"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPreview(table);
+            }}
+            title={t("tableReadView.previewTitle")}
+          >
+            {t("tableReadView.previewButton")}
+          </Button>
+        )}
+        {!needsFilter && (
+          <Button
+            size="compact-sm"
+            variant="default"
+            data-testid="table-read-view-profile"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleProfile(table.id);
+            }}
+            title={t("tableReadView.profileTitle")}
+            disabled={tableProfiles[table.id] === "loading"}
+          >
+            {tableProfiles[table.id] === "loading"
+              ? t("tableReadView.profilingButton")
+              : t("tableReadView.profileButton")}
+          </Button>
+        )}
         <Button
           size="compact-sm"
           variant="default"

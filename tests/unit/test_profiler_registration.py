@@ -162,3 +162,23 @@ def test_two_members_with_one_name_both_join():
 def test_a_profiler_with_invalid_settings_fails_the_config():
     with pytest.raises(ValueError, match="needs a cron schedule"):
         validate_config(_config(source=_profiler({"sample_above_cells": 10})))
+
+
+def test_a_table_with_a_required_filter_cannot_join_a_profiler():
+    # REQ-1934: a table whose rows need a value for a required filter (an OpenAPI path parameter,
+    # its _nf_* column) has no whole table to profile, so joining a profiler is refused by name.
+    import asyncio
+    from types import SimpleNamespace
+
+    from provisa.profiler.source import check_membership
+
+    table = SimpleNamespace(
+        table_name="pet_by_id",
+        profiler_source_id="nightly",
+        columns=[
+            SimpleNamespace(name="id", native_filter_type="path_param"),
+            SimpleNamespace(name="name", native_filter_type=None),
+        ],
+    )
+    with pytest.raises(ValueError, match=r"pet_by_id.*required filter.*\['id'\]"):
+        asyncio.run(check_membership(object(), table))

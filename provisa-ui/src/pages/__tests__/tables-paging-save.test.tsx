@@ -135,6 +135,24 @@ const TABLES = [
   table(9, "orders", []),
   table(10, "events", [], { writeOps: ["insert"] }),
   table(11, "graph", [], { writeOps: [] }),
+  table(12, "pet_by_id", [], {
+    writeOps: [],
+    columns: [
+      {
+        id: 120,
+        columnName: "_nf_id",
+        alias: null,
+        computedSqlAlias: "_nf_id",
+        description: null,
+        visibleTo: [],
+        writableBy: [],
+        unmaskedTo: [],
+        maskType: null,
+        scope: null,
+        nativeFilterType: "path_param",
+      } as unknown as RegisteredTable["columns"][number],
+    ],
+  }),
 ];
 const SOURCES = [
   {
@@ -312,5 +330,27 @@ describe("TablesPage — the writes a table takes", () => {
     await openTable("graph");
     await screen.findByTestId("table-read-view-preview");
     expect(screen.queryByTestId("table-read-view-writable")).toBeNull();
+  });
+});
+
+
+describe("TablesPage — a table that needs a required filter", () => {
+  async function openTable(name: string): Promise<void> {
+    render(<TablesPage />);
+    const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
+    await userEvent.click(row.querySelector("td") as HTMLElement);
+  }
+
+  it("offers no preview or profile when its rows need a required filter", async () => {
+    await openTable("pet_by_id");
+    await screen.findByTestId("table-read-view-policies");
+    expect(screen.queryByTestId("table-read-view-preview")).toBeNull();
+    expect(screen.queryByTestId("table-read-view-profile")).toBeNull();
+  });
+
+  it("offers preview and profile for a table with no required filter", async () => {
+    await openTable("orders");
+    expect(await screen.findByTestId("table-read-view-preview")).toBeInTheDocument();
+    expect(screen.getByTestId("table-read-view-profile")).toBeInTheDocument();
   });
 });
