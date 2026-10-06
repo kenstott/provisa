@@ -29,6 +29,7 @@ from provisa.fakes.kinds import (
     Method,
     Normal,
     Ordered,
+    Pattern,
     Percentiles,
     Poisson,
     Prefix,
@@ -65,6 +66,7 @@ from provisa.fakes.kinds import (
         ("bucket((0, 18, 65))", Bucket(edges=(0.0, 18.0, 65.0))),
         ("truncate(month)", Truncate("month")),
         ("prefix(3)", Prefix(3)),
+        ("pattern()", Pattern()),
         ("hash()", Hash()),
         ("encrypt()", Encrypt()),
         ("after(created_at)", Ordered("after", "created_at")),
@@ -161,6 +163,8 @@ def test_a_fake_must_fit_its_column_type():
         _table(DeclaredColumn("flag", "varchar", "bool()"))
     with pytest.raises(FakeRefused, match="orders.n: the value 'x' is not a integer"):
         _table(DeclaredColumn("n", "integer", "categories((1, x))"))
+    with pytest.raises(FakeRefused, match="pattern\\(\\) fakes a text column"):
+        _table(DeclaredColumn("n", "integer", "pattern()"))
     with pytest.raises(FakeRefused, match="a date has no hour"):
         _table(DeclaredColumn("d", "date", "truncate(hour)"))
     kinds = _table(DeclaredColumn("n", "bigint", "poisson(mean=2)"))
@@ -299,3 +303,53 @@ def test_sql_group_names_its_drawn_value_self_and_its_own_name_is_a_cycle():
     _table(DeclaredColumn("x", "double", "sql_group(self * 2, fake=uniform(min=0, max=1))"))
     with pytest.raises(FakeRefused, match="x name one another in a cycle"):
         _table(DeclaredColumn("x", "double", "sql_group(x * 2, fake=uniform(min=0, max=1))"))
+
+
+_DAY = 86400.0
+_JAN1 = 1704067200.0  # 2024-01-01T00:00:00Z
+
+
+def test_declared_distributions_over_dates_take_dates_and_intervals():
+    """REQ-1494, DECLARED DISTRIBUTIONS: a date or time column's distribution is declared with
+    dates or times for its points and intervals for its spreads."""
+    assert parse("uniform(min='2024-01-01', max='2024-01-31')") == Uniform(
+        _JAN1, _JAN1 + 30 * _DAY, temporal=True
+    )
+    assert parse("normal(mean='2024-01-01', sd=10 days)") == Normal(_JAN1, 10 * _DAY, temporal=True)
+    assert parse("triangular(min='2024-01-01', mode='2024-01-02', max='2024-01-11')") == (
+        Triangular(_JAN1, _JAN1 + _DAY, _JAN1 + 10 * _DAY, temporal=True)
+    )
+    pct = parse("percentiles(min='2024-01-01', p50='2024-01-02T12:00', max='2024-01-05')")
+    assert isinstance(pct, Percentiles) and pct.temporal
+    assert pct.points[1] == (0.5, _JAN1 + 1.5 * _DAY)
+    ln = parse("lognormal(min='2024-01-01', median='2024-01-03', p95='2024-01-21')")
+    assert isinstance(ln, LogNormal) and ln.temporal
+    assert ln.mu == pytest.approx(math.log(2 * _DAY))
+
+
+@pytest.mark.parametrize(
+    "text,message",
+    [
+        (
+            "uniform(min='2024-02-01', max='2024-01-01')",
+            "min 2024-02-01T00:00:00\\+00:00 is not below",
+        ),
+        ("uniform(min='2024-01-01', max=5)", "mixes dates and numbers"),
+        ("normal(mean='2024-01-01', sd=10)", "sd 10.0 needs a unit"),
+        ("normal(mean='2024-01-01', sd=10 fortnights)", "'fortnights' is not a unit of time"),
+        ("uniform(min='soon', max='later')", "min 'soon' is not a date or time"),
+        ("lognormal(median='2024-01-03', p95='2024-01-21')", "needs min, the moment"),
+    ],
+)
+def test_temporal_arguments_that_cannot_describe_a_distribution_are_refused(text, message):
+    with pytest.raises(FakeRefused, match=message):
+        parse(text)
+
+
+def test_a_distribution_fits_its_column_by_the_kind_of_its_points():
+    assert _table(DeclaredColumn("d", "date", "uniform(min='2024-01-01', max='2024-02-01')"))
+    assert _table(DeclaredColumn("t", "timestamp", "normal(mean='2024-01-01', sd=2 hours)"))
+    with pytest.raises(FakeRefused, match="uniform\\(\\) fakes a date or timestamp column"):
+        _table(DeclaredColumn("n", "integer", "uniform(min='2024-01-01', max='2024-02-01')"))
+    with pytest.raises(FakeRefused, match="uniform\\(\\) fakes a integer or numeric column"):
+        _table(DeclaredColumn("d", "date", "uniform(min=1, max=2)"))

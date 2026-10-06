@@ -26,6 +26,7 @@ called with the given arguments.
 
 from __future__ import annotations
 
+import datetime as _dt
 import math
 import re
 from dataclasses import dataclass
@@ -60,6 +61,7 @@ class Percentiles:
     """Points of the distribution (``min``, ``p5`` .. ``p95``, ``max``), joined piecewise-linearly."""
 
     points: tuple[tuple[float, float], ...]  # (quantile in [0, 1], value), quantiles ascending
+    temporal: bool = False
 
 
 @dataclass(frozen=True)
@@ -68,20 +70,25 @@ class Normal:
     sd: float
     min: float | None = None
     max: float | None = None
+    temporal: bool = False
 
 
 @dataclass(frozen=True)
 class LogNormal:
+    """Over a date or time column the distribution is of the time since ``min``, which is required."""
+
     mu: float
     sigma: float
     min: float | None = None
     max: float | None = None
+    temporal: bool = False
 
 
 @dataclass(frozen=True)
 class Uniform:
     min: float
     max: float
+    temporal: bool = False
 
 
 @dataclass(frozen=True)
@@ -89,6 +96,7 @@ class Triangular:
     min: float
     mode: float
     max: float
+    temporal: bool = False
 
 
 @dataclass(frozen=True)
@@ -101,6 +109,11 @@ class Profile:
     """The column's profiled distribution; ``run`` pins one run of it, else the latest is read."""
 
     run: str | None = None
+
+
+@dataclass(frozen=True)
+class Pattern:
+    """The value shapes a profile run recorded for the column, filled in."""
 
 
 @dataclass(frozen=True)
@@ -197,6 +210,7 @@ FakeKind = Union[
     Triangular,
     Poisson,
     Profile,
+    Pattern,
     Bucket,
     Truncate,
     Prefix,
@@ -219,6 +233,7 @@ INDEPENDENT = (
     Triangular,
     Poisson,
     Profile,
+    Pattern,
     Bucket,
     Truncate,
     Prefix,
@@ -485,24 +500,81 @@ def _bool(pos: list[Any], named: dict[str, Any]) -> Bool:
     return Bool(share)
 
 
-def _bounds(named: dict[str, Any]) -> tuple[float | None, float | None]:
-    lo = _number(named["min"], "min") if "min" in named else None
-    hi = _number(named["max"], "max") if "max" in named else None
-    if lo is not None and hi is not None and not lo < hi:
-        raise FakeRefused(f"min {lo:g} is not below max {hi:g}")
-    return lo, hi
+#: A declared distribution over a date or time column takes its points as dates or timestamps
+#: (``'2024-01-01'``, ``'2024-01-01T09:30'``), held as seconds since the epoch, and its spreads as
+#: intervals (``30 days``), held as seconds. A month is 30 days and a year 365.25 here: a spread is
+#: a scale, not a calendar step.
+_SECONDS = {
+    "second": 1.0,
+    "minute": 60.0,
+    "hour": 3600.0,
+    "day": 86400.0,
+    "week": 7 * 86400.0,
+    "month": 30 * 86400.0,
+    "year": 365.25 * 86400.0,
+}
+
+_EPOCH = _dt.datetime(1970, 1, 1, tzinfo=_dt.UTC)
+
+
+class _Axis:
+    """A distribution's arguments, all numbers or all dates and times."""
+
+    def __init__(self, named: dict[str, Any], points: tuple[str, ...]) -> None:
+        self.named = named
+        kinds = {isinstance(named[k], str) for k in points if k in named}
+        if len(kinds) > 1:
+            raise FakeRefused("mixes dates and numbers among its points")
+        self.temporal = kinds == {True}
+
+    def point(self, k: str) -> float:
+        v = self.named[k]
+        if not self.temporal:
+            return _number(v, k)
+        try:
+            moment = _dt.datetime.fromisoformat(v)
+        except (TypeError, ValueError) as exc:
+            raise FakeRefused(f"{k} {_shown(v)} is not a date or time") from exc
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=_dt.UTC)
+        return (moment - _EPOCH).total_seconds()
+
+    def span(self, k: str) -> float:
+        v = self.named[k]
+        if not self.temporal:
+            return _number(v, k)
+        atoms = v.atoms if isinstance(v, _Seq) else (v,)
+        if not (len(atoms) == 2 and isinstance(atoms[1], _Word)):
+            raise FakeRefused(f"{k} {_shown(v)} needs a unit, such as 30 days")
+        unit = _TEMPORAL_UNITS.get(atoms[1].text.lower())
+        if unit is None:
+            raise FakeRefused(f"{atoms[1].text!r} is not a unit of time")
+        return _number(atoms[0], k) * _SECONDS[unit]
+
+    def shown(self, value: float) -> str:
+        if not self.temporal:
+            return f"{value:g}"
+        return (_EPOCH + _dt.timedelta(seconds=value)).isoformat()
+
+    def bounds(self) -> tuple[float | None, float | None]:
+        lo = self.point("min") if "min" in self.named else None
+        hi = self.point("max") if "max" in self.named else None
+        if lo is not None and hi is not None and not lo < hi:
+            raise FakeRefused(f"min {self.shown(lo)} is not below max {self.shown(hi)}")
+        return lo, hi
 
 
 def _percentiles(pos: list[Any], named: dict[str, Any]) -> Percentiles:
     _expect(pos, named, 0, tuple(_QUANTILES))
     if len(named) < 3:
         raise FakeRefused("needs three or more of min, p5, p25, p50, p75, p95 and max")
-    points = sorted((_QUANTILES[k], _number(v, k)) for k, v in named.items())
+    axis = _Axis(named, tuple(_QUANTILES))
+    points = sorted((_QUANTILES[k], axis.point(k)) for k in named)
     for (q0, v0), (q1, v1) in zip(points, points[1:]):
         if v1 < v0:
             names = {q: k for k, q in _QUANTILES.items()}
-            raise FakeRefused(f"{names[q1]} {v1:g} is below {names[q0]} {v0:g}")
-    return Percentiles(tuple(points))
+            raise FakeRefused(f"{names[q1]} {axis.shown(v1)} is below {names[q0]} {axis.shown(v0)}")
+    return Percentiles(tuple(points), axis.temporal)
 
 
 def _normal(pos: list[Any], named: dict[str, Any]) -> Normal:
@@ -510,11 +582,12 @@ def _normal(pos: list[Any], named: dict[str, Any]) -> Normal:
     for k in ("mean", "sd"):
         if k not in named:
             raise FakeRefused(f"needs {k}")
-    sd = _number(named["sd"], "sd")
+    axis = _Axis(named, ("mean", "min", "max"))
+    sd = axis.span("sd")
     if not sd > 0:
         raise FakeRefused(f"the standard deviation {sd:g} is not above zero")
-    lo, hi = _bounds(named)
-    return Normal(_number(named["mean"], "mean"), sd, lo, hi)
+    lo, hi = axis.bounds()
+    return Normal(axis.point("mean"), sd, lo, hi, axis.temporal)
 
 
 _Z95 = 1.6448536269514722  # the standard normal's 95th percentile
@@ -522,17 +595,30 @@ _Z95 = 1.6448536269514722  # the standard normal's 95th percentile
 
 def _lognormal(pos: list[Any], named: dict[str, Any]) -> LogNormal:
     _expect(pos, named, 0, ("median", "p95", "mu", "sigma", "min", "max"))
-    lo, hi = _bounds(named)
+    axis = _Axis(named, ("median", "p95", "min", "max"))
+    lo, hi = axis.bounds()
+    if axis.temporal and lo is None:
+        raise FakeRefused("over dates or times needs min, the moment its times are measured from")
+    origin = lo if axis.temporal and lo is not None else 0.0
     if {"median", "p95"} <= set(named) and not {"mu", "sigma"} & set(named):
-        median, p95 = _number(named["median"], "median"), _number(named["p95"], "p95")
+        median, p95 = axis.point("median") - origin, axis.point("p95") - origin
         if not 0 < median < p95:
-            raise FakeRefused(f"needs 0 < median < p95, got median {median:g}, p95 {p95:g}")
-        return LogNormal(math.log(median), (math.log(p95) - math.log(median)) / _Z95, lo, hi)
+            raise FakeRefused(
+                f"needs {'min' if axis.temporal else '0'} < median < p95, got median "
+                f"{axis.shown(median + origin)}, p95 {axis.shown(p95 + origin)}"
+            )
+        return LogNormal(
+            math.log(median),
+            (math.log(p95) - math.log(median)) / _Z95,
+            lo,
+            hi,
+            axis.temporal,
+        )
     if {"mu", "sigma"} <= set(named) and not {"median", "p95"} & set(named):
         sigma = _number(named["sigma"], "sigma")
         if not sigma > 0:
             raise FakeRefused(f"sigma {sigma:g} is not above zero")
-        return LogNormal(_number(named["mu"], "mu"), sigma, lo, hi)
+        return LogNormal(_number(named["mu"], "mu"), sigma, lo, hi, axis.temporal)
     raise FakeRefused("needs median and p95, or mu and sigma")
 
 
@@ -540,21 +626,25 @@ def _uniform(pos: list[Any], named: dict[str, Any]) -> Uniform:
     _expect(pos, named, 0, ("min", "max"))
     if not {"min", "max"} <= set(named):
         raise FakeRefused("needs min and max")
-    lo, hi = _bounds(named)
+    axis = _Axis(named, ("min", "max"))
+    lo, hi = axis.bounds()
     assert lo is not None and hi is not None
-    return Uniform(lo, hi)
+    return Uniform(lo, hi, axis.temporal)
 
 
 def _triangular(pos: list[Any], named: dict[str, Any]) -> Triangular:
     _expect(pos, named, 0, ("min", "mode", "max"))
     if not {"min", "mode", "max"} <= set(named):
         raise FakeRefused("needs min, mode and max")
-    lo, hi = _bounds(named)
-    mode = _number(named["mode"], "mode")
+    axis = _Axis(named, ("min", "mode", "max"))
+    lo, hi = axis.bounds()
+    mode = axis.point("mode")
     assert lo is not None and hi is not None
     if not lo <= mode <= hi:
-        raise FakeRefused(f"mode {mode:g} is outside min {lo:g} and max {hi:g}")
-    return Triangular(lo, mode, hi)
+        raise FakeRefused(
+            f"mode {axis.shown(mode)} is outside min {axis.shown(lo)} and max {axis.shown(hi)}"
+        )
+    return Triangular(lo, mode, hi, axis.temporal)
 
 
 def _poisson(pos: list[Any], named: dict[str, Any]) -> Poisson:
@@ -660,6 +750,7 @@ _BUILDERS = {
     "bucket": _bucket,
     "truncate": _truncate,
     "prefix": _prefix,
+    "pattern": _nothing(Pattern),
     "hash": _nothing(Hash),
     "encrypt": _nothing(Encrypt),
     "after": _ordered("after", True),

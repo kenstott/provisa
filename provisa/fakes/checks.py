@@ -40,6 +40,7 @@ from provisa.fakes.kinds import (
     Method,
     Normal,
     Ordered,
+    Pattern,
     Percentiles,
     Poisson,
     Prefix,
@@ -151,7 +152,8 @@ def _check_column(
     elif isinstance(kind, Bool):
         _needs(fam, ("boolean",), "bool")
     elif isinstance(kind, (Percentiles, Normal, LogNormal, Uniform, Triangular)):
-        _needs(fam, _NUMBERS, type(kind).__name__.lower())
+        # Points given as dates or times describe a date or time column; numbers a numeric one.
+        _needs(fam, _TEMPORAL if kind.temporal else _NUMBERS, type(kind).__name__.lower())
     elif isinstance(kind, Poisson):
         _needs(fam, ("integer",), "poisson")
     elif isinstance(kind, Profile):
@@ -164,6 +166,8 @@ def _check_column(
             raise FakeRefused(f"a date has no {kind.unit} to truncate to")
     elif isinstance(kind, Prefix):
         _needs(fam, ("text",), "prefix")
+    elif isinstance(kind, Pattern):
+        _needs(fam, ("text",), "pattern")
     elif isinstance(kind, (Hash, Encrypt)):
         _needs(fam, ("text", "integer"), type(kind).__name__.lower())
     elif isinstance(kind, Ordered):
