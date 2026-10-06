@@ -104,13 +104,15 @@ def layered(
     columns: list[tuple[str, str, str]],
     fakes: dict[str, Column],
     keep: tuple[str, ...] = (),
+    uniforms: dict[str, str] | None = None,
 ) -> str:
     """The fakes computed over ``level``, a statement giving every column of ``columns`` and each
     faked column's digest as ``__digest__<name>``: each column's uniform point, then the fakes in
     dependency order, then every column under its own name (faked or as ``level`` gives it). A
     faked read's level digests the real values (:func:`faked_projection`); synthetic generation's
     digests the dataset's seed and the row (REQ-1939). ``keep`` names further columns of ``level``
-    carried through to the outer level as they are."""
+    carried through to the outer level as they are. ``uniforms`` gives a faked column's uniform
+    point where something else decides it (synthetic generation's dependence, REQ-1939)."""
     families = {name: fam for name, _, fam in columns}
     a = _q(alias)
     # The uniform point reads the digest the level below computed, once per row.
@@ -120,11 +122,13 @@ def layered(
         + [_q(k) for k in keep if k not in {_DIGEST + n for n in fakes}]
     )
     # REQ-1494: each column's point is drawn from its digest mixed with its fake's definition.
-    uniforms = [
-        f"{uniform_sql(seed_sql(_q(_DIGEST + n), definition_of(c)))} AS {_q(_UNIFORM + n)}"
+    decided = uniforms or {}
+    points = [
+        f"{decided[n] if n in decided else uniform_sql(seed_sql(_q(_DIGEST + n), definition_of(c)))}"
+        f" AS {_q(_UNIFORM + n)}"
         for n, c in fakes.items()
     ]
-    level = f"SELECT {', '.join(held + uniforms)} FROM ({level}) AS {a}"
+    level = f"SELECT {', '.join(held + points)} FROM ({level}) AS {a}"
     held += [_q(_UNIFORM + n) for n in fakes]
 
     def faked(name: str) -> str:

@@ -498,6 +498,20 @@ def test_a_conditional_fanout_over_a_column_the_parent_lacks_is_refused(dev):
     assert status == 422, body
 
 
+def test_the_report_states_how_the_dependence_was_kept(generated):
+    """REQ-1939, DEPENDENCE KEPT: the copula's repair (0: as measured), and each pair of numbers'
+    measured rank correlation beside the generated rows' own."""
+    status, rows = _call(
+        generated["boot"], "GET", "/admin/synthetic-datasets/load_test/report", env="dev"
+    )
+    assert status == 200, rows
+    shrinks = [r for r in rows if r["measure"] == "dependence_copula_shrink"]
+    assert shrinks and all(0.0 <= r["synthetic"] < 1.0 for r in shrinks), shrinks
+    for r in rows:
+        if r["measure"] == "dependence_spearman":
+            assert r["source"] is not None and -1.0 <= r["source"] <= 1.0, r
+
+
 def test_the_report_compares_the_copy_with_its_profiles(generated):
     status, rows = _call(
         generated["boot"], "GET", "/admin/synthetic-datasets/load_test/report", env="dev"

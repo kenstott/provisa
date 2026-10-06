@@ -105,6 +105,9 @@ class ProfiledTable:
     profiled_rows: int  # the rows the run read (fewer under a sample): shares are over these
     columns: dict[str, ProfiledColumn]  # by physical column
     fanouts: tuple[ProfiledFanout, ...]
+    # What the run measured of the columns' dependence (provisa.synthetic.dependence.Dependence),
+    # by registered column name; None where it measured none (REQ-1939, DEPENDENCE KEPT).
+    dependence: Any = None
 
 
 @dataclass(frozen=True)
@@ -326,6 +329,15 @@ def plan_tables(
                 if cap is not None:
                     caps.append(cap)
         _refuse_undriven_conditions(t, own_edges, driving, conditions)
+        parent_cols = (
+            {c.name: c for c in plans[driving.parent_id].columns}
+            if driving is not None and driving.parent_id in plans
+            else None
+        )
+        dependence, cols = dependence_plan(t, cols, driving, parent_cols)
+        reads_parent = dependence is not None and any(
+            not isinstance(r, str) for x in dependence.targets for r in x.parents
+        )
         if driving is not None:
             parent = by_id[driving.parent_id]
             fan = _fanout(parent, t)
@@ -340,13 +352,16 @@ def plan_tables(
                 group=tuple(groups),
                 cap=min(caps) if caps else None,
                 conditions=planned_conditions,
-                parent=plans[parent.table_id] if planned_conditions else None,
-                parent_key=driving.parent_column if planned_conditions else None,
+                parent=plans[parent.table_id] if planned_conditions or reads_parent else None,
+                parent_key=driving.parent_column if planned_conditions or reads_parent else None,
+                dependence=dependence,
             )
             rows[t.table_id] = count_rows(plan)
         else:
             n = round(prof.row_count * t.scale)
-            plan = TablePlan(t.name, n, tuple(cols), seed=seed, group=tuple(groups))
+            plan = TablePlan(
+                t.name, n, tuple(cols), seed=seed, group=tuple(groups), dependence=dependence
+            )
             rows[t.table_id] = n
         planned.plan = plan
         plans[t.table_id] = plan
@@ -505,6 +520,8 @@ def _value_column(
             integer_only=bool(p.integer_only),
             pool=len(counts),
             pool_shares=tuple(n / total for n in counts) if total else (),
+            # The real values the slots stand for, never generated: a dependence state (REQ-1939).
+            pool_values=tuple(v for v, _ in p.frequencies if v is not None),
         )
     return ColumnPlan(
         name,
@@ -822,3 +839,173 @@ def _parents_first(tables: list[DatasetTable], edges: list[Edge]) -> list[Datase
             placed.add(t.table_id)
         remaining = [t for t in remaining if t.table_id not in placed]
     return done
+
+
+# -- dependence (REQ-1939, DEPENDENCE KEPT) ------------------------------------------------------
+
+
+def _node_of(c: ColumnPlan) -> Any:
+    """The column as a dependence node, or None where dependence cannot decide its draw."""
+    from provisa.fakes.kinds import LogNormal, Normal, Percentiles, Poisson, Triangular, Uniform
+    from provisa.synthetic.dependence import Node
+
+    if c.key or c.foreign_key is not None:
+        return None
+    if c.fake is not None:
+        kind = c.fake.kind
+        measured = c.fake.measured
+        if isinstance(kind, (Uniform, Normal, LogNormal, Triangular, Percentiles, Poisson)) or (
+            isinstance(kind, Profile) and measured is not None and measured.points is not None
+        ):
+            return Node(c.name, "number")
+        return None
+    if c.frequencies:
+        return Node(c.name, "category", _slices([(v, s) for v, s in c.frequencies]))
+    if c.pool_shares and c.pool_values:
+        return Node(
+            c.name,
+            "category",
+            _slices(list(zip(c.pool_values, c.pool_shares))),
+            own_salt="pool",
+            draw_key=False,
+        )
+    if c.sketch is not None and c.pool is None and c.family in ("numeric", "temporal"):
+        return Node(c.name, "number")
+    return None
+
+
+def _slices(shares: list[tuple[str | None, float]]) -> tuple[tuple[str | None, float, float], ...]:
+    """The values in value order (NULL last), each with its slice's start and width."""
+    ordered = sorted(shares, key=lambda vs: (vs[0] is None, str(vs[0])))
+    total = sum(s for _, s in ordered) or 1.0
+    out, acc = [], 0.0
+    for v, s in ordered:
+        out.append((v, acc, s / total))
+        acc += s / total
+    return tuple(out)
+
+
+def _in_value_order(c: ColumnPlan) -> ColumnPlan:
+    """The column's draw in the order of its node's slices, so a uniform point gives one value."""
+    if c.frequencies:
+        return replace(
+            c, frequencies=tuple(sorted(c.frequencies, key=lambda vs: (vs[0] is None, str(vs[0]))))
+        )
+    if c.pool_shares and c.pool_values:
+        pairs = sorted(zip(c.pool_values, c.pool_shares), key=lambda vs: str(vs[0]))
+        return replace(
+            c, pool_values=tuple(v for v, _ in pairs), pool_shares=tuple(s for _, s in pairs)
+        )
+    return c
+
+
+def dependence_plan(
+    t: DatasetTable,
+    cols: list[ColumnPlan],
+    driving: Edge | None,
+    parent_cols: dict[str, ColumnPlan] | None,
+) -> tuple[Any, list[ColumnPlan]]:
+    """The table's dependence as generation keeps it, and its columns drawing by it: the copula's
+    members, the network's targets (each after its parents), and the columns the run tied to
+    others that keep their own draws (named in the report)."""
+    from provisa.synthetic.dependence import DependencePlan, Target, conditional, copula_factor
+
+    dep = t.profile.dependence
+    if dep is None:
+        return None, cols
+    by = {c.name: c for c in cols}
+    nodes = {n: node for n, c in by.items() if (node := _node_of(c)) is not None}
+    kept: set[str] = set(dep.unreached)
+    # A column the run ties to others whose draw dependence cannot decide -- a method, pattern(),
+    # hash() or relative fake, a fixed vocabulary of numbers -- keeps its own (ruling Y1).
+    involved = {a for pair in dep.spearman for a in pair} | set(dep.network)
+    kept |= {
+        n
+        for n in involved
+        if n in by and n not in nodes and not by[n].key and by[n].foreign_key is None
+    }
+    pending = dict(dep.network)
+    targets: list[Target] = []
+    placed: set[str] = set()
+    while pending:
+        progressed = False
+        for name, parents in list(pending.items()):
+            if name not in nodes:
+                kept.add(name)
+                del pending[name]
+                progressed = True
+                continue
+            refs: list[Any] = []
+            ready = True
+            for p in parents:
+                if p.via is None:
+                    if p.column in pending and p.column not in placed:
+                        ready = False
+                        break
+                    if p.column not in nodes:
+                        refs = []
+                        break
+                    refs.append(p.column)
+                else:
+                    pc = (parent_cols or {}).get(p.column)
+                    if driving is None or driving.child_column != p.via or pc is None:
+                        refs = []
+                        break
+                    if pc.frequencies and pc.fake is None:
+                        refs.append(("__parent__", p.column, None))
+                    elif pc.sketch is not None and pc.family == "numeric" and pc.fake is None:
+                        refs.append(
+                            (
+                                "__parent__",
+                                p.column,
+                                tuple(pc.sketch[q] for q in range(10, 100, 10)),
+                            )
+                        )
+                    else:
+                        refs = []
+                        break
+            if not ready:
+                continue
+            del pending[name]
+            progressed = True
+            if len(refs) != len(parents):
+                kept.add(name)
+                continue
+            given, marginal = conditional(dep.joints[name])
+            targets.append(Target(name, tuple(refs), given, marginal))
+            placed.add(name)
+        if not progressed:
+            kept.update(pending)  # a cycle: the run's network names one another
+            break
+    target_names = {x.name for x in targets}
+    members = [
+        n
+        for n in sorted(nodes)
+        if n not in target_names
+        and any((n, m) in dep.spearman or (m, n) in dep.spearman for m in nodes if m != n)
+    ]
+    copula = members if len(members) > 1 else []
+    factor, shrink = copula_factor(copula, dep.spearman) if copula else ([], 0.0)
+    # A parent the copula does not draw is stated from its own uniform: a faked one has none here.
+    for x in list(targets):
+        own = [r for r in x.parents if isinstance(r, str)]
+        if any(by[r].fake is not None and r not in copula and r not in target_names for r in own):
+            targets.remove(x)
+            kept.add(x.name)
+    target_names = {x.name for x in targets}
+    deciding = (
+        set(copula) | target_names | {r for x in targets for r in x.parents if isinstance(r, str)}
+    )
+    out = [
+        replace(_in_value_order(c), dep_u=f'"__U__{c.name}"') if c.name in deciding else c
+        for c in cols
+    ]
+    plan = DependencePlan(
+        {n: nodes[n] for n in deciding},
+        tuple(copula),
+        tuple(tuple(r) for r in factor),
+        tuple(targets),
+        tuple(sorted(kept)),
+        shrink,
+    )
+    return plan, out

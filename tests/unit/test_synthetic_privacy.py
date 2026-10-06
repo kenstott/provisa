@@ -276,3 +276,48 @@ def test_a_statistic_that_is_mostly_noise_is_flagged_in_the_report():
     assert flagged
     assert "is comparable to its value" in flagged[0]["note"]
     assert "a declared distribution as the column's synthetic rule" in flagged[0]["note"]
+
+
+def test_a_private_dataset_keeps_rank_correlations_measured_under_epsilon_and_no_network():
+    con = duckdb.connect()
+    con.execute("CREATE SCHEMA s")
+    con.execute(
+        "CREATE TABLE s.pair AS SELECT i AS id, 1000.0 + i AS a, "
+        "50000.0 - i + (i % 97) * 30 AS b FROM range(100000) AS t(i)"
+    )
+    true_rho = -0.997  # b falls as a rises, with a little jitter
+    table = DatasetTable(
+        table_id=9,
+        name="pair",
+        pgwire_name="s.pair",
+        columns=(("id", "integer", True), ("a", "double", False), ("b", "double", False)),
+        scale=1.0,
+        profile=ProfiledTable(
+            "r9",
+            7,
+            7,
+            {
+                "id": _recorded("id", "numeric"),
+                "a": _recorded("a", "numeric"),
+                "b": _recorded("b", "numeric"),
+            },
+            (),
+        ),
+    )
+    [pair], budget, _m, _d = asyncio.run(
+        private_tables(
+            [table],
+            [],
+            epsilon=1.0,
+            seed=5,
+            governed=_governed(con),
+            exposed=lambda t, c: c,
+            qualified=lambda name: name,
+        )
+    )
+    dep = pair.profile.dependence
+    assert dep.network == {} and dep.joints == {}
+    rho = dep.spearman[("a", "b")]
+    assert abs(rho - true_rho) < 0.05, rho
+    assert budget.statistics["correlations"] == 1
+    assert abs(budget.charged - 1.0) < 1e-9

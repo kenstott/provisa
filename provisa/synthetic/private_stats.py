@@ -203,6 +203,24 @@ class Measurer:
         self._weigh(label, family, sum(out.values()), scale * math.sqrt(2 * len(values)))
         return out
 
+    async def contingency(
+        self, family: str, table: str, a: str, b: str, ka: int, kb: int, label: tuple[str, str]
+    ) -> list[list[float]]:
+        """The counts of every pair of two columns' states (``a`` in 0..ka-1, ``b`` in 0..kb-1,
+        both public domains), every cell noised, empty ones included; floored at zero."""
+        _n, rows = await self.governed(
+            f"SELECT {a} AS sa, {b} AS sb, COUNT(*) AS n FROM {table} x "
+            f"WHERE {a} IS NOT NULL AND {b} IS NOT NULL GROUP BY 1, 2"
+        )
+        seen = {(int(x), int(y)): int(n) for x, y, n in rows}
+        scale = 1.0 / self._eps(family)
+        cells = [
+            [max(0.0, seen.get((i, j), 0) + laplace(self.rng, scale)) for j in range(kb)]
+            for i in range(ka)
+        ]
+        self._weigh(label, family, sum(map(sum, cells)), scale * math.sqrt(2 * ka * kb))
+        return cells
+
     async def distribution(
         self,
         family: str,
