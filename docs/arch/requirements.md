@@ -22267,3 +22267,15 @@ Every admin page that lists items (sources, tables, security roles and rules, re
 **Code:** —
 
 **Tests:** —
+
+### REQ-1941 · Federation {#REQ-1941}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A registered table's data can be copied or moved to another source. Copy reads the table through the governed pipeline as the organisation's administrator -- its row rules and masks applying as they do to any read -- and writes its rows into a table of a target source the operator names, which can take the write, through the same write path replication uses; the copy is registered as a table of its own. Move is a copy followed by a repoint: once the copy is complete and verified -- its row count, and a profile of it compared with a profile of the original -- the original registration's binding is changed to the copy, so its name, columns, relationships, grants, masks, row rules, fakes and every query, field and endpoint over it are unchanged and only where its rows live has changed. A copy that fails verification is not repointed, and the report names what differed. A table that takes writes is moved only while its writes are held -- the copy catches up from the table's watermark before the repoint -- and a writable table with neither a watermark nor a hold is refused by name. Moving or copying never deletes the original rows; removing them is the operator's choice, outside Provisa. In an environment other than production a move repoints only that environment's binding, and promoting the environment carries the repoint to production. The table view offers Copy and Move, each opening a form for the target source, schema and name, with the verification report shown before a move's repoint is confirmed.
+
+**Use case:** An operator migrates a table from an on-premises PostgreSQL to Snowflake without a consumer changing a query, field or endpoint.
+
+**Code:** —
+
+**Tests:** —
