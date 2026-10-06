@@ -38,27 +38,34 @@ async def client():
     previous = os.environ.get("PROVISA_ENCRYPTION_KEY")
     os.environ["PROVISA_ENCRYPTION_KEY"] = base64.b64encode(bytes(range(1, 33))).decode()
 
-    from provisa.api.app import create_app, state
-    from provisa.core.schema_admin import deployment_encryption_key
-
-    def _forget_the_recorded_key() -> None:
-        # This module is a deployment given a key of its own, on a control plane other suites
-        # of the session also use: the record of which key the deployment's secrets are written
-        # under (REQ-684) is this module's for its duration and nobody's afterwards.
-        with state.admin_db.engine.begin() as conn:
-            conn.execute(deployment_encryption_key.delete())
-
-    app = create_app()
+    from provisa.api.app import create_app
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import REGISTRY_TABLES, deployment_encryption_key
+    from provisa.core.schema_admin import metadata as admin_metadata
 
     from tests.integration.vault_state import restore_vault, vault_snapshot
 
+    # This module is a deployment given a key of its own, on a control plane other suites of the
+    # session also use: the record of which key the deployment's secrets are written under
+    # (REQ-684) is this module's for its duration and nobody's afterwards. It is set aside before
+    # the boot, which already reads the vault under the key it holds (REQ-1919: the boot binds the
+    # org's secrets to read its model), and put back after, with whatever was stored here removed:
+    # a secret left in the acting org's vault was written under this module's key, and every later
+    # server of the session would be a worker without that key.
+    platform = Database(
+        create_engine_from_url(os.environ["PLATFORM_DATABASE_URL"]), name="platform"
+    )
+    with platform.engine.begin() as conn:
+        # The registry the boot creates: present already when an earlier module booted.
+        admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
+    found = vault_snapshot(platform.engine)
+    with platform.engine.begin() as conn:
+        conn.execute(deployment_encryption_key.delete())
+
+    app = create_app()
+
     try:
         async with app.router.lifespan_context(app):
-            # What the shared control plane holds before this module writes to it. Put back
-            # below: a secret left in the acting org's vault was written under this module's
-            # key, and every later server of the session would be a worker without that key.
-            found = vault_snapshot(state.admin_db.engine)
-            _forget_the_recorded_key()
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 yield c
@@ -70,8 +77,9 @@ async def client():
                             "query": f'mutation {{ deleteSource(id: "{source_id}") {{ success }} }}'
                         },
                     )
-            restore_vault(state.admin_db.engine, found)
     finally:
+        restore_vault(platform.engine, found)
+        await platform.close()
         if previous is None:
             os.environ.pop("PROVISA_ENCRYPTION_KEY", None)
         else:
@@ -158,7 +166,10 @@ class TestLiteralPassword:
 
 
 class TestReferencePassword:
-    async def test_a_reference_is_stored_verbatim_and_mints_nothing(self, client):
+    async def test_a_reference_is_stored_verbatim_and_mints_nothing(self, client, monkeypatch):
+        # The variable the reference names is the operator's, set where the server runs; the
+        # source's pool reads it once the source is stored (REQ-1919: the store holds the model).
+        monkeypatch.setenv("PROVISA_DEMO_SPLUNK_PASSWORD", "operator-secret")
         source_id = "req1695_ref"
         reference = "${env:PROVISA_DEMO_SPLUNK_PASSWORD}"
         result = (await _gql(client, _create(source_id, reference)))["data"]["createSource"]

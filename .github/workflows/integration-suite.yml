@@ -52,6 +52,10 @@ env:
   PYTEST_DOCKER_KEEP: ""
   # The Splunk CIM add-on release scripts/fetch-splunk-cim.sh vendors (and the cache key names).
   SPLUNK_CIM_VERSION: "6.1.0"
+  # A lane whose interpreter dies on a signal leaves its traceback and the output written before it:
+  # without these the block-buffered pytest output was lost and the lane ended in a bare exit code.
+  PYTHONFAULTHANDLER: "1"
+  PYTHONUNBUFFERED: "1"
 
 jobs:
   # Which lanes this run tests: every one on a push, the dispatcher's choice on demand, none of the
