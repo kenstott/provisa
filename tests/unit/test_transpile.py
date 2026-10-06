@@ -454,3 +454,34 @@ def test_trino_reads_the_epoch_of_a_timestamp_at_utc_as_postgres_does():
     assert "TO_UNIXTIME(WITH_TIMEZONE(CAST(a AS TIMESTAMP), 'UTC'))" in out
     assert "CAST(AT_TIMEZONE(FROM_UNIXTIME(3), 'UTC') AS TIMESTAMP)" in out
     assert transpile_to_trino("SELECT a FROM t") == "SELECT a FROM t"
+
+
+# REQ-1731: an Exasol source is addressed as Exasol stores it -- a lowercase registered name in
+# uppercase, as the engine's exasol connector does -- and its rows keep their lowercase names.
+@pytest.mark.parametrize(
+    ("pg_sql", "exasol_sql"),
+    [
+        (
+            'SELECT "id", "name" FROM "provisa"."widgets" AS "widgets" ORDER BY "id"',
+            'SELECT "ID" AS "id", "NAME" AS "name" FROM "PROVISA"."WIDGETS" AS "widgets" '
+            'ORDER BY "ID"',
+        ),
+        (
+            'SELECT "w"."id" AS "wid", COUNT(*) AS "n" FROM "s"."widgets" AS "w" '
+            'GROUP BY "w"."id" ORDER BY "n"',
+            'SELECT "w"."ID" AS "wid", COUNT(*) AS "n" FROM "S"."WIDGETS" AS "w" '
+            'GROUP BY "w"."ID" ORDER BY "n"',
+        ),
+        (
+            'WITH "c" AS (SELECT "id" FROM "s"."t") SELECT "c"."id" FROM "c"',
+            'WITH "c" AS (SELECT "ID" AS "id" FROM "S"."T") SELECT "c"."id" AS "id" FROM "c"',
+        ),
+        (
+            'SELECT "id" FROM (SELECT "id" FROM "s"."t") AS "q"',
+            'SELECT "id" AS "id" FROM (SELECT "ID" AS "id" FROM "S"."T") AS "q"',
+        ),
+        ('SELECT "Mixed" FROM "S"."T"', 'SELECT "Mixed" FROM "S"."T"'),
+    ],
+)
+def test_an_exasol_source_is_addressed_as_exasol_stores_it(pg_sql, exasol_sql):
+    assert transpile(pg_sql, "exasol") == exasol_sql

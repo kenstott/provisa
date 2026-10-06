@@ -598,10 +598,13 @@ def _populate_trino_plugins() -> None:
     # REQ-1494: Provisa's own function plugin is built from trino-functions/ on first use.
     functions = os.path.join(plugins, "provisa-functions")
     if not (os.path.isdir(functions) and any(f.endswith(".jar") for f in os.listdir(functions))):
-        print("[conftest] building the provisa-functions Trino plugin")
-        subprocess.run(
-            [os.path.join(_REPO_ROOT, "scripts", "build_trino_functions.sh")], check=True
-        )
+        _build_provisa_functions()
+
+
+def _build_provisa_functions() -> None:
+    """Build Provisa's own Trino function plugin into trino/plugins/provisa-functions (REQ-1494)."""
+    print("[conftest] building the provisa-functions Trino plugin")
+    subprocess.run([os.path.join(_REPO_ROOT, "scripts", "build_trino_functions.sh")], check=True)
 
 
 def _marker_batches(items) -> list[list[str]]:

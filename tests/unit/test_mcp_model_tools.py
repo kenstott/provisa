@@ -551,6 +551,8 @@ def _table(**kw: Any) -> admin_types.RegisteredTableType:
         ],
         "profiler_source_id": "prof",
         "stored_product_id": "p1",
+        "region": None,  # REQ-1921
+        "draft": False,  # REQ-1921
     }
     base.update(kw)
     return admin_types.RegisteredTableType(**base)

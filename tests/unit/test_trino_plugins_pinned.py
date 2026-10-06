@@ -37,6 +37,13 @@ def plugins(tmp_path, monkeypatch):
         fetched.append(name)
 
     monkeypatch.setattr(harness, "_download_trino_plugin", _fetch)
+
+    def _build_functions() -> None:  # REQ-1494: Provisa's own plugin is built, not downloaded
+        functions = root / "trino" / "plugins" / "provisa-functions"
+        functions.mkdir(exist_ok=True)
+        (functions / "provisa-functions.jar").touch()
+
+    monkeypatch.setattr(harness, "_build_provisa_functions", _build_functions)
     return root / "trino" / "plugins", fetched
 
 

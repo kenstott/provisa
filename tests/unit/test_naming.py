@@ -256,7 +256,7 @@ def test_an_underscore_before_a_digit_survives_into_the_sql_name(name):
     from provisa.compiler.sql_rewrite import semantic_table_name
     from provisa.compiler.sql_types import TableMeta
 
-    field = generate_name(name, "public", "pg", [name], [])
+    field = generate_name(name, [])
     meta = TableMeta(
         table_id=1,
         field_name=field,

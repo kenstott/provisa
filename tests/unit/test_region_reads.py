@@ -168,13 +168,6 @@ async def test_a_table_kept_in_another_region_is_read_where_that_region_reads_it
     async def _fetch_tables(_conn):
         return registered
 
-    async def _no_ui_sources(_conn):
-        return []
-
-    monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
-    monkeypatch.setattr("provisa.federation.replica_state.promotion", no_promoted_tables)
-    monkeypatch.setattr("provisa.federation.replica_builds.store_identity", no_engine_store)
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
     engine = build_engine("trino")
     attached: list[str] = []
 
@@ -186,6 +179,19 @@ async def test_a_table_kept_in_another_region_is_read_where_that_region_reads_it
     source = Source(
         id="src", type=SourceType.postgresql, host="h", port=5432, database="d", username="u"
     )
+
+    async def _source_rows(_conn):
+        # REQ-1919: the model's sources are the store's rows; the source is held there.
+        return [{**source.model_dump(), "password_ref": source.password}]
+
+    async def _no_synthetic_tables(_conn):  # REQ-1939: no synthetic dataset is generated here
+        return {}
+
+    monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
+    monkeypatch.setattr("provisa.synthetic.datasets.generated_tables", _no_synthetic_tables)
+    monkeypatch.setattr("provisa.federation.replica_state.promotion", no_promoted_tables)
+    monkeypatch.setattr("provisa.federation.replica_builds.store_identity", no_engine_store)
+    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
     db = SimpleNamespace(acquire=lambda: _Acquire())
     state = SimpleNamespace(
         org_id="acme",

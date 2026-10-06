@@ -319,10 +319,15 @@ def transpile(pg_sql: str, target_dialect: str) -> str:  # REQ-066, REQ-068, REQ
     # too (materialize_exec.py's `build_table`, `quoted_name(..., quote=True)`) so both sides of
     # the seam agree on always-quoted.
     identify = target_dialect in ("snowflake", "oracle")
-    results = sqlglot.transpile(pg_sql, read="postgres", write=target_dialect, identify=identify)
-    if not results:
-        raise ValueError(f"SQLGlot produced no output for: {pg_sql!r}")
-    result = results[0]
+    if target_dialect == "exasol":
+        result = _exasol_stored_case(sqlglot.parse_one(pg_sql, read="postgres"))
+    else:
+        results = sqlglot.transpile(
+            pg_sql, read="postgres", write=target_dialect, identify=identify
+        )
+        if not results:
+            raise ValueError(f"SQLGlot produced no output for: {pg_sql!r}")
+        result = results[0]
     if target_dialect == "tsql":
         result = _map_tsql_reserved_schemas(result)
     if target_dialect == "sqlite":
@@ -364,6 +369,72 @@ def _map_tsql_reserved_schemas(sql: str) -> str:
             table.set("db", exp.to_identifier(mapped, quoted=True))
             changed = True
     return tree.sql(dialect="tsql") if changed else sql
+
+
+def _exasol_stored_case(tree: exp.Expr) -> str:  # REQ-1731
+    """Address an Exasol source's objects as Exasol stores them.
+
+    Exasol stores an identifier written without quotes in UPPERCASE, and Provisa registers and
+    compiles a source's names in lowercase (as the engine's exasol connector presents them). The
+    connector addresses a lowercase name in uppercase on the Exasol side; the direct driver does
+    the same here: a lowercase schema, table or column reference is sent in uppercase. Each output
+    column a bare reference produced keeps its lowercase name through an alias, so the rows read
+    the same on either path. A name that is not all lowercase is the object's own and is left as
+    written; aliases the statement defines are its own and are left as written."""
+    # Names the statement itself defines: CTE names, table and subquery aliases, output aliases.
+    ctes = {c.alias for c in tree.find_all(exp.CTE)}
+    table_aliases = {a.name for a in tree.find_all(exp.TableAlias)}
+    output_aliases = {a.alias for a in tree.find_all(exp.Alias)}
+    # Relations the statement derives (a CTE, a subquery): their columns are the statement's own
+    # output names, never a stored object's.
+    derived = (
+        ctes
+        | {s.alias for s in tree.find_all(exp.Subquery) if s.alias}
+        | {t.alias_or_name for t in tree.find_all(exp.Table) if t.name in ctes}
+    )
+
+    def _reads_only_derived(column: exp.Column) -> bool:
+        select = column.find_ancestor(exp.Select)
+        if select is None:
+            return False
+        sources = [
+            src.this if isinstance(src, (exp.From, exp.Join)) else src
+            for src in [select.args.get("from_"), *select.args.get("joins", [])]
+            if src is not None
+        ]
+        return bool(sources) and all(
+            isinstance(src, exp.Subquery) or (isinstance(src, exp.Table) and src.name in ctes)
+            for src in sources
+        )
+
+    def _stored(ident: exp.Expr | None, own: set[str]) -> None:
+        if isinstance(ident, exp.Identifier) and ident.this == ident.this.lower():
+            if ident.this not in own:
+                ident.set("this", ident.this.upper())
+                ident.set("quoted", True)
+
+    for select in tree.find_all(exp.Select):
+        projections = []
+        for proj in select.expressions:
+            if isinstance(proj, exp.Column) and proj.name == proj.name.lower():
+                proj = exp.alias_(proj, exp.to_identifier(proj.name, quoted=True))
+            projections.append(proj)
+        select.set("expressions", projections)
+    for table in tree.find_all(exp.Table):
+        _stored(table.args.get("catalog"), set())
+        _stored(table.args.get("db"), set())
+        _stored(table.args.get("this"), ctes)  # a CTE is the statement's own
+    for column in tree.find_all(exp.Column):
+        _stored(column.args.get("catalog"), set())
+        _stored(column.args.get("db"), set())
+        _stored(column.args.get("table"), table_aliases | ctes)
+        qualifier = column.table
+        if (qualifier and qualifier in derived) or (not qualifier and _reads_only_derived(column)):
+            continue  # a derived relation's column is the statement's own output name
+        # An ORDER BY of an output alias names the alias, not a stored column.
+        in_order = column.find_ancestor(exp.Order) is not None
+        _stored(column.args.get("this"), output_aliases if in_order else set())
+    return tree.sql(dialect="exasol")
 
 
 def _strip_schema_qualifiers(sql: str) -> str:
