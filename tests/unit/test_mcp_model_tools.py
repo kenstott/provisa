@@ -746,7 +746,10 @@ async def test_propose_fakes_returns_proposals_and_saves_nothing(monkeypatch, ap
 
 async def test_list_synthetic_datasets(monkeypatch, app_state):
     _use_db(monkeypatch, app_state, {})
-    row = SimpleNamespace(
+    from provisa.synthetic.datasets import DatasetRow, DatasetTableRow
+
+    # The real row type, so fields a dataset gains later take their defaults here too.
+    row = DatasetRow(
         id="d1",
         seed=7,
         scale=0.5,
@@ -754,9 +757,7 @@ async def test_list_synthetic_datasets(monkeypatch, app_state):
         store_schema="synthetic_d1",
         error=None,
         generated_at=None,
-        tables=[SimpleNamespace(table_id=7, profile_env="prod", run_id="r2", scale=None)],
-        fanout_conditions=[],
-        assertions=[],
+        tables=(DatasetTableRow(table_id=7, profile_env="prod", run_id="r2", scale=None),),
     )
     with patch("provisa.synthetic.datasets.list_datasets", new=AsyncMock(return_value=[row])):
         out = await model_tools.list_synthetic_datasets(app_state, "steward", _request("steward"))
