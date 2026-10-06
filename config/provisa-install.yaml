@@ -462,6 +462,25 @@ sources:
     port: ${env:PROVISA_PGWIRE_PORT:-5439}
     user: ${env:PROVISA_DQ_USER:-org_admin}
   type: soda
+# REQ-1934: the demo's Data Profiler. It profiles the pet store's own tables each night, and Run now
+# on the source (or on a member table) profiles them at once. Its result tables are registered from
+# the source's catalog like any table.
+- description: "Nightly profile of the pet store's tables \u2014 distributions, drift, duplicates,\
+    \ dependence and proposed constraints, one run per night"
+  id: demo-profiler
+  mapping:
+    cron: "0 2 * * *"
+    low_cardinality_max: 100
+    drift_window: 7
+    drift_season: none
+    drift_distance: 3.0
+    drift_slope: 3.0
+    drift_ks: 0.2
+    drift_psi: 0.25
+    correlation_max_columns: 20
+    joint_max_distinct: 20
+    category_max_columns: 10
+  type: data_profiler
 - description: "Animal shelter GraphQL API \u2014 staff schedules, breed catalogue,\
     \ and animal assignment records managed by shelter operations"
   id: graphql-demo
@@ -1222,6 +1241,7 @@ tables:
   enable_aggregates: true
   enable_group_by: true
   schema: default
+  profiler_source_id: demo-profiler
   source_id: inquiries-sqlite
   table: inquiries
 - columns:
@@ -1266,6 +1286,7 @@ tables:
   enable_group_by: true
   product_id: pet_health
   schema: pet_store
+  profiler_source_id: demo-profiler
   source_id: pet-store-sqlite
   table: pets
 - columns:
@@ -1342,6 +1363,7 @@ tables:
   domain_id: pet-store
   product_id: pet_health
   schema: pet_store
+  profiler_source_id: demo-profiler
   source_id: pet-store-sqlite
   table: vets
 - columns:
@@ -1381,6 +1403,7 @@ tables:
   description: "Vet visits — the junction behind the TREATED_BY relationship between pets and vets"
   domain_id: pet-store
   schema: pet_store
+  profiler_source_id: demo-profiler
   source_id: pet-store-sqlite
   table: pet_visits
 - columns:
