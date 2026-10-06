@@ -113,18 +113,9 @@ def _config(pg: _Postgres) -> dict:
         # the ceiling, so each evaluation that finds it busy sizes it and leaves it live.
         "replication": {"hot_threshold": 3, "hot_max_rows": _ROWS - 1, "hot_interval": 1},
         "domains": [{"id": "shop", "description": "Shop"}],
-        "roles": [
-            {
-                "id": _ROLE,
-                "capabilities": [
-                    "source_registration",
-                    "table_registration",
-                    "query_development",
-                    "observability",
-                ],
-                "domain_access": ["*"],
-            }
-        ],
+        # org_admin is the reserved administrative role (REQ-1349): every org has it and a
+        # config file may not declare it.
+        "roles": [],
         "sources": [
             {
                 "id": "warm-src",

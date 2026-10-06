@@ -125,13 +125,9 @@ def server(stores, tmp_path_factory):
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
         "domains": [{"id": "docs", "description": "change stream e2e"}],
-        "roles": [
-            {
-                "id": _ROLE,
-                "capabilities": ["source_registration", "table_registration", "query_development"],
-                "domain_access": ["*"],
-            }
-        ],
+        # org_admin is the reserved administrative role (REQ-1349): every org has it and a
+        # config file may not declare it.
+        "roles": [],
         "sources": [
             {
                 "id": "cs-mongo",

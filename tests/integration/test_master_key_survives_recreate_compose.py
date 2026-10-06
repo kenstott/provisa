@@ -69,13 +69,8 @@ class _Stack:
                     "domains": [],
                     "tables": [],
                     "auth": {"provider": "none"},
-                    "roles": [
-                        {
-                            "id": "org_admin",
-                            "capabilities": ["query_development", "org_settings"],
-                            "domain_access": ["*"],
-                        }
-                    ],
+                    # org_admin is reserved (REQ-1349): every org has it, a config may not declare it.
+                    "roles": [],
                 }
             )
         )
