@@ -212,22 +212,6 @@ export function SourceDetailPanel({
             </ActionIcon>
           </Tooltip>
         )}
-        {isProfiler && (
-          <Tooltip label={t("sourceDetailPanel.runProfilerTitle")}>
-            <ActionIcon
-              variant="subtle"
-              aria-label={t("sourceDetailPanel.runProfilerTitle")}
-              data-testid="source-detail-run-profiler"
-              loading={profiling}
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleRunProfiler();
-              }}
-            >
-              <Play size={14} />
-            </ActionIcon>
-          </Tooltip>
-        )}
         <ConfirmDialog
           title={t("sourceDetailPanel.deleteTitle", { id: s.id })}
           consequence={t("sourceDetailPanel.deleteConsequence", { id: s.id })}
@@ -309,6 +293,26 @@ export function SourceDetailPanel({
                 </Text>
               ))}
         </Alert>
+      )}
+      {isProfiler && (
+        // REQ-1934: an ad hoc run of every member table, at the foot of the profiler's detail view.
+        <Group justify="flex-start" mt={4}>
+          <Tooltip label={t("sourceDetailPanel.runProfilerTitle")}>
+            <ActionIcon
+              variant="light"
+              size="lg"
+              aria-label={t("sourceDetailPanel.runProfilerTitle")}
+              data-testid="source-detail-run-profiler"
+              loading={profiling}
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleRunProfiler();
+              }}
+            >
+              <Play size={18} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
       )}
     </Stack>
   );
