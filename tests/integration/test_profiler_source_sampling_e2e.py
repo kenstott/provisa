@@ -30,6 +30,7 @@ before and after each run. The row count every run takes first is answered by an
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import subprocess
 import tempfile
@@ -293,6 +294,11 @@ def booted():
         pg.stop()
 
 
+def _dependence_reads(run: dict) -> int:
+    """The rows the run's dependence statements read, every attempt of each."""
+    return sum(a["rows"] for a in json.loads(run["dependence_attempts"] or "[]"))
+
+
 def _profile(booted, table: str) -> tuple[dict, int, int]:
     """Run ``table``'s profile now; its runs row and the source's (seq, index) tuple reads."""
     pg, srv, members = booted
@@ -314,8 +320,10 @@ def test_a_directly_read_table_is_block_sampled_by_its_source(booted):
         _ROWS,
     ), run
     assert run["target_fraction"] == pytest.approx(_TARGET)
-    # The source read the sampled blocks' rows only -- a twentieth of the table, not all of it.
-    assert seq == run["profiled_rows"], (seq, run)
+    # The source read the sampled blocks' rows only -- a twentieth of the table, not all of it --
+    # for the profile statement and for each dependence statement, each its own draw of the same
+    # method and size (REQ-1934 maintainer ruling).
+    assert seq == run["profiled_rows"] + _dependence_reads(run), (seq, run)
     assert idx == 0
     assert seq < _ROWS / 4
     # Pages of ~13 rows each, ~380 of them sampled: the realised share is near the target.
@@ -333,7 +341,9 @@ def test_a_table_federated_through_postgres_fdw_is_sampled_by_key_ranges(booted)
     # No sequential read: every row the source read came through the primary key's index, and
     # only the rows in the ranges (the key extremes come from the index too).
     assert seq == 0, seq
-    assert run["profiled_rows"] <= idx <= run["profiled_rows"] + 2, (idx, run)
+    # The same ranges for the profile statement and each dependence statement.
+    read = run["profiled_rows"] + _dependence_reads(run)
+    assert read <= idx <= read + 2, (idx, run)
     assert idx < _ROWS / 4
     # Keys 1..100000 are dense: the ranges hold the target share of the rows.
     assert run["sample_fraction"] == pytest.approx(_TARGET, rel=0.02), run

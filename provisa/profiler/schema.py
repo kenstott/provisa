@@ -94,6 +94,12 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("dependence_fraction", "double", "Fraction of rows the dependence statements asked for."),
         ("dependence_rows", "bigint", "Rows the pairs statement read."),
         ("network_rows", "bigint", "Rows the triples statement read."),
+        (
+            "dependence_attempts",
+            "varchar",
+            "Each read of the dependence statements, as JSON [{statement, percent, rows}]; a block "
+            "sample under half its target is read again at four times the percentage.",
+        ),
         ("duration_ms", "bigint", "How long the run took."),
         ("status", "varchar", "succeeded | failed."),
         ("error", "varchar", "Why the run failed; empty when it succeeded."),

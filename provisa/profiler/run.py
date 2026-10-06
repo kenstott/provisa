@@ -529,24 +529,47 @@ async def _run_sample(
 
 
 async def _run_further(
-    sql: str, read: ProfileRead, table_name: str
+    sql: str, sample: Sample, where: str, table_name: str
 ) -> tuple[list[str], list[tuple]]:
-    """Route, check and run a further statement over the run's sample (REQ-1934): the sample's
-    clause must survive governance and transpile, as the profile statement's must."""
+    """Route, check and run a further statement over ``sample`` (REQ-1934): the sample's clause
+    must survive governance and transpile, as the profile statement's must."""
     from provisa.profiler.sampling import SampleClauseLost, require_sample_clause
 
     plan = await _route(sql)
     try:
         require_sample_clause(
-            read.sample.method,
-            _executed_sql(plan),
-            plan.dialect,
-            read.where,
-            len(read.sample.ranges),
+            sample.method, _executed_sql(plan), plan.dialect, where, len(sample.ranges)
         )
     except SampleClauseLost as exc:
         raise ProfileError(f"dependence of {table_name!r}: {exc}") from exc
     return await _execute(plan)
+
+
+async def _sampled_further(
+    statement: str,
+    sql_of: Any,
+    parse: Any,
+    rows_of: Any,
+    read: ProfileRead,
+    wanted: float,
+    table_name: str,
+    attempts: list[dict],
+) -> tuple[Any, Sample]:
+    """Run a further statement over the run's sample method and fraction. A block sample is an
+    independent draw whose blocks can come back far under the target, as the profile statement's
+    can: it is read again at four times the percentage while under half of ``wanted`` rows, up to
+    the whole table (the profile statement's rule, REQ-1934). Each read is appended to
+    ``attempts``."""
+    sample = read.sample
+    while True:
+        found = parse(await _run_further(sql_of(sample), sample, read.where, table_name))
+        rows = rows_of(found)
+        percent = 100.0 if sample.fraction is None else sample.percent
+        attempts.append({"statement": statement, "percent": percent, "rows": rows})
+        if sample.method != "block" or rows * 2 >= wanted or percent >= 100.0:
+            return found, sample
+        assert sample.fraction is not None  # a block sample always states its fraction
+        sample = Sample("block", min(1.0, sample.fraction * 4))
 
 
 @dataclass(frozen=True)
@@ -557,13 +580,15 @@ class DependenceRead:
     rows_read: int | None  # rows the pairs statement read
     network_rows: int | None  # rows the triples statement read
     orderings: list[constraints.Proposal]  # one number or date never above or after another
+    attempts: list[dict]  # each read: {statement, percent, rows}
 
 
 async def read_dependence(
-    target: Target, read: ProfileRead, settings: ProfilerSettings
+    target: Target, read: ProfileRead, settings: ProfilerSettings, wanted: float
 ) -> DependenceRead:
     """The dependence measures (REQ-1934 DEPENDENCE BETWEEN COLUMNS), in a few further aggregate
-    statements over the run's sample (``provisa.profiler.dependence``)."""
+    statements over the run's sample (``provisa.profiler.dependence``); ``wanted``: the rows the
+    run's sample asked for."""
     empty = {"correlations": [], "dependencies": [], "joint_counts": []}
     distinct = {c.spec.name: c.distinct for c in read.agg.columns}
     parents = []
@@ -581,23 +606,34 @@ async def read_dependence(
         settings.joint_max_distinct,
     )
     if len(cols) < 2:
-        return DependenceRead(empty, None, None, None, None, [])
-    fraction = 1.0 if read.sample.fraction is None else read.sample.fraction
-    psql = dependence.pairs_sql(
-        target.pgwire_name, target.columns, target.parents, cols, read.sample
+        return DependenceRead(empty, None, None, None, None, [], [])
+    attempts: list[dict] = []
+    name, own, ups = target.pgwire_name, target.columns, target.parents
+    pairs, sample = await _sampled_further(
+        "pairs",
+        lambda s: dependence.pairs_sql(name, own, ups, cols, s),
+        lambda result: dependence.parse_pairs(result[0], result[1], cols),
+        lambda found: next(iter(found.values())).rows,
+        read,
+        wanted,
+        target.table_name,
+        attempts,
     )
-    pairs = dependence.parse_pairs(*await _run_further(psql, read, target.table_name), cols)
     first = next(iter(pairs.values()))
     singles = dependence.single_candidates(pairs, cols)
     triples = dependence.triples_for(singles)
     pair_sets: dict = {}
     network_rows = None
     if triples:
-        tsql = dependence.triples_sql(
-            target.pgwire_name, target.columns, target.parents, cols, triples, read.sample
-        )
-        found = dependence.parse_triples(
-            *await _run_further(tsql, read, target.table_name), triples
+        found, _ = await _sampled_further(
+            "triples",
+            lambda s: dependence.triples_sql(name, own, ups, cols, triples, s),
+            lambda result: dependence.parse_triples(result[0], result[1], triples),
+            lambda found: sum(next(iter(found.values())).values()),
+            read,
+            wanted,
+            target.table_name,
+            attempts,
         )
         network_rows = sum(next(iter(found.values())).values())
         pair_sets = dependence.pair_candidates(found)
@@ -609,11 +645,12 @@ async def read_dependence(
     }
     return DependenceRead(
         rows,
-        read.sample.method,
-        fraction,
+        sample.method,
+        1.0 if sample.fraction is None else sample.fraction,
         first.rows,
         network_rows,
         constraints.propose_orderings(pairs, cols),
+        attempts,
     )
 
 
@@ -737,7 +774,8 @@ async def profile_table(
             state, target, row_count, fraction, settings.low_cardinality_max, random.Random()
         )
         results = result_rows(target, read.agg, run_id, run_time, settings.low_cardinality_max)
-        dep = await read_dependence(target, read, settings)
+        wanted = row_count if fraction is None else fraction * row_count
+        dep = await read_dependence(target, read, settings, wanted)
         proposals = [
             p
             for col in read.agg.columns
@@ -792,6 +830,7 @@ async def profile_table(
             "dependence_fraction": None if dep is None else dep.fraction,
             "dependence_rows": None if dep is None else dep.rows_read,
             "network_rows": None if dep is None else dep.network_rows,
+            "dependence_attempts": None if dep is None else json.dumps(dep.attempts),
             "duration_ms": int((time.monotonic() - started) * 1000),
             "status": status,
             "error": error,

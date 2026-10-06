@@ -194,6 +194,9 @@ def test_an_iceberg_table_on_trino_is_block_sampled_by_whole_files(run):
 def test_trino_read_only_the_sampled_files(run):
     reads = _trino_sampled_reads('"main"."lake_orders"')
     attempts = json.loads(run["sample_attempts"])
+    # After the profile statement's attempts come the dependence statements', each its own draw
+    # of whole files at the same method and size (REQ-1934 maintainer ruling).
+    attempts += json.loads(run["dependence_attempts"] or "[]")
     assert len(reads) >= len(attempts), (reads, attempts)
     # The last sampled statements Trino ran are this run's attempts: each read exactly the rows of
     # the files it sampled -- not the table.
