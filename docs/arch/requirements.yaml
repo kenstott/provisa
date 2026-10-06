@@ -76479,7 +76479,7 @@
     values, shapes and fitted parameters -- left out; every other column shows in full. It shows each
     run''s comparison with the previous run beside the run, and a measure''s history across the drift
     window with its drift marked, safe for its viewer as the run is. The table view''s Quick Profile --
-    a sample computed in the browser and stored nowhere -- stays as it is.'
+    a sample computed in the browser and stored nowhere -- stays as it is. The result kinds also include duplicates and repeats (the duplicate rows and duplicate keys of a run), constraints (the proposals and their decisions) and constraint_checks (each accepted constraint''s pass share and violations per run). A profiler''s run defaults also bound the number of category columns entered in the correlation matrix and the joint counts, the most frequent categories being kept.'
   use_case: 'A steward registers the orders table on the profiler and gives analysts read access to its
     profile: they see each column''s null share, distinct count and spread without reading a row, and
     a masked column''s profile shows its shape but never a real value. A data-quality check written over
