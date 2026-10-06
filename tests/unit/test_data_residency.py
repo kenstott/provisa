@@ -230,7 +230,7 @@ async def test_a_role_saved_with_a_grant_is_held_to_the_same_rules(node, tmp_pat
             StoreConfig(id="eu-pg", url="postgresql://eu/db"),
             StoreConfig(id="eu-trino", url="trino://eu:8080", kind="trino-byo"),
         ):
-            await region_repo.upsert_store(conn, store, origin="admin")
+            await region_repo.upsert_store(conn, store)
         await region_repo.upsert_region(
             conn,
             OrgRegion(
@@ -242,17 +242,16 @@ async def test_a_role_saved_with_a_grant_is_held_to_the_same_rules(node, tmp_pat
                 state="eu-pg",
                 record="eu-pg",
             ),
-            origin="admin",
         )
         steward = Role(**_steward(["eu", NO_REGION]))
-        await role_repo.upsert(conn, steward, org_id=None, origin="admin")
+        await role_repo.upsert(conn, steward, org_id=None)
         assert (await role_repo.get(conn, "steward"))["residency_values"] == ["eu", NO_REGION]
         with pytest.raises(ValueError, match="names us, which the org does not select"):
-            await role_repo.upsert(conn, Role(**_steward(["us"])), org_id=None, origin="admin")
+            await role_repo.upsert(conn, Role(**_steward(["us"])), org_id=None)
     node(None)
     async with db.acquire() as conn:
         with pytest.raises(ValueError, match="exists only when the platform declares regions"):
-            await role_repo.upsert(conn, Role(**_steward([])), org_id=None, origin="admin")
+            await role_repo.upsert(conn, Role(**_steward([])), org_id=None)
 
 
 async def test_set_table_region_refuses_a_change_the_grant_does_not_cover(

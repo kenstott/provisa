@@ -74,15 +74,21 @@ def _require_live_export() -> None:
 
 
 @router.get("/admin/config/live")
-async def download_live_config(request: Request):  # REQ-164
-    """The CURRENT config generated from live state (admin-created views/MVs, relationships, roles,
-    rls, domains overlaid on the file base)."""
+async def download_live_config(request: Request, sections: str | None = None):  # REQ-164, REQ-1919
+    """The model as it stands, written as a configuration file: the deployment's settings with
+    every model section the store holds — or, with ``sections`` (comma-separated section names,
+    e.g. ``sources,tables``), only the part of the model an admin chose. An admin's action, open
+    in every deployment: applied to an empty store, the file builds the same model."""
     require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
-    _require_live_export()
     from provisa.api.admin.config_export import build_live_config_yaml
 
+    chosen = None if sections is None else [x.strip() for x in sections.split(",") if x.strip()]
+    try:
+        content = await build_live_config_yaml(chosen)
+    except ValueError as exc:  # a name that is not a model section
+        raise ApiError(400, "settings.export_unknown_section", str(exc)) from exc
     return Response(
-        content=await build_live_config_yaml(),
+        content=content,
         media_type="application/x-yaml",
         headers={"Content-Disposition": "attachment; filename=provisa.live.yaml"},
     )
@@ -140,8 +146,11 @@ def _require_trigger_roles(request: Request, body: bytes) -> None:  # REQ-1003
 
 
 @router.put("/admin/config")
-async def upload_config(request: Request):  # REQ-164
-    """Upload a revised config YAML and reload.
+async def upload_config(request: Request):  # REQ-164, REQ-1919
+    """Upload a revised config YAML, reload the deployment's settings from it, and apply it to the
+    model store as an explicit one-time seed: what it declares is added and updated through the
+    model store, and nothing is removed (REQ-1919). The file is the deployment's seed and settings;
+    a later restart reads its settings and never applies its model again.
 
     When live config export is on (the generated-config-is-canonical contract), the config is
     NORMALIZED on consume and the normalized form is persisted — so the on-disk file stays byte-faithful
@@ -169,8 +178,12 @@ async def upload_config(request: Request):  # REQ-164
             backup.write_text(path.read_text())
         path.write_bytes(body)
     try:
+        from provisa.api.app_loaders import apply_configuration
+        from provisa.core.config_loader import parse_config_dict, read_config_with_includes
+
         await _load_and_build(str(path))
-        return {"success": True, "message": "Config uploaded and reloaded"}
+        await apply_configuration(parse_config_dict(read_config_with_includes(path)))
+        return {"success": True, "message": "Config uploaded and applied"}
     except Exception as e:
         return {"success": False, "message": str(e)}
 
@@ -666,26 +679,31 @@ async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-4
     return {"success": True, "updated": updated, "restart_required": restart_required}
 
 
-async def _catalog_counts(conn) -> tuple[dict[str, int], bool]:  # REQ-1919
+async def _catalog_counts(conn) -> dict[str, int]:  # REQ-1919
     """How much catalog the acting org holds — its registered tables (views among them), sources
-    and domains, leaving out what the deployment seeds (the built-in sources and their tables,
-    the system domains, the demo's own) — and whether a config file declares any of it."""
-    from sqlalchemy import select
+    and domains, leaving out what the deployment seeds: the built-in sources and the demo's
+    GraphQL source with their tables, and the seeded and system domains."""
+    from sqlalchemy import func, select
 
+    from provisa.core import domain_policy
+    from provisa.core.db import SEEDED_DOMAIN_IDS, SEEDED_SOURCE_IDS
     from provisa.core.schema_org import domains, registered_tables, sources
 
-    counts: dict[str, int] = {}
-    declared = False
-    for kind, table in (("tables", registered_tables), ("sources", sources), ("domains", domains)):
-        origins = [
-            row[0]
-            for row in (
-                await conn.execute_core(select(table.c.origin).where(table.c.origin != "seed"))
-            ).fetchall()
-        ]
-        counts[kind] = len(origins)
-        declared = declared or "config" in origins
-    return counts, declared
+    seeded_domains = SEEDED_DOMAIN_IDS | set(domain_policy.system_domain_ids())
+    statements = {
+        "tables": select(func.count()).where(
+            registered_tables.c.source_id.not_in(SEEDED_SOURCE_IDS)
+        ),
+        "sources": select(func.count()).where(sources.c.id.not_in(SEEDED_SOURCE_IDS)),
+        "domains": select(func.count()).where(domains.c.id.not_in(seeded_domains)),
+    }
+    statements["tables"] = statements["tables"].select_from(registered_tables)
+    statements["sources"] = statements["sources"].select_from(sources)
+    statements["domains"] = statements["domains"].select_from(domains)
+    return {
+        kind: int((await conn.execute_core(statement)).scalar_one())
+        for kind, statement in statements.items()
+    }
 
 
 @router.post("/admin/domain-policy")
@@ -730,24 +748,12 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
 
     # 1. Refused while the org has a catalog, before anything is written.
     async with model_db.acquire() as conn:
-        existing, declared_in_config = await _catalog_counts(conn)
+        existing = await _catalog_counts(conn)
     if any(existing.values()):
         held = (
             f"{existing['tables']} table(s), {existing['sources']} source(s), "
             f"{existing['domains']} domain(s)"
         )
-        if declared_in_config:
-            # Emptying a catalog the next load restores is no way forward: such a deployment
-            # declares its policy where it declares its catalog.
-            raise ApiError(
-                409,
-                "settings.domain_policy_catalog_in_config",
-                "The domain policy cannot change here: this organization's catalog is declared "
-                f"in the config ({held}). Set the policy in the config file.",
-                tables=existing["tables"],
-                sources=existing["sources"],
-                domains=existing["domains"],
-            )
         raise ApiError(
             409,
             "settings.domain_policy_catalog_exists",
@@ -784,7 +790,7 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
     #    registration under the new policy has it to sit in.
     if domain_policy.single_domain():
         async with model_db.acquire() as conn:
-            await domain_repo.upsert(conn, Domain(id=domain_policy.default_domain()), origin="seed")
+            await domain_repo.upsert(conn, Domain(id=domain_policy.default_domain()))
     await _rebuild_schemas()
 
     return {"success": True, "use_domains": use_domains}

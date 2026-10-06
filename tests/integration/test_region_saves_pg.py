@@ -96,21 +96,19 @@ async def test_a_save_that_leaves_a_region_unreadable_by_the_others_is_refused(m
     )
     async with model.acquire() as conn:
         for store in _STORES:
-            await region_repo.upsert_store(conn, store, origin="admin")
-        await region_repo.upsert_region(conn, _region("eu"), origin="admin")
-        await region_repo.upsert_region(conn, _region("us", "us-snow"), origin="admin")
-        await source_repo.upsert(conn, crm, origin="admin")  # a form default: never refused
-        await conn.execute_core(sa.insert(domains).values(id="sales", origin="admin"))
+            await region_repo.upsert_store(conn, store)
+        await region_repo.upsert_region(conn, _region("eu"))
+        await region_repo.upsert_region(conn, _region("us", "us-snow"))
+        await source_repo.upsert(conn, crm)  # a form default: never refused
+        await conn.execute_core(sa.insert(domains).values(id="sales"))
         with pytest.raises(ValueError, match="region 'us' runs the snowflake engine"):
-            await table_repo.upsert(conn, orders, origin="admin")
-        await region_repo.upsert_region(conn, _region("us"), origin="admin")
-        await table_repo.upsert(conn, orders, origin="admin")
+            await table_repo.upsert(conn, orders)
+        await region_repo.upsert_region(conn, _region("us"))
+        await table_repo.upsert(conn, orders)
         with pytest.raises(ValueError, match="region 'us' runs the snowflake engine"):
-            await region_repo.upsert_region(conn, _region("us", "us-snow"), origin="admin")
+            await region_repo.upsert_region(conn, _region("us", "us-snow"))
         with pytest.raises(ValueError, match="'eu-pg' is not a PostgreSQL store"):
-            await region_repo.upsert_store(
-                conn, StoreConfig(id="eu-pg", url="mysql://eu/db"), origin="admin"
-            )
+            await region_repo.upsert_store(conn, StoreConfig(id="eu-pg", url="mysql://eu/db"))
         # Nothing refused was written.
         assert {r.id: r.engine for r in await region_repo.list_regions(conn)} == {
             "eu": "eu-trino",

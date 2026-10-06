@@ -1515,6 +1515,13 @@ def provisa_server(_reserve_flight_port):
     from provisa.encryption.providers import _master_key_b64, mint_master_key
 
     mint_master_key()
+    # REQ-1919: the live server's boot is its deployment's first start, as every in-process boot's
+    # is (tests.boot_seeds_its_own_deployment): it seeds its org's store from its own file.
+    import asyncio
+
+    from tests.boot_seeds_its_own_deployment import prepare_first_start
+
+    asyncio.run(prepare_first_start(_live_cfg))
     server_env = {
         **os.environ,
         "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa",

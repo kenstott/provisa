@@ -75,7 +75,7 @@ async def test_upsert_rejects_a_product_in_a_different_domain():
     tbl = _table(domain_id="sales", product_id="checkout")
 
     with pytest.raises(ValueError, match="sales.*finance|finance.*sales"):
-        await table_repo.upsert(cast(Connection, conn), tbl, origin="admin")
+        await table_repo.upsert(cast(Connection, conn), tbl)
 
 
 @pytest.mark.asyncio
@@ -86,7 +86,7 @@ async def test_upsert_rejects_a_nonexistent_product_id():
     tbl = _table(domain_id="sales", product_id="missing")
 
     with pytest.raises(ValueError, match="missing"):
-        await table_repo.upsert(cast(Connection, conn), tbl, origin="admin")
+        await table_repo.upsert(cast(Connection, conn), tbl)
 
 
 @pytest.mark.asyncio
@@ -96,7 +96,7 @@ async def test_upsert_accepts_a_product_in_the_same_domain():
     conn = _FakeConn(product_row={"id": "checkout", "domain_id": "sales"})
     tbl = _table(domain_id="sales", product_id="checkout")
 
-    await table_repo.upsert(cast(Connection, conn), tbl, origin="admin")
+    await table_repo.upsert(cast(Connection, conn), tbl)
 
     conn.upsert_returning.assert_awaited_once()
     values = conn.upsert_returning.await_args.args[1]
@@ -110,7 +110,7 @@ async def test_upsert_allows_no_product_id():
     conn = _FakeConn(product_row=None)
     tbl = _table(domain_id="sales", product_id=None)
 
-    await table_repo.upsert(cast(Connection, conn), tbl, origin="admin")
+    await table_repo.upsert(cast(Connection, conn), tbl)
 
     conn.upsert_returning.assert_awaited_once()
     values = conn.upsert_returning.await_args.args[1]

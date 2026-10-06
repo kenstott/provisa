@@ -16,7 +16,7 @@ Validates the three modes against a real PG metadata DB:
   * namespaced (use_domains=true) — domain_id stored as declared.
 Plus the reload validation sweep that rejects pre-existing foreign domains.
 
-Every test also depends on ``graphql_client`` (unused directly, session-scoped): load_config's
+Every test also depends on ``graphql_client`` (unused directly, session-scoped): apply_config's
 _upsert_sources -> bound_to_request_org() asserts state.admin_db is set even for a plain-password
 source with no ${secret:...} reference, and tenant_db alone never populates it — confirmed live,
 every test in this file failed standalone with `AssertionError` at app.py's `_request_org_for_secrets`
@@ -32,8 +32,8 @@ import pytest_asyncio
 from provisa.core import domain_policy
 from provisa.core.config_loader import (
     _validate_existing_domains,
-    load_config,
-    load_config_from_yaml,
+    apply_config,
+    parse_config,
     parse_config_dict,
 )
 from provisa.core.models import Table, Column
@@ -69,7 +69,7 @@ async def _restore_config_after_module(tenant_db, _init_schema, platform_admin_d
     domain_policy.reset()
     with as_deployment_org():  # the restore is the deployment org's config load (REQ-1266)
         async with tenant_db.acquire() as conn:
-            await load_config_from_yaml(MAIN_CONFIG, conn)
+            await apply_config(parse_config(MAIN_CONFIG), conn)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -129,7 +129,7 @@ class TestSingleDomainMode:
     async def test_empty_table_domain_coerced_to_default(self, tenant_db, graphql_client):
         cfg = parse_config_dict(_config({"use_domains": False, "default_domain": "global"}, [], ""))
         async with tenant_db.acquire() as conn:
-            await load_config(cfg, conn, origin="config")
+            await apply_config(cfg, conn)
             assert await _stored_domain(conn) == "global"
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -138,7 +138,7 @@ class TestSingleDomainMode:
             _config({"use_domains": False, "default_domain": "global"}, [], "global")
         )
         async with tenant_db.acquire() as conn:
-            await load_config(cfg, conn, origin="config")
+            await apply_config(cfg, conn)
             domains = {d["id"] for d in await domain_repo.list_all(conn)}
         assert "global" in domains
 
@@ -148,7 +148,7 @@ class TestSingleDomainMode:
             _config({"use_domains": False, "default_domain": "global"}, [], "global")
         )
         async with tenant_db.acquire() as conn:
-            await load_config(cfg, conn, origin="config")
+            await apply_config(cfg, conn)
             # Policy is now single-domain "global"; a foreign domain is a hard error.
             bad = Table(
                 source_id="pg1",
@@ -158,7 +158,7 @@ class TestSingleDomainMode:
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
             with pytest.raises(ValueError, match="cannot register domain"):
-                await table_repo.upsert(conn, bad, origin="admin")
+                await table_repo.upsert(conn, bad)
 
 
 class TestLegacyMode:
@@ -167,7 +167,7 @@ class TestLegacyMode:
         # use_domains absent: declared domain_id stored verbatim, domains list allowed.
         cfg = parse_config_dict(_config({}, [{"id": "sales"}], "sales"))
         async with tenant_db.acquire() as conn:
-            await load_config(cfg, conn, origin="config")
+            await apply_config(cfg, conn)
             assert await _stored_domain(conn) == "sales"
             assert domain_policy.use_domains() is None
 
@@ -177,7 +177,7 @@ class TestNamespacedMode:
     async def test_declared_domain_stored(self, tenant_db, graphql_client):
         cfg = parse_config_dict(_config({"use_domains": True}, [{"id": "sales"}], "sales"))
         async with tenant_db.acquire() as conn:
-            await load_config(cfg, conn, origin="config")
+            await apply_config(cfg, conn)
             assert await _stored_domain(conn) == "sales"
 
 
@@ -188,18 +188,17 @@ class TestReloadValidationSweep:
         # then switch to single-domain mode and run the sweep.
         async with tenant_db.acquire() as conn:
             await conn.execute(
-                "INSERT INTO sources (id, type, dialect, origin) "
-                "VALUES ('pg1', 'postgresql', 'postgres', 'admin') "
+                "INSERT INTO sources (id, type, dialect) "
+                "VALUES ('pg1', 'postgresql', 'postgres') "
                 "ON CONFLICT (id) DO NOTHING"
             )
             await conn.execute(
-                "INSERT INTO domains (id, origin) VALUES ('sales', 'admin') "
-                "ON CONFLICT (id) DO NOTHING"
+                "INSERT INTO domains (id) VALUES ('sales') ON CONFLICT (id) DO NOTHING"
             )
             await conn.execute(
                 "INSERT INTO registered_tables "
-                "(source_id, domain_id, schema_name, table_name, origin) "
-                "VALUES ('pg1', 'sales', 'public', 'legacy_tbl', 'admin')"
+                "(source_id, domain_id, schema_name, table_name) "
+                "VALUES ('pg1', 'sales', 'public', 'legacy_tbl')"
             )
             with pytest.raises(RuntimeError, match="re-register"):
                 await _validate_existing_domains(conn, "global")
@@ -208,18 +207,17 @@ class TestReloadValidationSweep:
     async def test_sweep_passes_when_all_default(self, tenant_db, graphql_client):
         async with tenant_db.acquire() as conn:
             await conn.execute(
-                "INSERT INTO sources (id, type, dialect, origin) "
-                "VALUES ('pg1', 'postgresql', 'postgres', 'admin') "
+                "INSERT INTO sources (id, type, dialect) "
+                "VALUES ('pg1', 'postgresql', 'postgres') "
                 "ON CONFLICT (id) DO NOTHING"
             )
             await conn.execute(
-                "INSERT INTO domains (id, origin) VALUES ('global', 'admin') "
-                "ON CONFLICT (id) DO NOTHING"
+                "INSERT INTO domains (id) VALUES ('global') ON CONFLICT (id) DO NOTHING"
             )
             await conn.execute(
                 "INSERT INTO registered_tables "
-                "(source_id, domain_id, schema_name, table_name, origin) "
-                "VALUES ('pg1', 'global', 'public', 'ok_tbl', 'admin')"
+                "(source_id, domain_id, schema_name, table_name) "
+                "VALUES ('pg1', 'global', 'public', 'ok_tbl')"
             )
             # Should not raise — all tables are in the default domain.
             await _validate_existing_domains(conn, "global")

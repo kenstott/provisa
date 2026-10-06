@@ -198,8 +198,11 @@ def _apply_server_and_engine_config(
 
 def _process_kafka_sources(
     raw_config: dict, register_catalogs: bool = True
-) -> None:  # REQ-147, REQ-250
-    """Register Kafka topics as virtual tables and populate state.kafka_table_configs/windows.
+) -> None:  # REQ-147, REQ-250, REQ-1919
+    """Populate state.kafka_table_configs/windows/bootstrap and register the engine's Kafka
+    catalogs, from the Kafka sources the model store holds (``raw_config`` is
+    ``config_loader.store_raw``'s). Each topic's table is a registered table of the store, seeded
+    with the source (``config_loader.kafka_topics_as_tables``).
 
     ``register_catalogs=False`` (REQ-1900) is a worker whose launch has already issued the engine's
     Kafka catalogs: it builds this process's table maps and issues nothing."""
@@ -212,17 +215,6 @@ def _process_kafka_sources(
         if not ks.get("bootstrap_servers"):
             raise ValueError(f"Kafka source {source_id!r} names no bootstrap_servers")
         state.kafka_bootstrap[source_id] = resolve_secrets(ks["bootstrap_servers"])
-        # Ensure the kafka source exists in raw_config["sources"] so the FK is satisfied
-        # when registered_tables references it.
-        existing_ids = {s["id"] for s in raw_config.get("sources", [])}
-        if source_id not in existing_ids:
-            raw_config.setdefault("sources", []).append(
-                {
-                    "id": source_id,
-                    "type": "kafka",
-                    "host": ks.get("bootstrap_servers", ""),
-                }
-            )
         # REQ-250/147: register the Kafka source as an engine catalog (the engine writes catalog files
         # + CREATE CATALOG so it loads regardless of start order; native engines no-op).
         if register_catalogs:
@@ -245,31 +237,6 @@ def _process_kafka_sources(
 
             if window:
                 state.kafka_windows[source_id] = window
-
-            topic_columns = topic.get("columns", [])
-            table_entry = {
-                "source_id": source_id,
-                "domain_id": topic.get("domain_id", "support"),
-                "schema": "default",
-                "table": gql_table_name,
-                "description": topic.get("description", ""),
-                "columns": [
-                    {
-                        "name": col.get("name", col) if isinstance(col, dict) else col,
-                        # REQ-1426: the topic's declared type is the design-time type of the
-                        # registered column. Dropping it here made the table repository refuse the
-                        # synthesized table, since nothing downstream infers a type.
-                        "data_type": col.get("data_type") if isinstance(col, dict) else None,
-                        "visible_to": col.get("visible_to", ["org_admin", "analyst"])
-                        if isinstance(col, dict)
-                        else ["org_admin", "analyst"],
-                        "writable_by": col.get("writable_by", []) if isinstance(col, dict) else [],
-                        "description": col.get("description", "") if isinstance(col, dict) else "",
-                    }
-                    for col in topic_columns
-                ],
-            }
-            raw_config.setdefault("tables", []).append(table_entry)
 
             state.kafka_table_physical = getattr(state, "kafka_table_physical", {})
             state.kafka_table_physical[gql_table_name] = physical_table
@@ -498,6 +465,31 @@ async def _build_source_pools_and_enums(
                 _reg = await cast(Any, _driver).fetch_enums()
                 _enum_registry.update(_reg)
     state.pg_enum_types = build_enum_types(_enum_registry)
+
+
+async def apply_configuration(config: ProvisaConfig) -> None:  # REQ-1919, REQ-164
+    """An admin's explicit apply of a configuration to the acting org, as a one-time seed: add
+    and update everything it declares through the model store, remove nothing, then issue the
+    engine catalogs and pools of the sources it declares and rebuild the org's schemas.
+
+    The settled config→org sequence: catalog names first so sources register under the org's
+    own engine catalogs (REQ-1266), then the apply, the catalogs, source pools/enums, PK
+    resolution and the schema rebuild."""
+    from provisa.api.app import _rebuild_schemas, state
+    from provisa.api.startup_seed import _resolve_pk_from_sources
+    from provisa.core.config_loader import apply_config, register_sources
+    from provisa.core.secrets_store import bound_to_request_org
+
+    model_db = state.model_db
+    assert model_db is not None, "the caller refuses a request with no org bound"
+    _populate_source_catalog_names(config)
+    async with model_db.acquire() as conn:
+        await apply_config(config, conn, state.federation_engine)
+    async with bound_to_request_org():
+        register_sources(state.federation_engine, list(config.sources), state.source_catalogs)
+    await _build_source_pools_and_enums(config)
+    await _resolve_pk_from_sources()
+    await _rebuild_schemas()
 
 
 async def _load_openapi_specs() -> None:

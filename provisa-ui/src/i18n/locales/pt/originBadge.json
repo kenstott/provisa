@@ -1,6 +1,0 @@
-{
-  "originBadge": {
-    "config": "declarado na configuração",
-    "configHint": "Um arquivo de configuração declara este objeto. Uma alteração feita aqui vale até que a configuração seja carregada novamente, o que reaplica o que o arquivo diz."
-  }
-}

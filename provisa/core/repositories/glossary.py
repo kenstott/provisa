@@ -38,8 +38,6 @@ from provisa.core.glossary import (
     readable_term,
 )
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.repositories.origin import ADMIN, SEED, take_over
-from provisa.core.repositories.origin import require as require_origin
 from provisa.core.schema_org import (
     glossary_term_domains,
     glossary_term_edges,
@@ -245,8 +243,7 @@ async def _find_or_create_term(conn: "Connection", name: str) -> int:
         return row.id
     term_id = await conn.upsert_returning(
         glossary_terms,
-        # REQ-1919: a term derived from a column is the system's own: nobody declared it.
-        {"name": name, "is_abstract": False, "deprecated": False, "origin": SEED},
+        {"name": name, "is_abstract": False, "deprecated": False},
         index_elements=["name"],
         returning="id",
         update_columns=["deprecated"],
@@ -584,7 +581,6 @@ async def create_abstract_term(
             "definition": definition,
             "is_abstract": True,
             "deprecated": False,
-            "origin": ADMIN,  # REQ-1919: the curator's "new term" action
         },
         index_elements=["name"],
         returning="id",
@@ -594,31 +590,14 @@ async def create_abstract_term(
     return term_id
 
 
-async def release_declared_term(conn: "Connection", term_id: int) -> None:  # REQ-1919
-    """A term the config file declared and no longer does, that is rooted in columns: it stays
-    as the term derived from them, the system's own — its definition kept. The domains the file
-    declared for it were the file's declaration and go with it; a derived term's scope comes
-    from its refs."""
-    await conn.execute_core(
-        update(glossary_terms).where(glossary_terms.c.id == term_id).values(origin=SEED)
-    )
-    await set_declared_domains(conn, term_id, set())
-
-
 async def upsert_declared_term(
     conn: "Connection",
     name: str,
     *,
     definition: str | None = None,
     domains: "set[str]",
-    origin: str,
 ) -> int:
     """Upsert a config-declared glossary term by name (REQ-1641).
-
-    REQ-1919: ``origin`` is the loading file's ("config", or "admin" for an import). It is
-    written when the term is CREATED here; a term that already exists keeps its own — a derived
-    term the file gives a definition to stays the system's, and one a curator made is taken over
-    by a config that declares it.
 
     Config reload is idempotent, unlike the curator's "new term" action: a name already
     present in the table -- whether auto-derived from a column ref or declared by a prior
@@ -630,7 +609,6 @@ async def upsert_declared_term(
     name = name.strip().lower()  # REQ-1844: every term name in this catalog is lowercase
     if not name:
         raise ValueError("term name is required")
-    require_origin(origin)
     term_id = await conn.upsert_returning(
         glossary_terms,
         {
@@ -638,19 +616,10 @@ async def upsert_declared_term(
             "definition": definition,
             "is_abstract": True,
             "deprecated": False,
-            "origin": origin,
         },
         index_elements=["name"],
         returning="id",
         update_columns=["definition"],
-    )
-    await take_over(
-        conn,
-        glossary_terms,
-        (glossary_terms.c.id == term_id,),
-        kind="glossary term",
-        ident=name,
-        origin=origin,
     )
     await set_declared_domains(conn, term_id, domains)
     return term_id

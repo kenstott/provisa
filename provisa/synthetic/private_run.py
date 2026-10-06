@@ -49,6 +49,8 @@ from provisa.synthetic.private_stats import Measurer, epoch
 #: How many values a column with no fake may have to be drawn as shares of anonymous values, and
 #: how many hot parents a relationship keeps: public, so no statistic decides it.
 PRIVATE_CATEGORY_CAP = 50
+#: How many of a table's columns a private dataset draws through the copula, chosen by name.
+PRIVATE_COPULA_CAP = 10
 #: A text key's public shape: digits only.
 _TEXT_KEY_SHAPE = "9" * 10
 #: The values of a text column with no fake in a private dataset: anonymous lower-case letters.
@@ -127,6 +129,49 @@ def _needs(tables: list[DatasetTable], edges: list[Edge]) -> list[_Need]:
     return out
 
 
+def _copula_columns(needs: list[_Need]) -> dict[int, list[_Need]]:
+    """Each table's columns a private dataset correlates: numbers with no fake (their private
+    sketch gives their deciles) and declared categories and booleans (their public values), at
+    most PRIVATE_COPULA_CAP, by name -- every choice made from the plan, none from the data."""
+    out: dict[int, list[_Need]] = {}
+    for n in sorted(needs, key=lambda n: (n.table.table_id, n.column)):
+        numeric = n.sketch and n.distinct
+        if numeric or n.declared is not None:
+            out.setdefault(n.table.table_id, []).append(n)
+    return {t: c[:PRIVATE_COPULA_CAP] for t, c in out.items() if len(c) > 1}
+
+
+def spearman_of(counts: list[list[float]]) -> float | None:
+    """The rank correlation of a contingency table of two columns' ordered states, each state
+    entering at its mid-rank; None where it holds no variation."""
+    rows: list[float] = [float(sum(r)) for r in counts]
+    cols: list[float] = [float(sum(c)) for c in zip(*counts)] if counts else []
+    total = sum(rows)
+    if total <= 0:
+        return None
+
+    def midranks(marginal: list[float]) -> list[float]:
+        out, acc = [], 0.0
+        for m in marginal:
+            out.append(acc + m / 2)
+            acc += m
+        return out
+
+    ra, rb = midranks(rows), midranks(cols)
+    ma = sum(r * w for r, w in zip(ra, rows)) / total
+    mb = sum(r * w for r, w in zip(rb, cols)) / total
+    cov = sum(
+        counts[i][j] * (ra[i] - ma) * (rb[j] - mb)
+        for i in range(len(rows))
+        for j in range(len(cols))
+    )
+    va = sum(w * (r - ma) ** 2 for r, w in zip(ra, rows))
+    vb = sum(w * (r - mb) ** 2 for r, w in zip(rb, cols))
+    if va <= 0 or vb <= 0:
+        return None
+    return max(-1.0, min(1.0, cov / (va * vb) ** 0.5))
+
+
 def _counts(
     tables: list[DatasetTable], edges: list[Edge], needs: list[_Need], conditions: int
 ) -> dict[str, int]:
@@ -143,6 +188,8 @@ def _counts(
         # measured condition's also its parents meeting it.
         "fanouts": 2 * len(driving) + 3 * conditions,
         "hot_keys": len(driving),
+        # Each pair of a table's copula columns (at most PRIVATE_COPULA_CAP, chosen publicly).
+        "correlations": sum(len(c) * (len(c) - 1) // 2 for c in _copula_columns(needs).values()),
     }
 
 
@@ -256,6 +303,7 @@ async def private_tables(
             need = replace(need, distinct_count=max(d, 1))
         staged.append(need)
     needs = second_stage(budget, tables, edges, staged, measured_conditions)
+    copula = _copula_columns(needs)
     by_table: dict[int, list[_Need]] = {}
     for n in needs:
         by_table.setdefault(n.table.table_id, []).append(n)
@@ -342,10 +390,22 @@ async def private_tables(
                     None if found is None else [found[0][i * 5] for i in range(21)]
                 )
             columns[name] = c
+        spearman = await _private_correlations(
+            m, t, table, columns, copula.get(t.table_id, []), exposed
+        )
+        from provisa.synthetic.dependence import Dependence
+
         out[t.table_id] = replace(
             t,
             profile=replace(
-                t.profile, row_count=n_rows, profiled_rows=n_rows, columns=columns, fanouts=()
+                t.profile,
+                row_count=n_rows,
+                profiled_rows=n_rows,
+                columns=columns,
+                fanouts=(),
+                # REQ-1939: the copula's correlations, measured under ε; the network is not kept,
+                # its structure being chosen from the data.
+                dependence=Dependence(spearman=spearman),
             ),
         )
     # Fan-out and hot parents, once every table's rows are counted.
@@ -412,3 +472,43 @@ async def fanout(
     with_children = await m.count("fanouts", f"SELECT COUNT(*) FROM {per_parent} x", label)
     found = await m.distribution("fanouts", per_parent, "x.n", "count", label, sensitivity=2.0)
     return _fanout_sketch(None if found is None else found[0], parents, with_children)
+
+
+async def _private_correlations(
+    m: Measurer,
+    t: DatasetTable,
+    table: str,
+    columns: dict[str, ProfiledColumn],
+    members: list[_Need],
+    exposed: Callable[[DatasetTable, str], str],
+) -> dict[tuple[str, str], float]:
+    """Each pair's rank correlation, from a noised contingency table of the two columns' states
+    over public domains: a number's deciles of its private sketch, a declared value list."""
+    from provisa.profiler.statement import _ident
+
+    def states(n: _Need) -> tuple[str, int]:
+        col = f"x.{_ident(exposed(t, n.column))}"
+        if n.declared is not None:
+            whens = " ".join(
+                f"WHEN CAST({col} AS TEXT) = '{v.replace(chr(39), chr(39) * 2)}' THEN {i}"
+                for i, v in enumerate(n.declared)
+            )
+            return f"(CASE {whens} END)", len(n.declared)
+        sketch = columns[n.column].sketch
+        cuts = [] if sketch is None else [sketch[q] for q in range(10, 100, 10)]
+        value = epoch(col, columns[n.column].family)
+        whens = " ".join(f"WHEN {value} < {c!r} THEN {i}" for i, c in enumerate(cuts))
+        return (f"(CASE {whens} ELSE {len(cuts)} END)" if cuts else "0"), len(cuts) + 1
+
+    out: dict[tuple[str, str], float] = {}
+    for i, a in enumerate(members):
+        for b in members[i + 1 :]:
+            sa, ka = states(a)
+            sb, kb = states(b)
+            counts = await m.contingency(
+                "correlations", table, sa, sb, ka, kb, (t.name, f"{a.column}~{b.column}")
+            )
+            rho = spearman_of(counts)
+            if rho is not None:
+                out[(a.column, b.column)] = rho
+    return out

@@ -7,8 +7,7 @@ CREATE TABLE IF NOT EXISTS stores (
     id      TEXT PRIMARY KEY,
     url     TEXT NOT NULL,
     kind    TEXT,                           -- REQ-1922: the engine kind, on a region's engine store
-    bound   BOOLEAN NOT NULL DEFAULT TRUE,  -- REQ-1491
-    origin  TEXT NOT NULL                   -- REQ-1919
+    bound   BOOLEAN NOT NULL DEFAULT TRUE  -- REQ-1491
 );
 
 CREATE TABLE IF NOT EXISTS org_regions (
@@ -18,8 +17,15 @@ CREATE TABLE IF NOT EXISTS org_regions (
     views     TEXT NOT NULL,
     cache     TEXT NOT NULL,
     state     TEXT NOT NULL,
-    record    TEXT NOT NULL,
-    origin    TEXT NOT NULL  -- REQ-1919
+    record    TEXT NOT NULL
+);
+
+-- REQ-1919: a configuration file seeds this model store once. The row is written when the seed
+-- is applied (at the first start into an empty store, or by an admin's explicit apply); while it
+-- exists, a restart, redeploy or reload never applies the file again.
+CREATE TABLE IF NOT EXISTS model_seed (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    seeded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS sources (
@@ -44,10 +50,17 @@ CREATE TABLE IF NOT EXISTS sources (
     gql_naming_convention TEXT,
     federation_hints JSONB NOT NULL DEFAULT '{}',  -- connection extras the typed columns can't carry
     path          TEXT,  -- file path or URL for file-based sources (csv, parquet, sqlite)
-    -- REQ-1919: where the row came from -- 'config' (a config file declared it), 'admin' (made
-    -- through the admin) or 'seed' (the deployment's own). Written when the row is created; a load
-    -- removes only 'config' rows its file no longer declares.
-    origin        TEXT NOT NULL
+    -- REQ-1919: the rest of a source's settings. After the seed the model store alone owns the
+    -- model, so everything a configuration can say about a source is held here.
+    base_url        TEXT,  -- OpenAPI sources
+    pool_min        INTEGER NOT NULL DEFAULT 1,
+    pool_max        INTEGER NOT NULL DEFAULT 5,
+    use_pgbouncer   BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-053
+    pgbouncer_port  INTEGER NOT NULL DEFAULT 6432,  -- REQ-053
+    producer_command JSONB,  -- REQ-861
+    cache_catalog   TEXT,
+    cache_schema    TEXT NOT NULL DEFAULT 'api_cache',
+    approval_hook   BOOLEAN NOT NULL DEFAULT FALSE  -- REQ-204/247
     -- the password itself is never stored; password_ref below carries the reference that names it
 );
 
@@ -65,31 +78,27 @@ CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
     description   TEXT NOT NULL DEFAULT '',
     steward       TEXT,
-    graphql_alias TEXT,
-    -- REQ-1919: where the row came from -- 'config' (a config file declared it), 'admin' (made
-    -- through the admin) or 'seed' (the deployment's own). Written when the row is created; a load
-    -- removes only 'config' rows its file no longer declares.
-    origin        TEXT NOT NULL
+    graphql_alias TEXT
 );
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
 -- REQ-609: designated steward; NULL = pending (the domain may not serve governed data).
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS steward TEXT;
 
 -- Seed default (no-domain) row so domain_id='' is always a valid FK target
-INSERT INTO domains (id, description, origin) VALUES ('', 'No domain', 'seed')
+INSERT INTO domains (id, description) VALUES ('', 'No domain')
 ON CONFLICT (id) DO NOTHING;
 
 -- Seed built-in system metadata domain
-INSERT INTO domains (id, description, origin) VALUES ('meta', 'System metadata', 'seed')
+INSERT INTO domains (id, description) VALUES ('meta', 'System metadata')
 ON CONFLICT (id) DO NOTHING;
 
 -- Seed built-in operational telemetry domain (REQ-1386: org_admin is its steward)
-INSERT INTO domains (id, description, steward, origin) VALUES ('ops', 'Operational telemetry', 'org_admin', 'seed')
+INSERT INTO domains (id, description, steward) VALUES ('ops', 'Operational telemetry', 'org_admin')
 ON CONFLICT (id) DO NOTHING;
 
 
 -- Seed demo shelter domain
-INSERT INTO domains (id, description, origin) VALUES ('shelter', 'Animal shelter staff and breed management', 'seed')
+INSERT INTO domains (id, description) VALUES ('shelter', 'Animal shelter staff and breed management')
 ON CONFLICT (id) DO NOTHING;
 
 -- REQ-1634: a data product groups tables within a single domain for governed publication.
@@ -101,8 +110,6 @@ ON CONFLICT (id) DO NOTHING;
 -- structured SLA can't unambiguously attribute which member it describes.
 CREATE TABLE IF NOT EXISTS data_products (
     id            TEXT PRIMARY KEY,
-    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
-    origin TEXT NOT NULL,
     domain_id     TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,
     owner_role    TEXT,
@@ -185,10 +192,13 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     modeling_role TEXT,     -- REQ-1320: 'dimension' | 'fact' | NULL (entity/fact lowering metadata)
     modeling_history TEXT,  -- REQ-1320: originating entity history mode ('scd2' | 'snapshot' | NULL)
     view_metrics JSONB,     -- REQ-1318: declarative metric-view spec {metrics, dimensions, filters}; view_sql holds the generated SELECT
-    -- REQ-1919: where the row came from -- 'config' (a config file declared it), 'admin' (made
-    -- through the admin) or 'seed' (the deployment's own). Written when the row is created; a load
-    -- removes only 'config' rows its file no longer declares.
-    origin TEXT NOT NULL,
+    -- REQ-1919: the rest of a table's settings, held here so the store alone owns the model.
+    approval_hook BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-204/247
+    hot           BOOLEAN,  -- NULL = auto-detect
+    kafka_sink    JSONB,  -- REQ-176
+    promotions    JSONB NOT NULL DEFAULT '[]',  -- REQ-119
+    query_template TEXT,  -- REQ-1668/1683: neo4j / sparql tables
+    relay_pagination BOOLEAN,  -- NULL = inherit
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -214,6 +224,10 @@ CREATE TABLE IF NOT EXISTS table_columns (
     fake_stable  BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1494
     fake_stable_version INTEGER,  -- REQ-1494: the portable definition version a stable fake is pinned to
     synthetic_rule TEXT,  -- REQ-1494, REQ-1939: laid over the fake, for synthetic generation
+    embedding    BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-421, REQ-1919
+    embedding_model TEXT,  -- REQ-421
+    embedding_source_column TEXT,  -- REQ-421
+    encrypted    BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1919: surfaced as @encrypted
     UNIQUE (table_id, column_name)
 );
 
@@ -298,8 +312,6 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS relationships (
     id               TEXT PRIMARY KEY,
-    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
-    origin TEXT NOT NULL,
     source_table_id  INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
     target_table_id  INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
     source_column    TEXT NOT NULL,
@@ -439,10 +451,8 @@ CREATE TABLE IF NOT EXISTS roles (
     -- (db.apply_tenancy_role_grants) re-asserts org_admin's rights into every environment schema on
     -- every runtime build, which handed the subtracted rights straight back.
     defined_from    TEXT,
-    -- REQ-1919: where the row came from -- 'config' (a config file declared it), 'admin' (made
-    -- through the admin) or 'seed' (the deployment's own). Written when the row is created; a load
-    -- removes only 'config' rows its file no longer declares.
-    origin          TEXT NOT NULL
+    max_rows        INTEGER,  -- REQ-005: the role's result-size ceiling; NULL = none of its own
+    relationship_guard BOOLEAN NOT NULL DEFAULT TRUE  -- REQ-1919: held so the store owns it
 );
 
 -- Migration: add parent_role_id if missing
@@ -453,8 +463,6 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,
-    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
-    origin TEXT NOT NULL,
     table_id    INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     domain_id   TEXT REFERENCES domains(id) ON DELETE CASCADE,
     role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
@@ -482,8 +490,6 @@ END $$;
 -- present in every install and never stored, so no rows are seeded here.
 CREATE TABLE IF NOT EXISTS tags (
     id             TEXT PRIMARY KEY,
-    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
-    origin TEXT NOT NULL,
     description    TEXT NOT NULL DEFAULT '',
     applies_to     JSONB NOT NULL DEFAULT '[]',
     is_system      BOOLEAN NOT NULL DEFAULT FALSE,
@@ -526,8 +532,6 @@ END $$;
 -- a UNIQUE over nullable typed columns does not deduplicate under SQL NULL semantics.
 CREATE TABLE IF NOT EXISTS tag_assignments (
     id              SERIAL PRIMARY KEY,
-    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
-    origin TEXT NOT NULL,
     tag_id          TEXT NOT NULL,
     -- REQ-1467: tag_id with the parameter stripped ('entity:customer' -> 'entity'). Stored
     -- rather than derived at read time because the uniqueness rule below is stated over it.
@@ -612,17 +616,8 @@ END $$;
 -- creates/links terms as columns register and removes refs as they depart; a term losing its
 -- last ref is REMOVED unless an abstract term is connected to the rooted graph through it,
 -- in which case it is deprecated (kept) so no abstract term is left dangling.
--- REQ-1919: the seeded roles and domains a config file has redefined (see schema_org.py).
-CREATE TABLE IF NOT EXISTS seed_redefinitions (
-    kind      TEXT NOT NULL,
-    object_id TEXT NOT NULL,
-    PRIMARY KEY (kind, object_id)
-);
-
 CREATE TABLE IF NOT EXISTS glossary_terms (
     id              SERIAL PRIMARY KEY,
-    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
-    origin TEXT NOT NULL,
     name            TEXT NOT NULL,
     definition      TEXT,
     is_abstract     BOOLEAN NOT NULL DEFAULT FALSE,
@@ -735,8 +730,6 @@ CREATE TABLE IF NOT EXISTS mv_build_state (
 -- from_fact marks a metric auto-registered from a fact spec's measure (REQ-1320).
 CREATE TABLE IF NOT EXISTS metrics (
     name        TEXT PRIMARY KEY,
-    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
-    origin TEXT NOT NULL,
     expression  TEXT NOT NULL,
     datatype    TEXT,
     description TEXT,
@@ -828,7 +821,10 @@ CREATE TABLE IF NOT EXISTS kafka_sources (
     bootstrap_servers   TEXT NOT NULL,
     schema_registry_url TEXT,
     auth_type           TEXT,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- REQ-1919: the source as its configuration wrote it (topics, windows, discriminators, auth;
+    -- a credential stays its reference). The model store holds it once a configuration seeded it.
+    spec                JSONB
 );
 ALTER TABLE kafka_sources ALTER COLUMN bootstrap_servers SET DEFAULT '';
 
@@ -961,8 +957,6 @@ CREATE TABLE IF NOT EXISTS live_query_state (
 -- Tracked DB functions exposed as GraphQL mutations (REQ-205)
 CREATE TABLE IF NOT EXISTS tracked_functions (
     id            SERIAL PRIMARY KEY,
-    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
-    origin TEXT NOT NULL,
     name          TEXT NOT NULL UNIQUE,
     source_id     TEXT NOT NULL DEFAULT '',
     schema_name   TEXT NOT NULL DEFAULT 'public',
@@ -982,8 +976,6 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
 -- Tracked webhooks exposed as GraphQL mutations (REQ-211)
 CREATE TABLE IF NOT EXISTS tracked_webhooks (
     id                 SERIAL PRIMARY KEY,
-    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
-    origin TEXT NOT NULL,
     name               TEXT NOT NULL UNIQUE,
     url                TEXT NOT NULL DEFAULT '',
     method             TEXT NOT NULL DEFAULT 'POST',
@@ -1003,7 +995,6 @@ CREATE TABLE IF NOT EXISTS tracked_webhooks (
 -- a trigger runs bound to the org whose model holds it, and only prod's are scheduled.
 CREATE TABLE IF NOT EXISTS scheduled_triggers (
     id            TEXT PRIMARY KEY,
-    origin        TEXT NOT NULL,          -- REQ-1919: 'config' or 'admin'
     name          TEXT NOT NULL,
     cron          TEXT NOT NULL,
     kind          TEXT NOT NULL,          -- 'webhook' | 'sql'
@@ -1257,7 +1248,7 @@ END $$;
 -- its org (confinement comes from membership + active_org_id + per-schema assignments), and
 -- deliberately EXCLUDES the platform rights 'platform_settings'/'cross_org' here. org_id = NULL
 -- marks it a system role (identical caps in every org; non-editable via roles_router).
-INSERT INTO roles (id, capabilities, domain_access, org_id, origin)
+INSERT INTO roles (id, capabilities, domain_access, org_id)
 VALUES (
     'org_admin',
     '["source_registration","table_registration","create_relationship","create_view",
@@ -1268,8 +1259,7 @@ VALUES (
       "glossary_read","glossary_rw","org_glossary_rw",
       "data_product_read","data_product_rw"]'::jsonb,
     '["*"]'::jsonb,
-    NULL,
-    'seed'
+    NULL
 )
 ON CONFLICT (id) DO NOTHING;
 
@@ -1286,13 +1276,12 @@ ON CONFLICT (id) DO NOTHING;
 -- still applies to it. Testing the result of a modelling change is done by switching BACK to a role
 -- without ignore_relationships, which is what enforces the model. analyst deliberately does not
 -- hold it: the least-privileged default never breaks out of the model.
-INSERT INTO roles (id, capabilities, domain_access, org_id, origin)
+INSERT INTO roles (id, capabilities, domain_access, org_id)
 VALUES (
     'analyst',
     '["usage","query_development","glossary_read","data_product_read"]'::jsonb,
     '["*"]'::jsonb,
-    NULL,
-    'seed'
+    NULL
 ),
 (
     'developer',
@@ -1300,16 +1289,14 @@ VALUES (
       "usage","environment_management","environment_switch","glossary_read",
       "data_product_read"]'::jsonb,
     '["*"]'::jsonb,
-    NULL,
-    'seed'
+    NULL
 ),
 (
     'modeler',
     '["query_development","create_relationship","create_view","ignore_relationships",
       "full_results","usage","glossary_read","glossary_rw","data_product_read"]'::jsonb,
     '["*"]'::jsonb,
-    NULL,
-    'seed'
+    NULL
 )
 ON CONFLICT (id) DO NOTHING;
 
@@ -1340,7 +1327,7 @@ ON CONFLICT (id) DO NOTHING;
 -- back. `user_management` is the exception: letting a sandbox visitor see a page that implies they
 -- could confer roles or admit people, even inertly, misrepresents what the role can ever do here,
 -- so /team stays a hard block instead of a demonstration.
-INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id, origin)
+INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id)
 VALUES (
     'sandbox',
     '["access_config","approve_relationship","approve_view","column_grant","create_relationship",
@@ -1349,8 +1336,7 @@ VALUES (
       "source_registration","table_registration","usage","view_governance","write"]'::jsonb,
     '["environment_management","environment_switch","org_glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
-    NULL,
-    'seed'
+    NULL
 )
 ON CONFLICT (id) DO NOTHING;
 
@@ -1386,13 +1372,12 @@ WHERE id = 'sandbox'
 -- Seeded here rather than synthesized in code so user_role_assignments.role_id has a real FK target
 -- and state.roles["platform_admin"] resolves its capabilities like any other role. role_repo.upsert
 -- refuses to overwrite this row, so no config file or admin surface can re-grant the data caps.
-INSERT INTO roles (id, capabilities, domain_access, org_id, origin)
+INSERT INTO roles (id, capabilities, domain_access, org_id)
 VALUES (
     'platform_admin',
     '["platform_settings","cross_org"]'::jsonb,
     '[]'::jsonb,
-    NULL,
-    'seed'
+    NULL
 )
 ON CONFLICT (id) DO NOTHING;
 

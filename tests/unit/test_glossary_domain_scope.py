@@ -77,7 +77,7 @@ def test_within_domains_is_any_not_all():
 @pytest.mark.asyncio
 async def test_a_rooted_terms_domains_are_its_refs(tmp_path):
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _tbl("sales", "orders", ["customer_id"]), origin="admin")
+        await table_repo.upsert(conn, _tbl("sales", "orders", ["customer_id"]))
         scope = await glossary_repo.term_domains(conn)
         assert scope[await _id(conn, "customer")] == {"sales"}
 
@@ -85,8 +85,8 @@ async def test_a_rooted_terms_domains_are_its_refs(tmp_path):
 @pytest.mark.asyncio
 async def test_one_term_spans_two_domains_rather_than_splitting(tmp_path):
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _tbl("sales", "orders", ["customer_id"]), origin="admin")
-        await table_repo.upsert(conn, _tbl("pet-store", "visits", ["customer_id"]), origin="admin")
+        await table_repo.upsert(conn, _tbl("sales", "orders", ["customer_id"]))
+        await table_repo.upsert(conn, _tbl("pet-store", "visits", ["customer_id"]))
         customer = await _id(conn, "customer")
         # ONE term scoped to both, not two terms — _find_or_create_term matches by name.
         assert (await glossary_repo.term_domains(conn))[customer] == {"sales", "pet-store"}
@@ -112,8 +112,8 @@ async def test_an_abstract_terms_domains_are_declared(tmp_path):
 @pytest.mark.asyncio
 async def test_the_list_narrows_by_domain(tmp_path):
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _tbl("sales", "orders", ["order_dt"]), origin="admin")
-        await table_repo.upsert(conn, _tbl("hr", "staff", ["hire_dt"]), origin="admin")
+        await table_repo.upsert(conn, _tbl("sales", "orders", ["order_dt"]))
+        await table_repo.upsert(conn, _tbl("hr", "staff", ["hire_dt"]))
         names = {r["name"] for r in await glossary_repo.list_terms(conn, domains=frozenset({"hr"}))}
         assert names == {"hire date"}
         # None narrows nothing — unlimited, distinct from limited-to-nothing.
@@ -127,7 +127,7 @@ async def test_the_list_narrows_by_domain(tmp_path):
 @pytest.mark.asyncio
 async def test_search_narrows_by_the_same_rule(tmp_path):
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _tbl("sales", "orders", ["customer_id"]), origin="admin")
+        await table_repo.upsert(conn, _tbl("sales", "orders", ["customer_id"]))
         customer = await _id(conn, "customer")
         await glossary_repo.set_definition(conn, customer, "The buyer.")
         assert await glossary_repo.search_terms(conn, "customer", domains=frozenset({"hr"})) == []
@@ -138,9 +138,7 @@ async def test_search_narrows_by_the_same_rule(tmp_path):
 @pytest.mark.asyncio
 async def test_the_departing_domains_are_stamped_when_the_last_ref_leaves(tmp_path):
     async with _conn(tmp_path) as conn:
-        tid = await table_repo.upsert(
-            conn, _tbl("sales", "orders", ["customer_id"]), origin="admin"
-        )
+        tid = await table_repo.upsert(conn, _tbl("sales", "orders", ["customer_id"]))
         assert tid is not None
         customer = await _id(conn, "customer")
         await glossary_repo.set_definition(conn, customer, "The buyer.")

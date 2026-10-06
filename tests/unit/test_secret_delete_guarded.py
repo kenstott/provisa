@@ -101,9 +101,7 @@ async def _secret(planes: Planes, name: str = "DB_PW", *, org: str = ORG) -> Non
 async def _source(planes: Planes, env: str, source_id: str, **values) -> None:
     async with planes.environments[env].acquire() as conn:
         await conn.execute_core(
-            insert(schema_org.sources).values(
-                id=source_id, type="postgresql", origin="admin", **values
-            )
+            insert(schema_org.sources).values(id=source_id, type="postgresql", **values)
         )
 
 

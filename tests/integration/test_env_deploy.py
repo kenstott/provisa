@@ -69,9 +69,6 @@ async def org(docker_postgres):
     await init_schema(db, schema_sql, org_id=org_id, env=ENV)
 
     async def insert(table, env=None, **values):
-        # Every model row records where it came from (REQ-1919): these rows are seeded as config.
-        if "origin" in table.c:
-            values = {"origin": "config", **values}
         scoped = _scoped(table, org_schema(org_id, env))
         async with db.acquire() as conn:
             result = await conn.execute_core(
@@ -417,13 +414,12 @@ class TestATagOnACommandSurvivesTheTrip:
         await deploy_tree(org.db, org.id, ENV, prod, ref="deadbeef")
         assert await org.tree(ENV) == prod
 
-    async def test_a_tag_arriving_without_its_origin_is_refused_by_name(self, org):
-        """REQ-1919: every model row records where it came from; the deploy writes the origin the
-        tree carries and refuses an assignment that carries none, rather than inventing one."""
+    async def test_a_tag_carries_no_origin_and_deploys(self, org):
+        """REQ-1919: a model row records no origin; the tree carries none, and a tag assignment
+        deploys from what it does carry."""
         await self._seed_tagged_command(org)
         tree = await org.tree()
         (tag,) = tree["commands/refund_order.yaml"]["tags"]
-        assert tag["origin"] == "config"
-        del tag["origin"]
-        with pytest.raises(DeployError, match="tag 'deprecated' with no origin"):
-            await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef")
+        assert "origin" not in tag
+        await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef")
+        assert await org.tree(ENV) == tree

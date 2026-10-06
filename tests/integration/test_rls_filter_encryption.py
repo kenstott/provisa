@@ -77,8 +77,8 @@ async def db():
         sc.execute(text(f"SET search_path TO {_SCHEMA}"))
         org_metadata.create_all(sc)
         # rls_rules references domains/roles; seed the rows the tests' rules point at.
-        sc.execute(text("INSERT INTO domains (id, origin) VALUES ('sales', 'admin')"))
-        sc.execute(text("INSERT INTO roles (id, origin) VALUES ('analyst', 'admin')"))
+        sc.execute(text("INSERT INTO domains (id) VALUES ('sales')"))
+        sc.execute(text("INSERT INTO roles (id) VALUES ('analyst')"))
     yield database
     async with database.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
@@ -88,7 +88,7 @@ async def db():
 async def test_filter_stored_ciphertext_and_decrypts_on_read(db):
     rule = RLSRule(domain_id="sales", role_id="analyst", filter=_PREDICATE)
     async with db.acquire() as conn:
-        await rls_repo.upsert(conn, rule, origin="admin")
+        await rls_repo.upsert(conn, rule)
 
         raw = await conn.fetchrow(
             f"SELECT filter_expr FROM {_SCHEMA}.rls_rules WHERE role_id='analyst'"
@@ -106,7 +106,7 @@ async def test_filter_stored_ciphertext_and_decrypts_on_read(db):
 async def test_wrong_master_key_cannot_read(db, monkeypatch):
     async with db.acquire() as conn:
         await rls_repo.upsert(
-            conn, RLSRule(domain_id="sales", role_id="analyst", filter=_PREDICATE), origin="admin"
+            conn, RLSRule(domain_id="sales", role_id="analyst", filter=_PREDICATE)
         )
 
     # Rotate to a different master key — the stored ciphertext must no longer decrypt.

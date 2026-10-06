@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: 62c70f18-6693-4790-bad8-8de972558fa2
+# Canary: 3b7c1d55-58f7-4d0e-9f5b-6e0e8c5a2b17
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -8,36 +8,34 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The single-writer invariant and the end of replace mode (REQ-1229, REQ-1919).
+"""No replace mode, and no worker that removes (REQ-1229, REQ-1919).
 
-Only the primary's config load removes what the file no longer declares; a worker started with
-``PROVISA_ROLE=secondary`` only upserts. There is no replace mode any more: what a load removes is
-decided by the origin of what is stored, so ``PROVISA_CONFIG_REPLACE`` is read by nothing.
+A configuration is a one-time seed: an apply adds and updates and removes nothing, so there is
+nothing for a replace mode to decide and nothing a primary worker alone may do. Which node seeds
+the store is decided by the store (``config_loader.is_seeded``), not by ``PROVISA_ROLE``, and
+``PROVISA_CONFIG_REPLACE`` is read by nothing.
 """
+
+# Requirements: REQ-1229, REQ-1919
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
-import pytest
-
 from provisa.core import config_loader
-from provisa.core.config_loader import is_primary_worker
 
 _REPO = Path(__file__).resolve().parents[2]
 
 
-class TestWhichWorkerIsThePrimary:
-    def test_a_worker_is_the_primary_by_default(self) -> None:
-        assert is_primary_worker({}) is True
-
-    @pytest.mark.parametrize("role", ["primary", "PRIMARY", " worker "])
-    def test_any_role_but_secondary_is_the_primary(self, role: str) -> None:
-        assert is_primary_worker({"PROVISA_ROLE": role}) is True
-
-    @pytest.mark.parametrize("role", ["secondary", "SECONDARY", " Secondary "])
-    def test_a_secondary_is_not(self, role: str) -> None:
-        assert is_primary_worker({"PROVISA_ROLE": role}) is False
+def test_no_worker_role_decides_what_a_config_does():
+    assert not hasattr(config_loader, "is_primary_worker")
+    readers = [
+        str(path.relative_to(_REPO))
+        for path in (_REPO / "provisa" / "core").rglob("*.py")
+        if "PROVISA_ROLE" in path.read_text(encoding="utf-8")
+    ]
+    assert readers == []
 
 
 def test_nothing_reads_the_replace_flag_any_more():
@@ -50,8 +48,8 @@ def test_nothing_reads_the_replace_flag_any_more():
     assert readers == []
 
 
-def test_a_load_takes_no_replace_argument():
-    import inspect
-
-    for function in (config_loader.load_config, config_loader.load_config_from_yaml):
+def test_an_apply_or_a_seed_takes_no_replace_argument():
+    for function in (config_loader.apply_config, config_loader.seed_config):
         assert "replace" not in inspect.signature(function).parameters
+    assert not hasattr(config_loader, "load_config")
+    assert not hasattr(config_loader, "load_config_from_yaml")

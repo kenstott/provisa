@@ -96,7 +96,7 @@ def _prepare_sync():
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
-            conn.execute(insert(roles).values(id=role_id, capabilities=caps, origin="admin"))
+            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
         conn.execute(
             insert(user_role_assignments).values(
                 user_id="alice", role_id="org_admin", domain_id="*"

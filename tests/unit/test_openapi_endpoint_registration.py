@@ -86,10 +86,8 @@ async def control_plane(tmp_path):
     db = Database(engine, name="org")
     await init_schema(db, "", org_id="default")
     async with db.acquire() as conn:
-        await conn.execute_core(insert(domains).values(id="d", origin="ui"))
-        await conn.execute_core(
-            insert(sources).values(id="petstore", type="openapi", origin="admin")
-        )
+        await conn.execute_core(insert(domains).values(id="d"))
+        await conn.execute_core(insert(sources).values(id="petstore", type="openapi"))
     try:
         yield db
     finally:
@@ -114,7 +112,7 @@ async def _register_in_the_admin(db, state, table: Table) -> None:
 
     async with db.acquire() as conn:
         await register_openapi_source(conn, "petstore", BASE)  # the source's registration
-        await table_repo.upsert(conn, table, origin="admin")
+        await table_repo.upsert(conn, table)
         assert await persist_openapi_endpoint(state, conn, table) is None
         state.api_endpoints, state.api_sources = await load_api_sources(conn, {})
 
@@ -190,7 +188,7 @@ async def test_the_config_and_the_admin_derive_the_identical_endpoint_row(contro
 
     table = _table(max_pages=2)
     async with control_plane.acquire() as conn:
-        await table_repo.upsert(conn, table, origin="config")
+        await table_repo.upsert(conn, table)
         src = SimpleNamespace(id="petstore", base_url=BASE, cache_ttl=None)
         await _handle_openapi_table(conn, table, src, SPEC)  # type: ignore[arg-type]
         from_config = await _row(conn)
@@ -342,10 +340,10 @@ async def test_a_second_source_registering_a_table_of_the_same_name_keeps_the_fi
     state.openapi_specs["copy"] = {"spec": SPEC, "base_url": copy_base, "auth_config": None}
     copy_table = _table(max_pages=10).model_copy(update={"source_id": "copy", "domain_id": "e"})
     async with control_plane.acquire() as conn:
-        await conn.execute_core(insert(domains).values(id="e", origin="ui"))
-        await conn.execute_core(insert(sources).values(id="copy", type="openapi", origin="admin"))
+        await conn.execute_core(insert(domains).values(id="e"))
+        await conn.execute_core(insert(sources).values(id="copy", type="openapi"))
         await register_openapi_source(conn, "copy", copy_base)
-        await table_repo.upsert(conn, copy_table, origin="admin")
+        await table_repo.upsert(conn, copy_table)
         assert await persist_openapi_endpoint(state, conn, copy_table) is None
         state.api_endpoints, state.api_sources = await load_api_sources(conn, {})
         rows = (

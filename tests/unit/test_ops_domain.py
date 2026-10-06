@@ -73,8 +73,8 @@ class TestOpsRegistry:
         ).read_text()
         # REQ-1386: seeded with org_admin as steward.
         assert (
-            "INSERT INTO domains (id, description, steward, origin) "
-            "VALUES ('ops', 'Operational telemetry', 'org_admin', 'seed')" in schema_sql
+            "INSERT INTO domains (id, description, steward) "
+            "VALUES ('ops', 'Operational telemetry', 'org_admin')" in schema_sql
         )
 
     def test_seed_registers_under_ops_domain(self):
@@ -367,9 +367,7 @@ async def test_report_views_functional(uri):
     await _init_schema_portable(db)
     try:
         async with db.acquire() as conn:
-            await conn.execute_core(
-                insert(sources).values(id="s1", type="postgres", origin="admin")
-            )
+            await conn.execute_core(insert(sources).values(id="s1", type="postgres"))
             await conn.execute_core(
                 insert(registered_tables).values(
                     id=1,
@@ -378,7 +376,6 @@ async def test_report_views_functional(uri):
                     schema_name="public",
                     table_name="orders",
                     description="orders",
-                    origin="admin",
                 )
             )
             await conn.execute_core(
@@ -388,7 +385,6 @@ async def test_report_views_functional(uri):
                     domain_id="shelter",
                     schema_name="public",
                     table_name="customers",  # no description
-                    origin="admin",
                 )
             )
             await conn.execute_core(
@@ -399,7 +395,6 @@ async def test_report_views_functional(uri):
                     table_id=1,
                     object_key="table:1",
                     reason="legacy",
-                    origin="admin",
                 )
             )
             await conn.execute_core(
@@ -410,7 +405,6 @@ async def test_report_views_functional(uri):
                     table_id=2,
                     column_name="email",
                     object_key="column:2:email",
-                    origin="admin",
                 )
             )
             # REQ-1439: the tenant-local directory the report views resolve names through. bob is
@@ -620,7 +614,7 @@ async def test_the_queries_report_from_the_audit_log_matches_the_report_from_que
     )
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="s1", type="postgres", origin="admin"))
+        await conn.execute_core(insert(sources).values(id="s1", type="postgres"))
         for tid, name in ((1, "orders"), (2, "customers")):
             await conn.execute_core(
                 insert(registered_tables).values(
@@ -629,7 +623,6 @@ async def test_the_queries_report_from_the_audit_log_matches_the_report_from_que
                     domain_id="shelter",
                     schema_name="public",
                     table_name=name,
-                    origin="admin",
                 )
             )
         for trace, tid, _table, role, failed in mix:

@@ -48,6 +48,11 @@ def _row(sid: str, host: str = "db1") -> dict:
         "federation_hints": {},
         "bound": True,
         "description": "",
+        # REQ-1919: the pool's settings are the row's.
+        "pool_min": 1,
+        "pool_max": 5,
+        "use_pgbouncer": False,
+        "pgbouncer_port": 6432,
     }
 
 
@@ -152,11 +157,13 @@ def test_a_built_in_source_is_never_reconciled(worker):
     assert worker.built == []
 
 
-def test_a_source_the_config_declares_is_built_from_the_config(worker):
+def test_a_source_the_config_declares_is_built_from_its_row(worker):
+    """REQ-1919: after the seed the store alone owns the model — a source the file declares is
+    built from its row, so an admin's edit governs and the file's declaration is not read."""
     declared = Source(
         id="a",
         type=SourceType.postgresql,
-        host="db2",
+        host="file-host",
         port=5432,
         database="d",
         username="u",
@@ -165,7 +172,8 @@ def test_a_source_the_config_declares_is_built_from_the_config(worker):
     worker.state.config = SimpleNamespace(sources=[declared], domains=[])
     _reconcile([_row("a", host="db1")])
     _reconcile([_row("a", host="db2")])
-    assert worker.built[0] == [declared]
+    (built,) = worker.built[0]
+    assert (built.host, built.password) == ("db2", "")
 
 
 def test_a_failure_to_build_source_state_does_not_stop_the_schema_build(

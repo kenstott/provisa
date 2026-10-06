@@ -30,7 +30,6 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   return {
     id: 2,
     sourceId: "wh",
-    origin: "admin",
     domainId: "sales",
     schemaName: "quality",
     tableName: "orders_scans",

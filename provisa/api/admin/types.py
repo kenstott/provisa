@@ -74,10 +74,6 @@ class SourceCdcConfigType:  # REQ-824
 class SourceType:  # REQ-012
     id: str
     type: str
-    # REQ-1919: where the object came from — "config" (a config file declared it), "admin"
-    # (made through the admin) or "seed" (the deployment's own). A load of the config re-applies
-    # what the file says about a "config" object, which the UI marks.
-    origin: str
     # The fields that locate or authenticate to the source are null for a caller without
     # source_registration (see _row_mappers._source_from_row).
     host: str | None
@@ -123,10 +119,6 @@ class SourceType:  # REQ-012
 class DomainType:  # REQ-533, REQ-609
     id: str
     description: str
-    # REQ-1919: where the object came from — "config" (a config file declared it), "admin"
-    # (made through the admin) or "seed" (the deployment's own). A load of the config re-applies
-    # what the file says about a "config" object, which the UI marks.
-    origin: str
     steward: str | None = None  # REQ-609: None = pending, no designated steward
     graphql_alias: str | None = None
     # domain_policy.system_domain_ids() (meta/ops/"") -- auto-generated, preserved across
@@ -308,10 +300,6 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     domain_id: str
     schema_name: str
     table_name: str
-    # REQ-1919: where the object came from — "config" (a config file declared it), "admin"
-    # (made through the admin) or "seed" (the deployment's own). A load of the config re-applies
-    # what the file says about a "config" object, which the UI marks.
-    origin: str
     # The data writes the table's source can take — insert, update, delete — as the write
     # admission and the write surfaces apply them (executor/write_capability.py).
     write_ops: list[str]
@@ -638,10 +626,6 @@ class RoleRateLimitType:  # REQ-1174
 @strawberry.type
 class RoleType:  # REQ-042
     id: str
-    # REQ-1919: where the object came from — "config" (a config file declared it), "admin"
-    # (made through the admin) or "seed" (the deployment's own). A load of the config re-applies
-    # what the file says about a "config" object, which the UI marks.
-    origin: str
     # Null for a caller who neither holds user_management nor holds the role itself: a role's
     # definition is the right-holder's, and everyone else sees only that it exists.
     capabilities: list[str] | None
@@ -655,7 +639,7 @@ class RoleType:  # REQ-042
 
 @strawberry.type
 class UserSummaryType:  # REQ-609/REQ-1634: resolves an owner_role/steward to the individuals it grants to
-    user_id: str
+    user_id: str | None  # user_id and email: user_management only, null otherwise
     display_name: str | None = None
     email: str | None = None
 
@@ -667,9 +651,6 @@ class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
     domain_id: str | None
     role_id: str
     filter_expr: str
-    # REQ-1919: where the rule came from — "config", "admin" or "seed". A rule a config file
-    # declares is removed by a load of a file that no longer declares it.
-    origin: str
     action_name: str | None = None  # REQ-1679
 
 
@@ -1418,16 +1399,6 @@ class ScheduledTaskType:  # REQ-533
     next_run_at: str | None
 
 
-@strawberry.type
-class MutationWarning:  # REQ-1919
-    """Something the caller should know about a change that was made: a stable code and its
-    params for the UI's localized text, and the English ``message``."""
-
-    code: str
-    message: str
-    params: JsonScalar | None = None
-
-
 @strawberry.enum
 class GrantKind(enum.Enum):  # REQ-1918
     """An object whose grant list names roles: a role is taken off it one object at a time."""
@@ -1454,9 +1425,6 @@ class MutationResult:  # REQ-533
     # a localized message; English `message` remains the fallback.
     code: str | None = None
     params: JsonScalar | None = None
-    # REQ-1919: the change was made, and there is something to know about it — a config-origin
-    # object was edited or deleted, and the next load of the config re-applies the file.
-    warnings: list[MutationWarning] = strawberry.field(default_factory=list)
 
 
 # --- Compile / Submit types ---

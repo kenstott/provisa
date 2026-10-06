@@ -25,7 +25,7 @@ from graphql import (
 from provisa.compiler.introspect import introspect_table_columns
 from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.core.config_loader import load_config, parse_config_dict
+from provisa.core.config_loader import apply_config, parse_config_dict, register_sources
 from provisa.core.db import init_schema
 from provisa.core.repositories import (
     domain as domain_repo,
@@ -50,7 +50,7 @@ async def _init_schema(tenant_db):
 async def _load_config(tenant_db, _init_schema, platform_admin_db):
     """Load sample config into PG once per module.
 
-    platform_admin_db: load_config binds the org vault (REQ-1580/REQ-1730), read off
+    platform_admin_db: apply_config binds the org vault (REQ-1580/REQ-1730), read off
     state.admin_db — this module brings its own rather than inheriting another module's."""
     async with tenant_db.acquire() as conn:
         await conn.execute("SET search_path TO org_default")
@@ -68,22 +68,22 @@ async def _load_config(tenant_db, _init_schema, platform_admin_db):
     # Those are schema.sql's rows, not this config's — role_repo.upsert refuses to (re)write
     # org_admin/platform_admin from any config (REQ-1349), so a real deployment never TRUNCATEs
     # them either. Re-run the (idempotent, ON CONFLICT DO NOTHING) seed to restore them before
-    # load_config adds the config-only roles (analyst).
+    # apply_config adds the config-only roles (analyst).
     await init_schema(tenant_db, SCHEMA_SQL)
 
     # An engine binding is mandatory (not just fidelity to the server): schema_input
-    # introspects sales-pg's columns off the live Trino catalog, and load_config only
+    # introspects sales-pg's columns off the live Trino catalog, and apply_config only
     # provisions that catalog when given an engine. Without one, this module's tests
     # depend on some other group_protocols module having registered sales_pg first —
     # a hidden cross-file ordering dependency, and CATALOG_NOT_FOUND whenever this
     # module happens to run before one that does the registration.
     #
-    # A bare scaffold state is not enough: load_config's column introspection
+    # A bare scaffold state is not enough: apply_config's column introspection
     # (config_loader._upsert_single_table -> engine.introspect_columns) calls
     # state.catalog_for(source.id) (backend.py TrinoBackend.introspect_columns), which
     # only exists on the real provisa.api.app.AppState, backed by state.source_catalogs.
     # That map is populated by _populate_source_catalog_names(config), which must run
-    # BEFORE load_config (app.py:709-714, REQ-1266) so both steps agree on the catalog
+    # BEFORE apply_config (app.py:709-714, REQ-1266) so both steps agree on the catalog
     # name. So this binds the engine onto the real app state singleton, exactly as
     # connector_source_harness.py's connector_client fixture does, restoring it after.
     import os
@@ -119,7 +119,9 @@ async def _load_config(tenant_db, _init_schema, platform_admin_db):
             _populate_source_catalog_names(config)
             async with tenant_db.acquire() as conn:
                 await conn.execute("SET search_path TO org_default")
-                await load_config(config, conn, app_mod.state.federation_engine, origin="config")
+                await apply_config(config, conn, app_mod.state.federation_engine)
+            # The engine catalogs of the applied sources, as boot issues them (REQ-1919).
+            register_sources(app_mod.state.federation_engine, list(config.sources))
         finally:
             app_mod.state.federation_engine = prior_engine
             app_mod.state.engine_conn = prior_conn

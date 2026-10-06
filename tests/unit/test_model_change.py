@@ -32,13 +32,13 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import _init_schema_portable
 from provisa.core.model_change import ModelChangeOutsideScope, ModelPlane
 from provisa.core.schema_org import metadata, roles
-from tests.unit.test_every_kind_records_its_origin import KINDS, plane  # noqa: F401 — the fixture
-from tests.unit.test_load_manages_what_config_declared import (  # noqa: F401 — the fixture
+from provisa.core.config_loader import apply_config
+from tests.unit.test_config_one_time_seed import (  # noqa: F401 — the fixture
     _file,
-    _load,
     no_vault,
     seed_the_view_source,
 )
+from tests.unit.test_every_kind_records_no_origin import KINDS, plane  # noqa: F401 — the fixture
 
 PLANE = ModelPlane("acme", "prod")
 
@@ -60,8 +60,8 @@ def commits() -> Iterator[list[dict]]:
 
 
 @pytest.fixture
-async def model(plane) -> Database:  # noqa: F811 — the origin scenarios' plane
-    """The origin scenarios' plane, made the model of acme/prod once it is seeded."""
+async def model(plane) -> Database:  # noqa: F811 — the kinds' plane
+    """The kinds' plane, made the model of acme/prod once it is seeded."""
     plane.model = PLANE
     return plane
 
@@ -71,7 +71,7 @@ async def test_a_write_of_each_kind_is_one_commit_named_by_its_writer(model, com
     write, _table, _where = KINDS[kind]
     async with model_change.scope("POST /admin/graphql", actor=lambda: "pat"):
         async with model.acquire() as conn:
-            await write(conn, "admin")
+            await write(conn)
     assert len(commits) == 1
     commit = commits[0]
     assert (commit["org"], commit["env"], commit["schema"], commit["actor"]) == (
@@ -89,7 +89,7 @@ async def test_a_scope_with_several_named_writes_lists_them_under_its_label(mode
         for name in ("metric", "tag"):
             write, _t, _w = KINDS[name]
             async with model.acquire() as conn:
-                await write(conn, "admin")
+                await write(conn)
     assert [c["message"] for c in commits] == [
         "registerTables\n\n- upsert metric revenue\n- upsert tag finance"
     ]
@@ -126,7 +126,7 @@ async def test_a_nested_scope_is_part_of_the_outer_change(model, commits):
         async with model_change.scope("config load"):
             write, _t, _w = KINDS["metric"]
             async with model.acquire() as conn:
-                await write(conn, "admin")
+                await write(conn)
         assert commits == []  # not yet: the outer scope is the one change
     assert len(commits) == 1
 
@@ -135,14 +135,14 @@ async def test_a_write_no_scope_owns_raises(model, commits):
     write, _t, _w = KINDS["metric"]
     async with model.acquire() as conn:
         with pytest.raises(ModelChangeOutsideScope, match="metrics of acme/prod"):
-            await write(conn, "admin")
+            await write(conn)
 
 
 async def test_with_no_repository_attached_nothing_is_recorded(model, commits):
     model_change.detach()
     write, _t, _w = KINDS["metric"]
     async with model.acquire() as conn:
-        await write(conn, "admin")  # no scope, and no raise: there is no projection to keep
+        await write(conn)  # no scope, and no raise: there is no projection to keep
 
 
 async def test_a_path_that_commits_itself_is_not_committed_again(model, commits):
@@ -150,7 +150,7 @@ async def test_a_path_that_commits_itself_is_not_committed_again(model, commits)
         async with model_change.committed_by_caller():
             write, _t, _w = KINDS["metric"]
             async with model.acquire() as conn:
-                await write(conn, "admin")
+                await write(conn)
     assert commits == []
 
 
@@ -161,7 +161,7 @@ async def test_a_scope_whose_body_raised_still_commits_what_was_written(model, c
         async with model_change.scope("POST /admin/graphql"):
             write, _t, _w = KINDS["metric"]
             async with model.acquire() as conn:
-                await write(conn, "admin")
+                await write(conn)
             raise RuntimeError("after the write")
     assert len(commits) == 1
 
@@ -185,14 +185,19 @@ async def scenario_model() -> Database:
     return db
 
 
-async def test_a_whole_config_load_is_one_commit(scenario_model, commits):
+async def _apply(db: Database) -> None:
+    async with db.acquire() as conn:
+        await apply_config(_file(), conn)
+
+
+async def test_a_whole_config_apply_is_one_commit(scenario_model, commits):
     async with model_change.scope("boot"):
-        await _load(scenario_model, _file())
+        await _apply(scenario_model)
     assert [c["message"] for c in commits] == [commits[0]["message"]]
-    assert commits[0]["message"].startswith("config load\n\n- upsert ")
+    assert commits[0]["message"].startswith("configuration applied\n\n- upsert ")
 
 
-async def test_a_config_load_outside_any_other_scope_is_its_own_change(scenario_model, commits):
-    await _load(scenario_model, _file())
+async def test_a_config_apply_outside_any_other_scope_is_its_own_change(scenario_model, commits):
+    await _apply(scenario_model)
     assert len(commits) == 1
-    assert commits[0]["message"].startswith("config load")
+    assert commits[0]["message"].startswith("configuration applied")

@@ -13,11 +13,9 @@
 // (capabilities, domain access and demonstrated rights absent or null).
 
 import type { Capability, Role } from "../types/auth";
-import type { Origin } from "../types/admin";
 
 export interface RawRole {
   id: string;
-  origin: Origin;
   capabilities?: string[] | null;
   demonstrated?: string[] | null;
   domain_access?: string[] | null;
@@ -38,7 +36,6 @@ export function normalizeRole(raw: RawRole): Role {
   if (raw.capabilities == null || domainAccess == null) {
     return {
       id: raw.id,
-      origin: raw.origin,
       capabilities: [],
       demonstrated: [],
       domain_access: [],
@@ -47,7 +44,6 @@ export function normalizeRole(raw: RawRole): Role {
   }
   return {
     id: raw.id,
-    origin: raw.origin,
     capabilities: raw.capabilities as Capability[],
     // REQ-1602: rights the role is shown but does not hold.
     demonstrated: (raw.demonstrated ?? []) as Capability[],

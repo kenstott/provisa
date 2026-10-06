@@ -50,15 +50,13 @@ async def plane(monkeypatch) -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="metric-delete-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
-        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
+        await conn.execute_core(insert(domains).values(id="sales"))
         await conn.execute_core(
-            insert(roles).values(id="seller", capabilities=[], domain_access=["*"], origin="admin")
+            insert(roles).values(id="seller", capabilities=[], domain_access=["*"])
         )
         for name in ("revenue", "margin", "unused"):
-            await conn.execute_core(
-                insert(metrics).values(name=name, expression="SUM(orders.a)", origin="admin")
-            )
+            await conn.execute_core(insert(metrics).values(name=name, expression="SUM(orders.a)"))
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", {}, raising=False)
     return db
@@ -72,7 +70,6 @@ async def _view(db: Database, name: str, **values: Any) -> int:
                 domain_id="sales",
                 schema_name="views",
                 table_name=name,
-                origin="admin",
                 **values,
             )
         )
@@ -176,13 +173,9 @@ KINDS = [
 async def test_its_row_filters_and_tags_go_with_it(plane, delete, table):
     async with plane.acquire() as conn:
         for name in ("refund", "other"):
+            await conn.execute_core(insert(table).values(name=name, domain_id="sales"))
             await conn.execute_core(
-                insert(table).values(origin="admin", name=name, domain_id="sales")
-            )
-            await conn.execute_core(
-                insert(rls_rules).values(
-                    role_id="seller", action_name=name, filter_expr=b"1=1", origin="admin"
-                )
+                insert(rls_rules).values(role_id="seller", action_name=name, filter_expr=b"1=1")
             )
             await conn.execute_core(
                 insert(tag_assignments).values(
@@ -191,7 +184,6 @@ async def test_its_row_filters_and_tags_go_with_it(plane, delete, table):
                     object_type="command",
                     object_key=name,
                     command_name=name,
-                    origin="admin",
                 )
             )
         assert await delete(conn, "refund") is True
@@ -204,12 +196,8 @@ async def test_its_row_filters_and_tags_go_with_it(plane, delete, table):
 
 async def test_a_full_replace_removes_every_command_and_webhook(plane):
     async with plane.acquire() as conn:
-        await conn.execute_core(
-            insert(tracked_functions).values(name="a", domain_id="sales", origin="admin")
-        )
-        await conn.execute_core(
-            insert(tracked_webhooks).values(name="b", domain_id="sales", origin="admin")
-        )
+        await conn.execute_core(insert(tracked_functions).values(name="a", domain_id="sales"))
+        await conn.execute_core(insert(tracked_webhooks).values(name="b", domain_id="sales"))
         await function_repo.remove_all(conn)
     assert (
         await _count(plane, tracked_functions) == 0 and await _count(plane, tracked_webhooks) == 0

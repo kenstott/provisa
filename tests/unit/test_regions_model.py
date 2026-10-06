@@ -310,16 +310,16 @@ async def test_a_source_saved_naming_a_region_the_org_does_not_select_is_refused
 
     async with model.acquire() as conn:
         with pytest.raises(region_repo.RegionNotSelected, match="source crm names region 'eu'"):
-            await source_repo.upsert(conn, _source("eu"), origin="admin")
+            await source_repo.upsert(conn, _source("eu"))
         for s in _STORES[:3]:
-            await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
-        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")), origin="admin")
-        await source_repo.upsert(conn, _source("eu"), origin="admin")
+            await region_repo.upsert_store(conn, StoreConfig(**s))
+        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")))
+        await source_repo.upsert(conn, _source("eu"))
         assert [r.id for r in await region_repo.list_regions(conn)] == ["eu"]
         with pytest.raises(
             region_repo.RegionNotSelected, match=r"which the org does not select \(eu\)"
         ):
-            await source_repo.upsert(conn, _source("us"), origin="admin")
+            await source_repo.upsert(conn, _source("us"))
 
 
 async def test_a_region_saved_with_an_engine_store_of_no_kind_is_refused(model):
@@ -328,13 +328,11 @@ async def test_a_region_saved_with_an_engine_store_of_no_kind_is_refused(model):
 
     async with model.acquire() as conn:
         for s in _STORES[:3]:
-            await region_repo.upsert_store(conn, StoreConfig(**{**s, "kind": None}), origin="admin")
+            await region_repo.upsert_store(conn, StoreConfig(**{**s, "kind": None}))
         with pytest.raises(ValueError, match="engine store 'eu-trino' names no engine kind"):
-            await region_repo.upsert_region(conn, OrgRegion(**_region("eu")), origin="admin")
+            await region_repo.upsert_region(conn, OrgRegion(**_region("eu")))
         with pytest.raises(ValueError, match="state store 'eu-mysql' is not declared"):
-            await region_repo.upsert_region(
-                conn, OrgRegion(**_region("eu", state="eu-mysql")), origin="admin"
-            )
+            await region_repo.upsert_region(conn, OrgRegion(**_region("eu", state="eu-mysql")))
 
 
 async def test_a_region_saved_with_an_embedded_engine_is_refused_with_more_than_one(model):
@@ -350,15 +348,11 @@ async def test_a_region_saved_with_an_embedded_engine_is_refused_with_more_than_
         process_region.bind_launch(_PLATFORM, requested="eu")
         async with model.acquire() as conn:
             for s in [*_STORES[:3], chdb]:
-                await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
+                await region_repo.upsert_store(conn, StoreConfig(**s))
             with pytest.raises(ValueError, match="engine store 'eu-ch' is an embedded chdb file"):
-                await region_repo.upsert_region(
-                    conn, OrgRegion(**_region("eu", engine="eu-ch")), origin="admin"
-                )
+                await region_repo.upsert_region(conn, OrgRegion(**_region("eu", engine="eu-ch")))
             process_region.bind_launch({"regions": _PLATFORM["regions"][:1]}, requested="eu")
-            await region_repo.upsert_region(
-                conn, OrgRegion(**_region("eu", engine="eu-ch")), origin="admin"
-            )
+            await region_repo.upsert_region(conn, OrgRegion(**_region("eu", engine="eu-ch")))
     finally:
         process_region._region, process_region._platform_regions = was
 
@@ -369,11 +363,9 @@ async def test_a_region_saved_with_replicas_and_views_apart_is_refused(model):
 
     async with model.acquire() as conn:
         for s in [*_STORES[:3], {"id": "eu-pg2", "url": "postgresql://eu2/db"}]:
-            await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
+            await region_repo.upsert_store(conn, StoreConfig(**s))
         with pytest.raises(ValueError, match="keeps its replicas and its views in one store"):
-            await region_repo.upsert_region(
-                conn, OrgRegion(**_region("eu", views="eu-pg2")), origin="admin"
-            )
+            await region_repo.upsert_region(conn, OrgRegion(**_region("eu", views="eu-pg2")))
 
 
 async def test_a_region_a_source_names_and_a_store_a_region_names_are_held(model):
@@ -384,9 +376,9 @@ async def test_a_region_a_source_names_and_a_store_a_region_names_are_held(model
 
     async with model.acquire() as conn:
         for s in _STORES[:3]:
-            await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
-        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")), origin="admin")
-        await source_repo.upsert(conn, _source("eu"), origin="admin")
+            await region_repo.upsert_store(conn, StoreConfig(**s))
+        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")))
+        await source_repo.upsert(conn, _source("eu"))
         assert [d.ref for d in await guard(conn, ObjectRef("region", "eu"))] == [
             ObjectRef("source", "crm")
         ]
@@ -403,8 +395,8 @@ async def test_a_node_serves_an_org_only_in_a_region_the_org_selects(model):
 
     async with model.acquire() as conn:
         for s in _STORES[:3]:
-            await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
-        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")), origin="admin")
+            await region_repo.upsert_store(conn, StoreConfig(**s))
+        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")))
         await region_repo.require_serves_here(conn, "acme", "eu")
         with pytest.raises(region_repo.OrgNotInRegion) as refused:
             await region_repo.require_serves_here(conn, "acme", "us")
@@ -454,22 +446,16 @@ async def test_a_save_that_leaves_a_region_unreadable_by_the_others_is_refused(m
     snow = StoreConfig(id="us-snow", url="snowflake://acct/db", kind="snowflake")
     async with model.acquire() as conn:
         for s in _STORES:
-            await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
-        await region_repo.upsert_store(conn, snow, origin="admin")
-        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")), origin="admin")
-        await region_repo.upsert_region(
-            conn, OrgRegion(**_region("us", engine="us-snow")), origin="admin"
-        )
-        await source_repo.upsert(conn, _source("eu"), origin="admin")  # a form default
+            await region_repo.upsert_store(conn, StoreConfig(**s))
+        await region_repo.upsert_store(conn, snow)
+        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")))
+        await region_repo.upsert_region(conn, OrgRegion(**_region("us", engine="us-snow")))
+        await source_repo.upsert(conn, _source("eu"))  # a form default
         with pytest.raises(ValueError, match="region 'us' runs the snowflake engine"):
-            await table_repo.upsert(conn, orders, origin="admin")
-        await region_repo.upsert_region(conn, OrgRegion(**_region("us")), origin="admin")
-        await table_repo.upsert(conn, orders, origin="admin")
+            await table_repo.upsert(conn, orders)
+        await region_repo.upsert_region(conn, OrgRegion(**_region("us")))
+        await table_repo.upsert(conn, orders)
         with pytest.raises(ValueError, match="region 'us' runs the snowflake engine"):
-            await region_repo.upsert_region(
-                conn, OrgRegion(**_region("us", engine="us-snow")), origin="admin"
-            )
+            await region_repo.upsert_region(conn, OrgRegion(**_region("us", engine="us-snow")))
         with pytest.raises(ValueError, match="'eu-pg' is not a PostgreSQL store"):
-            await region_repo.upsert_store(
-                conn, StoreConfig(id="eu-pg", url="mysql://eu/db"), origin="admin"
-            )
+            await region_repo.upsert_store(conn, StoreConfig(id="eu-pg", url="mysql://eu/db"))

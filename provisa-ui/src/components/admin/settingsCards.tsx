@@ -33,6 +33,7 @@ import {
   Checkbox,
   FileButton,
   Group,
+  MultiSelect,
   NumberInput,
   Select,
   SimpleGrid,
@@ -42,8 +43,10 @@ import {
   Title,
 } from "@mantine/core";
 import {
+  MODEL_SECTIONS,
   downloadConfig,
   downloadConfigPatch,
+  exportModelConfig,
   fetchConfigDiff,
   fetchSettings,
   setDomainPolicy,
@@ -666,6 +669,8 @@ export function ConfigFileSection() {
   const [revisedConfig, setRevisedConfig] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
+  // REQ-1919: the model sections an export carries; none chosen = the whole model.
+  const [exportSections, setExportSections] = useState<string[]>([]);
   const fileInputRef = useRef<() => void>(null);
 
   useEffect(() => {
@@ -679,6 +684,17 @@ export function ConfigFileSection() {
     const a = document.createElement("a");
     a.href = url;
     a.download = "provisa.yaml";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportModel = async () => {
+    const yaml = await exportModelConfig(exportSections);
+    const blob = new Blob([yaml], { type: "application/x-yaml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "provisa.model.yaml";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -752,6 +768,25 @@ export function ConfigFileSection() {
           )}
         </FileButton>
         {uploadMsg && <Text fz="sm">{uploadMsg}</Text>}
+      </Group>
+      <Text fz="sm" c="dimmed">
+        {t("adminPage.uploadAppliesOnce")}
+      </Text>
+      <Group gap="sm" align="flex-end">
+        <MultiSelect
+          label={t("adminPage.exportSections")}
+          placeholder={exportSections.length === 0 ? t("adminPage.exportWholeModel") : undefined}
+          data={[...MODEL_SECTIONS]}
+          value={exportSections}
+          onChange={setExportSections}
+          clearable
+          searchable
+          w={420}
+          data-testid="export-sections"
+        />
+        <Button variant="default" onClick={handleExportModel} data-testid="export-model">
+          {t("adminPage.exportModel")}
+        </Button>
       </Group>
 
       {diffOriginal !== null && (

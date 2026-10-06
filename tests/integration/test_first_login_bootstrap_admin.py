@@ -82,7 +82,7 @@ def _prepare_sync():
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
         for rid in ("platform_admin", "analyst", "org_admin"):
-            conn.execute(text("INSERT INTO roles (id, origin) VALUES (:i, 'seed')"), {"i": rid})
+            conn.execute(text("INSERT INTO roles (id) VALUES (:i)"), {"i": rid})
     return engine
 
 

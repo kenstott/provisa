@@ -48,10 +48,8 @@ async def plane() -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="reregister-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(
-            insert(sources).values(id="crm", type="graphql_remote", origin="admin")
-        )
-        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
+        await conn.execute_core(insert(sources).values(id="crm", type="graphql_remote"))
+        await conn.execute_core(insert(domains).values(id="sales"))
     return db
 
 
@@ -82,7 +80,6 @@ async def _relate(db: Database, ids: dict[str, int], source: str, target: str) -
                 source_column="id",
                 target_column="id",
                 cardinality="many-to-one",
-                origin="admin",
             )
         )
         await conn.execute_core(
@@ -92,7 +89,6 @@ async def _relate(db: Database, ids: dict[str, int], source: str, target: str) -
                 object_type="table",
                 object_key=target,
                 table_id=ids[target],
-                origin="admin",
             )
         )
 
@@ -174,19 +170,15 @@ async def test_retiring_touches_only_that_sources_generated_schema(plane):
                 domain_id="sales",
                 schema_name="manual",
                 table_name="notes",
-                origin="admin",
             )
         )
-        await conn.execute_core(
-            insert(sources).values(id="erp", type="graphql_remote", origin="admin")
-        )
+        await conn.execute_core(insert(sources).values(id="erp", type="graphql_remote"))
         await conn.execute_core(
             insert(registered_tables).values(
                 source_id="erp",
                 domain_id="sales",
                 schema_name="graphql",
                 table_name="invoices",
-                origin="admin",
             )
         )
         assert await table_repo.retire_generated(conn, "crm", "graphql", set()) == []
@@ -199,9 +191,7 @@ async def test_retiring_touches_only_that_sources_generated_schema(plane):
 
 async def test_a_graphql_remote_reregistration_keeps_ids_and_reports_what_it_kept(plane):
     async with plane.acquire() as conn:
-        await conn.execute_core(
-            insert(sources).values(id="shop", type="graphql_remote", origin="admin")
-        )
+        await conn.execute_core(insert(sources).values(id="shop", type="graphql_remote"))
 
     async def ids() -> dict[str, int]:
         async with plane.acquire() as conn:

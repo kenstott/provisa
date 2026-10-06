@@ -8,17 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A registered table's ``schema:`` changing across a config reload must not leave the OLD row
-orphaned in ``registered_tables`` alongside a NEW one (REQ-013/REQ-016).
+"""A registered table's ``schema:`` changing in a configuration applied again (REQ-013/REQ-016,
+REQ-1919, amended 2026-10-06).
 
 table.py's upsert conflict key is ``(source_id, schema_name, table_name)`` — schema_name is part
-of the row's identity, not an updatable column (table.py:209). ``_purge_removed_tables`` used to
-only track ``table_name`` per source, so a schema change inserted a second row under the new
-identity and never cleaned up the first: two rows for the same logical table, and the compiler
-resolved to whichever one it found first (confirmed live on perf-bench — a ClickHouse source's
-``schema:`` corrected from "public" to "default" left every subsequent query still compiling
-against "public", well after the YAML, control-plane, and in-memory schema cache were all
-already correct)."""
+of the row's identity. A configuration is a one-time seed and an explicit apply adds and updates
+and removes nothing, and with no record of which rows a configuration made, an apply cannot tell
+a table its file moved from a same-named table registered in another schema. A table the file
+names under a corrected schema would stand beside the registered one under one published name in
+one domain, so the apply is refused, naming both (superseding the 2026-10-03 re-key of a
+config-origin row)."""
 
 from __future__ import annotations
 
@@ -27,7 +26,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from provisa.core.config_loader import load_config, parse_config_dict
+from provisa.core.config_loader import PublishedNameClash, apply_config, parse_config_dict
 from tests.helpers import ALL_DATA_CAPABILITIES
 
 pytestmark = [pytest.mark.integration]
@@ -80,24 +79,26 @@ def _config(schema: str) -> dict:
 
 class TestSchemaRenameReload:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_schema_change_leaves_exactly_one_row(self, tenant_db, graphql_client):
+    async def test_a_schema_change_is_refused_naming_both_tables(self, tenant_db, graphql_client):
         # graphql_client (unused directly) is a session-scoped fixture that populates
         # state.admin_db — _upsert_sources's bound_to_request_org() asserts it's set even for a
         # plain-password source with no ${secret:...} reference. tenant_db alone doesn't provide
         # it; test_domain_policy_integration.py's tests carry this same implicit dependency.
         async with tenant_db.acquire() as conn:
-            await load_config(parse_config_dict(_config("public")), conn, origin="config")
+            await apply_config(parse_config_dict(_config("public")), conn)
             rows = await conn.fetch(
                 "SELECT schema_name FROM registered_tables WHERE table_name = 'order_events'"
             )
             assert [r["schema_name"] for r in rows] == ["public"]
 
-            # Config's schema: field changes — a real reload, not a first-time registration.
-            await load_config(parse_config_dict(_config("default")), conn, origin="config")
+            # The config's schema: field changes, and the config is applied again. An apply
+            # removes nothing, so the table would stand under two schemas with one name in one
+            # domain: refused, naming both, and nothing changes.
+            with pytest.raises(PublishedNameClash) as err:
+                await apply_config(parse_config_dict(_config("default")), conn)
+            assert "ch1.default.order_events" in str(err.value)
+            assert "ch1.public.order_events" in str(err.value)
             rows = await conn.fetch(
                 "SELECT schema_name FROM registered_tables WHERE table_name = 'order_events'"
             )
-            assert [r["schema_name"] for r in rows] == ["default"], (
-                "the stale (source_id, 'public', 'order_events') row must be purged, not left "
-                "alongside the new (source_id, 'default', 'order_events') row"
-            )
+            assert [r["schema_name"] for r in rows] == ["public"]

@@ -63,8 +63,7 @@ def _row(table: str, domain: str, column: str) -> SimpleNamespace:
 def written(monkeypatch) -> list[Table]:
     tables: list[Table] = []
 
-    async def _capture(_conn, tbl, *, origin):
-        assert origin == "admin"  # REQ-1919: the steward registered it
+    async def _capture(_conn, tbl):
         tables.append(tbl)
         return 1
 

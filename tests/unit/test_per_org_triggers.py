@@ -26,7 +26,6 @@ from tests.helpers import PROFILER_RUN_DEFAULTS
 
 from provisa.core.models import ScheduledTrigger
 from provisa.core.repositories import scheduled_trigger as trigger_repo
-from provisa.core.repositories.origin import ADMIN, CONFIG
 from provisa.core.request_context import current_org
 from provisa.scheduler import jobs
 from provisa.scheduler.executor import background_scheduler
@@ -78,9 +77,9 @@ def _sql_trigger(trigger_id="nightly"):
     return ScheduledTrigger(id=trigger_id, cron="0 2 * * *", sql=_PURGE, role="ops")
 
 
-async def _create(db, trigger, origin=ADMIN):
+async def _create(db, trigger):
     async with db.acquire() as conn:
-        await trigger_repo.create(conn, trigger, origin=origin)
+        await trigger_repo.create(conn, trigger)
 
 
 async def test_two_orgs_triggers_of_one_id_are_two_jobs_each_bound_to_its_org(orgs, monkeypatch):
@@ -145,17 +144,19 @@ async def test_only_prod_triggers_are_scheduled(orgs):
     assert {j.id for j in scheduler.get_jobs()} == {"nightly:org_a"}
 
 
-async def test_config_triggers_load_into_the_model_store_as_origin_config(orgs):
+async def test_a_config_s_triggers_are_added_to_the_model_store_and_nothing_is_removed(orgs):
+    """REQ-1919: applying a configuration adds and updates its triggers and removes nothing —
+    not one an earlier configuration declared, not one the admin made."""
     db = orgs["a"]
     await _create(db, _sql_trigger("made-here"))
     async with db.acquire() as conn:
         await trigger_repo.load_from_config(
-            conn, [_sql_trigger("from-file"), _sql_trigger("dropped")], origin=CONFIG
+            conn, [_sql_trigger("from-file"), _sql_trigger("dropped")]
         )
-        # The file no longer declares "dropped": it goes; the admin-made trigger stays.
-        await trigger_repo.load_from_config(conn, [_sql_trigger("from-file")], origin=CONFIG)
-        rows = {r["id"]: r["origin"] for r in await trigger_repo.list_all(conn)}
-    assert rows == {"from-file": CONFIG, "made-here": ADMIN}
+        # A later configuration no longer declares "dropped": it stays.
+        await trigger_repo.load_from_config(conn, [_sql_trigger("from-file")])
+        rows = {r["id"] for r in await trigger_repo.list_all(conn)}
+    assert rows == {"from-file", "dropped", "made-here"}
 
 
 async def test_a_trigger_naming_nothing_to_run_is_refused():
@@ -242,18 +243,16 @@ async def test_a_profiler_is_scheduled_on_its_cron_beside_the_triggers(orgs):
             sources.insert().values(
                 id="prof",
                 type="data_profiler",
-                origin=ADMIN,
                 mapping={"cron": "0 3 * * *", **PROFILER_RUN_DEFAULTS},
             )
         )
-        await conn.execute_core(domains.insert().values(id="sales", origin=ADMIN))
+        await conn.execute_core(domains.insert().values(id="sales"))
         await conn.execute_core(
             registered_tables.insert().values(
                 source_id="prof",
                 domain_id="sales",
                 schema_name="public",
                 table_name="orders",
-                origin=ADMIN,
                 profiler_source_id="prof",
             )
         )

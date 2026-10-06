@@ -325,6 +325,10 @@ def test_candidates_are_read_from_rows_as_the_registry_view_builds_them():
             "alias": None,
             "change_signal": None,
             "region": None,  # REQ-1921: it names no region
+            # REQ-1919: the row carries the landing settings; the file is never read for them.
+            "live": None,
+            "watermark_column": None,
+            "probe_type": None,
         }
         row.update(settings)
         return row
@@ -335,7 +339,6 @@ def test_candidates_are_read_from_rows_as_the_registry_view_builds_them():
             _control_plane_row(2, "items"),
             _control_plane_row(3, "audit", replicate=-1),
         ],
-        {},
     )
     candidates, skipped = hot_candidates(rows, {"pg": _pg()}, frozenset(), _ENGINE, _DEFAULT)
     assert candidates == [

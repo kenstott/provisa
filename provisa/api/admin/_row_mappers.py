@@ -102,7 +102,6 @@ def _source_from_row(row, *, connection: bool) -> SourceType:
     return SourceType(
         id=row["id"],
         type=row["type"],
-        origin=row["origin"],  # REQ-1919
         host=row["host"] if connection else None,
         port=row["port"] if connection else None,
         database=row["database"] if connection else None,
@@ -137,7 +136,6 @@ def _domain_from_row(row) -> DomainType:
     return DomainType(
         id=row["id"],
         description=row["description"],
-        origin=row["origin"],  # REQ-1919
         steward=row["steward"],  # REQ-609
         graphql_alias=row["graphql_alias"],
         is_system=row["id"] in system_domain_ids(),
@@ -149,7 +147,6 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
     if not detail:
         return RoleType(
             id=row["id"],
-            origin=row["origin"],
             capabilities=None,
             domain_access=None,
             demonstrated=None,
@@ -166,7 +163,6 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
         )
     return RoleType(
         id=row["id"],
-        origin=row["origin"],  # REQ-1919
         capabilities=list(row["capabilities"]),
         domain_access=list(row["domain_access"]),
         # REQ-1602: the rights this role is shown but does not hold.
@@ -241,7 +237,6 @@ def _rls_from_row(row) -> RLSRuleType:
         domain_id=row["domain_id"],
         role_id=row["role_id"],
         filter_expr=row["filter_expr"],
-        origin=row["origin"],  # REQ-1919
         action_name=row.get("action_name"),  # REQ-1679
     )
 

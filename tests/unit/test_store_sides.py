@@ -194,7 +194,7 @@ async def test_the_admin_lists_stamp_regions_from_the_model_store(handles):
 
     model_db, tenant_db = handles
     async with model_db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
         await conn.execute_core(
             insert(registered_tables).values(
                 id=7,
@@ -203,7 +203,6 @@ async def test_the_admin_lists_stamp_regions_from_the_model_store(handles):
                 schema_name="public",
                 table_name="orders",
                 region="eu",
-                origin="admin",
             )
         )
     by_id, by_key = await _table_region_maps(

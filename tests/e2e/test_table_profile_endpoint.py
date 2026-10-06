@@ -54,7 +54,6 @@ async def view_id():
                 schema_name="sales-analytics",
                 table_name="_profile_test_view",
                 view_sql="SELECT id, amount FROM orders",
-                origin="admin",
             )
             .returning(registered_tables.c.id)
         )

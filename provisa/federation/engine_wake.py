@@ -317,7 +317,8 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
     ``otel``, ``results``) and Flight/object-store wiring live in the coordinator's dynamic catalog
     over an ``emptyDir``, and so do the default org's source catalogs. ``provision`` re-resolves the
     endpoint through :func:`k8s.shard_endpoint` — which is why the wake must precede this — and
-    reconnects; the source catalogs are reissued from ``state.config``, exactly as boot issues them.
+    reconnects; the source catalogs are reissued for the sources the model store holds, exactly as
+    boot issues them.
 
     Every org on the shared lane dispatches through THIS terminal (``AppState._engine_runtime``
     hands out the default org's engine to anyone without a dedicated one), so a tenant org's own
@@ -325,7 +326,7 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
     connection to the pod that is gone.
     """
     from provisa.api.startup_seed import _OPS_VIEWS
-    from provisa.core.config_loader import load_config
+    from provisa.core.config_loader import attach_store_sources, store_config
 
     log.info("re-establishing the shared engine terminal: shard %s restarted", shard)
     state.engine_conn = None
@@ -338,15 +339,16 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
             "the default org has no built runtime, so the shared terminal cannot be restored "
             "after shard %s restarted (REQ-1448)" % shard
         )
-    config = getattr(state, "config", None)
-    if config is not None:
-        async with state.model_db.acquire() as conn:
-            failed = await load_config(
-                config,
-                conn,
-                state.federation_engine,
-                catalog_names=default.source_catalogs,
-                origin="config",
+    raw = getattr(state, "raw_config", None)
+    if raw is not None:
+        # REQ-1919: the catalogs are reissued for every source the default org's model store
+        # holds now — read from the store, never from the file.
+        from provisa.core.secrets_store import bound_to_request_org
+
+        async with state.model_db.acquire() as conn, bound_to_request_org():
+            config = await store_config(raw, conn)
+            failed = await attach_store_sources(
+                config, state.federation_engine, catalog_names=default.source_catalogs
             )
         # A catalog that did not come back is not a boot-time inconvenience here: the resumed
         # coordinator now serves every shared-lane org WITHOUT it, and the next query answers a raw

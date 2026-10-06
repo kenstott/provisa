@@ -104,11 +104,100 @@ async def _profile_table_id(conn: Any, schema: str, reg: dict) -> int:
     return int(row[0])
 
 
+def _parent_resolver(ctx: Any, tm: Any) -> Any:
+    """``<relationship>.<column>`` -- a parent table's column as a profile run names it -- to a
+    dependence Parent: the parent's registered column, reached through this table's referring
+    column; None where the name reaches no such column."""
+    from provisa.synthetic.dependence import Parent
+
+    by_sql = {(tid, sql): phys for (tid, phys), sql in ctx.physical_to_sql.items()}
+
+    def resolve(name: str) -> Any:
+        field, _, column = name.partition(".")
+        jm = ctx.joins.get((tm.type_name, field))
+        if jm is None or jm.cardinality != "many-to-one":
+            return None
+        phys = by_sql.get((jm.target.table_id, column))
+        return None if phys is None else Parent(phys, via=jm.source_column)
+
+    return resolve
+
+
+def _published(column_rows: list[dict]) -> dict[str, Any]:
+    from types import SimpleNamespace
+
+    return {c["column_name"]: SimpleNamespace(physical=c["physical_column"]) for c in column_rows}
+
+
+async def _dependence(rows: Any, physical: dict[str, str], parent_of: Any) -> Any:
+    """The run's rank correlations between the table's own columns, its dependency network and
+    the network's joint counts, by registered column name (REQ-1939, DEPENDENCE KEPT). A parent
+    table's column the generator cannot reach (``parent_of`` gives None) leaves its child out of
+    the network: it is drawn on its own, and the report names it."""
+    from provisa.synthetic.dependence import Dependence, Joint, Parent
+
+    spearman = {}
+    for r in await rows("correlations"):
+        a, b = physical.get(r["column_name"]), physical.get(r["other_column"])
+        if r["measure"] == "spearman" and a and b and r["value"] is not None:
+            spearman[(a, b)] = float(r["value"])
+
+    def parent(name: str | None) -> Any:
+        if name is None or name == "":
+            return None
+        if name in physical:
+            return Parent(physical[name])
+        return parent_of(name) if parent_of is not None else None
+
+    network: dict[str, tuple[Any, ...]] = {}
+    unreached: set[str] = set()
+    for r in await rows("dependencies"):
+        if not r["in_network"]:
+            continue
+        target = physical.get(r["column_name"])
+        if target is None:
+            continue
+        named = [n for n in (r["parent_1"], r["parent_2"]) if n]
+        parents = [parent(n) for n in named]
+        if any(p is None for p in parents):
+            unreached.add(target)
+            continue
+        network[target] = tuple(parents)
+    joints: dict[str, list[Any]] = {}
+    for r in await rows("joint_counts"):
+        target = physical.get(r["column_name"])
+        if target not in network:
+            continue
+
+        def state(value: Any, bucket: Any) -> Any:
+            return int(bucket) if bucket is not None else value
+
+        parents = [state(r["parent_1_value"], r["parent_1_bucket"])]
+        if r["parent_2"]:
+            parents.append(state(r["parent_2_value"], r["parent_2_bucket"]))
+        joints.setdefault(target, []).append(
+            Joint(state(r["target_value"], r["target_bucket"]), tuple(parents), int(r["row_count"]))
+        )
+    return Dependence(
+        spearman,
+        {t: p for t, p in network.items() if t in joints},
+        {t: tuple(j) for t, j in joints.items()},
+        frozenset(unreached),
+    )
+
+
 async def read_profile(
-    conn: Any, *, org_id: str, env: str | None, reg: dict, run_id: str
+    conn: Any,
+    *,
+    org_id: str,
+    env: str | None,
+    reg: dict,
+    run_id: str,
+    parent_of: Any = None,
 ) -> ProfiledTable:
     """The profile run ``run_id`` of ``reg`` as environment ``env`` holds it (None: prod, as
-    provisa.core.environments.org_schema reads it)."""
+    provisa.core.environments.org_schema reads it). ``parent_of`` resolves a parent table's
+    column as the run names it (``<relationship>.<column>``) to a dependence Parent, or None."""
     from provisa.core.environments import org_schema
     from provisa.profiler.schema import result_sa_table
 
@@ -168,7 +257,15 @@ async def read_profile(
         for f in await rows("fanout_runs")
         if len(fan_q.get(f["relationship"], [])) == 101
     )
-    return ProfiledTable(run_id, runs[0]["row_count"], runs[0]["profiled_rows"], columns, fanouts)
+    physical = {c: p.physical for c, p in _published(await rows("columns")).items()}
+    return ProfiledTable(
+        run_id,
+        runs[0]["row_count"],
+        runs[0]["profiled_rows"],
+        columns,
+        fanouts,
+        await _dependence(rows, physical, parent_of),
+    )
 
 
 # -- generating ---------------------------------------------------------------------------------
@@ -436,7 +533,12 @@ async def _dataset_tables(
                     f"table {reg['table_name']!r} is not readable by {PROFILE_ROLE}"
                 )
             profile = await read_profile(
-                conn, org_id=org_id, env=t.profile_env, reg=reg, run_id=t.run_id
+                conn,
+                org_id=org_id,
+                env=t.profile_env,
+                reg=reg,
+                run_id=t.run_id,
+                parent_of=_parent_resolver(ctx, tm),
             )
             tags = await column_tags(conn, t.table_id)
             # REQ-1939, ACCEPTED CONSTRAINTS BIND GENERATION.
@@ -555,6 +657,98 @@ async def _measure_condition(
     if parents > with_children:
         histogram[0] = histogram.get(0, 0) + parents - with_children
     return _quantiles(histogram, QUANTILE_POINTS), parents
+
+
+async def _dependence_entries(
+    state: Any, planned: list[PlannedTable], *, private: bool
+) -> list[dict]:
+    """For the report (REQ-1939, DEPENDENCE KEPT): each pair of numbers the copula draws, its
+    measured rank correlation beside the generated rows' own; each column that keeps its own
+    draw though the run ties it to others; and, for a private dataset, that the network is not
+    kept, its structure being chosen from the data."""
+    from provisa.profiler.run import _governed
+    from provisa.profiler.statement import _ident, qualified
+
+    def row(t: str, column: str | None, measure: str, source: Any, synthetic: Any, note: str):
+        delta = None if source is None or synthetic is None else synthetic - source
+        return {
+            "table_name": t,
+            "column_name": column,
+            "measure": measure,
+            "source_value": source,
+            "synthetic_value": synthetic,
+            "delta": delta,
+            "note": note,
+        }
+
+    exposed = _exposer(state)
+    out = []
+    for p in planned:
+        dep = p.plan.dependence
+        if dep is None:
+            continue
+        nodes = dep.nodes
+        measured = p.table.profile.dependence.spearman
+        numbers = [c for c in dep.copula if nodes[c].kind == "number"]
+        for i, a in enumerate(numbers):
+            for b in numbers[i + 1 :]:
+                rho = measured.get((a, b), measured.get((b, a)))
+                if rho is None:
+                    continue
+                ca, cb = _ident(exposed(p.table, a)), _ident(exposed(p.table, b))
+                _n, rows = await _governed(
+                    f"SELECT CORR(ra, rb) FROM (SELECT PERCENT_RANK() OVER (ORDER BY x.{ca}) AS ra, "
+                    f"PERCENT_RANK() OVER (ORDER BY x.{cb}) AS rb FROM "
+                    f"{qualified(p.table.pgwire_name)} x WHERE x.{ca} IS NOT NULL "
+                    f"AND x.{cb} IS NOT NULL) s"
+                )
+                got = rows[0][0] if rows else None
+                out.append(
+                    row(
+                        p.plan.name,
+                        f"{a}~{b}",
+                        "dependence_spearman",
+                        rho,
+                        None if got is None else float(got),
+                        "rank correlation, measured beside generated",
+                    )
+                )
+        if dep.copula:
+            out.append(
+                row(
+                    p.plan.name,
+                    None,
+                    "dependence_copula_shrink",
+                    None,
+                    dep.shrink,
+                    "the measured correlations taken toward independence by this share so that "
+                    "they can be drawn together (0: as measured); see each pair beside",
+                )
+            )
+        for c in dep.kept_own:
+            out.append(
+                row(
+                    p.plan.name,
+                    c,
+                    "dependence_kept_own",
+                    None,
+                    None,
+                    "the profile ties it to other columns; its draw is its own",
+                )
+            )
+        if private:
+            out.append(
+                row(
+                    p.plan.name,
+                    None,
+                    "dependence_network_not_kept",
+                    None,
+                    None,
+                    "a private dataset keeps rank correlations measured under ε, not the "
+                    "dependency network, whose structure is chosen from the data",
+                )
+            )
+    return out
 
 
 def _condition_entries(state: Any, planned: list[PlannedTable]) -> list[dict]:
@@ -767,7 +961,8 @@ async def generate(state: Any, dataset_id: str) -> None:
     # Its tables now read their copies here: the routes are republished with the model.
     await _rebuild_schemas()
     extra = (
-        _condition_entries(state, planned)
+        await _dependence_entries(state, planned, private=row.private_epsilon is not None)
+        + _condition_entries(state, planned)
         + await _assertion_entries(row.assertions)
         + privacy_entries(budget)
     )

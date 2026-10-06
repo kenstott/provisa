@@ -19,13 +19,16 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import Role
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.repositories.origin import SEED, take_over
-from provisa.core.repositories.origin import require as require_origin
 from provisa.core.schema_org import roles
 from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
+
+
+#: REQ-1919: the stored settings the admin's role form does not carry; an edit through the form
+#: keeps each as the store holds it.
+KEPT_ON_FORM_EDIT: tuple[str, ...] = ("max_rows", "relationship_guard")
 
 
 class ReservedRoleRedefined(Exception):
@@ -65,17 +68,14 @@ class RoleDeleteRefused(Exception):
 
 
 async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
-    conn: "Connection", role: Role, *, org_id: str | None, origin: str
+    conn: "Connection", role: Role, *, org_id: str | None
 ) -> None:
     """Create the role, or replace its definition.
 
-    ``origin`` says where the role comes from (``repositories.origin``): written when the role
-    is CREATED and left alone after, except that a config load takes over a role made through
-    the admin. ``org_id`` is the org an administrator created it in (tenancy); it is recorded at
+    ``org_id`` is the org an administrator created it in (tenancy); it is recorded at
     creation and never changed, and is None for a role no administrator of an org created.
     """
     model_change.name("upsert", "role", role.id)  # REQ-1524
-    require_origin(origin)
     if role.id in (PLATFORM_ADMIN_ROLE, ORG_ADMIN_ROLE):
         # REQ-1349: org_admin is refused on the same terms as platform_admin below. The shipped
         # install config redefined it WITHOUT `org_settings`/`observability`, and config load runs
@@ -106,8 +106,9 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             # REQ-1174: per-role rate + query-complexity limits; None = unlimited (column NULL).
             "rate_limit": role.rate_limit.model_dump() if role.rate_limit is not None else None,
             "parent_role_id": role.parent_role_id,  # REQ-1677
+            "max_rows": role.max_rows,  # REQ-005, REQ-1919
+            "relationship_guard": role.relationship_guard,  # REQ-1919
             "org_id": org_id,
-            "origin": origin,
         },
         index_elements=["id"],
         update_columns=[
@@ -116,10 +117,9 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             "residency_values",
             "rate_limit",
             "parent_role_id",
+            "max_rows",
+            "relationship_guard",
         ],
-    )
-    await take_over(
-        conn, roles, (roles.c.id == role.id,), kind="role", ident=role.id, origin=origin
     )
 
 
@@ -155,8 +155,8 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-042, REQ-059
 async def delete(conn: "Connection", role_id: str) -> bool:  # REQ-042, REQ-1677, REQ-1918
     """Delete one role: THE delete, for every surface. False when there is no such role.
 
-    Refused (:class:`RoleDeleteRefused`) for a role the deployment seeds — its origin is
-    ``"seed"`` — and while anything depends on it (REQ-1918): a user
+    Refused (:class:`RoleDeleteRefused`) for a role the deployment seeds
+    (``provisa.core.db.SEEDED_ROLE_IDS``) and while anything depends on it (REQ-1918): a user
     who holds it, a role that inherits from it, a grant or ownership that names it. Its row
     filters go with it. One transaction; no database cascade is relied on.
     """
@@ -166,7 +166,9 @@ async def delete(conn: "Connection", role_id: str) -> bool:  # REQ-042, REQ-1677
         row = await get(conn, role_id)
         if row is None:
             return False
-        if row["origin"] == SEED:
+        from provisa.core.db import SEEDED_ROLE_IDS
+
+        if role_id in SEEDED_ROLE_IDS:
             raise RoleDeleteRefused(role_id, "system")
         blocking = await guard(conn, ref)
         if blocking:
@@ -177,7 +179,6 @@ async def delete(conn: "Connection", role_id: str) -> bool:  # REQ-042, REQ-1677
 
 async def discard(conn: "Connection", role_id: str) -> None:
     """Remove a role's parts and its row WITHOUT asking the guard: for a caller that has
-    already established it may go — :func:`delete`, and the config loader once its own check of
-    everything the file dropped has passed."""
+    already established it may go."""
     await remove_parts(conn, ObjectRef("role", role_id))
     await conn.execute_core(_delete(roles).where(roles.c.id == role_id))

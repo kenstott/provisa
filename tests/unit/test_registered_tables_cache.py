@@ -60,6 +60,11 @@ _ROW = {
     "load_protected": None,
     "change_signal": None,  # REQ-929: the table sets none
     "region": None,  # REQ-1921: it names no region
+    # REQ-1919: the landing settings are the row's (db_queries.fetch_tables selects them).
+    "cache_ttl": None,
+    "live": None,
+    "watermark_column": None,
+    "probe_type": None,
     "columns": [],
 }
 

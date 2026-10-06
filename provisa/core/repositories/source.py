@@ -19,12 +19,27 @@ from sqlalchemy import delete as _delete, select, update
 
 from provisa.core.models import BUILT_IN_SOURCE_IDS, Source
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.repositories.origin import require as require_origin
-from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import registered_tables, sources
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
+
+
+#: REQ-1919: the stored settings the admin's source form does not carry. An edit through the form
+#: keeps each as the store holds it.
+KEPT_ON_FORM_EDIT: tuple[str, ...] = (
+    "base_url",
+    "pool_min",
+    "pool_max",
+    "use_pgbouncer",
+    "pgbouncer_port",
+    "producer_command",
+    "cache_catalog",
+    "cache_schema",
+    "approval_hook",
+    "allowed_domains",
+    "gql_naming_convention",
+)
 
 
 def _source_values(source: Source) -> dict:
@@ -53,6 +68,18 @@ def _source_values(source: Source) -> dict:
         "max_live_concurrency": source.max_live_concurrency,  # REQ-1909
         "sentinel_path": source.sentinel_path,  # REQ-1148
         "freshness_gate": source.freshness_gate,  # REQ-860
+        # REQ-1919: every setting a configuration can give a source is the store's to hold.
+        "base_url": source.base_url,
+        "pool_min": source.pool_min,
+        "pool_max": source.pool_max,
+        "use_pgbouncer": source.use_pgbouncer,
+        "pgbouncer_port": source.pgbouncer_port,
+        "producer_command": source.producer_command,
+        "cache_catalog": source.cache_catalog,
+        "cache_schema": source.cache_schema,
+        "approval_hook": source.approval_hook,
+        "allowed_domains": list(source.allowed_domains),
+        "gql_naming_convention": source.gql_naming_convention,
         # REQ-1695: the REFERENCE, never the credential. ``Source.password`` is documented as a
         # secret reference (provisa/core/models.py) and the mutation layer has already put any
         # literal a person typed into the org vault, so what arrives here is ``${provider:name}``
@@ -74,25 +101,19 @@ def source_from_row(row: dict) -> Source:  # REQ-1695
 
 
 async def upsert(  # REQ-012, REQ-250, REQ-1919
-    conn: "Connection", source: Source, *, origin: str
+    conn: "Connection", source: Source
 ) -> None:
-    """Create the source, or replace its definition. ``origin`` says where it comes from
-    (``repositories.origin``): written when the source is CREATED and left alone after, except
-    that a config load takes over a source made through the admin."""
+    """Create the source, or replace its definition."""
     model_change.name("upsert", "source", source.id)  # REQ-1524
-    require_origin(origin)
     from provisa.core.repositories.region import require_selected
 
     await require_selected(conn, f"source {source.id}", source.region)  # REQ-1921
     values = _source_values(source)
     await conn.upsert(
         sources,
-        {**values, "origin": origin},
+        values,
         index_elements=["id"],
         update_columns=[c for c in values if c != "id"],
-    )
-    await take_over(
-        conn, sources, (sources.c.id == source.id,), kind="source", ident=source.id, origin=origin
     )
 
 
@@ -171,8 +192,7 @@ async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014, REQ-19
 
 async def discard(conn: "Connection", source_id: str) -> None:
     """Remove a source's parts and its row WITHOUT asking the guard: for a caller that has
-    already established it may go — :func:`delete`, and the config loader once its own check of
-    everything the file dropped has passed."""
+    already established it may go — :func:`delete`."""
     await remove_parts(conn, ObjectRef("source", source_id))
     await conn.execute_core(_delete(sources).where(sources.c.id == source_id))
 

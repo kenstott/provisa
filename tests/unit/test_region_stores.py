@@ -56,13 +56,10 @@ def control_plane(tmp_path):
 async def _declare(model_db, tmp_path, *, state="eu-state", record="eu-record", region="eu"):
     async with model_db.acquire() as conn:
         for store in ("eu-state", "eu-record"):
-            await upsert_store(
-                conn, StoreConfig(id=store, url=_sqlite(tmp_path / f"{store}.db")), origin="config"
-            )
+            await upsert_store(conn, StoreConfig(id=store, url=_sqlite(tmp_path / f"{store}.db")))
         await upsert_store(
             conn,
             StoreConfig(id="eu-duck", url="duckdb:///eu.duckdb", kind="duckdb"),
-            origin="config",
         )
         values = {
             "id": region,
@@ -74,10 +71,10 @@ async def _declare(model_db, tmp_path, *, state="eu-state", record="eu-record", 
             "record": record,
         }
         if {state, record} <= {"eu-state", "eu-record"}:
-            await upsert_region(conn, OrgRegion(**values), origin="config")
+            await upsert_region(conn, OrgRegion(**values))
         else:
             # A model store written around the save gate (which refuses an undeclared store).
-            await conn.execute_core(org_regions.insert().values(**values, origin="config"))
+            await conn.execute_core(org_regions.insert().values(**values))
 
 
 async def _bind(stores):
@@ -302,9 +299,7 @@ async def test_in_a_region_an_org_keeps_its_cache_on_the_store_its_region_names(
     )
     await _declare(state.model_db, tmp_path)
     async with state.model_db.acquire() as conn:
-        await upsert_store(
-            conn, StoreConfig(id="eu-state", url="rediss://cache.eu:6379/0"), origin="config"
-        )
+        await upsert_store(conn, StoreConfig(id="eu-state", url="rediss://cache.eu:6379/0"))
     await app_mod._bind_region_cache("acme")
     rt = state._active_runtime()
     assert rt.response_cache_store is not None and rt.hot_counts is not None

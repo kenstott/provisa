@@ -80,7 +80,6 @@ async def test_create_sql_trigger_persists(cfg_path, monkeypatch):
     assert t["sql"] == _WRITE
     assert t["role"] == "ops"
     assert t["url"] is None
-    assert t["origin"] == "admin"
 
     # The persisted trigger feeds build_scheduler as a SQL job of the org that made it.
     fields = ("id", "name", "cron", "url", "webhook_name", "args", "sql", "role", "enabled")

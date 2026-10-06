@@ -42,7 +42,15 @@ def _patch_fetch_tables(monkeypatch):
     async def _fetch(conn):
         return getattr(conn, "registered", [])
 
+    # REQ-1919: the sources it drives off are the store's rows too, never the config's.
+    async def _source_rows(conn):
+        return [
+            {"id": s.id, "type": s.type.value, "change_signal": s.change_signal, "password_ref": ""}
+            for s in getattr(conn, "sources", ())
+        ]
+
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch)
+    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
 
 
 class _Sched:
@@ -54,8 +62,9 @@ class _Sched:
 
 
 class _Conn:
-    def __init__(self, registered):
+    def __init__(self, registered, sources=()):
         self.registered = registered
+        self.sources = sources
 
     async def __aenter__(self):
         return self
@@ -69,8 +78,8 @@ class _Conn:
         return SimpleNamespace(fetchall=lambda: [])
 
 
-def _fake_db(registered):
-    return SimpleNamespace(acquire=lambda: _Conn(registered))
+def _fake_db(registered, sources=()):
+    return SimpleNamespace(acquire=lambda: _Conn(registered, sources))
 
 
 def _rcol(name, dt="bigint", pk=False):
@@ -135,11 +144,16 @@ def _state(*, ready=True):
             "load_protected": None,
             "change_signal": None,  # REQ-929: the table sets none
             "region": None,  # REQ-1921: it names no region
+            # REQ-1919: the landing settings are the row's, as the seed stored them.
+            "cache_ttl": 300,
+            "live": None,
+            "watermark_column": None,
+            "probe_type": None,
         }
     ]
     registry = SimpleNamespace(get_enabled=lambda: [])
     return SimpleNamespace(
-        model_db=(_one_db := _fake_db(registered)),
+        model_db=(_one_db := _fake_db(registered, config.sources)),
         tenant_db=_one_db,
         federation_engine=engine,
         config=config,
@@ -295,6 +309,10 @@ async def test_registered_checker_table_carries_its_contract_to_the_loop(monkeyp
                 "load_protected": None,
                 "change_signal": None,  # REQ-929: the table sets none
                 "region": None,  # REQ-1921: it names no region
+                "cache_ttl": None,
+                "live": None,
+                "watermark_column": None,
+                "probe_type": None,
             }
         ]
     )

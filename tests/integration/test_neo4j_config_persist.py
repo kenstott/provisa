@@ -116,9 +116,9 @@ async def pg_conn(tenant_db, platform_admin_db):
 
 
 async def _load(pg_conn) -> None:
-    from provisa.core.config_loader import load_config, parse_config_dict
+    from provisa.core.config_loader import apply_config, parse_config_dict
 
-    await load_config(parse_config_dict(_config()), pg_conn, engine=None, origin="config")
+    await apply_config(parse_config_dict(_config()), pg_conn, engine=None)
 
 
 async def test_config_load_persists_source_and_cypher_endpoint(pg_conn):

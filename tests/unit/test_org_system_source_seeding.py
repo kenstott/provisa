@@ -10,7 +10,7 @@
 
 """REQ-1339: a new org's system sources exist before anything references them.
 
-``load_config`` registers the config's tables, and a ``tables`` row whose ``source_id`` names a
+``seed_config`` registers the config's tables, and a ``tables`` row whose ``source_id`` names a
 system source needs that source row already present — the FK has to have a target. When the seed
 runs after the load instead, the tables that pointed at ``__derived__`` are dropped, and the org
 comes up looking merely incomplete rather than broken: no error, just missing tables.
@@ -62,8 +62,9 @@ def test_the_org_builder_seeds_system_sources_before_it_loads_the_config():
     awaited = _awaited_names(_function(_REPO_ROOT / "provisa/api/app.py", "_build_org_runtime"))
 
     assert "_seed_built_in_sources" in awaited, "the org builder no longer seeds system sources"
-    assert "load_config" in awaited, "the org builder no longer loads the config"
-    assert awaited.index("_seed_built_in_sources") < awaited.index("load_config"), (
+    # REQ-1919: a demo org is rebuilt from its config at every build.
+    assert "rebuild_from_config" in awaited, "the org builder no longer rebuilds a demo org"
+    assert awaited.index("_seed_built_in_sources") < awaited.index("rebuild_from_config"), (
         "config load precedes the system-source seed — a tables row naming __derived__ has no FK "
         "target, and the table is dropped silently"
     )
@@ -117,3 +118,20 @@ def test_the_seed_is_an_upsert_so_a_rebuild_does_not_collide():
 
     assert body.count("upsert(") >= len(SYSTEM_SOURCES)
     assert 'index_elements=["id"]' in body
+
+
+def test_only_a_demo_org_is_rebuilt_from_its_config_and_no_org_is_special():
+    """REQ-1919 (DEMO ORGANISATIONS ARE THEIR CONFIG): a build rebuilds the org's model from the
+    demo configuration only when the org is a demo (``include_demo``, the org's seeded_demo flag);
+    whether it is the deployment's own org decides nothing — the flag does."""
+    source = (_REPO_ROOT / "provisa/api/app.py").read_text()
+    builder = source.split("async def _build_org_runtime")[1].split("\nasync def ")[0]
+    guard = builder.index("if include_demo:")
+    assert guard < builder.index("await rebuild_from_config(seed, conn", guard)
+    block = builder[
+        builder.index("if state.raw_config is not None:") : builder.index(
+            "_populate_source_catalog_names(org_config)"
+        )
+    ]
+    assert "state.org_id" not in block
+    assert "seed_config(" not in builder.replace("state.seed_config", "")

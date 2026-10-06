@@ -18,7 +18,7 @@ import pytest
 from sqlalchemy import select
 
 from provisa.core import secrets_store
-from provisa.core.config_loader import load_config, parse_config_dict
+from provisa.core.config_loader import apply_config, parse_config_dict
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import _init_schema_portable
 from provisa.core.schema_org import metadata
@@ -184,7 +184,7 @@ async def assert_no_value_is_stored(db: Database, tmp_path, schema: str = "main"
     spec = tmp_path / "petstore.json"
     spec.write_text(json.dumps(_SPEC))
     async with db.acquire() as conn:
-        await load_config(_config(str(spec)), conn, origin="config")
+        await apply_config(_config(str(spec)), conn)
     stored = await _everything_stored(db)
     assert stored["sources.id"].split() == ["pg", "petstore", "graph", "kg"]  # the load happened
     leaked = sorted(

@@ -448,23 +448,25 @@ Download the current `provisa.yaml` as `application/x-yaml` with a `Content-Disp
 
 #### `PUT /admin/config`
 
-Upload a revised config YAML. The server writes a `.bak` backup, saves the new file, and reloads all schemas, sources, and materialized views. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:32`]
+Upload a revised config YAML. The server writes a `.bak` backup, saves the new file, reloads the deployment's settings from it, and applies it to the model store as an explicit one-time seed: what the file declares is added or updated through the model store, and nothing is removed. A later restart reads the file's settings and never applies its model again; the model store alone owns the model after the first start. (REQ-164, REQ-1919) [tool-verified: `provisa/api/admin/settings_router.py` `upload_config`]
 
 **Request body:** Raw YAML content.
 
 **Response:**
 
 ```json
-{"success": true, "message": "Config uploaded and reloaded"}
+{"success": true, "message": "Config uploaded and applied"}
 ```
 
 On reload failure: `{"success": false, "message": "<error>"}`.
 
 #### `GET /admin/config/live`
 
-Download the **current live config** — the config as Provisa would write it today, reflecting every admin-created table, relationship, domain, role, and RLS rule that has accumulated since startup. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:67`]
+Download the model as it stands, written as a configuration file: the deployment file's settings with every model section read from the model store — stores, regions, sources, domains, roles, data products, glossary terms, tables and their columns, relationships, metrics, tags and their assignments, row filters, commands, webhooks, scheduled triggers and naming rules. Applied to an empty model store, the file builds the same model. What the deployment seeds into every store (the built-in sources and their tables, the system domains, `org_admin` and `platform_admin`) is left out. (REQ-164, REQ-1919) [tool-verified: `provisa/api/admin/config_export.py` `build_live_config`, `provisa/core/store_config.py`]
 
-The file on disk may lag the live state if changes were made through the admin API without a subsequent upload. This endpoint closes that gap: its output is what `PUT /admin/config` would need to receive to make the on-disk file match live state.
+**Query parameter:** `sections` (optional) — a comma-separated list of model sections, e.g. `sources,tables`. Only those sections are written; an unknown name answers 400 `settings.export_unknown_section`.
+
+The endpoint is open in every deployment to a caller with the deployment-settings right; the Configuration File section of the admin page exposes it as **Export Model**.
 
 Returns `application/x-yaml` with `Content-Disposition: attachment; filename=provisa.live.yaml`.
 
@@ -855,9 +857,7 @@ Load a previously previewed config into the acting org. [tool-verified: `provisa
 {"config_yaml": "<yaml string>"}
 ```
 
-Uses the same hot-reload path as `PUT /admin/config`. The org's catalog, schemas, and pools are rebuilt before the response returns.
-
-An import is always a merge. What it creates is recorded as made through the admin; it takes over no object, changes no existing object's origin, and removes nothing the imported config does not mention. There is no `replace` field. (REQ-1919)
+An import is an explicit one-time seed of the acting org's model store, the same apply as `PUT /admin/config`: it adds and updates what the imported config declares through the model store, guards and versions included, and removes nothing it does not mention. There is no `replace` field. The engine catalogs of the sources it declares, the org's pools and its schemas are rebuilt before the response returns. (REQ-1919) [tool-verified: `provisa/api/app_loaders.py` `apply_configuration`]
 
 **Response:** `{"summary": {...}}` — the counts of what the imported config declares.
 

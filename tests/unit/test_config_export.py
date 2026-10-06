@@ -4,8 +4,9 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""Live-config generation (REQ-164): the CURRENT config overlays live DB state (admin-created
-views/MVs, relationships, roles, rls, domains) onto the on-disk base so the export reflects reality.
+"""The model as it stands, written as a configuration (REQ-164, REQ-1919): the deployment file's
+settings with every model section taken from the model store, so the export reflects the store —
+admin-created views/MVs, relationships, roles, row filters, domains and sources included.
 """
 
 from __future__ import annotations
@@ -29,7 +30,16 @@ class _FakePool:
 
 
 async def _run(
-    *, base, tables, rels=None, roles=None, rls=None, domains=None, metrics=None, data_products=None
+    *,
+    base,
+    tables,
+    rels=None,
+    roles=None,
+    rls=None,
+    domains=None,
+    metrics=None,
+    data_products=None,
+    sources=None,
 ):
     from provisa.api.admin import config_export
 
@@ -54,6 +64,18 @@ async def _run(
             "provisa.core.repositories.data_product.list_all",
             AsyncMock(return_value=data_products or []),
         ),  # REQ-1634
+        # REQ-1919: every other section the store holds — none, unless a test gives some.
+        patch("provisa.core.repositories.source.list_all", AsyncMock(return_value=sources or [])),
+        patch("provisa.core.repositories.region.list_stores", AsyncMock(return_value=[])),
+        patch("provisa.core.repositories.region.list_regions", AsyncMock(return_value=[])),
+        patch("provisa.core.repositories.function.list_functions", AsyncMock(return_value=[])),
+        patch("provisa.core.repositories.function.list_webhooks", AsyncMock(return_value=[])),
+        patch("provisa.core.repositories.scheduled_trigger.list_all", AsyncMock(return_value=[])),
+        patch("provisa.core.repositories.tag.list_all", AsyncMock(return_value=[])),
+        patch("provisa.core.repositories.tag.list_assignments", AsyncMock(return_value=[])),
+        patch("provisa.core.store_config._glossary_terms", AsyncMock(return_value=[])),
+        patch("provisa.core.store_config._naming_rules", AsyncMock(return_value=[])),
+        patch("provisa.core.repositories.kafka_source.list_specs", AsyncMock(return_value=[])),
     ):
         return await config_export.build_live_config()
 
@@ -69,7 +91,7 @@ async def test_created_view_appears_in_tables():
         "view_sql": "SELECT * FROM pet_store.users",
         "materialize": True,
         "domain_id": "pet-store",
-        "columns": [{"name": "id"}],
+        "columns": [{"column_name": "id", "data_type": "integer", "visible_to": []}],
         "created_at": "2026-07-13",  # internal — must be dropped
     }
     cfg = await _run(base=base, tables=[view_row])
@@ -81,15 +103,27 @@ async def test_created_view_appears_in_tables():
     assert "id" not in t and "created_at" not in t  # internal bookkeeping stripped
 
 
-async def test_file_only_sections_and_credentials_preserved():
+async def test_settings_come_from_the_file_and_sources_from_the_store():
+    """REQ-1919: the store alone owns the model, sources included — the file's own sources are
+    not the export's; its settings are. A credential is the reference the store holds."""
     base = {
         "server": {"port": 8000},
-        "sources": [{"id": "pg", "password": "secret"}],
+        "sources": [{"id": "from-file", "password": "secret"}],
         "auth": {"provider": "oidc"},
     }
-    cfg = await _run(base=base, tables=[])
-    # Sources (with credentials) and other file-only sections are untouched.
-    assert cfg["sources"] == [{"id": "pg", "password": "secret"}]
+    stored = {
+        "id": "pg",
+        "type": "postgresql",
+        "host": "db",
+        "port": 5432,
+        "database": "shop",
+        "password_ref": "${secret:pg}",
+        "federation_hints": {},
+        "mapping": {},
+    }
+    cfg = await _run(base=base, tables=[], sources=[stored])
+    assert [s["id"] for s in cfg["sources"]] == ["pg"]
+    assert cfg["sources"][0]["password"] == "${secret:pg}"
     assert cfg["auth"] == {"provider": "oidc"}
     assert cfg["server"] == {"port": 8000}
 
@@ -132,6 +166,7 @@ async def test_relationships_project_to_schema_and_resolve_table_ids():
             "schema_name": "public",
             "table_name": "pets",
             "domain_id": "d",
+            "columns": [],
         },
         {
             "id": 37,
@@ -139,6 +174,7 @@ async def test_relationships_project_to_schema_and_resolve_table_ids():
             "schema_name": "public",
             "table_name": "orders",
             "domain_id": "d",
+            "columns": [],
         },
     ]
     rels = [
@@ -175,9 +211,19 @@ async def test_table_id_resolves_to_alias_when_set():
             "table_name": "find_pets_by_status",
             "alias": "pet_by_status",
             "domain_id": "pet-store",
+            "columns": [],
         }
     ]
-    rels = [{"id": "r", "source_table_id": 1, "target_table_id": 1, "cardinality": "many-to-one"}]
+    rels = [
+        {
+            "id": "r",
+            "source_table_id": 1,
+            "target_table_id": 1,
+            "source_column": "id",
+            "target_column": "id",
+            "cardinality": "many-to-one",
+        }
+    ]
     cfg = await _run(base={"tables": []}, tables=tables, rels=rels)
     assert cfg["relationships"][0]["source_table_id"] == "pet_by_status"  # alias, not table_name
 
@@ -192,6 +238,7 @@ async def test_internal_tables_and_their_relationships_excluded():
             "schema_name": "public",
             "table_name": "pets",
             "domain_id": "pet-store",
+            "columns": [],
         },
         {
             "id": 9,
@@ -199,14 +246,24 @@ async def test_internal_tables_and_their_relationships_excluded():
             "schema_name": "org_x",
             "table_name": "meta_v",
             "domain_id": "meta",
+            "columns": [],
         },
     ]
     rels = [
-        {"id": "ok", "source_table_id": 1, "target_table_id": 1, "cardinality": "many-to-one"},
+        {
+            "id": "ok",
+            "source_table_id": 1,
+            "target_table_id": 1,
+            "source_column": "id",
+            "target_column": "id",
+            "cardinality": "many-to-one",
+        },
         {
             "id": "internal",
             "source_table_id": 9,
             "target_table_id": 1,
+            "source_column": "id",
+            "target_column": "id",
             "cardinality": "many-to-one",
         },
     ]
@@ -225,12 +282,21 @@ async def test_internal_meta_ops_excluded():
     ]
     tables = [
         {
+            "id": 1,
             "source_id": "pg",
             "schema_name": "public",
             "table_name": "pets",
             "domain_id": "pet-store",
+            "columns": [],
         },
-        {"source_id": "sys", "schema_name": "org_x_meta", "table_name": "m", "domain_id": "meta"},
+        {
+            "id": 2,
+            "source_id": "sys",
+            "schema_name": "org_x_meta",
+            "table_name": "m",
+            "domain_id": "meta",
+            "columns": [],
+        },
     ]
     cfg = await _run(base={"tables": []}, tables=tables, domains=domains)
     assert [d["id"] for d in cfg["domains"]] == ["pet-store"]
@@ -352,12 +418,14 @@ async def test_column_primary_key_flag_rides_the_projection():  # REQ-1652
             {
                 "column_name": "id",
                 "data_type": "integer",
+                "visible_to": [],
                 "is_primary_key": True,
                 "is_foreign_key": False,
             },
             {
                 "column_name": "name",
                 "data_type": "text",
+                "visible_to": [],
                 "is_primary_key": False,
                 "is_foreign_key": False,
             },
@@ -366,7 +434,8 @@ async def test_column_primary_key_flag_rides_the_projection():  # REQ-1652
     cfg = await _run(base=base, tables=[row])
     cols = {c["name"]: c for c in cfg["tables"][0]["columns"]}
     assert cols["id"]["is_primary_key"] is True
-    assert cols["name"]["is_primary_key"] is False
+    # A column that is not a key says nothing (the default is left out of the written file).
+    assert "is_primary_key" not in cols["name"]
     assert "is_foreign_key" not in cols["id"]  # derived from relationships, not part of the model
 
 
@@ -378,6 +447,7 @@ async def test_junction_relationship_projects_its_via_declaration():  # REQ-1586
             "schema_name": "public",
             "table_name": "pets",
             "domain_id": "d",
+            "columns": [],
         },
         {
             "id": 36,
@@ -385,6 +455,7 @@ async def test_junction_relationship_projects_its_via_declaration():  # REQ-1586
             "schema_name": "public",
             "table_name": "pet_companions",
             "domain_id": "d",
+            "columns": [],
         },
     ]
     rels = [
@@ -415,10 +486,10 @@ async def test_junction_relationship_projects_its_via_declaration():  # REQ-1586
     assert "via_table_id" not in r
 
 
-async def test_a_role_that_reaches_no_domain_exports_a_config_the_loader_accepts():
-    """The config schema requires a role's capability and domain lists. A role holding an empty one
-    (the control-plane role reaches no data domain) must export it as an empty list: dropped, the
-    exported config fails validation on the next load."""
+async def test_a_role_with_empty_lists_exports_a_config_the_loader_accepts():
+    """The config schema requires a role's capability and domain lists: an empty one is exported as
+    an empty list, not dropped. The reserved administrative roles (org_admin, platform_admin) are the
+    deployment's own and no configuration may define them, so they are not exported (REQ-1919)."""
     from provisa.core.models import Role
 
     cfg = await _run(
@@ -433,13 +504,6 @@ async def test_a_role_that_reaches_no_domain_exports_a_config_the_loader_accepts
             {"id": "bare", "capabilities": [], "domain_access": ["sales"]},
         ],
     )
-    assert cfg["roles"] == [
-        {
-            "id": "platform_admin",
-            "capabilities": ["platform_settings", "cross_org"],
-            "domain_access": [],
-        },
-        {"id": "bare", "capabilities": [], "domain_access": ["sales"]},
-    ]
+    assert cfg["roles"] == [{"id": "bare", "capabilities": [], "domain_access": ["sales"]}]
     for role in cfg["roles"]:
         Role.model_validate(role)

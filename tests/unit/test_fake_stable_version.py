@@ -64,7 +64,7 @@ def _table(fake: str, stable: bool) -> Table:
 
 async def _save(db: Database, fake: str, stable: bool) -> int | None:
     async with db.acquire() as conn:
-        await table_repo.upsert(conn, _table(fake, stable), origin="admin")
+        await table_repo.upsert(conn, _table(fake, stable))
         row = (
             await conn.execute_core(
                 select(table_columns.c.fake_stable_version).where(

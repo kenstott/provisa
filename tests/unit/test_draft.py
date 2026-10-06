@@ -161,9 +161,8 @@ async def _seed(conn) -> None:
     await source_repo.upsert(
         conn,
         Source(id="crm", type="postgresql", host="h", database="d", username="u", password=""),
-        origin="admin",
     )
-    await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
+    await conn.execute_core(insert(domains).values(id="sales"))
 
 
 async def test_the_data_planes_registry_leaves_drafts_out(model):
@@ -172,8 +171,8 @@ async def test_the_data_planes_registry_leaves_drafts_out(model):
 
     async with model.acquire() as conn:
         await _seed(conn)
-        await table_repo.upsert(conn, _table("orders", draft=False), origin="admin")
-        await table_repo.upsert(conn, _table("staging", draft=True), origin="admin")
+        await table_repo.upsert(conn, _table("orders", draft=False))
+        await table_repo.upsert(conn, _table("staging", draft=True))
         assert [t["table_name"] for t in await fetch_tables(conn)] == ["orders"]
         assert [t["table_name"] for t in await fetch_tables(conn, draft=True)] == ["staging"]
 
@@ -185,7 +184,7 @@ async def test_a_bulk_registration_starts_new_tables_as_draft_and_keeps_a_resync
     async with model.acquire() as conn:
         await _seed(conn)
         assert await admin_registration_draft(conn, "crm", "public", "new_one") is True
-        await table_repo.upsert(conn, _table("orders", draft=False), origin="admin")
+        await table_repo.upsert(conn, _table("orders", draft=False))
         assert await admin_registration_draft(conn, "crm", "public", "orders") is False
 
 

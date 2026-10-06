@@ -62,12 +62,11 @@ async def model(tmp_path):
     async with db.acquire() as conn:
         for rid in ("eu", "us"):
             await region_repo.upsert_store(
-                conn, StoreConfig(id=f"{rid}-pg", url=f"postgresql://{rid}/db"), origin="admin"
+                conn, StoreConfig(id=f"{rid}-pg", url=f"postgresql://{rid}/db")
             )
             await region_repo.upsert_store(
                 conn,
                 StoreConfig(id=f"{rid}-trino", url=f"trino://{rid}:8080", kind="trino-byo"),
-                origin="admin",
             )
             await region_repo.upsert_region(
                 conn,
@@ -80,7 +79,6 @@ async def model(tmp_path):
                     state=f"{rid}-pg",
                     record=f"{rid}-pg",
                 ),
-                origin="admin",
             )
     return db
 
@@ -99,7 +97,6 @@ async def _source(conn, sid: str, region: str | None) -> None:
             password="",
             region=region,
         ),
-        origin="admin",
     )
 
 
@@ -174,7 +171,7 @@ async def test_an_edit_keeps_the_stored_region(model, node):
     node("us")
     async with model.acquire() as conn:
         await _source(conn, "crm", None)
-        await table_repo.upsert(conn, _orders("eu"), origin="admin")
+        await table_repo.upsert(conn, _orders("eu"))
         edited = _orders(None)  # the form rebuilt it without a region
         assert await kept_placement(conn, edited) == ("eu", False)
 
@@ -190,7 +187,7 @@ async def test_changing_a_sources_region_moves_no_table(model, node):
     node("us")
     async with model.acquire() as conn:
         await _source(conn, "crm", "eu")
-        await table_repo.upsert(conn, _orders(None), origin="admin")
+        await table_repo.upsert(conn, _orders(None))
         await region_repo.set_source_region(conn, "crm", "us")
         row = (await conn.execute_core(select(registered_tables))).fetchone()
     assert row.region is None
@@ -204,7 +201,7 @@ async def test_a_tables_region_is_set_and_removed_by_its_own_change(model, node)
     node("us")
     async with model.acquire() as conn:
         await _source(conn, "crm", None)
-        table_id = await table_repo.upsert(conn, _orders(None), origin="admin")
+        table_id = await table_repo.upsert(conn, _orders(None))
         assert table_id is not None
         await region_repo.set_table_region(conn, table_id, "eu")
         with pytest.raises(region_repo.RegionNotSelected):

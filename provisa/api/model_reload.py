@@ -60,6 +60,11 @@ _CONNECTION_COLUMNS = (
     "path",
     "federation_hints",
     "bound",
+    # REQ-1919: the pool's own settings, the store's to hold.
+    "pool_min",
+    "pool_max",
+    "use_pgbouncer",
+    "pgbouncer_port",
 )
 
 # The per-source maps a worker holds, dropped for a source whose row is gone.
@@ -84,8 +89,8 @@ async def reconcile_sources(rows: dict[str, dict]) -> None:
 
     The worker that registers, changes or deletes a source updates its own state in the mutation;
     every other worker reaches the same state here, when its model reload reads the changed rows.
-    A source is built from the config's own entry where the config declares it (that is where its
-    credentials are), else from its row.
+    A source is built from its row, which holds its settings and its credential's reference
+    (REQ-1919, REQ-1695).
 
     A failure here does not stop the schema build it runs in (REQ-1914): the build is what puts a
     hidden column, a row filter or a mask in force on this worker, and that must not wait on a
@@ -127,8 +132,9 @@ async def _reconcile_sources(rows: dict[str, dict]) -> None:
             getattr(rt, name).pop(sid, None)
         state.graphql_remote_sources.pop(sid, None)
     if added or changed:
-        declared = {s.id: s for s in state.config.sources} if state.config is not None else {}
-        models = [declared[sid] if sid in declared else source_from_row(rows[sid]) for sid in seen]
+        # REQ-1919: each source as the store holds it — an admin's edit governs, and the file's
+        # declaration of the same id is never read.
+        models = [source_from_row(rows[sid]) for sid in seen]
         # Every registered source is passed, not only the new ones: the builder also derives the
         # process's enum-type registry from the sources it is given. Pools that exist are kept
         # (SourcePool.add returns for a source it already holds).

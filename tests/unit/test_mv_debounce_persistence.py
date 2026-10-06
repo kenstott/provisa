@@ -73,7 +73,7 @@ async def test_mv_debounce_round_trips_through_repo(tmp_path):
         mv_debounce_max_delay=12.0,
     )
     async with _conn(tmp_path) as conn:
-        tid = await table_repo.upsert(conn, t, origin="admin")
+        tid = await table_repo.upsert(conn, t)
         assert tid is not None
         got = await table_repo.get(conn, tid)
 
@@ -95,7 +95,7 @@ async def test_mv_debounce_defaults_when_unset(tmp_path):
         materialize=True,
     )
     async with _conn(tmp_path) as conn:
-        tid = await table_repo.upsert(conn, t, origin="admin")
+        tid = await table_repo.upsert(conn, t)
         assert tid is not None
         got = await table_repo.get(conn, tid)
 

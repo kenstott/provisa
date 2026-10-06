@@ -169,8 +169,7 @@ def _assignments_for(
         carried = {
             k: v
             for k, v in row.items()
-            # REQ-1919: ``origin`` travels with the assignment, as it does with every model row.
-            if k in ("tag_id", "base_tag_id", "reason", "expires_on", "origin") and v is not None
+            if k in ("tag_id", "base_tag_id", "reason", "expires_on") and v is not None
         }
         fragment = _fragment(row, rel_names)
         if fragment is not None:

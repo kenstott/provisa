@@ -24,7 +24,8 @@ import pytest
 import pytest_asyncio
 
 from provisa.core import domain_policy
-from provisa.core.config_loader import load_config, parse_config_dict
+from provisa.core.config_loader import apply_config, parse_config_dict
+from provisa.core.repositories import table as table_repo
 from provisa.core.repositories import glossary as glossary_repo
 from tests.helpers import ALL_DATA_CAPABILITIES
 
@@ -35,7 +36,7 @@ SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
 async def _init_schema(tenant_db, platform_admin_db):
-    """``platform_admin_db``: every test here calls ``load_config``, which binds the request org
+    """``platform_admin_db``: every test here calls ``apply_config``, which binds the request org
     to read its vault from ``state.admin_db``. The module asks for that database rather than
     relying on an earlier module having left one in place (it fails when it runs first)."""
     async with tenant_db.acquire() as conn:
@@ -98,7 +99,14 @@ def _config(tables: dict) -> dict:
 
 
 async def _load(conn, tables: dict) -> None:
-    await load_config(parse_config_dict(_config(tables)), conn, origin="config")
+    await apply_config(parse_config_dict(_config(tables)), conn)
+
+
+async def _edit(conn, tables: dict) -> None:
+    """An admin's re-registration of the tables (the model store's table upsert): a column it no
+    longer lists is dropped. An apply removes nothing, a column included (REQ-1919)."""
+    for table in parse_config_dict(_config(tables)).tables:
+        await table_repo.upsert(conn, table)
 
 
 async def _terms(conn) -> dict[str, dict]:
@@ -122,21 +130,29 @@ async def test_registration_derives_and_dedups_terms(tenant_db):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_column_departure_on_reload_removes_its_term(tenant_db):
+async def test_column_departure_removes_its_term_and_an_apply_departs_none(tenant_db):
     async with tenant_db.acquire() as conn:
         await _load(conn, {"orders": ["cust_id", "order_dt"]})
         await _load(conn, {"orders": ["cust_id"]})
+        assert "order date" in await _terms(conn)  # the apply kept the column, and its term
+        await _edit(conn, {"orders": ["cust_id"]})
         terms = await _terms(conn)
     assert "order date" not in terms
     assert terms["customer"]["ref_count"] == 1
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_replace_reload_dropping_a_table_sweeps_its_terms(tenant_db):
+async def test_deleting_a_table_sweeps_its_terms_and_an_apply_removes_none(tenant_db):
+    """REQ-1919: an apply that no longer declares a table removes nothing, so its terms stay;
+    deleting the table (the model store's delete) sweeps them."""
     async with tenant_db.acquire() as conn:
         await _load(conn, {"orders": ["cust_id"], "shipments": ["carrier_nm"]})
         assert "carrier name" in await _terms(conn)
         await _load(conn, {"orders": ["cust_id"]})
+        assert "carrier name" in await _terms(conn)
+        shipments = await table_repo.find_by_table_name(conn, "shipments")
+        assert shipments is not None
+        await table_repo.delete(conn, shipments["id"])
         terms = await _terms(conn)
     assert "carrier name" not in terms
     assert "customer" in terms
@@ -150,13 +166,13 @@ async def test_abstract_dependent_flips_removal_to_deprecation_and_relink_revive
         abstract_id = await glossary_repo.create_abstract_term(conn, "business date", domains=set())
         await glossary_repo.add_edge(conn, abstract_id, terms["order date"]["id"], "KIND_OF")
 
-        await _load(conn, {"orders": ["placed_ts"]})
+        await _edit(conn, {"orders": ["placed_ts"]})
         after = await _terms(conn)
         assert after["order date"]["deprecated"] is True
         assert after["order date"]["ref_count"] == 0
         assert "business date" in after  # the abstract term was never left dangling
 
-        await _load(conn, {"orders": ["placed_ts", "order_dt"]})
+        await _edit(conn, {"orders": ["placed_ts", "order_dt"]})
         revived = await _terms(conn)
         assert revived["order date"]["deprecated"] is False
         assert revived["order date"]["id"] == terms["order date"]["id"]
@@ -235,7 +251,7 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
             }
         ]
         async with tenant_db.acquire() as conn:
-            await load_config(parse_config_dict(config), conn, origin="config")
+            await apply_config(parse_config_dict(config), conn)
             terms = await _terms(conn)
             buyer = terms["buyer"]
             customer = terms["customer"]
@@ -266,7 +282,7 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
             }
         ]
         async with tenant_db.acquire() as conn:
-            await load_config(parse_config_dict(config), conn, origin="config")
+            await apply_config(parse_config_dict(config), conn)
             terms = await _terms(conn)
             customer = terms["customer"]
         assert customer["is_abstract"] is False
@@ -292,7 +308,7 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
         ]
         parsed = parse_config_dict(config)
         async with tenant_db.acquire() as conn:
-            await load_config(parsed, conn, origin="config")
+            await apply_config(parsed, conn)
             first = (await _terms(conn))["customer"]
             assert first["is_abstract"] is False  # create-path fix already covers this load
 
@@ -304,7 +320,7 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
                 "UPDATE glossary_terms SET is_abstract = TRUE WHERE id = $1", first["id"]
             )
 
-            await load_config(parsed, conn, origin="config")
+            await apply_config(parsed, conn)
             second = (await _terms(conn))["customer"]
         assert second["is_abstract"] is False
         assert second["id"] == first["id"]
@@ -322,4 +338,4 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
         ]
         async with tenant_db.acquire() as conn:
             with pytest.raises(ValueError, match="nonexistent term"):
-                await load_config(parse_config_dict(config), conn, origin="config")
+                await apply_config(parse_config_dict(config), conn)

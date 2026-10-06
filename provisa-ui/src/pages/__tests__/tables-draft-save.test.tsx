@@ -65,7 +65,6 @@ function table(
   return {
     id,
     sourceId: "sales-pg",
-    origin: "admin",
     domainId: "sales",
     schemaName: "sales",
     tableName,

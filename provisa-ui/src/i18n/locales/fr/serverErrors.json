@@ -210,10 +210,6 @@
       "self_role_change": "Un utilisateur ne peut pas changer son propre rôle. Demandez à un autre administrateur (REQ-1308).",
       "view_not_permitted": "Vous n'êtes pas autorisé à consulter cette organisation"
     },
-    "origin": {
-      "config_object_deleted": "{{name}} est déclaré dans la configuration. Il est supprimé maintenant ; le prochain chargement de la configuration le recréera tant que le fichier le déclare encore.",
-      "config_object_edited": "{{name}} est déclaré dans la configuration. La modification est enregistrée ; le prochain chargement de la configuration réappliquera le contenu du fichier."
-    },
     "platform": {
       "control_plane_role_required": "Un administrateur de la plateforme est requis.",
       "right_required": "Capacité {{right}} requise",
@@ -376,7 +372,6 @@
       "docker_not_found": "docker introuvable dans le PATH",
       "docker_restart_timeout": "le redémarrage de docker a expiré",
       "domain_policy_catalog_exists": "La politique de domaines ne peut pas changer tant que cette organisation possède un catalogue : {{tables}} table(s), {{sources}} source(s), {{domains}} domaine(s). Supprimez-les d'abord.",
-      "domain_policy_catalog_in_config": "La politique de domaines ne peut pas être modifiée ici : le catalogue de cette organisation est déclaré dans la configuration ({{tables}} table(s), {{sources}} source(s), {{domains}} domaine(s)). Définissez la politique dans le fichier de configuration.",
       "encryption_provider_unavailable": "le fournisseur de chiffrement « {{provider}} » n'est pas disponible (son SDK/runtime n'est pas installé)",
       "invalid_body": "La requête de paramètres n'est pas valide.",
       "invalid_value": "La valeur de {{field}} a été refusée.",

@@ -86,7 +86,7 @@ async def planes(docker_postgres, tmp_path, monkeypatch):
 
 async def _add_domain(db, domain_id: str) -> None:
     async with db.acquire() as conn:
-        await conn.execute_core(domains.insert().values(id=domain_id, origin="admin"))
+        await conn.execute_core(domains.insert().values(id=domain_id))
 
 
 async def _position(planes) -> tuple[str | None, str | None]:

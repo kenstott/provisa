@@ -39,7 +39,6 @@ if TYPE_CHECKING:
 from provisa.compiler.sql_types import key_list
 from provisa.core.paging import stored_paging
 from provisa.core.repositories import rls as rls_repo
-from provisa.core.repositories import origin as origin_repo
 from provisa.api.admin.capabilities import require_capability
 from provisa.api.admin.types import (
     CalendarInput,
@@ -93,7 +92,6 @@ from provisa.api.admin._row_mappers import (  # noqa: E402
     _cdc_model_from_input,
 )
 from provisa.api.admin.schema_common import (  # noqa: E402
-    config_warnings as _config_warnings,
     _add_source_pool,
     _analyze_source_on_engine,
     _configure_govdata_env,
@@ -245,7 +243,7 @@ async def _upsert_relationship_impl(
 
         try:
             async with _conn.transaction():
-                await rel_repo.upsert(_conn, model, origin="admin")
+                await rel_repo.upsert(_conn, model)
                 # REQ-1494: the edge's two columns, both faked, must declare one fake; the save
                 # is undone when they do not.
                 await relationship_fake_refusal(_conn, input.id)
@@ -616,31 +614,6 @@ def _residency_refusal(
             success=False, message=str(refused), code=refused.code, params=refused.params
         )
     return None
-
-
-def _refuse_config_declared(source_id: str) -> MutationResult | None:  # REQ-826, REQ-030
-    """The refusal for a replication setting on a source the configuration file declares, or None
-    when the control plane owns the source.
-
-    Routing and replication read a config-declared source FROM the configuration
-    (``federation.registry_view.registered_sources``); its control-plane row is not consulted. A
-    setter that wrote the row and answered "success" told the operator a floor was in place while
-    every read still reached the source live — so the change is refused, not stored."""
-    from provisa.api.app import state
-
-    config = state.config
-    if config is None or all(s.id != source_id for s in config.sources):
-        return None
-    return MutationResult(
-        success=False,
-        message=(
-            f"Source {source_id!r} is declared in the configuration file, and its replication "
-            "settings are read from there: this change would be stored and would not be "
-            "enforced. Set it on the source in the configuration file and restart."
-        ),
-        code="schema.source_setting_config_declared",
-        params={"source": source_id},
-    )
 
 
 @strawberry.type
@@ -1272,6 +1245,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 sentinel_path=input.sentinel_path,  # REQ-1148
                 freshness_gate=input.freshness_gate,  # REQ-860
                 cdc=_cdc_model_from_input(input),
+                # REQ-1919: the settings the form does not carry are kept as the store holds them;
+                # writing a default over one would change it without anyone choosing to.
+                **{name: existing[name] for name in source_repo.KEPT_ON_FORM_EDIT},
             )
             if input.allowed_domains is not None:
                 from provisa.api.admin.capabilities import require_reach_of_added_domains
@@ -1282,8 +1258,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     input.allowed_domains,
                     empty_is_all=True,
                 )
-            _was = await origin_repo.of(_conn, "source", input.id)
-            await source_repo.upsert(_conn, model, origin="admin")
+            await source_repo.upsert(_conn, model)
             if input.allowed_domains is not None:
                 await conn.execute_core(
                     update(sources)
@@ -1393,7 +1368,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Source {input.id!r} updated",
             code="schema.source_updated",
             params={"source": input.id},
-            warnings=_config_warnings("source", input.id, _was, "edited"),
         )
 
     @strawberry.mutation
@@ -1469,7 +1443,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message=f"Source {id!r} deleted",
                 code="schema.source_deleted",
                 params={"source": id},
-                warnings=_config_warnings("source", id, _existing["origin"], "deleted"),
             )
         return MutationResult(
             success=False,
@@ -1527,14 +1500,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             graphql_alias=input.graphql_alias or None,
         )
         async with pool.acquire() as conn:
-            _was = await origin_repo.of(cast("Connection", conn), "domain", input.id)
-            await domain_repo.upsert(cast("Connection", conn), model, origin="admin")
+            await domain_repo.upsert(cast("Connection", conn), model)
         return MutationResult(
             success=True,
             message=f"Domain {input.id!r} created",
             code="schema.domain_created",
             params={"domain": input.id},
-            warnings=_config_warnings("domain", input.id, _was, "edited"),
         )
 
     @strawberry.mutation
@@ -1546,7 +1517,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            _was = await origin_repo.of(cast("Connection", conn), "domain", id)
             try:
                 deleted = await domain_repo.delete(cast("Connection", conn), id)
             except domain_repo.DomainDeleteRefused as refused:
@@ -1573,7 +1543,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message=f"Domain {id!r} deleted",
                 code="schema.domain_deleted",
                 params={"domain": id},
-                warnings=_config_warnings("domain", id, _was, "deleted"),
             )
         return MutationResult(
             success=False,
@@ -1620,7 +1589,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 support=input.support,
                 custom_properties=input.custom_properties,
             )
-            await data_product_repo.upsert(conn, model, origin="admin")
+            await data_product_repo.upsert(conn, model)
         return MutationResult(
             success=True,
             message=f"Data product {input.id!r} created",
@@ -1736,7 +1705,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            await tag_repo.upsert(cast("Connection", conn), model, origin="admin")
+            await tag_repo.upsert(cast("Connection", conn), model)
         await _refresh_config_tags()
         return MutationResult(
             success=True,
@@ -1908,7 +1877,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.tag_scope_mismatch",
                     params={"tag": input.tag_id, "objectType": input.object_type},
                 )
-            await tag_repo.assign(cast("Connection", conn), model, origin="admin")
+            await tag_repo.assign(cast("Connection", conn), model)
         await _refresh_config_tags()
         return MutationResult(
             success=True,
@@ -2136,14 +2105,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             rate_limit=rate_limit,
             parent_role_id=parent_id,
             residency_values=input.residency_values,  # REQ-1921
+            # REQ-1919: what the form does not carry is kept as the store holds it.
+            **({} if held is None else {name: held[name] for name in role_repo.KEPT_ON_FORM_EDIT}),
         )
         async with pool.acquire() as conn:
-            _was = await origin_repo.of(cast("Connection", conn), "role", input.id)
             await role_repo.upsert(
                 cast("Connection", conn),
                 model,
                 org_id=_resolve_admin_context(info),
-                origin="admin",
             )
         # A new role has no state.schemas[role_id]/state.contexts[role_id] until some rebuild
         # runs; without this, the role is unusable until an unrelated mutation happens to trigger
@@ -2154,7 +2123,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Role {input.id!r} created",
             code="schema.role_created",
             params={"role": input.id},
-            warnings=_config_warnings("role", input.id, _was, "edited"),
         )
 
     @strawberry.mutation
@@ -2210,7 +2178,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # REQ-1320: each fact measure auto-registers as a governed metric (upsert by name).
         async with pool.acquire() as conn:
             for m in fact_metrics:
-                await metric_repo.upsert(cast("Connection", conn), m, origin="admin")
+                await metric_repo.upsert(cast("Connection", conn), m)
         if fact_metrics:
             await _rebuild_schemas()  # republish state.metrics + schema metric blocks
         return MutationResult(
@@ -2248,7 +2216,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         pool = await _get_pool()
         try:
             async with pool.acquire() as conn:
-                await metric_repo.upsert(cast("Connection", conn), model, origin="admin")
+                await metric_repo.upsert(cast("Connection", conn), model)
                 # REQ-1318: every registered view whose view_metrics spec references this
                 # metric regenerates its stored view_sql against the UPDATED definition.
                 # Free-hand view_sql born from inline metric() calls carries no stored
@@ -2449,11 +2417,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _delta_refusal = await table_delta_refusal(_conn, model)  # REQ-874
             if _delta_refusal is not None:
                 return _delta_refusal
-            _was = await origin_repo.of_registration(
-                _conn, model.source_id, model.schema_name, model.table_name
-            )
             try:
-                table_id = await table_repo.upsert(_conn, model, origin="admin")
+                model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
+                table_id = await table_repo.upsert(_conn, model)
             except table_repo.ViewLoopRefused as _loop:
                 # REQ-1918: a view that would read itself through other views is refused at save.
                 return MutationResult(
@@ -2568,7 +2534,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Table {input.table_name!r} updated (id={table_id})",
             code="schema.table_updated",
             params={"table": input.table_name, "id": table_id},
-            warnings=_config_warnings("table", input.table_name, _was, "edited"),
         )
 
     @strawberry.mutation
@@ -2590,7 +2555,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.table_not_found",
                     params={"table": id},
                 )
-            held = await table_repo.get(cast("Connection", conn), id)
             try:
                 deleted = await table_repo.delete(cast("Connection", conn), id)
             except table_repo.TableDeleteRefused as refused:
@@ -2622,11 +2586,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message=f"Table {id} deleted",
                 code="schema.table_deleted",
                 params={"table": id},
-                warnings=(
-                    _config_warnings("table", held["table_name"], held["origin"], "deleted")
-                    if held is not None
-                    else []
-                ),
             )
         return MutationResult(
             success=False,
@@ -2643,7 +2602,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         require_capability(info, "user_management")  # REQ-1531: see create_role
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            _was = await origin_repo.of(cast("Connection", conn), "role", id)
             try:
                 deleted = await role_repo.delete(cast("Connection", conn), id)
             except role_repo.RoleDeleteRefused as refused:
@@ -2671,7 +2629,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message=f"Role {id!r} deleted",
                 code="schema.role_deleted",
                 params={"role": id},
-                warnings=_config_warnings("role", id, _was, "deleted"),
             )
         return MutationResult(
             success=False,
@@ -2694,8 +2651,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             c = cast("Connection", conn)
-            _was = await origin_repo.of(c, "table", table_id)
-            if _was is None:
+            held = (
+                await c.execute_core(
+                    select(registered_tables.c.id).where(registered_tables.c.id == table_id)
+                )
+            ).fetchone()
+            if held is None:
                 return MutationResult(
                     success=False,
                     message=f"Table {table_id} not found",
@@ -2711,7 +2672,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Role {role_id!r} removed from the grants of table {table_id}",
             code="schema.role_revoked_from_table",
             params={"role": role_id, "id": table_id},
-            warnings=_config_warnings("table", table_id, _was, "edited") if changed else [],
         )
 
     @strawberry.mutation
@@ -2739,7 +2699,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 await c.execute_core(
                     select(
                         *[
-                            table.c.origin,
+                            table.c.name,
                             *([table.c.domain_id] if kind != GrantKind.METRIC else []),
                         ]
                     ).where(table.c.name == name)
@@ -2766,7 +2726,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Role {role_id!r} removed from {object_kind} {name!r}",
             code="schema.role_revoked_from_object",
             params={"role": role_id, "kind": object_kind, "name": name},
-            warnings=_config_warnings(object_kind, name, row.origin, "edited") if changed else [],
         )
 
     @strawberry.mutation
@@ -2825,7 +2784,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         try:
             async with pool.acquire() as conn:
-                await rls_repo.upsert(cast("Connection", conn), model, origin="admin")
+                await rls_repo.upsert(cast("Connection", conn), model)
         except ValueError as e:
             return MutationResult(success=False, message=str(e))
         # state.rls_contexts[role_id] is only ever populated by _rebuild_schemas's own
@@ -3245,9 +3204,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         no value of its own inherits. None = Default (the global threshold), -1 = never, N > 0 =
         once a table passes N governed statements per interval, 0 = always."""
         require_capability(info, "source_registration")
-        refused = _refuse_config_declared(source_id)
-        if refused is not None:
-            return refused
         invalid = _invalid_replicate(replicate)
         if invalid is not None:
             return invalid
@@ -3296,12 +3252,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Set when one table is served from its replica; None = inherit its source's value.
         -1 = never, N > 0 = once it passes N governed statements per interval, 0 = always."""
         require_capability(info, "table_registration")
-        from provisa.api.app import state
-
-        owner = next((t["source_id"] for t in state.tables if t["id"] == table_id), None)
-        refused = _refuse_config_declared(owner) if owner is not None else None
-        if refused is not None:
-            return refused
         invalid = _invalid_replicate(replicate)
         if invalid is not None:
             return invalid
@@ -4304,7 +4254,6 @@ async def _upsert_action_rls_rule(
         await rls_repo.upsert(
             cast("Connection", conn),
             RLSRuleModel(action_name=name, role_id=input.role_id, filter=input.filter_expr),
-            origin="admin",
         )
     # See upsert_rls_rule's own matching rebuild — this action-RLS path bypasses that function
     # entirely (early-returns before it), so it needs the identical rebuild call itself.

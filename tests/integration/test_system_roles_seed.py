@@ -153,9 +153,9 @@ async def test_an_assignment_naming_a_retired_id_is_rewritten_to_platform_admin(
     async with tenant_db.acquire() as conn:
         await conn.execute_core(
             text(
-                "INSERT INTO roles (id, capabilities, domain_access, org_id, origin) "
-                "VALUES ('admin', '[\"admin\"]'::jsonb, '[\"*\"]'::jsonb, NULL, 'seed'), "
-                "('superadmin', '[\"superadmin\"]'::jsonb, '[\"*\"]'::jsonb, NULL, 'seed')"
+                "INSERT INTO roles (id, capabilities, domain_access, org_id) "
+                "VALUES ('admin', '[\"admin\"]'::jsonb, '[\"*\"]'::jsonb, NULL), "
+                "('superadmin', '[\"superadmin\"]'::jsonb, '[\"*\"]'::jsonb, NULL)"
             )
         )
         await conn.execute_core(

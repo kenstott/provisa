@@ -74,6 +74,11 @@ def _registered(source_id: str, schema_name: str, table_name: str) -> dict:
         "replicate": None,
         "load_protected": None,
         "region": None,  # REQ-1921: a registration always carries its region
+        # REQ-1919: the landing settings are the row's.
+        "cache_ttl": None,
+        "live": None,
+        "watermark_column": None,
+        "probe_type": None,
         "columns": [
             {
                 "column_name": "id",
@@ -99,15 +104,16 @@ def _state(monkeypatch, engine, source, registered: list[dict], *, catalog: str)
     async def _fetch_tables(_conn):
         return registered
 
-    async def _no_ui_sources(_conn):
-        return []
+    async def _source_rows(_conn):
+        # REQ-1919: the model's sources are the store's rows; the source is held there.
+        return [{**source.model_dump(), "password_ref": source.password}]
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
     # REQ-1939: no synthetic dataset is generated in this model.
     monkeypatch.setattr("provisa.synthetic.datasets.generated_tables", no_synthetic_tables)
     monkeypatch.setattr("provisa.federation.replica_state.promotion", no_promoted_tables)
     monkeypatch.setattr("provisa.federation.replica_builds.store_identity", no_engine_store)
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
+    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
     # The org's runtime is built, as it is before any work is bound to it (REQ-1266); it keeps no
     # store of its own (REQ-1048), so its replicas are on the platform's.
     import provisa.api.app as app_mod

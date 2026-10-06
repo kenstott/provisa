@@ -8,23 +8,25 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Generate the CURRENT config from live state and diff it against the on-disk file (REQ-164).
+"""The model as it stands, written as a configuration file, and its diff against the file
+(REQ-164, REQ-1096, REQ-1919).
 
-The on-disk config is only the boot seed; admin mutations write to the control-plane DB, so the file
-goes stale — a materialized view created in the UI never appears in it. ``build_live_config`` rebuilds
-the DB-backed sections (tables incl views/MVs, relationships, roles, rls_rules, domains) from live
-state and overlays them on the file base; file-only sections and source credentials are preserved.
+The deployment's configuration file seeds the model store once; from then on the store alone owns
+the model, so the file goes stale — a materialized view created in the UI never appears in it.
+``build_live_config`` writes the configuration the store holds now: the file's settings, with every
+model section (sources, domains, roles, tables and their columns, relationships, row filters,
+metrics, data products, tags and their assignments, glossary terms, commands, webhooks, scheduled
+triggers, stores and regions, naming rules) taken from the store (``provisa.core.store_config``),
+or only the sections an admin chose. Applied to an empty store it builds the same model.
 
 Two things make the diff meaningful rather than noise:
-  * Faithful projection — each DB row is projected to ONLY the config-schema fields (DB-only columns
-    like ``disable_cypher``/``version`` are dropped), and integer ``*_table_id``
-    references are resolved back to the table NAMES the config uses (the DB stores int ids).
+  * Faithful projection — each row is projected onto the configuration's own models, by their
+    config names, with table-id references resolved back to the table names the config uses.
   * Normalization — both sides run through the SAME deep key-sort + stable entity-sort, so section /
     key / entity ORDER never differs.
-
-Internal ``meta``/``ops`` entities and the unassigned (empty-id) domain — never in a user file — are
-dropped so the current matches the file's scope.
 """
+
+# Requirements: REQ-164, REQ-1096, REQ-1919
 
 import difflib
 import json
@@ -34,78 +36,6 @@ import yaml
 
 from provisa.api.admin._config_io import config_path, read_config
 
-_INTERNAL_DOMAINS = frozenset({"meta", "ops"})
-
-# Config-schema field whitelists per section — the ONLY keys that belong in the exported config. DB
-# rows carry extra control-plane columns; anything outside these sets is dropped.
-_TABLE_KEYS = frozenset(
-    {
-        "source_id",
-        "domain_id",
-        "schema",
-        "table",
-        "alias",
-        "description",
-        "columns",
-        "view_sql",
-        "product_id",  # REQ-1634: dropping it unmarks the table as a data-product member
-        "materialize",
-        "enable_aggregates",
-        "enable_group_by",
-        "unique_constraints",  # REQ-1093
-        "modeling_role",  # REQ-1320
-        "modeling_history",  # REQ-1320
-    }
-)
-# data_type and alias included on purpose: the DB-truth publish path (REQ-1389) builds its
-# snapshot through this projection, and dropping them published columns with empty types,
-# descriptions, and physical-only names. is_primary_key rides for the same reason (REQ-1652): the
-# key is resolved into the registration tables, never restated in YAML, and the snapshot's
-# TableAsset.primary_key -- what Snowflake Horizon publishes as the PRIMARY KEY -- is read off it.
-_COLUMN_KEYS = frozenset(
-    {"name", "description", "visible_to", "data_type", "alias", "is_primary_key"}
-)
-_METRIC_KEYS = frozenset(  # REQ-1317, REQ-1319, REQ-1320
-    {"name", "expression", "datatype", "description", "ai_context", "visible_to", "from_fact"}
-)
-_REL_KEYS = frozenset(
-    {
-        "id",
-        "alias",
-        "graphql_alias",
-        "cardinality",
-        "source_table_id",
-        "target_table_id",
-        "source_column",
-        "target_column",
-        # REQ-1586/REQ-1652: a junction-backed relationship IS its via declaration. Dropping it
-        # projected every junction edge as a direct column pair, and the Snowflake Horizon export
-        # then published pets.id -> pets.id as a FOREIGN KEY instead of the junction's two hops.
-        "via_table",
-        "via_source_column",
-        "via_target_column",
-        "via_type_column",
-        "via_type_value",
-        "via_label_source",
-    }
-)
-_ROLE_KEYS = frozenset({"id", "capabilities", "domain_access"})
-# Required by the config schema (models.Role): exported even when empty.
-_ROLE_REQUIRED_LISTS = frozenset({"capabilities", "domain_access"})
-_RLS_KEYS = frozenset({"table_id", "domain_id", "role_id", "filter"})
-_DOMAIN_KEYS = frozenset({"id", "description", "steward"})  # REQ-609
-_DATA_PRODUCT_KEYS = frozenset(
-    {
-        "id",
-        "domain_id",
-        "name",
-        "owner_role",
-        "purpose",
-        "support_contact",
-        "publish",
-    }  # REQ-1634, REQ-1635
-)
-
 
 def _plain(obj: Any) -> Any:
     """Coerce a value tree to plain YAML/JSON-safe types. DB rows carry SQLAlchemy ``quoted_name``
@@ -113,60 +43,6 @@ def _plain(obj: Any) -> Any:
     JSON round-trip (str subclasses serialize as plain strings; ``default=str`` catches the rest)
     flattens the tree to str/int/float/bool/None/list/dict."""
     return json.loads(json.dumps(obj, default=str))
-
-
-def _project(
-    row: dict,
-    allowed: frozenset[str],
-    *,
-    id_to_name: dict[int, str],
-    keep_empty: frozenset[str] = frozenset(),
-) -> dict:
-    """Keep only config-schema keys; drop null/empty; resolve integer ``*_table_id`` refs to the table
-    name the config uses (the DB stores int ids, the config stores names).
-
-    ``keep_empty`` names the keys the config schema REQUIRES: an empty list there is the value (a role
-    that reaches no domain), and dropping it produces a config the loader refuses."""
-    out: dict[str, Any] = {}
-    for k, v in row.items():
-        key = str(k)
-        if key not in allowed or v is None:
-            continue
-        if (v == [] or v == "") and key not in keep_empty:
-            continue
-        if key.endswith("_table_id"):
-            try:
-                v = id_to_name.get(int(v), v)
-            except (TypeError, ValueError):
-                pass
-        out[key] = v
-    return out
-
-
-def _rel_row(row: dict, id_to_name: dict[int, str]) -> dict:
-    """The DB keys a junction by ``via_table_id``; the config names it ``via_table``."""
-    via_id = row.get("via_table_id")
-    if via_id is None:
-        return row
-    return {**row, "via_table": id_to_name.get(int(via_id), via_id)}
-
-
-def _table_to_config(row: dict, id_to_name: dict[int, str]) -> dict:
-    row = {**row, "schema": row.get("schema_name"), "table": row.get("table_name")}
-    out = _project(row, _TABLE_KEYS, id_to_name=id_to_name)
-    if isinstance(out.get("columns"), list):
-        # DB column rows carry ``column_name``; the config schema key is ``name`` — map it the
-        # same way schema_name/table_name are mapped above, or every column projects to {} and
-        # ProvisaConfig validation (the Ossie endpoint validates on every read) fails. And
-        # ``visible_to`` must survive even when EMPTY: [] means "visible to no role" (how
-        # native-filter columns are seeded) — the generic drop-empties rule would delete a
-        # field the config schema requires and that carries meaning.
-        out["columns"] = [
-            _project({**c, "name": c.get("column_name")}, _COLUMN_KEYS, id_to_name=id_to_name)
-            | {"visible_to": list(c.get("visible_to") or [])}
-            for c in out["columns"]
-        ]
-    return out
 
 
 def _entity_sort_key(item: Any) -> str:
@@ -191,101 +67,29 @@ def normalize_config(cfg: Any) -> Any:
     return cfg
 
 
-async def build_live_config() -> dict:
-    """The current config: file base with its DB-backed sections rebuilt from live state, each row
-    projected to the config schema and table-id refs resolved to names. File-only sections and source
-    credentials are preserved; internal meta/ops and unassigned-domain entities are excluded."""
+async def build_live_config(sections: list[str] | None = None) -> dict:
+    """The current configuration: the deployment file's settings with every model section the
+    store holds (REQ-1919). ``sections`` names the part of the model an admin chose; then only
+    those sections are written (``store_config.only_sections``)."""
     from provisa.api.admin.schema_helpers import _get_pool
-    from provisa.core.repositories import data_product as data_product_repo
-    from provisa.core.repositories import domain as domain_repo
-    from provisa.core.repositories import metric as metric_repo
-    from provisa.core.repositories import relationship as rel_repo
-    from provisa.core.repositories import rls as rls_repo
-    from provisa.core.repositories import role as role_repo
-    from provisa.core.repositories import table as table_repo
+    from provisa.core.store_config import only_sections, store_model, with_store_model
 
-    base = read_config()
     pool = await _get_pool()
     async with pool.acquire() as conn:
-        tables = await table_repo.list_all(conn)
-        rels = await rel_repo.list_all(conn)
-        roles = await role_repo.list_all(conn)
-        rls = await rls_repo.list_all(conn)
-        domains = await domain_repo.list_all(conn)
-        metric_rows = await metric_repo.list_all(conn)  # REQ-1317
-        data_products = await data_product_repo.list_all(conn)  # REQ-1634
-
-    def _internal_domain(d: Any) -> bool:
-        return not d or str(d) in _INTERNAL_DOMAINS
-
-    def _is_internal_table(t: dict) -> bool:
-        # meta/ops tables are seeded with those domain_ids (startup_seed) — the ONE reliable signal. A
-        # user view/MV lives under org_*_mv_cache but keeps its real domain, so schema-prefix checks
-        # would wrongly exclude it.
-        return _internal_domain(t.get("domain_id"))
-
-    # meta/ops tables are implied by the internal model and MUST NOT appear in the external config —
-    # nor may relationships/rls that reference them.
-    internal_table_ids: set[int] = {
-        int(t["id"]) for t in tables if t.get("id") is not None and _is_internal_table(t)
-    }
-
-    # int table id → the VIRTUAL name the config references: alias when set, else table_name (matches
-    # table_repo.find_by_table_name, the loader's resolver). Getting this order wrong made every
-    # aliased relationship diff.
-    id_to_name: dict[int, str] = {}
-    for t in tables:
-        tid = t.get("id")
-        name = t.get("alias") or t.get("table_name")
-        if tid is not None and name is not None:
-            id_to_name[int(tid)] = str(name)
-
-    def _refs_internal(row: dict) -> bool:
-        for k in ("source_table_id", "target_table_id", "table_id"):
-            v = row.get(k)
-            try:
-                if v is not None and int(v) in internal_table_ids:
-                    return True
-            except (TypeError, ValueError):
-                pass
-        return False
-
-    base["tables"] = [_table_to_config(t, id_to_name) for t in tables if not _is_internal_table(t)]
-    base["relationships"] = [
-        _project(_rel_row(r, id_to_name), _REL_KEYS, id_to_name=id_to_name)
-        for r in rels
-        if not _refs_internal(r)
-    ]
-    base["roles"] = [
-        _project(r, _ROLE_KEYS, id_to_name=id_to_name, keep_empty=_ROLE_REQUIRED_LISTS)
-        for r in roles
-    ]
-    base["rls_rules"] = [
-        _project(r, _RLS_KEYS, id_to_name=id_to_name)
-        for r in rls
-        if not _refs_internal(r) and not _internal_domain(r.get("domain_id"))
-    ]
-    base["domains"] = [
-        _project(d, _DOMAIN_KEYS, id_to_name=id_to_name)
-        for d in domains
-        if not _internal_domain(d.get("id"))
-    ]
-    base["data_products"] = [  # REQ-1634
-        _project(p, _DATA_PRODUCT_KEYS, id_to_name=id_to_name) for p in data_products
-    ]
-    base["metrics"] = [  # REQ-1317
-        _project(m, _METRIC_KEYS, id_to_name=id_to_name) for m in metric_rows
-    ]
-    return _plain(base)
+        model = await store_model(conn)
+    cfg = with_store_model(read_config(), model)
+    if sections is not None:
+        cfg = only_sections(cfg, sections)
+    return _plain(cfg)
 
 
 def _dump(cfg: Any) -> str:
     return yaml.dump(normalize_config(cfg), default_flow_style=False, sort_keys=False)
 
 
-async def build_live_config_yaml() -> str:
-    """The current config as normalized YAML (for standalone download)."""
-    return _dump(await build_live_config())
+async def build_live_config_yaml(sections: list[str] | None = None) -> str:
+    """The current config — or the chosen sections of its model — as normalized YAML."""
+    return _dump(await build_live_config(sections))
 
 
 def _baseline() -> str:

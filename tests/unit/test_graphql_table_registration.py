@@ -81,11 +81,9 @@ async def state() -> SimpleNamespace:
     await _init_schema_portable(db)
     async with db.acquire() as conn:
         await conn.execute_core(
-            insert(sources).values(
-                id="shop", type="graphql_remote", path=URL, mapping={}, origin="admin"
-            )
+            insert(sources).values(id="shop", type="graphql_remote", path=URL, mapping={})
         )
-        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
+        await conn.execute_core(insert(domains).values(id="sales"))
     reg = {
         "source_id": "shop",
         "url": URL,
@@ -128,7 +126,6 @@ async def _register(state, table_name: str, *columns: str, domain: str = "sales"
                 table_name=table_name,
                 columns=stored,
             ),
-            origin="admin",
         )
     return fitted
 

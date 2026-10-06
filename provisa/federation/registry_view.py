@@ -10,14 +10,11 @@
 
 """The registered sources and tables a landing path drives off (REQ-1674).
 
-The config file is not the registry. A source created through the Sources page and a table
-registered through Register Table live in the control plane and never in ``state.config``, so a
-landing path that read ``config.sources``/``config.tables`` — the event-loop wiring, the query-time
-residency check, the pre-read land — saw none of them: the query reached the landed-replica name
-before anything had landed it. These two readers give every landing path the same view: the
-control plane's rows, with the config's per-source/per-table settings (passwords are secret refs
-only the config carries; change signal, cadence, live block) laid over them where the config
-declares the same id.
+The config file is not the registry. After the seed the model store alone owns the model
+(REQ-1919): a source or table is what its control-plane row says — whether a configuration seeded
+it, the Sources page created it or Register Table registered it — and one the file declares that
+the store does not hold does not exist. These two readers give every landing path the same view:
+the control plane's rows.
 """
 
 from __future__ import annotations
@@ -40,10 +37,9 @@ def _source_from_row(row: dict) -> Source:
 
 
 async def registered_sources(state: Any, conn: Any | None = None) -> list[Source]:  # REQ-1674
-    """Every registered source: the config's Source where the config declares the id (it carries
-    the operator's settings), else the control-plane row -- which since REQ-1695 carries its own
-    password reference too. Built-in sources (provisa-admin, provisa-otel, the derived-view source)
-    are never landed and stay out.
+    """Every registered source, as its control-plane row holds it — its settings and its password
+    reference (REQ-1695, REQ-1919). Built-in sources (provisa-admin, provisa-otel, the
+    derived-view source) are never landed and stay out.
 
     REQ-1892: cached (TTL + schema-generation-keyed) when called on the pool-acquire path
     (``conn`` unset) -- this is read 2-3 times per governed call (`ensure_rows_resident`,
@@ -54,14 +50,12 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
     from provisa.core.request_context import current_org
     from provisa.federation.registered_sources_cache import get_cache_for
 
-    config = getattr(state, "config", None)
-    by_id: dict[str, Source] = {s.id: s for s in (getattr(config, "sources", None) or [])}
     db = getattr(state, "model_db", None)
     if db is None:
-        return list(by_id.values())
+        return []
     if conn is not None:
         rows = await source_repo.list_all(conn)
-        merged = _merge_source_rows(by_id, rows)
+        merged = _source_rows(rows)
         await _attach_file_glob_tables(merged, conn)
         return merged
 
@@ -76,7 +70,7 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
         return cached
     async with db.acquire() as _conn:
         rows = await source_repo.list_all(_conn)
-        out = _merge_source_rows(by_id, rows)
+        out = _source_rows(rows)
         await _attach_file_glob_tables(out, _conn)
     rs_cache.put(generation, out)
     return out
@@ -140,22 +134,16 @@ def operator_floor(state: Any, table_ids: Iterable[int]) -> dict[str, str]:  # R
     return floor
 
 
-def _merge_source_rows(by_id: dict[str, Source], rows: list[dict]) -> list[Source]:
-    """The control-plane rows merged over `by_id` (config-declared sources), factored out so both
-    the cached (pool-acquire) and uncached (caller-supplied ``conn``) paths build identically."""
-    by_id = dict(by_id)
-    for row in rows:
-        sid = row["id"]
-        if sid in by_id or sid in BUILT_IN_SOURCE_IDS:
-            continue
-        by_id[sid] = _source_from_row(row)
-    return list(by_id.values())
+def _source_rows(rows: list[dict]) -> list[Source]:
+    """The control-plane rows as Sources, built-in sources left out. Factored out so both the
+    cached (pool-acquire) and uncached (caller-supplied ``conn``) paths build identically."""
+    return [_source_from_row(row) for row in rows if row["id"] not in BUILT_IN_SOURCE_IDS]
 
 
 async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  # REQ-1674
     """Every registered table, in the shape the landing paths read: the control plane's semantic
-    sql name and resolved column types, with the config table's landing settings (live block, change
-    signal, watermark, cadence, probe) where the config declares the same source + table.
+    sql name, resolved column types and landing settings (live block, change signal, watermark,
+    cadence, probe) — the row's, never the file's (REQ-1919).
 
     REQ-1882: cached (TTL + schema-generation-keyed) when called on the pool-acquire path
     (``conn`` unset) — this is read on every single governed query's residency/pk-bounds step with
@@ -163,21 +151,15 @@ async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  
     running in-line on the shared event loop under concurrent load. A caller supplying its own
     ``conn`` (already inside an explicit transaction) bypasses the cache, unchanged from before."""
     from provisa.api.admin.db_queries import fetch_tables
-    from provisa.compiler.naming import apply_sql_name
     from provisa.core.request_context import current_org
     from provisa.federation.registered_tables_cache import get_cache_for
 
-    config = getattr(state, "config", None)
-    cfg_by = {
-        (t.source_id, apply_sql_name(t.table_name)): t
-        for t in (getattr(config, "tables", None) or [])
-    }
     db = getattr(state, "model_db", None)
     if db is None:
         return []
     if conn is not None:
         registered = await fetch_tables(conn)
-        return _build_registered_tables(registered, cfg_by)
+        return _build_registered_tables(registered)
 
     generation = (
         current_org.get(None),
@@ -190,7 +172,7 @@ async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  
         return cached
     async with db.acquire() as _conn:
         registered = await fetch_tables(_conn)
-    out = _build_registered_tables(registered, cfg_by)
+    out = _build_registered_tables(registered)
     rt_cache.put(generation, out)
     return out
 
@@ -212,15 +194,15 @@ def _delta_of(raw: Any) -> Any:
     return DeltaConfig(**data)
 
 
-def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
+def _build_registered_tables(registered: list[dict]) -> list[Any]:
     """The SimpleNamespace-shaping loop `registered_tables` runs over `fetch_tables`' rows,
     factored out so both the cached (pool-acquire) and uncached (caller-supplied ``conn``) paths
     build identically-shaped rows."""
+    from provisa.core.models import LiveDeliveryConfig
     from provisa.core.paging import stored_paging
 
     out: list[Any] = []
     for rt in registered:
-        cfg = cfg_by.get((rt["source_id"], rt["table_name"]))
         out.append(
             SimpleNamespace(
                 id=rt["id"],
@@ -236,37 +218,15 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                     )
                     for c in rt["columns"]
                 ],
-                live=getattr(cfg, "live", None),
+                live=None if not rt["live"] else LiveDeliveryConfig.model_validate(rt["live"]),
                 # REQ-929: the table's own change signal is on its row — saved there by the config
                 # load and by the admin alike — so a table registered at runtime (no config entry)
                 # is judged by its own signal, not its source's. NULL = it sets none.
                 change_signal=rt["change_signal"],
-                # A table registered through the admin API (no YAML `tables:` entry) has no `cfg`,
-                # so reading the watermark from cfg alone was ALWAYS None for it -- the same gap
-                # cache_ttl below documents and fixes. registerTable writes it straight to
-                # registered_tables.watermark_column, so read rt first, then cfg (REQ-874/929).
-                watermark_column=(
-                    rt["watermark_column"]
-                    if rt.get("watermark_column") is not None
-                    else getattr(cfg, "watermark_column", None)
-                ),
-                # REQ-1730: a table registered dynamically (through the UI, no YAML `tables:`
-                # entry) has no `cfg` at all, so `getattr(cfg, "cache_ttl", None)` alone was ALWAYS
-                # None for it, regardless of the Cache TTL an operator saved on it — TableEditForm
-                # writes straight to `registered_tables.cache_ttl` (schema_mutation.py's
-                # update_table), which `rt` (fetch_tables' own row, above) already carries. Prefer
-                # that DB value; fall back to the static config only when the DB column is unset
-                # (a config-declared table with no per-table override, the ORIGINAL case this
-                # function's static-only lookup covered fine). Reproduced live: wire_new_poll_jobs
-                # (app_wiring.py) could never wire a poll job for a UI-registered rss/poll table on
-                # any backend it hadn't ALSO handled the Cache-TTL save on — `poll_seconds` came
-                # back None every time, permanently (state.poll_jobs_registered marks a node
-                # visited on the very first attempt, whether a job was actually wired or not).
-                cache_ttl=(
-                    rt["cache_ttl"]
-                    if rt.get("cache_ttl") is not None
-                    else getattr(cfg, "cache_ttl", None)
-                ),
+                watermark_column=rt["watermark_column"],
+                # REQ-1730: the Cache TTL the table's row holds — saved by the seed and by the
+                # admin's TableEditForm alike (REQ-1919).
+                cache_ttl=rt["cache_ttl"],
                 # REQ-1907: the operator's per-role TTLs live on the registry row (config upsert
                 # and the admin mutation both write it there).
                 role_ttl=dict(rt["role_ttl"]),
@@ -277,7 +237,7 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                 replicate=rt["replicate"],
                 load_protected=rt["load_protected"],
                 region=rt["region"],  # REQ-1921
-                probe_type=getattr(cfg, "probe_type", None),  # REQ-982
+                probe_type=rt["probe_type"],  # REQ-982
                 # REQ-1443: a checker table's rows are the results of running its contract, so
                 # the registered contract rides with the table into make_dq_loader.
                 dq_contract=rt["dq_contract"],

@@ -210,10 +210,6 @@
       "self_role_change": "Ein Benutzer kann seine eigene Rolle nicht ändern. Bitten Sie einen anderen Administrator (REQ-1308).",
       "view_not_permitted": "Keine Berechtigung, diese Organisation anzuzeigen"
     },
-    "origin": {
-      "config_object_deleted": "{{name}} ist in der Konfiguration deklariert. Es wurde jetzt gelöscht; beim nächsten Laden der Konfiguration wird es wieder angelegt, solange die Datei es noch deklariert.",
-      "config_object_edited": "{{name}} ist in der Konfiguration deklariert. Die Änderung ist gespeichert; beim nächsten Laden der Konfiguration wird der Inhalt der Datei wieder angewendet."
-    },
     "platform": {
       "control_plane_role_required": "Ein Plattformadministrator ist erforderlich.",
       "right_required": "Fähigkeit {{right}} erforderlich",
@@ -376,7 +372,6 @@
       "docker_not_found": "docker nicht im PATH gefunden",
       "docker_restart_timeout": "Zeitüberschreitung beim Docker-Neustart",
       "domain_policy_catalog_exists": "Die Domänenrichtlinie kann nicht geändert werden, solange diese Organisation einen Katalog hat: {{tables}} Tabelle(n), {{sources}} Quelle(n), {{domains}} Domäne(n). Löschen Sie diese zuerst.",
-      "domain_policy_catalog_in_config": "Die Domänenrichtlinie kann hier nicht geändert werden: Der Katalog dieser Organisation ist in der Konfiguration deklariert ({{tables}} Tabelle(n), {{sources}} Quelle(n), {{domains}} Domäne(n)). Legen Sie die Richtlinie in der Konfigurationsdatei fest.",
       "encryption_provider_unavailable": "Verschlüsselungsanbieter '{{provider}}' ist nicht verfügbar (SDK/Laufzeit nicht installiert)",
       "invalid_body": "Die Einstellungsanfrage ist ungültig.",
       "invalid_value": "Der Wert für {{field}} wurde abgelehnt.",

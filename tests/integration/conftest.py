@@ -341,7 +341,7 @@ def pytest_configure(config: pytest.Config) -> None:
 @pytest.fixture(autouse=True)
 def _deployment_org_bound(request: pytest.FixtureRequest):
     """Integration tests run as work for the deployment's own org (REQ-1266), as the unit harness
-    does: a test that drives a core path directly (load_config, a resolver, a repository) stands in
+    does: a test that drives a core path directly (apply_config, a resolver, a repository) stands in
     for the boot or the request that binds it. An entrypoint under test binds for itself either way;
     ``@pytest.mark.unbound`` runs a test with nothing bound."""
     if request.node.get_closest_marker("unbound") is not None:
@@ -364,6 +364,14 @@ def _deployment_org_bound(request: pytest.FixtureRequest):
         if "monkeypatch" in request.fixturenames:
             # A routed AppState attribute monkeypatch replaced is put back while the org is bound.
             request.getfixturevalue("monkeypatch").undo()
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _each_boot_seeds_its_own_deployment(request: pytest.FixtureRequest):
+    """REQ-1919: see ``tests.boot_seeds_its_own_deployment``."""
+    from tests.boot_seeds_its_own_deployment import each_boot_seeds_its_own_deployment
+
+    yield from each_boot_seeds_its_own_deployment(request)
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -666,10 +674,10 @@ def pgwire_pg_backend(docker_postgres):
 async def platform_admin_db():
     """Bind ``state.admin_db`` to a real platform control-plane Database for the module.
 
-    ``load_config`` → ``_upsert_sources`` (REQ-1730) always binds the request org so a
+    ``apply_config`` → ``_upsert_sources`` (REQ-1730) always binds the request org so a
     control-plane-only source's ``${secret:...}`` password can resolve, and that bind reads the
     org's vault from ``state.admin_db`` (``provisa/api/app.py`` ``_request_org_for_secrets``) even
-    when no source uses a secret. A test that calls ``load_config`` depends on this fixture instead
+    when no source uses a secret. A test that calls ``apply_config`` depends on this fixture instead
     of on whatever an earlier test left in ``state.admin_db``.
     """
     import provisa.api.app as app_mod

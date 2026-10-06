@@ -86,6 +86,10 @@ class ColumnPlan:
     # The row's value is only whether it is NULL (1, or NULL at the null share): the fake decides
     # every value and reads no generated value of its own column.
     marker: bool = False
+    # REQ-1939, DEPENDENCE KEPT: the real values a pool's slots stand for (never generated), and
+    # the column holding the uniform point its value is drawn at when dependence decides it.
+    pool_values: tuple[str, ...] = ()
+    dep_u: str | None = None
 
 
 @dataclass(frozen=True)
@@ -123,6 +127,9 @@ class TablePlan:
     conditions: tuple[PlannedCondition, ...] = ()
     parent: "TablePlan | None" = None
     parent_key: str | None = None
+    # REQ-1939, DEPENDENCE KEPT: the copula and network the columns are drawn by
+    # (provisa.synthetic.dependence.DependencePlan); None where the run measured none.
+    dependence: Any = None
 
 
 def _lit(value: str | None) -> str:
@@ -143,7 +150,9 @@ class _Dialect:
         """A uniform draw in [0, 1) from the seed, table, column, a salt and the row key."""
         tag = _lit(f"{seed}:{table}:{column}:{salt}")
         if self.name == "duckdb":
-            return f"(hash({tag}, {key}) / {_TWO_64})"
+            # One string hashed: DuckDB's hash of several arguments combines their hashes, so two
+            # columns' draws for one row would be related.
+            return f"(hash(concat_ws(':', {tag}, {key})) / {_TWO_64})"
         return (
             f"(CAST(from_big_endian_64(xxhash64(to_utf8(concat({tag}, ':', CAST({key} AS varchar)))))"
             f" AS double) / {_TWO_64} + 0.5)"
@@ -169,7 +178,7 @@ class _Dialect:
         """``shape`` with each ``A``/``a``/``9`` replaced by a letter or digit drawn from ``key``."""
         pos = "_pos"
         if self.name == "duckdb":
-            draw = f"hash({salt_seed}, {key}, {pos})"
+            draw = f"hash(concat_ws(':', {salt_seed}, {key}, {pos}))"
             return (
                 f"array_to_string(list_transform(range(length({_lit(shape)})), {pos} -> "
                 f"CASE substr({_lit(shape)}, {pos} + 1, 1) "
@@ -196,7 +205,7 @@ class _Dialect:
         computed in generation is seeded by, as a faked read's is by the real value (REQ-1939)."""
         tag = _lit(f"{seed}:{table}:{column}:fake")
         if self.name == "duckdb":
-            return f"CAST(hash({tag}, {key}) >> 1 AS BIGINT)"
+            return f"CAST(hash(concat_ws(':', {tag}, {key})) >> 1 AS BIGINT)"
         return f"from_big_endian_64(xxhash64(to_utf8(concat({tag}, ':', CAST({key} AS varchar)))))"
 
     def lpad(self, expr: str, width: int) -> str:
@@ -214,7 +223,7 @@ class _Dialect:
         tag = _lit(f"{seed}:{table}:{column}:value")
         text = f"CAST({value} AS varchar)"
         if self.name == "duckdb":
-            return f"CAST(hash({tag}, {text}) >> 1 AS BIGINT)"
+            return f"CAST(hash(concat_ws(':', {tag}, {text})) >> 1 AS BIGINT)"
         return f"from_big_endian_64(xxhash64(to_utf8(concat({tag}, ':', {text}))))"
 
     def range_rows(self, n: int, alias: str) -> str:
@@ -291,19 +300,20 @@ def column_expr(d: _Dialect, plan: TablePlan, col: ColumnPlan, key: str, index: 
         if col.pool_shares:
             # A fixed, skewed vocabulary of generated values: the pool index by its share.
             branches, acc = [], 0.0
+            slot_u = col.dep_u or u("pool")
             for slot, share in enumerate(col.pool_shares[:-1]):
                 acc += share
-                branches.append(f"WHEN {u('pool')} < {acc!r} THEN {slot}")
+                branches.append(f"WHEN {slot_u} < {acc!r} THEN {slot}")
             last = len(col.pool_shares) - 1
             draw_key = f"(CASE {' '.join(branches)} ELSE {last} END)" if branches else str(last)
         elif col.pool is not None:
             # A fixed vocabulary: the value is a function of a pool index, not of the row.
             draw_key = f"CAST(floor({u('pool')} * {col.pool}) AS BIGINT)"
         if col.frequencies:
-            value = _cast(col, _pick(col.frequencies, u("value"), "NULL"))
+            value = _cast(col, _pick(col.frequencies, col.dep_u or u("value"), "NULL"))
         else:
             if col.sketch is not None and col.family in ("numeric", "temporal"):
-                raw = _sketch_value(d, col.sketch, u("value", draw_key))
+                raw = _sketch_value(d, col.sketch, col.dep_u or u("value", draw_key))
                 if col.integer_only:
                     raw = f"round({raw})"
                 rest = (
@@ -350,6 +360,133 @@ def _condition_sql(d: _Dialect, condition: str) -> str:
     return tree.sql(dialect=d.name)
 
 
+def _dependence_parent_columns(plan: TablePlan) -> list[str]:
+    dep = plan.dependence
+    if dep is None:
+        return []
+    return [r[1] for x in dep.targets for r in x.parents if not isinstance(r, str)]
+
+
+def _lit_state(state: Any) -> str:
+    return str(int(state)) if isinstance(state, int) else _lit(str(state))
+
+
+def _state_pick(u: str, shares: list[tuple[Any, float]]) -> str:
+    """The state whose cumulative share first exceeds ``u``."""
+    if not shares:
+        return "NULL"
+    whens, acc = [], 0.0
+    for s, share in shares[:-1]:
+        acc += share
+        whens.append(f"WHEN {u} < {acc!r} THEN {_lit_state(s)}")
+    last = _lit_state(shares[-1][0])
+    return f"(CASE {' '.join(whens)} ELSE {last} END)" if whens else last
+
+
+def _node_state(node: Any, u: str) -> str:
+    if node.kind == "number":
+        return f"LEAST(CAST(FLOOR({u} * 10) AS BIGINT), 9)"
+    whens = " ".join(
+        f"WHEN {u} < {start + width!r} THEN {'NULL' if v is None else _lit(str(v))}"
+        for v, start, width in node.slices
+    )
+    return f"(CASE {whens} ELSE NULL END)"
+
+
+def _target_u(node: Any, state: str, u2: str) -> str:
+    """A uniform point inside the target state's slice: a value of that state, drawn evenly."""
+    if node.kind == "number":
+        return f"(({state} + {u2}) / 10.0)"
+    whens = " ".join(
+        f"WHEN {_lit(str(v))} THEN {start!r} + {u2} * {width!r}"
+        for v, start, width in node.slices
+        if v is not None
+    )
+    return f"(CASE {state} {whens} ELSE {u2} END)"
+
+
+def _parent_state(ref: Any) -> str:
+    """A parent table's column's state, read off the joined parent row."""
+    _tag, column, deciles = ref
+    value = _quoted(_PARENT + column)
+    if deciles is None:
+        return f"CAST({value} AS VARCHAR)"
+    whens = " ".join(f"WHEN {value} < {q!r} THEN {i}" for i, q in enumerate(deciles))
+    return f"(CASE {whens} ELSE 9 END)"
+
+
+def _dependence_levels(d: _Dialect, plan: TablePlan, rows: str, alias: str, key: str) -> str:
+    """``rows`` -- a table expression of the rows, aliased ``alias`` -- with, for every column
+    dependence decides, its uniform point ``__U__<column>`` and its state ``__st__<column>``
+    (REQ-1939, DEPENDENCE KEPT): the copula's correlated points, the other nodes' own, then each
+    network target's state from the joint counts given its parents' states, and its point in that
+    state."""
+    from provisa.fakes.read_sql import inverse_normal_sql
+    from provisa.synthetic.dependence import normal_cdf_sql
+
+    dep = plan.dependence
+
+    def uni(column: str, salt: str) -> str:
+        return d.uniform(plan.seed, plan.name, column, salt, key)
+
+    levels: list[list[str]] = []
+    if dep.copula:
+        levels.append(
+            [
+                f"{inverse_normal_sql(uni(c, 'copula'))} AS {_quoted('__z__' + c)}"
+                for c in dep.copula
+            ]
+        )
+        cu = []
+        for i, c in enumerate(dep.copula):
+            mix = " + ".join(
+                f"{w!r} * {_quoted('__z__' + dep.copula[k])}"
+                for k, w in enumerate(dep.factor[i])
+                if k <= i and w != 0.0
+            )
+            cu.append(f"{normal_cdf_sql('(' + mix + ')')} AS {_quoted('__U__' + c)}")
+        levels.append(cu)
+    targets = {x.name for x in dep.targets}
+    own = []
+    for name, node in sorted(dep.nodes.items()):
+        if name in targets:
+            continue
+        u = _quoted("__U__" + name) if name in dep.copula else uni(name, node.own_salt)
+        if name not in dep.copula:
+            own.append(f"{u} AS {_quoted('__U__' + name)}")
+        own.append(f"{_node_state(node, u)} AS {_quoted('__st__' + name)}")
+    if own:
+        levels.append(own)
+    for x in dep.targets:
+        node = dep.nodes[x.name]
+        states = [
+            _quoted("__st__" + r) if isinstance(r, str) else _parent_state(r) for r in x.parents
+        ]
+        u_net = uni(x.name, "network")
+        whens = []
+        for combo, shares in sorted(x.given.items(), key=lambda kv: str(kv[0])):
+            if any(s is None for s in combo):
+                continue
+            cond = " AND ".join(f"{st} = {_lit_state(s)}" for st, s in zip(states, combo))
+            whens.append(f"WHEN {cond} THEN {_state_pick(u_net, shares)}")
+        state = (
+            f"(CASE {' '.join(whens)} ELSE {_state_pick(u_net, x.marginal)} END)"
+            if whens
+            else _state_pick(u_net, x.marginal)
+        )
+        levels.append([f"{state} AS {_quoted('__st__' + x.name)}"])
+        levels.append(
+            [
+                f"{_target_u(node, _quoted('__st__' + x.name), uni(x.name, 'network2'))} "
+                f"AS {_quoted('__U__' + x.name)}"
+            ]
+        )
+    out = f"(SELECT * FROM {rows})"
+    for n, exprs in enumerate(levels):
+        out = f"(SELECT *, {', '.join(exprs)} FROM {out} AS dl{n})"
+    return f"{out} AS {alias}"
+
+
 def _condition_columns(plan: TablePlan) -> list[str]:
     from provisa.fakes.sql_subset import read
 
@@ -361,13 +498,12 @@ def _parent_source(d: _Dialect, plan: TablePlan) -> str:
     child counts, each beside its generated row's columns the conditions read."""
     assert plan.fanout is not None
     parents = plan.fanout[0]
-    if not plan.conditions:
+    if plan.parent is None:
         return d.range_rows(parents, "p")
-    assert plan.parent is not None and plan.parent_key is not None
+    assert plan.parent_key is not None
     key = next(c for c in plan.parent.columns if c.name == plan.parent_key)
-    cols = ", ".join(
-        f"par.{_quoted(c)} AS {_quoted(_PARENT + c)}" for c in _condition_columns(plan)
-    )
+    read = sorted(set(_condition_columns(plan)) | set(_dependence_parent_columns(plan)))
+    cols = ", ".join(f"par.{_quoted(c)} AS {_quoted(_PARENT + c)}" for c in read)
     return (
         f"(SELECT t.p AS p, {cols} FROM {d.range_rows(parents, 'p')} "
         f"JOIN ({generation_sql(plan.parent, d.name)}) AS par "
@@ -460,6 +596,15 @@ def _after_rules(fakes: dict[str, Any], rules: set[str]) -> set[str]:
     return after
 
 
+def _decided_points(plan: TablePlan) -> list[str]:
+    """The uniform points dependence decides for faked columns, carried to the fakes' layers."""
+    return [
+        f"{c.dep_u} AS {c.dep_u}"
+        for c in plan.columns
+        if c.fake is not None and c.dep_u is not None
+    ]
+
+
 def _faked(
     plan: TablePlan, dialect: str, base: str, child_tables: dict[str, str] | None = None
 ) -> str:
@@ -488,17 +633,26 @@ def _faked(
     columns = [(c.name, c.sql_type, family(c.sql_type)) for c in plan.columns]
     after = _after_rules(fakes, {g.name for g in rules})
     later = tuple(DIGEST + n for n in sorted(after))
+    # REQ-1939, DEPENDENCE KEPT: a faked column the copula or network draws takes that point.
+    points = {c.name: c.dep_u for c in plan.columns if c.fake is not None and c.dep_u is not None}
     governed = layered(
         f"SELECT * FROM {placeholder}",
         "g",
         columns,
         {n: c for n, c in fakes.items() if n not in after},
-        keep=later,
+        keep=later + tuple(p.strip('"') for n, p in points.items() if n in after),
+        uniforms={n: p for n, p in points.items() if n not in after},
     )
     if rules:
         governed = group_levels(governed, "g", [c.name for c in plan.columns], rules, later)
     if after:
-        governed = layered(governed, "g", columns, {n: fakes[n] for n in sorted(after)})
+        governed = layered(
+            governed,
+            "g",
+            columns,
+            {n: fakes[n] for n in sorted(after)},
+            uniforms={n: p for n, p in points.items() if n in after},
+        )
     physical = transpile_to_trino(governed) if dialect == "trino" else transpile(governed, dialect)
     assert physical.count(placeholder) == 1, "the generated rows are read once"
     physical = physical.replace(placeholder, f"({base})")
@@ -519,22 +673,23 @@ def generation_sql(
     d = _Dialect(dialect)
     if plan.fanout is None:
         exprs = [column_expr(d, plan, c, "i", "i") for c in plan.columns]
-        exprs = _with_digests(d, plan, exprs, "i")
-        return _faked(
-            plan,
-            dialect,
-            f"SELECT {', '.join(exprs)} FROM {d.range_rows(plan.rows, 'i')}",
-            child_tables,
-        )
+        exprs = _with_digests(d, plan, exprs, "i") + _decided_points(plan)
+        rows = d.range_rows(plan.rows, "i")
+        if plan.dependence is not None:
+            rows = _dependence_levels(d, plan, rows, "t", "i")
+        return _faked(plan, dialect, f"SELECT {', '.join(exprs)} FROM {rows}", child_tables)
     parents, _sketch, _hot = plan.fanout
     count = _children(d, plan)
     key = "p, j" if d.name == "duckdb" else "concat(CAST(p AS varchar), ':', CAST(j AS varchar))"
     index = "(row_number() OVER (ORDER BY p, j) - 1)"
     exprs = [column_expr(d, plan, c, key, index) for c in plan.columns]
-    exprs = _with_digests(d, plan, exprs, key)
+    exprs = _with_digests(d, plan, exprs, key) + _decided_points(plan)
     source = _parent_source(d, plan)
+    # Every column of the parent rows is carried: the conditions and the dependence read them.
     if d.name == "duckdb":
-        rows = f"(SELECT p, {d.children(count)} AS j FROM {source}) AS c"
+        rows = f"(SELECT *, {d.children(count)} AS j FROM {source}) AS c"
     else:
-        rows = f"(SELECT p, j FROM {source} CROSS JOIN UNNEST({d.children(count)}) AS u(j)) AS c"
+        rows = f"(SELECT * FROM {source} CROSS JOIN UNNEST({d.children(count)}) AS u(j)) AS c"
+    if plan.dependence is not None:
+        rows = _dependence_levels(d, plan, rows, "c", key)
     return _faked(plan, dialect, f"SELECT {', '.join(exprs)} FROM {rows}", child_tables)

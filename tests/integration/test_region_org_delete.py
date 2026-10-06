@@ -219,7 +219,7 @@ class _Estate:
                 )
                 async with db.acquire() as conn:
                     for store in self.stores(dead_us=dead_us and org == self.org):
-                        await region_repo.upsert_store(conn, store, origin="admin")
+                        await region_repo.upsert_store(conn, store)
                     for region in ("eu", "us"):
                         await region_repo.upsert_region(
                             conn,
@@ -232,7 +232,6 @@ class _Estate:
                                 state=f"{region}-pg",
                                 record=f"{region}-pg",
                             ),
-                            origin="admin",
                         )
                 await db.close()
         client = redis.Redis.from_url(self.redis_url)

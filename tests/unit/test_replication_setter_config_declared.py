@@ -8,15 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A replication setting that would not be enforced is refused, not stored (REQ-826, REQ-030).
+"""A replication setting is stored for every source, a seeded one included (REQ-826, REQ-030,
+REQ-1919).
 
-Routing and replication read a source the configuration file declares FROM that file
-(``federation.registry_view.registered_sources``): the control-plane row of such a source is not
-consulted. The admin setters wrote that row and answered "success", so an operator who turned
-replication on for a config-declared source saw it accepted while every read went on reaching the
-source live. The setters now refuse such a source and say why."""
+After the seed the model store alone owns the model: routing and replication read a source from
+its control-plane row (``federation.registry_view.registered_sources``), never from the
+configuration file. A source a configuration seeded is the store's like any other, so the admin
+setters store its replication setting, and the setting governs."""
 
-# Requirements: REQ-826, REQ-030
+# Requirements: REQ-826, REQ-030, REQ-1919
 
 from __future__ import annotations
 
@@ -101,16 +101,13 @@ def _info(monkeypatch):
     return grant(monkeypatch, "source_registration", "table_registration", state=app_mod.state)[0]
 
 
-async def test_the_source_setter_refuses_a_config_declared_source(admin, monkeypatch):
+async def test_the_source_setter_sets_a_source_a_configuration_seeded(admin, monkeypatch):
     result = await Mutation().update_source_replicate(
         _info(monkeypatch), source_id="from-config", replicate=0
     )
-    assert result.success is False
-    assert result.code == "schema.source_setting_config_declared"
-    assert "'from-config'" in result.message and "configuration file" in result.message
-    assert "not be enforced" in result.message
-    assert admin.pool.statements == [], "a setting that is not enforced was stored"
-    admin.rebuild.assert_not_awaited()
+    assert result.success is True and result.code == "schema.source_replicate_set"
+    assert _updates(admin.pool) == ["sources"]
+    admin.rebuild.assert_awaited_once()
 
 
 async def test_the_source_setter_still_sets_a_source_the_control_plane_owns(admin, monkeypatch):
@@ -122,12 +119,11 @@ async def test_the_source_setter_still_sets_a_source_the_control_plane_owns(admi
     admin.rebuild.assert_awaited_once()
 
 
-async def test_the_table_setter_refuses_a_table_of_a_config_declared_source(admin, monkeypatch):
+async def test_the_table_setter_sets_a_table_of_a_seeded_source(admin, monkeypatch):
     result = await Mutation().update_table_replicate(_info(monkeypatch), table_id=7, replicate=0)
-    assert result.success is False
-    assert result.code == "schema.source_setting_config_declared"
-    assert "'from-config'" in result.message and "configuration file" in result.message
-    assert admin.pool.statements == []
+    assert result.success is True and result.code == "schema.table_replicate_set"
+    assert _updates(admin.pool) == ["registered_tables"]
+    admin.rebuild.assert_awaited_once()
 
 
 async def test_the_table_setter_still_sets_a_table_of_a_control_plane_source(admin, monkeypatch):

@@ -202,7 +202,6 @@ async def tenant_dbs(monkeypatch):
                         id=role_id,
                         capabilities=capabilities,
                         domain_access=["*"],
-                        origin="seed",
                     )
                 )
         made.append((engine, Database(engine, "test")))

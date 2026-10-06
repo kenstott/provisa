@@ -108,12 +108,8 @@ _MAPPING = {
 
 async def _seed_estate(conn, checker_type: str = "soda") -> None:
     """A checker source, a plain source, and the one governed table the contract may observe."""
-    await conn.execute_core(
-        insert(sources).values(id="dq", type=checker_type, mapping=_MAPPING, origin="admin")
-    )
-    await conn.execute_core(
-        insert(sources).values(id="warehouse", type="postgresql", origin="admin")
-    )
+    await conn.execute_core(insert(sources).values(id="dq", type=checker_type, mapping=_MAPPING))
+    await conn.execute_core(insert(sources).values(id="warehouse", type="postgresql"))
     await table_repo.upsert(
         conn,
         Table(
@@ -123,7 +119,6 @@ async def _seed_estate(conn, checker_type: str = "soda") -> None:
             table="orders",
             columns=[Column(name="id", data_type="bigint", visible_to=["analyst"])],
         ),
-        origin="admin",
     )
 
 
@@ -161,7 +156,7 @@ async def test_the_derived_table_and_its_contract_survive_the_round_trip(tmp_pat
         await _seed_estate(conn)
         model = _results_table()
         await apply_dq_registration(conn, model)
-        await table_repo.upsert(conn, model, origin="admin")
+        await table_repo.upsert(conn, model)
 
         from provisa.api.admin.db_queries import fetch_tables
 
@@ -208,7 +203,7 @@ async def test_a_contract_naming_an_ungoverned_table_is_rejected(tmp_path):
 
     state.contexts = {}
     async with _conn(tmp_path) as conn:
-        await conn.execute_core(insert(sources).values(id="dq", type="soda", origin="admin"))
+        await conn.execute_core(insert(sources).values(id="dq", type="soda"))
         with pytest.raises(ValueError, match="resolves to no governed table"):
             await apply_dq_registration(conn, _results_table())
 
@@ -220,7 +215,7 @@ async def test_a_contract_pointed_at_its_own_results_table_is_rejected(tmp_path)
         await _seed_estate(conn)
         registered = _results_table()
         await apply_dq_registration(conn, registered)
-        await table_repo.upsert(conn, registered, origin="admin")
+        await table_repo.upsert(conn, registered)
 
         model = _results_table(contract="dataset: provisa/default/orders_scans\n")
         with pytest.raises(ValueError, match="resolves to the results table itself"):
@@ -315,9 +310,7 @@ async def test_a_dry_run_against_an_ungoverned_dataset_reports_where_it_resolved
 
     state.contexts = {}
     async with _conn(tmp_path) as conn:
-        await conn.execute_core(
-            insert(sources).values(id="dq", type="soda", mapping=_MAPPING, origin="admin")
-        )
+        await conn.execute_core(insert(sources).values(id="dq", type="soda", mapping=_MAPPING))
         result = await dry_run_contract(conn, source_id="dq", contract_text=CONTRACT)
 
     assert result["success"] is False

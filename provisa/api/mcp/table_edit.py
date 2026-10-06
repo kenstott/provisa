@@ -205,8 +205,4 @@ async def save_table(request: Any, table_input_: Any) -> dict:
     result = await Mutation().update_table(info, table_input_)  # pyright: ignore[reportCallIssue]
     if not result.success:
         raise ValueError(result.message)
-    return {
-        "message": result.message,
-        # REQ-1919: e.g. a config-origin table was edited, and the next config load re-applies it.
-        "warnings": [w.message for w in result.warnings],
-    }
+    return {"message": result.message}

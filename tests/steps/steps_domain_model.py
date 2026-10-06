@@ -646,7 +646,7 @@ async def _run_upsert(rel: Relationship, dsn: str, existing_pk_count: int) -> No
             "provisa.core.repositories.relationship.table_repo.find_by_table_name",
             new=AsyncMock(side_effect=[source_row, target_row]),
         ):
-            await rel_repo.upsert(conn, rel, origin="admin")
+            await rel_repo.upsert(conn, rel)
 
 
 @given("a relationship being saved where the target table has no existing primary key")

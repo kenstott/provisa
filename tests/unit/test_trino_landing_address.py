@@ -92,10 +92,21 @@ def _state(cfg, registered, monkeypatch):
     monkeypatch.setattr("provisa.federation.replica_state.promotion", no_promoted_tables)
     monkeypatch.setattr("provisa.federation.replica_builds.store_identity", no_engine_store)
 
-    async def _no_ui_sources(_conn):  # REQ-1674: the registry view also lists UI-created sources
-        return []
+    async def _source_rows(_conn):
+        # REQ-1674, REQ-1919: the registry view reads the sources the model store holds.
+        return [
+            {
+                "id": src.id,
+                "type": src.type.value,
+                "change_signal": src.change_signal,
+                "replicate": src.replicate,
+                "load_protected": src.load_protected,
+                "password_ref": "",
+            }
+            for src in cfg.sources
+        ]
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
+    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
     return SimpleNamespace(
         config=cfg,
         model_db=(_one_db := SimpleNamespace(acquire=lambda: _FakeConn())),

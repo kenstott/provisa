@@ -13,12 +13,10 @@
 # Requirements: REQ-013, REQ-014, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
 
 from provisa.core import model_change
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from contextlib import contextmanager
-from contextvars import ContextVar
 
-from sqlalchemy import delete as _delete, select, update
+from sqlalchemy import delete as _delete, select
 
 from provisa.core.paging import paging_row
 from provisa.core import domain_policy
@@ -33,8 +31,6 @@ from provisa.core.repositories.integrity import (
     remove_parts,
     view_loop,
 )
-from provisa.core.repositories.origin import require as require_origin
-from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import (
     api_endpoints,
     registered_tables,
@@ -101,6 +97,10 @@ _COLUMN_PROJECTION = [
     table_columns.c.fake_stable,
     table_columns.c.fake_stable_version,
     table_columns.c.synthetic_rule,
+    table_columns.c.embedding,
+    table_columns.c.embedding_model,
+    table_columns.c.embedding_source_column,
+    table_columns.c.encrypted,
 ]
 
 
@@ -111,6 +111,11 @@ async def _load_columns(conn: "Connection", table_id: int) -> list[dict]:
         .order_by(table_columns.c.id)
     )
     return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def load_columns(conn: "Connection", table_id: int) -> list[dict]:
+    """A registered table's columns as stored, in registration order."""
+    return await _load_columns(conn, table_id)
 
 
 class TableDeleteRefused(Exception):
@@ -161,17 +166,9 @@ class ViewLoopRefused(ValueError):
 
 
 async def upsert(
-    conn: "Connection",
-    table: Table,
-    *,
-    origin: str,
-    leaving: frozenset[tuple[str, str, str]] = frozenset(),
+    conn: "Connection", table: Table
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
     """Upsert a registered table and its columns. Returns the table row id.
-
-    REQ-1919: ``origin`` says where the table comes from (``repositories.origin``). It is
-    written when the table is CREATED and left alone after, except that a config load takes over
-    a table made through the admin.
 
     REQ-1914: one transaction. The table row, the wholesale column replace and the glossary refs
     commit together, so the config stamp they advance is seen only with the finished table —
@@ -189,16 +186,13 @@ async def upsert(
             loop = await view_loop(conn, table.table_name, view_sql)
             if loop:
                 raise ViewLoopRefused(loop)
-        return await _upsert(conn, table, require_origin(origin), leaving)
+        return await _upsert(conn, table)
 
 
-async def _require_free_sql_address(
-    conn: "Connection", table: Table, domain_id: str, leaving: frozenset[tuple[str, str, str]]
-) -> None:
+async def _require_free_sql_address(conn: "Connection", table: Table, domain_id: str) -> None:
     """REQ-1933: refuse a table whose SQL address another registered table in its domain holds,
     naming that table (:class:`provisa.compiler.naming.SqlAddressTaken`). The table itself being
-    saved again is not another table, nor is one in ``leaving``: a table the same config load
-    removes because its file no longer declares it ``(source_id, schema_name, table_name)``."""
+    saved again is not another table."""
     from sqlalchemy import select
 
     from provisa.compiler.naming import refuse_taken_sql_addresses
@@ -227,7 +221,6 @@ async def _require_free_sql_address(
         ).fetchall()
         if (r.source_id, r.schema_name, r.table_name)
         != (table.source_id, table.schema_name, table.table_name)
-        and (r.source_id, r.schema_name, r.table_name) not in leaving
     ]
     candidate = {
         "domain_id": domain_id,
@@ -240,11 +233,9 @@ async def _require_free_sql_address(
     refuse_taken_sql_addresses([*others, candidate], rules)
 
 
-async def _upsert(
-    conn: "Connection", table: Table, origin: str, leaving: frozenset[tuple[str, str, str]]
-) -> int | None:
+async def _upsert(conn: "Connection", table: Table) -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
-    await _require_free_sql_address(conn, table, domain_id, leaving)
+    await _require_free_sql_address(conn, table, domain_id)
     from provisa.core.repositories.region import require_table_region
 
     await require_table_region(  # REQ-1921: a table names one of its org's regions, or none
@@ -348,6 +339,13 @@ async def _upsert(
         "cache_ttl": getattr(table, "cache_ttl", None),
         "role_ttl": dict(table.role_ttl),  # REQ-1907
         "pagination": paging_row(table.pagination),  # REQ-318
+        # REQ-1919: every setting a configuration can give a table is the store's to hold.
+        "approval_hook": table.approval_hook,
+        "hot": table.hot,
+        "kafka_sink": table.kafka_sink.model_dump() if table.kafka_sink else None,
+        "promotions": list(table.promotions),
+        "query_template": table.query_template,
+        "relay_pagination": table.relay_pagination,
     }
     _update_columns = [
         "domain_id",
@@ -400,36 +398,42 @@ async def _upsert(
         "cache_ttl",  # REQ-1865
         "role_ttl",  # REQ-1907
         "pagination",  # REQ-318
+        "approval_hook",  # REQ-1919
+        "hot",
+        "kafka_sink",
+        "promotions",
+        "query_template",
+        "relay_pagination",
     ]
     table_id = await conn.upsert_returning(
         registered_tables,
-        {**values, "origin": origin},  # REQ-1919: on INSERT only — not among the update columns
+        values,
         index_elements=["source_id", "schema_name", "table_name"],
         returning="id",
         update_columns=_update_columns,
-    )
-    await take_over(
-        conn,
-        registered_tables,
-        (registered_tables.c.id == table_id,),
-        kind="table",
-        ident=f"{table.source_id}.{table.schema_name}.{table.table_name}",
-        origin=origin,
     )
 
     # Column data_type is resolved at registration (design time) and PERSISTS: a column type once
     # resolved (by the type-introspection user-assist) survives a config reload even though the YAML
     # carries no type. Capture the currently-stored types before the column replace and reuse any
     # that the incoming config leaves unset (REQ-471) — never null a resolved type back out.
-    _existing_types = {
-        r.column_name: r.data_type
-        for r in (
-            await conn.execute_core(
-                select(table_columns.c.column_name, table_columns.c.data_type).where(
-                    table_columns.c.table_id == table_id
-                )
-            )
-        ).fetchall()
+    _existing_rows = (
+        await conn.execute_core(
+            select(
+                table_columns.c.column_name,
+                table_columns.c.data_type,
+                table_columns.c.is_foreign_key,
+                table_columns.c.is_alternate_key,
+            ).where(table_columns.c.table_id == table_id)
+        )
+    ).fetchall()
+    _existing_types = {r.column_name: r.data_type for r in _existing_rows}
+    # REQ-1919: a column's foreign- and alternate-key marks are derived from the relationships
+    # that are keyed on it (relationship.upsert), not declared with the table. A re-registration
+    # of the table — an apply of a configuration that does not restate its relationships, or an
+    # admin's edit — keeps them while those relationships stand.
+    _derived_keys = {
+        r.column_name: (bool(r.is_foreign_key), bool(r.is_alternate_key)) for r in _existing_rows
     }
     # REQ-1918: a column this registration no longer lists is dropped. While a relationship is
     # keyed on it, or a view, materialized view or metric names it, the registration is refused
@@ -450,17 +454,12 @@ async def _upsert(
         ).fetchall()
     }
     _dropped = sorted(set(_existing_types) - {col.name for col in table.columns})
-    _deferred = _DEFERRED_COLUMN_DROPS.get()
     _referred: dict[str, list[Dependent]] = {}
     for _column in _dropped:
         _dependents = await column_dependents(conn, table_id, _column)
         if _dependents:
             _referred[_column] = _dependents
-    if _referred and _deferred is not None:
-        # A config load: what refers to these columns may be dropped by the same file; judged
-        # at the end of the load (settle_deferred_column_drops).
-        _deferred.append((table.table_name, table_id, sorted(_referred)))
-    elif _referred:
+    if _referred:
         raise ColumnDropRefused(table.table_name, _referred)
     if _dropped:
         await conn.execute_core(
@@ -506,8 +505,10 @@ async def _upsert(
                 path=getattr(col, "path", None),
                 native_filter_type=getattr(col, "native_filter_type", None),
                 is_primary_key=getattr(col, "is_primary_key", False),
-                is_foreign_key=getattr(col, "is_foreign_key", False),
-                is_alternate_key=getattr(col, "is_alternate_key", False),
+                is_foreign_key=getattr(col, "is_foreign_key", False)
+                or _derived_keys.get(col.name, (False, False))[0],
+                is_alternate_key=getattr(col, "is_alternate_key", False)
+                or _derived_keys.get(col.name, (False, False))[1],
                 object_fields=object_fields,
                 scope=getattr(col, "scope", "domain"),
                 gql_selection=getattr(col, "gql_selection", None),
@@ -520,6 +521,10 @@ async def _upsert(
                     _pins.get(col.name),
                 ),
                 synthetic_rule=getattr(col, "synthetic_rule", None),
+                embedding=getattr(col, "embedding", False),  # REQ-421
+                embedding_model=getattr(col, "embedding_model", None),
+                embedding_source_column=getattr(col, "embedding_source_column", None),
+                encrypted=getattr(col, "encrypted", False),  # REQ-1919
             )
         )
     # REQ-1387: this is the single write path for table_columns, so the glossary term
@@ -542,6 +547,57 @@ async def _upsert(
         table_context=getattr(table, "alias", None) or table.table_name,
     )
     return table_id
+
+
+#: REQ-1919: the stored settings the admin's table form does not carry, on the table and on each
+#: column. An edit through the form keeps each as the store holds it.
+KEPT_ON_FORM_EDIT: tuple[str, ...] = (
+    "approval_hook",
+    "hot",
+    "kafka_sink",
+    "promotions",
+    "relay_pagination",
+)
+COLUMN_KEPT_ON_FORM_EDIT: tuple[str, ...] = (
+    "embedding",
+    "embedding_model",
+    "embedding_source_column",
+    "encrypted",
+)
+
+
+async def keep_unedited(conn: "Connection", table: Table) -> Table:
+    """``table`` as the admin's form gives it, with the settings the form does not carry taken
+    from the stored registration of the same table. A table not yet registered is returned as
+    it is."""
+    row = (
+        await conn.execute_core(
+            select(registered_tables).where(
+                registered_tables.c.source_id == table.source_id,
+                registered_tables.c.schema_name == table.schema_name,
+                registered_tables.c.table_name == table.table_name,
+            )
+        )
+    ).fetchone()
+    if row is None:
+        return table
+    stored = dict(row._mapping)
+    stored_columns = {c["column_name"]: c for c in await _load_columns(conn, stored["id"])}
+    columns = [
+        col.model_copy(
+            update={name: stored_columns[col.name][name] for name in COLUMN_KEPT_ON_FORM_EDIT}
+        )
+        if col.name in stored_columns
+        else col
+        for col in table.columns
+    ]
+    from provisa.core.models import KafkaSinkAttachment
+
+    kept: dict[str, Any] = {name: stored[name] for name in KEPT_ON_FORM_EDIT}
+    if kept["kafka_sink"] is not None:
+        kept["kafka_sink"] = KafkaSinkAttachment.model_validate(kept["kafka_sink"])
+    kept["promotions"] = list(kept["promotions"])
+    return table.model_copy(update={**kept, "columns": columns})
 
 
 async def get(conn: "Connection", table_id: int) -> dict | None:  # REQ-013, REQ-393, REQ-399
@@ -574,75 +630,18 @@ async def get_by_name(
     return result_dict
 
 
-#: REQ-1919: the tables the config load in progress (in this context) will remove at its end,
-#: because its file no longer declares them. A lookup by name during that load does not see them:
-#: the model the file produces does not have them, so a relationship, row filter or tag the file
-#: declares by a table's name means the table the file declares. Empty outside a config load.
-_LEAVING: ContextVar[frozenset[int]] = ContextVar(
-    "tables_leaving_with_this_load", default=frozenset()
-)
-
-
-#: REQ-1918/1919: inside a config load, a column the file drops is not refused at its table's
-#: upsert — the referrers the file drops with it go only at the end of the load. The drop is
-#: recorded here, and :func:`settle_deferred_column_drops` judges it against the model the load
-#: produced; a column something still refers to then refuses the whole load (its transaction).
-_DEFERRED_COLUMN_DROPS: ContextVar[list[tuple[str, int, list[str]]] | None] = ContextVar(
-    "column_drops_judged_at_the_end_of_this_load", default=None
-)
-
-
-@contextmanager
-def deferring_column_drops():
-    """For the length of the block (one config load), column drops are judged at its end."""
-    token = _DEFERRED_COLUMN_DROPS.set([])
-    try:
-        yield
-    finally:
-        _DEFERRED_COLUMN_DROPS.reset(token)
-
-
-async def settle_deferred_column_drops(conn: "Connection") -> None:
-    """Refuse the load if a column it dropped is still referred to by what the load kept."""
-    for table_name, table_id, columns in _DEFERRED_COLUMN_DROPS.get() or []:
-        referred: dict[str, list[Dependent]] = {}
-        for column in columns:
-            try:
-                dependents = await column_dependents(conn, table_id, column)
-            except LookupError:
-                break  # the load removed the table itself, and every column with it
-            if dependents:
-                referred[column] = dependents
-        if referred:
-            raise ColumnDropRefused(table_name, referred)
-
-
-@contextmanager
-def leaving(table_ids: "frozenset[int]"):
-    """For the length of the block, lookups by name do not see ``table_ids`` (see ``_LEAVING``)."""
-    token = _LEAVING.set(table_ids)
-    try:
-        yield
-    finally:
-        _LEAVING.reset(token)
-
-
 async def find_by_table_name(
     conn: "Connection", table_name: str
 ) -> dict | None:  # REQ-014, REQ-155
     """Find a registered table by its virtual name.
 
     The virtual name is alias when set, otherwise table_name.
-    Raises ValueError if multiple tables match. During a config load, a table the load will
-    remove is not seen (``leaving``).
+    Raises ValueError if multiple tables match.
     """
     statement = select(registered_tables).where(
         (registered_tables.c.alias == table_name)
         | ((registered_tables.c.alias.is_(None)) & (registered_tables.c.table_name == table_name))
     )
-    gone = _LEAVING.get()
-    if gone:
-        statement = statement.where(registered_tables.c.id.not_in(sorted(gone)))
     result = await conn.execute_core(statement)
     rows = result.fetchall()
     if not rows:
@@ -700,21 +699,9 @@ async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-191
     return True
 
 
-async def rekey(conn: "Connection", table_id: int, schema_name: str) -> None:  # REQ-1919
-    """Move a registered table to another schema of its source: the same table, with its id, its
-    parts and everything that refers to it, under a new key. The config loader's, for a table
-    whose schema the file corrected."""
-    await conn.execute_core(
-        update(registered_tables)
-        .where(registered_tables.c.id == table_id)
-        .values(schema_name=schema_name)
-    )
-
-
 async def discard(conn: "Connection", table_id: int) -> None:
     """Remove a table's parts and its row WITHOUT asking the guard: for a caller that has
-    already established it may go — :func:`delete`, and the config loader once its own check of
-    everything the file dropped has passed."""
+    already established it may go — :func:`delete`."""
     await remove_parts(conn, ObjectRef("table", table_id))
     # The endpoint a remote table is served from is derived from its registration (REQ-316/
     # REQ-318, REQ-1668) and goes with it; it is keyed by the table's name, not its id.
