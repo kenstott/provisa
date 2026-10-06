@@ -604,3 +604,22 @@ async def test_a_table_the_engine_lands_needs_a_cache_ttl_at_save(
                 await landing_ttl_refusal(conn, "s", source=_s(signal, 300), table=_t(None, None))
                 is None
             )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source_type", ["ingest", "govdata", "data_profiler"])
+@pytest.mark.parametrize("signal", ["ttl", "ttl_probe"])
+async def test_a_type_that_owns_no_replica_needs_no_cache_ttl_at_save(
+    tmp_path, monkeypatch, source_type, signal
+):
+    """A type that owns no replica (ingest REQ-1771, govdata REQ-1730, a profiler's results
+    REQ-1934) is read where it is written and never landed, so its ttl tables are saved without a
+    landing clock, whatever the bound engine reads in place."""
+    import provisa.api.app as appmod
+    from provisa.api.admin._landing_ttl import landing_ttl_refusal
+    from provisa.federation.engine import build_engine
+
+    monkeypatch.setattr(appmod.state, "federation_engine", build_engine("duckdb"), raising=False)
+    async with _db(tmp_path, source_type=source_type, table_replicate=None) as db:
+        async with db.acquire() as conn:
+            assert await landing_ttl_refusal(conn, "s", table=_t(signal, None)) is None

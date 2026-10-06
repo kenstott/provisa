@@ -55,7 +55,7 @@ _log = logging.getLogger(__name__)
 #:
 #: ``data_profiler`` (REQ-1934): the same as ingest -- its runs append to its result relations in
 #: the org's control plane, which a replica pass would drop and recreate.
-_NO_REPLICA_TYPES = frozenset({"ingest", "govdata", "data_profiler"})
+NO_REPLICA_TYPES = frozenset({"ingest", "govdata", "data_profiler"})
 
 
 def _source_type(source: Any) -> str:
@@ -64,8 +64,8 @@ def _source_type(source: Any) -> str:
 
 
 def owns_replica(source: Any) -> bool:
-    """Whether reads of ``source``'s tables can go through a replica at all (``_NO_REPLICA_TYPES``)."""
-    return _source_type(source) not in _NO_REPLICA_TYPES
+    """Whether reads of ``source``'s tables can go through a replica at all (``NO_REPLICA_TYPES``)."""
+    return _source_type(source) not in NO_REPLICA_TYPES
 
 
 def table_floor(source: Any, table: Any, *, promoted: bool) -> str | None:
@@ -99,7 +99,7 @@ def reads_replica(source: Any, table: Any, engine: Any, *, promoted: bool) -> bo
     from provisa.federation.engine import UnreachableSource
     from provisa.federation.strategy import Strategy, federate
 
-    if _source_type(source) in _NO_REPLICA_TYPES:
+    if _source_type(source) in NO_REPLICA_TYPES:
         return False
     try:
         strategy = federate(
@@ -293,7 +293,7 @@ def _floored(registry: _Registry) -> dict[int, tuple[str, str]]:
             # REQ-1939: never read live -- its reads are its synthetic copy, through the engine.
             floored[reg["id"]] = (src.id, f"synthetic dataset {synthetic[reg['id']][0]!r}")
             continue
-        if _source_type(src) in _NO_REPLICA_TYPES:
+        if _source_type(src) in NO_REPLICA_TYPES:
             continue
         setting = table_floor(src, reg, promoted=_replica_key(reg) in serving)
         if setting is not None:
