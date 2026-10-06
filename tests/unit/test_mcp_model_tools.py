@@ -755,6 +755,8 @@ async def test_list_synthetic_datasets(monkeypatch, app_state):
         error=None,
         generated_at=None,
         tables=[SimpleNamespace(table_id=7, profile_env="prod", run_id="r2", scale=None)],
+        fanout_conditions=[],
+        assertions=[],
     )
     with patch("provisa.synthetic.datasets.list_datasets", new=AsyncMock(return_value=[row])):
         out = await model_tools.list_synthetic_datasets(app_state, "steward", _request("steward"))
