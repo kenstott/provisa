@@ -26,6 +26,7 @@ a store has it before any configuration is applied.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
@@ -314,7 +315,10 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             for row in await tag_repo.list_all(conn)
             if row["id"] not in SYSTEM_TAG_IDS + DERIVED_TAG_IDS
         ],
-        "tag_assignments": tag_assignments,
+        # Ordered by what names the object, never by a serial: the same model reads the same.
+        "tag_assignments": sorted(
+            tag_assignments, key=lambda a: json.dumps(a, sort_keys=True, default=str)
+        ),
         "rls_rules": rls_rules,
         "functions": [
             _written(Function.model_validate(_fields(Function, row)))

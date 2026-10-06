@@ -833,3 +833,29 @@ async def test_kafka_sources_round_trip_through_the_export(db):
     async with fresh.acquire() as conn:
         await apply_config(parse_config_dict(yaml.safe_load(yaml.safe_dump(exported))), conn)
     assert await _model(fresh) == await _model(db)
+
+
+# --- a named demo's whole config ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "config_file", ["config/provisa-install.yaml", "demo/named/perf/config.yaml"]
+)
+async def test_a_whole_demo_config_seeds_rebuilds_and_round_trips(db, config_file):
+    """A demo's whole config (the standard one, and a named one such as perf) seeds an empty
+    store once, a demo rebuild from it gives the same model, and its export applied to an empty
+    store builds that model again."""
+    from provisa.core.config_loader import rebuild_from_config
+
+    raw = config_loader.read_config_with_includes(_REPO / config_file)
+    seeded, _config = await _boot(db, raw)
+    assert seeded is True
+    first = await _model(db)
+    async with db.acquire() as conn:
+        await rebuild_from_config(parse_config_dict(raw), conn)
+    assert await _model(db) == first
+    exported = with_store_model(raw, first)
+    fresh = await _plane("demo-round-trip")
+    async with fresh.acquire() as conn:
+        await apply_config(parse_config_dict(yaml.safe_load(yaml.safe_dump(exported))), conn)
+    assert await _model(fresh) == first

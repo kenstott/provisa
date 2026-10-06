@@ -94,3 +94,57 @@ async def test_an_admin_edit_of_a_source_keeps_its_region(tmp_path):
             )
         assert result.success is True, result.message
         assert (await _regions(db))[0] == "eu"
+
+
+@pytest.mark.asyncio
+async def test_an_edit_through_update_table_keeps_the_store_only_settings(tmp_path):
+    """REQ-1919: every setting a configuration can give a table is held by the store, and the
+    admin's table form — and the MCP model tools (set_column_fake, set_table_profiler), which save
+    through the same updateTable — carry none of the store-only ones. A save keeps each as stored."""
+    from provisa.api.admin.schema_mutation import Mutation
+    from provisa.core.schema_org import table_columns
+
+    async with _db(tmp_path, source_signal="ttl", table_ttl=60) as db:
+        promotions = [{"source_path": "a.b", "target_column": "b", "data_type": "text"}]
+        async with db.acquire() as conn:
+            await conn.execute_core(
+                update(registered_tables).values(
+                    hot=True, approval_hook=True, relay_pagination=True, promotions=promotions
+                )
+            )
+            table_id = (await conn.execute_core(select(registered_tables.c.id))).scalar_one()
+            await conn.execute_core(
+                table_columns.insert().values(
+                    table_id=table_id,
+                    domain_id="",
+                    column_name="id",
+                    data_type="integer",
+                    visible_to=["analyst"],
+                    encrypted=True,
+                    embedding=True,
+                )
+            )
+        with ExitStack() as stack:
+            for p in _table_patches(db):
+                stack.enter_context(p)
+            result = await Mutation().update_table(MagicMock(), _table_input(description="edited"))
+        assert result.success is True, result.message
+        async with db.acquire() as conn:
+            table = (
+                await conn.execute_core(
+                    select(
+                        registered_tables.c.hot,
+                        registered_tables.c.approval_hook,
+                        registered_tables.c.relay_pagination,
+                        registered_tables.c.promotions,
+                    )
+                )
+            ).one()
+            columns = (
+                await conn.execute_core(
+                    select(table_columns.c.encrypted, table_columns.c.embedding)
+                )
+            ).fetchall()
+        assert (table.hot, table.approval_hook, table.relay_pagination) == (True, True, True)
+        assert table.promotions == promotions
+        assert columns and all(c.encrypted and c.embedding for c in columns)
