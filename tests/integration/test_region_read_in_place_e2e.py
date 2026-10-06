@@ -99,13 +99,9 @@ def _config(stack: "_Stack", files: Path, work: Path, kind: str) -> dict:
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
         "domains": [{"id": "sales", "description": "Sales"}],
-        "roles": [
-            {
-                "id": _ROLE,
-                "capabilities": ["query_development", "observability"],
-                "domain_access": ["*"],
-            }
-        ],
+        # org_admin is the reserved administrative role (REQ-1349): every org has it and a
+        # config file may not declare it.
+        "roles": [],
         "sources": [source],
         "tables": [
             {

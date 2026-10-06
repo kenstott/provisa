@@ -51,7 +51,6 @@ _COLUMNS = [
     ("name", "varchar"),
     ("note", "varchar"),
 ]
-_CAPABILITIES = ["source_registration", "table_registration", "query_development", "full_results"]
 
 
 def _config(source: dict, schema: str) -> dict:
@@ -65,7 +64,8 @@ def _config(source: dict, schema: str) -> dict:
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
         "domains": [{"id": "lit", "description": "Literal types"}],
-        "roles": [{"id": _ROLE, "capabilities": _CAPABILITIES, "domain_access": ["*"]}],
+        # org_admin is reserved (REQ-1349) and not declared.
+        "roles": [],
         "sources": [source],
         "tables": [
             {

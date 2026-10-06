@@ -57,19 +57,9 @@ def _config(workdir: str) -> dict:
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
         "domains": [{"id": "sales", "description": "Sales"}],
-        "roles": [
-            {
-                "id": _ROLE,
-                "capabilities": [
-                    "query_development",
-                    "observability",
-                    "table_registration",
-                    "source_registration",
-                    "access_config",
-                ],
-                "domain_access": ["*"],
-            }
-        ],
+        # org_admin is the reserved administrative role (REQ-1349): every org has it and a
+        # config file may not declare it.
+        "roles": [],
         "sources": [{"id": "files", "type": "files", "path": f"{workdir}/data"}],
         "tables": [
             {
