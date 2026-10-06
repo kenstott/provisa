@@ -72,20 +72,27 @@ Settings you change in the admin do not survive the next start, except organizat
 ./start-ui-install.sh --demo perf
 ```
 
-With a name, the launcher does three more things before it starts the backend:
+With a name, the launcher does four more things before it starts the backend:
 
-1. Runs `docker compose -f demo/named/<name>/docker-compose.yml up -d --build`.
-2. If the compose file defines a service called `seeder`, runs `docker compose ... up seeder` and waits for it. The first start takes a while. Later starts skip seeding.
-3. Writes a config file that includes the standard demo config and the demo's `fragment.yaml`, and prints `Config with named demo '<name>' sources: <path>`.
+1. Unless you pass `--keep-data`, removes the demo's containers and volumes (`docker compose ... down -v`) and deletes `demo/named/<name>/data`, so the data is seeded from empty. Every named-demo start is pristine by default.
+2. Runs `docker compose -f demo/named/<name>/docker-compose.yml up -d --build`.
+3. If the compose file defines a service called `seeder`, runs `docker compose ... up seeder` and waits for it.
+4. Uses the demo's own `config.yaml`, a whole config, in place of the standard demo config, and prints `Config for named demo '<name>': <path>`. (A demo may instead ship a `fragment.yaml` that the launcher overlays on the standard config; see the [pro tip](#pro-tip-a-fragment-instead-of-a-whole-config).) A `--source` toy source is overlaid on either.
 
-`perf` is a benchmark demo, and it is heavy. Its compose file asks PostgreSQL for 12 GB of shared buffers and Neo4j for an 8 GB heap plus a 4 GB page cache, and it loads 20 million orders by default. It is sized for a 64 GB server. On a laptop, set a small row count before you start, and give Docker Desktop plenty of memory:
+With `--keep-data`, step 1 is skipped. The seeder finds its marker file, prints that the demo is already seeded, and does nothing. Use it for a demo whose data takes too long to regenerate on every start.
 
-```bash
-PROVISA_BENCH_ORDERS=200000 PROVISA_BENCH_NEO4J_ORDERS=20000 \
-  ./start-ui-install.sh --demo perf
-```
+`perf` is a benchmark demo, sized for a server, not a laptop. Its compose file gives PostgreSQL 12 GB of shared buffers and Neo4j an 8 GB heap plus a 4 GB page cache, and it loads 20 million orders, which takes a long time to generate. To run it on a laptop you would need to change two things:
 
-The first start also builds a custom PostgreSQL image, which compiles several extensions. For a customer demo, build a demo of your own, as below, and treat `perf` as a worked example of the layout.
+- **The row counts.** Set them in the environment before you start:
+
+  ```bash
+  PROVISA_BENCH_ORDERS=200000 PROVISA_BENCH_NEO4J_ORDERS=20000 \
+    ./start-ui-install.sh --demo perf --keep-data
+  ```
+
+- **The memory settings** in `demo/named/perf/docker-compose.yml`: `shared_buffers` and `effective_cache_size` for PostgreSQL, and `NEO4J_server_memory_heap_max__size` and `NEO4J_server_memory_pagecache_size` for Neo4j. Docker Desktop must also be given more memory than the total.
+
+`perf` takes `--keep-data` because 20 million rows should not regenerate on every start. The first start also builds a custom PostgreSQL image, which compiles several extensions. For a customer demo, build a demo of your own, as below, and treat `perf` as a worked example of the layout.
 
 ### Add a toy source on top
 
@@ -100,21 +107,22 @@ See [Add one toy source](#add-one-toy-source-with---source).
 - **Stop Provisa:** press `Ctrl+C` in the terminal that runs the launcher. It stops the backend, the UI and the demo servers. The embedded PostgreSQL stays up for the next start.
 - **Other keys:** `Ctrl+R` restarts the backend, `Ctrl+U` clears the UI cache and restarts the UI, and `Ctrl+E` stops the servers and leaves Docker running.
 - **Reset the Provisa side:** just start again. Every `--demo` start drops and rebuilds the demo control plane.
+- **Reset a named demo's data:** just start again. A named demo reseeds from empty by default. Pass `--keep-data` to reuse the data from the last seeding instead.
 - **Stop a named demo's data stack.** `Ctrl+C` does not stop it. Run:
 
   ```bash
   docker compose -f demo/named/perf/docker-compose.yml down
   ```
 
-- **Re-seed a named demo.** The seeder skips work when `demo/named/<name>/data/.seeded` exists. To start from empty data, stop the stack, remove its volumes, delete the data directory, and start again:
+- **Force a reseed while using `--keep-data`.** The seeder skips work when `demo/named/<name>/data/.seeded` exists. Remove the stack's volumes and the data directory, then start:
 
   ```bash
   docker compose -f demo/named/perf/docker-compose.yml down -v
   rm -rf demo/named/perf/data
-  ./start-ui-install.sh --demo perf
+  ./start-ui-install.sh --demo perf --keep-data
   ```
 
-  Deleting `data/` alone is not enough for `perf`: MongoDB keeps its data in a named Docker volume, and `down -v` removes it.
+  Deleting `data/` alone is not enough for `perf`: MongoDB keeps its data in a named Docker volume, and `down -v` removes it. A start without `--keep-data` does both.
 
 ### Troubleshooting
 
@@ -122,9 +130,10 @@ These are the messages the scripts print, and what to do.
 
 | You see | Cause and fix |
 | --- | --- |
-| `Unknown option: ...` followed by a usage block | A flag the launcher does not know. The valid ones are `--demo [name]`, `--source=<name>`, `--native`, `--keep-docker`, `--fast` and `--idp=basic\|firebase`. |
+| `Unknown option: ...` followed by a usage block | A flag the launcher does not know. The valid ones are `--demo [name]`, `--keep-data`, `--source=<name>`, `--native`, `--keep-docker`, `--fast` and `--idp=basic\|firebase`. |
 | `Unknown demo name: X. No demo/named/X/ directory.` | The name does not match a directory. Run `ls demo/named`. |
-| `--demo X has no .../fragment.yaml to register it with` | The demo directory has no `fragment.yaml`. |
+| `--demo X has no config.yaml (and no fragment.yaml) in demo/named/X/ to register it with.` | The demo directory has neither file. Export the model into `config.yaml` (see [Create `config.yaml`](#4-create-configyaml)). |
+| `--demo X has both config.yaml and fragment.yaml in demo/named/X/. Keep one: ...` | A demo takes a whole config or a fragment, not both. Delete one. |
 | `Embedded control plane requires pgserver (Python <=3.12). Aborting.` | The virtual environment uses a newer Python. Recreate it with `PYTHON=python3.12 ./venv.sh`, and read `.logs/control-plane-pg.log`. |
 | `Backend crashed. Last logs:` or `Backend did not become healthy. Last logs:` | Read the 20 lines printed, then `.logs/backend.log`. The launcher waits up to about three minutes for `/health`. |
 | `UI dev server crashed — see .../.logs/ui.log` | The UI failed to build. Read `.logs/ui.log`, and check `node --version` against `.nvmrc`. |
@@ -132,11 +141,12 @@ These are the messages the scripts print, and what to do.
 | `Warning: no GitHub token ... GovData subscriptions unavailable.` | Harmless. Only the optional government-data subscriptions need that token. |
 | `Stopping previous start-ui-install.sh instance` | The launcher runs one copy at a time and replaced an older one. |
 | Docker errors during `docker compose up` | The launcher stops at the first failing command. Start Docker Desktop and run the command it printed by hand to see the full error. |
-| `perf demo already seeded (...); skipping` | Normal on every start after the first. |
+| `perf demo already seeded (...); skipping` | Normal with `--keep-data` after the first start. |
+| `rm` reports a permission error while removing `data/` | Files written by a container on Linux can belong to another user. Delete `demo/named/<name>/data` with `sudo`, then start again. |
 
 ## Build a new named demo
 
-A named demo is a directory, `demo/named/<name>/`. Create the directory and `./start-ui-install.sh --demo <name>` finds it. You do not edit the launcher, and no name is registered anywhere. The launcher refuses only a missing directory and a missing `fragment.yaml`.
+A named demo is a directory, `demo/named/<name>/`. Create the directory and `./start-ui-install.sh --demo <name>` finds it. You do not edit the launcher, and no name is registered anywhere. The launcher refuses a missing directory, and a demo with neither `config.yaml` nor `fragment.yaml`, or with both.
 
 The worked example is `retail`: a PostgreSQL database with customers and orders, plus a stores list loaded from a CSV file.
 
@@ -149,11 +159,11 @@ demo/named/retail/
   seed.py                the seeder's entry point
   generate_postgres.py   creates and fills the tables
   stores.csv             a small list of stores
-  fragment.yaml          what Provisa registers: domain, source, tables, relationships
+  config.yaml            the demo's whole config: sources, domains, tables, relationships
   .gitignore             one line: data/
 ```
 
-`perf` has the same shape with four databases instead of one.
+`perf` has the same shape with four databases instead of one. A demo with no data stores of its own needs only `config.yaml`: no compose file, no seeder.
 
 ### 1. Create the directory
 
@@ -359,9 +369,52 @@ store_id,city,region
 
 The names and addresses come from short fixed lists and `@example.com`, so no real person appears anywhere.
 
-### 4. Write `fragment.yaml`
+### 4. Create `config.yaml`
 
-The fragment lists what Provisa should register: a domain, a source, every table with its columns, and the relationships. The launcher includes it in the standard demo config, so the pet store stays alongside.
+`config.yaml` is the demo's whole config: every source, domain, table, relationship and role it shows, plus the settings the standard demo carries. The launcher uses it in place of the standard demo config. Every start rebuilds the control plane from it, so the demo is exactly what the file lists.
+
+You do not write it by hand. Build the demo in the running UI and export it.
+
+1. Bring up the data stack yourself, if the demo has one, and start the standard demo (no name):
+
+   ```bash
+   docker compose -f demo/named/retail/docker-compose.yml up -d --build
+   ./start-ui-install.sh --demo
+   ```
+
+2. In the UI, add the database as a source (PostgreSQL, host `localhost`, port `25800`, database `retail`, user `provisa`), register its tables, and add the relationships between them. Add roles or row rules if the story needs them.
+3. Export the model. Open **Admin**, then **Maintenance**, then **Configuration File**, and choose **View / Diff**. The right pane, **Current**, is the whole live config. Copy all of it. The same text comes from `curl -s http://localhost:8001/admin/config/live` while the demo runs. In the demo this export is always on.
+4. Save it as `demo/named/retail/config.yaml`.
+5. Add what the export leaves out. It carries your tables, relationships, roles and domains, but **not the sources you added in the UI**: sources come from the startup file, not from live state. Add each one to the `sources:` list by hand, with its connection values as `${env:...}` references:
+
+   ```yaml
+   sources:
+   - id: retail-postgresql
+     type: postgresql
+     host: ${env:PROVISA_RETAIL_POSTGRESQL_HOST:-localhost}
+     port: ${env:PROVISA_RETAIL_POSTGRESQL_PORT:-25800}
+     database: retail
+     username: provisa
+     password: ${env:PROVISA_RETAIL_POSTGRESQL_PASSWORD:-provisa}
+     description: "Retail demo database (PostgreSQL)"
+   ```
+
+6. Decide what else stays. The export starts from the standard demo, so the pet store's sources, tables and relationships are in it. Keep them to show retail beside the pet store, or delete them for a retail-only demo.
+
+Rules that bite:
+
+- **Declare `tables:` for every source.** A bare `sources:` entry never produces tables in the SQL catalog. The export already names each table, its schema, and each column with its type and who may see it.
+- **`visible_to` names roles.** The standard config's `analyst` role may only open the pet-store domains. A new domain is visible to `org_admin`, which the demo's requests act as. Add another role under `roles:` with its own `domain_access`, as `perf` does for `org_admin_unguarded`.
+- **Connection values are environment variables with defaults:** `${env:NAME:-default}`. The compose file and the generator read the same names.
+- **Everything is synthetic.** Describe it that way in the descriptions.
+
+#### Pro tip: a fragment instead of a whole config
+
+For a small addition to the pet store, you can skip the export and ship `demo/named/<name>/fragment.yaml` instead of `config.yaml`. The launcher overlays it on the standard demo config. It holds only list sections, and each is appended to the standard demo's: `domains`, `sources`, `tables`, `relationships` and `roles`. A top-level setting the standard config already sets, with a different value, fails the load with `config include ...: key '...' conflicts with the including file; only list sections merge`.
+
+Give a demo one of the two files. With neither, or with both, the launcher refuses it by name.
+
+The retail demo as a fragment, written by hand:
 
 ```yaml
 domains:
@@ -424,25 +477,16 @@ relationships:
   cardinality: many-to-one
 ```
 
-Rules that bite:
-
-- **List sections add, nothing replaces.** `domains`, `sources`, `tables`, `relationships` and `roles` are appended to the standard demo's lists. A top-level setting the base config already sets, with a different value, fails the load with `config include ...: key '...' conflicts with the including file; only list sections merge`. Keep a fragment to those list sections.
-- **Declare `tables:` for every source.** A bare `sources:` entry never produces tables in the SQL catalog. Name each table, its schema, and each column with its type and who may see it.
-- **`visible_to` names roles.** The standard config's `analyst` role may only open the pet-store domains, so this fragment uses `org_admin`. If you need another role, add it under `roles:` with its own `domain_access`, as `perf` does for `org_admin_unguarded`.
-- **Connection values are environment variables with defaults:** `${env:NAME:-default}`. The compose file and the generator read the same names.
-- **Relationship ids must be unique,** and `source_table_id` and `target_table_id` are the `table:` names above.
-- **Everything is synthetic.** Describe it that way, as the descriptions do here.
-
 ### 5. Test it
 
-Start only the data stack first, from the repository root:
+Start the data stack by itself first, from the repository root, to check the seeder:
 
 ```bash
 docker compose -f demo/named/retail/docker-compose.yml up -d --build
 docker compose -f demo/named/retail/docker-compose.yml logs -f seeder
 ```
 
-The seeder exits when it finishes. Confirm the marker and the rows:
+The seeder exits when it finishes. Confirm the marker and the rows. (The launcher removes this stack on a default start and seeds it again, so this check is only for debugging.)
 
 ```bash
 ls demo/named/retail/data/.seeded
@@ -456,6 +500,8 @@ Then run the whole demo:
 ./start-ui-install.sh --demo retail
 ```
 
+The launcher tears the data stack down and seeds it again, then uses `config.yaml`.
+
 In the UI, open **Tables** and look for the `retail` domain. Open **SQL** and run:
 
 ```sql
@@ -465,11 +511,13 @@ GROUP BY s.region
 ORDER BY revenue DESC
 ```
 
-If the table names differ in your install, copy the form shown in the **Tables** list. Then try the reset: stop the stack with `down -v`, delete `demo/named/retail/data`, and start again to confirm a clean seeding.
+If the table names differ in your install, copy the form shown in the **Tables** list. Then start the demo a second time: without `--keep-data` it reseeds from empty, and with it the seeder prints `retail demo already seeded` and skips.
 
 ## Add one toy source with `--source`
 
-`--source=<name>` adds a single small source to the standard demo. Each directory under `demo/sources/` holds a `compose.yml`, usually a `prime.py` that loads a few rows, and a `fragment.yaml` that registers the source. The launcher starts the source's containers under the project name `provisa-demo-<name>`, primes them, and includes the fragment.
+`--source=<name>` is a shortcut. It starts a source locally in Docker, fills it with sample data, and registers it as a data source, all in one step. Use it when you want to show a specific connector, say Redis or Elasticsearch, without setting up that system yourself.
+
+You could do the same by hand: stand up the system, load some data, and add it as a source in the UI. `--source` only saves you from standing it up. Each directory under `demo/sources/` holds a `compose.yml`, usually a `prime.py` that loads a few rows, and a `fragment.yaml` that registers the source. The launcher starts the containers under the project name `provisa-demo-<name>`, primes them, and includes the fragment.
 
 ```bash
 ./start-ui-install.sh --demo --source=redis
@@ -502,7 +550,7 @@ To remove a toy source's containers and data:
 | A scenario for a customer, with your own tables, relationships and data | A named demo |
 | Several databases of different kinds joined together, tables pre-registered | A named demo |
 | A few rows and no seeding code | `--source` |
-| Data that must survive restarts, or large data | A named demo |
+| Data that must survive restarts, or large data | A named demo, started with `--keep-data` |
 
 The two combine: `./start-ui-install.sh --demo retail --source=redis`.
 
@@ -510,8 +558,8 @@ The two combine: `./start-ui-install.sh --demo retail --source=redis`.
 
 - **Use synthetic data only.** Never copy a customer's data into a demo, not even a sample. Generate rows from fixed lists and a seeded random generator, as `generate_postgres.py` does. Use `@example.com` addresses.
 - **To make a realistic demo from a customer's shape, use profiles and fakes.** Profile a table, declare fakes on its identifying columns, and generate a synthetic dataset at the volume you need. [Building test environments](test-data.md) walks through it, and [Fake methods](fake-methods.md) lists every fake. That route copies the distributions and relationships without the people.
-- **Reset between customer sessions.** Start the launcher again (every `--demo` start rebuilds the control plane), and for a named demo run `down -v`, delete `data/`, and start again if the session changed data.
-- **Keep secrets out of files.** Write connection values as `${env:NAME}` in `fragment.yaml` and put the real values in the repository's `.env`, which git ignores. The launcher loads `.env` before it reads the fragment. Never commit a password, key or token. The `provisa`/`provisa` password in the examples protects a local container that exists only for the demo.
+- **Reset between customer sessions.** Start the launcher again (every `--demo` start rebuilds the control plane), and a named demo reseeds from empty unless you pass `--keep-data`. Do not pass `--keep-data` between customers if a session changed the data.
+- **Keep secrets out of files.** Write connection values as `${env:NAME}` in `config.yaml` and put the real values in the repository's `.env`, which git ignores. The launcher loads `.env` before it reads the config. Never commit a password, key or token. The `provisa`/`provisa` password in the examples protects a local container that exists only for the demo.
 - **Do not reuse a named demo's ports** for anything else running on your laptop.
 
 ## Presenting it
@@ -521,7 +569,7 @@ The two combine: `./start-ui-install.sh --demo retail --source=redis`.
 3. **Run one query that crosses tables.** Use the SQL page. The retail query above joins orders to stores and totals revenue by region. To show a join across sources, join a retail table to a pet-store table, or add a toy source with `--source`.
 4. **Show the same query in GraphQL.** One model, many query languages.
 5. **Show governance.** Open **Security** and show roles and row rules. Connect a SQL client to pgwire (`postgresql://admin:ignored@localhost:5439/provisa`) and show the same data there.
-6. **Ask Polly.** Polly is the data assistant, in a panel at the side of the UI. It needs an LLM vendor and credential first. Without one, Polly shows "Polly isn't set up yet" and a button to the AI Models page (`/admin/ai-models`). Configure it before the session. The natural-language page in the tour uses seeded answers and works without one.
+6. **Ask Polly.** Polly is the data assistant, in a panel at the side of the UI. It needs an LLM key first. Put `ANTHROPIC_API_KEY=...` (or `OPENAI_API_KEY=...`) in your own `.env` at the repository root before the session. The launcher loads it. Without a key, Polly shows "Polly isn't set up yet" and a button to the AI Models page (`/admin/ai-models`). For a vendor other than Anthropic, set a model there too. The natural-language page in the tour uses seeded answers and works without one.
 7. **End on your customer's question.** Name the question first, then show it answered over their sources, in their domain's words.
 
 Before a session, run the launcher once, click through the tour, and ask Polly one question, so nothing surprises you in front of the customer.

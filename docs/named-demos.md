@@ -8,36 +8,46 @@ is just a new directory in this shape.
 
 Named demos are distinct from the `--source=<name>` mechanism. The `--source` flag adds a single
 toy source to the standard demo (backed by `demo/sources/<name>/`). A named demo is a
-self-contained multi-source package: its own docker-compose.yml, its own fragment.yaml, and
-whatever seeding tooling the scenario needs.
+self-contained multi-source package: its own config.yaml (a whole config), its own
+docker-compose.yml when it has data stores, and whatever seeding tooling the scenario needs.
 
 ## The fixed directory layout
 
-Every named demo lives at `demo/named/<name>/` and must contain exactly these files:
+Every named demo lives at `demo/named/<name>/` and contains these files:
 
 ```
 demo/named/<name>/
-  docker-compose.yml    # required — the one start point
-  fragment.yaml         # required — sources/domains/tables/relationships to splice in
+  config.yaml           # required — the demo's whole config, used in place of the standard demo's
+  docker-compose.yml    # the one start point for the demo's own data stores (none: omit it)
   Dockerfile.seeder     # if the demo self-seeds (recommended)
   seed.py               # entrypoint for the seeder service
   generate_*.py         # one per data store, optional but conventional
 ```
 
-`start-ui-install.sh` looks up `demo/named/$DEMO_NAME/fragment.yaml` generically [tool-verified]:
+`start-ui-install.sh` picks the demo's config generically, from `demo/named/$DEMO_NAME/`
+[tool-verified]:
 
 ```bash
-# start-ui-install.sh:272-276
+# start-ui-install.sh, after the directory check
+_NAMED_WHOLE=false
 if [ -n "$DEMO_NAME" ]; then
-  _NAMED_DIR="$SCRIPT_DIR/demo/named/$DEMO_NAME"
-  _NAMED_FRAGMENT="$_NAMED_DIR/fragment.yaml"
-  if [ ! -f "$_NAMED_FRAGMENT" ]; then
-    echo "--demo $DEMO_NAME has no $_NAMED_FRAGMENT to register it with"; exit 1
+  _NC="$SCRIPT_DIR/demo/named/$DEMO_NAME/config.yaml"
+  _NF="$SCRIPT_DIR/demo/named/$DEMO_NAME/fragment.yaml"
+  if [ -f "$_NC" ] && [ -f "$_NF" ]; then
+    echo "--demo $DEMO_NAME has both config.yaml and fragment.yaml in demo/named/$DEMO_NAME/. Keep one: ..."; exit 1
   fi
+  if [ ! -f "$_NC" ] && [ ! -f "$_NF" ]; then
+    echo "--demo $DEMO_NAME has no config.yaml (and no fragment.yaml) in demo/named/$DEMO_NAME/ to register it with."; exit 1
+  fi
+  [ -f "$_NC" ] && _NAMED_WHOLE=true
+fi
 ```
 
-If the directory or `fragment.yaml` is absent the launcher exits immediately. Nothing else is
-checked — the name itself is not in any registry or allowlist.
+`config.yaml` is a **whole config**: the launcher sets `PROVISA_CONFIG` to it in place of the
+standard demo config (`config/provisa-install.yaml`), so the demo is exactly what the file lists.
+A `--source` toy source is still overlaid on top. A demo may instead ship a `fragment.yaml`,
+overlaid on the standard config; a demo with neither, or with both, is refused by name. The name
+itself is not in any registry or allowlist.
 
 ## The one-start-point invariant
 
@@ -47,7 +57,7 @@ manual commands. No host-side scripts to run before it works.
 This does **not** mean the demo must be a single process or single container. The `perf` demo
 runs five containers (four engines plus a seeder) [tool-verified]. A demo may also reference
 external managed resources it does not containerize — a live Databricks or Snowflake source
-reached by connection string, registered in `fragment.yaml` with no corresponding compose
+reached by connection string, registered in `config.yaml` with no corresponding compose
 service. Those are implementation details behind the single entry point.
 
 What the invariant prohibits: telling the solutions engineer to run scripts by hand, set up
@@ -71,7 +81,8 @@ def main() -> int:
 When the seeder container starts, it checks for the marker. If present, it exits immediately. If
 absent, it runs all generation scripts in sequence, then writes the marker. Because the marker
 lives on the bind-mounted `./data/` volume, it survives container restarts but not `./data/`
-being deleted. [tool-verified]
+being deleted. A start without `--keep-data` deletes it, so the marker only matters to a demo started
+with `--keep-data`. [tool-verified]
 
 The seeder service in `docker-compose.yml` gates on every other service's healthcheck
 [tool-verified]:
@@ -121,20 +132,24 @@ services:
 `docker ps --filter label=com.provisa.demo=<name>` lists exactly those containers without
 needing the compose file open. `com.provisa.demo.role` identifies each service's part.
 
-## fragment.yaml — registering sources and tables
+## config.yaml — the demo's whole config
 
-`fragment.yaml` is a static, checked-in config file. It is spliced into the Provisa config by
-the launcher at startup, not loaded at runtime. Use Provisa's standard YAML config format: top-
-level `domains:`, `sources:`, `tables:`, and `relationships:` keys.
+`config.yaml` is a static, checked-in config file in Provisa's standard YAML config format. Every
+start rebuilds the control plane from it. The usual way to produce it is to run the standard demo,
+build the scenario in the UI, and export the model (Admin → Maintenance → Configuration File →
+View / Diff, the **Current** pane, or `GET /admin/config/live`), then save it as `config.yaml`.
+The export omits sources added in the UI, so add them to `sources:` by hand. The excerpts below
+come from `demo/named/perf/config.yaml`, which is the standard demo config with the perf sections
+appended.
 
 ### Every source needs explicit `tables:`
 
 Register each source and then list every table it exposes. A bare `sources:` entry never
 produces tables in the SQL catalog, for any connector type, because the catalog is built from the
-registered tables [tool-verified from the header of `demo/named/perf/fragment.yaml`]:
+registered tables [tool-verified from the notes in `demo/named/perf/config.yaml`]:
 
 ```yaml
-# demo/named/perf/fragment.yaml:36-43
+# demo/named/perf/config.yaml, the bench-postgresql source
 - id: bench-postgresql
   type: postgresql
   host: ${env:PROVISA_BENCH_POSTGRESQL_HOST:-localhost}
@@ -146,7 +161,7 @@ registered tables [tool-verified from the header of `demo/named/perf/fragment.ya
 
 Use env-var interpolation with a `:-` default for every host and port. The seeder uses the
 in-container service name as the host; the host-side generate scripts use `localhost` plus the
-published port. The fragment uses the same env-var names so both work without editing the file
+published port. The config uses the same env-var names so both work without editing the file
 [tool-verified from `generate_postgres.py:29-30`]:
 
 ```python
@@ -157,11 +172,10 @@ PORT = int(os.environ.get("PROVISA_BENCH_POSTGRESQL_PORT", "25632"))
 ### Sources backed by api_source (each table is a query)
 
 Neo4j is an `api_source`-backed type where each table is one fixed Cypher projection. You
-hand-author every table in `fragment.yaml`
-[tool-verified, with comment from `demo/named/perf/fragment.yaml:19-27`]:
+hand-author every table in `config.yaml`:
 
 ```yaml
-# fragment.yaml:63-94 (excerpt)
+# demo/named/perf/config.yaml (excerpt)
 tables:
 - source_id: bench-neo4j
   domain_id: perf-bench
@@ -190,7 +204,7 @@ Provisa's `Column` model shape: `name`, `data_type`, optional `is_primary_key`, 
 Cross-table relationships go in a top-level `relationships:` block [tool-verified]:
 
 ```yaml
-# fragment.yaml:167-178
+# demo/named/perf/config.yaml (excerpt)
 relationships:
 - id: bench-placed-to-customer
   source_table_id: bench_placed_edge
@@ -264,7 +278,7 @@ services:
 ```
 
 The Snowflake source requires no service entry — it is external. Its credentials belong in
-`fragment.yaml` via env-var interpolation.
+`config.yaml` via env-var interpolation.
 
 **3. Write `Dockerfile.seeder`.**
 
@@ -314,18 +328,15 @@ HOST = os.environ.get("PROVISA_BANKING_PG_HOST", "localhost")
 PORT = int(os.environ.get("PROVISA_BANKING_PG_PORT", "25700"))
 ```
 
-**6. Write `fragment.yaml`.**
+**6. Create `config.yaml`.**
 
-Register a domain. For each native-connector source (postgresql, clickhouse, mongodb): one
-`sources:` entry, no `tables:`. For each api_source-backed source (neo4j, elasticsearch): one
-`sources:` entry and a `tables:` block with every projected table spelled out. For external
-sources like Snowflake: one `sources:` entry with credentials as env-var interpolations.
+Start the data stack and the standard demo, build the scenario in the UI (the two local databases
+and the Snowflake source, their tables and relationships), export the model, and save it as
+`demo/named/banking/config.yaml`. Add the sources you created in the UI to its `sources:` list by
+hand, since the export omits them. Give each connection value as an env-var interpolation, and the
+external Snowflake source's credentials too:
 
 ```yaml
-domains:
-- id: banking-demo
-  description: "Banking vertical demo"
-
 sources:
 - id: banking-pg
   type: postgresql
@@ -334,7 +345,6 @@ sources:
   database: banking
   username: provisa
   password: provisa
-
 - id: banking-snowflake
   type: snowflake
   account: ${env:PROVISA_BANKING_SNOWFLAKE_ACCOUNT}
@@ -342,6 +352,10 @@ sources:
   password: ${env:PROVISA_BANKING_SNOWFLAKE_PASSWORD}
   database: ${env:PROVISA_BANKING_SNOWFLAKE_DATABASE}
 ```
+
+Every source still needs explicit `tables:`, which the export supplies. For a small addition to the
+pet store you can ship a `fragment.yaml` of list sections instead of a whole config; see
+[Running and building demos on your laptop](sales-engineer-demos.md#pro-tip-a-fragment-instead-of-a-whole-config).
 
 **7. Bring the stack up and test.**
 
@@ -357,9 +371,9 @@ Watch `docker compose logs seeder` to confirm generation finishes and the marker
 ./start-ui-install.sh --demo banking
 ```
 
-The launcher brings the compose stack up and waits for the seeder, splices `fragment.yaml` in, and
-prints `Config with named demo 'banking' sources:`. The stack in step 7 can be started first for
-testing, but the launcher starts it anyway.
+The launcher brings the compose stack up and waits for the seeder, uses `config.yaml` in place of the
+standard demo config, and prints `Config for named demo 'banking': ...`. The stack in step 7 can be started first for
+testing, but unless you pass `--keep-data` the launcher removes it and seeds it again.
 
 ## The `--source` mechanism: what it is not
 
@@ -369,10 +383,11 @@ toy dataset. The launcher starts and stops those containers. [tool-verified, sta
 
 Named demos deliberately do not follow that pattern. Their data is large, meant to persist
 across restarts, and they manage their own compose lifecycle. `start-ui-install.sh --demo <name>`
-starts the named demo's stack on every launch (`docker compose up -d --build`, then
-`docker compose up seeder` when the file defines a `seeder` service) but never stops or resets it.
-Stopping and re-seeding are yours to do: see [Running and building demos on your
-laptop](sales-engineer-demos.md#stop-and-reset) [tool-verified from `start-ui-install.sh:285-297`].
+starts the named demo's stack on every launch. By default it first removes the stack's containers and
+volumes and deletes its `data/` directory (`docker compose down -v`), so the seeder reseeds from
+empty; `--keep-data` skips that and reuses the data from the last seeding. The launcher never stops
+the stack: stopping it is yours to do. See [Running and building demos on your
+laptop](sales-engineer-demos.md#stop-and-reset) [tool-verified from `start-ui-install.sh:285-310`].
 
 You can combine both: `./start-ui-install.sh --demo perf --source=cassandra` adds a toy
 Cassandra source on top of the perf demo. The two mechanisms are additive.
