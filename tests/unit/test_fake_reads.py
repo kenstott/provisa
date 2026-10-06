@@ -16,6 +16,7 @@ engine's own fake functions."""
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 import duckdb
 import pytest
@@ -25,6 +26,7 @@ from provisa.compiler import stage2
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.fakes import digest as digest_mod
 from provisa.fakes.duckdb_functions import register
+from provisa.fakes.measured import Measured
 from provisa.fakes.read_sql import FakeReadRefused
 from provisa.security.masking import MaskingRule, MaskType
 
@@ -40,6 +42,8 @@ _COLUMNS = [
     ("price", "double"),
     ("total", "double"),
     ("region", "varchar"),
+    ("active", "boolean"),
+    ("code", "varchar"),
 ]
 _FAKES = {
     "email": "email()",
@@ -61,11 +65,11 @@ def con(monkeypatch):
     c.execute(
         "CREATE TABLE sales.customers (id INTEGER, email VARCHAR, tier VARCHAR, score DOUBLE, "
         "created TIMESTAMP, shipped TIMESTAMP, qty INTEGER, price DOUBLE, total DOUBLE, "
-        "region VARCHAR)"
+        "region VARCHAR, active BOOLEAN, code VARCHAR)"
     )
     for i in range(1, 201):
         c.execute(
-            "INSERT INTO sales.customers VALUES (?, ?, 'bronze', ?, ?, ?, ?, 2.5, ?, ?)",
+            "INSERT INTO sales.customers VALUES (?, ?, 'bronze', ?, ?, ?, ?, 2.5, ?, ?, TRUE, ?)",
             [
                 i,
                 f"user{i % 150}@real.example",
@@ -75,12 +79,18 @@ def con(monkeypatch):
                 i % 7,
                 (i % 7) * 2.5,
                 "east" if i % 2 else "west",
+                f"C{i}",
             ],
         )
     return c
 
 
-def _gov(fakes=_FAKES, rls: str | None = None, stable: set[str] | None = None) -> GovernanceContext:
+def _gov(
+    fakes=_FAKES,
+    rls: str | None = None,
+    stable: set[str] | None = None,
+    measured: dict[str, Measured] | None = None,
+) -> GovernanceContext:
     gov = GovernanceContext(role_id="analyst")
     gov.table_map = {"sales.customers": 1, "customers": 1}
     gov.all_columns = {1: list(_COLUMNS)}
@@ -88,7 +98,12 @@ def _gov(fakes=_FAKES, rls: str | None = None, stable: set[str] | None = None) -
     for name, decl in fakes.items():
         dtype = dict(_COLUMNS)[name]
         gov.masking_rules[(1, name)] = (
-            MaskingRule(MaskType.fake, fake=decl, fake_stable=name in (stable or set())),
+            MaskingRule(
+                MaskType.fake,
+                fake=decl,
+                fake_stable=name in (stable or set()),
+                fake_measured=(measured or {}).get(name),
+            ),
             dtype,
         )
     if rls:
@@ -160,11 +175,70 @@ def test_the_row_filter_reads_the_real_values(con):
     assert {r[0] for r in rows} == real
 
 
-def test_a_stable_or_measured_fake_is_refused_by_name_until_it_is_computed(con):
+def test_a_stable_or_unmeasured_fake_is_refused_by_name(con):
     with pytest.raises(FakeReadRefused, match="email: a stable fake"):
         _run(con, "SELECT email FROM sales.customers", _gov({"email": "email()"}, stable={"email"}))
-    with pytest.raises(FakeReadRefused, match="tier: categories\\(\\) takes measured values"):
+    with pytest.raises(FakeReadRefused, match="tier: categories\\(\\) computes from measured"):
         _run(con, "SELECT tier FROM sales.customers", _gov({"tier": "categories()"}))
+    refused = Measured(
+        refused="tier: categories() takes its values from the table, which holds none"
+    )
+    with pytest.raises(FakeReadRefused, match="which holds none"):
+        _run(
+            con,
+            "SELECT tier FROM sales.customers",
+            _gov({"tier": "categories()"}, measured={"tier": refused}),
+        )
+
+
+def test_measured_shares_values_and_distributions_are_what_the_read_shows(con):
+    gov = _gov(
+        {
+            "tier": "categories()",
+            "score": "profile()",
+            "region": "profile()",
+            "created": "profile()",
+        },
+        measured={
+            "tier": Measured(values=(("gold", 0.7), ("silver", 0.3))),
+            "score": Measured(points=((0.0, 100.0), (0.5, 150.0), (1.0, 200.0))),
+            "region": Measured(values=(("north", 0.5), ("south", 0.5))),
+            "created": Measured(points=((0.0, 1704067200.0), (1.0, 1735603200.0))),
+        },
+    )
+    rows = _run(con, "SELECT active, tier, score, region, created FROM sales.customers", gov)
+    assert len({r[1] for r in rows} & {"gold", "silver"}) == 1  # every real tier is bronze
+    assert all(100.0 <= r[2] <= 200.0 for r in rows)
+    assert {r[3] for r in rows} <= {"north", "south"}
+    assert all(dt.datetime(2024, 1, 1) <= r[4] <= dt.datetime(2024, 12, 31) for r in rows)
+
+
+@pytest.mark.parametrize("share, shown", [(0.0, False), (1.0, True)])
+def test_bool_shows_true_at_the_measured_share(con, share, shown):
+    # Every row holds TRUE, so every row shows the one fake of TRUE: the share decides which.
+    gov = _gov({"active": "bool()"}, measured={"active": Measured(true_share=share)})
+    assert {r[0] for r in _run(con, "SELECT active FROM sales.customers", gov)} == {shown}
+
+
+def test_a_pattern_fills_the_measured_shapes(con):
+    gov = _gov(
+        {"code": "pattern()"},
+        measured={"code": Measured(shapes=(("AA-99", 0.5), ("a.9@x%!", 0.5)))},
+    )
+    codes = [r[0] for r in _run(con, "SELECT code FROM sales.customers", gov)]
+    shapes = re.compile(r"^([A-Z]{2}-[0-9]{2}|[a-z]\.[0-9]@x%!)$")
+    assert all(shapes.match(c) for c in codes), [c for c in codes if not shapes.match(c)][:5]
+    assert {len(c) for c in codes} == {5, 7}  # both shapes are drawn
+    assert len(set(codes)) > 100  # their letters and digits are drawn, not fixed
+
+
+def test_a_relative_fake_with_no_distance_moves_by_the_measured_difference(con):
+    gov = _gov(
+        {**_FAKES, "shipped": "after(created)"},
+        measured={"shipped": Measured(points=((0.0, 86400.0), (1.0, 172800.0)))},
+    )
+    for created, shipped in _run(con, "SELECT created, shipped FROM sales.customers", gov):
+        assert dt.timedelta(days=1) <= shipped - created <= dt.timedelta(days=2)
 
 
 def test_unfaked_columns_and_unfaked_tables_are_read_as_they_are(con):

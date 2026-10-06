@@ -28,12 +28,14 @@ from __future__ import annotations
 import json
 import math
 import re
+from itertools import groupby
 from collections.abc import Callable
 from dataclasses import dataclass
 
 import sqlglot
 from sqlglot import exp
 
+from provisa.fakes.measurement import Measured
 from provisa.fakes.kinds import (
     Bool,
     Bucket,
@@ -78,6 +80,7 @@ class Column:
     family: str  # provisa.fakes.checks.family
     kind: FakeKind
     stable: bool
+    measured: Measured | None = None  # bound at model build, for a kind that is measured
 
 
 def _lit(text: str) -> str:
@@ -167,7 +170,8 @@ def _numeric_out(x: str, col: Column, temporal: bool) -> str:
     if col.family == "integer":
         return f"CAST(ROUND({x}) AS {col.data_type})"
     if temporal:
-        stamp = f"CAST(TO_TIMESTAMP({x}) AS TIMESTAMP)"
+        # At UTC, as _epoch reads a timestamp: a cast of the zoned value would read local time.
+        stamp = f"CAST(TO_TIMESTAMP({x}) AT TIME ZONE 'UTC' AS TIMESTAMP)"
         return f"CAST({stamp} AS DATE)" if col.family == "date" else stamp
     return f"CAST({x} AS {col.data_type})"
 
@@ -222,15 +226,15 @@ def expression(
             value = f"({value} || ' x' || {_tag(digest)})"
         out = value if col.family == "text" else f"CAST({value} AS {col.data_type})"
     elif isinstance(k, Bool):
-        if k.share is None:
-            raise _measured(col)
-        out = f"({u} < {k.share!r})"
+        share = _measured(col).true_share if k.share is None else k.share
+        out = f"({u} < {share!r})"
     elif isinstance(k, Categories):
         if k.values is None:
-            raise _measured(col)
-        literals = [_category_literal(v, col) for v in k.values]
-        shares = list(k.shares) if k.shares else [1 / len(literals)] * len(literals)
-        out = _pick(u, literals, shares)
+            out = _pick_measured(u, _measured(col).values, col)
+        else:
+            literals = [_category_literal(v, col) for v in k.values]
+            shares = list(k.shares) if k.shares else [1 / len(literals)] * len(literals)
+            out = _pick(u, literals, shares)
     elif isinstance(k, Uniform):
         out = _numeric_out(f"({k.min!r} + {u} * {k.max - k.min!r})", col, k.temporal)
     elif isinstance(k, Triangular):
@@ -249,12 +253,7 @@ def expression(
         x = f"({origin!r} + EXP({k.mu!r} + {k.sigma!r} * {inverse_normal_sql(u)}))"
         out = _numeric_out(_clamp(x, k.min, k.max), col, k.temporal)
     elif isinstance(k, Percentiles):
-        whens = []
-        for (q0, v0), (q1, v1) in zip(k.points, k.points[1:]):
-            slope = (v1 - v0) / (q1 - q0) if q1 > q0 else 0.0
-            whens.append(f"WHEN {u} < {q1!r} THEN {v0!r} + ({u} - {q0!r}) * {slope!r}")
-        x = f"(CASE WHEN {u} < {k.points[0][0]!r} THEN {k.points[0][1]!r} {' '.join(whens)} ELSE {k.points[-1][1]!r} END)"
-        out = _numeric_out(x, col, k.temporal)
+        out = _numeric_out(_piecewise(u, k.points), col, k.temporal)
     elif isinstance(k, Poisson):
         values, shares = _poisson_table(k.mean)
         out = f"CAST({_pick(u, values, shares)} AS {col.data_type})"
@@ -274,17 +273,20 @@ def expression(
     elif isinstance(k, Hash):
         out = _tag(digest) if col.family == "text" else f"CAST({digest} AS {col.data_type})"
     elif isinstance(k, Ordered):
-        if k.distance is None:
-            raise _measured(col)
         named = faked(k.column)
-        scale = _SECONDS[k.distance.unit] if k.distance.unit else 1.0
-        low = k.distance.low * scale
-        amount = (
-            repr(low)
-            if k.distance.high is None
-            else f"({low!r} + {u} * {(k.distance.high - k.distance.low) * scale!r})"
-        )
-        sign = "+" if k.kind in ("after", "greater_than") else "-"
+        if k.distance is None:
+            # The measured difference (this column less the named one), signed as measured.
+            amount = _piecewise(u, _measured(col).points)
+            sign = "+"
+        else:
+            scale = _SECONDS[k.distance.unit] if k.distance.unit else 1.0
+            low = k.distance.low * scale
+            amount = (
+                repr(low)
+                if k.distance.high is None
+                else f"({low!r} + {u} * {(k.distance.high - k.distance.low) * scale!r})"
+            )
+            sign = "+" if k.kind in ("after", "greater_than") else "-"
         x = f"({_epoch(named, family_of(k.column))} {sign} {amount})"
         out = _numeric_out(x, col, temporal=k.kind in ("after", "before"))
         guarded = False  # NULL exactly when the column it follows is
@@ -294,8 +296,19 @@ def expression(
             c.replace(sqlglot.parse_one(faked(c.name), read="postgres"))
         out = f"CAST({tree.sql(dialect='postgres')} AS {col.data_type})"
         guarded = False  # NULL as the expression makes it
-    elif isinstance(k, (Profile, Pattern)):
-        raise _measured(col)
+    elif isinstance(k, Profile):
+        m = _measured(col)
+        if m.values is not None:
+            out = _pick_measured(u, m.values, col)
+        else:
+            out = _numeric_out(_piecewise(u, m.points), col, col.family in ("date", "timestamp"))
+    elif isinstance(k, Pattern):
+        shapes = _measured(col).shapes
+        assert shapes is not None  # a pattern's measurement holds its shapes, or a refusal
+        filled = [_filled_shape(shape, digest) for shape, _ in shapes]
+        out = _pick(u, filled, [share for _, share in shapes])
+        if col.family != "text":
+            out = f"CAST({out} AS {col.data_type})"
     elif isinstance(k, Sequence) or (isinstance(k, Sql) and k.group):
         # Refused when declared as a fake (provisa.fakes.kinds.RULE_ONLY); a fake never holds one.
         raise FakeReadRefused(f"{col.name}: {kind_name(k)}() is a synthetic rule, not a fake")
@@ -331,11 +344,68 @@ def require_fake_engine(sql: str, engine: str, computes_fakes: bool) -> None:
         )
 
 
-def _measured(col: Column) -> FakeReadRefused:
-    return FakeReadRefused(
-        f"{col.name}: {kind_name(col.kind)}() takes measured values, which a faked read does not "
-        f"yet read (REQ-1494)"
-    )
+def _measured(col: Column) -> Measured:
+    """The column's measurement, bound at model build (provisa.fakes.measured)."""
+    m = col.measured
+    if m is None:
+        raise FakeReadRefused(
+            f"{col.name}: {kind_name(col.kind)}() computes from measured values, and the model's "
+            f"measurement of it has not completed"
+        )
+    if m.refused is not None:
+        raise FakeReadRefused(m.refused)
+    return m
+
+
+def _piecewise(u: str, points: tuple[tuple[float, float], ...] | None) -> str:
+    """The value at quantile ``u`` of points (quantile, value), joined linearly."""
+    assert points, "a measurement or declaration of points holds at least one"
+    whens = []
+    for (q0, v0), (q1, v1) in zip(points, points[1:]):
+        slope = (v1 - v0) / (q1 - q0) if q1 > q0 else 0.0
+        whens.append(f"WHEN {u} < {q1!r} THEN {v0!r} + ({u} - {q0!r}) * {slope!r}")
+    return f"(CASE WHEN {u} < {points[0][0]!r} THEN {points[0][1]!r} {' '.join(whens)} ELSE {points[-1][1]!r} END)"
+
+
+def _pick_measured(u: str, values: tuple[tuple[str, float], ...] | None, col: Column) -> str:
+    """A measured value at its measured share. Measured values are text, cast to the column."""
+    assert values, "a measurement of values holds at least one, or a refusal"
+    if col.family == "text":
+        literals = [_lit(v) for v, _ in values]
+    elif col.family == "boolean":
+        literals = [_category_literal(v, col) for v, _ in values]
+    else:
+        literals = [f"CAST({_lit(v)} AS {col.data_type})" for v, _ in values]
+    return _pick(u, literals, [s for _, s in values])
+
+
+_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _filled_shape(shape: str, digest: str) -> str:
+    """A value of ``shape`` (A an upper-case letter, a a lower-case one, 9 a digit, every other
+    character kept), its letters and digits drawn from the digest by the bothify method. The
+    method sees only its own placeholders, so no character of the shape is read as one."""
+    template = "".join("#" if ch == "9" else "?" for ch in shape if ch in "Aa9")
+    if not template:
+        return _lit(shape)
+    args = json.dumps({"letters": _UPPER, "text": template}, sort_keys=True, separators=(",", ":"))
+    drawn = f"provisa_fake_method('bothify', {_lit(args)}, {digest})"
+    parts: list[str] = []
+    at = 1  # position in the drawn text, from 1
+
+    def run_of(ch: str) -> str:
+        return "kept" if ch not in "Aa9" else "lower" if ch == "a" else "drawn"
+
+    for run, chars in groupby(shape, key=run_of):
+        text = "".join(chars)
+        if run == "kept":
+            parts.append(_lit(text))
+            continue
+        piece = f"SUBSTRING({drawn}, {at}, {len(text)})"
+        parts.append(f"LOWER({piece})" if run == "lower" else piece)
+        at += len(text)
+    return "(" + " || ".join(parts) + ")"
 
 
 def _category_literal(value: str, col: Column) -> str:

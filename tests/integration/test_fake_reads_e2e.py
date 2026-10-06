@@ -72,6 +72,11 @@ def server(request):
                     ),
                     _col("renewed", "timestamp", **_faked("after(joined, 10 to 20 days)")),
                     _col("region", "varchar"),
+                    # Measured at model build (REQ-1494): from the table, there being no profile.
+                    _col("status", "varchar", **_faked("categories()")),
+                    _col("vip", "boolean", **_faked("bool()")),
+                    _col("opened", "timestamp"),
+                    _col("closed", "timestamp", **_faked("after(opened)")),
                 ],
             }
         ],
@@ -90,16 +95,25 @@ def server(request):
             conn.execute(
                 sa.text(
                     "CREATE TABLE public.people (id integer PRIMARY KEY, email text, tier text, "
-                    "joined timestamp, renewed timestamp, region text)"
+                    "joined timestamp, renewed timestamp, region text, status text, vip boolean, "
+                    "opened timestamp, closed timestamp)"
                 )
             )
             for i in range(1, _ROWS + 1):
                 conn.execute(
                     sa.text(
                         "INSERT INTO public.people VALUES (:i, :e, 'bronze', '2020-01-01', "
-                        "'2020-01-02', :r)"
+                        "'2020-01-02', :r, :s, :v, '2021-03-01', "
+                        "TIMESTAMP '2021-03-01' + make_interval(days => :d))"
                     ),
-                    {"i": i, "e": f"p{i % 40}@real.example", "r": "east" if i % 2 else "west"},
+                    {
+                        "i": i,
+                        "e": f"p{i % 40}@real.example",
+                        "r": "east" if i % 2 else "west",
+                        "s": "open" if i % 3 else "closed",
+                        "v": i % 4 == 0,
+                        "d": i % 5 + 1,
+                    },
                 )
         engine.dispose()
         boot.start()
@@ -162,3 +176,16 @@ def test_a_relative_fake_follows_the_faked_column(server):
         renewed = dt.datetime.fromisoformat(str(r["renewed"]).replace("Z", ""))
         assert dt.datetime(2024, 1, 1) <= joined <= dt.datetime(2024, 6, 30)
         assert dt.timedelta(days=10) <= renewed - joined <= dt.timedelta(days=20)
+
+
+def test_measured_fakes_read_from_the_table_at_model_build(server):
+    import datetime as dt
+
+    rows = _sql(server, "SELECT status, vip, opened, closed FROM sales.people", "analyst")
+    assert {r["status"] for r in rows} <= {"open", "closed"}
+    assert {r["vip"] for r in rows} <= {True, False}
+    for r in rows:
+        opened = dt.datetime.fromisoformat(str(r["opened"]).replace("Z", ""))
+        closed = dt.datetime.fromisoformat(str(r["closed"]).replace("Z", ""))
+        # The measured difference runs from 1 to 5 days.
+        assert dt.timedelta(days=1) <= closed - opened <= dt.timedelta(days=5)

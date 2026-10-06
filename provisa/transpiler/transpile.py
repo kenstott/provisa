@@ -42,9 +42,31 @@ def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to Trino SQL."""
     pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
     result = transpile(pg_sql, "trino")
+    result = _rewrite_epoch_of_timestamp_for_trino(result)
     result = _rewrite_json_build_object_for_trino(result)
     result = _rewrite_json_arrayagg_for_trino(result)
     return _rewrite_to_json_for_trino(result)
+
+
+def _rewrite_epoch_of_timestamp_for_trino(sql: str) -> str:
+    """PostgreSQL reads the epoch of a timestamp without a time zone as UTC; Trino's TO_UNIXTIME
+    reads it in the session's zone, so the same statement gave a different number by the
+    coordinator's zone. Read at UTC, as PostgreSQL does: TO_UNIXTIME(WITH_TIMEZONE(ts, 'UTC'))
+    (REQ-1494: a faked date or time is the same on every engine and in every zone)."""
+    if "TO_UNIXTIME(CAST(" not in sql:
+        return sql
+    tree = sqlglot.parse_one(sql, read="trino")
+    changed = False
+    for node in list(tree.find_all(exp.TimeToUnix)):
+        arg = node.this
+        if isinstance(arg, exp.Cast) and arg.to.this == exp.DataType.Type.TIMESTAMP:
+            arg.replace(
+                exp.Anonymous(
+                    this="WITH_TIMEZONE", expressions=[arg.copy(), exp.Literal.string("UTC")]
+                )
+            )
+            changed = True
+    return tree.sql(dialect="trino") if changed else sql
 
 
 def rewrite_prometheus_labels_for_trino(

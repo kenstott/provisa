@@ -2479,6 +2479,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     state.schema_version += 1
     _stamped_runtime.model_stamp = _model_stamp  # REQ-1914
     await _finalize_rebuild_state(_rebuild_log)
+    # REQ-1494: the measured values faked reads compute from, taken from the model just built.
+    from provisa.fakes.measured import measure_model
+
+    await measure_model(state)
     # REQ-1915: replicas converge to the model just built — a build is requested for every
     # declared replica that has none (or whose definition changed), and a replica the model no
     # longer declares is retired. This is the one place: the boot build, the build after this

@@ -20,6 +20,8 @@ Type validation ensures invalid combinations are rejected at config load time.
 
 from __future__ import annotations
 
+from typing import Any
+
 from provisa.compiler.sql_literals import sql_literal
 
 from dataclasses import dataclass
@@ -73,6 +75,8 @@ class MaskingRule:  # REQ-038, REQ-040, REQ-263
     # fake fields (REQ-1494): the column's declared fake and whether it is stable
     fake: str | None = None
     fake_stable: bool = False
+    # what the fake computes from where it is measured (provisa.fakes.measured), bound at model build
+    fake_measured: Any = None
 
 
 class MaskingValidationError(Exception):
