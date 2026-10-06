@@ -1429,7 +1429,7 @@ def provisa_server(_reserve_flight_port):
 
     from tests.boot_seeds_its_own_deployment import prepare_first_start
 
-    asyncio.run(prepare_first_start(_live_cfg))
+    asyncio.run(prepare_first_start(_live_cfg, "live-server"))
     server_env = {
         **os.environ,
         "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa",
