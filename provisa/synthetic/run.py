@@ -382,7 +382,7 @@ async def report(state: Any, dataset_id: str, planned: list[PlannedTable]) -> No
     from provisa.core.schema_org import synthetic_report
     from provisa.profiler import measures
     from provisa.profiler.run import _governed, column_tags, resolve_target
-    from provisa.profiler.statement import parse_profile_result, profile_sql
+    from provisa.profiler.statement import Sample, parse_profile_result, profile_sql
     from provisa.synthetic.report import compare
 
     entries: list[dict] = []
@@ -392,7 +392,11 @@ async def report(state: Any, dataset_id: str, planned: list[PlannedTable]) -> No
         target = resolve_target(state, p.table.table_id, p.table.name, tags)
         names, rows = await _governed(
             profile_sql(
-                target.pgwire_name, target.columns, target.fanouts, None, REPORT_LOW_CARDINALITY
+                target.pgwire_name,
+                target.columns,
+                target.fanouts,
+                Sample("whole"),
+                REPORT_LOW_CARDINALITY,
             )
         )
         synthetic = parse_profile_result(names, rows, target.columns, target.fanouts)
