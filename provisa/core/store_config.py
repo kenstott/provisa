@@ -289,7 +289,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         tag_assignments.append(_written(TagAssignment.model_validate(fields)))
 
     stores, regions = await _stores_and_regions(conn)
-    return {
+    model = {
         "stores": stores,
         "regions": regions,
         "sources": await _sources(conn),
@@ -336,6 +336,48 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         "kafka_sources": await kafka_repo.list_specs(conn),  # REQ-147
         "naming_rules": await _naming_rules(conn),
     }
+    return _in_a_stable_order(model)
+
+
+def _key(item: dict[str, Any]) -> str:
+    """What names an item, as text: the same model reads in the same order on every backend
+    (a database's collation does not decide it)."""
+    for name in ("id", "name"):
+        if name in item:
+            return str(item[name])
+    return json.dumps(item, sort_keys=True, default=str)
+
+
+def _roles_parents_first(roles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Roles by id, each after the role it inherits from, so an apply finds the parent stored."""
+    by_id = {r["id"]: r for r in roles}
+    out: list[dict[str, Any]] = []
+    placed: set[str] = set()
+
+    def _place(role: dict[str, Any]) -> None:
+        if role["id"] in placed:
+            return
+        parent = role.get("parent_role_id")
+        if parent in by_id:
+            _place(by_id[parent])
+        placed.add(role["id"])
+        out.append(role)
+
+    for role in sorted(roles, key=_key):
+        _place(role)
+    return out
+
+
+def _in_a_stable_order(model: dict[str, Any]) -> dict[str, Any]:
+    out = dict(model)
+    for section, items in model.items():
+        if section == "roles":
+            out[section] = _roles_parents_first(items)
+        elif section == "tables":
+            out[section] = sorted(items, key=lambda t: (t["source_id"], t["schema"], t["table"]))
+        elif section != "naming_rules":  # the order rules are tried in is theirs
+            out[section] = sorted(items, key=_key)
+    return out
 
 
 def with_store_model(raw: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
