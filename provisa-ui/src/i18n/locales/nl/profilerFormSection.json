@@ -28,6 +28,9 @@
     "jointMaxDistinctLabel": "Maximaal aantal categoriewaarden",
     "jointMaxDistinctDescription": "Een tekstkolom met niet meer verschillende waarden dan dit komt als categorie in de correlaties en gezamenlijke aantallen.",
     "categoryMaxLabel": "Maximaal aantal categoriekolommen",
-    "categoryMaxDescription": "Hoeveel categoriekolommen in de correlaties en gezamenlijke aantallen komen; de kolommen met een waarde in de meeste rijen blijven."
+    "categoryMaxDescription": "Hoeveel categoriekolommen in de correlaties en gezamenlijke aantallen komen; de kolommen met een waarde in de meeste rijen blijven.",
+    "groupSchedule": "Planning en steekproef",
+    "groupDrift": "Drift",
+    "groupDependence": "Afhankelijkheid tussen kolommen"
   }
 }

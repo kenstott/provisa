@@ -28,6 +28,9 @@
     "jointMaxDistinctLabel": "类别值上限",
     "jointMaxDistinctDescription": "不同值不超过此数的文本列作为类别进入相关性和联合计数。",
     "categoryMaxLabel": "类别列上限",
-    "categoryMaxDescription": "进入相关性和联合计数的类别列数量；保留有值行数最多的列。"
+    "categoryMaxDescription": "进入相关性和联合计数的类别列数量；保留有值行数最多的列。",
+    "groupSchedule": "计划与抽样",
+    "groupDrift": "漂移",
+    "groupDependence": "列之间的依赖"
   }
 }

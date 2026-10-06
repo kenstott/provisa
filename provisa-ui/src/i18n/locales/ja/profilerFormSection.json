@@ -28,6 +28,9 @@
     "jointMaxDistinctLabel": "カテゴリ値の上限",
     "jointMaxDistinctDescription": "異なる値がこの数以下のテキスト列は、カテゴリとして相関と同時度数に入ります。",
     "categoryMaxLabel": "カテゴリ列の上限",
-    "categoryMaxDescription": "相関と同時度数に入るカテゴリ列の数。値を持つ行が最も多い列が残されます。"
+    "categoryMaxDescription": "相関と同時度数に入るカテゴリ列の数。値を持つ行が最も多い列が残されます。",
+    "groupSchedule": "スケジュールとサンプリング",
+    "groupDrift": "ドリフト",
+    "groupDependence": "列間の依存関係"
   }
 }

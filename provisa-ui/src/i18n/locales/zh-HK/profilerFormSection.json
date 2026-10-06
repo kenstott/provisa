@@ -28,6 +28,9 @@
     "jointMaxDistinctLabel": "類別值上限",
     "jointMaxDistinctDescription": "不同值不超過此數的文字欄作為類別進入相關性和聯合計數。",
     "categoryMaxLabel": "類別欄上限",
-    "categoryMaxDescription": "進入相關性和聯合計數的類別欄數量；保留有值行數最多的欄。"
+    "categoryMaxDescription": "進入相關性和聯合計數的類別欄數量；保留有值行數最多的欄。",
+    "groupSchedule": "排程與抽樣",
+    "groupDrift": "漂移",
+    "groupDependence": "欄位之間的依賴"
   }
 }

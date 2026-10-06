@@ -45,6 +45,24 @@ describe("Data Profiler source fields", () => {
     expect(setAuthFields).toHaveBeenCalledWith({ cron: "0 3 * * *", ...PROFILER_DEFAULTS });
   });
 
+  it("groups the settings into panels, with the schedule open", () => {
+    render(
+      <ProfilerFormSection
+        authFields={{ cron: "0 3 * * *", ...PROFILER_DEFAULTS }}
+        setAuthFields={vi.fn()}
+      />,
+    );
+    for (const name of ["Schedule and sampling", "Drift", "Dependence between columns"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: "Schedule and sampling" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Drift" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("profiler-cron-input")).toBeVisible();
+  });
+
   it("offers a field for each drift setting", () => {
     render(
       <ProfilerFormSection

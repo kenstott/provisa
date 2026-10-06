@@ -28,6 +28,9 @@
     "jointMaxDistinctLabel": "Nombre maximal de valeurs de catégorie",
     "jointMaxDistinctDescription": "Une colonne de texte n'ayant pas plus de valeurs distinctes que ce nombre entre dans les corrélations et les effectifs conjoints comme catégorie.",
     "categoryMaxLabel": "Nombre maximal de colonnes de catégorie",
-    "categoryMaxDescription": "Combien de colonnes de catégorie entrent dans les corrélations et les effectifs conjoints ; celles qui ont une valeur dans le plus de lignes sont conservées."
+    "categoryMaxDescription": "Combien de colonnes de catégorie entrent dans les corrélations et les effectifs conjoints ; celles qui ont une valeur dans le plus de lignes sont conservées.",
+    "groupSchedule": "Planification et échantillonnage",
+    "groupDrift": "Dérive",
+    "groupDependence": "Dépendance entre colonnes"
   }
 }

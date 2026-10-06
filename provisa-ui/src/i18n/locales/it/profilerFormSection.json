@@ -28,6 +28,9 @@
     "jointMaxDistinctLabel": "Numero massimo di valori di categoria",
     "jointMaxDistinctDescription": "Una colonna di testo con non più valori distinti di questo entra nelle correlazioni e nei conteggi congiunti come categoria.",
     "categoryMaxLabel": "Numero massimo di colonne di categoria",
-    "categoryMaxDescription": "Quante colonne di categoria entrano nelle correlazioni e nei conteggi congiunti; si tengono quelle con un valore nel maggior numero di righe."
+    "categoryMaxDescription": "Quante colonne di categoria entrano nelle correlazioni e nei conteggi congiunti; si tengono quelle con un valore nel maggior numero di righe.",
+    "groupSchedule": "Pianificazione e campionamento",
+    "groupDrift": "Deriva",
+    "groupDependence": "Dipendenza tra colonne"
   }
 }

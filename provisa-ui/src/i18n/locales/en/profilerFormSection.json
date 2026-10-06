@@ -28,6 +28,9 @@
     "jointMaxDistinctLabel": "Most category values",
     "jointMaxDistinctDescription": "A text column with no more distinct values than this enters the correlations and joint counts as a category.",
     "categoryMaxLabel": "Most category columns",
-    "categoryMaxDescription": "How many category columns enter the correlations and joint counts; those holding a value in the most rows are kept."
+    "categoryMaxDescription": "How many category columns enter the correlations and joint counts; those holding a value in the most rows are kept.",
+    "groupSchedule": "Schedule and sampling",
+    "groupDrift": "Drift",
+    "groupDependence": "Dependence between columns"
   }
 }

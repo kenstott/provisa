@@ -28,6 +28,9 @@
     "jointMaxDistinctLabel": "Höchstzahl an Kategoriewerten",
     "jointMaxDistinctDescription": "Eine Textspalte mit höchstens so vielen unterschiedlichen Werten geht als Kategorie in die Korrelationen und gemeinsamen Häufigkeiten ein.",
     "categoryMaxLabel": "Höchstzahl an Kategoriespalten",
-    "categoryMaxDescription": "Wie viele Kategoriespalten in die Korrelationen und gemeinsamen Häufigkeiten eingehen; behalten werden die, die in den meisten Zeilen einen Wert haben."
+    "categoryMaxDescription": "Wie viele Kategoriespalten in die Korrelationen und gemeinsamen Häufigkeiten eingehen; behalten werden die, die in den meisten Zeilen einen Wert haben.",
+    "groupSchedule": "Zeitplan und Stichprobe",
+    "groupDrift": "Drift",
+    "groupDependence": "Abhängigkeit zwischen Spalten"
   }
 }
