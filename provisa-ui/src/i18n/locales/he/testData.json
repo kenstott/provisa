@@ -1,0 +1,25 @@
+{
+  "testData": {
+    "modeMetadata": "מטא-נתונים",
+    "modeTestData": "נתוני בדיקה",
+    "fake": "ערך מדומה",
+    "syntheticRule": "כלל סינתטי",
+    "stable": "יציב",
+    "stableHint": "אותו ערך מדומה בכל מנוע ובכל אזור",
+    "realValue": "ערך אמיתי",
+    "openDialog": "בחירת ערך מדומה",
+    "piiNoFake": "PII, ללא ערך מדומה",
+    "dialogTitle": "נתוני בדיקה: {{column}}",
+    "declaration": "הצהרה, לדוגמה email() או categories((a, b))",
+    "methodCategory": "שיטת ערך מדומה: {{category}}",
+    "cancel": "ביטול",
+    "apply": "החלה",
+    "kindCategory": {
+      "values": "ערכים",
+      "distribution": "התפלגויות",
+      "transform": "המרות",
+      "relative": "יחסית לעמודות אחרות",
+      "rule": "כללים סינתטיים בלבד"
+    }
+  }
+}

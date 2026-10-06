@@ -784,7 +784,7 @@ class Column(
     visible_to: list[str]
     writable_by: list[str] = []  # roles allowed to mutate this column
     unmasked_to: list[str] = []  # roles that see unmasked data
-    mask_type: str | None = None  # regex, constant, truncate
+    mask_type: str | None = None  # regex, constant, truncate, fake (REQ-1494)
     mask_pattern: str | None = None  # regex pattern
     mask_replace: str | None = None  # regex replacement
     mask_value: str | None = None  # constant value
@@ -823,15 +823,21 @@ class Column(
     # the rest of the table by provisa.fakes.checks.check_table.
     fake: str | None = None
     fake_stable: bool = False
+    # REQ-1494, REQ-1939: the column's synthetic rule, laid over its fake and used by synthetic
+    # generation only -- generation uses the rule, else the fake, else the column's profile.
+    synthetic_rule: str | None = None
 
     @model_validator(mode="after")
     def _fake_is_a_kind(self) -> "Column":
-        if self.fake is None:
-            return self
+        if self.fake is None and self.mask_type == "fake":
+            raise ValueError(f"column {self.name}: masked with a fake but declares no fake")
         from provisa.fakes.kinds import FakeRefused, parse
 
         try:
-            parse(self.fake)
+            if self.fake is not None:
+                parse(self.fake)
+            if self.synthetic_rule is not None:
+                parse(self.synthetic_rule, rule=True)
         except FakeRefused as exc:
             raise ValueError(f"column {self.name}: {exc}") from exc
         return self

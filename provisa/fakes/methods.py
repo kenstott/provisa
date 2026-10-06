@@ -56,6 +56,113 @@ STABLE_METHODS = frozenset(
     }
 )
 
+#: Methods whose value is a list of strings, shown as one text joined by its natural separator
+#: (REQ-1494): paragraphs and texts by line, the others by space; letters run together.
+JOINED = {
+    "paragraphs": "\n",
+    "texts": "\n",
+    "sentences": " ",
+    "words": " ",
+    "get_words_list": " ",
+    "random_choices": " ",
+    "random_elements": " ",
+    "random_sample": " ",
+    "nic_handles": " ",
+    "random_letters": "",
+}
+
+#: Methods whose value is a (code, name) pair, shown as the code.
+CODED = frozenset({"currency", "cryptocurrency"})
+
+#: Methods no column can declare (REQ-1494): each makes bytes, a tuple of several values (a
+#: coordinate pair is two columns, and Provisa has no point type), a structure of mixed values, an
+#: object, a generator, or needs a class argument (enum). Refused by name when declared, on every
+#: engine; every other method is computed by every engine that computes fakes.
+UNSUPPORTED = frozenset(
+    {
+        # bytes
+        "binary", "image", "json_bytes", "tar", "zip",
+        # tuples of several values
+        "color_hsl", "color_hsv", "color_rgb", "color_rgb_float", "latlng", "local_latlng",
+        "location_on_land", "passport_dates", "passport_owner", "pystruct", "pytuple",
+        # structures of mixed values, generators
+        "pyiterable", "pylist", "pyset", "profile", "pydict", "simple_profile", "time_series",
+        # objects no column type holds
+        "pyobject", "pytimezone", "time_delta", "time_object",
+        # needs a class, or is not available in this locale
+        "enum", "xml",
+    }
+)  # fmt: skip
+
+
+def column_value(name: str, value: Any) -> Any:
+    """A method's value as a column holds it: a list of strings joined, a (code, name) pair its
+    code; anything else as made."""
+    if name in JOINED:
+        return JOINED[name].join(str(v) for v in value)
+    if name in CODED:
+        return value[0]
+    return value
+
+
+#: The arguments each method takes on every engine (REQ-1494): the range, format, length and
+#: pattern arguments of the date, time, number and text methods. Another argument is refused by
+#: name when declared -- an engine computing the method by its own implementation could not honour
+#: it. Mirrors FakeMethods.ARGUMENTS of the Trino plugin (tests/unit/test_fake_method_arguments.py).
+ARGUMENTS: dict[str, tuple[str, ...]] = {
+    "bothify": ("text", "letters"),
+    "numerify": ("text",),
+    "lexify": ("text", "letters"),
+    "hexify": ("text", "upper"),
+    "pyint": ("min_value", "max_value", "step"),
+    "random_int": ("min", "max", "step"),
+    "random_number": ("digits", "fix_len"),
+    "pyfloat": ("left_digits", "right_digits", "positive", "min_value", "max_value"),
+    "pydecimal": ("left_digits", "right_digits", "positive", "min_value", "max_value"),
+    "pystr": ("min_chars", "max_chars", "prefix", "suffix"),
+    "password": ("length", "special_chars", "digits", "upper_case", "lower_case"),
+    "nic_handle": ("suffix",),
+    "nic_handles": ("count", "suffix"),
+    "date": ("pattern", "end_datetime"),
+    "time": ("pattern", "end_datetime"),
+    "date_object": ("end_datetime",),
+    "date_time": ("end_datetime",),
+    "date_time_ad": ("start_datetime", "end_datetime"),
+    "iso8601": ("end_datetime", "sep"),
+    "boolean": ("chance_of_getting_true",),
+    "pybool": ("truth_probability",),
+    "random_element": ("elements",),
+    "date_between": ("start_date", "end_date"),
+    "date_time_between": ("start_date", "end_date"),
+    "date_between_dates": ("date_start", "date_end"),
+    "date_time_between_dates": ("datetime_start", "datetime_end"),
+    "future_date": ("end_date",),
+    "future_datetime": ("end_date",),
+    "past_date": ("start_date",),
+    "past_datetime": ("start_date",),
+    "date_of_birth": ("minimum_age", "maximum_age"),
+    "date_this_century": ("before_today", "after_today"),
+    "date_this_decade": ("before_today", "after_today"),
+    "date_this_year": ("before_today", "after_today"),
+    "date_this_month": ("before_today", "after_today"),
+    "date_time_this_century": ("before_now", "after_now"),
+    "date_time_this_decade": ("before_now", "after_now"),
+    "date_time_this_year": ("before_now", "after_now"),
+    "date_time_this_month": ("before_now", "after_now"),
+    "unix_time": ("start_datetime", "end_datetime"),
+    "words": ("nb", "unique"),
+    "sentences": ("nb",),
+    "paragraphs": ("nb",),
+    "texts": ("nb_texts", "max_nb_chars"),
+    "sentence": ("nb_words",),
+    "paragraph": ("nb_sentences",),
+    "text": ("max_nb_chars",),
+    "random_letters": ("length",),
+    "random_choices": ("elements", "length"),
+    "random_elements": ("elements", "length", "unique"),
+    "random_sample": ("elements", "length"),
+}
+
 # Members every provider inherits that make no value.
 _NOT_GENERATORS = frozenset(
     {
@@ -112,8 +219,17 @@ def check_method(method: Method, holds: str | None) -> None:
     ``holds`` None checks the call only."""
     if method.name not in method_names():
         raise FakeRefused(f"there is no fake kind or method {method.name!r}")
+    if method.name in UNSUPPORTED:
+        raise FakeRefused(f"{method.name}() makes values no column can hold")
     signature = inspect.signature(getattr(_generator(), method.name))
     args = dict(method.args)
+    portable = ARGUMENTS.get(method.name, ())
+    beyond = sorted(a for a in args if a not in portable)
+    if beyond:
+        raise FakeRefused(
+            f"{method.name}() takes no argument {beyond[0]!r} on every engine"
+            + (f"; it takes {', '.join(portable)}" if portable else "; it takes none")
+        )
     accepted = {p.name for p in signature.parameters.values() if p.kind not in (p.VAR_POSITIONAL,)}
     takes_any = any(p.kind is p.VAR_KEYWORD for p in signature.parameters.values())
     unknown = sorted(set(args) - accepted) if not takes_any else []
@@ -123,7 +239,7 @@ def check_method(method: Method, holds: str | None) -> None:
         signature.bind(**args)
     except TypeError as exc:
         raise FakeRefused(f"{method.name}() cannot be called with {args!r}: {exc}") from exc
-    sample = sample_of(method)
+    sample = column_value(method.name, sample_of(method))
     if holds is None:
         return
     kinds = _HOLDS.get(holds)

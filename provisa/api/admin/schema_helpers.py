@@ -298,6 +298,22 @@ async def _fetch_table_with_columns(
     )
     col_rows = [dict(r._mapping) for r in _col_res.fetchall()]
     from provisa.compiler.naming import apply_gql_name, apply_sql_name
+    from provisa.core.schema_org import tag_assignments as _ta
+
+    # REQ-1494: the columns tagged pii -- marked in the editor's test-data mode when they declare
+    # no fake, since a test-data environment shows them as NULL.
+    _pii = {
+        r.column_name
+        for r in (
+            await conn.execute_core(
+                select(_ta.c.column_name).where(
+                    _ta.c.object_type == "column",
+                    _ta.c.table_id == row["id"],
+                    _ta.c.base_tag_id == "pii",
+                )
+            )
+        ).fetchall()
+    }
 
     # REQ-1360: metadata-only implicit measure/dimension annotations, gated by the
     # table's own enable_aggregates/enable_group_by flags.
@@ -339,6 +355,8 @@ async def _fetch_table_with_columns(
             epoch_unit=r.get("epoch_unit"),  # REQ-1908
             fake=r.get("fake"),  # REQ-1494
             fake_stable=bool(r.get("fake_stable") or False),
+            synthetic_rule=r.get("synthetic_rule"),
+            is_pii=r["column_name"] in _pii,
         )
         for r in col_rows
     ]

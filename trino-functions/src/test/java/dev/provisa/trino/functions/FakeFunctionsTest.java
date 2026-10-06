@@ -45,5 +45,12 @@ class FakeFunctionsTest
         assertTrue(a.contains("@"));
         assertEquals("3", FakeMethods.value("pyint", "{\"min_value\": 3, \"max_value\": 3}", 1L));
         assertTrue(!FakeMethods.value("first_name", "{}", 7L).isEmpty());
+        // Every method computes, for a range of digests.
+        for (String name : FakeMethods.names()) {
+            for (long d = 0; d < 20; d++) {
+                FakeMethods.value(name, "{}", d * 7919L);
+            }
+        }
+        assertEquals("3w5e11264sgsf", FakeFunctions.digestTag(-1L).toStringUtf8());
     }
 }

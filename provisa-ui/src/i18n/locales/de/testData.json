@@ -1,0 +1,25 @@
+{
+  "testData": {
+    "modeMetadata": "Metadaten",
+    "modeTestData": "Testdaten",
+    "fake": "Fake-Wert",
+    "syntheticRule": "Synthetische Regel",
+    "stable": "Stabil",
+    "stableHint": "Derselbe Fake-Wert auf jeder Engine und in jeder Region",
+    "realValue": "echter Wert",
+    "openDialog": "Fake-Wert wählen",
+    "piiNoFake": "PII, kein Fake-Wert",
+    "dialogTitle": "Testdaten: {{column}}",
+    "declaration": "Deklaration, z. B. email() oder categories((a, b))",
+    "methodCategory": "Fake-Methode: {{category}}",
+    "cancel": "Abbrechen",
+    "apply": "Übernehmen",
+    "kindCategory": {
+      "values": "Werte",
+      "distribution": "Verteilungen",
+      "transform": "Transformationen",
+      "relative": "Relativ zu anderen Spalten",
+      "rule": "Nur synthetische Regeln"
+    }
+  }
+}

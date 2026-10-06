@@ -1,0 +1,25 @@
+{
+  "testData": {
+    "modeMetadata": "मेटाडेटा",
+    "modeTestData": "परीक्षण डेटा",
+    "fake": "नकली मान",
+    "syntheticRule": "सिंथेटिक नियम",
+    "stable": "स्थिर",
+    "stableHint": "हर इंजन और हर क्षेत्र में एक ही नकली मान",
+    "realValue": "वास्तविक मान",
+    "openDialog": "नकली मान चुनें",
+    "piiNoFake": "PII, कोई नकली मान नहीं",
+    "dialogTitle": "परीक्षण डेटा: {{column}}",
+    "declaration": "घोषणा, जैसे email() या categories((a, b))",
+    "methodCategory": "नकली विधि: {{category}}",
+    "cancel": "रद्द करें",
+    "apply": "लागू करें",
+    "kindCategory": {
+      "values": "मान",
+      "distribution": "वितरण",
+      "transform": "रूपांतरण",
+      "relative": "अन्य कॉलम के सापेक्ष",
+      "rule": "केवल सिंथेटिक नियम"
+    }
+  }
+}

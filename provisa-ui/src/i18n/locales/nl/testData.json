@@ -1,0 +1,25 @@
+{
+  "testData": {
+    "modeMetadata": "Metadata",
+    "modeTestData": "Testdata",
+    "fake": "Nepwaarde",
+    "syntheticRule": "Synthetische regel",
+    "stable": "Stabiel",
+    "stableHint": "Dezelfde nepwaarde op elke engine en in elke regio",
+    "realValue": "echte waarde",
+    "openDialog": "Nepwaarde kiezen",
+    "piiNoFake": "PII, geen nepwaarde",
+    "dialogTitle": "Testdata: {{column}}",
+    "declaration": "Declaratie, bijv. email() of categories((a, b))",
+    "methodCategory": "Nepmethode: {{category}}",
+    "cancel": "Annuleren",
+    "apply": "Toepassen",
+    "kindCategory": {
+      "values": "Waarden",
+      "distribution": "Verdelingen",
+      "transform": "Transformaties",
+      "relative": "Relatief aan andere kolommen",
+      "rule": "Alleen synthetische regels"
+    }
+  }
+}

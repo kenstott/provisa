@@ -319,10 +319,16 @@ async def _dataset_tables(
                     scale=t.scale if t.scale is not None else row.scale,
                     profile=profile,
                     pii=frozenset(c for c, tagged in tags.items() if "pii" in tagged),
-                    fakes={  # REQ-1494: each column's declared kind of fake
-                        c["column_name"]: parse_fake(c["fake"])
+                    # REQ-1494, REQ-1939: what generates each column -- its synthetic rule, else
+                    # its fake.
+                    fakes={
+                        c["column_name"]: (
+                            parse_fake(c["synthetic_rule"], rule=True)
+                            if c.get("synthetic_rule") is not None
+                            else parse_fake(c["fake"])
+                        )
                         for c in reg["columns"]
-                        if c.get("fake") is not None
+                        if c.get("synthetic_rule") is not None or c.get("fake") is not None
                     },
                 )
             )

@@ -582,6 +582,18 @@ def _back_edges(edges: list[tuple[int, int]]) -> set[tuple[int, int]]:
 # --------------------------------------------------------------------------- #
 
 
+def _filters_plaintext(gov_ctx: GovernanceContext, tid: int, col_name: str) -> bool:
+    """Whether a predicate on the column would read the real value under its mask. A faked
+    column's predicates read its fake -- the faked projection of its table -- never the real value
+    (REQ-1494), so it may be filtered on."""
+    entry = gov_ctx.masking_rules.get((tid, col_name))
+    if entry is None:
+        return False
+    from provisa.security.masking import MaskType
+
+    return entry[0].mask_type != MaskType.fake
+
+
 def _check_masked_in_predicate(  # REQ-040, REQ-263
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
@@ -602,7 +614,7 @@ def _check_masked_in_predicate(  # REQ-040, REQ-263
                     tid = am.get(tbl_ref)
                     if tid is None:
                         continue
-                    if (tid, col_name) in gov_ctx.masking_rules:
+                    if _filters_plaintext(gov_ctx, tid, col_name):
                         violations.append(
                             ValidationViolation(
                                 "V005",
@@ -611,7 +623,7 @@ def _check_masked_in_predicate(  # REQ-040, REQ-263
                         )
                 else:
                     for tid in am.values():
-                        if (tid, col_name) in gov_ctx.masking_rules:
+                        if _filters_plaintext(gov_ctx, tid, col_name):
                             violations.append(
                                 ValidationViolation(
                                     "V005",

@@ -3464,6 +3464,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.synthetic_router import router as synthetic_router  # REQ-1939
 
     app.include_router(synthetic_router)
+    from provisa.api.admin.fakes_router import router as fakes_router  # REQ-1494
+
+    app.include_router(fakes_router)
     from provisa.api.admin.lifecycle_router import router as lifecycle_router
 
     app.include_router(lifecycle_router)

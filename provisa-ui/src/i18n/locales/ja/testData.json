@@ -1,0 +1,25 @@
+{
+  "testData": {
+    "modeMetadata": "メタデータ",
+    "modeTestData": "テストデータ",
+    "fake": "フェイク値",
+    "syntheticRule": "合成ルール",
+    "stable": "安定",
+    "stableHint": "すべてのエンジンとリージョンで同じフェイク値",
+    "realValue": "実際の値",
+    "openDialog": "フェイク値を選択",
+    "piiNoFake": "PII、フェイク値なし",
+    "dialogTitle": "テストデータ: {{column}}",
+    "declaration": "宣言、例: email() または categories((a, b))",
+    "methodCategory": "フェイクメソッド: {{category}}",
+    "cancel": "キャンセル",
+    "apply": "適用",
+    "kindCategory": {
+      "values": "値",
+      "distribution": "分布",
+      "transform": "変換",
+      "relative": "他の列に対する相対値",
+      "rule": "合成ルールのみ"
+    }
+  }
+}

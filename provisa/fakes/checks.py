@@ -94,13 +94,27 @@ _TEMPORAL = ("date", "timestamp")
 
 @dataclass(frozen=True)
 class DeclaredColumn:
-    """A column as its table declares it: its type, its fake as written (None for none) and
-    whether that fake is stable."""
+    """A column as its table declares it: its type, its fake as written (None for none), whether
+    that fake is stable, and its synthetic rule (None for none) -- laid over the fake, used by
+    synthetic generation only (REQ-1494, REQ-1939)."""
 
     name: str
     data_type: str
     fake: str | None = None
     stable: bool = False
+    rule: str | None = None
+
+
+@dataclass(frozen=True)
+class Checked:
+    """A table's fakes and synthetic rules, checked, by column."""
+
+    fakes: dict[str, FakeKind]
+    rules: dict[str, FakeKind]
+
+    def generated(self, name: str) -> FakeKind | None:
+        """What generates the column: its synthetic rule, else its fake."""
+        return self.rules.get(name, self.fakes.get(name))
 
 
 @dataclass(frozen=True)
@@ -111,34 +125,44 @@ class Child:
     columns: dict[str, str] = field(default_factory=dict)
 
 
-def check_table(
-    table: str, columns: list[DeclaredColumn], children: dict[str, Child]
-) -> dict[str, FakeKind]:
-    """Each faked column's kind, the table's fakes checked together; ``children`` the tables joined
-    to this one as children, by relationship name."""
+def check_table(table: str, columns: list[DeclaredColumn], children: dict[str, Child]) -> Checked:
+    """Each column's fake and synthetic rule, the table's checked together; ``children`` the
+    tables joined to this one as children, by relationship name. Neither the fakes a read computes
+    nor what generation computes -- each column's rule, else its fake -- may name one another in a
+    cycle."""
     types = {c.name: c.data_type for c in columns}
-    kinds: dict[str, FakeKind] = {}
-    reads: dict[str, frozenset[str]] = {}
+    fakes: dict[str, FakeKind] = {}
+    rules: dict[str, FakeKind] = {}
+    fake_reads: dict[str, frozenset[str]] = {}
+    rule_reads: dict[str, frozenset[str]] = {}
     for c in columns:
-        if c.fake is None:
-            if c.stable:
-                raise FakeRefused(f"{table}.{c.name} is declared stable but declares no fake")
-            continue
+        if c.fake is None and c.stable:
+            raise FakeRefused(f"{table}.{c.name} is declared stable but declares no fake")
         try:
-            kind = parse(c.fake)
-            reads[c.name] = _check_column(kind, c, types, children)
-            if c.stable:
-                _check_stable(kind)
+            if c.fake is not None:
+                kind = parse(c.fake)
+                fake_reads[c.name] = _check_column(kind, c, types, children)
+                if c.stable:
+                    _check_stable(kind)
+                fakes[c.name] = kind
+            if c.rule is not None:
+                try:
+                    rule = parse(c.rule, rule=True)
+                    rule_reads[c.name] = _check_column(rule, c, types, children)
+                except FakeRefused as exc:
+                    raise FakeRefused(f"its synthetic rule: {exc}") from exc
+                rules[c.name] = rule
         except FakeRefused as exc:
             raise FakeRefused(f"{table}.{c.name}: {exc}") from exc
-        kinds[c.name] = kind
-    cycle = _cycle(reads)
-    if cycle:
-        raise FakeRefused(
-            f"{table}: the fakes of {', '.join(cycle)} name one another in a cycle "
-            f"({' -> '.join(cycle + [cycle[0]])})"
-        )
-    return kinds
+    generation = {**fake_reads, **rule_reads}
+    for reads, what in ((fake_reads, "fakes"), (generation, "synthetic rules and fakes")):
+        cycle = _cycle(reads)
+        if cycle:
+            raise FakeRefused(
+                f"{table}: the {what} of {', '.join(cycle)} name one another in a cycle "
+                f"({' -> '.join(cycle + [cycle[0]])})"
+            )
+    return Checked(fakes, rules)
 
 
 def _check_column(
@@ -173,17 +197,14 @@ def _check_column(
     elif isinstance(kind, Ordered):
         return _check_ordered(kind, fam, types)
     elif isinstance(kind, Sql):
-        reads = _check_sql(kind, types, children)
-        if kind.fake is not None:
-            reads |= _check_column(kind.fake, c, types, children)
-        return reads
+        return _check_sql(kind, types, children)
     elif isinstance(kind, Sequence):
         for v in kind.states:
             _value_fits(v, fam)
         for col in (kind.entity, kind.order):
             if col not in types:
                 raise FakeRefused(f"sequence() names {col!r}, which the table does not hold")
-        return frozenset({kind.entity, kind.order}) | _check_column(kind.fake, c, types, children)
+        return frozenset({kind.entity, kind.order})
     elif isinstance(kind, Method):
         check_method(kind, fam)
     return frozenset()
@@ -258,10 +279,9 @@ def own_reads(kind: FakeKind) -> frozenset[str]:
         return frozenset({kind.column})
     if isinstance(kind, Sql):
         cols = sql_subset.read(kind.expression, group=kind.group).columns
-        own = cols - {SELF} if kind.group else cols
-        return own | (own_reads(kind.fake) if kind.fake is not None else frozenset())
+        return cols - {SELF} if kind.group else cols
     if isinstance(kind, Sequence):
-        return frozenset({kind.entity, kind.order}) | own_reads(kind.fake)
+        return frozenset({kind.entity, kind.order})
     return frozenset()
 
 

@@ -98,6 +98,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.epoch_unit,
     table_columns.c.fake,
     table_columns.c.fake_stable,
+    table_columns.c.synthetic_rule,
 ]
 
 
@@ -440,6 +441,7 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
                 epoch_unit=getattr(col, "epoch_unit", None),
                 fake=getattr(col, "fake", None),  # REQ-1494
                 fake_stable=getattr(col, "fake_stable", False),
+                synthetic_rule=getattr(col, "synthetic_rule", None),
             )
         )
     # REQ-1387: this is the single write path for table_columns, so the glossary term

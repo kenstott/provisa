@@ -170,26 +170,22 @@ class Sql:
     """A value derived from other columns of the same row (``group`` False), or across rows --
     windows over the table and aggregates over a parent's children (``group`` True).
 
-    A ``sql_group`` fake carries the row fake ``fake`` that draws the column's value: a faked read
-    shows the column through it, and a synthetic dataset draws it first, the expression naming it
-    ``self`` (REQ-1494, THE FAKE PARAMETER OF SQL_GROUP AND SEQUENCE)."""
+    ``sql_group`` is a synthetic rule only (REQ-1494): generation draws the column's value first
+    -- from its fake, else its profile -- and the expression names that value ``self``."""
 
     expression: str
     group: bool = False
-    fake: FakeKind | None = None
 
 
 @dataclass(frozen=True)
 class Sequence:
     """Each ``entity``'s rows, in ``order``, take ``states`` in turn and never go back; an entity
-    with fewer rows stops part-way, and has no more rows than there are states. ``fake`` draws the
-    value a faked read shows; ``categories(states)`` at even shares unless declared (REQ-1494, THE
-    SEQUENCE FAKE)."""
+    with fewer rows stops part-way, and has no more rows than there are states. A synthetic rule
+    only (REQ-1494, THE SEQUENCE FAKE)."""
 
     states: tuple[str, ...]
     entity: str
     order: str
-    fake: FakeKind
 
 
 @dataclass(frozen=True)
@@ -389,8 +385,15 @@ class _Parser:
         return atoms[0] if len(atoms) == 1 else _Seq(tuple(atoms))
 
 
-def parse(declaration: str) -> FakeKind:
-    """The kind a declaration names, refusing by name one that cannot describe values."""
+#: The kinds a column may declare only as its synthetic rule: they construct rows' values across
+#: rows, which a faked read -- creating no rows -- cannot (REQ-1494).
+RULE_ONLY = ("sql_group", "sequence")
+
+
+def parse(declaration: str, *, rule: bool = False) -> FakeKind:
+    """The kind a declaration names, refusing by name one that cannot describe values. ``rule``:
+    the declaration is a column's synthetic rule, which may also be a cross-row kind; a column's
+    fake may not."""
     text = declaration.strip()
     m = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(", text)
     if m is None or not text.endswith(")"):
@@ -401,9 +404,14 @@ def parse(declaration: str) -> FakeKind:
         if not expression:
             raise FakeRefused("sql() needs an expression")
         return Sql(expression)
-    if name in ("sql_group", "sequence"):
+    if name in RULE_ONLY:
+        if not rule:
+            raise FakeRefused(
+                f"{name}() constructs values across rows: declare it as the column's synthetic "
+                f"rule, not its fake"
+            )
         try:
-            return _with_fake(name, text[m.end() : -1])
+            return _cross_row(name, text[m.end() : -1])
         except FakeRefused as exc:
             raise FakeRefused(f"{name}(): {exc}") from exc
     try:
@@ -760,7 +768,7 @@ _BUILDERS = {
 }
 
 #: Provisa's own kinds, by the name a declaration gives them.
-OWN_KINDS = frozenset(_BUILDERS) | {"sql", "sql_group", "sequence"}
+OWN_KINDS = frozenset(_BUILDERS) | {"sql"} | frozenset(RULE_ONLY)
 
 
 def _split(inner: str) -> list[str]:
@@ -784,33 +792,17 @@ def _split(inner: str) -> list[str]:
     return parts
 
 
-_FAKE_PARAM = re.compile(r"fake\s*=\s*(.*)\Z", re.DOTALL)
-
-
-def _row_fake(text: str) -> FakeKind:
-    """The ``fake=`` parameter: a row fake, never a cross-row one."""
-    kind = parse(text)
-    if isinstance(kind, Sequence) or (isinstance(kind, Sql) and kind.group):
-        raise FakeRefused(f"its fake= {text!r} is itself a cross-row fake; name a row fake")
-    return kind
-
-
-def _with_fake(name: str, inner: str) -> FakeKind:
-    parts = [p for p in _split(inner)]
-    fakes = [m.group(1) for p in parts if (m := _FAKE_PARAM.match(p))]
-    rest = [p for p in parts if not _FAKE_PARAM.match(p)]
-    if len(fakes) > 1:
-        raise FakeRefused("names fake= twice")
-    fake = _row_fake(fakes[0]) if fakes else None
+def _cross_row(name: str, inner: str) -> FakeKind:
+    parts = _split(inner)
+    if any(re.match(r"fake\s*=", p) for p in parts):
+        raise FakeRefused("takes no fake=: the column's fake is declared in its own field")
     if name == "sql_group":
-        if len(rest) != 1 or not rest[0]:
+        if len(parts) != 1 or not parts[0]:
             raise FakeRefused("needs one expression")
-        if fake is None:
-            raise FakeRefused("needs fake=<row fake>, the fake that draws the column's value")
-        return Sql(rest[0], group=True, fake=fake)
-    if len(rest) != 3:
+        return Sql(parts[0], group=True)
+    if len(parts) != 3:
         raise FakeRefused("needs (states), the entity column and the order column")
-    parser = _Parser(_tokens("(" + ", ".join(rest) + ")"))
+    parser = _Parser(_tokens("(" + ", ".join(parts) + ")"))
     pos, _named = parser.args()
     states_arg, entity, order = pos
     states = tuple(
@@ -822,9 +814,7 @@ def _with_fake(name: str, inner: str) -> FakeKind:
         raise FakeRefused("names a state twice")
     if not isinstance(entity, _Word) or not isinstance(order, _Word):
         raise FakeRefused("names its entity and order columns by name")
-    if fake is None:
-        fake = Categories(states, tuple(1 / len(states) for _ in states))
-    return Sequence(states, entity.text, order.text, fake)
+    return Sequence(states, entity.text, order.text)
 
 
 def _json_value(v: Any) -> Any:

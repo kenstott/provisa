@@ -112,6 +112,7 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
         HTTPException: On execution failure or missing the engine connection.
     """
     from provisa.federation.registry_view import operator_floor
+    from provisa.fakes.read_sql import reads_fakes
     from provisa.transpiler.router import Route, decide_route
     from provisa.transpiler.transpile import transpile
 
@@ -123,6 +124,7 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
         has_json_extract=has_json_extract,
         source_dsns=getattr(state, "source_dsns", None),
         operator_floor=operator_floor(state, compiled.table_ids),
+        reads_fakes=reads_fakes(compiled.sql),  # REQ-1494
     )
 
     from provisa.federation.live_concurrency import acquire_for_route

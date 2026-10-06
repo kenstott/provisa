@@ -20,8 +20,14 @@ from provisa.api.admin._fake_guard import _with_model, check_model
 from provisa.fakes.kinds import FakeRefused
 
 
-def _col(name, data_type="integer", fake=None, stable=False):
-    return {"column_name": name, "data_type": data_type, "fake": fake, "fake_stable": stable}
+def _col(name, data_type="integer", fake=None, stable=False, rule=None):
+    return {
+        "column_name": name,
+        "data_type": data_type,
+        "fake": fake,
+        "fake_stable": stable,
+        "synthetic_rule": rule,
+    }
 
 
 def _tables(order_total=None, line_fake=None, customer_id_fake=None):
@@ -34,7 +40,7 @@ def _tables(order_total=None, line_fake=None, customer_id_fake=None):
             "columns": [
                 _col("id"),
                 _col("customer_id", fake=customer_id_fake),
-                _col("total", "double", order_total),
+                _col("total", "double", rule=order_total),
             ],
         },
         {
@@ -42,7 +48,7 @@ def _tables(order_total=None, line_fake=None, customer_id_fake=None):
             "source_id": "pg",
             "schema_name": "public",
             "table_name": "order_lines",
-            "columns": [_col("id"), _col("order_id"), _col("amount", "double", line_fake)],
+            "columns": [_col("id"), _col("order_id"), _col("amount", "double", rule=line_fake)],
         },
         {
             "id": 3,
@@ -79,20 +85,14 @@ _RELS = [
 
 
 def test_a_sql_group_fake_reads_children_through_the_relationship_name():
-    check_model(
-        _tables(order_total="sql_group(SUM(lines.amount), fake=uniform(min=0, max=9))"), _RELS
-    )
+    check_model(_tables(order_total="sql_group(SUM(lines.amount))"), _RELS)
     with pytest.raises(FakeRefused, match="reads 'items', which is no relationship"):
-        check_model(
-            _tables(order_total="sql_group(SUM(items.amount), fake=uniform(min=0, max=9))"), _RELS
-        )
+        check_model(_tables(order_total="sql_group(SUM(items.amount))"), _RELS)
 
 
 def test_a_many_to_one_child_is_read_by_its_table_name():
     tables = _tables()
-    tables[2]["columns"].append(
-        _col("spend", "double", "sql_group(SUM(orders.total), fake=uniform(min=0, max=9))")
-    )
+    tables[2]["columns"].append(_col("spend", "double", rule="sql_group(SUM(orders.total))"))
     check_model(tables, _RELS)
 
 
@@ -110,9 +110,15 @@ def test_a_table_being_saved_is_checked_in_place_of_its_stored_columns():
         schema_name="public",
         table_name="orders",
         columns=[
-            SimpleNamespace(name="id", data_type="integer", fake=None, fake_stable=False),
             SimpleNamespace(
-                name="customer_id", data_type="integer", fake="encrypt()", fake_stable=False
+                name="id", data_type="integer", fake=None, fake_stable=False, synthetic_rule=None
+            ),
+            SimpleNamespace(
+                name="customer_id",
+                data_type="integer",
+                fake="encrypt()",
+                fake_stable=False,
+                synthetic_rule=None,
             ),
         ],
     )
@@ -126,8 +132,8 @@ def test_a_cycle_through_a_parents_children_is_refused_naming_its_columns():
     """orders.total sums its lines' amounts; each line's amount takes its share of its order's
     total -- through the relationship back to orders, a cycle across the two tables."""
     tables = _tables(
-        order_total="sql_group(SUM(lines.amount), fake=uniform(min=0, max=9))",
-        line_fake="sql_group(SUM(back.total), fake=uniform(min=0, max=9))",
+        order_total="sql_group(SUM(lines.amount))",
+        line_fake="sql_group(SUM(back.total))",
     )
     rels = _RELS + [
         {
@@ -143,6 +149,6 @@ def test_a_cycle_through_a_parents_children_is_refused_naming_its_columns():
     ]
     with pytest.raises(
         FakeRefused,
-        match="order_lines.amount, orders.total name one another in a cycle",
+        match="synthetic rules and fakes of order_lines.amount, orders.total name one another",
     ):
         check_model(tables, rels)

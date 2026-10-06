@@ -81,23 +81,6 @@ from provisa.fakes.kinds import (
         ("greater_than(cost, 5)", Ordered("greater_than", "cost", Distance(5.0, None, None))),
         ("less_than(cost, 1 to 2)", Ordered("less_than", "cost", Distance(1.0, 2.0, None))),
         ("sql(quantity * price)", Sql("quantity * price")),
-        (
-            "sql_group(SUM(lines.amount), fake=uniform(min=0, max=9))",
-            Sql("SUM(lines.amount)", group=True, fake=Uniform(0.0, 9.0)),
-        ),
-        (
-            "sequence((placed, shipped, delivered), order_id, at)",
-            Sequence(
-                ("placed", "shipped", "delivered"),
-                "order_id",
-                "at",
-                Categories(("placed", "shipped", "delivered"), (1 / 3, 1 / 3, 1 / 3)),
-            ),
-        ),
-        (
-            "sequence((a, b), e, o, fake=categories((a, b), (.9, .1)))",
-            Sequence(("a", "b"), "e", "o", Categories(("a", "b"), (0.9, 0.1))),
-        ),
         ("email()", Method("email")),
         ("pyint(min_value=1, max_value=9)", Method("pyint", (("max_value", 9), ("min_value", 1)))),
     ],
@@ -141,12 +124,8 @@ def test_lognormal_from_median_and_p95():
         ("normal(mean=1, sd=1, skew=2)", "takes no argument 'skew'"),
         ("email(1)", "named arguments only"),
         ("sql()", "needs an expression"),
-        ("sql_group(SUM(lines.amount))", "needs fake=<row fake>"),
-        ("sql_group(a, b, fake=hash())", "needs one expression"),
-        ("sql_group(a, fake=hash(), fake=hash())", "names fake= twice"),
-        ("sql_group(a, fake=sql_group(b, fake=hash()))", "itself a cross-row fake"),
-        ("sequence((a, b), e)", "needs \\(states\\), the entity column and the order column"),
-        ("sequence((a, a), e, o)", "names a state twice"),
+        ("sql_group(SUM(lines.amount))", "declare it as the column's synthetic rule"),
+        ("sequence((a, b), e, o)", "declare it as the column's synthetic rule"),
     ],
 )
 def test_a_declaration_that_cannot_describe_values_is_refused_by_name(text, message):
@@ -155,7 +134,47 @@ def test_a_declaration_that_cannot_describe_values_is_refused_by_name(text, mess
 
 
 def _table(*cols: DeclaredColumn, children=None):
-    return check_table("orders", list(cols), children or {})
+    """The table's checked fakes."""
+    return check_table("orders", list(cols), children or {}).fakes
+
+
+def _rules(*cols: DeclaredColumn, children=None):
+    """The table's checked synthetic rules."""
+    return check_table("orders", list(cols), children or {}).rules
+
+
+def _rule(name: str, data_type: str, rule: str) -> DeclaredColumn:
+    return DeclaredColumn(name, data_type, rule=rule)
+
+
+def test_cross_row_kinds_are_synthetic_rules():
+    """REQ-1494: sql_group and sequence construct values across rows -- synthetic rules only."""
+    assert parse("sql_group(SUM(lines.amount))", rule=True) == Sql("SUM(lines.amount)", group=True)
+    assert parse("sequence((placed, shipped), order_id, at)", rule=True) == Sequence(
+        ("placed", "shipped"), "order_id", "at"
+    )
+    assert parse("normal(mean=5, sd=1)", rule=True) == Normal(5.0, 1.0)
+    for text, message in [
+        ("sql_group(a, fake=hash())", "takes no fake="),
+        ("sql_group(a, b)", "needs one expression"),
+        ("sequence((a, b), e)", "needs \\(states\\), the entity column and the order column"),
+        ("sequence((a, a), e, o)", "names a state twice"),
+    ]:
+        with pytest.raises(FakeRefused, match=message):
+            parse(text, rule=True)
+
+
+def test_a_column_has_a_fake_and_a_synthetic_rule_laid_over_it():
+    checked = check_table(
+        "orders",
+        [DeclaredColumn("amount", "double", "uniform(min=0, max=9)", rule="normal(mean=5, sd=1)")],
+        {},
+    )
+    assert checked.fakes == {"amount": Uniform(0.0, 9.0)}
+    assert checked.rules == {"amount": Normal(5.0, 1.0)}
+    assert checked.generated("amount") == Normal(5.0, 1.0)
+    with pytest.raises(FakeRefused, match="orders.amount: its synthetic rule: normal\\(\\)"):
+        check_table("orders", [DeclaredColumn("amount", "double", rule="normal(mean=5, sd=0)")], {})
 
 
 def test_a_fake_must_fit_its_column_type():
@@ -226,31 +245,21 @@ def test_the_sql_fake_is_held_to_its_subset():
 
 def test_sql_group_reads_windows_and_a_parents_children():
     children = {"lines": Child("order_lines", {"amount": "double"})}
-    kinds = _table(
+    rules = _rules(
         DeclaredColumn("id", "integer"),
         DeclaredColumn("customer_id", "integer"),
         DeclaredColumn("amount", "double"),
-        DeclaredColumn(
-            "total", "double", "sql_group(SUM(lines.amount), fake=uniform(min=0, max=9))"
-        ),
-        DeclaredColumn(
-            "balance",
-            "double",
-            "sql_group(sum(self) over (partition by customer_id order by id), fake=normal(mean=0, sd=5))",
+        _rule("total", "double", "sql_group(SUM(lines.amount))"),
+        _rule(
+            "balance", "double", "sql_group(sum(self) over (partition by customer_id order by id))"
         ),
         children=children,
     )
-    assert set(kinds) == {"total", "balance"}
+    assert set(rules) == {"total", "balance"}
     with pytest.raises(FakeRefused, match="reads 'items', which is no relationship"):
-        _table(
-            DeclaredColumn("t", "double", "sql_group(SUM(items.amount), fake=hash())"),
-            children=children,
-        )
+        _rules(_rule("t", "double", "sql_group(SUM(items.amount))"), children=children)
     with pytest.raises(FakeRefused, match="names lines.qty, which order_lines does not hold"):
-        _table(
-            DeclaredColumn("t", "double", "sql_group(SUM(lines.qty), fake=hash())"),
-            children=children,
-        )
+        _rules(_rule("t", "double", "sql_group(SUM(lines.qty))"), children=children)
 
 
 def test_stable_is_limited_to_what_every_engine_computes_alike():
@@ -284,25 +293,39 @@ def test_joined_columns_declare_one_fake():
 
 
 def test_a_sequence_names_columns_of_its_table_and_states_its_type_holds():
-    kinds = _table(
+    rules = _rules(
         DeclaredColumn("order_id", "integer"),
         DeclaredColumn("at", "timestamp"),
-        DeclaredColumn("status", "varchar", "sequence((placed, shipped), order_id, at)"),
+        _rule("status", "varchar", "sequence((placed, shipped), order_id, at)"),
     )
-    assert isinstance(kinds["status"], Sequence)
+    assert isinstance(rules["status"], Sequence)
     with pytest.raises(
         FakeRefused, match="sequence\\(\\) names 'at', which the table does not hold"
     ):
-        _table(
+        _rules(
             DeclaredColumn("order_id", "integer"),
-            DeclaredColumn("status", "varchar", "sequence((placed, shipped), order_id, at)"),
+            _rule("status", "varchar", "sequence((placed, shipped), order_id, at)"),
         )
 
 
 def test_sql_group_names_its_drawn_value_self_and_its_own_name_is_a_cycle():
-    _table(DeclaredColumn("x", "double", "sql_group(self * 2, fake=uniform(min=0, max=1))"))
+    _rules(_rule("x", "double", "sql_group(self * 2)"))
     with pytest.raises(FakeRefused, match="x name one another in a cycle"):
-        _table(DeclaredColumn("x", "double", "sql_group(x * 2, fake=uniform(min=0, max=1))"))
+        _rules(_rule("x", "double", "sql_group(x * 2)"))
+
+
+def test_generation_reads_each_rule_else_fake_with_no_cycle():
+    """A fake reading b and b's rule reading a: generation computes a's fake and b's rule, a cycle;
+    a faked read computes the fakes alone, which do not."""
+    with pytest.raises(FakeRefused, match="synthetic rules and fakes of a, b name one another"):
+        check_table(
+            "orders",
+            [
+                DeclaredColumn("a", "double", "sql(b + 1)"),
+                DeclaredColumn("b", "double", "uniform(min=0, max=1)", rule="sql(a * 2)"),
+            ],
+            {},
+        )
 
 
 _DAY = 86400.0

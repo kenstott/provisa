@@ -8,11 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1494: a column's kind of fake and whether it is stable are edited in the table editor and
-// sent with the table's columns; the server checks them when the table is saved.
+// REQ-1494: the table editor's column list switches between its metadata and its test data --
+// each column's fake, synthetic rule and stable flag, edited in the cell or in the column dialog,
+// whose declaration the server checks as it is typed -- and sends them with the table's columns.
 
-import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "../../../test-utils/render";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
+
+const api = vi.hoisted(() => ({
+  fetchFakeCatalog: vi.fn(),
+  checkColumnFake: vi.fn(),
+}));
+vi.mock("../../../api/fakes", () => api);
 
 import { TableEditForm } from "../TableEditForm";
 import { buildTableUpdateInput } from "../helpers";
@@ -135,26 +142,119 @@ const EMAIL = {
   isImplicitDimension: false,
 } satisfies TableColumn;
 
-describe("TableEditForm — a column's fake (REQ-1494)", () => {
-  it("edits the declared fake and its stable flag", () => {
+const CATALOG = {
+  kinds: [
+    {
+      category: "values",
+      name: "bool",
+      positional: true,
+      ruleOnly: false,
+      args: [{ name: "share", kind: "number", required: false }],
+    },
+    {
+      category: "rule",
+      name: "sql_group",
+      positional: true,
+      ruleOnly: true,
+      args: [{ name: "expression", kind: "expression", required: true }],
+    },
+  ],
+  methods: [
+    { name: "email", category: "internet", params: [], stable: true },
+    {
+      name: "pyint",
+      category: "python",
+      params: [
+        { name: "min_value", required: false, default: "0" },
+        { name: "max_value", required: false, default: "9999" },
+      ],
+      stable: false,
+    },
+  ],
+};
+
+beforeEach(() => {
+  api.fetchFakeCatalog.mockReset().mockResolvedValue(CATALOG);
+  api.checkColumnFake.mockReset().mockResolvedValue({ ok: true });
+});
+
+function testDataMode() {
+  fireEvent.click(screen.getByText("Test data"));
+}
+
+describe("TableEditForm — a column's test data (REQ-1494)", () => {
+  it("offers metadata and test-data modes, the fake edited in its cell", () => {
     const updateEditCol = vi.fn();
     renderForm(makeTable({ columns: [{ ...EMAIL, fake: "email()" }] }), [SOURCE], updateEditCol);
-    const input = screen.getByTestId("table-edit-col-fake-email") as HTMLInputElement;
+    expect(screen.getByTestId("table-columns-mode")).toHaveAttribute(
+      "data-tour",
+      "table-columns-mode",
+    );
+    expect(screen.queryByTestId("testdata-columns")).toBeNull();
+    testDataMode();
+    const input = screen.getByTestId("testdata-fake-email") as HTMLInputElement;
     expect(input.value).toBe("email()");
     fireEvent.change(input, { target: { value: "categories((a, b))" } });
     expect(updateEditCol).toHaveBeenCalledWith(0, "fake", "categories((a, b))");
-    fireEvent.click(screen.getByTestId("table-edit-col-fake-stable-email"));
+    fireEvent.change(screen.getByTestId("testdata-rule-email"), {
+      target: { value: "sql_group(1)" },
+    });
+    expect(updateEditCol).toHaveBeenCalledWith(0, "syntheticRule", "sql_group(1)");
+    fireEvent.click(screen.getByTestId("testdata-stable-email"));
     expect(updateEditCol).toHaveBeenCalledWith(0, "fakeStable", true);
   });
 
-  it("sends the fake with the column, and none when blank", () => {
+  it("marks a pii column that declares no fake", () => {
+    renderForm(makeTable({ columns: [{ ...EMAIL, isPii: true }] }), [SOURCE]);
+    testDataMode();
+    expect(screen.getByTestId("testdata-pii-email")).toBeInTheDocument();
+  });
+
+  it("picks a method in the dialog, shows the server's refusal, and applies what it allows", async () => {
+    const updateEditCol = vi.fn();
+    renderForm(makeTable({ columns: [{ ...EMAIL }] }), [SOURCE], updateEditCol);
+    testDataMode();
+    await waitFor(() => expect(api.fetchFakeCatalog).toHaveBeenCalled());
+    const [open] = screen.getAllByTestId("testdata-open-email");
+    await waitFor(() => expect(open).not.toBeDisabled());
+    fireEvent.click(open);
+    api.checkColumnFake.mockRejectedValueOnce(new Error("orders.email: emial() is no fake"));
+    fireEvent.change(screen.getByTestId("testdata-dialog-fake-text"), {
+      target: { value: "emial()" },
+    });
+    expect(await screen.findByTestId("testdata-dialog-refusal")).toHaveTextContent(
+      "emial() is no fake",
+    );
+    expect(screen.getByTestId("testdata-dialog-save")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("testdata-dialog-fake-text"), {
+      target: { value: "email()" },
+    });
+    await waitFor(() => expect(screen.queryByTestId("testdata-dialog-refusal")).toBeNull());
+    expect(api.checkColumnFake).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        column: "email",
+        fake: "email()",
+        syntheticRule: null,
+        stable: false,
+      }),
+    );
+    fireEvent.click(screen.getByTestId("testdata-dialog-save"));
+    expect(updateEditCol).toHaveBeenCalledWith(0, "fake", "email()");
+    expect(updateEditCol).toHaveBeenCalledWith(0, "syntheticRule", "");
+    expect(updateEditCol).toHaveBeenCalledWith(0, "fakeStable", false);
+  });
+
+  it("sends the fake and synthetic rule with the column, and none when blank", () => {
     const [faked] = buildTableUpdateInput(
-      makeTable({ columns: [{ ...EMAIL, fake: " email() ", fakeStable: true }] }),
+      makeTable({
+        columns: [{ ...EMAIL, fake: " email() ", fakeStable: true, syntheticRule: " bool(.5) " }],
+      }),
     ).columns as Record<string, unknown>[];
-    expect(faked).toMatchObject({ fake: "email()", fakeStable: true });
+    expect(faked).toMatchObject({ fake: "email()", fakeStable: true, syntheticRule: "bool(.5)" });
     const [plain] = buildTableUpdateInput(makeTable({ columns: [{ ...EMAIL, fake: "  " }] }))
       .columns as Record<string, unknown>[];
     expect(plain.fake).toBeUndefined();
     expect(plain.fakeStable).toBeUndefined();
+    expect(plain.syntheticRule).toBeUndefined();
   });
 });

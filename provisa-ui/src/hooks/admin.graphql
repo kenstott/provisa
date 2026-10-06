@@ -40,6 +40,8 @@ fragment ColumnFields on TableColumnType {
   isImplicitDimension
   fake
   fakeStable
+  syntheticRule
+  isPii
 }
 
 fragment ColumnPresetFields on ColumnPresetType {

@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     data_type   TEXT,
     writable_by  JSONB NOT NULL DEFAULT '[]',
     unmasked_to  JSONB NOT NULL DEFAULT '[]',
-    mask_type    TEXT CHECK (mask_type IN ('regex', 'constant', 'truncate')),
+    mask_type    TEXT CHECK (mask_type IN ('regex', 'constant', 'truncate', 'fake')),
     mask_pattern TEXT,
     mask_replace TEXT,
     mask_value   TEXT,
@@ -209,6 +209,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     epoch_unit   TEXT,  -- REQ-1908: epoch-number storage unit of a temporal column
     fake         TEXT,  -- REQ-1494: the column's kind of fake, as declared
     fake_stable  BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1494
+    synthetic_rule TEXT,  -- REQ-1494, REQ-1939: laid over the fake, for synthetic generation
     UNIQUE (table_id, column_name)
 );
 

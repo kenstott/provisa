@@ -100,7 +100,8 @@ class DatasetTable:
     scale: float
     profile: ProfiledTable
     pii: frozenset[str] = frozenset()  # its columns tagged pii
-    fakes: dict[str, FakeKind] = field(default_factory=dict)  # each faked column's kind (REQ-1494)
+    # What generates each column that declares one: its synthetic rule, else its fake (REQ-1494).
+    fakes: dict[str, FakeKind] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -193,14 +194,13 @@ def _key_column(
 
 
 def check_pii(tables: list[DatasetTable]) -> None:
-    """Refuse generating any column tagged pii with no declared fake kind, naming every one: its
-    values cannot be generated from anything but its fake (REQ-1939, A COLUMN'S FAKE SETTINGS
-    DECIDE ITS VALUES)."""
+    """Refuse generating any column tagged pii with neither a fake nor a synthetic rule, naming
+    every one: its values cannot be generated from its profile (REQ-1939, REQ-1494)."""
     undeclared = sorted(f"{t.name}.{c}" for t in tables for c in t.pii if c not in t.fakes)
     if undeclared:
         raise DatasetRefused(
-            "these columns are tagged pii and declare no kind of fake, so their values cannot be "
-            "generated: " + ", ".join(undeclared) + "; declare a fake kind for each"
+            "these columns are tagged pii and declare neither a fake nor a synthetic rule, so their "
+            "values cannot be generated: " + ", ".join(undeclared) + "; declare one for each"
         )
 
 

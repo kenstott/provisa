@@ -1,0 +1,25 @@
+{
+  "testData": {
+    "modeMetadata": "Metadati",
+    "modeTestData": "Dati di test",
+    "fake": "Valore fittizio",
+    "syntheticRule": "Regola sintetica",
+    "stable": "Stabile",
+    "stableHint": "Lo stesso valore fittizio su ogni motore e in ogni regione",
+    "realValue": "valore reale",
+    "openDialog": "Scegli un valore fittizio",
+    "piiNoFake": "PII, nessun valore fittizio",
+    "dialogTitle": "Dati di test: {{column}}",
+    "declaration": "Dichiarazione, es. email() o categories((a, b))",
+    "methodCategory": "Metodo fittizio: {{category}}",
+    "cancel": "Annulla",
+    "apply": "Applica",
+    "kindCategory": {
+      "values": "Valori",
+      "distribution": "Distribuzioni",
+      "transform": "Trasformazioni",
+      "relative": "Relativi ad altre colonne",
+      "rule": "Solo regole sintetiche"
+    }
+  }
+}

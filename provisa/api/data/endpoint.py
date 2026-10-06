@@ -62,6 +62,7 @@ from provisa.audit.context import note_request_route, note_request_rows
 from provisa.observability.request_facts import observe_cache_hit
 from provisa.mv.rewriter import rewrite_if_mv_match
 from provisa.security.rights import Capability
+from provisa.fakes.read_sql import reads_fakes
 from provisa.transpiler.router import Route, decide_route
 from provisa.transpiler.transpile import transpile
 from provisa.api.data.mutations import (
@@ -747,6 +748,7 @@ async def _execute_one_field(
         source_dialects=state.source_dialects,
         steward_hint=steward_hint,
         has_json_extract="->>" in compiled.sql,
+        reads_fakes=reads_fakes(compiled.sql),  # REQ-1494
         source_dsns=state.source_dsns,
         cache_hit=cached is not None,
         cache_opt_in=not _cache_off,

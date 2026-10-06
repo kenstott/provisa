@@ -1,0 +1,25 @@
+{
+  "testData": {
+    "modeMetadata": "Metadatos",
+    "modeTestData": "Datos de prueba",
+    "fake": "Valor ficticio",
+    "syntheticRule": "Regla sintética",
+    "stable": "Estable",
+    "stableHint": "El mismo valor ficticio en cada motor y en cada región",
+    "realValue": "valor real",
+    "openDialog": "Elegir un valor ficticio",
+    "piiNoFake": "PII, sin valor ficticio",
+    "dialogTitle": "Datos de prueba: {{column}}",
+    "declaration": "Declaración, p. ej. email() o categories((a, b))",
+    "methodCategory": "Método ficticio: {{category}}",
+    "cancel": "Cancelar",
+    "apply": "Aplicar",
+    "kindCategory": {
+      "values": "Valores",
+      "distribution": "Distribuciones",
+      "transform": "Transformaciones",
+      "relative": "Relativos a otras columnas",
+      "rule": "Solo reglas sintéticas"
+    }
+  }
+}

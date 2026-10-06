@@ -13,6 +13,7 @@ using SQLGlot. Input: plain SQL string. Output: governed SQL string.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -56,6 +57,11 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # The data writes each table's source can take (executor/write_capability.py), from the
     # table's record. A table with no entry offers none.
     write_ops: dict[int, frozenset[str]] = field(default_factory=dict)
+    # REQ-1494: per table, the columns this role reads as fakes (by the name a statement uses),
+    # each read through the table's faked projection; and the fingerprint naming the platform key
+    # the engine computes them under.
+    fake_columns: dict[int, dict[str, Any]] = field(default_factory=dict)
+    fake_fingerprint: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -139,6 +145,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             continue
         for col_name, (rule, dtype) in col_map.items():
             gov.masking_rules[(table_id, col_name)] = (rule, dtype)
+    _bind_fakes(gov)
 
     # Column visibility is each column's visible_to grant and nothing above it: no capability sees
     # every column regardless (REQ-1327). The lockdown domains (ops) need an explicit grant; the
@@ -286,6 +293,29 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     return gov
 
 
+def _bind_fakes(gov: GovernanceContext) -> None:  # REQ-1494
+    """The role's faked columns, by table, and the fingerprint of the key they are computed
+    under. A faked column is read through its table's faked projection, never substituted per
+    reference."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.fakes.checks import family
+    from provisa.fakes.kinds import parse
+    from provisa.fakes.read_sql import Column
+    from provisa.security.masking import MaskType
+
+    for (tid, col_name), (rule, dtype) in gov.masking_rules.items():
+        if rule.mask_type != MaskType.fake:
+            continue
+        name = apply_sql_name(col_name)
+        gov.fake_columns.setdefault(tid, {})[name] = Column(
+            name, dtype, family(dtype), parse(rule.fake), rule.fake_stable
+        )
+    if gov.fake_columns:
+        from provisa.fakes.digest import fingerprint, platform_key
+
+        gov.fake_fingerprint = fingerprint(platform_key())
+
+
 # --------------------------------------------------------------------------- #
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
@@ -360,6 +390,15 @@ def _govern_select(
     if not alias_to_tid:
         return node
 
+    # --- REQ-1494: a table with faked columns is read through its faked projection, which applies
+    # the row filter to the real values and defines each fake once; every use of a faked column
+    # below reads the projection's fake.
+    projected: set[int] = set()
+    for tbl, tid in table_refs:
+        if tid is not None and tid in gov_ctx.fake_columns:
+            _project_faked(node, tbl, tid, gov_ctx)
+            projected.add(id(tbl))
+
     # --- Every other reference to a governed column (expressions, WHERE, JOIN ON, GROUP BY,
     # HAVING, ORDER BY, windows): the role computes only over what it can see. Done before the
     # row filters are added below, which are the policy and read the real values.
@@ -410,7 +449,7 @@ def _govern_select(
     # --- Inject RLS WHERE predicates ---
     rls_filters: list[str] = []
     for tbl, tid in table_refs:
-        if tid is None or tid not in gov_ctx.rls_rules:
+        if tid is None or tid not in gov_ctx.rls_rules or id(tbl) in projected:
             continue
         filter_expr = gov_ctx.rls_rules[tid]
         tbl_alias = _alias_for(tbl)
@@ -429,6 +468,48 @@ def _govern_select(
 #: Marks an expression governance put in a column's place (a mask, or NULL for a hidden column),
 #: so a later pass over the same statement does not govern what is inside it again.
 _GOVERNED = "provisa_governed"
+
+
+def _project_faked(
+    node: exp.Select, tbl: exp.Table, tid: int, gov_ctx: GovernanceContext
+) -> None:  # REQ-1494
+    """Put the faked projection of ``tbl`` in its place in ``node``, under the same alias."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.fakes.checks import family
+    from provisa.fakes.projection import faked_projection
+
+    alias = _alias_for(tbl)
+    base = tbl.copy()
+    base.set("alias", None)
+    row_filter = None
+    if tid in gov_ctx.rls_rules:
+        column_types = {name: dtype for name, dtype in gov_ctx.all_columns.get(tid, [])}
+        row_filter = _qualify_filter(gov_ctx.rls_rules[tid], alias, column_types)
+    columns = [
+        (apply_sql_name(name), dtype, family(dtype)) for name, dtype in gov_ctx.all_columns[tid]
+    ]
+    assert gov_ctx.fake_fingerprint is not None  # bound with the faked columns
+    sql = faked_projection(
+        base.sql(dialect="postgres"),
+        alias,
+        columns,
+        gov_ctx.fake_columns[tid],
+        gov_ctx.fake_fingerprint,
+        row_filter,
+    )
+    projection = sqlglot.parse_one(f"SELECT * FROM {sql} AS {_quote(alias)}", read="postgres")
+    subquery = projection.args["from_"].this
+    subquery.meta[_GOVERNED] = True  # its own references are the projection's, already governed
+    # A reference qualified by the table's schema now names the projection by its alias alone.
+    for col in node.find_all(exp.Column):
+        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
+            col.set("db", None)
+            col.set("catalog", None)
+    tbl.replace(subquery)
+
+
+def _quote(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
 
 
 def _already_governed(col: exp.Column) -> bool:
@@ -524,7 +605,7 @@ def _maybe_mask_column(
         if tid is None:
             return col
         entry = gov_ctx.masking_rules.get((tid, col_name))
-        if entry:
+        if entry and not _is_fake(entry[0]):
             rule, dtype = entry
             col_sql = col.sql(dialect="postgres")
             mask_expr_str = build_mask_expression(rule, col_sql, dtype)
@@ -538,12 +619,19 @@ def _maybe_mask_column(
         # Unqualified column — check all tables
         for tid in alias_to_tid.values():
             entry = gov_ctx.masking_rules.get((tid, col_name))
-            if entry:
+            if entry and not _is_fake(entry[0]):
                 rule, dtype = entry
                 col_sql = col.sql(dialect="postgres")
                 mask_expr_str = build_mask_expression(rule, col_sql, dtype)
                 return sqlglot.parse_one(mask_expr_str, read="postgres")
         return col
+
+
+def _is_fake(rule: Any) -> bool:
+    """A fake mask: read through the table's faked projection, not substituted (REQ-1494)."""
+    from provisa.security.masking import MaskType
+
+    return rule.mask_type == MaskType.fake
 
 
 def _expand_star(
@@ -571,7 +659,7 @@ def _expand_star(
                 table=exp.Identifier(this=alias, quoted=True),
             )
             entry = gov_ctx.masking_rules.get((tid, col_name))
-            if entry:
+            if entry and not _is_fake(entry[0]):
                 rule, col_dtype = entry
                 col_sql = col_expr.sql(dialect="postgres")
                 mask_sql = build_mask_expression(rule, col_sql, col_dtype)

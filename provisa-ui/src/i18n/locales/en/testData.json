@@ -1,0 +1,25 @@
+{
+  "testData": {
+    "modeMetadata": "Metadata",
+    "modeTestData": "Test data",
+    "fake": "Fake",
+    "syntheticRule": "Synthetic rule",
+    "stable": "Stable",
+    "stableHint": "The same fake on every engine and in every region",
+    "realValue": "real value",
+    "openDialog": "Choose a fake",
+    "piiNoFake": "pii, no fake",
+    "dialogTitle": "Test data: {{column}}",
+    "declaration": "Declaration, e.g. email() or categories((a, b))",
+    "methodCategory": "Fake method: {{category}}",
+    "cancel": "Cancel",
+    "apply": "Apply",
+    "kindCategory": {
+      "values": "Values",
+      "distribution": "Distributions",
+      "transform": "Transforms",
+      "relative": "Relative to other columns",
+      "rule": "Synthetic rules only"
+    }
+  }
+}

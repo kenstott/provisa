@@ -1,0 +1,25 @@
+{
+  "testData": {
+    "modeMetadata": "元數據",
+    "modeTestData": "測試數據",
+    "fake": "虛構值",
+    "syntheticRule": "合成規則",
+    "stable": "穩定",
+    "stableHint": "在每個引擎和每個區域中都是相同的虛構值",
+    "realValue": "真實值",
+    "openDialog": "選擇虛構值",
+    "piiNoFake": "PII，無虛構值",
+    "dialogTitle": "測試數據：{{column}}",
+    "declaration": "聲明，例如 email() 或 categories((a, b))",
+    "methodCategory": "虛構方法：{{category}}",
+    "cancel": "取消",
+    "apply": "套用",
+    "kindCategory": {
+      "values": "值",
+      "distribution": "分佈",
+      "transform": "轉換",
+      "relative": "相對於其他欄",
+      "rule": "僅合成規則"
+    }
+  }
+}

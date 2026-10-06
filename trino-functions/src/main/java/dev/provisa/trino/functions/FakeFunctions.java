@@ -14,6 +14,7 @@ import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.trino.spi.function.Description;
 import io.trino.spi.function.ScalarFunction;
+import io.trino.spi.function.SqlNullable;
 import io.trino.spi.function.SqlType;
 import io.trino.spi.type.StandardTypes;
 
@@ -51,14 +52,24 @@ public final class FakeFunctions
         }
     }
 
+    @ScalarFunction("provisa_digest_tag")
+    @Description("A digest as a short tag: base 36 of its unsigned value")
+    @SqlType(StandardTypes.VARCHAR)
+    public static Slice digestTag(@SqlType(StandardTypes.BIGINT) long digest)
+    {
+        return Slices.utf8Slice(Long.toUnsignedString(digest, 36));
+    }
+
     @ScalarFunction("provisa_fake_method")
     @Description("The named fake method's value for a value's digest")
     @SqlType(StandardTypes.VARCHAR)
+    @SqlNullable
     public static Slice fakeMethod(
             @SqlType(StandardTypes.VARCHAR) Slice method,
             @SqlType(StandardTypes.VARCHAR) Slice args,
             @SqlType(StandardTypes.BIGINT) long digest)
     {
-        return Slices.utf8Slice(FakeMethods.value(method.toStringUtf8(), args.toStringUtf8(), digest));
+        String value = FakeMethods.value(method.toStringUtf8(), args.toStringUtf8(), digest);
+        return value == null ? null : Slices.utf8Slice(value);
     }
 }

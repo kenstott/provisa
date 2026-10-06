@@ -52,6 +52,18 @@ def fingerprint(key: bytes) -> str:
     return hashlib.sha256(key.hex().encode("ascii")).hexdigest()[:16]
 
 
+def tag(value_digest: int) -> str:
+    """A digest as a short tag -- base 36 of its unsigned value -- the part a fake that must stay
+    distinct carries (REQ-1494: email, phone and identifier fakes)."""
+    n = value_digest % (1 << 64)
+    out = ""
+    while True:
+        n, r = divmod(n, 36)
+        out = "0123456789abcdefghijklmnopqrstuvwxyz"[r] + out
+        if n == 0:
+            return out
+
+
 def digest(key: bytes, text: str) -> int:
     """The keyed digest of ``text``: a signed 64-bit integer."""
     mac = hmac.new(key, text.encode("utf-8"), hashlib.sha256).digest()

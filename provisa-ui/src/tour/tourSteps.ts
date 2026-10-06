@@ -331,13 +331,13 @@ export const TOUR_STEPS: TourStep[] = [
     key: "stepProfilerChecks",
   },
   {
-    // REQ-1494: a column's kind of fake is declared in the same edit form.
-    element: '[data-tour="column-fake"]',
+    // REQ-1494: a column's kind of fake is declared in the column list's Test data mode.
+    element: '[data-tour="table-columns-mode"]',
     key: "stepFakes",
   },
   {
-    // REQ-1494: the fill-from-profile action sits with the column fakes; the Fake field is its anchor.
-    element: '[data-tour="column-fake"]',
+    // REQ-1494: the fill-from-profile action sits with the column list's test-data mode.
+    element: '[data-tour="table-columns-mode"]',
     key: "stepFakesFill",
     clickAfterNext: ".data-table tbody tr.clickable",
   },

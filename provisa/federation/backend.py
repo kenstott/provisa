@@ -47,6 +47,10 @@ class EngineBackend:
     raises until an engine wires it, rather than silently falling back to another engine.
     """
 
+    #: REQ-1494: whether the engine holds Provisa's fake functions (provisa_digest and the rest).
+    #: A statement reading a faked column is refused, by the column's name, on one that does not.
+    computes_fakes = False
+
     # `native_store` (engine.py's generic `_RDB_KINDS` loop) is the SQLAlchemy URL scheme name —
     # the identity used for landing/storage-backend comparisons (materialization.py,
     # query_residency.py) — which is not always SQLGlot's own dialect name for that same product
@@ -816,6 +820,8 @@ class EngineBackend:
 class TrinoBackend(EngineBackend):
     """The Trino engine's backend — the ONE backend that references Trino. Delegates to the Trino
     implementation modules (trino_lifecycle / core.catalog / compiler.introspect / executor.trino)."""
+
+    computes_fakes = True  # REQ-1494: the provisa-functions plugin
 
     @property
     def dialect(self) -> str:

@@ -1,0 +1,25 @@
+{
+  "testData": {
+    "modeMetadata": "元数据",
+    "modeTestData": "测试数据",
+    "fake": "虚构值",
+    "syntheticRule": "合成规则",
+    "stable": "稳定",
+    "stableHint": "在每个引擎和每个区域中都是相同的虚构值",
+    "realValue": "真实值",
+    "openDialog": "选择虚构值",
+    "piiNoFake": "PII，无虚构值",
+    "dialogTitle": "测试数据：{{column}}",
+    "declaration": "声明，例如 email() 或 categories((a, b))",
+    "methodCategory": "虚构方法：{{category}}",
+    "cancel": "取消",
+    "apply": "应用",
+    "kindCategory": {
+      "values": "值",
+      "distribution": "分布",
+      "transform": "转换",
+      "relative": "相对于其他列",
+      "rule": "仅合成规则"
+    }
+  }
+}

@@ -307,6 +307,7 @@ async def _optimize_and_route(
     from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.cache.values_cte import build_values_cte_sql
     from provisa.compiler.stage2 import extract_sources, reduce_sources_for_routing
+    from provisa.fakes.read_sql import reads_fakes
     from provisa.transpiler.router import Route, decide_route
 
     _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
@@ -363,6 +364,7 @@ async def _optimize_and_route(
         source_dsns=getattr(state, "source_dsns", None),
         is_mutation=is_mutation,
         operator_floor=operator_floor(state, table_ids),
+        reads_fakes=reads_fakes(governed_sql),  # REQ-1494
     )
     if _rewrites and decision.route != Route.ENGINE:
         # A cache rewrite points the SQL at a materialized table living in the engine's

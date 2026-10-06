@@ -201,6 +201,10 @@ export interface TableColumn {
   // whether it is stable -- the same on every engine.
   fake?: string | null;
   fakeStable?: boolean;
+  // REQ-1494, REQ-1939: the synthetic rule laid over the fake, used by synthetic generation only.
+  syntheticRule?: string | null;
+  // REQ-1494: the column is tagged pii (marked in test-data mode when it declares no fake).
+  isPii?: boolean;
 }
 
 // REQ-1360: metadata-only Kimball measure annotation for a table's implicit_measures.

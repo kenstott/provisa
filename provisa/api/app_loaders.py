@@ -1276,6 +1276,8 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
                     _table_columns_t.c.mask_replace,
                     _table_columns_t.c.mask_value,
                     _table_columns_t.c.mask_precision,
+                    _table_columns_t.c.fake,  # REQ-1494
+                    _table_columns_t.c.fake_stable,
                 ).where(_table_columns_t.c.mask_type.is_not(None))
             )
         ).fetchall()
@@ -1287,6 +1289,8 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
             replace=mrow["mask_replace"],
             value=_parse_mask_value(mrow["mask_value"]),
             precision=mrow["mask_precision"],
+            fake=mrow["fake"],
+            fake_stable=bool(mrow["fake_stable"]),
         )
         table_id = mrow["table_id"]
         col_name = mrow["column_name"]
@@ -1315,7 +1319,13 @@ async def _check_fakes(conn: Any) -> None:  # REQ-1494
     faked = (
         await conn.execute_core(
             select(_table_columns_t.c.id)
-            .where(or_(_table_columns_t.c.fake.is_not(None), _table_columns_t.c.fake_stable))
+            .where(
+                or_(
+                    _table_columns_t.c.fake.is_not(None),
+                    _table_columns_t.c.fake_stable,
+                    _table_columns_t.c.synthetic_rule.is_not(None),
+                )
+            )
             .limit(1)
         )
     ).fetchone()

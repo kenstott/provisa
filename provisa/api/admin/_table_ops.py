@@ -59,6 +59,7 @@ def _build_column_models(columns: list) -> list:
             epoch_unit=getattr(c, "epoch_unit", None),  # REQ-1908
             fake=getattr(c, "fake", None),  # REQ-1494
             fake_stable=getattr(c, "fake_stable", False),
+            synthetic_rule=getattr(c, "synthetic_rule", None),
         )
         for c in columns
     ]

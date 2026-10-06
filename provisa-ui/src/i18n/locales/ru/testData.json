@@ -1,0 +1,25 @@
+{
+  "testData": {
+    "modeMetadata": "Метаданные",
+    "modeTestData": "Тестовые данные",
+    "fake": "Фиктивное значение",
+    "syntheticRule": "Синтетическое правило",
+    "stable": "Стабильный",
+    "stableHint": "Одно и то же фиктивное значение на каждом движке и в каждом регионе",
+    "realValue": "реальное значение",
+    "openDialog": "Выбрать фиктивное значение",
+    "piiNoFake": "PII, без фиктивного значения",
+    "dialogTitle": "Тестовые данные: {{column}}",
+    "declaration": "Объявление, напр. email() или categories((a, b))",
+    "methodCategory": "Фиктивный метод: {{category}}",
+    "cancel": "Отмена",
+    "apply": "Применить",
+    "kindCategory": {
+      "values": "Значения",
+      "distribution": "Распределения",
+      "transform": "Преобразования",
+      "relative": "Относительно других столбцов",
+      "rule": "Только синтетические правила"
+    }
+  }
+}

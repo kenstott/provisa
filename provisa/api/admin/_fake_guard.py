@@ -63,10 +63,18 @@ def _declared(table: dict) -> list[DeclaredColumn]:
             raise FakeRefused(f"{table['table_name']}.{c['column_name']} has no data type")
         cols.append(
             DeclaredColumn(
-                c["column_name"], c["data_type"], c.get("fake"), bool(c.get("fake_stable"))
+                c["column_name"],
+                c["data_type"],
+                c.get("fake"),
+                bool(c.get("fake_stable")),
+                c.get("synthetic_rule"),
             )
         )
     return cols
+
+
+def _declares(c: dict) -> bool:
+    return bool(c.get("fake") or c.get("fake_stable") or c.get("synthetic_rule"))
 
 
 def check_model(tables: list[dict], relationships: list[dict]) -> None:
@@ -76,21 +84,25 @@ def check_model(tables: list[dict], relationships: list[dict]) -> None:
     fakes: dict[tuple[str, str], tuple[FakeKind, bool]] = {}
     reads: dict[tuple[str, str], frozenset[tuple[str, str]]] = {}
     for t in tables:
-        if not any(c.get("fake") or c.get("fake_stable") for c in t["columns"]):
+        if not any(_declares(c) for c in t["columns"]):
             continue
         cols = _declared(t)
         children = _children(t["id"], by_id, relationships)
-        kinds = check_table(t["table_name"], cols, children)
+        checked = check_table(t["table_name"], cols, children)
         stable = {c.name: c.stable for c in cols}
-        for name, kind in kinds.items():
+        for name, kind in checked.fakes.items():
             fakes[(t["table_name"], name)] = (kind, stable[name])
-            reads[(t["table_name"], name)] = model_reads(t["table_name"], kind, children)
-    # A cycle through a parent's children, across tables (REQ-1939, GENERATION IN PASSES).
+        for name in {*checked.fakes, *checked.rules}:
+            generated = checked.generated(name)
+            assert generated is not None  # the column declares a fake or a rule
+            reads[(t["table_name"], name)] = model_reads(t["table_name"], generated, children)
+    # A cycle through a parent's children, across tables, among what generation computes
+    # (REQ-1939, GENERATION IN PASSES).
     cycle = model_cycle(reads)
     if cycle:
         names = [".".join(n) for n in cycle]
         raise FakeRefused(
-            f"the fakes of {', '.join(names)} name one another in a cycle "
+            f"the synthetic rules and fakes of {', '.join(names)} name one another in a cycle "
             f"({' -> '.join(names + [names[0]])})"
         )
     joins = []
@@ -118,6 +130,7 @@ def _with_model(tables: list[dict], model: Any) -> list[dict]:
             "data_type": c.data_type,
             "fake": c.fake,
             "fake_stable": c.fake_stable,
+            "synthetic_rule": c.synthetic_rule,
         }
         for c in model.columns
     ]
@@ -142,7 +155,7 @@ def _with_model(tables: list[dict], model: Any) -> list[dict]:
 async def table_fake_refusal(conn: Any, model: Any) -> MutationResult | None:
     """A failing MutationResult naming the first fake ``model`` -- a table about to be saved --
     cannot hold, in the model as it will stand; None otherwise."""
-    if not any(c.fake or c.fake_stable for c in model.columns):
+    if not any(c.fake or c.fake_stable or c.synthetic_rule for c in model.columns):
         return None
     from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
 

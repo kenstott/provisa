@@ -482,6 +482,10 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     # REQ-1494: the column's kind of fake as declared, and whether it is stable.
     fake: str | None = None
     fake_stable: bool = False
+    # REQ-1494, REQ-1939: the column's synthetic rule, laid over its fake for generation only.
+    synthetic_rule: str | None = None
+    # REQ-1494: the column is tagged pii.
+    is_pii: bool = False
 
 
 @strawberry.type
@@ -807,6 +811,8 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     # REQ-1494: the column's kind of fake as declared, and whether it is stable.
     fake: str | None = None
     fake_stable: bool = False
+    # REQ-1494, REQ-1939: the column's synthetic rule, laid over its fake for generation only.
+    synthetic_rule: str | None = None
 
 
 @strawberry.input
