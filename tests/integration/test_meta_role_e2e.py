@@ -62,7 +62,13 @@ def server():
         pg_port=_PG_PORT,
         extra_config={
             "tables": [orders],
-            "roles": [{"id": r, "capabilities": reads, "domain_access": ["*"]} for r in _ROLES],
+            # org_admin is reserved: it exists without a definition, and a config may not
+            # define it (REQ-1349).
+            "roles": [
+                {"id": r, "capabilities": reads, "domain_access": ["*"]}
+                for r in _ROLES
+                if r != "org_admin"
+            ],
             "rls_rules": [
                 {"table_id": "orders", "role_id": "analyst", "filter": "region = 'east'"},
                 {"table_id": "orders", "role_id": "east_reader", "filter": "region = 'east'"},
