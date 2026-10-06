@@ -6,6 +6,7 @@
     "syntheticRule": "Synthetic rule",
     "stable": "Stable",
     "stableHint": "The same fake on every engine and in every region",
+    "stableVersion": "Pinned to definition version {{version}}: its values stay the same until its fake changes",
     "realValue": "real value",
     "openDialog": "Choose a fake",
     "piiNoFake": "pii, no fake",

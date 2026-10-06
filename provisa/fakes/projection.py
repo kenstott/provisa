@@ -29,7 +29,15 @@ references the levels below hold; the outer level gives every column its own nam
 from __future__ import annotations
 
 from provisa.fakes.kinds import Ordered, Sql
-from provisa.fakes.read_sql import Column, _q, digest_sql, expression, uniform_sql
+from provisa.fakes.read_sql import (
+    Column,
+    _q,
+    definition_of,
+    digest_sql,
+    expression,
+    seed_sql,
+    uniform_sql,
+)
 from provisa.fakes.sql_subset import read as read_sql
 
 _DIGEST = "__digest__"
@@ -83,7 +91,11 @@ def faked_projection(
     level = f"SELECT {', '.join(inner)} FROM {base} AS {a}{where}"
     # The uniform point reads the digest the level below computed, once per row.
     held = [_q(name) for name, _, _ in columns] + [_q(_DIGEST + n) for n in fakes]
-    uniforms = [f"{uniform_sql(_q(_DIGEST + n))} AS {_q(_UNIFORM + n)}" for n in fakes]
+    # REQ-1494: each column's point is drawn from its digest mixed with its fake's definition.
+    uniforms = [
+        f"{uniform_sql(seed_sql(_q(_DIGEST + n), definition_of(c)))} AS {_q(_UNIFORM + n)}"
+        for n, c in fakes.items()
+    ]
     level = f"SELECT {', '.join(held + uniforms)} FROM ({level}) AS {a}"
     held += [_q(_UNIFORM + n) for n in fakes]
 

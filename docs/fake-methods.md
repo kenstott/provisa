@@ -21,7 +21,7 @@ Any name that is not one of Provisa's own kinds below names a [general fake meth
 
 ## Properties every fake shares
 
-**Consistency.** A fake that replaces a real value is a keyed function of that value: the same real value always shows the same fake, and different real values show different fakes. Joins, grouping and distinct counts through the column give the results they would give on the real values. The key is one platform key; without it a fake cannot be turned back into the value.
+**Consistency.** A fake that replaces a real value is a keyed function of that value: the same real value always shows the same fake, and different real values show different fakes. Joins, grouping and distinct counts through the column give the results they would give on the real values. The key is one platform key; without it a fake cannot be turned back into the value. A method's fake is drawn from the value's keyed digest mixed with a hash of the column's fake as declared (the method, its arguments, for a stable fake its definition version, and the column's type family: every integer type is one family and every text type another, a decimal keeps its precision and scale, and timestamps with and without a time zone differ), so two columns faked from the same value by different methods do not draw alike, and changing a column's fake changes all of its values.
 
 **Where it is computed.** The engine of the region serving the read computes every fake at the read. Ordering, filtering, grouping, joining and aggregating through a faked column work on the fakes the reader sees, never on the real values.
 
@@ -29,9 +29,11 @@ Any name that is not one of Provisa's own kinds below names a [general fake meth
 
 `city`, `company`, `country`, `email`, `first_name`, `job`, `last_name`, `name`, `phone_number`, `postcode`, `sentence`, `state`, `street_address`, `user_name`, `uuid4`, `word`
 
-Every distribution kind below, and `bucket`, `truncate`, `prefix`, `hash` and `encrypt`, is a pure function of its arguments and can be stable. A stable `profile()` must pin its run: `profile(run=<id>)`.
+Every distribution kind below, and `bucket`, `truncate`, `prefix`, `hash` and `encrypt`, is a pure function of its arguments and can be stable. A stable `profile()` must pin its run: `profile(run=<id>)`. A stable method takes no arguments. A stable fake cannot be one that reads what is measured where it is read: `pattern()`, `categories()` with no values, `bool()` with no share, or `after`, `before`, `greater_than` and `less_than` with no distance. A stable fake that names another column, such as `after(created_at, 1 day)` or `sql(quantity * price)`, needs each faked column it names to be stable too. Each of these is refused by name when saved.
 
-**Joined columns agree.** Two columns joined by a relationship, both faked, must declare the same fake and the same stability, so the join still matches. A declaration that breaks this is refused, naming the relationship.
+A stable fake is pinned to the version of Provisa's portable definition it was saved under, and the column editor shows that version. A later release that adds a new version leaves the column on its pinned version, so its fakes do not change. The column moves to the newest version only when its fake is changed, or when it is made stable again after being made not stable.
+
+**Joined columns agree.** Two columns joined by a relationship, both faked, must declare the same fake, the same stability and, when stable, the same definition version, and be of one type family, so the join still matches. A declaration that breaks this is refused, naming the relationship.
 
 **Uniqueness.** Fakes of the identifier, email and phone kinds carry a short part derived from the keyed digest of the real value, so distinct real values give distinct fakes. Person names may collide, as real names do.
 

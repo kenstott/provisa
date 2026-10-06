@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import math
+import dataclasses
 import re
 from itertools import groupby
 from collections.abc import Callable
@@ -35,6 +36,7 @@ from dataclasses import dataclass
 import sqlglot
 from sqlglot import exp
 
+from provisa.fakes.digest import definition_hash
 from provisa.fakes.measurement import Measured
 from provisa.fakes.kinds import (
     Bool,
@@ -81,6 +83,29 @@ class Column:
     kind: FakeKind
     stable: bool
     measured: Measured | None = None  # bound at model build, for a kind that is measured
+    stable_version: int | None = None  # the portable definition version a stable method reads
+
+
+def definition_of(col: Column) -> int:
+    """The definition hash of the column's fake (provisa.fakes.digest.definition_hash): a method
+    by its name and arguments, any other kind by its name and declared fields; with the pinned
+    portable definition version when stable, and the column's type. REQ-1494: every fake is
+    seeded by the value's digest combined with it."""
+    k = col.kind
+    version = col.stable_version if col.stable else None
+    if isinstance(k, Method):
+        return definition_hash(k.name, dict(k.args), version, col.data_type)
+    return definition_hash(kind_name(k), dataclasses.asdict(k), version, col.data_type)
+
+
+def seed_sql(digest: str, def_hash: int) -> str:
+    """SQL for a value's seed: its digest mixed with the definition hash (digest.seed)."""
+    return f"provisa_seed({digest}, {_bigint(def_hash)})"
+
+
+def _bigint(n: int) -> str:
+    # As text cast: the least BIGINT has no literal (its magnitude is out of range).
+    return f"CAST('{n}' AS BIGINT)"
 
 
 def _lit(text: str) -> str:
@@ -209,15 +234,22 @@ def expression(
     """The faked value of ``col``. ``real`` and ``u`` are SQL for its real value and uniform point;
     ``digest`` SQL for its digest; ``faked(name)`` the faked form of another column, and
     ``family_of(name)`` that column's family."""
-    if col.stable:
-        raise FakeReadRefused(
-            f"{col.name}: a stable fake is not yet computed on a faked read (REQ-1494)"
-        )
     k = col.kind
     guarded = True
     if isinstance(k, Method):
-        args = json.dumps(dict(k.args), sort_keys=True, separators=(",", ":"))
-        value = f"provisa_fake_method({_lit(k.name)}, {_lit(args)}, {digest})"
+        if col.stable:
+            # The portable definition, the same on every engine (provisa.fakes.portable).
+            if col.stable_version is None:
+                raise FakeReadRefused(
+                    f"{col.name}: a stable fake names the portable definition version it is "
+                    f"computed by, and none is recorded"
+                )
+            h = _bigint(definition_of(col))
+            value = f"provisa_stable_fake({_lit(k.name)}, {col.stable_version}, {digest}, {h})"
+        else:
+            args = json.dumps(dict(k.args), sort_keys=True, separators=(",", ":"))
+            h = _bigint(definition_of(col))
+            value = f"provisa_fake_method({_lit(k.name)}, {_lit(args)}, {digest}, {h})"
         if k.name in TAGGED_EMAIL:
             value = f"REPLACE({value}, '@', '.' || {_tag(digest)} || '@')"
         elif k.name in TAGGED_IDENTIFIER:
@@ -271,7 +303,10 @@ def expression(
     elif isinstance(k, Prefix):
         out = f"SUBSTRING({real}, 1, {k.length})"
     elif isinstance(k, Hash):
-        out = _tag(digest) if col.family == "text" else f"CAST({digest} AS {col.data_type})"
+        # The keyed digest mixed with the definition, as every fake is seeded (REQ-1494): one
+        # value still gives one hash, and joined columns of one definition still match.
+        hashed = seed_sql(digest, definition_of(col))
+        out = _tag(hashed) if col.family == "text" else f"CAST({hashed} AS {col.data_type})"
     elif isinstance(k, Ordered):
         named = faked(k.column)
         if k.distance is None:
@@ -305,7 +340,7 @@ def expression(
     elif isinstance(k, Pattern):
         shapes = _measured(col).shapes
         assert shapes is not None  # a pattern's measurement holds its shapes, or a refusal
-        filled = [_filled_shape(shape, digest) for shape, _ in shapes]
+        filled = [_filled_shape(shape, digest, definition_of(col)) for shape, _ in shapes]
         out = _pick(u, filled, [share for _, share in shapes])
         if col.family != "text":
             out = f"CAST({out} AS {col.data_type})"
@@ -382,15 +417,17 @@ def _pick_measured(u: str, values: tuple[tuple[str, float], ...] | None, col: Co
 _UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
-def _filled_shape(shape: str, digest: str) -> str:
+def _filled_shape(shape: str, digest: str, def_hash: int) -> str:
     """A value of ``shape`` (A an upper-case letter, a a lower-case one, 9 a digit, every other
     character kept), its letters and digits drawn from the digest by the bothify method. The
     method sees only its own placeholders, so no character of the shape is read as one."""
     template = "".join("#" if ch == "9" else "?" for ch in shape if ch in "Aa9")
     if not template:
         return _lit(shape)
-    args = json.dumps({"letters": _UPPER, "text": template}, sort_keys=True, separators=(",", ":"))
-    drawn = f"provisa_fake_method('bothify', {_lit(args)}, {digest})"
+    call = {"letters": _UPPER, "text": template}
+    args = json.dumps(call, sort_keys=True, separators=(",", ":"))
+    h = _bigint(def_hash)
+    drawn = f"provisa_fake_method('bothify', {_lit(args)}, {digest}, {h})"
     parts: list[str] = []
     at = 1  # position in the drawn text, from 1
 

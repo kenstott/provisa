@@ -66,7 +66,7 @@ def test_two_keys_side_by_side_each_digest_under_its_own(trino_conn, key):
 def test_a_fake_method_gives_one_fake_per_value(trino_conn, key):
     cur = trino_conn.cursor()
     cur.execute(
-        f"SELECT v, provisa_fake_method('email', '{{}}', provisa_digest('{fingerprint(key)}', v)) "
+        f"SELECT v, provisa_fake_method('email', '{{}}', provisa_digest('{fingerprint(key)}', v), 5) "
         "FROM (VALUES 'a', 'b', 'a') AS t(v)"
     )
     fakes: dict[str, set[str]] = {}
@@ -76,6 +76,29 @@ def test_a_fake_method_gives_one_fake_per_value(trino_conn, key):
     assert len(fakes["a"]) == 1 and fakes["a"] != fakes["b"]
 
 
+def test_trino_mixes_the_definition_hash_in_as_the_embedded_engine_does(trino_conn):
+    """REQ-1494: the seed is the published mix of the digest and the definition hash."""
+    from provisa.fakes.digest import definition_hash, seed
+    from provisa.fakes.portable import compute
+
+    h = definition_hash("name", {}, 1, "varchar")
+    assert _one(trino_conn, f"SELECT provisa_stable_fake('name', 1, 99, {h})") == compute(
+        "name", 1, seed(99, h)
+    )
+
+
+def test_trino_s_seed_is_the_published_mix(trino_conn):
+    from provisa.fakes.digest import seed
+
+    for d, h in [
+        (0, 0),
+        (-1, 1),
+        (5975387752016995628, 4780743034503023799),
+        (-(2**63), 2**63 - 1),
+    ]:
+        assert _one(trino_conn, f"SELECT provisa_seed(BIGINT '{d}', BIGINT '{h}')") == seed(d, h)
+
+
 def test_a_key_the_engine_does_not_hold_is_refused_by_fingerprint(trino_conn):
     with pytest.raises(trino.exceptions.TrinoUserError, match="holds no fake key 0123456789abcdef"):
         _one(trino_conn, "SELECT provisa_digest('0123456789abcdef', 'x')")
@@ -83,4 +106,4 @@ def test_a_key_the_engine_does_not_hold_is_refused_by_fingerprint(trino_conn):
 
 def test_a_method_the_engine_has_not_is_refused_by_name(trino_conn, key):
     with pytest.raises(trino.exceptions.TrinoUserError, match="no fake method nonesuch"):
-        _one(trino_conn, "SELECT provisa_fake_method('nonesuch', '{}', 1)")
+        _one(trino_conn, "SELECT provisa_fake_method('nonesuch', '{}', 1, 5)")

@@ -6,6 +6,7 @@
     "syntheticRule": "Règle synthétique",
     "stable": "Stable",
     "stableHint": "La même valeur fictive sur chaque moteur et dans chaque région",
+    "stableVersion": "Épinglé à la version de définition {{version}} : ses valeurs restent les mêmes tant que sa valeur fictive ne change pas",
     "realValue": "valeur réelle",
     "openDialog": "Choisir une valeur fictive",
     "piiNoFake": "PII, sans valeur fictive",

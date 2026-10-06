@@ -6,6 +6,7 @@
     "syntheticRule": "合成ルール",
     "stable": "安定",
     "stableHint": "すべてのエンジンとリージョンで同じフェイク値",
+    "stableVersion": "定義バージョン {{version}} に固定：フェイクを変更するまで値は変わりません",
     "realValue": "実際の値",
     "openDialog": "フェイク値を選択",
     "piiNoFake": "PII、フェイク値なし",

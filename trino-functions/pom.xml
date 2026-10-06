@@ -53,6 +53,16 @@
   </dependencies>
 
   <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <!-- REQ-1494: the portable fake definition, the same files the Python side reads. -->
+      <resource>
+        <directory>../provisa/fakes/portable</directory>
+        <targetPath>provisa/fakes/portable</targetPath>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

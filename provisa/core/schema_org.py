@@ -319,6 +319,8 @@ table_columns = Table(
     Column("epoch_unit", Text),  # REQ-1908: epoch-number storage unit of a temporal column
     Column("fake", Text),  # REQ-1494: the column's kind of fake, as declared
     Column("fake_stable", Boolean, nullable=False, server_default=false()),  # REQ-1494
+    # REQ-1494: the portable definition version a stable fake is pinned to; NULL when not stable
+    Column("fake_stable_version", Integer),
     Column("synthetic_rule", Text),  # REQ-1494, REQ-1939: laid over the fake, for generation
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),

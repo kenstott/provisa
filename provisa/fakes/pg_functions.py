@@ -57,8 +57,8 @@ def pg_digest_tag(value_digest: int | None) -> str | None:
     return None if value_digest is None else tag(value_digest)
 
 
-def pg_fake_method(method: str, args: str, seed: int | None) -> str | None:
-    return fake_method(method, args, seed)
+def pg_fake_method(method: str, args: str, value_digest: int | None, def_hash: int) -> str | None:
+    return fake_method(method, args, value_digest, def_hash)
 
 
 #: The functions, as the pg engine creates them once plpython3u is installed. No parameter is
@@ -74,9 +74,21 @@ LANGUAGE plpython3u IMMUTABLE PARALLEL SAFE AS $$
 from provisa.fakes.pg_functions import pg_digest_tag
 return pg_digest_tag(value_digest)
 $$;
-CREATE OR REPLACE FUNCTION provisa_fake_method(method text, arguments text, seed bigint)
-RETURNS text LANGUAGE plpython3u IMMUTABLE PARALLEL SAFE AS $$
+CREATE OR REPLACE FUNCTION provisa_seed(value_digest bigint, def_hash bigint) RETURNS bigint
+LANGUAGE plpython3u IMMUTABLE PARALLEL SAFE AS $$
+from provisa.fakes.duckdb_functions import value_seed
+return value_seed(value_digest, def_hash)
+$$;
+CREATE OR REPLACE FUNCTION provisa_fake_method(
+    method text, arguments text, value_digest bigint, def_hash bigint
+) RETURNS text LANGUAGE plpython3u IMMUTABLE PARALLEL SAFE AS $$
 from provisa.fakes.pg_functions import pg_fake_method
-return pg_fake_method(method, arguments, seed)
+return pg_fake_method(method, arguments, value_digest, def_hash)
+$$;
+CREATE OR REPLACE FUNCTION provisa_stable_fake(
+    method text, version integer, value_digest bigint, def_hash bigint
+) RETURNS text LANGUAGE plpython3u IMMUTABLE PARALLEL SAFE AS $$
+from provisa.fakes.portable import stable_fake
+return stable_fake(method, version, value_digest, def_hash)
 $$;
 """

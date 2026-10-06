@@ -75,6 +75,7 @@ class MaskingRule:  # REQ-038, REQ-040, REQ-263
     # fake fields (REQ-1494): the column's declared fake and whether it is stable
     fake: str | None = None
     fake_stable: bool = False
+    fake_stable_version: int | None = None  # the portable definition version it is pinned to
     # what the fake computes from where it is measured (provisa.fakes.measured), bound at model build
     fake_measured: Any = None
 

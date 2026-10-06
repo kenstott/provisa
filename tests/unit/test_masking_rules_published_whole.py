@@ -41,6 +41,7 @@ def _mask_row(column: str, unmasked_to: list[str]) -> dict:
         "mask_precision": None,
         "fake": None,
         "fake_stable": False,
+        "fake_stable_version": None,
     }
 
 

@@ -201,6 +201,8 @@ export interface TableColumn {
   // whether it is stable -- the same on every engine.
   fake?: string | null;
   fakeStable?: boolean;
+  // REQ-1494: the portable definition version a stable fake is pinned to, set when it is saved.
+  fakeStableVersion?: number | null;
   // REQ-1494, REQ-1939: the synthetic rule laid over the fake, used by synthetic generation only.
   syntheticRule?: string | null;
   // REQ-1494: the column is tagged pii (marked in test-data mode when it declares no fake).

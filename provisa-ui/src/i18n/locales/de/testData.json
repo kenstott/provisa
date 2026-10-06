@@ -6,6 +6,7 @@
     "syntheticRule": "Synthetische Regel",
     "stable": "Stabil",
     "stableHint": "Derselbe Fake-Wert auf jeder Engine und in jeder Region",
+    "stableVersion": "Festgelegt auf Definitionsversion {{version}}: Die Werte bleiben gleich, bis sich der Fake ändert",
     "realValue": "echter Wert",
     "openDialog": "Fake-Wert wählen",
     "piiNoFake": "PII, kein Fake-Wert",

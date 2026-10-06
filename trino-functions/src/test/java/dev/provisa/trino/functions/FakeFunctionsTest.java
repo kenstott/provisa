@@ -29,6 +29,15 @@ class FakeFunctionsTest
         assertEquals(5975387752016995628L, FakeFunctions.digest(KEY, "ann@example.com".getBytes(StandardCharsets.UTF_8)));
     }
 
+    /** The values provisa.fakes.digest.seed gives (tests/unit/test_fake_engine_functions.py). */
+    @Test
+    void theSeedIsThePublishedDefinition()
+    {
+        assertEquals(-2257588482968385356L, FakeFunctions.seed(5975387752016995628L, 4780743034503023799L));
+        assertEquals(-927672734069774303L, FakeFunctions.seed(-1L, 1L));
+        assertEquals(-2152535657050944081L, FakeFunctions.seed(0L, 0L));
+    }
+
     /** The value provisa.fakes.digest.fingerprint(b"k" * 32) gives. */
     @Test
     void theFingerprintIsThePublishedDefinition()

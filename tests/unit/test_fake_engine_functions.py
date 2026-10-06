@@ -54,7 +54,7 @@ def test_a_statement_names_the_key_by_fingerprint_and_another_key_is_refused(con
 
 def test_a_fake_method_is_one_fake_per_value(con):
     rows = con.execute(
-        f"SELECT v, provisa_fake_method('email', '{{}}', provisa_digest('{_FP}', v)) AS f "
+        f"SELECT v, provisa_fake_method('email', '{{}}', provisa_digest('{_FP}', v), 5) AS f "
         "FROM (VALUES ('a'), ('b'), ('a')) t(v)"
     ).fetchall()
     fakes = {v: set() for v, _ in rows}
@@ -63,7 +63,7 @@ def test_a_fake_method_is_one_fake_per_value(con):
         assert "@" in f
     assert len(fakes["a"]) == 1 and fakes["a"] != fakes["b"]
     (with_args,) = con.execute(
-        "SELECT provisa_fake_method('pyint', '{\"min_value\": 3, \"max_value\": 3}', 1)"
+        "SELECT provisa_fake_method('pyint', '{\"min_value\": 3, \"max_value\": 3}', 1, 5)"
     ).fetchone()
     assert with_args == "3"
 
@@ -79,17 +79,58 @@ def test_every_method_is_a_function_of_the_digest_alone(monkeypatch):
 
     declarable = [m for m in method_names() if m not in UNSUPPORTED]
     seeds = (1, -7, 2**62)
-    first = {(m, s): fake_method(m, "{}", s) for m in declarable for s in seeds}
+    first = {(m, s): fake_method(m, "{}", s, 5) for m in declarable for s in seeds}
     random.seed(12345)
     time.sleep(1.1)  # the clock moves past a second: a method reading it would differ
     monkeypatch.setenv("TZ", "Asia/Tokyo")
     time.tzset()
     try:
-        second = {(m, s): fake_method(m, "{}", s) for m in declarable for s in seeds}
+        second = {(m, s): fake_method(m, "{}", s, 5) for m in declarable for s in seeds}
     finally:
         monkeypatch.undo()
         time.tzset()
     assert {k for k in first if first[k] != second[k]} == set()
+
+
+def test_the_seed_is_the_published_definition():
+    """The values FakeFunctionsTest.theSeedIsThePublishedDefinition pins on the Trino side."""
+    from provisa.fakes.digest import definition_hash, seed
+
+    assert definition_hash("email", {}, None, "varchar") == 5367564509125871640
+    assert seed(5975387752016995628, 4780743034503023799) == -2257588482968385356
+    assert seed(-1, 1) == -927672734069774303
+    assert seed(0, 0) == -2152535657050944081
+
+
+def test_the_type_enters_the_definition_by_its_family():
+    """REQ-1494: int and bigint keys, or varchar and text, agree; a decimal keeps its precision
+    and scale, and timestamp and timestamptz stay apart."""
+    from provisa.fakes.digest import canonical_type, definition_hash
+
+    def h(t: str) -> int:
+        return definition_hash("hash", {}, None, t)
+
+    assert h("int") == h("BIGINT") == h("int8") and h("varchar(20)") == h("text")
+    assert h("int") != h("text")
+    assert canonical_type("numeric(10, 2)") == "decimal(10,2)" != canonical_type("numeric(12,2)")
+    assert canonical_type("timestamp") != canonical_type("timestamp with time zone")
+    assert canonical_type("double precision") == canonical_type("float8") == "float"
+
+
+def test_the_engine_s_seed_is_the_published_mix(con):
+    from provisa.fakes.digest import seed
+
+    for d, h in [(0, 0), (-1, 1), (5975387752016995628, 4780743034503023799)]:
+        assert con.execute(f"SELECT provisa_seed({d}, {h})").fetchone()[0] == seed(d, h)
+    assert con.execute("SELECT provisa_seed(NULL, 1)").fetchone()[0] is None
+
+
+def test_a_method_s_value_moves_with_its_definition(con):
+    """REQ-1494: one value faked under two definitions draws two seeds."""
+    from provisa.fakes.duckdb_functions import fake_method
+
+    assert fake_method("name", "{}", 99, 1) != fake_method("name", "{}", 99, 2)
+    assert fake_method("name", "{}", 99, 1) == fake_method("name", "{}", 99, 1)
 
 
 def test_without_the_key_no_fake_is_computed():

@@ -67,9 +67,44 @@ public final class FakeFunctions
     public static Slice fakeMethod(
             @SqlType(StandardTypes.VARCHAR) Slice method,
             @SqlType(StandardTypes.VARCHAR) Slice args,
-            @SqlType(StandardTypes.BIGINT) long digest)
+            @SqlType(StandardTypes.BIGINT) long digest,
+            @SqlType(StandardTypes.BIGINT) long defHash)
     {
-        String value = FakeMethods.value(method.toStringUtf8(), args.toStringUtf8(), digest);
+        String value = FakeMethods.value(method.toStringUtf8(), args.toStringUtf8(), seed(digest, defHash));
         return value == null ? null : Slices.utf8Slice(value);
+    }
+
+    @ScalarFunction("provisa_stable_fake")
+    @Description("The stable fake of a method for a value's digest, by the portable definition's version")
+    @SqlType(StandardTypes.VARCHAR)
+    public static Slice stableFake(
+            @SqlType(StandardTypes.VARCHAR) Slice method,
+            @SqlType(StandardTypes.INTEGER) long version,
+            @SqlType(StandardTypes.BIGINT) long digest,
+            @SqlType(StandardTypes.BIGINT) long defHash)
+    {
+        return Slices.utf8Slice(PortableFakes.value(method.toStringUtf8(), (int) version, seed(digest, defHash)));
+    }
+
+    @ScalarFunction("provisa_seed")
+    @Description("A value's seed under a fake's definition: its digest mixed with the definition hash")
+    @SqlType(StandardTypes.BIGINT)
+    public static long seedFunction(
+            @SqlType(StandardTypes.BIGINT) long digest,
+            @SqlType(StandardTypes.BIGINT) long defHash)
+    {
+        return seed(digest, defHash);
+    }
+
+    /**
+     * REQ-1494: a method's seed for one value -- splitmix64's mix of the digest XOR the definition
+     * hash of the column's fake, as provisa.fakes.digest.seed computes it.
+     */
+    static long seed(long digest, long defHash)
+    {
+        long z = (digest ^ defHash) + 0x9E3779B97F4A7C15L;
+        z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+        z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+        return z ^ (z >>> 31);
     }
 }

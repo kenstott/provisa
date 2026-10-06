@@ -45,8 +45,8 @@ def test_postgres_and_duckdb_compute_the_same_digest_and_fakes(key_dir, monkeypa
         assert pg_functions.pg_digest(fp, value) == duck
         (tag,) = con.execute("SELECT provisa_digest_tag(?)", [duck]).fetchone()
         assert pg_functions.pg_digest_tag(duck) == tag
-        (fake,) = con.execute("SELECT provisa_fake_method('email', '{}', ?)", [duck]).fetchone()
-        assert pg_functions.pg_fake_method("email", "{}", duck) == fake
+        (fake,) = con.execute("SELECT provisa_fake_method('email', '{}', ?, 11)", [duck]).fetchone()
+        assert pg_functions.pg_fake_method("email", "{}", duck, 11) == fake
     assert pg_functions.pg_digest(fp, None) is None
 
 

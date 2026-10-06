@@ -28,6 +28,7 @@ from provisa.fakes.checks import (
     model_reads,
     model_cycle,
 )
+from provisa.fakes.digest import canonical_type
 from provisa.fakes.kinds import FakeKind, FakeRefused
 
 
@@ -81,7 +82,7 @@ def check_model(tables: list[dict], relationships: list[dict]) -> None:
     """Refuse, by name, the first fake the model's tables cannot hold. ``tables`` as
     :func:`provisa.api.admin.db_queries.fetch_tables` returns them."""
     by_id = {t["id"]: t for t in tables}
-    fakes: dict[tuple[str, str], tuple[FakeKind, bool]] = {}
+    fakes: dict[tuple[str, str], tuple[FakeKind, bool, int | None, str]] = {}
     reads: dict[tuple[str, str], frozenset[tuple[str, str]]] = {}
     for t in tables:
         if not any(_declares(c) for c in t["columns"]):
@@ -90,8 +91,10 @@ def check_model(tables: list[dict], relationships: list[dict]) -> None:
         children = _children(t["id"], by_id, relationships)
         checked = check_table(t["table_name"], cols, children)
         stable = {c.name: c.stable for c in cols}
+        version = {c["column_name"]: c.get("fake_stable_version") for c in t["columns"]}
+        types = {c.name: canonical_type(c.data_type) for c in cols}
         for name, kind in checked.fakes.items():
-            fakes[(t["table_name"], name)] = (kind, stable[name])
+            fakes[(t["table_name"], name)] = (kind, stable[name], version[name], types[name])
         for name in {*checked.fakes, *checked.rules}:
             generated = checked.generated(name)
             assert generated is not None  # the column declares a fake or a rule
@@ -123,13 +126,30 @@ def check_model(tables: list[dict], relationships: list[dict]) -> None:
 
 
 def _with_model(tables: list[dict], model: Any) -> list[dict]:
-    """``tables`` with ``model``'s columns in place of its stored ones, or added when new."""
+    """``tables`` with ``model``'s columns in place of its stored ones, or added when new; each
+    stable fake pinned to the version the save will pin it to (provisa.fakes.portable)."""
+    from provisa.fakes.portable import pinned_version
+
+    def same(t: dict) -> bool:
+        return (t["source_id"], t["schema_name"], t["table_name"]) == (
+            model.source_id,
+            model.schema_name,
+            model.table_name,
+        )
+
+    stored = {
+        c["column_name"]: (c.get("fake"), bool(c.get("fake_stable")), c.get("fake_stable_version"))
+        for t in tables
+        if same(t)
+        for c in t["columns"]
+    }
     columns = [
         {
             "column_name": c.name,
             "data_type": c.data_type,
             "fake": c.fake,
             "fake_stable": c.fake_stable,
+            "fake_stable_version": pinned_version(c.fake, c.fake_stable, stored.get(c.name)),
             "synthetic_rule": c.synthetic_rule,
         }
         for c in model.columns
@@ -137,12 +157,7 @@ def _with_model(tables: list[dict], model: Any) -> list[dict]:
     out = []
     replaced = False
     for t in tables:
-        same = (t["source_id"], t["schema_name"], t["table_name"]) == (
-            model.source_id,
-            model.schema_name,
-            model.table_name,
-        )
-        if same:
+        if same(t):
             replaced = True
             out.append({**t, "columns": columns})
         else:

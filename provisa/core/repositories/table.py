@@ -42,6 +42,7 @@ from provisa.core.schema_org import (
     table_columns,
     tag_assignments,
 )
+from provisa.fakes.portable import pinned_version
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
@@ -98,6 +99,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.epoch_unit,
     table_columns.c.fake,
     table_columns.c.fake_stable,
+    table_columns.c.fake_stable_version,
     table_columns.c.synthetic_rule,
 ]
 
@@ -376,6 +378,20 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
     # keyed on it, or a view, materialized view or metric names it, the registration is refused
     # naming them; the transaction around this call undoes the table row's update. A dropped
     # column's tag assignments are its parts and go with it.
+    # REQ-1494: each stable fake's pinned portable definition version, kept while its fake is.
+    _pins = {
+        r.column_name: (r.fake, bool(r.fake_stable), r.fake_stable_version)
+        for r in (
+            await conn.execute_core(
+                select(
+                    table_columns.c.column_name,
+                    table_columns.c.fake,
+                    table_columns.c.fake_stable,
+                    table_columns.c.fake_stable_version,
+                ).where(table_columns.c.table_id == table_id)
+            )
+        ).fetchall()
+    }
     _dropped = sorted(set(_existing_types) - {col.name for col in table.columns})
     _deferred = _DEFERRED_COLUMN_DROPS.get()
     _referred: dict[str, list[Dependent]] = {}
@@ -441,6 +457,11 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
                 epoch_unit=getattr(col, "epoch_unit", None),
                 fake=getattr(col, "fake", None),  # REQ-1494
                 fake_stable=getattr(col, "fake_stable", False),
+                fake_stable_version=pinned_version(
+                    getattr(col, "fake", None),
+                    getattr(col, "fake_stable", False),
+                    _pins.get(col.name),
+                ),
                 synthetic_rule=getattr(col, "synthetic_rule", None),
             )
         )

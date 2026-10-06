@@ -28,7 +28,7 @@ def test_every_method_is_computed_by_trino_or_named_unsupported(trino_conn):
     values = ", ".join(f"('{m}')" for m in declarable)
     cur = trino_conn.cursor()
     cur.execute(
-        "SELECT m, d, provisa_fake_method(m, '{}', d) FROM (VALUES "
+        "SELECT m, d, provisa_fake_method(m, '{}', d, 5) FROM (VALUES "
         + values
         + ") AS t(m) CROSS JOIN UNNEST(sequence(1, 5)) AS s(d)"
     )
@@ -46,7 +46,7 @@ def test_every_method_is_a_function_of_the_digest_alone_on_trino(trino_conn):
     declarable = [m for m in method_names() if m not in UNSUPPORTED]
     values = ", ".join(f"('{m}')" for m in declarable)
     sql = (
-        "SELECT m, d, provisa_fake_method(m, '{}', d) FROM (VALUES "
+        "SELECT m, d, provisa_fake_method(m, '{}', d, 5) FROM (VALUES "
         + values
         + ") AS t(m) CROSS JOIN UNNEST(ARRAY[1, -7, 4611686018427387904]) AS s(d)"
     )
@@ -58,6 +58,29 @@ def test_every_method_is_a_function_of_the_digest_alone_on_trino(trino_conn):
     second = {(m, d): v for m, d, v in cur.fetchall()}
     assert len(first) == 3 * len(declarable)
     assert {k for k in first if first[k] != second[k]} == set()
+
+
+def test_trino_computes_every_stable_fake_as_the_portable_definition_does(trino_conn):
+    """REQ-1494, A STABLE FAKE: byte-identical to provisa.fakes.portable for 1000 digests."""
+    from provisa.fakes.digest import definition_hash
+    from provisa.fakes.methods import STABLE_METHODS
+    from provisa.fakes.portable import stable_fake
+
+    seeds = [d * 7919 * 104729 for d in range(-500, 500)] + [-(2**63), 2**63 - 1]
+    hashes = {m: definition_hash(m, {}, 1, "varchar") for m in STABLE_METHODS}
+    methods = ", ".join(f"('{m}', BIGINT '{h}')" for m, h in sorted(hashes.items()))
+    cur = trino_conn.cursor()
+    cur.execute(
+        "SELECT m, d, provisa_stable_fake(m, 1, d, h) FROM (VALUES "
+        + methods
+        + ") AS t(m, h) CROSS JOIN UNNEST(ARRAY["
+        + ", ".join(f"BIGINT '{d}'" for d in seeds)
+        + "]) AS s(d)"
+    )
+    got = {(m, d): v for m, d, v in cur.fetchall()}
+    assert len(got) == len(STABLE_METHODS) * len(seeds)
+    differ = [k for k, v in got.items() if v != stable_fake(k[0], 1, k[1], hashes[k[0]])]
+    assert differ == [], differ[:5]
 
 
 @pytest.mark.parametrize("name", sorted(UNSUPPORTED))
@@ -90,11 +113,12 @@ def test_trino_honours_the_range_format_and_length_arguments(trino_conn):
     cur = trino_conn.cursor()
     rows = {}
     for method, args in _ARGUMENTS:
-        cur.execute(f"SELECT provisa_fake_method('{method}', '{json.dumps(args)}', 7)")
+        cur.execute(f"SELECT provisa_fake_method('{method}', '{json.dumps(args)}', 7, 5)")
         rows[method] = cur.fetchall()[0][0]
     assert "2024-01-01" <= rows["date_between"] <= "2024-01-31"
     born = dt.date.fromisoformat(rows["date_of_birth"])
-    assert 18 <= (dt.date(2026, 1, 1) - born).days // 365.25 <= 21
+    # Ages count from the reference instant (provisa.fakes.methods.REFERENCE_INSTANT).
+    assert 18 <= (dt.date(2026, 7, 15) - born).days // 365.25 <= 21
     assert 5 <= int(rows["pyint"]) <= 7
     assert re.fullmatch(r"\d{1,2}\.\d{3}", rows["pyfloat"])
     assert re.fullmatch(r"\d{4}", rows["random_number"])

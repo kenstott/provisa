@@ -1278,6 +1278,7 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
                     _table_columns_t.c.mask_precision,
                     _table_columns_t.c.fake,  # REQ-1494
                     _table_columns_t.c.fake_stable,
+                    _table_columns_t.c.fake_stable_version,
                 ).where(_table_columns_t.c.mask_type.is_not(None))
             )
         ).fetchall()
@@ -1291,6 +1292,7 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
             precision=mrow["mask_precision"],
             fake=mrow["fake"],
             fake_stable=bool(mrow["fake_stable"]),
+            fake_stable_version=mrow["fake_stable_version"],
         )
         table_id = mrow["table_id"]
         col_name = mrow["column_name"]

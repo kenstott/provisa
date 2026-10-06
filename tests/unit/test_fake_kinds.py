@@ -270,24 +270,88 @@ def test_stable_is_limited_to_what_every_engine_computes_alike():
         _table(DeclaredColumn("n", "double", "profile()", stable=True))
     with pytest.raises(FakeRefused, match="declared stable but declares no fake"):
         _table(DeclaredColumn("n", "double", None, stable=True))
+    with pytest.raises(FakeRefused, match="a stable sentence\\(\\) takes no arguments"):
+        _table(DeclaredColumn("s", "varchar", "sentence(nb_words=3)", stable=True))
+    with pytest.raises(FakeRefused, match="pattern\\(\\) cannot be stable"):
+        _table(DeclaredColumn("c", "varchar", "pattern()", stable=True))
+    for decl, data_type in [
+        ("categories()", "varchar"),
+        ("bool()", "boolean"),
+    ]:
+        with pytest.raises(FakeRefused, match="declares what it would otherwise measure"):
+            _table(DeclaredColumn("c", data_type, decl, stable=True))
+    assert _table(DeclaredColumn("c", "varchar", "categories((a, b))", stable=True))
+    assert _table(DeclaredColumn("b", "boolean", "bool(.3)", stable=True))
+
+
+def test_a_stable_fake_reads_only_stable_or_unfaked_columns():
+    joined = DeclaredColumn("joined", "timestamp", "uniform(min='2024-01-01', max='2024-12-31')")
+    with pytest.raises(
+        FakeRefused, match="orders.renewed: a stable fake reads joined, whose fake is not stable"
+    ):
+        _table(joined, DeclaredColumn("renewed", "timestamp", "after(joined, 1 day)", stable=True))
+    with pytest.raises(FakeRefused, match="declares what it would otherwise measure"):
+        _table(
+            DeclaredColumn("joined", "timestamp", None),
+            DeclaredColumn("renewed", "timestamp", "after(joined)", stable=True),
+        )
+    stable_joined = DeclaredColumn(
+        "joined", "timestamp", "uniform(min='2024-01-01', max='2024-12-31')", stable=True
+    )
+    assert _table(
+        stable_joined, DeclaredColumn("renewed", "timestamp", "after(joined, 1 day)", stable=True)
+    )
+    assert _table(
+        DeclaredColumn("joined", "timestamp", None),
+        DeclaredColumn("renewed", "timestamp", "after(joined, 1 day)", stable=True),
+    )
 
 
 def test_joined_columns_declare_one_fake():
     join = Join("cust", ("orders", "customer_id"), ("customers", "id"))
     check_joins(
-        {("orders", "customer_id"): (Hash(), True), ("customers", "id"): (Hash(), True)}, [join]
+        {
+            ("orders", "customer_id"): (Hash(), True, 1, "integer"),
+            ("customers", "id"): (Hash(), True, 1, "integer"),
+        },
+        [join],
     )
-    check_joins({("orders", "customer_id"): (Hash(), True)}, [join])
+    check_joins({("orders", "customer_id"): (Hash(), True, 1, "integer")}, [join])
     with pytest.raises(
-        FakeRefused, match="joins orders.customer_id to customers.id, whose fakes differ"
+        FakeRefused, match="joins orders.customer_id to customers.id, whose fakes differ;"
     ):
         check_joins(
-            {("orders", "customer_id"): (Hash(), True), ("customers", "id"): (Encrypt(), True)},
+            {
+                ("orders", "customer_id"): (Hash(), True, 1, "integer"),
+                ("customers", "id"): (Encrypt(), True, 1, "integer"),
+            },
             [join],
         )
     with pytest.raises(FakeRefused, match="differ in stable"):
         check_joins(
-            {("orders", "customer_id"): (Hash(), True), ("customers", "id"): (Hash(), False)},
+            {
+                ("orders", "customer_id"): (Hash(), True, 1, "integer"),
+                ("customers", "id"): (Hash(), False, None, "integer"),
+            },
+            [join],
+        )
+    with pytest.raises(
+        FakeRefused, match=r"differ in the definition version they are pinned to \(1 and 2\)"
+    ):
+        check_joins(
+            {
+                ("orders", "customer_id"): (Method("email"), True, 1, "text"),
+                ("customers", "id"): (Method("email"), True, 2, "text"),
+            },
+            [join],
+        )
+
+    with pytest.raises(FakeRefused, match=r"differ in type \(integer and text\)"):
+        check_joins(
+            {
+                ("orders", "customer_id"): (Hash(), True, 1, "integer"),
+                ("customers", "id"): (Hash(), True, 1, "text"),
+            },
             [join],
         )
 

@@ -12,6 +12,7 @@ out="$root/trino/plugins/provisa-functions"
 
 docker run --rm \
   -v "$root/trino-functions:/src" \
+  -v "$root/provisa/fakes/portable:/provisa/fakes/portable:ro" \
   -v "$HOME/.m2:/root/.m2" \
   -w /src \
   maven:3.9-eclipse-temurin-25 \

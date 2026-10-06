@@ -120,11 +120,11 @@ def test_every_method_computes_as_the_embedded_engine_does(pg):
     cur = con.cursor()
     for seed in (1, 987654321):
         cur.execute(
-            "SELECT m, provisa_fake_method(m, '{}', %s) FROM unnest(%s::text[]) AS t(m)",
+            "SELECT m, provisa_fake_method(m, '{}', %s, 5) FROM unnest(%s::text[]) AS t(m)",
             (seed, declarable),
         )
         for method, value in cur.fetchall():
-            assert value == fake_method(method, "{}", seed), method
+            assert value == fake_method(method, "{}", seed, 5), method
 
 
 def test_every_method_is_a_function_of_the_digest_alone_on_postgres(pg):
@@ -132,7 +132,7 @@ def test_every_method_is_a_function_of_the_digest_alone_on_postgres(pg):
     con, _ = pg
     declarable = [m for m in method_names() if m not in UNSUPPORTED]
     sql = (
-        "SELECT m, d, provisa_fake_method(m, '{}', d) FROM unnest(%s::text[]) AS t(m) "
+        "SELECT m, d, provisa_fake_method(m, '{}', d, 5) FROM unnest(%s::text[]) AS t(m) "
         "CROSS JOIN unnest(ARRAY[1, -7, 4611686018427387904]::bigint[]) AS s(d)"
     )
     cur = con.cursor()
@@ -143,6 +143,44 @@ def test_every_method_is_a_function_of_the_digest_alone_on_postgres(pg):
     second = {(m, d): v for m, d, v in cur.fetchall()}
     assert len(first) == 3 * len(declarable)
     assert {k for k in first if first[k] != second[k]} == set()
+
+
+def test_postgres_s_seed_is_the_published_mix(pg):
+    from provisa.fakes.digest import seed
+
+    con, _ = pg
+    for d, h in [
+        (0, 0),
+        (-1, 1),
+        (5975387752016995628, 4780743034503023799),
+        (-(2**63), 2**63 - 1),
+    ]:
+        assert _one(
+            con, "SELECT provisa_seed(CAST(%s AS bigint), CAST(%s AS bigint))", (d, h)
+        ) == seed(d, h)
+
+
+def test_postgres_computes_every_stable_fake_as_the_portable_definition_does(pg):
+    """REQ-1494, A STABLE FAKE: byte-identical to provisa.fakes.portable for 1000 digests."""
+    from provisa.fakes.digest import definition_hash
+    from provisa.fakes.methods import STABLE_METHODS
+    from provisa.fakes.portable import stable_fake
+
+    con, _ = pg
+    seeds = [d * 7919 * 104729 for d in range(-500, 500)] + [-(2**63), 2**63 - 1]
+    cur = con.cursor()
+    hashes = {m: definition_hash(m, {}, 1, "varchar") for m in STABLE_METHODS}
+    names = sorted(hashes)
+    cur.execute(
+        "SELECT m, d, provisa_stable_fake(m, 1, d, h) "
+        "FROM unnest(%s::text[], %s::bigint[]) AS t(m, h) "
+        "CROSS JOIN unnest(%s::bigint[]) AS s(d)",
+        (names, [hashes[m] for m in names], seeds),
+    )
+    got = {(m, d): v for m, d, v in cur.fetchall()}
+    assert len(got) == len(STABLE_METHODS) * len(seeds)
+    differ = [k for k, v in got.items() if v != stable_fake(k[0], 1, k[1], hashes[k[0]])]
+    assert differ == [], differ[:5]
 
 
 def test_a_governed_faked_read_runs_on_postgres(pg, key, monkeypatch):

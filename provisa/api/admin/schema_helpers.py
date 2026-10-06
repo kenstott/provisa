@@ -355,6 +355,7 @@ async def _fetch_table_with_columns(
             epoch_unit=r.get("epoch_unit"),  # REQ-1908
             fake=r.get("fake"),  # REQ-1494
             fake_stable=bool(r.get("fake_stable") or False),
+            fake_stable_version=r.get("fake_stable_version"),
             synthetic_rule=r.get("synthetic_rule"),
             is_pii=r["column_name"] in _pii,
         )

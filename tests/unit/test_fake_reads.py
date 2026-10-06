@@ -44,6 +44,7 @@ _COLUMNS = [
     ("region", "varchar"),
     ("active", "boolean"),
     ("code", "varchar"),
+    ("twin", "double"),
 ]
 _FAKES = {
     "email": "email()",
@@ -65,11 +66,11 @@ def con(monkeypatch):
     c.execute(
         "CREATE TABLE sales.customers (id INTEGER, email VARCHAR, tier VARCHAR, score DOUBLE, "
         "created TIMESTAMP, shipped TIMESTAMP, qty INTEGER, price DOUBLE, total DOUBLE, "
-        "region VARCHAR, active BOOLEAN, code VARCHAR)"
+        "region VARCHAR, active BOOLEAN, code VARCHAR, twin DOUBLE)"
     )
     for i in range(1, 201):
         c.execute(
-            "INSERT INTO sales.customers VALUES (?, ?, 'bronze', ?, ?, ?, ?, 2.5, ?, ?, TRUE, ?)",
+            "INSERT INTO sales.customers VALUES (?, ?, 'bronze', ?, ?, ?, ?, 2.5, ?, ?, TRUE, ?, ?)",
             [
                 i,
                 f"user{i % 150}@real.example",
@@ -80,6 +81,7 @@ def con(monkeypatch):
                 (i % 7) * 2.5,
                 "east" if i % 2 else "west",
                 f"C{i}",
+                i / 10,  # the same real values as score
             ],
         )
     return c
@@ -90,6 +92,7 @@ def _gov(
     rls: str | None = None,
     stable: set[str] | None = None,
     measured: dict[str, Measured] | None = None,
+    stable_version: int | None = None,
 ) -> GovernanceContext:
     gov = GovernanceContext(role_id="analyst")
     gov.table_map = {"sales.customers": 1, "customers": 1}
@@ -103,6 +106,7 @@ def _gov(
                 fake=decl,
                 fake_stable=name in (stable or set()),
                 fake_measured=(measured or {}).get(name),
+                fake_stable_version=stable_version if name in (stable or set()) else None,
             ),
             dtype,
         )
@@ -255,3 +259,45 @@ def test_an_engine_without_the_fake_functions_refuses_by_column_name(monkeypatch
     with pytest.raises(FakeReadRefused, match="email: faked columns are computed by the engine"):
         require_fake_engine(sql, "postgres", computes_fakes=False)
     require_fake_engine("SELECT 1", "postgres", computes_fakes=False)
+
+
+def test_a_stable_fake_is_the_portable_definition_s_at_its_pinned_version(con):
+    from provisa.fakes.digest import definition_hash, digest
+    from provisa.fakes.portable import stable_fake
+
+    gov = _gov({"email": "email()", "tier": "name()"}, stable={"email", "tier"}, stable_version=1)
+    rows = _run(con, "SELECT id, email, tier FROM sales.customers ORDER BY id", gov)
+    for i, email, tier in rows[:20]:
+        d = digest(_KEY, f"user{i % 150}@real.example")
+        local, domain = stable_fake(
+            "email", 1, d, definition_hash("email", {}, 1, "varchar")
+        ).split("@")
+        assert email.startswith(local + ".") and email.endswith("@" + domain)  # tagged, as ever
+        assert tier == stable_fake(
+            "name", 1, digest(_KEY, "bronze"), definition_hash("name", {}, 1, "varchar")
+        )
+
+
+def test_two_columns_faked_from_one_value_draw_independently(con):
+    """REQ-1494: every fake is seeded by the value's digest combined with its definition's hash,
+    so score and twin -- one real value each row -- faked by two distributions are not one
+    function of the other."""
+    gov = _gov({"score": "uniform(min=0, max=1)", "twin": "uniform(min=0, max=2)"})
+    rows = _run(con, "SELECT score, twin FROM sales.customers", gov)
+    assert sum(1 for a, b in rows if abs(b - 2 * a) < 1e-9) < 5
+    same = _gov({"score": "uniform(min=0, max=1)", "twin": "uniform(min=0, max=1)"})
+    assert all(a == b for a, b in _run(con, "SELECT score, twin FROM sales.customers", same))
+
+
+def test_a_definition_change_moves_a_columns_values(con):
+    first = dict(
+        _run(con, "SELECT id, score FROM sales.customers", _gov({"score": "uniform(min=0, max=1)"}))
+    )
+    wider = dict(
+        _run(con, "SELECT id, score FROM sales.customers", _gov({"score": "uniform(min=0, max=2)"}))
+    )
+    assert sum(1 for i in first if abs(wider[i] - 2 * first[i]) < 1e-9) < 5
+    hashed = dict(_run(con, "SELECT id, email FROM sales.customers", _gov({"email": "hash()"})))
+    stable = _gov({"email": "hash()"}, stable={"email"}, stable_version=1)
+    pinned = dict(_run(con, "SELECT id, email FROM sales.customers", stable))
+    assert all(hashed[i] != pinned[i] for i in hashed)

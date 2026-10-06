@@ -95,6 +95,11 @@ export function ColumnFakeDialog({
           onChange={(e) => setStable(e.currentTarget.checked)}
           data-testid="testdata-dialog-stable"
         />
+        {stable && column.fakeStable && column.fakeStableVersion != null && fake.trim() === column.fake && (
+          <Text size="xs" c="dimmed" data-testid="testdata-dialog-stable-version">
+            {t("testData.stableVersion", { version: column.fakeStableVersion })}
+          </Text>
+        )}
         <FakePicker
           catalog={catalog}
           label={t("testData.syntheticRule")}

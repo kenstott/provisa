@@ -308,7 +308,13 @@ def _bind_fakes(gov: GovernanceContext) -> None:  # REQ-1494
             continue
         name = apply_sql_name(col_name)
         gov.fake_columns.setdefault(tid, {})[name] = Column(
-            name, dtype, family(dtype), parse(rule.fake), rule.fake_stable, rule.fake_measured
+            name,
+            dtype,
+            family(dtype),
+            parse(rule.fake),
+            rule.fake_stable,
+            rule.fake_measured,
+            rule.fake_stable_version,
         )
     if gov.fake_columns:
         from provisa.fakes.digest import fingerprint, platform_key

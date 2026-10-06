@@ -6,6 +6,7 @@
     "syntheticRule": "合成規則",
     "stable": "穩定",
     "stableHint": "在每個引擎和每個區域中都是相同的虛構值",
+    "stableVersion": "固定為定義版本 {{version}}：在偽造值更改之前，其值保持不變",
     "realValue": "真實值",
     "openDialog": "選擇虛構值",
     "piiNoFake": "PII，無虛構值",

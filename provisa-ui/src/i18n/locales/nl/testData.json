@@ -6,6 +6,7 @@
     "syntheticRule": "Synthetische regel",
     "stable": "Stabiel",
     "stableHint": "Dezelfde nepwaarde op elke engine en in elke regio",
+    "stableVersion": "Vastgezet op definitieversie {{version}}: de waarden blijven gelijk tot de fake verandert",
     "realValue": "echte waarde",
     "openDialog": "Nepwaarde kiezen",
     "piiNoFake": "PII, geen nepwaarde",

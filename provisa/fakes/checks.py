@@ -29,6 +29,7 @@ from typing import TypeVar
 
 from provisa.fakes import sql_subset
 from provisa.fakes.kinds import (
+    kind_name,
     Bool,
     Bucket,
     Categories,
@@ -154,6 +155,14 @@ def check_table(table: str, columns: list[DeclaredColumn], children: dict[str, C
                 rules[c.name] = rule
         except FakeRefused as exc:
             raise FakeRefused(f"{table}.{c.name}: {exc}") from exc
+    stable = {c.name for c in columns if c.stable}
+    for name in sorted(stable):
+        for read in sorted(fake_reads.get(name, frozenset())):
+            if read in fakes and read not in stable:
+                raise FakeRefused(
+                    f"{table}.{name}: a stable fake reads {read}, whose fake is not stable, so it "
+                    f"would differ by engine; make {read}'s fake stable too"
+                )
     generation = {**fake_reads, **rule_reads}
     for reads, what in ((fake_reads, "fakes"), (generation, "synthetic rules and fakes")):
         cycle = _cycle(reads)
@@ -304,13 +313,34 @@ def model_cycle(reads: dict[tuple[str, str], frozenset[tuple[str, str]]]) -> lis
 
 
 def _check_stable(kind: FakeKind) -> None:
-    if isinstance(kind, Method) and kind.name not in STABLE_METHODS:
-        raise FakeRefused(
-            f"{kind.name}() cannot be stable: a stable fake is the same on every engine, which "
-            f"only these methods are -- {', '.join(sorted(STABLE_METHODS))}"
-        )
+    """A stable fake is the same on every engine and in every region (REQ-1494, A STABLE FAKE):
+    the portable definition's methods, with no arguments it does not take, and the kinds that are
+    pure functions of their declaration -- never one that reads what is measured where it is read."""
+    if isinstance(kind, Method):
+        if kind.name not in STABLE_METHODS:
+            raise FakeRefused(
+                f"{kind.name}() cannot be stable: a stable fake is the same on every engine, which "
+                f"only these methods are -- {', '.join(sorted(STABLE_METHODS))}"
+            )
+        if kind.args:
+            raise FakeRefused(
+                f"a stable {kind.name}() takes no arguments: the portable definition computes it "
+                f"one way on every engine"
+            )
     if isinstance(kind, Profile) and kind.run is None:
         raise FakeRefused("a stable profile() fake pins the run it reads: name it as run=<id>")
+    if isinstance(kind, Pattern):
+        raise FakeRefused("pattern() cannot be stable: it fills the shapes the latest run records")
+    measured = (
+        (isinstance(kind, Categories) and kind.values is None)
+        or (isinstance(kind, Bool) and kind.share is None)
+        or (isinstance(kind, Ordered) and kind.distance is None)
+    )
+    if measured:
+        raise FakeRefused(
+            f"a stable {kind_name(kind)}() declares what it would otherwise measure where it is "
+            f"read, so it is the same everywhere"
+        )
 
 
 def _cycle(reads: Mapping[_N, frozenset[_N]]) -> list[_N]:
@@ -349,17 +379,27 @@ class Join:
     other: tuple[str, str]
 
 
-def check_joins(fakes: dict[tuple[str, str], tuple[FakeKind, bool]], joins: list[Join]) -> None:
-    """Two columns joined by a relationship and both faked declare the same fake and agree on
-    stable, so the join keeps matching (REQ-1494, A STABLE FAKE)."""
+def check_joins(
+    fakes: dict[tuple[str, str], tuple[FakeKind, bool, int | None, str]], joins: list[Join]
+) -> None:
+    """Two columns joined by a relationship and both faked hold one canonical definition -- the
+    same fake, stable or not, for a stable fake the same pinned portable definition version, and
+    the same type as the definition names it (provisa.fakes.digest.canonical_type) -- so the join
+    keeps matching (REQ-1494, A STABLE FAKE)."""
     for j in joins:
         one, other = fakes.get(j.one), fakes.get(j.other)
-        if one is None or other is None:
+        if one is None or other is None or one == other:
             continue
-        if one[0] != other[0] or one[1] != other[1]:
-            a, b = ".".join(j.one), ".".join(j.other)
-            raise FakeRefused(
-                f"relationship {j.relationship!r} joins {a} to {b}, whose fakes differ"
-                f"{' in stable' if one[0] == other[0] else ''}; give them one fake, so the join "
-                f"still matches"
-            )
+        if one[0] != other[0]:
+            how = ""
+        elif one[1] != other[1]:
+            how = " in stable"
+        elif one[2] != other[2]:
+            how = f" in the definition version they are pinned to ({one[2]} and {other[2]})"
+        else:
+            how = f" in type ({one[3]} and {other[3]})"
+        a, b = ".".join(j.one), ".".join(j.other)
+        raise FakeRefused(
+            f"relationship {j.relationship!r} joins {a} to {b}, whose fakes differ{how}; give "
+            f"them one fake, so the join still matches"
+        )
