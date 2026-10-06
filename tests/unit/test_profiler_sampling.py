@@ -192,12 +192,12 @@ def test_the_key_range_statement_reads_only_the_rows_in_its_ranges():
     assert bounds == (1, 100000)
     ranges = key_ranges(bounds[0], bounds[1], 0.05, random.Random(7))
     sample = Sample("key_range", 0.05, "id", ranges)
-    sql = profile_sql("d.orders", _COLUMNS, [], sample, 100)
+    sql = profile_sql("d.orders", _COLUMNS, [], sample, 100, [])
     for a, b in ranges:
         assert f'WHERE t."id" BETWEEN {a} AND {b}' in sql
     assert sql.count(" UNION ALL ") == len(ranges) - 1
     res = con.execute(sqlglot.transpile(sql, read="postgres", write="duckdb")[0])
-    agg = parse_profile_result([d[0] for d in res.description], res.fetchall(), _COLUMNS, [])
+    agg = parse_profile_result([d[0] for d in res.description], res.fetchall(), _COLUMNS, [], [])
     assert agg.profiled_rows == sum(b - a + 1 for a, b in ranges)
     assert agg.profiled_rows == pytest.approx(5000, rel=0.01)
 
@@ -206,7 +206,7 @@ def test_the_key_range_statement_reads_only_the_rows_in_its_ranges():
 
 
 def _block_sql() -> str:
-    return profile_sql("d.orders", _COLUMNS, [], Sample("block", 0.025), 100)
+    return profile_sql("d.orders", _COLUMNS, [], Sample("block", 0.025), 100, [])
 
 
 def test_the_block_sample_is_a_percentage_capped_at_the_whole_table():
@@ -247,7 +247,7 @@ def test_the_block_sample_runs_on_duckdb_after_transpile():
         "FROM range(2000000)"
     )
     res = con.execute(transpile(_block_sql(), "duckdb"))
-    agg = parse_profile_result([d[0] for d in res.description], res.fetchall(), _COLUMNS, [])
+    agg = parse_profile_result([d[0] for d in res.description], res.fetchall(), _COLUMNS, [], [])
     # DuckDB samples whole vectors of 2048 rows: the realised share is near, not at, 2.5%.
     assert 0.0125 * 2_000_000 < agg.profiled_rows < 0.05 * 2_000_000
 
@@ -358,7 +358,7 @@ class _FakePipeline:
                 return ["lo", "hi"], [(1, 100_000)]
             return ["sql"], [(plan.sql,)]
 
-        def _parse(names, rows, columns, fanouts):
+        def _parse(names, rows, columns, fanouts, keys):
             return SimpleNamespace(profiled_rows=rows_for(rows[0][0]))
 
         monkeypatch.setattr(run_mod, "_route", _route)
@@ -369,7 +369,7 @@ class _FakePipeline:
 def _target(key="id"):
     from provisa.profiler.run import Target
 
-    return Target(7, "orders", "sales.orders", _COLUMNS, [], {}, _META, key)
+    return Target(7, "orders", "sales.orders", _COLUMNS, [], {}, _META, key, [])
 
 
 def _percent(sql: str) -> float:

@@ -28,6 +28,11 @@
     "method_block": "Block sample",
     "method_key_range": "Key ranges",
     "method_random": "Row filter",
-    "share": "{{pct}}% of rows"
+    "share": "{{pct}}% of rows",
+    "duplicates": "Duplicates",
+    "duplicateRows": "{{rows}} ({{pct}}%)",
+    "kind_drift": "Comparison",
+    "kind_duplicates": "Duplicate rows and keys",
+    "kind_repeats": "Most repeated rows"
   }
 }

@@ -60,6 +60,19 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
             "its target is read again at four times the percentage.",
         ),
         ("profiled_rows", "bigint", "Rows the profile statement read."),
+        (
+            "previous_run_id",
+            "varchar",
+            "The previous successful run this run is compared with; empty for the first.",
+        ),
+        ("duplicate_rows", "bigint", "Rows repeating an earlier row in every profiled column."),
+        ("duplicate_share", "double", "duplicate_rows / profiled_rows."),
+        (
+            "key_duplicates",
+            "bigint",
+            "Key values held by more than one row, over every declared primary or unique key; "
+            "empty where the table declares none.",
+        ),
         ("duration_ms", "bigint", "How long the run took."),
         ("status", "varchar", "succeeded | failed."),
         ("error", "varchar", "Why the run failed; empty when it succeeded."),
@@ -148,6 +161,61 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("plausible_type", "varchar", "What the column plausibly holds."),
         ("confidence", "double", "Confidence, 0 to 1."),
         ("evidence", "varchar", "Why."),
+    ),
+    "duplicates": (
+        (
+            "subject",
+            "varchar",
+            "row | key -- whole rows (every profiled column), or a declared key.",
+        ),
+        ("key_name", "varchar", "The primary or unique key; empty for whole rows."),
+        (
+            "involved_columns",
+            "varchar",
+            "The key's columns, as a JSON array; empty for whole rows.",
+        ),
+        ("repeated_values", "bigint", "Distinct rows, or key values, held by more than one row."),
+        ("extra_rows", "bigint", "Rows that repeat an earlier row, or key value."),
+        ("extra_share", "double", "extra_rows / rows profiled."),
+    ),
+    "repeats": (
+        ("rank", "integer", "Rank by repeat count, from 1."),
+        ("row_count", "bigint", "How many rows hold one of the most repeated rows."),
+    ),
+    "drift": (
+        ("previous_run_id", "varchar", "The table's previous successful run; empty for its first."),
+        (
+            "scope",
+            "varchar",
+            "run | table | key | column | category | relationship -- what the measure is of.",
+        ),
+        ("column_name", "varchar", "The profiled column the measure is of; empty for others."),
+        (
+            "involved_columns",
+            "varchar",
+            "Every profiled column the measure describes, as a JSON array.",
+        ),
+        (
+            "value_bearing",
+            "boolean",
+            "Whether the measure holds values of the columns it describes.",
+        ),
+        ("measure", "varchar", "The measure."),
+        ("subject", "varchar", "The category, key or relationship the measure is of; or empty."),
+        ("current", "double", "The measure in this run."),
+        ("previous", "double", "The measure in the previous run."),
+        ("change", "double", "current - previous."),
+        (
+            "ks_previous",
+            "double",
+            "Kolmogorov-Smirnov statistic of the distribution against the previous run's.",
+        ),
+        (
+            "psi_previous",
+            "double",
+            "Population stability index of the distribution against the previous run's.",
+        ),
+        ("detail", "varchar", "A change in kind: a column added or removed, a type changed."),
     ),
 }
 

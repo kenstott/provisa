@@ -19,7 +19,10 @@ table's rows cross-joined to a small set of group selectors ``k``:
 * ``k = i`` (one per profiled column) groups by the column's value, which yields its distinct count,
   its most frequent values and, for a low-cardinality column, its whole value-frequency table;
 * ``k = n + j`` (one per text column) groups by the value's SHAPE — upper-case letters to ``A``,
-  lower-case to ``a``, digits to ``9``, other characters kept.
+  lower-case to ``a``, digits to ``9``, other characters kept;
+* one ``k`` groups by the whole row (every profiled column), and one per declared primary or
+  unique key by the key's columns, which yields the duplicate rows and the key values held by more
+  than one row.
 
 A window ranks each group within its ``k`` and the outer filter keeps the ``k = 0`` row and the
 best-ranked value and shape groups, so the engine returns a bounded result whatever the table's
@@ -79,6 +82,14 @@ class FanoutSpec:
     child_key: str  # column of the child table
 
 
+@dataclass(frozen=True)
+class KeySpec:
+    """A declared primary or unique key: its name and its columns as pgwire publishes them."""
+
+    name: str
+    columns: tuple[str, ...]
+
+
 @dataclass
 class ColumnAggregates:
     spec: ColumnSpec
@@ -104,6 +115,9 @@ class ColumnAggregates:
     length_quantiles: list[float] | None = None
     values: list[tuple[str | None, int]] = field(default_factory=list)
     shapes: list[tuple[str | None, int]] = field(default_factory=list)
+    # Non-null values held by more than one row, and the rows beyond the first holding them.
+    repeated_values: int = 0
+    repeated_rows: int = 0
 
 
 @dataclass
@@ -116,11 +130,25 @@ class FanoutAggregates:
     quantiles: list[float] | None = None
 
 
+@dataclass(frozen=True)
+class DuplicateAggregates:
+    """Rows, or key values, held more than once. ``key`` is None for whole rows (every profiled
+    column); ``repeated``: the distinct tuples held by more than one row; ``extra``: the rows beyond
+    the first holding each; ``top_counts``: the most repeated tuples' row counts, highest first."""
+
+    key: KeySpec | None
+    repeated: int
+    extra: int
+    top_counts: list[int]
+
+
 @dataclass
 class ProfileAggregates:
     profiled_rows: int
     columns: list[ColumnAggregates]
     fanouts: list[FanoutAggregates]
+    rows: DuplicateAggregates
+    keys: list[DuplicateAggregates]
 
 
 def _ident(name: str) -> str:
@@ -246,15 +274,35 @@ def _scalar(expr: str) -> str:
 @dataclass(frozen=True)
 class _Group:
     k: int
-    column: int  # index into the column list
-    what: str  # value | shape
+    column: int  # index into the column list; the key's index for ``key``, -1 for ``row``
+    what: str  # value | shape | row | key
 
 
-def _groups(columns: list[ColumnSpec]) -> list[_Group]:
+def _groups(columns: list[ColumnSpec], keys: list[KeySpec]) -> list[_Group]:
     groups = [_Group(i + 1, i, "value") for i in range(len(columns))]
     text = [i for i, c in enumerate(columns) if c.family == "text"]
     groups += [_Group(len(columns) + 1 + j, i, "shape") for j, i in enumerate(text)]
+    groups.append(_Group(len(groups) + 1, -1, "row"))
+    base = len(groups) + 1
+    groups += [_Group(base + j, j, "key") for j in range(len(keys))]
     return groups
+
+
+def _identity_expr(refs: list[str], null_if_any_null: bool) -> str:
+    """One text per tuple of ``refs``, equal exactly when the tuples are equal (REQ-1934 duplicate
+    rows): each part is its length, a colon and its text, so no two different tuples concatenate to
+    the same text; a null part is ``N``. With ``null_if_any_null`` a tuple with a null part is NULL
+    -- a key is held only by rows whose key columns are all set, as SQL uniqueness counts."""
+    parts = [
+        f"CASE WHEN {r} IS NULL THEN 'N' ELSE "
+        f"CAST(LENGTH(CAST({r} AS TEXT)) AS TEXT) || ':' || CAST({r} AS TEXT) END"
+        for r in refs
+    ]
+    joined = " || '|' || ".join(parts)
+    if not null_if_any_null:
+        return joined
+    any_null = " OR ".join(f"{r} IS NULL" for r in refs)
+    return f"CASE WHEN {any_null} THEN NULL ELSE {joined} END"
 
 
 def _base_sql(table: str, base_cols: list[str], sample: Sample) -> str:
@@ -285,13 +333,15 @@ def profile_sql(
     fanouts: list[FanoutSpec],
     sample: Sample,
     low_cardinality_max: int,
+    keys: list[KeySpec],
 ) -> str:
     """The one statement profiling ``table``, reading what ``sample`` names;
     ``low_cardinality_max`` is the profiler's run default: a column with no more distinct values
-    has every value returned, for its full value-frequency table."""
+    has every value returned, for its full value-frequency table. ``keys``: the table's declared
+    primary and unique keys, whose values held by more than one row are counted."""
     if not columns:
         raise ValueError(f"table {table!r} has no column the org admin can read to profile")
-    groups = _groups(columns)
+    groups = _groups(columns, keys)
     col_refs = [_ident(c.name) for c in columns]
 
     base_cols = [f"t.{ref} AS {_ident(f'c{i}')}" for i, ref in enumerate(col_refs)]
@@ -313,15 +363,26 @@ def profile_sql(
         joins += f" LEFT JOIN {child} f{r} ON f{r}.fk = b.{parent}"
         fan_cols.append(f"COALESCE(f{r}.n, 0) AS {_ident(f'n{r}')}")
 
-    val_cases = " ".join(
-        f"WHEN {g.k} THEN "
-        + (
-            f"CAST(b.{_ident(f'c{g.column}')} AS TEXT)"
-            if g.what == "value"
-            else _shape_expr(f"b.{_ident(f'c{g.column}')}")
-        )
-        for g in groups
-    )
+    for key in keys:
+        missing = [c for c in key.columns if c not in names]
+        if missing:
+            raise ValueError(
+                f"key {key.name!r}: {missing} are not columns the org admin can read on {table!r}"
+            )
+
+    def _b(name: str) -> str:
+        return f"b.{_ident(f'c{names.index(name)}')}"
+
+    def _val(g: _Group) -> str:
+        if g.what == "value":
+            return f"CAST(b.{_ident(f'c{g.column}')} AS TEXT)"
+        if g.what == "shape":
+            return _shape_expr(f"b.{_ident(f'c{g.column}')}")
+        if g.what == "row":
+            return _identity_expr([_b(n) for n in names], null_if_any_null=False)
+        return _identity_expr([_b(n) for n in keys[g.column].columns], null_if_any_null=True)
+
+    val_cases = " ".join(f"WHEN {g.k} THEN {_val(g)}" for g in groups)
     selectors = ", ".join(f"({k})" for k in range(len(groups) + 1))
     expanded = (
         f"SELECT k.k AS k, CASE k.k {val_cases} END AS val, b.*"
@@ -380,6 +441,13 @@ def profile_sql(
         "SELECT x.k AS k, x.val AS val, COUNT(*) AS cnt, "
         "ROW_NUMBER() OVER (PARTITION BY x.k ORDER BY COUNT(*) DESC, x.val) AS rn, "
         "COUNT(*) OVER (PARTITION BY x.k) AS ngroups, "
+        # Per group selector: the non-null values held by more than one row, and the rows beyond
+        # the first holding them (duplicate rows and keys, REQ-1934). The k = 0 group's val is
+        # NULL, so both are 0 there.
+        "SUM(CASE WHEN COUNT(*) > 1 AND x.val IS NOT NULL THEN 1 ELSE 0 END) "
+        "OVER (PARTITION BY x.k) AS nrepeated, "
+        "SUM(CASE WHEN COUNT(*) > 1 AND x.val IS NOT NULL THEN COUNT(*) - 1 ELSE 0 END) "
+        "OVER (PARTITION BY x.k) AS nextra, "
         + ", ".join(aggs)
         + f" FROM ({expanded}) x GROUP BY x.k, x.val"
     )
@@ -414,6 +482,7 @@ def parse_profile_result(
     rows: list[tuple],
     columns: list[ColumnSpec],
     fanouts: list[FanoutSpec],
+    keys: list[KeySpec],
 ) -> ProfileAggregates:
     """The statement's result as aggregates per column and per relationship."""
     records = [dict(zip(column_names, r)) for r in rows]
@@ -425,12 +494,14 @@ def parse_profile_result(
             profiled_rows=0,
             columns=[ColumnAggregates(spec=c) for c in columns],
             fanouts=[FanoutAggregates(spec=f) for f in fanouts],
+            rows=DuplicateAggregates(key=None, repeated=0, extra=0, top_counts=[]),
+            keys=[DuplicateAggregates(key=k, repeated=0, extra=0, top_counts=[]) for k in keys],
         )
     scalar = [r for r in records if r["k"] == 0]
     if len(scalar) != 1:
         raise ValueError(f"profile statement returned {len(scalar)} table-wide rows, expected 1")
     s = scalar[0]
-    groups = _groups(columns)
+    groups = _groups(columns, keys)
     by_k: dict[int, list[dict]] = {}
     for r in records:
         if r["k"] != 0:
@@ -459,17 +530,36 @@ def parse_profile_result(
             agg.length_max = None if s[f"a{i}_lmax"] is None else int(s[f"a{i}_lmax"])
             agg.length_quantiles = _quantiles(s[f"a{i}_lq"])
         out.append(agg)
+    row_dups: DuplicateAggregates | None = None
+    key_dups: list[DuplicateAggregates] = []
     for g in groups:
         ranked = sorted(by_k.get(g.k, []), key=lambda r: int(r["rn"]))
         pairs = [(r["val"], int(r["cnt"])) for r in ranked]
+        # An empty group (no rows read) holds nothing more than once.
+        repeated = int(ranked[0]["nrepeated"]) if ranked else 0
+        extra = int(ranked[0]["nextra"]) if ranked else 0
+        if g.what in ("row", "key"):
+            dups = DuplicateAggregates(
+                key=None if g.what == "row" else keys[g.column],
+                repeated=repeated,
+                extra=extra,
+                top_counts=[n for v, n in pairs if v is not None and n > 1][:TOP_N],
+            )
+            if g.what == "row":
+                row_dups = dups
+            else:
+                key_dups.append(dups)
+            continue
         agg = out[g.column]
         if g.what == "value":
             agg.values = pairs
             group_count = int(ranked[0]["ngroups"]) if ranked else 0
             has_null = agg.non_null < _i(s["cnt"])
             agg.distinct = group_count - (1 if has_null else 0)
+            agg.repeated_values, agg.repeated_rows = repeated, extra
         else:
             agg.shapes = [p for p in pairs if p[0] is not None]
+    assert row_dups is not None, "the row group is always among the groups"
 
     fans: list[FanoutAggregates] = []
     for r, spec in enumerate(fanouts):
@@ -483,4 +573,6 @@ def parse_profile_result(
                 quantiles=_quantiles(s[f"f{r}_q"]),
             )
         )
-    return ProfileAggregates(profiled_rows=_i(s["cnt"]), columns=out, fanouts=fans)
+    return ProfileAggregates(
+        profiled_rows=_i(s["cnt"]), columns=out, fanouts=fans, rows=row_dups, keys=key_dups
+    )

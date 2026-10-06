@@ -28,6 +28,11 @@
     "method_block": "Muestra por bloques",
     "method_key_range": "Rangos de clave",
     "method_random": "Filtro de filas",
-    "share": "{{pct}} % de las filas"
+    "share": "{{pct}} % de las filas",
+    "duplicates": "Duplicados",
+    "duplicateRows": "{{rows}} ({{pct}} %)",
+    "kind_drift": "Comparación",
+    "kind_duplicates": "Filas y claves duplicadas",
+    "kind_repeats": "Filas más repetidas"
   }
 }

@@ -28,6 +28,11 @@
     "method_block": "Échantillon par blocs",
     "method_key_range": "Plages de clés",
     "method_random": "Filtre de lignes",
-    "share": "{{pct}} % des lignes"
+    "share": "{{pct}} % des lignes",
+    "duplicates": "Doublons",
+    "duplicateRows": "{{rows}} ({{pct}} %)",
+    "kind_drift": "Comparaison",
+    "kind_duplicates": "Lignes et clés en double",
+    "kind_repeats": "Lignes les plus répétées"
   }
 }

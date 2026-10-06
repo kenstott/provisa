@@ -28,6 +28,11 @@
     "method_block": "דגימת בלוקים",
     "method_key_range": "טווחי מפתח",
     "method_random": "מסנן שורות",
-    "share": "{{pct}}% מהשורות"
+    "share": "{{pct}}% מהשורות",
+    "duplicates": "כפילויות",
+    "duplicateRows": "{{rows}} ({{pct}}%)",
+    "kind_drift": "השוואה",
+    "kind_duplicates": "שורות ומפתחות כפולים",
+    "kind_repeats": "השורות החוזרות ביותר"
   }
 }

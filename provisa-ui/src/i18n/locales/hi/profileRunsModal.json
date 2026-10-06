@@ -28,6 +28,11 @@
     "method_block": "ब्लॉक नमूना",
     "method_key_range": "कुंजी श्रेणियाँ",
     "method_random": "पंक्ति फ़िल्टर",
-    "share": "{{pct}}% पंक्तियाँ"
+    "share": "{{pct}}% पंक्तियाँ",
+    "duplicates": "डुप्लिकेट",
+    "duplicateRows": "{{rows}} ({{pct}}%)",
+    "kind_drift": "तुलना",
+    "kind_duplicates": "डुप्लिकेट पंक्तियाँ और कुंजियाँ",
+    "kind_repeats": "सबसे अधिक दोहराई गई पंक्तियाँ"
   }
 }

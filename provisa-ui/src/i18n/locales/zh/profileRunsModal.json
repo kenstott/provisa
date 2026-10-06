@@ -28,6 +28,11 @@
     "method_block": "块抽样",
     "method_key_range": "键范围",
     "method_random": "行过滤",
-    "share": "{{pct}}% 的行"
+    "share": "{{pct}}% 的行",
+    "duplicates": "重复",
+    "duplicateRows": "{{rows}}（{{pct}}%）",
+    "kind_drift": "对比",
+    "kind_duplicates": "重复的行和键",
+    "kind_repeats": "重复最多的行"
   }
 }

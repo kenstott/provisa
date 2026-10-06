@@ -21,6 +21,7 @@ import { useAuth } from "../../context/AuthContext";
 
 // The result relations shown for a run, in this order; ``runs`` is the list itself.
 const KINDS = [
+  "drift",
   "columns",
   "plausible_type",
   "quantiles",
@@ -31,6 +32,8 @@ const KINDS = [
   "fit_quality",
   "fanout_runs",
   "fanout",
+  "duplicates",
+  "repeats",
 ] as const;
 const RUN_KEY = new Set(["run_id", "run_time"]);
 
@@ -142,6 +145,7 @@ export function ProfileRunsModal({
                 <Table.Th>{t("profileRunsModal.rowCount")}</Table.Th>
                 <Table.Th>{t("profileRunsModal.profiledRows")}</Table.Th>
                 <Table.Th>{t("profileRunsModal.method")}</Table.Th>
+                <Table.Th>{t("profileRunsModal.duplicates")}</Table.Th>
                 <Table.Th>{t("profileRunsModal.duration")}</Table.Th>
                 <Table.Th>{t("profileRunsModal.error")}</Table.Th>
               </Table.Tr>
@@ -175,6 +179,14 @@ export function ProfileRunsModal({
                           pct: (run.sample_fraction * 100).toFixed(1),
                         })}`
                       : ""}
+                  </Table.Td>
+                  <Table.Td data-testid={`profile-run-duplicates-${run.run_id}`}>
+                    {run.duplicate_rows == null
+                      ? ""
+                      : t("profileRunsModal.duplicateRows", {
+                          rows: run.duplicate_rows,
+                          pct: ((run.duplicate_share ?? 0) * 100).toFixed(1),
+                        })}
                   </Table.Td>
                   <Table.Td>{t("profileRunsModal.ms", { ms: run.duration_ms })}</Table.Td>
                   <Table.Td>{run.error ?? ""}</Table.Td>

@@ -51,6 +51,7 @@ from provisa.profiler.statement import (
     TOP_N,
     ColumnSpec,
     FanoutSpec,
+    KeySpec,
     ProfileAggregates,
     Sample,
     count_sql,
@@ -82,6 +83,7 @@ class Target:
     tags: dict[str, set[str]]  # column -> base tag ids
     meta: Any  # the org admin's TableMeta: source, physical address
     key: str | None  # the single-column integer primary key, as published; None when there is none
+    keys: list[KeySpec]  # declared primary and unique keys whose columns the org admin reads
 
 
 @dataclass(frozen=True)
@@ -140,6 +142,14 @@ def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, s
         fanouts.append(FanoutSpec(field_name, _name(jm.target), parent_key, child_key))
     pk = ctx.pk_columns.get(table_id, [])
     key_spec = next((c for c in columns if c.physical == pk[0]), None) if len(pk) == 1 else None
+    declared = ([("primary key", pk)] if pk else []) + [
+        (name, cols) for name, cols in ctx.unique_constraints.get(table_id, [])
+    ]
+    keys = []
+    for name, cols in declared:
+        exposed = [exposed_by_phys.get(c) for c in cols]
+        if all(e is not None for e in exposed):  # a key the org admin cannot read is not counted
+            keys.append(KeySpec(name, tuple(e for e in exposed if e is not None)))
     return Target(
         table_id=table_id,
         table_name=table_name,
@@ -149,6 +159,7 @@ def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, s
         tags={exposed_by_phys[c]: t for c, t in tags.items() if c in exposed_by_phys},
         meta=tm,
         key=key_spec.name if key_spec is not None and is_integer_key(key_spec) else None,
+        keys=keys,
     )
 
 
@@ -199,7 +210,11 @@ def result_rows(
 ) -> dict[str, list[dict]]:
     """Every result relation's rows for one run, except ``runs``."""
     key = {"run_id": run_id, "run_time": run_time}
-    out: dict[str, list[dict]] = {kind: [] for kind in RESULT_KINDS if kind != "runs"}
+    # ``runs`` and ``drift`` are written by profile_table: the run's own row, and its comparison
+    # with the runs before it.
+    out: dict[str, list[dict]] = {
+        kind: [] for kind in RESULT_KINDS if kind not in ("runs", "drift")
+    }
     rows = agg.profiled_rows
     for col in agg.columns:
         name = col.spec.name
@@ -287,6 +302,21 @@ def result_rows(
                 "evidence": label.evidence,
             }
         )
+    for dups in [agg.rows, *agg.keys]:
+        out["duplicates"].append(
+            {
+                **key,
+                "subject": "row" if dups.key is None else "key",
+                "key_name": None if dups.key is None else dups.key.name,
+                "involved_columns": json.dumps([] if dups.key is None else list(dups.key.columns)),
+                "repeated_values": dups.repeated,
+                "extra_rows": dups.extra,
+                "extra_share": dups.extra / rows if rows else None,
+            }
+        )
+    out["repeats"] += [
+        {**key, "rank": r, "row_count": n} for r, n in enumerate(agg.rows.top_counts, 1)
+    ]
     for fan in agg.fanouts:
         out["fanout_runs"].append(
             {
@@ -335,6 +365,27 @@ async def column_tags(conn: Any, table_id: int) -> dict[str, set[str]]:
     return tags
 
 
+async def _comparison(
+    conn: Any, table_name: str, table_id: int, run_time: datetime, results: dict[str, list[dict]]
+) -> list[dict]:
+    """This run's drift rows: its comparison with the table's previous successful run (REQ-1934),
+    recorded with it as a measure of the run. Sets the runs row's ``previous_run_id``."""
+    from provisa.profiler import compare
+    from provisa.profiler.history import MEASURE_KINDS, previous_runs, run_results
+
+    (run,) = results["runs"]
+    found = await previous_runs(conn, table_name, table_id, run_time, 1)
+    previous = None
+    if found:
+        prev_id = found[0][0]
+        stored = await run_results(conn, table_name, table_id, [prev_id], MEASURE_KINDS)
+        previous = compare.measures_of(stored[prev_id])
+        run["previous_run_id"] = prev_id
+    rows = compare.compare(compare.measures_of(results), previous)
+    key = {"run_id": run["run_id"], "run_time": run["run_time"]}
+    return [{**key, "previous_run_id": run["previous_run_id"], **r} for r in rows]
+
+
 @dataclass(frozen=True)
 class ProfileRead:
     """What the profile statement read and how (REQ-1934)."""
@@ -365,7 +416,7 @@ async def _run_sample(
     except SampleClauseLost as exc:
         raise ProfileError(f"profile of {target.table_name!r}: {exc}") from exc
     names, rows = await _execute(plan)
-    return parse_profile_result(names, rows, target.columns, target.fanouts)
+    return parse_profile_result(names, rows, target.columns, target.fanouts, target.keys)
 
 
 async def read_profile(
@@ -382,11 +433,18 @@ async def read_profile(
 
     def sql(sample: Sample) -> str:
         return profile_sql(
-            target.pgwire_name, target.columns, target.fanouts, sample, low_cardinality_max
+            target.pgwire_name,
+            target.columns,
+            target.fanouts,
+            sample,
+            low_cardinality_max,
+            target.keys,
         )
 
     def parse(result: tuple[list[str], list[tuple]]) -> ProfileAggregates:
-        return parse_profile_result(result[0], result[1], target.columns, target.fanouts)
+        return parse_profile_result(
+            result[0], result[1], target.columns, target.fanouts, target.keys
+        )
 
     if fraction is None:
         return ProfileRead(parse(await _governed(sql(Sample("whole")))), "whole", [])
@@ -463,6 +521,8 @@ async def profile_table(
         log.exception("profile run %s of table %s failed", run_id, table_name)
     profiled = None if read is None else read.agg.profiled_rows
     counted = row_count is not None
+    dups = None if read is None else read.agg.rows
+    keys = None if read is None else read.agg.keys
     results["runs"] = [
         {
             "run_id": run_id,
@@ -479,12 +539,25 @@ async def profile_table(
             "sample_fraction": None if profiled is None or not row_count else profiled / row_count,
             "sample_attempts": None if read is None else json.dumps(read.attempts),
             "profiled_rows": profiled,
+            "previous_run_id": None,  # set by the comparison below, once the run succeeded
+            "duplicate_rows": None if dups is None else dups.extra,
+            "duplicate_share": None if dups is None or not profiled else dups.extra / profiled,
+            # Over every declared key; none declared, nothing to count.
+            "key_duplicates": sum(k.repeated for k in keys) if keys else None,
             "duration_ms": int((time.monotonic() - started) * 1000),
             "status": status,
             "error": error,
         }
     ]
     async with state.model_db.acquire() as conn:
+        if status == "succeeded":
+            try:
+                results["drift"] = await _comparison(conn, table_name, table_id, run_time, results)
+            except Exception as exc:  # recorded as the run's outcome, then re-raised below
+                status, error = "failed", f"{type(exc).__name__}: {exc}"
+                log.exception("comparing profile run %s of table %s failed", run_id, table_name)
+                results = {"runs": results["runs"]}
+                results["runs"][0].update(status=status, error=error, previous_run_id=None)
         await write_results(conn, table_name, table_id, results)
     outcome = RunOutcome(run_id, run_time, status, error, row_count, profiled)
     if error is not None:

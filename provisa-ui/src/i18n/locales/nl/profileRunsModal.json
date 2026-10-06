@@ -28,6 +28,11 @@
     "method_block": "Bloksteekproef",
     "method_key_range": "Sleutelbereiken",
     "method_random": "Rijfilter",
-    "share": "{{pct}}% van de rijen"
+    "share": "{{pct}}% van de rijen",
+    "duplicates": "Duplicaten",
+    "duplicateRows": "{{rows}} ({{pct}}%)",
+    "kind_drift": "Vergelijking",
+    "kind_duplicates": "Dubbele rijen en sleutels",
+    "kind_repeats": "Meest herhaalde rijen"
   }
 }

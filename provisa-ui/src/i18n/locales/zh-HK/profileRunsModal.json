@@ -28,6 +28,11 @@
     "method_block": "區塊抽樣",
     "method_key_range": "鍵範圍",
     "method_random": "行篩選",
-    "share": "{{pct}}% 的行"
+    "share": "{{pct}}% 的行",
+    "duplicates": "重複",
+    "duplicateRows": "{{rows}}（{{pct}}%）",
+    "kind_drift": "比較",
+    "kind_duplicates": "重複的行和鍵",
+    "kind_repeats": "重複最多的行"
   }
 }

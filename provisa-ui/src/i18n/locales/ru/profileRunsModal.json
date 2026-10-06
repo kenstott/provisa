@@ -28,6 +28,11 @@
     "method_block": "Выборка блоков",
     "method_key_range": "Диапазоны ключа",
     "method_random": "Фильтр строк",
-    "share": "{{pct}}% строк"
+    "share": "{{pct}}% строк",
+    "duplicates": "Дубликаты",
+    "duplicateRows": "{{rows}} ({{pct}}%)",
+    "kind_drift": "Сравнение",
+    "kind_duplicates": "Повторяющиеся строки и ключи",
+    "kind_repeats": "Наиболее повторяющиеся строки"
   }
 }

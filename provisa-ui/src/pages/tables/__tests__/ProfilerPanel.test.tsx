@@ -169,6 +169,10 @@ describe("ProfilerPanel", () => {
         target_fraction: 0.05,
         sample_fraction: 0.049,
         sample_attempts: '[{"percent": 5.0, "rows": 9800}]',
+        previous_run_id: null,
+        duplicate_rows: 49,
+        duplicate_share: 0.005,
+        key_duplicates: null,
         duration_ms: 30,
         region: null,
         profiled_table: "orders",
@@ -192,6 +196,9 @@ describe("ProfilerPanel", () => {
       "Block sample · 4.9% of rows",
     );
     expect(screen.getByTestId("profile-run-method-r2")).toBeEmptyDOMElement();
+    // REQ-1934 DUPLICATE ROWS: each run's duplicate rows beside it.
+    expect(screen.getByTestId("profile-run-duplicates-r0")).toHaveTextContent("49 (0.5%)");
+    expect(screen.getByTestId("profile-run-duplicates-r2")).toBeEmptyDOMElement();
     await waitFor(() => expect(api.fetchProfileRun).toHaveBeenCalledWith(7, "r1", "analyst"));
     const rows = await screen.findByTestId("profile-rows-columns");
     expect(rows).toHaveTextContent("amount");

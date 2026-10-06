@@ -125,3 +125,55 @@ def test_a_reader_with_no_restricted_column_sees_the_columns_values():
 def test_table_level_kinds_take_no_row_rule():
     assert prefill("runs", list(field_names("runs")), RULES)["rowRules"] == []
     assert prefill("fanout", list(field_names("fanout")), RULES)["rowRules"] == []
+
+
+def _drift(column, involved, value_bearing, measure="mean"):
+    import json
+
+    return {
+        "scope": "column" if column else "table",
+        "column_name": column,
+        "involved_columns": json.dumps(involved),
+        "value_bearing": value_bearing,
+        "measure": measure,
+    }
+
+
+def test_drift_rows_are_safe_for_their_viewer():
+    """A comparison row speaking of a column the viewer cannot see is left out; a value-bearing one
+    of a column restricted to the viewer too; a shape one stays."""
+    results = {
+        "drift": [
+            _drift(None, [], False, "row_count"),
+            _drift("id", ["id"], True),
+            _drift("email", ["email"], True),
+            _drift("email", ["email"], False, "null_share"),
+            _drift("salary", ["salary"], False, "null_share"),
+        ],
+        "duplicates": [
+            {"column_name": None, "subject": "row", "involved_columns": "[]"},
+            {"column_name": None, "subject": "key", "involved_columns": '["salary"]'},
+        ],
+    }
+    shown = safe_run(results, RULES, frozenset({"analyst"}))
+    assert [(r["column_name"], r["measure"]) for r in shown["drift"]] == [
+        (None, "row_count"),
+        ("id", "mean"),
+        ("email", "null_share"),
+    ]
+    assert [r["subject"] for r in shown["duplicates"]] == ["row"]
+    auditor = safe_run(results, RULES, frozenset({"auditor"}))
+    assert len(auditor["drift"]) == 5
+
+
+def test_drift_default_rules_follow_each_involved_column():
+    defaults = prefill("drift", list(field_names("drift")), RULES)
+    rules = {r["roleId"]: r["filter"] for r in defaults["rowRules"]}
+    assert rules["analyst"] == (
+        "(value_bearing = FALSE OR POSITION('\"email\"' IN involved_columns) = 0) AND "
+        "(value_bearing = FALSE OR POSITION('\"ssn\"' IN involved_columns) = 0) AND "
+        "POSITION('\"salary\"' IN involved_columns) = 0"
+    )
+    assert rules["auditor"] == (
+        "(value_bearing = FALSE OR POSITION('\"ssn\"' IN involved_columns) = 0)"
+    )

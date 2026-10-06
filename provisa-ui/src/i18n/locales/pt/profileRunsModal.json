@@ -28,6 +28,11 @@
     "method_block": "Amostra por blocos",
     "method_key_range": "Intervalos de chave",
     "method_random": "Filtro de linhas",
-    "share": "{{pct}}% das linhas"
+    "share": "{{pct}}% das linhas",
+    "duplicates": "Duplicados",
+    "duplicateRows": "{{rows}} ({{pct}}%)",
+    "kind_drift": "Comparação",
+    "kind_duplicates": "Linhas e chaves duplicadas",
+    "kind_repeats": "Linhas mais repetidas"
   }
 }

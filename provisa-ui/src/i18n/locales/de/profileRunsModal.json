@@ -28,6 +28,11 @@
     "method_block": "Blockstichprobe",
     "method_key_range": "Schlüsselbereiche",
     "method_random": "Zeilenfilter",
-    "share": "{{pct}} % der Zeilen"
+    "share": "{{pct}} % der Zeilen",
+    "duplicates": "Duplikate",
+    "duplicateRows": "{{rows}} ({{pct}} %)",
+    "kind_drift": "Vergleich",
+    "kind_duplicates": "Doppelte Zeilen und Schlüssel",
+    "kind_repeats": "Am häufigsten wiederholte Zeilen"
   }
 }

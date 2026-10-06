@@ -67,6 +67,13 @@ export interface ProfileRun {
   /** Each sample read, as JSON [{percent, rows}]. */
   sample_attempts: string | null;
   profiled_rows: number | null;
+  /** REQ-1934: the previous successful run this run is compared with; null for the first. */
+  previous_run_id: string | null;
+  /** Rows repeating an earlier row in every profiled column, and their share of profiled_rows. */
+  duplicate_rows: number | null;
+  duplicate_share: number | null;
+  /** Key values held by more than one row; null where the table declares no key. */
+  key_duplicates: number | null;
   duration_ms: number;
   status: "succeeded" | "failed";
   error: string | null;

@@ -28,6 +28,11 @@
     "method_block": "Campione a blocchi",
     "method_key_range": "Intervalli di chiave",
     "method_random": "Filtro di righe",
-    "share": "{{pct}}% delle righe"
+    "share": "{{pct}}% delle righe",
+    "duplicates": "Duplicati",
+    "duplicateRows": "{{rows}} ({{pct}}%)",
+    "kind_drift": "Confronto",
+    "kind_duplicates": "Righe e chiavi duplicate",
+    "kind_repeats": "Righe più ripetute"
   }
 }

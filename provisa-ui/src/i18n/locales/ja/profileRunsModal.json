@@ -28,6 +28,11 @@
     "method_block": "ブロックサンプル",
     "method_key_range": "キー範囲",
     "method_random": "行フィルター",
-    "share": "行の {{pct}}%"
+    "share": "行の {{pct}}%",
+    "duplicates": "重複",
+    "duplicateRows": "{{rows}} ({{pct}}%)",
+    "kind_drift": "比較",
+    "kind_duplicates": "重複した行とキー",
+    "kind_repeats": "最も多く繰り返された行"
   }
 }
