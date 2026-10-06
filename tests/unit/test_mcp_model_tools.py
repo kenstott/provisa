@@ -534,7 +534,6 @@ def _table(**kw: Any) -> admin_types.RegisteredTableType:
         "domain_id": "sales",
         "schema_name": "public",
         "table_name": "orders",
-        "origin": "admin",
         "write_ops": [],
         "alias": None,
         "description": "Orders",
