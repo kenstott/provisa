@@ -47,6 +47,11 @@ _UNIFORM = "__u__"
 _FAKE = "__fake__"
 
 
+def references(col: Column) -> frozenset[str]:
+    """The columns a fake reads by name (a relative fake's, an sql fake's)."""
+    return _references(col)
+
+
 def _references(col: Column) -> frozenset[str]:
     k = col.kind
     if isinstance(k, Ordered):
@@ -94,17 +99,26 @@ def faked_projection(
 
 
 def layered(
-    level: str, alias: str, columns: list[tuple[str, str, str]], fakes: dict[str, Column]
+    level: str,
+    alias: str,
+    columns: list[tuple[str, str, str]],
+    fakes: dict[str, Column],
+    keep: tuple[str, ...] = (),
 ) -> str:
     """The fakes computed over ``level``, a statement giving every column of ``columns`` and each
     faked column's digest as ``__digest__<name>``: each column's uniform point, then the fakes in
     dependency order, then every column under its own name (faked or as ``level`` gives it). A
     faked read's level digests the real values (:func:`faked_projection`); synthetic generation's
-    digests the dataset's seed and the row (REQ-1939)."""
+    digests the dataset's seed and the row (REQ-1939). ``keep`` names further columns of ``level``
+    carried through to the outer level as they are."""
     families = {name: fam for name, _, fam in columns}
     a = _q(alias)
     # The uniform point reads the digest the level below computed, once per row.
-    held = [_q(name) for name, _, _ in columns] + [_q(_DIGEST + n) for n in fakes]
+    held = (
+        [_q(name) for name, _, _ in columns]
+        + [_q(_DIGEST + n) for n in fakes]
+        + [_q(k) for k in keep if k not in {_DIGEST + n for n in fakes}]
+    )
     # REQ-1494: each column's point is drawn from its digest mixed with its fake's definition.
     uniforms = [
         f"{uniform_sql(seed_sql(_q(_DIGEST + n), definition_of(c)))} AS {_q(_UNIFORM + n)}"
@@ -135,5 +149,5 @@ def layered(
         held += [_q(_FAKE + n) for n, d in depths.items() if d == depth]
     outer = [
         f"{_q(_FAKE + name)} AS {_q(name)}" if name in fakes else _q(name) for name, _, _ in columns
-    ]
+    ] + [_q(k) for k in keep]
     return f"SELECT {', '.join(outer)} FROM ({level}) AS {a}"

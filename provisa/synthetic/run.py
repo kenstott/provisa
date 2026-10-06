@@ -32,6 +32,7 @@ from sqlalchemy import delete, insert, select
 
 from provisa.synthetic import datasets
 from provisa.synthetic.generate import generation_sql
+from provisa.synthetic.group import reads_children
 from provisa.synthetic.plan import (
     DatasetRefused,
     DatasetTable,
@@ -240,6 +241,85 @@ async def _measure(state: Any, t: DatasetTable, column: str) -> list[tuple[str |
     return [(v, int(n)) for v, n in rows]
 
 
+async def _generated_addresses(
+    state: Any, schema: str, planned: list[PlannedTable], registered: dict[int, dict]
+) -> dict[str, str]:
+    """Each generated table's address on the engine, by its dataset name: the dataset's schema
+    in the store the engine reads replicas from (as provisa.federation.replica_routing routes
+    the dataset's tables to their copies)."""
+    import asyncio
+
+    from provisa.federation.replica_address import replica_table_name
+
+    backend = state.federation_engine.engine.backend
+    catalog = await asyncio.to_thread(backend.replica_read_catalog, state)
+    out = {}
+    for p in planned:
+        reg = registered[p.table.table_id]
+        parts = [
+            catalog,
+            schema,
+            replica_table_name(reg["source_id"], reg["schema_name"], reg["table_name"]),
+        ]
+        out[p.table.name] = ".".join('"' + x.replace('"', '""') + '"' for x in parts if x)
+    return out
+
+
+def _children_first(planned: list[PlannedTable]) -> list[PlannedTable]:
+    """The second pass's tables, each after the regenerated tables its rules read."""
+    names = {p.table.name for p in planned}
+    done: list[PlannedTable] = []
+    placed: set[str] = set()
+    pending = list(planned)
+    while pending:
+        ready = [
+            p
+            for p in pending
+            if {link.child_table for g in p.plan.group for link in g.children} & names
+            <= placed | {p.table.name}
+        ]
+        if not ready:
+            raise DatasetRefused(
+                "the rules of " + ", ".join(p.table.name for p in pending) + " read one another"
+            )
+        for p in ready:
+            done.append(p)
+            placed.add(p.table.name)
+        pending = [p for p in pending if p.table.name not in placed]
+    return done
+
+
+def _spans_rows(kind: Any) -> bool:
+    from provisa.fakes.kinds import Sequence, Sql
+
+    return isinstance(kind, Sequence) or (isinstance(kind, Sql) and kind.group)
+
+
+def _child_links(table_id: int, registered: dict[int, dict], relationships: list[dict]) -> dict:
+    """The children a rule of ``table_id`` reads, by the name it reads them by: a one-to-many
+    relationship's field name on the parent, or, for a many-to-one relationship declared on the
+    child, the child table's name (as provisa.api.admin._fake_guard names them)."""
+    from provisa.synthetic.group import ChildLink
+
+    out: dict[str, ChildLink] = {}
+    for r in relationships:
+        if r.get("target_table_id") is None or r.get("via_table_id") is not None:
+            continue
+        if r["cardinality"] == "one-to-many" and r["source_table_id"] == table_id:
+            child = registered.get(r["target_table_id"])
+            if child is not None:
+                out[r["graphql_alias"]] = ChildLink(
+                    r["graphql_alias"], child["table_name"], r["source_column"], r["target_column"]
+                )
+        elif r["cardinality"] == "many-to-one" and r["target_table_id"] == table_id:
+            child = registered.get(r["source_table_id"])
+            if child is not None:
+                out[child["table_name"]] = ChildLink(
+                    child["table_name"], child["table_name"], r["target_column"], r["source_column"]
+                )
+    return out
+
+
 async def _measure_difference(
     state: Any, t: DatasetTable, column: str, other: str
 ) -> list[float | None] | None:
@@ -285,7 +365,13 @@ async def _pinned_runs(
     return out
 
 
-async def _write_table(state: Any, schema: str, planned: PlannedTable, reg: dict) -> int:
+async def _write_table(
+    state: Any,
+    schema: str,
+    planned: PlannedTable,
+    reg: dict,
+    child_tables: dict[str, str] | None = None,
+) -> int:
     from provisa.federation.data_replicator import data_replicator
     from provisa.federation.replica_address import ReplicaAddress, replica_table_name
     from provisa.federation.replica_builds import _model_row
@@ -305,7 +391,9 @@ async def _write_table(state: Any, schema: str, planned: PlannedTable, reg: dict
     engine_party = StoreReadingEngine(backend, state)
     target = backend.replica_target(state, address=address, args=args, engine=engine_party)
     reader = _GeneratedRows(
-        engine_rt, generation_sql(planned.plan, engine_rt.engine.name), planned.plan.name
+        engine_rt,
+        generation_sql(planned.plan, engine_rt.engine.name, child_tables),
+        planned.plan.name,
     )
     copied = 0
 
@@ -388,6 +476,14 @@ async def _dataset_tables(
                         if c.get("synthetic_rule") is None and c.get("fake_stable")
                     },
                     constraints=constraints,
+                    self_fakes={
+                        c["column_name"]: parse_fake(c["fake"])
+                        for c in reg["columns"]
+                        if c.get("synthetic_rule") is not None
+                        and c.get("fake") is not None
+                        and _spans_rows(parse_fake(c["synthetic_rule"], rule=True))
+                    },
+                    children=_child_links(t.table_id, registered, relationships),
                 )
             )
     return out, relationships, registered
@@ -424,6 +520,15 @@ async def generate(state: Any, dataset_id: str) -> None:
         )
         for p in planned:
             await _write_table(state, row.store_schema, p, registered[p.table.table_id])
+        # The second pass (REQ-1939, GENERATION IN PASSES): a table whose rules read its children
+        # is generated again, the same rows, its rules now computed over the generated children.
+        second = [p for p in planned if any(reads_children(g) for g in p.plan.group)]
+        if second:
+            addresses = await _generated_addresses(state, row.store_schema, planned, registered)
+            for p in _children_first(second):
+                await _write_table(
+                    state, row.store_schema, p, registered[p.table.table_id], addresses
+                )
     except Exception as exc:
         async with state.model_db.acquire() as conn:
             await datasets.set_status(

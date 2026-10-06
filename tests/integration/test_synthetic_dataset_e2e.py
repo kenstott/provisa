@@ -85,6 +85,9 @@ def server():
                     _col("segment", "varchar", fake="categories((retail, wholesale, online))"),
                     # REQ-1939, BOOLEANS: an undeclared boolean is bool(), at its profiled share.
                     _col("active", "boolean"),
+                    # REQ-1939, GENERATION IN PASSES: a rule over the customer's generated
+                    # purchases, computed in the second pass.
+                    _col("spent", "integer", synthetic_rule="sql_group(SUM(purchases.amount))"),
                 ],
                 profiler_source_id="profiler",
             ),
@@ -95,6 +98,14 @@ def server():
                     _col("customer_id", "integer"),
                     # REQ-1494: a declared distribution decides its generated values.
                     _col("amount", "integer", fake="uniform(min=1, max=9)"),
+                    # A window over the generated rows, computed in the table's own statement.
+                    _col(
+                        "position",
+                        "integer",
+                        synthetic_rule=(
+                            "sql_group(ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY id))"
+                        ),
+                    ),
                 ],
                 profiler_source_id="profiler",
             ),
@@ -117,6 +128,7 @@ def server():
                 "target_table_id": "purchases",
                 "target_column": "customer_id",
                 "cardinality": "one-to-many",
+                "graphql_alias": "purchases",
             }
         ],
         "tag_assignments": [
@@ -142,13 +154,13 @@ def server():
             conn.execute(
                 sa.text(
                     "CREATE TABLE public.customers (id integer PRIMARY KEY, region text, email text, "
-                    "tier text, segment text, active boolean)"
+                    "tier text, segment text, active boolean, spent integer)"
                 )
             )
             conn.execute(
                 sa.text(
                     "CREATE TABLE public.purchases (id integer PRIMARY KEY, customer_id integer, "
-                    "amount integer)"
+                    "amount integer, position integer)"
                 )
             )
             conn.execute(
@@ -159,7 +171,7 @@ def server():
             )
             for c in range(1, _CUSTOMERS + 1):
                 conn.execute(
-                    sa.text("INSERT INTO public.customers VALUES (:i, :r, :e, :t, :s, :a)"),
+                    sa.text("INSERT INTO public.customers VALUES (:i, :r, :e, :t, :s, :a, 0)"),
                     {
                         "i": c,
                         "r": ("east", "west", "north")[c % 3],
@@ -172,7 +184,7 @@ def server():
                 )
             for i, (cust, _) in enumerate(_ORDERS, 1):
                 conn.execute(
-                    sa.text("INSERT INTO public.purchases VALUES (:i, :c, :a)"),
+                    sa.text("INSERT INTO public.purchases VALUES (:i, :c, :a, 1)"),
                     {"i": i, "c": cust, "a": 10 + i % 90},
                 )
         engine.dispose()
@@ -337,6 +349,30 @@ def test_a_declared_fake_generates_every_value_of_its_column(generated):
     amounts = [r["amount"] for r in rows if r["amount"] is not None]
     assert amounts and all(1 <= a <= 9 for a in amounts)
     assert len(set(amounts)) > 3
+
+
+def test_rules_spanning_rows_are_computed_over_the_generated_rows(generated):
+    """REQ-1939, GENERATION IN PASSES: a window over the table, and a sum over each customer's
+    generated purchases computed in the second pass."""
+    boot = generated["boot"]
+    status, rows = _sql(
+        boot,
+        "SELECT customer_id, id, position FROM sales.purchases ORDER BY customer_id, id",
+        "dev",
+    )
+    assert status == 200, rows
+    seen: dict[int, int] = {}
+    for r in rows:
+        seen[r["customer_id"]] = seen.get(r["customer_id"], 0) + 1
+        assert r["position"] == seen[r["customer_id"]]
+    sums: dict[int, int] = {}
+    status, rows = _sql(boot, "SELECT customer_id, amount FROM sales.purchases", "dev")
+    assert status == 200, rows
+    for r in rows:
+        sums[r["customer_id"]] = sums.get(r["customer_id"], 0) + r["amount"]
+    status, rows = _sql(boot, "SELECT id, spent FROM sales.customers", "dev")
+    assert status == 200, rows
+    assert rows and all(r["spent"] == sums.get(r["id"]) for r in rows)
 
 
 def test_a_pii_column_with_no_fake_kind_refuses_by_name(dev):
