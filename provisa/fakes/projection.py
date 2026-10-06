@@ -41,6 +41,8 @@ from provisa.fakes.read_sql import (
 from provisa.fakes.sql_subset import read as read_sql
 
 _DIGEST = "__digest__"
+#: The name a level gives a faked column's digest (``DIGEST + <column>``), for :func:`layered`.
+DIGEST = _DIGEST
 _UNIFORM = "__u__"
 _FAKE = "__fake__"
 
@@ -81,7 +83,6 @@ def faked_projection(
     """The projection, in the governed dialect. ``base`` is the base relation as written,
     ``columns`` every column as (name, data type, family), ``fakes`` the faked ones by name, and
     ``row_filter`` the role's filter qualified by ``alias``."""
-    families = {name: fam for name, _, fam in columns}
     a = _q(alias)
     inner = [f"{a}.{_q(name)}" for name, _, _ in columns]
     for name in fakes:
@@ -89,6 +90,19 @@ def faked_projection(
         inner.append(f"{d} AS {_q(_DIGEST + name)}")
     where = f" WHERE {row_filter}" if row_filter else ""
     level = f"SELECT {', '.join(inner)} FROM {base} AS {a}{where}"
+    return f"({layered(level, alias, columns, fakes)})"
+
+
+def layered(
+    level: str, alias: str, columns: list[tuple[str, str, str]], fakes: dict[str, Column]
+) -> str:
+    """The fakes computed over ``level``, a statement giving every column of ``columns`` and each
+    faked column's digest as ``__digest__<name>``: each column's uniform point, then the fakes in
+    dependency order, then every column under its own name (faked or as ``level`` gives it). A
+    faked read's level digests the real values (:func:`faked_projection`); synthetic generation's
+    digests the dataset's seed and the row (REQ-1939)."""
+    families = {name: fam for name, _, fam in columns}
+    a = _q(alias)
     # The uniform point reads the digest the level below computed, once per row.
     held = [_q(name) for name, _, _ in columns] + [_q(_DIGEST + n) for n in fakes]
     # REQ-1494: each column's point is drawn from its digest mixed with its fake's definition.
@@ -122,4 +136,4 @@ def faked_projection(
     outer = [
         f"{_q(_FAKE + name)} AS {_q(name)}" if name in fakes else _q(name) for name, _, _ in columns
     ]
-    return f"(SELECT {', '.join(outer)} FROM ({level}) AS {a})"
+    return f"SELECT {', '.join(outer)} FROM ({level}) AS {a}"

@@ -515,11 +515,12 @@ def test_stated_shares_that_cannot_describe_the_values_are_refused(shares, messa
         parse(declared)
 
 
-def test_a_fake_synthesis_does_not_compute_yet_is_refused_by_name(monkeypatch):
-    _declare(monkeypatch, {"email": parse("email()")})
-    with pytest.raises(
-        DatasetRefused, match=r"customers.email declares email\(\), which synthetic"
-    ):
+@pytest.mark.parametrize(
+    "decl", ["sequence((new, paid), id, id)", "sql_group(SUM(self))", "encrypt()"]
+)
+def test_a_fake_synthesis_does_not_compute_yet_is_refused_by_name(monkeypatch, decl):
+    _declare(monkeypatch, {"email": parse(decl, rule=True)})
+    with pytest.raises(DatasetRefused, match=r"customers.email declares \w+\(\), which synthetic"):
         plan_tables(
             [_customers()], [], seed=1, names=_NAMES, count_rows=_count, measure=_unmeasured
         )

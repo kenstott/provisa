@@ -39,6 +39,7 @@ from provisa.synthetic.plan import (
     ProfiledColumn,
     ProfiledFanout,
     ProfiledTable,
+    distances_to_measure,
     edges_of,
     plan_tables,
     to_measure,
@@ -239,6 +240,51 @@ async def _measure(state: Any, t: DatasetTable, column: str) -> list[tuple[str |
     return [(v, int(n)) for v, n in rows]
 
 
+async def _measure_difference(
+    state: Any, t: DatasetTable, column: str, other: str
+) -> list[float | None] | None:
+    """The measured difference of ``column`` less ``other``, read from the table as the org admin
+    (REQ-1494, MEASURED FROM THE PROFILE, ELSE FROM THE TABLE)."""
+    from provisa.fakes.checks import family
+    from provisa.fakes.measured import difference_quantiles
+    from provisa.profiler.run import PROFILE_ROLE
+    from provisa.profiler.statement import qualified
+
+    p2s = state.contexts[PROFILE_ROLE].physical_to_sql
+    exposed = {c: p2s.get((t.table_id, c)) for c in (column, other)}
+    hidden = [c for c, e in exposed.items() if e is None]
+    if hidden:
+        raise DatasetRefused(f"{t.name}.{hidden[0]} is not readable by {PROFILE_ROLE}")
+    ir_type = next(ir for name, ir, _ in t.columns if name == column)
+    return await difference_quantiles(
+        qualified(t.pgwire_name), exposed[column], exposed[other], family(ir_type)
+    )
+
+
+async def _pinned_runs(
+    state: Any, row: Any, tables: list[DatasetTable], registered: dict[int, dict]
+) -> dict[tuple[int, str], ProfiledTable]:
+    """The profile runs a stable profile() fake pins, beside the dataset's own run of the table."""
+    from provisa.core.request_context import require_current_org
+    from provisa.fakes.kinds import Profile
+
+    env_of = {t.table_id: t.profile_env for t in row.tables}
+    out: dict[tuple[int, str], ProfiledTable] = {}
+    async with state.model_db.acquire() as conn:
+        for t in tables:
+            for fake in t.fakes.values():
+                if isinstance(fake, Profile) and fake.run not in (None, t.profile.run_id):
+                    assert fake.run is not None
+                    out[(t.table_id, fake.run)] = await read_profile(
+                        conn,
+                        org_id=require_current_org(),
+                        env=env_of[t.table_id],
+                        reg=registered[t.table_id],
+                        run_id=fake.run,
+                    )
+    return out
+
+
 async def _write_table(state: Any, schema: str, planned: PlannedTable, reg: dict) -> int:
     from provisa.federation.data_replicator import data_replicator
     from provisa.federation.replica_address import ReplicaAddress, replica_table_name
@@ -281,6 +327,7 @@ async def _dataset_tables(
     from provisa.core.ir_types import to_ir
     from provisa.core.request_context import require_current_org
     from provisa.fakes.kinds import parse as parse_fake
+    from provisa.profiler.constraints import accepted_constraints
     from provisa.profiler.run import PROFILE_ROLE, column_tags
 
     org_id = require_current_org()
@@ -303,6 +350,8 @@ async def _dataset_tables(
                 conn, org_id=org_id, env=t.profile_env, reg=reg, run_id=t.run_id
             )
             tags = await column_tags(conn, t.table_id)
+            # REQ-1939, ACCEPTED CONSTRAINTS BIND GENERATION.
+            constraints = tuple(await accepted_constraints(conn, t.table_id))
             dialect = state.federation_engine.engine.backend.dialect
             out.append(
                 DatasetTable(
@@ -331,6 +380,14 @@ async def _dataset_tables(
                         for c in reg["columns"]
                         if c.get("synthetic_rule") is not None or c.get("fake") is not None
                     },
+                    # A stable fake generates by the portable definition version it is pinned to;
+                    # a synthetic rule takes the fake's place and is never stable.
+                    stable={
+                        c["column_name"]: c["fake_stable_version"]
+                        for c in reg["columns"]
+                        if c.get("synthetic_rule") is None and c.get("fake_stable")
+                    },
+                    constraints=constraints,
                 )
             )
     return out, relationships, registered
@@ -350,6 +407,11 @@ async def generate(state: Any, dataset_id: str) -> None:
         measured = {
             (t.table_id, c): await _measure(state, t, c) for t, c in to_measure(tables, edges)
         }
+        distances = {
+            (t.table_id, c): await _measure_difference(state, t, c, other)
+            for t, c, other in distances_to_measure(tables, edges)
+        }
+        pinned = await _pinned_runs(state, row, tables, registered)
         planned = plan_tables(
             tables,
             edges,
@@ -357,6 +419,8 @@ async def generate(state: Any, dataset_id: str) -> None:
             names={tid: reg["table_name"] for tid, reg in registered.items()},
             count_rows=lambda plan: _count_rows(state, plan),
             measure=lambda t, c: measured[(t.table_id, c)],
+            distance=lambda t, c: distances[(t.table_id, c)],
+            pinned_run=lambda t, run_id: pinned[(t.table_id, run_id)],
         )
         for p in planned:
             await _write_table(state, row.store_schema, p, registered[p.table.table_id])

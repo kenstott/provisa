@@ -93,7 +93,8 @@ def server():
                 [
                     _col("id", "integer", is_primary_key=True),
                     _col("customer_id", "integer"),
-                    _col("amount", "integer"),
+                    # REQ-1494: a declared distribution decides its generated values.
+                    _col("amount", "integer", fake="uniform(min=1, max=9)"),
                 ],
                 profiler_source_id="profiler",
             ),
@@ -327,6 +328,15 @@ def test_no_value_of_a_column_that_is_no_category_is_a_real_one(generated):
     emails = {r["email"] for r in rows}
     assert emails and not real & emails
     assert all("@" in e for e in emails if e is not None)
+
+
+def test_a_declared_fake_generates_every_value_of_its_column(generated):
+    """REQ-1494, REQ-1939: a column with a fake is generated through it, as a faked read shows it."""
+    status, rows = _sql(generated["boot"], "SELECT amount FROM sales.purchases", env="dev")
+    assert status == 200, rows
+    amounts = [r["amount"] for r in rows if r["amount"] is not None]
+    assert amounts and all(1 <= a <= 9 for a in amounts)
+    assert len(set(amounts)) > 3
 
 
 def test_a_pii_column_with_no_fake_kind_refuses_by_name(dev):

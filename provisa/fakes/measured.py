@@ -257,16 +257,28 @@ async def _measure_table(
                 f"difference cannot be measured"
             )
             continue
-        family = faked[column][1]
-        d = f"({_epoch(f'x.{_ident(name)}', family)} - {_epoch(f'x.{_ident(other)}', family)})"
-        points = "ARRAY[" + ", ".join(f"{q:.2f}" for q in DISTANCE_POINTS) + "]"
-        _names, rows = await _governed(
-            f"SELECT PERCENTILE_CONT({points}) WITHIN GROUP (ORDER BY {d}) AS q FROM {table} x "
-            f"WHERE {d} IS NOT NULL"
-        )
-        quantiles = rows[0][0] if rows else None
-        out[column] = from_distance(column, kind, None if quantiles is None else list(quantiles))
+        quantiles = await difference_quantiles(table, name, other, faked[column][1])
+        out[column] = from_distance(column, kind, quantiles)
     return out
+
+
+async def difference_quantiles(
+    table: str, column: str, other: str, family: str
+) -> list[float | None] | None:
+    """The quantiles (:data:`DISTANCE_POINTS`) of ``column`` less ``other`` (in seconds for dates
+    and times) over the rows holding both, read as the org admin through the governed pipeline;
+    None where no row holds both. ``table`` is qualified, the columns as the org admin reads them."""
+    from provisa.profiler.run import _governed
+    from provisa.profiler.statement import _ident
+
+    d = f"({_epoch(f'x.{_ident(column)}', family)} - {_epoch(f'x.{_ident(other)}', family)})"
+    points = "ARRAY[" + ", ".join(f"{q:.2f}" for q in DISTANCE_POINTS) + "]"
+    _names, rows = await _governed(
+        f"SELECT PERCENTILE_CONT({points}) WITHIN GROUP (ORDER BY {d}) AS q FROM {table} x "
+        f"WHERE {d} IS NOT NULL"
+    )
+    quantiles = rows[0][0] if rows else None
+    return None if quantiles is None else list(quantiles)
 
 
 async def measure_model(state: Any) -> None:

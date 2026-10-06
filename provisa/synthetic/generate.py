@@ -37,6 +37,9 @@ The statement is written in the engine's dialect: DuckDB (the test stack's engin
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
+
+from provisa.fakes.projection import DIGEST, layered
 
 DIALECTS = ("duckdb", "trino")
 
@@ -71,6 +74,12 @@ class ColumnPlan:
     # The shares of the pool's values, most frequent first: a skewed vocabulary keeps its skew on
     # generated values (empty: the pool's values are equally likely).
     pool_shares: tuple[float, ...] = ()
+    # REQ-1494, REQ-1939: the column's synthetic rule, else its fake, computed over the generated
+    # row as a faked read computes it (provisa.fakes.read_sql.Column); None for none.
+    fake: Any = None
+    # The row's value is only whether it is NULL (1, or NULL at the null share): the fake decides
+    # every value and reads no generated value of its own column.
+    marker: bool = False
 
 
 @dataclass(frozen=True)
@@ -151,8 +160,31 @@ class _Dialect:
             f"ELSE substr({_lit(shape)}, {pos}, 1) END), '')"
         )
 
+    def digest(self, seed: int, table: str, column: str, key: str) -> str:
+        """A signed 64-bit draw from the seed, table, column and row key: the digest a fake
+        computed in generation is seeded by, as a faked read's is by the real value (REQ-1939)."""
+        tag = _lit(f"{seed}:{table}:{column}:fake")
+        if self.name == "duckdb":
+            return f"CAST(hash({tag}, {key}) >> 1 AS BIGINT)"
+        return f"from_big_endian_64(xxhash64(to_utf8(concat({tag}, ':', CAST({key} AS varchar)))))"
+
     def lpad(self, expr: str, width: int) -> str:
-        return f"lpad(CAST({expr} AS varchar), {width}, '0')"
+        # Never truncated: a number longer than the shape's digits keeps every digit, so keys
+        # filled into a shape stay unique at any row count.
+        text = f"CAST({expr} AS varchar)"
+        return (
+            f"(CASE WHEN length({text}) >= {width} THEN {text} ELSE lpad({text}, {width}, '0') END)"
+        )
+
+    def value_digest(self, seed: int, table: str, column: str, value: str) -> str:
+        """A signed 64-bit draw from the seed, table, column and a generated value: the digest
+        of a fake that computes from the column's own value (bucket, truncate, prefix, hash), so
+        one value gives one fake, as a faked read's digest of the real value does."""
+        tag = _lit(f"{seed}:{table}:{column}:value")
+        text = f"CAST({value} AS varchar)"
+        if self.name == "duckdb":
+            return f"CAST(hash({tag}, {text}) >> 1 AS BIGINT)"
+        return f"from_big_endian_64(xxhash64(to_utf8(concat({tag}, ':', {text}))))"
 
     def range_rows(self, n: int, alias: str) -> str:
         if self.name == "duckdb":
@@ -211,6 +243,11 @@ def column_expr(d: _Dialect, plan: TablePlan, col: ColumnPlan, key: str, index: 
 
     if col.key:
         value = _cast(col, _key_value(d, col, index))
+        return f'{value} AS "{col.name}"'
+    if col.marker:
+        value = "1"
+        if col.null_share > 0:
+            value = f"CASE WHEN {u('null')} < {col.null_share!r} THEN NULL ELSE 1 END"
         return f'{value} AS "{col.name}"'
     if col.foreign_key is not None and not col.driving:
         fk = col.foreign_key
@@ -290,17 +327,67 @@ def children_count_sql(plan: TablePlan, dialect: str) -> str:
     )
 
 
+def _quoted(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _reads_value(c: ColumnPlan) -> bool:
+    from provisa.fakes.kinds import Bucket, Hash, Prefix, Truncate
+
+    return isinstance(c.fake.kind, (Bucket, Truncate, Prefix, Hash))
+
+
+def _with_digests(d: _Dialect, plan: TablePlan, exprs: list[str], key: str) -> list[str]:
+    """The digest of each faked column that does not compute from its own value: a draw from
+    the row (the others' are of their value, :func:`_faked`)."""
+    return exprs + [
+        f'{d.digest(plan.seed, plan.name, c.name, key)} AS "{DIGEST}{c.name}"'
+        for c in plan.columns
+        if c.fake is not None and not _reads_value(c)
+    ]
+
+
+def _faked(plan: TablePlan, dialect: str, base: str) -> str:
+    """``base`` -- the generated rows, each faked column's digest beside them -- with every fake
+    computed over it as a faked read computes it (provisa.fakes.projection.layered), in
+    ``dialect``. A table with no fake is ``base`` itself."""
+    fakes = {c.name: c.fake for c in plan.columns if c.fake is not None}
+    if not fakes:
+        return base
+    from provisa.fakes.checks import family
+    from provisa.transpiler.transpile import transpile, transpile_to_trino
+
+    d = _Dialect(dialect)
+    by_value = [
+        f'{d.value_digest(plan.seed, plan.name, c.name, _quoted(c.name))} AS "{DIGEST}{c.name}"'
+        for c in plan.columns
+        if c.fake is not None and _reads_value(c)
+    ]
+    if by_value:
+        base = f"SELECT *, {', '.join(by_value)} FROM ({base}) AS b"
+    placeholder = '"__provisa_generated__"'
+    columns = [(c.name, c.sql_type, family(c.sql_type)) for c in plan.columns]
+    governed = layered(f"SELECT * FROM {placeholder}", "g", columns, fakes)
+    physical = transpile_to_trino(governed) if dialect == "trino" else transpile(governed, dialect)
+    assert physical.count(placeholder) == 1, "the generated rows are read once"
+    return physical.replace(placeholder, f"({base})")
+
+
 def generation_sql(plan: TablePlan, dialect: str) -> str:
     """The one statement that generates ``plan``'s rows in ``dialect``."""
     d = _Dialect(dialect)
     if plan.fanout is None:
         exprs = [column_expr(d, plan, c, "i", "i") for c in plan.columns]
-        return f"SELECT {', '.join(exprs)} FROM {d.range_rows(plan.rows, 'i')}"
+        exprs = _with_digests(d, plan, exprs, "i")
+        return _faked(
+            plan, dialect, f"SELECT {', '.join(exprs)} FROM {d.range_rows(plan.rows, 'i')}"
+        )
     parents, _sketch, _hot = plan.fanout
     count = _children(d, plan)
     key = "p, j" if d.name == "duckdb" else "concat(CAST(p AS varchar), ':', CAST(j AS varchar))"
     index = "(row_number() OVER (ORDER BY p, j) - 1)"
     exprs = [column_expr(d, plan, c, key, index) for c in plan.columns]
+    exprs = _with_digests(d, plan, exprs, key)
     if d.name == "duckdb":
         rows = f"(SELECT p, {d.children(count)} AS j FROM {d.range_rows(parents, 'p')}) AS c"
     else:
@@ -308,4 +395,4 @@ def generation_sql(plan: TablePlan, dialect: str) -> str:
             f"(SELECT p, j FROM {d.range_rows(parents, 'p')} "
             f"CROSS JOIN UNNEST({d.children(count)}) AS u(j)) AS c"
         )
-    return f"SELECT {', '.join(exprs)} FROM {rows}"
+    return _faked(plan, dialect, f"SELECT {', '.join(exprs)} FROM {rows}")
