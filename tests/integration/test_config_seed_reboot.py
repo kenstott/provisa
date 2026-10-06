@@ -42,6 +42,9 @@ from provisa.core.database import Database, create_engine_from_url
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
+# Boots exactly as a deployment does: the harness applies no configuration after a boot.
+REAL_BOOT_SEED = True
+
 _ORG_ID = "seedreboot"
 _SCHEMA = f"org_{_ORG_ID}"
 _DEMO_ID = "seeddemo"
@@ -64,8 +67,12 @@ def _changed_file() -> dict:
         {"id": "buyer", "capabilities": ["usage"], "domain_access": ["sales-analytics"]}
     ]
     raw["tables"] = [t for t in raw["tables"] if t["table"] != "customers"]
-    raw["sources"][0]["host"] = "elsewhere.invalid"
+    next(src for src in raw["sources"] if src["id"] == "sales-pg")["host"] = "elsewhere.invalid"
     return raw
+
+
+def _source(model: dict, source_id: str) -> dict:
+    return next(src for src in model["sources"] if src["id"] == source_id)
 
 
 def _write(path: Path, raw: dict) -> None:
@@ -150,7 +157,7 @@ async def test_a_reboot_never_reapplies_the_file_and_an_admin_edit_survives(
     first = await _model()
     assert {r["id"] for r in first["roles"]} >= {"analyst", "auditor"}
     assert {t["table"] for t in first["tables"]} >= {"orders", "customers"}
-    assert first["sources"][0]["host"] == "localhost"
+    assert _source(first, "sales-pg")["host"] == "localhost"
 
     # 2. An admin changes the model: a seeded role is redefined.
     async def _edit(state):
@@ -179,7 +186,7 @@ async def test_a_reboot_never_reapplies_the_file_and_an_admin_edit_survives(
     assert await _model() == edited
     # The process runs the store's model: the file's new host, its dropped table and role, and
     # its new role are none of the running configuration's.
-    assert running.sources[0].host == "localhost"
+    assert next(src for src in running.sources if src.id == "sales-pg").host == "localhost"
     assert "customers" in {t.table_name for t in running.tables}
     assert "auditor" in {r.id for r in running.roles}
     assert "buyer" not in {r.id for r in running.roles}
@@ -196,7 +203,7 @@ async def test_a_reboot_never_reapplies_the_file_and_an_admin_edit_survives(
     applied = await _model()
     assert {r["id"] for r in applied["roles"]} >= {"auditor", "buyer"}
     assert {t["table"] for t in applied["tables"]} >= {"orders", "customers"}
-    assert applied["sources"][0]["host"] == "elsewhere.invalid"
+    assert _source(applied, "sales-pg")["host"] == "elsewhere.invalid"
 
 
 async def test_a_demo_org_starts_as_its_config_at_every_build(clean, tmp_path, monkeypatch):

@@ -102,5 +102,6 @@ def test_a_worker_that_does_not_apply_seeds_nothing_and_reads_the_store():
     assert "if apply and not engine_deferred:" in src
     assert src.index("attach_store_sources(") > src.index("if apply and not engine_deferred:")
     # Every worker reads its configuration from the store.
-    assert "config = await store_config(raw_config, conn)" in src
+    assert "raw_config = await store_raw(raw_config, conn)" in src
+    assert "config = parse_store_raw(raw_config)" in src
     assert "adopt_loaded_config" not in src

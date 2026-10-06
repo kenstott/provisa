@@ -367,6 +367,14 @@ def _deployment_org_bound(request: pytest.FixtureRequest):
 
 
 @pytest.fixture(autouse=True, scope="module")
+def _each_boot_seeds_its_own_deployment(request: pytest.FixtureRequest):
+    """REQ-1919: see ``tests.boot_seeds_its_own_deployment``."""
+    from tests.boot_seeds_its_own_deployment import each_boot_seeds_its_own_deployment
+
+    yield from each_boot_seeds_its_own_deployment(request)
+
+
+@pytest.fixture(autouse=True, scope="module")
 def _reset_app_state():
     """Reset global app state between test modules.
 

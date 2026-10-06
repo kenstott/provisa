@@ -161,7 +161,13 @@ def _table(row: dict[str, Any]) -> dict[str, Any]:
         {k: v for k, v in c.items() if v is not None and k != "column_name"}
         for c in fields["columns"]
     ]
-    return _written(Table.model_validate(fields))
+    table = Table.model_validate(fields)
+    written = _written(table)
+    # A table's identity is written out whole, defaults included: readers of a configuration key
+    # tables by (source, schema, table).
+    written["schema"] = table.schema_name
+    written["domain_id"] = table.domain_id
+    return written
 
 
 async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
@@ -328,7 +334,9 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
 def with_store_model(raw: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
     """The configuration ``raw`` (the deployment's file, as written) with every model section
     replaced by the store's. The file's settings — server, engine, auth and the rest — stay."""
-    out = {k: v for k, v in raw.items() if k not in MODEL_SECTIONS}
+    # A ``views:`` block declares tables of the derived source (config_loader.views_as_tables);
+    # the store holds them as tables, so the file's are not carried over.
+    out = {k: v for k, v in raw.items() if k not in MODEL_SECTIONS and k != "views"}
     for section in MODEL_SECTIONS:
         out[section] = model[section]
     out["naming"] = {**(raw.get("naming") or {}), "rules": model["naming_rules"]}

@@ -86,8 +86,10 @@ from provisa.core.config_loader import (
     apply_config,
     attach_store_sources,
     is_seeded,
+    parse_store_raw,
     seed_config,
     store_config,
+    store_raw,
     parse_config_dict,
     read_config_with_includes,
 )
@@ -1214,9 +1216,12 @@ async def _load_and_build(
         domain_policy.configure(_seed_file.naming.use_domains, _seed_file.naming.default_domain)
         from provisa.core.secrets_store import bound_to_request_org
 
-        # A stored source's password is a ${secret:NAME} reference the org's vault resolves.
+        # A stored source's password is a ${secret:NAME} reference the org's vault resolves. From
+        # here on every reader of a model section (views, hot tables, the schema build) reads the
+        # store's model, never the file's.
+        raw_config = await store_raw(raw_config, conn)
         async with bound_to_request_org():
-            config = await store_config(raw_config, conn)
+            config = parse_store_raw(raw_config)
         state.config = config
         _populate_source_catalog_names(config)
         # Every launch reissues the engine catalog of each source the store holds: an engine's

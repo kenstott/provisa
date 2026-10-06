@@ -1341,15 +1341,26 @@ async def seed_config(  # REQ-1919
     return True
 
 
+async def store_raw(raw: dict, conn: "Connection") -> dict:  # REQ-1919
+    """The file's settings (``raw``, as written) with every model section taken from the model
+    store: the raw configuration every reader of a model section reads, never the file's."""
+    from provisa.core.store_config import store_model, with_store_model
+
+    return with_store_model(raw, await store_model(conn))
+
+
+def parse_store_raw(raw: dict) -> ProvisaConfig:  # REQ-1919
+    """The configuration the process runs, parsed from :func:`store_raw`'s dict."""
+    config = parse_config_dict(raw)
+    _expand_view_metrics(config)
+    return config
+
+
 async def store_config(raw: dict, conn: "Connection") -> ProvisaConfig:  # REQ-1919
     """The configuration the process runs: the file's settings (``raw``, as written) with every
     model section taken from the model store. After the seed the store alone owns the model, so
     nothing here is read from the file's model sections."""
-    from provisa.core.store_config import store_model, with_store_model
-
-    config = parse_config_dict(with_store_model(raw, await store_model(conn)))
-    _expand_view_metrics(config)
-    return config
+    return parse_store_raw(await store_raw(raw, conn))
 
 
 async def attach_store_sources(  # REQ-1919, REQ-1266, REQ-1448

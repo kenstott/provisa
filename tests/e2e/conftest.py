@@ -239,6 +239,14 @@ def _seed_kafka(docker_stack):  # pyright: ignore
     yield
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _each_boot_seeds_its_own_deployment(request: pytest.FixtureRequest):
+    """REQ-1919: see ``tests.boot_seeds_its_own_deployment``."""
+    from tests.boot_seeds_its_own_deployment import each_boot_seeds_its_own_deployment
+
+    yield from each_boot_seeds_its_own_deployment(request)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _disable_auth_for_e2e(tmp_path_factory):  # pyright: ignore
     """E2E tests build the in-process app (create_app) and call it with a `role`

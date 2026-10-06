@@ -13,6 +13,7 @@
 import os
 
 import pytest
+import yaml
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -41,9 +42,17 @@ class TestDownloadConfig:
 
 
 class TestLiveConfigDisabledByDefault:
-    async def test_live_config_404(self, client):
+    async def test_the_model_export_is_open_without_live_export(self, client):
+        """REQ-1919: exporting the model is an admin's action in every deployment; only the
+        diff and the patch need live config export."""
         resp = await client.get("/admin/config/live")
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("application/x-yaml")
+        part = await client.get("/admin/config/live", params={"sections": "sources,domains"})
+        assert part.status_code == 200
+        assert set(yaml.safe_load(part.text)) == {"sources", "domains", "tables", "roles"}
+        unknown = await client.get("/admin/config/live", params={"sections": "server"})
+        assert unknown.status_code == 400
 
     async def test_config_diff_404(self, client):
         resp = await client.get("/admin/config/diff")
@@ -374,8 +383,8 @@ class TestDomainPolicyRefusedWhileACatalogExists:
         resp = await client.post("/admin/domain-policy", json={"use_domains": True})
         assert resp.status_code == 409, resp.text
         body = resp.json()
-        # The booted catalog is the config file's, so the operator is sent to the file.
-        assert body["code"] == "settings.domain_policy_catalog_in_config", body
+        # REQ-1919: no load restores a catalog, whatever seeded it: the operator deletes it first.
+        assert body["code"] == "settings.domain_policy_catalog_exists", body
         params = body["params"]
         assert params["tables"] > 0 and params["sources"] > 0 and params["domains"] > 0, body
 
