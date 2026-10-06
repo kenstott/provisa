@@ -21,13 +21,12 @@ from provisa.core.repositories.role import ReservedRoleRedefined
 
 
 @pytest.mark.parametrize("role_id", ["org_admin", "platform_admin"])
-@pytest.mark.parametrize("origin", ["config", "admin"])
-async def test_a_reserved_admin_role_cannot_be_redefined(role_id, origin):
+async def test_a_reserved_admin_role_cannot_be_redefined(role_id):
     # The refusal fires before any DB write, so no connection is needed (None would be used only
     # after the check passes).
     role = Role(id=role_id, capabilities=["table_registration"], domain_access=["*"])
     with pytest.raises(ReservedRoleRedefined) as exc:
-        await role_repo.upsert(None, role, org_id=None, origin=origin)  # type: ignore[arg-type]
+        await role_repo.upsert(None, role, org_id=None)  # type: ignore[arg-type]
     assert exc.value.role_id == role_id
     assert exc.value.code == "config.reserved_role_redefined"
     assert role_id in str(exc.value)
@@ -39,5 +38,5 @@ async def test_an_ordinary_role_is_not_refused_by_the_reserved_check():
     # the gate let it through).
     role = Role(id="eu_resident", capabilities=["table_registration"], domain_access=["*"])
     with pytest.raises(Exception) as exc:
-        await role_repo.upsert(None, role, org_id=None, origin="config")  # type: ignore[arg-type]
+        await role_repo.upsert(None, role, org_id=None)  # type: ignore[arg-type]
     assert not isinstance(exc.value, ReservedRoleRedefined)

@@ -35,8 +35,6 @@ from provisa.core.models import (
     base_tag_id,
 )
 from provisa.core.repositories.integrity import ObjectRef, remove_parts
-from provisa.core.repositories.origin import require as require_origin
-from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import (
     registered_tables,
     tag_assignments,
@@ -67,17 +65,13 @@ def _user_tag_row(row) -> dict:
     return {**dict(row._mapping), "derived": False}
 
 
-async def upsert(conn: "Connection", tag: Tag, *, origin: str) -> None:  # REQ-1373, REQ-1919
-    """Create the tag, or replace its definition. ``origin`` says where it comes from
-    (``repositories.origin``): written at CREATE, left alone after, except that a config load
-    takes over an admin-made one."""
+async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
+    """Create the tag, or replace its definition."""
     model_change.name("upsert", "tag", tag.id)  # REQ-1524
-    require_origin(origin)
     await conn.upsert(
         tags,
         {
             "id": tag.id,
-            "origin": origin,  # REQ-1919: on INSERT only
             "description": tag.description,
             "applies_to": tag.applies_to,
             "is_system": tag.is_system,
@@ -94,7 +88,6 @@ async def upsert(conn: "Connection", tag: Tag, *, origin: str) -> None:  # REQ-1
             "param_policy",
         ],
     )
-    await take_over(conn, tags, (tags.c.id == tag.id,), kind="tag", ident=tag.id, origin=origin)
 
 
 async def get(conn: "Connection", tag_id: str) -> dict | None:
@@ -151,17 +144,13 @@ async def assignment_count(conn: "Connection", tag_id: str) -> int:
 
 
 async def assign(  # REQ-1377, REQ-1919
-    conn: "Connection", assignment: TagAssignment, *, origin: str
+    conn: "Connection", assignment: TagAssignment
 ) -> None:
-    """Put the tag on the object, or change that assignment. ``origin`` says where the
-    assignment comes from (``repositories.origin``): written when it is CREATED, left alone
-    after, except that a config load takes over an admin-made one."""
+    """Put the tag on the object, or change that assignment."""
     model_change.name("assign", "tag", assignment.tag_id)  # REQ-1524
-    require_origin(origin)
     await conn.upsert(
         tag_assignments,
         {
-            "origin": origin,  # REQ-1919: on INSERT only
             "tag_id": assignment.tag_id,
             "base_tag_id": assignment.base_tag_id(),
             "object_type": assignment.object_type,
@@ -178,17 +167,6 @@ async def assign(  # REQ-1377, REQ-1919
         # tag_id updates: re-assigning entity:employee where entity:customer sat is a
         # correction of the parameter, which is the only way to change one (REQ-1467).
         update_columns=["tag_id", "object_type", "reason", "expires_on"],
-    )
-    await take_over(
-        conn,
-        tag_assignments,
-        (
-            tag_assignments.c.base_tag_id == assignment.base_tag_id(),
-            tag_assignments.c.object_key == assignment.object_key(),
-        ),
-        kind="tag assignment",
-        ident=f"{assignment.tag_id} on {assignment.object_key()}",
-        origin=origin,
     )
 
 

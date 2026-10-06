@@ -107,23 +107,19 @@ def _prepare_sync():
                 table_columns,
             ],
         )
-        conn.execute(text("INSERT INTO roles (id, origin) VALUES ('org_admin', 'seed')"))
+        conn.execute(text("INSERT INTO roles (id) VALUES ('org_admin')"))
         conn.execute(
             text(
                 "INSERT INTO user_role_assignments (user_id, role_id, domain_id)"
                 " VALUES ('uid-root', 'org_admin', '*')"
             )
         )
-        conn.execute(
-            text(
-                "INSERT INTO sources (id, type, origin) VALUES ('provisa-admin', 'postgres', 'seed')"
-            )
-        )
-        conn.execute(text("INSERT INTO domains (id, origin) VALUES ('meta', 'seed')"))
+        conn.execute(text("INSERT INTO sources (id, type) VALUES ('provisa-admin', 'postgres')"))
+        conn.execute(text("INSERT INTO domains (id) VALUES ('meta')"))
 
         conn.execute(text(f"SET search_path TO {_ACME_SCHEMA}"))
         org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
-        conn.execute(text("INSERT INTO roles (id, origin) VALUES ('org_admin', 'seed')"))
+        conn.execute(text("INSERT INTO roles (id) VALUES ('org_admin')"))
         conn.execute(
             text(
                 "INSERT INTO user_role_assignments (user_id, role_id, domain_id)"

@@ -500,6 +500,31 @@ async def _build_source_pools_and_enums(
     state.pg_enum_types = build_enum_types(_enum_registry)
 
 
+async def apply_configuration(config: ProvisaConfig) -> None:  # REQ-1919, REQ-164
+    """An admin's explicit apply of a configuration to the acting org, as a one-time seed: add
+    and update everything it declares through the model store, remove nothing, then issue the
+    engine catalogs and pools of the sources it declares and rebuild the org's schemas.
+
+    The settled config→org sequence: catalog names first so sources register under the org's
+    own engine catalogs (REQ-1266), then the apply, the catalogs, source pools/enums, PK
+    resolution and the schema rebuild."""
+    from provisa.api.app import _rebuild_schemas, state
+    from provisa.api.startup_seed import _resolve_pk_from_sources
+    from provisa.core.config_loader import apply_config, register_sources
+    from provisa.core.secrets_store import bound_to_request_org
+
+    model_db = state.model_db
+    assert model_db is not None, "the caller refuses a request with no org bound"
+    _populate_source_catalog_names(config)
+    async with model_db.acquire() as conn:
+        await apply_config(config, conn, state.federation_engine)
+    async with bound_to_request_org():
+        register_sources(state.federation_engine, list(config.sources), state.source_catalogs)
+    await _build_source_pools_and_enums(config)
+    await _resolve_pk_from_sources()
+    await _rebuild_schemas()
+
+
 async def _load_openapi_specs() -> None:
     """Reload OpenAPI specs from DB into state (survives hot reloads and restarts)."""
     from provisa.api.app import state

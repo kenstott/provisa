@@ -207,10 +207,6 @@
       "self_role_change": "A user cannot change their own role. Ask another administrator (REQ-1308).",
       "view_not_permitted": "Not permitted to view this org"
     },
-    "origin": {
-      "config_object_deleted": "{{name}} is declared in the config. It is deleted now; the next load of the config creates it again while the file still declares it.",
-      "config_object_edited": "{{name}} is declared in the config. The change is saved; the next load of the config re-applies what the file says."
-    },
     "platform": {
       "control_plane_role_required": "A platform administrator is required.",
       "right_required": "{{right}} capability required",
@@ -366,7 +362,6 @@
       "docker_not_found": "docker not found on PATH",
       "docker_restart_timeout": "docker restart timed out",
       "domain_policy_catalog_exists": "The domain policy cannot change while this organization has a catalog: {{tables}} table(s), {{sources}} source(s), {{domains}} domain(s). Delete them first.",
-      "domain_policy_catalog_in_config": "The domain policy cannot change here: this organization's catalog is declared in the config ({{tables}} table(s), {{sources}} source(s), {{domains}} domain(s)). Set the policy in the config file.",
       "encryption_provider_unavailable": "encryption provider '{{provider}}' is not available (its SDK/runtime is not installed)",
       "invalid_body": "The settings request is not valid.",
       "invalid_value": "The value for {{field}} was refused.",

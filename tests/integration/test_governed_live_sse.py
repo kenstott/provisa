@@ -92,7 +92,7 @@ async def two_orgs():
     from _pytest.monkeypatch import MonkeyPatch
 
     from provisa.api.app import _rebuild_schemas, build_org_runtime, create_app, state
-    from provisa.core.config_loader import load_config, parse_config_dict
+    from provisa.core.config_loader import apply_config, parse_config_dict
 
     mp = MonkeyPatch()
     mp.setenv("PROVISA_CONFIG", _CONFIG)
@@ -122,7 +122,7 @@ async def two_orgs():
                 try:
                     assert rt.model_db is not None
                     async with rt.model_db.acquire() as conn:
-                        await load_config(
+                        await apply_config(
                             parse_config_dict(
                                 {
                                     "sources": [],
@@ -140,8 +140,6 @@ async def two_orgs():
                             ),
                             conn,
                             state.federation_engine,
-                            catalog_names=rt.source_catalogs,
-                            origin="admin",
                         )
                     await _rebuild_schemas()  # reconciles the org's engine from its model
                 finally:

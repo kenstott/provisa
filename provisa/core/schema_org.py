@@ -76,8 +76,6 @@ stores = Table(
     # REQ-1491: whether this environment has supplied the store's URL (a copy carries the row,
     # never the binding).
     Column("bound", Boolean, nullable=False, server_default=true()),
-    # REQ-1919: where the row came from ("config", "admin", "seed").
-    Column("origin", Text, nullable=False),
 )
 
 org_regions = Table(
@@ -90,7 +88,16 @@ org_regions = Table(
     Column("cache", Text, nullable=False),
     Column("state", Text, nullable=False),
     Column("record", Text, nullable=False),
-    Column("origin", Text, nullable=False),  # REQ-1919
+)
+
+# REQ-1919: a configuration file seeds the model store once. The row is written when the seed is
+# applied; while it exists a restart, redeploy or reload never applies the file again.
+model_seed = Table(
+    "model_seed",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=False),
+    Column("seeded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("id = 1", name="model_seed_id_check"),
 )
 
 sources = Table(
@@ -133,12 +140,17 @@ sources = Table(
     # here is the ``${secret:NAME}`` that names it; a reference the operator typed themselves is
     # stored verbatim. Empty means the source needs no password. Resolution happens where every
     # other connection secret's does — at the use point, inside the bound org.
-    # REQ-1919: where the row came from — "config" (a config file declared it), "admin" (made
-    # through the admin) or "seed" (the deployment's own). Written when the row is created; a
-    # load removes only "config" rows its file no longer declares. No default: a writer that
-    # does not say where a row came from is a defect.
-    Column("origin", Text, nullable=False),
     Column("password_ref", Text, nullable=False, server_default=""),
+    # REQ-1919: the rest of a source's settings, held here so the store alone owns the model.
+    Column("base_url", Text),
+    Column("pool_min", Integer, nullable=False, server_default="1"),
+    Column("pool_max", Integer, nullable=False, server_default="5"),
+    Column("use_pgbouncer", Boolean, nullable=False, server_default=false()),
+    Column("pgbouncer_port", Integer, nullable=False, server_default="6432"),
+    Column("producer_command", JSON(none_as_null=True)),
+    Column("cache_catalog", Text),
+    Column("cache_schema", Text, nullable=False, server_default="api_cache"),
+    Column("approval_hook", Boolean, nullable=False, server_default=false()),
 )
 
 domains = Table(
@@ -148,11 +160,6 @@ domains = Table(
     Column("description", Text, nullable=False, server_default=""),
     Column("steward", Text),  # REQ-609: designated steward; NULL = pending
     Column("graphql_alias", Text),
-    # REQ-1919: where the row came from — "config" (a config file declared it), "admin" (made
-    # through the admin) or "seed" (the deployment's own). Written when the row is created; a
-    # load removes only "config" rows its file no longer declares. No default: a writer that
-    # does not say where a row came from is a defect.
-    Column("origin", Text, nullable=False),
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),
 )
@@ -161,8 +168,6 @@ data_products = Table(  # REQ-1634, REQ-1660
     "data_products",
     metadata,
     Column("id", Text, primary_key=True),
-    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
-    Column("origin", Text, nullable=False),
     Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE"), nullable=False),
     Column("name", Text, nullable=False),
     Column("owner_role", Text),
@@ -280,8 +285,13 @@ registered_tables = Table(
     Column("l2_cluster", Integer),
     Column("l3_cluster", Integer),
     Column("clusters_computed_at", DateTime(timezone=True)),
-    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
-    Column("origin", Text, nullable=False),
+    # REQ-1919: the rest of a table's settings, held here so the store alone owns the model.
+    Column("approval_hook", Boolean, nullable=False, server_default=false()),  # REQ-204/247
+    Column("hot", Boolean),  # NULL = auto-detect
+    Column("kafka_sink", JSON(none_as_null=True)),  # REQ-176
+    Column("promotions", JSON, nullable=False, default=list, server_default="[]"),  # REQ-119
+    Column("query_template", Text),  # REQ-1668/1683: neo4j / sparql tables
+    Column("relay_pagination", Boolean),  # NULL = inherit
     UniqueConstraint("source_id", "schema_name", "table_name"),
 )
 
@@ -322,6 +332,10 @@ table_columns = Table(
     # REQ-1494: the portable definition version a stable fake is pinned to; NULL when not stable
     Column("fake_stable_version", Integer),
     Column("synthetic_rule", Text),  # REQ-1494, REQ-1939: laid over the fake, for generation
+    Column("embedding", Boolean, nullable=False, server_default=false()),  # REQ-421
+    Column("embedding_model", Text),  # REQ-421
+    Column("embedding_source_column", Text),  # REQ-421
+    Column("encrypted", Boolean, nullable=False, server_default=false()),  # REQ-1919
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
     CheckConstraint(
@@ -334,8 +348,6 @@ relationships = Table(
     "relationships",
     metadata,
     Column("id", Text, primary_key=True),
-    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
-    Column("origin", Text, nullable=False),
     Column(
         "source_table_id",
         Integer,
@@ -380,8 +392,6 @@ metrics = Table(
     "metrics",
     metadata,
     Column("name", Text, primary_key=True),
-    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
-    Column("origin", Text, nullable=False),
     Column("expression", Text, nullable=False),
     Column("datatype", Text),
     Column("description", Text),
@@ -410,11 +420,8 @@ roles = Table(
     # (db.apply_tenancy_role_grants) re-asserts org_admin's rights into every environment schema on
     # every runtime build, which silently handed the subtracted rights back.
     Column("defined_from", Text),
-    # REQ-1919: where the row came from — "config" (a config file declared it), "admin" (made
-    # through the admin) or "seed" (the deployment's own). Written when the row is created; a
-    # load removes only "config" rows its file no longer declares. No default: a writer that
-    # does not say where a row came from is a defect.
-    Column("origin", Text, nullable=False),
+    Column("max_rows", Integer),  # REQ-005: the role's result-size ceiling; NULL = none of its own
+    Column("relationship_guard", Boolean, nullable=False, server_default=true()),  # REQ-1919
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),
 )
@@ -423,8 +430,6 @@ rls_rules = Table(
     "rls_rules",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
-    Column("origin", Text, nullable=False),
     Column("table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE")),
     Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE")),
     Column("role_id", Text, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False),
@@ -442,8 +447,6 @@ tags = Table(
     "tags",
     metadata,
     Column("id", Text, primary_key=True),
-    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
-    Column("origin", Text, nullable=False),
     Column("description", Text, nullable=False, server_default=""),
     Column("applies_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("is_system", Boolean, nullable=False, server_default=false()),
@@ -487,8 +490,6 @@ tag_assignments = Table(
     "tag_assignments",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
-    Column("origin", Text, nullable=False),
     # No FK: system tags are code-defined (models.SYSTEM_TAGS) with no row to reference.
     Column("tag_id", Text, nullable=False),
     # REQ-1467: tag_id with the parameter stripped ("entity:customer" -> "entity"). Stored, not
@@ -539,8 +540,6 @@ glossary_terms = Table(
     "glossary_terms",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
-    Column("origin", Text, nullable=False),
     Column("name", Text, nullable=False),
     Column("definition", Text),
     Column("is_abstract", Boolean, nullable=False, server_default=false()),
@@ -592,16 +591,6 @@ glossary_term_edges = Table(
 # REQ-1591: a term's DECLARED domains — written only for an abstract term (which holds no refs
 # to derive from) and as the stamp left when a rooted term's last ref departs. A term's domains
 # are its refs' domains while it has refs, and these otherwise. See schema.sql for the full rule.
-# REQ-1919: the seeded roles and domains a config file has redefined. A seeded object is the
-# deployment's own and is never removed, but a load of a file that no longer declares it puts the
-# seed's own definition back; this row is how the load knows the file had changed it.
-seed_redefinitions = Table(
-    "seed_redefinitions",
-    metadata,
-    Column("kind", Text, primary_key=True),
-    Column("object_id", Text, primary_key=True),
-)
-
 glossary_term_domains = Table(
     "glossary_term_domains",
     metadata,
@@ -902,8 +891,6 @@ tracked_functions = Table(
     "tracked_functions",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
-    Column("origin", Text, nullable=False),
     Column("name", Text, nullable=False, unique=True),
     Column("source_id", Text, nullable=False, server_default=""),
     Column("schema_name", Text, nullable=False, server_default="public"),
@@ -936,8 +923,6 @@ tracked_webhooks = Table(
     "tracked_webhooks",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
-    Column("origin", Text, nullable=False),
     Column("name", Text, nullable=False, unique=True),
     Column("url", Text, nullable=False, server_default=""),
     Column("method", Text, nullable=False, server_default="POST"),
@@ -962,8 +947,6 @@ scheduled_triggers = Table(
     "scheduled_triggers",
     metadata,
     Column("id", Text, primary_key=True),
-    # REQ-1919: where the row came from — "config" or "admin" (see ``sources.origin``).
-    Column("origin", Text, nullable=False),
     Column("name", Text, nullable=False),
     Column("cron", Text, nullable=False),
     Column("kind", Text, nullable=False),

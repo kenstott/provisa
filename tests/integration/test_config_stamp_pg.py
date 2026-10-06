@@ -77,7 +77,7 @@ async def test_insert_update_and_delete_each_advance_the_stamp(engine):
     roles = _roles(db)
     seen = [await _model(db)]
     with engine.begin() as conn:
-        conn.execute(sa.insert(roles).values(id="risk_reviewer", capabilities=[], origin="admin"))
+        conn.execute(sa.insert(roles).values(id="risk_reviewer", capabilities=[]))
     seen.append(await _model(db))
     with engine.begin() as conn:
         conn.execute(
@@ -96,7 +96,7 @@ async def test_the_stamp_is_written_in_the_transaction_of_the_change(engine):
     before = await _model(db)
     conn = engine.connect()
     try:
-        conn.execute(sa.insert(roles).values(id="risk_reviewer", capabilities=[], origin="admin"))
+        conn.execute(sa.insert(roles).values(id="risk_reviewer", capabilities=[]))
         inside = conn.execute(
             sa.text(f"SELECT stamp FROM \"{db.search_path}\".config_stamp WHERE kind = 'model'")
         ).scalar_one()
@@ -112,9 +112,7 @@ async def test_a_row_rewritten_with_the_values_it_holds_is_not_a_change(engine):
     db = await _org(engine, "acme")
     roles = _roles(db)
     with engine.begin() as conn:
-        conn.execute(
-            sa.insert(roles).values(id="risk_reviewer", domain_access=["sales"], origin="admin")
-        )
+        conn.execute(sa.insert(roles).values(id="risk_reviewer", domain_access=["sales"]))
     before = await _model(db)
     with engine.begin() as conn:
         conn.execute(

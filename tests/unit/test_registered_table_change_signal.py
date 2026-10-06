@@ -65,8 +65,8 @@ def test_a_table_registered_through_the_admin_carries_its_own_change_signal(tena
     async def _go() -> dict[str, object]:
         async with tenant_db.acquire() as conn:
             # what the admin's registerTable / updateTable saves: no config file entry
-            await table_repo.upsert(conn, _table("events", change_signal="probe"), origin="admin")
-            await table_repo.upsert(conn, _table("inherits"), origin="admin")
+            await table_repo.upsert(conn, _table("events", change_signal="probe"))
+            await table_repo.upsert(conn, _table("inherits"))
         return await _registered(tenant_db, config_tables=[])
 
     by_name = asyncio.run(_go())
@@ -81,7 +81,7 @@ def test_a_config_declared_tables_change_signal_is_the_one_its_row_holds(tenant_
 
     async def _go() -> dict[str, object]:
         async with tenant_db.acquire() as conn:
-            await table_repo.upsert(conn, declared, origin="config")
+            await table_repo.upsert(conn, declared)
         return await _registered(tenant_db, config_tables=[declared])
 
     assert asyncio.run(_go())["orders"].change_signal == "ttl_probe"

@@ -71,7 +71,6 @@ async def _server(tmp_path):
                     columns=[Column(name="cust_id", data_type="text", visible_to=[])],
                     view_sql="SELECT 1",
                 ),
-                origin="admin",
             )
         state = types.SimpleNamespace(
             contexts={"analyst": object()},

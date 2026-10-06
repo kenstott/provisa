@@ -76,7 +76,6 @@ import { SourceFormFields } from "./sources/SourceFormFields";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
-import { OriginBadge } from "../components/OriginBadge";
 import { KeptTablesNotice } from "../components/KeptTablesNotice";
 import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
@@ -1511,10 +1510,7 @@ export function SourcesPage() {
                       }}
                     >
                       <Table.Td>
-                        <Group gap="0.35rem" wrap="nowrap">
-                          {s.id}
-                          <OriginBadge origin={s.origin} />
-                        </Group>
+                        {s.id}
                       </Table.Td>
                       <Table.Td>
                         {sourceTypeLabel(s.type, s.federationHintsJson)}

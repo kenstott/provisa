@@ -27,8 +27,6 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import Metric
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.repositories.origin import require as require_origin
-from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import metrics
 
 if TYPE_CHECKING:
@@ -48,13 +46,10 @@ def validate_expression(expression: str) -> None:  # REQ-1317
 
 
 async def upsert(  # REQ-1317, REQ-1320, REQ-1919
-    conn: "Connection", metric: Metric, *, origin: str
+    conn: "Connection", metric: Metric
 ) -> None:
-    """Upsert a metric by name. The expression is validated on every write (hard error).
-    ``origin`` says where it comes from (``repositories.origin``): written when the metric is
-    CREATED and left alone after, except that a config load takes over an admin-made one."""
+    """Upsert a metric by name. The expression is validated on every write (hard error)."""
     model_change.name("upsert", "metric", metric.name)  # REQ-1524
-    require_origin(origin)
     validate_expression(metric.expression)
     vals = {
         "name": metric.name,
@@ -64,7 +59,6 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
         "ai_context": metric.ai_context,  # REQ-1319
         "visible_to": list(metric.visible_to),
         "from_fact": metric.from_fact,  # REQ-1320
-        "origin": origin,  # REQ-1919: on INSERT only
     }
     await conn.upsert(
         metrics,
@@ -78,14 +72,6 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
             "visible_to",
             "from_fact",
         ],
-    )
-    await take_over(
-        conn,
-        metrics,
-        (metrics.c.name == metric.name,),
-        kind="metric",
-        ident=metric.name,
-        origin=origin,
     )
 
 

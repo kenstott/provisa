@@ -1432,7 +1432,7 @@ def _resolve_namespaced_mode(shared_data: dict, declared: str, default: str) -> 
         shared_data["namespaced_missing_error"] = exc
 
 
-@when("load_config_from_yaml processes the config")
+@when("the config is applied")
 def process_config_tri_state(shared_data: dict) -> None:
     from provisa.core import domain_policy
 

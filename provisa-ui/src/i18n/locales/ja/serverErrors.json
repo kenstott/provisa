@@ -207,10 +207,6 @@
       "self_role_change": "ユーザーは自分自身のロールを変更できません。別の管理者に依頼してください（REQ-1308）。",
       "view_not_permitted": "この組織を表示する権限がありません"
     },
-    "origin": {
-      "config_object_deleted": "{{name}} は設定で宣言されています。いま削除されましたが、ファイルが宣言している限り、次回の設定読み込みで再び作成されます。",
-      "config_object_edited": "{{name}} は設定で宣言されています。変更は保存されましたが、次回の設定読み込みでファイルの内容が再適用されます。"
-    },
     "platform": {
       "control_plane_role_required": "プラットフォーム管理者が必要です。",
       "right_required": "{{right}} 機能が必要です",
@@ -366,7 +362,6 @@
       "docker_not_found": "PATH 上に docker が見つかりません",
       "docker_restart_timeout": "docker の再起動がタイムアウトしました",
       "domain_policy_catalog_exists": "この組織にカタログがある間はドメインポリシーを変更できません: テーブル {{tables}} 件、ソース {{sources}} 件、ドメイン {{domains}} 件。先に削除してください。",
-      "domain_policy_catalog_in_config": "ここではドメインポリシーを変更できません: この組織のカタログは設定で宣言されています (テーブル {{tables}} 件、ソース {{sources}} 件、ドメイン {{domains}} 件)。ポリシーは設定ファイルで指定してください。",
       "encryption_provider_unavailable": "暗号化プロバイダー「{{provider}}」は利用できません（SDK／ランタイムがインストールされていません）",
       "invalid_body": "設定リクエストが無効です。",
       "invalid_value": "{{field}} の値は拒否されました。",

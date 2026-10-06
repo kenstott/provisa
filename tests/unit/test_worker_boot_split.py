@@ -87,19 +87,20 @@ def test_connecting_a_trino_terminal_registers_and_seeds_nothing():
     seed.assert_not_called()
 
 
-def test_adopting_a_loaded_config_sets_the_domain_policy_and_touches_no_database():
-    from provisa.core import config_loader, domain_policy
+def test_a_worker_that_does_not_apply_seeds_nothing_and_reads_the_store():
+    """REQ-1900, REQ-1919: a worker whose launch another worker set up (``apply=False``) writes
+    nothing to the control plane: it neither seeds nor issues catalogs, and it reads the model the
+    process runs from the store, as every worker does."""
+    import inspect
 
-    config = SimpleNamespace(
-        naming=SimpleNamespace(use_domains=True, default_domain="main"),
-        tables=[],
-        metrics=[],
-        relationships=[],
-    )
-    before = domain_policy.snapshot()
-    try:
-        domain_policy.configure(False, "other")
-        config_loader.adopt_loaded_config(config)  # takes no connection and no engine
-        assert domain_policy.snapshot() == (True, "main")
-    finally:
-        domain_policy.configure(*before)
+    from provisa.api import app as app_module
+
+    src = inspect.getsource(app_module._load_and_build)
+    seed_at = src.index("seed_config(")
+    guard = src.rindex("if apply and not await is_seeded(conn):", 0, seed_at)
+    assert src.index("_seed_file", guard) < seed_at
+    assert "if apply and not engine_deferred:" in src
+    assert src.index("attach_store_sources(") > src.index("if apply and not engine_deferred:")
+    # Every worker reads its configuration from the store.
+    assert "config = await store_config(raw_config, conn)" in src
+    assert "adopt_loaded_config" not in src

@@ -73,7 +73,6 @@ async def _db(
                 change_signal=source_signal,
                 cache_ttl=source_ttl,
                 replicate=source_replicate,
-                origin="admin",
             )
         )
         await conn.execute_core(
@@ -88,7 +87,6 @@ async def _db(
                 pagination={"max_rows": 50},  # REQ-318: saved through updateTablePaging
                 row_materialize=False,
                 replicate=table_replicate,
-                origin="admin",
             )
         )
     try:

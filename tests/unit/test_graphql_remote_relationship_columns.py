@@ -18,7 +18,7 @@ registered column names, so the FK flag lands on the registered column."""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.sql.dml import Update
@@ -111,7 +111,6 @@ async def test_upsert_marks_is_foreign_key_on_the_registered_column(monkeypatch)
         return {"id": 1 if name == "assignments_by_employee" else 2}
 
     monkeypatch.setattr(rel_mod.table_repo, "find_by_table_name", _find)
-    monkeypatch.setattr(rel_mod, "take_over", AsyncMock(return_value=None))
     monkeypatch.setattr(rel_mod.model_change, "name", lambda *a, **k: None)
 
     conn = _Conn()
@@ -125,7 +124,6 @@ async def test_upsert_marks_is_foreign_key_on_the_registered_column(monkeypatch)
             target_column=rel["target_column"],
             cardinality=Cardinality(rel["cardinality"]),
         ),
-        origin="seed",
     )
 
     fk_updates = [u for u in conn.updates if "is_foreign_key" in u]

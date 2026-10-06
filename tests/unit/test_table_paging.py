@@ -115,15 +115,14 @@ async def control_plane(tmp_path):
     db = Database(engine, name="org")
     await init_schema(db, "", org_id="default")
     async with db.acquire() as conn:
-        await conn.execute_core(insert(domains).values(id="d", origin="ui"))
-        await conn.execute_core(insert(sources).values(id="api", type="openapi", origin="ui"))
-        await conn.execute_core(insert(sources).values(id="gh", type="graphql_remote", origin="ui"))
+        await conn.execute_core(insert(domains).values(id="d"))
+        await conn.execute_core(insert(sources).values(id="api", type="openapi"))
+        await conn.execute_core(insert(sources).values(id="gh", type="graphql_remote"))
         await conn.execute_core(insert(api_sources).values(id="api", type="openapi"))
         for i, (src, name) in enumerate([("api", "pets"), ("gh", "gh__issues")], start=1):
             await conn.execute_core(
                 insert(registered_tables).values(
                     id=i, source_id=src, domain_id="d", schema_name="s", table_name=name,
-                    origin="ui",
                 )
             )  # fmt: skip
         await conn.execute_core(

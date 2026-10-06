@@ -64,7 +64,6 @@ def _table(**overrides: Any) -> RegisteredTableType:
         domain_id="sales",
         schema_name="quality",
         table_name="orders_scans",
-        origin="admin",
         write_ops=["delete", "insert", "update"],
         alias=None,
         description=None,

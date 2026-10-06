@@ -83,8 +83,10 @@ def children_of(role_id: str, roles: Iterable[dict]) -> list[str]:
 
 
 def flatten_role_dicts(roles: list[dict]) -> list[dict]:
-    """Each role with ancestor capabilities and domain_access unioned in and the nearest
-    ancestor's rate_limit adopted when the role sets none. Input dicts are not modified."""
+    """Each role with ancestor capabilities and domain_access unioned in, the nearest
+    ancestor's rate_limit adopted when the role sets none, and the tightest ``max_rows`` along
+    the chain (REQ-005: a child never reads more than its parent). Input dicts are not
+    modified."""
     by_id = {r["id"]: r for r in roles}
     chains = role_chains(roles)
     out: list[dict] = []
@@ -92,20 +94,24 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
         caps: set[str] = set()
         domains: set[str] = set()
         rate_limit = r.get("rate_limit")
+        ceilings: list[int] = []
         for rid in chains[r["id"]]:
             anc = by_id[rid]
             caps.update(anc.get("capabilities") or [])
             domains.update(anc.get("domain_access") or [])
             if rate_limit is None:
                 rate_limit = anc.get("rate_limit")
-        out.append(
-            {
-                **r,
-                "capabilities": sorted(caps),
-                "domain_access": ["*"] if "*" in domains else sorted(domains),
-                "rate_limit": rate_limit,
-            }
-        )
+            if anc.get("max_rows") is not None:
+                ceilings.append(anc["max_rows"])
+        flattened = {
+            **r,
+            "capabilities": sorted(caps),
+            "domain_access": ["*"] if "*" in domains else sorted(domains),
+            "rate_limit": rate_limit,
+        }
+        if "max_rows" in r:
+            flattened["max_rows"] = min(ceilings) if ceilings else None
+        out.append(flattened)
     return out
 
 

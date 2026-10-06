@@ -8,11 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A config load manages only what a config declared, on a PostgreSQL control plane (REQ-1919).
+"""A configuration is a one-time seed, on a PostgreSQL control plane (REQ-1919).
 
-The scenarios of ``tests/unit/test_load_manages_what_config_declared.py`` — written against a
-SQLite control plane — run here unchanged against an org schema in PostgreSQL, where the
-schema's foreign keys are enforced and would cascade. Lands on the TEST instance's PostgreSQL
+The scenarios of ``tests/unit/test_config_one_time_seed.py`` — written against a SQLite control
+plane — run here unchanged against an org schema in PostgreSQL, built from ``schema.sql``, where
+the schema's foreign keys are enforced and would cascade. Lands on the TEST instance's PostgreSQL
 only, in a schema this module creates and drops.
 """
 
@@ -27,11 +27,11 @@ import pytest
 
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import init_schema
-from tests.unit.test_load_manages_what_config_declared import *  # noqa: F403 — the scenarios
+from tests.unit.test_config_one_time_seed import *  # noqa: F403 — the scenarios
 
 pytestmark = [pytest.mark.integration]
 
-_ORG_ID = "originscenarios"
+_ORG_ID = "seedscenarios"
 _SCHEMA = f"org_{_ORG_ID}"
 _URL = "postgresql+psycopg://provisa:provisa@{host}:{port}/provisa".format(
     host=os.environ.get("PG_HOST", "localhost"), port=os.environ.get("PG_PORT", "5432")
@@ -40,7 +40,7 @@ _URL = "postgresql+psycopg://provisa:provisa@{host}:{port}/provisa".format(
 
 @pytest.fixture
 async def db() -> Database:  # noqa: F811 — replaces the SQLite plane the scenarios were given
-    plane = Database(create_engine_from_url(_URL), name="origin-scenarios", search_path=_SCHEMA)
+    plane = Database(create_engine_from_url(_URL), name="seed-scenarios", search_path=_SCHEMA)
     async with plane.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")

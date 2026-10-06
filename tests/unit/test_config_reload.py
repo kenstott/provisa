@@ -11,7 +11,7 @@
 """Unit tests for config hot-reload behaviour.
 
 Source coverage:
-  - provisa/core/config_loader.py  — parse_config_dict, load_config (transactional)
+  - provisa/core/config_loader.py  — parse_config_dict, apply_config (transactional)
   - provisa/compiler/schema_gen.py — generate_schema (naming convention drives schema)
   - provisa/api/app.py             — upload_config / update_settings invoke _load_and_build
 

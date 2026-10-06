@@ -271,9 +271,7 @@ async def create_function(
     )
     # return_schema is a JSON column — pass the Python object directly (no double-encoding).
     async with state.model_db.acquire() as _conn:
-        await function_repo.upsert_function(
-            _conn, func, return_schema=body.returnSchema, origin="admin"
-        )
+        await function_repo.upsert_function(_conn, func, return_schema=body.returnSchema)
 
     log.info("Saved tracked function %s", body.name)
     from provisa.api.app import _rebuild_schemas
@@ -412,7 +410,6 @@ async def create_webhook(
         await conn.upsert(
             tracked_webhooks,
             {
-                "origin": "admin",  # REQ-1919: written when the row is created
                 "name": body.name,
                 "url": body.url,
                 "method": body.method,

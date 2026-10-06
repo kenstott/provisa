@@ -118,7 +118,7 @@ def test_an_assignment_reports_its_own_base_and_parameter():
 @pytest.mark.asyncio
 async def test_assign_stores_the_base_id_beside_the_full_one(tmp_path):
     async with _conn(tmp_path) as conn:
-        await tag_repo.assign(conn, _column("entity:customer"), origin="admin")
+        await tag_repo.assign(conn, _column("entity:customer"))
         rows = await tag_repo.list_assignments(conn)
 
     assert [(r["tag_id"], r["base_tag_id"]) for r in rows] == [("entity:customer", "entity")]
@@ -128,8 +128,8 @@ async def test_assign_stores_the_base_id_beside_the_full_one(tmp_path):
 async def test_one_object_carries_one_value_of_a_parameterized_tag(tmp_path):
     """A column's values are entity names of ONE type; customer AND employee is a contradiction."""
     async with _conn(tmp_path) as conn:
-        await tag_repo.assign(conn, _column("entity:customer"), origin="admin")
-        await tag_repo.assign(conn, _column("entity:employee"), origin="admin")
+        await tag_repo.assign(conn, _column("entity:customer"))
+        await tag_repo.assign(conn, _column("entity:employee"))
         rows = await tag_repo.list_assignments(conn)
 
     assert [r["tag_id"] for r in rows] == ["entity:employee"]
@@ -138,8 +138,8 @@ async def test_one_object_carries_one_value_of_a_parameterized_tag(tmp_path):
 @pytest.mark.asyncio
 async def test_different_columns_may_carry_different_values(tmp_path):
     async with _conn(tmp_path) as conn:
-        await tag_repo.assign(conn, _column("entity:customer", "cust_name"), origin="admin")
-        await tag_repo.assign(conn, _column("entity:employee", "rep_name"), origin="admin")
+        await tag_repo.assign(conn, _column("entity:customer", "cust_name"))
+        await tag_repo.assign(conn, _column("entity:employee", "rep_name"))
         rows = await tag_repo.list_assignments(conn)
 
     assert sorted(r["tag_id"] for r in rows) == ["entity:customer", "entity:employee"]
@@ -149,9 +149,9 @@ async def test_different_columns_may_carry_different_values(tmp_path):
 async def test_the_count_covers_every_parameter_value(tmp_path):
     """Counting full ids would report the `entity` registry row as unused while it is in use."""
     async with _conn(tmp_path) as conn:
-        await tag_repo.assign(conn, _column("entity:customer", "cust_name"), origin="admin")
-        await tag_repo.assign(conn, _column("entity:employee", "rep_name"), origin="admin")
-        await tag_repo.assign(conn, _column("pii", "cust_name"), origin="admin")
+        await tag_repo.assign(conn, _column("entity:customer", "cust_name"))
+        await tag_repo.assign(conn, _column("entity:employee", "rep_name"))
+        await tag_repo.assign(conn, _column("pii", "cust_name"))
 
         assert await tag_repo.assignment_count(conn, "entity") == 2
         assert await tag_repo.assignment_count(conn, "entity:customer") == 2
@@ -161,12 +161,12 @@ async def test_the_count_covers_every_parameter_value(tmp_path):
 @pytest.mark.asyncio
 async def test_unassign_removes_the_tag_whether_or_not_the_caller_names_the_value(tmp_path):
     async with _conn(tmp_path) as conn:
-        await tag_repo.assign(conn, _column("entity:customer"), origin="admin")
+        await tag_repo.assign(conn, _column("entity:customer"))
         removed = await tag_repo.unassign(conn, "entity", _column("entity:customer").object_key())
         assert removed is True
         assert await tag_repo.list_assignments(conn) == []
 
-        await tag_repo.assign(conn, _column("entity:customer"), origin="admin")
+        await tag_repo.assign(conn, _column("entity:customer"))
         removed = await tag_repo.unassign(
             conn, "entity:vendor", _column("entity:customer").object_key()
         )
@@ -235,8 +235,8 @@ async def test_list_all_spans_tags_and_orders_by_tag_then_value(tmp_path):
 @pytest.mark.asyncio
 async def test_the_delete_guard_counts_only_the_value_named(tmp_path):
     async with _conn(tmp_path) as conn:
-        await tag_repo.assign(conn, _column("entity:customer", "cust_name"), origin="admin")
-        await tag_repo.assign(conn, _column("entity:employee", "rep_name"), origin="admin")
+        await tag_repo.assign(conn, _column("entity:customer", "cust_name"))
+        await tag_repo.assign(conn, _column("entity:employee", "rep_name"))
 
         assert await tag_repo.param_value_assignment_count(conn, "entity", "customer") == 1
         assert await tag_repo.param_value_assignment_count(conn, "entity", "vendor") == 0
@@ -261,7 +261,7 @@ async def test_deleting_a_value_leaves_its_siblings_alone(tmp_path):
 async def test_a_user_tag_may_be_parameterized_too(tmp_path):
     async with _conn(tmp_path) as conn:
         await tag_repo.upsert(
-            conn, Tag(id="audience", applies_to=["table"], param_policy="required"), origin="admin"
+            conn, Tag(id="audience", applies_to=["table"], param_policy="required")
         )
         fetched = await tag_repo.get(conn, "audience:internal")
 

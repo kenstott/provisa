@@ -10,7 +10,7 @@
 
 """REQ-1339: a new org's system sources exist before anything references them.
 
-``load_config`` registers the config's tables, and a ``tables`` row whose ``source_id`` names a
+``seed_config`` registers the config's tables, and a ``tables`` row whose ``source_id`` names a
 system source needs that source row already present — the FK has to have a target. When the seed
 runs after the load instead, the tables that pointed at ``__derived__`` are dropped, and the org
 comes up looking merely incomplete rather than broken: no error, just missing tables.
@@ -62,8 +62,11 @@ def test_the_org_builder_seeds_system_sources_before_it_loads_the_config():
     awaited = _awaited_names(_function(_REPO_ROOT / "provisa/api/app.py", "_build_org_runtime"))
 
     assert "_seed_built_in_sources" in awaited, "the org builder no longer seeds system sources"
-    assert "load_config" in awaited, "the org builder no longer loads the config"
-    assert awaited.index("_seed_built_in_sources") < awaited.index("load_config"), (
+    assert "seed_config" in awaited, "the org builder no longer seeds the org from the config"
+    # REQ-1919: a demo org applies its demo config at every build; that too follows the seed.
+    assert "apply_config" in awaited, "the org builder no longer applies a demo org's config"
+    assert awaited.index("_seed_built_in_sources") < awaited.index("apply_config")
+    assert awaited.index("_seed_built_in_sources") < awaited.index("seed_config"), (
         "config load precedes the system-source seed — a tables row naming __derived__ has no FK "
         "target, and the table is dropped silently"
     )
@@ -117,3 +120,15 @@ def test_the_seed_is_an_upsert_so_a_rebuild_does_not_collide():
 
     assert body.count("upsert(") >= len(SYSTEM_SOURCES)
     assert 'index_elements=["id"]' in body
+
+
+def test_a_demo_org_applies_its_config_at_every_build_and_the_deployment_seeds_once():
+    """REQ-1919 (DEMO ORGANISATIONS ARE THEIR CONFIG): every build of a demo org's runtime applies
+    the demo configuration again; the deployment's own org is seeded once, only into an empty
+    store."""
+    source = (_REPO_ROOT / "provisa/api/app.py").read_text()
+    builder = source.split("async def _build_org_runtime")[1].split("\nasync def ")[0]
+    demo = builder.index("if org_id != state.org_id:")
+    deployment = builder.index("elif not await is_seeded(conn):")
+    assert demo < builder.index("await apply_config(seed, conn", demo) < deployment
+    assert deployment < builder.index("await seed_config(seed, conn", deployment)

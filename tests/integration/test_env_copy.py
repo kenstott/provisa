@@ -74,9 +74,6 @@ async def envs(docker_postgres):
             return [dict(r._mapping) for r in result.fetchall()]
 
     async def insert(table, env=None, **values):
-        # Every model row records where it came from (REQ-1919): these rows are seeded as config.
-        if "origin" in table.c:
-            values = {"origin": "config", **values}
         scoped = _scoped(table, org_schema(org_id, env))
         async with db.acquire() as conn:
             await conn.execute_core(scoped.insert().values(**values))

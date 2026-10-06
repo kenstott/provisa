@@ -28,7 +28,7 @@ from provisa.core.schema_org import (
     sources,
     table_meta_links,
 )
-from provisa.api.admin.types import MutationResult, MutationWarning, TableInput
+from provisa.api.admin.types import MutationResult, TableInput
 from provisa.api.admin.schema_helpers import (
     _dataset_ownership_conflict,
     _domain_table_conflict,
@@ -40,9 +40,7 @@ from provisa.api.admin._live_mappers import table_model_from_input as _table_mod
 from provisa.api.admin.schema_common import (
     _queue_creation_request,
     _sync_view_mv,
-    config_warnings,
 )
-from provisa.core.repositories import origin as origin_repo
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -108,7 +106,6 @@ async def _apply_mv_relationship_gate(
                         cardinality=Cardinality.many_to_one,
                         owner=getattr(_identity_user(info), "user_id", None),
                     ),
-                    origin="admin",
                 )
             return None
 
@@ -135,14 +132,11 @@ def _identity_user(info: StrawberryInfo):
     return _identity_from_info(info)
 
 
-async def _registered_result(
-    input: TableInput, table_id: int | None, *, warnings: list[MutationWarning]
-) -> MutationResult:
+async def _registered_result(input: TableInput, table_id: int | None) -> MutationResult:
     """What a successful registration answers. A table of a remote GraphQL source may have had
     fields left out because the source's credential may not read them (REQ-1923); they are
     named. Registering it may also complete a relationship between two of the source's
-    registered tables (REQ-313), which is stored here, once both exist. ``warnings`` are the
-    registration's notices about a config-declared table it edited (REQ-1919)."""
+    registered tables (REQ-313), which is stored here, once both exist."""
     from provisa.api.admin._graphql_table_registration import sync_detected_relationships
     from provisa.api.admin._table_ops import take_omitted_fields
     from provisa.api.app import state
@@ -157,7 +151,6 @@ async def _registered_result(
             message=f"Table {input.table_name!r} registered (id={table_id})",
             code="schema.table_registered",
             params={"table": input.table_name, "id": table_id},
-            warnings=warnings,
         )
     fields = ", ".join(sorted({o["field"] for o in omitted}))
     return MutationResult(
@@ -168,7 +161,6 @@ async def _registered_result(
         ),
         code="schema.table_registered_fields_omitted",
         params={"table": input.table_name, "id": table_id, "fields": fields, "omitted": omitted},
-        warnings=warnings,
     )
 
 
@@ -394,7 +386,6 @@ async def register_table(
             await _conn.upsert(
                 sources,
                 {
-                    "origin": "seed",  # REQ-1919: written when the row is created
                     "id": DERIVED_SOURCE_ID,
                     "type": state.federation_engine.name,
                     "description": "Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products",
@@ -427,11 +418,9 @@ async def register_table(
             if isinstance(_paging, MutationResult):
                 return _paging
             model.pagination = _paging
-        _was = await origin_repo.of_registration(
-            _conn, model.source_id, model.schema_name, model.table_name
-        )
         try:
-            table_id = await table_repo.upsert(_conn, model, origin="admin")
+            model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
+            table_id = await table_repo.upsert(_conn, model)
         except table_repo.ViewLoopRefused as _loop:
             # REQ-1918: a view that would read itself through other views is refused at save.
             return MutationResult(
@@ -571,9 +560,7 @@ async def register_table(
         from provisa.api.admin.schema_common import activate_view_mv
 
         await activate_view_mv(input.table_name)
-    return await _registered_result(
-        input, table_id, warnings=config_warnings("table", input.table_name, _was, "edited")
-    )
+    return await _registered_result(input, table_id)
 
 
 async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResult:
@@ -796,7 +783,6 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
     from provisa.api.admin._table_ops import _get_pool
     from provisa.core.models import ScheduledTrigger
     from provisa.core.repositories import scheduled_trigger as trigger_repo
-    from provisa.core.repositories.origin import ADMIN
     from provisa.core.schema_org import tracked_webhooks
 
     kind = kind.strip().lower()
@@ -889,7 +875,7 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
                 code="schema.trigger_exists",
                 params={"trigger": model.id},
             )
-        await trigger_repo.create(conn, model, origin=ADMIN)
+        await trigger_repo.create(conn, model)
 
     await reschedule_org_triggers()
     return MutationResult(

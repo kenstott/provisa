@@ -148,10 +148,10 @@ def _prepare_sync():
 
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['root']}"))
         org_metadata.create_all(conn, tables=[*_TENANT_TABLES, *_ROOT_EXTRA_TABLES])
-        conn.execute(insert(sources).values(id="provisa-admin", type="postgres", origin="admin"))
-        conn.execute(insert(domains).values(id="meta", origin="admin"))
+        conn.execute(insert(sources).values(id="provisa-admin", type="postgres"))
+        conn.execute(insert(domains).values(id="meta"))
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
-            conn.execute(insert(roles).values(id=role_id, capabilities=caps, origin="admin"))
+            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
         conn.execute(
             insert(user_role_assignments).values(
                 user_id="pat", role_id="platform_admin", domain_id="*"
@@ -163,9 +163,9 @@ def _prepare_sync():
         # deletion walks every catalog table the org could have configured — anything missing reads
         # as a 500 and would abort a deletion the org actually asked for.
         org_metadata.create_all(conn)
-        conn.execute(insert(domains).values(id="acmeonlydomain", origin="admin"))
+        conn.execute(insert(domains).values(id="acmeonlydomain"))
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
-            conn.execute(insert(roles).values(id=role_id, capabilities=caps, origin="admin"))
+            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
         conn.execute(
             insert(user_role_assignments).values(
                 user_id="alice", role_id="org_admin", domain_id="*"
@@ -178,7 +178,7 @@ def _prepare_sync():
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['sandbox']}"))
         org_metadata.create_all(conn, tables=_TENANT_TABLES)
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
-            conn.execute(insert(roles).values(id=role_id, capabilities=caps, origin="admin"))
+            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
         conn.execute(
             insert(user_role_assignments).values(user_id="viv", role_id="analyst", domain_id="*")
         )

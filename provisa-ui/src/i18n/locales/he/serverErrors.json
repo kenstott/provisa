@@ -207,10 +207,6 @@
       "self_role_change": "משתמש אינו יכול לשנות את התפקיד של עצמו. פנו למנהל אחר (REQ-1308).",
       "view_not_permitted": "אין הרשאה לצפות בארגון זה"
     },
-    "origin": {
-      "config_object_deleted": "{{name}} מוצהר בתצורה. הוא נמחק כעת; הטעינה הבאה של התצורה תיצור אותו מחדש כל עוד הקובץ מצהיר עליו.",
-      "config_object_edited": "{{name}} מוצהר בתצורה. השינוי נשמר; הטעינה הבאה של התצורה תחיל מחדש את מה שכתוב בקובץ."
-    },
     "platform": {
       "control_plane_role_required": "נדרש מנהל פלטפורמה.",
       "right_required": "נדרשת יכולת {{right}}",
@@ -366,7 +362,6 @@
       "docker_not_found": "docker לא נמצא ב-PATH",
       "docker_restart_timeout": "הפעלה מחדש של docker חרגה מהזמן הקצוב",
       "domain_policy_catalog_exists": "לא ניתן לשנות את מדיניות הדומיינים כל עוד לארגון יש קטלוג: {{tables}} טבלאות, {{sources}} מקורות, {{domains}} דומיינים. יש למחוק אותם תחילה.",
-      "domain_policy_catalog_in_config": "לא ניתן לשנות כאן את מדיניות הדומיינים: הקטלוג של ארגון זה מוצהר בתצורה ({{tables}} טבלאות, {{sources}} מקורות, {{domains}} דומיינים). יש להגדיר את המדיניות בקובץ התצורה.",
       "encryption_provider_unavailable": "ספק ההצפנה '{{provider}}' אינו זמין (ה-SDK/סביבת הריצה שלו אינם מותקנים)",
       "invalid_body": "בקשת ההגדרות אינה תקינה.",
       "invalid_value": "הערך של {{field}} נדחה.",

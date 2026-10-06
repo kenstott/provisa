@@ -121,7 +121,6 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
         await conn.upsert(
             sources,
             {
-                "origin": "admin",  # REQ-1919: written when the row is created
                 "id": source_id,
                 "type": "grpc_remote",
                 "host": server_address,
@@ -153,7 +152,7 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
         if domain_id:
             await conn.upsert(
                 domains,
-                {"id": domain_id, "origin": "admin"},  # REQ-1919
+                {"id": domain_id},  # REQ-1919
                 index_elements=["id"],
                 update_columns=[],
             )
@@ -365,7 +364,7 @@ async def _register_schema(  # REQ-322, REQ-325, REQ-599
             table_name=table_name,
             columns=output_cols + nf_cols,
         )
-        await table_repo.upsert(conn, tbl, origin="admin")
+        await table_repo.upsert(conn, tbl)
         written += 1
 
     return written

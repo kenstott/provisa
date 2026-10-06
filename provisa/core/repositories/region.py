@@ -25,8 +25,6 @@ from sqlalchemy import select
 
 from provisa.core import model_change
 from provisa.core.regions import OrgRegion, StoreConfig
-from provisa.core.repositories.origin import require as require_origin
-from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import org_regions, stores
 
 if TYPE_CHECKING:
@@ -56,25 +54,20 @@ class OrgNotInRegion(LookupError):
         )
 
 
-async def upsert_store(conn: "Connection", store: StoreConfig, *, origin: str) -> None:
+async def upsert_store(conn: "Connection", store: StoreConfig) -> None:
     """Create a store, or replace its URL."""
     model_change.name("upsert", "store", store.id)  # REQ-1524
-    require_origin(origin)
     await conn.upsert(
         stores,
-        {"id": store.id, "url": store.url, "kind": store.kind, "origin": origin},
+        {"id": store.id, "url": store.url, "kind": store.kind},
         index_elements=["id"],
         update_columns=["url", "kind"],
     )
-    await take_over(
-        conn, stores, (stores.c.id == store.id,), kind="store", ident=store.id, origin=origin
-    )
 
 
-async def upsert_region(conn: "Connection", region: OrgRegion, *, origin: str) -> None:
+async def upsert_region(conn: "Connection", region: OrgRegion) -> None:
     """Select a platform region for the org, or replace the stores it names there."""
     model_change.name("upsert", "region", region.id)  # REQ-1524
-    require_origin(origin)
     # The save refuses what the load refuses (provisa/core/regions.py): every store the region
     # names is declared, and its engine store names an engine kind.
     from provisa.core.regions import (
@@ -95,27 +88,16 @@ async def upsert_region(conn: "Connection", region: OrgRegion, *, origin: str) -
     values = region.model_dump()
     await conn.upsert(
         org_regions,
-        {**values, "origin": origin},
+        values,
         index_elements=["id"],
         update_columns=[k for k in values if k != "id"],
-    )
-    await take_over(
-        conn,
-        org_regions,
-        (org_regions.c.id == region.id,),
-        kind="region",
-        ident=region.id,
-        origin=origin,
     )
 
 
 async def list_regions(conn: "Connection") -> list[OrgRegion]:
     """The regions the org selects, by id."""
     rows = await conn.execute_core(select(org_regions).order_by(org_regions.c.id))
-    return [
-        OrgRegion.model_validate({k: v for k, v in r._mapping.items() if k != "origin"})
-        for r in rows.fetchall()
-    ]
+    return [OrgRegion.model_validate(dict(r._mapping)) for r in rows.fetchall()]
 
 
 async def list_stores(conn: "Connection") -> list[StoreConfig]:

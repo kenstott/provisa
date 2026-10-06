@@ -80,16 +80,15 @@ async def _count(db: Database, table) -> int:
 
 async def _a_catalog(db: Database) -> None:
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
-        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
-        await conn.execute_core(insert(domains).values(id="lab", origin="config"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
+        await conn.execute_core(insert(domains).values(id="sales"))
+        await conn.execute_core(insert(domains).values(id="lab"))
         await conn.execute_core(
             insert(registered_tables).values(
                 source_id="pg",
                 domain_id="sales",
                 schema_name="public",
                 table_name="orders",
-                origin="admin",
             )
         )
 
@@ -103,13 +102,13 @@ async def test_the_switch_is_refused_while_a_catalog_exists_and_removes_nothing(
             _request({"use_domains": False, "default_domain": "main"})
         )
 
-    # One of the domains is a config's: the operator is sent to the file, not told to empty a
-    # catalog the next load would restore.
+    # REQ-1919: no load restores a catalog, whatever seeded it — the operator deletes it and
+    # switches then.
     assert (err.value.status_code, err.value.code) == (
         409,
-        "settings.domain_policy_catalog_in_config",
+        "settings.domain_policy_catalog_exists",
     )
-    assert "Set the policy in the config file" in err.value.detail
+    assert "Delete them first" in err.value.detail
     assert err.value.params == {"tables": 1, "sources": 1, "domains": 2}
     assert [await _count(db, t) for t in (sources, domains, registered_tables)] == kept
     assert "naming" not in await read_org_overrides(db)
@@ -126,14 +125,11 @@ async def test_the_switch_is_refused_while_a_catalog_exists_and_removes_nothing(
 async def test_one_source_or_one_domain_is_enough_to_refuse(db, leftover, counts):
     async with db.acquire() as conn:
         if leftover == "source":
-            await conn.execute_core(
-                insert(sources).values(id="pg", type="postgresql", origin="admin")
-            )
+            await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
         else:
-            await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
+            await conn.execute_core(insert(domains).values(id="sales"))
     with pytest.raises(ApiError) as err:
         await settings_router.set_domain_policy(_request({"use_domains": True}))
-    # Made through the admin: the operator deletes it and switches then.
     assert err.value.code == "settings.domain_policy_catalog_exists"
     assert "Delete them first" in err.value.detail
     assert err.value.params == counts
@@ -143,16 +139,13 @@ async def test_what_the_deployment_keeps_is_not_a_catalog(db):
     """The seeded domains and the built-in sources do not stand in the way."""
     async with db.acquire() as conn:
         for source_id in ("provisa-admin", "provisa-otel", "__derived__"):
-            await conn.execute_core(
-                insert(sources).values(id=source_id, type="postgresql", origin="seed")
-            )
+            await conn.execute_core(insert(sources).values(id=source_id, type="postgresql"))
         await conn.execute_core(
             insert(registered_tables).values(
                 source_id="provisa-admin",
                 domain_id="meta",
                 schema_name="public",
                 table_name="registered_tables",
-                origin="seed",
             )
         )
     answer = await settings_router.set_domain_policy(_request({"use_domains": True}))
@@ -173,7 +166,7 @@ async def test_with_no_catalog_the_switch_is_applied(db, wired):
     # The single domain is seeded for the first registration to sit in.
     async with db.acquire() as conn:
         row = (
-            await conn.execute_core(select(domains.c.origin).where(domains.c.id == "main"))
+            await conn.execute_core(select(domains.c.id).where(domains.c.id == "main"))
         ).fetchone()
-    assert row is not None and row[0] == "seed"
+    assert row is not None
     assert wired == [1]

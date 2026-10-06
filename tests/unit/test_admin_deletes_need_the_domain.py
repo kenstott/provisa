@@ -56,9 +56,9 @@ async def plane(monkeypatch) -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="delete-domain-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
         for domain_id in ("sales", "finance"):
-            await conn.execute_core(insert(domains).values(id=domain_id, origin="admin"))
+            await conn.execute_core(insert(domains).values(id=domain_id))
         ids: dict[str, int] = {}
         for table_name, domain_id in TABLES.items():
             await conn.execute_core(
@@ -67,7 +67,6 @@ async def plane(monkeypatch) -> Database:
                     domain_id=domain_id,
                     schema_name="public",
                     table_name=table_name,
-                    origin="admin",
                 )
             )
             ids[table_name] = (
@@ -90,7 +89,6 @@ async def plane(monkeypatch) -> Database:
                     source_column="id",
                     target_column="id",
                     cardinality="many-to-one",
-                    origin="admin",
                 )
             )
         # sales to sales, through a finance table.
@@ -103,7 +101,6 @@ async def plane(monkeypatch) -> Database:
                 source_column="id",
                 target_column="id",
                 cardinality="many-to-one",
-                origin="admin",
             )
         )
         for name, expression in (
@@ -111,18 +108,14 @@ async def plane(monkeypatch) -> Database:
             ("billed", "SUM(invoices.amount)"),
             ("collected", "SUM(orders.amount) - SUM(invoices.amount)"),
         ):
-            await conn.execute_core(
-                insert(metrics).values(name=name, expression=expression, origin="admin")
-            )
+            await conn.execute_core(insert(metrics).values(name=name, expression=expression))
         for table in (tracked_functions, tracked_webhooks):
             for name, domain_id in (
                 ("of_sales", "sales"),
                 ("of_finance", "finance"),
                 ("of_none", ""),
             ):
-                await conn.execute_core(
-                    insert(table).values(origin="admin", name=name, domain_id=domain_id)
-                )
+                await conn.execute_core(insert(table).values(name=name, domain_id=domain_id))
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", appmod.state.tenant_db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", ROLES, raising=False)

@@ -232,20 +232,13 @@ async def preview_import(req: ImportPreviewRequest, request: Request) -> ImportP
 
 @router.post("/apply", response_model=ImportApplyResponse)
 async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApplyResponse:
-    """Load the approved config into the acting org, then rebuild its schemas.
-
-    This is the settled config→org sequence (the one org creation runs), not a second loader:
-    catalog names first so sources register under the org's own engine catalogs (REQ-1266), then
-    load_config, source pools/enums, PK resolution, schema rebuild.
-    """
+    """Apply the approved config to the acting org as an explicit one-time seed: it adds and
+    updates what the config declares and removes nothing (REQ-1919). The settled config→org
+    sequence (``app_loaders.apply_configuration``), not a second loader."""
     require_org_settings(request)  # REQ-1483
-    from provisa.api.app import _rebuild_schemas, state
-    from provisa.api.app_loaders import (
-        _build_source_pools_and_enums,
-        _populate_source_catalog_names,
-    )
-    from provisa.api.startup_seed import _resolve_pk_from_sources
-    from provisa.core.config_loader import load_config, parse_config_dict
+    from provisa.api.app import state
+    from provisa.api.app_loaders import apply_configuration
+    from provisa.core.config_loader import parse_config_dict
 
     try:
         raw = yaml.safe_load(req.config_yaml)
@@ -258,24 +251,12 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
     except ValueError as exc:
         raise ApiError(400, "import.invalid_config", f"config is not valid: {exc}") from exc
 
-    model_db = state.model_db
-    if model_db is None:
+    if state.model_db is None:
         raise ApiError(
             409, "import.no_active_org", "no org is bound to this request; sign in to an org first"
         )
 
-    _populate_source_catalog_names(config)
-    async with model_db.acquire() as conn:
-        await load_config(
-            config,
-            conn,
-            state.federation_engine,
-            catalog_names=state.source_catalogs,
-            origin="admin",
-        )
-    await _build_source_pools_and_enums(config)
-    await _resolve_pk_from_sources()
-    await _rebuild_schemas()
+    await apply_configuration(config)
 
     log.info(
         "hasura import applied: %d sources, %d tables, %d roles",

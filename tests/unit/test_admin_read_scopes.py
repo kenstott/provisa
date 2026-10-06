@@ -58,7 +58,6 @@ class _Pool:
 
 _SOURCE = {
     "id": "pg",
-    "origin": "admin",
     "type": "postgresql",
     "host": "db.internal",
     "port": 5432,
@@ -119,7 +118,6 @@ _ROLE_ROWS = [
         "domain_access": ["sales"],
         "org_id": None,
         "parent_role_id": None,
-        "origin": "seed",
     },
     {
         "id": "org_admin",
@@ -128,7 +126,6 @@ _ROLE_ROWS = [
         "domain_access": ["*"],
         "org_id": None,
         "parent_role_id": None,
-        "origin": "seed",
     },
 ]
 
@@ -168,7 +165,7 @@ async def test_rest_roles_full_for_user_management_else_own_role_only(monkeypatc
     with patch.object(roles_router, "_pool", return_value=_Pool(_ROLE_ROWS)):
         seen = {r["id"]: r for r in await roles_router.list_roles(request)}
     assert seen["analyst"]["capabilities"] == ["usage"]
-    assert seen["org_admin"] == {"id": "org_admin", "origin": "seed"}
+    assert seen["org_admin"] == {"id": "org_admin"}
 
 
 _STATUS = {

@@ -21,8 +21,6 @@ from provisa.compiler.sql_types import key_list
 from provisa.core.models import Relationship
 from provisa.core.repositories import table as table_repo
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.repositories.origin import require as require_origin
-from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import relationships, table_columns
 
 if TYPE_CHECKING:
@@ -30,15 +28,10 @@ if TYPE_CHECKING:
 
 
 async def upsert(
-    conn: "Connection", rel: Relationship, *, origin: str
+    conn: "Connection", rel: Relationship
 ) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400, REQ-1919
-    """Upsert a relationship. Resolves table names to registered_tables IDs.
-
-    ``origin`` says where the relationship comes from (``repositories.origin``): written when
-    it is CREATED and left alone after, except that a config load takes over one made through
-    the admin."""
+    """Upsert a relationship. Resolves table names to registered_tables IDs."""
     model_change.name("upsert", "relationship", rel.id)  # REQ-1524
-    require_origin(origin)
     source_tbl = await table_repo.find_by_table_name(conn, rel.source_table_id)
     if source_tbl is None:
         raise ValueError(f"Source table not registered: {rel.source_table_id}")
@@ -87,7 +80,6 @@ async def upsert(
         "owner": rel.owner or None,
         "version": rel.version,
         "needs_review": rel.needs_review,
-        "origin": origin,  # REQ-1919: on INSERT only — not among the update columns
     }
     try:
         # REQ-020: on conflict bump version, clear the re-review flag (a save is an explicit
@@ -126,14 +118,6 @@ async def upsert(
                 f"Alias {rel.alias!r} already exists for source table {rel.source_table_id!r}"
             ) from e
         raise
-    await take_over(
-        conn,
-        relationships,
-        (relationships.c.id == rel.id,),
-        kind="relationship",
-        ident=rel.id,
-        origin=origin,
-    )
 
     # REQ-1586: the junction's two keys are foreign keys on the junction table.
     if via_tbl_id:

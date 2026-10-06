@@ -76,9 +76,9 @@ def _prepare_sync():
         # The org's schema carries the same seeded role catalog every org gets: `admin` exists as a
         # row, which is precisely why "is this role defined?" is the wrong question — the creator is
         # assigned org_admin and only org_admin.
-        conn.execute(insert(roles).values(id="admin", origin="admin"))
-        conn.execute(insert(roles).values(id="analyst", origin="admin"))
-        conn.execute(insert(roles).values(id="org_admin", origin="admin"))
+        conn.execute(insert(roles).values(id="admin"))
+        conn.execute(insert(roles).values(id="analyst"))
+        conn.execute(insert(roles).values(id="org_admin"))
         conn.execute(
             insert(user_role_assignments).values(
                 user_id="alice", role_id="org_admin", domain_id="*"

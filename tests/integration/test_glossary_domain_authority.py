@@ -33,7 +33,7 @@ from fastapi import Request
 from provisa.api.admin import glossary_router
 from provisa.api.errors import ApiError
 from provisa.core import domain_policy
-from provisa.core.config_loader import load_config, parse_config_dict
+from provisa.core.config_loader import apply_config, parse_config_dict
 from provisa.core.repositories import glossary as glossary_repo
 
 pytestmark = [pytest.mark.integration]
@@ -167,9 +167,9 @@ async def _term_id(conn, name: str) -> int:
 
 
 @pytest_asyncio.fixture
-async def loaded(tenant_db, platform_admin_db):  # load_config binds the org vault (REQ-1730)
+async def loaded(tenant_db, platform_admin_db):  # apply_config binds the org vault (REQ-1730)
     async with tenant_db.acquire() as conn:
-        await load_config(parse_config_dict(_config()), conn, origin="config")
+        await apply_config(parse_config_dict(_config()), conn)
         yield conn
 
 

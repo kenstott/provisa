@@ -365,7 +365,6 @@ async def sync_detected_relationships(state: Any, source_id: str) -> int:
                     else "",
                     cardinality=Cardinality(rel["cardinality"]),
                 ),
-                origin="admin",  # REQ-1919: completed by an admin's table registration
             )
             stored += 1
     return stored

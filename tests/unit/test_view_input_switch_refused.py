@@ -103,21 +103,16 @@ async def test_switching_a_table_a_view_reads_to_row_level_is_refused_naming_the
     tmp_path, state
 ):
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _clicks(row_level=False), origin="admin")
+        await table_repo.upsert(conn, _clicks(row_level=False))
         await table_repo.upsert(
             conn,
             _view("clicks_by_region", "SELECT region FROM web.clicks GROUP BY region"),
-            origin="admin",
         )
-        await table_repo.upsert(
-            conn, _view("recent_clicks", "SELECT region FROM clicks"), origin="admin"
-        )
-        await table_repo.upsert(
-            conn, _view("orders_by_region", "SELECT region FROM web.orders"), origin="admin"
-        )
+        await table_repo.upsert(conn, _view("recent_clicks", "SELECT region FROM clicks"))
+        await table_repo.upsert(conn, _view("orders_by_region", "SELECT region FROM web.orders"))
 
         with pytest.raises(ViewsReadTable) as raised:
-            await table_repo.upsert(conn, _clicks(row_level=True), origin="admin")
+            await table_repo.upsert(conn, _clicks(row_level=True))
 
         assert raised.value.views == ["view-clicks_by_region", "view-recent_clicks"]
         message = str(raised.value)
@@ -138,29 +133,24 @@ async def test_a_view_held_in_memory_from_the_config_refuses_the_switch_too(tmp_
         )
     )
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _clicks(row_level=False), origin="admin")
+        await table_repo.upsert(conn, _clicks(row_level=False))
         with pytest.raises(ViewsReadTable, match="'view-config-clicks' read it"):
-            await table_repo.upsert(conn, _clicks(row_level=True), origin="admin")
+            await table_repo.upsert(conn, _clicks(row_level=True))
 
 
 async def test_the_switch_is_allowed_when_no_materialized_view_reads_the_table(tmp_path, state):
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _clicks(row_level=False), origin="admin")
+        await table_repo.upsert(conn, _clicks(row_level=False))
         # An inline (not materialized) view is expanded into each request: it builds nothing.
         await table_repo.upsert(
             conn,
             _view("inline_clicks", "SELECT region FROM clicks", materialize=False),
-            origin="admin",
         )
-        await table_repo.upsert(
-            conn, _view("orders_by_region", "SELECT region FROM web.orders"), origin="admin"
-        )
+        await table_repo.upsert(conn, _view("orders_by_region", "SELECT region FROM web.orders"))
 
-        await table_repo.upsert(conn, _clicks(row_level=True), origin="admin")
+        await table_repo.upsert(conn, _clicks(row_level=True))
         assert await _stored_row_level(conn, "clicks") is True
-        await table_repo.upsert(
-            conn, _clicks(row_level=True), origin="admin"
-        )  # and it stays storable
+        await table_repo.upsert(conn, _clicks(row_level=True))  # and it stays storable
 
 
 async def test_a_table_the_engine_attaches_live_is_not_switched_by_the_flag(tmp_path, state):
@@ -169,11 +159,9 @@ async def test_a_table_the_engine_attaches_live_is_not_switched_by_the_flag(tmp_
         connectors={"neo4j": SimpleNamespace(reads_in_place=True)}
     )
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _clicks(row_level=False), origin="admin")
-        await table_repo.upsert(
-            conn, _view("clicks_by_region", "SELECT region FROM clicks"), origin="admin"
-        )
-        await table_repo.upsert(conn, _clicks(row_level=True), origin="admin")
+        await table_repo.upsert(conn, _clicks(row_level=False))
+        await table_repo.upsert(conn, _view("clicks_by_region", "SELECT region FROM clicks"))
+        await table_repo.upsert(conn, _clicks(row_level=True))
         assert await _stored_row_level(conn, "clicks") is True
 
 
@@ -184,9 +172,7 @@ def _endpoint(path: str, *columns: ApiColumn) -> ApiEndpoint:
 async def test_an_endpoint_a_view_reads_may_not_start_needing_arguments(tmp_path, state):
     async with _conn(tmp_path) as conn:
         await persist_api_endpoint(conn, _endpoint("/contacts"))
-        await table_repo.upsert(
-            conn, _view("contacts_by_region", "SELECT region FROM contacts"), origin="admin"
-        )
+        await table_repo.upsert(conn, _view("contacts_by_region", "SELECT region FROM contacts"))
 
         with pytest.raises(ViewsReadTable) as raised:
             await persist_api_endpoint(

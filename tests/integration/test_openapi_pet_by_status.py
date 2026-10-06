@@ -137,9 +137,9 @@ def _make_config(spec_path: str) -> dict:
 
 @pytest_asyncio.fixture(scope="module")
 async def pg_conn(tenant_db, platform_admin_db):
-    # platform_admin_db: load_config binds the org vault (REQ-1580/REQ-1730), read off
+    # platform_admin_db: apply_config binds the org vault (REQ-1580/REQ-1730), read off
     # state.admin_db — this module brings its own rather than inheriting another module's.
-    # load_config runs against the control-plane Database shim (advisory_xact_lock,
+    # apply_config runs against the control-plane Database shim (advisory_xact_lock,
     # execute_core), as the app does; init_schema creates the org schema it loads into.
     #
     # REQ-1919: the org schema is this module's own. A config load removes what its file no
@@ -159,7 +159,7 @@ _ORG_SCHEMA = f"org_{_ORG_ID}"
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
 async def _cleanup_mock_source(pg_conn):
-    """Remove all DB state written by load_config calls in this module: its org schema, and the
+    """Remove all DB state written by apply_config calls in this module: its org schema, and the
     landing table the API source filled."""
     yield
     await pg_conn.execute(f"DROP SCHEMA IF EXISTS {_ORG_SCHEMA} CASCADE")
@@ -226,7 +226,7 @@ async def test_openapi_config_load_registers_the_enum_defaults_and_fetches_nothi
     """REQ-1915: a config load registers the endpoint with the default parameters its spec
     names (the enum values of a query parameter) — what a build of its replica calls with —
     and calls nothing: rows fetched from a remote are never written into the control plane."""
-    from provisa.core.config_loader import load_config, parse_config_dict
+    from provisa.core.config_loader import apply_config, parse_config_dict
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(MOCK_SPEC, f)
@@ -242,7 +242,7 @@ async def test_openapi_config_load_registers_the_enum_defaults_and_fetches_nothi
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
 
-        await load_config(config, pg_conn, origin="config")
+        await apply_config(config, pg_conn)
 
     assert route.call_count == 0, "a config load must not call the API"
     default_params = await pg_conn.fetchval(
@@ -259,7 +259,7 @@ async def test_openapi_config_load_registers_the_enum_defaults_and_fetches_nothi
 
 async def test_openapi_config_load_registers_api_endpoint(pg_conn):
     """config load registers the table in api_endpoints for runtime hydration."""
-    from provisa.core.config_loader import load_config, parse_config_dict
+    from provisa.core.config_loader import apply_config, parse_config_dict
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(MOCK_SPEC, f)
@@ -273,7 +273,7 @@ async def test_openapi_config_load_registers_api_endpoint(pg_conn):
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
-        await load_config(config, pg_conn, origin="config")
+        await apply_config(config, pg_conn)
 
     ep = await pg_conn.fetchrow(
         "SELECT path, source_id FROM api_endpoints WHERE table_name = $1",
@@ -286,7 +286,7 @@ async def test_openapi_config_load_registers_api_endpoint(pg_conn):
 
 async def test_openapi_config_load_registers_api_source(pg_conn):
     """config load registers the source in api_sources for runtime hydration."""
-    from provisa.core.config_loader import load_config, parse_config_dict
+    from provisa.core.config_loader import apply_config, parse_config_dict
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(MOCK_SPEC, f)
@@ -300,7 +300,7 @@ async def test_openapi_config_load_registers_api_source(pg_conn):
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
-        await load_config(config, pg_conn, origin="config")
+        await apply_config(config, pg_conn)
 
     src = await pg_conn.fetchrow(
         "SELECT base_url FROM api_sources WHERE id = $1",

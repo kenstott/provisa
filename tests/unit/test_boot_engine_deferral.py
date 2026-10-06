@@ -37,8 +37,9 @@ def test_the_wake_failure_does_not_leave_the_lifespan():
 
 def test_every_engine_step_of_the_boot_is_behind_the_flag():
     """A guard on the wake alone moves the crash rather than removing it: the seed reads the
-    coordinator's address, the terminal dials it, provision_infra sets up over it, and load_config
-    issues catalogs on it. Each is skipped by the same flag the wake failure sets."""
+    coordinator's address, the terminal dials it, provision_infra sets up over it, and
+    attach_store_sources issues catalogs on it (REQ-1919: the seed itself issues none). Each is
+    skipped by the same flag the wake failure sets."""
     src = inspect.getsource(app_module._load_and_build)
     assert "_seed_built_in_sources(\n            pg_host" in src
     assert "engine_addressable=not engine_deferred" in src
@@ -49,6 +50,8 @@ def test_every_engine_step_of_the_boot_is_behind_the_flag():
     ) in src
     assert "if not engine_deferred:\n        await state.federation_engine.provision_infra()" in src
     assert "None if engine_deferred else state.federation_engine" in src
+    assert "if apply and not engine_deferred:" in src
+    assert src.index("attach_store_sources(") > src.index("if apply and not engine_deferred:")
 
 
 def test_the_generation_is_left_unstamped_so_the_first_query_restores():

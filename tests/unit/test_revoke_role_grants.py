@@ -13,8 +13,8 @@
 ``revokeRoleFromTable`` takes it off every column grant of one table (read, write, unmasked);
 ``revokeRoleFromObject`` off a metric's, command's or webhook's assigned roles. Each is an edit
 of that one object through the model store, one commit (REQ-1524), a no-op success when the role
-is not on the grant, refused by name for an object that does not exist, and carries the
-config-origin warning when the object is a config's. Run on a SQLite control plane.
+is not on the grant, and refused by name for an object that does not exist. Run on a SQLite
+control plane.
 """
 
 # Requirements: REQ-1918, REQ-1524, REQ-1919
@@ -73,11 +73,10 @@ async def seed(db: Database) -> None:
                 conn,
                 Role(id=role_id, capabilities=["usage"], domain_access=["*"]),
                 org_id=ORG,
-                origin="admin",
             )
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
-        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
-        for table_id, name, origin in ((1, "orders", "admin"), (2, "declared", "config")):
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
+        await conn.execute_core(insert(domains).values(id="sales"))
+        for table_id, name in ((1, "orders"), (2, "declared")):
             await conn.execute_core(
                 insert(registered_tables).values(
                     id=table_id,
@@ -85,7 +84,6 @@ async def seed(db: Database) -> None:
                     domain_id="sales",
                     schema_name="public",
                     table_name=name,
-                    origin=origin,
                 )
             )
             for column in ("id", "amount"):
@@ -99,9 +97,7 @@ async def seed(db: Database) -> None:
                     )
                 )
         await conn.execute_core(
-            insert(metrics).values(
-                name="revenue", expression="SUM(orders.amount)", visible_to=both, origin="admin"
-            )
+            insert(metrics).values(name="revenue", expression="SUM(orders.amount)", visible_to=both)
         )
         await function_repo.upsert_function(
             conn,
@@ -113,12 +109,10 @@ async def seed(db: Database) -> None:
                 domain_id="sales",
                 visible_to=both,
             ),
-            origin="admin",
         )
         await function_repo.upsert_webhook(
             conn,
             Webhook(name="notify", url="http://x", domain_id="sales", visible_to=both),
-            origin="admin",
         )
 
 
@@ -198,11 +192,7 @@ async def test_a_table_revoke_takes_the_role_off_every_column_grant_and_only_tha
     plane, rebuilds, commits
 ):
     result = await _table(_info(), "leaving", 1)
-    assert (result.success, result.code, result.warnings) == (
-        True,
-        "schema.role_revoked_from_table",
-        [],
-    )
+    assert (result.success, result.code) == (True, "schema.role_revoked_from_table")
     grants = await _grants(plane)
     assert grants["table1"] == [["staying"], ["staying"], ["staying"]]
     assert grants["table2"] == [["leaving", "staying"]] * 3  # another table is not touched
@@ -245,10 +235,12 @@ async def test_an_object_that_does_not_exist_is_refused_by_name(plane, rebuilds)
     assert rebuilds == []
 
 
-async def test_a_config_declared_table_is_edited_and_the_answer_says_the_file_wins(plane, rebuilds):
+async def test_a_seeded_table_is_edited_like_any_other_and_nothing_says_whence(plane, rebuilds):
+    """REQ-1919: a table a configuration seeded is the store's like any other; the edit stands,
+    and the answer carries no notice that a later config load re-applies the file."""
     result = await _table(_info(), "leaving", 2)
     assert result.success is True
-    assert [w.code for w in result.warnings] == ["origin.config_object_edited"]
+    assert not hasattr(result, "warnings")
 
 
 async def test_once_every_grant_is_revoked_the_role_can_be_deleted(plane, rebuilds):

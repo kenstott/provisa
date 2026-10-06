@@ -49,13 +49,11 @@ async def plane(monkeypatch) -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="product-delete-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
-        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
+        await conn.execute_core(insert(domains).values(id="sales"))
         for product_id in ("orders_product", "empty_product"):
             await conn.execute_core(
-                insert(data_products).values(
-                    id=product_id, domain_id="sales", name=product_id, origin="admin"
-                )
+                insert(data_products).values(id=product_id, domain_id="sales", name=product_id)
             )
         await conn.execute_core(
             insert(registered_tables).values(
@@ -64,12 +62,11 @@ async def plane(monkeypatch) -> Database:
                 schema_name="public",
                 table_name="orders",
                 product_id="orders_product",
-                origin="admin",
             )
         )
         await conn.execute_core(
             insert(tracked_functions).values(
-                name="refund", domain_id="sales", product_id="orders_product", origin="admin"
+                name="refund", domain_id="sales", product_id="orders_product"
             )
         )
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
@@ -103,7 +100,6 @@ async def test_a_data_product_with_no_members_goes_with_its_tags(plane):
                 object_type="product",
                 object_key="empty_product",
                 product_id="empty_product",
-                origin="admin",
             )
         )
         assert await data_product_repo.delete(conn, "empty_product") is True
@@ -127,7 +123,7 @@ async def test_the_mutation_refuses_with_the_members(plane, monkeypatch):
 async def test_a_tag_takes_its_assignments_and_values_with_it(plane):
     async with plane.acquire() as conn:
         for tag_id in ("pii", "gold"):
-            await conn.execute_core(insert(tags).values(id=tag_id, origin="admin"))
+            await conn.execute_core(insert(tags).values(id=tag_id))
         await conn.execute_core(insert(tag_param_values).values(tag_id="pii", value="high"))
         for tag_id, base in (("pii:high", "pii"), ("pii", "pii"), ("gold", "gold")):
             await conn.execute_core(
@@ -136,7 +132,6 @@ async def test_a_tag_takes_its_assignments_and_values_with_it(plane):
                     base_tag_id=base,
                     object_type="table",
                     object_key=f"orders-{tag_id}",
-                    origin="admin",
                 )
             )
         # What the confirmation shows before a tag that carries a policy is deleted.

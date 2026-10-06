@@ -136,7 +136,7 @@ async def _hold_trigger(role: str, enabled: bool) -> None:
 
     trigger = ScheduledTrigger(id="t1", cron="0 2 * * *", sql=_WRITE, role=role, enabled=enabled)
     async with appmod.state.model_db.acquire() as conn:
-        await trigger_repo.create(conn, trigger, origin="admin")
+        await trigger_repo.create(conn, trigger)
 
 
 async def test_enabling_a_trigger_needs_its_role(cfg_path):

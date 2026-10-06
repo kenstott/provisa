@@ -167,7 +167,6 @@ async def plane(tmp_path):
                 username="",
                 password_ref="",
                 change_signal="native",
-                origin="admin",
             )
         )
     return Database(engine, "test")

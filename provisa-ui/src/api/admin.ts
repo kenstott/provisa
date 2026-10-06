@@ -13,7 +13,6 @@ import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
-import { announceWarnings } from "../lib/mutationWarnings";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -451,7 +450,6 @@ export async function deleteOrgRole(orgId: string, roleId: string): Promise<void
     headers: { [ORG_HEADER]: orgId },
   });
   if (!res.ok) throw httpError("deleteOrgRole", res.status);
-  announceWarnings(await res.json()); // REQ-1919: a config's role comes back on the next load
 }
 
 export async function profileTable(
@@ -636,6 +634,35 @@ export async function fetchIrTypes(): Promise<string[]> {
 export async function downloadConfig(): Promise<string> {
   const resp = await fetch(`${API_BASE_RAW}/admin/config`);
   if (!resp.ok) throw httpError("Config download", resp.status);
+  return resp.text();
+}
+
+// REQ-1919: the sections of the model a configuration file can carry, in the order a file writes them.
+export const MODEL_SECTIONS = [
+  "stores",
+  "regions",
+  "sources",
+  "domains",
+  "roles",
+  "data_products",
+  "glossary_terms",
+  "tables",
+  "relationships",
+  "metrics",
+  "tags",
+  "tag_assignments",
+  "rls_rules",
+  "functions",
+  "webhooks",
+  "scheduled_triggers",
+] as const;
+
+// REQ-1919: the model as it stands, written as a configuration file — the whole model, or only the
+// chosen sections. Applied to an empty model store it builds the same model.
+export async function exportModelConfig(sections: string[]): Promise<string> {
+  const query = sections.length > 0 ? `?sections=${encodeURIComponent(sections.join(","))}` : "";
+  const resp = await fetch(`${API_BASE_RAW}/admin/config/live${query}`);
+  if (!resp.ok) throw httpError("Model export", resp.status);
   return resp.text();
 }
 

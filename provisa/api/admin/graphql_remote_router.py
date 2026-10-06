@@ -145,7 +145,6 @@ async def _persist_source(  # REQ-307, REQ-1923
     await conn.upsert(
         sources,
         {
-            "origin": "admin",  # REQ-1919: written when the row is created
             "id": source_id,
             "type": "graphql_remote",
             "host": "",
@@ -388,7 +387,7 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                 ],
             )
             try:
-                await table_repo.upsert(conn, tbl, origin="admin")
+                await table_repo.upsert(conn, tbl)
             except table_repo.ColumnDropRefused as refused:
                 # The remote dropped a field something here still refers to: the table is left
                 # as it was and reported.
@@ -435,14 +434,13 @@ async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
                     cardinality=Cardinality(r.get("cardinality", "many-to-one")),
                     source_json_key=r.get("source_json_key") or None,
                 ),
-                origin="admin",
             )
         # Retry config relationships deferred at startup (tables may now exist)
         cfg = getattr(state, "config", None) if state is not None else None
         if cfg is not None:
             for rel in cfg.relationships:
                 try:
-                    await rel_repo.upsert(conn, rel, origin="admin")
+                    await rel_repo.upsert(conn, rel)
                 except ValueError:
                     pass
 
@@ -495,7 +493,7 @@ async def register_graphql_remote_source(
         if body.domain_id:
             await _conn.upsert(
                 domains,
-                {"id": body.domain_id, "origin": "admin"},  # REQ-1919: written when created
+                {"id": body.domain_id},  # REQ-1919: written when created
                 index_elements=["id"],
                 update_columns=[],
             )

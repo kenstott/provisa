@@ -51,11 +51,9 @@ async def plane(monkeypatch) -> Database:
     await _init_schema_portable(db)
     async with db.acquire() as conn:
         for domain_id in ("sales", "empty"):
-            await conn.execute_core(insert(domains).values(id=domain_id, origin="admin"))
+            await conn.execute_core(insert(domains).values(id=domain_id))
         await conn.execute_core(
-            insert(sources).values(
-                id="pg", type="postgresql", allowed_domains=["sales"], origin="admin"
-            )
+            insert(sources).values(id="pg", type="postgresql", allowed_domains=["sales"])
         )
         await conn.execute_core(
             insert(registered_tables).values(
@@ -63,7 +61,6 @@ async def plane(monkeypatch) -> Database:
                 domain_id="sales",
                 schema_name="public",
                 table_name="orders",
-                origin="admin",
             )
         )
         table_id = (await conn.execute_core(select(registered_tables.c.id))).scalar_one()
@@ -71,9 +68,7 @@ async def plane(monkeypatch) -> Database:
             insert(table_columns).values(table_id=table_id, column_name="id", domain_id="sales")
         )
         await conn.execute_core(
-            insert(roles).values(
-                id="seller", capabilities=[], domain_access=["sales"], org_id="a", origin="admin"
-            )
+            insert(roles).values(id="seller", capabilities=[], domain_access=["sales"], org_id="a")
         )
         await conn.execute_core(
             insert(user_role_assignments).values(user_id="u1", role_id="seller", domain_id="sales")

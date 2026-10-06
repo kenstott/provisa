@@ -4,5 +4,5 @@ Feature: REQ-749 — Security
 
   Scenario: REQ-749 default behaviour
     Given a config with use_domains mode specified
-    When load_config_from_yaml processes the config
+    When the config is applied
     Then domain_id is stored according to the tri-state mode (legacy/single/namespaced) and reload validates existing domains

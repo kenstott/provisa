@@ -83,7 +83,11 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext
 from sqlalchemy import select
 from provisa.core.config_loader import (
-    load_config,
+    apply_config,
+    attach_store_sources,
+    is_seeded,
+    seed_config,
+    store_config,
     parse_config_dict,
     read_config_with_includes,
 )
@@ -280,7 +284,13 @@ class AppState:
     kafka_table_physical: dict[
         str, str
     ] = {}  # virtual gql table → physical the engine table (Kafka sources)
-    config: Any = None  # ProvisaConfig set at startup
+    # REQ-1919: the configuration the process runs — the file's settings, with every model
+    # section read from the default org's model store (config_loader.store_config).
+    config: Any = None
+    # REQ-1919: the deployment's configuration file as it was read at startup, as written (its
+    # settings are ``config``'s) and parsed (``seed_config``, what a new demo org is seeded from).
+    raw_config: dict | None = None
+    seed_config: Any = None
     # Live config export/diff/patch is opt-in (REQ-164) — coherent only where the generated/normalized
     # config is canonical (the demo), not a hand-authored file. Gates the boot snapshot + endpoints.
     config_live_export: bool = False
@@ -1182,45 +1192,39 @@ async def _load_and_build(
 
     model_db = state.model_db
     assert model_db is not None
+    _seed_file = config
+    state.raw_config = raw_config
+    state.seed_config = _seed_file
+    _seeded_now = False
     async with model_db.acquire() as conn:
-        # Single-writer cluster invariant: every node loads the byte-identical baked config, but only
-        # the primary may DELETE rows. A secondary's upserts are idempotent no-ops (the advisory lock
-        # in load_config serializes them), so it stays consistent with the primary; the load's
-        # removal of what the file dropped runs on the primary only (REQ-1229, REQ-1919). Secrets
-        # (source passwords) are file-only by design — schema.sql never stores them — so every node must
-        # parse this file for source pools; PG holds only the shared, primary-written schema.
-        # REQ-1730: a source registered purely through the UI (createSource mutation, no
-        # `sources:` entry in this config) is invisible to config.sources — without this, its
-        # engine catalog is never (re)issued on boot or on a PUT /admin/config reload, on
-        # whatever engine ends up configured. registered_sources unions config.sources with the
-        # control-plane rows; the ones config.sources doesn't already know about are the gap.
-        from provisa.federation.registry_view import registered_sources as _registered_sources
-
-        _config_source_ids = {s.id for s in config.sources}
-        _extra_sources = [
-            s for s in await _registered_sources(state, conn) if s.id not in _config_source_ids
-        ]
-        # Populate the org-prefixed catalog-name map FIRST so load_config's physical registration
-        # AND column introspection resolve each source under the name the compiler later emits
-        # (state.catalog_for). build_org_runtime does the same before its load_config; the default
-        # path must too, else introspect_columns → catalog_for raises KeyError (REQ-1266). Idempotent.
-        _populate_source_catalog_names(config, extra_sources=_extra_sources)
-        # REQ-1619: `engine=None` is load_config's own "register the metadata, issue no catalogs"
-        # mode. With no coordinator every register_source would resolve an address that does not
-        # exist and fail one source at a time; the catalogs are reissued from state.config by
-        # restore_shared_terminal on the first query, which is the same call with the engine bound.
-        if apply:
-            await load_config(
-                config,
-                conn,
-                None if engine_deferred else state.federation_engine,
-                extra_sources=_extra_sources,
-                origin="config",
+        # REQ-1919: the configuration file seeds the model store once, at the deployment's first
+        # start, into an empty store. From then on the store alone owns the model: a restart,
+        # redeploy or reload never applies the file again, and the process's configuration is the
+        # file's settings with every model section read from the store. Only the launch's
+        # once-per-launch worker writes (REQ-1900); a later launch, and a second node, find the
+        # store seeded and write nothing.
+        if apply and not await is_seeded(conn):
+            # The org-prefixed catalog names the seed's registrations resolve under (REQ-1266).
+            _populate_source_catalog_names(_seed_file)
+            # REQ-1619: with no coordinator the seed settles no engine-specific table names;
+            # engine=None is the seed's "register the metadata only" mode.
+            _seeded_now = await seed_config(
+                _seed_file, conn, None if engine_deferred else state.federation_engine
             )
-        else:
-            from provisa.core.config_loader import adopt_loaded_config
+        domain_policy.configure(_seed_file.naming.use_domains, _seed_file.naming.default_domain)
+        from provisa.core.secrets_store import bound_to_request_org
 
-            adopt_loaded_config(config)
+        # A stored source's password is a ${secret:NAME} reference the org's vault resolves.
+        async with bound_to_request_org():
+            config = await store_config(raw_config, conn)
+        state.config = config
+        _populate_source_catalog_names(config)
+        # Every launch reissues the engine catalog of each source the store holds: an engine's
+        # catalogs do not outlive it (REQ-1900). REQ-1619: with no coordinator they are reissued
+        # from state.config by restore_shared_terminal on the first query.
+        if apply and not engine_deferred:
+            async with bound_to_request_org():
+                await attach_store_sources(config, state.federation_engine)
 
     _mark("load_config")
 
@@ -1236,7 +1240,7 @@ async def _load_and_build(
 
     state.source_dsns["provisa-admin"] = f"{pg_host}:{pg_port}/{pg_database}"
 
-    await _build_source_pools_and_enums(config, extra_sources=_extra_sources)
+    await _build_source_pools_and_enums(config)
 
     # REQ-1730: Trino's prometheus connector exposes a FIXED per-metric schema (labels
     # MAP(VARCHAR,VARCHAR), timestamp, value) — a registered label column like "job" is only
@@ -1250,7 +1254,7 @@ async def _load_and_build(
     # COLUMN_NOT_FOUND for "job" after a genuine restart with no mutation replay.
     from provisa.api.admin.schema_common import _cache_prometheus_label_columns as _cache_prom_cols
 
-    for _prom_src in (*config.sources, *_extra_sources):
+    for _prom_src in config.sources:
         if _prom_src.type.value == "prometheus":
             await _cache_prom_cols(state.model_db, state, _prom_src)
 
@@ -1286,16 +1290,19 @@ async def _load_and_build(
     await _load_graphql_remote_sources_from_db()
     await _load_grpc_remote_sources_from_db()
 
-    # Retry config relationships deferred at load_config time (graphql_remote tables now available)
-    if apply and getattr(state, "config", None) is not None and state.model_db is not None:
+    # The seed's relationships whose tables a remote registration brought only now (graphql_remote
+    # tables are registered after the seed): the seed's own, on the boot that seeded (REQ-1919).
+    if _seeded_now:
+        from provisa.core import model_change
         from provisa.core.repositories import relationship as _rel_repo
 
-        async with state.model_db.acquire() as _retry_conn:
-            for _rel in state.config.relationships:
-                try:
-                    await _rel_repo.upsert(_retry_conn, _rel, origin="config")
-                except ValueError:
-                    pass
+        async with model_change.scope("configuration seed"):
+            async with model_db.acquire() as _retry_conn:
+                for _rel in _seed_file.relationships:
+                    try:
+                        await _rel_repo.upsert(_retry_conn, _rel)
+                    except ValueError as exc:
+                        log.warning("seeded relationship %r not registered: %s", _rel.id, exc)
 
     _mark("source-pools+ingest+remote")
 
@@ -1926,23 +1933,37 @@ async def _build_org_runtime(
         )
         state.source_dsns["provisa-admin"] = f"{host}:{port}/{database}"
 
-        # Demo orgs load the same config the default org runs; its sources are namespaced under
-        # org-prefixed engine catalogs (source_catalogs), so identically-named demo sources across
-        # orgs never collide in the shared coordinator's catalog namespace.
-        config = state.config if include_demo else None
-        if config is not None:
-            assert state.model_db is not None
-            # Populate the org-prefixed catalog-name map FIRST so physical registration inside
-            # load_config attaches each source under the org's own catalog name (not the bare,
-            # default-org name) — the cross-org collision guard (REQ-1266).
-            _populate_source_catalog_names(config)
+        # REQ-1919 (DEMO ORGANISATIONS ARE THEIR CONFIG): a demo organisation is defined by its
+        # demo configuration — the deployment's file — and every build of its runtime applies that
+        # configuration again, so a demo starts as its configuration says; what is changed in it
+        # lasts until its next build. The deployment's own org is not a demo: its store is seeded
+        # once (seed_config) and owns its model from then on, as every other org's does. Its
+        # sources are namespaced under org-prefixed engine catalogs (source_catalogs), so
+        # identically-named demo sources across orgs never collide in the shared coordinator.
+        seed = state.seed_config if include_demo else None
+        if seed is not None:
+            assert state.model_db is not None and state.raw_config is not None
+            from provisa.core.secrets_store import bound_to_request_org
+
+            domain_policy.configure(seed.naming.use_domains, seed.naming.default_domain)
             async with state.model_db.acquire() as conn:
-                failed_catalogs = await load_config(
-                    config,
-                    conn,
-                    state.federation_engine,
-                    catalog_names=rt.source_catalogs,
-                    origin="config",
+                # The org's catalog names the registrations resolve under (REQ-1266).
+                if org_id != state.org_id:
+                    _populate_source_catalog_names(seed)
+                    async with bound_to_request_org():
+                        await apply_config(seed, conn, state.federation_engine)
+                elif not await is_seeded(conn):
+                    _populate_source_catalog_names(seed)
+                    await seed_config(seed, conn, state.federation_engine)
+                async with bound_to_request_org():
+                    org_config = await store_config(state.raw_config, conn)
+            # Populate the org-prefixed catalog-name map FIRST so the physical registration
+            # attaches each source under the org's own catalog name (not the bare, default-org
+            # name) — the cross-org collision guard (REQ-1266).
+            _populate_source_catalog_names(org_config)
+            async with bound_to_request_org():
+                failed_catalogs = await attach_store_sources(
+                    org_config, state.federation_engine, catalog_names=rt.source_catalogs
                 )
             # REQ-1448: this build IS the repair a wake performs — a source whose catalog did not
             # come back leaves the org dispatching at a coordinator that has never heard of it, and
@@ -1954,7 +1975,7 @@ async def _build_org_runtime(
                     f"org {org_id!r}: {len(failed_catalogs)} source catalog(s) could not be issued "
                     f"on its engine: {', '.join(sorted(failed_catalogs))}"
                 )
-            await _build_source_pools_and_enums(config)
+            await _build_source_pools_and_enums(org_config)
             await _resolve_pk_from_sources()
 
         await _require_org_serves_here(org_id)  # REQ-1922
@@ -2077,6 +2098,18 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
     _stamped_runtime = state._active_runtime()
     _model_stamp = (await _config_stamp.read(state.model_db))[_config_stamp.MODEL]
+
+    # REQ-1919: the process's configuration follows the default org's model store — the file's
+    # settings with every model section as the store holds it now, so an admin's change governs.
+    if (
+        state.raw_config is not None
+        and _stamped_runtime.org_id == state.org_id
+        and _stamped_runtime.env == PROD
+    ):
+        from provisa.core.secrets_store import bound_to_request_org
+
+        async with state.model_db.acquire() as _cfg_conn, bound_to_request_org():
+            state.config = await store_config(state.raw_config, cast("Connection", _cfg_conn))
 
     kafka_physical = getattr(state, "kafka_table_physical", {})
     domain_prefix, raw_config = _resolve_naming_config(raw_config)
@@ -2283,6 +2316,9 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                         _roles_t.c.domain_access,
                         _roles_t.c.rate_limit,
                         _roles_t.c.parent_role_id,  # REQ-1677
+                        # REQ-005, REQ-1919: the role's own ceiling and join guard, as stored.
+                        _roles_t.c.max_rows,
+                        _roles_t.c.relationship_guard,
                     )
                 )
             ).fetchall()

@@ -118,7 +118,6 @@ async def _surface(tmp_path, monkeypatch):
                     ],
                     view_sql="SELECT 1",
                 ),
-                origin="admin",
             )
         yield db, notified
     finally:

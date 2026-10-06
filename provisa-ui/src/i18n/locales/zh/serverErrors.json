@@ -207,10 +207,6 @@
       "self_role_change": "用户不能更改自己的角色。请联系另一位管理员（REQ-1308）。",
       "view_not_permitted": "无权查看此组织"
     },
-    "origin": {
-      "config_object_deleted": "{{name}} 已在配置中声明。它现已删除；只要文件仍声明它，下次加载配置时会重新创建。",
-      "config_object_edited": "{{name}} 已在配置中声明。更改已保存；下次加载配置时将重新应用文件中的内容。"
-    },
     "platform": {
       "control_plane_role_required": "需要平台管理员。",
       "right_required": "需要 {{right}} 能力",
@@ -366,7 +362,6 @@
       "docker_not_found": "在 PATH 中未找到 docker",
       "docker_restart_timeout": "docker 重启超时",
       "domain_policy_catalog_exists": "本组织存在目录时无法更改域策略：{{tables}} 个表、{{sources}} 个数据源、{{domains}} 个域。请先删除它们。",
-      "domain_policy_catalog_in_config": "无法在此更改域策略：本组织的目录在配置中声明（{{tables}} 个表、{{sources}} 个数据源、{{domains}} 个域）。请在配置文件中设置策略。",
       "encryption_provider_unavailable": "加密提供程序 '{{provider}}' 不可用（其 SDK/运行时未安装）",
       "invalid_body": "设置请求无效。",
       "invalid_value": "{{field}} 的值被拒绝。",

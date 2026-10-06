@@ -42,7 +42,7 @@ async def _in_region_eu(db) -> None:
             StoreConfig(id="eu-pg", url="postgresql://eu/db"),
             StoreConfig(id="eu-trino", url="trino://eu:8080", kind="trino-byo"),
         ):
-            await region_repo.upsert_store(conn, store, origin="config")
+            await region_repo.upsert_store(conn, store)
         await region_repo.upsert_region(
             conn,
             OrgRegion(
@@ -54,7 +54,6 @@ async def _in_region_eu(db) -> None:
                 state="eu-pg",
                 record="eu-pg",
             ),
-            origin="config",
         )
         await conn.execute_core(update(sources).values(region="eu"))
         await conn.execute_core(update(registered_tables).values(region="eu"))

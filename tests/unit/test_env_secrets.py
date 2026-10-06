@@ -88,25 +88,20 @@ class TestOnlyCarriedFieldsAreScanned:
         check_row("sources", {"password": "hunter2", "host": "db.internal"})
 
     def test_a_write_to_a_binding_table_passes_the_seam(self):
-        assert (
-            guard_statement(sources.insert().values(id="s", password="hunter2", origin="admin"))
-            is not None
-        )
+        assert guard_statement(sources.insert().values(id="s", password="hunter2")) is not None
 
 
 class TestTheSeam:
     def test_an_insert_carrying_a_credential_is_refused(self):
         with pytest.raises(CredentialLiteralError):
-            guard_statement(
-                tracked_webhooks.insert().values(url=f"https://x/?t={GITHUB}", origin="admin")
-            )
+            guard_statement(tracked_webhooks.insert().values(url=f"https://x/?t={GITHUB}"))
 
     def test_an_update_carrying_a_credential_is_refused(self):
         with pytest.raises(CredentialLiteralError):
             guard_statement(metrics.update().values(expression=f"f('{AWS}')"))
 
     def test_a_clean_write_is_returned_unchanged(self):
-        stmt = tracked_webhooks.insert().values(url="https://hooks.example/x", origin="admin")
+        stmt = tracked_webhooks.insert().values(url="https://hooks.example/x")
         assert guard_statement(stmt) is stmt
 
     def test_a_select_is_never_scanned(self):

@@ -48,9 +48,9 @@ async def plane() -> Plane:  # noqa: F811 — replaces the SQLite plane the scen
     schema_sql = Path(__file__).resolve().parents[2] / "provisa" / "core" / "schema.sql"
     await init_schema(db, schema_sql.read_text(encoding="utf-8"), org_id=_ORG_ID)
     p = Plane(db)
-    await p.add("sources", id="pg", type="postgresql", origin="admin")
+    await p.add("sources", id="pg", type="postgresql")
     for domain_id in ("sales", "finance"):
-        await p.add("domains", id=domain_id, origin="admin")
+        await p.add("domains", id=domain_id)
     try:
         yield p
     finally:

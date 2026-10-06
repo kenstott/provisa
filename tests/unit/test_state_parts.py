@@ -57,15 +57,14 @@ def stores(tmp_path, monkeypatch):
 
 async def _seed(model_db: Database, *state_dbs: Database) -> int:
     async with model_db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="files", type="csv", origin="config"))
-        await conn.execute_core(insert(domains).values(id="sales", origin="config"))
+        await conn.execute_core(insert(sources).values(id="files", type="csv"))
+        await conn.execute_core(insert(domains).values(id="sales"))
         result = await conn.execute_core(
             insert(registered_tables).values(
                 source_id="files",
                 domain_id="sales",
                 schema_name="public",
                 table_name="orders",
-                origin="config",
             )
         )
         table_id = result.inserted_primary_key[0]

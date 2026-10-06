@@ -59,9 +59,8 @@ def test_file_glob_and_source_file_column_round_trip(tenant_db):
             await table_repo.upsert(
                 conn,
                 _table("orders", file_glob="orders/*.csv", source_file_column="_source_file"),
-                origin="config",
             )
-            await table_repo.upsert(conn, _table("single"), origin="config")
+            await table_repo.upsert(conn, _table("single"))
         return await _registered(tenant_db)
 
     by_name = asyncio.run(_go())

@@ -23,8 +23,6 @@ from sqlalchemy import insert, or_, select, update
 from provisa.api.admin._platform_guard import role_definition_problem
 from provisa.api.admin.capabilities import require_capability_request, role_definitions_visible
 from provisa.api.errors import ApiError
-from provisa.core.repositories.origin import config_notices
-from provisa.core.repositories.origin import of as origin_of
 from provisa.core.schema_org import roles
 
 if TYPE_CHECKING:
@@ -94,7 +92,6 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
                 roles.c.domain_access,
                 roles.c.org_id,
                 roles.c.parent_role_id,  # REQ-1677
-                roles.c.origin,  # REQ-1919
             )
             .where(or_(roles.c.org_id.is_(None), roles.c.org_id == org_id))
             .order_by(roles.c.id)
@@ -102,8 +99,7 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
         rows = result.fetchall()
     identity = getattr(request.state, "identity", None)
     full = role_definitions_visible(request, getattr(identity, "roles", []))
-    # A role whose definition is withheld is still listed with where it came from (REQ-1919).
-    return [dict(r._mapping) if full(r.id) else {"id": r.id, "origin": r.origin} for r in rows]
+    return [dict(r._mapping) if full(r.id) else {"id": r.id} for r in rows]
 
 
 async def _require_reach_of_added(
@@ -147,7 +143,6 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
                 domain_access=body.domain_access,
                 org_id=org_id,
                 parent_role_id=body.parent_role_id,
-                origin="admin",  # REQ-1919: made through the admin
             )
         )
     from provisa.api.app import _rebuild_schemas
@@ -160,7 +155,6 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
         "domain_access": body.domain_access,
         "org_id": org_id,
         "parent_role_id": body.parent_role_id,
-        "origin": "admin",
     }
 
 
@@ -226,7 +220,6 @@ async def update_role(
                 roles.c.domain_access,
                 roles.c.org_id,
                 roles.c.parent_role_id,
-                roles.c.origin,
             ).where(roles.c.id == role_id)
         )
         existing = result.fetchone()
@@ -272,9 +265,6 @@ async def update_role(
         "domain_access": new_domains,
         "org_id": existing["org_id"],
         "parent_role_id": new_parent,
-        "origin": existing["origin"],
-        # REQ-1919: the edit stands until the next load of the config re-applies the file.
-        "warnings": config_notices("role", role_id, existing["origin"], "edited"),
     }
 
 
@@ -286,7 +276,6 @@ async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-
 
     pool = _pool(request)
     async with pool.acquire() as conn:
-        was = await origin_of(conn, "role", role_id)
         try:
             deleted = await role_repo.delete(conn, role_id)
         except role_repo.RoleDeleteRefused as refused:
@@ -307,4 +296,4 @@ async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-
         raise ApiError(404, "roles.not_found", "Role not found")
     # The role's built schema and context must not outlive it; the GraphQL path rebuilds too.
     await _rebuild_schemas()
-    return {"deleted": role_id, "warnings": config_notices("role", role_id, was, "deleted")}
+    return {"deleted": role_id}

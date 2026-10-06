@@ -24,8 +24,6 @@ from sqlalchemy import delete, func, select, update
 
 from provisa.core import model_change
 from provisa.core.models import ScheduledTrigger
-from provisa.core.repositories.origin import CONFIG
-from provisa.core.repositories.origin import require as require_origin
 from provisa.core.schema_org import scheduled_triggers
 
 if TYPE_CHECKING:
@@ -74,16 +72,12 @@ async def create(
     conn: "Connection",
     trigger: ScheduledTrigger,
     *,
-    origin: str,
     webhook_name: str | None = None,
 ) -> None:
     """Add a trigger to the org's model. The caller has checked the id is free."""
     model_change.name("create", "scheduled trigger", trigger.id)  # REQ-1524
-    require_origin(origin)
     await conn.execute_core(
-        scheduled_triggers.insert().values(
-            origin=origin, **_values(trigger, webhook_name=webhook_name)
-        )
+        scheduled_triggers.insert().values(**_values(trigger, webhook_name=webhook_name))
     )
 
 
@@ -107,24 +101,15 @@ async def set_enabled(conn: "Connection", trigger_id: str, enabled: bool) -> boo
     return bool(result.rowcount)
 
 
-async def load_from_config(
-    conn: "Connection", triggers: list[ScheduledTrigger], *, origin: str
-) -> None:
-    """A config's triggers, as the org loading it declares them: each is written with the load's
-    ``origin``. When the config is the file (origin config), a config trigger the file no longer
-    declares is removed; an admin-made trigger is the org's own and is left as it is."""
-    require_origin(origin)
-    if origin == CONFIG:
-        declared = {t.id for t in triggers}
-        for row in await list_all(conn):
-            if row["origin"] == CONFIG and row["id"] not in declared:
-                await delete_one(conn, row["id"])
+async def load_from_config(conn: "Connection", triggers: list[ScheduledTrigger]) -> None:
+    """A config's triggers, as the org seeding from it declares them: each is added, or its
+    definition replaced. A trigger the config does not declare is left as it is (REQ-1919)."""
     for trigger in triggers:
         model_change.name("upsert", "scheduled trigger", trigger.id)  # REQ-1524
         values = _values(trigger)
         await conn.upsert(
             scheduled_triggers,
-            {"origin": origin, **values},
+            values,
             index_elements=["id"],
-            update_columns=[k for k in values if k != "id"] + ["origin"],
+            update_columns=[k for k in values if k != "id"],
         )

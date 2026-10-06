@@ -27,7 +27,7 @@ import pytest_asyncio
 from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.api.startup_seed import _adapt_view_ddl
 from provisa.core import domain_policy
-from provisa.core.config_loader import load_config, parse_config_dict
+from provisa.core.config_loader import apply_config, parse_config_dict
 from provisa.core.repositories import glossary as glossary_repo
 from tests.helpers import ALL_DATA_CAPABILITIES
 
@@ -60,7 +60,7 @@ async def _admin_db():
     loop so a control-plane-only source's `${secret:...}` password can resolve — and that bind
     reads the org's vault out of `admin_db` even when, as here, no source in `_config` actually
     uses one. Without a real platform Database standing behind it, `_request_org_for_secrets`
-    (`provisa/api/app.py`) asserts `state.admin_db is not None` before `load_config` ever gets to
+    (`provisa/api/app.py`) asserts `state.admin_db is not None` before `apply_config` ever gets to
     `_setup`'s own sources.
     """
     import os
@@ -127,7 +127,7 @@ def _config(tables: dict) -> dict:
 
 
 async def _setup(conn, tables: dict) -> None:
-    await load_config(parse_config_dict(_config(tables)), conn, origin="config")
+    await apply_config(parse_config_dict(_config(tables)), conn)
     for tbl in _VIEWS:
         await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[tbl], conn.capabilities.dialect))
 
@@ -239,10 +239,10 @@ async def test_a_term_reaches_the_tags_on_the_columns_it_binds(tenant_db):
             """
             INSERT INTO tag_assignments
                 (tag_id, base_tag_id, object_type, source_id, table_id, column_name,
-                 object_key, reason, origin)
+                 object_key, reason)
             VALUES
-                ('pii', 'pii', 'column', 'pg1', $1, 'cust_id', $2, 'identity', 'admin'),
-                ('deprecated', 'deprecated', 'table', 'pg1', $1, NULL, $3, 'migrating', 'admin')
+                ('pii', 'pii', 'column', 'pg1', $1, 'cust_id', $2, 'identity'),
+                ('deprecated', 'deprecated', 'table', 'pg1', $1, NULL, $3, 'migrating')
             """,
             table_id,
             f"column:{table_id}:cust_id",

@@ -64,10 +64,8 @@ async def control_plane(tmp_path):
     db = Database(engine, name="org")
     await init_schema(db, "", org_id="default")
     async with db.acquire() as conn:
-        await conn.execute_core(insert(domains).values(id="d", origin="ui"))
-        await conn.execute_core(
-            insert(sources).values(id="petstore", type="openapi", origin="admin")
-        )
+        await conn.execute_core(insert(domains).values(id="d"))
+        await conn.execute_core(insert(sources).values(id="petstore", type="openapi"))
     try:
         yield db
     finally:
@@ -94,7 +92,7 @@ async def test_an_openapi_table_with_no_paging_is_stored_unpaged_and_loads(contr
     )
     async with control_plane.acquire() as conn:
         await register_openapi_source(conn, "petstore", BASE)
-        await table_repo.upsert(conn, table, origin="admin")
+        await table_repo.upsert(conn, table)
         assert await persist_openapi_endpoint(state, conn, table) is None
 
         stored = await conn.fetch(

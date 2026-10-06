@@ -100,7 +100,6 @@ def test_delta_round_trips_through_the_control_plane(tmp_path):
             await table_repo.upsert(
                 conn,
                 _table(watermark_column="u", delta=DeltaConfig(apply="upsert", rebuild_every=3600)),
-                origin="config",
             )
         state = SimpleNamespace(model_db=db, tenant_db=db, config=SimpleNamespace(tables=[]))
         async with db.acquire() as conn:

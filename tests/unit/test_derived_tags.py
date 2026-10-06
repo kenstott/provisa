@@ -88,7 +88,7 @@ def test_every_derivable_id_is_a_registered_derived_tag():
 @pytest.mark.asyncio
 async def test_the_registry_synthesizes_derived_tags_in_front_of_the_table(tmp_path):
     async with _conn(tmp_path) as conn:
-        await tag_repo.upsert(conn, Tag(id="pii_reviewed", applies_to=["column"]), origin="admin")
+        await tag_repo.upsert(conn, Tag(id="pii_reviewed", applies_to=["column"]))
         rows = await tag_repo.list_all(conn)
 
     by_id = {row["id"]: row for row in rows}
@@ -106,7 +106,7 @@ async def test_the_registry_synthesizes_derived_tags_in_front_of_the_table(tmp_p
 async def test_a_stored_row_can_never_shadow_a_derived_tag(tmp_path):
     """The mutation layer refuses the id, so a stored row means a hand-edited DB — it is ignored."""
     async with _conn(tmp_path) as conn:
-        await tag_repo.upsert(conn, Tag(id="data_quality", applies_to=["table"]), origin="admin")
+        await tag_repo.upsert(conn, Tag(id="data_quality", applies_to=["table"]))
         rows = await tag_repo.list_all(conn)
         fetched = await tag_repo.get(conn, "data_quality")
 

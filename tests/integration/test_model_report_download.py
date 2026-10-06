@@ -37,7 +37,7 @@ from fastapi import Request
 from provisa.api.admin import report_router
 from provisa.api.metadata_export import workbook as wb
 from provisa.core import domain_policy
-from provisa.core.config_loader import load_config, parse_config_dict
+from provisa.core.config_loader import apply_config, parse_config_dict
 
 pytestmark = [pytest.mark.integration]
 
@@ -180,7 +180,7 @@ def _request(role_id: str) -> Request:
 @pytest_asyncio.fixture
 async def served(
     tenant_db, monkeypatch, platform_admin_db
-):  # load_config binds the org vault (REQ-1730)
+):  # apply_config binds the org vault (REQ-1730)
     """The registration plane the report reads, wired to the app state the endpoint resolves."""
     from provisa.api import app as app_module
     from provisa.api.admin import config_export
@@ -193,21 +193,19 @@ async def served(
     raw = _config()
     async with tenant_db.acquire() as conn:
         # The DataProduct FK/domain check in table_repo.upsert requires the domain to already
-        # exist, but load_config only creates domains as part of the same run — so the domains
+        # exist, but apply_config only creates domains as part of the same run — so the domains
         # and products must be seeded ahead of it, not derived from raw["domains"].
-        await domain_repo.upsert(conn, Domain(id="sales"), origin="admin")
-        await domain_repo.upsert(conn, Domain(id="petstore"), origin="admin")
+        await domain_repo.upsert(conn, Domain(id="sales"))
+        await domain_repo.upsert(conn, Domain(id="petstore"))
         await data_product_repo.upsert(
             conn,
             DataProduct(id="prod-sales", domain_id="sales", name="Sales Product"),
-            origin="admin",
         )
         await data_product_repo.upsert(
             conn,
             DataProduct(id="prod-petstore", domain_id="petstore", name="Petstore Product"),
-            origin="admin",
         )
-        await load_config(parse_config_dict(raw), conn, origin="config")
+        await apply_config(parse_config_dict(raw), conn)
         # A derived term publishes only once a curator has defined it (REQ-1387), so the
         # curation step is part of the fixture: without it the Glossary sheet is empty for a
         # reason that has nothing to do with the report.

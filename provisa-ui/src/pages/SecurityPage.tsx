@@ -47,7 +47,6 @@ import { fetchActions } from "../api/actions";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
-import { OriginBadge } from "../components/OriginBadge";
 
 const ALL_CAPABILITIES: Capability[] = [
   "source_registration",
@@ -440,10 +439,7 @@ export function SecurityRolesPage() {
                     }}
                   >
                     <Table.Td>
-                      <Group gap="0.35rem" wrap="nowrap">
-                        {r.id}
-                        <OriginBadge origin={r.origin} />
-                      </Group>
+                      {r.id}
                     </Table.Td>
                     {r.detailsHidden ? (
                       <Table.Td colSpan={2} c="dimmed" data-testid={`role-details-hidden-${r.id}`}>
@@ -932,10 +928,7 @@ export function SecurityRlsPage() {
                     )}
                   </Table.Td>
                   <Table.Td>
-                    <Group gap="0.35rem" wrap="nowrap">
-                      {r.roleId}
-                      <OriginBadge origin={r.origin} />
-                    </Group>
+                    {r.roleId}
                   </Table.Td>
                   <Table.Td>
                     <Text component="code">{r.filterExpr}</Text>

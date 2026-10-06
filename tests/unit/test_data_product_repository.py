@@ -30,8 +30,8 @@ async def _conn(tmp_path):
         # The whole org schema: a delete asks the dependency guard, which reads every table
         # that can refer to the object.
         domains.metadata.create_all(c)
-        c.execute(domains.insert().values(id="sales", description="Sales", origin="admin"))
-        c.execute(domains.insert().values(id="finance", description="Finance", origin="admin"))
+        c.execute(domains.insert().values(id="sales", description="Sales"))
+        c.execute(domains.insert().values(id="finance", description="Finance"))
     try:
         async with Database(engine, name="dp").acquire() as conn:
             yield conn
@@ -47,7 +47,6 @@ async def test_upsert_then_get_round_trips_all_fields(tmp_path):
             DataProduct(
                 id="checkout", domain_id="sales", name="Checkout", owner_role="alice", purpose="d"
             ),
-            origin="admin",
         )
 
         row = await data_product_repo.get(conn, "checkout")
@@ -69,12 +68,11 @@ async def test_get_missing_returns_none(tmp_path):
 async def test_upsert_is_idempotent_by_id(tmp_path):
     async with _conn(tmp_path) as conn:
         await data_product_repo.upsert(
-            conn, DataProduct(id="checkout", domain_id="sales", name="Checkout"), origin="admin"
+            conn, DataProduct(id="checkout", domain_id="sales", name="Checkout")
         )
         await data_product_repo.upsert(
             conn,
             DataProduct(id="checkout", domain_id="sales", name="Checkout Renamed"),
-            origin="admin",
         )
 
         rows = await data_product_repo.list_all(conn)
@@ -87,10 +85,10 @@ async def test_upsert_is_idempotent_by_id(tmp_path):
 async def test_list_by_domain_only_returns_that_domains_products(tmp_path):
     async with _conn(tmp_path) as conn:
         await data_product_repo.upsert(
-            conn, DataProduct(id="checkout", domain_id="sales", name="Checkout"), origin="admin"
+            conn, DataProduct(id="checkout", domain_id="sales", name="Checkout")
         )
         await data_product_repo.upsert(
-            conn, DataProduct(id="ledger", domain_id="finance", name="Ledger"), origin="admin"
+            conn, DataProduct(id="ledger", domain_id="finance", name="Ledger")
         )
 
         sales_products = await data_product_repo.list_by_domain(conn, "sales")
@@ -102,7 +100,7 @@ async def test_list_by_domain_only_returns_that_domains_products(tmp_path):
 async def test_delete_removes_the_row_and_reports_whether_one_existed(tmp_path):
     async with _conn(tmp_path) as conn:
         await data_product_repo.upsert(
-            conn, DataProduct(id="checkout", domain_id="sales", name="Checkout"), origin="admin"
+            conn, DataProduct(id="checkout", domain_id="sales", name="Checkout")
         )
 
         assert await data_product_repo.delete(conn, "checkout") is True

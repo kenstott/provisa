@@ -8,7 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1674: landing paths read the registry (control plane + config overlay), not the config file."""
+"""REQ-1674, REQ-1919: landing paths read the registry — the control plane's rows — never the
+config file. After the seed the model store alone owns the model: a source or table the file
+declares is what its row says, and one the file declares that the store does not hold does not
+exist."""
 
 from __future__ import annotations
 
@@ -46,7 +49,7 @@ def _state(config_sources, config_tables, rows, registered):
 
 
 @pytest.mark.asyncio
-async def test_ui_created_source_joins_config_sources_and_builtins_stay_out(monkeypatch):
+async def test_every_source_is_its_row_and_builtins_stay_out(monkeypatch):
     cfg_src = Source(
         id="cfg_pg", type=SourceType.postgresql, host="h", port=5432, password="${env:PW}"
     )
@@ -73,17 +76,17 @@ async def test_ui_created_source_joins_config_sources_and_builtins_stay_out(monk
         },
         {"id": "provisa-admin", "type": "duckdb", "password_ref": ""},
     ]
-    state, rows, _ = _state([cfg_src], [], rows, [])
+    only_in_file = Source(id="file_only", type=SourceType.postgresql, host="h", port=5432)
+    state, rows, _ = _state([cfg_src, only_in_file], [], rows, [])
 
     async def _list_all(conn):
         return rows
 
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _list_all)
     out = {s.id: s for s in await registry_view.registered_sources(state)}
-    assert set(out) == {"cfg_pg", "ui_mongo"}
-    assert (
-        out["cfg_pg"].password == "${env:PW}"
-    )  # the config's Source wins: it carries the secret ref
+    assert set(out) == {"cfg_pg", "ui_mongo"}  # the file-only source does not exist
+    # The row wins over the file's declaration of the same id: an admin's edit governs.
+    assert (out["cfg_pg"].host, out["cfg_pg"].port, out["cfg_pg"].password) == ("other", 1, "")
     assert out["ui_mongo"].type is SourceType.mongodb and out["ui_mongo"].database == "provisa"
     # REQ-1695: the control-plane row's password_ref IS the Source's password — a UI-created
     # source authenticates like a config-declared one instead of reaching its connector empty.
@@ -91,15 +94,17 @@ async def test_ui_created_source_joins_config_sources_and_builtins_stay_out(monk
 
 
 @pytest.mark.asyncio
-async def test_registered_tables_carry_config_settings_only_where_declared(monkeypatch):
+async def test_registered_tables_carry_the_settings_their_rows_hold(monkeypatch):
+    # The file says otherwise; the row is what the table is (REQ-1919).
     cfg_tbl = Table(
         source_id="cfg_pg",
         domain_id="d",
         schema="public",
         table="orders",
         columns=[],
-        change_signal="ttl",
-        cache_ttl=30,
+        change_signal="probe",
+        cache_ttl=999,
+        watermark_column="file_wm",
     )
     registered = [
         {
@@ -112,8 +117,12 @@ async def test_registered_tables_carry_config_settings_only_where_declared(monke
             "pagination": None,  # REQ-318: the table sets no paging
             "replicate": None,
             "load_protected": None,
-            "change_signal": "ttl",  # REQ-929: saved on the row by the config load
+            "change_signal": "ttl",  # REQ-929: saved on the row by the seed
             "region": None,  # REQ-1921: it names no region
+            "cache_ttl": 30,
+            "live": None,
+            "watermark_column": "updated_at",
+            "probe_type": None,
             "columns": [
                 {
                     "column_name": "id",
@@ -135,6 +144,10 @@ async def test_registered_tables_carry_config_settings_only_where_declared(monke
             "load_protected": None,
             "change_signal": None,  # REQ-929: the table sets none
             "region": None,  # REQ-1921: it names no region
+            "cache_ttl": None,
+            "live": None,
+            "watermark_column": None,
+            "probe_type": None,
             "columns": [
                 {
                     "column_name": "rating",
@@ -153,6 +166,7 @@ async def test_registered_tables_carry_config_settings_only_where_declared(monke
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
     tables = {t.table_name: t for t in await registry_view.registered_tables(state)}
     assert tables["orders"].change_signal == "ttl" and tables["orders"].cache_ttl == 30
+    assert tables["orders"].watermark_column == "updated_at"
     assert tables["orders"].columns[0].is_primary_key is True
     assert tables["product_reviews"].change_signal is None
     assert tables["product_reviews"].columns[0].data_type == "bigint"

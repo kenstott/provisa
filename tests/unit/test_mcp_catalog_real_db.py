@@ -67,7 +67,6 @@ async def _seeded_db(tmp_path):
                 columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
                 view_sql="SELECT 1 AS id",
             ),
-            origin="admin",
         )
     return engine, db
 

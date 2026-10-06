@@ -18,14 +18,9 @@ export interface SourceCdcConfig {
   consumerGroupId?: string | null; // REQ-931: null/omitted = inherit Provisa-level default
 }
 
-// REQ-1919: where a source, domain, role or table came from. A load of the config re-applies
-// what its file says about a "config" object; "seed" objects are the deployment's own.
-export type Origin = "config" | "admin" | "seed";
-
 export interface Source {
   id: string;
   type: string;
-  origin: Origin;
   // Null for a caller without source_registration: connection details are that right's.
   host: string | null;
   port: number | null;
@@ -61,7 +56,6 @@ export interface RefreshPolicySummary {
 export interface Domain {
   id: string;
   description: string;
-  origin: Origin;
   graphqlAlias?: string | null;
   steward?: string | null; // REQ-609: role or user id; null means PENDING
   isSystem: boolean; // domain_policy.system_domain_ids() (meta/ops/"") -- never end-user-picked
@@ -279,7 +273,6 @@ export interface RegisteredTable {
   domainId: string;
   schemaName: string;
   tableName: string;
-  origin: Origin;
   alias: string | null;
   description: string | null;
   cacheTtl: number | null;
@@ -551,7 +544,6 @@ export interface RLSRule {
   actionName?: string | null; // REQ-1679: a tracked function/webhook target, by name
   roleId: string;
   filterExpr: string;
-  origin: Origin; // REQ-1919: a config's rule is removed when the file stops declaring it
 }
 
 // REQ-1484: an artifact that references a column the administrator is about to rename or drop.
@@ -575,13 +567,5 @@ export interface MutationResult {
   message: string;
   // REQ-1350: stable server error/status code + interpolation params for client-side i18n.
   code?: string | null;
-  params?: Record<string, unknown> | null;
-  // REQ-1919: the change was made, and there is something to know about it.
-  warnings?: MutationWarning[] | null;
-}
-
-export interface MutationWarning {
-  code: string;
-  message: string;
   params?: Record<string, unknown> | null;
 }

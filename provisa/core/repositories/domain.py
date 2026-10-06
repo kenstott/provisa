@@ -19,8 +19,6 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import Domain
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.repositories.origin import require as require_origin
-from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import domains
 
 if TYPE_CHECKING:
@@ -28,13 +26,10 @@ if TYPE_CHECKING:
 
 
 async def upsert(  # REQ-021, REQ-367, REQ-1919
-    conn: "Connection", domain: Domain, *, origin: str
+    conn: "Connection", domain: Domain
 ) -> None:
-    """Create the domain, or replace its definition. ``origin`` says where it comes from
-    (``repositories.origin``): written when the domain is CREATED and left alone after, except
-    that a config load takes over a domain made through the admin."""
+    """Create the domain, or replace its definition."""
     model_change.name("upsert", "domain", domain.id)  # REQ-1524
-    require_origin(origin)
     await conn.upsert(
         domains,
         {
@@ -43,13 +38,9 @@ async def upsert(  # REQ-021, REQ-367, REQ-1919
             "steward": domain.steward,  # REQ-609
             "graphql_alias": domain.graphql_alias,
             "org_id": "root",
-            "origin": origin,
         },
         index_elements=["id"],
         update_columns=["description", "steward", "graphql_alias"],
-    )
-    await take_over(
-        conn, domains, (domains.c.id == domain.id,), kind="domain", ident=domain.id, origin=origin
     )
 
 
@@ -109,7 +100,6 @@ async def delete(conn: "Connection", domain_id: str) -> bool:  # REQ-021, REQ-19
 
 async def discard(conn: "Connection", domain_id: str) -> None:
     """Remove a domain's parts and its row WITHOUT asking the guard: for a caller that has
-    already established it may go — :func:`delete`, and the config loader once its own check of
-    everything the file dropped has passed."""
+    already established it may go — :func:`delete`."""
     await remove_parts(conn, ObjectRef("domain", domain_id))
     await conn.execute_core(_delete(domains).where(domains.c.id == domain_id))

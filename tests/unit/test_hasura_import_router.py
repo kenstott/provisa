@@ -136,8 +136,8 @@ async def test_preview_never_writes(monkeypatch):
     _grant(monkeypatch, {"org_settings"})
     called: list[str] = []
     monkeypatch.setattr(
-        "provisa.core.config_loader.load_config",
-        lambda *a, **k: called.append("load_config"),
+        "provisa.core.config_loader.apply_config",
+        lambda *a, **k: called.append("apply_config"),
     )
     await ir.preview_import(_preview_req(V2_DOCUMENT), _request())
     assert called == []
@@ -165,11 +165,13 @@ def _wire_apply(monkeypatch) -> dict:
     """Stand in for the org runtime, recording the settled apply sequence."""
     seen: dict = {"order": []}
 
-    async def _load_config(config, conn, engine, catalog_names, *, origin):  # noqa: ARG001
-        seen["order"].append("load_config")
+    async def _apply_config(config, conn, engine):  # noqa: ARG001
+        seen["order"].append("apply_config")
         seen["config"] = config
+
+    def _register(engine, sources, catalog_names):  # noqa: ARG001
+        seen["order"].append("catalogs issued")
         seen["catalog_names"] = catalog_names
-        seen["origin"] = origin
 
     async def _pools(config):  # noqa: ARG001
         seen["order"].append("pools")
@@ -185,7 +187,18 @@ def _wire_apply(monkeypatch) -> dict:
     import provisa.api.startup_seed as seed
     import provisa.core.config_loader as cl
 
-    monkeypatch.setattr(cl, "load_config", _load_config)
+    monkeypatch.setattr(cl, "apply_config", _apply_config)
+    monkeypatch.setattr(cl, "register_sources", _register)
+
+    from contextlib import asynccontextmanager
+
+    import provisa.core.secrets_store as secrets_store
+
+    @asynccontextmanager
+    async def _no_vault():  # the imported sources name no stored secret
+        yield
+
+    monkeypatch.setattr(secrets_store, "bound_to_request_org", _no_vault)
     monkeypatch.setattr(loaders, "_build_source_pools_and_enums", _pools)
     monkeypatch.setattr(
         loaders, "_populate_source_catalog_names", lambda c: seen["order"].append("catalogs")
@@ -217,11 +230,17 @@ async def test_apply_runs_the_settled_sequence(monkeypatch):
     resp = await ir.apply_import(ir.ImportApplyRequest(config_yaml=CONFIG_YAML), _request())
 
     # Catalog names FIRST — sources must register under the org's own engine catalogs (REQ-1266).
-    assert seen["order"] == ["catalogs", "load_config", "pools", "pk", "rebuild"]
+    # REQ-1919: an import is an explicit one-time seed — the apply adds and updates and removes
+    # nothing, and the catalogs of the sources it declares are issued after it.
+    assert seen["order"] == [
+        "catalogs",
+        "apply_config",
+        "catalogs issued",
+        "pools",
+        "pk",
+        "rebuild",
+    ]
     assert seen["catalog_names"] == {"pg1": "org_7_pg1"}
-    # REQ-1919: an import through the admin is not a load of the deployment's file. What it
-    # creates is the admin's, and the load takes nothing over and removes nothing.
-    assert seen["origin"] == "admin"
     assert resp.summary.source_ids == ["pg1"]
 
 

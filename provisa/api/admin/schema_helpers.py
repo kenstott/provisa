@@ -433,7 +433,6 @@ async def _fetch_table_with_columns(
         domain_id=row["domain_id"],
         schema_name=row["schema_name"],
         table_name=row["table_name"],
-        origin=row["origin"],  # REQ-1919
         write_ops=_write_ops,
         alias=row.get("alias"),
         description=row.get("description"),
