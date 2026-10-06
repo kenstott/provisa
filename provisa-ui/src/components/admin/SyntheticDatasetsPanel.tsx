@@ -29,12 +29,17 @@ import {
   dropDataset,
   fetchDatasets,
   fetchProfileRuns,
+  fetchRelationships,
   fetchReport,
   generateDataset,
+  type DatasetRelationship,
+  type FanoutCondition,
   type ProfiledTableRuns,
   type ReportRow,
   type SyntheticDataset,
 } from "../../api/synthetic";
+import { DatasetAssertions } from "./synthetic/DatasetAssertions";
+import { DatasetConditions } from "./synthetic/DatasetConditions";
 
 const PROD = "prod";
 
@@ -42,6 +47,10 @@ function num(v: number | null): string {
   if (v == null) return "";
   return Number.isInteger(v) ? String(v) : v.toPrecision(4);
 }
+
+// The report's own measures beside the profile comparison's (REQ-1939): an assertion's result
+// and each conditional fan-out's parents and children.
+const OWN_MEASURES = new Set(["assertion", "conditional_parents", "conditional_children"]);
 
 // REQ-1939: an environment's synthetic datasets -- defined, generated, regenerated and dropped
 // beside the environment's other settings. Production holds none, so it is not offered.
@@ -60,6 +69,9 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
   const [profileEnv, setProfileEnv] = useState<string>(PROD);
   const [runs, setRuns] = useState<ProfiledTableRuns[]>([]);
   const [picked, setPicked] = useState<Record<number, { runId: string; scale: number | null }>>({});
+  const [relationships, setRelationships] = useState<DatasetRelationship[]>([]);
+  const [conditions, setConditions] = useState<FanoutCondition[]>([]);
+  const [assertions, setAssertions] = useState<string[]>([]);
 
   const reload = useCallback(() => {
     if (!env) return;
@@ -68,6 +80,13 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
       .catch((e: Error) => setError(e.message));
   }, [env]);
   useEffect(reload, [reload]);
+
+  useEffect(() => {
+    if (!env) return;
+    fetchRelationships(env)
+      .then(setRelationships)
+      .catch((e: Error) => setError(e.message));
+  }, [env]);
 
   useEffect(() => {
     if (!env) return;
@@ -108,8 +127,22 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
           runId: p.runId,
           scale: p.scale,
         })),
+        fanoutConditions: conditions,
+        assertions,
       }),
     );
+  const generated = relationships.filter(
+    (r) => picked[r.parentTableId] !== undefined && picked[r.childTableId] !== undefined,
+  );
+  const measureLabel = (m: string) =>
+    OWN_MEASURES.has(m) ? t(`syntheticDatasets.measure_${m}`) : m;
+  const syntheticCell = (r: ReportRow) => {
+    if (r.measure !== "assertion") return num(r.synthetic);
+    if (r.synthetic == null) return t("syntheticDatasets.assertionError");
+    return r.synthetic === 1
+      ? t("syntheticDatasets.assertionTrue")
+      : t("syntheticDatasets.assertionFalse");
+  };
 
   return (
     <Stack gap="md" data-testid="synthetic-panel">
@@ -222,9 +255,9 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
                 <Table.Tr key={i}>
                   <Table.Td>{r.table}</Table.Td>
                   <Table.Td>{r.column ?? ""}</Table.Td>
-                  <Table.Td>{r.measure}</Table.Td>
+                  <Table.Td>{measureLabel(r.measure)}</Table.Td>
                   <Table.Td>{num(r.source)}</Table.Td>
-                  <Table.Td>{num(r.synthetic)}</Table.Td>
+                  <Table.Td>{syntheticCell(r)}</Table.Td>
                   <Table.Td>{num(r.delta)}</Table.Td>
                   <Table.Td>{r.note ?? ""}</Table.Td>
                 </Table.Tr>
@@ -334,6 +367,8 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
           </Table.Tbody>
         </Table>
       )}
+      <DatasetConditions relationships={generated} value={conditions} onChange={setConditions} />
+      <DatasetAssertions value={assertions} onChange={setAssertions} />
       <Group>
         <Button
           onClick={define}

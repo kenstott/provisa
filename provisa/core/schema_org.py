@@ -999,6 +999,10 @@ synthetic_datasets = Table(
     Column("store_schema", Text, nullable=False),
     Column("error", Text),
     Column("generated_at", DateTime(timezone=True)),
+    # REQ-1939: conditional child counts by relationship ([{relationship, condition, count}]) and
+    # the statements checked after generation ([statement, ...])
+    Column("fanout_conditions", JSON, nullable=False, default=list, server_default="[]"),
+    Column("assertions", JSON, nullable=False, default=list, server_default="[]"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

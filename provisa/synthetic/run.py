@@ -489,6 +489,145 @@ async def _dataset_tables(
     return out, relationships, registered
 
 
+def _quantiles(histogram: dict[int, int], points: tuple[float, ...]) -> tuple[float, ...]:
+    """PERCENTILE_CONT at each point over values given as {value: how many}."""
+    values = sorted(histogram)
+    total = sum(histogram.values())
+    out = []
+    for q in points:
+        pos = q * (total - 1)
+        lo, frac = int(pos), pos - int(pos)
+
+        def at(i: int) -> float:
+            seen = 0
+            for v in values:
+                seen += histogram[v]
+                if i < seen:
+                    return float(v)
+            return float(values[-1])
+
+        a = at(lo)
+        out.append(a + frac * (at(min(lo + 1, total - 1)) - a))
+    return tuple(out)
+
+
+async def _measure_condition(
+    state: Any, by_id: dict[int, DatasetTable], edges: list[Any], c: Any
+) -> tuple[float, ...] | None:
+    """The fan-out sketch of the real parents meeting ``c``'s condition: each such parent's child
+    count, zero included, read as the org admin through the governed pipeline (REQ-1939,
+    CONDITIONAL FAN-OUT); None where no parent meets it."""
+    import sqlglot
+    from sqlglot import exp
+
+    from provisa.profiler.run import PROFILE_ROLE, _governed
+    from provisa.profiler.statement import QUANTILE_POINTS, _ident, qualified
+
+    edge = next(e for e in edges if e.relationship == c.relationship)
+    parent, child = by_id[edge.parent_id], by_id[edge.child_id]
+    p2s = state.contexts[PROFILE_ROLE].physical_to_sql
+
+    def exposed(t: DatasetTable, column: str) -> str:
+        name = p2s.get((t.table_id, column))
+        if name is None:
+            raise DatasetRefused(f"{t.name}.{column} is not readable by {PROFILE_ROLE}")
+        return name
+
+    tree = sqlglot.parse_one(c.condition, read="postgres")
+    for col in list(tree.find_all(exp.Column)):
+        col.replace(exp.column(exposed(parent, col.name), table="x", quoted=True))
+    cond = tree.sql(dialect="postgres")
+    key = _ident(exposed(parent, edge.parent_column))
+    fk = _ident(exposed(child, edge.child_column))
+    ptable, ctable = qualified(parent.pgwire_name), qualified(child.pgwire_name)
+    _n, rows = await _governed(f"SELECT COUNT(*) AS n FROM {ptable} x WHERE {cond}")
+    parents = int(rows[0][0])
+    if parents == 0:
+        return None
+    _n, rows = await _governed(
+        f"SELECT n, COUNT(*) AS m FROM (SELECT c.{fk} AS k, COUNT(*) AS n FROM {ctable} c "
+        f"WHERE c.{fk} IN (SELECT x.{key} FROM {ptable} x WHERE {cond}) GROUP BY c.{fk}) s "
+        f"GROUP BY n"
+    )
+    histogram = {int(n): int(m) for n, m in rows}
+    with_children = sum(histogram.values())
+    if parents > with_children:
+        histogram[0] = histogram.get(0, 0) + parents - with_children
+    return _quantiles(histogram, QUANTILE_POINTS)
+
+
+def _condition_entries(state: Any, planned: list[PlannedTable]) -> list[dict]:
+    """Each conditional fan-out's parents and the children they were generated with, for the
+    report (REQ-1939), counted by the engine as the generation statement counts them."""
+    from provisa.federation.execution_auth import SystemAuth, mint_system_token
+    from provisa.synthetic.generate import condition_counts_sql
+
+    out = []
+    engine_rt = state.federation_engine
+    for p in planned:
+        if not p.plan.conditions:
+            continue
+        sql = condition_counts_sql(p.plan, engine_rt.engine.name)
+        _schema, stream = engine_rt.execute_engine_stream(
+            sql,
+            authorization=SystemAuth(
+                mint_system_token(), reason=f"synthetic:{p.plan.name}:conditions", expected_sql=sql
+            ),
+        )
+        try:
+            rows = sorted(tuple(r.values()) for b in stream for r in b.to_pylist())
+        finally:
+            stream.close()
+        for k, parents, children in rows:
+            condition = p.plan.conditions[int(k)].condition
+            for measure, value in (
+                ("conditional_parents", parents),
+                ("conditional_children", children),
+            ):
+                out.append(
+                    {
+                        "table_name": p.plan.name,
+                        "column_name": None,
+                        "measure": measure,
+                        "source_value": None,
+                        "synthetic_value": float(value),
+                        "delta": None,
+                        "note": condition,
+                    }
+                )
+    return out
+
+
+async def _assertion_entries(assertions: tuple[str, ...]) -> list[dict]:
+    """Each assertion run over the generated tables as the org admin, with its result: true,
+    false, or the error it ran into. An assertion never rejects, regenerates or alters the data
+    (REQ-1939, ASSERTIONS); its failure to run is its reported result."""
+    from provisa.profiler.run import _governed
+
+    out = []
+    for statement in assertions:
+        value: float | None
+        try:
+            _names, rows = await _governed(statement)
+            result = rows[0][0] if rows and rows[0] else None
+            value = None if result is None else (1.0 if bool(result) else 0.0)
+            note = statement if result is not None else f"{statement} -- returned no value"
+        except Exception as exc:  # noqa: BLE001 -- REQ-1939: the statement's error is its result
+            value, note = None, f"{statement} -- {type(exc).__name__}: {exc}"
+        out.append(
+            {
+                "table_name": "",
+                "column_name": None,
+                "measure": "assertion",
+                "source_value": None,
+                "synthetic_value": value,
+                "delta": None,
+                "note": note,
+            }
+        )
+    return out
+
+
 async def generate(state: Any, dataset_id: str) -> None:
     """Generate (or regenerate) ``dataset_id`` in the bound environment, then report on it."""
     from provisa.api.app import _rebuild_schemas
@@ -508,6 +647,12 @@ async def generate(state: Any, dataset_id: str) -> None:
             for t, c, other in distances_to_measure(tables, edges)
         }
         pinned = await _pinned_runs(state, row, tables, registered)
+        by_id = {t.table_id: t for t in tables}
+        condition_sketches: dict[tuple[str | None, str], tuple[float, ...] | None] = {
+            (c.relationship, c.condition): await _measure_condition(state, by_id, edges, c)
+            for c in row.fanout_conditions
+            if c.count == {"measured": True}
+        }
         planned = plan_tables(
             tables,
             edges,
@@ -517,6 +662,8 @@ async def generate(state: Any, dataset_id: str) -> None:
             measure=lambda t, c: measured[(t.table_id, c)],
             distance=lambda t, c: distances[(t.table_id, c)],
             pinned_run=lambda t, run_id: pinned[(t.table_id, run_id)],
+            conditions=row.fanout_conditions,
+            measure_condition=lambda e, cond: condition_sketches[(e.relationship, cond)],
         )
         for p in planned:
             await _write_table(state, row.store_schema, p, registered[p.table.table_id])
@@ -539,7 +686,8 @@ async def generate(state: Any, dataset_id: str) -> None:
         await datasets.set_status(conn, dataset_id, "generated", generated_at=datetime.now(UTC))
     # Its tables now read their copies here: the routes are republished with the model.
     await _rebuild_schemas()
-    await report(state, dataset_id, planned)
+    extra = _condition_entries(state, planned) + await _assertion_entries(row.assertions)
+    await report(state, dataset_id, planned, extra)
 
 
 async def drop(state: Any, dataset_id: str) -> None:
@@ -559,7 +707,9 @@ async def drop(state: Any, dataset_id: str) -> None:
 # -- the report -------------------------------------------------------------------------------
 
 
-async def report(state: Any, dataset_id: str, planned: list[PlannedTable]) -> None:
+async def report(
+    state: Any, dataset_id: str, planned: list[PlannedTable], extra: list[dict] | None = None
+) -> None:
     """Profile each generated table as the org admin and compare it with its source profile."""
     from provisa.core.schema_org import synthetic_report
     from provisa.profiler import measures
@@ -587,6 +737,7 @@ async def report(state: Any, dataset_id: str, planned: list[PlannedTable]) -> No
             names, rows, target.columns, target.fanouts, target.keys, target.checks
         )
         entries += compare(p, synthetic, measures)
+    entries += extra or []
     async with state.model_db.acquire() as conn:
         async with conn.transaction():
             await conn.execute_core(
@@ -597,6 +748,38 @@ async def report(state: Any, dataset_id: str, planned: list[PlannedTable]) -> No
 
 
 # -- defining -----------------------------------------------------------------------------------
+
+
+async def check_conditions_of(conn: Any, table_ids: list[int], conditions: list[Any]) -> None:
+    """Refuse a conditional fan-out whose relationship is not one the dataset generates its
+    child's rows by, or whose condition names a column its parent does not hold (REQ-1939)."""
+    from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
+    from provisa.fakes.sql_subset import read
+
+    if not conditions:
+        return
+    tables = {t["id"]: t for t in await fetch_tables(conn)}
+    rels = {r["id"]: r for r in await fetch_relationships(conn)}
+    for c in conditions:
+        r = rels.get(c.relationship)
+        if r is None:
+            raise DatasetRefused(
+                f"conditional fan-out names relationship {c.relationship!r}, which does not exist"
+            )
+        edge = edges_of([r])
+        if not edge or not {edge[0].parent_id, edge[0].child_id} <= set(table_ids):
+            raise DatasetRefused(
+                f"conditional fan-out names relationship {c.relationship!r}, whose parent and child "
+                f"the dataset does not both generate"
+            )
+        parent = tables[edge[0].parent_id]
+        held = {col["column_name"] for col in parent["columns"]}
+        missing = sorted(read(c.condition, group=False).columns - held)
+        if missing:
+            raise DatasetRefused(
+                f"conditional fan-out of {c.relationship!r}: its condition names {missing[0]!r}, "
+                f"which {parent['table_name']!r} does not hold"
+            )
 
 
 async def check_closure_of(conn: Any, table_ids: list[int]) -> None:

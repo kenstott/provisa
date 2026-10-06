@@ -17,6 +17,7 @@ import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
 const api = vi.hoisted(() => ({
   fetchDatasets: vi.fn(),
   fetchProfileRuns: vi.fn(),
+  fetchRelationships: vi.fn(),
   defineDataset: vi.fn(),
   generateDataset: vi.fn(),
   fetchReport: vi.fn(),
@@ -37,6 +38,8 @@ const DATASET = {
   error: null,
   generatedAt: "2026-10-06T00:00:00Z",
   tables: [{ tableId: 3, profileEnv: "prod", runId: "r1", scale: null }],
+  fanoutConditions: [],
+  assertions: [],
 };
 
 beforeEach(() => {
@@ -47,6 +50,20 @@ beforeEach(() => {
       tableId: 3,
       tableName: "customers",
       runs: [{ runId: "r1", runTime: "2026-10-05T03:00:00Z", rowCount: 200 }],
+    },
+    {
+      tableId: 4,
+      tableName: "orders",
+      runs: [{ runId: "r2", runTime: "2026-10-05T03:00:00Z", rowCount: 800 }],
+    },
+  ]);
+  api.fetchRelationships.mockResolvedValue([
+    {
+      id: "cust-orders",
+      parentTableId: 3,
+      parentTable: "customers",
+      childTableId: 4,
+      childTable: "orders",
     },
   ]);
   api.defineDataset.mockResolvedValue({ id: "big", storeSchema: "s" });
@@ -60,6 +77,24 @@ beforeEach(() => {
       synthetic: 400,
       delta: 2,
       note: "expected ratio 2",
+    },
+    {
+      table: "",
+      column: null,
+      measure: "assertion",
+      source: null,
+      synthetic: 0,
+      delta: null,
+      note: "SELECT false",
+    },
+    {
+      table: "orders",
+      column: null,
+      measure: "conditional_parents",
+      source: null,
+      synthetic: 12,
+      delta: null,
+      note: "tier = 'gold'",
     },
   ]);
 });
@@ -75,7 +110,11 @@ describe("SyntheticDatasetsPanel", () => {
     await waitFor(() => expect(api.generateDataset).toHaveBeenCalledWith("dev", "load_test"));
 
     fireEvent.click(screen.getByTestId("synthetic-report-load_test"));
-    expect(await screen.findByTestId("synthetic-report")).toHaveTextContent("expected ratio 2");
+    const report = await screen.findByTestId("synthetic-report");
+    expect(report).toHaveTextContent("expected ratio 2");
+    expect(report).toHaveTextContent("Assertion");
+    expect(report).toHaveTextContent("False");
+    expect(report).toHaveTextContent("Parents meeting the condition");
   });
 
   it("defines a dataset of the picked tables and their profile runs", async () => {
@@ -88,7 +127,30 @@ describe("SyntheticDatasetsPanel", () => {
         seed: 1,
         scale: 1,
         tables: [{ tableId: 3, profileEnv: "prod", runId: "r1", scale: null }],
+        fanoutConditions: [],
+        assertions: [],
       }),
+    );
+  });
+
+  it("offers conditional fan-out over the relationships whose tables are picked, and assertions", async () => {
+    render(<SyntheticDatasetsPanel envs={["prod", "dev"]} />);
+    fireEvent.click(await screen.findByTestId("synthetic-table-customers"));
+    expect(screen.getByTestId("synthetic-add-condition")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("synthetic-table-orders"));
+    await waitFor(() => expect(screen.getByTestId("synthetic-add-condition")).toBeEnabled());
+    fireEvent.click(screen.getByTestId("synthetic-add-assertion"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Assertion" }), {
+      target: { value: "SELECT true" },
+    });
+    fireEvent.change(screen.getByTestId("synthetic-name"), { target: { value: "big" } });
+    fireEvent.click(screen.getByTestId("synthetic-define"));
+    await waitFor(() =>
+      expect(api.defineDataset).toHaveBeenCalledWith(
+        "dev",
+        "big",
+        expect.objectContaining({ assertions: ["SELECT true"], fanoutConditions: [] }),
+      ),
     );
   });
 

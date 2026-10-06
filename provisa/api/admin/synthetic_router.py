@@ -45,10 +45,19 @@ class TableIn(BaseModel):
     scale: float | None = None
 
 
+class ConditionIn(BaseModel):
+    relationship: str
+    condition: str
+    count: dict
+
+
 class DatasetIn(BaseModel):
     seed: int
     scale: float
     tables: list[TableIn]
+    # REQ-1939: conditional fan-out and assertions, each a field of the dataset's form.
+    fanoutConditions: list[ConditionIn] = []
+    assertions: list[str] = []
 
 
 def _db() -> Any:
@@ -90,6 +99,11 @@ async def list_datasets(request: Request) -> list[dict]:
                 }
                 for t in r.tables
             ],
+            "fanoutConditions": [
+                {"relationship": c.relationship, "condition": c.condition, "count": c.count}
+                for c in r.fanout_conditions
+            ],
+            "assertions": list(r.assertions),
         }
         for r in rows
     ]
@@ -108,19 +122,47 @@ async def profile_runs(request: Request, env: str) -> list[dict]:
         return await profile_runs_in(conn, env, tables)
 
 
+@router.get("/-/relationships")
+async def relationships(request: Request) -> list[dict]:
+    """``[{id, parentTableId, parentTable, childTableId, childTable}]``: the relationships whose
+    child's rows a dataset may generate by, which a conditional fan-out names (REQ-1939)."""
+    require_capability_request(request, _RIGHT)
+    from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
+    from provisa.synthetic.plan import edges_of
+
+    async with _db().acquire() as conn:
+        names = {t["id"]: t["table_name"] for t in await fetch_tables(conn)}
+        edges = edges_of(await fetch_relationships(conn))
+    return [
+        {
+            "id": e.relationship,
+            "parentTableId": e.parent_id,
+            "parentTable": names[e.parent_id],
+            "childTableId": e.child_id,
+            "childTable": names[e.child_id],
+        }
+        for e in edges
+        if e.relationship is not None
+    ]
+
+
 @router.put("/{dataset_id}")
 async def define_dataset(request: Request, dataset_id: str, body: DatasetIn) -> dict:
     require_capability_request(request, _RIGHT)
-    from provisa.synthetic.datasets import DatasetTableRow, check_name, define
+    from provisa.synthetic.datasets import DatasetTableRow, FanoutCondition, check_name, define
     from provisa.synthetic.plan import DatasetRefused
-    from provisa.synthetic.run import check_closure_of, store_schema
+    from provisa.synthetic.run import check_closure_of, check_conditions_of, store_schema
 
     try:
         check_name(dataset_id)
         schema = store_schema(dataset_id)
         tables = [DatasetTableRow(t.tableId, t.profileEnv, t.runId, t.scale) for t in body.tables]
+        conditions = [
+            FanoutCondition(c.relationship, c.condition, c.count) for c in body.fanoutConditions
+        ]
         async with _db().acquire() as conn:
             await check_closure_of(conn, [t.table_id for t in tables])
+            await check_conditions_of(conn, [t.table_id for t in tables], conditions)
             await define(
                 conn,
                 dataset_id=dataset_id,
@@ -128,6 +170,8 @@ async def define_dataset(request: Request, dataset_id: str, body: DatasetIn) -> 
                 scale=body.scale,
                 store_schema=schema,
                 tables=tables,
+                fanout_conditions=conditions,
+                assertions=body.assertions,
             )
     except (ValueError, DatasetRefused) as exc:
         raise _refused(exc, dataset_id) from exc

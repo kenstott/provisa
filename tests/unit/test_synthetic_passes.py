@@ -225,3 +225,91 @@ def test_the_trino_statements_of_both_passes_parse():
     )
     sqlglot.parse_one(second, read="trino")
     assert '"store"."ds"."p"' in second
+
+
+# -- conditional fan-out (REQ-1939, CONDITIONAL FAN-OUT) ---------------------------------------
+
+
+def _conditioned(conditions):
+    from provisa.synthetic.datasets import FanoutCondition
+
+    edges = [Edge(1, "id", 2, "customer_id", "cust-purchases")]
+    customers = _customers()
+    planned = plan_tables(
+        [customers, _purchases({})],
+        edges,
+        seed=3,
+        names=_NAMES,
+        count_rows=_count,
+        measure=_unmeasured,
+        conditions=tuple(FanoutCondition("cust-purchases", c, n) for c, n in conditions),
+        measure_condition=lambda e, cond: tuple(5.0 for _ in range(101)),
+    )
+    return {p.table.name: p for p in planned}
+
+
+def test_the_first_condition_a_parent_meets_decides_its_children(con):
+    planned = _conditioned(
+        [
+            ("id <= 10", {"fixed": 0}),
+            ("id <= 20", {"low": 2, "high": 3}),
+            ("id <= 30", {"measured": True}),
+        ]
+    )
+    rows = _rows(con, generation_sql(planned["purchases"].plan, "duckdb"))
+    per = defaultdict(int)
+    for r in rows:
+        per[r["customer_id"]] += 1
+    assert not any(per[c] for c in range(1, 11))
+    assert all(2 <= per[c] <= 3 for c in range(11, 21))
+    assert all(per[c] == 5 for c in range(21, 31))
+    assert len(rows) == _count(planned["purchases"].plan)
+    from provisa.synthetic.generate import condition_counts_sql
+
+    counts = con.execute(condition_counts_sql(planned["purchases"].plan, "duckdb")).fetchall()
+    assert sorted(counts)[0] == (0, 10, 0) and sorted(counts)[2] == (2, 10, 50)
+
+
+def test_a_condition_on_another_relationship_or_with_no_measured_parent_is_refused():
+    from provisa.synthetic.datasets import FanoutCondition
+
+    with pytest.raises(DatasetRefused, match="no customers row meets"):
+        plan_tables(
+            [_customers(), _purchases({})],
+            [Edge(1, "id", 2, "customer_id", "cust-purchases")],
+            seed=3,
+            names=_NAMES,
+            count_rows=_count,
+            measure=_unmeasured,
+            conditions=(FanoutCondition("cust-purchases", "id < 0", {"measured": True}),),
+            measure_condition=lambda e, cond: None,
+        )
+
+
+def test_the_trino_statement_with_conditions_parses():
+    import sqlglot
+
+    planned = _conditioned([("id <= 10", {"fixed": 0}), ("id <= 20", {"low": 2, "high": 3})])
+    sqlglot.parse_one(generation_sql(planned["purchases"].plan, "trino"), read="trino")
+
+
+@pytest.mark.parametrize(
+    "condition, count, message",
+    [
+        ("SUM(x) > 1", {"fixed": 1}, "aggregate or window"),
+        ("x = 1", {"fixed": -1}, "a fixed count is a whole number from 0"),
+        ("x = 1", {"low": 3, "high": 2}, "a range is two whole numbers"),
+        ("x = 1", {"sometimes": True}, "fixed, a low-to-high range, or measured"),
+    ],
+)
+def test_a_condition_or_count_that_cannot_describe_children_is_refused(condition, count, message):
+    from provisa.synthetic.datasets import FanoutCondition, check_condition
+
+    with pytest.raises(ValueError, match=message):
+        check_condition(FanoutCondition("r", condition, count))
+
+
+def test_measured_quantiles_count_every_parent_meeting_the_condition():
+    from provisa.synthetic.run import _quantiles
+
+    assert _quantiles({0: 2, 4: 2}, (0.0, 0.5, 1.0)) == (0.0, 2.0, 4.0)

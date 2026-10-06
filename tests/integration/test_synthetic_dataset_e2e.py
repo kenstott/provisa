@@ -275,6 +275,21 @@ def _define(dev: dict, names: list[str], dataset: str = "load_test") -> tuple[in
                 }
                 for n in names
             ],
+            # REQ-1939: the last ten generated customers place exactly two purchases each.
+            "fanoutConditions": (
+                [
+                    {
+                        "relationship": "customer-purchases",
+                        "condition": "id > 390",
+                        "count": {"fixed": 2},
+                    }
+                ]
+                if "purchases" in names
+                else []
+            ),
+            "assertions": ["SELECT COUNT(*) > 0 FROM sales.purchases", "SELECT 1 = 2"]
+            if "purchases" in names
+            else [],
         },
         env=dev["env"],
     )
@@ -407,6 +422,49 @@ def test_a_synthetic_table_is_never_read_beside_real_data(generated):
     )
     assert status != 200, body
     assert "synthetic dataset" in json.dumps(body), body
+
+
+def test_a_conditional_fanout_decides_the_children_of_the_parents_meeting_it(generated):
+    status, rows = _sql(
+        generated["boot"],
+        "SELECT customer_id, COUNT(*) AS n FROM sales.purchases WHERE customer_id > 390 "
+        "GROUP BY customer_id",
+        "dev",
+    )
+    assert status == 200, rows
+    assert len(rows) == 10 and all(r["n"] == 2 for r in rows), rows
+    status, report = _call(
+        generated["boot"], "GET", "/admin/synthetic-datasets/load_test/report", env="dev"
+    )
+    assert status == 200, report
+    by = {(r["measure"], r["note"]): r for r in report}
+    assert by[("conditional_parents", "id > 390")]["synthetic"] == 10.0
+    assert by[("conditional_children", "id > 390")]["synthetic"] == 20.0
+    # Assertions are reported, never enforced.
+    assert by[("assertion", "SELECT COUNT(*) > 0 FROM sales.purchases")]["synthetic"] == 1.0
+    assert by[("assertion", "SELECT 1 = 2")]["synthetic"] == 0.0
+
+
+def test_a_conditional_fanout_over_a_column_the_parent_lacks_is_refused(dev):
+    status, body = _call(
+        dev["boot"],
+        "PUT",
+        "/admin/synthetic-datasets/bad_condition",
+        {
+            "seed": 1,
+            "scale": 1,
+            "tables": [],
+            "fanoutConditions": [
+                {
+                    "relationship": "customer-purchases",
+                    "condition": "nope = 1",
+                    "count": {"fixed": 1},
+                }
+            ],
+        },
+        env=dev["env"],
+    )
+    assert status == 422, body
 
 
 def test_the_report_compares_the_copy_with_its_profiles(generated):

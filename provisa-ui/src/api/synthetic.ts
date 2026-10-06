@@ -25,6 +25,24 @@ export interface DatasetTable {
   scale: number | null;
 }
 
+// REQ-1939: a relationship's conditional child count -- a condition over the parent row and the
+// count a parent meeting it is generated with.
+export type FanoutCount = { fixed: number } | { low: number; high: number } | { measured: true };
+
+export interface FanoutCondition {
+  relationship: string;
+  condition: string;
+  count: FanoutCount;
+}
+
+export interface DatasetRelationship {
+  id: string;
+  parentTableId: number;
+  parentTable: string;
+  childTableId: number;
+  childTable: string;
+}
+
 export interface SyntheticDataset {
   id: string;
   seed: number;
@@ -34,6 +52,8 @@ export interface SyntheticDataset {
   error: string | null;
   generatedAt: string | null;
   tables: DatasetTable[];
+  fanoutConditions: FanoutCondition[];
+  assertions: string[];
 }
 
 export interface ProfiledTableRuns {
@@ -76,12 +96,21 @@ export const fetchProfileRuns = (env: string, profileEnv: string) =>
 export const defineDataset = (
   env: string,
   id: string,
-  body: { seed: number; scale: number; tables: DatasetTable[] },
+  body: {
+    seed: number;
+    scale: number;
+    tables: DatasetTable[];
+    fanoutConditions: FanoutCondition[];
+    assertions: string[];
+  },
 ) =>
   call<{ id: string; storeSchema: string }>("defineDataset", env, `/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
+
+export const fetchRelationships = (env: string) =>
+  call<DatasetRelationship[]>("fetchRelationships", env, "/-/relationships");
 
 export const generateDataset = (env: string, id: string) =>
   call<{ id: string; status: string }>(

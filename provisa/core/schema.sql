@@ -1017,6 +1017,9 @@ CREATE TABLE IF NOT EXISTS synthetic_datasets (
     store_schema  TEXT NOT NULL,
     error         TEXT,
     generated_at  TIMESTAMPTZ,
+    -- REQ-1939: conditional child counts by relationship, and statements checked after generation
+    fanout_conditions JSONB NOT NULL DEFAULT '[]',
+    assertions    JSONB NOT NULL DEFAULT '[]',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
