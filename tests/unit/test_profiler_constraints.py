@@ -138,3 +138,31 @@ def test_a_constraint_is_one_of_the_kinds_and_only_an_ordering_names_two_columns
         pc.Constraint("ordering", "a", None, {})
     with pytest.raises(ValueError, match="names a second column"):
         pc.Constraint("not_null", "a", "b", {})
+
+
+async def test_a_decision_stores_the_columns_physical_names_too():
+    """REQ-1934/REQ-1939: a constraint names its columns as published and by registered name, so
+    synthetic generation never maps them; a column the table does not publish is refused."""
+
+    class _Found:
+        def fetchone(self):
+            return None
+
+    class _Conn:
+        def __init__(self):
+            self.written = []
+
+        async def execute_core(self, stmt):
+            self.written.append(stmt)
+            return _Found()
+
+    conn = _Conn()
+    constraint = pc.Constraint("ordering", "placed_on", "shipped_on", {"family": "temporal"})
+    physical = {"placed_on": "placed", "shipped_on": "shipped"}
+    kw = dict(status="accepted", evidence="e", share=1.0, sampled=False, run_id="r")
+    await pc.decide(conn, 7, constraint, physical=physical, **kw)
+    values = conn.written[-1].compile().params
+    assert (values["column_name"], values["physical_column"]) == ("placed_on", "placed")
+    assert (values["other_column"], values["physical_other_column"]) == ("shipped_on", "shipped")
+    with pytest.raises(ValueError, match="not columns the org admin reads"):
+        await pc.decide(conn, 7, constraint, physical={"placed_on": "placed"}, **kw)

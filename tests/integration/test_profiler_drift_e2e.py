@@ -58,8 +58,7 @@ def server():
             _col("id", "integer", is_primary_key=True),
             _col("region", "varchar"),
             _col("amount", "integer"),
-            # Published as placed_on: a constraint names both, the published and the physical.
-            _col("placed", "date", alias="placed_on"),
+            _col("placed", "date"),
             _col("shipped", "date"),
         ],
     }
@@ -210,7 +209,7 @@ def test_proposed_constraints_are_accepted_and_checked_by_the_next_run(runs):
     boot, member, engine = runs["boot"], runs["member"], runs["engine"]
     latest = runs["runs"][4]
     proposals = {(p["constraint"], p["column_name"]): p for p in latest["constraints"]}
-    ordering = proposals[("ordering", "placed_on")]
+    ordering = proposals[("ordering", "placed")]
     assert ordering["other_column"] == "shipped"
     for p in (ordering, proposals[("value_set", "region")]):
         status, body = _call(
@@ -244,8 +243,9 @@ def test_proposed_constraints_are_accepted_and_checked_by_the_next_run(runs):
     status, decided = _call(boot, "GET", f"/admin/tables/{member}/profile-constraints")
     assert status == 200, decided
     by_kind = {d["kind"]: d for d in decided["decisions"]}
+    # A decision names its columns as published and by their registered names.
     assert (by_kind["ordering"]["column_name"], by_kind["ordering"]["physical_column"]) == (
-        "placed_on",
+        "placed",
         "placed",
     )
     assert by_kind["ordering"]["physical_other_column"] == "shipped"
