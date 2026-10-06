@@ -55,7 +55,9 @@ async def test_the_report_reads_each_generated_table_whole(monkeypatch):
         return {}
 
     def _target(state, table_id, name, tags):
-        return SimpleNamespace(pgwire_name="synth.orders", columns=columns, fanouts=[])
+        return SimpleNamespace(
+            pgwire_name="synth.orders", columns=columns, fanouts=[], keys=[], checks=[]
+        )
 
     async def _governed(sql):
         statements.append(sql)
