@@ -40,8 +40,11 @@ const PROFILERS = [
   },
 ];
 
-function table(profilerSourceId: string | null): RegisteredTable {
-  return { id: 7, tableName: "orders", profilerSourceId } as unknown as RegisteredTable;
+function table(
+  profilerSourceId: string | null,
+  columns: { columnName: string; nativeFilterType: string | null }[] = [],
+): RegisteredTable {
+  return { id: 7, tableName: "orders", profilerSourceId, columns } as unknown as RegisteredTable;
 }
 
 beforeEach(() => {
@@ -50,6 +53,17 @@ beforeEach(() => {
 });
 
 describe("ProfilerPanel", () => {
+  it("is not offered for a table whose rows need a required filter", () => {
+    render(
+      <ProfilerPanel
+        editingTable={table(null, [{ columnName: "_nf_id", nativeFilterType: "path_param" }])}
+        savedProfilerId={null}
+        setEditingTable={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("profiler-panel-toggle")).toBeNull();
+  });
+
   it("adds the table to a picked profiler, listed with its schedule, as an unsaved edit", async () => {
     const setEditingTable = vi.fn();
     render(
