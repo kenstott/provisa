@@ -77018,10 +77018,11 @@
     rows; removing them is the operator''s choice, outside Provisa. In an environment other than production a move
     repoints only that environment''s binding, and promoting the environment carries the repoint to production. The table
     view offers Copy and Move, each opening a form for the target source, schema and name, with the verification report
-    shown before a move''s repoint is confirmed. A copy holds writes too, so that it is taken at one point. Before a copy or a move starts, its form shows the row count and size of what it will copy and an estimate of how long writes will be held, and warns plainly that the tables held will not take writes until it ends, which for a large table may be a long time; the operation starts only once the operator confirms that warning. Copying and moving need the bulk_copy right, which the organisation''s administrator holds by default and may grant to another role; anyone without it is refused by name, and the table view does not offer Copy or Move to them.'
+    shown before a move''s repoint is confirmed. A copy holds writes too, so that it is taken at one point. Before a copy or a move starts, its form shows the row count and size of what it will copy and an estimate of how long writes will be held, and warns plainly that the tables held will not take writes until it ends, which for a large table may be a long time; the operation starts only once the operator confirms that warning. Copying and moving need the bulk_copy right, which the organisation''s administrator holds by default and may grant to another role; anyone without it is refused by name, and the table view does not offer Copy or Move to them. A copy moves its rows by the same route the rest of Provisa chooses for moving rows between a reader and a target -- the target''s fastest write face that the reader can feed, a native bulk load, an engine-to-store write or an Arrow Flight stream, by the same selection replication uses (REQ-848) -- never by a route of its own.'
   use_case: An operator migrates a table from an on-premises PostgreSQL to Snowflake without a consumer changing a
     query, field or endpoint.
   related_reqs:
+  - REQ-848
   - REQ-1919
   - REQ-1934
   - REQ-1487
