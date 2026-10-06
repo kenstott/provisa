@@ -38,6 +38,8 @@ fragment ColumnFields on TableColumnType {
   scope
   isImplicitMeasure
   isImplicitDimension
+  fake
+  fakeStable
 }
 
 fragment ColumnPresetFields on ColumnPresetType {

@@ -197,6 +197,10 @@ export interface TableColumn {
   // enableAggregates/enableGroupBy AND this column is classification-eligible.
   isImplicitMeasure: boolean;
   isImplicitDimension: boolean;
+  // REQ-1494: the column's kind of fake as declared ("categories((a, b))", "email()"), and
+  // whether it is stable -- the same on every engine.
+  fake?: string | null;
+  fakeStable?: boolean;
 }
 
 // REQ-1360: metadata-only Kimball measure annotation for a table's implicit_measures.

@@ -35,6 +35,7 @@ import { sourceProbeTypes } from "../../liveCapability";
 import { IR_TYPES_FALLBACK, toIrType } from "../../irTypes";
 import { fetchIrTypes } from "../../api/admin";
 import { IANA_TIME_ZONES, NAMING_CONVENTIONS } from "./constants";
+import { ColumnFakeField } from "./ColumnFakeField";
 import { DescriptionField } from "./DescriptionField";
 import { FieldLabel } from "./FieldLabel";
 import { MaterializedViewPanels } from "./MaterializedViewPanels";
@@ -759,6 +760,7 @@ export function TableEditForm({
               <Table.Th>{t("tableEditForm.visibleToHeader")}</Table.Th>
               <Table.Th>{t("tableEditForm.writableByHeader")}</Table.Th>
               <Table.Th>{t("tableEditForm.maskingHeader")}</Table.Th>
+              <Table.Th>{t("tableEditForm.fakeHeader")}</Table.Th>
               <Table.Th>{t("tableEditForm.scopeHeader")}</Table.Th>
               {editSource?.type === "ingest" && (
                 <Table.Th>{t("tableEditForm.jsonPathHeader")}</Table.Th>
@@ -917,6 +919,9 @@ export function TableEditForm({
                       comboboxProps={{ withinPortal: true }}
                       allowDeselect={false}
                     />
+                  </Table.Td>
+                  <Table.Td>
+                    <ColumnFakeField col={c} onChange={(k, v) => updateEditCol(i, k, v)} />
                   </Table.Td>
                   <Table.Td>
                     <Select

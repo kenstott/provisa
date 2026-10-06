@@ -4924,5 +4924,8 @@
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.save": "Save view",
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.saveFailed": "Save failed",
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
-  "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor."
+  "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor.",
+  "zh-HK/tableEditForm.json::tableEditForm.fakeHeader": "Fake",
+  "zh-HK/tableEditForm.json::tableEditForm.fakePlaceholder": "e.g. email() or categories((a, b))",
+  "zh-HK/tableEditForm.json::tableEditForm.fakeStable": "Stable"
 }

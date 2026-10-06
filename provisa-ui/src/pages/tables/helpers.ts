@@ -107,6 +107,8 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
       isForeignKey: c.isForeignKey || undefined,
       isAlternateKey: c.isAlternateKey || undefined,
       scope: c.scope || "domain",
+      fake: c.fake?.trim() || undefined, // REQ-1494
+      fakeStable: c.fakeStable || undefined,
     })),
   };
 }
