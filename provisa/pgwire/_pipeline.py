@@ -313,6 +313,7 @@ async def _optimize_and_route(
     from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.cache.values_cte import build_values_cte_sql
     from provisa.compiler.stage2 import extract_sources, reduce_sources_for_routing
+    from provisa.fakes.read_sql import reads_fakes
     from provisa.transpiler.router import Route, decide_route
 
     # ``extra_selections``: the fields a GraphQL query reads of a graphql_remote table beyond its
@@ -372,6 +373,7 @@ async def _optimize_and_route(
         is_mutation=is_mutation,
         operator_floor=operator_floor(state, table_ids),
         steward_hint=steward_hint,  # the request's route hint (REQ-1203); the floor still binds
+        reads_fakes=reads_fakes(governed_sql),  # REQ-1494
     )
     if (
         decision.route == Route.DIRECT

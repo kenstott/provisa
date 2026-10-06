@@ -13,7 +13,10 @@
       "cache": "Cache",
       "cacheTtl": "TTL do cache",
       "effectiveTtl": "TTL efetivo",
-      "allowedDomains": "Domínios permitidos"
+      "allowedDomains": "Domínios permitidos",
+      "schedule": "Agendamento",
+      "sample": "Amostra",
+      "lowCardinality": "Limite de baixa cardinalidade"
     },
     "namingInherit": "herdar (global)",
     "cacheEnabled": "habilitado",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "Atualizar do Kaggle",
     "refreshKaggleHint": "Baixe novamente {{owner}}/{{ref}} do Kaggle, sobrescrevendo no local o(s) arquivo(s) preparado(s). Seu token do Kaggle não é armazenado — informe-o novamente para esta atualização.",
     "kaggleTokenLabel": "Token de API do Kaggle",
-    "refreshKaggleSubmit": "Atualizar"
+    "refreshKaggleSubmit": "Atualizar",
+    "sampleWhole": "Tabela inteira",
+    "sampleAbove": "Amostra acima de {{cells}} células",
+    "runProfilerTitle": "Executar agora para cada tabela membro",
+    "profilerNoMembers": "Nenhuma tabela faz parte deste profiler.",
+    "profilerRan": "{{table}}: perfilada",
+    "profilerFailed": "{{table}}: {{error}}"
   }
 }

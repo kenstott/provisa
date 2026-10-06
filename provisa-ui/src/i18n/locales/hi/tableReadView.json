@@ -24,9 +24,7 @@
     "apiEndpoint": "API एंडपॉइंट:",
     "watermarkColumn": "वॉटरमार्क कॉलम:",
     "viewSql": "व्यू SQL:",
-    "dataProduct": "डेटा प्रोडक्ट:",
     "dataProductYes": "हाँ",
-    "dataProductNo": "नहीं",
     "editSqlButton": "SQL संपादित करें",
     "openInExplorerButton": "एक्सप्लोरर में खोलें",
     "editSqlTitle": "इस व्यू का SQL एक्सप्लोरर में संपादित करें",
@@ -56,7 +54,8 @@
     "editDefinitionButton": "परिभाषा संपादित करें",
     "editDefinitionTitle": "व्यू परिभाषा संपादित करें (SQL या मेट्रिक/डाइमेंशन चयनकर्ता)",
     "queryTemplate": "Cypher:",
-    "writes": "लेखन स्वीकार करता है:",
-    "writesNone": "कोई नहीं (केवल पढ़ने हेतु)"
+    "writable": "लिखने योग्य",
+    "writableOps": "GraphQL, REST और SQL से {{ops}} स्वीकार करता है",
+    "dataProductChip": "डेटा प्रोडक्ट"
   }
 }

@@ -150,7 +150,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, "
         "alias, description, column_presets, unique_constraints, l1_cluster, l2_cluster, l3_cluster, "
-        "enable_aggregates, enable_group_by, view_sql, dq_contract, "  # REQ-1443
+        "enable_aggregates, enable_group_by, view_sql, dq_contract, profiler_source_id, "  # REQ-1443/1934
         "live, push_debounce_quiet, push_debounce_max_delay, cache_ttl, "  # REQ-1733, REQ-1730
         "row_materialize, role_ttl, replicate, load_protected, region, draft, "  # REQ-1865/1907/826/1141/1921
         "file_glob, source_file_column, delta, "  # REQ-788/874
@@ -165,7 +165,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         col_rows = await conn.fetch(
             "SELECT column_name, data_type, visible_to, writable_by, unmasked_to, "
             "mask_type, alias, description, path, is_primary_key, object_fields, native_filter_type, "
-            "epoch_unit "  # REQ-1908
+            "epoch_unit, fake, fake_stable, fake_stable_version, synthetic_rule "  # REQ-1908, REQ-1494
             "FROM table_columns WHERE table_id = $1 ORDER BY id",
             row["id"],
         )
@@ -192,6 +192,10 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
                 "object_fields": _as_list(r.get("object_fields")),
                 "native_filter_type": r.get("native_filter_type"),
                 "epoch_unit": r.get("epoch_unit"),  # REQ-1908
+                "fake": r.get("fake"),  # REQ-1494
+                "fake_stable": bool(r.get("fake_stable") or False),
+                "fake_stable_version": r.get("fake_stable_version"),
+                "synthetic_rule": r.get("synthetic_rule"),
             }
             for r in col_rows
         ]

@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "檢查器表",
+    "driftCheck": "建立漂移檢查",
+    "expectationsLabel": "期望表",
+    "expectationsPlaceholder": "選擇具有期望結構的表",
+    "noExpectations": "沒有已登記的表具有期望結構",
+    "expectationCheck": "建立期望檢查",
+    "added": "已加入 {{table}} 的契約。",
+    "already": "{{table}} 的契約已包含此檢查。"
+  }
+}

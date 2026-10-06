@@ -1,0 +1,18 @@
+{
+  "profilerPanel": {
+    "title": "Data Profiler",
+    "addLabel": "添加到画像器",
+    "addPlaceholder": "选择画像器",
+    "addDescription": "画像器的计划会对此表进行画像。随表一起保存。",
+    "none": "不存在 Data Profiler 数据源",
+    "scheduleWhole": "{{cron}}，整张表",
+    "scheduleSample": "{{cron}}，超过 {{cells}} 个单元格时抽样",
+    "memberOf": "由 {{profiler}} 画像",
+    "unsaved": "保存表以应用此更改。",
+    "remove": "从画像器中移除",
+    "runNow": "立即画像",
+    "viewRuns": "查看画像运行",
+    "runDone": "已画像 {{rows}} 行。",
+    "constraints": "约束"
+  }
+}

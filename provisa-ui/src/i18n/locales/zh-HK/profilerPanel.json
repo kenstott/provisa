@@ -1,0 +1,18 @@
+{
+  "profilerPanel": {
+    "title": "Data Profiler",
+    "addLabel": "加入剖析器",
+    "addPlaceholder": "選擇剖析器",
+    "addDescription": "剖析器的排程會剖析此資料表。隨資料表一併儲存。",
+    "none": "沒有 Data Profiler 資料來源",
+    "scheduleWhole": "{{cron}}，整個資料表",
+    "scheduleSample": "{{cron}}，超過 {{cells}} 個儲存格時抽樣",
+    "memberOf": "由 {{profiler}} 剖析",
+    "unsaved": "儲存資料表以套用此變更。",
+    "remove": "從剖析器移除",
+    "runNow": "立即剖析",
+    "viewRuns": "檢視剖析執行",
+    "runDone": "已剖析 {{rows}} 列。",
+    "constraints": "約束"
+  }
+}

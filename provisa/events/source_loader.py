@@ -52,6 +52,9 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
         # running the contract, produced by the checker subprocess. See :func:`make_dq_loader`.
         "soda",
         "great_expectations",
+        # REQ-1934: a profiler's rows are written by its runs straight into its result relations
+        # and read in place; nothing fetches them.
+        "data_profiler",
         # REQ-1660: a sqlite file is read by its own connector (:func:`make_sqlite_loader`) and
         # landed in the materialize store like any other fetched source. An engine that attaches
         # the file in place (DuckDB) never materializes it, so the loader is never asked.

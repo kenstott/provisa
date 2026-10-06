@@ -76,7 +76,7 @@ def _state(monkeypatch, runtime: _Runtime):
     }
     key = ("pg", "public", "orders")
     registry = replica_routing._Registry(
-        [reg], {"pg": source}, serving=frozenset({key}), promoted=frozenset()
+        [reg], {"pg": source}, serving=frozenset({key}), promoted=frozenset(), synthetic={}
     )
 
     async def _registry(_state):

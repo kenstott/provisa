@@ -1,0 +1,32 @@
+{
+  "profileConstraintsModal": {
+    "title": "{{table}} की बाधाएँ",
+    "proposed": "नवीनतम रन द्वारा प्रस्तावित",
+    "none": "नवीनतम रन कोई बाधा प्रस्तावित नहीं करता, या तालिका की अभी प्रोफ़ाइलिंग नहीं हुई है।",
+    "decided": "निर्णीत",
+    "noneDecided": "अभी तक कोई बाधा स्वीकार या खारिज नहीं की गई है।",
+    "constraint": "बाधा",
+    "columns": "स्तंभ",
+    "definition": "परिभाषा",
+    "evidence": "साक्ष्य",
+    "share": "इतने पर लागू",
+    "sampled": "नमूना",
+    "accept": "स्वीकार करें",
+    "edit": "संपादित करें",
+    "acceptEdited": "संपादित रूप स्वीकार करें",
+    "cancel": "रद्द करें",
+    "dismiss": "खारिज करें",
+    "export": "चेकर में निर्यात करें",
+    "withdraw": "वापस लें",
+    "checkerLabel": "निर्यात हेतु चेकर तालिका",
+    "exported": "{{table}} के अनुबंध में जोड़ा गया।",
+    "alreadyExported": "{{table}} के अनुबंध में यह जाँच पहले से है।",
+    "status_accepted": "स्वीकृत",
+    "status_dismissed": "खारिज",
+    "kind_not_null": "कभी null नहीं",
+    "kind_unique": "अद्वितीय",
+    "kind_value_set": "केवल दर्ज मान",
+    "kind_range": "देखी गई सीमा के भीतर",
+    "kind_ordering": "कभी बड़ा या बाद का नहीं"
+  }
+}

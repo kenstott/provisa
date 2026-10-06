@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 
 from provisa.core.environments import PROD, org_schema
+from provisa.federation.replica_address import SYNTHETIC_INFIX
 
 log = logging.getLogger(__name__)
 
@@ -55,8 +56,30 @@ async def drop_env_store(dsn: str, org_id: str, env: str) -> str | None:
     schema = org_schema(org_id, env, REPLICAS_SUFFIX, region=region)
     # The export views first: each selects from a replica the next statement drops.
     export = org_schema(org_id, env, EXPORT_SUFFIX, region=region)
+    # REQ-1939: and every synthetic dataset's schema the environment held.
+    synthetic_prefix = org_schema(org_id, env) + SYNTHETIC_INFIX
     async with store_connection(dsn) as conn:
         await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{export}" CASCADE'))
         await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        names = (
+            await conn.execute_core(text("SELECT schema_name FROM information_schema.schemata"))
+        ).fetchall()
+        for (name,) in names:
+            if name.startswith(synthetic_prefix):
+                await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{name}" CASCADE'))
     log.info("Environment %r dropped its replicas schema %s", env, schema)
     return schema
+
+
+async def drop_synthetic_schema(dsn: str, schema: str) -> None:
+    """Remove a synthetic dataset's schema from the store at ``dsn`` (REQ-1939)."""
+    from sqlalchemy import text
+
+    from provisa.federation.replica_address import is_replicas_schema
+    from provisa.federation.store_writer import store_connection
+
+    if SYNTHETIC_INFIX not in schema or not is_replicas_schema(schema):
+        raise ValueError(f"{schema!r} is not a synthetic dataset's schema")
+    async with store_connection(dsn) as conn:
+        await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    log.info("Dropped synthetic dataset schema %s", schema)

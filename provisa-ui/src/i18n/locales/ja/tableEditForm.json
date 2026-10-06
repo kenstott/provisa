@@ -218,6 +218,7 @@
     "maskRegex": "正規表現",
     "maskConstant": "定数",
     "maskTruncate": "切り捨て",
+    "maskFake": "フェイク値",
     "scopeDomain": "ドメイン",
     "scopePublic": "パブリック",
     "scopeRestricted": "制限付き",

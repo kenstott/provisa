@@ -68,6 +68,9 @@ class EngineBackend:
     #: REQ-1922: whether this engine reads another region's replicas in place
     #: (``region_read_address``). The model's ``engine_kinds.REGION_READERS`` is held equal to it.
     reads_other_regions = False
+    #: REQ-1494: whether the engine holds Provisa's fake functions (provisa_digest and the rest).
+    #: A statement reading a faked column is refused, by the column's name, on one that does not.
+    computes_fakes = False
 
     # `native_store` (engine.py's generic `_RDB_KINDS` loop) is the SQLAlchemy URL scheme name —
     # the identity used for landing/storage-backend comparisons (materialization.py,
@@ -869,6 +872,7 @@ class TrinoBackend(EngineBackend):
     implementation modules (trino_lifecycle / core.catalog / compiler.introspect / executor.trino)."""
 
     reads_other_regions = True  # REQ-1922: a catalog of that region's store
+    computes_fakes = True  # REQ-1494: the provisa-functions plugin
 
     @property
     def dialect(self) -> str:

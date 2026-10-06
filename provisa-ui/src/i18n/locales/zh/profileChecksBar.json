@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "检查器表",
+    "driftCheck": "创建漂移检查",
+    "expectationsLabel": "期望表",
+    "expectationsPlaceholder": "选择具有期望结构的表",
+    "noExpectations": "没有已注册的表具有期望结构",
+    "expectationCheck": "创建期望检查",
+    "added": "已添加到 {{table}} 的契约。",
+    "already": "{{table}} 的契约已包含此检查。"
+  }
+}

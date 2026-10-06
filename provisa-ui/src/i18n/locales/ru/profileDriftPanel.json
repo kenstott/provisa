@@ -1,0 +1,21 @@
+{
+  "profileDriftPanel": {
+    "measure": "Показатель",
+    "drift": "Дрейф",
+    "drifting": "дрейф",
+    "runTime": "Время запуска",
+    "value": "Значение",
+    "col_previous": "Предыдущее",
+    "col_current": "Текущее",
+    "col_change": "Изменение",
+    "col_ks_previous": "KS к предыдущему",
+    "col_psi_previous": "PSI к предыдущему",
+    "col_window_runs": "Запусков в окне",
+    "col_baseline": "Базовый уровень",
+    "col_spread": "MAD",
+    "col_distance": "Отклонение (MAD)",
+    "col_slope_spread": "Тренд (MAD)",
+    "col_ks": "KS к окну",
+    "col_psi": "PSI к окну"
+  }
+}

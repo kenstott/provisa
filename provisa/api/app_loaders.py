@@ -316,7 +316,7 @@ def catalog_name_for_source(state: "AppState", source_type: str, source_id: str)
     fixed = fixed_catalog_for_engine(state)
     if fixed:
         return fixed
-    if source_type == "ingest":  # REQ-1771
+    if source_type in ("ingest", "data_profiler"):  # REQ-1771, REQ-1934
         # ingest has NO live connector on any engine (no TRINO_CONNECTORS entry, and the native/
         # DuckDB tier's own ATTACH loop — native_backend.py's _attach_registered — never attaches
         # one either): its rows land straight into the tenant control-plane DB (provisa/ingest/
@@ -944,25 +944,9 @@ async def _init_ingest_engines() -> None:
                         )
                     ).fetchall()
                 ]
-            # NOTE (REQ-1730 investigation): the SQL page's compiler resolves a table through its
-            # OWN compiled semantic name (compiler.sql_rewrite.semantic_table_name), derived from a
-            # GraphQL field name -- and that round trip has no way to mark a word boundary right
-            # before a digit, so it silently drops an underscore immediately followed by digits
-            # (e.g. registered_tables.table_name "foo_123" compiles to the query-time name
-            # "foo123"). ingest is the one type whose physical DDL uses table_name verbatim rather
-            # than that same compiled name (every other type's landing/attach path creates its
-            # physical table via the compiled name already, so physical == query-time name by
-            # construction there) -- reproduced live via Trino: a row committed and was visible via
-            # a fresh Postgres connection immediately after the POST, yet the SQL page's compiled
-            # query always answered zero rows for a table_name containing "_<digits>". A fix
-            # sourcing the compiled name from state.contexts here was tried and reverted: that
-            # snapshot is only sometimes populated for this source_id at the moment a schema
-            # rebuild calls this function (this function runs multiple times per rebuild), landing
-            # on the WRONG table_name every other time and making the corruption non-deterministic
-            # instead of consistent. Filed as a real, narrow gap (never register an ingest table
-            # whose name contains an underscore immediately before a digit) rather than patched
-            # here; REQ-1730's own swap-harness registrar works around it by choosing a sourceId
-            # with no such boundary.
+            # The backing table is created under the registered table_name, the same name the
+            # compiler publishes and reads it by: an underscore before a digit survives the GraphQL
+            # field-name round trip the SQL name is derived from (naming._to_pascal_case).
             _tbl_map: dict[str, list[dict]] = {}
             for _row in _itables:
                 _tn = _row["table_name"] or ""
@@ -1294,6 +1278,9 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
                     _table_columns_t.c.mask_replace,
                     _table_columns_t.c.mask_value,
                     _table_columns_t.c.mask_precision,
+                    _table_columns_t.c.fake,  # REQ-1494
+                    _table_columns_t.c.fake_stable,
+                    _table_columns_t.c.fake_stable_version,
                 ).where(_table_columns_t.c.mask_type.is_not(None))
             )
         ).fetchall()
@@ -1305,6 +1292,9 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
             replace=mrow["mask_replace"],
             value=_parse_mask_value(mrow["mask_value"]),
             precision=mrow["mask_precision"],
+            fake=mrow["fake"],
+            fake_stable=bool(mrow["fake_stable"]),
+            fake_stable_version=mrow["fake_stable_version"],
         )
         table_id = mrow["table_id"]
         col_name = mrow["column_name"]
@@ -1323,6 +1313,32 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
                 continue
             rules.setdefault((table_id, role["id"]), {})[col_name] = (mask_rule, data_type)
     state.masking_rules = rules
+
+
+async def _check_fakes(conn: Any) -> None:  # REQ-1494
+    """The model's fakes, checked together as a save checks them, so a model loaded from config
+    holds no fake a save would refuse."""
+    from sqlalchemy import or_
+
+    faked = (
+        await conn.execute_core(
+            select(_table_columns_t.c.id)
+            .where(
+                or_(
+                    _table_columns_t.c.fake.is_not(None),
+                    _table_columns_t.c.fake_stable,
+                    _table_columns_t.c.synthetic_rule.is_not(None),
+                )
+            )
+            .limit(1)
+        )
+    ).fetchone()
+    if faked is None:
+        return
+    from provisa.api.admin._fake_guard import check_model
+    from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
+
+    check_model(await fetch_tables(conn), await fetch_relationships(conn))
 
 
 def _json_list(value: Any) -> list:

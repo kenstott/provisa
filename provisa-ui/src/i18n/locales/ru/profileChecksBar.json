@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "Таблица проверки",
+    "driftCheck": "Создать проверку дрейфа",
+    "expectationsLabel": "Таблица ожиданий",
+    "expectationsPlaceholder": "Выберите таблицу в формате ожиданий",
+    "noExpectations": "Ни одна зарегистрированная таблица не имеет формата ожиданий",
+    "expectationCheck": "Создать проверку ожиданий",
+    "added": "Добавлено в контракт {{table}}.",
+    "already": "Контракт {{table}} уже содержит эту проверку."
+  }
+}

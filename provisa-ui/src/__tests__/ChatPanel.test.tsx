@@ -90,6 +90,18 @@ describe("ChatPanel — suggested questions (REQ-1806)", () => {
     expect(screen.getByText(/Why are you named Polly\?/)).toBeInTheDocument();
   });
 
+  it("suggests the profiler and fakes, numbered after the first four (REQ-1934, REQ-1494)", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    await waitFor(() => screen.getByTestId("chat-panel-suggestions"));
+
+    expect(screen.getByText("5. Profile the orders table")).toBeInTheDocument();
+    expect(
+      screen.getByText("6. Give the customers table fake names for test data"),
+    ).toBeInTheDocument();
+  });
+
   it("sends a suggestion when clicked and it disappears once the conversation starts", async () => {
     fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
     const fetchMock = vi

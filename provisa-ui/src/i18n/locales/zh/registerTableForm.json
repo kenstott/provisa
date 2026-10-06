@@ -99,6 +99,13 @@
     "fileGlobPlaceholder": "例如 orders/*.csv",
     "sourceFileColumnLabel": "源文件列",
     "sourceFileColumnHint": "可选 — 保存每行文件路径的列",
-    "sourceFileColumnPlaceholder": "例如 _source_file"
+    "sourceFileColumnPlaceholder": "例如 _source_file",
+    "profilerResultLabel": "画像结果表",
+    "profilerResultPlaceholder": "选择结果表",
+    "profilerNoMembers": "没有表加入此画像器",
+    "profilerResultOption": "{{member}} · {{kind}}",
+    "profilerRowRulesLabel": "按角色的行规则",
+    "profilerRowRulesNone": "每个读者都能看到所有被描述的列。",
+    "profilerRowRuleFailed": "表已注册，但 {{role}} 的行规则未保存：{{message}}"
   }
 }

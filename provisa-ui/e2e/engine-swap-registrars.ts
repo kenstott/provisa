@@ -1201,21 +1201,10 @@ export async function registerGrpcRemote(page: Page, port: number): Promise<Regi
 // at registration time — REAL BUG #3 in that file's own comment — so pet_store here is the same
 // logical-domain surface every plain pickSchemaAndTable registrar uses, not a literal physical one).
 //
-// sourceId deliberately has NO "_<digit>" boundary (every OTHER registrar's `_${stamp}` would
-// give it one): the SQL page's compiled query resolves a table through its own GraphQL-field-name
-// round trip (compiler.naming/sql_rewrite.semantic_table_name), which has no way to mark a word
-// boundary immediately before a digit and so silently drops an underscore that directly precedes
-// one — reproduced live via Trino with the `_${stamp}` form: the POSTed row committed and was
-// visible via a fresh Postgres connection immediately afterward, yet the SQL page's compiled query
-// always answered zero rows, because ingest's own physical DDL (app_loaders.py's
-// _init_ingest_engines) creates the table under the RAW registered_tables.table_name (with the
-// underscore), not the compiler's post-round-trip name (without it) — every OTHER type's physical
-// table is created via that SAME compiled name already, so this mismatch is specific to ingest.
-// "_id<stamp>" (a letter between the underscore and the digits, unlike every other registrar's
-// bare "_<stamp>") sidesteps the collision entirely for this registrar; the underlying naming gap
-// is real but narrow (any ingest source id containing "_<digit>") and is documented, not fixed,
-// in REQ-1730's own amendment. A literal hyphen was tried first and rejected: the "default"-schema
-// picker's physical table name IS the source id verbatim (REQ-1745), and an unquoted hyphen in
+// sourceId uses "_id<stamp>" rather than "_<stamp>". It once had to: the SQL name dropped an
+// underscore before a digit, so an ingest table created under its registered name was read by
+// another. That is fixed (compiler naming._to_pascal_case keeps the boundary); the form is kept.
+// A hyphen is not an option: the "default"-schema picker's physical table name IS the source id verbatim (REQ-1745), and an unquoted hyphen in
 // `CREATE TABLE IF NOT EXISTS <name>` parses as subtraction — a SQL syntax error, not a naming
 // mismatch — so the source id must stay a single valid unquoted SQL identifier throughout.
 export async function registerIngest(page: Page): Promise<Registration> {
@@ -1323,14 +1312,7 @@ export async function registerGovdata(page: Page): Promise<Registration> {
 // the returned Registration (requeryOnEngine, engine-swap-helpers.ts) retries the whole query
 // every 5s until the poll job's first tick lands something, instead of the single attempt every
 // other registration here gets.
-// sourceId deliberately has NO "_<digit>" boundary (registerIngest's own comment, REQ-1730's
-// documented naming gap): the SQL page's compiled query resolves a table through a GraphQL-
-// field-name round trip that silently drops an underscore immediately preceding a digit, so
-// ingest/rss's physical table name (created verbatim from the source id) and the compiled
-// query-time name can diverge for the usual `_${stamp}` ending every OTHER registrar here uses.
-// Reproduced live: the poll job landed the real 2 rows into "e2e_swap_rss_<stamp>" every 5s
-// (confirmed with direct store_writer.land() tracing) while the SQL page's compiled query for the
-// same registration always answered zero rows.
+// sourceId uses "_id<stamp>", as registerIngest's does (see its comment).
 export async function registerRss(page: Page): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_rss_id${stamp}`;

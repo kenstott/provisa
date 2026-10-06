@@ -30,8 +30,8 @@
         "description": "➕ Neue Verbindungen beginnen mit dieser Schaltfläche — PostgreSQL, Snowflake, MongoDB, eine REST-API, eine CSV und 30+ weitere."
       },
       "step3": {
-        "title": "53 Quellentypen",
-        "description": "Eine einzige Connector-Liste deckt jede Kategorie ab:<ul><li><strong>Datenbanken</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Cloud Warehouses</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Analytics / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Data Lakes &amp; Dateien</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL &amp; Graph</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>APIs</strong> — REST, GraphQL, gRPC</li><li><strong>Streaming</strong> — Kafka</li><li><strong>Enterprise SaaS</strong> — SharePoint, Splunk · plus behördliche Datenabonnements</li></ul>Eine Quelle wählen, die Verbindung ausfüllen, Speichern. Die Liste ist nicht starr — die nativen Föderations-Engines sind <strong>erweiterbar</strong>: einen benutzerdefinierten Postgres-FDW oder eine DuckDB-Erweiterung in der Konfiguration deklarieren, und Provisa erreicht einen neuen Quellentyp, ohne Code."
+        "title": "58 Quellentypen, 13 Kategorien",
+        "description": "Eine Auswahl listet jeden Typ, nach Kategorie gruppiert: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Suchen Sie nach Name oder Alias oder grenzen Sie mit den Kategorie-Chips ein. Jeder Typ zeigt sein Logo und ein Reichweiten-Symbol: ⚡ direkt vor Ort gelesen, oder ein Kopie-Symbol, wo Provisa ein aktualisiertes Replikat liest.<p>Wählen Sie einen aus, tragen Sie die Verbindung ein, speichern Sie. Die Liste ist nicht fest — die nativen Föderations-Engines sind <strong>erweiterbar</strong>: Deklarieren Sie in der Konfiguration ein eigenes Postgres-FDW oder eine DuckDB-Erweiterung, und Provisa erreicht einen neuen Quellentyp, ganz ohne Code.</p>"
       },
       "step4": {
         "title": "Alles wird zu einer Tabelle",
@@ -104,6 +104,38 @@
       "stepQualityPanel": {
         "title": "Einen Qualitätsvertrag erstellen",
         "description": "✅ Schreiben Sie den Vertrag von Hand oder bauen Sie Prüfungen Spalte für Spalte auf — Null-Raten, Zeilenzahlen, Wertebereiche, Aktualität — und führen Sie vor dem Speichern einen <strong>Testlauf</strong> aus. Jeder Scan hängt an, daher <em>ist</em> diese Tabelle die Qualitätshistorie: stellen Sie sie dar, alarmieren Sie darauf, verknüpfen Sie sie mit allem."
+      },
+      "stepProfilerTable": {
+        "title": "Eine Tabelle profilieren",
+        "description": "📊 Bearbeiten Sie eine beliebige Tabelle, um sie einem <strong>Data Profiler</strong> hinzuzufügen, einer Quelle, die ihre Mitgliedstabellen nach Zeitplan profiliert: Spaltenformen, Verteilungen, Werthäufigkeiten und Kinder pro Elternzeile."
+      },
+      "stepProfilerPanel": {
+        "title": "Zu einem Profiler hinzufügen",
+        "description": "Wählen Sie einen Profiler und speichern Sie, dann nutzen Sie <strong>Profil jetzt erstellen</strong> und <strong>Profilläufe anzeigen</strong>. Die Ergebnisse landen als Tabellen, die Sie wie jede andere registrieren und steuern. Solange Sie sie nicht registrieren, sieht kein Leser ein Profil."
+      },
+      "stepProfilerChecks": {
+        "title": "Drift und Prüfungen",
+        "description": "Jeder Lauf wird mit den letzten Läufen der Tabelle verglichen, und eine driftende Messgröße wird markiert. Eine Datenqualitätsprüfung löst die Ausnahme aus. Sie können auch vom Profil vorgeschlagene Constraints annehmen und Läufe gegen Erwartungen von außerhalb von Provisa prüfen."
+      },
+      "stepFakes": {
+        "title": "Einen Fake-Wert deklarieren",
+        "description": "🎭 Der Modus <strong>Testdaten</strong> der Spaltenliste zeigt den <strong>Fake-Wert</strong> jeder Spalte, etwa <code>email()</code>. Ersetzen Sie nur identifizierende Spalten und lassen Sie den Rest echt. Eine Spalte kann zusätzlich eine <strong>synthetische Regel</strong> tragen, die nur bei der Erzeugung synthetischer Daten gilt."
+      },
+      "stepFakesFill": {
+        "title": "Fake-Werte aus einem Profil füllen",
+        "description": "✨ <strong>Aus Profil füllen</strong> schlägt aus dem neuesten Profil der Tabelle Fake-Werte für identifizierende Spalten und synthetische Regeln für die übrigen vor. Gespeichert wird erst, wenn Sie das Formular speichern."
+      },
+      "stepEnvKinds": {
+        "title": "Lese- oder Lese-/Schreib-Testumgebungen",
+        "description": "Eine Nicht-Produktionsumgebung ist <strong>lesend</strong> oder <strong>lesend und schreibend</strong>. Eine Umgebung mit Schreibzugriff behält ihre eigenen Änderungen, und ein Schreibvorgang erreicht nie eine Quelle. Schalten Sie <strong>Testdaten</strong> ein, und jede Spalte zeigt ihren Fake-Wert; nicht ersetzte personenbezogene Daten erscheinen als NULL."
+      },
+      "stepSynthetic": {
+        "title": "Synthetische Daten erzeugen",
+        "description": "🧪 Ein <strong>synthetischer Datensatz</strong> füllt eine Nicht-Produktionsumgebung mit Zeilen in der Form Ihrer profilierten Tabellen, mit denselben Beziehungen und derselben Fächerung, in beliebigem Maßstab. Ein Vergleichsbericht zeigt, wie nah er herankam."
+      },
+      "stepSyntheticPrivacy": {
+        "title": "Datenschutz von Anfang an",
+        "description": "🔒 Erklären Sie einen Datensatz mit einem Datenschutzbudget ε für privat. Jeder Wert, den der Generator aus einem Profil zieht, erhält kalibriertes Rauschen, und der Bericht nennt, was das Rauschen entfernt hat."
       },
       "step20": {
         "title": "Ihre Delivery-Pipeline aufbauen",

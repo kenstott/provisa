@@ -160,6 +160,14 @@ export async function createEnvironment(
     from_env: string;
     inherit_connections?: boolean;
     expires_at?: string | null;
+    // REQ-1939: start the environment on a synthetic dataset of these tables.
+    synthetic?: {
+      dataset: string;
+      tables: string[];
+      profile_env: string;
+      scale: number;
+      seed: number;
+    };
   },
 ): Promise<{ environment: Environment; copy: CopyReport }> {
   const res = await fetch(base(orgId), json("POST", body));

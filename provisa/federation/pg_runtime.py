@@ -253,6 +253,26 @@ class _AdbcConnectionPool:
             self._pool.clear()
 
 
+def _install_fake_functions(con: Any) -> bool:
+    """Create the fake functions (provisa.fakes.pg_functions) and prove they run; False, with the
+    reason logged, where this Postgres cannot hold them -- a capability probe whose answer the
+    engine refuses faked reads by (REQ-1494), never a silent substitute."""
+    from provisa.fakes.pg_functions import FUNCTIONS_SQL
+
+    cur = con.cursor()
+    try:
+        cur.execute("CREATE EXTENSION IF NOT EXISTS plpython3u")
+        cur.execute(FUNCTIONS_SQL)
+        cur.execute("SELECT provisa_digest_tag(0)")
+        cur.fetchone()
+    except psycopg2.Error as exc:
+        _log.info("the pg engine does not compute fakes: %s", str(exc).strip().splitlines()[0])
+        return False
+    finally:
+        cur.close()
+    return True
+
+
 class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
     # Class-level default so _get_adbc_pool's `self._adbc_pool is None` check is well-defined even
     # for an instance built via __new__ without __init__ running (the Arrow-transport unit tests
@@ -287,6 +307,10 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         # for it — a read-triggered land stays on its request's thread (REQ-1882), where a
         # one-worker pool took it off.
         self._land_guard = LandGuard("Postgres store connection")
+        # REQ-1494: whether this Postgres computes fakes -- PL/Python installed with the fake
+        # functions importing provisa. Where it cannot (no plpython3u, no superuser, a managed
+        # Postgres), a statement reading a faked column is refused by the column's name.
+        self.computes_fakes = _install_fake_functions(self._con)
 
     # -- source exposure -------------------------------------------------------
 

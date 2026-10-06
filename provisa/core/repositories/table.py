@@ -42,6 +42,7 @@ from provisa.core.schema_org import (
     table_columns,
     tag_assignments,
 )
+from provisa.fakes.portable import pinned_version
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
@@ -96,6 +97,10 @@ _COLUMN_PROJECTION = [
     table_columns.c.scope,
     table_columns.c.gql_selection,
     table_columns.c.epoch_unit,
+    table_columns.c.fake,
+    table_columns.c.fake_stable,
+    table_columns.c.fake_stable_version,
+    table_columns.c.synthetic_rule,
 ]
 
 
@@ -290,6 +295,7 @@ async def _upsert(
         ],  # REQ-1093
         "view_sql": getattr(table, "view_sql", None),
         "dq_contract": getattr(table, "dq_contract", None),  # REQ-1443
+        "profiler_source_id": getattr(table, "profiler_source_id", None),  # REQ-1934
         "view_metrics": (
             vm.model_dump() if (vm := getattr(table, "view_metrics", None)) else None
         ),  # REQ-1318
@@ -352,6 +358,7 @@ async def _upsert(
         "unique_constraints",  # REQ-1093
         "view_sql",
         "dq_contract",  # REQ-1443
+        "profiler_source_id",  # REQ-1934
         "view_metrics",  # REQ-1318
         "product_id",
         "materialize",
@@ -428,6 +435,20 @@ async def _upsert(
     # keyed on it, or a view, materialized view or metric names it, the registration is refused
     # naming them; the transaction around this call undoes the table row's update. A dropped
     # column's tag assignments are its parts and go with it.
+    # REQ-1494: each stable fake's pinned portable definition version, kept while its fake is.
+    _pins = {
+        r.column_name: (r.fake, bool(r.fake_stable), r.fake_stable_version)
+        for r in (
+            await conn.execute_core(
+                select(
+                    table_columns.c.column_name,
+                    table_columns.c.fake,
+                    table_columns.c.fake_stable,
+                    table_columns.c.fake_stable_version,
+                ).where(table_columns.c.table_id == table_id)
+            )
+        ).fetchall()
+    }
     _dropped = sorted(set(_existing_types) - {col.name for col in table.columns})
     _deferred = _DEFERRED_COLUMN_DROPS.get()
     _referred: dict[str, list[Dependent]] = {}
@@ -491,6 +512,14 @@ async def _upsert(
                 scope=getattr(col, "scope", "domain"),
                 gql_selection=getattr(col, "gql_selection", None),
                 epoch_unit=getattr(col, "epoch_unit", None),
+                fake=getattr(col, "fake", None),  # REQ-1494
+                fake_stable=getattr(col, "fake_stable", False),
+                fake_stable_version=pinned_version(
+                    getattr(col, "fake", None),
+                    getattr(col, "fake_stable", False),
+                    _pins.get(col.name),
+                ),
+                synthetic_rule=getattr(col, "synthetic_rule", None),
             )
         )
     # REQ-1387: this is the single write path for table_columns, so the glossary term

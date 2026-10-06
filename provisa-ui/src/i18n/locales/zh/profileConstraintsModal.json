@@ -1,0 +1,32 @@
+{
+  "profileConstraintsModal": {
+    "title": "{{table}} 的约束",
+    "proposed": "最近一次运行提出的约束",
+    "none": "最近一次运行未提出约束，或该表尚未进行剖析。",
+    "decided": "已决定",
+    "noneDecided": "尚未接受或驳回任何约束。",
+    "constraint": "约束",
+    "columns": "列",
+    "definition": "定义",
+    "evidence": "依据",
+    "share": "满足比例",
+    "sampled": "样本",
+    "accept": "接受",
+    "edit": "编辑",
+    "acceptEdited": "接受编辑后的版本",
+    "cancel": "取消",
+    "dismiss": "驳回",
+    "export": "导出到检查器",
+    "withdraw": "撤回",
+    "checkerLabel": "导出目标检查器表",
+    "exported": "已添加到 {{table}} 的契约。",
+    "alreadyExported": "{{table}} 的契约已包含此检查。",
+    "status_accepted": "已接受",
+    "status_dismissed": "已驳回",
+    "kind_not_null": "从不为空",
+    "kind_unique": "唯一",
+    "kind_value_set": "仅限已记录的值",
+    "kind_range": "在观测范围内",
+    "kind_ordering": "从不大于或晚于"
+  }
+}

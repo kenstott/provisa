@@ -1287,6 +1287,9 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_table_live_delivery(config)
     _validate_change_signal(config)
     _validate_dq_contracts(config)
+    from provisa.profiler.registration import validate_config as _validate_profilers  # noqa: PLC0415
+
+    _validate_profilers(config)  # REQ-1934
     _validate_probe_type(config)
     _validate_watermark_columns(config)
     _validate_neo4j_sources(config)

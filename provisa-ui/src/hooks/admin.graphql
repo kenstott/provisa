@@ -38,6 +38,11 @@ fragment ColumnFields on TableColumnType {
   scope
   isImplicitMeasure
   isImplicitDimension
+  fake
+  fakeStable
+  fakeStableVersion
+  syntheticRule
+  isPii
 }
 
 fragment ColumnPresetFields on ColumnPresetType {
@@ -220,6 +225,7 @@ query TablesQuery {
     apiEndpoint
     viewSql
     dqContract
+    profilerSourceId
     queryTemplate
     fileGlob
     sourceFileColumn

@@ -351,6 +351,7 @@ def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229, REQ-030
     compiled, state, steward_hint: str | None, operator_floor: dict[str, str]
 ) -> tuple[Any, str | None, str | None, str]:
     """Return (decision, engine_sql, direct_sql, route_str)."""
+    from provisa.fakes.read_sql import reads_fakes
     from provisa.transpiler.router import Route, decide_route
     from provisa.transpiler.transpile import transpile
 
@@ -363,6 +364,7 @@ def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229, REQ-030
         has_json_extract=has_json_extract,
         source_dsns=getattr(state, "source_dsns", None),
         operator_floor=operator_floor,
+        reads_fakes=reads_fakes(compiled.sql),  # REQ-1494
     )
 
     engine_sql = (

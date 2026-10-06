@@ -116,6 +116,9 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
     cache_opt_in: bool = False,
     engine: FederationEngine | None = None,
     operator_floor: Mapping[str, str],
+    # REQ-1494: whether the statement reads faked columns. False is safe, not lax: a faked read sent
+    # to a source fails there, the source holding no fake functions -- it never reads unfaked.
+    reads_fakes: bool = False,
 ) -> RouteDecision:
     """Decide whether to route a query cached, direct, or through the engine.
 
@@ -183,6 +186,21 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             source_id=None,
             dialect=None,
             reason=f"operator floor: {setting} on {sid} (read from the replica)",
+        )
+
+    # REQ-1494: every fake is computed by the engine serving the read; no source computes one.
+    if reads_fakes:
+        if steward_hint == "direct":
+            from provisa.fakes.read_sql import FakeReadRefused
+
+            raise FakeReadRefused(
+                "this statement reads faked columns, which only the engine computes"
+            )
+        return RouteDecision(
+            route=Route.ENGINE,
+            source_id=None,
+            dialect=None,
+            reason="reads faked columns (computed by the engine)",
         )
 
     # Steward override

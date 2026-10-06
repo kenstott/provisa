@@ -11,13 +11,24 @@
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { Trash2, Pencil } from "lucide-react";
-import { ActionIcon, Badge, Box, Button, Group, Table, Text } from "@mantine/core";
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Button,
+  Group,
+  Table,
+  Text,
+  Tooltip,
+} from "@mantine/core";
 import type { NavigateFunction } from "react-router-dom";
+import { requiredParamColumns } from "../../components/nativeParams";
 import type { RegisteredTable, DataProduct } from "../../types/admin";
 import { computeProfile } from "./helpers";
 import { TagControl } from "../../components/TagControl";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { OwnerResolutionIcon } from "../../components/OwnerResolution";
+import { LatestProfilePanel } from "./LatestProfilePanel";
 
 interface TableProfileResult {
   columns: string[];
@@ -46,6 +57,8 @@ interface TableReadViewProps {
   onPreview: (t: RegisteredTable) => void;
   // REQ-1318: opens the Views-page definition-mode editor (SQL | Metrics toggle).
   onEditDefinition?: (t: RegisteredTable) => void;
+  // REQ-1934: the table's registered profile columns table, when one is registered.
+  profileColumnsTable?: RegisteredTable | null;
 }
 
 export function TableReadView({
@@ -65,8 +78,12 @@ export function TableReadView({
   handleProfile,
   onPreview,
   onEditDefinition,
+  profileColumnsTable,
 }: TableReadViewProps) {
   const { t } = useTranslation();
+  // A table whose rows need a value for a required filter (_nf_* path parameters) has no whole
+  // table to preview or profile.
+  const needsFilter = requiredParamColumns(table).length > 0;
 
   return (
     <>
@@ -231,28 +248,38 @@ export function TableReadView({
           </code>
         </Box>
       )}
-      <Group px="0.75rem" py="0.5rem" gap="0.4rem">
-        <Text c="dimmed">{t("tableReadView.dataProduct")}</Text>
-        {table.productId != null ? (
-          <Text c="var(--color-success, #22c55e)" fw={600}>
-            {dataProducts.find((p) => p.id === table.productId)?.name ?? table.productId}
-          </Text>
-        ) : (
-          <Text c="dimmed">{t("tableReadView.dataProductNo")}</Text>
-        )}
-      </Group>
-      <Group px="0.75rem" py="0.5rem" gap="0.4rem" data-testid="table-read-view-writes">
-        <Text c="dimmed">{t("tableReadView.writes")}</Text>
-        {table.writeOps.length > 0 ? (
-          table.writeOps.map((op) => (
-            <Badge key={op} variant="light" size="sm">
-              {op.toUpperCase()}
-            </Badge>
-          ))
-        ) : (
-          <Text c="dimmed">{t("tableReadView.writesNone")}</Text>
-        )}
-      </Group>
+      {/* Only what departs from the default is shown: a read-only table with no data product shows
+          no chip at all. */}
+      {(table.writeOps.length > 0 || table.productId != null) && (
+        <Group px="0.75rem" py="0.5rem" gap="0.4rem" data-testid="table-read-view-chips">
+          {table.writeOps.length > 0 && (
+            <Tooltip
+              label={t("tableReadView.writableOps", {
+                ops: table.writeOps.map((op) => op.toUpperCase()).join(", "),
+              })}
+              withArrow
+            >
+              <Badge
+                variant="light"
+                size="sm"
+                data-testid="table-read-view-writable"
+                aria-label={t("tableReadView.writableOps", {
+                  ops: table.writeOps.map((op) => op.toUpperCase()).join(", "),
+                })}
+              >
+                {t("tableReadView.writable")}
+              </Badge>
+            </Tooltip>
+          )}
+          {table.productId != null && (
+            <Tooltip label={t("tableReadView.dataProductChip")} withArrow>
+              <Badge variant="light" color="green" size="sm" data-testid="table-read-view-product">
+                {dataProducts.find((p) => p.id === table.productId)?.name ?? table.productId}
+              </Badge>
+            </Tooltip>
+          )}
+        </Group>
+      )}
       <Group justify="flex-start" p="0.5rem" gap="0.5rem" wrap="wrap">
         {table.viewSql && (
           <Button
@@ -308,33 +335,37 @@ export function TableReadView({
               : t("tableReadView.deployToDbButton")}
           </Button>
         )}
-        <Button
-          size="compact-sm"
-          variant="default"
-          data-testid="table-read-view-preview"
-          onClick={(e) => {
-            e.stopPropagation();
-            onPreview(table);
-          }}
-          title={t("tableReadView.previewTitle")}
-        >
-          {t("tableReadView.previewButton")}
-        </Button>
-        <Button
-          size="compact-sm"
-          variant="default"
-          data-testid="table-read-view-profile"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleProfile(table.id);
-          }}
-          title={t("tableReadView.profileTitle")}
-          disabled={tableProfiles[table.id] === "loading"}
-        >
-          {tableProfiles[table.id] === "loading"
-            ? t("tableReadView.profilingButton")
-            : t("tableReadView.profileButton")}
-        </Button>
+        {!needsFilter && (
+          <Button
+            size="compact-sm"
+            variant="default"
+            data-testid="table-read-view-preview"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPreview(table);
+            }}
+            title={t("tableReadView.previewTitle")}
+          >
+            {t("tableReadView.previewButton")}
+          </Button>
+        )}
+        {!needsFilter && (
+          <Button
+            size="compact-sm"
+            variant="default"
+            data-testid="table-read-view-profile"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleProfile(table.id);
+            }}
+            title={t("tableReadView.profileTitle")}
+            disabled={tableProfiles[table.id] === "loading"}
+          >
+            {tableProfiles[table.id] === "loading"
+              ? t("tableReadView.profilingButton")
+              : t("tableReadView.profileButton")}
+          </Button>
+        )}
         <Button
           size="compact-sm"
           variant="default"
@@ -383,6 +414,7 @@ export function TableReadView({
           {deployMsg[table.id].message}
         </Box>
       )}
+      {profileColumnsTable && <LatestProfilePanel profileTable={profileColumnsTable} />}
       {(() => {
         const p = tableProfiles[table.id];
         if (!p || p === "loading") return null;

@@ -99,6 +99,13 @@
     "fileGlobPlaceholder": "напр. orders/*.csv",
     "sourceFileColumnLabel": "Столбец исходного файла",
     "sourceFileColumnHint": "необязательно — столбец с путём к файлу каждой строки",
-    "sourceFileColumnPlaceholder": "напр. _source_file"
+    "sourceFileColumnPlaceholder": "напр. _source_file",
+    "profilerResultLabel": "Таблица результатов профиля",
+    "profilerResultPlaceholder": "Выберите таблицу результатов",
+    "profilerNoMembers": "Ни одна таблица не входит в этот профилировщик",
+    "profilerResultOption": "{{member}} · {{kind}}",
+    "profilerRowRulesLabel": "Правила строк по ролям",
+    "profilerRowRulesNone": "Каждый читатель видит все описанные столбцы.",
+    "profilerRowRuleFailed": "Таблица зарегистрирована, но правило строк для {{role}} не сохранено: {{message}}"
   }
 }

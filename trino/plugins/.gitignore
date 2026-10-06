@@ -9,3 +9,5 @@ trino-calcite
 *.zip
 # _populate_trino_plugins records what it downloaded (tests/conftest.py)
 .conftest-downloads.json
+provisa-functions/
+provisa-functions

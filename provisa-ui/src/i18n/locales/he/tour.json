@@ -30,8 +30,8 @@
         "description": "➕ חיבורים חדשים מתחילים בכפתור הזה — PostgreSQL, Snowflake, MongoDB, REST API, קובץ CSV, ועוד 30+."
       },
       "step3": {
-        "title": "53 סוגי מקורות",
-        "description": "רשימת מחברים אחת חוצה כל קטגוריה:<ul><li><strong>מסדי נתונים</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>מחסני נתונים בענן</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>אנליטיקה / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Lakes וקבצים</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL וגרפים</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>ממשקי API</strong> — REST, GraphQL, gRPC</li><li><strong>סטרימינג</strong> — Kafka</li><li><strong>SaaS ארגוני</strong> — SharePoint, Splunk · בנוסף מנויי נתוני ממשל</li></ul>בוחרים אחד, ממלאים את החיבור, שומרים. הרשימה אינה קבועה — מנועי הפדרציה הילידיים <strong>ניתנים להרחבה</strong>: מצהירים על FDW מותאם ל-Postgres או תוסף DuckDB בקונפיגורציה, ו-Provisa מגיע לסוג מקור חדש, בלי קוד."
+        "title": "58 סוגי מקורות, 13 קטגוריות",
+        "description": "בורר אחד מפרט כל סוג, מקובץ לפי קטגוריה: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. חפשו לפי שם או כינוי, או צמצמו בעזרת תוויות הקטגוריה. כל סוג מציג את הלוגו שלו וסמל טווח: ⚡ קריאה חיה במקום, או סמל העתק במקום ש-Provisa קורא רפליקה מרועננת.<p>בחרו סוג, מלאו את החיבור ושמרו. הרשימה אינה קבועה — מנועי האיחוד המקוריים <strong>ניתנים להרחבה</strong>: הצהירו בתצורה על FDW מותאם של Postgres או על הרחבת DuckDB, ו-Provisa תגיע לסוג מקור חדש, ללא קוד.</p>"
       },
       "step4": {
         "title": "הכל הופך לטבלה",
@@ -104,6 +104,38 @@
       "stepQualityPanel": {
         "title": "בנו חוזה איכות",
         "description": "✅ כתבו את החוזה ידנית או בנו בדיקות לפי עמודה — שיעור NULL, ספירת שורות, טווחים, טריות — והריצו <strong>הרצת ניסיון</strong> לפני השמירה. כל סריקה מוסיפה שורות, ולכן הטבלה הזו <em>היא</em> היסטוריית האיכות: שרטטו אותה בגרף, הגדירו התראות, צרפו אותה לכל דבר."
+      },
+      "stepProfilerTable": {
+        "title": "יצירת פרופיל לטבלה",
+        "description": "📊 ערכו כל טבלה כדי להוסיף אותה ל-<strong>Data Profiler</strong>, מקור שמפיק פרופיל לטבלאות החברות בו לפי לוח זמנים: צורות עמודות, התפלגויות, שכיחויות ערכים וילדים לכל הורה."
+      },
+      "stepProfilerPanel": {
+        "title": "הוספה למפיק פרופילים",
+        "description": "בחרו מפיק פרופילים ושמרו, ואז השתמשו ב<strong>יצירת פרופיל עכשיו</strong> וב<strong>הצגת הרצות פרופיל</strong>. התוצאות נוחתות כטבלאות שאתם רושמים ומנהלים כמו כל טבלה אחרת. עד שתרשמו אותן, אף קורא אינו רואה פרופיל."
+      },
+      "stepProfilerChecks": {
+        "title": "סחף ובדיקות",
+        "description": "כל הרצה מושווית להרצות האחרונות של הטבלה, ומדד שסוחף מסומן. בודק איכות נתונים מעלה את החריגה. אפשר גם לאשר אילוצים שהפרופיל מציע ולבדוק הרצות מול ציפיות מחוץ ל-Provisa."
+      },
+      "stepFakes": {
+        "title": "הצהרה על ערך מדומה",
+        "description": "🎭 מצב <strong>נתוני בדיקה</strong> ברשימת העמודות מציג את <strong>הערך המדומה</strong> של כל עמודה, כגון <code>email()</code>. הדמו רק עמודות מזהות והשאירו את השאר אמיתי. עמודה יכולה לשאת גם <strong>כלל סינתטי</strong>, שפועל רק ביצירת נתונים סינתטיים."
+      },
+      "stepFakesFill": {
+        "title": "מילוי ערכים מדומים מפרופיל",
+        "description": "✨ <strong>מילוי מפרופיל</strong> מציע, לפי הפרופיל האחרון של הטבלה, ערכים מדומים לעמודות מזהות וכללים סינתטיים לשאר. דבר לא נשמר עד ששומרים את הטופס."
+      },
+      "stepEnvKinds": {
+        "title": "סביבות בדיקה לקריאה או לקריאה וכתיבה",
+        "description": "סביבה שאינה ייצור היא <strong>לקריאה</strong> או <strong>לקריאה וכתיבה</strong>. סביבה לקריאה וכתיבה שומרת את השינויים שלה, וכתיבה לעולם אינה מגיעה למקור. הפעילו <strong>נתוני בדיקה</strong> וכל עמודה תציג את הערך המדומה שלה; נתונים אישיים ללא ערך מדומה יוצגו כ-NULL."
+      },
+      "stepSynthetic": {
+        "title": "יצירת נתונים סינתטיים",
+        "description": "🧪 <strong>מערך נתונים סינתטי</strong> ממלא סביבה שאינה ייצור בשורות בצורת הטבלאות שפרופלו, עם אותם קשרים ואותה התפצלות, בכל קנה מידה. דוח השוואה מראה עד כמה הוא התקרב."
+      },
+      "stepSyntheticPrivacy": {
+        "title": "פרטיות כברירת מחדל",
+        "description": "🔒 הצהירו על מערך נתונים כפרטי עם תקציב פרטיות ε. רעש מכויל מתווסף לכל סטטיסטיקה שהמחולל שואב מפרופיל, והדוח מציין מה הרעש הסיר."
       },
       "step20": {
         "title": "בניית Pipeline משלוח",

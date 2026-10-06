@@ -1,0 +1,31 @@
+{
+  "testData": {
+    "modeMetadata": "元數據",
+    "modeTestData": "測試數據",
+    "fake": "虛構值",
+    "syntheticRule": "合成規則",
+    "stable": "穩定",
+    "stableHint": "在每個引擎和每個區域中都是相同的虛構值",
+    "stableVersion": "固定為定義版本 {{version}}：在偽造值更改之前，其值保持不變",
+    "realValue": "真實值",
+    "openDialog": "選擇虛構值",
+    "piiNoFake": "PII，無虛構值",
+    "dialogTitle": "測試數據：{{column}}",
+    "declaration": "聲明，例如 email() 或 categories((a, b))",
+    "methodCategory": "虛構方法：{{category}}",
+    "cancel": "取消",
+    "apply": "套用",
+    "kindCategory": {
+      "values": "值",
+      "distribution": "分佈",
+      "transform": "轉換",
+      "relative": "相對於其他欄",
+      "rule": "僅合成規則"
+    },
+    "fillFromProfile": "從畫像填充",
+    "filled": "已填充的欄：{{count}}（畫像運行 {{run}}）。",
+    "unmatchedPii": "無可靠匹配的 PII，由您決定：{{columns}}。",
+    "noConfidentMatch": "畫像中無可靠匹配的 PII：請聲明其虛構值。",
+    "noProposal": "畫像未為此欄提出任何建議。"
+  }
+}

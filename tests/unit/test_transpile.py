@@ -440,3 +440,17 @@ class TestRewritePrometheusLabelsForTrino:
         sql = 'SELECT "u"."job" FROM "cat1"."default"."up" AS "u"'
         out = rewrite_prometheus_labels_for_trino(sql, {("cat1", "up"): {"job"}})
         assert "labels['job']" in out
+
+
+def test_trino_reads_the_epoch_of_a_timestamp_at_utc_as_postgres_does():
+    """REQ-1494: PostgreSQL's EXTRACT(EPOCH FROM <timestamp>) reads the timestamp as UTC; Trino's
+    TO_UNIXTIME reads it in the session's zone unless given one."""
+    from provisa.transpiler.transpile import transpile_to_trino
+
+    out = transpile_to_trino(
+        "SELECT EXTRACT(EPOCH FROM CAST(a AS TIMESTAMP)) + 1, "
+        "CAST(TO_TIMESTAMP(3) AT TIME ZONE 'UTC' AS TIMESTAMP) FROM t"
+    )
+    assert "TO_UNIXTIME(WITH_TIMEZONE(CAST(a AS TIMESTAMP), 'UTC'))" in out
+    assert "CAST(AT_TIMEZONE(FROM_UNIXTIME(3), 'UTC') AS TIMESTAMP)" in out
+    assert transpile_to_trino("SELECT a FROM t") == "SELECT a FROM t"

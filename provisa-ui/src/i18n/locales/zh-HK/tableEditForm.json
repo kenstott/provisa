@@ -218,6 +218,7 @@
     "maskRegex": "正規表達式",
     "maskConstant": "常數",
     "maskTruncate": "截斷",
+    "maskFake": "虛構值",
     "scopeDomain": "網域",
     "scopePublic": "公開",
     "scopeRestricted": "受限",

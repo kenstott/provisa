@@ -18,7 +18,7 @@ import { normalizeDomain } from "../pages/sql/sqlHelpers";
 
 export const PREVIEW_ROW_LIMIT = 1000;
 
-function tableRef(table: RegisteredTable): string {
+export function tableRef(table: RegisteredTable): string {
   return `"${normalizeDomain(table.domainId)}"."${table.alias || table.tableName}"`;
 }
 

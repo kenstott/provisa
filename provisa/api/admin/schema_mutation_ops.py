@@ -293,7 +293,7 @@ async def register_table(
         return MutationResult(success=False, message=str(_map_err))
     from provisa.api.app import state as _reg_state
 
-    if _reg_state.source_types.get(input.source_id) == "ingest":  # REQ-1771
+    if _reg_state.source_types.get(input.source_id) in ("ingest", "data_profiler"):  # REQ-1771/1934
         # ingest's Register-Table picker offers only a synthetic "default" schema (REQ-1745, a
         # UI-symmetry placeholder mirroring redis/elasticsearch/prometheus) -- it is never a real
         # physical location. ingest rows land straight into the tenant control-plane DB
@@ -313,6 +313,10 @@ async def register_table(
 
         try:
             await apply_dq_registration(_conn, model)
+            # REQ-1934: a profile result table's derivation, and a table's profiler membership.
+            from provisa.profiler.registration import apply_registration
+
+            await apply_registration(_conn, model)
         except ValueError as _dq_err:
             return MutationResult(success=False, message=str(_dq_err))
         from provisa.api.admin.region_defaults import registration_region
@@ -382,6 +386,11 @@ async def register_table(
         _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
         if _glob_refusal is not None:
             return _glob_refusal
+        from provisa.api.admin._fake_guard import table_fake_refusal
+
+        _fake_refusal = await table_fake_refusal(_conn, model)  # REQ-1494
+        if _fake_refusal is not None:
+            return _fake_refusal
         from provisa.api.admin._delta_guard import table_delta_refusal
 
         _delta_refusal = await table_delta_refusal(_conn, model)  # REQ-874

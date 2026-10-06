@@ -13,7 +13,10 @@
       "cache": "מטמון",
       "cacheTtl": "TTL מטמון",
       "effectiveTtl": "TTL בפועל",
-      "allowedDomains": "תחומים מורשים"
+      "allowedDomains": "תחומים מורשים",
+      "schedule": "תזמון",
+      "sample": "מדגם",
+      "lowCardinality": "סף קרדינליות נמוכה"
     },
     "namingInherit": "ירושה (גלובלי)",
     "cacheEnabled": "מופעל",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "רענון מ-Kaggle",
     "refreshKaggleHint": "הורדה מחדש של {{owner}}/{{ref}} מ-Kaggle, תוך דריסת הקבצים שהוכנו במקומם. אסימון Kaggle שלכם אינו נשמר — הזינו אותו שוב עבור רענון זה.",
     "kaggleTokenLabel": "אסימון API של Kaggle",
-    "refreshKaggleSubmit": "רענון"
+    "refreshKaggleSubmit": "רענון",
+    "sampleWhole": "הטבלה כולה",
+    "sampleAbove": "מדגם מעל {{cells}} תאים",
+    "runProfilerTitle": "הרצה עכשיו לכל טבלה חברה",
+    "profilerNoMembers": "אף טבלה לא הצטרפה לפרופיילר זה.",
+    "profilerRan": "{{table}}: נוצר פרופיל",
+    "profilerFailed": "{{table}}: {{error}}"
   }
 }

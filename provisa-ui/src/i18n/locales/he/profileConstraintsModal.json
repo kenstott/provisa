@@ -1,0 +1,32 @@
+{
+  "profileConstraintsModal": {
+    "title": "אילוצים של {{table}}",
+    "proposed": "מוצעים על ידי ההרצה האחרונה",
+    "none": "ההרצה האחרונה אינה מציעה אילוץ, או שהטבלה טרם עברה פרופיילינג.",
+    "decided": "הוחלט",
+    "noneDecided": "עדיין לא התקבל או נדחה אף אילוץ.",
+    "constraint": "אילוץ",
+    "columns": "עמודות",
+    "definition": "הגדרה",
+    "evidence": "ראיות",
+    "share": "התקיים עבור",
+    "sampled": "דגימה",
+    "accept": "קבל",
+    "edit": "ערוך",
+    "acceptEdited": "קבל לאחר עריכה",
+    "cancel": "ביטול",
+    "dismiss": "דחה",
+    "export": "ייצא לבודק",
+    "withdraw": "בטל החלטה",
+    "checkerLabel": "טבלת בודק לייצוא",
+    "exported": "נוסף לחוזה של {{table}}.",
+    "alreadyExported": "החוזה של {{table}} כבר כולל בדיקה זו.",
+    "status_accepted": "התקבל",
+    "status_dismissed": "נדחה",
+    "kind_not_null": "אף פעם לא null",
+    "kind_unique": "ייחודי",
+    "kind_value_set": "ערכים רשומים בלבד",
+    "kind_range": "בתוך הטווח שנצפה",
+    "kind_ordering": "אף פעם לא גדול או מאוחר מ-"
+  }
+}

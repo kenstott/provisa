@@ -1,0 +1,32 @@
+{
+  "profileConstraintsModal": {
+    "title": "Restrições de {{table}}",
+    "proposed": "Propostas pela última execução",
+    "none": "A última execução não propõe nenhuma restrição, ou a tabela ainda não foi perfilada.",
+    "decided": "Decididas",
+    "noneDecided": "Nenhuma restrição foi aceita ou descartada.",
+    "constraint": "Restrição",
+    "columns": "Colunas",
+    "definition": "Definição",
+    "evidence": "Evidência",
+    "share": "Cumprida em",
+    "sampled": "amostra",
+    "accept": "Aceitar",
+    "edit": "Editar",
+    "acceptEdited": "Aceitar editada",
+    "cancel": "Cancelar",
+    "dismiss": "Descartar",
+    "export": "Exportar para verificador",
+    "withdraw": "Retirar",
+    "checkerLabel": "Tabela do verificador para exportar",
+    "exported": "Adicionada ao contrato de {{table}}.",
+    "alreadyExported": "O contrato de {{table}} já contém esta verificação.",
+    "status_accepted": "Aceita",
+    "status_dismissed": "Descartada",
+    "kind_not_null": "Nunca nulo",
+    "kind_unique": "Único",
+    "kind_value_set": "Somente valores registrados",
+    "kind_range": "Dentro do intervalo observado",
+    "kind_ordering": "Nunca maior nem posterior a"
+  }
+}

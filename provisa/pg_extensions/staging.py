@@ -113,6 +113,8 @@ def stage_bundled_pg_extensions(pginstall: str | Path) -> Path:
             out = extdir / control.name
             if not out.exists() or out.read_bytes() != control.read_bytes():
                 shutil.copy2(control, out)
+    if (pkglibdir / f"plpython3.{_module_suffix(platform)}").exists():
+        link_interpreter(pkglibdir, platform)
     return pkglibdir
 
 
@@ -124,3 +126,63 @@ def _shipped_sha256(bundle: Path) -> dict[str, str]:
     """The bundle's manifest rows as {file: sha256} (``lib/<name>.<suf>`` keys)."""
     manifest = json.loads((bundle / "manifest.json").read_text())
     return {a["file"]: a["sha256"] for a in manifest["artifacts"]}
+
+
+class InterpreterNotLinkable(RuntimeError):
+    """PL/Python cannot load the running interpreter: not CPython 3.12, or built without a shared
+    libpython."""
+
+
+#: The interpreter PL/Python is built against (scripts/ci/build_pg_extensions.sh).
+PLPYTHON_MINOR = (3, 12)
+
+
+def _libpython() -> Path:
+    import sys
+    import sysconfig
+
+    if sys.version_info[:2] != PLPYTHON_MINOR:
+        raise InterpreterNotLinkable(
+            f"PL/Python is built for Python {PLPYTHON_MINOR[0]}.{PLPYTHON_MINOR[1]}, and this "
+            f"interpreter is {sys.version_info[0]}.{sys.version_info[1]}"
+        )
+    libdir = Path(str(sysconfig.get_config_var("LIBDIR")))
+    if sys.platform == "darwin" and sysconfig.get_config_var("PYTHONFRAMEWORK"):
+        # A framework build's libpython is the framework binary.
+        candidates = [
+            Path(str(sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX")))
+            / str(sysconfig.get_config_var("LDLIBRARY"))
+        ]
+    else:
+        name = "libpython3.12.dylib" if sys.platform == "darwin" else "libpython3.12.so.1.0"
+        candidates = [libdir / name]
+    for c in candidates:
+        if c.exists():
+            return c
+    raise InterpreterNotLinkable(
+        f"this interpreter ({sys.executable}) has no shared libpython (looked at "
+        f"{', '.join(str(c) for c in candidates)}); PL/Python needs one"
+    )
+
+
+def link_interpreter(pkglibdir: Path, platform: str) -> None:
+    """REQ-1494: put the running interpreter's libpython beside plpython3, under the name
+    plpython3 loads it by, so PL/Python runs the interpreter that holds provisa and faker."""
+    name = "libpython3.12.dylib" if platform.startswith("darwin") else "libpython3.12.so.1.0"
+    target = _libpython()
+    link = pkglibdir / name
+    if link.is_symlink() and link.resolve() == target.resolve():
+        return
+    if link.exists() or link.is_symlink():
+        link.unlink()
+    link.symlink_to(target)
+
+
+def plpython_environment() -> dict[str, str]:
+    """The environment the postmaster needs for PL/Python to start the running interpreter: its
+    home (the standard library) and the paths that import provisa and faker."""
+    import os
+    import sys
+
+    paths = [p for p in sys.path if p and Path(p).is_dir()]
+    return {"PYTHONHOME": sys.base_prefix, "PYTHONPATH": os.pathsep.join(paths)}

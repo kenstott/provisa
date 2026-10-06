@@ -222,13 +222,27 @@ def _pinned_stdio_role() -> str:
     return role.strip()
 
 
-async def _within_request(make_coro: Any) -> Any:
+def _call_actor() -> str | None:
+    """The member a tool call was made by, or None for a call no member signed (stdio, or the
+    unsecured loopback) -- the system author stands in, as for an HTTP request (REQ-1524)."""
+    user_id = getattr(_request_identity.get(), "user_id", None)
+    return None if user_id in (None, "anonymous") else user_id
+
+
+async def _within_request(make_coro: Any, label: str) -> Any:
     """One MCP tool call as a request (REQ-1905): its work — governance, execution, shaping the
     result — runs under MCP's own request deadline, on the call's request thread. Once that
     deadline has passed the call is answered with the timeout, naming the transport and the
-    setting, whatever it had produced."""
+    setting, whatever it had produced.
+
+    REQ-1524: one tool call is one model change, as one HTTP request is
+    (``provisa.api.model_change_middleware``): what a write tool changes in the model is committed
+    once, when the call ends. A call that writes nothing commits nothing."""
+    from provisa.core import model_change
+
     with request_deadline.request("mcp") as deadline:
-        result = await make_coro()
+        async with model_change.scope(label, actor=_call_actor):
+            result = await make_coro()
         deadline.check()
         return result
 
@@ -288,7 +302,7 @@ def build_mcp_server(state: Any):
                 # REQ-1350: what a tool's answers say about themselves goes in its result.
                 with collecting() as found:
                     result = await run_on_request_thread(
-                        lambda: _within_request(lambda: fn(*args, **kwargs))
+                        lambda: _within_request(lambda: fn(*args, **kwargs), f"MCP {fn.__name__}")
                     )
                 return _with_warnings(result, found)
 
@@ -379,7 +393,8 @@ def build_mcp_server(state: Any):
                         offset=offset,
                         redirect=redirect,
                         redirect_format=redirect_format,
-                    )
+                    ),
+                    "MCP run_sql",
                 )
             )
         result = _with_warnings(result, found)
@@ -662,6 +677,11 @@ def build_mcp_server(state: Any):
         """Delete a governed metric by name. Irreversible."""
         resolved = _role(role)
         return await tools.delete_metric(state, resolved, _capability_request(resolved), name)
+
+    # REQ-1934/1494/1939/1919: the profiler, fakes, synthetic datasets and the config export.
+    from provisa.api.mcp import model_tool_server
+
+    model_tool_server.register(_tool, _role, _capability_request, state)
 
     # Optional: only registered when a Jev credential is configured, so an agent never sees
     # a tool it cannot use — no fallback, the tool simply does not exist without the key.

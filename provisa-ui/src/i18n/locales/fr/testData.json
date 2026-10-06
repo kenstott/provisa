@@ -1,0 +1,31 @@
+{
+  "testData": {
+    "modeMetadata": "Métadonnées",
+    "modeTestData": "Données de test",
+    "fake": "Valeur fictive",
+    "syntheticRule": "Règle synthétique",
+    "stable": "Stable",
+    "stableHint": "La même valeur fictive sur chaque moteur et dans chaque région",
+    "stableVersion": "Épinglé à la version de définition {{version}} : ses valeurs restent les mêmes tant que sa valeur fictive ne change pas",
+    "realValue": "valeur réelle",
+    "openDialog": "Choisir une valeur fictive",
+    "piiNoFake": "PII, sans valeur fictive",
+    "dialogTitle": "Données de test : {{column}}",
+    "declaration": "Déclaration, p. ex. email() ou categories((a, b))",
+    "methodCategory": "Méthode fictive : {{category}}",
+    "cancel": "Annuler",
+    "apply": "Appliquer",
+    "kindCategory": {
+      "values": "Valeurs",
+      "distribution": "Distributions",
+      "transform": "Transformations",
+      "relative": "Relatives à d’autres colonnes",
+      "rule": "Règles synthétiques uniquement"
+    },
+    "fillFromProfile": "Remplir depuis le profil",
+    "filled": "Colonnes remplies : {{count}} (exécution de profil {{run}}).",
+    "unmatchedPii": "PII sans correspondance sûre, à votre choix : {{columns}}.",
+    "noConfidentMatch": "PII sans correspondance sûre dans le profil : déclarez sa valeur fictive.",
+    "noProposal": "Le profil ne propose rien pour cette colonne."
+  }
+}

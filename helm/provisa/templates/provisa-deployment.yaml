@@ -116,6 +116,13 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-secrets
                   key: pg-password
+            # REQ-1494: the deployment's fake key, which the platform stores as its own at its first
+            # start and the engine reads from the same Secret.
+            - name: PROVISA_FAKE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-fake-key
+                  key: key
             {{- if .Values.encryption.existingSecret }}
             # The deployment's master key, the same for every replica and every restart.
             - name: PROVISA_ENCRYPTION_KEY

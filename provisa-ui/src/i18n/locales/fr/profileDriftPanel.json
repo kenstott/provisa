@@ -1,0 +1,21 @@
+{
+  "profileDriftPanel": {
+    "measure": "Mesure",
+    "drift": "Dérive",
+    "drifting": "en dérive",
+    "runTime": "Heure d'exécution",
+    "value": "Valeur",
+    "col_previous": "Précédent",
+    "col_current": "Actuel",
+    "col_change": "Variation",
+    "col_ks_previous": "KS vs précédent",
+    "col_psi_previous": "PSI vs précédent",
+    "col_window_runs": "Exécutions de la fenêtre",
+    "col_baseline": "Référence",
+    "col_spread": "MAD",
+    "col_distance": "Distance (MAD)",
+    "col_slope_spread": "Tendance (MAD)",
+    "col_ks": "KS vs fenêtre",
+    "col_psi": "PSI vs fenêtre"
+  }
+}

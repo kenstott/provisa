@@ -30,8 +30,8 @@
         "description": "➕ Novas conexões começam com este botão — PostgreSQL, Snowflake, MongoDB, uma API REST, um CSV e mais de 30 outros."
       },
       "step3": {
-        "title": "53 tipos de fontes",
-        "description": "Uma única lista de conectores abrange todas as categorias:<ul><li><strong>Bancos de dados</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Warehouses em nuvem</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Analytics / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Lakes e arquivos</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL e grafos</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>APIs</strong> — REST, GraphQL, gRPC</li><li><strong>Streaming</strong> — Kafka</li><li><strong>SaaS empresarial</strong> — SharePoint, Splunk · além de assinaturas de dados governamentais</li></ul>Escolha uma, preencha a conexão, salve. A lista não é fixa — os mecanismos de federação nativos são <strong>extensíveis</strong>: declare um FDW do Postgres ou uma extensão do DuckDB personalizados na configuração e o Provisa alcança um novo tipo de fonte, sem código."
+        "title": "58 tipos de fonte, 13 categorias",
+        "description": "Um seletor lista cada tipo, agrupado por categoria: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Pesquise por nome ou apelido, ou restrinja com os chips de categoria. Cada tipo mostra seu logotipo e um ícone de alcance: ⚡ leitura ao vivo no local, ou um ícone de cópia onde o Provisa lê uma réplica atualizada.<p>Escolha um, preencha a conexão e salve. A lista não é fixa: os mecanismos de federação nativos são <strong>extensíveis</strong>. Declare na configuração um FDW de Postgres próprio ou uma extensão do DuckDB e o Provisa alcança um novo tipo de fonte, sem código.</p>"
       },
       "step4": {
         "title": "Tudo se torna uma tabela",
@@ -104,6 +104,38 @@
       "stepQualityPanel": {
         "title": "Monte um contrato de qualidade",
         "description": "✅ Escreva o contrato à mão ou construa verificações coluna por coluna — taxas de nulos, contagens de linhas, faixas, atualidade — e faça uma <strong>execução de teste</strong> antes de salvar. Cada varredura acrescenta linhas, então esta tabela <em>é</em> o histórico de qualidade: represente-a em gráficos, crie alertas sobre ela, junte-a a qualquer coisa."
+      },
+      "stepProfilerTable": {
+        "title": "Perfilar uma tabela",
+        "description": "📊 Edite qualquer tabela para adicioná-la a um <strong>Data Profiler</strong>, uma fonte que perfila suas tabelas-membro conforme um agendamento: formatos de coluna, distribuições, frequências de valores e filhos por pai."
+      },
+      "stepProfilerPanel": {
+        "title": "Adicioná-la a um perfilador",
+        "description": "Escolha um perfilador e salve; depois use <strong>Perfilar agora</strong> e <strong>Ver execuções de perfil</strong>. Os resultados chegam como tabelas que você registra e governa como qualquer outra. Até que você as registre, nenhum leitor vê um perfil."
+      },
+      "stepProfilerChecks": {
+        "title": "Deriva e verificações",
+        "description": "Cada execução é comparada com as execuções recentes da tabela, e uma medida que deriva é sinalizada. Um verificador de qualidade de dados levanta a exceção. Você também pode aceitar as restrições que o perfil propõe e conferir as execuções com expectativas externas ao Provisa."
+      },
+      "stepFakes": {
+        "title": "Declarar um valor fictício",
+        "description": "🎭 O modo <strong>Dados de teste</strong> da lista de colunas mostra o <strong>valor fictício</strong> de cada coluna, como <code>email()</code>. Simule apenas as colunas identificadoras e mantenha o resto real. Uma coluna também pode ter uma <strong>regra sintética</strong>, usada somente ao gerar dados sintéticos."
+      },
+      "stepFakesFill": {
+        "title": "Preencher valores fictícios a partir de um perfil",
+        "description": "✨ <strong>Preencher a partir do perfil</strong> propõe, com base no perfil mais recente da tabela, valores fictícios para as colunas identificadoras e regras sintéticas para as demais. Nada é salvo até que você salve o formulário."
+      },
+      "stepEnvKinds": {
+        "title": "Ambientes de teste de leitura ou de leitura e escrita",
+        "description": "Um ambiente que não é de produção é de <strong>leitura</strong> ou de <strong>leitura e escrita</strong>. Um de leitura e escrita guarda suas próprias alterações, e uma escrita nunca chega a uma fonte. Ative <strong>Dados de teste</strong> e cada coluna mostra seu valor fictício; dados pessoais sem valor fictício aparecem como NULL."
+      },
+      "stepSynthetic": {
+        "title": "Gerar dados sintéticos",
+        "description": "🧪 Um <strong>conjunto de dados sintético</strong> preenche um ambiente que não é de produção com linhas no formato das suas tabelas perfiladas, com as mesmas relações e a mesma ramificação, em qualquer escala. Um relatório de comparação mostra o quanto ele se aproximou."
+      },
+      "stepSyntheticPrivacy": {
+        "title": "Privado por concepção",
+        "description": "🔒 Declare um conjunto de dados como privado com um orçamento de privacidade ε. Ruído calibrado é somado a cada estatística que o gerador tira de um perfil, e o relatório informa o que o ruído eliminou."
       },
       "step20": {
         "title": "Construa seu pipeline de entrega",

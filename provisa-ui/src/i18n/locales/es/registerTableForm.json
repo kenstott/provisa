@@ -99,6 +99,13 @@
     "fileGlobPlaceholder": "p. ej. orders/*.csv",
     "sourceFileColumnLabel": "Columna de archivo de origen",
     "sourceFileColumnHint": "opcional — una columna con la ruta de archivo de cada fila",
-    "sourceFileColumnPlaceholder": "p. ej. _source_file"
+    "sourceFileColumnPlaceholder": "p. ej. _source_file",
+    "profilerResultLabel": "Tabla de resultados del perfil",
+    "profilerResultPlaceholder": "Elija una tabla de resultados",
+    "profilerNoMembers": "Ninguna tabla se ha unido a este perfilador",
+    "profilerResultOption": "{{member}} · {{kind}}",
+    "profilerRowRulesLabel": "Reglas de filas por rol",
+    "profilerRowRulesNone": "Cada lector ve todas las columnas descritas.",
+    "profilerRowRuleFailed": "La tabla se registró, pero la regla de filas de {{role}} no se guardó: {{message}}"
   }
 }

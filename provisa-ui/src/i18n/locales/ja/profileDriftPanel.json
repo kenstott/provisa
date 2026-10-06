@@ -1,0 +1,21 @@
+{
+  "profileDriftPanel": {
+    "measure": "指標",
+    "drift": "ドリフト",
+    "drifting": "ドリフト中",
+    "runTime": "実行時刻",
+    "value": "値",
+    "col_previous": "前回",
+    "col_current": "今回",
+    "col_change": "変化",
+    "col_ks_previous": "前回比 KS",
+    "col_psi_previous": "前回比 PSI",
+    "col_window_runs": "ウィンドウ内の実行数",
+    "col_baseline": "ベースライン",
+    "col_spread": "MAD",
+    "col_distance": "距離 (MAD)",
+    "col_slope_spread": "傾向 (MAD)",
+    "col_ks": "ウィンドウ比 KS",
+    "col_psi": "ウィンドウ比 PSI"
+  }
+}

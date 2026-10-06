@@ -56,6 +56,9 @@ import type { NotificationData } from "@mantine/notifications";
 import { MergeRequestsPanel } from "./MergeRequestsPanel";
 import { RepoBrowser } from "./RepoBrowser";
 import { RepoIntegrationPanel } from "./RepoIntegrationPanel";
+import { SyntheticDatasetsPanel } from "./SyntheticDatasetsPanel";
+import { SyntheticSeedFields } from "./SyntheticSeedFields";
+import type { SyntheticSeed } from "./syntheticSeed";
 
 const PROD = "prod";
 
@@ -112,6 +115,7 @@ export function EnvironmentsTab() {
   // a Create button that answers 403 with nothing on screen to explain it.
   const inherits = inheritConnections || !canAdminister;
   const [creating, setCreating] = useState(false);
+  const [synthetic, setSynthetic] = useState<SyntheticSeed | null>(null); // REQ-1939
 
   // REQ-1549: the environment whose Merge button was pressed is the SOURCE of the merge, and the
   // environment it was branched from is where it goes back to. Nobody picks the target for the
@@ -180,6 +184,7 @@ export function EnvironmentsTab() {
         name,
         from_env: from,
         inherit_connections: inherits,
+        ...(synthetic ? { synthetic } : {}),
       });
       notifications.show({
         color: "green",
@@ -189,6 +194,7 @@ export function EnvironmentsTab() {
         }),
       });
       setName("");
+      setSynthetic(null);
       reload();
     } catch (err) {
       fail(err as Error);
@@ -457,6 +463,7 @@ export function EnvironmentsTab() {
           <Tabs.Tab value="requests">{t("environmentsTab.tabRequests")}</Tabs.Tab>
           <Tabs.Tab value="repository">{t("environmentsTab.tabRepository")}</Tabs.Tab>
           <Tabs.Tab value="integration">{t("environmentsTab.tabIntegration")}</Tabs.Tab>
+          <Tabs.Tab value="synthetic" data-tour="synthetic-tab">{t("syntheticDatasets.tab")}</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="environments" pt="md">
@@ -501,6 +508,7 @@ export function EnvironmentsTab() {
                 {t("environmentsTab.create")}
               </Button>
             </Group>
+            <SyntheticSeedFields envs={names} seed={synthetic} setSeed={setSynthetic} />
 
             <Table striped highlightOnHover>
               <Table.Thead>
@@ -676,6 +684,9 @@ export function EnvironmentsTab() {
           </Stack>
         </Tabs.Panel>
 
+        <Tabs.Panel value="synthetic" pt="md">
+          <SyntheticDatasetsPanel envs={names} />
+        </Tabs.Panel>
         <Tabs.Panel value="requests" pt="md">
           <MergeRequestsPanel orgId={orgId} canDecide={canAdminister} />
         </Tabs.Panel>

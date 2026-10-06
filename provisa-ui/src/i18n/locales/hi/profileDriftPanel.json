@@ -1,0 +1,21 @@
+{
+  "profileDriftPanel": {
+    "measure": "माप",
+    "drift": "ड्रिफ्ट",
+    "drifting": "ड्रिफ्ट हो रहा है",
+    "runTime": "रन समय",
+    "value": "मान",
+    "col_previous": "पिछला",
+    "col_current": "वर्तमान",
+    "col_change": "परिवर्तन",
+    "col_ks_previous": "पिछले से KS",
+    "col_psi_previous": "पिछले से PSI",
+    "col_window_runs": "विंडो रन",
+    "col_baseline": "बेसलाइन",
+    "col_spread": "MAD",
+    "col_distance": "दूरी (MAD)",
+    "col_slope_spread": "रुझान (MAD)",
+    "col_ks": "विंडो से KS",
+    "col_psi": "विंडो से PSI"
+  }
+}

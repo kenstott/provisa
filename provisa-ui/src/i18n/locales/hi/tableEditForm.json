@@ -218,6 +218,7 @@
     "maskRegex": "Regex",
     "maskConstant": "स्थिरांक",
     "maskTruncate": "ट्रंकेट",
+    "maskFake": "नकली मान",
     "scopeDomain": "डोमेन",
     "scopePublic": "सार्वजनिक",
     "scopeRestricted": "प्रतिबंधित",

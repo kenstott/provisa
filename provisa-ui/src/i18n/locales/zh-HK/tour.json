@@ -30,8 +30,8 @@
         "description": "➕ 新連接由這個按鈕開始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及 30 多種其他類型。"
       },
       "step3": {
-        "title": "53 種數據來源類型",
-        "description": "一份連接器清單涵蓋所有類別：<ul><li><strong>數據庫</strong>——PostgreSQL、MySQL、MariaDB、Oracle、SQL Server、Greenplum</li><li><strong>雲端數據倉庫</strong>——Snowflake、BigQuery、Databricks、Redshift、Microsoft Fabric、Azure Synapse</li><li><strong>分析／OLAP</strong>——ClickHouse、Druid、Pinot</li><li><strong>數據湖與檔案</strong>——Iceberg、Delta Lake、Hive、Parquet、CSV、JSON</li><li><strong>NoSQL 與圖數據庫</strong>——MongoDB、Cassandra、Redis、Neo4j</li><li><strong>API</strong>——REST、GraphQL、gRPC</li><li><strong>串流</strong>——Kafka</li><li><strong>企業級 SaaS</strong>——SharePoint、Splunk，另加政府數據訂閱</li></ul>選一種，填寫連接資訊，儲存即可。這份清單並非固定——原生聯邦引擎是<strong>可擴充</strong>的：只要在設定中宣告自訂的 Postgres FDW 或 DuckDB 擴充功能，Provisa 就能連接新的數據來源類型，毋須撰寫程式碼。"
+        "title": "58 種數據來源類型，13 個類別",
+        "description": "一個選擇器按類別列出所有類型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名稱或別名搜尋，也可以用類別標籤收窄範圍。每種類型都有標誌和可達性圖示：⚡ 表示就地即時讀取，複製圖示表示 Provisa 讀取已更新的副本。<p>揀選一個，填寫連線，儲存。這個清單並非固定不變：原生聯邦引擎<strong>可擴充</strong>，只需在設定中宣告自訂的 Postgres FDW 或 DuckDB 擴充，Provisa 就能接入新的數據來源類型，無需編寫程式碼。</p>"
       },
       "step4": {
         "title": "一切都會變成一個表格",
@@ -104,6 +104,38 @@
       "stepQualityPanel": {
         "title": "建立品質合約",
         "description": "✅ 手寫合約，或逐欄建立檢查——空值率、列數、範圍、新鮮度——並在儲存前<strong>試執行</strong>。每次掃描都會追加，因此這張表<em>就是</em>品質歷史：可以繪製圖表、設定警示，也可以與任何數據聯結。"
+      },
+      "stepProfilerTable": {
+        "title": "為表格做剖析",
+        "description": "📊 編輯任何一張表格，把它加入 <strong>Data Profiler</strong>。這是一種按排程為成員表格做剖析的來源，記錄欄位的形態、分布、數值頻率，以及每個父列的子列數目。"
+      },
+      "stepProfilerPanel": {
+        "title": "加入剖析器",
+        "description": "揀選一個剖析器並儲存，然後使用<strong>立即剖析</strong>和<strong>檢視剖析執行</strong>。結果會以表格形式落地，你可以像註冊其他表格一樣註冊並管治它們。在你註冊之前，沒有任何讀者看得到剖析。"
+      },
+      "stepProfilerChecks": {
+        "title": "漂移與檢查",
+        "description": "每次執行都會與該表格最近的執行比較，漂移的度量會被標記。例外由數據質素檢查器拋出。你亦可以接受剖析提出的約束，並把執行結果與 Provisa 以外提供的預期對照檢查。"
+      },
+      "stepFakes": {
+        "title": "宣告虛構值",
+        "description": "🎭 欄位列表的<strong>測試數據</strong>模式會顯示每個欄位的<strong>虛構值</strong>，例如 <code>email()</code>。只對可識別個人的欄位使用虛構值，其餘保持真實。每個欄位亦可附帶一條<strong>合成規則</strong>，只在產生合成數據時使用。"
+      },
+      "stepFakesFill": {
+        "title": "根據剖析填入虛構值",
+        "description": "✨ <strong>根據剖析填入</strong>會依據該表格最新的剖析，為識別性的欄位建議虛構值，為其餘欄位建議合成規則。在你儲存表單之前不會儲存任何內容。"
+      },
+      "stepEnvKinds": {
+        "title": "唯讀或可讀寫的測試環境",
+        "description": "非生產環境分為<strong>唯讀</strong>和<strong>可讀寫</strong>兩種。可讀寫環境保留自己的變更，寫入永遠不會去到數據來源。開啟<strong>測試數據</strong>後，每個欄位都顯示其虛構值，沒有虛構值的個人資料顯示為 NULL。"
+      },
+      "stepSynthetic": {
+        "title": "產生合成數據",
+        "description": "🧪 <strong>合成數據集</strong>用與已剖析表格形態相同的列填滿非生產環境，關係和扇出保持一致，規模任意。比較報告會顯示它與原數據有幾接近。"
+      },
+      "stepSyntheticPrivacy": {
+        "title": "以私隱為本的設計",
+        "description": "🔒 用私隱預算 ε 把數據集宣告為私有。產生器從剖析取用的每個統計量都會加入校準過的雜訊，報告會說明雜訊剔除了甚麼。"
       },
       "step20": {
         "title": "建構你的交付管線",

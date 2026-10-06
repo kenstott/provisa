@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "Checkertabel",
+    "driftCheck": "Driftcontrole maken",
+    "expectationsLabel": "Verwachtingentabel",
+    "expectationsPlaceholder": "Kies een tabel met de vorm van verwachtingen",
+    "noExpectations": "Geen geregistreerde tabel heeft de vorm van verwachtingen",
+    "expectationCheck": "Verwachtingscontrole maken",
+    "added": "Toegevoegd aan het contract van {{table}}.",
+    "already": "Het contract van {{table}} bevat deze controle al."
+  }
+}

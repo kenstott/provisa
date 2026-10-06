@@ -47,6 +47,7 @@ from provisa.api.app_loaders import (
     _init_meta_rls,
     _load_graphql_remote_sources_from_db,
     _load_grpc_remote_sources_from_db,
+    _check_fakes,
     _load_masking_rules,
     _load_mv_and_views_config,
     _load_openapi_specs,
@@ -2399,6 +2400,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         rls_rules = await _rls_repo.list_all(conn)
 
         await _load_masking_rules(conn, col_types_converted, roles, role_chains_by_id)
+        await _check_fakes(conn)  # REQ-1494
 
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
             conn, raw_config
@@ -2514,6 +2516,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     state.schema_version += 1
     _stamped_runtime.model_stamp = _model_stamp  # REQ-1914
     await _finalize_rebuild_state(_rebuild_log)
+    # REQ-1494: the measured values faked reads compute from, taken from the model just built.
+    from provisa.fakes.measured import measure_model
+
+    await measure_model(state)
     # REQ-1915: replicas converge to the model just built — a build is requested for every
     # declared replica that has none (or whose definition changed), and a replica the model no
     # longer declares is retired. This is the one place: the boot build, the build after this
@@ -2821,6 +2827,13 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     # with its mode and region, beating so a node that dies without stopping drops off.
     assert state.platform_state_db is not None  # brought up with the control planes at boot
     from provisa.core.platform_state import nodes as _cluster_nodes
+    from provisa.fakes import platform_key as _fake_key
+    from provisa.fakes.digest import set_key as _set_fake_key
+
+    # REQ-1494: the platform key every fake's digest is keyed by, created at the platform's first
+    # start, held by this process for its engine's functions and exported to a separate engine.
+    assert state.admin_db is not None  # the platform control plane holds the settings
+    _set_fake_key(_fake_key.ensure(state.admin_db))
 
     await _cluster_nodes.register(state.platform_state_db)
     _node_heartbeat = spawn_long_lived(
@@ -3503,6 +3516,20 @@ def create_app() -> FastAPI:
     from provisa.api.admin.table_profile_router import router as table_profile_router
 
     app.include_router(table_profile_router)
+    from provisa.api.admin.profiler_router import router as profiler_router  # REQ-1934
+
+    app.include_router(profiler_router)
+    from provisa.api.admin.profiler_checks_router import (  # REQ-1934
+        router as profiler_checks_router,
+    )
+
+    app.include_router(profiler_checks_router)
+    from provisa.api.admin.synthetic_router import router as synthetic_router  # REQ-1939
+
+    app.include_router(synthetic_router)
+    from provisa.api.admin.fakes_router import router as fakes_router  # REQ-1494
+
+    app.include_router(fakes_router)
     from provisa.api.admin.lifecycle_router import router as lifecycle_router
 
     app.include_router(lifecycle_router)

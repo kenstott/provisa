@@ -100,6 +100,7 @@ export function SourceTypePicker(props: PickerProps) {
       onClose={props.onClose}
       size="90%"
       title={t("sourceTypePicker.title")}
+      closeButtonProps={{ "data-testid": "source-type-picker-close" } as object}
       data-testid="source-type-picker"
     >
       {/* Mounted only while open, so every opening starts with an empty search and "All". */}

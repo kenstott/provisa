@@ -191,6 +191,6 @@ def test_an_enum_parameter_is_held_to_its_choices():
 
 
 def test_a_check_the_picker_cannot_author_says_so_and_points_at_the_raw_editor():
-    """failed_rows takes hand-written SQL, so it is the raw text's business — and still authorable."""
+    """metric takes hand-written SQL, so it is the raw text's business — and still authorable."""
     with pytest.raises(ContractError, match="author it in the raw contract"):
-        build_check_definition("soda", "failed_rows")
+        build_check_definition("soda", "metric")

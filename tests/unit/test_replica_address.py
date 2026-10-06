@@ -232,6 +232,8 @@ def test_a_name_two_sources_share_is_refused_not_answered_from_one_of_them():
 
 
 class _Backend:
+    computes_fakes = True  # REQ-1494: the seam also checks the engine computes a statement's fakes
+
     def transpile_physical(self, pg_sql: str) -> str:
         return f"<engine dialect> {pg_sql}"
 

@@ -301,22 +301,24 @@ def test_a_result_that_is_ready_after_the_deadline_is_not_sent():
     assert len(client.messages) == 2  # one start, one body: nothing of the route's own
 
 
-def test_the_timeout_answer_is_not_interrupted_by_the_deadline_it_answers():
-    """Once the deadline has passed, the watchdog raises in the request's thread again every
-    0.25s to end inline work. The timeout answer is not that work: a raise landing while it was
-    being built or sent left the client with no answer at all. Here the client takes longer
-    than two raise periods to accept the answer, as a loaded node does."""
+class _SlowClient(_Client):
+    """A client that takes longer to accept the first message than the watchdog's raise period,
+    so the watchdog raises again while the reply is being sent unless that reply is shielded."""
 
-    class _SlowClient(_Client):
-        async def send(self, message: dict) -> None:
-            time.sleep(0.6)  # blocking, so the watchdog's raise lands inside this send
-            self.messages.append(message)
+    async def send(self, message: dict) -> None:
+        if not self.messages:
+            time.sleep(3 * request_deadline._RAISE_AGAIN_S)  # noqa: SLF001
+        self.messages.append(message)
+
+
+def test_the_timeout_reply_is_not_interrupted_by_the_deadline_it_reports():
+    """The watchdog raises into the request thread every period until the deadline's scope ends;
+    a raise that lands while the timeout itself is being sent must not cut that reply short."""
+    client = _SlowClient()
 
     async def app(scope, receive, send):
         time.sleep(0.25)
-        await _respond(send, 200, b'{"data":"six million rows"}')
-
-    client = _SlowClient()
+        await _respond(send, 200, b'{"data":"late"}')
 
     async def _run() -> None:
         with request_deadline.request("graphql") as deadline:
@@ -325,6 +327,22 @@ def test_the_timeout_answer_is_not_interrupted_by_the_deadline_it_answers():
 
     asyncio.run(_run())
     _is_the_timeout(client, "graphql")
+    assert len(client.messages) == 2
+
+
+def test_work_left_after_the_timeout_reply_does_not_fail_the_answered_request():
+    """The route's response was withheld and the timeout sent in its place: the request is
+    answered. What the route still does after that is not raised into by the watchdog."""
+
+    async def app(scope, receive, send):
+        with request_deadline.shielded().lock:  # held: the replacement happens at the send
+            time.sleep(0.25)
+            await _respond(send, 200, b'{"data":"late"}')
+        time.sleep(3 * request_deadline._RAISE_AGAIN_S)  # noqa: SLF001 - leftover work
+
+    client = _serve(app)
+    _is_the_timeout(client, "graphql")
+    assert len(client.messages) == 2
 
 
 def test_an_error_the_route_shaped_from_the_expiry_is_answered_as_the_timeout():

@@ -83,6 +83,7 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     replicate_contradiction_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input
+from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
 from provisa.api.admin import schema_mutation_ops as _ops
 
 
@@ -240,7 +241,16 @@ async def _upsert_relationship_impl(
     )
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        await rel_repo.upsert(_conn, model, origin="admin")
+        from provisa.api.admin._fake_guard import relationship_fake_refusal
+
+        try:
+            async with _conn.transaction():
+                await rel_repo.upsert(_conn, model, origin="admin")
+                # REQ-1494: the edge's two columns, both faked, must declare one fake; the save
+                # is undone when they do not.
+                await relationship_fake_refusal(_conn, input.id)
+        except _FakeRefusedSave as refused:
+            return refused.result
         if _cross_domain:
             # REQ-1531: re-assert AFTER the upsert. rel_repo.upsert clears needs_review on conflict
             # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
@@ -483,6 +493,26 @@ def _parsed_off_peak(off_peak_window: str | None, tz: str) -> "MutationResult | 
             message=f"invalid off-peak window: {e}",
             code="schema.invalid_off_peak_window",
             params={"error": str(e)},
+        )
+    return None
+
+
+def _refuse_invalid_profiler(
+    source_id: str, source_type: str, mapping: dict
+) -> MutationResult | None:  # REQ-1934
+    """A Data Profiler source's settings must describe a schedule and a run default."""
+    if source_type != "data_profiler":
+        return None
+    from provisa.profiler.source import profiler_settings
+
+    try:
+        profiler_settings(source_id, mapping)
+    except ValueError as exc:
+        return MutationResult(
+            success=False,
+            message=str(exc),
+            code="schema.profiler_invalid",
+            params={"source": source_id},
         )
     return None
 
@@ -879,6 +909,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # credential. Done after the validation so a rejected source leaves no vault entry behind.
         password_ref = await persist_source_password(info, input.id, input.password)
         _mapping = _parse_mapping_json(input.mapping_json)
+        _profiler_refusal = _refuse_invalid_profiler(input.id, input.type, _mapping)  # REQ-1934
+        if _profiler_refusal is not None:
+            return _profiler_refusal
         if not _mapping:
             from provisa.dq.registration import is_checker_source_type
 
@@ -1009,6 +1042,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 "Landed-table reconcile failed after create_source", exc_info=True
             )
 
+        if input.type == "data_profiler":  # REQ-1934: its schedule fires on the org's scheduler
+            from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
+
+            await reschedule_org_triggers()
         return MutationResult(
             success=True,
             message=f"Source {input.id!r} created",
@@ -1205,6 +1242,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             # REQ-1695: the literal a person retyped into the form replaces the vault entry under
             # the same name -- a rotation, not a second secret -- and the row keeps the reference.
             password_ref = await persist_source_password(info, input.id, input.password)
+            _profiler_refusal = _refuse_invalid_profiler(  # REQ-1934
+                input.id, input.type, _parse_mapping_json(input.mapping_json)
+            )
+            if _profiler_refusal is not None:
+                return _profiler_refusal
             model = SourceModel(
                 id=input.id,
                 type=SourceTypeEnum(input.type),
@@ -1342,6 +1384,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         spawn_background(_reindex(), name=f"catalog-reindex:{input.id}")
 
+        if input.type == "data_profiler":  # REQ-1934: a changed schedule reschedules
+            from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
+
+            await reschedule_org_triggers()
         return MutationResult(
             success=True,
             message=f"Source {input.id!r} updated",
@@ -1414,6 +1460,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _drop_source_on_engine(state, id)
             state.source_catalogs.pop(id, None)
             await _rebuild_schemas()
+            if _existing["type"] == "data_profiler":  # REQ-1934: its schedule goes with it
+                from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
+
+                await reschedule_org_triggers()
             return MutationResult(
                 success=True,
                 message=f"Source {id!r} deleted",
@@ -2312,6 +2362,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
             try:
                 await apply_dq_registration(_conn, model)
+                # REQ-1934: a profile result table's derivation, and a table's profiler membership.
+                from provisa.profiler.registration import apply_registration
+
+                await apply_registration(_conn, model)
             except ValueError as _dq_err:
                 return MutationResult(success=False, message=str(_dq_err))
             from provisa.api.admin.region_defaults import kept_placement
@@ -2385,6 +2439,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
             if _glob_refusal is not None:
                 return _glob_refusal
+            from provisa.api.admin._fake_guard import table_fake_refusal
+
+            _fake_refusal = await table_fake_refusal(_conn, model)  # REQ-1494
+            if _fake_refusal is not None:
+                return _fake_refusal
             from provisa.api.admin._delta_guard import table_delta_refusal
 
             _delta_refusal = await table_delta_refusal(_conn, model)  # REQ-874

@@ -41,6 +41,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
+from provisa.api.mcp import model_tool_specs
 from provisa.api.mcp import tools as mcp_tools
 from provisa.api.mcp.sql_quoting import quote_identifiers
 
@@ -528,6 +529,8 @@ _TOOLS: list[Any] = [
             "required": ["name"],
         },
     },
+    # REQ-1934/1494/1939/1919: the profiler, fakes, synthetic datasets and the config export.
+    *model_tool_specs.SPECS,
 ]
 
 # REQ-1795: executed in the BROWSER, never on the server — see the module docstring. Kept as a
@@ -752,7 +755,7 @@ _SYSTEM = (
     "`ai_context` (what it means, when to use it), not a restatement of the expression. Always "
     "confirm with the user (present_choice, mode='yes_no') before delete_data_product/delete_"
     "metric specifically, since they're irreversible. Per REQ-1834: navigate to /data-products or "
-    "/metrics before calling any of these.\n\n"
+    "/metrics before calling any of these.\n\n" + model_tool_specs.SYSTEM_SECTION + "\n\n"
     "REQ-1846/1847/1848/1849/1851/1852: Provisa has SEVEN query surfaces under Explore, each its "
     "own route and each with its own exact deep-link format — never assume one surface's names or "
     "state shape transfer to another. Route + navigate `state` key per surface: GraphQL /query "
@@ -1074,6 +1077,8 @@ async def _execute_tool(
                 visible_to=args.get("visible_to"),
             )
         return await mcp_tools.delete_metric(state, role, request, args["name"])
+    if name in model_tool_specs.NAMES:
+        return await model_tool_specs.dispatch(state, role, name, args, request)
     raise ValueError(f"unknown tool {name!r}")
 
 

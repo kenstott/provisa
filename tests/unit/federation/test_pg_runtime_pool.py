@@ -39,6 +39,9 @@ class _FakeCursor:
         self.description = [("id", 23)]  # psycopg2: (name, type_code OID, ...) — int4
         self._rows = [(1,), (2,)]
 
+    def fetchone(self) -> Any:  # psycopg2: the next row, None when there is none
+        return self._rows.pop(0) if self._rows else None
+
     def fetchmany(self, n: int) -> list[Any]:
         rows, self._rows = self._rows, []
         return rows
@@ -187,11 +190,12 @@ def test_run_borrows_from_pool_not_self_con(fake_psycopg2) -> None:
     # connection it borrowed, and self._con is shared with attach_source.
     rt = _runtime(fake_psycopg2)
     self_con: _FakeConnection = rt._con  # type: ignore[assignment]
+    at_init = list(self_con.executed)  # the engine's own setup (the fake functions, REQ-1494)
 
     res = asyncio.run(rt.run("SELECT id FROM t"))
 
     assert res.rows == [(1,), (2,)]
-    assert self_con.executed == []  # nothing ran on the shared attach connection
+    assert self_con.executed == at_init  # nothing ran on the shared attach connection
 
 
 def test_run_reuses_pooled_connection_across_calls(fake_psycopg2) -> None:
@@ -319,7 +323,7 @@ def test_a_raise_that_is_not_an_exception_during_a_read_still_gives_the_slot_bac
 def test_a_stream_closed_after_a_failed_commit_discards_its_connection(fake_psycopg2) -> None:
     rt = _runtime(fake_psycopg2)
     stream = rt.run_sync("SELECT id FROM t")
-    con = next(c for c in fake_psycopg2 if c.executed)
+    con = next(c for c in fake_psycopg2 if "SELECT id FROM t" in c.executed)
 
     def _fail() -> None:
         raise RuntimeError("commit failed")

@@ -7,6 +7,7 @@ set -euo pipefail
 
 KEEP_DOCKER=false
 FAST=false
+KEEP_DATA=false  # --keep-data: a named demo reuses its seeded data instead of reseeding from empty
 DEMO=false
 DEMO_NAME=""  # "" = standard demo; a name (e.g. "perf") selects a named demo variant
 NATIVE=false
@@ -32,10 +33,11 @@ while [ "$_i" -lt "${#_ARGV[@]}" ]; do
         esac
       fi
       ;;
+    --keep-data) KEEP_DATA=true ;;
     --native) NATIVE=true ;;
     --idp=*) IDP="${arg#--idp=}" ;;
     --source=*) SOURCES+=("${arg#--source=}") ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--demo [name]] [--native] [--idp=basic|firebase] [--source=<name>]..."; echo "  --demo [name]: standard demo, or a named demo variant (e.g. 'perf' — see demo/named/<name>/)"; echo "  --source=<name>: provision demo/sources/<name> (a Docker container, primed with data) and include its config fragment"; exit 1 ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--keep-data] [--demo [name]] [--native] [--idp=basic|firebase] [--source=<name>]..."; echo "  --demo [name]: standard demo, or a named demo variant (e.g. 'perf' — see demo/named/<name>/)"; echo "  --keep-data: with a named demo, reuse its seeded data; without it the demo is reseeded from empty on every start"; echo "  --source=<name>: provision demo/sources/<name> (a Docker container, primed with data) and include its config fragment"; exit 1 ;;
   esac
   _i=$((_i + 1))
 done
@@ -46,6 +48,21 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -n "$DEMO_NAME" ] && [ ! -d "$SCRIPT_DIR/demo/named/$DEMO_NAME" ]; then
   echo "Unknown demo name: $DEMO_NAME. No demo/named/$DEMO_NAME/ directory."; exit 1
+fi
+# A named demo's configuration is demo/named/<name>/config.yaml, a WHOLE config used in place of the
+# standard demo config (REQ-1858), or — for a small addition to the pet store — demo/named/<name>/
+# fragment.yaml, which is overlaid on the standard demo config. Exactly one of the two.
+_NAMED_WHOLE=false
+if [ -n "$DEMO_NAME" ]; then
+  _NC="$SCRIPT_DIR/demo/named/$DEMO_NAME/config.yaml"
+  _NF="$SCRIPT_DIR/demo/named/$DEMO_NAME/fragment.yaml"
+  if [ -f "$_NC" ] && [ -f "$_NF" ]; then
+    echo "--demo $DEMO_NAME has both config.yaml and fragment.yaml in demo/named/$DEMO_NAME/. Keep one: config.yaml (a whole config) or fragment.yaml (an overlay on the standard demo config)."; exit 1
+  fi
+  if [ ! -f "$_NC" ] && [ ! -f "$_NF" ]; then
+    echo "--demo $DEMO_NAME has no config.yaml (and no fragment.yaml) in demo/named/$DEMO_NAME/ to register it with."; exit 1
+  fi
+  [ -f "$_NC" ] && _NAMED_WHOLE=true
 fi
 LOG_DIR="$SCRIPT_DIR/.logs"
 mkdir -p "$LOG_DIR"
@@ -209,13 +226,19 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
 fi
 
 export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
+# REQ-1494: the platform fake key directory, written by this uvicorn and mounted into Trino.
+export PROVISA_FAKE_KEY_DIR="${PROVISA_FAKE_KEY_DIR:-$SCRIPT_DIR/.provisa/fake-key}"
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"
 export PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
 export GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-$DEMO}"
 export PROVISA_DEMO="${DEMO}"
 export PROVISA_ENABLE_TEST_ENDPOINTS="${PROVISA_ENABLE_TEST_ENDPOINTS:-$DEMO}"
 export PROVISA_IDP="${IDP}"
-if [ "$DEMO" = true ]; then
+if [ "$_NAMED_WHOLE" = true ]; then
+  # The named demo's own whole config, relative to the repository root like the standard one. A
+  # --source fragment below overlays it exactly as it would the standard config.
+  export PROVISA_CONFIG="demo/named/$DEMO_NAME/config.yaml"
+elif [ "$DEMO" = true ]; then
   export PROVISA_CONFIG="config/provisa-install.yaml"
 else
   export PROVISA_CONFIG="config/provisa-install-base.yaml"
@@ -273,20 +296,25 @@ fi
 # Named demo (demo/named/<name>/, e.g. "perf"): every named demo is a self-contained Docker stack
 # in this fixed layout — docker-compose.yml (+ Dockerfile.seeder, seed.py) + fragment.yaml. Its
 # fragment is spliced in the same way --source=<name> splices demo/sources/*/fragment.yaml above,
-# generically regardless of name. `--demo <name>` brings the stack up itself (below) — this is
-# safe to do on every start: `docker compose up -d` is idempotent (already-running containers are
-# a no-op) and the `seeder` service is idempotent too (a marker file on the bind-mounted data
-# volume — see seed.py), so re-running this never re-seeds or disturbs data that's meant to
-# survive every start-ui-install.sh restart. Only the FIRST start for a given named demo's data
-# volume actually waits a while (real seeding); every start after that is fast. This start only
-# fails fast if the fragment doesn't exist.
+# generically regardless of name. `--demo <name>` brings the stack up itself (below). By default a
+# start is pristine: the stack is torn down with its volumes and its ./data directory deleted, so
+# the seeder reseeds from empty. With --keep-data the stack is only brought up: `docker compose up -d`
+# is idempotent, and the `seeder` service is too (a marker file on the bind-mounted data volume —
+# see seed.py), so a restart never re-seeds data meant to survive — what a demo too large to
+# regenerate each time (perf) needs. This start fails fast if the fragment doesn't exist.
 if [ -n "$DEMO_NAME" ]; then
   _NAMED_DIR="$SCRIPT_DIR/demo/named/$DEMO_NAME"
   _NAMED_FRAGMENT="$_NAMED_DIR/fragment.yaml"
-  if [ ! -f "$_NAMED_FRAGMENT" ]; then
-    echo "--demo $DEMO_NAME has no $_NAMED_FRAGMENT to register it with"; exit 1
-  fi
   if [ -f "$_NAMED_DIR/docker-compose.yml" ]; then
+    # A pristine start is the default, as it is for the control plane below: the stack's containers
+    # and volumes are removed and its bind-mounted ./data directory (databases and the seeder's
+    # marker) deleted, so the seeder runs from empty. --keep-data skips this and keeps the marker,
+    # so the seeder is a no-op — what a demo too large to regenerate on every start (perf) needs.
+    if [ "$KEEP_DATA" = false ]; then
+      echo "Named demo '$DEMO_NAME': removing its containers, volumes and data/ for a pristine reseed (--keep-data skips this)..."
+      docker compose -f "$_NAMED_DIR/docker-compose.yml" down -v
+      rm -rf "${_NAMED_DIR:?}/data"
+    fi
     echo "Named demo '$DEMO_NAME': bringing up its data stack (docker compose -f $_NAMED_DIR/docker-compose.yml up -d)..."
     docker compose -f "$_NAMED_DIR/docker-compose.yml" up -d --build
     if docker compose -f "$_NAMED_DIR/docker-compose.yml" config --services | grep -qx seeder; then
@@ -294,16 +322,21 @@ if [ -n "$DEMO_NAME" ]; then
       docker compose -f "$_NAMED_DIR/docker-compose.yml" up seeder
     fi
   fi
-  _NAMED_WRAPPER="${PROVISA_HOME:-$HOME/.provisa}/demo/provisa-with-$DEMO_NAME.yaml"
-  mkdir -p "$(dirname "$_NAMED_WRAPPER")"
-  {
-    echo "# Written by start-ui-install.sh --demo $DEMO_NAME: the base/sourced config plus its fragment."
-    echo "includes:"
-    echo "  - $SCRIPT_DIR/$PROVISA_CONFIG"
-    echo "  - $_NAMED_FRAGMENT"
-  } > "$_NAMED_WRAPPER"
-  export PROVISA_CONFIG="$_NAMED_WRAPPER"
-  echo "Config with named demo '$DEMO_NAME' sources: $PROVISA_CONFIG"
+  if [ "$_NAMED_WHOLE" = true ]; then
+    # config.yaml is the whole config and already PROVISA_CONFIG (or the --source wrapper over it).
+    echo "Config for named demo '$DEMO_NAME': $PROVISA_CONFIG"
+  else
+    _NAMED_WRAPPER="${PROVISA_HOME:-$HOME/.provisa}/demo/provisa-with-$DEMO_NAME.yaml"
+    mkdir -p "$(dirname "$_NAMED_WRAPPER")"
+    {
+      echo "# Written by start-ui-install.sh --demo $DEMO_NAME: the base/sourced config plus its fragment."
+      echo "includes:"
+      echo "  - $SCRIPT_DIR/$PROVISA_CONFIG"
+      echo "  - $_NAMED_FRAGMENT"
+    } > "$_NAMED_WRAPPER"
+    export PROVISA_CONFIG="$_NAMED_WRAPPER"
+    echo "Config with named demo '$DEMO_NAME' sources: $PROVISA_CONFIG"
+  fi
 fi
 
 # Core + install overlay (port bindings only — no kafka/mongo/elasticsearch/observability)

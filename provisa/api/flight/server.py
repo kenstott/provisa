@@ -55,6 +55,7 @@ from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import in_request_span as _in_request_span
 from provisa.otel_compat import request_span as _request_span
 from provisa.security.high_security import high_security_wire_reject
+from provisa.fakes.read_sql import reads_fakes
 from provisa.transpiler.router import Route, decide_route
 
 _tracer = _get_tracer(__name__)
@@ -916,6 +917,7 @@ class ProvisaFlightServer(
             source_dialects=self._state.source_dialects,
             source_dsns=getattr(self._state, "source_dsns", None),
             operator_floor=operator_floor(self._state, compiled.table_ids),
+            reads_fakes=reads_fakes(compiled.sql),  # REQ-1494
         )
 
         return document, ctx, rls, role, compiled, decision, variables

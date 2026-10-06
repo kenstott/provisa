@@ -13,7 +13,10 @@
       "cache": "Cache",
       "cacheTtl": "TTL du cache",
       "effectiveTtl": "TTL effectif",
-      "allowedDomains": "Domaines autorisés"
+      "allowedDomains": "Domaines autorisés",
+      "schedule": "Planification",
+      "sample": "Échantillon",
+      "lowCardinality": "Seuil de faible cardinalité"
     },
     "namingInherit": "hérité (global)",
     "cacheEnabled": "activé",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "Actualiser depuis Kaggle",
     "refreshKaggleHint": "Retélécharger {{owner}}/{{ref}} depuis Kaggle, en écrasant sur place le ou les fichiers intermédiaires. Votre jeton Kaggle n'est pas stocké : saisissez-le à nouveau pour cette actualisation.",
     "kaggleTokenLabel": "Jeton d'API Kaggle",
-    "refreshKaggleSubmit": "Actualiser"
+    "refreshKaggleSubmit": "Actualiser",
+    "sampleWhole": "Table entière",
+    "sampleAbove": "Échantillon au-delà de {{cells}} cellules",
+    "runProfilerTitle": "Exécuter maintenant pour chaque table membre",
+    "profilerNoMembers": "Aucune table n'a rejoint ce profileur.",
+    "profilerRan": "{{table}} : profilée",
+    "profilerFailed": "{{table}} : {{error}}"
   }
 }

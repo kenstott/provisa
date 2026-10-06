@@ -1,0 +1,21 @@
+{
+  "profileDriftPanel": {
+    "measure": "指標",
+    "drift": "漂移",
+    "drifting": "漂移中",
+    "runTime": "運行時間",
+    "value": "值",
+    "col_previous": "上次",
+    "col_current": "今次",
+    "col_change": "變化",
+    "col_ks_previous": "相對上次的 KS",
+    "col_psi_previous": "相對上次的 PSI",
+    "col_window_runs": "窗口運行次數",
+    "col_baseline": "基線",
+    "col_spread": "MAD",
+    "col_distance": "距離（MAD）",
+    "col_slope_spread": "趨勢（MAD）",
+    "col_ks": "相對窗口的 KS",
+    "col_psi": "相對窗口的 PSI"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "profileConstraintsModal": {
+    "title": "Constraints van {{table}}",
+    "proposed": "Voorgesteld door de laatste run",
+    "none": "De laatste run stelt geen constraint voor, of de tabel is nog niet geprofileerd.",
+    "decided": "Besloten",
+    "noneDecided": "Er is nog geen constraint geaccepteerd of afgewezen.",
+    "constraint": "Constraint",
+    "columns": "Kolommen",
+    "definition": "Definitie",
+    "evidence": "Onderbouwing",
+    "share": "Geldt voor",
+    "sampled": "steekproef",
+    "accept": "Accepteren",
+    "edit": "Bewerken",
+    "acceptEdited": "Bewerkt accepteren",
+    "cancel": "Annuleren",
+    "dismiss": "Afwijzen",
+    "export": "Exporteren naar checker",
+    "withdraw": "Intrekken",
+    "checkerLabel": "Checkertabel om naar te exporteren",
+    "exported": "Toegevoegd aan het contract van {{table}}.",
+    "alreadyExported": "Het contract van {{table}} bevat deze controle al.",
+    "status_accepted": "Geaccepteerd",
+    "status_dismissed": "Afgewezen",
+    "kind_not_null": "Nooit null",
+    "kind_unique": "Uniek",
+    "kind_value_set": "Alleen vastgelegde waarden",
+    "kind_range": "Binnen het waargenomen bereik",
+    "kind_ordering": "Nooit groter of later dan"
+  }
+}

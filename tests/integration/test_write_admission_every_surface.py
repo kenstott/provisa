@@ -65,12 +65,8 @@ def server():
         pg_port=_PG_PORT,
         extra_config={
             "tables": [orders],
+            # org_admin is the reserved administrative role (REQ-1349): not declared.
             "roles": [
-                {
-                    "id": "org_admin",
-                    "capabilities": [*reads, "write", "observability"],
-                    "domain_access": ["*"],
-                },
                 {"id": "east_writer", "capabilities": [*reads, "write"], "domain_access": ["*"]},
                 {"id": "region_only", "capabilities": [*reads, "write"], "domain_access": ["*"]},
                 {"id": "east_reader", "capabilities": reads, "domain_access": ["*"]},

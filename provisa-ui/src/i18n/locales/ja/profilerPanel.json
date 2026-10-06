@@ -1,0 +1,18 @@
+{
+  "profilerPanel": {
+    "title": "Data Profiler",
+    "addLabel": "プロファイラーに追加",
+    "addPlaceholder": "プロファイラーを選択",
+    "addDescription": "プロファイラーのスケジュールでこのテーブルをプロファイルします。テーブルと一緒に保存されます。",
+    "none": "Data Profiler ソースがありません",
+    "scheduleWhole": "{{cron}}、テーブル全体",
+    "scheduleSample": "{{cron}}、{{cells}} セルを超えるとサンプル",
+    "memberOf": "{{profiler}} がプロファイル",
+    "unsaved": "この変更を適用するにはテーブルを保存してください。",
+    "remove": "プロファイラーから削除",
+    "runNow": "今すぐプロファイル",
+    "viewRuns": "プロファイル実行を表示",
+    "runDone": "{{rows}} 行をプロファイルしました。",
+    "constraints": "制約"
+  }
+}

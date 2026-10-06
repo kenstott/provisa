@@ -24,9 +24,7 @@
     "apiEndpoint": "Endpoint API :",
     "watermarkColumn": "Colonne de filigrane :",
     "viewSql": "SQL de la vue :",
-    "dataProduct": "Produit de données :",
     "dataProductYes": "Oui",
-    "dataProductNo": "Non",
     "editSqlButton": "Modifier le SQL",
     "openInExplorerButton": "Ouvrir dans l'explorateur",
     "editSqlTitle": "Modifier le SQL de cette vue dans l'explorateur",
@@ -56,7 +54,8 @@
     "editDefinitionButton": "Modifier la définition",
     "editDefinitionTitle": "Modifier la définition de la vue (SQL ou sélecteur de métriques/dimensions)",
     "queryTemplate": "Cypher :",
-    "writes": "Accepte les écritures :",
-    "writesNone": "Aucune (lecture seule)"
+    "writable": "Modifiable",
+    "writableOps": "Accepte {{ops}} via GraphQL, REST et SQL",
+    "dataProductChip": "Produit de données"
   }
 }

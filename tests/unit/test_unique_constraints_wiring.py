@@ -48,6 +48,7 @@ def test_table_model_from_input_maps_unique_constraints():
         off_peak_tz=None,  # REQ-1141
         view_sql=None,
         dq_contract=None,  # REQ-1443
+        profiler_source_id=None,  # REQ-1934
         materialize=False,
         mv_refresh_interval=300,
         mv_debounce_quiet=0.0,

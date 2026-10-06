@@ -22,6 +22,12 @@ import { useRegionChoice, useRegionChoices } from "../../hooks/useRegionQueries"
 import { useQueryPreview } from "../../hooks/useQueryPreview";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import { fetchIrTypes, fetchTableUniqueConstraints } from "../../api/admin";
+import {
+  fetchProfilerCatalog,
+  type ProfilerCatalogEntry,
+  type ProfilerRowRule,
+} from "../../api/profiler";
+import { useUpsertRlsRule } from "../../hooks/useSecurityQueries";
 import { DQ_CHECKERS } from "../../types/admin";
 import type { Paging, RegisteredTable, Source, UniqueConstraint } from "../../types/admin";
 import type { Role } from "../../types/auth";
@@ -38,6 +44,9 @@ import { declaredPaging, pagingInput, pagingProblem } from "./paging";
 // (config/provisa-install.yaml `schema: quality`). It is the schema of record only when domains are
 // off — with a domain picked, the domain names the schema exactly as for any other registration.
 const DQ_RESULTS_SCHEMA = "quality";
+// REQ-1934: a profiler's result relations live in the org's control-plane schema, which the server
+// stamps on registration (as for ingest); the form carries this placeholder until then.
+const PROFILER_RESULTS_SCHEMA = "default";
 // REQ-1670/REQ-1683: a query-API source lists one schema, named after its type.
 const QUERY_API_TYPES = ["neo4j", "sparql"] as const;
 // REQ-1443: the results envelope replaces whatever columns are declared; the one declared column
@@ -126,6 +135,14 @@ export function RegisterTableForm({
 
   const sourceType = sources.find((s) => s.id === sourceId)?.type?.toLowerCase() ?? "";
   const isChecker = (DQ_CHECKERS as readonly string[]).includes(sourceType);
+  // REQ-1934: a Data Profiler source's tables are the result relations it produces per member;
+  // its catalog lists them, so the source is never introspected.
+  const isProfiler = sourceType === "data_profiler";
+  const [profilerCatalog, setProfilerCatalog] = useState<ProfilerCatalogEntry[] | null>(null);
+  // The row rules the picked result table is registered with, prefilled from the profiled table's
+  // rules and editable here; saved after the table, as the table's own rules.
+  const [profilerRowRules, setProfilerRowRules] = useState<ProfilerRowRule[]>([]);
+  const { upsertRlsRule } = useUpsertRlsRule();
   const isSparql = sourceType === "sparql";
   const isFilesSource = ["files", "csv", "parquet"].includes(sourceType); // REQ-788
   // REQ-1670/REQ-1683: a query-API source has no tables to list — its table IS a query projection.
@@ -146,7 +163,7 @@ export function RegisterTableForm({
   // A checker source is never introspected: nothing exists upstream until a scan runs, so the
   // schema/table lookups are not made for it (REQ-1663).
   const { schemas: availableSchemas, loading: loadingSchemas } = useAvailableSchemas(
-    sourceId && !isChecker && !isQueryApi ? sourceId : null,
+    sourceId && !isChecker && !isQueryApi && !isProfiler ? sourceId : null,
   );
   const isFixedSchema = availableSchemas.length === 1;
   const {
@@ -155,7 +172,7 @@ export function RegisterTableForm({
     starting: startingTables,
     startingTimedOut: startingTablesTimedOut,
   } = useAvailableTables(
-    sourceId && schemaName && !isChecker && !isQueryApi ? sourceId : null,
+    sourceId && schemaName && !isChecker && !isQueryApi && !isProfiler ? sourceId : null,
     schemaName || null,
   );
 
@@ -177,9 +194,19 @@ export function RegisterTableForm({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the results schema is a constant of the checker registration, set once the source is known to be a checker
     if (isChecker) setSchemaName(DQ_RESULTS_SCHEMA);
+    if (isProfiler) setSchemaName(PROFILER_RESULTS_SCHEMA);
     // REQ-1670: a neo4j table registers under the source's one schema, "neo4j".
     if (isQueryApi) setSchemaName(sourceType);
-  }, [isChecker, isQueryApi, sourceType, sourceId]);
+  }, [isChecker, isQueryApi, isProfiler, sourceType, sourceId]);
+
+  useEffect(() => {
+    if (!isProfiler || !sourceId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- cleared before the source's catalog loads
+    setProfilerCatalog(null);
+    fetchProfilerCatalog(sourceId)
+      .then(setProfilerCatalog)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  }, [isProfiler, sourceId, setError]);
 
   useEffect(() => {
     if (availableSchemas.length === 1) {
@@ -252,7 +279,37 @@ export function RegisterTableForm({
     setColumns([]);
     setUniqueConstraints([]);
     setWatermarkColumn("");
-    if (!sourceId || !schemaName || !tableName || isChecker || isQueryApi) return;
+    if (isProfiler && tableName) {
+      // REQ-1934: the result relation's fields, granted like any table's columns; the server fixes
+      // their types and the watermark.
+      const picked = profilerCatalog
+        ?.flatMap((entry) => entry.tables)
+        .find((tb) => tb.tableName === tableName);
+      setProfilerRowRules(picked?.rowRules ?? []);
+      setColumns(
+        (picked?.columns ?? []).map((c) => ({
+          name: c.name,
+          visibleTo: c.visibleTo,
+          writableBy: [],
+          unmaskedTo: c.unmaskedTo.join(", "),
+          maskType: c.maskType ?? "",
+          maskPattern: "",
+          maskReplace: "",
+          maskValue: "",
+          maskPrecision: "",
+          alias: "",
+          description: c.description,
+          selected: true,
+          nativeFilterType: null,
+          dataType: c.dataType,
+          isPrimaryKey: false,
+          scope: "domain",
+          path: null,
+        })),
+      );
+      return;
+    }
+    if (!sourceId || !schemaName || !tableName || isChecker || isQueryApi || isProfiler) return;
     // REQ-1093: seed the Uniques panel from the source's declared UNIQUE constraints.
     fetchTableUniqueConstraints(sourceId, schemaName, tableName)
       .then(setUniqueConstraints)
@@ -455,6 +512,24 @@ export function RegisterTableForm({
       // A table registered into a domain the filter has not seen (one with no tables until now)
       // would otherwise stay hidden from the tables list until a reload.
       ensureDomainChecked(domainId);
+      if (isProfiler) {
+        for (const rule of profilerRowRules.filter((r) => r.filter.trim())) {
+          const saved = await upsertRlsRule({
+            tableId: tableName,
+            roleId: rule.roleId,
+            filterExpr: rule.filter.trim(),
+          });
+          if (!saved.success) {
+            setError(
+              t("registerTableForm.profilerRowRuleFailed", {
+                role: rule.roleId,
+                message: saved.message,
+              }),
+            );
+            return;
+          }
+        }
+      }
       resetForm();
       onSuccess();
     } catch (e) {
@@ -709,7 +784,60 @@ export function RegisterTableForm({
           )}
         </>
       )}
-      {!isChecker && !isQueryApi && (
+      {isProfiler && (
+        <label>
+          {t("registerTableForm.profilerResultLabel")}
+          <select
+            value={tableName}
+            onChange={(e) => setTableName(e.target.value)}
+            disabled={profilerCatalog == null}
+            data-testid="register-table-profiler-select"
+          >
+            <option value="">
+              {profilerCatalog == null
+                ? t("registerTableForm.schemaLoading")
+                : profilerCatalog.length === 0
+                  ? t("registerTableForm.profilerNoMembers")
+                  : t("registerTableForm.profilerResultPlaceholder")}
+            </option>
+            {(profilerCatalog ?? []).flatMap((entry) =>
+              entry.tables.map((tb) => (
+                <option key={tb.tableName} value={tb.tableName}>
+                  {t("registerTableForm.profilerResultOption", {
+                    member: entry.member,
+                    kind: tb.kind,
+                  })}
+                </option>
+              )),
+            )}
+          </select>
+        </label>
+      )}
+      {isProfiler && tableName && (
+        <fieldset data-testid="register-table-profiler-row-rules">
+          <legend>{t("registerTableForm.profilerRowRulesLabel")}</legend>
+          {profilerRowRules.length === 0 && (
+            <span>{t("registerTableForm.profilerRowRulesNone")}</span>
+          )}
+          {profilerRowRules.map((rule, i) => (
+            <label key={rule.roleId}>
+              {rule.roleId}
+              <input
+                value={rule.filter}
+                onChange={(e) =>
+                  setProfilerRowRules(
+                    profilerRowRules.map((r, j) =>
+                      j === i ? { ...r, filter: e.target.value } : r,
+                    ),
+                  )
+                }
+                data-testid={`register-table-profiler-row-rule-${rule.roleId}`}
+              />
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {!isChecker && !isQueryApi && !isProfiler && (
         <>
           <label>
             {t("registerTableForm.schemaLabel")}

@@ -83,6 +83,17 @@ load_provider_creds()
 # sets it, and the test suite is one. The repo's dev-local config is what an in-process create_app()
 # reads unless a test pins its own; setdefault so an explicit outer value wins.
 os.environ.setdefault("PROVISA_CONFIG", "config/provisa.yaml")
+# REQ-1494: each test Provisa writes its platform fake key to <PROVISA_FAKE_KEY_DIR>/<fingerprint>.key,
+# the directory the session's isolated Trino mounts (docker-compose.core.yml), so servers with
+# their own control planes keep their own keys side by side. Per session, under the checkout so
+# the Docker VM can bind it; xdist workers inherit the controller's.
+if "PROVISA_FAKE_KEY_DIR" not in os.environ:
+    _FAKE_KEY_DIR = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", ".provisa", "fake-key", str(os.getpid()))
+    )
+    os.makedirs(_FAKE_KEY_DIR, exist_ok=True)
+    __import__("atexit").register(__import__("shutil").rmtree, _FAKE_KEY_DIR, True)
+    os.environ["PROVISA_FAKE_KEY_DIR"] = _FAKE_KEY_DIR
 
 _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 
@@ -584,6 +595,13 @@ def _populate_trino_plugins() -> None:
             )
         _download_trino_plugin(target, name)
         _record_download(plugins, name, os.path.join(target, pinned))
+    # REQ-1494: Provisa's own function plugin is built from trino-functions/ on first use.
+    functions = os.path.join(plugins, "provisa-functions")
+    if not (os.path.isdir(functions) and any(f.endswith(".jar") for f in os.listdir(functions))):
+        print("[conftest] building the provisa-functions Trino plugin")
+        subprocess.run(
+            [os.path.join(_REPO_ROOT, "scripts", "build_trino_functions.sh")], check=True
+        )
 
 
 def _marker_batches(items) -> list[list[str]]:

@@ -218,6 +218,7 @@
     "maskRegex": "Regex",
     "maskConstant": "Constante",
     "maskTruncate": "Truncar",
+    "maskFake": "Valor fictício",
     "scopeDomain": "domínio",
     "scopePublic": "público",
     "scopeRestricted": "restrito",

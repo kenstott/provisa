@@ -310,7 +310,7 @@ async def test_a_promoted_table_is_the_replicators_before_its_reads_go_to_the_re
     }
     key = ("pg", "public", "orders")
     registry = replica_routing._Registry(
-        [reg], {"pg": _attachable()}, serving=frozenset(), promoted=frozenset({key})
+        [reg], {"pg": _attachable()}, serving=frozenset(), promoted=frozenset({key}), synthetic={}
     )
 
     async def _registry(_state):
@@ -372,6 +372,8 @@ async def test_a_deployment_with_no_store_and_nothing_replicated_reads_its_route
         return [_attachable()]
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _tables)
+    # REQ-1939: no synthetic dataset is generated in this model.
+    monkeypatch.setattr("provisa.synthetic.datasets.generated_tables", no_synthetic_tables)
     monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _sources)
     state = SimpleNamespace(
         model_db=db,
@@ -385,3 +387,7 @@ async def test_a_deployment_with_no_store_and_nothing_replicated_reads_its_route
     finally:
         engine.dispose()
     del _asyncio
+
+
+async def no_synthetic_tables(_conn):
+    return {}

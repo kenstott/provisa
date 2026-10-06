@@ -218,6 +218,7 @@
     "maskRegex": "Regex",
     "maskConstant": "קבוע",
     "maskTruncate": "קיטום",
+    "maskFake": "ערך מדומה",
     "scopeDomain": "domain",
     "scopePublic": "public",
     "scopeRestricted": "restricted",

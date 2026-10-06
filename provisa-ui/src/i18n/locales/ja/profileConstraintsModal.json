@@ -1,0 +1,32 @@
+{
+  "profileConstraintsModal": {
+    "title": "{{table}} の制約",
+    "proposed": "最新の実行による提案",
+    "none": "最新の実行は制約を提案していないか、テーブルがまだプロファイルされていません。",
+    "decided": "決定済み",
+    "noneDecided": "受け入れまたは却下された制約はまだありません。",
+    "constraint": "制約",
+    "columns": "列",
+    "definition": "定義",
+    "evidence": "根拠",
+    "share": "成立割合",
+    "sampled": "サンプル",
+    "accept": "受け入れる",
+    "edit": "編集",
+    "acceptEdited": "編集して受け入れる",
+    "cancel": "キャンセル",
+    "dismiss": "却下",
+    "export": "チェッカーにエクスポート",
+    "withdraw": "取り消す",
+    "checkerLabel": "エクスポート先のチェッカーテーブル",
+    "exported": "{{table}} のコントラクトに追加しました。",
+    "alreadyExported": "{{table}} のコントラクトには既にこのチェックがあります。",
+    "status_accepted": "受け入れ済み",
+    "status_dismissed": "却下済み",
+    "kind_not_null": "NULL にならない",
+    "kind_unique": "一意",
+    "kind_value_set": "記録された値のみ",
+    "kind_range": "観測範囲内",
+    "kind_ordering": "超えない・後にならない"
+  }
+}

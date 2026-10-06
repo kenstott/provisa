@@ -886,3 +886,17 @@ async def test_a_row_level_table_kept_in_another_region_lands_no_row_here(
             reader_role=None,
         )
         assert landed == set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source_type", ["ingest", "data_profiler"])
+async def test_a_type_that_owns_no_replica_is_never_judged_for_one(wiring, plane, source_type):
+    """A no-replica type (ingest REQ-1771, a profiler's results REQ-1934) is read where it is
+    written. Before, a read of one with the default ttl signal and no cache_ttl failed "is TTL-based
+    and the table lands, so add a cache_ttl" although nothing ever lands it."""
+    written = _table("pushed", "events", cache_ttl=None)
+    source = _source("pushed", type=SimpleNamespace(value=source_type))
+    state = _state([source], [written], _Backend(), plane)
+    assert await _ensure(state, {"pushed"}) == []
+    assert wiring.built == [] and wiring.kicks == 0
+    assert await _record(plane, written) is None

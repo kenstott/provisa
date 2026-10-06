@@ -13,6 +13,11 @@
 #   pg_duckdb    : csv/parquet/json + httpfs + iceberg, via scripts/build_pg_duckdb.sh (vcpkg)
 #   pg_clickhouse: built from source (github.com/ClickHouse/pg_clickhouse release zip — no apt/
 #                  PGDG package exists, confirmed; live-verified working, REQ-1870)
+#   plpython3    : PL/Python (plpython3u), built against python-build-standalone CPython 3.12 --
+#                  the interpreter the Provisa installers ship. It links libpython3.12 by name and
+#                  the bundle does not ship it: staging links the running interpreter's libpython
+#                  beside it (provisa.pg_extensions.staging), so PL/Python runs the interpreter that
+#                  holds provisa and faker -- the pg engine's fake functions (REQ-1494).
 #   wrappers     : NOT in the bundle. Supabase's prebuilt .deb needs GLIBCXX_3.4.32 (built for
 #                  Ubuntu 24.04), above every other module's floor, so it never loaded where the
 #                  bundle runs. It returns once built from source (pgrx) inside that floor (REQ-1871).
@@ -90,6 +95,32 @@ echo "== build mysql_fdw (against that Connector/C) =="
 build_external_fdw mysql_fdw https://github.com/EnterpriseDB/mysql_fdw \
   "MYSQL_CONFIG=$MCC_PREFIX/bin/mariadb_config"
 
+echo "== build plpython3 (PL/Python) against python-build-standalone CPython 3.12 =="
+# REQ-1494: the pg engine's fake functions are PL/Python calling the same Python as the embedded
+# DuckDB engine. Built out of tree (VPATH) so the minimal core build above is untouched.
+PBS_RELEASE="${PBS_RELEASE:-20250612}"
+PBS_PYTHON="${PBS_PYTHON:-3.12.11}"
+case "$OS-$ARCH" in
+  darwin-arm64) PBS_TRIPLE=aarch64-apple-darwin ;;
+  linux-x64)    PBS_TRIPLE=x86_64-unknown-linux-gnu ;;
+  *) echo "no python-build-standalone build for $OS-$ARCH"; exit 1 ;;
+esac
+PBS_DIR="$CACHE/pbs-$PBS_PYTHON-$PBS_RELEASE-$PBS_TRIPLE"
+if [ ! -x "$PBS_DIR/python/bin/python3" ]; then
+  mkdir -p "$PBS_DIR"
+  curl -fsSL "https://github.com/astral-sh/python-build-standalone/releases/download/$PBS_RELEASE/cpython-$PBS_PYTHON+$PBS_RELEASE-$PBS_TRIPLE-install_only.tar.gz" \
+    | tar xz -C "$PBS_DIR"
+fi
+PY_BUILD="$CACHE/postgresql-$PG_VERSION-plpython"
+if [ ! -e "$PKGLIB/plpython3.$SUF" ]; then
+  rm -rf "$PY_BUILD"; mkdir -p "$PY_BUILD"
+  ( cd "$PY_BUILD"
+    "$CACHE/postgresql-$PG_VERSION/configure" --without-icu --without-readline --without-zlib \
+      --without-gssapi --with-python PYTHON="$PBS_DIR/python/bin/python3" --prefix="$PREFIX" >/dev/null
+    make -C src/backend generated-headers >/dev/null
+    make -C src/pl/plpython >/dev/null && make -C src/pl/plpython install >/dev/null )
+fi
+
 echo "== build pg_duckdb (vcpkg: csv/parquet/json + httpfs + iceberg) =="
 PG_DUCKDB_TAG="$PGDUCKDB_TAG" PROVISA_FDW_CACHE="$CACHE" bash "$ROOT/scripts/build_pg_duckdb.sh"
 
@@ -140,6 +171,7 @@ declare -a MEMBERS=(
   "pg_duckdb|pg_duckdb|bundled|libduckdb; aws-sdk-cpp/avro-c/roaring (static)"
   "libduckdb|libduckdb|bundled|"
   "pg_clickhouse|pg_clickhouse|bundled|libssl/libcrypto; liblz4; libzstd; libcurl; libuuid"
+  "plpython3|plpython3u|bundled|libpython3.12 (the Provisa interpreter's, linked at staging)"
 )
 manifest="$OUT/manifest.json"; echo '{"os":"'$OS'","arch":"'$ARCH'","pg_major":"'${PG_VERSION%%.*}'","artifacts":[' > "$manifest"
 first=1
@@ -154,6 +186,17 @@ for row in "${MEMBERS[@]}"; do
   printf '  {"name":"%s","key":"%s","file":"lib/%s.%s","sha256":"%s","redistribution":"%s","runtime_deps":"%s"}' \
     "$name" "$key" "$name" "$SUF" "$sha" "$redis" "$deps" >> "$manifest"
 done
+if [ -e "$OUT/lib/plpython3.$SUF" ]; then
+  # plpython3 loads libpython by name from beside itself (@rpath + @loader_path / $ORIGIN); staging
+  # puts the running interpreter's libpython there. The build interpreter's path never ships.
+  if [ "$OS" = darwin ]; then
+    old="$(otool -L "$OUT/lib/plpython3.dylib" | awk '/libpython3/ {print $1}')"
+    install_name_tool -change "$old" "@rpath/libpython3.12.dylib" "$OUT/lib/plpython3.dylib"
+    codesign -f -s - "$OUT/lib/plpython3.dylib"
+  else
+    patchelf --set-rpath '$ORIGIN' "$OUT/lib/plpython3.so"
+  fi
+fi
 if [ -e "$OUT/lib/postgres_fdw.$SUF" ]; then
   # postgres_fdw links the libpq this build made under $PREFIX: on macOS by that absolute path, on
   # Linux by soname, and neither exists on the machine that stages the bundle. Ship it beside the
@@ -235,6 +278,7 @@ for f in "$OUT"/lib/*."$SUF"; do
     for d in $(otool -L "$f" | tail -n +2 | awk '{print $1}'); do
       case "$d" in
         /usr/lib/*|/System/*) ;;
+        @rpath/libpython3.12.dylib) ;;  # linked at staging: the running interpreter's
         @rpath/*|@loader_path/*)
           [ -e "$OUT/lib/$(basename "$d")" ] \
             || { echo "FAIL: $(basename "$f") loads $d, which the bundle does not ship"; exit 1; } ;;

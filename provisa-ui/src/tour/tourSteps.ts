@@ -77,6 +77,13 @@ export interface TourStep {
   /** Key into the `tour.steps` i18n namespace for this step's title/description. */
   key: string;
   /**
+   * Clicks that open what `clickBefore` needs, run in order and only when it is not already there:
+   * each is clicked unless its `unlessPresent` selector already matches. A step that can be entered
+   * cold (Back from a later page, or a resume) names how to reach its own starting state, so it never
+   * depends on a predecessor having left the page open.
+   */
+  ensureOpen?: { click: string; unlessPresent: string }[];
+  /**
    * Selector clicked (and awaited) *before* highlighting — used to reveal the
    * target, e.g. opening an add-form or the ERD modal.
    */
@@ -149,11 +156,14 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step2",
   },
   {
-    element: '[data-tour="sources-type"]',
-    expandSelect: true,
+    // REQ-1938: clicking the Type field opens the picker dialog; the search box is the anchor. Next
+    // closes the dialog. The form stays open until the tour leaves /sources.
+    element: '[data-testid="source-type-picker-search"]',
     key: "step3",
-    clickBefore: SOURCES_ADD,
-    clickAfterNext: SOURCES_ADD,
+    // Entered cold (Back from /tables, or a resume) the form is closed: open it, then the picker.
+    ensureOpen: [{ click: SOURCES_ADD, unlessPresent: '[data-tour="sources-type"]' }],
+    clickBefore: '[data-tour="sources-type"]',
+    clickAfterNext: '[data-testid="source-type-picker-close"]',
   },
   {
     route: "/tables",
@@ -306,6 +316,59 @@ export const TOUR_STEPS: TourStep[] = [
     key: "stepQualityPanel",
     clickBefore: '[data-testid="table-read-view-edit"]',
     clickAfterNext: ".data-table tbody tr.clickable",
+  },
+  {
+    // REQ-1934: a table joins a Data Profiler from its editor. The profiler panel is not shown on a
+    // checker's results table, so these steps open a plain table of the demo's pet-store source.
+    route: "/tables?source=pet-store-sqlite",
+    capability: "table_registration",
+    prefetch: "settings",
+    element: '[data-testid="table-read-view-edit"]',
+    key: "stepProfilerTable",
+    clickBefore: ".data-table tbody tr.clickable",
+  },
+  {
+    // The edit form opens as this step's clickBefore; the fill-from-profile step's Next collapses
+    // the row, which also cancels the edit.
+    element: '[data-tour="profiler-panel"]',
+    key: "stepProfilerPanel",
+    clickBefore: '[data-testid="table-read-view-edit"]',
+  },
+  {
+    // REQ-1934: drift, checker exceptions, constraints and external expectations are surfaced from
+    // the profiler's runs; the panel is the nearest anchor that exists on every build.
+    element: '[data-tour="profiler-panel"]',
+    key: "stepProfilerChecks",
+  },
+  {
+    // REQ-1494: a column's kind of fake is declared in the column list's Test data mode.
+    element: '[data-tour="table-columns-mode"]',
+    key: "stepFakes",
+  },
+  {
+    // REQ-1494: the fill-from-profile action sits with the column list's test-data mode.
+    element: '[data-tour="table-columns-mode"]',
+    key: "stepFakesFill",
+    clickAfterNext: ".data-table tbody tr.clickable",
+  },
+  {
+    // REQ-1493: an environment is read or read-write, and may be marked test data. Both are set on
+    // the Environments page; its root is the anchor.
+    route: "/admin/environments",
+    capability: "environment_management",
+    element: '[data-testid="environments-tab"]',
+    key: "stepEnvKinds",
+  },
+  {
+    // REQ-1939: synthetic datasets live on the Environments page, in a tab of their own. The tab
+    // itself is the anchor: the panel's body depends on a non-production environment existing.
+    element: '[data-tour="synthetic-tab"]',
+    key: "stepSynthetic",
+  },
+  {
+    // REQ-1939: differential privacy is a setting of the dataset; the tab is the anchor.
+    element: '[data-tour="synthetic-tab"]',
+    key: "stepSyntheticPrivacy",
   },
   {
     // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.

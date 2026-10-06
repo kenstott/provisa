@@ -24,9 +24,7 @@
     "apiEndpoint": "Конечная точка API:",
     "watermarkColumn": "Столбец водяного знака:",
     "viewSql": "SQL представления:",
-    "dataProduct": "Продукт данных:",
     "dataProductYes": "Да",
-    "dataProductNo": "Нет",
     "editSqlButton": "Редактировать SQL",
     "openInExplorerButton": "Открыть в проводнике",
     "editSqlTitle": "Редактировать SQL этого представления в проводнике",
@@ -56,7 +54,8 @@
     "editDefinitionButton": "Редактировать определение",
     "editDefinitionTitle": "Редактировать определение представления (SQL или выбор метрик/измерений)",
     "queryTemplate": "Cypher:",
-    "writes": "Принимает записи:",
-    "writesNone": "Нет (только чтение)"
+    "writable": "Доступна для записи",
+    "writableOps": "Принимает {{ops}} через GraphQL, REST и SQL",
+    "dataProductChip": "Продукт данных"
   }
 }

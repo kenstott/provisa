@@ -84,6 +84,9 @@ TENANT_TABLES: dict[str, str] = {
     "calendars": MODEL,
     "materialized_views": MODEL,
     "org_settings": SETTINGS,
+    # REQ-1939: a dataset's tables decide what this environment's tables read.
+    "synthetic_datasets": MODEL,
+    "synthetic_dataset_tables": MODEL,
 }
 
 PLATFORM_TABLES: dict[str, str] = {"deployment_settings": SETTINGS}

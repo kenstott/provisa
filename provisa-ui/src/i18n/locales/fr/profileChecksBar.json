@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "Table du vérificateur",
+    "driftCheck": "Créer un contrôle de dérive",
+    "expectationsLabel": "Table d'attentes",
+    "expectationsPlaceholder": "Choisir une table au format des attentes",
+    "noExpectations": "Aucune table enregistrée n'a le format des attentes",
+    "expectationCheck": "Créer un contrôle d'attentes",
+    "added": "Ajouté au contrat de {{table}}.",
+    "already": "Le contrat de {{table}} contient déjà ce contrôle."
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "testData": {
+    "modeMetadata": "मेटाडेटा",
+    "modeTestData": "परीक्षण डेटा",
+    "fake": "नकली मान",
+    "syntheticRule": "सिंथेटिक नियम",
+    "stable": "स्थिर",
+    "stableHint": "हर इंजन और हर क्षेत्र में एक ही नकली मान",
+    "stableVersion": "परिभाषा संस्करण {{version}} पर स्थिर: इसका नकली मान बदलने तक इसके मान वही रहते हैं",
+    "realValue": "वास्तविक मान",
+    "openDialog": "नकली मान चुनें",
+    "piiNoFake": "PII, कोई नकली मान नहीं",
+    "dialogTitle": "परीक्षण डेटा: {{column}}",
+    "declaration": "घोषणा, जैसे email() या categories((a, b))",
+    "methodCategory": "नकली विधि: {{category}}",
+    "cancel": "रद्द करें",
+    "apply": "लागू करें",
+    "kindCategory": {
+      "values": "मान",
+      "distribution": "वितरण",
+      "transform": "रूपांतरण",
+      "relative": "अन्य कॉलम के सापेक्ष",
+      "rule": "केवल सिंथेटिक नियम"
+    },
+    "fillFromProfile": "प्रोफ़ाइल से भरें",
+    "filled": "भरे गए कॉलम: {{count}} (प्रोफ़ाइल रन {{run}})।",
+    "unmatchedPii": "बिना पक्के मिलान वाले PII, आपके निर्णय हेतु: {{columns}}।",
+    "noConfidentMatch": "प्रोफ़ाइल में पक्का मिलान नहीं, PII: इसका नकली मान घोषित करें।",
+    "noProposal": "प्रोफ़ाइल इस कॉलम के लिए कुछ प्रस्तावित नहीं करती।"
+  }
+}

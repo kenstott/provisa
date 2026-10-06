@@ -246,3 +246,25 @@ class TestJunctionFieldName:
             )
             == "bondedPairs"
         )
+
+
+@pytest.mark.parametrize("name", ["foo_123", "orders_2024", "orders_2024_east", "a_1_b"])
+def test_an_underscore_before_a_digit_survives_into_the_sql_name(name):
+    """The SQL name is derived back from the GraphQL field name (sql_rewrite.semantic_table_name);
+    the boundary before a digit has no case to mark it, so it is kept as an underscore."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.compiler.sql_rewrite import semantic_table_name
+    from provisa.compiler.sql_types import TableMeta
+
+    field = generate_name(name, "public", "pg", [name], [])
+    meta = TableMeta(
+        table_id=1,
+        field_name=field,
+        type_name=to_type_name(field),
+        source_id="pg",
+        catalog_name="pg",
+        schema_name="public",
+        table_name=name,
+    )
+    assert semantic_table_name(meta) == name
+    assert apply_sql_name(field) == name

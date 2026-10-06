@@ -21,12 +21,14 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { Pencil, Trash2, ArrowRight, RefreshCw } from "lucide-react";
+import { Pencil, Trash2, ArrowRight, RefreshCw, Play } from "lucide-react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import type { Source } from "../../types/admin";
 import { SOURCE_TYPES } from "./constants";
 import { uiType } from "./sourceHelpers";
 import { useRefreshKaggleSource } from "../../hooks/useAdminQueries";
+import { runProfiler, type SourceRunOutcome } from "../../api/profiler";
+import { profilerFieldsFromMapping } from "./profilerMapping";
 
 const API_TYPES = new Set(["graphql_remote", "grpc_remote", "openapi"]);
 const PATH_TYPES = new Set(["sqlite", "csv", "parquet", "files"]);
@@ -53,6 +55,26 @@ export function SourceDetailPanel({
   const [refreshModalOpen, setRefreshModalOpen] = useState(false);
   const [refreshToken, setRefreshToken] = useState("");
   const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  // REQ-1934: a Data Profiler source is a schedule; it can also be run at once for all its members.
+  const isProfiler = s.type === "data_profiler";
+  const [profiling, setProfiling] = useState(false);
+  const [profileOutcomes, setProfileOutcomes] = useState<SourceRunOutcome[] | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const handleRunProfiler = async () => {
+    setProfiling(true);
+    setProfileOutcomes(null);
+    setProfileError(null);
+    try {
+      setProfileOutcomes(await runProfiler(s.id));
+    } catch (e: unknown) {
+      setProfileError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProfiling(false);
+    }
+  };
+  const profilerFields =
+    isProfiler && s.mappingJson ? profilerFieldsFromMapping(s.mappingJson) : null;
 
   const isApiType = API_TYPES.has(s.type);
   const isPathType = PATH_TYPES.has(s.type);
@@ -85,16 +107,27 @@ export function SourceDetailPanel({
   const rows: [string, string | number][] = [
     ["description", s.description || "—"],
     ["type", SOURCE_TYPES.find((ty) => ty.value === uiType(s.type))?.label ?? s.type],
-    ...(isApiType
-      ? ([["endpoint", s.path || "—"]] as [string, string | number][])
-      : isPathType
-        ? ([["path", s.path || "—"]] as [string, string | number][])
-        : ([
-            ["host", s.host || "—"],
-            ["port", s.port || "—"],
-            ["database", s.database || "—"],
-            ["username", s.username || "—"],
-          ] as [string, string | number][])),
+    ...(profilerFields
+      ? ([
+          ["schedule", profilerFields.cron],
+          [
+            "sample",
+            profilerFields.sample_above_cells === ""
+              ? t("sourceDetailPanel.sampleWhole")
+              : t("sourceDetailPanel.sampleAbove", { cells: profilerFields.sample_above_cells }),
+          ],
+          ["lowCardinality", profilerFields.low_cardinality_max],
+        ] as [string, string | number][])
+      : isApiType
+        ? ([["endpoint", s.path || "—"]] as [string, string | number][])
+        : isPathType
+          ? ([["path", s.path || "—"]] as [string, string | number][])
+          : ([
+              ["host", s.host || "—"],
+              ["port", s.port || "—"],
+              ["database", s.database || "—"],
+              ["username", s.username || "—"],
+            ] as [string, string | number][])),
     ["naming", s.gqlNamingConvention || t("sourceDetailPanel.namingInherit")],
     [
       "cache",
@@ -179,6 +212,23 @@ export function SourceDetailPanel({
             </ActionIcon>
           </Tooltip>
         )}
+        {isProfiler && (
+          // REQ-1934: an ad hoc run of every member table, beside the source's other actions.
+          <Tooltip label={t("sourceDetailPanel.runProfilerTitle")}>
+            <ActionIcon
+              variant="subtle"
+              aria-label={t("sourceDetailPanel.runProfilerTitle")}
+              data-testid="source-detail-run-profiler"
+              loading={profiling}
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleRunProfiler();
+              }}
+            >
+              <Play size={14} />
+            </ActionIcon>
+          </Tooltip>
+        )}
         <ConfirmDialog
           title={t("sourceDetailPanel.deleteTitle", { id: s.id })}
           consequence={t("sourceDetailPanel.deleteConsequence", { id: s.id })}
@@ -239,6 +289,27 @@ export function SourceDetailPanel({
             </Group>
           </Stack>
         </Modal>
+      )}
+      {profileError && (
+        <Alert color="red" data-testid="source-detail-profiler-error">
+          {profileError}
+        </Alert>
+      )}
+      {profileOutcomes && (
+        <Alert
+          color={profileOutcomes.every((o) => o.error == null) ? "green" : "orange"}
+          data-testid="source-detail-profiler-outcomes"
+        >
+          {profileOutcomes.length === 0
+            ? t("sourceDetailPanel.profilerNoMembers")
+            : profileOutcomes.map((o) => (
+                <Text key={o.table} size="sm">
+                  {o.error == null
+                    ? t("sourceDetailPanel.profilerRan", { table: o.table })
+                    : t("sourceDetailPanel.profilerFailed", { table: o.table, error: o.error })}
+                </Text>
+              ))}
+        </Alert>
       )}
     </Stack>
   );

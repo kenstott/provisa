@@ -1,0 +1,18 @@
+{
+  "profilerPanel": {
+    "title": "Data Profiler",
+    "addLabel": "प्रोफ़ाइलर में जोड़ें",
+    "addPlaceholder": "प्रोफ़ाइलर चुनें",
+    "addDescription": "प्रोफ़ाइलर का शेड्यूल इस टेबल की प्रोफ़ाइलिंग करता है। टेबल के साथ सहेजा जाता है।",
+    "none": "कोई Data Profiler स्रोत मौजूद नहीं है",
+    "scheduleWhole": "{{cron}}, पूरी टेबल",
+    "scheduleSample": "{{cron}}, {{cells}} सेल से अधिक पर नमूना",
+    "memberOf": "{{profiler}} द्वारा प्रोफ़ाइल की गई",
+    "unsaved": "यह बदलाव लागू करने के लिए टेबल सहेजें।",
+    "remove": "प्रोफ़ाइलर से हटाएँ",
+    "runNow": "अभी प्रोफ़ाइल करें",
+    "viewRuns": "प्रोफ़ाइल रन देखें",
+    "runDone": "{{rows}} पंक्तियों की प्रोफ़ाइलिंग हुई।",
+    "constraints": "बाधाएँ"
+  }
+}

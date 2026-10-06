@@ -83,6 +83,17 @@ class Capability:  # REQ-842, REQ-897
     # a writable ATTACH connector; read-only attaches (file scanners, READ_ONLY warehouse links) are
     # False. Distinct from the DIRECT write path (executor/writable.py), which bypasses connectors.
     write: bool = False
+    # REQ-1934 (profile sampling). ``block_sample``: a TABLESAMPLE SYSTEM on a table read live
+    # through this connector executes AT THE SOURCE, so only a share of its blocks is read. Claimed
+    # only where measured (EXPLAIN ANALYZE / source tuple counts): none of the live connectors
+    # qualifies today -- DuckDB exposes an attached table through a view, over which the sample
+    # runs after a full scan; Trino's JDBC connectors read a table as ONE split, so SYSTEM keeps
+    # all or none of it; postgres_fdw refuses TABLESAMPLE on a foreign table.
+    block_sample: bool = False
+    # ``key_range``: a single-range predicate on the table's primary key reaches the source and is
+    # answered from its index, so a sample of key ranges reads only the rows in them. Measured on
+    # the connectors that claim it.
+    key_range: bool = False
 
 
 @dataclass(frozen=True)

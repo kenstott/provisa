@@ -30,8 +30,8 @@
         "description": "➕ Les nouvelles connexions démarrent avec ce bouton — PostgreSQL, Snowflake, MongoDB, une API REST, un CSV, et plus de 30 autres."
       },
       "step3": {
-        "title": "53 types de sources",
-        "description": "Une seule liste de connecteurs couvre toutes les catégories :<ul><li><strong>Bases de données</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Entrepôts cloud</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Analytique / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Lacs de données &amp; fichiers</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL &amp; graphe</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>API</strong> — REST, GraphQL, gRPC</li><li><strong>Streaming</strong> — Kafka</li><li><strong>SaaS d'entreprise</strong> — SharePoint, Splunk · ainsi que des abonnements à des données publiques</li></ul>Choisissez-en une, renseignez la connexion, Enregistrer. La liste n'est pas figée — les moteurs de fédération natifs sont <strong>extensibles</strong> : déclarez un FDW Postgres personnalisé ou une extension DuckDB dans la configuration, et Provisa atteint un nouveau type de source, sans code."
+        "title": "58 types de source, 13 catégories",
+        "description": "Un sélecteur liste chaque type, groupé par catégorie : <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Cherchez par nom ou alias, ou filtrez avec les pastilles de catégorie. Chaque type affiche son logo et une icône de portée : ⚡ lu en direct sur place, ou une icône de copie lorsque Provisa lit une réplique rafraîchie.<p>Choisissez-en un, renseignez la connexion, enregistrez. La liste n'est pas figée : les moteurs de fédération natifs sont <strong>extensibles</strong>. Déclarez dans la configuration un FDW Postgres personnalisé ou une extension DuckDB, et Provisa atteint un nouveau type de source, sans code.</p>"
       },
       "step4": {
         "title": "Tout devient une table",
@@ -104,6 +104,38 @@
       "stepQualityPanel": {
         "title": "Créer un contrat de qualité",
         "description": "✅ Rédigez le contrat à la main ou construisez les contrôles colonne par colonne — taux de valeurs nulles, nombres de lignes, plages, fraîcheur — et lancez une <strong>exécution à blanc</strong> avant d'enregistrer. Chaque analyse s'ajoute aux précédentes : cette table <em>est</em> donc l'historique de qualité — représentez-la, déclenchez des alertes dessus, joignez-la à ce que vous voulez."
+      },
+      "stepProfilerTable": {
+        "title": "Profiler une table",
+        "description": "📊 Modifiez n'importe quelle table pour l'ajouter à un <strong>Data Profiler</strong>, une source qui profile ses tables membres selon un calendrier : formes des colonnes, distributions, fréquences des valeurs et enfants par parent."
+      },
+      "stepProfilerPanel": {
+        "title": "L'ajouter à un profileur",
+        "description": "Choisissez un profileur et enregistrez, puis utilisez <strong>Profiler maintenant</strong> et <strong>Voir les exécutions de profil</strong>. Les résultats arrivent sous forme de tables que vous enregistrez et gouvernez comme les autres. Tant que vous ne les enregistrez pas, aucun lecteur ne voit de profil."
+      },
+      "stepProfilerChecks": {
+        "title": "Dérive et contrôles",
+        "description": "Chaque exécution est comparée aux exécutions récentes de la table, et une mesure qui dérive est signalée. Un contrôleur de qualité des données lève l'exception. Vous pouvez aussi accepter les contraintes que propose le profil et vérifier les exécutions face à des attentes extérieures à Provisa."
+      },
+      "stepFakes": {
+        "title": "Déclarer une valeur fictive",
+        "description": "🎭 Le mode <strong>Données de test</strong> de la liste des colonnes affiche la <strong>valeur fictive</strong> de chaque colonne, comme <code>email()</code>. Ne masquez que les colonnes identifiantes et laissez le reste réel. Une colonne peut aussi porter une <strong>règle synthétique</strong>, utilisée uniquement pour générer des données synthétiques."
+      },
+      "stepFakesFill": {
+        "title": "Remplir les valeurs fictives depuis un profil",
+        "description": "✨ <strong>Remplir depuis le profil</strong> propose, d'après le dernier profil de la table, des valeurs fictives pour les colonnes identifiantes et des règles synthétiques pour les autres. Rien n'est enregistré avant que vous enregistriez le formulaire."
+      },
+      "stepEnvKinds": {
+        "title": "Environnements de test en lecture ou en lecture-écriture",
+        "description": "Un environnement hors production est en <strong>lecture</strong> ou en <strong>lecture-écriture</strong>. Un environnement en lecture-écriture conserve ses propres modifications, et une écriture n'atteint jamais une source. Activez <strong>Données de test</strong> et chaque colonne affiche sa valeur fictive ; les données personnelles sans valeur fictive apparaissent comme NULL."
+      },
+      "stepSynthetic": {
+        "title": "Générer des données synthétiques",
+        "description": "🧪 Un <strong>jeu de données synthétique</strong> remplit un environnement hors production de lignes à la forme de vos tables profilées, avec les mêmes relations et la même ramification, à n'importe quelle échelle. Un rapport de comparaison montre à quel point il s'en est approché."
+      },
+      "stepSyntheticPrivacy": {
+        "title": "Confidentialité par conception",
+        "description": "🔒 Déclarez un jeu de données privé avec un budget de confidentialité ε. Un bruit calibré est ajouté à chaque statistique que le générateur tire d'un profil, et le rapport indique ce que le bruit a supprimé."
       },
       "step20": {
         "title": "Construisez votre pipeline de livraison",

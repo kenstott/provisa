@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "Checker-Tabelle",
+    "driftCheck": "Drift-Prüfung erstellen",
+    "expectationsLabel": "Erwartungstabelle",
+    "expectationsPlaceholder": "Tabelle in Erwartungsform wählen",
+    "noExpectations": "Keine registrierte Tabelle hat die Erwartungsform",
+    "expectationCheck": "Erwartungsprüfung erstellen",
+    "added": "Zum Contract von {{table}} hinzugefügt.",
+    "already": "Der Contract von {{table}} enthält diese Prüfung bereits."
+  }
+}

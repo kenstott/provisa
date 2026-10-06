@@ -402,6 +402,18 @@ DECLARED: list[Setting] = [
         secret=True,
         guard="confirm",
     ),
+    # REQ-1494: the platform key every fake's digest is keyed by. Created by the platform at its
+    # first start; secret, and guarded: a different key shows every faked value a new fake.
+    Setting(
+        key="fakes.key",
+        card="security",
+        type="str",
+        effect="restart",  # held by each process and each engine from its start
+        req="REQ-1494",
+        nullable=True,
+        secret=True,
+        guard="confirm",
+    ),
     # REQ-1393: the failed-login brake is on without configuration. Five attempts is above any
     # plausible typo count; a fifteen-minute lockout costs a guesser three orders of magnitude.
     Setting(

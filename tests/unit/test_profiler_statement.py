@@ -1,0 +1,235 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a83c6e19-5d27-4f40-b9e1-0f7d2c4a8b65
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The one profile statement (REQ-1934), run against an in-process DuckDB.
+
+The statement is written in the governed dialect (postgres) and transpiled as the pipeline does, so
+these tests see the measures an engine actually returns for it.
+"""
+
+from __future__ import annotations
+
+import duckdb
+import pytest
+import sqlglot
+
+from provisa.profiler.run import (
+    NOT_FROM_THE_PROFILE_STATEMENT,
+    Target,
+    result_rows,
+    sample_fraction,
+)
+from provisa.profiler.schema import RESULT_KINDS, field_names
+from provisa.profiler.statement import (
+    ColumnSpec,
+    FanoutSpec,
+    Sample,
+    family_of,
+    parse_profile_result,
+    profile_sql,
+)
+
+_COLUMNS = [
+    ColumnSpec("id", "integer", "numeric", "id"),
+    ColumnSpec("amount", "double", "numeric", "amount"),
+    ColumnSpec("code", "varchar", "text", "code"),
+    ColumnSpec("placed", "timestamp", "temporal", "placed"),
+    ColumnSpec("paid", "boolean", "boolean", "paid"),
+]
+_FANOUT = [FanoutSpec("lines", "d.lines", "id", "order_id")]
+_WHOLE = Sample("whole")
+
+
+@pytest.fixture
+def con():
+    db = duckdb.connect()
+    db.execute("CREATE SCHEMA d")
+    db.execute(
+        "CREATE TABLE d.orders AS SELECT range::INTEGER AS id, "
+        "CASE WHEN range % 10 = 0 THEN NULL ELSE (range % 7)::DOUBLE END AS amount, "
+        "'ORD-' || range::VARCHAR AS code, "
+        "TIMESTAMP '2024-01-01' + to_seconds(range * 3600) AS placed, "
+        "range % 2 = 0 AS paid FROM range(500)"
+    )
+    # orders 0..299 have three lines each; 300..499 have none.
+    db.execute(
+        "CREATE TABLE d.lines AS SELECT range AS line_id, range % 300 AS order_id FROM range(900)"
+    )
+    return db
+
+
+def _run(con, sql: str):
+    res = con.execute(sqlglot.transpile(sql, read="postgres", write="duckdb")[0])
+    return [d[0] for d in res.description], res.fetchall()
+
+
+def test_one_statement_profiles_every_column_and_relationship(con):
+    sql = profile_sql("d.orders", _COLUMNS, _FANOUT, _WHOLE, 100, [], [])
+    assert len(sqlglot.parse(sql, read="postgres")) == 1
+    names, rows = _run(con, sql)
+    agg = parse_profile_result(names, rows, _COLUMNS, _FANOUT, [], [])
+    assert agg.profiled_rows == 500
+    by = {c.spec.name: c for c in agg.columns}
+
+    assert (by["id"].distinct, by["id"].vmin, by["id"].vmax, by["id"].m1) == (
+        500,
+        0.0,
+        499.0,
+        249.5,
+    )
+    amount = by["amount"]
+    assert (amount.non_null, amount.distinct, amount.integers) == (450, 7, 450)
+    assert len(amount.quantiles or []) == 101
+    # amount has 8 groups including null — a low-cardinality column keeps every value.
+    assert len(amount.values) == 8
+
+    code = by["code"]
+    assert (code.min_text, code.length_min, code.length_max) == ("ORD-0", 5, 7)
+    assert code.shapes[:3] == [("AAA-999", 400), ("AAA-99", 90), ("AAA-9", 10)]
+
+    placed = by["placed"]
+    assert placed.min_text == "2024-01-01 00:00:00"
+    assert by["paid"].values == [("false", 250), ("true", 250)]
+
+    fan = agg.fanouts[0]
+    assert (fan.parents, fan.mean, fan.max, fan.childless) == (500, 1.8, 3, 200)
+
+
+def test_a_sample_reads_a_fraction_of_the_rows(con):
+    names, rows = _run(
+        con, profile_sql("d.orders", _COLUMNS, [], Sample("random", 0.2), 100, [], [])
+    )
+    agg = parse_profile_result(names, rows, _COLUMNS, [], [], [])
+    assert 0 < agg.profiled_rows < 500
+
+
+def test_the_sample_budget_is_in_cells_so_a_wide_table_samples_fewer_rows():
+    assert sample_fraction(1000, 4, None) is None
+    assert sample_fraction(1000, 4, 4000) is None
+    assert sample_fraction(1000, 4, 1000) == 0.25
+    # The same budget over a table ten times as wide samples a tenth as many rows.
+    assert sample_fraction(1000, 40, 1000) == 0.025
+
+
+def test_every_result_row_has_its_kinds_shipped_fields(con):
+    from datetime import UTC, datetime
+
+    names, rows = _run(con, profile_sql("d.orders", _COLUMNS, _FANOUT, _WHOLE, 100, [], []))
+    agg = parse_profile_result(names, rows, _COLUMNS, _FANOUT, [], [])
+    target = Target(
+        1, "orders", "d.orders", _COLUMNS, _FANOUT, {"code": {"pii"}}, None, None, [], [], []
+    )
+    out = result_rows(target, agg, "r1", datetime.now(UTC), 100)
+    # The run row, its comparison and the dependence measures are written by profile_table.
+    assert set(out) == set(RESULT_KINDS) - NOT_FROM_THE_PROFILE_STATEMENT
+    for kind, kind_rows in out.items():
+        # orders has no repeated row, so no most-repeated rows to list.
+        assert bool(kind_rows) == (kind != "repeats"), kind
+        assert all(tuple(r) == field_names(kind) for r in kind_rows)
+    freq = [
+        r for r in out["top_values"] if r["column_name"] == "amount" and r["kind"] == "frequency"
+    ]
+    assert len(freq) == 8
+    # id has 500 distinct values: its top values are kept, its full frequency table is not.
+    assert not [
+        r for r in out["top_values"] if r["column_name"] == "id" and r["kind"] == "frequency"
+    ]
+    assert len([r for r in out["fanout"] if r["relationship"] == "lines"]) == 101
+
+
+def test_a_table_with_no_readable_column_cannot_be_profiled():
+    with pytest.raises(ValueError, match="no column the org admin can read"):
+        profile_sql("d.orders", [], [], _WHOLE, 100, [], [])
+
+
+def test_a_relationship_key_the_org_admin_cannot_read_is_refused():
+    with pytest.raises(ValueError, match="parent key 'hidden'"):
+        profile_sql(
+            "d.orders",
+            _COLUMNS,
+            [FanoutSpec("x", "d.lines", "hidden", "order_id")],
+            _WHOLE,
+            100,
+            [],
+            [],
+        )
+
+
+@pytest.mark.parametrize(
+    "data_type,family",
+    [
+        ("integer", "numeric"),
+        ("numeric(10,2)", "numeric"),
+        ("timestamptz", "temporal"),
+        ("date", "temporal"),
+        ("varchar", "text"),
+        ("boolean", "boolean"),
+        ("jsonb", "other"),
+    ],
+)
+def test_family_of(data_type, family):
+    assert family_of(data_type) == family
+
+
+def test_the_low_cardinality_threshold_is_the_profilers_run_default(con):
+    """amount has 8 value groups (7 values and null): its full frequency table is kept under a
+    threshold of 8 and above, and not under 7."""
+    from datetime import UTC, datetime
+
+    target = Target(1, "orders", "d.orders", _COLUMNS, [], {}, None, None, [], [], [])
+
+    def frequencies(low: int) -> int:
+        names, rows = _run(con, profile_sql("d.orders", _COLUMNS, [], _WHOLE, low, [], []))
+        agg = parse_profile_result(names, rows, _COLUMNS, [], [], [])
+        out = result_rows(target, agg, "r", datetime.now(UTC), low)
+        return len(
+            [
+                r
+                for r in out["top_values"]
+                if r["column_name"] == "amount" and r["kind"] == "frequency"
+            ]
+        )
+
+    assert frequencies(8) == 8
+    assert frequencies(7) == 0
+
+
+def test_duplicate_rows_and_repeated_key_values_are_counted(con):
+    """REQ-1934 DUPLICATE ROWS: rows repeating another row in every profiled column, with the most
+    repeated rows' counts, and the values of a declared key held by more than one row -- a key with
+    a null part is held by no row."""
+    from provisa.profiler.statement import KeySpec
+
+    con.execute(
+        "CREATE TABLE d.dups AS SELECT * FROM (VALUES "
+        "(1, 'a', 10), (1, 'a', 10), (1, 'a', 10), (2, 'b', NULL), (2, 'b', NULL), "
+        "(3, 'c', 30), (3, NULL, 31), (4, NULL, 40), (4, NULL, 41)) AS v(code, label, amount)"
+    )
+    cols = [
+        ColumnSpec("code", "integer", "numeric", "code"),
+        ColumnSpec("label", "varchar", "text", "label"),
+        ColumnSpec("amount", "integer", "numeric", "amount"),
+    ]
+    keys = [KeySpec("primary key", ("code",)), KeySpec("code_label", ("code", "label"))]
+    names, rows = _run(con, profile_sql("d.dups", cols, [], _WHOLE, 100, keys, []))
+    agg = parse_profile_result(names, rows, cols, [], keys, [])
+    assert (agg.rows.repeated, agg.rows.extra, agg.rows.top_counts) == (2, 3, [3, 2])
+    pk, pair = agg.keys
+    assert (pk.repeated, pk.extra) == (4, 5)
+    # (4, NULL) twice is not a repeated key value: a key with a null part is held by no row.
+    assert (pair.repeated, pair.extra) == (2, 3)
+    assert agg.columns[0].repeated_values == 4
+
+
+def test_a_key_the_org_admin_cannot_read_is_refused():
+    from provisa.profiler.statement import KeySpec
+
+    with pytest.raises(ValueError, match="key 'k'"):
+        profile_sql("d.orders", _COLUMNS, [], _WHOLE, 100, [KeySpec("k", ("hidden",))], [])

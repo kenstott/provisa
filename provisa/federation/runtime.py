@@ -119,6 +119,9 @@ class EngineRuntime:  # REQ-825, REQ-840
         from its replica is renamed here to its replica's address, before the dialect transpile:
         the one place every statement bound for the engine passes, so no surface addresses a
         replica differently and none reads the source of a table the operator floors."""
+        from provisa.fakes.read_sql import require_fake_engine
+
+        require_fake_engine(pg_sql, self.engine.name, self._backend.computes_fakes)  # REQ-1494
         return self._backend.transpile_physical(self.address_replicas(pg_sql))
 
     def _replica_routes(self) -> Any:

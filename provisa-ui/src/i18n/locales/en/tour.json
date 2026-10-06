@@ -30,8 +30,8 @@
         "description": "➕ New connections start with this button — PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and 30+ more."
       },
       "step3": {
-        "title": "53 source types",
-        "description": "One connector list spans every category:<ul><li><strong>Databases</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Cloud warehouses</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Analytics / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Lakes &amp; files</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL &amp; graph</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>APIs</strong> — REST, GraphQL, gRPC</li><li><strong>Streaming</strong> — Kafka</li><li><strong>Enterprise SaaS</strong> — SharePoint, Splunk · plus government data subscriptions</li></ul>Pick one, fill the connection, Save. The list isn't fixed — the native federation engines are <strong>extensible</strong>: declare a custom Postgres FDW or DuckDB extension in config and Provisa reaches a new source type, no code."
+        "title": "58 source types, 13 categories",
+        "description": "One picker lists every type, grouped by category: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Search by name or alias, or narrow with the category chips. Each type shows its logo and a reach icon: ⚡ read live in place, or a copy icon where Provisa reads a refreshed replica.<p>Pick one, fill the connection, Save. The list isn't fixed — the native federation engines are <strong>extensible</strong>: declare a custom Postgres FDW or DuckDB extension in config and Provisa reaches a new source type, no code.</p>"
       },
       "step4": {
         "title": "Everything becomes a table",
@@ -104,6 +104,38 @@
       "stepQualityPanel": {
         "title": "Build a quality contract",
         "description": "✅ Write the contract by hand or build checks column by column — null rates, row counts, ranges, freshness — and <strong>dry-run</strong> it before saving. Every scan appends, so this table <em>is</em> the quality history: chart it, alert on it, join it to anything."
+      },
+      "stepProfilerTable": {
+        "title": "Profile a table",
+        "description": "📊 Edit any table to add it to a <strong>Data Profiler</strong>, a source that profiles its member tables on a schedule: column shapes, distributions, value frequencies and children per parent."
+      },
+      "stepProfilerPanel": {
+        "title": "Add it to a profiler",
+        "description": "Pick a profiler and save, then use <strong>Run Profile Now</strong> and <strong>View Profile Runs</strong>. Results land as tables you register and govern like any other. Until you register them, no reader sees a profile."
+      },
+      "stepProfilerChecks": {
+        "title": "Drift and checks",
+        "description": "Every run is compared with the table's recent runs, and a measure that drifts is flagged. A data-quality checker raises the exception. You can also accept constraints the profile proposes, and check runs against expectations from outside Provisa."
+      },
+      "stepFakes": {
+        "title": "Declare a fake",
+        "description": "🎭 The column list's <strong>Test data</strong> mode shows each column's <strong>fake</strong>, such as <code>email()</code>. Fake only the identifying columns and keep the rest real. A column can also carry a <strong>synthetic rule</strong>, used only when generating synthetic data."
+      },
+      "stepFakesFill": {
+        "title": "Fill fakes from a profile",
+        "description": "✨ <strong>Fill from profile</strong> proposes fakes for identifying columns, and synthetic rules for the rest, from the table's latest profile. Nothing saves until you save the form."
+      },
+      "stepEnvKinds": {
+        "title": "Read or read-write test environments",
+        "description": "A non-production environment is <strong>read</strong> or <strong>read-write</strong>. A read-write environment keeps its own changes, and a write never reaches a source. Turn on <strong>Test data</strong> and every column shows its fake, with unfaked personal data shown as NULL."
+      },
+      "stepSynthetic": {
+        "title": "Generate synthetic data",
+        "description": "🧪 A <strong>synthetic dataset</strong> fills a non-production environment with rows shaped like your profiled tables, with the same relationships and fan-out, at any scale. A comparison report shows how close it came."
+      },
+      "stepSyntheticPrivacy": {
+        "title": "Private by design",
+        "description": "🔒 Declare a dataset private with a privacy budget ε. Calibrated noise is added to every statistic the generator draws from a profile, and the report states what the noise dropped."
       },
       "step20": {
         "title": "Build your delivery pipeline",

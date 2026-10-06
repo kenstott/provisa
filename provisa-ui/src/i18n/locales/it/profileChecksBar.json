@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "Tabella del checker",
+    "driftCheck": "Crea controllo di deriva",
+    "expectationsLabel": "Tabella delle aspettative",
+    "expectationsPlaceholder": "Scegli una tabella con la forma delle aspettative",
+    "noExpectations": "Nessuna tabella registrata ha la forma delle aspettative",
+    "expectationCheck": "Crea controllo delle aspettative",
+    "added": "Aggiunto al contratto di {{table}}.",
+    "already": "Il contratto di {{table}} contiene già questo controllo."
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "profileConstraintsModal": {
+    "title": "{{table}} 的約束",
+    "proposed": "最近一次運行提出的約束",
+    "none": "最近一次運行未有提出約束，或該表尚未進行剖析。",
+    "decided": "已決定",
+    "noneDecided": "尚未接受或駁回任何約束。",
+    "constraint": "約束",
+    "columns": "欄",
+    "definition": "定義",
+    "evidence": "依據",
+    "share": "滿足比例",
+    "sampled": "樣本",
+    "accept": "接受",
+    "edit": "編輯",
+    "acceptEdited": "接受編輯後的版本",
+    "cancel": "取消",
+    "dismiss": "駁回",
+    "export": "匯出到檢查器",
+    "withdraw": "撤回",
+    "checkerLabel": "匯出目標檢查器表",
+    "exported": "已加入 {{table}} 的契約。",
+    "alreadyExported": "{{table}} 的契約已包含此檢查。",
+    "status_accepted": "已接受",
+    "status_dismissed": "已駁回",
+    "kind_not_null": "從不為空",
+    "kind_unique": "唯一",
+    "kind_value_set": "只限已記錄的值",
+    "kind_range": "在觀測範圍內",
+    "kind_ordering": "從不大於或晚於"
+  }
+}

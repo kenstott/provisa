@@ -19,7 +19,7 @@ It provisions, runs and tears down everything inside this one command:
   with the four sources on leased ports (tests/port_lease.py), stock images, tiny data
   (``generate_*.py --orders N``);
 * its OWN isolated Provisa server subprocess (``tests/integration/isolated_server.py``: own org,
-  SQLite control plane, embedded Redis, auth disabled, leased ports), with demo/named/perf/fragment.yaml
+  SQLite control plane, embedded Redis, auth disabled, leased ports), with demo/named/perf/config.yaml
   as its config. Never the maintainer's local-dev instance, never the perf VM, no process is killed
   by pattern.
 
@@ -200,17 +200,6 @@ def _source_env(ports: dict[str, int]) -> dict[str, str]:
 
 
 def start_server(ports: dict[str, int], tmp: Path) -> Any:
-    wrapper = tmp / "provisa-with-perf.yaml"
-    wrapper.write_text(
-        yaml.safe_dump(
-            {
-                "includes": [
-                    str(REPO / "config" / "provisa-install.yaml"),
-                    str(PERF / "fragment.yaml"),
-                ]
-            }
-        )
-    )
     server = _proof_server_class()(
         f"benchproof{os.getpid()}",
         engine="duckdb",
@@ -219,7 +208,7 @@ def start_server(ports: dict[str, int], tmp: Path) -> Any:
         enable_bolt=True,
         await_flight=True,
         await_grpc=True,
-        config=str(wrapper),
+        config=str(PERF / "config.yaml"),
         env=_source_env(ports),
     )
     server.start(timeout=600)
@@ -241,10 +230,8 @@ def start_auth_server(ports: dict[str, int], tmp: Path) -> Any:
     import bcrypt
 
     password = AUTH_PASSWORD
-    # the install config with its auth section replaced (an including file may not redefine a key the
-    # included one has), plus the perf fragment
-    cfg: dict[str, Any] = yaml.safe_load((REPO / "config" / "provisa-install.yaml").read_text())
-    cfg["includes"] = [str(PERF / "fragment.yaml")]
+    # the perf demo's whole config with its auth section replaced
+    cfg: dict[str, Any] = yaml.safe_load((PERF / "config.yaml").read_text())
     cfg["auth"] = {
         **cfg.get("auth", {}),
         "provider": "simple",
@@ -281,19 +268,13 @@ def start_auth_server(ports: dict[str, int], tmp: Path) -> Any:
 def start_replica_server(ports: dict[str, int], tmp: Path) -> Any:
     """A server whose configuration makes ClickHouse a replica source (replicate 0, TTL 60):
     the only way to set it, since the admin API refuses to change a source the config declares."""
-    fragment = yaml.safe_load((PERF / "fragment.yaml").read_text())
-    for src in fragment["sources"]:
+    cfg = yaml.safe_load((PERF / "config.yaml").read_text())
+    for src in cfg["sources"]:
         if src["id"] == "bench-clickhouse":
             src["replicate"] = 0
             src["cache_ttl"] = 60
-    frag_path = tmp / "fragment-replica.yaml"
-    frag_path.write_text(yaml.safe_dump(fragment))
-    wrapper = tmp / "provisa-replica.yaml"
-    wrapper.write_text(
-        yaml.safe_dump(
-            {"includes": [str(REPO / "config" / "provisa-install.yaml"), str(frag_path)]}
-        )
-    )
+    config_path = tmp / "perf-replica.yaml"
+    config_path.write_text(yaml.safe_dump(cfg))
     server = _proof_server_class()(
         f"benchproofrep{os.getpid()}",
         engine="duckdb",
@@ -302,7 +283,7 @@ def start_replica_server(ports: dict[str, int], tmp: Path) -> Any:
         enable_bolt=True,
         await_flight=True,
         await_grpc=True,
-        config=str(wrapper),
+        config=str(config_path),
         env=_source_env(ports),
     )
     server.start(timeout=600)

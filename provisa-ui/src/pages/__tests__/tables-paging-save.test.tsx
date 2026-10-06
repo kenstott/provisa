@@ -137,6 +137,24 @@ const TABLES = [
   table(9, "orders", []),
   table(10, "events", [], { writeOps: ["insert"] }),
   table(11, "graph", [], { writeOps: [] }),
+  table(12, "pet_by_id", [], {
+    writeOps: [],
+    columns: [
+      {
+        id: 120,
+        columnName: "_nf_id",
+        alias: null,
+        computedSqlAlias: "_nf_id",
+        description: null,
+        visibleTo: [],
+        writableBy: [],
+        unmaskedTo: [],
+        maskType: null,
+        scope: null,
+        nativeFilterType: "path_param",
+      } as unknown as RegisteredTable["columns"][number],
+    ],
+  }),
 ];
 const SOURCES = [
   {
@@ -290,24 +308,51 @@ describe("TablesPage — Paging (REQ-318)", () => {
 
 
 describe("TablesPage — the writes a table takes", () => {
-  async function writesOf(name: string): Promise<string> {
+  async function openTable(name: string): Promise<void> {
     render(<TablesPage />);
     const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
     await userEvent.click(row.querySelector("td") as HTMLElement);
-    return (await screen.findByTestId("table-read-view-writes")).textContent ?? "";
   }
 
-  it("names every write a writable source takes", async () => {
-    expect(await writesOf("orders")).toContain("DELETEINSERTUPDATE");
+  it("marks a writable table and names every write its source takes", async () => {
+    await openTable("orders");
+    const chip = await screen.findByTestId("table-read-view-writable");
+    expect(chip).toHaveTextContent("Writable");
+    expect(chip.getAttribute("aria-label")).toContain("DELETE, INSERT, UPDATE");
   });
 
   it("names only inserts for an append-only source", async () => {
-    const shown = await writesOf("events");
-    expect(shown).toContain("INSERT");
-    expect(shown).not.toContain("UPDATE");
+    await openTable("events");
+    const label = (await screen.findByTestId("table-read-view-writable")).getAttribute("aria-label");
+    expect(label).toContain("INSERT");
+    expect(label).not.toContain("UPDATE");
   });
 
-  it("says a table whose source takes no writes is read only", async () => {
-    expect(await writesOf("graph")).toContain("None (read only)");
+  it("shows no writable chip for a table whose source takes no writes", async () => {
+    await openTable("graph");
+    await screen.findByTestId("table-read-view-preview");
+    expect(screen.queryByTestId("table-read-view-writable")).toBeNull();
+  });
+});
+
+
+describe("TablesPage — a table that needs a required filter", () => {
+  async function openTable(name: string): Promise<void> {
+    render(<TablesPage />);
+    const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
+    await userEvent.click(row.querySelector("td") as HTMLElement);
+  }
+
+  it("offers no preview or profile when its rows need a required filter", async () => {
+    await openTable("pet_by_id");
+    await screen.findByTestId("table-read-view-policies");
+    expect(screen.queryByTestId("table-read-view-preview")).toBeNull();
+    expect(screen.queryByTestId("table-read-view-profile")).toBeNull();
+  });
+
+  it("offers preview and profile for a table with no required filter", async () => {
+    await openTable("orders");
+    expect(await screen.findByTestId("table-read-view-preview")).toBeInTheDocument();
+    expect(screen.getByTestId("table-read-view-profile")).toBeInTheDocument();
   });
 });

@@ -204,6 +204,8 @@ roles:
       - { id: soda,       name: Soda (external data quality), platforms: [macos, linux, windows], provisioning: pip_driver, startup_cost: instant, cloud_eligible: false, prereq: "installs soda-postgres (Elastic License 2.0); needs a contract YAML naming a governed table" }
       # The Apache-2.0 alternative. Same source shape and same results schema — the contract dialect
       # differs (expectation suite vs checks YAML). No hosted-service bar, so no cloud_eligible key.
+      # REQ-1934: built in — profiles governed tables on a schedule; no external prerequisite.
+      - { id: data_profiler, name: Data Profiler, platforms: [macos, linux, windows], provisioning: bundled, startup_cost: instant, prereq: none }
       - { id: great_expectations, name: Great Expectations (external data quality), platforms: [macos, linux, windows], provisioning: pip_driver, startup_cost: instant, prereq: "installs great-expectations (Apache 2.0); needs an expectation suite naming a governed table" }
 
 # The demo preset: every role pinned to a bundled, instant option — so "Demo" runs in a few seconds

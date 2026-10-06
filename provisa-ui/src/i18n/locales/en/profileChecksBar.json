@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "Checker table",
+    "driftCheck": "Create drift check",
+    "expectationsLabel": "Expectations table",
+    "expectationsPlaceholder": "Pick a table of the expectations shape",
+    "noExpectations": "No registered table has the expectations shape",
+    "expectationCheck": "Create expectation check",
+    "added": "Added to the contract of {{table}}.",
+    "already": "The contract of {{table}} already holds this check."
+  }
+}

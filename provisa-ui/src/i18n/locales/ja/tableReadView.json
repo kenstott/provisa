@@ -24,9 +24,7 @@
     "apiEndpoint": "APIエンドポイント:",
     "watermarkColumn": "ウォーターマークカラム:",
     "viewSql": "ビューSQL:",
-    "dataProduct": "データプロダクト:",
     "dataProductYes": "はい",
-    "dataProductNo": "いいえ",
     "editSqlButton": "SQLを編集",
     "openInExplorerButton": "エクスプローラーで開く",
     "editSqlTitle": "このビューのSQLをエクスプローラーで編集します",
@@ -56,7 +54,8 @@
     "editDefinitionButton": "定義を編集",
     "editDefinitionTitle": "ビュー定義を編集します（SQLまたはメトリクス/ディメンション選択）",
     "queryTemplate": "Cypher:",
-    "writes": "受け付ける書き込み:",
-    "writesNone": "なし（読み取り専用）"
+    "writable": "書き込み可",
+    "writableOps": "GraphQL・REST・SQL から {{ops}} を受け付けます",
+    "dataProductChip": "データプロダクト"
   }
 }

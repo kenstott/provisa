@@ -1,0 +1,13 @@
+{
+  "chatPanel": {
+    "tryAsking": "Vraag bijvoorbeeld:",
+    "suggestion": {
+      "name": "Waarom heet je Polly?",
+      "page": "Op welke pagina ben ik?",
+      "sources": "Welke gegevensbronnen zijn geregistreerd?",
+      "inflation": "Zoek inflatiegegevens voor me",
+      "profile": "Profileer de tabel orders",
+      "fakes": "Geef de tabel customers nepnamen voor testgegevens"
+    }
+  }
+}

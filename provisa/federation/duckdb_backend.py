@@ -41,6 +41,8 @@ class DuckDBBackend(NativeEngineBackend):
     # The runtime connection is a duckdb connection: values bind at ``?``.
     _cache_bind_placeholder = "?"
 
+    computes_fakes = True  # REQ-1494: provisa.fakes.duckdb_functions, registered in-process
+
     def replica_target(self, state: Any, *, address: Any, args: Any, engine: Any) -> Any:
         """A replica in the embedded DuckDB store file is written through the store broker; a
         replica in any other store by that store's own write face."""

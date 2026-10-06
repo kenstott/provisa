@@ -52,12 +52,20 @@ _log = logging.getLogger(__name__)
 #: ``govdata`` (REQ-1730): its reads are dispatched to the askamerica JDBC connection live on
 #: every request (``pgwire/_pipeline`` → ``_execute_govdata``) and never reach the engine. A
 #: replica of it would be one no query path reads, built by scanning a relation no engine has.
-_NO_REPLICA_TYPES = frozenset({"ingest", "govdata"})
+#:
+#: ``data_profiler`` (REQ-1934): the same as ingest -- its runs append to its result relations in
+#: the org's control plane, which a replica pass would drop and recreate.
+_NO_REPLICA_TYPES = frozenset({"ingest", "govdata", "data_profiler"})
 
 
 def _source_type(source: Any) -> str:
     stype = source.type
     return stype.value if hasattr(stype, "value") else str(stype)
+
+
+def owns_replica(source: Any) -> bool:
+    """Whether reads of ``source``'s tables can go through a replica at all (``_NO_REPLICA_TYPES``)."""
+    return _source_type(source) not in _NO_REPLICA_TYPES
 
 
 def table_floor(source: Any, table: Any, *, promoted: bool) -> str | None:
@@ -221,6 +229,8 @@ class _Registry(NamedTuple):
     sources: dict[str, Any]
     serving: frozenset[tuple[str, str, str]]
     promoted: frozenset[tuple[str, str, str]]
+    #: REQ-1939: table id -> (dataset, store schema) of each generated synthetic dataset's table.
+    synthetic: dict[int, tuple[str, str]]
 
 
 async def _registry(state: Any) -> _Registry:
@@ -236,14 +246,17 @@ async def _registry(state: Any) -> _Registry:
     mdb = getattr(state, "model_db", None)
     tdb = getattr(state, "tenant_db", None)
     if config is None or mdb is None or tdb is None:
-        return _Registry([], {}, frozenset(), frozenset())
+        return _Registry([], {}, frozenset(), frozenset(), {})
+    from provisa.synthetic.datasets import generated_tables
+
     # REQ-1922: the registry is the model (model store); what is promoted is this region's state.
     async with mdb.acquire() as conn:
         registered = await fetch_tables(conn)
         sources = {s.id: s for s in await registered_sources(state, conn)}
+        synthetic = await generated_tables(conn)
     async with tdb.acquire() as conn:
         promoted, serving = await promotion(conn, lambda: store_identity(state))
-    return _Registry(registered, sources, serving, promoted)
+    return _Registry(registered, sources, serving, promoted, synthetic)
 
 
 def _replica_key(reg: dict) -> tuple[str, str, str]:
@@ -256,11 +269,11 @@ def _served_from_replica(
     """The tables with a replica on ``engine`` by the one decision (``reads_replica``), where the
     tables replicated for being busy are ``busy``: the serving set for what reads go to, the
     promoted set for what has (or is to have) a replica."""
-    registered, sources, _serving, _promoted = registry
+    registered, sources, _serving, _promoted, synthetic = registry
     out: list[tuple[Any, dict]] = []
     for reg in registered:
         src = sources.get(reg["source_id"])
-        if src is None:
+        if src is None or reg["id"] in synthetic:  # REQ-1939: served from its synthetic copy
             continue
         if not _data_columns(reg):
             continue
@@ -270,11 +283,17 @@ def _served_from_replica(
 
 
 def _floored(registry: _Registry) -> dict[int, tuple[str, str]]:
-    registered, sources, serving, _promoted = registry
+    registered, sources, serving, _promoted, synthetic = registry
     floored: dict[int, tuple[str, str]] = {}
     for reg in registered:
         src = sources.get(reg["source_id"])
-        if src is None or _source_type(src) in _NO_REPLICA_TYPES:
+        if src is None:
+            continue
+        if reg["id"] in synthetic:
+            # REQ-1939: never read live -- its reads are its synthetic copy, through the engine.
+            floored[reg["id"]] = (src.id, f"synthetic dataset {synthetic[reg['id']][0]!r}")
+            continue
+        if _source_type(src) in _NO_REPLICA_TYPES:
             continue
         setting = table_floor(src, reg, promoted=_replica_key(reg) in serving)
         if setting is not None:
@@ -373,7 +392,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
     # Reads go to a replica only once it exists: a promoted table is served when its first
     # build has completed in this engine's store.
     tables = _served_from_replica(engine, registry, registry.serving)
-    if tables:
+    if tables or registry.synthetic:
         # The store's catalog dials no source, but naming it may open the store (a native engine
         # attaches it on first use): off the event loop, so a slow store holds no request on this
         # worker (REQ-1882).
@@ -442,6 +461,26 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
                 ambiguous[key] = (routes.pop(key).source_id, src.id)
             else:
                 routes[key] = route
+    # REQ-1939: each table of a generated synthetic dataset reads its copy in the dataset's schema.
+    from provisa.federation.replica_address import replica_table_name
+
+    for reg in registry.registered:
+        found = registry.synthetic.get(reg["id"])
+        src = registry.sources.get(reg["source_id"])
+        if found is None or src is None:
+            continue
+        name = physical.get(reg["table_name"], reg["table_name"])
+        target = (
+            read_catalog,
+            found[1],
+            replica_table_name(src.id, reg["schema_name"], reg["table_name"]),
+        )
+        for key in engine_table_keys(
+            engine, state.source_catalogs[src.id], reg["schema_name"], name
+        ):
+            routes[key] = ReplicaRoute(
+                source_id=src.id, table_name=reg["table_name"], target=target
+            )
     return ReplicaRoutes(
         engine_name=engine.name,
         routes=routes,
@@ -452,6 +491,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         },
         promoted=registry.promoted,
         serving=registry.serving,
+        synthetic={tid: found[0] for tid, found in registry.synthetic.items()},
         # The backend's own record, by reference: a later reconcile is seen without republishing.
         unreconciled=backend.unreconciled,
     )

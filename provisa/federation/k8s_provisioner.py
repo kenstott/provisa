@@ -575,6 +575,26 @@ def _config_manifest(shard: str, resource_groups: str | None, size: Any = None) 
     }
 
 
+#: REQ-1494: the Secret holding the platform fake key as ``<fingerprint>.key``, mounted into every
+#: engine pod at :data:`FAKE_KEY_DIR` -- where the engine's fake functions read the key a statement
+#: names by its fingerprint. Written by the control plane, which holds the key.
+FAKE_KEY_SECRET = "provisa-fake-key"
+FAKE_KEY_DIR = "/etc/provisa/fake-key"
+
+
+def _fake_key_manifest() -> dict:
+    from provisa.fakes.digest import fingerprint, platform_key
+
+    key = platform_key()
+    return {
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {"name": FAKE_KEY_SECRET, "namespace": provisioner_settings()["namespace"]},
+        "type": "Opaque",
+        "data": {f"{fingerprint(key)}.key": base64.b64encode(key.hex().encode()).decode()},
+    }
+
+
 def _config_mounts(resource_groups: str | None) -> list[dict]:
     """One subPath mount per config file. ConfigMap keys are not a directory the image can take
     whole: mounting the volume at /etc/trino would hide catalog/, log.properties and everything else
@@ -583,7 +603,8 @@ def _config_mounts(resource_groups: str | None) -> list[dict]:
     if resource_groups is not None:
         files += ["resource-groups.json", "resource-groups.properties"]
     return [{"name": "config", "mountPath": f"/etc/trino/{f}", "subPath": f} for f in files] + [
-        {"name": "data", "mountPath": "/data/trino"}
+        {"name": "data", "mountPath": "/data/trino"},
+        {"name": "fake-key", "mountPath": FAKE_KEY_DIR, "readOnly": True},  # REQ-1494
     ]
 
 
@@ -649,6 +670,7 @@ def _deployment_manifest(
                                 "limits": {"memory": f"{memory}Gi", "cpu": cpu},
                             },
                             "volumeMounts": _config_mounts(resource_groups),
+                            "env": [{"name": "PROVISA_FAKE_KEY_DIR", "value": FAKE_KEY_DIR}],
                             # Liveness deliberately absent: a coordinator busy with a large query
                             # can miss an HTTP probe, and restarting it there turns a slow query
                             # into a failed one plus a cold engine.
@@ -720,6 +742,10 @@ def _deployment_manifest(
                     "volumes": [
                         {"name": "config", "configMap": {"name": f"{name}-config"}},
                         {"name": "data", "emptyDir": {}},
+                        {
+                            "name": "fake-key",
+                            "secret": {"secretName": FAKE_KEY_SECRET, "defaultMode": 0o444},
+                        },
                     ],
                 },
             },
@@ -836,6 +862,7 @@ async def ensure_shard_running(
     """
     settings = provisioner_settings()
     ns = f"/api/v1/namespaces/{settings['namespace']}"
+    await _k8s_apply(f"{ns}/secrets/{FAKE_KEY_SECRET}", _fake_key_manifest())  # REQ-1494
     await _k8s_apply(
         f"{ns}/configmaps/{shard_workload_name(shard)}-config",
         _config_manifest(shard, resource_groups, size),

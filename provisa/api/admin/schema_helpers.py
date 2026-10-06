@@ -302,6 +302,22 @@ async def _fetch_table_with_columns(
     )
     col_rows = [dict(r._mapping) for r in _col_res.fetchall()]
     from provisa.compiler.naming import apply_gql_name, apply_sql_name
+    from provisa.core.schema_org import tag_assignments as _ta
+
+    # REQ-1494: the columns tagged pii -- marked in the editor's test-data mode when they declare
+    # no fake, since a test-data environment shows them as NULL.
+    _pii = {
+        r.column_name
+        for r in (
+            await conn.execute_core(
+                select(_ta.c.column_name).where(
+                    _ta.c.object_type == "column",
+                    _ta.c.table_id == row["id"],
+                    _ta.c.base_tag_id == "pii",
+                )
+            )
+        ).fetchall()
+    }
 
     # REQ-1360: metadata-only implicit measure/dimension annotations, gated by the
     # table's own enable_aggregates/enable_group_by flags.
@@ -341,6 +357,11 @@ async def _fetch_table_with_columns(
             is_implicit_dimension=r["column_name"] in _dimension_names,
             domain_id=r.get("domain_id"),
             epoch_unit=r.get("epoch_unit"),  # REQ-1908
+            fake=r.get("fake"),  # REQ-1494
+            fake_stable=bool(r.get("fake_stable") or False),
+            fake_stable_version=r.get("fake_stable_version"),
+            synthetic_rule=r.get("synthetic_rule"),
+            is_pii=r["column_name"] in _pii,
         )
         for r in col_rows
     ]
@@ -441,6 +462,7 @@ async def _fetch_table_with_columns(
         paging_ceiling_rows=_state.config.graphql_remote.max_rows,
         view_sql=view_sql,
         dq_contract=row.get("dq_contract"),  # REQ-1443
+        profiler_source_id=row.get("profiler_source_id"),  # REQ-1934
         query_template=_query_template_for(row["source_id"], row["table_name"]),  # REQ-1670
         file_glob=row.get("file_glob"),  # REQ-788
         source_file_column=row.get("source_file_column"),  # REQ-788

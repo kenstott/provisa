@@ -218,6 +218,7 @@
     "maskRegex": "Regex",
     "maskConstant": "Constante",
     "maskTruncate": "Afkappen",
+    "maskFake": "Nepwaarde",
     "scopeDomain": "domein",
     "scopePublic": "openbaar",
     "scopeRestricted": "beperkt",

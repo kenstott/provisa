@@ -30,6 +30,9 @@ dependencies = [
     "pyyaml",
     "graphql-core>=3.2",
     "sqlglot",
+    # REQ-1494: the fake methods a column may name, checked when declared and, in the embedded
+    # engine, computed seeded by the keyed digest of the value.
+    "faker",
     "trino",
     "grpcio",
     "grpcio-tools",
@@ -290,6 +293,8 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 "provisa" = ["_ui/**/*", "_config/*.yaml", "_config/demo/files/*"]
 # REQ-1923: the shipped schema of each branded GraphQL source (scripts/bake_graphql_brand_schema.py).
 "provisa.graphql_remote" = ["_known_schemas/*.json.gz"]
+# REQ-1494: the portable fake definition's versioned word lists and templates, and their notice.
+"provisa.fakes" = ["portable/*.json", "portable/THIRD_PARTY_NOTICES"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "tests/steps"]

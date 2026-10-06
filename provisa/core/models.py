@@ -146,6 +146,9 @@ class SourceType(str, Enum):
     # great_expectations is Apache 2.0 and cloud-eligible).
     soda = "soda"
     great_expectations = "great_expectations"
+    # REQ-1934: the built-in Data Profiler — a schedule that profiles its member tables; its result
+    # relations are written into the org's control plane, read in place as ingest's are.
+    data_profiler = "data_profiler"
     # SaaS-API sources reached via Supabase `wrappers` (REQ-1871/1874) — each a STUB: the type is
     # registrable, but no connector/dialect/driver reaches it yet. Per REQ-1874's isolation policy,
     # each will attach through its own dedicated captive Postgres+wrappers instance (the
@@ -802,7 +805,7 @@ class Column(
     visible_to: list[str]
     writable_by: list[str] = []  # roles allowed to mutate this column
     unmasked_to: list[str] = []  # roles that see unmasked data
-    mask_type: str | None = None  # regex, constant, truncate
+    mask_type: str | None = None  # regex, constant, truncate, fake (REQ-1494)
     mask_pattern: str | None = None  # regex pattern
     mask_replace: str | None = None  # regex replacement
     mask_value: str | None = None  # constant value
@@ -836,6 +839,29 @@ class Column(
     # "us"). The compiler translates it in emitted SQL, so every surface reads and filters it as its
     # registered temporal type (ISO 8601 text in GraphQL). Declared, never inferred.
     epoch_unit: str | None = None
+    # REQ-1494: the column's kind of fake, as the operator writes it ("categories((a, b))",
+    # "bool(.8)", "email()"), and whether it is stable -- the same on every engine. Checked against
+    # the rest of the table by provisa.fakes.checks.check_table.
+    fake: str | None = None
+    fake_stable: bool = False
+    # REQ-1494, REQ-1939: the column's synthetic rule, laid over its fake and used by synthetic
+    # generation only -- generation uses the rule, else the fake, else the column's profile.
+    synthetic_rule: str | None = None
+
+    @model_validator(mode="after")
+    def _fake_is_a_kind(self) -> "Column":
+        if self.fake is None and self.mask_type == "fake":
+            raise ValueError(f"column {self.name}: masked with a fake but declares no fake")
+        from provisa.fakes.kinds import FakeRefused, parse
+
+        try:
+            if self.fake is not None:
+                parse(self.fake)
+            if self.synthetic_rule is not None:
+                parse(self.synthetic_rule, rule=True)
+        except FakeRefused as exc:
+            raise ValueError(f"column {self.name}: {exc}") from exc
+        return self
 
     @model_validator(mode="after")
     def _epoch_unit_needs_a_temporal_type(self) -> "Column":
@@ -1089,6 +1115,9 @@ class Table(
     # observed target is DERIVED from this text rather than declared beside it (REQ-939); the
     # results columns are the shipped schema and are replaced at parse, not authored.
     dq_contract: str | None = None
+    # REQ-1934: the Data Profiler source this table is a member of. A table belongs to at most one
+    # profiler; the profiler's schedule profiles it and its result relations carry its history.
+    profiler_source_id: str | None = None
     view_sql: str | None = None  # when set, table is a Provisa-managed view
     # REQ-1318: declarative metric-composed view definition; mutually exclusive with
     # view_sql (one view concept, two definition forms — validated below).

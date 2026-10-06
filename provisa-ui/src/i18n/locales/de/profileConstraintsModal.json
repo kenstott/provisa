@@ -1,0 +1,32 @@
+{
+  "profileConstraintsModal": {
+    "title": "Constraints von {{table}}",
+    "proposed": "Vom letzten Lauf vorgeschlagen",
+    "none": "Der letzte Lauf schlägt keinen Constraint vor, oder die Tabelle wurde noch nicht profiliert.",
+    "decided": "Entschieden",
+    "noneDecided": "Es wurde noch kein Constraint angenommen oder verworfen.",
+    "constraint": "Constraint",
+    "columns": "Spalten",
+    "definition": "Definition",
+    "evidence": "Nachweis",
+    "share": "Erfüllt für",
+    "sampled": "Stichprobe",
+    "accept": "Annehmen",
+    "edit": "Bearbeiten",
+    "acceptEdited": "Bearbeitet annehmen",
+    "cancel": "Abbrechen",
+    "dismiss": "Verwerfen",
+    "export": "An Checker exportieren",
+    "withdraw": "Zurückziehen",
+    "checkerLabel": "Checker-Tabelle für den Export",
+    "exported": "Zum Contract von {{table}} hinzugefügt.",
+    "alreadyExported": "Der Contract von {{table}} enthält diese Prüfung bereits.",
+    "status_accepted": "Angenommen",
+    "status_dismissed": "Verworfen",
+    "kind_not_null": "Nie null",
+    "kind_unique": "Eindeutig",
+    "kind_value_set": "Nur erfasste Werte",
+    "kind_range": "Im beobachteten Bereich",
+    "kind_ordering": "Nie größer oder später als"
+  }
+}

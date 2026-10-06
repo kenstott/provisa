@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import argparse
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -63,6 +65,33 @@ def _stage_bundled_extensions() -> None:
     from provisa.pg_extensions.staging import stage_bundled_pg_extensions
 
     stage_bundled_pg_extensions(Path(pgserver.__file__).parent / "pginstall")
+
+
+@contextmanager
+def _postmaster_environment() -> Iterator[None]:
+    """REQ-1494: the environment a postmaster started here needs for PL/Python, when the bundle
+    staged it -- the running interpreter's home and import paths, so the pg engine's fake functions
+    import provisa and faker. pgserver passes the caller's environment to pg_ctl, so it is set for
+    the start alone and restored after: this process's own environment is not changed."""
+    import pgserver
+
+    pkglib = Path(pgserver.__file__).parent / "pginstall" / "lib" / "postgresql"
+    if not any(pkglib.glob("plpython3.*")):
+        yield
+        return
+    from provisa.pg_extensions.staging import plpython_environment
+
+    added = plpython_environment()
+    before = {k: os.environ.get(k) for k in added}
+    os.environ.update(added)
+    try:
+        yield
+    finally:
+        for k, v in before.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 def _socket_port(sockdir: str) -> int:
@@ -102,9 +131,10 @@ def start(datadir: str, init_sql: str | None = None) -> tuple[str, int]:
     """Ensure a persistent control-plane postgres with a ``provisa`` role and
     ``provisa`` database, apply ``init_sql`` once, and return ``(host, port)`` for
     a unix-socket asyncpg connection."""
-    srv = _server(datadir)
-    _ensure_connection_capacity(srv, datadir)
     _stage_bundled_extensions()  # REQ-1158: make the PyPI-delivered FDWs loadable by the pg fed engine
+    with _postmaster_environment():
+        srv = _server(datadir)
+        _ensure_connection_capacity(srv, datadir)
     if "1" not in srv.psql("SELECT 1 FROM pg_roles WHERE rolname='provisa'"):
         srv.psql("CREATE ROLE provisa LOGIN PASSWORD 'provisa' SUPERUSER")
     fresh = "1" not in srv.psql("SELECT 1 FROM pg_database WHERE datname='provisa'")

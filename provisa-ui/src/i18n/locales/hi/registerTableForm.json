@@ -99,6 +99,13 @@
     "fileGlobPlaceholder": "उदा. orders/*.csv",
     "sourceFileColumnLabel": "स्रोत-फ़ाइल कॉलम",
     "sourceFileColumnHint": "वैकल्पिक — प्रत्येक पंक्ति का फ़ाइल पथ रखने वाला कॉलम",
-    "sourceFileColumnPlaceholder": "उदा. _source_file"
+    "sourceFileColumnPlaceholder": "उदा. _source_file",
+    "profilerResultLabel": "प्रोफ़ाइल परिणाम टेबल",
+    "profilerResultPlaceholder": "परिणाम टेबल चुनें",
+    "profilerNoMembers": "इस प्रोफ़ाइलर में कोई टेबल शामिल नहीं है",
+    "profilerResultOption": "{{member}} · {{kind}}",
+    "profilerRowRulesLabel": "भूमिका के अनुसार पंक्ति नियम",
+    "profilerRowRulesNone": "हर पाठक हर वर्णित कॉलम देखता है।",
+    "profilerRowRuleFailed": "टेबल पंजीकृत हो गई, लेकिन {{role}} का पंक्ति नियम सहेजा नहीं गया: {{message}}"
   }
 }

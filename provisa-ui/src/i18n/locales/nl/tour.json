@@ -30,8 +30,8 @@
         "description": "➕ Nieuwe verbindingen beginnen met deze knop — PostgreSQL, Snowflake, MongoDB, een REST-API, een CSV, en 30+ andere."
       },
       "step3": {
-        "title": "53 brontypen",
-        "description": "Eén connectorlijst omvat elke categorie:<ul><li><strong>Databases</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Cloud warehouses</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Analytics / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Lakes &amp; bestanden</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL &amp; graaf</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>API's</strong> — REST, GraphQL, gRPC</li><li><strong>Streaming</strong> — Kafka</li><li><strong>Enterprise SaaS</strong> — SharePoint, Splunk · plus overheidsdata-abonnementen</li></ul>Kies er een, vul de verbinding in, Opslaan. De lijst ligt niet vast — de native federatie-engines zijn <strong>uitbreidbaar</strong>: declareer een aangepaste Postgres FDW of DuckDB-extensie in de configuratie en Provisa bereikt een nieuw brontype, zonder code."
+        "title": "58 brontypen, 13 categorieën",
+        "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op. De lijst ligt niet vast — de native federatie-engines zijn <strong>uitbreidbaar</strong>: declareer in de configuratie een eigen Postgres-FDW of DuckDB-extensie en Provisa bereikt een nieuw brontype, zonder code.</p>"
       },
       "step4": {
         "title": "Alles wordt een tabel",
@@ -104,6 +104,38 @@
       "stepQualityPanel": {
         "title": "Een kwaliteitscontract opstellen",
         "description": "✅ Schrijf het contract met de hand of bouw controles kolom voor kolom op — null-percentages, rijaantallen, bereiken, actualiteit — en doe vóór het opslaan een <strong>proefrun</strong>. Elke scan wordt toegevoegd, dus deze tabel <em>is</em> de kwaliteitshistorie: zet die in een grafiek, stel er waarschuwingen op in, koppel die aan wat u wilt."
+      },
+      "stepProfilerTable": {
+        "title": "Een tabel profileren",
+        "description": "📊 Bewerk een willekeurige tabel om haar toe te voegen aan een <strong>Data Profiler</strong>, een bron die haar ledentabellen volgens een schema profileert: kolomvormen, verdelingen, waardefrequenties en kinderen per ouder."
+      },
+      "stepProfilerPanel": {
+        "title": "Aan een profiler toevoegen",
+        "description": "Kies een profiler en sla op, gebruik daarna <strong>Nu profileren</strong> en <strong>Profielruns bekijken</strong>. De resultaten komen binnen als tabellen die u net als elke andere registreert en beheert. Zolang u ze niet registreert, ziet geen lezer een profiel."
+      },
+      "stepProfilerChecks": {
+        "title": "Drift en controles",
+        "description": "Elke run wordt vergeleken met de recente runs van de tabel, en een maat die afdrijft wordt gemarkeerd. Een datakwaliteitscontroleur meldt de uitzondering. U kunt ook door het profiel voorgestelde beperkingen accepteren en runs toetsen aan verwachtingen van buiten Provisa."
+      },
+      "stepFakes": {
+        "title": "Een nepwaarde declareren",
+        "description": "🎭 De modus <strong>Testdata</strong> van de kolomlijst toont de <strong>nepwaarde</strong> van elke kolom, zoals <code>email()</code>. Maak alleen identificerende kolommen nep en laat de rest echt. Een kolom kan ook een <strong>synthetische regel</strong> dragen, die alleen geldt bij het genereren van synthetische data."
+      },
+      "stepFakesFill": {
+        "title": "Nepwaarden uit een profiel vullen",
+        "description": "✨ <strong>Vullen vanuit profiel</strong> stelt, op basis van het nieuwste profiel van de tabel, nepwaarden voor identificerende kolommen voor en synthetische regels voor de rest. Er wordt niets opgeslagen voordat u het formulier opslaat."
+      },
+      "stepEnvKinds": {
+        "title": "Testomgevingen om te lezen of om te lezen en schrijven",
+        "description": "Een niet-productieomgeving is <strong>lezend</strong> of <strong>lezend en schrijvend</strong>. Een omgeving die ook schrijft bewaart haar eigen wijzigingen, en een schrijfactie bereikt nooit een bron. Zet <strong>Testdata</strong> aan en elke kolom toont haar nepwaarde; persoonsgegevens zonder nepwaarde verschijnen als NULL."
+      },
+      "stepSynthetic": {
+        "title": "Synthetische data genereren",
+        "description": "🧪 Een <strong>synthetische dataset</strong> vult een niet-productieomgeving met rijen in de vorm van uw geprofileerde tabellen, met dezelfde relaties en dezelfde vertakking, op elke schaal. Een vergelijkingsrapport laat zien hoe dichtbij hij kwam."
+      },
+      "stepSyntheticPrivacy": {
+        "title": "Privé door ontwerp",
+        "description": "🔒 Verklaar een dataset privé met een privacybudget ε. Op elke statistiek die de generator uit een profiel trekt komt gekalibreerde ruis, en het rapport vermeldt wat de ruis heeft weggelaten."
       },
       "step20": {
         "title": "Bouw je opleveringspipeline",

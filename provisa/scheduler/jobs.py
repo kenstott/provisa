@@ -1063,6 +1063,11 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
         assert state.model_db is not None, "the org's model store is bound with its runtime"
         async with state.model_db.acquire() as conn:
             rows = await trigger_repo.list_all(conn)
+        # REQ-1934: a Data Profiler's schedule fires on this scheduler as a trigger's does, so its
+        # jobs follow the org's model wherever the triggers' do.
+        from provisa.profiler.source import register_org_profilers
+
+        await register_org_profilers(scheduler, org_id)
     finally:
         reset_current_env(env_token)
         reset_current_org(org_token)

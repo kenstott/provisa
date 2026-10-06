@@ -13,7 +13,10 @@
       "cache": "快取",
       "cacheTtl": "快取 TTL",
       "effectiveTtl": "生效 TTL",
-      "allowedDomains": "允許的網域"
+      "allowedDomains": "允許的網域",
+      "schedule": "排程",
+      "sample": "抽樣",
+      "lowCardinality": "低基數閾值"
     },
     "namingInherit": "繼承（全域）",
     "cacheEnabled": "已啟用",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "從 Kaggle 重新整理",
     "refreshKaggleHint": "從 Kaggle 重新下載 {{owner}}/{{ref}}，並就地覆寫暫存檔案。你的 Kaggle 權杖不會被儲存 — 請為此次重新整理再次輸入。",
     "kaggleTokenLabel": "Kaggle API 權杖",
-    "refreshKaggleSubmit": "重新整理"
+    "refreshKaggleSubmit": "重新整理",
+    "sampleWhole": "整個資料表",
+    "sampleAbove": "超過 {{cells}} 個儲存格時抽樣",
+    "runProfilerTitle": "立即為每個成員資料表執行",
+    "profilerNoMembers": "沒有資料表加入此剖析器。",
+    "profilerRan": "{{table}}：已剖析",
+    "profilerFailed": "{{table}}：{{error}}"
   }
 }

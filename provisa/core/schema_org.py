@@ -224,6 +224,8 @@ registered_tables = Table(
     Column("view_sql", Text),
     # REQ-1443: the data-quality contract a checker table's rows are the scan results of.
     Column("dq_contract", Text),
+    # REQ-1934: the Data Profiler source this table is a member of; NULL for none.
+    Column("profiler_source_id", Text),
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),
@@ -319,10 +321,16 @@ table_columns = Table(
     Column("scope", Text, nullable=False, server_default="domain"),
     Column("gql_selection", Text),
     Column("epoch_unit", Text),  # REQ-1908: epoch-number storage unit of a temporal column
+    Column("fake", Text),  # REQ-1494: the column's kind of fake, as declared
+    Column("fake_stable", Boolean, nullable=False, server_default=false()),  # REQ-1494
+    # REQ-1494: the portable definition version a stable fake is pinned to; NULL when not stable
+    Column("fake_stable_version", Integer),
+    Column("synthetic_rule", Text),  # REQ-1494, REQ-1939: laid over the fake, for generation
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
     CheckConstraint(
-        "mask_type IN ('regex', 'constant', 'truncate')", name="table_columns_mask_type_check"
+        "mask_type IN ('regex', 'constant', 'truncate', 'fake')",
+        name="table_columns_mask_type_check",
     ),
 )
 
@@ -999,6 +1007,98 @@ scheduled_triggers = Table(
         " OR (kind = 'webhook' AND (url IS NOT NULL OR webhook_name IS NOT NULL))",
         name="scheduled_triggers_kind_fields",
     ),
+)
+
+# REQ-1939: an environment's synthetic datasets. Each names (table, profile run) pairs, a scale and a
+# seed; generated, its tables are written to a store schema of its own and, in this environment
+# only, read in place of the tables' bindings. Environment-local: never copied or promoted.
+synthetic_datasets = Table(
+    "synthetic_datasets",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("seed", BigInteger, nullable=False),
+    Column("scale", Float, nullable=False),
+    # defined | generating | generated | failed
+    Column("status", Text, nullable=False),
+    Column("store_schema", Text, nullable=False),
+    Column("error", Text),
+    Column("generated_at", DateTime(timezone=True)),
+    # REQ-1939: conditional child counts by relationship ([{relationship, condition, count}]) and
+    # the statements checked after generation ([statement, ...])
+    Column("fanout_conditions", JSON, nullable=False, default=list, server_default="[]"),
+    Column("assertions", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-1939, DIFFERENTIAL PRIVACY: the dataset's privacy budget ε; NULL when not private
+    Column("private_epsilon", Float),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+synthetic_dataset_tables = Table(
+    "synthetic_dataset_tables",
+    metadata,
+    Column(
+        "dataset_id",
+        Text,
+        ForeignKey("synthetic_datasets.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    # A table reads one dataset's copy at most, so it belongs to one dataset.
+    Column(
+        "table_id",
+        Integer,
+        ForeignKey("registered_tables.id", ondelete="CASCADE"),
+        primary_key=True,
+        unique=True,
+    ),
+    # The environment holding the profile run (typically prod), and the run.
+    Column("profile_env", Text, nullable=False),
+    Column("run_id", Text, nullable=False),
+    # The table's own scale; NULL takes the dataset's.
+    Column("scale", Float),
+)
+
+# REQ-1934 PROPOSED CONSTRAINTS: the operator's decision on a constraint a profile proposed --
+# accepted (as proposed or edited), or dismissed so it is not proposed as new again. An accepted one
+# is checked by every later profile run of the table and binds synthetic generation (REQ-1939).
+profiler_constraints = Table(
+    "profiler_constraints",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    # kind|column|other: one decision per constraint of a table.
+    Column("signature", Text, nullable=False),
+    Column("kind", Text, nullable=False),  # not_null | unique | value_set | range | ordering
+    Column("column_name", Text, nullable=False),
+    Column("other_column", Text),
+    # The same columns by their registered (physical) names, for synthetic generation (REQ-1939).
+    Column("physical_column", Text, nullable=False),
+    Column("physical_other_column", Text),
+    Column("definition", Text, nullable=False),  # JSON
+    Column("evidence", Text, nullable=False),
+    Column("share", Float),
+    Column("sampled", Boolean, nullable=False),
+    Column("status", Text, nullable=False),  # accepted | dismissed
+    Column("run_id", Text, nullable=False),  # the run that proposed it
+    Column("decided_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("table_id", "signature"),
+)
+
+# REQ-1939: how close a generated dataset came to the profiles it was drawn from.
+synthetic_report = Table(
+    "synthetic_report",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "dataset_id", Text, ForeignKey("synthetic_datasets.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("table_name", Text, nullable=False),
+    Column("column_name", Text),
+    Column("measure", Text, nullable=False),
+    Column("source_value", Float),
+    Column("synthetic_value", Float),
+    Column("delta", Float),
+    Column("note", Text),
 )
 
 # REQ-1742 gap: grpc_remote_router.py's _register_schema has always written its per-table

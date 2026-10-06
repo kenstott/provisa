@@ -40,6 +40,7 @@ import threading
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from provisa.core import config_stamp
 from provisa.core.schema_admin import deployment_settings as _table
@@ -131,6 +132,23 @@ def write(db: "Database", values: dict[str, Any], *, updated_by: str) -> None:
                 _table.insert().values(key=key, value=json.dumps(value), updated_by=updated_by)
             )
     _held = None
+
+
+def create(db: "Database", key: str, value: Any, *, updated_by: str) -> bool:
+    """Store ``value`` for ``key`` only when no value is stored: True when this call stored it.
+    Two processes creating at once agree -- the second insert meets the first's row and stores
+    nothing (REQ-1494: the platform fake key, created at platform start when absent)."""
+    global _held
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(
+                _table.insert().values(key=key, value=json.dumps(value), updated_by=updated_by)
+            )
+    except IntegrityError:
+        return False  # another process stored it first; its value is the one in force
+    finally:
+        _held = None
+    return True
 
 
 # --- the settings that used to be process environment writes -------------------------------------

@@ -118,6 +118,7 @@ nav:
       - Quick Start: quickstart.md
       - Configuration: configuration.md
       - Deployment: deployment.md
+      - Demos for Sales Engineers: sales-engineer-demos.md
   - Query & Interfaces:
       - API Reference: api-reference.md
       - Cypher: cypher.md
@@ -134,6 +135,8 @@ nav:
       - Commands: commands.md
       - Column-Level Lineage: lineage.md
       - Environments: environments.md
+      - Building Test Environments: test-data.md
+      - Fake Methods: fake-methods.md
   - Security & Governance:
       - Security Model: security.md
       - Secrets: secrets.md

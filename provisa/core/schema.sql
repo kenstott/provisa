@@ -203,13 +203,17 @@ CREATE TABLE IF NOT EXISTS table_columns (
     data_type   TEXT,
     writable_by  JSONB NOT NULL DEFAULT '[]',
     unmasked_to  JSONB NOT NULL DEFAULT '[]',
-    mask_type    TEXT CHECK (mask_type IN ('regex', 'constant', 'truncate')),
+    mask_type    TEXT CHECK (mask_type IN ('regex', 'constant', 'truncate', 'fake')),
     mask_pattern TEXT,
     mask_replace TEXT,
     mask_value   TEXT,
     mask_precision TEXT,
     is_primary_key BOOLEAN NOT NULL DEFAULT FALSE,
     epoch_unit   TEXT,  -- REQ-1908: epoch-number storage unit of a temporal column
+    fake         TEXT,  -- REQ-1494: the column's kind of fake, as declared
+    fake_stable  BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1494
+    fake_stable_version INTEGER,  -- REQ-1494: the portable definition version a stable fake is pinned to
+    synthetic_rule TEXT,  -- REQ-1494, REQ-1939: laid over the fake, for synthetic generation
     UNIQUE (table_id, column_name)
 );
 
@@ -259,6 +263,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_contract TEXT;  -- REQ-1443
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS profiler_source_id TEXT;  -- REQ-1934
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;  -- REQ-1634
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS row_materialize BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-1865
@@ -1014,6 +1019,63 @@ CREATE TABLE IF NOT EXISTS scheduled_triggers (
         (kind = 'sql' AND sql IS NOT NULL AND role IS NOT NULL)
         OR (kind = 'webhook' AND (url IS NOT NULL OR webhook_name IS NOT NULL))
     )
+);
+
+-- REQ-1939: an environment's synthetic datasets, their (table, profile run) pairs and their report.
+CREATE TABLE IF NOT EXISTS synthetic_datasets (
+    id            TEXT PRIMARY KEY,
+    seed          BIGINT NOT NULL,
+    scale         DOUBLE PRECISION NOT NULL,
+    status        TEXT NOT NULL,          -- defined | generating | generated | failed
+    store_schema  TEXT NOT NULL,
+    error         TEXT,
+    generated_at  TIMESTAMPTZ,
+    -- REQ-1939: conditional child counts by relationship, and statements checked after generation
+    fanout_conditions JSONB NOT NULL DEFAULT '[]',
+    assertions    JSONB NOT NULL DEFAULT '[]',
+    private_epsilon DOUBLE PRECISION,     -- REQ-1939: the privacy budget ε; NULL: not private
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS synthetic_dataset_tables (
+    dataset_id    TEXT NOT NULL REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
+    table_id      INTEGER NOT NULL UNIQUE REFERENCES registered_tables(id) ON DELETE CASCADE,
+    profile_env   TEXT NOT NULL,
+    run_id        TEXT NOT NULL,
+    scale         DOUBLE PRECISION,
+    PRIMARY KEY (dataset_id, table_id)
+);
+
+-- REQ-1934 PROPOSED CONSTRAINTS: the operator's decision on a constraint a profile proposed.
+CREATE TABLE IF NOT EXISTS profiler_constraints (
+    id            TEXT PRIMARY KEY,
+    table_id      INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    signature     TEXT NOT NULL,
+    kind          TEXT NOT NULL,
+    column_name   TEXT NOT NULL,
+    other_column  TEXT,
+    physical_column        TEXT NOT NULL,
+    physical_other_column  TEXT,
+    definition    TEXT NOT NULL,
+    evidence      TEXT NOT NULL,
+    share         DOUBLE PRECISION,
+    sampled       BOOLEAN NOT NULL,
+    status        TEXT NOT NULL,
+    run_id        TEXT NOT NULL,
+    decided_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (table_id, signature)
+);
+
+CREATE TABLE IF NOT EXISTS synthetic_report (
+    id               SERIAL PRIMARY KEY,
+    dataset_id       TEXT NOT NULL REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
+    table_name       TEXT NOT NULL,
+    column_name      TEXT,
+    measure          TEXT NOT NULL,
+    source_value     DOUBLE PRECISION,
+    synthetic_value  DOUBLE PRECISION,
+    delta            DOUBLE PRECISION,
+    note             TEXT
 );
 
 -- Migration: add kind column to tracked_functions and tracked_webhooks

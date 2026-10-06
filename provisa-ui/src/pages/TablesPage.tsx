@@ -1294,12 +1294,25 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               handleDelete={handleDelete}
                               handleProfile={handleProfile}
                               onPreview={setPreviewTable}
+                              profileColumnsTable={
+                                // REQ-1934: this table's profile, if its columns table is registered.
+                                tables.find(
+                                  (tb) =>
+                                    tb.tableName === `${t.tableName}_profile_columns` &&
+                                    sources.find((s) => s.id === tb.sourceId)?.type ===
+                                      "data_profiler",
+                                ) ?? null
+                              }
                             />
                           ) : (
                             editingTable && (
                               <TableEditForm
                                 editingTable={editingTable}
                                 setEditingTable={setEditingTable}
+                                savedProfilerId={
+                                  tables.find((tb) => tb.id === editingTable.id)
+                                    ?.profilerSourceId ?? null
+                                }
                                 editingColumnTypes={editingColumnTypes}
                                 cacheTtlEdits={cacheTtlEdits}
                                 setCacheTtlEdits={setCacheTtlEdits}

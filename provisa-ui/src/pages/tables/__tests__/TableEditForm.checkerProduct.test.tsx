@@ -125,6 +125,7 @@ const PRODUCTS = [
 function renderForm(table: RegisteredTable, sources: Source[]) {
   render(
     <TableEditForm
+      savedProfilerId={null}
       editingTable={table}
       setEditingTable={vi.fn()}
       editingColumnTypes={{}}

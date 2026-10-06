@@ -198,6 +198,16 @@ export interface TableColumn {
   // enableAggregates/enableGroupBy AND this column is classification-eligible.
   isImplicitMeasure: boolean;
   isImplicitDimension: boolean;
+  // REQ-1494: the column's kind of fake as declared ("categories((a, b))", "email()"), and
+  // whether it is stable -- the same on every engine.
+  fake?: string | null;
+  fakeStable?: boolean;
+  // REQ-1494: the portable definition version a stable fake is pinned to, set when it is saved.
+  fakeStableVersion?: number | null;
+  // REQ-1494, REQ-1939: the synthetic rule laid over the fake, used by synthetic generation only.
+  syntheticRule?: string | null;
+  // REQ-1494: the column is tagged pii (marked in test-data mode when it declares no fake).
+  isPii?: boolean;
 }
 
 // REQ-1360: metadata-only Kimball measure annotation for a table's implicit_measures.
@@ -313,6 +323,7 @@ export interface RegisteredTable {
   apiEndpoint: string | null;
   viewSql: string | null;
   dqContract: string | null; // REQ-1443: the checker contract this results table lands the scans of
+  profilerSourceId?: string | null; // REQ-1934: the Data Profiler source this table is a member of
   queryTemplate?: string | null; // REQ-1670: the Cypher a neo4j table runs (neo4j tables only)
   fileGlob?: string | null; // REQ-788: one logical table over a glob of files (files sources only)
   sourceFileColumn?: string | null; // REQ-788: optional column carrying each row's file path

@@ -30,8 +30,8 @@
         "description": "➕ 新規接続はこのボタンから始まります — PostgreSQL、Snowflake、MongoDB、REST API、CSV、その他30種類以上。"
       },
       "step3": {
-        "title": "53 種類のソースタイプ",
-        "description": "1つのコネクタ一覧があらゆるカテゴリをカバーします：<ul><li><strong>データベース</strong> — PostgreSQL、MySQL、MariaDB、Oracle、SQL Server、Greenplum</li><li><strong>クラウドウェアハウス</strong> — Snowflake、BigQuery、Databricks、Redshift、Microsoft Fabric、Azure Synapse</li><li><strong>分析 / OLAP</strong> — ClickHouse、Druid、Pinot</li><li><strong>レイク＆ファイル</strong> — Iceberg、Delta Lake、Hive、Parquet、CSV、JSON</li><li><strong>NoSQL＆グラフ</strong> — MongoDB、Cassandra、Redis、Neo4j</li><li><strong>API</strong> — REST、GraphQL、gRPC</li><li><strong>ストリーミング</strong> — Kafka</li><li><strong>エンタープライズ SaaS</strong> — SharePoint、Splunk · 加えて政府データのサブスクリプション</li></ul>1つ選び、接続情報を入力し、保存するだけです。この一覧は固定ではありません — ネイティブなフェデレーションエンジンは<strong>拡張可能</strong>です：カスタムの Postgres FDW や DuckDB 拡張を設定で宣言すれば、コード不要で新しいソースタイプに Provisa が対応します。"
+        "title": "58種類のソース、13カテゴリ",
+        "description": "ひとつのピッカーに、カテゴリ別にすべての種類が並びます：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。名前や別名で検索するか、カテゴリのチップで絞り込めます。各種類にはロゴと到達方法のアイコンが付きます。⚡ はその場でライブ読み取り、コピーのアイコンは Provisa が更新済みのレプリカを読む場合です。<p>ひとつ選び、接続を入力して保存します。この一覧は固定ではありません。ネイティブのフェデレーションエンジンは<strong>拡張可能</strong>で、独自の Postgres FDW や DuckDB 拡張を設定で宣言すれば、コードなしで Provisa が新しいソース種類に届きます。</p>"
       },
       "step4": {
         "title": "すべてがテーブルになる",
@@ -104,6 +104,38 @@
       "stepQualityPanel": {
         "title": "品質コントラクトを組み立てる",
         "description": "✅ コントラクトを手書きするか、列ごとにチェックを組み立て (NULL 率、行数、範囲、鮮度)、保存前に<strong>ドライラン</strong>できます。スキャンのたびに追記されるため、このテーブルこそが品質の履歴<em>そのもの</em>です。グラフ化し、アラートを設定し、任意のデータと結合できます。"
+      },
+      "stepProfilerTable": {
+        "title": "テーブルをプロファイルする",
+        "description": "📊 任意のテーブルを編集して <strong>Data Profiler</strong> に追加します。Data Profiler は、メンバーテーブルをスケジュールに従ってプロファイルするソースで、列の形状、分布、値の頻度、親ごとの子の数を記録します。"
+      },
+      "stepProfilerPanel": {
+        "title": "プロファイラーに追加する",
+        "description": "プロファイラーを選んで保存し、<strong>今すぐプロファイル</strong>と<strong>プロファイル実行を表示</strong>を使います。結果はテーブルとして届き、ほかのテーブルと同じように登録して統制します。登録するまで、プロファイルを見られる読み手はいません。"
+      },
+      "stepProfilerChecks": {
+        "title": "ドリフトとチェック",
+        "description": "実行のたびに、テーブルの直近の実行と比較し、ドリフトした指標に印を付けます。例外を上げるのはデータ品質チェッカーです。プロファイルが提案する制約を承認したり、Provisa の外で作られた期待値と実行結果を照合したりすることもできます。"
+      },
+      "stepFakes": {
+        "title": "フェイク値を宣言する",
+        "description": "🎭 列リストの<strong>テストデータ</strong>モードは、各列の<strong>フェイク値</strong>（例：<code>email()</code>）を表示します。フェイクにするのは個人を特定する列だけにして、残りは実データのままにします。列には<strong>合成ルール</strong>も付けられ、これは合成データの生成時にだけ使われます。"
+      },
+      "stepFakesFill": {
+        "title": "プロファイルからフェイク値を埋める",
+        "description": "✨ <strong>プロファイルから入力</strong>は、テーブルの最新プロファイルをもとに、個人を特定する列にはフェイク値を、それ以外の列には合成ルールを提案します。フォームを保存するまで何も保存されません。"
+      },
+      "stepEnvKinds": {
+        "title": "読み取り専用または読み書き可能なテストの環境",
+        "description": "本番以外の環境は<strong>読み取り専用</strong>か<strong>読み書き可能</strong>のどちらかです。読み書き可能な環境は自身の変更を保持し、書き込みがソースに届くことはありません。<strong>テストデータ</strong>をオンにすると、すべての列がフェイク値を表示し、フェイク値のない個人データは NULL になります。"
+      },
+      "stepSynthetic": {
+        "title": "合成データを生成する",
+        "description": "🧪 <strong>合成データセット</strong>は、プロファイル済みテーブルと同じ形の行で本番以外の環境を満たします。リレーションとファンアウトは同じで、規模は自由です。比較レポートで、どこまで近づいたかを確認できます。"
+      },
+      "stepSyntheticPrivacy": {
+        "title": "設計段階からプライベート",
+        "description": "🔒 プライバシー予算 ε を指定して、データセットを非公開にできます。ジェネレーターがプロファイルから取り出すあらゆる統計に調整済みのノイズが加わり、レポートにはノイズが取り除いたものが示されます。"
       },
       "step20": {
         "title": "配信パイプラインを構築する",

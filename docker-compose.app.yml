@@ -49,8 +49,12 @@ services:
       # filesystem, the key is lost when the container is replaced (a rebuild, an image
       # update), and the next one cannot open the secrets vault and refuses to start.
       - provisa_data:/var/lib/provisa
+      # REQ-1494: Provisa writes the platform fake key here as <fingerprint>.key; the engine
+      # (docker-compose.core.yml) mounts the same directory to read it.
+      - ${PROVISA_FAKE_KEY_DIR:-./.provisa/fake-key}:/etc/provisa/fake-key
     environment:
       PROVISA_DATA_DIR: /var/lib/provisa
+      PROVISA_FAKE_KEY_DIR: /etc/provisa/fake-key  # REQ-1494
       # The deployment's master key, when the operator supplies one (a 32-byte key, base64):
       # it is used ahead of any key in the data directory. Unset, the key in the volume is used.
       PROVISA_ENCRYPTION_KEY: "${PROVISA_ENCRYPTION_KEY:-}"

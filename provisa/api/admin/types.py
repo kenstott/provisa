@@ -344,6 +344,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     view_metrics: ViewMetricsType | None = None  # REQ-1318: metric-composed view spec
     # REQ-1443: the data-quality contract this table's rows are the scan results of, verbatim.
     dq_contract: str | None = None
+    # REQ-1934: the Data Profiler source this table is a member of.
+    profiler_source_id: str | None = None
     # REQ-1670: the Cypher a neo4j table runs (from its persisted api_endpoints row).
     query_template: str | None = None
     # REQ-788: one logical table over a glob of files; source_file_column names an optional column
@@ -493,6 +495,15 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     domain_id: str | None = None
     # REQ-1908: epoch-number storage unit ("s" | "ms" | "us") of a temporal column; null otherwise.
     epoch_unit: str | None = None
+    # REQ-1494: the column's kind of fake as declared, and whether it is stable.
+    fake: str | None = None
+    fake_stable: bool = False
+    # REQ-1494: the portable definition version a stable fake is pinned to; set when saved.
+    fake_stable_version: int | None = None
+    # REQ-1494, REQ-1939: the column's synthetic rule, laid over its fake for generation only.
+    synthetic_rule: str | None = None
+    # REQ-1494: the column is tagged pii.
+    is_pii: bool = False
 
 
 @strawberry.type
@@ -820,6 +831,11 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     # REQ-1908: the source stores this temporal column as an epoch number in this unit
     # ("s" | "ms" | "us"). Mirrors the core Column model's epoch_unit.
     epoch_unit: str | None = None
+    # REQ-1494: the column's kind of fake as declared, and whether it is stable.
+    fake: str | None = None
+    fake_stable: bool = False
+    # REQ-1494, REQ-1939: the column's synthetic rule, laid over its fake for generation only.
+    synthetic_rule: str | None = None
 
 
 @strawberry.input
@@ -901,6 +917,8 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     # results of. The contract names what it scans, so the observed target is DERIVED from it
     # (REQ-939) and the results columns are replaced by the shipped schema at load.
     dq_contract: str | None = None
+    # REQ-1934: the Data Profiler source this table joins; None leaves (or keeps it out of) any.
+    profiler_source_id: str | None = None
     # REQ-1670: the Cypher that produces a neo4j table's rows; required under a neo4j source.
     query_template: str | None = None
     # REQ-788: a files source table read as ONE logical table over the files this glob matches

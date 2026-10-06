@@ -526,6 +526,14 @@ export function TourProvider({ children }: { children: ReactNode }) {
             navigate(route);
           }
         }
+        for (const open of step.ensureOpen ?? []) {
+          if (document.querySelector(open.unlessPresent)) continue;
+          const opener = await waitForElement(open.click, undefined, abort.signal);
+          // A run superseded while it waited must not click: the run that replaced it checks the
+          // same state itself, and two clicks on a toggle leave it where it started.
+          if (cancelled) return;
+          opener.click();
+        }
         if (step.clickBefore) {
           const trigger = await waitForElement(step.clickBefore, undefined, abort.signal);
           trigger.click();

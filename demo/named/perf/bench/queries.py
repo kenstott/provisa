@@ -16,7 +16,7 @@ POST /data/graphql (GraphQL-JSON encoding on the SAME HTTP transport http alread
 Arrow Flight (gRPC transport + Arrow encoding), grpc = Provisa's OTHER gRPC-based data-access
 surface, provisa/grpc/server.py's generated ProvisaService (gRPC transport + Protobuf encoding) — a
 distinct point in the same space from Flight, not an unrelated category. Schema/table names match
-demo/named/perf/generate_*.py and fragment.yaml exactly.
+demo/named/perf/generate_*.py and config.yaml exactly.
 
 Chokepoints covered (see conversation design): large result set (both single-source and federated —
 large_scan vs large_federated_join), tiny rapid lookups, single-source vs cross-engine federation,
@@ -30,7 +30,7 @@ filters are ``{field: {eq: value}}``/``{gte:}``/``{lte:}`` (provisa/compiler/typ
 FILTER_TYPE_MAP), and group-by aggregation is ``{field}GroupBy(by: [...]) { groupKey aggregate
 { count sum { col } } }`` (schema_gen.py's _build_group_by_query_field + aggregate_gen.py's
 build_agg_fields_type). HAS_EVENT/HAS_DOC relationships are now registered between orders and
-order_events/order_docs in fragment.yaml (bench-orders-events, bench-orders-docs), so
+order_events/order_docs in config.yaml (bench-orders-events, bench-orders-docs), so
 federated_join's GraphQL text is a single nested selection under ``pb__orders`` — ``orderEvents``
 (one-to-many list field) and ``orderDoc`` (one-to-one singular field, singularized from HAS_DOC's
 target). Neither relationship sets ``graphql_alias``, so these field names come from
@@ -121,7 +121,7 @@ QUERIES: list[Query] = [
         # docstring. Variable name matches the SQL/Cypher params dict key (order_id) so the same
         # `q.params` dict feeds all three transports' request bodies unchanged.
         # pb__orders, not bare "orders" — re-verified live 2026-09-27 via __schema introspection
-        # against org_admin's role schema on the perf-bench VM: fragment.yaml's domain naming puts
+        # against org_admin's role schema on the perf-bench VM: config.yaml's domain naming puts
         # this table's root field under a "pb__" prefix (a naming collision elsewhere in this
         # demo's schema forces disambiguation, same mechanism as the gRPC "Pb" prefix already
         # documented in this file's own docstring/point_lookup comment above).
@@ -195,7 +195,7 @@ QUERIES: list[Query] = [
         # earlier asymmetry did not reproduce and looks like a run-condition artifact (process/
         # connection state at the time), not an architectural defect — flag if it recurs.
         sql="SELECT region, sum(amount) AS revenue, count(*) AS n FROM perf_bench.orders GROUP BY region",
-        # ordersGroupBy: schema_gen.py's _build_group_by_query_field (gated by fragment.yaml's
+        # ordersGroupBy: schema_gen.py's _build_group_by_query_field (gated by config.yaml's
         # orders.enable_group_by: true). aggregate.sum.amount == revenue, aggregate.count == n —
         # sum's sub-field is the raw column name "amount" (aggregate_gen.py keys AggregateFields
         # sub-messages by physical col_name, not camelCase).
@@ -247,7 +247,7 @@ QUERIES: list[Query] = [
             JOIN perf_bench.order_docs d ON d.order_id = o.order_id
             WHERE o.order_id BETWEEN :lo AND :hi
         """,
-        # HAS_EVENT/HAS_DOC are now registered (fragment.yaml relationships: bench-orders-events,
+        # HAS_EVENT/HAS_DOC are now registered (config.yaml relationships: bench-orders-events,
         # bench-orders-docs), so this is one nested GraphQL selection under pb__orders, matching
         # the sql/cypher variants' real join. Field names are NOT the Cypher `alias`
         # (HAS_EVENT/HAS_DOC) -- neither relationship sets `graphql_alias`, so
@@ -324,7 +324,7 @@ QUERIES: list[Query] = [
         """,
         # See point_lookup's comment: re-verified against the LIVE /data/graph-schema endpoint,
         # not reconstructed offline. Confirmed present: node_labels "PerfBench:Orders" and
-        # "PerfBench:OrderItems", relationship type "HAS_ITEM" (fragment.yaml's registered FK
+        # "PerfBench:OrderItems", relationship type "HAS_ITEM" (config.yaml's registered FK
         # alias; V002 requires an approved relationship for ANY join, same-source or cross-engine).
         # camelCase properties per the live /data/graph-schema naming authority (see point_lookup's
         # comment) — "orderId"/"customerId", not the SQL column spelling.

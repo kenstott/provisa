@@ -20,6 +20,8 @@ Type validation ensures invalid combinations are rejected at config load time.
 
 from __future__ import annotations
 
+from typing import Any
+
 from provisa.compiler.sql_literals import sql_literal
 
 from dataclasses import dataclass
@@ -32,6 +34,9 @@ class MaskType(str, Enum):
     regex = "regex"
     constant = "constant"
     truncate = "truncate"
+    # REQ-1494: the column's declared kind of fake, computed in the engine through the faked
+    # projection of its table (provisa.fakes.projection), never by substituting a reference.
+    fake = "fake"
 
 
 # the engine base types that support regex masking
@@ -67,6 +72,12 @@ class MaskingRule:  # REQ-038, REQ-040, REQ-263
     value: int | float | str | None = None
     # truncate fields
     precision: str | None = None
+    # fake fields (REQ-1494): the column's declared fake and whether it is stable
+    fake: str | None = None
+    fake_stable: bool = False
+    fake_stable_version: int | None = None  # the portable definition version it is pinned to
+    # what the fake computes from where it is measured (provisa.fakes.measured), bound at model build
+    fake_measured: Any = None
 
 
 class MaskingValidationError(Exception):
@@ -107,6 +118,12 @@ def validate_masking_rule(  # REQ-038, REQ-040, REQ-042
         if not rule.precision:
             raise MaskingValidationError(
                 f"Column {column_name!r}: truncate masking requires 'precision'"
+            )
+
+    elif rule.mask_type == MaskType.fake:
+        if not rule.fake:
+            raise MaskingValidationError(
+                f"Column {column_name!r} is masked with a fake but declares no kind of fake"
             )
 
     elif rule.mask_type == MaskType.constant:
@@ -172,6 +189,11 @@ def build_mask_expression(  # REQ-040, REQ-263
 
     if rule.mask_type == MaskType.truncate:
         return f"DATE_TRUNC('{rule.precision}', {column_ref})"
+
+    if rule.mask_type == MaskType.fake:
+        raise MaskingValidationError(
+            "a fake is read through its table's faked projection, not substituted per reference"
+        )
 
     raise MaskingValidationError(f"Unknown mask type: {rule.mask_type!r}")
 
@@ -275,4 +297,9 @@ def apply_mask_to_value(rule: MaskingRule, value, data_type: str):  # REQ-040, R
     if rule.mask_type == MaskType.truncate:
         assert rule.precision is not None
         return _truncate_temporal(value, rule.precision)
+    if rule.mask_type == MaskType.fake:
+        # REQ-1494: every fake a reader receives is computed by the engine serving the read.
+        raise MaskingValidationError(
+            "a faked column is computed by the engine; a row outside a read cannot show its fake"
+        )
     raise MaskingValidationError(f"Unknown mask type: {rule.mask_type!r}")

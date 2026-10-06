@@ -99,6 +99,13 @@
     "fileGlobPlaceholder": "p. ex. orders/*.csv",
     "sourceFileColumnLabel": "Colonne du fichier source",
     "sourceFileColumnHint": "facultatif — une colonne contenant le chemin de fichier de chaque ligne",
-    "sourceFileColumnPlaceholder": "p. ex. _source_file"
+    "sourceFileColumnPlaceholder": "p. ex. _source_file",
+    "profilerResultLabel": "Table de résultats du profil",
+    "profilerResultPlaceholder": "Choisissez une table de résultats",
+    "profilerNoMembers": "Aucune table n'a rejoint ce profileur",
+    "profilerResultOption": "{{member}} · {{kind}}",
+    "profilerRowRulesLabel": "Règles de lignes par rôle",
+    "profilerRowRulesNone": "Chaque lecteur voit toutes les colonnes décrites.",
+    "profilerRowRuleFailed": "La table a été enregistrée, mais la règle de lignes de {{role}} n'a pas été enregistrée : {{message}}"
   }
 }

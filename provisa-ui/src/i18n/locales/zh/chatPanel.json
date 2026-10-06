@@ -1,0 +1,13 @@
+{
+  "chatPanel": {
+    "tryAsking": "试着问：",
+    "suggestion": {
+      "name": "你为什么叫 Polly？",
+      "page": "我在哪个页面？",
+      "sources": "注册了哪些数据源？",
+      "inflation": "帮我找通货膨胀数据",
+      "profile": "对 orders 表进行剖析",
+      "fakes": "为测试数据给 customers 表设置虚构姓名"
+    }
+  }
+}
