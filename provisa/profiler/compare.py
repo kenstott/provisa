@@ -131,6 +131,19 @@ def measures_of(results: dict[str, list[dict]]) -> RunMeasures:
         full = name in freqs
         counts = freqs[name] if full else tops[name]
         out.categories[name] = Categories({v: n / rows for v, n in counts.items()}, full)
+    for c in results.get("correlations", []):
+        cols = tuple(json.loads(c["involved_columns"]))
+        scalar(
+            ("correlation", c["column_name"], c["other_column"], c["measure"]),
+            c["value"],
+            False,
+            cols,
+        )
+    for d in results.get("dependencies", []):
+        cols = tuple(json.loads(d["involved_columns"]))
+        parents = ", ".join(p for p in (d["parent_1"], d["parent_2"]) if p is not None)
+        key = ("dependency", d["column_name"], parents, "mutual_information")
+        scalar(key, d["mutual_information"], False, cols)
     fan_points: dict[str, dict[float, float]] = {}
     for f in results.get("fanout", []):
         fan_points.setdefault(f["relationship"], {})[round(float(f["q"]), 2)] = float(f["value"])
@@ -242,7 +255,16 @@ def pooled_categories(parts: list[tuple[Categories, int]]) -> dict[str | None, f
 
 # -- the comparison ------------------------------------------------------------------------------
 
-DRIFT_SCOPES = ("run", "table", "key", "column", "category", "relationship")
+DRIFT_SCOPES = (
+    "run",
+    "table",
+    "key",
+    "column",
+    "category",
+    "relationship",
+    "correlation",
+    "dependency",
+)
 
 
 def _row(

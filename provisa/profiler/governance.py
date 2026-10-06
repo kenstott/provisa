@@ -36,7 +36,9 @@ from provisa.compiler.sql_literals import sql_literal
 from provisa.profiler.schema import field_names
 
 # The kinds whose every row holds values of the column it describes.
-VALUE_KINDS = frozenset({"quantiles", "histogram", "top_values", "shapes", "fits", "fit_quality"})
+VALUE_KINDS = frozenset(
+    {"quantiles", "histogram", "top_values", "shapes", "fits", "fit_quality", "joint_counts"}
+)
 # The fields of a columns row that hold values of the column it describes.
 COLUMN_VALUE_FIELDS = (
     "min_value",
@@ -71,7 +73,7 @@ COLUMN_KINDS = VALUE_KINDS | {"columns", "plausible_type"}
 # The kinds whose rows list every described column they speak of in ``involved_columns`` (a JSON
 # array), the ``column_name`` of a row among them; a row whose ``value_bearing`` is set holds values
 # of those columns.
-INVOLVED_KINDS = frozenset({"duplicates", "drift"})
+INVOLVED_KINDS = frozenset({"duplicates", "drift", "correlations", "dependencies", "joint_counts"})
 
 
 @dataclass(frozen=True)
@@ -82,6 +84,9 @@ class ColumnRule:
     unmasked_to: frozenset[str]
     masked: bool
     pii: bool
+    # The many-to-one relationship a parent table's column is reached through (named
+    # ``<relationship>.<column>`` in the dependence measures); None for the profiled table's own.
+    relationship: str | None = None
 
     def seen_by(self, roles: frozenset[str]) -> bool:
         return bool(self.visible_to & roles)
@@ -92,7 +97,20 @@ class ColumnRule:
 
 
 async def column_rules(conn: Any, state: Any, table_id: int) -> list[ColumnRule]:
-    """The profiled table's current column rules, for the columns its profile describes."""
+    """The current column rules of the profiled table, for the columns its profile describes, and
+    of each parent table its dependence measures reach (REQ-1934): a parent column is seen, and
+    seen unmasked, as its own table's rules say."""
+    from provisa.profiler.run import parents_of
+
+    rules = await _table_rules(conn, state, table_id, None)
+    for parent in parents_of(state, table_id):
+        rules += await _table_rules(conn, state, parent.table_id, parent.relationship)
+    return rules
+
+
+async def _table_rules(
+    conn: Any, state: Any, table_id: int, relationship: str | None
+) -> list[ColumnRule]:
     from provisa.core.schema_org import table_columns as tc
     from provisa.profiler.run import PROFILE_ROLE, column_tags
 
@@ -113,11 +131,12 @@ async def column_rules(conn: Any, state: Any, table_id: int) -> list[ColumnRule]
         rules.append(
             ColumnRule(
                 physical=name,
-                exposed=exposed,
+                exposed=exposed if relationship is None else f"{relationship}.{exposed}",
                 visible_to=frozenset(visible_to),
                 unmasked_to=frozenset(unmasked_to),
                 masked=mask_type is not None,
                 pii="pii" in tags.get(name, set()),
+                relationship=relationship,
             )
         )
     return rules
@@ -203,11 +222,12 @@ def prefill(kind: str, fields: list[str], rules: list[ColumnRule]) -> dict:
     row rule keeping the rows that speak only of described columns it may see -- for the value
     kinds and value-bearing rows, only of those it sees unmasked and untagged.
     """
-    readers = sorted(set().union(*(r.visible_to for r in rules)) if rules else set())
+    own = [r for r in rules if r.relationship is None]
+    readers = sorted(set().union(*(r.visible_to for r in own)) if own else set())
     restricted_readers = {
         role
         for role in readers
-        if any(r.seen_by(frozenset({role})) and r.restricted_for(frozenset({role})) for r in rules)
+        if any(r.seen_by(frozenset({role})) and r.restricted_for(frozenset({role})) for r in own)
     }
     columns = []
     for name in fields:
@@ -229,12 +249,12 @@ def prefill(kind: str, fields: list[str], rules: list[ColumnRule]) -> dict:
             if found is not None:
                 row_rules.append({"roleId": role, "filter": found})
     elif kind in COLUMN_KINDS:
-        everything = [r.exposed for r in rules]
+        everything = [r.exposed for r in own]
         for role in readers:
             one = frozenset({role})
             allowed = [
                 r.exposed
-                for r in rules
+                for r in own
                 if r.seen_by(one) and (kind not in VALUE_KINDS or not r.restricted_for(one))
             ]
             if allowed != everything:

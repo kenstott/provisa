@@ -14,7 +14,7 @@ A profiler source holds a name, a schedule and its run default, and nothing else
 cron expression, the recurrence scheduled triggers use (REQ-1003), and fires on the same scheduler;
 the run defaults are ``sample_above_cells`` -- None profiles every row, a number is a budget of cells
 (rows times profiled columns): a table with more is profiled from a sample of about that many cells --
-the low-cardinality limit, and the drift window, season and thresholds. All live in the source's
+the low-cardinality limit, the drift window, season and thresholds, and the dependence bounds. All live in the source's
 ``mapping`` (REQ-251); the source form supplies each default, so a stored mapping holds every one.
 
 Membership is on the table (``registered_tables.profiler_source_id``); a table belongs to at most
@@ -50,6 +50,10 @@ class ProfilerSettings:
     drift_slope: float  # the trend's change across the window, in MADs
     drift_ks: float
     drift_psi: float
+    # REQ-1934 DEPENDENCE BETWEEN COLUMNS: the most numbers entered in the correlation matrix, and
+    # the most distinct values a category may have to enter it and a joint count.
+    correlation_max_columns: int
+    joint_max_distinct: int
 
 
 # none: every previous run; daily: runs at the same hour of the day; weekly: on the same weekday;
@@ -66,6 +70,8 @@ _SETTINGS = (
     "drift_slope",
     "drift_ks",
     "drift_psi",
+    "correlation_max_columns",
+    "joint_max_distinct",
 )
 
 
@@ -127,6 +133,8 @@ def profiler_settings(source_id: str, mapping: dict) -> ProfilerSettings:
         drift_slope=_positive_number(source_id, mapping, "drift_slope"),
         drift_ks=_positive_number(source_id, mapping, "drift_ks"),
         drift_psi=_positive_number(source_id, mapping, "drift_psi"),
+        correlation_max_columns=_positive_int(source_id, mapping, "correlation_max_columns"),
+        joint_max_distinct=_positive_int(source_id, mapping, "joint_max_distinct"),
     )
 
 

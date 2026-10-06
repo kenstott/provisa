@@ -22,6 +22,10 @@
     "driftKsLabel": "KS threshold",
     "driftKsDescription": "A distribution whose Kolmogorov-Smirnov statistic against the window's pooled distribution exceeds this is drifting.",
     "driftPsiLabel": "PSI threshold",
-    "driftPsiDescription": "A distribution whose population stability index against the window's pooled distribution exceeds this is drifting."
+    "driftPsiDescription": "A distribution whose population stability index against the window's pooled distribution exceeds this is drifting.",
+    "correlationMaxLabel": "Most numeric columns correlated",
+    "correlationMaxDescription": "How many numeric columns, the table's and its parent tables', enter the correlation matrix and the dependency network.",
+    "jointMaxDistinctLabel": "Most category values",
+    "jointMaxDistinctDescription": "A text column with no more distinct values than this enters the correlations and joint counts as a category."
   }
 }

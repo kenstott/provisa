@@ -22,6 +22,10 @@
     "driftKsLabel": "Soglia KS",
     "driftKsDescription": "Una distribuzione la cui statistica di Kolmogorov-Smirnov rispetto alla distribuzione aggregata della finestra supera questo valore è in deriva.",
     "driftPsiLabel": "Soglia PSI",
-    "driftPsiDescription": "Una distribuzione il cui indice di stabilità della popolazione rispetto alla distribuzione aggregata della finestra supera questo valore è in deriva."
+    "driftPsiDescription": "Una distribuzione il cui indice di stabilità della popolazione rispetto alla distribuzione aggregata della finestra supera questo valore è in deriva.",
+    "correlationMaxLabel": "Numero massimo di colonne numeriche correlate",
+    "correlationMaxDescription": "Quante colonne numeriche, della tabella e delle sue tabelle padre, entrano nella matrice di correlazione e nella rete delle dipendenze.",
+    "jointMaxDistinctLabel": "Numero massimo di valori di categoria",
+    "jointMaxDistinctDescription": "Una colonna di testo con non più valori distinti di questo entra nelle correlazioni e nei conteggi congiunti come categoria."
   }
 }

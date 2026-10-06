@@ -177,3 +177,50 @@ def test_drift_default_rules_follow_each_involved_column():
     assert rules["auditor"] == (
         "(value_bearing = FALSE OR POSITION('\"ssn\"' IN involved_columns) = 0)"
     )
+
+
+# A parent table's column, reached through the customer relationship: the auditor cannot see it.
+_TIER = ColumnRule(
+    "tier",
+    "customer.tier",
+    frozenset({"org_admin", "analyst", "outsider"}),
+    frozenset({"org_admin", "analyst", "outsider"}),
+    masked=False,
+    pii=False,
+    relationship="customer",
+)
+
+
+def test_dependence_rows_follow_every_column_they_speak_of_parents_included():
+    """REQ-1934 DEPENDENCE BETWEEN COLUMNS: a correlation or dependency is shown only to a viewer
+    who sees both columns, a parent's by its own table's rules; a joint count holds values, so a
+    restricted column's is withheld."""
+    import json
+
+    def corr(a, b):
+        return {"column_name": a, "involved_columns": json.dumps([a, b]), "value": 0.5}
+
+    results = {
+        "correlations": [corr("id", "salary"), corr("id", "customer.tier"), corr("id", "email")],
+        "joint_counts": [
+            {"column_name": "id", "involved_columns": json.dumps(["id", "email"])},
+            {"column_name": "id", "involved_columns": json.dumps(["id", "customer.tier"])},
+        ],
+    }
+    rules = [*RULES, _TIER]
+    analyst = safe_run(results, rules, frozenset({"analyst"}))
+    assert [json.loads(r["involved_columns"]) for r in analyst["correlations"]] == [
+        ["id", "customer.tier"],
+        ["id", "email"],
+    ]
+    # email is masked to the analyst: its joint counts (values) are withheld.
+    assert [json.loads(r["involved_columns"]) for r in analyst["joint_counts"]] == [
+        ["id", "customer.tier"]
+    ]
+    auditor = safe_run(results, rules, frozenset({"auditor"}))
+    assert len(auditor["correlations"]) == 2 and len(auditor["joint_counts"]) == 1
+    # The readers a result table starts with are the profiled table's, not a parent's.
+    defaults = prefill("correlations", list(field_names("correlations")), rules)
+    assert defaults["columns"][0]["visibleTo"] == sorted(_ALL)
+    by_role = {r["roleId"]: r["filter"] for r in defaults["rowRules"]}
+    assert "POSITION('\"customer.tier\"' IN involved_columns) = 0" in by_role["auditor"]

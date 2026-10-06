@@ -33,6 +33,9 @@
     "duplicateRows": "{{rows}} ({{pct}}%)",
     "kind_drift": "तुलना",
     "kind_duplicates": "डुप्लिकेट पंक्तियाँ और कुंजियाँ",
-    "kind_repeats": "सबसे अधिक दोहराई गई पंक्तियाँ"
+    "kind_repeats": "सबसे अधिक दोहराई गई पंक्तियाँ",
+    "kind_correlations": "सहसंबंध",
+    "kind_dependencies": "निर्भरताएँ",
+    "kind_joint_counts": "संयुक्त गणनाएँ"
   }
 }

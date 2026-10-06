@@ -33,6 +33,9 @@
     "duplicateRows": "{{rows}} ({{pct}}%)",
     "kind_drift": "Сравнение",
     "kind_duplicates": "Повторяющиеся строки и ключи",
-    "kind_repeats": "Наиболее повторяющиеся строки"
+    "kind_repeats": "Наиболее повторяющиеся строки",
+    "kind_correlations": "Корреляции",
+    "kind_dependencies": "Зависимости",
+    "kind_joint_counts": "Совместные частоты"
   }
 }

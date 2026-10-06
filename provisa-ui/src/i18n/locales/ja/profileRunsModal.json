@@ -33,6 +33,9 @@
     "duplicateRows": "{{rows}} ({{pct}}%)",
     "kind_drift": "比較",
     "kind_duplicates": "重複した行とキー",
-    "kind_repeats": "最も多く繰り返された行"
+    "kind_repeats": "最も多く繰り返された行",
+    "kind_correlations": "相関",
+    "kind_dependencies": "依存関係",
+    "kind_joint_counts": "同時度数"
   }
 }

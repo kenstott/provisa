@@ -369,7 +369,7 @@ class _FakePipeline:
 def _target(key="id"):
     from provisa.profiler.run import Target
 
-    return Target(7, "orders", "sales.orders", _COLUMNS, [], {}, _META, key, [])
+    return Target(7, "orders", "sales.orders", _COLUMNS, [], {}, _META, key, [], [])
 
 
 def _percent(sql: str) -> float:

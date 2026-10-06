@@ -33,6 +33,9 @@
     "duplicateRows": "{{rows}}（{{pct}}%）",
     "kind_drift": "比較",
     "kind_duplicates": "重複的行和鍵",
-    "kind_repeats": "重複最多的行"
+    "kind_repeats": "重複最多的行",
+    "kind_correlations": "相關性",
+    "kind_dependencies": "依賴關係",
+    "kind_joint_counts": "聯合計數"
   }
 }

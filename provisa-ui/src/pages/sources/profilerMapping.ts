@@ -22,6 +22,8 @@ export const PROFILER_DEFAULTS: Record<string, string> = {
   drift_slope: "3",
   drift_ks: "0.2",
   drift_psi: "0.25",
+  correlation_max_columns: "20",
+  joint_max_distinct: "20",
 };
 
 /** The drift seasons a profiler's baseline can follow (provisa/profiler/source.py DRIFT_SEASONS). */

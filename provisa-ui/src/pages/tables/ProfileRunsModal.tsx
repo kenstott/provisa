@@ -33,6 +33,9 @@ const KINDS = [
   "fit_quality",
   "fanout_runs",
   "fanout",
+  "correlations",
+  "dependencies",
+  "joint_counts",
   "duplicates",
   "repeats",
 ] as const;

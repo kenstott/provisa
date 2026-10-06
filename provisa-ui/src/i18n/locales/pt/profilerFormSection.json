@@ -22,6 +22,10 @@
     "driftKsLabel": "Limite de KS",
     "driftKsDescription": "Uma distribuição cuja estatística de Kolmogorov-Smirnov em relação à distribuição agregada da janela excede este valor está em desvio.",
     "driftPsiLabel": "Limite de PSI",
-    "driftPsiDescription": "Uma distribuição cujo índice de estabilidade populacional em relação à distribuição agregada da janela excede este valor está em desvio."
+    "driftPsiDescription": "Uma distribuição cujo índice de estabilidade populacional em relação à distribuição agregada da janela excede este valor está em desvio.",
+    "correlationMaxLabel": "Máximo de colunas numéricas correlacionadas",
+    "correlationMaxDescription": "Quantas colunas numéricas, da tabela e das suas tabelas-mãe, entram na matriz de correlação e na rede de dependências.",
+    "jointMaxDistinctLabel": "Máximo de valores de categoria",
+    "jointMaxDistinctDescription": "Uma coluna de texto com no máximo este número de valores distintos entra nas correlações e contagens conjuntas como categoria."
   }
 }

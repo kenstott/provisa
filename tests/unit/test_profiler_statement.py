@@ -20,7 +20,12 @@ import duckdb
 import pytest
 import sqlglot
 
-from provisa.profiler.run import result_rows, sample_fraction, Target
+from provisa.profiler.run import (
+    NOT_FROM_THE_PROFILE_STATEMENT,
+    Target,
+    result_rows,
+    sample_fraction,
+)
 from provisa.profiler.schema import RESULT_KINDS, field_names
 from provisa.profiler.statement import (
     ColumnSpec,
@@ -116,10 +121,12 @@ def test_every_result_row_has_its_kinds_shipped_fields(con):
 
     names, rows = _run(con, profile_sql("d.orders", _COLUMNS, _FANOUT, _WHOLE, 100, []))
     agg = parse_profile_result(names, rows, _COLUMNS, _FANOUT, [])
-    target = Target(1, "orders", "d.orders", _COLUMNS, _FANOUT, {"code": {"pii"}}, None, None, [])
+    target = Target(
+        1, "orders", "d.orders", _COLUMNS, _FANOUT, {"code": {"pii"}}, None, None, [], []
+    )
     out = result_rows(target, agg, "r1", datetime.now(UTC), 100)
-    # runs and drift are the run's own row and its comparison, written by profile_table.
-    assert set(out) == set(RESULT_KINDS) - {"runs", "drift"}
+    # The run row, its comparison and the dependence measures are written by profile_table.
+    assert set(out) == set(RESULT_KINDS) - NOT_FROM_THE_PROFILE_STATEMENT
     for kind, kind_rows in out.items():
         # orders has no repeated row, so no most-repeated rows to list.
         assert bool(kind_rows) == (kind != "repeats"), kind
@@ -173,7 +180,7 @@ def test_the_low_cardinality_threshold_is_the_profilers_run_default(con):
     threshold of 8 and above, and not under 7."""
     from datetime import UTC, datetime
 
-    target = Target(1, "orders", "d.orders", _COLUMNS, [], {}, None, None, [])
+    target = Target(1, "orders", "d.orders", _COLUMNS, [], {}, None, None, [], [])
 
     def frequencies(low: int) -> int:
         names, rows = _run(con, profile_sql("d.orders", _COLUMNS, [], _WHOLE, low, []))

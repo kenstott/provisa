@@ -22,6 +22,10 @@
     "driftKsLabel": "KS-Schwelle",
     "driftKsDescription": "Eine Verteilung, deren Kolmogorow-Smirnow-Statistik gegenüber der zusammengefassten Verteilung des Fensters diesen Wert übersteigt, driftet.",
     "driftPsiLabel": "PSI-Schwelle",
-    "driftPsiDescription": "Eine Verteilung, deren Population Stability Index gegenüber der zusammengefassten Verteilung des Fensters diesen Wert übersteigt, driftet."
+    "driftPsiDescription": "Eine Verteilung, deren Population Stability Index gegenüber der zusammengefassten Verteilung des Fensters diesen Wert übersteigt, driftet.",
+    "correlationMaxLabel": "Höchstzahl korrelierter numerischer Spalten",
+    "correlationMaxDescription": "Wie viele numerische Spalten der Tabelle und ihrer übergeordneten Tabellen in die Korrelationsmatrix und das Abhängigkeitsnetz eingehen.",
+    "jointMaxDistinctLabel": "Höchstzahl an Kategoriewerten",
+    "jointMaxDistinctDescription": "Eine Textspalte mit höchstens so vielen unterschiedlichen Werten geht als Kategorie in die Korrelationen und gemeinsamen Häufigkeiten ein."
   }
 }

@@ -22,6 +22,10 @@
     "driftKsLabel": "Umbral KS",
     "driftKsDescription": "Una distribución cuyo estadístico de Kolmogórov-Smirnov frente a la distribución combinada de la ventana supera este valor está en deriva.",
     "driftPsiLabel": "Umbral PSI",
-    "driftPsiDescription": "Una distribución cuyo índice de estabilidad de la población frente a la distribución combinada de la ventana supera este valor está en deriva."
+    "driftPsiDescription": "Una distribución cuyo índice de estabilidad de la población frente a la distribución combinada de la ventana supera este valor está en deriva.",
+    "correlationMaxLabel": "Máximo de columnas numéricas correlacionadas",
+    "correlationMaxDescription": "Cuántas columnas numéricas, de la tabla y de sus tablas principales, entran en la matriz de correlación y en la red de dependencias.",
+    "jointMaxDistinctLabel": "Máximo de valores de categoría",
+    "jointMaxDistinctDescription": "Una columna de texto con no más valores distintos que este entra en las correlaciones y los recuentos conjuntos como categoría."
   }
 }

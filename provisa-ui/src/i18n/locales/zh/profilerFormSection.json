@@ -22,6 +22,10 @@
     "driftKsLabel": "KS 阈值",
     "driftKsDescription": "相对于窗口合并分布的 Kolmogorov-Smirnov 统计量超过此值的分布即为漂移。",
     "driftPsiLabel": "PSI 阈值",
-    "driftPsiDescription": "相对于窗口合并分布的群体稳定性指数超过此值的分布即为漂移。"
+    "driftPsiDescription": "相对于窗口合并分布的群体稳定性指数超过此值的分布即为漂移。",
+    "correlationMaxLabel": "参与相关性的数值列上限",
+    "correlationMaxDescription": "表及其父表中有多少数值列进入相关矩阵和依赖网络。",
+    "jointMaxDistinctLabel": "类别值上限",
+    "jointMaxDistinctDescription": "不同值不超过此数的文本列作为类别进入相关性和联合计数。"
   }
 }

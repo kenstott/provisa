@@ -33,6 +33,9 @@
     "duplicateRows": "{{rows}} ({{pct}} %)",
     "kind_drift": "Vergleich",
     "kind_duplicates": "Doppelte Zeilen und Schlüssel",
-    "kind_repeats": "Am häufigsten wiederholte Zeilen"
+    "kind_repeats": "Am häufigsten wiederholte Zeilen",
+    "kind_correlations": "Korrelationen",
+    "kind_dependencies": "Abhängigkeiten",
+    "kind_joint_counts": "Gemeinsame Häufigkeiten"
   }
 }

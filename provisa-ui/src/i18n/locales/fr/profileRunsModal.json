@@ -33,6 +33,9 @@
     "duplicateRows": "{{rows}} ({{pct}} %)",
     "kind_drift": "Comparaison",
     "kind_duplicates": "Lignes et clés en double",
-    "kind_repeats": "Lignes les plus répétées"
+    "kind_repeats": "Lignes les plus répétées",
+    "kind_correlations": "Corrélations",
+    "kind_dependencies": "Dépendances",
+    "kind_joint_counts": "Effectifs conjoints"
   }
 }

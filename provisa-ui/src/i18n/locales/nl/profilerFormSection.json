@@ -22,6 +22,10 @@
     "driftKsLabel": "KS-drempel",
     "driftKsDescription": "Een verdeling waarvan de Kolmogorov-Smirnov-statistiek ten opzichte van de samengevoegde verdeling van het venster deze waarde overschrijdt, drift.",
     "driftPsiLabel": "PSI-drempel",
-    "driftPsiDescription": "Een verdeling waarvan de population stability index ten opzichte van de samengevoegde verdeling van het venster deze waarde overschrijdt, drift."
+    "driftPsiDescription": "Een verdeling waarvan de population stability index ten opzichte van de samengevoegde verdeling van het venster deze waarde overschrijdt, drift.",
+    "correlationMaxLabel": "Maximaal aantal gecorreleerde numerieke kolommen",
+    "correlationMaxDescription": "Hoeveel numerieke kolommen, van de tabel en haar bovenliggende tabellen, in de correlatiematrix en het afhankelijkheidsnetwerk komen.",
+    "jointMaxDistinctLabel": "Maximaal aantal categoriewaarden",
+    "jointMaxDistinctDescription": "Een tekstkolom met niet meer verschillende waarden dan dit komt als categorie in de correlaties en gezamenlijke aantallen."
   }
 }

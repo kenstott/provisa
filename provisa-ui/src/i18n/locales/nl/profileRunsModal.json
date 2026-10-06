@@ -33,6 +33,9 @@
     "duplicateRows": "{{rows}} ({{pct}}%)",
     "kind_drift": "Vergelijking",
     "kind_duplicates": "Dubbele rijen en sleutels",
-    "kind_repeats": "Meest herhaalde rijen"
+    "kind_repeats": "Meest herhaalde rijen",
+    "kind_correlations": "Correlaties",
+    "kind_dependencies": "Afhankelijkheden",
+    "kind_joint_counts": "Gezamenlijke aantallen"
   }
 }

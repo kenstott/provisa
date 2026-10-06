@@ -85,6 +85,15 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
             "Previous successful runs at this run's point in the season, up to the profiler's "
             "drift window.",
         ),
+        (
+            "dependence_method",
+            "varchar",
+            "How the dependence statements read the rows: the run's method and fraction, a block "
+            "or row-filter sample being an independent draw; empty where none ran.",
+        ),
+        ("dependence_fraction", "double", "Fraction of rows the dependence statements asked for."),
+        ("dependence_rows", "bigint", "Rows the pairs statement read."),
+        ("network_rows", "bigint", "Rows the triples statement read."),
         ("duration_ms", "bigint", "How long the run took."),
         ("status", "varchar", "succeeded | failed."),
         ("error", "varchar", "Why the run failed; empty when it succeeded."),
@@ -190,6 +199,48 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("extra_rows", "bigint", "Rows that repeat an earlier row, or key value."),
         ("extra_share", "double", "extra_rows / rows profiled."),
     ),
+    "correlations": (
+        ("column_name", "varchar", "The column; for a correlation ratio, the category."),
+        ("other_column", "varchar", "The other column; for a correlation ratio, the number."),
+        (
+            "involved_columns",
+            "varchar",
+            "Both columns, as a JSON array; a parent table's column as <relationship>.<column>.",
+        ),
+        (
+            "measure",
+            "varchar",
+            "spearman (rank correlation, a category entering as the middle of its share's slice "
+            "of 0 to 1) | correlation_ratio (the share of the number's variance the category "
+            "explains).",
+        ),
+        ("value", "double", "The measure."),
+        ("rows", "bigint", "Rows holding both columns."),
+    ),
+    "dependencies": (
+        ("column_name", "varchar", "The column that depends."),
+        ("rank", "integer", "Rank by mutual information, from 1."),
+        ("parent_1", "varchar", "A column it depends on; <relationship>.<column> for a parent's."),
+        ("parent_2", "varchar", "The second column of a two-column set; empty for one."),
+        ("involved_columns", "varchar", "The column and its parents, as a JSON array."),
+        ("mutual_information", "double", "Mutual information of the column and the set, in nats."),
+        ("uncertainty", "double", "mutual_information / the column's entropy: 0 to 1."),
+        ("score", "double", "mutual_information less the BIC penalty of the set's states."),
+        ("in_network", "boolean", "Whether this set is the column's parents in the network."),
+    ),
+    "joint_counts": (
+        ("column_name", "varchar", "The column that depends."),
+        ("parent_1", "varchar", "Its first parent in the network."),
+        ("parent_2", "varchar", "Its second parent; empty for one."),
+        ("involved_columns", "varchar", "The column and its parents, as a JSON array."),
+        ("target_value", "varchar", "The column's category; empty for a number or null."),
+        ("target_bucket", "integer", "The number's decile of rank, 0 to 9; empty for a category."),
+        ("parent_1_value", "varchar", "The first parent's category."),
+        ("parent_1_bucket", "integer", "The first parent's decile of rank."),
+        ("parent_2_value", "varchar", "The second parent's category."),
+        ("parent_2_bucket", "integer", "The second parent's decile of rank."),
+        ("row_count", "bigint", "Rows holding the combination."),
+    ),
     "repeats": (
         ("rank", "integer", "Rank by repeat count, from 1."),
         ("row_count", "bigint", "How many rows hold one of the most repeated rows."),
@@ -199,7 +250,8 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
         (
             "scope",
             "varchar",
-            "run | table | key | column | category | relationship -- what the measure is of.",
+            "run | table | key | column | category | relationship | correlation | dependency -- "
+            "what the measure is of.",
         ),
         ("column_name", "varchar", "The profiled column the measure is of; empty for others."),
         (

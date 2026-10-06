@@ -36,6 +36,8 @@ MEASURE_KINDS: tuple[str, ...] = (
     "fanout",
     "fanout_runs",
     "duplicates",
+    "correlations",
+    "dependencies",
 )
 
 

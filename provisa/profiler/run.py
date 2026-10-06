@@ -39,7 +39,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.schema import CreateTable
 
-from provisa.profiler import measures, plausible
+from provisa.profiler import dependence, measures, plausible
+from provisa.profiler.dependence import ParentSpec
 from provisa.profiler.source import ProfilerSettings
 from provisa.profiler.schema import (
     RESULT_KINDS,
@@ -69,6 +70,13 @@ log = logging.getLogger(__name__)
 PROFILE_ROLE = "org_admin"
 
 
+# The result kinds profile_table writes beside the profile statement's: the run's own row, its
+# comparison with the runs before it, and the dependence measures of the further statements.
+NOT_FROM_THE_PROFILE_STATEMENT = frozenset(
+    {"runs", "drift", "correlations", "dependencies", "joint_counts"}
+)
+
+
 class ProfileError(Exception):
     """A profile run could not read or profile its table."""
 
@@ -84,6 +92,7 @@ class Target:
     meta: Any  # the org admin's TableMeta: source, physical address
     key: str | None  # the single-column integer primary key, as published; None when there is none
     keys: list[KeySpec]  # declared primary and unique keys whose columns the org admin reads
+    parents: list[ParentSpec]  # tables reached through many-to-one relationships
 
 
 @dataclass(frozen=True)
@@ -96,11 +105,34 @@ class RunOutcome:
     profiled_rows: int | None
 
 
-def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, set[str]]) -> Target:
-    """The member table as the org admin's compiled context publishes it."""
+def _published_name(meta: Any) -> str:
+    """``domain.table`` as pgwire publishes ``meta`` to the org admin."""
     from provisa.compiler.naming import domain_to_sql_name
     from provisa.compiler.sql_rewrite import semantic_table_name
 
+    domain = domain_to_sql_name(meta.domain_id or meta.schema_name or "public")
+    return f"{domain}.{semantic_table_name(meta)}"
+
+
+def parents_of(state: Any, table_id: int) -> list[ParentSpec]:
+    """The parents ``table_id`` reaches as the org admin reads it, or none when it cannot."""
+    ctx = state.contexts.get(PROFILE_ROLE)
+    if ctx is None:
+        raise ProfileError(f"no compiled schema for role {PROFILE_ROLE!r}")
+    tm = next((m for m in ctx.tables.values() if m.table_id == table_id), None)
+    if tm is None:
+        return []  # the org admin cannot read the table: its profile describes nothing of it
+    p2s: dict = ctx.physical_to_sql
+    exposed_by_phys = {
+        col.column_name: p2s[(table_id, col.column_name)]
+        for col in state.schema_build_cache["column_types"][table_id]
+        if (table_id, col.column_name) in p2s
+    }
+    return parent_relationships(state, ctx, tm, exposed_by_phys, _published_name)
+
+
+def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, set[str]]) -> Target:
+    """The member table as the org admin's compiled context publishes it."""
     ctx = state.contexts.get(PROFILE_ROLE)
     if ctx is None:
         raise ProfileError(f"no compiled schema for role {PROFILE_ROLE!r}; cannot profile")
@@ -112,9 +144,7 @@ def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, s
             f"to profile"
         )
 
-    def _name(meta: Any) -> str:
-        domain = domain_to_sql_name(meta.domain_id or meta.schema_name or "public")
-        return f"{domain}.{semantic_table_name(meta)}"
+    _name = _published_name
 
     p2s: dict = ctx.physical_to_sql
     col_types = state.schema_build_cache["column_types"][table_id]
@@ -141,6 +171,7 @@ def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, s
             continue  # the org admin cannot read the join's keys
         fanouts.append(FanoutSpec(field_name, _name(jm.target), parent_key, child_key))
     pk = ctx.pk_columns.get(table_id, [])
+    parents = parent_relationships(state, ctx, tm, exposed_by_phys, _name)
     key_spec = next((c for c in columns if c.physical == pk[0]), None) if len(pk) == 1 else None
     declared = ([("primary key", pk)] if pk else []) + [
         (name, cols) for name, cols in ctx.unique_constraints.get(table_id, [])
@@ -160,7 +191,38 @@ def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, s
         meta=tm,
         key=key_spec.name if key_spec is not None and is_integer_key(key_spec) else None,
         keys=keys,
+        parents=parents,
     )
+
+
+def parent_relationships(
+    state: Any, ctx: Any, tm: Any, exposed_by_phys: dict[str, str], name_of: Any
+) -> list[ParentSpec]:
+    """The tables the profiled table reaches through its many-to-one relationships, with the
+    columns the org admin reads of each (REQ-1934 DEPENDENCE BETWEEN COLUMNS)."""
+    p2s: dict = ctx.physical_to_sql
+    out = []
+    for (type_name, field_name), jm in sorted(ctx.joins.items(), key=lambda kv: kv[0]):
+        if type_name != tm.type_name or jm.cardinality != "many-to-one" or jm.via is not None:
+            continue
+        if jm.source_expr or jm.target_expr or jm.source_constant is not None or jm.source_json_key:
+            continue  # computed edges have no key column to join on
+        child_key = exposed_by_phys.get(jm.source_column)
+        parent_id = jm.target.table_id
+        parent_key = p2s.get((parent_id, jm.target_column))
+        if child_key is None or parent_key is None:
+            continue  # the org admin cannot read the join's keys
+        columns = []
+        for col in state.schema_build_cache["column_types"][parent_id]:
+            exposed = p2s.get((parent_id, col.column_name))
+            if exposed is not None:
+                columns.append(
+                    ColumnSpec(exposed, col.data_type, family_of(col.data_type), col.column_name)
+                )
+        out.append(
+            ParentSpec(field_name, name_of(jm.target), parent_id, child_key, parent_key, columns)
+        )
+    return out
 
 
 async def _route(sql: str) -> Any:
@@ -210,10 +272,8 @@ def result_rows(
 ) -> dict[str, list[dict]]:
     """Every result relation's rows for one run, except ``runs``."""
     key = {"run_id": run_id, "run_time": run_time}
-    # ``runs`` and ``drift`` are written by profile_table: the run's own row, and its comparison
-    # with the runs before it.
     out: dict[str, list[dict]] = {
-        kind: [] for kind in RESULT_KINDS if kind not in ("runs", "drift")
+        kind: [] for kind in RESULT_KINDS if kind not in NOT_FROM_THE_PROFILE_STATEMENT
     }
     rows = agg.profiled_rows
     for col in agg.columns:
@@ -422,6 +482,8 @@ class ProfileRead:
     agg: ProfileAggregates
     method: str  # statement.SAMPLE_METHODS
     attempts: list[dict]  # each sample read: {"percent": ..., "rows": ...}; empty when read whole
+    sample: Sample  # the sample the profile statement read last, which further statements reuse
+    where: str  # the reach it read through, for messages
 
 
 async def _run_sample(
@@ -446,6 +508,87 @@ async def _run_sample(
         raise ProfileError(f"profile of {target.table_name!r}: {exc}") from exc
     names, rows = await _execute(plan)
     return parse_profile_result(names, rows, target.columns, target.fanouts, target.keys)
+
+
+async def _run_further(
+    sql: str, read: ProfileRead, table_name: str
+) -> tuple[list[str], list[tuple]]:
+    """Route, check and run a further statement over the run's sample (REQ-1934): the sample's
+    clause must survive governance and transpile, as the profile statement's must."""
+    from provisa.profiler.sampling import SampleClauseLost, require_sample_clause
+
+    plan = await _route(sql)
+    try:
+        require_sample_clause(
+            read.sample.method,
+            _executed_sql(plan),
+            plan.dialect,
+            read.where,
+            len(read.sample.ranges),
+        )
+    except SampleClauseLost as exc:
+        raise ProfileError(f"dependence of {table_name!r}: {exc}") from exc
+    return await _execute(plan)
+
+
+@dataclass(frozen=True)
+class DependenceRead:
+    rows: dict[str, list[dict]]  # correlations, dependencies, joint_counts (no run key)
+    method: str | None  # the further statements' sample method; None when none ran
+    fraction: float | None
+    rows_read: int | None  # rows the pairs statement read
+    network_rows: int | None  # rows the triples statement read
+
+
+async def read_dependence(
+    target: Target, read: ProfileRead, settings: ProfilerSettings
+) -> DependenceRead:
+    """The dependence measures (REQ-1934 DEPENDENCE BETWEEN COLUMNS), in a few further aggregate
+    statements over the run's sample (``provisa.profiler.dependence``)."""
+    empty = {"correlations": [], "dependencies": [], "joint_counts": []}
+    distinct = {c.spec.name: c.distinct for c in read.agg.columns}
+    parents = []
+    for p in target.parents:
+        texts = [c for c in p.columns if c.family in ("text", "boolean")]
+        counts: dict[str, int] = {}
+        if texts:
+            _, rows = await _governed(dependence.distinct_sql(p, texts))
+            counts = {c.name: int(n) for c, n in zip(texts, rows[0])}
+        parents.append((p, counts))
+    cols = dependence.choose_columns(
+        [(c, distinct[c.name]) for c in target.columns],
+        parents,
+        settings.correlation_max_columns,
+        settings.joint_max_distinct,
+    )
+    if len(cols) < 2:
+        return DependenceRead(empty, None, None, None, None)
+    fraction = 1.0 if read.sample.fraction is None else read.sample.fraction
+    psql = dependence.pairs_sql(
+        target.pgwire_name, target.columns, target.parents, cols, read.sample
+    )
+    pairs = dependence.parse_pairs(*await _run_further(psql, read, target.table_name), cols)
+    first = next(iter(pairs.values()))
+    singles = dependence.single_candidates(pairs, cols)
+    triples = dependence.triples_for(singles)
+    pair_sets: dict = {}
+    network_rows = None
+    if triples:
+        tsql = dependence.triples_sql(
+            target.pgwire_name, target.columns, target.parents, cols, triples, read.sample
+        )
+        found = dependence.parse_triples(
+            *await _run_further(tsql, read, target.table_name), triples
+        )
+        network_rows = sum(next(iter(found.values())).values())
+        pair_sets = dependence.pair_candidates(found)
+    chosen = dependence.network(singles, pair_sets)
+    rows = {
+        "correlations": dependence.correlation_rows(pairs, cols),
+        "dependencies": dependence.dependency_rows(singles, pair_sets, chosen, cols),
+        "joint_counts": dependence.joint_rows(chosen, cols),
+    }
+    return DependenceRead(rows, read.sample.method, fraction, first.rows, network_rows)
 
 
 async def read_profile(
@@ -476,7 +619,8 @@ async def read_profile(
         )
 
     if fraction is None:
-        return ProfileRead(parse(await _governed(sql(Sample("whole")))), "whole", [])
+        whole = Sample("whole")
+        return ProfileRead(parse(await _governed(sql(whole))), "whole", [], whole, "whole table")
     random_sample = Sample("random", fraction)
     random_plan = await _route(sql(random_sample))
     reach = sample_reach(state, random_plan.route, target.meta)
@@ -484,7 +628,11 @@ async def read_profile(
     if method == "random":
         agg = parse(await _execute(random_plan))
         return ProfileRead(
-            agg, method, [{"percent": random_sample.percent, "rows": agg.profiled_rows}]
+            agg,
+            method,
+            [{"percent": random_sample.percent, "rows": agg.profiled_rows}],
+            random_sample,
+            reach.where,
         )
     if method == "key_range":
         assert target.key is not None  # choose_method picks key_range only for a keyed table
@@ -499,7 +647,13 @@ async def read_profile(
             "key_range", fraction, target.key, key_ranges(int(lo), int(hi), fraction, rng)
         )
         agg = await _run_sample(sql(sample), sample, random_plan.route, reach, target)
-        return ProfileRead(agg, method, [{"percent": sample.percent, "rows": agg.profiled_rows}])
+        return ProfileRead(
+            agg,
+            method,
+            [{"percent": sample.percent, "rows": agg.profiled_rows}],
+            sample,
+            reach.where,
+        )
     # Block: the source's block (a page, a vector, a file split) is the sampling unit, so a small
     # sample of a table with few blocks can come back far under its target -- or empty. Read again
     # at four times the percentage while it is under half its target (maintainer ruling, REQ-1934),
@@ -518,7 +672,7 @@ async def read_profile(
             f"the block sample of {target.table_name!r} ({reach.where}) came back empty at "
             f"{sample.percent}% though the table counted {row_count} rows"
         )
-    return ProfileRead(agg, method, attempts)
+    return ProfileRead(agg, method, attempts, sample, reach.where)
 
 
 async def profile_table(
@@ -533,6 +687,7 @@ async def profile_table(
     fraction: float | None = None
     freshness: float | None = None
     read: ProfileRead | None = None
+    dep: DependenceRead | None = None
     try:
         async with state.model_db.acquire() as conn:
             tags = await column_tags(conn, table_id)
@@ -548,6 +703,9 @@ async def profile_table(
             state, target, row_count, fraction, settings.low_cardinality_max, random.Random()
         )
         results = result_rows(target, read.agg, run_id, run_time, settings.low_cardinality_max)
+        dep = await read_dependence(target, read, settings)
+        for kind, kind_rows in dep.rows.items():
+            results[kind] = [{"run_id": run_id, "run_time": run_time, **r} for r in kind_rows]
         status, error = "succeeded", None
     except Exception as exc:  # recorded as the run's outcome, then re-raised below
         results = {}
@@ -580,6 +738,12 @@ async def profile_table(
             "key_duplicates": sum(k.repeated for k in keys) if keys else None,
             "freshness_seconds": freshness,
             "window_runs": None,  # set by the comparison below, once the run succeeded
+            # The dependence statements' own sample: the same method and fraction, a block or
+            # row-filter sample an independent draw (maintainer ruling, REQ-1934).
+            "dependence_method": None if dep is None else dep.method,
+            "dependence_fraction": None if dep is None else dep.fraction,
+            "dependence_rows": None if dep is None else dep.rows_read,
+            "network_rows": None if dep is None else dep.network_rows,
             "duration_ms": int((time.monotonic() - started) * 1000),
             "status": status,
             "error": error,

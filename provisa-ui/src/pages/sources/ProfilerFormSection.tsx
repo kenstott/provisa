@@ -21,12 +21,15 @@ const NUMBER_FIELDS: { key: string; stem: string; whole: boolean; min: number }[
   { key: "drift_slope", stem: "driftSlope", whole: false, min: 0 },
   { key: "drift_ks", stem: "driftKs", whole: false, min: 0 },
   { key: "drift_psi", stem: "driftPsi", whole: false, min: 0 },
+  { key: "correlation_max_columns", stem: "correlationMax", whole: true, min: 1 },
+  { key: "joint_max_distinct", stem: "jointMaxDistinct", whole: true, min: 1 },
 ];
 
 // REQ-1934: a Data Profiler source holds a name, a schedule and its run defaults, nothing else. The
 // schedule is a cron expression, the recurrence scheduled triggers use; the run defaults are the cell
-// budget above which a run profiles a sample (empty: every row), the low-cardinality threshold, and
-// the drift window, season and thresholds, each defaulted here for a new profiler. All travel in the
+// budget above which a run profiles a sample (empty: every row), the low-cardinality threshold, the
+// drift window, season and thresholds, and the dependence bounds, each defaulted here for a new
+// profiler. All travel in the
 // source's mapping (provisa/profiler/source.py profiler_settings).
 export function ProfilerFormSection({
   authFields,

@@ -39,6 +39,8 @@ PROFILER_RUN_DEFAULTS: dict = {
     "drift_slope": 3.0,
     "drift_ks": 0.2,
     "drift_psi": 0.25,
+    "correlation_max_columns": 20,
+    "joint_max_distinct": 20,
 }
 
 

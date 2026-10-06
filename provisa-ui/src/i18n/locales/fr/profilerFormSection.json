@@ -22,6 +22,10 @@
     "driftKsLabel": "Seuil KS",
     "driftKsDescription": "Une distribution dont la statistique de Kolmogorov-Smirnov par rapport à la distribution agrégée de la fenêtre dépasse cette valeur est en dérive.",
     "driftPsiLabel": "Seuil PSI",
-    "driftPsiDescription": "Une distribution dont l'indice de stabilité de population par rapport à la distribution agrégée de la fenêtre dépasse cette valeur est en dérive."
+    "driftPsiDescription": "Une distribution dont l'indice de stabilité de population par rapport à la distribution agrégée de la fenêtre dépasse cette valeur est en dérive.",
+    "correlationMaxLabel": "Nombre maximal de colonnes numériques corrélées",
+    "correlationMaxDescription": "Combien de colonnes numériques, de la table et de ses tables parentes, entrent dans la matrice de corrélation et le réseau de dépendances.",
+    "jointMaxDistinctLabel": "Nombre maximal de valeurs de catégorie",
+    "jointMaxDistinctDescription": "Une colonne de texte n'ayant pas plus de valeurs distinctes que ce nombre entre dans les corrélations et les effectifs conjoints comme catégorie."
   }
 }
