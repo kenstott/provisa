@@ -281,6 +281,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         return new_tbl
 
     tree = tree.transform(_rewrite)
+    _lower_column_aliases(tree, ctx)
 
     for col in tree.find_all(exp.Column):
         tbl_id = col.args.get("table")
@@ -288,6 +289,93 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
             tbl_id.set("quoted", True)
 
     return tree.sql(dialect="postgres")
+
+
+def _column_renames(ctx: CompilationContext) -> dict[tuple[str, str], dict[str, str]]:
+    """Per physical ``(schema, table)`` (lowercased), each published column name that is not the
+    column's physical name, lowercased, to that physical name -- an ``alias``, or a SQL naming
+    convention's rename (``CompilationContext.physical_to_sql``). A published name that is also a
+    physical column of the table is left out: lowering never renames a physical name, so it is
+    idempotent and safe on SQL that is already physical."""
+    by_id: dict[int, tuple[str, str]] = {
+        m.table_id: (m.schema_name.lower(), m.table_name.lower()) for m in _all_table_metas(ctx)
+    }
+    physical: dict[tuple[str, str], set[str]] = {}
+    for (table_id, phys), _ in ctx.physical_to_sql.items():
+        if table_id in by_id:
+            physical.setdefault(by_id[table_id], set()).add(phys.lower())
+    out: dict[tuple[str, str], dict[str, str]] = {}
+    for (table_id, phys), exposed in ctx.physical_to_sql.items():
+        key = by_id.get(table_id)
+        if key is None or exposed == phys or exposed.lower() in physical[key]:
+            continue
+        out.setdefault(key, {})[exposed.lower()] = phys
+    return out
+
+
+# A derived source whose column names are unknown.
+_ANY_NAME: set[str] = set()
+
+
+def _lower_column_aliases(tree: exp.Expression, ctx: CompilationContext) -> None:
+    """Rename, IN PLACE, every reference to a registered table's published column name to its
+    physical name (issue #140): select lists, WHERE, GROUP/ORDER BY, function arguments, joins,
+    subqueries and CTEs, qualified or not. Runs after the table refs are resolved to physical
+    ``(schema, table)``. A renamed column selected bare keeps its published name as its output
+    name, so the result -- and an outer query reading a derived table -- sees the published name.
+    An unqualified name is renamed only where exactly one source of its scope publishes it."""
+    from sqlglot.optimizer.scope import traverse_scope
+
+    renames = _column_renames(ctx)
+    if not renames or not isinstance(tree, exp.Query):
+        return
+    for scope in traverse_scope(tree):
+        tables: dict[str, dict[str, str]] = {}
+        derived: list[set[str]] = []
+        for name, source in scope.sources.items():
+            if isinstance(source, exp.Table):
+                found = renames.get((source.db.lower(), source.name.lower()))
+                if found:
+                    tables[name] = found
+            elif isinstance(source.expression, exp.Query):
+                derived.append({n.lower() for n in source.expression.named_selects})
+            else:
+                # A source whose columns are not a query's named selects (VALUES, a table
+                # function): it may hold any name, so no unqualified name is resolved past it.
+                derived.append(_ANY_NAME)
+        if not tables:
+            continue
+        renamed: dict[int, str] = {}
+        for col in scope.columns:
+            published = col.name
+            key = published.lower()
+            if col.table:
+                mapping = tables.get(col.table)
+                physical = None if mapping is None else mapping.get(key)
+            else:
+                owners = [m[key] for m in tables.values() if key in m]
+                plain = [
+                    s
+                    for n, s in scope.sources.items()
+                    if isinstance(s, exp.Table) and n not in tables
+                ]
+                ambiguous = (
+                    len(owners) != 1
+                    or any(d is _ANY_NAME or key in d for d in derived)
+                    or bool(plain)
+                )
+                physical = None if ambiguous else owners[0]
+            if physical is None:
+                continue
+            col.set("this", exp.Identifier(this=physical, quoted=True))
+            renamed[id(col)] = published
+        select = scope.expression
+        if not isinstance(select, exp.Select):
+            continue
+        for projection in list(select.expressions):
+            if isinstance(projection, exp.Column) and id(projection) in renamed:
+                published = renamed[id(projection)]
+                projection.replace(exp.alias_(projection.copy(), published, quoted=True))
 
 
 def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # REQ-641
