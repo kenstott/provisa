@@ -66561,7 +66561,7 @@
     are), and a named demo may reference external managed resources it doesn''t containerize at all (e.g.
     a live Databricks/Snowflake source reached by connection string/secret, registered in fragment.yaml
     with no corresponding compose service) — those are implementation details behind the one entry point,
-    not exceptions to it.'
+    not exceptions to it. (Amended 2026-10-06, A NAMED DEMO IS A WHOLE CONFIG) A named demo''s configuration is a whole configuration, not an overlay on the standard demo: demo/named/<name>/config.yaml is the demo, and the standard demo''s own definitions are in it only where it includes them. It is typically the model exported from a running demo after building in the UI, saved as is. Since every demo start rebuilds the control plane from the demo''s configuration, the demo starts with exactly what the file lists -- what it lists is added or updated and nothing else remains. A --source toy source still adds its source on top. The demo''s data stores start and seed through its docker-compose.yml and seeder as before; a named demo reseeds them on every start for a pristine demo, and --keep-data reuses what is already seeded.'
   use_case: Lets the demo installer stand up scenario-specific demo environments (starting with a cross-engine
     performance/load-test benchmark) without branching the standard demo path, and lets solutions engineers
     author new named demos (client-specific or vertical) self-service, without needing a developer to
