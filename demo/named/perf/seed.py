@@ -18,7 +18,7 @@ clickhouse/mongodb — the 3 LIVE sources, default 20,000,000) and PROVISA_BENCH
 (default 4) so a smaller/larger perf run doesn't require editing the generate_*.py scripts.
 
 Neo4j's order count is DELIBERATELY separate (PROVISA_BENCH_NEO4J_ORDERS, default 2,000,000):
-it's a replica-only source (materialize/cache pattern — see fragment.yaml's header and REQ-1858),
+it's a replica-only source (materialize/cache pattern — see config.yaml's header and REQ-1858),
 never queried live at request time the way the other 3 are, so what the materialize-cost
 benchmark needs is a table of realistic SIZE, not full order_id-domain coverage — testing that
 cost at 1/10th the scale takes a fraction of the wall-clock time (Neo4j's HTTP-transaction-batch

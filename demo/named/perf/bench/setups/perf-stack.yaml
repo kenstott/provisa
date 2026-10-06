@@ -7,11 +7,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 #
-# Benchmark setup contract (REQ-1911) for the perf stack (demo/named/perf: fragment.yaml,
+# Benchmark setup contract (REQ-1911) for the perf stack (demo/named/perf: config.yaml,
 # docker-compose.yml). Schema and validation: setup_contract.py. Every knob is zero, which makes
 # the run the optimistic test: one row, one column, no filter, cached, the Postgres orders table.
 # Request text is built from the names below; table, column and join names are what the
-# deployment registers (fragment.yaml, role org_admin).
+# deployment registers (config.yaml, role org_admin).
 version: 1
 
 deployment:
@@ -31,7 +31,7 @@ deployment:
     - {role: org_admin, weight: 1.0}
 
 # The contract names a table once, by its registered identity (source id, schema, table: what
-# fragment.yaml registers) and its columns by registered column name. What each transport calls
+# config.yaml registers) and its columns by registered column name. What each transport calls
 # them (SQL name, Cypher label and properties, GraphQL fields, REST and JSON:API paths, gRPC
 # types) is resolved from the deployment when the run starts (lookup.py) and written to
 # resolved-names.json; a table a transport does not expose is a fact from that lookup.
@@ -70,12 +70,12 @@ sources:
           - {name: sku}
           - {name: quantity}
     # A join pair: registered tables and columns. The deployment must have the relationship
-    # registered (HAS_ITEM in fragment.yaml); the nested GraphQL field and the Cypher relationship
+    # registered (HAS_ITEM in config.yaml); the nested GraphQL field and the Cypher relationship
     # type come from the deployment.
     joins:
       - {left: "orders.order_id", right: "order_items.order_id"}
   bench-clickhouse:
-    replication: {setting: replica, ttl_seconds: 300}   # row_materialize, cache_ttl 300 (fragment.yaml)
+    replication: {setting: replica, ttl_seconds: 300}   # row_materialize, cache_ttl 300 (config.yaml)
     monitor: {container: perf-clickhouse-1}
     tables:
       - schema: default
@@ -91,7 +91,7 @@ sources:
           - {name: device}
     joins: []
   bench-mongodb:
-    replication: {setting: replica, ttl_seconds: 300}   # row_materialize, cache_ttl 300 (fragment.yaml)
+    replication: {setting: replica, ttl_seconds: 300}   # row_materialize, cache_ttl 300 (config.yaml)
     monitor: {container: perf-mongodb-1}
     tables:
       - schema: provisa_bench
@@ -105,7 +105,7 @@ sources:
           - {name: shipping_carrier}
     joins: []
   bench-neo4j:
-    replication: {setting: replica, ttl_seconds: 300}   # row_materialize, cache_ttl 300 (fragment.yaml)
+    replication: {setting: replica, ttl_seconds: 300}   # row_materialize, cache_ttl 300 (config.yaml)
     monitor: {container: perf-neo4j-1}
     tables:
       - schema: neo4j
@@ -119,7 +119,7 @@ sources:
           - {name: status}
     joins: []
 
-# Joins across sources (HAS_EVENT one-to-many, HAS_DOC one-to-one in fragment.yaml).
+# Joins across sources (HAS_EVENT one-to-many, HAS_DOC one-to-one in config.yaml).
 cross_source_joins:
   - {left: "bench-postgresql:orders.order_id", right: "bench-clickhouse:order_events.order_id"}
   - {left: "bench-postgresql:orders.order_id", right: "bench-mongodb:order_docs.order_id"}

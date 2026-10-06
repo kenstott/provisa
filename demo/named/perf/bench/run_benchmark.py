@@ -71,22 +71,24 @@ from pathlib import Path
 
 from queries import QUERIES, Query
 
-# demo/named/perf/fragment.yaml, one level up from this script's own directory
-# (demo/named/perf/bench/) — the source registrations federated into whichever engine
+# demo/named/perf/config.yaml, one level up from this script's own directory
+# (demo/named/perf/bench/) — whose bench-* sources are federated into whichever engine
 # (--engine duckdb/pg/trino) this run targets.
-_FRAGMENT_PATH = Path(__file__).resolve().parent.parent / "fragment.yaml"
+_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
 
 
 def _describe_sources() -> list[dict]:
     """The backend sources (postgresql/clickhouse/mongodb/neo4j) this benchmark federates,
-    read directly from fragment.yaml's own `sources:` list rather than hardcoded here — so this
+    read directly from config.yaml's `sources:` list (the entries named bench-*, the rest being the
+    standard demo's) rather than hardcoded here — so this
     report can never drift out of sync with what the demo actually registers."""
     import yaml
 
-    doc = yaml.safe_load(_FRAGMENT_PATH.read_text())
+    doc = yaml.safe_load(_CONFIG_PATH.read_text())
     return [
         {"id": s["id"], "type": s["type"], "description": s.get("description")}
         for s in doc.get("sources", [])
+        if s["id"].startswith("bench-")
     ]
 
 
@@ -329,7 +331,7 @@ class PgwireTransport(Transport):
             async def _connect() -> asyncpg.Pool:
                 return await asyncpg.create_pool(
                     # pgwire username IS the role (verified live: "admin" is not a real role and
-                    # fails "No schema for role 'admin'" — org_admin matches fragment.yaml's
+                    # fails "No schema for role 'admin'" — org_admin matches config.yaml's
                     # visible_to lists and config's default_assignments). REQ-1890: role is
                     # overridable to org_admin_unguarded (--bypass-relationship-guard) — same
                     # domain_access/visible_to grants, plus V002-only Capability.IGNORE_RELATIONSHIPS.
@@ -602,13 +604,13 @@ class GraphqlTransport(Transport):
         `limit`, `offset`, `sample`, `distinct_on`, never a bare `filter`).
       - Aggregation is a `{field}GroupBy(by: [...])` root field returning
         `{ groupKey aggregate { count sum { col } ... } nodes { ... } }`
-        (schema_gen.py's _build_group_by_query_field, gated by fragment.yaml's
+        (schema_gen.py's _build_group_by_query_field, gated by config.yaml's
         enable_group_by; aggregate_gen.py's build_agg_fields_type for the count/sum/avg/
         stddev/variance/min/max shape — sum/avg/etc. sub-fields are the RAW column name, e.g.
         `sum { amount }`, not camelCased, since aggregate_gen.py keys them by physical
         col_name directly).
       - HAS_EVENT/HAS_DOC relationships are now registered between orders/order_events/order_docs
-        in fragment.yaml, so federated_join's GraphQL text is one nested selection under
+        in config.yaml, so federated_join's GraphQL text is one nested selection under
         `pb__orders` (`orderEvents`/`orderDoc` — see queries.py's federated_join comment for the
         field-naming derivation) instead of multiple aliased root fields. Still one HTTP round
         trip per iteration, matching the SQL join's one round trip, now with a server-side JOIN
@@ -1341,7 +1343,7 @@ def main() -> int:
             parser.error(f"--start-at {args.start_at!r} is not a known query id: {all_ids}")
         query_ids = set(all_ids[all_ids.index(args.start_at) :])
 
-    # REQ-1890: org_admin_unguarded is org_admin's clone (demo/named/perf/fragment.yaml) plus
+    # REQ-1890: org_admin_unguarded is org_admin's clone (demo/named/perf/config.yaml) plus
     # Capability.IGNORE_RELATIONSHIPS — bypasses V002's relationship guard only, nothing else.
     role = "org_admin_unguarded" if args.bypass_relationship_guard else "org_admin"
     transports: dict[str, Transport] = {

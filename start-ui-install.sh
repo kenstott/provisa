@@ -49,6 +49,21 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -n "$DEMO_NAME" ] && [ ! -d "$SCRIPT_DIR/demo/named/$DEMO_NAME" ]; then
   echo "Unknown demo name: $DEMO_NAME. No demo/named/$DEMO_NAME/ directory."; exit 1
 fi
+# A named demo's configuration is demo/named/<name>/config.yaml, a WHOLE config used in place of the
+# standard demo config (REQ-1858), or — for a small addition to the pet store — demo/named/<name>/
+# fragment.yaml, which is overlaid on the standard demo config. Exactly one of the two.
+_NAMED_WHOLE=false
+if [ -n "$DEMO_NAME" ]; then
+  _NC="$SCRIPT_DIR/demo/named/$DEMO_NAME/config.yaml"
+  _NF="$SCRIPT_DIR/demo/named/$DEMO_NAME/fragment.yaml"
+  if [ -f "$_NC" ] && [ -f "$_NF" ]; then
+    echo "--demo $DEMO_NAME has both config.yaml and fragment.yaml in demo/named/$DEMO_NAME/. Keep one: config.yaml (a whole config) or fragment.yaml (an overlay on the standard demo config)."; exit 1
+  fi
+  if [ ! -f "$_NC" ] && [ ! -f "$_NF" ]; then
+    echo "--demo $DEMO_NAME has no config.yaml (and no fragment.yaml) in demo/named/$DEMO_NAME/ to register it with."; exit 1
+  fi
+  [ -f "$_NC" ] && _NAMED_WHOLE=true
+fi
 LOG_DIR="$SCRIPT_DIR/.logs"
 mkdir -p "$LOG_DIR"
 
@@ -219,7 +234,11 @@ export GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-$DEMO}"
 export PROVISA_DEMO="${DEMO}"
 export PROVISA_ENABLE_TEST_ENDPOINTS="${PROVISA_ENABLE_TEST_ENDPOINTS:-$DEMO}"
 export PROVISA_IDP="${IDP}"
-if [ "$DEMO" = true ]; then
+if [ "$_NAMED_WHOLE" = true ]; then
+  # The named demo's own whole config, relative to the repository root like the standard one. A
+  # --source fragment below overlays it exactly as it would the standard config.
+  export PROVISA_CONFIG="demo/named/$DEMO_NAME/config.yaml"
+elif [ "$DEMO" = true ]; then
   export PROVISA_CONFIG="config/provisa-install.yaml"
 else
   export PROVISA_CONFIG="config/provisa-install-base.yaml"
@@ -286,9 +305,6 @@ fi
 if [ -n "$DEMO_NAME" ]; then
   _NAMED_DIR="$SCRIPT_DIR/demo/named/$DEMO_NAME"
   _NAMED_FRAGMENT="$_NAMED_DIR/fragment.yaml"
-  if [ ! -f "$_NAMED_FRAGMENT" ]; then
-    echo "--demo $DEMO_NAME has no $_NAMED_FRAGMENT to register it with"; exit 1
-  fi
   if [ -f "$_NAMED_DIR/docker-compose.yml" ]; then
     # A pristine start is the default, as it is for the control plane below: the stack's containers
     # and volumes are removed and its bind-mounted ./data directory (databases and the seeder's
@@ -306,16 +322,21 @@ if [ -n "$DEMO_NAME" ]; then
       docker compose -f "$_NAMED_DIR/docker-compose.yml" up seeder
     fi
   fi
-  _NAMED_WRAPPER="${PROVISA_HOME:-$HOME/.provisa}/demo/provisa-with-$DEMO_NAME.yaml"
-  mkdir -p "$(dirname "$_NAMED_WRAPPER")"
-  {
-    echo "# Written by start-ui-install.sh --demo $DEMO_NAME: the base/sourced config plus its fragment."
-    echo "includes:"
-    echo "  - $SCRIPT_DIR/$PROVISA_CONFIG"
-    echo "  - $_NAMED_FRAGMENT"
-  } > "$_NAMED_WRAPPER"
-  export PROVISA_CONFIG="$_NAMED_WRAPPER"
-  echo "Config with named demo '$DEMO_NAME' sources: $PROVISA_CONFIG"
+  if [ "$_NAMED_WHOLE" = true ]; then
+    # config.yaml is the whole config and already PROVISA_CONFIG (or the --source wrapper over it).
+    echo "Config for named demo '$DEMO_NAME': $PROVISA_CONFIG"
+  else
+    _NAMED_WRAPPER="${PROVISA_HOME:-$HOME/.provisa}/demo/provisa-with-$DEMO_NAME.yaml"
+    mkdir -p "$(dirname "$_NAMED_WRAPPER")"
+    {
+      echo "# Written by start-ui-install.sh --demo $DEMO_NAME: the base/sourced config plus its fragment."
+      echo "includes:"
+      echo "  - $SCRIPT_DIR/$PROVISA_CONFIG"
+      echo "  - $_NAMED_FRAGMENT"
+    } > "$_NAMED_WRAPPER"
+    export PROVISA_CONFIG="$_NAMED_WRAPPER"
+    echo "Config with named demo '$DEMO_NAME' sources: $PROVISA_CONFIG"
+  fi
 fi
 
 # Core + install overlay (port bindings only — no kafka/mongo/elasticsearch/observability)

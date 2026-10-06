@@ -1,0 +1,2619 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named "perf" demo (start-ui-install.sh --demo perf): the standard demo
+# config (config/provisa-install.yaml) with the perf demo's own domain, sources, tables,
+# relationships and role appended, merged once and dumped. A named demo's config.yaml is used in
+# place of the standard demo config (REQ-1858), so this file is exactly what the demo registers.
+# Dumping drops comments: the perf sections' explanations are kept in the notes below.
+#
+# Notes carried from the former fragment.yaml:
+#   * EVERY source needs explicit `tables:` entries. pgwire's catalog is built by walking registered
+#     TableMeta rows (provisa/pgwire/catalog_populate.py), so a bare `sources:` entry never reaches
+#     the SQL catalog, whatever the connector type.
+#   * The perf-bench sources are postgresql (RDB), clickhouse (DW), mongodb (doc store) and neo4j
+#     (graph), sharing an order_id/customer_id join-key domain. Ports match this directory's
+#     docker-compose.yml.
+#   * bench-mongodb sets federation_hints.direct_connection: the single-node replica set advertises
+#     its internal Compose address, which hangs from outside the network (REQ-1902).
+#   * bench-orders-events and bench-orders-docs are the cross-engine relationships the SQL
+#     federated_join needs; registering them is the fix, not a --relationship-guard=false bypass.
+#   * org_admin_unguarded (REQ-1890) is a literal copy of org_admin's capabilities plus
+#     ignore_relationships.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+data_products:
+- purpose: Pet health records — inventory and referral vets for care history
+  domain_id: pet-store
+  id: pet_health
+  name: Pet Health
+  owner: org_admin
+  support_contact: kennethstott@gmail.com
+- purpose: Shelter staffing — employee roster and shift coverage
+  domain_id: shelter
+  id: workforce_ops
+  name: Workforce Ops
+  owner: org_admin
+  support_contact: kennethstott@gmail.com
+discovery:
+  api_key: ${env:ANTHROPIC_API_KEY:-}
+  min_confidence: 0.7
+  sample_size: 20
+glossary_terms:
+- name: referral
+  definition: The act of sending a pet to an outside veterinary practice for care beyond in-house capability.
+  domains:
+  - pet-store
+  edges:
+  - to: clinic
+    rel_type: RELATED_TO
+  - to: specialty
+    rel_type: RELATED_TO
+- name: clinic
+  definition: The outside veterinary practice a pet is referred to.
+  domains:
+  - pet-store
+- name: specialty
+  definition: The area of veterinary care a referral clinic focuses on.
+  domains:
+  - pet-store
+- name: personnel record
+  definition: An employee's role and tenure at the shelter, held for staffing and HR reporting.
+  domains:
+  - shelter
+- name: department
+  definition: The organizational unit an employee is assigned to.
+  domains:
+  - shelter
+  edges:
+  - to: personnel record
+    rel_type: PART_OF
+- name: hire date
+  definition: The date an employee started working at the shelter.
+  domains:
+  - shelter
+  edges:
+  - to: personnel record
+    rel_type: PART_OF
+- name: shift coverage
+  definition: The window and place a shelter staff member is scheduled to work, used for weekly coverage
+    and handoff planning.
+  domains:
+  - shelter
+  edges:
+  - to: shift start
+    rel_type: RELATED_TO
+  - to: shift end
+    rel_type: RELATED_TO
+  - to: schedule location
+    rel_type: RELATED_TO
+- name: shift start
+  definition: The time a scheduled shift begins.
+  domains:
+  - shelter
+- name: shift end
+  definition: The time a scheduled shift ends.
+  domains:
+  - shelter
+- name: schedule location
+  definition: The place a scheduled shift takes place.
+  domains:
+  - shelter
+domains:
+- description: Pet store — Petstore public API (OpenAPI), internal inventory (PG), and customer inquiries
+    (SQLite) federated into one virtual database
+  id: pet-store
+- description: Animal shelter staff and breed management — employees, assignments, schedules from GraphQL
+    demo server
+  id: shelter
+- id: perf-bench
+  description: Cross-engine performance benchmark — orders/customers/products spread across an RDB, DW,
+    doc store, and graph store sharing an order_id/customer_id join-key domain
+federation_engine: duckdb
+functions:
+- arguments:
+  - name: name
+    type: String
+  - name: breed
+    type: String
+  - name: status
+    type: String
+  binding:
+    callable: demo.py_functions:add_pet
+  description: Add a new pet to inventory
+  domain_id: pet-store
+  function_name: add_pet
+  impl_kind: python
+  kind: mutation
+  name: add_pet
+  product_id: pet_health
+  return_schema:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      breed:
+        type: string
+      status:
+        type: string
+    type: object
+  returns: ''
+  source_id: ''
+  visible_to:
+  - org_admin
+- arguments:
+  - arg_kind: result_set
+    columns:
+    - name: id
+      type: integer
+    - name: region
+      type: text
+    name: input
+    type: String
+  binding:
+    method: /provisa.demo.Enrich/EnrichRows
+    target: ${env:DEMO_GRPC_TARGET:-localhost:50071}
+  description: Demo gRPC command that ENRICHES an input relation — materializes the referenced result_set,
+    sends its rows to the service, returns each row plus a deterministic embedding + geo marker (REQ-885)
+  domain_id: pet-store
+  function_name: enrich_grpc_set
+  impl_kind: grpc
+  kind: query
+  name: enrich_grpc_set
+  output_columns:
+  - name: embedding
+    type: text
+  - name: geo
+    type: text
+  - name: id
+    type: integer
+  return_schema:
+    items:
+      properties:
+        embedding:
+          type: string
+        geo:
+          type: string
+        id:
+          type: integer
+      type: object
+    type: array
+  returns: ''
+  source_id: ''
+  visible_to:
+  - org_admin
+- binding:
+    method: /provisa.demo.RandomData/GetRandomSet
+    target: ${env:DEMO_GRPC_TARGET:-localhost:50071}
+  description: Demo gRPC command returning a random-valued dataset (set-returning) via the JSON unary
+    bridge (REQ-885)
+  domain_id: pet-store
+  function_name: random_grpc_set
+  impl_kind: grpc
+  kind: query
+  name: random_grpc_set
+  return_schema:
+    items:
+      properties:
+        active:
+          type: boolean
+        amount:
+          type: number
+        id:
+          type: integer
+        region:
+          type: string
+      type: object
+    type: array
+  returns: ''
+  source_id: ''
+  visible_to:
+  - org_admin
+- arguments:
+  - name: rows
+    type: Int
+  - name: seed
+    type: Int
+  binding:
+    callable: demo.py_functions:random_dataset
+  description: Demo Provisa-hosted Python command returning a random-valued dataset (set-returning, REQ-885)
+  domain_id: pet-store
+  function_name: random_python_set
+  impl_kind: python
+  kind: query
+  name: random_python_set
+  return_schema:
+    items:
+      properties:
+        active:
+          type: boolean
+        amount:
+          type: number
+        id:
+          type: integer
+        region:
+          type: string
+      type: object
+    type: array
+  returns: ''
+  source_id: ''
+  visible_to:
+  - org_admin
+graphql_remote:
+  max_list_depth: 2
+  max_list_items: 100
+  max_object_depth: 5
+mail:
+  base_url: ${env:PROVISA_MAIL_BASE_URL:-http://localhost:5173}
+  from_address: ${env:PROVISA_MAIL_FROM:-provisa@localhost}
+  provider: ${env:PROVISA_MAIL_PROVIDER:-smtp}
+  resend:
+    api_key: ${env:PROVISA_EMAIL_API_KEY:-}
+  microsoft365:
+    tenant_id: ${env:PROVISA_MAIL_M365_TENANT_ID:-}
+    client_id: ${env:PROVISA_MAIL_M365_CLIENT_ID:-}
+    client_secret: ${env:PROVISA_MAIL_M365_CLIENT_SECRET:-}
+    sender: ${env:PROVISA_MAIL_M365_SENDER:-}
+metrics:
+- datatype: bigint
+  description: Number of customer inquiries, re-grainable by any dim_pet attribute
+  expression: COUNT(fact_pet_inquiries.id)
+  from_fact: fact_pet_inquiries
+  name: fact_pet_inquiries_id_count
+  visible_to:
+  - org_admin
+  - analyst
+naming:
+  domain_prefix: true
+  rules: []
+observability:
+  endpoint: http://localhost:4319
+  ops_snapshot_retention_hours: 1
+  protocol: http/protobuf
+  sample_rate: 1.0
+  service_name: provisa
+relationships:
+- alias: ABOUT_PET
+  cardinality: many-to-one
+  id: fact_pet_inquiries__pet_id
+  source_column: pet_id
+  source_table_id: fact_pet_inquiries
+  target_column: id
+  target_table_id: dim_pet
+- alias: DETAIL
+  cardinality: many-to-one
+  id: find-pets-by-status-to-get-pet-by-id
+  source_column: id
+  source_table_id: pet_by_status
+  target_column: id
+  target_table_id: pet_by_id
+- alias: HAS_PETS
+  cardinality: many-to-one
+  id: inquiries-to-pets
+  source_column: pet_id
+  source_table_id: inquiries
+  target_column: id
+  target_table_id: pets
+- alias: SUBMITTED_BY
+  cardinality: many-to-one
+  id: inquiries-to-users
+  source_column: user_id
+  source_table_id: inquiries
+  target_column: id
+  target_table_id: users
+- alias: FOR_PET
+  cardinality: many-to-one
+  id: order-to-find-pets-by-status
+  source_column: petId
+  source_table_id: order_by_id
+  target_column: id
+  target_table_id: pet_by_status
+- alias: LISTED_AS
+  cardinality: many-to-one
+  id: pets-to-find-pets-by-status
+  source_column: name
+  source_table_id: pets
+  target_column: name
+  target_table_id: pet_by_status
+- alias: HAS_INQUIRY
+  cardinality: one-to-many
+  id: pets-to-inquiries
+  source_column: id
+  source_table_id: pets
+  target_column: pet_id
+  target_table_id: inquiries
+- cardinality: one-to-many
+  id: pets-to-shelter-assignments
+  source_column: breed_name
+  source_table_id: pets
+  target_column: breed_name
+  target_table_id: assignments
+- alias: BREED_INFO
+  cardinality: many-to-one
+  id: pets-to-shelter-breed
+  source_column: breed_name
+  source_table_id: pets
+  target_column: name
+  target_table_id: animal_breeds
+- alias: ASSIGNMENT_BREED
+  cardinality: many-to-one
+  graphql_alias: breed
+  id: shelter-assignments-to-breeds
+  source_column: breed_name
+  source_table_id: assignments
+  target_column: name
+  target_table_id: animal_breeds
+- alias: ASSIGNMENT_EMPLOYEE
+  cardinality: many-to-one
+  id: shelter-assignments-to-employees
+  source_column: employee_id
+  source_table_id: assignments
+  target_column: id
+  target_table_id: employees
+- cardinality: one-to-many
+  id: shelter-assignments-to-pets
+  source_column: breed_name
+  source_table_id: assignments
+  target_column: breed_name
+  target_table_id: pets
+- alias: PETS_OF_BREED
+  cardinality: one-to-many
+  id: shelter-breed-to-pets
+  source_column: name
+  source_table_id: animal_breeds
+  target_column: breed_name
+  target_table_id: pets
+- alias: SUBMITTED
+  cardinality: one-to-many
+  id: users-to-inquiries
+  source_column: id
+  source_table_id: users
+  target_column: user_id
+  target_table_id: inquiries
+- cardinality: one-to-many
+  id: pets-bonded-pair
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: pets
+  via_table: pet_companions
+  via_source_column: pet_id
+  via_target_column: companion_pet_id
+  via_type_column: relation_type
+  via_type_value: bonded pair
+  via_label_source: column
+- cardinality: one-to-many
+  id: pets-littermate
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: pets
+  via_table: pet_companions
+  via_source_column: pet_id
+  via_target_column: companion_pet_id
+  via_type_column: relation_type
+  via_type_value: littermate
+  via_label_source: column
+- cardinality: one-to-many
+  id: pets-shares-enclosure
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: pets
+  via_table: pet_companions
+  via_source_column: pet_id
+  via_target_column: companion_pet_id
+  via_type_column: relation_type
+  via_type_value: shares enclosure
+  via_label_source: column
+- alias: TREATED_BY
+  cardinality: one-to-many
+  id: pets-treated-by-vets
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: vets
+  via_table: pet_visits
+  via_source_column: pet_id
+  via_target_column: vet_id
+  via_label_source: fixed
+- cardinality: one-to-many
+  id: pets-in-playgroups
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: playgroups
+  via_table: playgroup_members
+  via_source_column: pet_id
+  via_target_column: playgroup_id
+  via_label_source: table
+- alias: HAS_EVENT
+  cardinality: one-to-many
+  id: bench-orders-events
+  source_table_id: orders
+  source_column: order_id
+  target_table_id: order_events
+  target_column: order_id
+- alias: HAS_DOC
+  cardinality: one-to-one
+  id: bench-orders-docs
+  source_table_id: orders
+  source_column: order_id
+  target_table_id: order_docs
+  target_column: order_id
+- alias: HAS_ITEM
+  cardinality: one-to-many
+  id: bench-orders-items
+  source_table_id: orders
+  source_column: order_id
+  target_table_id: order_items
+  target_column: order_id
+- alias: PLACED
+  cardinality: one-to-many
+  id: bench-placed
+  source_table_id: Customer
+  source_column: customer_id
+  target_table_id: Order
+  target_column: order_id
+  via_table: bench_placed_edge
+  via_source_column: customer_id
+  via_target_column: order_id
+  via_label_source: fixed
+- alias: CONTAINS
+  cardinality: one-to-many
+  id: bench-contains
+  source_table_id: Order
+  source_column: order_id
+  target_table_id: Product
+  target_column: product_id
+  via_table: bench_contains_edge
+  via_source_column: order_id
+  via_target_column: product_id
+  via_label_source: fixed
+roles:
+- capabilities:
+  - query_development
+  domain_access:
+  - pet-store
+  - shelter
+  id: analyst
+- id: org_admin_unguarded
+  capabilities:
+  - source_registration
+  - table_registration
+  - create_relationship
+  - create_view
+  - approve_view
+  - approve_relationship
+  - access_config
+  - user_management
+  - masking_config
+  - column_grant
+  - view_governance
+  - query_development
+  - full_results
+  - write
+  - usage
+  - org_settings
+  - observability
+  - environment_management
+  - environment_switch
+  - glossary_read
+  - glossary_rw
+  - org_glossary_rw
+  - data_product_read
+  - data_product_rw
+  - ignore_relationships
+  domain_access:
+  - '*'
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- description: Great Expectations quality scans — each results table is one suite's per-check outcomes,
+    landed as ordinary source rows
+  id: dq-checker
+  mapping:
+    database: provisa
+    host: ${env:PROVISA_DQ_HOST:-localhost}
+    password: ${env:PROVISA_DQ_PASSWORD:-provisa}
+    port: ${env:PROVISA_PGWIRE_PORT:-5439}
+    user: ${env:PROVISA_DQ_USER:-org_admin}
+  type: great_expectations
+- description: Soda quality scans — each results table is one contract's per-check outcomes, landed as
+    ordinary source rows
+  id: dq-soda
+  mapping:
+    database: provisa
+    host: ${env:PROVISA_DQ_HOST:-localhost}
+    password: ${env:PROVISA_DQ_PASSWORD:-provisa}
+    port: ${env:PROVISA_PGWIRE_PORT:-5439}
+    user: ${env:PROVISA_DQ_USER:-org_admin}
+  type: soda
+- description: Nightly profile of the pet store's tables — distributions, drift, duplicates, dependence
+    and proposed constraints, one run per night
+  id: demo-profiler
+  mapping:
+    cron: 0 2 * * *
+    low_cardinality_max: 100
+    drift_window: 7
+    drift_season: none
+    drift_distance: 3.0
+    drift_slope: 3.0
+    drift_ks: 0.2
+    drift_psi: 0.25
+    correlation_max_columns: 20
+    joint_max_distinct: 20
+    category_max_columns: 10
+  type: data_profiler
+- description: Animal shelter GraphQL API — staff schedules, breed catalogue, and animal assignment records
+    managed by shelter operations
+  id: graphql-demo
+  path: ${env:GRAPHQL_DEMO_URL:-http://graphql-demo:4000/graphql}
+  type: graphql_remote
+- description: Customer adoption inquiry records — prospective pet owner interest submissions tracked
+    by the front-desk team, including inquiry type, message, and resolution status
+  id: inquiries-sqlite
+  path: ${env:PROVISA_DEMO_DIR:-./demo/files}/inquiries.sqlite
+  type: sqlite
+- description: Internal pet store inventory — tracks animals available for sale, pricing, species, and
+    breed assignments managed by the inventory department
+  id: pet-store-sqlite
+  path: ${env:PROVISA_DEMO_DIR:-./demo/files}/pet_store.sqlite
+  type: sqlite
+- auth_config:
+    type: none
+  base_url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}
+  cache_ttl: 300
+  description: Petstore e-commerce API — browse available animals, check inventory levels, retrieve purchase
+    orders, and manage customer accounts through the public storefront
+  id: petstore-api
+  path: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/openapi.json
+  type: openapi
+- id: bench-postgresql
+  type: postgresql
+  host: ${env:PROVISA_BENCH_POSTGRESQL_HOST:-localhost}
+  port: ${env:PROVISA_BENCH_POSTGRESQL_PORT:-25632}
+  database: provisa_bench
+  username: provisa
+  password: provisa
+  description: Perf bench RDB — orders + order_items, wide OLTP shape (PostgreSQL)
+- id: bench-clickhouse
+  type: clickhouse
+  host: ${env:PROVISA_BENCH_CLICKHOUSE_HOST:-localhost}
+  port: ${env:PROVISA_BENCH_CLICKHOUSE_PORT:-28623}
+  username: default
+  password: provisa
+  description: Perf bench DW — order_events fact table, wide analytics shape (ClickHouse)
+- id: bench-mongodb
+  type: mongodb
+  host: ${env:PROVISA_BENCH_MONGO_HOST:-localhost}
+  port: ${env:PROVISA_BENCH_MONGO_PORT:-27317}
+  database: provisa_bench
+  description: Perf bench doc store — order_docs, wide nested per-order documents (MongoDB)
+  federation_hints:
+    direct_connection: 'true'
+- id: bench-neo4j
+  type: neo4j
+  host: ${env:PROVISA_BENCH_NEO4J_HOST:-localhost}
+  port: ${env:PROVISA_BENCH_NEO4J_HTTP_PORT:-27974}
+  database: neo4j
+  description: Perf bench graph store — Customer/Order/Product with PLACED/CONTAINS edges (Neo4j)
+tables:
+- alias: animal_breed
+  columns:
+  - description: Breed name to fetch - sent to the GraphQL query as an argument
+    name: _nf_name
+    data_type: varchar
+    native_filter_type: query_param
+    visible_to: []
+  - description: Typical lifespan of the breed in years
+    name: avg_lifespan_years
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: How much day-to-day care the breed needs
+    name: care_level
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Notes shelter staff keep on the breed
+    name: description
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Breed name, unique across the shelter's catalogue
+    name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Species the breed belongs to
+    name: species
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Environment the breed is suited to
+    name: typical_habitat
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: Care requirements and placement context for a single breed — use before making a staffing
+    assignment or adoption decision
+  domain_id: shelter
+  schema: graphql
+  source_id: graphql-demo
+  table: animalBreed
+- alias: animal_breeds
+  columns:
+  - description: Typical lifespan of the breed in years
+    name: avg_lifespan_years
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: How much day-to-day care the breed needs
+    name: care_level
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Notes shelter staff keep on the breed
+    name: description
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Breed name, unique across the shelter's catalogue
+    name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Species the breed belongs to
+    name: species
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Environment the breed is suited to
+    name: typical_habitat
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: Full breed catalog — use to answer what care protocols apply and which adopter profiles
+    match each species in custody
+  domain_id: shelter
+  schema: graphql
+  source_id: graphql-demo
+  table: animalBreeds
+- columns:
+  - description: Breed the employee is assigned to care for
+    name: breed_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Employee the breed is assigned to
+    name: employee_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Date the assignment ended, null while it is current
+    name: end_date
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Identifier of the assignment
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Role the employee holds on that breed
+    name: role
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Date the assignment started
+    name: start_date
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: Complete accountability map of staff to breeds — use to spot coverage gaps or single-keeper
+    risk across all species
+  domain_id: shelter
+  product_id: workforce_ops
+  schema: graphql
+  source_id: graphql-demo
+  table: assignments
+- alias: assignments_by_breed
+  columns:
+  - description: Breed name to filter on - sent to the GraphQL query as an argument
+    name: _nf_breed_name
+    data_type: varchar
+    native_filter_type: query_param
+    visible_to: []
+  - description: Breed the employee is assigned to care for
+    name: breed_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Employee the breed is assigned to
+    name: employee_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Date the assignment ended, null while it is current
+    name: end_date
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Identifier of the assignment
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Role the employee holds on that breed
+    name: role
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Date the assignment started
+    name: start_date
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: All staff responsible for a breed — use to verify minimum keeper coverage and identify
+    backup gaps
+  domain_id: shelter
+  schema: graphql
+  source_id: graphql-demo
+  table: assignmentsByBreed
+- alias: assignments_by_employee
+  columns:
+  - description: Employee id to filter on - sent to the GraphQL query as an argument
+    name: _nf_employee_id
+    data_type: integer
+    native_filter_type: query_param
+    visible_to: []
+  - description: Breed the employee is assigned to care for
+    name: breed_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Employee the breed is assigned to
+    name: employee_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Date the assignment ended, null while it is current
+    name: end_date
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Identifier of the assignment
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Role the employee holds on that breed
+    name: role
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Date the assignment started
+    name: start_date
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: All breeds a given staff member is accountable for — use to assess workload before adding
+    a new assignment
+  domain_id: shelter
+  schema: graphql
+  source_id: graphql-demo
+  table: assignmentsByEmployee
+- columns:
+  - description: Whether the pet is currently available for purchase
+    name: available
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Breed of the pet
+    name: breed_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Identifier of the pet record
+    name: id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Name the pet is known by
+    name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Sale price of the pet in USD
+    name: price
+    data_type: double
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Species of the pet (e.g. dog, cat, bird)
+    name: species
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: Pet dimension — entity projection of the pet inventory (star-schema demo)
+  domain_id: pet-store
+  materialize: true
+  modeling_role: dimension
+  schema: views
+  source_id: __derived__
+  table: dim_pet
+  view_sql: SELECT "id", "name", "species", "breed_name", "price", "available" FROM "pet_store_sqlite"."pet_store"."pets"
+- columns:
+  - description: Employee id to fetch - sent to the GraphQL query as an argument
+    name: _nf_id
+    data_type: integer
+    native_filter_type: query_param
+    visible_to: []
+  - data_type: jsonb
+    description: Employee's contact details
+    name: contact
+    object_fields:
+    - name: email
+      type: string
+      visible_to:
+      - org_admin
+      - analyst
+    - name: phone
+      type: string
+      visible_to:
+      - org_admin
+      - analyst
+    - name: ssn
+      type: string
+      visible_to:
+      - org_admin
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Shelter department the employee works in
+    name: department
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Employee's first name
+    name: first_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Date the employee joined the shelter
+    name: hire_date
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Identifier of the shelter employee
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Employee's last name
+    name: last_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: Contact details and department for a single staff member — use to route assignment requests
+    or resolve scheduling conflicts
+  domain_id: shelter
+  schema: graphql
+  source_id: graphql-demo
+  table: employee
+- columns:
+  - data_type: jsonb
+    description: Employee's contact details
+    name: contact
+    object_fields:
+    - name: email
+      type: string
+      visible_to:
+      - org_admin
+      - analyst
+    - name: phone
+      type: string
+      visible_to:
+      - org_admin
+      - analyst
+    - name: ssn
+      type: string
+      visible_to:
+      - org_admin
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Shelter department the employee works in
+    name: department
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Employee's first name
+    name: first_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Date the employee joined the shelter
+    name: hire_date
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Identifier of the shelter employee
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Employee's last name
+    name: last_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: All staff eligible for breed assignments — use to identify who can be assigned or scheduled
+  domain_id: shelter
+  product_id: workforce_ops
+  schema: graphql
+  source_id: graphql-demo
+  table: employees
+- columns:
+  - description: Identifier of the inquiry
+    name: id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Pet the inquiry is about
+    name: pet_id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  description: Inquiry fact at pet grain — inquiry count per pet, linked to dim_pet (star-schema demo)
+  domain_id: pet-store
+  materialize: true
+  modeling_role: fact
+  schema: views
+  source_id: __derived__
+  table: fact_pet_inquiries
+  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "inquiries_sqlite"."default"."inquiries" GROUP BY
+    "pet_id"
+- alias: pet_by_status
+  columns:
+  - description: Status to filter on - sent to the Petstore API as a query parameter
+    name: _nf_status
+    data_type: varchar
+    native_filter_type: query_param
+    visible_to: []
+  - description: Store category the pet is listed under
+    name: category
+    data_type: json
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Pet identifier assigned by the Petstore API
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Pet's name as listed in the store
+    name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Photo URLs published with the listing
+    name: photoUrls
+    data_type: json
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Availability status - available, pending, or sold
+    name: status
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Tags the store applies to the pet
+    name: tags
+    data_type: json
+    visible_to:
+    - org_admin
+    - analyst
+  description: Pets available for purchase — filtered by status from Petstore API
+  domain_id: pet-store
+  schema: default
+  source_id: petstore-api
+  table: find_pets_by_status
+- alias: pet_by_tags
+  columns:
+  - description: Tags to filter on - sent to the Petstore API as a query parameter
+    name: _nf_tags
+    data_type: json
+    native_filter_type: query_param
+    visible_to: []
+  - description: Store category the pet is listed under
+    name: category
+    data_type: json
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Pet identifier assigned by the Petstore API
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Pet's name as listed in the store
+    name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Photo URLs published with the listing
+    name: photoUrls
+    data_type: json
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Availability status - available, pending, or sold
+    name: status
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Tags the store applies to the pet
+    name: tags
+    data_type: json
+    visible_to:
+    - org_admin
+    - analyst
+  description: Pets filtered by tag from Petstore API
+  domain_id: pet-store
+  schema: default
+  source_id: petstore-api
+  table: find_pets_by_tags
+- alias: inventory
+  columns:
+  - description: Number of pets in the store with that status
+    name: count
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Availability status the count is grouped by
+    name: status
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: Pet inventory counts by status from Petstore API
+  domain_id: pet-store
+  schema: default
+  source_id: petstore-api
+  table: get_inventory
+- alias: order_by_id
+  columns:
+  - description: Whether the order has been fulfilled
+    name: complete
+    data_type: boolean
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Order identifier assigned by the Petstore API
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Order id to fetch - sent to the Petstore API as a path parameter
+    name: orderId
+    data_type: integer
+    native_filter_type: path_param
+    visible_to: []
+  - description: Pet the order was placed for
+    name: petId
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Number of animals on the order
+    name: quantity
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: When the order is scheduled to ship
+    name: shipDate
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Order fulfilment status - placed, approved, or delivered
+    name: status
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: Individual purchase order by ID from Petstore API
+  domain_id: pet-store
+  schema: default
+  source_id: petstore-api
+  table: get_order_by_id
+- alias: pet_by_id
+  columns:
+  - description: Pet id to fetch - sent to the Petstore API as a path parameter
+    name: _nf_petId
+    data_type: integer
+    native_filter_type: path_param
+    visible_to: []
+  - description: Store category the pet is listed under
+    name: category
+    data_type: json
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Pet identifier assigned by the Petstore API
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Pet's name as listed in the store
+    name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Photo URLs published with the listing
+    name: photoUrls
+    data_type: json
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Availability status - available, pending, or sold
+    name: status
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Tags the store applies to the pet
+    name: tags
+    data_type: json
+    visible_to:
+    - org_admin
+    - analyst
+  description: Individual pet record by ID from Petstore API
+  domain_id: pet-store
+  schema: default
+  source_id: petstore-api
+  table: get_pet_by_id
+- alias: user_by_name
+  columns:
+  - description: Contact email on the account
+    name: email
+    data_type: varchar
+    visible_to:
+    - org_admin
+  - description: Account holder's first name
+    name: firstName
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: User identifier assigned by the Petstore API
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+  - description: Account holder's last name
+    name: lastName
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Contact phone number on the account
+    name: phone
+    data_type: varchar
+    visible_to:
+    - org_admin
+  - description: Account status code returned by the Petstore API
+    name: userStatus
+    data_type: integer
+    visible_to:
+    - org_admin
+  - description: Login name the account was created under
+    name: username
+    data_type: varchar
+    native_filter_type: path_param
+    visible_to:
+    - org_admin
+    - analyst
+  description: User account by username from Petstore API
+  domain_id: pet-store
+  schema: default
+  source_id: petstore-api
+  table: get_user_by_name
+- columns:
+  - description: Identifier of the inquiry
+    name: id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Kind of inquiry - adoption, price, or availability
+    name: inquiry_type
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Free-text message the customer wrote
+    name: message
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Pet the inquiry is about
+    name: pet_id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Where the inquiry stands - new, contacted, or closed
+    name: status
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: When the inquiry was submitted
+    name: submitted_at
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Customer who submitted the inquiry
+    name: user_id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  description: Customer adoption inquiries — managed by the front-desk/CRM team
+  domain_id: pet-store
+  enable_aggregates: true
+  enable_group_by: true
+  schema: default
+  profiler_source_id: demo-profiler
+  source_id: inquiries-sqlite
+  table: inquiries
+- columns:
+  - description: Whether the pet is currently available for purchase
+    name: available
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Breed of the pet
+    name: breed_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Unique identifier for the pet record
+    name: id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Name of the pet
+    name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Sale price of the pet in USD
+    name: price
+    data_type: double
+    visible_to:
+    - org_admin
+  - description: Species of the pet (e.g. dog, cat, bird)
+    name: species
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: Pet inventory — managed by the inventory department
+  domain_id: pet-store
+  enable_aggregates: true
+  enable_group_by: true
+  product_id: pet_health
+  schema: pet_store
+  profiler_source_id: demo-profiler
+  source_id: pet-store-sqlite
+  table: pets
+- columns:
+  - description: Unique identifier for the companion link
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet the companion link starts from
+    name: pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet the companion link points at
+    name: companion_pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Which kind of companionship this row records
+    name: relation_type
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Date the two pets were first paired
+    name: since
+    data_type: date
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Care note explaining the pairing
+    name: note
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  description: Pet-to-pet companion links — the junction behind the BONDED_PAIR, LITTERMATE, and SHARES_ENCLOSURE
+    relationships
+  domain_id: pet-store
+  schema: pet_store
+  source_id: pet-store-sqlite
+  table: pet_companions
+- columns:
+  - description: Unique identifier for the vet
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Vet's name
+    name: name
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Practice the vet works out of
+    name: clinic
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Kind of animal the vet is licensed to treat
+    name: specialty
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  description: Veterinarians the store refers pets to
+  domain_id: pet-store
+  product_id: pet_health
+  schema: pet_store
+  profiler_source_id: demo-profiler
+  source_id: pet-store-sqlite
+  table: vets
+- columns:
+  - description: Unique identifier for the visit
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet that was seen
+    name: pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Vet who saw the pet
+    name: vet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Date of the visit
+    name: visit_date
+    data_type: date
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Why the pet was brought in
+    name: reason
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  description: Vet visits — the junction behind the TREATED_BY relationship between pets and vets
+  domain_id: pet-store
+  schema: pet_store
+  profiler_source_id: demo-profiler
+  source_id: pet-store-sqlite
+  table: pet_visits
+- columns:
+  - description: Unique identifier for the playgroup
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Name the playgroup is scheduled under
+    name: name
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Yard the playgroup runs in
+    name: yard
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Most pets the yard takes at once
+    name: max_size
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  description: Supervised exercise groups run in the store yards
+  domain_id: pet-store
+  enable_aggregates: true
+  enable_group_by: true
+  schema: pet_store
+  source_id: pet-store-sqlite
+  table: playgroups
+- columns:
+  - description: Unique identifier for the membership
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet enrolled in the playgroup
+    name: pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Playgroup the pet is enrolled in
+    name: playgroup_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Date the pet joined the playgroup
+    name: joined_on
+    data_type: date
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Handling note for this pet in this group
+    name: note
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  description: Playgroup enrolment — the junction behind the PLAYGROUP_MEMBERS relationship between pets
+    and playgroups
+  domain_id: pet-store
+  enable_aggregates: true
+  enable_group_by: true
+  schema: pet_store
+  source_id: pet-store-sqlite
+  table: playgroup_members
+- alias: pets_quality
+  columns:
+  - description: Placeholder carrying visible_to; replaced by the shipped results schema at parse
+    name: scan_id
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  cache_ttl: 3600
+  change_signal: ttl_probe
+  description: Quality scan results for the pet inventory — one row per check per scan, with outcome,
+    metric value and threshold
+  domain_id: pet-store
+  dq_contract: "name: pets_quality\nmeta:\n  dataset: provisa/pet_store/pets\nexpectations:\n  - type:\
+    \ expect_table_row_count_to_be_between\n    kwargs:\n      min_value: 1\n  - type: expect_column_values_to_not_be_null\n\
+    \    kwargs:\n      column: name\n  - type: expect_column_values_to_be_between\n    kwargs:\n    \
+    \  column: price\n      min_value: 0\n  - type: expect_column_values_to_not_be_null\n    kwargs:\n\
+    \      column: species\n"
+  probe_type: watermark
+  schema: quality
+  source_id: dq-checker
+  table: pets_scan
+- alias: vets_quality
+  columns:
+  - description: Placeholder carrying visible_to; replaced by the shipped results schema at parse
+    name: scan_id
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  cache_ttl: 3600
+  change_signal: ttl_probe
+  description: Quality scan results for the referral vets — one row per check per scan, with outcome,
+    metric value and threshold
+  domain_id: pet-store
+  dq_contract: "dataset: provisa/pet_store/vets\ncolumns:\n  - name: name\n    checks:\n      - missing:\n\
+    \      - duplicate:\n  - name: clinic\n    checks:\n      - missing:\n  - name: specialty\n    checks:\n\
+    \      - missing:\nchecks:\n  - row_count:\n      must_be_greater_than: 0\n"
+  probe_type: watermark
+  schema: quality
+  source_id: dq-soda
+  table: vets_scan
+- alias: schedule_by_employee
+  columns:
+  - description: Employee id to filter on - sent to the GraphQL query as an argument
+    name: _nf_employee_id
+    data_type: integer
+    native_filter_type: query_param
+    visible_to: []
+  - description: Day of the week the shift falls on
+    name: day_of_week
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Employee the shift belongs to
+    name: employee_id
+    data_type: integer
+    gql_selection: 'employee_id: employee { id }'
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Identifier of the schedule entry
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Shelter location the shift covers
+    name: location
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Time the shift ends
+    name: shift_end
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Time the shift starts
+    name: shift_start
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: A staff member's shift coverage for the week — use for availability checks before scheduling
+    a new assignment or event
+  domain_id: shelter
+  schema: graphql
+  source_id: graphql-demo
+  table: scheduleByEmployee
+- columns:
+  - description: Day of the week the shift falls on
+    name: day_of_week
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Employee the shift belongs to
+    name: employee_id
+    data_type: integer
+    gql_selection: 'employee_id: employee { id }'
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Identifier of the schedule entry
+    name: id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Shelter location the shift covers
+    name: location
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Time the shift ends
+    name: shift_end
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Time the shift starts
+    name: shift_start
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: Full weekly shift roster — use for shelter-wide coverage analysis and to surface days where
+    any location is understaffed
+  domain_id: shelter
+  product_id: workforce_ops
+  schema: graphql
+  source_id: graphql-demo
+  table: schedules
+- columns:
+  - description: When the customer record was created
+    name: created_at
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Customer's email address
+    name: email
+    data_type: varchar
+    visible_to:
+    - org_admin
+  - description: Identifier of the customer
+    name: id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Customer's full name
+    name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Customer's phone number
+    name: phone
+    data_type: varchar
+    visible_to:
+    - org_admin
+  description: Prospective adopters who have submitted inquiries
+  domain_id: pet-store
+  schema: default
+  source_id: inquiries-sqlite
+  table: users
+- source_id: bench-postgresql
+  domain_id: perf-bench
+  schema: public
+  table: orders
+  description: Sales dept OLTP orders (26 cols) — see generate_postgres.py
+  enable_aggregates: true
+  enable_group_by: true
+  columns:
+  - name: order_id
+    data_type: integer
+    is_primary_key: true
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: customer_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: sales_rep_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: warehouse_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: region
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: country
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: order_date
+    data_type: date
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: ship_date
+    data_type: date
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: delivery_date
+    data_type: date
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: channel
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: amount
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: discount
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: tax
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: shipping_cost
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: currency
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: payment_method
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: payment_status
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: status
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: priority
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: customer_segment
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: device_type
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: promo_code
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: created_at
+    data_type: date
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: updated_at
+    data_type: date
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: fulfillment_days
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: notes
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+- source_id: bench-postgresql
+  domain_id: perf-bench
+  schema: public
+  table: order_items
+  description: Sales dept OLTP order line items (16 cols) — see generate_postgres.py
+  enable_aggregates: true
+  enable_group_by: true
+  columns:
+  - name: item_id
+    data_type: integer
+    is_primary_key: true
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: order_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: sku
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: product_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: category
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: subcategory
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: quantity
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: unit_price
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: discount_pct
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: line_total
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: cost_of_goods
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: margin
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: supplier_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: warehouse_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: backorder_flag
+    data_type: boolean
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: lead_time_days
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+- source_id: bench-clickhouse
+  domain_id: perf-bench
+  schema: default
+  table: order_events
+  description: Sales dept analytics event fact table (22 cols) — see generate_clickhouse.py
+  enable_aggregates: true
+  enable_group_by: true
+  row_materialize: true
+  cache_ttl: 300
+  columns:
+  - name: event_id
+    data_type: integer
+    is_primary_key: true
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: order_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: customer_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: event_type
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: event_ts
+    data_type: timestamp
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: channel
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: campaign_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: device
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: browser
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: os
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: session_id
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: page_url
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: referrer
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: geo_country
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: geo_region
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: user_agent
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: response_time_ms
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: status_code
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: revenue_impact
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: warehouse_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: etl_batch_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: ingested_at
+    data_type: timestamp
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+- source_id: bench-mongodb
+  domain_id: perf-bench
+  schema: provisa_bench
+  table: order_docs
+  description: Sales dept case-file doc-store orders — top-level + flattened nested fields, see generate_mongo.py
+  row_materialize: true
+  cache_ttl: 300
+  columns:
+  - name: order_id
+    data_type: integer
+    is_primary_key: true
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: customer_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: status
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: order_date
+    data_type: date
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: created_at
+    data_type: date
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: updated_at
+    data_type: date
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: customer_tier
+    data_type: varchar
+    path: customer_profile.tier
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: customer_lifetime_value
+    data_type: numeric
+    path: customer_profile.lifetime_value
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: payment_amount
+    data_type: numeric
+    path: payment.amount
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: shipping_carrier
+    data_type: varchar
+    path: shipping.carrier
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+- source_id: bench-neo4j
+  domain_id: perf-bench
+  schema: neo4j
+  table: bench_order_node
+  alias: Order
+  description: One row per Order node
+  row_materialize: true
+  cache_ttl: 300
+  query_template: "MATCH (o:Order) RETURN o.order_id AS order_id, o.customer_id AS customer_id, o.region\
+    \ AS region,\n       o.channel AS channel, o.status AS status, o.amount AS amount, o.discount AS discount,\n\
+    \       o.tax AS tax, o.shipping_cost AS shipping_cost, o.currency AS currency,\n       o.payment_method\
+    \ AS payment_method, o.priority AS priority,\n       o.warehouse_id AS warehouse_id, o.order_date\
+    \ AS order_date,\n       o.created_at AS created_at, o.fulfillment_days AS fulfillment_days\nORDER\
+    \ BY o.order_id"
+  columns:
+  - name: order_id
+    data_type: integer
+    is_primary_key: true
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: customer_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: region
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: channel
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: status
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: amount
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: discount
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: tax
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: shipping_cost
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: currency
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: payment_method
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: priority
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: warehouse_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: order_date
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: created_at
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: fulfillment_days
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+- source_id: bench-neo4j
+  domain_id: perf-bench
+  schema: neo4j
+  table: bench_customer_node
+  alias: Customer
+  description: One row per Customer node
+  row_materialize: true
+  cache_ttl: 300
+  query_template: "MATCH (c:Customer) RETURN c.customer_id AS customer_id, c.name AS name, c.tier AS tier,\
+    \ c.region AS region,\n       c.industry AS industry, c.employees AS employees, c.lifetime_value AS\
+    \ lifetime_value,\n       c.signup_year AS signup_year, c.churn_risk AS churn_risk,\n       c.primary_contact_email\
+    \ AS primary_contact_email\nORDER BY c.customer_id"
+  columns:
+  - name: customer_id
+    data_type: integer
+    is_primary_key: true
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: tier
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: region
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: industry
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: employees
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: lifetime_value
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: signup_year
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: churn_risk
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: primary_contact_email
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+- source_id: bench-neo4j
+  domain_id: perf-bench
+  schema: neo4j
+  table: bench_product_node
+  alias: Product
+  description: One row per Product node
+  row_materialize: true
+  cache_ttl: 300
+  query_template: "MATCH (p:Product) RETURN p.product_id AS product_id, p.sku AS sku, p.name AS name,\
+    \ p.category AS category,\n       p.unit_cost AS unit_cost, p.list_price AS list_price, p.supplier_id\
+    \ AS supplier_id,\n       p.active AS active, p.launch_year AS launch_year\nORDER BY p.product_id"
+  columns:
+  - name: product_id
+    data_type: integer
+    is_primary_key: true
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: sku
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: category
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: unit_cost
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: list_price
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: supplier_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: active
+    data_type: boolean
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: launch_year
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+- source_id: bench-neo4j
+  domain_id: perf-bench
+  schema: neo4j
+  table: bench_placed_edge
+  description: One row per PLACED edge (which customer placed which order)
+  row_materialize: true
+  cache_ttl: 300
+  query_template: MATCH (c:Customer)-[:PLACED]->(o:Order) RETURN c.customer_id AS customer_id, o.order_id
+    AS order_id ORDER BY o.order_id
+  columns:
+  - name: customer_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: order_id
+    data_type: integer
+    is_primary_key: true
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+- source_id: bench-neo4j
+  domain_id: perf-bench
+  schema: neo4j
+  table: bench_contains_edge
+  description: 'One row per CONTAINS edge (order, product pair), keyed by the edge''s own surrogate id
+    (REQ-1865: the prior flat shape had no natural single-column key -- order_id repeats per item, product_id
+    repeats per order, and the seed data assigns CONTAINS relationships no per-edge id of its own -- and
+    a later nested-items-array reshape traded that away for a single-column key at the cost of breaking
+    the compiler''s junction-table join traversal, since order_id/product_id stopped being plain scalar
+    columns. Neo4j''s own elementId(e) gives every relationship a genuine per-edge identity for free:
+    order_id/product_id stay plain columns (join traversal and best_effort_cypher_for_sql both keep working
+    unmodified).'
+  row_materialize: true
+  cache_ttl: 300
+  query_template: "MATCH (o:Order)-[e:CONTAINS]->(p:Product) RETURN elementId(e) AS contains_id, o.order_id\
+    \ AS order_id, p.product_id AS product_id,\n       e.quantity AS quantity, e.unit_price AS unit_price\n\
+    ORDER BY contains_id"
+  columns:
+  - name: contains_id
+    data_type: text
+    is_primary_key: true
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: order_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: product_id
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: quantity
+    data_type: integer
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+  - name: unit_price
+    data_type: numeric
+    visible_to:
+    - org_admin
+    - analyst
+    - org_admin_unguarded
+tag_assignments:
+- tag_id: pii
+  object_type: column
+  table_ref: graphql-demo.graphql.employee
+  column_name: contact
+- tag_id: pii
+  object_type: column
+  table_ref: graphql-demo.graphql.employees
+  column_name: contact
+- tag_id: pii
+  object_type: column
+  table_ref: petstore-api.default.get_user_by_name
+  column_name: email
+- tag_id: pii
+  object_type: column
+  table_ref: petstore-api.default.get_user_by_name
+  column_name: phone
+- tag_id: pii
+  object_type: column
+  table_ref: inquiries-sqlite.default.users
+  column_name: email
+- tag_id: pii
+  object_type: column
+  table_ref: inquiries-sqlite.default.users
+  column_name: phone
+vector_models:
+- id: sentence-transformers/all-MiniLM-L6-v2
+  provider: huggingface
+  dimensions: 384
+  enabled: true
+webhooks:
+- arguments:
+  - name: name
+    data_type: varchar
+    type: String
+  - name: status
+    type: String
+  description: Add a new pet to the store via Petstore API
+  domain_id: pet-store
+  kind: mutation
+  method: POST
+  name: petstore_add_pet
+  timeout_ms: 5000
+  url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/pet
+  visible_to:
+  - org_admin
+- arguments:
+  - name: petId
+    type: Int
+  - name: quantity
+    type: Int
+  description: Place a purchase order for a pet via Petstore API
+  domain_id: pet-store
+  kind: mutation
+  method: POST
+  name: place_order
+  timeout_ms: 5000
+  url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/store/order
+  visible_to:
+  - org_admin

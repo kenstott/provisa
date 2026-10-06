@@ -12,7 +12,7 @@
 # needs — one container or several, all local or partly external managed resources (e.g. a
 # Databricks source reached by connection string/secret, no local container at all) — is an
 # implementation detail behind the single `docker compose up -d`. A solutions engineer never
-# orchestrates services by hand; they invoke this one file and read fragment.yaml to see what got
+# orchestrates services by hand; they invoke this one file and read config.yaml to see what got
 # registered. This demo's implementation: own compose project (provisa-demo-perf), own ports
 # (25632 rdb, 28623 dw, 27317 doc store, 27974/27987 graph). Four separate engine types so joins
 # exercise real cross-source federation, not just cross-database: postgresql (RDB), clickhouse

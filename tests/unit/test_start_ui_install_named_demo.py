@@ -21,6 +21,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import yaml
+
 SCRIPT = Path(__file__).resolve().parents[2] / "start-ui-install.sh"
 TEXT = SCRIPT.read_text()
 
@@ -80,3 +82,57 @@ def test_the_stack_is_torn_down_and_its_data_removed_before_it_comes_up() -> Non
     up = block.index('docker compose -f "$_NAMED_DIR/docker-compose.yml" up -d --build')
     seeder = block.index('docker compose -f "$_NAMED_DIR/docker-compose.yml" up seeder')
     assert reset < down < remove < up < seeder
+
+
+def _choose(tmp_path: Path, *files: str) -> tuple[int, str, str]:
+    """Run only the block that picks a named demo's config, over a demo directory holding
+    ``files``: (exit code, output, whether the config is a whole one)."""
+    (tmp_path / "demo" / "named" / "x").mkdir(parents=True)
+    for name in files:
+        (tmp_path / "demo" / "named" / "x" / name).write_text("{}\n")
+    start = TEXT.index("_NAMED_WHOLE=false")
+    end = TEXT.index('LOG_DIR="$SCRIPT_DIR/.logs"')
+    program = (
+        f'SCRIPT_DIR="{tmp_path}"\nDEMO_NAME=x\n'
+        + TEXT[start:end]
+        + '\necho "WHOLE=$_NAMED_WHOLE"\n'
+    )
+    done = subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+    return done.returncode, done.stdout, done.stdout.split("WHOLE=")[-1].strip()
+
+
+def test_a_named_demo_with_a_config_yaml_uses_it_whole(tmp_path: Path) -> None:
+    code, _out, whole = _choose(tmp_path, "config.yaml")
+    assert (code, whole) == (0, "true")
+
+
+def test_a_named_demo_with_only_a_fragment_overlays_the_standard_config(tmp_path: Path) -> None:
+    code, _out, whole = _choose(tmp_path, "fragment.yaml")
+    assert (code, whole) == (0, "false")
+
+
+def test_a_named_demo_with_neither_is_refused_by_name(tmp_path: Path) -> None:
+    code, out, _ = _choose(tmp_path)
+    assert code == 1
+    assert "--demo x has no config.yaml" in out
+
+
+def test_a_named_demo_with_both_is_refused_by_name(tmp_path: Path) -> None:
+    code, out, _ = _choose(tmp_path, "config.yaml", "fragment.yaml")
+    assert code == 1
+    assert "--demo x has both config.yaml and fragment.yaml" in out
+
+
+def test_a_whole_config_is_the_config_before_any_source_overlays_it() -> None:
+    chosen = TEXT.index('export PROVISA_CONFIG="demo/named/$DEMO_NAME/config.yaml"')
+    sources = TEXT.index(
+        '_SRC_WRAPPER="${PROVISA_HOME:-$HOME/.provisa}/demo/provisa-with-sources.yaml"'
+    )
+    assert chosen < sources
+
+
+def test_perf_is_a_whole_config_with_its_own_and_the_standard_demos_sources() -> None:
+    perf = SCRIPT.parent / "demo" / "named" / "perf"
+    assert not (perf / "fragment.yaml").exists()
+    ids = {src["id"] for src in yaml.safe_load((perf / "config.yaml").read_text())["sources"]}
+    assert {"bench-postgresql", "bench-neo4j", "pet-store-sqlite"} <= ids
