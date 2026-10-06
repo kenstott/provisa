@@ -162,7 +162,12 @@ _SODA_KINDS: tuple[CheckKind, ...] = (
     CheckKind(
         check_type="failed_rows",
         scope="dataset",
-        params=(CheckParam("expression", "string"), CheckParam("query", "string")),
+        params=(
+            CheckParam("expression", "string"),
+            CheckParam("query", "string"),
+            # Soda tells two checks of one type apart by their qualifier.
+            CheckParam("qualifier", "string"),
+        ),
         comparators=_SODA_COMPARATORS,
         metrics=("count", "percent"),
         levels=("fail", "warn"),

@@ -67,6 +67,10 @@ GX_SUITE = json.dumps(
 
 @pytest.fixture(scope="session")
 def checker_python() -> str:
+    return checker_venv_python()
+
+
+def checker_venv_python() -> str:
     """A venv carrying both checker extras, built the way the shipped install builds them."""
     python = VENV_DIR / ("Scripts" if os.name == "nt" else "bin") / "python"
     if not python.exists():

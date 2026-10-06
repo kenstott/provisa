@@ -74,7 +74,10 @@ def test_soda_checks_are_soda_column_checks_and_failed_rows_sql():
     assert by["unique"]["check_type"] == "duplicate"
     assert yaml.safe_load(by["value_set"]["definition"]) == {"valid_values": ["new", "paid"]}
     assert yaml.safe_load(by["range"]["definition"]) == {"valid_min": 0, "valid_max": 99}
-    assert yaml.safe_load(by["ordering"]["definition"]) == {"expression": '"placed" > "shipped"'}
+    assert yaml.safe_load(by["ordering"]["definition"]) == {
+        "expression": '"placed" > "shipped"',
+        "qualifier": "ordering_placed_shipped",
+    }
     assert (
         "CAST('2024-12-31' AS TIMESTAMP)" in yaml.safe_load(by["dates"]["definition"])["expression"]
     )

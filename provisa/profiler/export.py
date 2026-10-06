@@ -127,6 +127,8 @@ def _row(column: str, check_type: str, definition: str) -> dict:
 
 
 def _soda_sql(check_type: str, **params: str) -> dict:
+    """A Soda SQL check. Soda tells two checks of one type in a contract apart by their qualifier,
+    and refuses a contract holding two with none ("Duplicate identity"), so each carries one."""
     return _row("", check_type, build_check_definition("soda", check_type, params=params))
 
 
@@ -173,9 +175,17 @@ def constraint_check(c: Constraint, checker: str) -> dict:
             )
             return _row(c.column, "invalid", definition)
         if temporal:
-            return _soda_sql("failed_rows", expression=_temporal_breach(c.column, d))
+            return _soda_sql(
+                "failed_rows",
+                qualifier=f"range_{c.column}",
+                expression=_temporal_breach(c.column, d),
+            )
         assert c.other is not None
-        return _soda_sql("failed_rows", expression=f"{_ident(c.column)} > {_ident(c.other)}")
+        return _soda_sql(
+            "failed_rows",
+            qualifier=f"ordering_{c.column}_{c.other}",
+            expression=f"{_ident(c.column)} > {_ident(c.other)}",
+        )
     if c.kind == "not_null":
         return _gx("expect_column_values_to_not_be_null", c.column)
     if c.kind == "unique":
@@ -216,7 +226,7 @@ def drift_check(checker: CheckerTable) -> dict:
     drift = _relation(checker)
     query = f"SELECT * FROM {drift} WHERE drifting = TRUE AND {_latest(drift)}"
     if checker.checker == "soda":
-        return _soda_sql("failed_rows", query=query)
+        return _soda_sql("failed_rows", qualifier="drift", query=query)
     return _gx("unexpected_rows_expectation", unexpected_rows_query=query)
 
 
@@ -235,7 +245,7 @@ def expectation_check(checker: CheckerTable, expectations: str) -> dict:
         f"AND (d.{_ident('current')} < e.{_ident('low')} OR d.{_ident('current')} > e.{_ident('high')})"
     )
     if checker.checker == "soda":
-        return _soda_sql("failed_rows", query=query)
+        return _soda_sql("failed_rows", qualifier=f"expectation_{schema}_{table}", query=query)
     return _gx("unexpected_rows_expectation", unexpected_rows_query=query)
 
 
