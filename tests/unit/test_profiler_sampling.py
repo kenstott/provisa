@@ -444,3 +444,68 @@ async def test_a_table_with_no_key_and_no_block_reach_keeps_the_row_filter(monke
     assert read.method == "random"
     # The routed row-filter statement is the one executed: no second statement.
     assert len(pipe.statements) == 1 and "RANDOM() < 0.01" in pipe.statements[0]
+
+
+# -- a read of zero rows ---------------------------------------------------------------------------
+
+
+def _orders(con, rows: int) -> None:
+    con.execute("CREATE SCHEMA IF NOT EXISTS sales")
+    con.execute(
+        "CREATE TABLE sales.orders AS SELECT range + 1 AS id, "
+        f"'r' || (range % 3)::VARCHAR AS region FROM range({rows})"
+    )
+
+
+def _duck(con, sql: str) -> tuple[list[str], list[tuple]]:
+    res = con.execute(transpile(sql, "duckdb"))
+    return [d[0] for d in res.description], res.fetchall()
+
+
+def test_the_profile_statement_over_no_rows_returns_no_row_and_reads_as_zero():
+    """GROUP BY (k, val) over no input rows yields no group, not even k = 0 -- what a block sample
+    that drew no block returns. It is a read of zero rows, not a malformed result."""
+    from datetime import UTC, datetime
+
+    from provisa.profiler.run import Target, result_rows
+
+    con = duckdb.connect()
+    _orders(con, 0)
+    names, rows = _duck(con, profile_sql("sales.orders", _COLUMNS, [], Sample("whole"), 100))
+    assert rows == []
+    agg = parse_profile_result(names, rows, _COLUMNS, [])
+    assert agg.profiled_rows == 0
+    assert [c.spec for c in agg.columns] == _COLUMNS
+    # An empty table read whole still records its (empty) profile.
+    target = Target(7, "orders", "sales.orders", _COLUMNS, [], {}, _META, "id")
+    out = result_rows(target, agg, "r", datetime.now(UTC), 100)
+    assert [r["row_count"] for r in out["columns"]] == [0, 0]
+
+
+async def test_a_block_sample_that_drew_no_block_is_read_again_at_four_times(monkeypatch):
+    """Through the real statement and parse: a sample that returns no rows at all escalates like
+    any short sample. It failed the run with 'returned 0 table-wide rows' (Trino, few splits)."""
+    import re
+
+    import provisa.profiler.run as run_mod
+
+    con = duckdb.connect()
+    _orders(con, 100_000)
+    clause = re.compile(r" TABLESAMPLE SYSTEM \(([\d.]+)\)")
+
+    async def _route(sql):
+        return SimpleNamespace(route=Route.DIRECT, sql=sql, dialect="postgres")
+
+    async def _execute(plan):
+        found = clause.search(plan.sql)
+        assert found is not None, plan.sql
+        # The source's blocks are coarse: under 4% the sample draws none, from 4% it draws all.
+        drawn = "TRUE" if float(found.group(1)) >= 4 else "FALSE"
+        unsampled = clause.sub("", plan.sql)
+        return _duck(con, unsampled.replace('"orders" t', f'"orders" t WHERE {drawn}'))
+
+    monkeypatch.setattr(run_mod, "_route", _route)
+    monkeypatch.setattr(run_mod, "_execute", _execute)
+    read = await _read(_state("postgresql"), _target())
+    assert read.method == "block"
+    assert read.attempts == [{"percent": 1.0, "rows": 0}, {"percent": 4.0, "rows": 100_000}]

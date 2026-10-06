@@ -417,6 +417,15 @@ def parse_profile_result(
 ) -> ProfileAggregates:
     """The statement's result as aggregates per column and per relationship."""
     records = [dict(zip(column_names, r)) for r in rows]
+    if not records:
+        # The statement groups by (k, val): over no input rows there is no group at all, so not
+        # even the k = 0 row comes back. That is a read of zero rows -- an empty table, or a block
+        # sample that drew no block -- and the run decides what it means (REQ-1934).
+        return ProfileAggregates(
+            profiled_rows=0,
+            columns=[ColumnAggregates(spec=c) for c in columns],
+            fanouts=[FanoutAggregates(spec=f) for f in fanouts],
+        )
     scalar = [r for r in records if r["k"] == 0]
     if len(scalar) != 1:
         raise ValueError(f"profile statement returned {len(scalar)} table-wide rows, expected 1")
