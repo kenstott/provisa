@@ -1710,6 +1710,31 @@ async def _require_org_serves_here(org_id: str) -> None:
         await require_serves_here(conn, org_id, process_region.region())
 
 
+async def _with_inherited_sources(conn: Any, org_id: str, env: str, config: Any) -> Any:
+    """``config`` -- an environment's store configuration -- with each source its rows leave
+    unbound given the connection the environment inherits for it (REQ-1529,
+    provisa.core.env_bindings): the pools and engine catalogs a branch builds point where its
+    base's bindings do."""
+    from provisa.core.env_bindings import inherited_sources
+    from provisa.core.repositories.source import source_from_row
+    from provisa.core.schema_org import sources as sources_t
+
+    assert state.admin_db is not None, "the admin plane holds the environment registry"
+    rows = {
+        r._mapping["id"]: dict(r._mapping)
+        for r in (await conn.execute_core(select(sources_t))).fetchall()
+    }
+    resolved = await inherited_sources(conn, state.admin_db, org_id, env, rows)
+    inherited = {sid for sid, row in resolved.items() if row is not rows[sid]}
+    return config.model_copy(
+        update={
+            "sources": [
+                source_from_row(resolved[s.id]) if s.id in inherited else s for s in config.sources
+            ]
+        }
+    )
+
+
 async def build_org_runtime(
     org_id: str,
     *,
@@ -1968,6 +1993,9 @@ async def _build_org_runtime(
                         await rebuild_from_config(seed, conn, state.federation_engine)
                 async with bound_to_request_org():
                     org_config = await store_config(state.raw_config, conn)
+                if env != PROD:
+                    # REQ-1529: a branch's unbound sources point where its base's bindings do.
+                    org_config = await _with_inherited_sources(conn, org_id, env, org_config)
             # Populate the org-prefixed catalog-name map FIRST so the physical registration
             # attaches each source under the org's own catalog name (not the bare, default-org
             # name) — the cross-org collision guard (REQ-1266).
@@ -2262,6 +2290,16 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             r._mapping["id"]: dict(r._mapping)
             for r in (await conn.execute_core(select(_sources_t))).fetchall()
         }
+        if active_env() != PROD:
+            # REQ-1529: a branch's unbound sources point where its base's bindings do; the rows
+            # stay marked unbound, so the write guard below reads them as not the branch's own.
+            from provisa.core.env_bindings import inherited_sources
+            from provisa.core.request_context import require_current_org
+
+            assert state.admin_db is not None, "the admin plane holds the environment registry"
+            sources = await inherited_sources(
+                conn, state.admin_db, require_current_org(), active_env(), sources
+            )
         # Backfill state.source_types; patch postgresql sources to use the engine catalog names.
         # REQ-1729: also backfill state.source_catalogs — a source registered through a REST
         # router (graphql-remote, openapi) writes straight to the ``sources`` table and never
