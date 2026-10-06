@@ -36,7 +36,8 @@ from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs
 from provisa.core.schema_admin import superadmin_bootstrap
 
-pytestmark = [pytest.mark.integration]
+# REQ-1266: the app serves the bootstrap org and is bound to it (the harness re-points then binds).
+pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("req1288")]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
@@ -85,8 +86,7 @@ def admin_plane(monkeypatch):
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     # REQ-1296: the claim seats the claimant in the bootstrap org, which writes the tenant plane.
-    # Pinning org_id first makes the AppState shim resolve this test's runtime.
-    monkeypatch.setattr(app_state, "org_id", _ORG_ID, raising=False)
+    # The app serves _ORG_ID (pytestmark deployment_org), so the AppState shim resolves its runtime.
     tenant_db = Database(create_engine_from_url(_ASYNC_URL), name="org", search_path=_ORG_SCHEMA)
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
     # REQ-1919: the role assignments the claim writes are the org's model, kept in its model store

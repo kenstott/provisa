@@ -86,6 +86,9 @@ def _planes(monkeypatch, *org_rows: dict):
     from provisa.api.app import state as app_state
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
+    # REQ-1568: auto-join is a multitenant act; this app's middleware runs multitenant, and the
+    # offers endpoint reads the deployment's flag.
+    monkeypatch.setattr(app_state, "multitenancy", True, raising=False)
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
     # REQ-1919: an org's roles and role assignments are its model, kept in its model store (what
     # /auth/me reads). This test's one schema holds both stores.
@@ -94,10 +97,28 @@ def _planes(monkeypatch, *org_rows: dict):
     # REQ-1269: the middleware binds the auto-join org's runtime (ensure_org_runtime) to grant the
     # tenant-plane role in that org's schema — here the tenant schema IS the org's schema, so
     # resolve the runtime to a stub carrying tenant_db (same seam as test_redeem_invite).
-    from types import SimpleNamespace
+    # REQ-1337: each org's roles registry is read from ITS runtime, so the stub is registered as
+    # every seeded org's runtime (a fresh registry, put back by monkeypatch).
+    from provisa.api.org_runtime import OrgRegistry, OrgRuntime
 
-    async def _org_runtime(_org_id: str, _env: str | None = None):
-        return SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
+    registry = OrgRegistry()
+    # The deployment org's runtime stays: the platform rights are read from it (REQ-1327).
+    registry.set(app_state.org_id, app_state.org_registry.get(app_state.org_id))
+    for row in org_rows:
+        registry.set(
+            row["id"],
+            OrgRuntime(
+                org_id=row["id"],
+                model_db=tenant_db,
+                tenant_db=tenant_db,
+                record_db=tenant_db,
+                roles={"analyst": {"id": "analyst", "capabilities": []}},
+            ),
+        )
+    monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
+
+    async def _org_runtime(org_id: str, _env: str | None = None):
+        return registry.get(org_id)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
     return admin_db, tenant_db, sync_engine

@@ -109,18 +109,20 @@ def planes(monkeypatch):
     # to obtain a tenant_db search_path-scoped to that org's schema, then grant the role there. The
     # full runtime build is an integration concern the invited org already exercises at provisioning;
     # here the tenant schema IS the org's schema, so resolve the runtime to a stub carrying tenant_db.
-    from types import SimpleNamespace
 
     # REQ-1337: the org's own role registry -- read from ITS runtime -- judges its assignments. The
     # stub is registered as acme's runtime so every read bound to acme resolves to it. Left
     # unregistered, AppState resolves an unbuilt prod org to the default org's runtime, whose roles
     # are whatever an earlier test in the session loaded: a single-tenant config's org_admin
     # carries platform_settings, which drops alice's org_admin assignment (roles []).
-    acme_runtime = SimpleNamespace(
+    from provisa.api.org_runtime import OrgRuntime
+
+    acme_runtime = OrgRuntime(
+        org_id="acme",
         model_db=tenant_db,
         tenant_db=tenant_db,
+        record_db=tenant_db,
         roles={"org_admin": {"id": "org_admin", "capabilities": []}},
-        federation_engine=None,
     )
 
     async def _org_runtime(org_id: str, _env: str | None = None):
@@ -128,7 +130,7 @@ def planes(monkeypatch):
         return acme_runtime
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
-    app_state.org_registry.set("acme", acme_runtime)  # type: ignore[arg-type]
+    app_state.org_registry.set("acme", acme_runtime)
 
     yield admin_db, tenant_db, sync_engine
 
