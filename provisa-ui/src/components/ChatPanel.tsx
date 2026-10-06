@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
   Alert,
@@ -72,14 +73,10 @@ const GLOSSARY_TOOL_NAMES = new Set([
 ]);
 
 // REQ-1806: a brief, enumerated demo prompt list shown only before the first message — picked to
-// showcase distinct real capabilities (catalog search, subscription sources, page awareness),
-// plus one that's just for personality.
-const SUGGESTED_QUESTIONS = [
-  "Why are you named Polly?",
-  "What page am I on?",
-  "What data sources are registered?",
-  "Find me inflation data",
-];
+// showcase distinct real capabilities (catalog search, subscription sources, page awareness, the
+// Data Profiler REQ-1934, fakes REQ-1494), plus one that's just for personality. Keys under
+// chatPanel.suggestion in the i18n catalogs; the question sent is the text shown.
+const SUGGESTION_KEYS = ["name", "page", "sources", "inflation", "profile", "fakes"] as const;
 
 /**
  * REQ-1795: the chat assistant panel — a v1 slice proving the client-tool pause/resume
@@ -97,6 +94,8 @@ const SUGGESTED_QUESTIONS = [
  * persisting the panel's conversation are explicit follow-ups.
  */
 export function ChatPanel() {
+  const { t } = useTranslation();
+  const suggestedQuestions = SUGGESTION_KEYS.map((k) => t(`chatPanel.suggestion.${k}`));
   const { role, selectedRoles } = useAuth();
   // REQ-1812: local-dev/demo (unsecured) auth reconstructs request.state.assignments purely from
   // this header, splitting it on commas (see provisa/auth/middleware.py) — sending only role?.id
@@ -292,8 +291,8 @@ export function ChatPanel() {
     // and sending it means the same thing as clicking it — send the full question, not the digit.
     const asIndex = messages.length === 0 ? Number(draft.trim()) : NaN;
     const text =
-      Number.isInteger(asIndex) && asIndex >= 1 && asIndex <= SUGGESTED_QUESTIONS.length
-        ? SUGGESTED_QUESTIONS[asIndex - 1]
+      Number.isInteger(asIndex) && asIndex >= 1 && asIndex <= suggestedQuestions.length
+        ? suggestedQuestions[asIndex - 1]
         : draft;
     setDraft("");
     void send(text);
@@ -520,9 +519,9 @@ export function ChatPanel() {
           {messages.length === 0 && (
             <Stack gap={6} data-testid="chat-panel-suggestions">
               <Text size="xs" c="dimmed">
-                Try asking:
+                {t("chatPanel.tryAsking")}
               </Text>
-              {SUGGESTED_QUESTIONS.map((q, i) => (
+              {suggestedQuestions.map((q, i) => (
                 <Button
                   key={q}
                   variant="light"

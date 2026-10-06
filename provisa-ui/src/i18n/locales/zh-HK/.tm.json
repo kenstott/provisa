@@ -5054,5 +5054,12 @@
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor.",
   "zh-HK/profilerFormSection.json::profilerFormSection.categoryMaxDescription": "How many category columns enter the correlations and joint counts; those holding a value in the most rows are kept.",
-  "zh-HK/profilerFormSection.json::profilerFormSection.categoryMaxLabel": "Most category columns"
+  "zh-HK/profilerFormSection.json::profilerFormSection.categoryMaxLabel": "Most category columns",
+  "zh-HK/chatPanel.json::chatPanel.tryAsking": "Try asking:",
+  "zh-HK/chatPanel.json::chatPanel.suggestion.name": "Why are you named Polly?",
+  "zh-HK/chatPanel.json::chatPanel.suggestion.page": "What page am I on?",
+  "zh-HK/chatPanel.json::chatPanel.suggestion.sources": "What data sources are registered?",
+  "zh-HK/chatPanel.json::chatPanel.suggestion.inflation": "Find me inflation data",
+  "zh-HK/chatPanel.json::chatPanel.suggestion.profile": "Profile the orders table",
+  "zh-HK/chatPanel.json::chatPanel.suggestion.fakes": "Give the customers table fake names for test data"
 }

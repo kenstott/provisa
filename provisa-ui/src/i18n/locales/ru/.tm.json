@@ -5053,5 +5053,12 @@
   "tablesPage.json::tablesPage.modelingRole.impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table",
   "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
   "ru/profilerFormSection.json::profilerFormSection.categoryMaxDescription": "How many category columns enter the correlations and joint counts; those holding a value in the most rows are kept.",
-  "ru/profilerFormSection.json::profilerFormSection.categoryMaxLabel": "Most category columns"
+  "ru/profilerFormSection.json::profilerFormSection.categoryMaxLabel": "Most category columns",
+  "ru/chatPanel.json::chatPanel.tryAsking": "Try asking:",
+  "ru/chatPanel.json::chatPanel.suggestion.name": "Why are you named Polly?",
+  "ru/chatPanel.json::chatPanel.suggestion.page": "What page am I on?",
+  "ru/chatPanel.json::chatPanel.suggestion.sources": "What data sources are registered?",
+  "ru/chatPanel.json::chatPanel.suggestion.inflation": "Find me inflation data",
+  "ru/chatPanel.json::chatPanel.suggestion.profile": "Profile the orders table",
+  "ru/chatPanel.json::chatPanel.suggestion.fakes": "Give the customers table fake names for test data"
 }

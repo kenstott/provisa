@@ -1,0 +1,13 @@
+{
+  "chatPanel": {
+    "tryAsking": "質問の例:",
+    "suggestion": {
+      "name": "なぜ Polly という名前なの?",
+      "page": "今どのページにいますか?",
+      "sources": "どのデータソースが登録されていますか?",
+      "inflation": "インフレのデータを探して",
+      "profile": "orders テーブルをプロファイリングして",
+      "fakes": "テストデータ用に customers テーブルにフェイクの名前を設定して"
+    }
+  }
+}

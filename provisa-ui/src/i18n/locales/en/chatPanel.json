@@ -1,0 +1,13 @@
+{
+  "chatPanel": {
+    "tryAsking": "Try asking:",
+    "suggestion": {
+      "name": "Why are you named Polly?",
+      "page": "What page am I on?",
+      "sources": "What data sources are registered?",
+      "inflation": "Find me inflation data",
+      "profile": "Profile the orders table",
+      "fakes": "Give the customers table fake names for test data"
+    }
+  }
+}
