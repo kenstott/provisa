@@ -76239,3 +76239,21 @@
   notes: 'Maintainer 2026-10-05: a feature that takes data profiles of several tables plus the declared fake kinds
     and builds a scalable synthetic dataset for volume testing with similar processing characteristics; known limits
     accepted.'
+- id: REQ-1940
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  priority: SHOULD
+  type: ui
+  description: Every admin page that lists items (sources, tables, security roles and rules, relationships, views,
+    commands, metrics, data products, team, requests and the like) presents its list in one style, the style of the
+    Register Tables page -- the same list component, header row, row height, spacing, typography, action placement,
+    selection and expand behaviour, empty state and loading state. A page differs from another only in its columns
+    and actions, never in how a list looks or behaves; a new list page uses the shared style rather than its own.
+  use_case: An operator moving from Tables to Sources to Security finds each list laid out and used the same way.
+  related_reqs:
+  - REQ-1937
+  - REQ-1938
+  notes: 'Maintainer 2026-10-05: all pages with lists have inconsistent styles; the standard is the Register Tables
+    page, not, e.g., the Sources and Security pages as they are.'

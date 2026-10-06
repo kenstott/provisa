@@ -22253,3 +22253,17 @@ A synthetic dataset is a model object that fills an environment with generated d
 **Code:** —
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-1940 · UI {#REQ-1940}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+
+Every admin page that lists items (sources, tables, security roles and rules, relationships, views, commands, metrics, data products, team, requests and the like) presents its list in one style, the style of the Register Tables page -- the same list component, header row, row height, spacing, typography, action placement, selection and expand behaviour, empty state and loading state. A page differs from another only in its columns and actions, never in how a list looks or behaves; a new list page uses the shared style rather than its own.
+
+**Use case:** An operator moving from Tables to Sources to Security finds each list laid out and used the same way.
+
+**Code:** —
+
+**Tests:** —
