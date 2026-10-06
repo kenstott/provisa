@@ -76236,6 +76236,15 @@
     from the joint counts given their generated values, a parent table's columns included. A column with a declared
     fake keeps its fake, the dependence deciding only which of its values or which share is drawn. The comparison
     report adds the difference between the measured and generated correlations and dependencies.
+    (Amended 2026-10-06, NOT TOO CLOSE TO A REAL ROW) A synthetic dataset checks that no generated row is too close
+    to a real one. When it generates, it reads a sample of each table's real rows as the organisation's
+    administrator through the governed pipeline, as a profile does, and measures each generated row's distance to
+    its nearest real row over the columns with no declared fake, numbers scaled by their spread and categories
+    counted as matching or not. A generated row nearer than the dataset's threshold, a share of the real rows' own
+    typical distance to one another, is drawn again, and a row still too near after the dataset's stated number of
+    draws is dropped and counted. The comparison report adds the distribution of those distances beside the real
+    rows' own, and the rows redrawn and dropped. The threshold and the number of draws are settings of the dataset
+    with a field each on its form.
   use_case: 'A team tests a reporting workload against ten times production volume: it points a synthetic dataset
     at the orders, customers and products profiles with scale 10, and the dev environment fills with data whose
     join fan-out, skew and value shapes match production, with no personal data in it.'
