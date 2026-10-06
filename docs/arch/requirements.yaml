@@ -76827,13 +76827,26 @@
     the generated data.
 
 
+    Differential privacy. A synthetic dataset may be declared private with a privacy budget ε, a setting
+    with a field on its form. Before generation, calibrated noise -- the Laplace or Gaussian mechanism,
+    accounted against ε -- is added to every statistic the generator draws from the profile: value frequencies
+    and category shares, joint counts, the correlation matrix, quantile sketches, fan-out sketches and
+    hot-key counts. Categories and joint-count cells below the threshold the noise implies are dropped,
+    and hot keys keep only their noised counts, never exact ones. Faked reads are unaffected. A dataset
+    not declared private carries no privacy guarantee, and its report says so.
+
+
     Marking and the report. The generated tables are marked as generated (REQ-1495), and an environment
     filled this way holds no personal data (REQ-1493). After generation the synthetic tables are profiled
     and a comparison report compares them with the source profiles -- row ratios, fan-out, skew, null
     shares and distributions, the difference between the measured and generated correlations and dependencies,
     each conditional fan-out''s parents and children, the distribution of generated rows'' distances to
-    the nearest real row beside the real rows'' own and the rows redrawn and dropped, and each assertion''s
-    result -- so the reader can see how close they are.'
+    the nearest real row beside the real rows'' own and the rows redrawn and dropped, each assertion''s
+    result, and, for a private dataset, its ε, its mechanism and what the noise dropped -- so the reader
+    can see how close they are. The report also gives named privacy measures: each generated row''s distance
+    to its closest real row and the nearest-neighbour distance ratio, each beside the real rows'' own,
+    and the result of a membership-inference test. A dataset not declared private is reported as carrying
+    no privacy guarantee.'
   use_case: 'A team tests a reporting workload against ten times production volume: it points a synthetic
     dataset at the orders, customers and products profiles with scale 10, and the dev environment fills
     with data whose join fan-out, skew and value shapes match production, with no personal data in it.'
@@ -76898,7 +76911,12 @@
     ASSERTIONS; GENERATION IN PASSES; CONDITIONAL FAN-OUT.
 
     - 2026-10-06 WAREHOUSE STORE: generated into the warehouse store; writes through change logs in the
-    relational store (REQ-1493).'
+    relational store (REQ-1493).
+
+    - 2026-10-06 DIFFERENTIAL PRIVACY (maintainer): private datasets with budget ε; Laplace/Gaussian noise
+    on every profile statistic drawn; sub-threshold categories and joint cells dropped; hot keys noised;
+    report states ε, mechanism, drops, closest-row distance, NN distance ratio and membership-inference
+    result; faked reads unaffected; non-private datasets carry no guarantee.'
 - id: REQ-1940
   status: proposed
   since: 2026-10
