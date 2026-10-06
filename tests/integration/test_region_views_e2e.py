@@ -156,8 +156,8 @@ def test_each_region_builds_its_own_copy_and_a_view_naming_eu_is_read_from_eu(st
         config = _config(stack, files, work, "csv")
         config["tables"] += [_view("every_orders", None), _view("eu_orders", "eu")]
         # The administrator refreshes the views now rather than the test waiting for their
-        # schedule: table_registration is the right refreshMv asks for.
-        config["roles"][0]["capabilities"].append("table_registration")
+        # schedule: table_registration is the right refreshMv asks for, and the seeded org_admin
+        # holds it (REQ-1349: the reserved role is the seed's, never a config's).
         path = work / "config.yaml"
         path.write_text(yaml.safe_dump(config))
         eu, us = _server(stack, "eu", path), _server(stack, "us", path)

@@ -150,6 +150,14 @@ class TestMasterKeyHasAHome:
         values = (CHART / "values.yaml").read_text()
         loaded = yaml.safe_load(values)["encryption"]
         assert loaded["existingSecret"] == "" and loaded["dataVolume"]["enabled"] is False
+        # The one key the chart does generate is not the master key: the platform fake key
+        # (REQ-1494), which the engine pods read from a mounted file and Provisa stores as the
+        # guarded fakes.key setting. Every other template generates nothing.
+        fake_key = "fake-key-secret.yaml"
+        fake_key_text = (CHART / "templates" / fake_key).read_text()
+        assert "PROVISA_ENCRYPTION_KEY" not in fake_key_text and "encryption" not in fake_key_text
         for template in (CHART / "templates").glob("*.yaml"):
+            if template.name == fake_key:
+                continue
             text = template.read_text()
             assert "randAlphaNum" not in text and "genPrivateKey" not in text, template.name

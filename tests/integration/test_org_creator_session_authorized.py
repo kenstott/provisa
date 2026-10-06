@@ -171,8 +171,12 @@ def planes(monkeypatch):
     # engine_kind, engine_url, shard, storage_url) without restating it: this stub cares about none
     # of them, and naming a subset means every new build argument breaks the fixture instead of the
     # code under test.
-    async def _fake_build(org_id, **_kwargs):  # noqa: ARG001
-        return types.SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
+    async def _fake_build(org_id, **_kwargs):
+        from provisa.api.org_runtime import OrgRuntime
+
+        return OrgRuntime(
+            org_id=org_id, model_db=tenant_db, tenant_db=tenant_db, record_db=tenant_db
+        )
 
     async def _noop_provision(*_args, **_kwargs):
         return None

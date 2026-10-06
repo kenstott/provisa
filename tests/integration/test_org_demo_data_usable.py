@@ -151,8 +151,12 @@ async def demo_org_client():
         from provisa.federation.engine import build_engine
         from provisa.federation.runtime import EngineRuntime
 
-        if getattr(state.federation_engine.engine, "name", None) != "trino":
-            state.federation_engine = EngineRuntime(build_engine(), state)
+        from tests.conftest import as_deployment_org
+
+        # The deployment org's engine is set up as the boot does it: bound to that org (REQ-1266).
+        with as_deployment_org():
+            if getattr(state.federation_engine.engine, "name", None) != "trino":
+                state.federation_engine = EngineRuntime(build_engine(), state)
 
         app = create_app()
         async with app.router.lifespan_context(app):

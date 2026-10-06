@@ -37,11 +37,13 @@ def main() -> None:
 
     async def serve() -> None:
         from provisa.core.connection_loop import set_process_loop
-        from provisa.scheduler.holder import SchedulerHolder
+        from provisa.scheduler.holder import Holders, SchedulerHolder
         from provisa.scheduler.jobs import new_scheduler
 
         set_process_loop(asyncio.get_running_loop())
-        scheduler = new_scheduler(SchedulerHolder(url, scope))
+        # A deployment with no regions: its deployment and region claims are the same (REQ-1922).
+        holder = SchedulerHolder(url, scope)
+        scheduler = new_scheduler(Holders(deployment=holder, region=holder))
         scheduler.add_job(tick, trigger=IntervalTrigger(seconds=1), id="tick", max_instances=1)
         scheduler.start()
         print("started", flush=True)

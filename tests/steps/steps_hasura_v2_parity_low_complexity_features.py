@@ -833,7 +833,7 @@ def _when_cron_fires(shared_data: dict) -> None:
     """Build the APScheduler and actually invoke the registered webhook job."""
     triggers: list[ScheduledTrigger] = shared_data["triggers"]
 
-    scheduler = build_scheduler(triggers)
+    scheduler = build_scheduler(triggers, "default")  # the deployment org this scenario serves
     assert scheduler is not None, "enabled triggers must produce a scheduler"
     shared_data["scheduler"] = scheduler
 

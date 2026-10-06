@@ -89,8 +89,12 @@ class TestSubscribeValidation:
             mock_state.rls_contexts = {}
             mock_state.contexts = {"analyst": mock_ctx}
             mock_state.source_types = {"pg": "postgresql"}
+            # A live subscription acts as a role the org holds (REQ-286): the subscriber is analyst.
+            mock_state.roles = {"analyst": {"id": "analyst", "capabilities": []}}
 
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as c:
-                resp = await c.get("/data/subscribe/nonexistent_table")
-                assert resp.status_code == 404
+                resp = await c.get(
+                    "/data/subscribe/nonexistent_table", headers={"X-Provisa-Role": "analyst"}
+                )
+                assert resp.status_code == 404, resp.text

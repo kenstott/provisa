@@ -132,15 +132,22 @@ async def client_field():
         password=_PG_PASSWORD,
     )
 
+    from provisa.core.request_context import reset_current_org, set_current_org
+
     st = AppState()
-    st.schemas = {"admin": schema}
-    st.contexts = {"admin": ctx}
-    st.rls_contexts = {"admin": RLSContext.empty()}
-    st.roles = {"admin": role}
-    st.source_pools = source_pool
-    st.source_types = {"test-pg": "postgresql"}
-    st.source_dialects = {"test-pg": "postgres"}
-    st.masking_rules = {}
+    # REQ-1266: the state's org runtime is written as work for its org, as the boot does.
+    token = set_current_org(st.org_id)
+    try:
+        st.schemas = {"admin": schema}
+        st.contexts = {"admin": ctx}
+        st.rls_contexts = {"admin": RLSContext.empty()}
+        st.roles = {"admin": role}
+        st.source_pools = source_pool
+        st.source_types = {"test-pg": "postgresql"}
+        st.source_dialects = {"test-pg": "postgres"}
+        st.masking_rules = {}
+    finally:
+        reset_current_org(token)
 
     # The /data/graphql handler reads the module-global AppState; swap it in.
     prev_state = appmod.state

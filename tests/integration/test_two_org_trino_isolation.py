@@ -59,8 +59,12 @@ async def app_state():
     try:
         # If another test imported the app earlier under a different engine, rebind to Trino so this
         # module always exercises the shared-coordinator catalog namespace it is written to prove.
-        if getattr(state.federation_engine.engine, "name", None) != "trino":
-            state.federation_engine = EngineRuntime(build_engine(), state)
+        from tests.conftest import as_deployment_org
+
+        # The deployment org's engine is set up as the boot does it: bound to that org (REQ-1266).
+        with as_deployment_org():
+            if getattr(state.federation_engine.engine, "name", None) != "trino":
+                state.federation_engine = EngineRuntime(build_engine(), state)
 
         app = create_app()
         async with app.router.lifespan_context(app):

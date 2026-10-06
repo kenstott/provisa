@@ -133,11 +133,9 @@ def planes(monkeypatch):
         shard="",
         storage_url=None,
     ):
-        import types as _types
+        from provisa.api.org_runtime import OrgRuntime
 
-        return _types.SimpleNamespace(
-            model_db=admin_db, record_db=admin_db, tenant_db=admin_db, org_id=org_id
-        )
+        return OrgRuntime(org_id=org_id, model_db=admin_db, record_db=admin_db, tenant_db=admin_db)
 
     async def _fake_grant_org_role(_tenant_db, user_id, role_id, *, granter_capabilities):
         grants.append((user_id, role_id))

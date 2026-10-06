@@ -152,7 +152,15 @@ class World:
         asyncio.run(_go())
 
     def evaluate(self) -> Any:
-        return asyncio.run(evaluate(self.state, workers=1))
+        """The promotion check, run as work for this world's org (REQ-1266): it counts the
+        bound org's reads."""
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(self.state.org_id)
+        try:
+            return asyncio.run(evaluate(self.state, workers=1))
+        finally:
+            reset_current_org(token)
 
     def record(self, table: str) -> Any:
         async def _go() -> Any:
