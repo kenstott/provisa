@@ -49214,7 +49214,7 @@
     environment is stable unless declared otherwise, since test data is extracted, kept and compared over
     time. Fakes there are computed by the serving engine like every other fake, so ordering, filtering,
     grouping, joining and aggregating work on them. The Environments page of the admin shows a Test data
-    switch on each environment with one line on what it does. Comparisons, ranges and sorts over a faked column are over its faked values, which define their own order; no fake keeps the order of the real values. A stable fake gives the same values, so the same order and the same results, on every engine and in every region; a fake not declared stable gives them within one engine and region.'
+    switch on each environment with one line on what it does. Comparisons, ranges and sorts over a faked column are over its faked values, which define their own order; no fake keeps the order of the real values. A stable fake gives the same values, so the same order and the same results, on every engine and in every region; a fake not declared stable gives them within one engine and region. Each column has a fake and, optionally, a synthetic rule laid over it. The fake is what a faked read shows -- a column with none shows its real value -- and the guidance is to fake as little as possible, the identifying columns, so every other column keeps its real values and relationships. The synthetic rule applies only to synthetic generation (REQ-1939) and, where declared, takes the place of the fake there; where none is declared, generation uses the column''s fake, and where the column has neither, generates the column from its profile. The kinds that make sense only over a generated table -- sql_group, sequence -- are synthetic rules and are refused by name as a fake; since a faked read shows the column''s fake or its real value, they take no fake parameter. Every other kind may be either. Filling fakes from a profile proposes fakes only for identifying columns -- those tagged pii and those whose plausible type is a person''s name, an email, a phone number, an address, a government identifier or an account number -- and may propose synthetic rules for the rest, every proposal editable and nothing saved until the operator saves. Stable applies to the fake.'
   use_case: A data scientist, or an LLM acting under its own identity, works on masked data that behaves
     like the real data (joins match, counts are right, values look real) without any personal data reaching
     them. An analyst joins a masked customer table to a masked orders table and gets the row counts the
@@ -76906,7 +76906,7 @@
     can see how close they are. The report also gives named privacy measures: each generated row''s distance
     to its closest real row and the nearest-neighbour distance ratio, each beside the real rows'' own,
     and the result of a membership-inference test. A dataset not declared private is reported as carrying
-    no privacy guarantee.'
+    no privacy guarantee. A column''s synthetic rule, where declared, decides its generated values; else its fake; else its profile (REQ-1494). A column tagged pii with neither a fake nor a synthetic rule refuses the generation by name.'
   use_case: 'A team tests a reporting workload against ten times production volume: it points a synthetic
     dataset at the orders, customers and products profiles with scale 10, and the dev environment fills
     with data whose join fan-out, skew and value shapes match production, with no personal data in it.'
