@@ -13,8 +13,8 @@
 
 Build-and-prove-load in the same CI job (the discipline used to build these by hand): a bundle that
 compiles but does not LOAD is a failure. Reads <bundle>/manifest.json, copies lib/* + share/extension/*
-into pgserver's pginstall, then loads each extension. Required members must load; mysql_fdw is
-best-effort (its client lib must be discoverable to the PG process — a packaging detail).
+into pgserver's pginstall, then loads each extension. Every member must load, and the required
+ones must be present; mysql_fdw's client library ships in the bundle like every other library.
 
 Usage: python smoke_pg_extensions.py <bundle-dir>
 Exit non-zero if any REQUIRED extension fails to load.
@@ -22,22 +22,63 @@ Exit non-zero if any REQUIRED extension fails to load.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pgserver
 
-REQUIRED = {"file_fdw", "postgres_fdw", "sqlite_fdw", "pg_duckdb"}
-BEST_EFFORT = {"mysql_fdw"}
+REQUIRED = {"file_fdw", "postgres_fdw", "sqlite_fdw", "pg_duckdb", "pg_clickhouse", "mysql_fdw"}
+
+
+def _postgres_fdw_reads(db) -> list[str]:
+    """A foreign table over this same server: postgres_fdw opens a libpq connection, so the read
+    proves the libpq the bundle ships is the one that loads (the build's own libpq is moved away
+    before this runs in CI)."""
+    socket_dir = parse_qs(urlparse(db.get_uri()).query)["host"][0]
+    sql = (
+        "CREATE TABLE smoke_src(id int); INSERT INTO smoke_src VALUES (1),(2),(3);"
+        f"CREATE SERVER smoke_rem FOREIGN DATA WRAPPER postgres_fdw "
+        f"OPTIONS (host '{socket_dir}', dbname 'postgres');"
+        "CREATE USER MAPPING FOR CURRENT_USER SERVER smoke_rem OPTIONS (user 'postgres');"
+        "CREATE FOREIGN TABLE smoke_ft(id int) SERVER smoke_rem OPTIONS (table_name 'smoke_src');"
+        "SELECT 'fdw-sum=' || sum(id) FROM smoke_ft;"
+    )
+    # psql directly rather than pgserver's psql(), which drops stderr: a failed read names why.
+    psql = Path(pgserver.__file__).parent / "pginstall" / "bin" / "psql"
+    done = subprocess.run(  # noqa: S603
+        [str(psql), "-v", "ON_ERROR_STOP=1", db.get_uri()],
+        input=sql,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    out = done.stdout + done.stderr
+    if "fdw-sum=6" in out:
+        print("  OK   postgres_fdw foreign-table read")
+        return []
+    print(f"  FAIL postgres_fdw foreign-table read:\n{out}")
+    return ["postgres_fdw: foreign-table read failed"]
 
 
 def main(bundle: Path) -> int:
     manifest = json.loads((bundle / "manifest.json").read_text())
     keys = {a["key"] for a in manifest["artifacts"]}
+    # The external installer refuses a file whose checksum does not match its row, so a stale row
+    # ships a bundle that cannot be installed (0.1.1: relocation rewrote files after their rows).
+    stale = [
+        a["file"]
+        for a in manifest["artifacts"]
+        if hashlib.sha256((bundle / a["file"]).read_bytes()).hexdigest() != a["sha256"]
+    ]
+    if stale:
+        print("SMOKE FAILED: manifest checksums do not match the files:", *stale, sep="\n  ")
+        return 1
 
     pg = Path(pgserver.__file__).parent / "pginstall"
     dl = pg / "lib" / "postgresql"
@@ -80,11 +121,12 @@ def main(bundle: Path) -> int:
                 loaded = False
         if loaded:
             print(f"  OK   {key}{extra}")
-        elif key in BEST_EFFORT:
-            print(f"  WARN {key} (best-effort): did not load (client lib not discoverable to PG?)")
         else:
             print(f"  FAIL {key}: CREATE EXTENSION did not register it")
             failures.append(f"{key}: did not load")
+
+    if "postgres_fdw" in keys and not any(f.startswith("postgres_fdw") for f in failures):
+        failures += _postgres_fdw_reads(db)
 
     missing = REQUIRED - keys
     if missing:

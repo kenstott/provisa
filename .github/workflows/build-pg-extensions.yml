@@ -40,7 +40,7 @@ jobs:
 
       - name: Install build deps (macOS)
         if: matrix.os == 'darwin'
-        run: brew install cmake ninja mariadb-connector-c
+        run: brew install cmake ninja mariadb-connector-c lz4 zstd openssl@3
 
       - name: Install build deps (Linux)
         if: matrix.os == 'linux'
@@ -48,7 +48,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build git curl bison flex patchelf \
-            libssl-dev liblz4-dev libzstd-dev libsqlite3-dev libmariadb-dev pkg-config
+            libssl-dev liblz4-dev libzstd-dev libsqlite3-dev libmariadb-dev pkg-config \
+            libcurl4-openssl-dev uuid-dev
 
       - name: Setup Python 3.12 (pgserver smoke test)
         uses: actions/setup-python@v5
@@ -82,8 +83,17 @@ jobs:
 
       - name: Smoke-test (pgserver load + CREATE EXTENSION)
         run: |
+          # The build's own PG install (and its libpq) is moved away first: the bundle must load
+          # with nothing from the build tree present, as it does on a user's machine.
+          mv "$HOME/.cache/provisa-fdw/pg162" "$HOME/.cache/provisa-fdw/pg162.moved-aside"
           pip install pgserver asyncpg
           python scripts/ci/smoke_pg_extensions.py "dist/pg-ext/${{ matrix.os }}-${{ matrix.arch }}"
+
+      - name: Put the build tree back (the cache saves it)
+        if: always()
+        run: |
+          d="$HOME/.cache/provisa-fdw"
+          [ ! -d "$d/pg162.moved-aside" ] || mv "$d/pg162.moved-aside" "$d/pg162"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -231,3 +241,35 @@ jobs:
         run: |
           set -euo pipefail
           gh release upload "$TAG" dist-pg-ext/* --clobber
+
+  # The version just published, installed from PyPI into a clean virtualenv on each platform and
+  # proven there (scripts/ci/pg_ext_clean_staging.py): the smoke test above runs where the bundle
+  # was built; this runs where nothing of the build is.
+  verify-published:
+    name: verify published ${{ matrix.platform }}
+    needs: wheel
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-14, platform: darwin-arm64 }
+          - { runner: ubuntu-22.04, platform: linux-x64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the published wheel into a clean venv
+        run: |
+          version=$(python -c "import tomllib; print(tomllib.load(open('packaging/pg-ext/pyproject.toml','rb'))['project']['version'])")
+          python -m venv "$RUNNER_TEMP/v"
+          # PyPI serves a new upload within a minute or two; ask until it does, bounded.
+          for i in $(seq 1 20); do
+            "$RUNNER_TEMP/v/bin/pip" install -q --no-cache-dir "provisa-pg-ext==$version" \
+              pgserver==0.1.4 "psycopg[binary]" && break
+            [ "$i" = 20 ] && { echo "::error::provisa-pg-ext==$version not installable from PyPI"; exit 1; }
+            sleep 15
+          done
+      - name: Stage it and read through every FDW
+        run: env -i HOME="$HOME" PATH=/usr/bin:/bin "$RUNNER_TEMP/v/bin/python" scripts/ci/pg_ext_clean_staging.py ${{ matrix.platform }}
