@@ -70239,7 +70239,7 @@
     \ A control plane that is a file on one host (SQLite) holds the boot lock as an exclusive file lock\
     \ beside it (REQ-1920), which the operating system releases when the holder dies, and records the\
     \ launch's generation in `boot_generations` like the PostgreSQL control plane: the first worker of\
-    \ a launch does the once-per-launch work and the rest find it done."
+    \ a launch does the once-per-launch work and the rest find it done. (Amended 2026-10-06, A RESTART DOES NOT REAPPLY THE CONFIG) [SUPERSEDES a restart applying the config again.] A restart is a new launch: it reissues the engine catalogs from the model store, since an engine does not keep them, and never applies the configuration file to the model again -- the file seeds the model once, at first start (REQ-1919)."
   use_case: 'Direct follow-up to live saturation findings on the perf-bench VM: the maintainer asked to
     tune the number of uvicorn workers to raise the saturation ceiling, which first required checking
     whether the app''s own auxiliary protocol servers could survive running as multiple processes at all
