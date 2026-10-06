@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1934: a profiler's detail view ends with a button that runs it at once for all its members.
+// REQ-1934: a profiler's detail view has a button that runs it at once for all its members, among its actions.
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "../../../test-utils/render";
 import type { Source } from "../../../types/admin";
@@ -36,12 +36,14 @@ function panel(type: string) {
 }
 
 describe("SourceDetailPanel run profiler", () => {
-  it("ends a profiler's detail view with the run button, which runs the profiler", async () => {
+  it("shows the run button among the source's actions, and it runs the profiler", async () => {
     runProfiler.mockResolvedValue([{ table: "orders", error: null }]);
-    const { container } = panel("data_profiler");
+    panel("data_profiler");
     const button = screen.getByTestId("source-detail-run-profiler");
-    const buttons = container.querySelectorAll("button");
-    expect(buttons[buttons.length - 1]).toBe(button);
+    // Beside Edit and Delete, in the same row of borderless icon buttons.
+    expect(button.parentElement).toBe(screen.getByTestId("source-detail-edit").parentElement);
+    expect(button.parentElement).toBe(screen.getByTestId("source-detail-delete").parentElement);
+    expect(button.getAttribute("data-variant")).toBe("subtle");
     fireEvent.click(button);
     expect(runProfiler).toHaveBeenCalledWith("nightly");
     expect(await screen.findByTestId("source-detail-profiler-outcomes")).toBeInTheDocument();
