@@ -602,7 +602,12 @@ class BoltSession:
         # side-channel that rides RUN's `extra` map without touching the record stream. The handle is
         # surfaced in the trailing PULL SUCCESS metadata.
         from provisa.executor.redirect import delivery_from_request, parse_redirect_format
+        from provisa.core.request_context import reset_current_org, set_current_org
+        from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
 
+        # REQ-1266: the RUN is work for the session's org from here on; the delivery below reads the
+        # org's redirect settings and the role's own, so it is resolved bound.
+        _org_token = set_current_org(self._bound_org())
         tx_meta = extra.get("tx_metadata") or {}
         _redir_thr = tx_meta.get("provisa_redirect_threshold")
         _redir_fmt = tx_meta.get("provisa_redirect_format")
@@ -615,13 +620,10 @@ class BoltSession:
                 role=role_id,
             )
         except ValueError as exc:
+            reset_current_org(_org_token)
             self.send_failure(_ARGUMENT_ERROR, f"invalid redirect metadata: {exc}")
             return
 
-        from provisa.core.request_context import reset_current_org, set_current_org
-        from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
-
-        _org_token = set_current_org(self._bound_org())
         # REQ-074/REQ-1386: attribute this RUN's governed statements to the authenticated principal.
         # Bolt executes on the event loop (no thread hop), so a plain scope binds it. A connection
         # that named no principal (an unsecured deployment) is audited as the anonymous one.
