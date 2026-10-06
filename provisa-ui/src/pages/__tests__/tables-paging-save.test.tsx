@@ -288,24 +288,29 @@ describe("TablesPage — Paging (REQ-318)", () => {
 
 
 describe("TablesPage — the writes a table takes", () => {
-  async function writesOf(name: string): Promise<string> {
+  async function openTable(name: string): Promise<void> {
     render(<TablesPage />);
     const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
     await userEvent.click(row.querySelector("td") as HTMLElement);
-    return (await screen.findByTestId("table-read-view-writes")).textContent ?? "";
   }
 
-  it("names every write a writable source takes", async () => {
-    expect(await writesOf("orders")).toContain("DELETEINSERTUPDATE");
+  it("marks a writable table and names every write its source takes", async () => {
+    await openTable("orders");
+    const chip = await screen.findByTestId("table-read-view-writable");
+    expect(chip).toHaveTextContent("Writable");
+    expect(chip.getAttribute("aria-label")).toContain("DELETE, INSERT, UPDATE");
   });
 
   it("names only inserts for an append-only source", async () => {
-    const shown = await writesOf("events");
-    expect(shown).toContain("INSERT");
-    expect(shown).not.toContain("UPDATE");
+    await openTable("events");
+    const label = (await screen.findByTestId("table-read-view-writable")).getAttribute("aria-label");
+    expect(label).toContain("INSERT");
+    expect(label).not.toContain("UPDATE");
   });
 
-  it("says a table whose source takes no writes is read only", async () => {
-    expect(await writesOf("graph")).toContain("None (read only)");
+  it("shows no writable chip for a table whose source takes no writes", async () => {
+    await openTable("graph");
+    await screen.findByTestId("table-read-view-preview");
+    expect(screen.queryByTestId("table-read-view-writable")).toBeNull();
   });
 });

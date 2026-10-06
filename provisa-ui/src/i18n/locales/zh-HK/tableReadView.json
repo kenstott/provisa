@@ -24,9 +24,7 @@
     "apiEndpoint": "API 端點：",
     "watermarkColumn": "水印欄：",
     "viewSql": "檢視 SQL：",
-    "dataProduct": "數據產品：",
     "dataProductYes": "是",
-    "dataProductNo": "否",
     "editSqlButton": "編輯 SQL",
     "openInExplorerButton": "在 Explorer 中開啟",
     "editSqlTitle": "在 Explorer 中編輯此檢視的 SQL",
@@ -56,7 +54,8 @@
     "editDefinitionButton": "編輯定義",
     "editDefinitionTitle": "編輯檢視定義（SQL 或指標／維度選擇器）",
     "queryTemplate": "Cypher：",
-    "writes": "接受的寫入：",
-    "writesNone": "無（唯讀）"
+    "writable": "可寫入",
+    "writableOps": "接受來自 GraphQL、REST 及 SQL 的 {{ops}}",
+    "dataProductChip": "數據產品"
   }
 }

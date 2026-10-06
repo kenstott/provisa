@@ -24,9 +24,7 @@
     "apiEndpoint": "נקודת קצה API:",
     "watermarkColumn": "עמודת Watermark:",
     "viewSql": "SQL של ה-View:",
-    "dataProduct": "מוצר נתונים:",
     "dataProductYes": "כן",
-    "dataProductNo": "לא",
     "editSqlButton": "עריכת SQL",
     "openInExplorerButton": "פתיחה ב-Explorer",
     "editSqlTitle": "עריכת ה-SQL של ה-View הזה ב-Explorer",
@@ -56,7 +54,8 @@
     "editDefinitionButton": "עריכת הגדרה",
     "editDefinitionTitle": "עריכת הגדרת ה-View (SQL או בחירת מדד/ממד)",
     "queryTemplate": "Cypher:",
-    "writes": "מקבלת כתיבות:",
-    "writesNone": "אין (קריאה בלבד)"
+    "writable": "ניתנת לכתיבה",
+    "writableOps": "מקבלת {{ops}} דרך GraphQL,‏ REST ו-SQL",
+    "dataProductChip": "מוצר נתונים"
   }
 }

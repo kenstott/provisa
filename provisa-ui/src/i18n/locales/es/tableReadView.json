@@ -24,9 +24,7 @@
     "apiEndpoint": "Endpoint de API:",
     "watermarkColumn": "Columna de marca de agua:",
     "viewSql": "SQL de la vista:",
-    "dataProduct": "Producto de datos:",
     "dataProductYes": "Sí",
-    "dataProductNo": "No",
     "editSqlButton": "Editar SQL",
     "openInExplorerButton": "Abrir en el Explorador",
     "editSqlTitle": "Editar el SQL de esta vista en el Explorador",
@@ -56,7 +54,8 @@
     "editDefinitionButton": "Editar definición",
     "editDefinitionTitle": "Editar la definición de la vista (SQL o selector de métricas/dimensiones)",
     "queryTemplate": "Cypher:",
-    "writes": "Admite escrituras:",
-    "writesNone": "Ninguna (solo lectura)"
+    "writable": "Escribible",
+    "writableOps": "Admite {{ops}} desde GraphQL, REST y SQL",
+    "dataProductChip": "Producto de datos"
   }
 }

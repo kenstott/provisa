@@ -11,7 +11,16 @@
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { Trash2, Pencil } from "lucide-react";
-import { ActionIcon, Badge, Box, Button, Group, Table, Text } from "@mantine/core";
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Button,
+  Group,
+  Table,
+  Text,
+  Tooltip,
+} from "@mantine/core";
 import type { NavigateFunction } from "react-router-dom";
 import type { RegisteredTable, DataProduct } from "../../types/admin";
 import { computeProfile } from "./helpers";
@@ -235,28 +244,38 @@ export function TableReadView({
           </code>
         </Box>
       )}
-      <Group px="0.75rem" py="0.5rem" gap="0.4rem">
-        <Text c="dimmed">{t("tableReadView.dataProduct")}</Text>
-        {table.productId != null ? (
-          <Text c="var(--color-success, #22c55e)" fw={600}>
-            {dataProducts.find((p) => p.id === table.productId)?.name ?? table.productId}
-          </Text>
-        ) : (
-          <Text c="dimmed">{t("tableReadView.dataProductNo")}</Text>
-        )}
-      </Group>
-      <Group px="0.75rem" py="0.5rem" gap="0.4rem" data-testid="table-read-view-writes">
-        <Text c="dimmed">{t("tableReadView.writes")}</Text>
-        {table.writeOps.length > 0 ? (
-          table.writeOps.map((op) => (
-            <Badge key={op} variant="light" size="sm">
-              {op.toUpperCase()}
-            </Badge>
-          ))
-        ) : (
-          <Text c="dimmed">{t("tableReadView.writesNone")}</Text>
-        )}
-      </Group>
+      {/* Only what departs from the default is shown: a read-only table with no data product shows
+          no chip at all. */}
+      {(table.writeOps.length > 0 || table.productId != null) && (
+        <Group px="0.75rem" py="0.5rem" gap="0.4rem" data-testid="table-read-view-chips">
+          {table.writeOps.length > 0 && (
+            <Tooltip
+              label={t("tableReadView.writableOps", {
+                ops: table.writeOps.map((op) => op.toUpperCase()).join(", "),
+              })}
+              withArrow
+            >
+              <Badge
+                variant="light"
+                size="sm"
+                data-testid="table-read-view-writable"
+                aria-label={t("tableReadView.writableOps", {
+                  ops: table.writeOps.map((op) => op.toUpperCase()).join(", "),
+                })}
+              >
+                {t("tableReadView.writable")}
+              </Badge>
+            </Tooltip>
+          )}
+          {table.productId != null && (
+            <Tooltip label={t("tableReadView.dataProductChip")} withArrow>
+              <Badge variant="light" color="green" size="sm" data-testid="table-read-view-product">
+                {dataProducts.find((p) => p.id === table.productId)?.name ?? table.productId}
+              </Badge>
+            </Tooltip>
+          )}
+        </Group>
+      )}
       <Group justify="flex-start" p="0.5rem" gap="0.5rem" wrap="wrap">
         {table.viewSql && (
           <Button

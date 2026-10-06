@@ -24,9 +24,7 @@
     "apiEndpoint": "API 终结点：",
     "watermarkColumn": "水位列：",
     "viewSql": "视图 SQL：",
-    "dataProduct": "数据产品：",
     "dataProductYes": "是",
-    "dataProductNo": "否",
     "editSqlButton": "编辑 SQL",
     "openInExplorerButton": "在资源管理器中打开",
     "editSqlTitle": "在资源管理器中编辑此视图的 SQL",
@@ -56,7 +54,8 @@
     "editDefinitionButton": "编辑定义",
     "editDefinitionTitle": "编辑视图定义（SQL 或指标/维度选择器）",
     "queryTemplate": "Cypher：",
-    "writes": "接受的写入：",
-    "writesNone": "无（只读）"
+    "writable": "可写入",
+    "writableOps": "接受来自 GraphQL、REST 和 SQL 的 {{ops}}",
+    "dataProductChip": "数据产品"
   }
 }
