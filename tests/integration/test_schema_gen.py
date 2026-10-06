@@ -63,7 +63,8 @@ async def _load_config(tenant_db, _init_schema, platform_admin_db):
         # so the sample config's ephemeral ${env:PG_PORT} survives int validation).
         import yaml
 
-        config = parse_config_dict(yaml.safe_load(FIXTURE_CONFIG.read_text()))
+        raw = yaml.safe_load(FIXTURE_CONFIG.read_text())
+        config = parse_config_dict(raw)
     # The TRUNCATE above also wipes the system-seeded roles (org_admin, platform_admin, ...).
     # Those are schema.sql's rows, not this config's — role_repo.upsert refuses to (re)write
     # org_admin/platform_admin from any config (REQ-1349), so a real deployment never TRUNCATEs
@@ -122,6 +123,10 @@ async def _load_config(tenant_db, _init_schema, platform_admin_db):
                 await apply_config(config, conn, app_mod.state.federation_engine)
             # The engine catalogs of the applied sources, as boot issues them (REQ-1919).
             register_sources(app_mod.state.federation_engine, list(config.sources))
+            # And the Kafka sources' catalogs: their topics are registered tables of the model
+            # (REQ-1919), introspected off the engine like every other table.
+            for kafka_source in raw.get("kafka_sources", []):
+                app_mod.state.federation_engine.register_kafka_catalog(kafka_source)
         finally:
             app_mod.state.federation_engine = prior_engine
             app_mod.state.engine_conn = prior_conn
