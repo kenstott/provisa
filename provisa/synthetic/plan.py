@@ -15,9 +15,10 @@ caller (``provisa.synthetic.run``). The maintainer's ruling (2026-10-06) is that
 each profile as recorded, for every column: vocabulary, most frequent values and sketches alike;
 the environment's own masks govern who sees the result.
 
-Every column is generated through the fake attributes declared on it (REQ-1494) when it has some;
-:func:`declared_fake` is that hook, and no column declares one until REQ-1494 lands, so every
-column is generated from its own profile and the report names it as undeclared.
+A column's declared kind of fake (REQ-1494) decides its values: the categories fake is the only way
+a real value reaches a cell, and the bool fake draws true at a stated or measured share. A column
+with no fake is generated from its own profile, never a recorded value, and the report names it as
+undeclared.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
+from provisa.fakes.kinds import Bool, Categories, FakeKind, kind_name
 from provisa.synthetic.generate import ColumnPlan, ForeignKey, TablePlan
 
 # A column whose distinct values are at least this share of its rows grows its vocabulary with the
@@ -54,40 +56,8 @@ class DatasetRefused(ValueError):
     """A dataset that cannot be generated, said naming what is missing."""
 
 
-@dataclass(frozen=True)
-class Categories:
-    """The categories fake (REQ-1494), the only way a real value reaches a synthetic cell, in its
-    three forms (CATEGORIES FROM THE PROFILE, CATEGORY WEIGHTS):
-
-    * ``categories()`` -- ``values`` None: the values and shares of the column's full
-      value-frequency table;
-    * ``categories((v1, v2, ...))`` -- the operator's values, at their profiled shares;
-    * ``categories((v1, ...), (s1, ...))`` -- the operator's values at the stated shares.
-    """
-
-    values: tuple[str, ...] | None = None
-    shares: tuple[float, ...] | None = None
-
-
-@dataclass(frozen=True)
-class Bool:
-    """The bool fake (REQ-1494, THE BOOL FAKE): true in ``share`` of rows; ``share`` None takes the
-    measured share -- from the profile, else from the table, else even."""
-
-    share: float | None = None
-
-
-FakeKind = Categories | Bool
-
 #: A column's recorded values and their counts, nulls included: ``(value, count)`` pairs.
 Counts = list[tuple[str | None, int]]
-
-
-def declared_fake(table: str, column: str) -> FakeKind | None:
-    """The fake kind declared on ``column`` for testing (REQ-1494) -- the one seam through which
-    generation reads it. None is declared until REQ-1494 lands on this branch."""
-    del table, column
-    return None
 
 
 @dataclass(frozen=True)
@@ -130,6 +100,7 @@ class DatasetTable:
     scale: float
     profile: ProfiledTable
     pii: frozenset[str] = frozenset()  # its columns tagged pii
+    fakes: dict[str, FakeKind] = field(default_factory=dict)  # each faked column's kind (REQ-1494)
 
 
 @dataclass(frozen=True)
@@ -225,9 +196,7 @@ def check_pii(tables: list[DatasetTable]) -> None:
     """Refuse generating any column tagged pii with no declared fake kind, naming every one: its
     values cannot be generated from anything but its fake (REQ-1939, A COLUMN'S FAKE SETTINGS
     DECIDE ITS VALUES)."""
-    undeclared = sorted(
-        f"{t.name}.{c}" for t in tables for c in t.pii if declared_fake(t.name, c) is None
-    )
+    undeclared = sorted(f"{t.name}.{c}" for t in tables for c in t.pii if c not in t.fakes)
     if undeclared:
         raise DatasetRefused(
             "these columns are tagged pii and declare no kind of fake, so their values cannot be "
@@ -269,7 +238,7 @@ def plan_tables(
         cols: list[ColumnPlan] = []
         for name, ir_type, is_pk in t.columns:
             p = prof.columns.get(name)
-            if declared_fake(t.name, name) is None:
+            if name not in t.fakes:
                 planned.undeclared.append(name)
             fk_edge = next((e for e in own_edges if e.child_column == name), None)
             fake = _fake_of(t, name, ir_type, is_pk or fk_edge is not None)
@@ -371,7 +340,12 @@ def _fake_of(t: DatasetTable, name: str, ir_type: str, keyed: bool) -> FakeKind 
     BOOLEANS). A key's values are the key's, never a fake's."""
     if keyed:
         return None
-    fake = declared_fake(t.name, name)
+    fake = t.fakes.get(name)
+    if fake is not None and not isinstance(fake, (Categories, Bool)):
+        raise DatasetRefused(
+            f"{t.name}.{name} declares {kind_name(fake)}(), which synthetic generation "
+            f"does not compute yet"
+        )
     if fake is None and _is_boolean(ir_type, t.profile.columns.get(name)):
         return Bool()
     return fake
@@ -436,8 +410,7 @@ def _categories_column(
     if fake.values is not None and not fake.values:
         raise DatasetRefused(f"{t.name}.{name} declares the categories fake with an empty list")
     if fake.shares is not None:
-        assert fake.values is not None  # stated shares are of stated values
-        _check_shares(t.name, name, fake.values, fake.shares)
+        assert fake.values is not None  # stated shares are of stated values, checked when declared
         null_share = _null_share(p, rows)
         return _drawn(name, typ, family, list(zip(fake.values, fake.shares)), null_share)
     recorded, null_share = _measured(t, name, p, rows, measure)
@@ -494,21 +467,6 @@ def _bool_column(
     return _drawn(
         name, typ, "boolean", [("true", true_share), ("false", 1 - true_share)], null_share
     )
-
-
-def _check_shares(
-    table: str, column: str, values: tuple[str, ...], shares: tuple[float, ...]
-) -> None:
-    """Stated shares must match the values in count, each lie in [0, 1], and sum to 1 (REQ-1494,
-    CATEGORY WEIGHTS)."""
-    where = f"{table}.{column}: the categories fake"
-    if len(shares) != len(values):
-        raise DatasetRefused(f"{where} states {len(shares)} shares for {len(values)} values")
-    bad = [s for s in shares if not 0.0 <= s <= 1.0]
-    if bad:
-        raise DatasetRefused(f"{where} states shares outside [0, 1]: {bad}")
-    if abs(sum(shares) - 1.0) > 1e-9:
-        raise DatasetRefused(f"{where} states shares summing to {sum(shares)!r}, not 1")
 
 
 def _drawn(

@@ -78,6 +78,12 @@ def server():
                     _col("id", "integer", is_primary_key=True),
                     _col("region", "varchar"),
                     _col("email", "varchar"),
+                    # REQ-1494: declared fakes -- tier's values and shares stated; segment's
+                    # values named, their shares measured.
+                    _col("tier", "varchar", fake="categories((gold, silver), (.25, .75))"),
+                    _col("segment", "varchar", fake="categories((retail, wholesale, online))"),
+                    # REQ-1939, BOOLEANS: an undeclared boolean is bool(), at its profiled share.
+                    _col("active", "boolean"),
                 ],
                 profiler_source_id="profiler",
             ),
@@ -133,7 +139,8 @@ def server():
         with engine.connect() as conn:
             conn.execute(
                 sa.text(
-                    "CREATE TABLE public.customers (id integer PRIMARY KEY, region text, email text)"
+                    "CREATE TABLE public.customers (id integer PRIMARY KEY, region text, email text, "
+                    "tier text, segment text, active boolean)"
                 )
             )
             conn.execute(
@@ -150,8 +157,16 @@ def server():
             )
             for c in range(1, _CUSTOMERS + 1):
                 conn.execute(
-                    sa.text("INSERT INTO public.customers VALUES (:i, :r, :e)"),
-                    {"i": c, "r": ("east", "west", "north")[c % 3], "e": f"c{c}@example.com"},
+                    sa.text("INSERT INTO public.customers VALUES (:i, :r, :e, :t, :s, :a)"),
+                    {
+                        "i": c,
+                        "r": ("east", "west", "north")[c % 3],
+                        "e": f"c{c}@example.com",
+                        "t": "bronze",
+                        # retail on 3 rows in 4, wholesale on 1 in 4; online never recorded.
+                        "s": "wholesale" if c % 4 == 0 else "retail",
+                        "a": c % 5 != 0,  # true on 4 rows in 5
+                    },
                 )
             for i, (cust, _) in enumerate(_ORDERS, 1):
                 conn.execute(
@@ -202,24 +217,32 @@ def _one(boot, sql: str, env: str | None = None) -> Any:
     return next(iter(rows[0].values()))
 
 
-@pytest.fixture(scope="module")
-def dev(server) -> dict:
-    status, body = _call(server, "POST", "/admin/profilers/profiler/run")
-    assert status == 200 and [o["error"] for o in body] == [None, None, None], body
+def _environment(boot, name: str) -> dict:
+    """A new environment ``name``, with the prod profile runs a dataset of it may name."""
     status, body = _call(
-        server,
+        boot,
         "POST",
-        f"/admin/orgs/{server.org_id}/environments",
-        {"name": "dev", "inherit_connections": True},
+        f"/admin/orgs/{boot.org_id}/environments",
+        {"name": name, "inherit_connections": True},
     )
     assert status == 200, body
-    status, runs = _call(
-        server, "GET", "/admin/synthetic-datasets/-/profile-runs?env=prod", env="dev"
-    )
+    status, runs = _call(boot, "GET", "/admin/synthetic-datasets/-/profile-runs?env=prod", env=name)
     assert status == 200, runs
     by_name = {r["tableName"]: r for r in runs}
     assert set(by_name) == {"customers", "purchases", "contacts"}, runs
-    return {"boot": server, "tables": by_name}
+    return {"boot": boot, "tables": by_name, "env": name}
+
+
+@pytest.fixture(scope="module")
+def profiled(server):
+    status, body = _call(server, "POST", "/admin/profilers/profiler/run")
+    assert status == 200 and [o["error"] for o in body] == [None, None, None], body
+    return server
+
+
+@pytest.fixture(scope="module")
+def dev(profiled) -> dict:
+    return _environment(profiled, "dev")
 
 
 def _define(dev: dict, names: list[str], dataset: str = "load_test") -> tuple[int, Any]:
@@ -239,7 +262,7 @@ def _define(dev: dict, names: list[str], dataset: str = "load_test") -> tuple[in
                 for n in names
             ],
         },
-        env="dev",
+        env=dev["env"],
     )
 
 
@@ -250,7 +273,7 @@ def generated(dev) -> dict:
     status, body = _call(
         dev["boot"], "POST", "/admin/synthetic-datasets/load_test/generate", env="dev"
     )
-    assert status == 200, body
+    assert status == 200, (body, dev["boot"].log_text()[-6000:])
     return dev
 
 
@@ -352,17 +375,26 @@ def test_the_report_compares_the_copy_with_its_profiles(generated):
     assert ("customers", "email", "undeclared_fake") in by
 
 
-def test_dropping_the_dataset_restores_the_binding(generated):
-    boot = generated["boot"]
-    status, body = _call(boot, "DELETE", "/admin/synthetic-datasets/load_test", env="dev")
+def test_dropping_the_dataset_restores_the_binding(profiled):
+    """In an environment of its own, so no other test reads a dataset this one drops."""
+    env = _environment(profiled, "dropped")
+    status, body = _define(env, ["customers", "purchases"], dataset="drop_test")
     assert status == 200, body
-    assert _one(boot, "SELECT COUNT(*) AS n FROM sales.customers", env="dev") == _CUSTOMERS
+    status, body = _call(
+        profiled, "POST", "/admin/synthetic-datasets/drop_test/generate", env="dropped"
+    )
+    assert status == 200, body
+    count = "SELECT COUNT(*) AS n FROM sales.customers"
+    assert _one(profiled, count, env="dropped") == 2 * _CUSTOMERS
+    status, body = _call(profiled, "DELETE", "/admin/synthetic-datasets/drop_test", env="dropped")
+    assert status == 200, body
+    assert _one(profiled, count, env="dropped") == _CUSTOMERS
 
 
-def test_an_environment_can_start_on_synthetic_data(dev):
+def test_an_environment_can_start_on_synthetic_data(profiled):
     """REQ-1939, BOOTSTRAPPING AN ENVIRONMENT: the new environment is generated from prod's latest
     profile runs at its own scale."""
-    boot = dev["boot"]
+    boot = profiled
     status, body = _call(
         boot,
         "POST",
@@ -386,3 +418,34 @@ def test_an_environment_can_start_on_synthetic_data(dev):
     # Each real email is held by one row: none is a hot value, so none is drawn as itself.
     real = {f"c{c}@example.com" for c in range(1, _CUSTOMERS + 1)}
     assert not real & {r["email"] for r in emails}
+
+
+def _shares(boot, column: str) -> dict[Any, float]:
+    status, rows = _sql(
+        boot, f"SELECT {column} AS v, COUNT(*) AS n FROM sales.customers GROUP BY {column}", "dev"
+    )
+    assert status == 200, rows
+    return {r["v"]: r["n"] / (2 * _CUSTOMERS) for r in rows}
+
+
+def test_a_declared_categories_fake_decides_the_values(generated):
+    """REQ-1494, CATEGORY WEIGHTS: tier is drawn from its stated values at its stated shares;
+    the real value (bronze) is never one of them."""
+    tier = _shares(generated["boot"], "tier")
+    assert set(tier) == {"gold", "silver"}, tier
+    assert tier["gold"] == pytest.approx(0.25, abs=0.07)
+
+
+def test_named_categories_take_their_measured_shares(generated):
+    """REQ-1494, CATEGORIES FROM THE PROFILE: retail and wholesale at their profiled shares; online,
+    never recorded, shares what remains -- nothing."""
+    segment = _shares(generated["boot"], "segment")
+    assert set(segment) <= {"retail", "wholesale", "online"}, segment
+    assert segment["retail"] == pytest.approx(0.75, abs=0.07)
+    assert segment.get("online", 0.0) == 0.0
+
+
+def test_an_undeclared_boolean_keeps_its_share_of_true(generated):
+    active = _shares(generated["boot"], "active")
+    assert set(active) <= {True, False}, active
+    assert active[True] == pytest.approx(0.8, abs=0.07)

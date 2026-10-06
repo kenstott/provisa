@@ -818,6 +818,23 @@ class Column(
     # "us"). The compiler translates it in emitted SQL, so every surface reads and filters it as its
     # registered temporal type (ISO 8601 text in GraphQL). Declared, never inferred.
     epoch_unit: str | None = None
+    # REQ-1494: the column's kind of fake, as the operator writes it ("categories((a, b))",
+    # "bool(.8)", "email()"), and whether it is stable -- the same on every engine. Checked against
+    # the rest of the table by provisa.fakes.checks.check_table.
+    fake: str | None = None
+    fake_stable: bool = False
+
+    @model_validator(mode="after")
+    def _fake_is_a_kind(self) -> "Column":
+        if self.fake is None:
+            return self
+        from provisa.fakes.kinds import FakeRefused, parse
+
+        try:
+            parse(self.fake)
+        except FakeRefused as exc:
+            raise ValueError(f"column {self.name}: {exc}") from exc
+        return self
 
     @model_validator(mode="after")
     def _epoch_unit_needs_a_temporal_type(self) -> "Column":

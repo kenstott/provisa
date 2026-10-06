@@ -13,6 +13,7 @@ that generates it, run on an in-process DuckDB and checked against what was prof
 
 from __future__ import annotations
 
+import sys
 from collections import Counter
 from dataclasses import replace
 
@@ -20,11 +21,10 @@ import duckdb
 import pytest
 import sqlglot
 
+from provisa.fakes.kinds import Bool, Categories, FakeKind, FakeRefused, parse
 from provisa.profiler import measures
 from provisa.synthetic.generate import children_count_sql, generation_sql
 from provisa.synthetic.plan import (
-    Bool,
-    Categories,
     DatasetRefused,
     DatasetTable,
     Edge,
@@ -37,6 +37,9 @@ from provisa.synthetic.plan import (
     to_measure,
 )
 from provisa.synthetic.report import ks_between
+
+# The fakes declared on the tables a test builds (REQ-1494); set by _declare.
+_DECLARED: dict[str, FakeKind] = {}
 
 _UNIFORM_100 = tuple(float(i) for i in range(101))
 # Children per parent: half the parents have none, the top 1% have 50 (the hot keys).
@@ -72,6 +75,7 @@ def _customers(scale: float = 2.0) -> DatasetTable:
             ("email", "varchar", False),
         ),
         scale=scale,
+        fakes=dict(_DECLARED),
         profile=ProfiledTable(
             "r1",
             1000,
@@ -111,6 +115,7 @@ def _purchases() -> DatasetTable:
             ("amount", "double", False),
         ),
         scale=2.0,
+        fakes=dict(_DECLARED),
         profile=ProfiledTable(
             "r2",
             3000,
@@ -355,10 +360,9 @@ def test_no_column_without_a_categories_fake_has_a_recorded_value(con):
     assert not {"east", "west", "north"} & {r["region"] for r in crows}
 
 
-def _declare(monkeypatch, fakes: dict[str, Categories]) -> None:
-    monkeypatch.setattr(
-        "provisa.synthetic.plan.declared_fake", lambda table, column: fakes.get(column)
-    )
+def _declare(monkeypatch, fakes: dict[str, FakeKind]) -> None:
+    """Declare ``fakes`` on the tables the test builds next (REQ-1494)."""
+    monkeypatch.setattr(sys.modules[__name__], "_DECLARED", fakes)
 
 
 def _regions(customers: DatasetTable, con) -> Counter:
@@ -434,6 +438,7 @@ def test_the_categories_fake_over_a_full_frequency_table_reads_no_table(monkeypa
 
 def _active(con, monkeypatch, fake, profiled=None, counts=None) -> float:
     """The share of true in a generated boolean column ``active``."""
+    _declare(monkeypatch, {"active": fake} if fake is not None else {})
     customers = replace(
         _customers(),
         columns=_customers().columns + (("active", "boolean", False),),
@@ -443,7 +448,6 @@ def _active(con, monkeypatch, fake, profiled=None, counts=None) -> float:
             | ({"active": profiled} if profiled is not None else {}),
         ),
     )
-    _declare(monkeypatch, {"active": fake} if fake is not None else {})
     measure, calls = _measured(counts) if counts is not None else (_unmeasured, [])
     [planned] = plan_tables(
         [customers], [], seed=1, names=_NAMES, count_rows=_count, measure=measure
@@ -504,9 +508,18 @@ def test_stated_shares_win_over_the_profile(con, monkeypatch):
         ((0.2, 0.2, 0.2), "states shares summing to"),
     ],
 )
-def test_stated_shares_that_cannot_describe_the_values_are_refused(monkeypatch, shares, message):
-    _declare(monkeypatch, {"region": Categories(("a", "b", "c"), shares)})
-    with pytest.raises(DatasetRefused, match=f"customers.region: the categories fake {message}"):
+def test_stated_shares_that_cannot_describe_the_values_are_refused(shares, message):
+    """Refused when declared, so no dataset ever plans with them (REQ-1494, CATEGORY WEIGHTS)."""
+    declared = f"categories((a, b, c), ({', '.join(str(x) for x in shares)}))"
+    with pytest.raises(FakeRefused, match=f"categories\\(\\): {message}"):
+        parse(declared)
+
+
+def test_a_fake_synthesis_does_not_compute_yet_is_refused_by_name(monkeypatch):
+    _declare(monkeypatch, {"email": parse("email()")})
+    with pytest.raises(
+        DatasetRefused, match=r"customers.email declares email\(\), which synthetic"
+    ):
         plan_tables(
             [_customers()], [], seed=1, names=_NAMES, count_rows=_count, measure=_unmeasured
         )

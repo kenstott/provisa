@@ -368,6 +368,11 @@ async def register_table(
         _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
         if _glob_refusal is not None:
             return _glob_refusal
+        from provisa.api.admin._fake_guard import table_fake_refusal
+
+        _fake_refusal = await table_fake_refusal(_conn, model)  # REQ-1494
+        if _fake_refusal is not None:
+            return _fake_refusal
         from provisa.api.admin._delta_guard import table_delta_refusal
 
         _delta_refusal = table_delta_refusal(model)  # REQ-874

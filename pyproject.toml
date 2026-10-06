@@ -30,6 +30,9 @@ dependencies = [
     "pyyaml",
     "graphql-core>=3.2",
     "sqlglot",
+    # REQ-1494: the fake methods a column may name, checked when declared and, in the embedded
+    # engine, computed seeded by the keyed digest of the value.
+    "faker",
     "trino",
     "grpcio",
     "grpcio-tools",

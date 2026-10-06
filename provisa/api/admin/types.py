@@ -479,6 +479,9 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     domain_id: str | None = None
     # REQ-1908: epoch-number storage unit ("s" | "ms" | "us") of a temporal column; null otherwise.
     epoch_unit: str | None = None
+    # REQ-1494: the column's kind of fake as declared, and whether it is stable.
+    fake: str | None = None
+    fake_stable: bool = False
 
 
 @strawberry.type
@@ -801,6 +804,9 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     # REQ-1908: the source stores this temporal column as an epoch number in this unit
     # ("s" | "ms" | "us"). Mirrors the core Column model's epoch_unit.
     epoch_unit: str | None = None
+    # REQ-1494: the column's kind of fake as declared, and whether it is stable.
+    fake: str | None = None
+    fake_stable: bool = False
 
 
 @strawberry.input

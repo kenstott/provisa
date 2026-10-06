@@ -57,6 +57,8 @@ def _build_column_models(columns: list) -> list:
             is_alternate_key=c.is_alternate_key,
             scope=getattr(c, "scope", "domain"),
             epoch_unit=getattr(c, "epoch_unit", None),  # REQ-1908
+            fake=getattr(c, "fake", None),  # REQ-1494
+            fake_stable=getattr(c, "fake_stable", False),
         )
         for c in columns
     ]

@@ -279,6 +279,7 @@ async def _dataset_tables(
     from provisa.compiler.sql_rewrite import semantic_table_name
     from provisa.core.ir_types import to_ir
     from provisa.core.request_context import require_current_org
+    from provisa.fakes.kinds import parse as parse_fake
     from provisa.profiler.run import PROFILE_ROLE, column_tags
 
     org_id = require_current_org()
@@ -318,6 +319,11 @@ async def _dataset_tables(
                     scale=t.scale if t.scale is not None else row.scale,
                     profile=profile,
                     pii=frozenset(c for c, tagged in tags.items() if "pii" in tagged),
+                    fakes={  # REQ-1494: each column's declared kind of fake
+                        c["column_name"]: parse_fake(c["fake"])
+                        for c in reg["columns"]
+                        if c.get("fake") is not None
+                    },
                 )
             )
     return out, relationships, registered

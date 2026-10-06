@@ -1307,6 +1307,26 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     state.masking_rules = rules
 
 
+async def _check_fakes(conn: Any) -> None:  # REQ-1494
+    """The model's fakes, checked together as a save checks them, so a model loaded from config
+    holds no fake a save would refuse."""
+    from sqlalchemy import or_
+
+    faked = (
+        await conn.execute_core(
+            select(_table_columns_t.c.id)
+            .where(or_(_table_columns_t.c.fake.is_not(None), _table_columns_t.c.fake_stable))
+            .limit(1)
+        )
+    ).fetchone()
+    if faked is None:
+        return
+    from provisa.api.admin._fake_guard import check_model
+    from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
+
+    check_model(await fetch_tables(conn), await fetch_relationships(conn))
+
+
 def _json_list(value: Any) -> list:
     """Coerce a JSON list-column to a Python list, tolerating raw-SQL string returns.
 

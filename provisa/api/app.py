@@ -47,6 +47,7 @@ from provisa.api.app_loaders import (
     _init_meta_rls,
     _load_graphql_remote_sources_from_db,
     _load_grpc_remote_sources_from_db,
+    _check_fakes,
     _load_masking_rules,
     _load_mv_and_views_config,
     _load_openapi_specs,
@@ -2370,6 +2371,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         rls_rules = await _rls_repo.list_all(conn)
 
         await _load_masking_rules(conn, col_types_converted, roles, role_chains_by_id)
+        await _check_fakes(conn)  # REQ-1494
 
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
             conn, raw_config

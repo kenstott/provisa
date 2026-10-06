@@ -96,6 +96,8 @@ _COLUMN_PROJECTION = [
     table_columns.c.scope,
     table_columns.c.gql_selection,
     table_columns.c.epoch_unit,
+    table_columns.c.fake,
+    table_columns.c.fake_stable,
 ]
 
 
@@ -436,6 +438,8 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
                 scope=getattr(col, "scope", "domain"),
                 gql_selection=getattr(col, "gql_selection", None),
                 epoch_unit=getattr(col, "epoch_unit", None),
+                fake=getattr(col, "fake", None),  # REQ-1494
+                fake_stable=getattr(col, "fake_stable", False),
             )
         )
     # REQ-1387: this is the single write path for table_columns, so the glossary term

@@ -337,6 +337,8 @@ async def _fetch_table_with_columns(
             is_implicit_dimension=r["column_name"] in _dimension_names,
             domain_id=r.get("domain_id"),
             epoch_unit=r.get("epoch_unit"),  # REQ-1908
+            fake=r.get("fake"),  # REQ-1494
+            fake_stable=bool(r.get("fake_stable") or False),
         )
         for r in col_rows
     ]

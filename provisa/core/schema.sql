@@ -207,6 +207,8 @@ CREATE TABLE IF NOT EXISTS table_columns (
     mask_precision TEXT,
     is_primary_key BOOLEAN NOT NULL DEFAULT FALSE,
     epoch_unit   TEXT,  -- REQ-1908: epoch-number storage unit of a temporal column
+    fake         TEXT,  -- REQ-1494: the column's kind of fake, as declared
+    fake_stable  BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1494
     UNIQUE (table_id, column_name)
 );
 

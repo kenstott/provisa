@@ -82,6 +82,7 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     replicate_contradiction_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input
+from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
 from provisa.api.admin import schema_mutation_ops as _ops
 
 
@@ -239,7 +240,16 @@ async def _upsert_relationship_impl(
     )
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        await rel_repo.upsert(_conn, model, origin="admin")
+        from provisa.api.admin._fake_guard import relationship_fake_refusal
+
+        try:
+            async with _conn.transaction():
+                await rel_repo.upsert(_conn, model, origin="admin")
+                # REQ-1494: the edge's two columns, both faked, must declare one fake; the save
+                # is undone when they do not.
+                await relationship_fake_refusal(_conn, input.id)
+        except _FakeRefusedSave as refused:
+            return refused.result
         if _cross_domain:
             # REQ-1531: re-assert AFTER the upsert. rel_repo.upsert clears needs_review on conflict
             # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
@@ -2397,6 +2407,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
             if _glob_refusal is not None:
                 return _glob_refusal
+            from provisa.api.admin._fake_guard import table_fake_refusal
+
+            _fake_refusal = await table_fake_refusal(_conn, model)  # REQ-1494
+            if _fake_refusal is not None:
+                return _fake_refusal
             from provisa.api.admin._delta_guard import table_delta_refusal
 
             _delta_refusal = table_delta_refusal(model)  # REQ-874
