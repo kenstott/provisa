@@ -155,6 +155,7 @@ KINDS: dict[str, Kind] = {
     "event": Kind("events", "id"),
     "store": Kind("stores", "id"),  # REQ-1922
     "region": Kind("org_regions", "id"),  # REQ-1921
+    "synthetic_dataset": Kind("synthetic_datasets", "id"),  # REQ-1939
 }
 
 _P, _D = Standing.PART, Standing.DEPENDENT
@@ -193,6 +194,10 @@ REFERENCES: tuple[Reference, ...] = (
     _part("kafka_sources", "id", "source", of="kafka_source", owner="id"),
     # --- to a registered table (a view is one) -------------------------------------------------
     _part("table_columns", "table_id", "table"),
+    # REQ-1939: a table a synthetic dataset generates is not removed under it; drop the dataset.
+    _dep("synthetic_dataset_tables", "table_id", "table", "synthetic_dataset", "dataset_id"),
+    _part("synthetic_dataset_tables", "dataset_id", "synthetic_dataset"),
+    _part("synthetic_report", "dataset_id", "synthetic_dataset"),
     _part("file_source_mtimes", "table_id", "table"),
     _part("glossary_term_refs", "table_id", "table"),
     _part("table_meta_links", "source_table_id", "table"),

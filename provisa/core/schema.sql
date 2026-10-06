@@ -1004,6 +1004,39 @@ CREATE TABLE IF NOT EXISTS scheduled_triggers (
     )
 );
 
+-- REQ-1939: an environment's synthetic datasets, their (table, profile run) pairs and their report.
+CREATE TABLE IF NOT EXISTS synthetic_datasets (
+    id            TEXT PRIMARY KEY,
+    seed          BIGINT NOT NULL,
+    scale         DOUBLE PRECISION NOT NULL,
+    status        TEXT NOT NULL,          -- defined | generating | generated | failed
+    store_schema  TEXT NOT NULL,
+    error         TEXT,
+    generated_at  TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS synthetic_dataset_tables (
+    dataset_id    TEXT NOT NULL REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
+    table_id      INTEGER NOT NULL UNIQUE REFERENCES registered_tables(id) ON DELETE CASCADE,
+    profile_env   TEXT NOT NULL,
+    run_id        TEXT NOT NULL,
+    scale         DOUBLE PRECISION,
+    PRIMARY KEY (dataset_id, table_id)
+);
+
+CREATE TABLE IF NOT EXISTS synthetic_report (
+    id               SERIAL PRIMARY KEY,
+    dataset_id       TEXT NOT NULL REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
+    table_name       TEXT NOT NULL,
+    column_name      TEXT,
+    measure          TEXT NOT NULL,
+    source_value     DOUBLE PRECISION,
+    synthetic_value  DOUBLE PRECISION,
+    delta            DOUBLE PRECISION,
+    note             TEXT
+);
+
 -- Migration: add kind column to tracked_functions and tracked_webhooks
 DO $$ BEGIN
     ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'mutation';

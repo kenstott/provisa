@@ -126,6 +126,10 @@ def operator_floor(state: Any, table_ids: Iterable[int]) -> dict[str, str]:  # R
     routes = state.replica_routes
     if not isinstance(routes, ReplicaRoutes):
         raise TypeError(f"replica_routes is a {type(routes).__name__}, not ReplicaRoutes")
+    from provisa.synthetic.datasets import refuse_mixed_data
+
+    table_ids = list(table_ids)
+    refuse_mixed_data(routes, table_ids)  # REQ-1487: never a synthetic table beside a real one
     floored = routes.floored
     floor: dict[str, str] = {}
     for table_id in table_ids:

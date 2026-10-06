@@ -47,6 +47,8 @@ MVS_SUFFIX = "_mv_cache"
 #: tags one (Snowflake's Horizon export). It holds those views and nothing else; no statement of
 #: Provisa's reads through it.
 EXPORT_SUFFIX = "_export"
+#: REQ-1939: what separates an environment's schema name from one of its synthetic datasets'.
+SYNTHETIC_INFIX = "_syn__"
 
 #: PostgreSQL's identifier limit; over it PostgreSQL truncates a name silently, which would point
 #: two replicas at one table. The one naming rule keeps every replica name within it.
@@ -104,6 +106,19 @@ def replica_schema(org_id: str) -> str:
     from provisa.core.environments import active_org_schema
 
     return active_org_schema(org_id, REPLICAS_SUFFIX)
+
+
+def synthetic_schema(org_id: str, env: str | None, dataset: str) -> str:
+    """The store schema of synthetic dataset ``dataset`` of ``org_id``'s environment ``env``."""
+    from provisa.core.environments import org_schema
+
+    name = f"{org_schema(org_id, env)}{SYNTHETIC_INFIX}{dataset}"
+    if len(name.encode()) > _MAX_NAME_BYTES:
+        raise ValueError(
+            f"synthetic dataset {dataset!r}: its store schema {name!r} is longer than "
+            f"{_MAX_NAME_BYTES} bytes; choose a shorter name"
+        )
+    return name
 
 
 def mv_schema(org_id: str) -> str:
@@ -205,6 +220,10 @@ class ReplicaRoutes:
     #: yet serving is read live while its replica is built. What the admin summary states.
     promoted: frozenset[tuple[str, str, str]] = frozenset()
     serving: frozenset[tuple[str, str, str]] = frozenset()
+    #: REQ-1939: registered table id -> the synthetic dataset whose generated copy this
+    #: environment reads in its place. Such a table is routed to its copy and floored (never read
+    #: live), is never built or landed, and is never joined to a table reading real data.
+    synthetic: Mapping[int, str] = field(default_factory=dict)
     #: How many times this runtime's routes have CHANGED since it was built (REQ-826). Not part
     #: of what the routes say (two publications that say the same are equal whatever their
     #: generation): it is part of the routing-cache key, so a cached route never outlives the
@@ -299,18 +318,27 @@ def engine_table_keys(
 # (``naming.org_prefixed_catalog``), so no source schema — whatever it is called — folds to a
 # name these match.
 _SURFACE_OWNER = r"org_(?:(?!__).)+?"
-_REPLICAS_SCHEMA = re.compile(_SURFACE_OWNER + re.escape(REPLICAS_SUFFIX))
+# REQ-1939: a synthetic dataset's own schema, ``org_<id>[_env_<env>]_syn__<dataset>``. The owner
+# holds no double underscore and a live attach's folded schema has one right after the org id, so
+# neither is read as the other.
+_SYNTHETIC = re.escape(SYNTHETIC_INFIX) + r"[a-z][a-z0-9_]*"
+_REPLICAS_SCHEMA = re.compile(
+    _SURFACE_OWNER + "(?:" + re.escape(REPLICAS_SUFFIX) + "|" + _SYNTHETIC + ")"
+)
 _WRITE_SURFACE = re.compile(
     _SURFACE_OWNER
     + "(?:"
     + "|".join(re.escape(s) for s in (REPLICAS_SUFFIX, MVS_SUFFIX, EXPORT_SUFFIX))
+    + "|"
+    + _SYNTHETIC
     + ")"
 )
 
 
 def is_replicas_schema(schema: str) -> bool:
-    """Whether ``schema`` is named as the replicas schema of an org environment — the only kind
-    of schema a replica is written into."""
+    """Whether ``schema`` is named as the replicas schema of an org environment, or as one of its
+    synthetic datasets' schemas (REQ-1939) — the only kinds of schema a replica, a whole copy a
+    table's reads are served from, is written into."""
     return _REPLICAS_SCHEMA.fullmatch(schema) is not None
 
 

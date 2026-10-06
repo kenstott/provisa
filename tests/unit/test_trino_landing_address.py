@@ -21,6 +21,8 @@ created it."""
 
 from __future__ import annotations
 
+import itertools
+
 from types import SimpleNamespace
 
 import pytest
@@ -45,8 +47,13 @@ def _rcol(name, data_type: str | None = "bigint", pk=False, nf=None):
     }
 
 
+_IDS = itertools.count(1)
+
+
 def _rtbl(sid, schema, tname, cols):
     return {
+        # every registry row carries its registered id (db_queries.fetch_tables)
+        "id": next(_IDS),
         "source_id": sid,
         "schema_name": schema,
         "table_name": tname,
@@ -80,6 +87,8 @@ def _state(cfg, registered, monkeypatch):
         return registered
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
+    # REQ-1939: no synthetic dataset is generated in this model.
+    monkeypatch.setattr("provisa.synthetic.datasets.generated_tables", no_synthetic_tables)
     monkeypatch.setattr("provisa.federation.replica_state.promotion", no_promoted_tables)
     monkeypatch.setattr("provisa.federation.replica_builds.store_identity", no_engine_store)
 
@@ -200,3 +209,7 @@ def test_a_checker_source_is_reachable_by_replication_and_has_no_catalog_of_its_
 
         source = SimpleNamespace(id="dq-checker", type=SimpleNamespace(value=stype))
         catalog.create_catalog(_Conn(), source, "", catalog_name="dq_checker")  # type: ignore[arg-type]
+
+
+async def no_synthetic_tables(_conn):
+    return {}

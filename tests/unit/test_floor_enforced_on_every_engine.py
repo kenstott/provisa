@@ -102,6 +102,8 @@ def _state(monkeypatch, engine, source, registered: list[dict], *, catalog: str)
         return []
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
+    # REQ-1939: no synthetic dataset is generated in this model.
+    monkeypatch.setattr("provisa.synthetic.datasets.generated_tables", no_synthetic_tables)
     monkeypatch.setattr("provisa.federation.replica_state.promotion", no_promoted_tables)
     monkeypatch.setattr("provisa.federation.replica_builds.store_identity", no_engine_store)
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
@@ -330,3 +332,7 @@ def test_a_state_whose_replica_routes_are_not_replica_routes_is_rejected():
 
     with pytest.raises(TypeError, match="replica_routes is a MagicMock, not ReplicaRoutes"):
         operator_floor(MagicMock(), [1])
+
+
+async def no_synthetic_tables(_conn):
+    return {}

@@ -13,6 +13,8 @@ not the raw YAML — so the test feeds the registered shape through a fake ``fet
 
 from __future__ import annotations
 
+import itertools
+
 from types import SimpleNamespace
 
 import pytest
@@ -37,8 +39,13 @@ def _rcol(name, data_type: str | None = "bigint", pk=False, nf=None):
     }
 
 
+_IDS = itertools.count(1)
+
+
 def _rtbl(sid, tname, cols):
     return {
+        # every registry row carries its registered id (db_queries.fetch_tables)
+        "id": next(_IDS),
         "source_id": sid,
         "schema_name": "default",
         "table_name": tname,
@@ -91,6 +98,8 @@ def _state(cfg, registered, monkeypatch):
         return registered
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
+    # REQ-1939: no synthetic dataset is generated in this model.
+    monkeypatch.setattr("provisa.synthetic.datasets.generated_tables", no_synthetic_tables)
     monkeypatch.setattr("provisa.federation.replica_state.promotion", no_promoted_tables)
     monkeypatch.setattr("provisa.federation.replica_builds.store_identity", no_engine_store)
 
@@ -169,10 +178,10 @@ async def test_keys_converge_with_the_tables_from_registration_and_relationships
     backend._runtime = rt
     cfg = SimpleNamespace(sources=[_src("api", "openapi")], tables=[])
     registered = [
-        {"id": 1, **_rtbl("api", "pets", [_rcol("id", "bigint", pk=True), _rcol("breed", "text")])},
+        {**_rtbl("api", "pets", [_rcol("id", "bigint", pk=True), _rcol("breed", "text")]), "id": 1},
         {
-            "id": 2,
             **_rtbl("api", "visits", [_rcol("id", "bigint", pk=True), _rcol("pet_id", "bigint")]),
+            "id": 2,
         },
     ]
     rels = [
@@ -328,3 +337,7 @@ async def test_a_runtime_without_the_key_hook_gets_no_key_plan(monkeypatch):
     assert await backend.reconcile_landed_tables(_state(cfg, registered, monkeypatch)) == [
         ("api", "pets")
     ]
+
+
+async def no_synthetic_tables(_conn):
+    return {}

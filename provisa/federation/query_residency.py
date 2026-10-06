@@ -277,6 +277,8 @@ async def ensure_resident(
     # A type that owns no replica (ingest, a profiler's results, REQ-1771/REQ-1934) is read where
     # it is written, never landed, so no read of it is judged for a replica or a landing TTL.
     _no_replica = {s.id for s in sources if not owns_replica(s)}
+    # REQ-1939: a table of a generated synthetic dataset is read from its copy, never landed.
+    _synthetic = state.replica_routes.synthetic
 
     read = frozenset(table_ids)
     floored = state.replica_routes.floored
@@ -286,7 +288,7 @@ async def ensure_resident(
         judged per table): the operator's settings put it there, or the engine cannot read its
         source in place. A table the engine reads live beside a replica-served sibling of the same
         source is left alone — it is neither landed nor asked for a replication clock."""
-        if t.source_id in _no_replica:
+        if t.source_id in _no_replica or t.id in _synthetic:
             return False
         return t.id in floored or not _attached_types[t.source_id]
 

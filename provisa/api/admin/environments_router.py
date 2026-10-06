@@ -268,8 +268,21 @@ async def _audit(org_id: str, actor: str | None, action: str, name: str, detail:
     )
 
 
+class SyntheticSeedBody(BaseModel):
+    """REQ-1939: seed the new environment with a synthetic dataset of these tables, generated from
+    their latest profile runs in ``profile_env`` (typically prod), so no production row reaches it."""
+
+    dataset: str
+    tables: list[str]
+    profile_env: str = PROD
+    scale: float
+    seed: int
+
+
 class CreateEnvBody(BaseModel):
     name: str
+    # REQ-1939: the option to start the environment on synthetic data.
+    synthetic: SyntheticSeedBody | None = None
     # The environment whose model the new one starts from. prod by default: it is the environment
     # every org is guaranteed to have (REQ-1487).
     from_env: str = PROD
@@ -492,6 +505,27 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
             plan=exc.plan,
         ) from exc
 
+    if body.synthetic is not None:
+        from provisa.synthetic.plan import DatasetRefused
+        from provisa.synthetic.run import bootstrap
+
+        seed = body.synthetic
+        try:
+            await bootstrap(
+                _state(),
+                org_id=org_id,
+                env=body.name,
+                dataset_id=seed.dataset,
+                profile_env=seed.profile_env,
+                scale=seed.scale,
+                seed=seed.seed,
+                table_names=seed.tables,
+            )
+        except (ValueError, DatasetRefused) as exc:
+            # The environment stands; the refusal says why its dataset was not generated.
+            raise ApiError(
+                422, "environments.synthetic_refused", str(exc), org=org_id, env=body.name
+            ) from exc
     await _audit(
         org_id,
         actor,

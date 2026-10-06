@@ -19,6 +19,8 @@ one and is refused. Retiring an environment drops its replicas schema and never 
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from contextlib import asynccontextmanager
 
 import pytest
@@ -107,8 +109,16 @@ def store(monkeypatch):
         def __init__(self, dsn: str) -> None:
             self._dsn = dsn
 
-        async def execute_core(self, stmt) -> None:
+        async def execute_core(self, stmt):
             seen.append((self._dsn, str(stmt)))
+            # The store's schemas, as a retire lists them for the environment's synthetic datasets.
+            return SimpleNamespace(
+                fetchall=lambda: [
+                    ("org_acme_env_feature_x_syn__load",),
+                    ("org_acme_env_feature_xx_syn__other",),
+                    ("org_acme_env_feature_x_replicas",),
+                ]
+            )
 
     @asynccontextmanager
     async def _connection(dsn: str):
@@ -126,6 +136,9 @@ async def test_retire_drops_the_environments_replicas_schema(store):
     assert store == [
         (PG, 'DROP SCHEMA IF EXISTS "org_acme_env_feature_x_export" CASCADE'),
         (PG, 'DROP SCHEMA IF EXISTS "org_acme_env_feature_x_replicas" CASCADE'),
+        (PG, "SELECT schema_name FROM information_schema.schemata"),
+        # REQ-1939: its synthetic datasets' schemas go too, and no other environment's.
+        (PG, 'DROP SCHEMA IF EXISTS "org_acme_env_feature_x_syn__load" CASCADE'),
     ]
 
 

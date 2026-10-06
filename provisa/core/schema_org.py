@@ -979,6 +979,64 @@ scheduled_triggers = Table(
     ),
 )
 
+# REQ-1939: an environment's synthetic datasets. Each names (table, profile run) pairs, a scale and a
+# seed; generated, its tables are written to a store schema of its own and, in this environment
+# only, read in place of the tables' bindings. Environment-local: never copied or promoted.
+synthetic_datasets = Table(
+    "synthetic_datasets",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("seed", BigInteger, nullable=False),
+    Column("scale", Float, nullable=False),
+    # defined | generating | generated | failed
+    Column("status", Text, nullable=False),
+    Column("store_schema", Text, nullable=False),
+    Column("error", Text),
+    Column("generated_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+synthetic_dataset_tables = Table(
+    "synthetic_dataset_tables",
+    metadata,
+    Column(
+        "dataset_id",
+        Text,
+        ForeignKey("synthetic_datasets.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    # A table reads one dataset's copy at most, so it belongs to one dataset.
+    Column(
+        "table_id",
+        Integer,
+        ForeignKey("registered_tables.id", ondelete="CASCADE"),
+        primary_key=True,
+        unique=True,
+    ),
+    # The environment holding the profile run (typically prod), and the run.
+    Column("profile_env", Text, nullable=False),
+    Column("run_id", Text, nullable=False),
+    # The table's own scale; NULL takes the dataset's.
+    Column("scale", Float),
+)
+
+# REQ-1939: how close a generated dataset came to the profiles it was drawn from.
+synthetic_report = Table(
+    "synthetic_report",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "dataset_id", Text, ForeignKey("synthetic_datasets.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("table_name", Text, nullable=False),
+    Column("column_name", Text),
+    Column("measure", Text, nullable=False),
+    Column("source_value", Float),
+    Column("synthetic_value", Float),
+    Column("delta", Float),
+    Column("note", Text),
+)
+
 # REQ-1742 gap: grpc_remote_router.py's _register_schema has always written its per-table
 # registration log here via a raw INSERT (ON CONFLICT (source_id, table_name)) — but this table
 # was never defined anywhere in the codebase (confirmed: no other file references
