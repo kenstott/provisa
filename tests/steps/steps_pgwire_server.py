@@ -252,6 +252,8 @@ def _authenticate529(shared_data: dict, *, user: str = "alice") -> None:
         auth_config=shared_data.get("auth_config"),
         auth_middleware_active=shared_data.get("auth_middleware_active", True),
         multitenancy=False,
+        # REQ-1266: an unsecured deployment's connection serves the deployment's own org.
+        org_id="default",
         # The simple provider keeps its users' ids on the platform plane.
         admin_db=platform_db(),
     )

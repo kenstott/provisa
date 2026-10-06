@@ -1142,11 +1142,21 @@ def given_get_result_cached_in_trino(shared_data):
 
     from provisa.api_source.fill_cache import source_cache_location
 
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    def _acme_location(state):
+        # The schema is the ACTING org's (REQ-1623): the read is work for acme, so acme is bound.
+        token = set_current_org("acme")
+        try:
+            return source_cache_location(state, _REQ318_SOURCE_ID, None)
+        finally:
+            reset_current_org(token)
+
     locations = {}
     for engine_name, store in (("trino", "provisa_admin"), ("duckdb", "materialize_store")):
         engine = SimpleNamespace(name=engine_name, cache_catalog=lambda store=store: store)
         state = SimpleNamespace(org_id="acme", source_catalogs={}, federation_engine=engine)
-        loc = source_cache_location(state, _REQ318_SOURCE_ID, None)
+        loc = _acme_location(state)
         # The engine's own store, the org's API cache schema — never the Iceberg results catalog.
         assert (loc.catalog, loc.schema, loc.backend) == (store, "org_acme_api_cache", "relational")
         locations[engine_name] = loc

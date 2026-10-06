@@ -28,3 +28,28 @@ def pytest_collection_modifyitems(items: list) -> None:
         # Match tests.steps.steps_* or just steps_*
         if name.startswith("tests.steps.steps_") or name.startswith("steps_"):
             item.add_marker(bdd_mark, append=False)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "unbound: run with no org bound -- for the entrypoints that bind one themselves and for "
+        "the refusal of work bound to none (REQ-1266)",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _deployment_org_bound(request: pytest.FixtureRequest):
+    """Step scenarios run as work for the deployment's own org (REQ-1266), as the unit and
+    integration harnesses do: a step that drives a core path directly (a mutation resolver, the hot
+    table manager, the store) stands in for the boot or the request that binds it."""
+    if request.node.get_closest_marker("unbound") is not None:
+        yield
+        return
+    from tests.conftest import as_deployment_org
+
+    with as_deployment_org():
+        yield
+        if "monkeypatch" in request.fixturenames:
+            # A routed AppState attribute monkeypatch replaced is put back while the org is bound.
+            request.getfixturevalue("monkeypatch").undo()

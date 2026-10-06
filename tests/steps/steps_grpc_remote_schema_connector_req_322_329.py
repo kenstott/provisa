@@ -959,13 +959,20 @@ def grpc_query_result_cached_in_iceberg(shared_data):
 
     # The cache location, by the rule the gRPC-remote read uses (api/data/materialization.py):
     # the bound engine's own store, in the org's API cache schema, on every engine (REQ-327 as
+    from provisa.core.request_context import reset_current_org, set_current_org
+
     locations = {}
-    for engine_name, store in (("trino", "provisa_admin"), ("duckdb", "materialize_store")):
-        engine = SimpleNamespace(name=engine_name, cache_catalog=lambda store=store: store)
-        state = SimpleNamespace(org_id="acme", federation_engine=engine)
-        locations[engine_name] = cache_location(
-            source_id, resolved_cache_catalog(state.federation_engine), org_cache_schema(state)
-        )
+    # The schema is the ACTING org's (REQ-1623): the read is work for acme, so acme is bound.
+    token = set_current_org("acme")
+    try:
+        for engine_name, store in (("trino", "provisa_admin"), ("duckdb", "materialize_store")):
+            engine = SimpleNamespace(name=engine_name, cache_catalog=lambda store=store: store)
+            state = SimpleNamespace(org_id="acme", federation_engine=engine)
+            locations[engine_name] = cache_location(
+                source_id, resolved_cache_catalog(state.federation_engine), org_cache_schema(state)
+            )
+    finally:
+        reset_current_org(token)
     loc = locations["trino"]
 
     # Compute the stable table name from cache key components

@@ -57,7 +57,7 @@ from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import CompilationContext, TableMeta, compile_query
 from provisa.compiler.context import build_context
 from provisa.core.models import Role, ScheduledTrigger, flatten_roles
-from provisa.scheduler.jobs import _execute_webhook, build_scheduler
+from provisa.scheduler.jobs import _execute_webhook, build_scheduler, trigger_job_id
 from tests.helpers import ALL_DATA_CAPABILITIES
 
 
@@ -828,12 +828,18 @@ def _given_scheduled_trigger_config(shared_data: dict) -> None:
     shared_data["triggers"] = triggers
 
 
+# REQ-1003: a trigger's job is its org's -- two orgs may share a trigger id. The scenario serves the
+# deployment org.
+_ORG = "default"
+_NIGHTLY_JOB = trigger_job_id("nightly_report", _ORG)
+
+
 @when("the cron fires")
 def _when_cron_fires(shared_data: dict) -> None:
     """Build the APScheduler and actually invoke the registered webhook job."""
     triggers: list[ScheduledTrigger] = shared_data["triggers"]
 
-    scheduler = build_scheduler(triggers)
+    scheduler = build_scheduler(triggers, _ORG)
     assert scheduler is not None, "enabled triggers must produce a scheduler"
     shared_data["scheduler"] = scheduler
 
@@ -863,7 +869,7 @@ def _when_cron_fires(shared_data: dict) -> None:
             return _Resp()
 
     with patch("provisa.scheduler.jobs.httpx.AsyncClient", _Client):
-        job = next(j for j in scheduler.get_jobs() if j.id == "nightly_report")
+        job = next(j for j in scheduler.get_jobs() if j.id == _NIGHTLY_JOB)
         func = job.func
         args = job.args
         asyncio.run(func(*args))
@@ -878,11 +884,9 @@ def _then_webhook_executed(shared_data: dict) -> None:
     assert scheduler is not None
 
     job_ids = {j.id for j in scheduler.get_jobs()}
-    assert job_ids == {"nightly_report"}, (
-        f"only enabled triggers should be scheduled; got {job_ids}"
-    )
+    assert job_ids == {_NIGHTLY_JOB}, f"only enabled triggers should be scheduled; got {job_ids}"
 
-    job = next(j for j in scheduler.get_jobs() if j.id == "nightly_report")
+    job = next(j for j in scheduler.get_jobs() if j.id == _NIGHTLY_JOB)
     # APScheduler wired the cron expression into a CronTrigger.
     assert isinstance(job.trigger, CronTrigger)
     assert job.func is _execute_webhook
