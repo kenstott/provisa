@@ -64,6 +64,9 @@ def ensure(db: "Database") -> bytes:
         deployment_settings.create(db, SETTING, sealed, updated_by="platform")
         held = settings_registry.stored_value(SETTING)
     assert held is not None  # stored above, by this process or another
+    # This process runs on the key from here on: a key created at this first start is the value it
+    # booted on, not a restart pending.
+    settings_registry.adopt_created(SETTING)
     key = bytes.fromhex(held)
     if deployed is not None and deployed != held:
         raise FakeKeyMismatch(

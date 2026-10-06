@@ -485,6 +485,19 @@ def freeze_at_boot() -> None:
         freeze()
 
 
+def adopt_created(key: str) -> None:
+    """A restart setting the platform creates at its first start (REQ-1494: the platform fake key)
+    had no value when this process booted when this start is that first one. The process runs on
+    the value created -- by itself or by a worker of the same launch -- so that value is the one
+    it booted on, and no restart is pending. A value it booted with is kept as it was."""
+    s = setting(key)
+    if s.effect != "restart":
+        raise RuntimeError(f"setting {key} is not a restart setting")
+    if _frozen is None or _frozen[key] is not None:
+        return
+    _frozen[key] = resolve(key).value
+
+
 def value(key: str) -> Any:
     """The value in force in this process: the reader's one door."""
     s = setting(key)
