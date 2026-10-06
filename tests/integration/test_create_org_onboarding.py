@@ -135,8 +135,13 @@ def planes(monkeypatch):
     ):
         import types as _types
 
+        # live_engine: a runtime the registry retires stops its live-query engine (it has none).
         return _types.SimpleNamespace(
-            model_db=admin_db, record_db=admin_db, tenant_db=admin_db, org_id=org_id
+            model_db=admin_db,
+            record_db=admin_db,
+            tenant_db=admin_db,
+            org_id=org_id,
+            live_engine=None,
         )
 
     async def _fake_grant_org_role(_tenant_db, user_id, role_id, *, granter_capabilities):

@@ -102,6 +102,13 @@ async def _load(conn, tables: dict) -> None:
     await apply_config(parse_config_dict(_config(tables)), conn)
 
 
+async def _edit(conn, tables: dict) -> None:
+    """An admin's re-registration of the tables (the model store's table upsert): a column it no
+    longer lists is dropped. An apply removes nothing, a column included (REQ-1919)."""
+    for table in parse_config_dict(_config(tables)).tables:
+        await table_repo.upsert(conn, table)
+
+
 async def _terms(conn) -> dict[str, dict]:
     return {t["name"]: t for t in await glossary_repo.list_terms(conn)}
 
@@ -123,10 +130,12 @@ async def test_registration_derives_and_dedups_terms(tenant_db):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_column_departure_on_reload_removes_its_term(tenant_db):
+async def test_column_departure_removes_its_term_and_an_apply_departs_none(tenant_db):
     async with tenant_db.acquire() as conn:
         await _load(conn, {"orders": ["cust_id", "order_dt"]})
         await _load(conn, {"orders": ["cust_id"]})
+        assert "order date" in await _terms(conn)  # the apply kept the column, and its term
+        await _edit(conn, {"orders": ["cust_id"]})
         terms = await _terms(conn)
     assert "order date" not in terms
     assert terms["customer"]["ref_count"] == 1
@@ -157,13 +166,13 @@ async def test_abstract_dependent_flips_removal_to_deprecation_and_relink_revive
         abstract_id = await glossary_repo.create_abstract_term(conn, "business date", domains=set())
         await glossary_repo.add_edge(conn, abstract_id, terms["order date"]["id"], "KIND_OF")
 
-        await _load(conn, {"orders": ["placed_ts"]})
+        await _edit(conn, {"orders": ["placed_ts"]})
         after = await _terms(conn)
         assert after["order date"]["deprecated"] is True
         assert after["order date"]["ref_count"] == 0
         assert "business date" in after  # the abstract term was never left dangling
 
-        await _load(conn, {"orders": ["placed_ts", "order_dt"]})
+        await _edit(conn, {"orders": ["placed_ts", "order_dt"]})
         revived = await _terms(conn)
         assert revived["order date"]["deprecated"] is False
         assert revived["order date"]["id"] == terms["order date"]["id"]
