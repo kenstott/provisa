@@ -787,26 +787,27 @@ async def init_registry_schema(db: "Database", org_id: str) -> None:  # REQ-696,
         from provisa.core import config_stamp as _config_stamp
 
         _config_stamp.install(conn, _config_stamp.PLATFORM_TABLES)
+    # REQ-1919 (DEMO ORGANISATIONS ARE THEIR CONFIG): the deployment's own org is a demo
+    # organisation only when the deployment is a demo, and then every build of it rebuilds its
+    # model from the deployment's file. Otherwise its store is seeded once and owns its model.
+    from provisa.core.demo import is_demo
+
+    demo = is_demo()
     async with db.acquire() as conn:
         result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if result.scalar() is None:
             # Insert-if-absent (DO NOTHING): seed the default org idempotently.
-            # REQ-1296: seeded_demo is true because the bootstrap org is built from the deployment's
-            # own config at every startup — the demo sources, domains and views land in it before the
-            # first sign-in completes. A false here would make a rebuilt runtime come back empty and
-            # hand the platform admin the blank deployment this requirement exists to prevent.
             await conn.upsert(
                 orgs,
-                {"id": org_id, "name": "Enterprise", "seeded_demo": True},
+                {"id": org_id, "name": "Enterprise", "seeded_demo": demo},
                 index_elements=["id"],
                 update_columns=[],
             )
         else:
-            # An org row predating REQ-1296 carries seeded_demo=false (the column default). The
-            # bootstrap org is always demo-seeded, so correct it rather than leave the registry
-            # disagreeing with what startup actually built.
+            # The deployment decides it at every start: a deployment that stops being a demo
+            # stops rebuilding its org from the file, and one that becomes a demo starts.
             await conn.execute_core(
-                orgs.update().where(orgs.c.id == org_id).values(seeded_demo=True)
+                orgs.update().where(orgs.c.id == org_id).values(seeded_demo=demo)
             )
         # REQ-1487: every org has prod from its creation, the bootstrap org included. Written here
         # rather than left to the first environment request, because an org absent from this table

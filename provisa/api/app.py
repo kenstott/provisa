@@ -83,10 +83,10 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext
 from sqlalchemy import select
 from provisa.core.config_loader import (
-    apply_config,
     attach_store_sources,
     is_seeded,
     parse_store_raw,
+    rebuild_from_config,
     seed_config,
     store_config,
     store_raw,
@@ -1095,10 +1095,6 @@ async def _load_and_build(
 
     _mark("infra: flight/minio/results")
 
-    # NOTE: Kafka sources must run BEFORE parse_config_dict / load_config so that
-    # Kafka-derived tables are present when relationships are validated.
-    _process_kafka_sources(raw_config, register_catalogs=apply)
-
     # The deployment's auth, for every surface (REQ-120): provider config, the flag the wire
     # surfaces read, and the generation that makes the HTTP middleware re-resolve.
     from provisa.auth.wiring import bind_auth_config
@@ -1198,6 +1194,8 @@ async def _load_and_build(
     state.raw_config = raw_config
     state.seed_config = _seed_file
     _seeded_now = False
+    from provisa.core.secrets_store import bound_to_request_org
+
     async with model_db.acquire() as conn:
         # REQ-1919: the configuration file seeds the model store once, at the deployment's first
         # start, into an empty store. From then on the store alone owns the model: a restart,
@@ -1205,16 +1203,23 @@ async def _load_and_build(
         # file's settings with every model section read from the store. Only the launch's
         # once-per-launch worker writes (REQ-1900); a later launch, and a second node, find the
         # store seeded and write nothing.
-        if apply and not await is_seeded(conn):
+        # A demo deployment's own org is a demo organisation (DEMO ORGANISATIONS ARE THEIR
+        # CONFIG): every launch rebuilds its model from the file, so it starts as the file says.
+        from provisa.core.demo import is_demo
+
+        _seed_engine = None if engine_deferred else state.federation_engine
+        if apply and is_demo():
+            _populate_source_catalog_names(_seed_file)
+            async with bound_to_request_org():
+                await rebuild_from_config(_seed_file, conn, _seed_engine)
+            _seeded_now = True
+        elif apply and not await is_seeded(conn):
             # The org-prefixed catalog names the seed's registrations resolve under (REQ-1266).
             _populate_source_catalog_names(_seed_file)
             # REQ-1619: with no coordinator the seed settles no engine-specific table names;
             # engine=None is the seed's "register the metadata only" mode.
-            _seeded_now = await seed_config(
-                _seed_file, conn, None if engine_deferred else state.federation_engine
-            )
+            _seeded_now = await seed_config(_seed_file, conn, _seed_engine)
         domain_policy.configure(_seed_file.naming.use_domains, _seed_file.naming.default_domain)
-        from provisa.core.secrets_store import bound_to_request_org
 
         # A stored source's password is a ${secret:NAME} reference the org's vault resolves. From
         # here on every reader of a model section (views, hot tables, the schema build) reads the
@@ -1223,6 +1228,9 @@ async def _load_and_build(
         async with bound_to_request_org():
             config = parse_store_raw(raw_config)
         state.config = config
+        # REQ-147: the Kafka sources the store holds — their topics' windows and discriminators,
+        # and the engine's Kafka catalogs.
+        _process_kafka_sources(raw_config, register_catalogs=apply)
         _populate_source_catalog_names(config)
         # Every launch reissues the engine catalog of each source the store holds: an engine's
         # catalogs do not outlive it (REQ-1900). REQ-1619: with no coordinator they are reissued
@@ -1939,27 +1947,25 @@ async def _build_org_runtime(
         state.source_dsns["provisa-admin"] = f"{host}:{port}/{database}"
 
         # REQ-1919 (DEMO ORGANISATIONS ARE THEIR CONFIG): a demo organisation is defined by its
-        # demo configuration — the deployment's file — and every build of its runtime applies that
-        # configuration again, so a demo starts as its configuration says; what is changed in it
-        # lasts until its next build. The deployment's own org is not a demo: its store is seeded
-        # once (seed_config) and owns its model from then on, as every other org's does. Its
-        # sources are namespaced under org-prefixed engine catalogs (source_catalogs), so
-        # identically-named demo sources across orgs never collide in the shared coordinator.
-        seed = state.seed_config if include_demo else None
-        if seed is not None:
-            assert state.model_db is not None and state.raw_config is not None
+        # demo configuration — the deployment's file — and every build of its runtime rebuilds its
+        # model from that configuration (its model removed, then the configuration applied), so a
+        # demo starts exactly as its configuration says; what is changed in it lasts until its next
+        # build. Every other organisation's store owns its model: nothing is applied here. Every
+        # organisation's runtime reads its model from its own store, and its sources are issued
+        # under org-prefixed engine catalogs (source_catalogs), so identically-named sources across
+        # orgs never collide in the shared coordinator.
+        if state.raw_config is not None:
+            assert state.model_db is not None and state.seed_config is not None
             from provisa.core.secrets_store import bound_to_request_org
 
+            seed = state.seed_config
             domain_policy.configure(seed.naming.use_domains, seed.naming.default_domain)
             async with state.model_db.acquire() as conn:
-                # The org's catalog names the registrations resolve under (REQ-1266).
-                if org_id != state.org_id:
+                if include_demo:
+                    # The org's catalog names the registrations resolve under (REQ-1266).
                     _populate_source_catalog_names(seed)
                     async with bound_to_request_org():
-                        await apply_config(seed, conn, state.federation_engine)
-                elif not await is_seeded(conn):
-                    _populate_source_catalog_names(seed)
-                    await seed_config(seed, conn, state.federation_engine)
+                        await rebuild_from_config(seed, conn, state.federation_engine)
                 async with bound_to_request_org():
                     org_config = await store_config(state.raw_config, conn)
             # Populate the org-prefixed catalog-name map FIRST so the physical registration

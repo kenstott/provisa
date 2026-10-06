@@ -810,7 +810,10 @@ CREATE TABLE IF NOT EXISTS kafka_sources (
     bootstrap_servers   TEXT NOT NULL,
     schema_registry_url TEXT,
     auth_type           TEXT,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- REQ-1919: the source as its configuration wrote it (topics, windows, discriminators, auth;
+    -- a credential stays its reference). The model store holds it once a configuration seeded it.
+    spec                JSONB
 );
 ALTER TABLE kafka_sources ALTER COLUMN bootstrap_servers SET DEFAULT '';
 

@@ -498,9 +498,9 @@ async def test_an_apply_removes_nothing_of_any_kind(db):
     assert await _model(db) == before
 
 
-async def test_an_apply_goes_through_the_guards(db):
-    """A column the file drops while a relationship it keeps is keyed on it is refused by the
-    model store's guard (REQ-1918), and the whole apply is undone."""
+async def test_an_apply_keeps_the_columns_the_file_no_longer_lists(db):
+    """An apply removes nothing, a column included: one a later file no longer lists stays as it
+    is stored, with the relationship keyed on it."""
     with_ref = {
         "columns": [
             {"name": "id", "data_type": "integer", "visible_to": ["seller"]},
@@ -511,16 +511,23 @@ async def test_an_apply_goes_through_the_guards(db):
     await _apply(
         db, _file(tables=[_table("orders", **with_ref), _table("customers")], relationships=[keyed])
     )
+    await _apply(db, _file(tables=[_table("orders"), _table("customers")], relationships=[keyed]))
+    assert ("customer_id",) in await _rows(db, "table_columns", "column_name")
+    assert await _rows(db, "relationships", "source_column") == [("customer_id",)]
+
+
+async def test_an_apply_goes_through_the_guards(db):
+    """A view the file declares that would read itself is refused by the model store's guard
+    (REQ-1918), and the whole apply is undone."""
+    await _apply(db, _file())
     before = await _model(db)
-    with pytest.raises(table_repo.ColumnDropRefused, match="customer_id"):
-        await _apply(
-            db,
-            _file(
-                roles=("seller", "new_role"),
-                tables=[_table("orders"), _table("customers")],
-                relationships=[keyed],
-            ),
-        )
+    looping = [
+        _table("orders"),
+        _view("loop_a", "SELECT id FROM loop_b"),
+        _view("loop_b", "SELECT id FROM loop_a"),
+    ]
+    with pytest.raises(table_repo.ViewLoopRefused):
+        await _apply(db, _file(roles=("seller", "new_role"), tables=looping))
     assert await _model(db) == before
 
 
@@ -565,11 +572,26 @@ async def test_a_seeded_role_a_file_redefined_keeps_that_definition(db):
     )
 
 
-async def test_a_table_the_file_moved_to_another_schema_is_added_and_the_old_one_stays(db):
+async def test_an_apply_that_would_publish_a_name_twice_is_refused_naming_both(db):
+    """An apply removes nothing, so a table the file moved to another schema would stand beside
+    the one registered under the same name in the same domain: refused, naming both, and the whole
+    apply is undone."""
     both = [_table("orders"), _table("customers")]
     await _apply(db, _file(tables=both, relationships=[_ORDERS_TO_CUSTOMERS]))
+    before = await _model(db)
     moved = [_table("orders", schema="sales"), _table("customers")]
-    await _apply(db, _file(tables=[moved[1], {**moved[0], "alias": "sales_orders"}]))
+    with pytest.raises(config_loader.PublishedNameClash) as err:
+        await _apply(db, _file(roles=("seller", "new_role"), tables=moved))
+    assert "sales.orders" in str(err.value)
+    assert "cfg.public.orders" in str(err.value) and "cfg.sales.orders" in str(err.value)
+    assert await _model(db) == before
+
+
+async def test_a_moved_table_with_a_name_of_its_own_is_added_and_the_old_one_stays(db):
+    both = [_table("orders"), _table("customers")]
+    await _apply(db, _file(tables=both, relationships=[_ORDERS_TO_CUSTOMERS]))
+    moved = {**_table("orders", schema="sales"), "alias": "sales_orders"}
+    await _apply(db, _file(tables=[_table("customers"), moved]))
     assert await _rows(db, "registered_tables", "table_name", "schema_name") == [
         ("customers", "public"),
         ("orders", "public"),
@@ -719,3 +741,95 @@ def test_the_schema_seeds_its_rows_without_an_origin():
         assert "origin" not in columns, statement.group(0)[:80]
     assert not re.search(r"^\s*origin\s+TEXT", sql, re.M)
     assert "CREATE TABLE IF NOT EXISTS model_seed" in sql
+
+
+# --- a demo organisation is its config ------------------------------------------------------------
+
+
+async def test_a_demo_rebuild_starts_exactly_as_its_config_says(db):
+    """DEMO ORGANISATIONS ARE THEIR CONFIG: every build rebuilds a demo's model from its
+    configuration — an admin's additions and edits last until then, and the seed stays."""
+    from provisa.core.config_loader import rebuild_from_config
+
+    demo = _everything()
+    fresh = await _plane("demo-fresh")
+    async with fresh.acquire() as conn:
+        await rebuild_from_config(parse_config_dict(_everything()), conn)
+    expected = await _model(fresh)
+
+    async with db.acquire() as conn:
+        await rebuild_from_config(parse_config_dict(demo), conn)
+    await _admin_makes_its_own(db)
+    async with db.acquire() as conn:
+        await role_repo.upsert(
+            conn, Role(id="seller", capabilities=["usage"], domain_access=["*"]), org_id="o"
+        )
+        await conn.execute_core(
+            insert(metadata.tables["user_role_assignments"]).values(
+                user_id="ada", role_id="analyst", domain_id="*"
+            )
+        )
+    assert await _model(db) != expected
+
+    async with db.acquire() as conn:
+        await rebuild_from_config(parse_config_dict(_everything()), conn)
+
+    assert await _model(db) == expected
+    # What the deployment seeds, and who holds a seeded role, stays.
+    assert {"analyst", "org_admin"} <= await _ids(db, "roles")
+    assert ("ada", "analyst") in await _rows(db, "user_role_assignments", "user_id", "role_id")
+    assert "__derived__" in await _ids(db, "sources")
+
+
+# --- Kafka sources are model ----------------------------------------------------------------------
+
+
+def _kafka() -> dict:
+    return {
+        "id": "events",
+        "bootstrap_servers": "kafka:9092",
+        "topics": [
+            {
+                "id": "clicks",
+                "topic": "web.clicks",
+                "domain_id": "sales",
+                "default_window": "15m",
+                "columns": [{"name": "id", "data_type": "integer", "visible_to": ["seller"]}],
+            }
+        ],
+    }
+
+
+async def test_kafka_sources_are_seeded_once_and_read_from_the_store(db):
+    raw = _raw(kafka_sources=[_kafka()])
+    seeded, config = await _boot(db, raw)
+    assert seeded is True
+    assert [k["id"] for k in config.kafka_sources] == ["events"]
+    assert ("events", "clicks") in await _rows(db, "registered_tables", "source_id", "table_name")
+    assert await _rows(db, "kafka_topics", "source_id", "topic") == [("events", "web.clicks")]
+
+    changed = _kafka()
+    changed["topics"][0]["default_window"] = "1h"
+    changed["topics"].append(
+        {
+            "id": "views",
+            "topic": "web.views",
+            "domain_id": "sales",
+            "columns": [{"name": "id", "data_type": "integer", "visible_to": ["seller"]}],
+        }
+    )
+    _seeded, config = await _boot(db, _raw(kafka_sources=[changed]))
+    assert config.kafka_sources == [_kafka()]
+    assert ("events", "views") not in await _rows(
+        db, "registered_tables", "source_id", "table_name"
+    )
+
+
+async def test_kafka_sources_round_trip_through_the_export(db):
+    raw = _raw(kafka_sources=[_kafka()])
+    await _boot(db, raw)
+    exported = with_store_model(raw, await _model(db))
+    fresh = await _plane("kafka-round-trip")
+    async with fresh.acquire() as conn:
+        await apply_config(parse_config_dict(yaml.safe_load(yaml.safe_dump(exported))), conn)
+    assert await _model(fresh) == await _model(db)

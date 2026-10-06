@@ -235,8 +235,16 @@ async def test_a_demo_org_starts_as_its_config_at_every_build(clean, tmp_path, m
                     Role(id="auditor", capabilities=["usage", "write"], domain_access=["*"]),
                     org_id=_DEMO_ID,
                 )
+                # An addition, too, lasts only until the next build.
+                await role_repo.upsert(
+                    conn,
+                    Role(id="added_in_demo", capabilities=["usage"], domain_access=["*"]),
+                    org_id=_DEMO_ID,
+                )
             assert await _auditor(rt) == ["usage", "write"]
             rebuilt = await build_org_runtime(_DEMO_ID, include_demo=True)
+            async with rebuilt.model_db.acquire() as conn:
+                assert await role_repo.get(conn, "added_in_demo") is None
             return await _auditor(rebuilt)
         finally:
             reset_current_org(token)

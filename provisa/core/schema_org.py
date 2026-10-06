@@ -768,6 +768,9 @@ kafka_sources = Table(
     Column("schema_registry_url", Text),
     Column("auth_type", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-1919: the source as its configuration wrote it (topics, windows, discriminators, auth;
+    # a credential stays its reference).
+    Column("spec", JSON(none_as_null=True)),
     # REQ-1491: whether this environment has supplied this source's connection values. A copy
     # carries the row and never the binding, and an empty host is not an absent one — the
     # connection builder reads it as localhost — so an unbound source is MARKED, and the query

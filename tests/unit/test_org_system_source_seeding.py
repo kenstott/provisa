@@ -62,11 +62,9 @@ def test_the_org_builder_seeds_system_sources_before_it_loads_the_config():
     awaited = _awaited_names(_function(_REPO_ROOT / "provisa/api/app.py", "_build_org_runtime"))
 
     assert "_seed_built_in_sources" in awaited, "the org builder no longer seeds system sources"
-    assert "seed_config" in awaited, "the org builder no longer seeds the org from the config"
-    # REQ-1919: a demo org applies its demo config at every build; that too follows the seed.
-    assert "apply_config" in awaited, "the org builder no longer applies a demo org's config"
-    assert awaited.index("_seed_built_in_sources") < awaited.index("apply_config")
-    assert awaited.index("_seed_built_in_sources") < awaited.index("seed_config"), (
+    # REQ-1919: a demo org is rebuilt from its config at every build.
+    assert "rebuild_from_config" in awaited, "the org builder no longer rebuilds a demo org"
+    assert awaited.index("_seed_built_in_sources") < awaited.index("rebuild_from_config"), (
         "config load precedes the system-source seed — a tables row naming __derived__ has no FK "
         "target, and the table is dropped silently"
     )
@@ -122,13 +120,18 @@ def test_the_seed_is_an_upsert_so_a_rebuild_does_not_collide():
     assert 'index_elements=["id"]' in body
 
 
-def test_a_demo_org_applies_its_config_at_every_build_and_the_deployment_seeds_once():
-    """REQ-1919 (DEMO ORGANISATIONS ARE THEIR CONFIG): every build of a demo org's runtime applies
-    the demo configuration again; the deployment's own org is seeded once, only into an empty
-    store."""
+def test_only_a_demo_org_is_rebuilt_from_its_config_and_no_org_is_special():
+    """REQ-1919 (DEMO ORGANISATIONS ARE THEIR CONFIG): a build rebuilds the org's model from the
+    demo configuration only when the org is a demo (``include_demo``, the org's seeded_demo flag);
+    whether it is the deployment's own org decides nothing — the flag does."""
     source = (_REPO_ROOT / "provisa/api/app.py").read_text()
     builder = source.split("async def _build_org_runtime")[1].split("\nasync def ")[0]
-    demo = builder.index("if org_id != state.org_id:")
-    deployment = builder.index("elif not await is_seeded(conn):")
-    assert demo < builder.index("await apply_config(seed, conn", demo) < deployment
-    assert deployment < builder.index("await seed_config(seed, conn", deployment)
+    guard = builder.index("if include_demo:")
+    assert guard < builder.index("await rebuild_from_config(seed, conn", guard)
+    block = builder[
+        builder.index("if state.raw_config is not None:") : builder.index(
+            "_populate_source_catalog_names(org_config)"
+        )
+    ]
+    assert "state.org_id" not in block
+    assert "seed_config(" not in builder.replace("state.seed_config", "")

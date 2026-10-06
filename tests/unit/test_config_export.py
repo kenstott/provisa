@@ -75,6 +75,7 @@ async def _run(
         patch("provisa.core.repositories.tag.list_assignments", AsyncMock(return_value=[])),
         patch("provisa.core.store_config._glossary_terms", AsyncMock(return_value=[])),
         patch("provisa.core.store_config._naming_rules", AsyncMock(return_value=[])),
+        patch("provisa.core.repositories.kafka_source.list_specs", AsyncMock(return_value=[])),
     ):
         return await config_export.build_live_config()
 

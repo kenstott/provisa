@@ -2281,6 +2281,10 @@ class ProvisaConfig(BaseModel):
     nl: NlConfig = Field(default_factory=NlConfig)
     govdata_sources: list[GovDataSource] = Field(default_factory=list)
     govdata_subscriptions: list[GovDataSubscription] = Field(default_factory=list)
+    # REQ-147, REQ-1919: the Kafka sources and their topics, as the file writes them. Model: seeded
+    # into the store once (repositories.kafka_source) and read from it after; each topic is also a
+    # table of its source (config_loader.kafka_topics_as_tables).
+    kafka_sources: list[dict[str, Any]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_regions(self) -> "ProvisaConfig":

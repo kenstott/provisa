@@ -113,6 +113,11 @@ async def _load_columns(conn: "Connection", table_id: int) -> list[dict]:
     return [dict(r._mapping) for r in result.fetchall()]
 
 
+async def load_columns(conn: "Connection", table_id: int) -> list[dict]:
+    """A registered table's columns as stored, in registration order."""
+    return await _load_columns(conn, table_id)
+
+
 class TableDeleteRefused(Exception):
     """A table or view that may not be deleted because other objects refer to it;
     ``dependents`` lists them."""

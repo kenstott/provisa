@@ -78,6 +78,7 @@ MODEL_SECTIONS: tuple[str, ...] = (
     "functions",
     "webhooks",
     "scheduled_triggers",
+    "kafka_sources",
 )
 
 _RESERVED_ROLES = frozenset({ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE})
@@ -236,6 +237,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import function as function_repo
+    from provisa.core.repositories import kafka_source as kafka_repo
     from provisa.core.repositories import metric as metric_repo
     from provisa.core.repositories import relationship as rel_repo
     from provisa.core.repositories import rls as rls_repo
@@ -327,6 +329,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             _written(ScheduledTrigger.model_validate(_fields(ScheduledTrigger, row)))
             for row in await trigger_repo.list_all(conn)
         ],
+        "kafka_sources": await kafka_repo.list_specs(conn),  # REQ-147
         "naming_rules": await _naming_rules(conn),
     }
 

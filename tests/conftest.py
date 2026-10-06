@@ -1423,6 +1423,13 @@ def provisa_server(_reserve_flight_port):
     # ${env:PG_PORT}/${env:PG_PASSWORD}, and it declares the admin/analyst roles these tests use — so
     # the requires_provisa_server tests exercise a real, executable governance pipeline.
     _live_cfg = os.path.join(os.path.dirname(__file__), "fixtures", "sample_config.yaml")
+    # REQ-1919: the live server's boot is its deployment's first start, as every in-process boot's
+    # is (tests.boot_seeds_its_own_deployment): it seeds its org's store from its own file.
+    import asyncio
+
+    from tests.boot_seeds_its_own_deployment import prepare_first_start
+
+    asyncio.run(prepare_first_start(_live_cfg))
     server_env = {
         **os.environ,
         "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa",

@@ -128,6 +128,69 @@ _VIEW_KEYS = {
 }
 
 
+def kafka_topics_as_tables(raw: dict) -> dict:  # REQ-147, REQ-1919
+    """``raw`` with each Kafka source's topics declared as tables of the source, and each Kafka
+    source declared as a source (a registered table names its source). A table or source the raw
+    configuration already holds — the store's own, read back after the seed — is not declared
+    again. Returns a new dict; ``raw`` is not changed."""
+    kafka = raw.get("kafka_sources") or []
+    if not kafka:
+        return raw
+    out = dict(raw)
+    sources = list(out.get("sources") or [])
+    tables = list(out.get("tables") or [])
+    held_sources = {s.get("id") for s in sources}
+    held_tables = {
+        (
+            t.get("source_id"),
+            t.get("schema") or t.get("schema_name"),
+            t.get("table") or t.get("table_name"),
+        )
+        for t in tables
+    }
+    for ks in kafka:
+        source_id = ks["id"]
+        if source_id not in held_sources:
+            sources.append(
+                {"id": source_id, "type": "kafka", "host": ks.get("bootstrap_servers", "")}
+            )
+            held_sources.add(source_id)
+        for topic in ks.get("topics", []):
+            name = topic.get("table_name") or topic.get("id", "").replace("-", "_")
+            if (source_id, "default", name) in held_tables:
+                continue
+            tables.append(
+                {
+                    "source_id": source_id,
+                    "domain_id": topic.get("domain_id", "support"),
+                    "schema": "default",
+                    "table": name,
+                    "description": topic.get("description", ""),
+                    "columns": [
+                        {
+                            "name": col.get("name", col) if isinstance(col, dict) else col,
+                            # REQ-1426: the topic's declared type is the registered column's.
+                            "data_type": col.get("data_type") if isinstance(col, dict) else None,
+                            "visible_to": col.get("visible_to", ["org_admin", "analyst"])
+                            if isinstance(col, dict)
+                            else ["org_admin", "analyst"],
+                            "writable_by": col.get("writable_by", [])
+                            if isinstance(col, dict)
+                            else [],
+                            "description": col.get("description", "")
+                            if isinstance(col, dict)
+                            else "",
+                        }
+                        for col in topic.get("columns", [])
+                    ],
+                }
+            )
+            held_tables.add((source_id, "default", name))
+    out["sources"] = sources
+    out["tables"] = tables
+    return out
+
+
 def views_as_tables(raw: dict) -> dict:
     """Turn the config's ``views:`` block into the table entries it declares (REQ-133).
 
@@ -190,10 +253,12 @@ def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250
     """
     from provisa.core.secrets import resolve_secrets_in_dict
 
-    config = ProvisaConfig.model_validate(views_as_tables(resolve_secrets_in_dict(data)))
+    config = ProvisaConfig.model_validate(
+        kafka_topics_as_tables(views_as_tables(resolve_secrets_in_dict(data)))
+    )
     # What is STORED is the config as written: a credential stays the reference the file gave,
     # and its value is resolved where it is used.
-    config._written = _as_written(config, views_as_tables(data))
+    config._written = _as_written(config, kafka_topics_as_tables(views_as_tables(data)))
     return config
 
 
@@ -568,13 +633,94 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
 ) -> None:
     _expand_view_metrics(config)
     _settle_table_names(engine, config)
+    await _refuse_published_name_clash(conn, config)
 
     # The rows a table's source-specific step writes (its API source and endpoint) are stored
     # from the source as written: a credential in its address stays a reference.
     written_by_id = {src.id: src for src in config.written.sources}
     for tbl in config.tables:
         src = written_by_id.get(tbl.source_id)
-        await _upsert_single_table(conn, engine, tbl, src, openapi_specs)
+        await _upsert_single_table(
+            conn, engine, await _keep_unlisted_columns(conn, tbl), src, openapi_specs
+        )
+
+
+class PublishedNameClash(ValueError):  # REQ-1919
+    """An apply would register a second table under a name a table already has in its domain."""
+
+
+async def _refuse_published_name_clash(  # REQ-1919
+    conn: "Connection", config: ProvisaConfig
+) -> None:
+    """Refuse, naming both, an apply after which two tables would share a published name (alias,
+    else table name) in one domain. An apply removes nothing, so a table the file moved to another
+    schema, or a second source's table of the same name, would otherwise stand beside the one
+    already registered and every lookup by that name would be ambiguous."""
+    rows = (
+        await conn.execute_core(
+            select(
+                registered_tables.c.source_id,
+                registered_tables.c.schema_name,
+                registered_tables.c.table_name,
+                registered_tables.c.alias,
+                registered_tables.c.domain_id,
+            )
+        )
+    ).fetchall()
+    final: dict[tuple[str, str, str], tuple[str, str]] = {
+        (r.source_id, r.schema_name, r.table_name): (r.domain_id, r.alias or r.table_name)
+        for r in rows
+    }
+    for tbl in config.tables:
+        final[(tbl.source_id, tbl.schema_name, tbl.table_name)] = (
+            domain_policy.resolve_domain_id(tbl.domain_id),
+            tbl.alias or tbl.table_name,
+        )
+    holders: dict[tuple[str, str], list[str]] = {}
+    for (source_id, schema_name, table_name), key in final.items():
+        holders.setdefault(key, []).append(f"{source_id}.{schema_name}.{table_name}")
+    clashes = {key: sorted(found) for key, found in holders.items() if len(found) > 1}
+    if clashes:
+        detail = "; ".join(
+            f"{domain}.{name}: {' and '.join(found)}"
+            for (domain, name), found in sorted(clashes.items())
+        )
+        raise PublishedNameClash(
+            "the configuration would register two tables under one name in one domain — "
+            f"{detail}. Delete one of them, or give one an alias, and apply again"
+        )
+
+
+async def _keep_unlisted_columns(conn: "Connection", tbl: Table) -> Table:  # REQ-1919
+    """``tbl`` with the registered columns its declaration no longer lists added back as they are
+    stored: an apply adds and updates and removes nothing, a column included."""
+    from provisa.core.models import Column as ColumnModel
+
+    held = (
+        await conn.execute_core(
+            select(registered_tables.c.id).where(
+                registered_tables.c.source_id == tbl.source_id,
+                registered_tables.c.schema_name == tbl.schema_name,
+                registered_tables.c.table_name == tbl.table_name,
+            )
+        )
+    ).fetchone()
+    if held is None:
+        return tbl
+    listed = {c.name for c in tbl.columns}
+    kept = [
+        ColumnModel.model_validate(
+            {
+                **{k: v for k, v in col.items() if k in ColumnModel.model_fields and v is not None},
+                "name": col["column_name"],
+            }
+        )
+        for col in await table_repo.load_columns(conn, held.id)
+        if col["column_name"] not in listed
+    ]
+    if not kept:
+        return tbl
+    return tbl.model_copy(update={"columns": [*tbl.columns, *kept]})
 
 
 async def _upsert_relationships(
@@ -741,8 +887,12 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     for selected in config.regions:
         await region_repo.upsert_region(conn, selected)
 
-    # 1. Sources
+    # 1. Sources, and the Kafka sources with their topics (REQ-147)
     await _upsert_sources(conn, config)
+    from provisa.core.repositories import kafka_source as kafka_repo
+
+    for spec in config.written.kafka_sources:
+        await kafka_repo.upsert(conn, spec)
 
     # 2. Domains
     if domain_policy.single_domain():
@@ -1294,8 +1444,174 @@ async def _mark_seeded(conn: "Connection") -> None:
         await conn.execute_core(insert(model_seed).values(id=1))
 
 
+async def reset_model(conn: "Connection") -> None:  # REQ-1919
+    """Remove the org's model — everything a configuration can declare, and everything an admin
+    made — leaving what the deployment seeds into every store (the built-in sources and their
+    tables, the system domains, the seeded roles and the people holding them). Within the
+    caller's transaction. A demo organisation is rebuilt from its configuration by this followed
+    by an apply (:func:`rebuild_from_config`)."""
+    from sqlalchemy import delete
+
+    from provisa.core.db import SEEDED_DOMAIN_IDS, SEEDED_ROLE_IDS, SEEDED_SOURCE_IDS
+    from provisa.core.models import DERIVED_SOURCE_ID, DERIVED_TAG_IDS, SYSTEM_TAG_IDS
+    from provisa.core.repositories.integrity import ObjectRef, discard
+    from provisa.core.schema_org import (
+        calendars,
+        data_products,
+        domains,
+        glossary_terms,
+        kafka_sources,
+        metrics,
+        org_regions,
+        relationships,
+        rls_rules,
+        roles,
+        scheduled_triggers,
+        sources,
+        stores,
+        synthetic_datasets,
+        tag_assignments,
+        tags,
+        tracked_functions,
+        tracked_webhooks,
+    )
+
+    async def _ids(statement: Any) -> list[Any]:
+        return [r[0] for r in (await conn.execute_core(statement)).fetchall()]
+
+    # REQ-1591: taken before the tables go — a term's domains are derived from its refs.
+    domains_before = await glossary_repo.term_domains(conn)
+
+    seeded_sources = SEEDED_SOURCE_IDS - {DERIVED_SOURCE_ID}
+    internal = select(registered_tables.c.id).where(
+        registered_tables.c.source_id.in_(sorted(seeded_sources))
+        | registered_tables.c.domain_id.in_(["meta", "ops"])
+    )
+    internal_ids = set(await _ids(internal))
+    model_tables = [
+        t
+        for t in await _ids(select(registered_tables.c.id).order_by(registered_tables.c.id.desc()))
+        if t not in internal_ids
+    ]
+
+    def _off_internal(column: Any) -> Any:
+        return column.is_(None) | column.not_in(sorted(internal_ids) or [-1])
+
+    order: list[tuple[str, list[Any]]] = [
+        ("synthetic_dataset", await _ids(select(synthetic_datasets.c.id))),
+        (
+            "tag_assignment",
+            await _ids(
+                select(tag_assignments.c.id).where(_off_internal(tag_assignments.c.table_id))
+            ),
+        ),
+        (
+            "row_filter",
+            await _ids(
+                select(rls_rules.c.id).where(
+                    _off_internal(rls_rules.c.table_id),
+                    rls_rules.c.domain_id.is_(None) | rls_rules.c.domain_id.not_in(["meta", "ops"]),
+                )
+            ),
+        ),
+        (
+            "relationship",
+            await _ids(
+                select(relationships.c.id).where(
+                    _off_internal(relationships.c.source_table_id),
+                    _off_internal(relationships.c.target_table_id),
+                )
+            ),
+        ),
+        ("metric", await _ids(select(metrics.c.name).where(metrics.c.from_fact.is_(None)))),
+        (
+            "command",
+            await _ids(
+                select(tracked_functions.c.name).where(
+                    tracked_functions.c.source_id.not_in(sorted(seeded_sources))
+                )
+            ),
+        ),
+        ("webhook", await _ids(select(tracked_webhooks.c.name))),
+        ("table", model_tables),
+        (
+            "data_product",
+            await _ids(
+                select(data_products.c.id).where(data_products.c.domain_id.not_in(["meta", "ops"]))
+            ),
+        ),
+        (
+            "glossary_term",
+            await _ids(select(glossary_terms.c.id).where(glossary_terms.c.is_abstract.is_(True))),
+        ),
+        (
+            "tag",
+            await _ids(
+                select(tags.c.id).where(tags.c.id.not_in([*SYSTEM_TAG_IDS, *DERIVED_TAG_IDS]))
+            ),
+        ),
+        (
+            "source",
+            await _ids(select(sources.c.id).where(sources.c.id.not_in(sorted(SEEDED_SOURCE_IDS)))),
+        ),
+        ("calendar", await _ids(select(calendars.c.name))),
+    ]
+    for kind, idents in order:
+        for ident in idents:
+            if kind == "table":
+                await table_repo.discard(conn, ident)  # its endpoint goes with it
+            elif kind == "source":
+                await source_repo.discard(conn, ident)
+            else:
+                await discard(conn, ObjectRef(kind, ident))
+    await conn.execute_core(delete(scheduled_triggers))
+    await conn.execute_core(delete(kafka_sources))
+    await conn.execute_core(delete(naming_rules))
+    # Roles a child before its parent; the seeded ones and those who hold them stay.
+    remaining = {
+        r.id: r.parent_role_id
+        for r in (
+            await conn.execute_core(
+                select(roles.c.id, roles.c.parent_role_id).where(
+                    roles.c.id.not_in(sorted(SEEDED_ROLE_IDS))
+                )
+            )
+        ).fetchall()
+    }
+    while remaining:
+        leaves = [r for r in remaining if r not in set(remaining.values())]
+        for role_id in leaves:
+            await role_repo.discard(conn, role_id)
+            del remaining[role_id]
+    keep_domains = sorted(SEEDED_DOMAIN_IDS | set(domain_policy.system_domain_ids()))
+    for domain_id in await _ids(select(domains.c.id).where(domains.c.id.not_in(keep_domains))):
+        await domain_repo.discard(conn, domain_id)
+    for region_id in await _ids(select(org_regions.c.id)):
+        await discard(conn, ObjectRef("region", region_id))
+    for store_id in await _ids(select(stores.c.id)):
+        await discard(conn, ObjectRef("store", store_id))
+    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+
+
+async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
+    config: ProvisaConfig, conn: "Connection", engine: Any = None
+) -> list[str]:
+    """Rebuild a demo organisation's model from its configuration: remove its model
+    (:func:`reset_model`) and apply the configuration, in one transaction, so the organisation
+    starts exactly as its configuration says. Returns the source ids whose change feed could not
+    be reached."""
+    return await _apply(
+        config, conn, engine, label="demo rebuilt from its configuration", reset=True
+    )
+
+
 async def _apply(
-    config: ProvisaConfig, conn: "Connection", engine: Any, *, label: str
+    config: ProvisaConfig,
+    conn: "Connection",
+    engine: Any,
+    *,
+    label: str,
+    reset: bool = False,
 ) -> list[str]:
     from provisa.core import model_change
 
@@ -1308,6 +1624,8 @@ async def _apply(
             # Serialize concurrent applies (parallel workers, test app lifespans) so they do not
             # deadlock on the same rows. A no-op on single-writer backends (SQLite).
             await conn.advisory_xact_lock(7261748190)
+            if reset:
+                await reset_model(conn)
             failed = await _apply_in_txn(config, conn, engine)
             await _mark_seeded(conn)
     return failed
