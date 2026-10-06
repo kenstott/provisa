@@ -85,7 +85,9 @@ describe("REQ-1587 pinned list headers", () => {
     (page) => {
       const tsx = src(page);
       expect(tsx).toContain('className="page page-sticky-head"');
-      expect(tsx).toContain('className="table-scroll"');
+      // REQ-1940: the scrollport wrapper is the shared list component's.
+      expect(tsx).toContain("<ListTable");
+      expect(src("components/list/ListTable.tsx")).toContain('className="table-scroll"');
     },
   );
 });

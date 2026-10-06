@@ -38,6 +38,7 @@ import {
 } from "../../api/admin";
 import type { LocalUser, UserAssignment } from "../../api/admin";
 import { useCapability } from "../../hooks/useCapability";
+import { ListTable } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -170,8 +171,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
 
   return (
     <Stack gap="md">
-      <Table.ScrollContainer minWidth={640}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+      <ListTable minWidth={640}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("localUsers.colUsername")}</Table.Th>
@@ -294,8 +294,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
               );
             })}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+        </ListTable>
       {totalPages > 1 && (
         <Group justify="flex-end">
           <Pagination total={totalPages} value={userPage} onChange={setUserPage} size="sm" />

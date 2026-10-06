@@ -80,6 +80,7 @@ import type {
   GlossaryTermDetail,
   GlossaryTermSummary,
 } from "../../api/glossary";
+import { ListTable } from "../list/ListTable";
 
 // Per-viewer list-filter preferences; never reachable from other viewers or the server.
 function readStoredBool(key: string, fallback: boolean): boolean {
@@ -791,8 +792,7 @@ export function GlossaryTab() {
                   {t("glossaryTab.noRefs")}
                 </Text>
               ) : (
-                <Table.ScrollContainer minWidth={480}>
-                  <Table striped withTableBorder verticalSpacing="xs">
+                <ListTable minWidth={480}>
                     <Table.Thead>
                       <Table.Tr>
                         <Table.Th>{t("glossaryTab.colColumn")}</Table.Th>
@@ -828,8 +828,7 @@ export function GlossaryTab() {
                         </Table.Tr>
                       ))}
                     </Table.Tbody>
-                  </Table>
-                </Table.ScrollContainer>
+                  </ListTable>
               )}
 
               <Group gap="xs" align="center">

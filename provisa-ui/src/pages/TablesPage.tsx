@@ -81,6 +81,13 @@ import {
   replicateContradictsLoadProtection,
   resolvedReplicate,
 } from "../components/admin/replicate";
+import {
+  ListTable,
+  ListRow,
+  ListExpandRow,
+  ListEmpty,
+  ListLoading,
+} from "../components/list/ListTable";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -589,7 +596,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // blocking the whole page on those hides cached rows unnecessarily and causes test timeouts
   // under concurrent load where backend schema rebuilds extend refetch latency to >10s.
   if (loading || (tablesLoading && tables.length === 0))
-    return <div className="page">{translate("tablesPage.loading")}</div>;
+    return <ListLoading message={translate("tablesPage.loading")} />;
 
   return (
     <div className="page page-sticky-head">
@@ -762,8 +769,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         </div>
       )}
 
-      <div className="table-scroll">
-        <Table className="data-table">
+      <ListTable testId="tables-list">
           <Table.Thead>
             <Table.Tr>
               {(
@@ -1009,6 +1015,14 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 }
               }
 
+              if (items.length === 0) {
+                return (
+                  <ListEmpty colSpan={domainsEnabled ? 12 : 11} testId="tables-empty">
+                    {translate("tablesPage.empty")}
+                  </ListEmpty>
+                );
+              }
+
               return items.map((item) => {
                 if (item.type === "header") {
                   const isL1 = item.level === 1;
@@ -1057,12 +1071,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 const isEditing = editingTable?.id === t.id;
                 const row = (
                   <Fragment key={t.id}>
-                    <Table.Tr
+                    <ListRow
                       onClick={() => {
                         setExpanded(expanded === t.id ? null : t.id);
                         if (expanded === t.id) cancelEditing();
                       }}
-                      className="clickable"
                     >
                       <Table.Td>
                         {t.sourceId === DERIVED_SOURCE_ID ? (
@@ -1217,10 +1230,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                           })()}
                         </Group>
                       </Table.Td>
-                    </Table.Tr>
+                    </ListRow>
                     {expanded === t.id && (
-                      <Table.Tr key={`${t.id}-cols`}>
-                        <Table.Td colSpan={domainsEnabled ? 12 : 11} style={{ padding: 0 }}>
+                      <ListExpandRow colSpan={domainsEnabled ? 12 : 11}>
                           {!isEditing ? (
                             <TableReadView
                               t={t}
@@ -1278,8 +1290,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               />
                             )
                           )}
-                        </Table.Td>
-                      </Table.Tr>
+                      </ListExpandRow>
                     )}
                   </Fragment>
                 );
@@ -1287,8 +1298,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               });
             })()}
           </Table.Tbody>
-        </Table>
-      </div>
+      </ListTable>
 
       {(() => {
         const filtered = tables.filter((t) => {

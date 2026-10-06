@@ -47,6 +47,14 @@ import { fetchActions } from "../api/actions";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
+import {
+  ListTable,
+  ListHead,
+  ListRow,
+  ListExpandRow,
+  ListEmpty,
+  ListDetail,
+} from "../components/list/ListTable";
 
 const ALL_CAPABILITIES: Capability[] = [
   "source_registration",
@@ -412,15 +420,14 @@ export function SecurityRolesPage() {
         </Stack>
       )}
 
-      <Table.ScrollContainer minWidth={480}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("securityPage.colId")}</Table.Th>
-              <Table.Th>{t("securityPage.colCapabilities")}</Table.Th>
-              <Table.Th>{t("securityPage.colDomainAccess")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+      <ListTable minWidth={480} testId="roles-list">
+          <ListHead
+            columns={[
+              t("securityPage.colId"),
+              t("securityPage.colCapabilities"),
+              t("securityPage.colDomainAccess"),
+            ]}
+          />
           <Table.Tbody>
             {roles
               .filter(
@@ -428,11 +435,7 @@ export function SecurityRolesPage() {
               )
               .map((r) => (
                 <React.Fragment key={r.id}>
-                  <Table.Tr
-                    style={{
-                      cursor: "pointer",
-                      background: expandedRole === r.id ? "var(--surface)" : undefined,
-                    }}
+                  <ListRow
                     onClick={() => {
                       setExpandedRole(expandedRole === r.id ? null : r.id);
                       setEditingRoleInRow(null);
@@ -453,10 +456,10 @@ export function SecurityRolesPage() {
                         </Table.Td>
                       </>
                     )}
-                  </Table.Tr>
+                  </ListRow>
                   {expandedRole === r.id && !r.detailsHidden && (
-                    <Table.Tr>
-                      <Table.Td colSpan={3} style={{ background: "var(--bg)" }}>
+                    <ListExpandRow colSpan={3}>
+                      <ListDetail>
                         {editingRoleInRow !== r.id ? (
                           <Stack gap="xs">
                             <Text>
@@ -552,14 +555,13 @@ export function SecurityRolesPage() {
                             </Group>
                           </Stack>
                         )}
-                      </Table.Td>
-                    </Table.Tr>
+                      </ListDetail>
+                    </ListExpandRow>
                   )}
                 </React.Fragment>
               ))}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+      </ListTable>
       {refusal.dialog}
     </Stack>
   );
@@ -875,33 +877,26 @@ export function SecurityRlsPage() {
         </Stack>
       )}
 
-      <Table.ScrollContainer minWidth={640}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("securityPage.colId")}</Table.Th>
-              <Table.Th>{t("securityPage.colTableOrDomain")}</Table.Th>
-              <Table.Th>{t("securityPage.colRole")}</Table.Th>
-              <Table.Th>{t("securityPage.colFilter")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+      <ListTable minWidth={640} testId="rules-list">
+          <ListHead
+            columns={[
+              t("securityPage.colId"),
+              t("securityPage.colTableOrDomain"),
+              t("securityPage.colRole"),
+              t("securityPage.colFilter"),
+            ]}
+          />
           <Table.Tbody>
             {filtered.length === 0 && (
-              <Table.Tr>
-                <Table.Td colSpan={4} ta="center" c="dimmed">
-                  {rules.length === 0
-                    ? t("securityPage.noRulesDefined")
-                    : t("securityPage.noRulesMatchFilter")}
-                </Table.Td>
-              </Table.Tr>
+              <ListEmpty colSpan={4}>
+                {rules.length === 0
+                  ? t("securityPage.noRulesDefined")
+                  : t("securityPage.noRulesMatchFilter")}
+              </ListEmpty>
             )}
             {filtered.map((r) => (
               <React.Fragment key={r.id}>
-                <Table.Tr
-                  style={{
-                    cursor: "pointer",
-                    background: expandedRule === r.id ? "var(--surface)" : undefined,
-                  }}
+                <ListRow
                   onClick={() => {
                     setExpandedRule(expandedRule === r.id ? null : r.id);
                     setEditingRuleInRow(null);
@@ -933,10 +928,10 @@ export function SecurityRlsPage() {
                   <Table.Td>
                     <Text component="code">{r.filterExpr}</Text>
                   </Table.Td>
-                </Table.Tr>
+                </ListRow>
                 {expandedRule === r.id && (
-                  <Table.Tr>
-                    <Table.Td colSpan={4} style={{ background: "var(--bg)" }}>
+                  <ListExpandRow colSpan={4}>
+                    <ListDetail>
                       {editingRuleInRow !== r.id ? (
                         <Stack gap="xs">
                           <Text>
@@ -1014,14 +1009,13 @@ export function SecurityRlsPage() {
                           </Group>
                         </Stack>
                       )}
-                    </Table.Td>
-                  </Table.Tr>
+                    </ListDetail>
+                  </ListExpandRow>
                 )}
               </React.Fragment>
             ))}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+      </ListTable>
     </Stack>
   );
 }

@@ -45,6 +45,7 @@ import { RedirectSettingsCard } from "./settingsCards";
 import { fetchSettings } from "../../api/admin";
 import { FilterInput } from "./FilterInput";
 import { displayMvName } from "./mvDisplay";
+import { ListTable } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -293,7 +294,7 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
               {purging ? t("cacheManager.response.purging") : t("cacheManager.response.purgeAll")}
             </Button>
           </Group>
-          <Table striped highlightOnHover withTableBorder>
+          <ListTable>
             <Table.Thead>
               <Table.Tr>
                 <SortableTh
@@ -336,7 +337,7 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
                 </Table.Tr>
               ))}
             </Table.Tbody>
-          </Table>
+          </ListTable>
           {totalPages > 1 && (
             <Group justify="flex-end">
               <Pagination
@@ -380,7 +381,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
       {hotTables.length === 0 ? (
         <Text c="dimmed">{t("cacheManager.hot.empty")}</Text>
       ) : (
-        <Table striped highlightOnHover withTableBorder>
+        <ListTable>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("cacheManager.hot.table")}</Table.Th>
@@ -407,7 +408,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
               </Table.Tr>
             ))}
           </Table.Tbody>
-        </Table>
+        </ListTable>
       )}
       {platform && <HotTablesSettingsPanel />}
     </Stack>
@@ -463,7 +464,7 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
         <Text c="dimmed">{t("cacheManager.materialized.empty")}</Text>
       ) : (
         <>
-          <Table striped highlightOnHover withTableBorder>
+          <ListTable>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>{t("cacheManager.materialized.view")}</Table.Th>
@@ -531,7 +532,7 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
                 </Table.Tr>
               ))}
             </Table.Tbody>
-          </Table>
+          </ListTable>
           {totalPages > 1 && (
             <Group justify="flex-end">
               <Pagination

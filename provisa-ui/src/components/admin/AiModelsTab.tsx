@@ -42,6 +42,7 @@ import {
   type VectorModel,
 } from "../../api/aiModels";
 import { usePanelState } from "../../hooks/usePanelState";
+import { ListTable } from "../list/ListTable";
 
 // REQ-464, REQ-419, REQ-500, REQ-370, REQ-1790: configure per-operation AI model assignments, the
 // embedding-model registry, custom AI endpoints (openai/anthropic style), and the NL rate limit.
@@ -423,7 +424,7 @@ export function AiModelsTab() {
         <Text c="dimmed" size="sm">
           {t("aiModelsTab.vectorIntro")}
         </Text>
-        <Table data-testid="ai-models-vector-table">
+        <ListTable testId="ai-models-vector-table">
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("aiModelsTab.vectorId")}</Table.Th>
@@ -495,7 +496,7 @@ export function AiModelsTab() {
               </Table.Tr>
             ))}
           </Table.Tbody>
-        </Table>
+        </ListTable>
         <Group>
           <Button
             variant="light"
@@ -512,7 +513,7 @@ export function AiModelsTab() {
         <Text c="dimmed" size="sm">
           {t("aiModelsTab.endpointsIntro")}
         </Text>
-        <Table data-testid="ai-models-endpoints-table">
+        <ListTable testId="ai-models-endpoints-table">
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("aiModelsTab.endpointId")}</Table.Th>
@@ -587,7 +588,7 @@ export function AiModelsTab() {
               </Table.Tr>
             ))}
           </Table.Tbody>
-        </Table>
+        </ListTable>
         <Group>
           <Button
             variant="light"

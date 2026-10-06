@@ -39,6 +39,7 @@ import type { Tag, TagFieldPolicy, TagObjectType, TagParamPolicy } from "../../t
 import { baseTagId } from "../../types/admin";
 import { FilterInput } from "./FilterInput";
 import { HelpBubble } from "../HelpBubble";
+import { ListTable } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -303,8 +304,7 @@ export function TagsTab() {
         </Stack>
       )}
 
-      <Table.ScrollContainer minWidth={640}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+      <ListTable minWidth={640}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("tagsTab.colId")}</Table.Th>
@@ -478,8 +478,7 @@ export function TagsTab() {
               ),
             ])}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+        </ListTable>
       {totalPages > 1 && (
         <Group justify="flex-end">
           <Pagination

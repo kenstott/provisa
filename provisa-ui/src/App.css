@@ -582,6 +582,18 @@ main {
 .data-table tr.clickable:hover {
   background: var(--border);
 }
+/* REQ-1940: striped rows. Stripe counts item rows only (.list-row), so an expanded detail row
+ * (.list-expand) neither shifts the alternation nor breaks it: it takes its parent row's color.
+ * :where() keeps specificity at zero so hover and selected states always win. */
+.data-table tbody :where(tr.list-row:nth-child(even of .list-row)),
+.data-table tbody :where(tr.list-row:nth-child(even of .list-row) + tr.list-expand) {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+/* REQ-1940: expanded-row content for lists whose detail is simple fields. */
+.list-detail {
+  padding: 0.75rem 1rem;
+  background: var(--bg);
+}
 
 /* SQL Modal results grid */
 .sql-results-table {

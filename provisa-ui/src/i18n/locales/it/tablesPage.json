@@ -71,6 +71,7 @@
     "purposeAria": "Informazioni sulle tabelle registrate",
     "erdHelpTitle": "Diagramma entità-relazione",
     "erdHelpBody": "Disegna le tabelle registrate e le relazioni dichiarate tra loro, così i join già esistenti sono visibili prima di scrivere una query. Legge il modello anziché modificarlo: filtra per dominio ed esporta il diagramma come PNG o SVG.",
-    "purposeModel": "+ Modello dichiara un'entità o un fatto — i due mattoni con cui si costruiscono sia uno schema a stella sia un Data Vault — e lo abbassa su quelle stesse primitive, registrando la vista materializzata, la sua modalità di storia e le relazioni verso le entità di cui usa le chiavi."
+    "purposeModel": "+ Modello dichiara un'entità o un fatto — i due mattoni con cui si costruiscono sia uno schema a stella sia un Data Vault — e lo abbassa su quelle stesse primitive, registrando la vista materializzata, la sua modalità di storia e le relazioni verso le entità di cui usa le chiavi.",
+    "empty": "Nessuna tabella registrata."
   }
 }

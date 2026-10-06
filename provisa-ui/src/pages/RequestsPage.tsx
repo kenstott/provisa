@@ -21,11 +21,11 @@ import {
   Stack,
   Table,
   Tabs,
-  Text,
   Title,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import { ListTable, ListHead, ListRow, ListEmpty } from "../components/list/ListTable";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -262,30 +262,31 @@ export function RequestsPage() {
         </Stack>
       </Modal>
 
-      {filtered.length === 0 ? (
-        <Text c="dimmed">
-          {search ? t("requestsPage.emptyFiltered", { tab }) : t("requestsPage.empty", { tab })}
-        </Text>
-      ) : (
-        <>
-          <Table.ScrollContainer minWidth={900}>
-            <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>{t("requestsPage.colId")}</Table.Th>
-                  <Table.Th>{t("requestsPage.colType")}</Table.Th>
-                  <Table.Th>{t("requestsPage.colRequester")}</Table.Th>
-                  <Table.Th>{t("requestsPage.colSubmitted")}</Table.Th>
-                  <Table.Th>{t("requestsPage.colPayload")}</Table.Th>
-                  <Table.Th>{t("requestsPage.colApprovals")}</Table.Th>
-                  <Table.Th>{t("requestsPage.colStatus")}</Table.Th>
-                  <Table.Th>{t("requestsPage.colReason")}</Table.Th>
-                  <Table.Th>{t("requestsPage.colActions")}</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {paged.map((row) => (
-                  <Table.Tr key={row.id}>
+      <ListTable minWidth={900}>
+        <ListHead
+          columns={[
+            t("requestsPage.colId"),
+            t("requestsPage.colType"),
+            t("requestsPage.colRequester"),
+            t("requestsPage.colSubmitted"),
+            t("requestsPage.colPayload"),
+            t("requestsPage.colApprovals"),
+            t("requestsPage.colStatus"),
+            t("requestsPage.colReason"),
+            t("requestsPage.colActions"),
+          ]}
+        />
+        <Table.Tbody>
+          {filtered.length === 0 && (
+            <ListEmpty colSpan={9}>
+              {search
+                ? t("requestsPage.emptyFiltered", { tab })
+                : t("requestsPage.empty", { tab })}
+            </ListEmpty>
+          )}
+          {filtered.length > 0 &&
+            paged.map((row) => (
+                  <ListRow key={row.id}>
                     <Table.Td>{row.id}</Table.Td>
                     <Table.Td>{row.request_type}</Table.Td>
                     <Table.Td>{row.requested_by ?? t("requestsPage.none")}</Table.Td>
@@ -350,17 +351,14 @@ export function RequestsPage() {
                         </Group>
                       )}
                     </Table.Td>
-                  </Table.Tr>
+                  </ListRow>
                 ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-          {totalPages > 1 && (
-            <Group justify="flex-end">
-              <Pagination total={totalPages} value={safePage} onChange={setPage} size="sm" />
-            </Group>
-          )}
-        </>
+        </Table.Tbody>
+      </ListTable>
+      {totalPages > 1 && (
+        <Group justify="flex-end">
+          <Pagination total={totalPages} value={safePage} onChange={setPage} size="sm" />
+        </Group>
       )}
     </Stack>
   );

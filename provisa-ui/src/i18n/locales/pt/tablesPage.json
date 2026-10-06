@@ -71,6 +71,7 @@
     "purposeAria": "Sobre as tabelas registradas",
     "erdHelpTitle": "Diagrama entidade-relacionamento",
     "erdHelpBody": "Desenha as tabelas registadas e os relacionamentos declarados entre elas, para que os joins já existentes fiquem visíveis antes de escrever uma consulta. Lê o modelo em vez de o editar: filtre por domínio e exporte o diagrama como PNG ou SVG.",
-    "purposeModel": "+ Modelo declara uma entidade ou um facto — as duas peças com que se constroem tanto um esquema em estrela como um Data Vault — e baixa-o para essas mesmas primitivas, registando a vista materializada, o seu modo de histórico e os relacionamentos com as entidades cujas chaves usa."
+    "purposeModel": "+ Modelo declara uma entidade ou um facto — as duas peças com que se constroem tanto um esquema em estrela como um Data Vault — e baixa-o para essas mesmas primitivas, registando a vista materializada, o seu modo de histórico e os relacionamentos com as entidades cujas chaves usa.",
+    "empty": "Nenhuma tabela registrada ainda."
   }
 }

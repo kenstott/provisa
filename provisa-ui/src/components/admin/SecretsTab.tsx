@@ -51,6 +51,7 @@ import {
   type SecretsServiceState,
   type Vault,
 } from "../../api/secrets";
+import { ListTable } from "../list/ListTable";
 
 /**
  * REQ-1557, REQ-1558: the org's secrets — NAMES GO IN, VALUES NEVER COME BACK OUT.
@@ -337,7 +338,7 @@ function SecretsVault({ vault, header }: VaultProps) {
       {state.secrets.length === 0 ? (
         <Text c="dimmed">{t("secretsTab.empty")}</Text>
       ) : (
-        <Table striped withTableBorder data-testid="secrets-table">
+        <ListTable testId="secrets-table">
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("secretsTab.columnName")}</Table.Th>
@@ -418,7 +419,7 @@ function SecretsVault({ vault, header }: VaultProps) {
               </Table.Tr>
             ))}
           </Table.Tbody>
-        </Table>
+        </ListTable>
       )}
 
       {writable && (

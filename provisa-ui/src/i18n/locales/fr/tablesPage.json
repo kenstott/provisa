@@ -71,6 +71,7 @@
     "purposeAria": "À propos des tables enregistrées",
     "erdHelpTitle": "Diagramme entité-association",
     "erdHelpBody": "Dessine les tables enregistrées et les relations déclarées entre elles, afin que les jointures existantes soient visibles avant d'écrire une requête. Il lit le modèle sans le modifier : filtrez par domaine et exportez le diagramme en PNG ou SVG.",
-    "purposeModel": "+ Modèle déclare une entité ou un fait — les deux briques dont sont faits aussi bien un schéma en étoile qu'un Data Vault — et l'abaisse sur ces mêmes primitives, en enregistrant la vue matérialisée, son mode d'historique et les relations vers les entités dont il reprend les clés."
+    "purposeModel": "+ Modèle déclare une entité ou un fait — les deux briques dont sont faits aussi bien un schéma en étoile qu'un Data Vault — et l'abaisse sur ces mêmes primitives, en enregistrant la vue matérialisée, son mode d'historique et les relations vers les entités dont il reprend les clés.",
+    "empty": "Aucune table enregistrée pour le moment."
   }
 }

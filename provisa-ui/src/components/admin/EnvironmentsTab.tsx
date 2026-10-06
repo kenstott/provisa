@@ -59,6 +59,7 @@ import { RepoIntegrationPanel } from "./RepoIntegrationPanel";
 import { SyntheticDatasetsPanel } from "./SyntheticDatasetsPanel";
 import { SyntheticSeedFields } from "./SyntheticSeedFields";
 import type { SyntheticSeed } from "./syntheticSeed";
+import { ListTable } from "../list/ListTable";
 
 const PROD = "prod";
 
@@ -510,7 +511,7 @@ export function EnvironmentsTab() {
             </Group>
             <SyntheticSeedFields envs={names} seed={synthetic} setSeed={setSynthetic} />
 
-            <Table striped highlightOnHover>
+            <ListTable>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t("environmentsTab.colName")}</Table.Th>
@@ -680,7 +681,7 @@ export function EnvironmentsTab() {
                   </Table.Tr>
                 ))}
               </Table.Tbody>
-            </Table>
+            </ListTable>
           </Stack>
         </Tabs.Panel>
 

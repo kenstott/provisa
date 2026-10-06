@@ -41,6 +41,7 @@ import {
 import type { Org, OrgMember, OrgInvite } from "../../api/admin";
 import { FilterInput } from "./FilterInput";
 import { inviteUrl } from "../../lib/authHost";
+import { ListTable } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -235,8 +236,7 @@ export function OrgsTab() {
         </Stack>
       )}
 
-      <Table.ScrollContainer minWidth={640}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+      <ListTable minWidth={640}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("orgsTab.colId")}</Table.Th>
@@ -341,8 +341,7 @@ export function OrgsTab() {
               );
             })}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+        </ListTable>
       {orgTotalPages > 1 && (
         <Group justify="flex-end">
           <Pagination
@@ -405,8 +404,7 @@ export function OrgsTab() {
         </Stack>
       )}
 
-      <Table.ScrollContainer minWidth={640}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+      <ListTable minWidth={640}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("orgsTab.colOrg")}</Table.Th>
@@ -477,8 +475,7 @@ export function OrgsTab() {
               </Table.Tr>
             ))}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+        </ListTable>
       {invTotalPages > 1 && (
         <Group justify="flex-end">
           <Pagination

@@ -32,6 +32,7 @@ import {
 } from "../../hooks/useAdminOpsQueries";
 import { useRoles } from "../../hooks/useAdminQueries";
 import { fetchActions, type TrackedWebhook } from "../../api/actions";
+import { ListTable } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -275,8 +276,7 @@ export function ScheduledTasks() {
         <Text c="dimmed">{t("scheduledTasks.empty")}</Text>
       ) : (
         <>
-          <Table.ScrollContainer minWidth={800}>
-            <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+          <ListTable minWidth={800}>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t("scheduledTasks.colId")}</Table.Th>
@@ -369,8 +369,7 @@ export function ScheduledTasks() {
                   </Table.Tr>
                 ))}
               </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+            </ListTable>
           {totalPages > 1 && (
             <Group justify="flex-end">
               <Pagination total={totalPages} value={taskPage} onChange={setTaskPage} size="sm" />

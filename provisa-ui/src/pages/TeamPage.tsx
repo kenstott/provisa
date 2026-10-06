@@ -47,6 +47,7 @@ import { useLocalStorage } from "../components/graph/graph-persistence";
 import { useRoles } from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
 import { inviteUrl } from "../lib/authHost";
+import { ListTable, ListHead, ListRow, ListEmpty } from "../components/list/ListTable";
 
 // REQ-1266: org_admin self-service team management. The org_admin invites people into their
 // active org and picks the role each invitee is granted on redemption (the invite carries
@@ -279,34 +280,23 @@ export function TeamPage() {
             <Title order={4}>{t("teamPage.membersHeading")}</Title>
           </Accordion.Control>
           <Accordion.Panel>
-            <Table.ScrollContainer minWidth={640}>
-              <Table
-                striped
-                highlightOnHover
-                withTableBorder
-                verticalSpacing="xs"
-                data-testid="team-members"
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t("teamPage.colPerson")}</Table.Th>
-                    <Table.Th>{t("teamPage.colProvider")}</Table.Th>
-                    <Table.Th>{t("teamPage.colOrgAdmin")}</Table.Th>
-                    <Table.Th>{t("teamPage.colActions")}</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
+            <ListTable minWidth={640} testId="team-members">
+                <ListHead
+ columns={[
+t("teamPage.colPerson"),
+t("teamPage.colProvider"),
+t("teamPage.colOrgAdmin"),
+t("teamPage.colActions"),
+]}
+ />
                 <Table.Tbody>
                   {members.length === 0 && (
-                    <Table.Tr>
-                      <Table.Td colSpan={4} ta="center" c="dimmed">
-                        {t("teamPage.noMembers")}
-                      </Table.Td>
-                    </Table.Tr>
+                    <ListEmpty colSpan={4}>{t("teamPage.noMembers")}</ListEmpty>
                   )}
                   {members.map((m) => {
                     const lastAdmin = m.is_org_admin && adminCount <= 1;
                     return (
-                      <Table.Tr key={m.user_id} data-testid={`team-member-${m.user_id}`}>
+                      <ListRow key={m.user_id} testId={`team-member-${m.user_id}`}>
                         <Table.Td>
                           <Text size="sm">{m.display_name ?? m.email ?? m.user_id}</Text>
                           {m.email && m.display_name && (
@@ -348,12 +338,11 @@ export function TeamPage() {
                             </Button>
                           </Group>
                         </Table.Td>
-                      </Table.Tr>
+                      </ListRow>
                     );
                   })}
                 </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
+            </ListTable>
           </Accordion.Panel>
         </Accordion.Item>
 
@@ -442,30 +431,25 @@ export function TeamPage() {
               )}
             </Stack>
 
-            <Table.ScrollContainer minWidth={640} mt="md">
-              <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t("teamPage.colToken")}</Table.Th>
-                    <Table.Th>{t("teamPage.colEmail")}</Table.Th>
-                    <Table.Th>{t("teamPage.colRole")}</Table.Th>
-                    <Table.Th>{t("teamPage.colExpires")}</Table.Th>
-                    <Table.Th>{t("teamPage.colUses")}</Table.Th>
-                    <Table.Th>{t("teamPage.colEnvironment")}</Table.Th>
-                    <Table.Th>{t("teamPage.colStatus")}</Table.Th>
-                    <Table.Th>{t("teamPage.colActions")}</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
+            <ListTable minWidth={640} testId="team-invites">
+                <ListHead
+ columns={[
+t("teamPage.colToken"),
+t("teamPage.colEmail"),
+t("teamPage.colRole"),
+t("teamPage.colExpires"),
+t("teamPage.colUses"),
+t("teamPage.colEnvironment"),
+t("teamPage.colStatus"),
+t("teamPage.colActions"),
+]}
+ />
                 <Table.Tbody>
                   {invites.length === 0 && (
-                    <Table.Tr>
-                      <Table.Td colSpan={8} ta="center" c="dimmed">
-                        {t("teamPage.noInvites")}
-                      </Table.Td>
-                    </Table.Tr>
+                    <ListEmpty colSpan={8}>{t("teamPage.noInvites")}</ListEmpty>
                   )}
                   {invites.map((inv) => (
-                    <Table.Tr key={inv.token}>
+                    <ListRow key={inv.token}>
                       <Table.Td>
                         <Text ff="monospace" span>
                           {inv.token.slice(0, 8)}…
@@ -514,11 +498,10 @@ export function TeamPage() {
                           )}
                         </Group>
                       </Table.Td>
-                    </Table.Tr>
+                    </ListRow>
                   ))}
                 </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
+            </ListTable>
           </Accordion.Panel>
         </Accordion.Item>
 

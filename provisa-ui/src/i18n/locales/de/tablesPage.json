@@ -71,6 +71,7 @@
     "purposeAria": "Über registrierte Tabellen",
     "erdHelpTitle": "Entity-Relationship-Diagramm",
     "erdHelpBody": "Zeichnet die registrierten Tabellen und die zwischen ihnen deklarierten Beziehungen, sodass bereits vorhandene Joins sichtbar sind, bevor Sie eine Abfrage schreiben. Es liest das Modell, statt es zu bearbeiten: nach Domäne filtern und das Diagramm als PNG oder SVG exportieren.",
-    "purposeModel": "„+ Modell“ deklariert eine Entität oder einen Fakt — die beiden Bausteine, aus denen sowohl ein Sternschema als auch ein Data Vault besteht — und senkt sie auf dieselben Primitive ab: registriert werden die materialisierte Sicht, ihr Historienmodus und die Beziehungen zu den Entitäten, auf deren Schlüssel sie sich stützt."
+    "purposeModel": "„+ Modell“ deklariert eine Entität oder einen Fakt — die beiden Bausteine, aus denen sowohl ein Sternschema als auch ein Data Vault besteht — und senkt sie auf dieselben Primitive ab: registriert werden die materialisierte Sicht, ihr Historienmodus und die Beziehungen zu den Entitäten, auf deren Schlüssel sie sich stützt.",
+    "empty": "Noch keine Tabellen registriert."
   }
 }

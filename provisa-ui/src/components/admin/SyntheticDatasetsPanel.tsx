@@ -40,6 +40,7 @@ import {
 } from "../../api/synthetic";
 import { DatasetAssertions } from "./synthetic/DatasetAssertions";
 import { DatasetConditions } from "./synthetic/DatasetConditions";
+import { ListTable } from "../list/ListTable";
 
 const PROD = "prod";
 
@@ -175,7 +176,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
           {error}
         </Alert>
       )}
-      <Table striped data-testid="synthetic-datasets">
+      <ListTable testId="synthetic-datasets">
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{t("syntheticDatasets.colName")}</Table.Th>
@@ -245,7 +246,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
             </Table.Tr>
           ))}
         </Table.Tbody>
-      </Table>
+      </ListTable>
 
       {report && (
         <Stack gap={4} data-testid="synthetic-report">
@@ -317,7 +318,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
           {t("syntheticDatasets.noRuns", { env: profileEnv })}
         </Text>
       ) : (
-        <Table data-testid="synthetic-tables">
+        <ListTable testId="synthetic-tables">
           <Table.Tbody>
             {runs.map((r) => {
               const p = picked[r.tableId];
@@ -377,7 +378,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
               );
             })}
           </Table.Tbody>
-        </Table>
+        </ListTable>
       )}
       <Group align="end">
         <Checkbox

@@ -76,6 +76,14 @@ import { SourceFormFields } from "./sources/SourceFormFields";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
+import {
+  ListTable,
+  ListHead,
+  ListRow,
+  ListExpandRow,
+  ListEmpty,
+  ListDetail,
+} from "../components/list/ListTable";
 import { KeptTablesNotice } from "../components/KeptTablesNotice";
 import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
@@ -1441,32 +1449,20 @@ export function SourcesPage() {
       {/* REQ-1587: the page owns the vertical scroll, so the table's own scroller is the plain
           horizontal one — a Table.ScrollContainer would become the scrollport the header sticks to
           and, growing to its content, would never scroll vertically. */}
-      <div className="table-scroll">
-        <Table
-          striped
-          highlightOnHover
-          withTableBorder
-          verticalSpacing="xs"
-          className="data-table"
-          miw={860}
-        >
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("sourcesPage.colId")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colType")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colHost")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colPort")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colDatabase")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colNaming")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colCache")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colEffectiveTtl")}</Table.Th>
-              <Table.Th>
-                <Text span visibleFrom="xs" fz="sm" fw={600}>
-                  {t("sourcesPage.colActions")}
-                </Text>
-              </Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+      <ListTable minWidth={860} testId="sources-list">
+          <ListHead
+            columns={[
+              t("sourcesPage.colId"),
+              t("sourcesPage.colType"),
+              t("sourcesPage.colHost"),
+              t("sourcesPage.colPort"),
+              t("sourcesPage.colDatabase"),
+              t("sourcesPage.colNaming"),
+              t("sourcesPage.colCache"),
+              t("sourcesPage.colEffectiveTtl"),
+              t("sourcesPage.colActions"),
+            ]}
+          />
           <Table.Tbody>
             {(() => {
               const filtered = sources.filter((s) => {
@@ -1481,13 +1477,7 @@ export function SourcesPage() {
                 );
               });
               if (filtered.length === 0) {
-                return (
-                  <Table.Tr>
-                    <Table.Td colSpan={9} ta="center" c="dimmed">
-                      {t("sourcesPage.empty")}
-                    </Table.Td>
-                  </Table.Tr>
-                );
+                return <ListEmpty colSpan={9}>{t("sourcesPage.empty")}</ListEmpty>;
               }
               const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
               return paged.map((s) => {
@@ -1495,18 +1485,14 @@ export function SourcesPage() {
                 const isEditing = editingSourceId === s.id;
                 return (
                   <React.Fragment key={s.id}>
-                    <Table.Tr
-                      data-testid={`sources-row-${s.id}`}
+                    <ListRow
+                      testId={`sources-row-${s.id}`}
                       onClick={() => {
                         updateExpanded(isExpanded ? null : s.id);
                         if (isEditing && isExpanded) {
                           setEditingSourceId(null);
                           handleCancelForm();
                         }
-                      }}
-                      style={{
-                        cursor: "pointer",
-                        background: isExpanded ? "var(--surface)" : undefined,
                       }}
                     >
                       <Table.Td>
@@ -1573,17 +1559,10 @@ export function SourcesPage() {
                           )}
                         </Group>
                       </Table.Td>
-                    </Table.Tr>
+                    </ListRow>
                     {isExpanded && (
-                      <Table.Tr key={`${s.id}-detail`}>
-                        <Table.Td
-                          colSpan={9}
-                          style={{
-                            padding: "0.75rem 1rem",
-                            background: "var(--bg)",
-                            borderTop: "1px solid var(--border)",
-                          }}
-                        >
+                      <ListExpandRow colSpan={9}>
+                        <ListDetail>
                           {isEditing ? (
                             <form
                               className="form-card"
@@ -1653,16 +1632,15 @@ export function SourcesPage() {
                               }}
                             />
                           )}
-                        </Table.Td>
-                      </Table.Tr>
+                        </ListDetail>
+                      </ListExpandRow>
                     )}
                   </React.Fragment>
                 );
               });
             })()}
           </Table.Tbody>
-        </Table>
-      </div>
+      </ListTable>
 
       {(() => {
         const filtered = sources.filter((s) => {

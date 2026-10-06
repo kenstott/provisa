@@ -14,6 +14,7 @@ import { notifications } from "@mantine/notifications";
 import { useTranslation } from "react-i18next";
 import { decideMergeRequest, fetchMergeRequests } from "../../api/environments";
 import type { MergeRequest } from "../../api/environments";
+import { ListTable } from "../list/ListTable";
 
 const STATE_COLOR: Record<string, string> = {
   open: "blue",
@@ -88,7 +89,7 @@ export function MergeRequestsPanel({ orgId, canDecide }: { orgId: string; canDec
           {t("environmentsTab.noRequests")}
         </Text>
       ) : (
-        <Table striped highlightOnHover>
+        <ListTable>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("environmentsTab.colMerge")}</Table.Th>
@@ -175,7 +176,7 @@ export function MergeRequestsPanel({ orgId, canDecide }: { orgId: string; canDec
               </Table.Tr>
             ))}
           </Table.Tbody>
-        </Table>
+        </ListTable>
       )}
     </Stack>
   );

@@ -71,6 +71,7 @@
     "purposeAria": "Over geregistreerde tabellen",
     "erdHelpTitle": "Entiteit-relatiediagram",
     "erdHelpBody": "Tekent de geregistreerde tabellen en de relaties die ertussen zijn gedeclareerd, zodat bestaande joins zichtbaar zijn voordat je een query schrijft. Het leest het model in plaats van het te bewerken: filter op domein en exporteer het diagram als PNG of SVG.",
-    "purposeModel": "+ Model declareert een entiteit of een feit — de twee bouwstenen waaruit zowel een stervormig schema als een Data Vault bestaat — en brengt dat terug tot diezelfde primitieven: de gematerialiseerde weergave, haar historiemodus en de relaties naar de entiteiten waarvan het de sleutels gebruikt."
+    "purposeModel": "+ Model declareert een entiteit of een feit — de twee bouwstenen waaruit zowel een stervormig schema als een Data Vault bestaat — en brengt dat terug tot diezelfde primitieven: de gematerialiseerde weergave, haar historiemodus en de relaties naar de entiteiten waarvan het de sleutels gebruikt.",
+    "empty": "Nog geen tabellen geregistreerd."
   }
 }

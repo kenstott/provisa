@@ -12,6 +12,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Box, Group, Table, Text } from "@mantine/core";
 import { useSystemHealth } from "../../hooks/useAdminOpsQueries";
+import { ListTable } from "../list/ListTable";
 
 // null = neutral/disabled (grey), true = ok (green), false = down (red)
 function StatusDot({ ok }: { ok: boolean | null }) {
@@ -49,8 +50,7 @@ export function SystemHealth() {
   if (!health) return <Text>{t("systemHealth.loading")}</Text>;
 
   return (
-    <Table.ScrollContainer minWidth={640}>
-      <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+    <ListTable minWidth={640}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{t("systemHealth.colComponent")}</Table.Th>
@@ -153,7 +153,6 @@ export function SystemHealth() {
             <Table.Td></Table.Td>
           </Table.Tr>
         </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+      </ListTable>
   );
 }

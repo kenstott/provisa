@@ -41,6 +41,7 @@
     "modelingHelpTitle": "SQL-Modellierungswerkbank",
     "modelingHelpBody": "Ein Arbeitsbereich, um einen Join zu klären, bevor Sie ihn deklarieren: SQL gegen die registrierten Tabellen ausführen, Spalten profilieren, den Join auf einer Zeichenfläche skizzieren und das Ergebnis anschließend zu einer echten Beziehung befördern, ohne es hier erneut einzutippen.",
     "suggestHelpTitle": "Vorgeschlagene Beziehungen",
-    "suggestHelpBody": "Durchsucht die registrierten Tabellen domänenübergreifend nach wahrscheinlichen Joins und listet sie als Kandidaten auf. Nichts wird deklariert, bevor Sie einen annehmen; ein abgelehnter Kandidat bleibt aus der Liste, bis Sie die Ablehnungen zurücksetzen."
+    "suggestHelpBody": "Durchsucht die registrierten Tabellen domänenübergreifend nach wahrscheinlichen Joins und listet sie als Kandidaten auf. Nichts wird deklariert, bevor Sie einen annehmen; ein abgelehnter Kandidat bleibt aus der Liste, bis Sie die Ablehnungen zurücksetzen.",
+    "empty": "Noch keine Beziehungen registriert."
   }
 }
