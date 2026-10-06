@@ -385,6 +385,7 @@ See [docs/python-client.md](docs/python-client.md) for full reference.
 | Environments (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
 | Building test environments (profiling, fakes, synthetic data) | [docs/test-data.md](docs/test-data.md) |
 | Fake methods reference | [docs/fake-methods.md](docs/fake-methods.md) |
+| Running and building demos on a laptop (sales engineers) | [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) |
 | Supported source types | [docs/sources.md](docs/sources.md) |
 | SSE subscriptions | [docs/subscriptions.md](docs/subscriptions.md) |
 | JDBC, BI tools, Arrow Flight clients, Apollo Federation | [docs/integrations.md](docs/integrations.md) |

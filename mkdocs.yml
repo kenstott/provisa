@@ -118,6 +118,7 @@ nav:
       - Quick Start: quickstart.md
       - Configuration: configuration.md
       - Deployment: deployment.md
+      - Demos for Sales Engineers: sales-engineer-demos.md
   - Query & Interfaces:
       - API Reference: api-reference.md
       - Cypher: cypher.md

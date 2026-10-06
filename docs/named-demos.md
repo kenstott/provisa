@@ -36,8 +36,8 @@ if [ -n "$DEMO_NAME" ]; then
   fi
 ```
 
-If `fragment.yaml` is absent the launcher exits immediately. No other validation happens — the
-name itself is not in any registry or allowlist.
+If the directory or `fragment.yaml` is absent the launcher exits immediately. Nothing else is
+checked — the name itself is not in any registry or allowlist.
 
 ## The one-start-point invariant
 
@@ -127,13 +127,14 @@ needing the compose file open. `com.provisa.demo.role` identifies each service's
 the launcher at startup, not loaded at runtime. Use Provisa's standard YAML config format: top-
 level `domains:`, `sources:`, `tables:`, and `relationships:` keys.
 
-### Sources with native connectors (no explicit `tables:`)
+### Every source needs explicit `tables:`
 
-PostgreSQL, ClickHouse, and MongoDB have native federation connectors that auto-discover
-their tables and collections at query time. Register the source and stop there [tool-verified]:
+Register each source and then list every table it exposes. A bare `sources:` entry never
+produces tables in the SQL catalog, for any connector type, because the catalog is built from the
+registered tables [tool-verified from the header of `demo/named/perf/fragment.yaml`]:
 
 ```yaml
-# demo/named/perf/fragment.yaml:32-52
+# demo/named/perf/fragment.yaml:36-43
 - id: bench-postgresql
   type: postgresql
   host: ${env:PROVISA_BENCH_POSTGRESQL_HOST:-localhost}
@@ -142,8 +143,6 @@ their tables and collections at query time. Register the source and stop there [
   username: provisa
   password: provisa
 ```
-
-No `tables:` block. The engine discovers the schema at query time.
 
 Use env-var interpolation with a `:-` default for every host and port. The seeder uses the
 in-container service name as the host; the host-side generate scripts use `localhost` plus the
@@ -155,10 +154,10 @@ HOST = os.environ.get("PROVISA_BENCH_POSTGRESQL_HOST", "localhost")
 PORT = int(os.environ.get("PROVISA_BENCH_POSTGRESQL_PORT", "25632"))
 ```
 
-### Sources backed by api_source (explicit `tables:` required)
+### Sources backed by api_source (each table is a query)
 
-Neo4j has no native federation connector. It is an `api_source`-backed type where each table
-is one fixed Cypher projection. You must hand-author every table in `fragment.yaml`
+Neo4j is an `api_source`-backed type where each table is one fixed Cypher projection. You
+hand-author every table in `fragment.yaml`
 [tool-verified, with comment from `demo/named/perf/fragment.yaml:19-27`]:
 
 ```yaml
@@ -184,8 +183,7 @@ schema your generation scripts produce, not from an assumed schema. Each column 
 Provisa's `Column` model shape: `name`, `data_type`, optional `is_primary_key`, and
 `visible_to` (list of role names).
 
-The same explicit `tables:` requirement applies to any other `api_source`-backed connector
-(Elasticsearch is another example — see `demo/sources/elasticsearch/fragment.yaml`).
+
 
 ### Relationships
 
@@ -359,8 +357,9 @@ Watch `docker compose logs seeder` to confirm generation finishes and the marker
 ./start-ui-install.sh --demo banking
 ```
 
-The launcher splices `fragment.yaml` in, prints `Config with named demo 'banking' sources:`,
-and reminds you the compose stack must already be up.
+The launcher brings the compose stack up and waits for the seeder, splices `fragment.yaml` in, and
+prints `Config with named demo 'banking' sources:`. The stack in step 7 can be started first for
+testing, but the launcher starts it anyway.
 
 ## The `--source` mechanism: what it is not
 
@@ -370,8 +369,10 @@ toy dataset. The launcher starts and stops those containers. [tool-verified, sta
 
 Named demos deliberately do not follow that pattern. Their data is large, meant to persist
 across restarts, and they manage their own compose lifecycle. `start-ui-install.sh --demo <name>`
-never starts, stops, or resets the named demo's compose stack — that is the solutions engineer's
-responsibility, not the launcher's [tool-verified from `start-ui-install.sh:264-288`].
+starts the named demo's stack on every launch (`docker compose up -d --build`, then
+`docker compose up seeder` when the file defines a `seeder` service) but never stops or resets it.
+Stopping and re-seeding are yours to do: see [Running and building demos on your
+laptop](sales-engineer-demos.md#stop-and-reset) [tool-verified from `start-ui-install.sh:285-297`].
 
 You can combine both: `./start-ui-install.sh --demo perf --source=cassandra` adds a toy
 Cassandra source on top of the perf demo. The two mechanisms are additive.
