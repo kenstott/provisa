@@ -942,25 +942,9 @@ async def _init_ingest_engines() -> None:
                         )
                     ).fetchall()
                 ]
-            # NOTE (REQ-1730 investigation): the SQL page's compiler resolves a table through its
-            # OWN compiled semantic name (compiler.sql_rewrite.semantic_table_name), derived from a
-            # GraphQL field name -- and that round trip has no way to mark a word boundary right
-            # before a digit, so it silently drops an underscore immediately followed by digits
-            # (e.g. registered_tables.table_name "foo_123" compiles to the query-time name
-            # "foo123"). ingest is the one type whose physical DDL uses table_name verbatim rather
-            # than that same compiled name (every other type's landing/attach path creates its
-            # physical table via the compiled name already, so physical == query-time name by
-            # construction there) -- reproduced live via Trino: a row committed and was visible via
-            # a fresh Postgres connection immediately after the POST, yet the SQL page's compiled
-            # query always answered zero rows for a table_name containing "_<digits>". A fix
-            # sourcing the compiled name from state.contexts here was tried and reverted: that
-            # snapshot is only sometimes populated for this source_id at the moment a schema
-            # rebuild calls this function (this function runs multiple times per rebuild), landing
-            # on the WRONG table_name every other time and making the corruption non-deterministic
-            # instead of consistent. Filed as a real, narrow gap (never register an ingest table
-            # whose name contains an underscore immediately before a digit) rather than patched
-            # here; REQ-1730's own swap-harness registrar works around it by choosing a sourceId
-            # with no such boundary.
+            # The backing table is created under the registered table_name, the same name the
+            # compiler publishes and reads it by: an underscore before a digit survives the GraphQL
+            # field-name round trip the SQL name is derived from (naming._to_pascal_case).
             _tbl_map: dict[str, list[dict]] = {}
             for _row in _itables:
                 _tn = _row["table_name"] or ""

@@ -148,12 +148,20 @@ def junction_field_name(  # REQ-1586
 
 
 def _to_pascal_case(name: str) -> str:
-    """Convert snake_case or kebab-case to PascalCase."""
+    """Convert snake_case or kebab-case to PascalCase.
+
+    A word that starts with a digit keeps the underscore before it: case cannot mark a boundary
+    before a digit, so dropping it made ``foo_123`` and ``foo123`` one name and lost the boundary
+    for every name converted back (``_to_snake_case``) -- a table registered as ``foo_123`` was
+    published to SQL as ``foo123``.
+    """
     parts = re.split(r"[_\-]+", name)
     result = []
     for p in parts:
         if not p:
             continue
+        if result and p[0].isdigit():
+            result.append("_")
         # If part already has internal uppercase (camelCase), just capitalize first letter
         if any(c.isupper() for c in p[1:]):
             result.append(p[0].upper() + p[1:])
