@@ -82,6 +82,17 @@ class TrinoPostgresConnector(_TrinoJdbcConnector):
     trino_connector = "postgresql"
     materialized_store = True  # REQ-846: PG is the one proven materialized store today
 
+    def capability(self) -> Capability:
+        # REQ-1934 key_range: measured -- a key range is pushed into the connector's JDBC query.
+        # No block_sample: the table is one split, so TABLESAMPLE SYSTEM keeps all of it or none.
+        return Capability(
+            predicate_pushdown=True,
+            join_pushdown=True,
+            aggregate_pushdown=True,
+            write=True,
+            key_range=True,
+        )
+
     def details(self, source: Source) -> dict:
         import os
 
@@ -669,6 +680,19 @@ class TrinoIcebergConnector(_TrinoConnector):
     source_type = "iceberg"
     trino_connector = "iceberg"
     mechanism = Mechanism.SCAN
+
+    def capability(self) -> Capability:
+        # REQ-1934 block_sample: measured -- Trino drops whole splits (a data file, or a slice of a
+        # large one) before reading them: SYSTEM (10) on 40 files read 3 splits, 112,500 of 1.5M
+        # rows. The unit is coarse (SYSTEM (1) on those 40 files read none), so the run reads
+        # again at four times the percentage while a sample is under half its target.
+        return Capability(
+            predicate_pushdown=True,
+            join_pushdown=True,
+            aggregate_pushdown=True,
+            write=True,
+            block_sample=True,
+        )
 
     def details(self, source: Source) -> dict:
         uri = _lake_metastore_uri()

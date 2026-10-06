@@ -22,6 +22,12 @@
     "kind_fits": "Adattamenti",
     "kind_fit_quality": "Qualità dell'adattamento",
     "kind_fanout_runs": "Figli per genitore",
-    "kind_fanout": "Quantili dei figli"
+    "kind_fanout": "Quantili dei figli",
+    "method": "Metodo",
+    "method_whole": "Intera tabella",
+    "method_block": "Campione a blocchi",
+    "method_key_range": "Intervalli di chiave",
+    "method_random": "Filtro di righe",
+    "share": "{{pct}}% delle righe"
   }
 }

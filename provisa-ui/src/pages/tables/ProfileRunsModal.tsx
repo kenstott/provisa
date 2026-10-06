@@ -141,6 +141,7 @@ export function ProfileRunsModal({
                 <Table.Th>{t("profileRunsModal.status")}</Table.Th>
                 <Table.Th>{t("profileRunsModal.rowCount")}</Table.Th>
                 <Table.Th>{t("profileRunsModal.profiledRows")}</Table.Th>
+                <Table.Th>{t("profileRunsModal.method")}</Table.Th>
                 <Table.Th>{t("profileRunsModal.duration")}</Table.Th>
                 <Table.Th>{t("profileRunsModal.error")}</Table.Th>
               </Table.Tr>
@@ -164,6 +165,16 @@ export function ProfileRunsModal({
                   <Table.Td>
                     {cell(run.profiled_rows)}
                     {run.sampled ? ` (${t("profileRunsModal.sampled")})` : ""}
+                  </Table.Td>
+                  <Table.Td data-testid={`profile-run-method-${run.run_id}`}>
+                    {run.sample_method == null
+                      ? ""
+                      : t(`profileRunsModal.method_${run.sample_method}`)}
+                    {run.sampled && run.sample_fraction != null
+                      ? ` · ${t("profileRunsModal.share", {
+                          pct: (run.sample_fraction * 100).toFixed(1),
+                        })}`
+                      : ""}
                   </Table.Td>
                   <Table.Td>{t("profileRunsModal.ms", { ms: run.duration_ms })}</Table.Td>
                   <Table.Td>{run.error ?? ""}</Table.Td>

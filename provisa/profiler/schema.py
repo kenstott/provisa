@@ -46,7 +46,19 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("profiled_table", "varchar", "The governed table profiled, by its registered name."),
         ("row_count", "bigint", "Rows in the table as the org admin reads it."),
         ("sampled", "boolean", "Whether the run profiled a sample rather than the whole table."),
-        ("sample_fraction", "double", "Fraction of rows sampled; 1 for the whole table."),
+        (
+            "sample_method",
+            "varchar",
+            "whole | block | key_range | random — how the rows were read.",
+        ),
+        ("target_fraction", "double", "Fraction of rows the run asked for; 1 for the whole table."),
+        ("sample_fraction", "double", "Fraction of rows profiled: profiled_rows / row_count."),
+        (
+            "sample_attempts",
+            "varchar",
+            "Each sample read, as JSON [{percent, rows}]; a block sample that came back under half "
+            "its target is read again at four times the percentage.",
+        ),
         ("profiled_rows", "bigint", "Rows the profile statement read."),
         ("duration_ms", "bigint", "How long the run took."),
         ("status", "varchar", "succeeded | failed."),

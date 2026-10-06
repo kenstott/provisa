@@ -139,6 +139,89 @@ def count_sql(table: str) -> str:
     return f"SELECT COUNT(*) AS row_count FROM {qualified(table)}"
 
 
+# REQ-1934: how a run reads its table. ``whole`` reads every row (the table fits the cell budget);
+# the others read a sample, chosen per table at run time (``provisa.profiler.sampling``).
+SAMPLE_METHODS: tuple[str, ...] = ("whole", "block", "key_range", "random")
+
+_INTEGER_TYPES = frozenset(
+    {"smallint", "integer", "int", "bigint", "int2", "int4", "int8", "serial", "bigserial"}
+)
+
+
+def is_integer_key(spec: ColumnSpec) -> bool:
+    """Whether ``spec`` can carry a key-range sample: an integer column, whose ranges can be sized
+    in key units. A text or temporal key is left to the other methods."""
+    return (spec.data_type or "").lower().split("(")[0].strip() in _INTEGER_TYPES
+
+
+@dataclass(frozen=True)
+class Sample:
+    """What the profile statement reads. ``fraction``: the share of rows asked for (None for
+    ``whole``); ``key`` and ``ranges``: the key column and its inclusive ranges, for ``key_range``."""
+
+    method: str
+    fraction: float | None = None
+    key: str | None = None
+    ranges: tuple[tuple[int, int], ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.method not in SAMPLE_METHODS:
+            raise ValueError(f"unknown sample method {self.method!r}; expected {SAMPLE_METHODS}")
+        if (self.method == "whole") != (self.fraction is None):
+            raise ValueError(f"sample method {self.method!r} with fraction {self.fraction!r}")
+        if (self.method == "key_range") != bool(self.ranges) or (self.method == "key_range") != (
+            self.key is not None
+        ):
+            raise ValueError("a key-range sample, and only one, names a key and its ranges")
+
+    @property
+    def percent(self) -> float:
+        """The block sample's size as TABLESAMPLE takes it: a percentage, at most 100."""
+        if self.fraction is None:
+            raise ValueError("a whole-table read has no sample percentage")
+        return min(100.0, self.fraction * 100.0)
+
+
+def key_bounds_sql(table: str, key: str) -> str:
+    """The one cheap statement a key-range sample is sized from: the key's extremes."""
+    k = _ident(key)
+    return f"SELECT MIN(t.{k}) AS lo, MAX(t.{k}) AS hi FROM {qualified(table)} t"
+
+
+# Most ranges a key-range sample reads. Each is one index range scan at the source.
+KEY_RANGES = 16
+
+
+def key_ranges(
+    lo: int, hi: int, fraction: float, rng: Any, count: int = KEY_RANGES
+) -> tuple[tuple[int, int], ...]:
+    """Up to ``count`` inclusive key ranges covering ``fraction`` of the key span ``lo..hi``, one
+    at a random place in each of ``count`` equal strata of the span, so the sample is spread over
+    the whole key space rather than bunched.
+
+    Bias (REQ-1934): the realised share is the share of KEYS in the ranges, which equals the share
+    of rows only where keys are dense. A key assigned in insertion order (a sequence, an identity)
+    makes every range a contiguous window of insertion time: rows written together are sampled
+    together, so the sample is clustered in time, and a key space with gaps (deleted rows, a
+    sequence's cache jumps) makes the realised share differ from ``fraction``. The run records
+    the realised share."""
+    if hi < lo:
+        raise ValueError(f"key bounds {lo}..{hi} are empty")
+    span = hi - lo + 1
+    width_total = max(1, round(span * fraction))
+    n = max(1, min(count, width_total))
+    width = max(1, width_total // n)
+    stratum = span / n
+    ranges = []
+    for i in range(n):
+        start = lo + int(i * stratum)
+        end = lo + int((i + 1) * stratum) - 1
+        room = max(0, end - start + 1 - width)
+        a = start + rng.randint(0, room)
+        ranges.append((a, min(end, a + width - 1)))
+    return tuple(ranges)
+
+
 def _quantile_array() -> str:
     return "ARRAY[" + ", ".join(f"{q:.2f}" for q in QUANTILE_POINTS) + "]"
 
@@ -174,14 +257,36 @@ def _groups(columns: list[ColumnSpec]) -> list[_Group]:
     return groups
 
 
+def _base_sql(table: str, base_cols: list[str], sample: Sample) -> str:
+    """The profiled rows: the whole table, or the sample ``sample`` names (REQ-1934)."""
+    select = f"SELECT {', '.join(base_cols)} FROM {qualified(table)} t"
+    if sample.method == "whole":
+        return select
+    if sample.method == "block":
+        # Written in the governed dialect (postgres) and transpiled per engine/source; the run
+        # refuses a statement whose transpiled form lost the clause (run._require_sample_clause).
+        return f"{select} TABLESAMPLE SYSTEM ({sample.percent!r})"
+    if sample.method == "key_range":
+        # One single-range branch per range, joined by UNION ALL: measured, a lone BETWEEN on the
+        # key reaches the source's index through every reach that claims key_range, where an OR
+        # of ranges is not pushed by all of them (DuckDB's postgres scanner reads the whole table).
+        k = _ident(sample.key or "")
+        return " UNION ALL ".join(
+            f"{select} WHERE t.{k} BETWEEN {a} AND {b}" for a, b in sample.ranges
+        )
+    # REQ-1934 (maintainer ruling): where the table's reach offers neither block sampling at the
+    # source nor an indexed key, the row filter stays. It cuts the profile's work, not the read.
+    return f"{select} WHERE RANDOM() < {sample.fraction!r}"
+
+
 def profile_sql(
     table: str,
     columns: list[ColumnSpec],
     fanouts: list[FanoutSpec],
-    sample_fraction: float | None,
+    sample: Sample,
     low_cardinality_max: int,
 ) -> str:
-    """The one statement profiling ``table``. ``sample_fraction`` None reads every row;
+    """The one statement profiling ``table``, reading what ``sample`` names;
     ``low_cardinality_max`` is the profiler's run default: a column with no more distinct values
     has every value returned, for its full value-frequency table."""
     if not columns:
@@ -190,8 +295,7 @@ def profile_sql(
     col_refs = [_ident(c.name) for c in columns]
 
     base_cols = [f"t.{ref} AS {_ident(f'c{i}')}" for i, ref in enumerate(col_refs)]
-    where = "" if sample_fraction is None else f" WHERE RANDOM() < {sample_fraction!r}"
-    base = f"SELECT {', '.join(base_cols)} FROM {qualified(table)} t{where}"
+    base = _base_sql(table, base_cols, sample)
     joins = ""
     fan_cols: list[str] = []
     names = [c.name for c in columns]

@@ -59,7 +59,13 @@ export interface ProfileRun {
   profiled_table: string;
   row_count: number | null;
   sampled: boolean | null;
+  /** REQ-1934: how the rows were read; null when the run failed before reading them. */
+  sample_method: "whole" | "block" | "key_range" | "random" | null;
+  target_fraction: number | null;
+  /** The realised share: profiled_rows / row_count. */
   sample_fraction: number | null;
+  /** Each sample read, as JSON [{percent, rows}]. */
+  sample_attempts: string | null;
   profiled_rows: number | null;
   duration_ms: number;
   status: "succeeded" | "failed";

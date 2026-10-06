@@ -22,6 +22,12 @@
     "kind_fits": "拟合",
     "kind_fit_quality": "拟合质量",
     "kind_fanout_runs": "每个父项的子项",
-    "kind_fanout": "子项分位数"
+    "kind_fanout": "子项分位数",
+    "method": "方法",
+    "method_whole": "整张表",
+    "method_block": "块抽样",
+    "method_key_range": "键范围",
+    "method_random": "行过滤",
+    "share": "{{pct}}% 的行"
   }
 }

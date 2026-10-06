@@ -22,6 +22,12 @@
     "kind_fits": "Аппроксимации",
     "kind_fit_quality": "Качество аппроксимации",
     "kind_fanout_runs": "Дочерних на родителя",
-    "kind_fanout": "Квантили дочерних"
+    "kind_fanout": "Квантили дочерних",
+    "method": "Метод",
+    "method_whole": "Вся таблица",
+    "method_block": "Выборка блоков",
+    "method_key_range": "Диапазоны ключа",
+    "method_random": "Фильтр строк",
+    "share": "{{pct}}% строк"
   }
 }

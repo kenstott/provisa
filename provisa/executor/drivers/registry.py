@@ -235,6 +235,41 @@ def has_driver(source_type: str) -> bool:  # REQ-550
     return has_native_driver(source_type) or has_sqlalchemy_fallback(source_type)
 
 
+# REQ-1934 (profile sampling) -- what a source type's OWN SQL does with a sample when a statement
+# routes DIRECT to it, so the source itself executes the statement.
+#
+# Block sampling: TABLESAMPLE SYSTEM reads only a share of the table's blocks. Claimed where
+# measured: postgresql (a Sample Scan over ~1% of pages, EXPLAIN (ANALYZE, BUFFERS)) and duckdb (the
+# sample is pushed into the table scan of a native table, EXPLAIN ANALYZE rows scanned). Not the
+# PG-wire types sharing the postgresql driver (cockroachdb, yugabytedb, greenplum): their TABLESAMPLE
+# support is unmeasured. Never mysql/mariadb/tidb/singlestore: the transpiler drops the clause.
+_DIRECT_BLOCK_SAMPLE: frozenset[str] = frozenset({"postgresql", "duckdb"})
+# Key-range sampling: a range predicate on the primary key is answered from the index every one of
+# these engines builds for a PRIMARY KEY (postgresql measured: Bitmap Index Scan on the key).
+_DIRECT_KEY_RANGE: frozenset[str] = frozenset(
+    {
+        "postgresql",
+        "cockroachdb",
+        "yugabytedb",
+        "mysql",
+        "mariadb",
+        "tidb",
+        "sqlserver",
+        "oracle",
+    }
+)
+
+
+def direct_block_sample(source_type: str) -> bool:  # REQ-1934
+    """Whether a TABLESAMPLE SYSTEM on a DIRECT-routed ``source_type`` reads a share of blocks."""
+    return source_type in _DIRECT_BLOCK_SAMPLE
+
+
+def direct_key_range(source_type: str) -> bool:  # REQ-1934
+    """Whether a DIRECT-routed ``source_type`` answers a primary-key range from its index."""
+    return source_type in _DIRECT_KEY_RANGE
+
+
 def available_drivers() -> list[str]:  # REQ-550
     """List source types with a registered direct driver (native or SQLAlchemy fallback)."""
     available = []

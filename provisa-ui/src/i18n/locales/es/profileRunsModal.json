@@ -22,6 +22,12 @@
     "kind_fits": "Ajustes",
     "kind_fit_quality": "Calidad del ajuste",
     "kind_fanout_runs": "Hijos por padre",
-    "kind_fanout": "Cuantiles de hijos"
+    "kind_fanout": "Cuantiles de hijos",
+    "method": "Método",
+    "method_whole": "Tabla completa",
+    "method_block": "Muestra por bloques",
+    "method_key_range": "Rangos de clave",
+    "method_random": "Filtro de filas",
+    "share": "{{pct}} % de las filas"
   }
 }

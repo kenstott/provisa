@@ -22,6 +22,12 @@
     "kind_fits": "Anpassungen",
     "kind_fit_quality": "Anpassungsgüte",
     "kind_fanout_runs": "Kinder pro Elternteil",
-    "kind_fanout": "Quantile der Kinder"
+    "kind_fanout": "Quantile der Kinder",
+    "method": "Methode",
+    "method_whole": "Ganze Tabelle",
+    "method_block": "Blockstichprobe",
+    "method_key_range": "Schlüsselbereiche",
+    "method_random": "Zeilenfilter",
+    "share": "{{pct}} % der Zeilen"
   }
 }

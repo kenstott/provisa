@@ -25,6 +25,7 @@ from provisa.profiler.schema import RESULT_KINDS, field_names
 from provisa.profiler.statement import (
     ColumnSpec,
     FanoutSpec,
+    Sample,
     family_of,
     parse_profile_result,
     profile_sql,
@@ -38,6 +39,7 @@ _COLUMNS = [
     ColumnSpec("paid", "boolean", "boolean", "paid"),
 ]
 _FANOUT = [FanoutSpec("lines", "d.lines", "id", "order_id")]
+_WHOLE = Sample("whole")
 
 
 @pytest.fixture
@@ -64,7 +66,7 @@ def _run(con, sql: str):
 
 
 def test_one_statement_profiles_every_column_and_relationship(con):
-    sql = profile_sql("d.orders", _COLUMNS, _FANOUT, None, 100)
+    sql = profile_sql("d.orders", _COLUMNS, _FANOUT, _WHOLE, 100)
     assert len(sqlglot.parse(sql, read="postgres")) == 1
     names, rows = _run(con, sql)
     agg = parse_profile_result(names, rows, _COLUMNS, _FANOUT)
@@ -96,7 +98,7 @@ def test_one_statement_profiles_every_column_and_relationship(con):
 
 
 def test_a_sample_reads_a_fraction_of_the_rows(con):
-    names, rows = _run(con, profile_sql("d.orders", _COLUMNS, [], 0.2, 100))
+    names, rows = _run(con, profile_sql("d.orders", _COLUMNS, [], Sample("random", 0.2), 100))
     agg = parse_profile_result(names, rows, _COLUMNS, [])
     assert 0 < agg.profiled_rows < 500
 
@@ -112,9 +114,9 @@ def test_the_sample_budget_is_in_cells_so_a_wide_table_samples_fewer_rows():
 def test_every_result_row_has_its_kinds_shipped_fields(con):
     from datetime import UTC, datetime
 
-    names, rows = _run(con, profile_sql("d.orders", _COLUMNS, _FANOUT, None, 100))
+    names, rows = _run(con, profile_sql("d.orders", _COLUMNS, _FANOUT, _WHOLE, 100))
     agg = parse_profile_result(names, rows, _COLUMNS, _FANOUT)
-    target = Target(1, "orders", "d.orders", _COLUMNS, _FANOUT, {"code": {"pii"}})
+    target = Target(1, "orders", "d.orders", _COLUMNS, _FANOUT, {"code": {"pii"}}, None, None)
     out = result_rows(target, agg, "r1", datetime.now(UTC), 100)
     assert set(out) == set(RESULT_KINDS) - {"runs"}
     for kind, kind_rows in out.items():
@@ -133,13 +135,13 @@ def test_every_result_row_has_its_kinds_shipped_fields(con):
 
 def test_a_table_with_no_readable_column_cannot_be_profiled():
     with pytest.raises(ValueError, match="no column the org admin can read"):
-        profile_sql("d.orders", [], [], None, 100)
+        profile_sql("d.orders", [], [], _WHOLE, 100)
 
 
 def test_a_relationship_key_the_org_admin_cannot_read_is_refused():
     with pytest.raises(ValueError, match="parent key 'hidden'"):
         profile_sql(
-            "d.orders", _COLUMNS, [FanoutSpec("x", "d.lines", "hidden", "order_id")], None, 100
+            "d.orders", _COLUMNS, [FanoutSpec("x", "d.lines", "hidden", "order_id")], _WHOLE, 100
         )
 
 
@@ -164,10 +166,10 @@ def test_the_low_cardinality_threshold_is_the_profilers_run_default(con):
     threshold of 8 and above, and not under 7."""
     from datetime import UTC, datetime
 
-    target = Target(1, "orders", "d.orders", _COLUMNS, [], {})
+    target = Target(1, "orders", "d.orders", _COLUMNS, [], {}, None, None)
 
     def frequencies(low: int) -> int:
-        names, rows = _run(con, profile_sql("d.orders", _COLUMNS, [], None, low))
+        names, rows = _run(con, profile_sql("d.orders", _COLUMNS, [], _WHOLE, low))
         agg = parse_profile_result(names, rows, _COLUMNS, [])
         out = result_rows(target, agg, "r", datetime.now(UTC), low)
         return len(

@@ -22,6 +22,12 @@
     "kind_fits": "फ़िट",
     "kind_fit_quality": "फ़िट की गुणवत्ता",
     "kind_fanout_runs": "प्रति पैरेंट चाइल्ड",
-    "kind_fanout": "चाइल्ड के क्वांटाइल"
+    "kind_fanout": "चाइल्ड के क्वांटाइल",
+    "method": "विधि",
+    "method_whole": "पूरी तालिका",
+    "method_block": "ब्लॉक नमूना",
+    "method_key_range": "कुंजी श्रेणियाँ",
+    "method_random": "पंक्ति फ़िल्टर",
+    "share": "{{pct}}% पंक्तियाँ"
   }
 }

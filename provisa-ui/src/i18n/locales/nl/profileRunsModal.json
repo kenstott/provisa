@@ -22,6 +22,12 @@
     "kind_fits": "Fits",
     "kind_fit_quality": "Fitkwaliteit",
     "kind_fanout_runs": "Kinderen per ouder",
-    "kind_fanout": "Kwantielen van kinderen"
+    "kind_fanout": "Kwantielen van kinderen",
+    "method": "Methode",
+    "method_whole": "Hele tabel",
+    "method_block": "Bloksteekproef",
+    "method_key_range": "Sleutelbereiken",
+    "method_random": "Rijfilter",
+    "share": "{{pct}}% van de rijen"
   }
 }

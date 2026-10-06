@@ -22,6 +22,12 @@
     "kind_fits": "Fits",
     "kind_fit_quality": "Fit quality",
     "kind_fanout_runs": "Children per parent",
-    "kind_fanout": "Children quantiles"
+    "kind_fanout": "Children quantiles",
+    "method": "Method",
+    "method_whole": "Whole table",
+    "method_block": "Block sample",
+    "method_key_range": "Key ranges",
+    "method_random": "Row filter",
+    "share": "{{pct}}% of rows"
   }
 }

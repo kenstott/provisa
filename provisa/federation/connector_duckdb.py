@@ -71,6 +71,11 @@ class DuckDBPostgresConnector(Connector):
     mechanism = Mechanism.ATTACH_RW
 
     def capability(self) -> Capability:
+        # REQ-1934: no key_range. Measured: a BETWEEN on the key is pushed to Postgres and read
+        # through its index, but the scanner splits the table into 1000-page ctid tasks and runs the
+        # range once per task, so a key-range sample fetches f x rows x pages/1000 tuples (27x on a
+        # 27k-page table: 108,108 index fetches for 4,002 rows; 4,004 with pg_use_ctid_scan=false)
+        # -- more than the whole table once pages exceed 1000/f.
         return Capability(predicate_pushdown=True, write=True)
 
     def details(self, source: Source) -> dict:
@@ -609,8 +614,14 @@ class PostgresFdwConnector(Connector):  # REQ-893
         # postgres_fdw pushes down predicates, joins between same-server foreign tables, and (PG14+)
         # aggregates; a cross-SERVER join still materializes locally (single-node — REQ-894). It is
         # writable (INSERT/UPDATE/DELETE on foreign tables since PG9.3).
+        # REQ-1934 key_range: measured -- a key range reaches the remote as Remote SQL and is read
+        # through its index. No block_sample: Postgres refuses TABLESAMPLE on a foreign table.
         return Capability(
-            predicate_pushdown=True, join_pushdown=True, aggregate_pushdown=True, write=True
+            predicate_pushdown=True,
+            join_pushdown=True,
+            aggregate_pushdown=True,
+            write=True,
+            key_range=True,
         )
 
     def details(self, source: Source) -> dict:

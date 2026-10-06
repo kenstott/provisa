@@ -274,6 +274,9 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
             # Postgres folds an unquoted qualifier to lowercase, which stops matching a quoted
             # mixed-case alias like "mRegisteredTa".
             alias=exp.TableAlias(this=exp.Identifier(this=alias_q, quoted=True)),
+            # REQ-1934: a TABLESAMPLE on the ref is part of what it reads; rebuilt without it, a
+            # block-sampled profile statement became a whole-table read.
+            sample=node.args.get("sample"),
         )
         return new_tbl
 

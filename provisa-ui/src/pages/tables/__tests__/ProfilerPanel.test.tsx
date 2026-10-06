@@ -119,7 +119,10 @@ describe("ProfilerPanel", () => {
         row_count: null,
         profiled_rows: null,
         sampled: null,
+        sample_method: null,
+        target_fraction: null,
         sample_fraction: null,
+        sample_attempts: null,
         duration_ms: 4,
         region: null,
         profiled_table: "orders",
@@ -132,8 +135,27 @@ describe("ProfilerPanel", () => {
         row_count: 3,
         profiled_rows: 3,
         sampled: false,
+        sample_method: "whole",
+        target_fraction: 1,
         sample_fraction: 1,
+        sample_attempts: "[]",
         duration_ms: 12,
+        region: null,
+        profiled_table: "orders",
+      },
+      {
+        run_id: "r0",
+        run_time: "2026-10-03T03:00:00Z",
+        status: "succeeded",
+        error: null,
+        row_count: 200000,
+        profiled_rows: 9800,
+        sampled: true,
+        sample_method: "block",
+        target_fraction: 0.05,
+        sample_fraction: 0.049,
+        sample_attempts: '[{"percent": 5.0, "rows": 9800}]',
+        duration_ms: 30,
         region: null,
         profiled_table: "orders",
       },
@@ -151,6 +173,11 @@ describe("ProfilerPanel", () => {
     );
     fireEvent.click(screen.getByTestId("profiler-view-runs"));
     expect(await screen.findByTestId("profile-run-r2")).toHaveTextContent("boom");
+    expect(screen.getByTestId("profile-run-method-r1")).toHaveTextContent("Whole table");
+    expect(screen.getByTestId("profile-run-method-r0")).toHaveTextContent(
+      "Block sample · 4.9% of rows",
+    );
+    expect(screen.getByTestId("profile-run-method-r2")).toBeEmptyDOMElement();
     await waitFor(() => expect(api.fetchProfileRun).toHaveBeenCalledWith(7, "r1", "analyst"));
     const rows = await screen.findByTestId("profile-rows-columns");
     expect(rows).toHaveTextContent("amount");

@@ -22,6 +22,12 @@
     "kind_fits": "フィット",
     "kind_fit_quality": "フィットの品質",
     "kind_fanout_runs": "親あたりの子",
-    "kind_fanout": "子の分位数"
+    "kind_fanout": "子の分位数",
+    "method": "方式",
+    "method_whole": "テーブル全体",
+    "method_block": "ブロックサンプル",
+    "method_key_range": "キー範囲",
+    "method_random": "行フィルター",
+    "share": "行の {{pct}}%"
   }
 }

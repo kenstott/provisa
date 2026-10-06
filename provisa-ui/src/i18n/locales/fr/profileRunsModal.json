@@ -22,6 +22,12 @@
     "kind_fits": "Ajustements",
     "kind_fit_quality": "Qualité de l'ajustement",
     "kind_fanout_runs": "Enfants par parent",
-    "kind_fanout": "Quantiles des enfants"
+    "kind_fanout": "Quantiles des enfants",
+    "method": "Méthode",
+    "method_whole": "Table entière",
+    "method_block": "Échantillon par blocs",
+    "method_key_range": "Plages de clés",
+    "method_random": "Filtre de lignes",
+    "share": "{{pct}} % des lignes"
   }
 }

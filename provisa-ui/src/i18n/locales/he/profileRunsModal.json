@@ -22,6 +22,12 @@
     "kind_fits": "התאמות",
     "kind_fit_quality": "איכות ההתאמה",
     "kind_fanout_runs": "ילדים לכל הורה",
-    "kind_fanout": "קוונטילים של ילדים"
+    "kind_fanout": "קוונטילים של ילדים",
+    "method": "שיטה",
+    "method_whole": "הטבלה כולה",
+    "method_block": "דגימת בלוקים",
+    "method_key_range": "טווחי מפתח",
+    "method_random": "מסנן שורות",
+    "share": "{{pct}}% מהשורות"
   }
 }
