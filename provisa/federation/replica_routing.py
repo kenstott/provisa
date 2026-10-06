@@ -51,12 +51,20 @@ _log = logging.getLogger(__name__)
 #: ``govdata`` (REQ-1730): its reads are dispatched to the askamerica JDBC connection live on
 #: every request (``pgwire/_pipeline`` → ``_execute_govdata``) and never reach the engine. A
 #: replica of it would be one no query path reads, built by scanning a relation no engine has.
-_NO_REPLICA_TYPES = frozenset({"ingest", "govdata"})
+#:
+#: ``data_profiler`` (REQ-1934): the same as ingest -- its runs append to its result relations in
+#: the org's control plane, which a replica pass would drop and recreate.
+_NO_REPLICA_TYPES = frozenset({"ingest", "govdata", "data_profiler"})
 
 
 def _source_type(source: Any) -> str:
     stype = source.type
     return stype.value if hasattr(stype, "value") else str(stype)
+
+
+def owns_replica(source: Any) -> bool:
+    """Whether reads of ``source``'s tables can go through a replica at all (``_NO_REPLICA_TYPES``)."""
+    return _source_type(source) not in _NO_REPLICA_TYPES
 
 
 def table_floor(source: Any, table: Any, *, promoted: bool) -> str | None:
