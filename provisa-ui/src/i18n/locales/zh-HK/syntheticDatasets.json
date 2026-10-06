@@ -62,6 +62,15 @@
     "measure_conditional_children": "其子行",
     "assertionTrue": "真",
     "assertionFalse": "假",
-    "assertionError": "未執行"
+    "assertionError": "未執行",
+    "private": "差分私隱",
+    "privateHelp": "在私隱預算 ε 下為生成從表中取得的每項統計加入雜訊；ε 越小雜訊越大。小表需要更大的 ε。合成規則聲明了分佈的數字列或日期列不需要量度邊界，亦不會為此花費 ε。",
+    "epsilon": "私隱預算 ε",
+    "measure_privacy_guarantee": "私隱保證",
+    "measure_privacy_epsilon": "私隱預算 ε",
+    "measure_privacy_epsilon_family": "統計類別的 ε",
+    "measure_privacy_dropped": "因雜訊而捨棄",
+    "measure_privacy_mostly_noise": "主要是雜訊",
+    "measure_privacy_epsilon_charged": "已消耗的 ε"
   }
 }

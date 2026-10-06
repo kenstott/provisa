@@ -33,6 +33,7 @@ from sqlalchemy import delete, insert, select
 from provisa.synthetic import datasets
 from provisa.synthetic.generate import generation_sql
 from provisa.synthetic.group import reads_children
+from provisa.synthetic.privacy import report_entries as privacy_entries
 from provisa.synthetic.plan import (
     DatasetRefused,
     DatasetTable,
@@ -513,10 +514,10 @@ def _quantiles(histogram: dict[int, int], points: tuple[float, ...]) -> tuple[fl
 
 async def _measure_condition(
     state: Any, by_id: dict[int, DatasetTable], edges: list[Any], c: Any
-) -> tuple[float, ...] | None:
+) -> tuple[tuple[float, ...], int] | None:
     """The fan-out sketch of the real parents meeting ``c``'s condition: each such parent's child
     count, zero included, read as the org admin through the governed pipeline (REQ-1939,
-    CONDITIONAL FAN-OUT); None where no parent meets it."""
+    CONDITIONAL FAN-OUT), with how many parents meet it; None where none does."""
     import sqlglot
     from sqlglot import exp
 
@@ -553,7 +554,7 @@ async def _measure_condition(
     with_children = sum(histogram.values())
     if parents > with_children:
         histogram[0] = histogram.get(0, 0) + parents - with_children
-    return _quantiles(histogram, QUANTILE_POINTS)
+    return _quantiles(histogram, QUANTILE_POINTS), parents
 
 
 def _condition_entries(state: Any, planned: list[PlannedTable]) -> list[dict]:
@@ -628,6 +629,60 @@ async def _assertion_entries(assertions: tuple[str, ...]) -> list[dict]:
     return out
 
 
+def _exposer(state: Any) -> Any:
+    from provisa.profiler.run import PROFILE_ROLE
+
+    p2s = state.contexts[PROFILE_ROLE].physical_to_sql
+
+    def exposed(t: DatasetTable, column: str) -> str:
+        name = p2s.get((t.table_id, column))
+        if name is None:
+            raise DatasetRefused(f"{t.name}.{column} is not readable by {PROFILE_ROLE}")
+        return name
+
+    return exposed
+
+
+async def _private_tables(state: Any, tables: list, edges: list, row: Any) -> tuple:
+    from provisa.profiler.run import _governed
+    from provisa.profiler.statement import qualified
+    from provisa.synthetic.private_run import private_tables
+
+    return await private_tables(
+        tables,
+        edges,
+        epsilon=row.private_epsilon,
+        seed=row.seed,
+        governed=_governed,
+        exposed=_exposer(state),
+        qualified=qualified,
+        conditions=row.fanout_conditions,
+    )
+
+
+async def _private_condition(
+    state: Any, measurer: Any, by_id: dict, edges: list, c: Any
+) -> tuple[float, ...] | None:
+    """A measured conditional fan-out, under ε (REQ-1939, DIFFERENTIAL PRIVACY)."""
+    import sqlglot
+    from sqlglot import exp
+
+    from provisa.profiler.statement import qualified
+    from provisa.synthetic.private_run import fanout
+
+    exposed = _exposer(state)
+    edge = next(e for e in edges if e.relationship == c.relationship)
+    parent, child = by_id[edge.parent_id], by_id[edge.child_id]
+    tree = sqlglot.parse_one(c.condition, read="postgres")
+    for col in list(tree.find_all(exp.Column)):
+        col.replace(exp.column(exposed(parent, col.name), table="x", quoted=True))
+    cond = tree.sql(dialect="postgres")
+    sketch = await fanout(
+        measurer, parent, child, edge, exposed, qualified, parent.profile.row_count, cond
+    )
+    return None if all(v == 0 for v in sketch) else sketch
+
+
 async def generate(state: Any, dataset_id: str) -> None:
     """Generate (or regenerate) ``dataset_id`` in the bound environment, then report on it."""
     from provisa.api.app import _rebuild_schemas
@@ -639,20 +694,45 @@ async def generate(state: Any, dataset_id: str) -> None:
     try:
         tables, relationships, registered = await _dataset_tables(state, row)
         edges = edges_of(relationships)
+        measured_conditions = [c for c in row.fanout_conditions if c.count == {"measured": True}]
+        budget = measurer = None
+        private_differences: dict = {}
+        if row.private_epsilon is not None:
+            # REQ-1939, DIFFERENTIAL PRIVACY: every statistic generation draws from is measured
+            # from the tables under ε; nothing is read from the profile runs' recorded values.
+            tables, budget, measurer, private_differences = await _private_tables(
+                state, tables, edges, row
+            )
         measured = {
             (t.table_id, c): await _measure(state, t, c) for t, c in to_measure(tables, edges)
         }
-        distances = {
-            (t.table_id, c): await _measure_difference(state, t, c, other)
-            for t, c, other in distances_to_measure(tables, edges)
-        }
+        distances = (
+            private_differences
+            if budget is not None
+            else {
+                (t.table_id, c): await _measure_difference(state, t, c, other)
+                for t, c, other in distances_to_measure(tables, edges)
+            }
+        )
         pinned = await _pinned_runs(state, row, tables, registered)
         by_id = {t.table_id: t for t in tables}
-        condition_sketches: dict[tuple[str | None, str], tuple[float, ...] | None] = {
-            (c.relationship, c.condition): await _measure_condition(state, by_id, edges, c)
-            for c in row.fanout_conditions
-            if c.count == {"measured": True}
-        }
+        condition_sketches: dict[tuple[str | None, str], tuple[float, ...] | None] = {}
+        for c in measured_conditions:
+            if measurer is not None:
+                condition_sketches[(c.relationship, c.condition)] = await _private_condition(
+                    state, measurer, by_id, edges, c
+                )
+            else:
+                found = await _measure_condition(state, by_id, edges, c)
+                condition_sketches[(c.relationship, c.condition)] = (
+                    None if found is None else found[0]
+                )
+        if budget is not None and abs(budget.charged - budget.epsilon) > 1e-9 * budget.epsilon:
+            # Composition: the statistics planned are the statistics measured.
+            raise RuntimeError(
+                f"the private dataset's statistics were charged ε {budget.charged!r}, not its "
+                f"ε {budget.epsilon!r}"
+            )
         planned = plan_tables(
             tables,
             edges,
@@ -686,7 +766,11 @@ async def generate(state: Any, dataset_id: str) -> None:
         await datasets.set_status(conn, dataset_id, "generated", generated_at=datetime.now(UTC))
     # Its tables now read their copies here: the routes are republished with the model.
     await _rebuild_schemas()
-    extra = _condition_entries(state, planned) + await _assertion_entries(row.assertions)
+    extra = (
+        _condition_entries(state, planned)
+        + await _assertion_entries(row.assertions)
+        + privacy_entries(budget)
+    )
     await report(state, dataset_id, planned, extra)
 
 

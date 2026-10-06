@@ -62,6 +62,15 @@
     "measure_conditional_children": "I loro figli",
     "assertionTrue": "Vero",
     "assertionFalse": "Falso",
-    "assertionError": "Non eseguita"
+    "assertionError": "Non eseguita",
+    "private": "Privacy differenziale",
+    "privateHelp": "Aggiunge rumore a ogni statistica che la generazione trae dalle tabelle sotto un budget di privacy ε; un ε più piccolo aggiunge più rumore. Le tabelle piccole richiedono un ε più grande. Una colonna numerica o di data la cui regola sintetica dichiara la distribuzione non ha bisogno di limiti misurati e non spende ε per essi.",
+    "epsilon": "Budget di privacy ε",
+    "measure_privacy_guarantee": "Garanzia di privacy",
+    "measure_privacy_epsilon": "Budget di privacy ε",
+    "measure_privacy_epsilon_family": "ε di una famiglia di statistiche",
+    "measure_privacy_dropped": "Scartato dal rumore",
+    "measure_privacy_mostly_noise": "Per lo più rumore",
+    "measure_privacy_epsilon_charged": "ε consumato"
   }
 }

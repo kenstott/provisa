@@ -109,6 +109,18 @@ def server():
                 ],
                 profiler_source_id="profiler",
             ),
+            # REQ-1939, DIFFERENTIAL PRIVACY: every column declares what it generates or is a
+            # number or date, so a private dataset can generate it.
+            _table(
+                "accounts",
+                [
+                    _col("id", "integer", is_primary_key=True),
+                    _col("balance", "double"),
+                    _col("opened", "timestamp"),
+                    _col("status", "varchar", fake="categories((open, closed))"),
+                ],
+                profiler_source_id="profiler",
+            ),
             # Its phone is tagged pii and declares no fake kind: it cannot be generated.
             _table(
                 "contacts",
@@ -166,6 +178,22 @@ def server():
             conn.execute(
                 sa.text("CREATE TABLE public.contacts (id integer PRIMARY KEY, phone text)")
             )
+            conn.execute(
+                sa.text(
+                    "CREATE TABLE public.accounts (id integer PRIMARY KEY, balance double precision, "
+                    "opened timestamp, status text)"
+                )
+            )
+            for a in range(1, 301):
+                conn.execute(
+                    sa.text(
+                        "INSERT INTO public.accounts VALUES (:i, :b, TIMESTAMP '2024-01-01' + "
+                        "make_interval(days => :d), :s)"
+                    ),
+                    {"i": a, "b": 100.0 + a, "d": a % 300, "s": "open" if a % 3 else "closed"},
+                )
+            # One account holds a balance no bound of a private dataset may reveal.
+            conn.execute(sa.text("UPDATE public.accounts SET balance = 987654321 WHERE id = 7"))
             conn.execute(
                 sa.text("INSERT INTO public.contacts VALUES (1, '555-0101'), (2, '555-0102')")
             )
@@ -243,14 +271,14 @@ def _environment(boot, name: str) -> dict:
     status, runs = _call(boot, "GET", "/admin/synthetic-datasets/-/profile-runs?env=prod", env=name)
     assert status == 200, runs
     by_name = {r["tableName"]: r for r in runs}
-    assert set(by_name) == {"customers", "purchases", "contacts"}, runs
+    assert set(by_name) == {"customers", "purchases", "contacts", "accounts"}, runs
     return {"boot": boot, "tables": by_name, "env": name}
 
 
 @pytest.fixture(scope="module")
 def profiled(server):
     status, body = _call(server, "POST", "/admin/profilers/profiler/run")
-    assert status == 200 and [o["error"] for o in body] == [None, None, None], body
+    assert status == 200 and [o["error"] for o in body] == [None] * 4, body
     return server
 
 
@@ -259,7 +287,9 @@ def dev(profiled) -> dict:
     return _environment(profiled, "dev")
 
 
-def _define(dev: dict, names: list[str], dataset: str = "load_test") -> tuple[int, Any]:
+def _define(
+    dev: dict, names: list[str], dataset: str = "load_test", epsilon: float | None = None
+) -> tuple[int, Any]:
     return _call(
         dev["boot"],
         "PUT",
@@ -290,6 +320,7 @@ def _define(dev: dict, names: list[str], dataset: str = "load_test") -> tuple[in
             "assertions": ["SELECT COUNT(*) > 0 FROM sales.purchases", "SELECT 1 = 2"]
             if "purchases" in names
             else [],
+            "privateEpsilon": epsilon,
         },
         env=dev["env"],
     )
@@ -478,6 +509,49 @@ def test_the_report_compares_the_copy_with_its_profiles(generated):
     fanout = by[("customers", None, "fanout_ks")]
     assert fanout["delta"] < 0.2, fanout
     assert ("customers", "email", "undeclared_fake") in by
+
+
+def test_a_private_dataset_is_measured_under_its_budget(profiled, generated):
+    """REQ-1939, DIFFERENTIAL PRIVACY: in an environment of its own."""
+    env = _environment(profiled, "private")
+    # A budget large enough for 300 rows to say something; the guarantee holds at any ε.
+    status, body = _define(env, ["accounts"], dataset="private_test", epsilon=50.0)
+    assert status == 200, body
+    status, body = _call(
+        profiled, "POST", "/admin/synthetic-datasets/private_test/generate", env="private"
+    )
+    assert status == 200, body
+    status, rows = _call(
+        profiled, "GET", "/admin/synthetic-datasets/private_test/report", env="private"
+    )
+    assert status == 200, rows
+    by = {r["measure"]: r for r in rows}
+    assert by["privacy_epsilon"]["synthetic"] == 50.0
+    assert abs(by["privacy_epsilon_charged"]["synthetic"] - 50.0) < 1e-9
+    families = [r for r in rows if r["measure"] == "privacy_epsilon_family"]
+    assert families and abs(sum(r["synthetic"] for r in families) - 50.0) < 1e-9
+    assert "privacy_guarantee" not in by
+    status, balances = _sql(profiled, "SELECT MAX(balance) AS m FROM sales.accounts", "private")
+    assert status == 200, balances
+    assert balances[0]["m"] < 1e6  # the one large balance moved no bound
+    status, plain = _call(
+        generated["boot"], "GET", "/admin/synthetic-datasets/load_test/report", env="dev"
+    )
+    assert status == 200, plain
+    [none] = [r for r in plain if r["measure"] == "privacy_guarantee"]
+    assert none["note"].startswith("none")
+
+
+def test_a_private_dataset_refuses_text_columns_that_declare_nothing(profiled):
+    env = _environment(profiled, "private_refused")
+    status, body = _define(env, ["customers"], dataset="private_no", epsilon=1.0)
+    assert status == 200, body
+    status, body = _call(
+        profiled, "POST", "/admin/synthetic-datasets/private_no/generate", env="private_refused"
+    )
+    assert status == 422, body
+    assert "customers.email: declare a fake or a synthetic rule" in str(body), body
+    assert "customers.region: declare a fake or a synthetic rule" in str(body), body
 
 
 def test_dropping_the_dataset_restores_the_binding(profiled):

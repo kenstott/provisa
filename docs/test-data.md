@@ -298,7 +298,19 @@ When it generates, a dataset reads a sample of each table's real rows as the org
 
 ### Differential privacy
 
-Declare a dataset private with a privacy budget ε. Before generation, calibrated noise (the Laplace or Gaussian mechanism, accounted against ε) is added to every statistic the generator draws from the profile: value frequencies, category shares, joint counts, the correlation matrix, quantile sketches, fan-out sketches and hot-key counts. Categories and joint-count cells below the threshold the noise implies are dropped, and hot keys keep only their noised counts. Faked reads are unaffected. A dataset not declared private carries no privacy guarantee, and its report says so.
+Declare a dataset private with a privacy budget ε. A private dataset reads nothing from the values its profile runs recorded. Every statistic it is generated from is measured from the tables at generation time, with Laplace noise added, and charged against ε. That covers row and null counts, distinct counts, the shares of each column's values, each number's or date's distribution, each relationship's children per parent, and its hot parents. ε is split evenly across the kinds of statistic, and the charges add up to ε.
+
+Nothing the noise could not hide reaches the generated rows. A distribution's range comes from a noised histogram, never from a recorded minimum or maximum, and values outside it are clipped. A column's shares are counts with no values attached. So in a private dataset:
+
+- a text column must declare a fake or a synthetic rule, such as a method like `word()`, or `categories((a, b, c))` naming its values;
+- `categories()` must name its values;
+- `pattern()` cannot be used, because its shapes come from real values.
+
+Any of these is refused by name when the dataset is generated. Faked reads are unaffected. A dataset not declared private carries no privacy guarantee, and its report says so.
+
+#### Choosing ε
+
+ε is how much the dataset may reveal about any one row. A smaller ε adds more noise. The noise does not shrink with the table, so on a small table it can swamp the statistics: at ε = 1, a table of a few hundred rows comes out mostly noise. The report flags any statistic whose noise is as large as its value. When that happens, raise ε, generate from a larger table, or give the column a synthetic rule that declares its distribution, such as `uniform(min=0, max=500)`. A column with a declared distribution spends nothing on measured bounds, which leaves more of ε for the rest. On a table of a hundred thousand rows, ε = 1 keeps distributions close to the real ones.
 
 ### Read the comparison report
 
@@ -311,7 +323,7 @@ Choose **Report** on a generated dataset. After generation the synthetic tables 
 | Source, Synthetic, Difference | The two values and their gap |
 | Note | Names every column generated with no declared fake, so you see what is undeclared |
 
-The report also shows each conditional fan-out's parents and children, each assertion's result, the distribution of generated rows' distances to the nearest real row beside the real rows' own, and the rows redrawn and dropped. For a private dataset it gives ε, the mechanism and what the noise dropped. It gives named privacy measures too: distance to closest record, the nearest-neighbour distance ratio, and the result of a membership-inference test.
+The report also shows each conditional fan-out's parents and children, each assertion's result, the distribution of generated rows' distances to the nearest real row beside the real rows' own, and the rows redrawn and dropped. For a private dataset it gives ε, the mechanism, how ε was split, the ε charged in total, what the noise dropped, and every statistic that is mostly noise. It gives named privacy measures too: distance to closest record, the nearest-neighbour distance ratio, and the result of a membership-inference test.
 
 A small Kolmogorov-Smirnov distance means the synthetic column follows the source's distribution. A large one on `orders.total` says to declare a distribution, or to re-profile. The generated tables are marked as generated, and an environment filled this way holds no personal data.
 

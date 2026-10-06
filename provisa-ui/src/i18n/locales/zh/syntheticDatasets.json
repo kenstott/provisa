@@ -62,6 +62,15 @@
     "measure_conditional_children": "其子行",
     "assertionTrue": "真",
     "assertionFalse": "假",
-    "assertionError": "未运行"
+    "assertionError": "未运行",
+    "private": "差分隐私",
+    "privateHelp": "在隐私预算 ε 下为生成从表中获取的每项统计添加噪声；ε 越小噪声越大。小表需要更大的 ε。合成规则声明了分布的数字列或日期列不需要测量边界，也不会为此花费 ε。",
+    "epsilon": "隐私预算 ε",
+    "measure_privacy_guarantee": "隐私保证",
+    "measure_privacy_epsilon": "隐私预算 ε",
+    "measure_privacy_epsilon_family": "统计类别的 ε",
+    "measure_privacy_dropped": "因噪声而丢弃",
+    "measure_privacy_mostly_noise": "主要是噪声",
+    "measure_privacy_epsilon_charged": "已消耗的 ε"
   }
 }

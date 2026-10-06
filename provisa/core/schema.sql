@@ -1020,6 +1020,7 @@ CREATE TABLE IF NOT EXISTS synthetic_datasets (
     -- REQ-1939: conditional child counts by relationship, and statements checked after generation
     fanout_conditions JSONB NOT NULL DEFAULT '[]',
     assertions    JSONB NOT NULL DEFAULT '[]',
+    private_epsilon DOUBLE PRECISION,     -- REQ-1939: the privacy budget ε; NULL: not private
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

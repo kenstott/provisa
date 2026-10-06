@@ -40,6 +40,7 @@ const DATASET = {
   tables: [{ tableId: 3, profileEnv: "prod", runId: "r1", scale: null }],
   fanoutConditions: [],
   assertions: [],
+  privateEpsilon: null,
 };
 
 beforeEach(() => {
@@ -129,7 +130,24 @@ describe("SyntheticDatasetsPanel", () => {
         tables: [{ tableId: 3, profileEnv: "prod", runId: "r1", scale: null }],
         fanoutConditions: [],
         assertions: [],
+        privateEpsilon: null,
       }),
+    );
+  });
+
+  it("declares a dataset private with its privacy budget", async () => {
+    render(<SyntheticDatasetsPanel envs={["prod", "dev"]} />);
+    fireEvent.click(await screen.findByTestId("synthetic-table-customers"));
+    fireEvent.click(screen.getByTestId("synthetic-private"));
+    fireEvent.change(screen.getByTestId("synthetic-epsilon"), { target: { value: "0.5" } });
+    fireEvent.change(screen.getByTestId("synthetic-name"), { target: { value: "big" } });
+    fireEvent.click(screen.getByTestId("synthetic-define"));
+    await waitFor(() =>
+      expect(api.defineDataset).toHaveBeenCalledWith(
+        "dev",
+        "big",
+        expect.objectContaining({ privateEpsilon: 0.5 }),
+      ),
     );
   });
 

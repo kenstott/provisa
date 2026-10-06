@@ -62,6 +62,15 @@
     "measure_conditional_children": "Ihre Kinder",
     "assertionTrue": "Wahr",
     "assertionFalse": "Falsch",
-    "assertionError": "Nicht ausgeführt"
+    "assertionError": "Nicht ausgeführt",
+    "private": "Differenziell privat",
+    "privateHelp": "Jede Statistik, aus der die Erzeugung zieht, wird unter einem Datenschutzbudget ε verrauscht; ein kleineres ε fügt mehr Rauschen hinzu. Kleine Tabellen brauchen ein größeres ε. Eine Zahlen- oder Datumsspalte, deren synthetische Regel ihre Verteilung festlegt, braucht keine gemessenen Grenzen und verbraucht dafür nichts von ε.",
+    "epsilon": "Datenschutzbudget ε",
+    "measure_privacy_guarantee": "Datenschutzgarantie",
+    "measure_privacy_epsilon": "Datenschutzbudget ε",
+    "measure_privacy_epsilon_family": "ε einer Statistikfamilie",
+    "measure_privacy_dropped": "Durch das Rauschen entfernt",
+    "measure_privacy_mostly_noise": "Überwiegend Rauschen",
+    "measure_privacy_epsilon_charged": "Verbrauchtes ε"
   }
 }

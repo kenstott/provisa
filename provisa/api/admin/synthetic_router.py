@@ -58,6 +58,8 @@ class DatasetIn(BaseModel):
     # REQ-1939: conditional fan-out and assertions, each a field of the dataset's form.
     fanoutConditions: list[ConditionIn] = []
     assertions: list[str] = []
+    # REQ-1939, DIFFERENTIAL PRIVACY: the privacy budget ε; omitted for a dataset not private.
+    privateEpsilon: float | None = None
 
 
 def _db() -> Any:
@@ -104,6 +106,7 @@ async def list_datasets(request: Request) -> list[dict]:
                 for c in r.fanout_conditions
             ],
             "assertions": list(r.assertions),
+            "privateEpsilon": r.private_epsilon,
         }
         for r in rows
     ]
@@ -172,6 +175,7 @@ async def define_dataset(request: Request, dataset_id: str, body: DatasetIn) -> 
                 tables=tables,
                 fanout_conditions=conditions,
                 assertions=body.assertions,
+                private_epsilon=body.privateEpsilon,
             )
     except (ValueError, DatasetRefused) as exc:
         raise _refused(exc, dataset_id) from exc

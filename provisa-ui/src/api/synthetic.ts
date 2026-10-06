@@ -54,6 +54,8 @@ export interface SyntheticDataset {
   tables: DatasetTable[];
   fanoutConditions: FanoutCondition[];
   assertions: string[];
+  // REQ-1939, DIFFERENTIAL PRIVACY: the privacy budget; null when the dataset is not private.
+  privateEpsilon: number | null;
 }
 
 export interface ProfiledTableRuns {
@@ -102,6 +104,7 @@ export const defineDataset = (
     tables: DatasetTable[];
     fanoutConditions: FanoutCondition[];
     assertions: string[];
+    privateEpsilon: number | null;
   },
 ) =>
   call<{ id: string; storeSchema: string }>("defineDataset", env, `/${encodeURIComponent(id)}`, {

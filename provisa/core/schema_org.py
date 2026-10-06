@@ -1003,6 +1003,8 @@ synthetic_datasets = Table(
     # the statements checked after generation ([statement, ...])
     Column("fanout_conditions", JSON, nullable=False, default=list, server_default="[]"),
     Column("assertions", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-1939, DIFFERENTIAL PRIVACY: the dataset's privacy budget ε; NULL when not private
+    Column("private_epsilon", Float),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

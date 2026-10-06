@@ -62,6 +62,15 @@
     "measure_conditional_children": "Leurs enfants",
     "assertionTrue": "Vrai",
     "assertionFalse": "Faux",
-    "assertionError": "Non exécutée"
+    "assertionError": "Non exécutée",
+    "private": "Confidentialité différentielle",
+    "privateHelp": "Bruite chaque statistique que la génération tire des tables sous un budget de confidentialité ε ; un ε plus petit ajoute plus de bruit. Les petites tables demandent un ε plus grand. Une colonne numérique ou de date dont la règle synthétique déclare sa distribution n'a besoin d'aucune borne mesurée et n'y consacre rien de ε.",
+    "epsilon": "Budget de confidentialité ε",
+    "measure_privacy_guarantee": "Garantie de confidentialité",
+    "measure_privacy_epsilon": "Budget de confidentialité ε",
+    "measure_privacy_epsilon_family": "ε d'une famille de statistiques",
+    "measure_privacy_dropped": "Écarté par le bruit",
+    "measure_privacy_mostly_noise": "Surtout du bruit",
+    "measure_privacy_epsilon_charged": "ε consommé"
   }
 }

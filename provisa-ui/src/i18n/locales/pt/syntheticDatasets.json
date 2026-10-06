@@ -62,6 +62,15 @@
     "measure_conditional_children": "Os seus filhos",
     "assertionTrue": "Verdadeiro",
     "assertionFalse": "Falso",
-    "assertionError": "Não executada"
+    "assertionError": "Não executada",
+    "private": "Privacidade diferencial",
+    "privateHelp": "Adiciona ruído a cada estatística que a geração retira das tabelas, sob um orçamento de privacidade ε; um ε menor adiciona mais ruído. Tabelas pequenas precisam de um ε maior. Uma coluna numérica ou de data cuja regra sintética declara a distribuição não precisa de limites medidos e não gasta ε com eles.",
+    "epsilon": "Orçamento de privacidade ε",
+    "measure_privacy_guarantee": "Garantia de privacidade",
+    "measure_privacy_epsilon": "Orçamento de privacidade ε",
+    "measure_privacy_epsilon_family": "ε de uma família de estatísticas",
+    "measure_privacy_dropped": "Descartado pelo ruído",
+    "measure_privacy_mostly_noise": "Sobretudo ruído",
+    "measure_privacy_epsilon_charged": "ε gasto"
   }
 }

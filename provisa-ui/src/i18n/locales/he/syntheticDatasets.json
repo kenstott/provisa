@@ -62,6 +62,15 @@
     "measure_conditional_children": "ילדיהם",
     "assertionTrue": "אמת",
     "assertionFalse": "שקר",
-    "assertionError": "לא רצה"
+    "assertionError": "לא רצה",
+    "private": "פרטיות דיפרנציאלית",
+    "privateHelp": "הוספת רעש לכל סטטיסטיקה שהיצירה שואבת מהטבלאות, תחת תקציב פרטיות ε; ε קטן יותר מוסיף יותר רעש. טבלאות קטנות צריכות ε גדול יותר. עמודת מספר או תאריך שהכלל הסינתטי שלה מצהיר על ההתפלגות אינה צריכה גבולות נמדדים ואינה מוציאה עליהם מ-ε.",
+    "epsilon": "תקציב פרטיות ε",
+    "measure_privacy_guarantee": "הבטחת פרטיות",
+    "measure_privacy_epsilon": "תקציב פרטיות ε",
+    "measure_privacy_epsilon_family": "ε של משפחת סטטיסטיקות",
+    "measure_privacy_dropped": "הוסר בשל הרעש",
+    "measure_privacy_mostly_noise": "בעיקר רעש",
+    "measure_privacy_epsilon_charged": "ε שנוצל"
   }
 }

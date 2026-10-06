@@ -62,6 +62,15 @@
     "measure_conditional_children": "Their children",
     "assertionTrue": "True",
     "assertionFalse": "False",
-    "assertionError": "Did not run"
+    "assertionError": "Did not run",
+    "private": "Differentially private",
+    "privateHelp": "Noise every statistic generation draws from the tables under a privacy budget ε; a smaller ε adds more noise. Small tables need a larger ε. A number or date column whose synthetic rule declares its distribution needs no measured bounds and spends none of ε on them.",
+    "epsilon": "Privacy budget ε",
+    "measure_privacy_guarantee": "Privacy guarantee",
+    "measure_privacy_epsilon": "Privacy budget ε",
+    "measure_privacy_epsilon_family": "ε of a statistic family",
+    "measure_privacy_dropped": "Dropped by the noise",
+    "measure_privacy_mostly_noise": "Mostly noise",
+    "measure_privacy_epsilon_charged": "ε charged"
   }
 }

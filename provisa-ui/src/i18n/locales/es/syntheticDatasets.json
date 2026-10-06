@@ -62,6 +62,15 @@
     "measure_conditional_children": "Sus hijos",
     "assertionTrue": "Verdadero",
     "assertionFalse": "Falso",
-    "assertionError": "No se ejecutó"
+    "assertionError": "No se ejecutó",
+    "private": "Privacidad diferencial",
+    "privateHelp": "Añade ruido a cada estadística que la generación toma de las tablas bajo un presupuesto de privacidad ε; un ε menor añade más ruido. Las tablas pequeñas necesitan un ε mayor. Una columna numérica o de fecha cuya regla sintética declara su distribución no necesita límites medidos ni gasta ε en ellos.",
+    "epsilon": "Presupuesto de privacidad ε",
+    "measure_privacy_guarantee": "Garantía de privacidad",
+    "measure_privacy_epsilon": "Presupuesto de privacidad ε",
+    "measure_privacy_epsilon_family": "ε de una familia de estadísticas",
+    "measure_privacy_dropped": "Descartado por el ruido",
+    "measure_privacy_mostly_noise": "Sobre todo ruido",
+    "measure_privacy_epsilon_charged": "ε consumido"
   }
 }

@@ -62,6 +62,15 @@
     "measure_conditional_children": "उनके बच्चे",
     "assertionTrue": "सत्य",
     "assertionFalse": "असत्य",
-    "assertionError": "नहीं चला"
+    "assertionError": "नहीं चला",
+    "private": "डिफरेंशियल प्राइवेसी",
+    "privateHelp": "गोपनीयता बजट ε के तहत उत्पादन तालिकाओं से जो भी आँकड़े लेता है उनमें शोर जोड़ें; छोटा ε अधिक शोर जोड़ता है। छोटी तालिकाओं को बड़ा ε चाहिए। जिस संख्या या तारीख कॉलम का सिंथेटिक नियम उसका वितरण घोषित करता है, उसे मापी गई सीमाओं की आवश्यकता नहीं होती और वह उन पर ε खर्च नहीं करता।",
+    "epsilon": "गोपनीयता बजट ε",
+    "measure_privacy_guarantee": "गोपनीयता गारंटी",
+    "measure_privacy_epsilon": "गोपनीयता बजट ε",
+    "measure_privacy_epsilon_family": "आँकड़ा परिवार का ε",
+    "measure_privacy_dropped": "शोर से हटाया गया",
+    "measure_privacy_mostly_noise": "अधिकतर शोर",
+    "measure_privacy_epsilon_charged": "खर्च किया गया ε"
   }
 }

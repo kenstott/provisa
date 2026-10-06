@@ -50,7 +50,17 @@ function num(v: number | null): string {
 
 // The report's own measures beside the profile comparison's (REQ-1939): an assertion's result
 // and each conditional fan-out's parents and children.
-const OWN_MEASURES = new Set(["assertion", "conditional_parents", "conditional_children"]);
+const OWN_MEASURES = new Set([
+  "assertion",
+  "conditional_parents",
+  "conditional_children",
+  "privacy_guarantee",
+  "privacy_epsilon",
+  "privacy_epsilon_family",
+  "privacy_dropped",
+  "privacy_mostly_noise",
+  "privacy_epsilon_charged",
+]);
 
 // REQ-1939: an environment's synthetic datasets -- defined, generated, regenerated and dropped
 // beside the environment's other settings. Production holds none, so it is not offered.
@@ -72,6 +82,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
   const [relationships, setRelationships] = useState<DatasetRelationship[]>([]);
   const [conditions, setConditions] = useState<FanoutCondition[]>([]);
   const [assertions, setAssertions] = useState<string[]>([]);
+  const [epsilon, setEpsilon] = useState<number | null>(null);
 
   const reload = useCallback(() => {
     if (!env) return;
@@ -129,6 +140,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
         })),
         fanoutConditions: conditions,
         assertions,
+        privateEpsilon: epsilon,
       }),
     );
   const generated = relationships.filter(
@@ -367,6 +379,25 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
           </Table.Tbody>
         </Table>
       )}
+      <Group align="end">
+        <Checkbox
+          label={t("syntheticDatasets.private")}
+          description={t("syntheticDatasets.privateHelp")}
+          checked={epsilon !== null}
+          onChange={(e) => setEpsilon(e.currentTarget.checked ? 1 : null)}
+          data-testid="synthetic-private"
+        />
+        {epsilon !== null && (
+          <NumberInput
+            label={t("syntheticDatasets.epsilon")}
+            min={0.001}
+            decimalScale={3}
+            value={epsilon}
+            onChange={(v) => setEpsilon(Number(v))}
+            data-testid="synthetic-epsilon"
+          />
+        )}
+      </Group>
       <DatasetConditions relationships={generated} value={conditions} onChange={setConditions} />
       <DatasetAssertions value={assertions} onChange={setAssertions} />
       <Group>

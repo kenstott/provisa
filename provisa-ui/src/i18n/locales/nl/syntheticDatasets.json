@@ -62,6 +62,15 @@
     "measure_conditional_children": "Hun kinderen",
     "assertionTrue": "Waar",
     "assertionFalse": "Onwaar",
-    "assertionError": "Niet uitgevoerd"
+    "assertionError": "Niet uitgevoerd",
+    "private": "Differentieel privé",
+    "privateHelp": "Voeg ruis toe aan elke statistiek die het genereren uit de tabellen haalt, onder een privacybudget ε; een kleinere ε voegt meer ruis toe. Kleine tabellen hebben een grotere ε nodig. Een getal- of datumkolom waarvan de synthetische regel de verdeling vastlegt, heeft geen gemeten grenzen nodig en besteedt daar niets van ε aan.",
+    "epsilon": "Privacybudget ε",
+    "measure_privacy_guarantee": "Privacygarantie",
+    "measure_privacy_epsilon": "Privacybudget ε",
+    "measure_privacy_epsilon_family": "ε van een statistiekfamilie",
+    "measure_privacy_dropped": "Weggelaten door de ruis",
+    "measure_privacy_mostly_noise": "Vooral ruis",
+    "measure_privacy_epsilon_charged": "Verbruikte ε"
   }
 }
