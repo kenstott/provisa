@@ -94,12 +94,9 @@ def _config(pg_host: str, pg_port: int, database: str) -> dict:
                 ],
             }
         ],
+        # org_admin is the reserved administrative role (REQ-1349): every org has it and a config
+        # file may not declare it, so only the harness's own role is listed.
         "roles": [
-            {
-                "id": "org_admin",
-                "capabilities": ["query_development", "full_results"],
-                "domain_access": ["*"],
-            },
             # No full_results: the default row limit applies to this role's queries.
             {"id": "analyst", "capabilities": ["query_development"], "domain_access": ["*"]},
         ],

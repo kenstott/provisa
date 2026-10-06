@@ -55,15 +55,14 @@ def server():
             "unmasked_to": ["org_admin"],
         },
     ]
-    reads = ["query_development", "full_results"]
     boot = WorkerBoot(
         1,
         pg_host=_PG_HOST,
         pg_port=_PG_PORT,
         extra_config={
             "tables": [orders],
+            # org_admin is the reserved administrative role (REQ-1349): not declared.
             "roles": [
-                {"id": "org_admin", "capabilities": [*reads, "write"], "domain_access": ["*"]},
                 {
                     "id": "east_reader",
                     "capabilities": ["query_development"],

@@ -74,12 +74,8 @@ def server():
         pg_port=_PG_PORT,
         extra_config={
             "tables": [orders, _view("orders_inline"), _view("orders_mat", materialize=True)],
+            # org_admin is reserved (REQ-1349) and not declared; it is granted the table above.
             "roles": [
-                {
-                    "id": "org_admin",
-                    "capabilities": ["query_development", "full_results", "observability"],
-                    "domain_access": ["*"],
-                },
                 {
                     "id": "east_reader",
                     "capabilities": ["query_development", "full_results"],
