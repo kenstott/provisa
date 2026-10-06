@@ -172,9 +172,29 @@ def register(
 
     @described
     async def define_synthetic_dataset(
-        dataset_id: str, seed: int, scale: float, tables: list[dict], role: str | None = None
+        dataset_id: str,
+        seed: int,
+        scale: float,
+        tables: list[dict],
+        fanoutConditions: list[dict] | None = None,  # noqa: N803 -- the tool's argument names
+        assertions: list[str] | None = None,
+        privateEpsilon: float | None = None,  # noqa: N803
+        closenessThreshold: float | None = None,  # noqa: N803
+        closenessDraws: int | None = None,  # noqa: N803
+        role: str | None = None,
     ) -> dict:
-        return await mt.define_synthetic_dataset(*ctx(role), dataset_id, seed, scale, tables)
+        return await mt.define_synthetic_dataset(
+            *ctx(role),
+            dataset_id,
+            seed,
+            scale,
+            tables,
+            fanoutConditions,
+            assertions,
+            privateEpsilon,
+            closenessThreshold,
+            closenessDraws,
+        )
 
     @described
     async def generate_synthetic_dataset(dataset_id: str, role: str | None = None) -> dict:

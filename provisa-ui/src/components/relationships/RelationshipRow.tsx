@@ -29,6 +29,7 @@ import type { RelForm } from "./relationship-types";
 import { cypherRelType } from "../../naming";
 import { JunctionPanel } from "./JunctionPanel";
 import { TagControl } from "../TagControl";
+import { ListRow, ListExpandRow, ListDetail } from "../list/ListTable";
 
 interface RelationshipRowProps {
   rel: Relationship;
@@ -80,7 +81,7 @@ export function RelationshipRow({
 
   return (
     <React.Fragment>
-      <tr
+      <ListRow
         onClick={onToggle}
         role="button"
         tabIndex={0}
@@ -91,10 +92,6 @@ export function RelationshipRow({
             e.preventDefault();
             onToggle();
           }
-        }}
-        style={{
-          cursor: "pointer",
-          background: isExpanded ? "var(--surface)" : undefined,
         }}
       >
         {domainsEnabled && (
@@ -160,17 +157,10 @@ export function RelationshipRow({
         <td>{r.cardinality}</td>
         <td>{r.materialize ? t("relationshipRow.yes") : t("relationshipRow.no")}</td>
         <td>{r.materialize ? r.refreshInterval : t("relationshipRow.none")}</td>
-      </tr>
+      </ListRow>
       {isExpanded && (
-        <tr>
-          <td
-            colSpan={domainsEnabled ? 7 : 6}
-            style={{
-              padding: "0.75rem 1rem",
-              background: "var(--bg)",
-              borderTop: "1px solid var(--border)",
-            }}
-          >
+        <ListExpandRow colSpan={domainsEnabled ? 7 : 6}>
+          <ListDetail>
             {!editingRel ? (
               <Stack gap="sm">
                 <dl
@@ -560,8 +550,8 @@ export function RelationshipRow({
                 </Group>
               </Stack>
             )}
-          </td>
-        </tr>
+          </ListDetail>
+        </ListExpandRow>
       )}
     </React.Fragment>
   );

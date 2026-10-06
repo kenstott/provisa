@@ -39,6 +39,7 @@ import type { Tag, TagFieldPolicy, TagObjectType, TagParamPolicy } from "../../t
 import { baseTagId } from "../../types/admin";
 import { FilterInput } from "./FilterInput";
 import { HelpBubble } from "../HelpBubble";
+import { ListTable, ListRow } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -303,8 +304,7 @@ export function TagsTab() {
         </Stack>
       )}
 
-      <Table.ScrollContainer minWidth={640}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+      <ListTable minWidth={640}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("tagsTab.colId")}</Table.Th>
@@ -323,7 +323,7 @@ export function TagsTab() {
               </Table.Tr>
             )}
             {paged.map((tag) => [
-              <Table.Tr key={tag.id} data-testid={`tags-row-${tag.id}`}>
+              <ListRow key={tag.id} testId={`tags-row-${tag.id}`}>
                 <Table.Td>
                   {tag.id}
                   {(tag.reasonPolicy !== "optional" || tag.expiresPolicy !== "optional") && (
@@ -414,9 +414,9 @@ export function TagsTab() {
                     )}
                   </Group>
                 </Table.Td>
-              </Table.Tr>,
+              </ListRow>,
               valuesTagId === tag.id && (
-                <Table.Tr key={`${tag.id}-values`} data-testid={`tags-values-row-${tag.id}`}>
+                <Table.Tr className="list-expand" key={`${tag.id}-values`} data-testid={`tags-values-row-${tag.id}`}>
                   <Table.Td colSpan={5}>
                     <Stack gap="xs">
                       <Group gap={4}>
@@ -478,8 +478,7 @@ export function TagsTab() {
               ),
             ])}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+        </ListTable>
       {totalPages > 1 && (
         <Group justify="flex-end">
           <Pagination

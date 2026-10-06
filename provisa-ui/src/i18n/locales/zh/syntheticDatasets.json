@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "统计类别的 ε",
     "measure_privacy_dropped": "因噪声而丢弃",
     "measure_privacy_mostly_noise": "主要是噪声",
-    "measure_privacy_epsilon_charged": "已消耗的 ε"
+    "measure_privacy_epsilon_charged": "已消耗的 ε",
+    "closeness": "不与真实行过于接近",
+    "closenessHelp": "将每个生成的行与真实行样本比较；比阈值更近的行会重新抽取，若仍过近则连同其子行一起丢弃。关闭：不检查接近程度。",
+    "closenessThreshold": "阈值（真实行之间典型距离的比例）",
+    "closenessDraws": "每行抽取次数",
+    "measure_closeness": "接近程度",
+    "measure_closeness_threshold": "接近阈值",
+    "measure_closeness_redrawn": "重新抽取的行",
+    "measure_closeness_dropped": "因过近而丢弃的行",
+    "measure_closeness_cascaded": "随父行丢弃的行",
+    "measure_closeness_distance": "到最近真实行的距离",
+    "measure_closeness_nndr": "最近邻距离比",
+    "measure_closeness_membership_auc": "成员推断测试（AUC）",
+    "measure_dependence_spearman": "秩相关",
+    "measure_dependence_copula_shrink": "相关性修正",
+    "measure_dependence_kept_own": "单独抽取",
+    "measure_dependence_network_not_kept": "未保留依赖网络"
   }
 }

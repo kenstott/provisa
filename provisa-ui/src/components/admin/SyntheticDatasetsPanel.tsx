@@ -40,6 +40,7 @@ import {
 } from "../../api/synthetic";
 import { DatasetAssertions } from "./synthetic/DatasetAssertions";
 import { DatasetConditions } from "./synthetic/DatasetConditions";
+import { ListTable, ListRow } from "../list/ListTable";
 
 const PROD = "prod";
 
@@ -60,6 +61,18 @@ const OWN_MEASURES = new Set([
   "privacy_dropped",
   "privacy_mostly_noise",
   "privacy_epsilon_charged",
+  "closeness",
+  "closeness_threshold",
+  "closeness_redrawn",
+  "closeness_dropped",
+  "closeness_cascaded",
+  "closeness_distance",
+  "closeness_nndr",
+  "closeness_membership_auc",
+  "dependence_spearman",
+  "dependence_copula_shrink",
+  "dependence_kept_own",
+  "dependence_network_not_kept",
 ]);
 
 // REQ-1939: an environment's synthetic datasets -- defined, generated, regenerated and dropped
@@ -83,6 +96,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
   const [conditions, setConditions] = useState<FanoutCondition[]>([]);
   const [assertions, setAssertions] = useState<string[]>([]);
   const [epsilon, setEpsilon] = useState<number | null>(null);
+  const [closeness, setCloseness] = useState<{ threshold: number; draws: number } | null>(null);
 
   const reload = useCallback(() => {
     if (!env) return;
@@ -141,6 +155,8 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
         fanoutConditions: conditions,
         assertions,
         privateEpsilon: epsilon,
+        closenessThreshold: closeness?.threshold ?? null,
+        closenessDraws: closeness?.draws ?? null,
       }),
     );
   const generated = relationships.filter(
@@ -175,7 +191,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
           {error}
         </Alert>
       )}
-      <Table striped data-testid="synthetic-datasets">
+      <ListTable testId="synthetic-datasets">
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{t("syntheticDatasets.colName")}</Table.Th>
@@ -187,7 +203,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
         </Table.Thead>
         <Table.Tbody>
           {datasets.map((d) => (
-            <Table.Tr key={d.id} data-testid={`synthetic-row-${d.id}`}>
+            <ListRow key={d.id} testId={`synthetic-row-${d.id}`}>
               <Table.Td>{d.id}</Table.Td>
               <Table.Td>
                 <Badge
@@ -242,10 +258,10 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
                   </Button>
                 </Group>
               </Table.Td>
-            </Table.Tr>
+            </ListRow>
           ))}
         </Table.Tbody>
-      </Table>
+      </ListTable>
 
       {report && (
         <Stack gap={4} data-testid="synthetic-report">
@@ -264,7 +280,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
             </Table.Thead>
             <Table.Tbody>
               {report.rows.map((r, i) => (
-                <Table.Tr key={i}>
+                <ListRow key={i}>
                   <Table.Td>{r.table}</Table.Td>
                   <Table.Td>{r.column ?? ""}</Table.Td>
                   <Table.Td>{measureLabel(r.measure)}</Table.Td>
@@ -272,7 +288,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
                   <Table.Td>{syntheticCell(r)}</Table.Td>
                   <Table.Td>{num(r.delta)}</Table.Td>
                   <Table.Td>{r.note ?? ""}</Table.Td>
-                </Table.Tr>
+                </ListRow>
               ))}
             </Table.Tbody>
           </Table>
@@ -317,12 +333,12 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
           {t("syntheticDatasets.noRuns", { env: profileEnv })}
         </Text>
       ) : (
-        <Table data-testid="synthetic-tables">
+        <ListTable testId="synthetic-tables">
           <Table.Tbody>
             {runs.map((r) => {
               const p = picked[r.tableId];
               return (
-                <Table.Tr key={r.tableId}>
+                <ListRow key={r.tableId}>
                   <Table.Td>
                     <Checkbox
                       label={r.tableName}
@@ -373,11 +389,11 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
                       }
                     />
                   </Table.Td>
-                </Table.Tr>
+                </ListRow>
               );
             })}
           </Table.Tbody>
-        </Table>
+        </ListTable>
       )}
       <Group align="end">
         <Checkbox
@@ -396,6 +412,37 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
             onChange={(v) => setEpsilon(Number(v))}
             data-testid="synthetic-epsilon"
           />
+        )}
+      </Group>
+      <Group align="end">
+        <Checkbox
+          label={t("syntheticDatasets.closeness")}
+          description={t("syntheticDatasets.closenessHelp")}
+          checked={closeness !== null}
+          onChange={(e) =>
+            setCloseness(e.currentTarget.checked ? { threshold: 0.5, draws: 3 } : null)
+          }
+          data-testid="synthetic-closeness"
+        />
+        {closeness !== null && (
+          <>
+            <NumberInput
+              label={t("syntheticDatasets.closenessThreshold")}
+              min={0.01}
+              decimalScale={2}
+              value={closeness.threshold}
+              onChange={(v) => setCloseness({ ...closeness, threshold: Number(v) })}
+              data-testid="synthetic-closeness-threshold"
+            />
+            <NumberInput
+              label={t("syntheticDatasets.closenessDraws")}
+              min={1}
+              allowDecimal={false}
+              value={closeness.draws}
+              onChange={(v) => setCloseness({ ...closeness, draws: Number(v) })}
+              data-testid="synthetic-closeness-draws"
+            />
+          </>
         )}
       </Group>
       <DatasetConditions relationships={generated} value={conditions} onChange={setConditions} />

@@ -71,6 +71,7 @@
     "purposeAria": "About registered tables",
     "erdHelpTitle": "Entity-relationship diagram",
     "erdHelpBody": "Draws the registered tables and the relationships declared between them, so the joins that already exist are visible before you write a query. It reads the model rather than editing it: filter by domain and export the diagram as PNG or SVG.",
-    "purposeModel": "+ Model declares an entity or a fact — the two pieces both a star schema and a Data Vault are built from — and lowers it onto those same primitives, registering the materialized view, its history mode, and the relationships to the entities it keys on."
+    "purposeModel": "+ Model declares an entity or a fact — the two pieces both a star schema and a Data Vault are built from — and lowers it onto those same primitives, registering the materialized view, its history mode, and the relationships to the entities it keys on.",
+    "empty": "No tables registered yet."
   }
 }

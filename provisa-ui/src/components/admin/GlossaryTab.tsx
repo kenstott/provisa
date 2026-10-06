@@ -80,6 +80,7 @@ import type {
   GlossaryTermDetail,
   GlossaryTermSummary,
 } from "../../api/glossary";
+import { ListTable, ListRow } from "../list/ListTable";
 
 // Per-viewer list-filter preferences; never reachable from other viewers or the server.
 function readStoredBool(key: string, fallback: boolean): boolean {
@@ -791,8 +792,7 @@ export function GlossaryTab() {
                   {t("glossaryTab.noRefs")}
                 </Text>
               ) : (
-                <Table.ScrollContainer minWidth={480}>
-                  <Table striped withTableBorder verticalSpacing="xs">
+                <ListTable minWidth={480}>
                     <Table.Thead>
                       <Table.Tr>
                         <Table.Th>{t("glossaryTab.colColumn")}</Table.Th>
@@ -804,9 +804,9 @@ export function GlossaryTab() {
                     </Table.Thead>
                     <Table.Tbody>
                       {detail.refs.map((ref) => (
-                        <Table.Tr
+                        <ListRow
                           key={`${ref.table_id}:${ref.column_name}`}
-                          data-testid={`glossary-ref-${ref.table_id}-${ref.column_name}`}
+                          testId={`glossary-ref-${ref.table_id}-${ref.column_name}`}
                         >
                           <Table.Td>{ref.column_name}</Table.Td>
                           <Table.Td>{ref.alias || ref.table_name}</Table.Td>
@@ -825,11 +825,10 @@ export function GlossaryTab() {
                               />
                             </Table.Td>
                           )}
-                        </Table.Tr>
+                        </ListRow>
                       ))}
                     </Table.Tbody>
-                  </Table>
-                </Table.ScrollContainer>
+                  </ListTable>
               )}
 
               <Group gap="xs" align="center">

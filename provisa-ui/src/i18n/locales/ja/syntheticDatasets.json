@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "統計ファミリーの ε",
     "measure_privacy_dropped": "ノイズにより除外",
     "measure_privacy_mostly_noise": "ほぼノイズ",
-    "measure_privacy_epsilon_charged": "消費した ε"
+    "measure_privacy_epsilon_charged": "消費した ε",
+    "closeness": "実在の行に近すぎない",
+    "closenessHelp": "生成した各行を実在の行のサンプルと比較します。しきい値より近い行は引き直され、それでも近すぎる場合は子の行とともに除外されます。オフ: 近さは確認しません。",
+    "closenessThreshold": "しきい値 (実在の行どうしの典型的な距離に対する割合)",
+    "closenessDraws": "行あたりの引き直し回数",
+    "measure_closeness": "近さ",
+    "measure_closeness_threshold": "近さのしきい値",
+    "measure_closeness_redrawn": "引き直した行",
+    "measure_closeness_dropped": "近すぎて除外した行",
+    "measure_closeness_cascaded": "親とともに除外した行",
+    "measure_closeness_distance": "最も近い実在の行までの距離",
+    "measure_closeness_nndr": "最近傍距離比",
+    "measure_closeness_membership_auc": "メンバーシップ推論テスト (AUC)",
+    "measure_dependence_spearman": "順位相関",
+    "measure_dependence_copula_shrink": "相関の補正",
+    "measure_dependence_kept_own": "単独で抽出",
+    "measure_dependence_network_not_kept": "依存ネットワークは保持しない"
   }
 }

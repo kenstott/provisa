@@ -158,6 +158,12 @@ beforeEach(() => {
 });
 
 describe("MetricsPage detail-then-edit", () => {
+  it("REQ-1940: renders its list through the shared list component", () => {
+    const { container } = render(<MetricsPage />);
+    expect(container.querySelector("[data-list-table].data-table")).not.toBeNull();
+    expect(container.querySelectorAll("tbody tr.list-row").length).toBeGreaterThan(0);
+  });
+
   it("row click opens the detail panel with source fact and dependent views", async () => {
     render(<MetricsPage />);
     expect(screen.queryByTestId("metric-detail-revenue")).toBeNull();

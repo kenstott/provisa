@@ -41,6 +41,7 @@
     "modelingHelpTitle": "Atelier de modélisation SQL",
     "modelingHelpBody": "Un espace pour régler une jointure avant de la déclarer : exécutez du SQL sur les tables enregistrées, profilez les colonnes, tracez la jointure sur un canevas, puis promouvez le résultat en relation réelle sans la ressaisir ici.",
     "suggestHelpTitle": "Relations suggérées",
-    "suggestHelpBody": "Parcourt les tables enregistrées de tous les domaines à la recherche de jointures probables et les liste comme candidates. Rien n'est déclaré tant que vous n'en acceptez pas une, et une candidate rejetée reste hors de la liste jusqu'à ce que vous effaciez les rejets."
+    "suggestHelpBody": "Parcourt les tables enregistrées de tous les domaines à la recherche de jointures probables et les liste comme candidates. Rien n'est déclaré tant que vous n'en acceptez pas une, et une candidate rejetée reste hors de la liste jusqu'à ce que vous effaciez les rejets.",
+    "empty": "Aucune relation enregistrée pour le moment."
   }
 }

@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "ε of a statistic family",
     "measure_privacy_dropped": "Dropped by the noise",
     "measure_privacy_mostly_noise": "Mostly noise",
-    "measure_privacy_epsilon_charged": "ε charged"
+    "measure_privacy_epsilon_charged": "ε charged",
+    "closeness": "Not too close to a real row",
+    "closenessHelp": "Compare each generated row with a sample of real rows; a row nearer than the threshold is drawn again, and dropped with its children if still too near. Off: closeness is not checked.",
+    "closenessThreshold": "Threshold (share of the real rows' typical distance)",
+    "closenessDraws": "Draws per row",
+    "measure_closeness": "Closeness",
+    "measure_closeness_threshold": "Closeness threshold",
+    "measure_closeness_redrawn": "Rows drawn again",
+    "measure_closeness_dropped": "Rows dropped as too near",
+    "measure_closeness_cascaded": "Rows dropped with their parent",
+    "measure_closeness_distance": "Distance to the nearest real row",
+    "measure_closeness_nndr": "Nearest-neighbour distance ratio",
+    "measure_closeness_membership_auc": "Membership-inference test (AUC)",
+    "measure_dependence_spearman": "Rank correlation",
+    "measure_dependence_copula_shrink": "Correlation repair",
+    "measure_dependence_kept_own": "Drawn on its own",
+    "measure_dependence_network_not_kept": "Dependency network not kept"
   }
 }

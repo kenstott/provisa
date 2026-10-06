@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "ε de uma família de estatísticas",
     "measure_privacy_dropped": "Descartado pelo ruído",
     "measure_privacy_mostly_noise": "Sobretudo ruído",
-    "measure_privacy_epsilon_charged": "ε gasto"
+    "measure_privacy_epsilon_charged": "ε gasto",
+    "closeness": "Não demasiado perto de uma linha real",
+    "closenessHelp": "Compara cada linha gerada com uma amostra de linhas reais; uma linha mais próxima do que o limiar é sorteada de novo e, se ainda estiver demasiado próxima, descartada com as suas filhas. Desligado: a proximidade não é verificada.",
+    "closenessThreshold": "Limiar (fração da distância típica entre linhas reais)",
+    "closenessDraws": "Sorteios por linha",
+    "measure_closeness": "Proximidade",
+    "measure_closeness_threshold": "Limiar de proximidade",
+    "measure_closeness_redrawn": "Linhas sorteadas de novo",
+    "measure_closeness_dropped": "Linhas descartadas por proximidade",
+    "measure_closeness_cascaded": "Linhas descartadas com o seu pai",
+    "measure_closeness_distance": "Distância à linha real mais próxima",
+    "measure_closeness_nndr": "Razão das distâncias ao vizinho mais próximo",
+    "measure_closeness_membership_auc": "Teste de inferência de pertença (AUC)",
+    "measure_dependence_spearman": "Correlação de ordens",
+    "measure_dependence_copula_shrink": "Correção das correlações",
+    "measure_dependence_kept_own": "Sorteada por si só",
+    "measure_dependence_network_not_kept": "Rede de dependências não mantida"
   }
 }

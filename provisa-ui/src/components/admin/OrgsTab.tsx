@@ -41,6 +41,7 @@ import {
 import type { Org, OrgMember, OrgInvite } from "../../api/admin";
 import { FilterInput } from "./FilterInput";
 import { inviteUrl } from "../../lib/authHost";
+import { ListTable, ListRow } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -235,8 +236,7 @@ export function OrgsTab() {
         </Stack>
       )}
 
-      <Table.ScrollContainer minWidth={640}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+      <ListTable minWidth={640}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("orgsTab.colId")}</Table.Th>
@@ -256,7 +256,7 @@ export function OrgsTab() {
             {pagedOrgs.map((org) => {
               const expanded = expandedOrgId === org.id;
               return (
-                <Table.Tr key={org.id}>
+                <ListRow key={org.id}>
                   <Table.Td>{org.id}</Table.Td>
                   <Table.Td>{org.name}</Table.Td>
                   <Table.Td>
@@ -337,12 +337,11 @@ export function OrgsTab() {
                       </ActionIcon>
                     )}
                   </Table.Td>
-                </Table.Tr>
+                </ListRow>
               );
             })}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+        </ListTable>
       {orgTotalPages > 1 && (
         <Group justify="flex-end">
           <Pagination
@@ -405,8 +404,7 @@ export function OrgsTab() {
         </Stack>
       )}
 
-      <Table.ScrollContainer minWidth={640}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+      <ListTable minWidth={640}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("orgsTab.colOrg")}</Table.Th>
@@ -427,7 +425,7 @@ export function OrgsTab() {
               </Table.Tr>
             )}
             {pagedInvites.map((inv) => (
-              <Table.Tr key={inv.token}>
+              <ListRow key={inv.token}>
                 <Table.Td>{inv.org_name}</Table.Td>
                 <Table.Td>
                   <Badge variant="light" color={inv.role_id === "org_admin" ? "blue" : "gray"}>
@@ -474,11 +472,10 @@ export function OrgsTab() {
                     )}
                   </Group>
                 </Table.Td>
-              </Table.Tr>
+              </ListRow>
             ))}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+        </ListTable>
       {invTotalPages > 1 && (
         <Group justify="flex-end">
           <Pagination

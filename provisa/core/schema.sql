@@ -1025,6 +1025,10 @@ CREATE TABLE IF NOT EXISTS synthetic_datasets (
     fanout_conditions JSONB NOT NULL DEFAULT '[]',
     assertions    JSONB NOT NULL DEFAULT '[]',
     private_epsilon DOUBLE PRECISION,     -- REQ-1939: the privacy budget ε; NULL: not private
+    -- REQ-1939, NOT TOO CLOSE TO A REAL ROW: the threshold (a share of the real rows' own typical
+    -- nearest-neighbour distance) and the draws a row takes; both NULL: not checked
+    closeness_threshold DOUBLE PRECISION,
+    closeness_draws INTEGER,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

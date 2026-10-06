@@ -294,7 +294,15 @@ A dataset may carry assertions, each a statement over its generated tables that 
 
 ### Not too close to a real row
 
-When it generates, a dataset reads a sample of each table's real rows as the organization's administrator and measures each generated row's distance to its nearest real row, over the columns with no declared fake. A row nearer than the closeness threshold, a share of the real rows' own typical distance to one another, is drawn again. A row still too near after the stated number of draws is dropped and counted.
+A dataset may declare a closeness threshold and a number of draws, both or neither. With neither, closeness is not checked, and the report says so.
+
+When it generates, the dataset reads up to 2,000 of each table's real rows as the organization's administrator and measures each generated row's distance to its nearest real row. The distance reads only the columns drawn from real values, so keys, foreign keys and columns with a declared fake or rule are left out. A number counts its difference over the sample's interquartile range; a date counts the same over seconds; any other value counts 0 if equal and 1 if not. The distance is the mean over the columns.
+
+The threshold is a share of the real rows' median distance to their nearest other real row. A generated row nearer than that to any real row is drawn again, up to the number of draws, and dropped if no draw is far enough. A dropped row's children are dropped too. A draw changes a row's values only: its key, its parent and how many children it has stay the same, and so do the columns a child's conditional fan-out or dependence reads.
+
+The real sample is held in the dataset's own store schema for the comparison only. It is never registered, so no role of the environment can read it, and it is removed once generation ends, whether generation succeeded or failed.
+
+A private dataset cannot declare closeness, because the comparison reads real rows outside its ε.
 
 ### Differential privacy
 
@@ -323,7 +331,7 @@ Choose **Report** on a generated dataset. After generation the synthetic tables 
 | Source, Synthetic, Difference | The two values and their gap |
 | Note | Names every column generated with no declared fake, so you see what is undeclared |
 
-The report also shows each conditional fan-out's parents and children, each assertion's result, the distribution of generated rows' distances to the nearest real row beside the real rows' own, and the rows redrawn and dropped. For a private dataset it gives ε, the mechanism, how ε was split, the ε charged in total, what the noise dropped, and every statistic that is mostly noise. It gives named privacy measures too: distance to closest record, the nearest-neighbour distance ratio, and the result of a membership-inference test.
+The report also shows each conditional fan-out's parents and children, each assertion's result, the closeness threshold, the rows drawn again, dropped, and dropped with a parent, and the generated rows' distances to the nearest real row beside the real rows' own. For a private dataset it gives ε, the mechanism, how ε was split, the ε charged in total, what the noise dropped, and every statistic that is mostly noise. When closeness is checked it gives named privacy measures too: distance to closest record, the nearest-neighbour distance ratio, and a membership test, the chance that a generated row lies nearer the real rows than a real row lies to the others. A value of 0.5 means the generated rows sit no nearer than real rows do.
 
 A small Kolmogorov-Smirnov distance means the synthetic column follows the source's distribution. A large one on `orders.total` says to declare a distribution, or to re-profile. The generated tables are marked as generated, and an environment filled this way holds no personal data.
 

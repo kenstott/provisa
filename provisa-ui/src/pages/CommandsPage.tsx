@@ -60,6 +60,14 @@ import {
 } from "./commands/types";
 import { CommandFormFields } from "./commands/CommandFormFields";
 import { PageLoading } from "../components/PageLoading";
+import {
+  ListTable,
+  ListHead,
+  ListRow,
+  ListExpandRow,
+  ListEmpty,
+  ListDetail,
+} from "../components/list/ListTable";
 
 export function CommandsPage() {
   const { t } = useTranslation();
@@ -396,40 +404,31 @@ export function CommandsPage() {
       )}
 
       <Title order={3}>{t("commandsPage.dbFunctionsHeading")}</Title>
-      <Table.ScrollContainer minWidth={720}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("commandsPage.colName")}</Table.Th>
-              <Table.Th>{t("commandsPage.colSource")}</Table.Th>
-              <Table.Th>{t("commandsPage.colDomain")}</Table.Th>
-              <Table.Th>{t("commandsPage.colFunction")}</Table.Th>
-              <Table.Th>{t("commandsPage.colReturns")}</Table.Th>
-              <Table.Th>{t("commandsPage.colArgs")}</Table.Th>
-              <Table.Th>{t("commandsPage.colVisibleTo")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+      <ListTable minWidth={720}>
+          <ListHead
+            columns={[
+              t("commandsPage.colName"),
+              t("commandsPage.colSource"),
+              t("commandsPage.colDomain"),
+              t("commandsPage.colFunction"),
+              t("commandsPage.colReturns"),
+              t("commandsPage.colArgs"),
+              t("commandsPage.colVisibleTo"),
+            ]}
+          />
           <Table.Tbody>
             {filteredFunctions.length === 0 && (
-              <Table.Tr>
-                <Table.Td colSpan={7} ta="center" c="dimmed">
-                  {t("commandsPage.noFunctions")}
-                </Table.Td>
-              </Table.Tr>
+              <ListEmpty colSpan={7}>{t("commandsPage.noFunctions")}</ListEmpty>
             )}
             {pagedFunctions.map((fn) => {
               const isExpanded = expandedFn === fn.name;
               const isEditing = editingName === fn.name;
               return (
                 <React.Fragment key={fn.name}>
-                  <Table.Tr
+                  <ListRow
                     onClick={() => {
                       setExpandedFn(isExpanded ? null : fn.name);
                       if (isEditing) setEditingName(null);
-                    }}
-                    style={{
-                      cursor: "pointer",
-                      background: isExpanded ? "var(--surface)" : undefined,
                     }}
                   >
                     <Table.Td>
@@ -449,17 +448,10 @@ export function CommandsPage() {
                     </Table.Td>
                     <Table.Td>{fn.arguments.length}</Table.Td>
                     <Table.Td>{fn.visibleTo.join(", ") || t("commandsPage.all")}</Table.Td>
-                  </Table.Tr>
+                  </ListRow>
                   {isExpanded && (
-                    <Table.Tr>
-                      <Table.Td
-                        colSpan={7}
-                        style={{
-                          padding: "0.75rem 1rem",
-                          background: "var(--bg)",
-                          borderTop: "1px solid var(--border)",
-                        }}
-                      >
+                    <ListExpandRow colSpan={7}>
+                      <ListDetail>
                         {isEditing ? (
                           <Stack component="form" gap="sm" onSubmit={handleSave}>
                             <CommandFormFields {...formFieldsProps} />
@@ -612,15 +604,14 @@ export function CommandsPage() {
                             </Group>
                           </Stack>
                         )}
-                      </Table.Td>
-                    </Table.Tr>
+                      </ListDetail>
+                    </ListExpandRow>
                   )}
                 </React.Fragment>
               );
             })}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+      </ListTable>
       {fnTotalPages > 1 && (
         <Group justify="flex-end">
           <Pagination total={fnTotalPages} value={fnPage} onChange={setFnPage} size="sm" />
@@ -628,42 +619,33 @@ export function CommandsPage() {
       )}
 
       <Title order={3}>{t("commandsPage.webhooksHeading")}</Title>
-      <Table.ScrollContainer minWidth={720}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("commandsPage.colName")}</Table.Th>
-              <Table.Th>{t("commandsPage.colStatus")}</Table.Th>
-              <Table.Th>{t("commandsPage.colDomain")}</Table.Th>
-              <Table.Th>{t("commandsPage.colUrl")}</Table.Th>
-              <Table.Th>{t("commandsPage.colMethod")}</Table.Th>
-              <Table.Th>{t("commandsPage.colTimeout")}</Table.Th>
-              <Table.Th>{t("commandsPage.colReturns")}</Table.Th>
-              <Table.Th>{t("commandsPage.colArgs")}</Table.Th>
-              <Table.Th>{t("commandsPage.colVisibleTo")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+      <ListTable minWidth={720}>
+          <ListHead
+            columns={[
+              t("commandsPage.colName"),
+              t("commandsPage.colStatus"),
+              t("commandsPage.colDomain"),
+              t("commandsPage.colUrl"),
+              t("commandsPage.colMethod"),
+              t("commandsPage.colTimeout"),
+              t("commandsPage.colReturns"),
+              t("commandsPage.colArgs"),
+              t("commandsPage.colVisibleTo"),
+            ]}
+          />
           <Table.Tbody>
             {filteredWebhooks.length === 0 && (
-              <Table.Tr>
-                <Table.Td colSpan={9} ta="center" c="dimmed">
-                  {t("commandsPage.noWebhooks")}
-                </Table.Td>
-              </Table.Tr>
+              <ListEmpty colSpan={9}>{t("commandsPage.noWebhooks")}</ListEmpty>
             )}
             {pagedWebhooks.map((wh) => {
               const isExpanded = expandedWh === wh.name;
               const isEditing = editingName === wh.name;
               return (
                 <React.Fragment key={wh.name}>
-                  <Table.Tr
+                  <ListRow
                     onClick={() => {
                       setExpandedWh(isExpanded ? null : wh.name);
                       if (isEditing) setEditingName(null);
-                    }}
-                    style={{
-                      cursor: "pointer",
-                      background: isExpanded ? "var(--surface)" : undefined,
                     }}
                   >
                     <Table.Td>
@@ -698,17 +680,10 @@ export function CommandsPage() {
                     </Table.Td>
                     <Table.Td>{wh.arguments.length}</Table.Td>
                     <Table.Td>{wh.visibleTo.join(", ") || t("commandsPage.all")}</Table.Td>
-                  </Table.Tr>
+                  </ListRow>
                   {isExpanded && (
-                    <Table.Tr>
-                      <Table.Td
-                        colSpan={9}
-                        style={{
-                          padding: "0.75rem 1rem",
-                          background: "var(--bg)",
-                          borderTop: "1px solid var(--border)",
-                        }}
-                      >
+                    <ListExpandRow colSpan={9}>
+                      <ListDetail>
                         {isEditing ? (
                           <Stack component="form" gap="sm" onSubmit={handleSave}>
                             <CommandFormFields {...formFieldsProps} />
@@ -888,15 +863,14 @@ export function CommandsPage() {
                             </Group>
                           </Stack>
                         )}
-                      </Table.Td>
-                    </Table.Tr>
+                      </ListDetail>
+                    </ListExpandRow>
                   )}
                 </React.Fragment>
               );
             })}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+      </ListTable>
       {whTotalPages > 1 && (
         <Group justify="flex-end">
           <Pagination total={whTotalPages} value={whPage} onChange={setWhPage} size="sm" />

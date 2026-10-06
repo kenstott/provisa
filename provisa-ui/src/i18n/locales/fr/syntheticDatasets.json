@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "ε d'une famille de statistiques",
     "measure_privacy_dropped": "Écarté par le bruit",
     "measure_privacy_mostly_noise": "Surtout du bruit",
-    "measure_privacy_epsilon_charged": "ε consommé"
+    "measure_privacy_epsilon_charged": "ε consommé",
+    "closeness": "Pas trop proche d'une ligne réelle",
+    "closenessHelp": "Compare chaque ligne générée à un échantillon de lignes réelles ; une ligne plus proche que le seuil est retirée au sort et, si elle reste trop proche, écartée avec ses enfants. Désactivé : la proximité n'est pas vérifiée.",
+    "closenessThreshold": "Seuil (part de la distance typique entre lignes réelles)",
+    "closenessDraws": "Tirages par ligne",
+    "measure_closeness": "Proximité",
+    "measure_closeness_threshold": "Seuil de proximité",
+    "measure_closeness_redrawn": "Lignes retirées au sort",
+    "measure_closeness_dropped": "Lignes écartées car trop proches",
+    "measure_closeness_cascaded": "Lignes écartées avec leur parent",
+    "measure_closeness_distance": "Distance à la ligne réelle la plus proche",
+    "measure_closeness_nndr": "Rapport des distances aux plus proches voisins",
+    "measure_closeness_membership_auc": "Test d'inférence d'appartenance (AUC)",
+    "measure_dependence_spearman": "Corrélation de rangs",
+    "measure_dependence_copula_shrink": "Correction des corrélations",
+    "measure_dependence_kept_own": "Tirée indépendamment",
+    "measure_dependence_network_not_kept": "Réseau de dépendances non conservé"
   }
 }

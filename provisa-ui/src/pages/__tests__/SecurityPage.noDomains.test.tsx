@@ -122,6 +122,19 @@ describe("SecurityPage — a role lists at least one domain", () => {
     expect(screen.getByTestId("role-domains-everything")).toHaveTextContent("*");
   });
 
+  it("REQ-1940: the roles list renders through the shared list component, rows striped by item", () => {
+    const { container } = render(<SecurityPage />);
+    const list = container.querySelector("[data-list-table]");
+    expect(list).not.toBeNull();
+    expect(list!.classList.contains("data-table")).toBe(true);
+    const rows = container.querySelectorAll("tbody tr.list-row");
+    expect(rows).toHaveLength(ROLES.length);
+    // Expanding a role adds a detail row that is not an item row, so the alternation is unchanged.
+    fireEvent.click(screen.getByText("analyst"));
+    expect(container.querySelectorAll("tbody tr.list-row")).toHaveLength(ROLES.length);
+    expect(container.querySelectorAll("tbody tr.list-expand")).toHaveLength(1);
+  });
+
   it("shows neither message when a saved role that lists domains is edited", () => {
     render(<SecurityPage />);
     fireEvent.click(screen.getByText("analyst"));

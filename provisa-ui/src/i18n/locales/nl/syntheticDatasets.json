@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "ε van een statistiekfamilie",
     "measure_privacy_dropped": "Weggelaten door de ruis",
     "measure_privacy_mostly_noise": "Vooral ruis",
-    "measure_privacy_epsilon_charged": "Verbruikte ε"
+    "measure_privacy_epsilon_charged": "Verbruikte ε",
+    "closeness": "Niet te dicht bij een echte rij",
+    "closenessHelp": "Vergelijk elke gegenereerde rij met een steekproef van echte rijen; een rij dichter dan de drempel wordt opnieuw getrokken en, als hij nog te dicht is, met zijn kinderen weggelaten. Uit: nabijheid wordt niet gecontroleerd.",
+    "closenessThreshold": "Drempel (deel van de typische afstand tussen echte rijen)",
+    "closenessDraws": "Trekkingen per rij",
+    "measure_closeness": "Nabijheid",
+    "measure_closeness_threshold": "Nabijheidsdrempel",
+    "measure_closeness_redrawn": "Opnieuw getrokken rijen",
+    "measure_closeness_dropped": "Als te dicht weggelaten rijen",
+    "measure_closeness_cascaded": "Met hun ouder weggelaten rijen",
+    "measure_closeness_distance": "Afstand tot de dichtstbijzijnde echte rij",
+    "measure_closeness_nndr": "Verhouding van naaste-buurafstanden",
+    "measure_closeness_membership_auc": "Lidmaatschapsinferentietest (AUC)",
+    "measure_dependence_spearman": "Rangcorrelatie",
+    "measure_dependence_copula_shrink": "Correctie van correlaties",
+    "measure_dependence_kept_own": "Op zichzelf getrokken",
+    "measure_dependence_network_not_kept": "Afhankelijkheidsnetwerk niet behouden"
   }
 }

@@ -10,11 +10,12 @@
 
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Group, Pagination, Stack, Table, Text, Title } from "@mantine/core";
+import { ActionIcon, Group, Pagination, Stack, Table, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Trash2 } from "lucide-react";
 import { fetchOrgRoles, deleteOrgRole } from "../../api/admin";
 import type { Role } from "../../types/auth";
+import { ListTable, ListHead, ListRow, ListEmpty } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -45,30 +46,19 @@ export function RolesTab({ orgId }: RolesTabProps) {
   return (
     <Stack gap="md">
       <Title order={4}>{t("rolesTab.heading", { orgId })}</Title>
-      <Table.ScrollContainer minWidth={640}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("rolesTab.colId")}</Table.Th>
-              <Table.Th>{t("rolesTab.colCapabilities")}</Table.Th>
-              <Table.Th>{t("rolesTab.colDomainAccess")}</Table.Th>
-              <Table.Th>
-                <Text span visibleFrom="xs" fz="sm" fw={600}>
-                  {t("rolesTab.colActions")}
-                </Text>
-              </Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+      <ListTable minWidth={640} testId="org-roles-list">
+          <ListHead
+            columns={[
+              t("rolesTab.colId"),
+              t("rolesTab.colCapabilities"),
+              t("rolesTab.colDomainAccess"),
+              t("rolesTab.colActions"),
+            ]}
+          />
           <Table.Tbody>
-            {orgRoles.length === 0 && (
-              <Table.Tr>
-                <Table.Td colSpan={4} ta="center" c="dimmed">
-                  {t("rolesTab.empty")}
-                </Table.Td>
-              </Table.Tr>
-            )}
+            {orgRoles.length === 0 && <ListEmpty colSpan={4}>{t("rolesTab.empty")}</ListEmpty>}
             {paged.map((role) => (
-              <Table.Tr key={role.id}>
+              <ListRow key={role.id}>
                 <Table.Td>
                   {role.id}
                 </Table.Td>
@@ -96,11 +86,10 @@ export function RolesTab({ orgId }: RolesTabProps) {
                     </Table.Td>
                   </>
                 )}
-              </Table.Tr>
+              </ListRow>
             ))}
           </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+      </ListTable>
       {totalPages > 1 && (
         <Group justify="flex-end">
           <Pagination total={totalPages} value={rolePage} onChange={setRolePage} size="sm" />

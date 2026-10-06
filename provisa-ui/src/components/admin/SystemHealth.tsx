@@ -12,6 +12,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Box, Group, Table, Text } from "@mantine/core";
 import { useSystemHealth } from "../../hooks/useAdminOpsQueries";
+import { ListTable, ListRow } from "../list/ListTable";
 
 // null = neutral/disabled (grey), true = ok (green), false = down (red)
 function StatusDot({ ok }: { ok: boolean | null }) {
@@ -49,8 +50,7 @@ export function SystemHealth() {
   if (!health) return <Text>{t("systemHealth.loading")}</Text>;
 
   return (
-    <Table.ScrollContainer minWidth={640}>
-      <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+    <ListTable minWidth={640}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{t("systemHealth.colComponent")}</Table.Th>
@@ -59,7 +59,7 @@ export function SystemHealth() {
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          <Table.Tr>
+          <ListRow>
             <Table.Td>{t("systemHealth.federationEngine")}</Table.Td>
             <Table.Td>
               <Group gap={0} wrap="nowrap">
@@ -77,8 +77,8 @@ export function SystemHealth() {
                   })
                 : ""}
             </Table.Td>
-          </Table.Tr>
-          <Table.Tr>
+          </ListRow>
+          <ListRow>
             <Table.Td>
               {t("systemHealth.metadataDb")}
               {health.metadataDialect ? ` (${health.metadataDialect})` : ""}
@@ -101,8 +101,8 @@ export function SystemHealth() {
                     idle: health.metadataPoolFree,
                   })}
             </Table.Td>
-          </Table.Tr>
-          <Table.Tr>
+          </ListRow>
+          <ListRow>
             <Table.Td>{t("systemHealth.cache")}</Table.Td>
             <Table.Td>
               <Group gap={0} wrap="nowrap">
@@ -123,9 +123,9 @@ export function SystemHealth() {
                   ? t("systemHealth.fakeredis")
                   : ""}
             </Table.Td>
-          </Table.Tr>
+          </ListRow>
           {health.protocols.map((p) => (
-            <Table.Tr key={p.name}>
+            <ListRow key={p.name}>
               <Table.Td>{p.name}</Table.Td>
               <Table.Td>
                 <Group gap={0} wrap="nowrap">
@@ -138,9 +138,9 @@ export function SystemHealth() {
                 </Group>
               </Table.Td>
               <Table.Td>{p.port != null ? t("systemHealth.port", { port: p.port }) : ""}</Table.Td>
-            </Table.Tr>
+            </ListRow>
           ))}
-          <Table.Tr>
+          <ListRow>
             <Table.Td>{t("systemHealth.mvRefreshLoop")}</Table.Td>
             <Table.Td>
               <Group gap={0} wrap="nowrap">
@@ -151,9 +151,8 @@ export function SystemHealth() {
               </Group>
             </Table.Td>
             <Table.Td></Table.Td>
-          </Table.Tr>
+          </ListRow>
         </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+      </ListTable>
   );
 }

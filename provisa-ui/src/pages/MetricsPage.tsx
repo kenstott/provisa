@@ -32,6 +32,15 @@ import { OssieInterchangePanel } from "./metrics/OssieInterchangePanel";
 import { HelpBubble } from "../components/HelpBubble";
 import { MetricDetailPanel } from "./metrics/MetricDetailPanel";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
+import {
+  ListTable,
+  ListHead,
+  ListRow,
+  ListExpandRow,
+  ListEmpty,
+  ListDetail,
+} from "../components/list/ListTable";
+import { PageLoading } from "../components/PageLoading";
 
 interface MetricForm {
   name: string;
@@ -371,39 +380,34 @@ export function MetricsPage() {
       )}
 
       {loading && metrics.length === 0 ? (
-        <Text size="sm" c="var(--text-muted)">
-          {t("metricsPage.loading")}
-        </Text>
-      ) : metrics.length === 0 ? (
-        <Text size="sm" c="var(--text-muted)" data-testid="metrics-empty">
-          {t("metricsPage.empty")}
-        </Text>
+        <PageLoading message={t("metricsPage.loading")} />
       ) : (
-        <Table striped highlightOnHover data-testid="metrics-table">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("metricsPage.colName")}</Table.Th>
-              <Table.Th>{t("metricsPage.colExpression")}</Table.Th>
-              <Table.Th>{t("metricsPage.colDatatype")}</Table.Th>
-              <Table.Th>{t("metricsPage.colDescription")}</Table.Th>
-              <Table.Th>{t("metricsPage.colAiContext")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+      <ListTable testId="metrics-table">
+          <ListHead
+            columns={[
+              t("metricsPage.colName"),
+              t("metricsPage.colExpression"),
+              t("metricsPage.colDatatype"),
+              t("metricsPage.colDescription"),
+              t("metricsPage.colAiContext"),
+            ]}
+          />
           <Table.Tbody>
+            {metrics.length === 0 && (
+              <ListEmpty colSpan={5} testId="metrics-empty">
+                {t("metricsPage.empty")}
+              </ListEmpty>
+            )}
             {metrics.map((m) => {
               const isExpanded = expanded === m.name;
               const isEditing = editingName === m.name;
               return (
                 <React.Fragment key={m.name}>
-                  <Table.Tr
-                    data-testid={`metrics-row-${m.name}`}
+                  <ListRow
+                    testId={`metrics-row-${m.name}`}
                     onClick={() => {
                       setExpanded(isExpanded ? null : m.name);
                       if (isEditing && isExpanded) closeForm();
-                    }}
-                    style={{
-                      cursor: "pointer",
-                      background: isExpanded ? "var(--surface)" : undefined,
                     }}
                   >
                     <Table.Td>
@@ -440,18 +444,10 @@ export function MetricsPage() {
                         {m.aiContext ?? ""}
                       </Text>
                     </Table.Td>
-                  </Table.Tr>
+                  </ListRow>
                   {isExpanded && (
-                    <Table.Tr key={`${m.name}-detail`}>
-                      <Table.Td
-                        colSpan={5}
-                        style={{
-                          padding: "0.75rem 1rem",
-                          background: "var(--bg)",
-                          borderTop: "1px solid var(--border)",
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                    <ListExpandRow colSpan={5}>
+                      <ListDetail>
                         {isEditing ? (
                           formCard
                         ) : (
@@ -462,14 +458,14 @@ export function MetricsPage() {
                             onDelete={() => setDeleteTarget(m.name)}
                           />
                         )}
-                      </Table.Td>
-                    </Table.Tr>
+                      </ListDetail>
+                    </ListExpandRow>
                   )}
                 </React.Fragment>
               );
             })}
           </Table.Tbody>
-        </Table>
+      </ListTable>
       )}
 
       {/* Delete confirm */}

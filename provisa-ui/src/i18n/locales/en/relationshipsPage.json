@@ -41,6 +41,7 @@
     "modelingHelpTitle": "SQL modeling workbench",
     "modelingHelpBody": "A workspace for settling a join before you declare it: run SQL against the registered tables, profile the columns, draw the join on a canvas, then promote the result into a real relationship without retyping it here.",
     "suggestHelpTitle": "Suggested relationships",
-    "suggestHelpBody": "Scans the registered tables across domains for likely joins and lists them as candidates. Nothing is declared until you accept one, and a rejected candidate stays out of the list until you clear the rejections."
+    "suggestHelpBody": "Scans the registered tables across domains for likely joins and lists them as candidates. Nothing is declared until you accept one, and a rejected candidate stays out of the list until you clear the rejections.",
+    "empty": "No relationships registered yet."
   }
 }

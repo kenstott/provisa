@@ -83,3 +83,19 @@ async def drop_synthetic_schema(dsn: str, schema: str) -> None:
     async with store_connection(dsn) as conn:
         await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
     log.info("Dropped synthetic dataset schema %s", schema)
+
+
+async def drop_synthetic_table(dsn: str, schema: str, table: str) -> None:
+    """Remove one table from a synthetic dataset's schema in the store at ``dsn``: a real sample
+    landed for generation only (REQ-1939, NOT TOO CLOSE TO A REAL ROW; maintainer ruling W1)."""
+    from sqlalchemy import text
+
+    from provisa.federation.replica_address import is_replicas_schema
+    from provisa.federation.store_writer import store_connection
+
+    if SYNTHETIC_INFIX not in schema or not is_replicas_schema(schema):
+        raise ValueError(f"{schema!r} is not a synthetic dataset's schema")
+    quoted = '"' + table.replace('"', '""') + '"'
+    async with store_connection(dsn) as conn:
+        await conn.execute_core(text(f'DROP TABLE IF EXISTS "{schema}".{quoted}'))
+    log.info("Dropped %s from synthetic dataset schema %s", table, schema)

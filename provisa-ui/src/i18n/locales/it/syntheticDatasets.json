@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "ε di una famiglia di statistiche",
     "measure_privacy_dropped": "Scartato dal rumore",
     "measure_privacy_mostly_noise": "Per lo più rumore",
-    "measure_privacy_epsilon_charged": "ε consumato"
+    "measure_privacy_epsilon_charged": "ε consumato",
+    "closeness": "Non troppo vicino a una riga reale",
+    "closenessHelp": "Confronta ogni riga generata con un campione di righe reali; una riga più vicina della soglia viene estratta di nuovo e, se resta troppo vicina, scartata con le sue figlie. Disattivato: la vicinanza non viene controllata.",
+    "closenessThreshold": "Soglia (quota della distanza tipica tra righe reali)",
+    "closenessDraws": "Estrazioni per riga",
+    "measure_closeness": "Vicinanza",
+    "measure_closeness_threshold": "Soglia di vicinanza",
+    "measure_closeness_redrawn": "Righe estratte di nuovo",
+    "measure_closeness_dropped": "Righe scartate perché troppo vicine",
+    "measure_closeness_cascaded": "Righe scartate con il loro padre",
+    "measure_closeness_distance": "Distanza dalla riga reale più vicina",
+    "measure_closeness_nndr": "Rapporto delle distanze dai vicini più prossimi",
+    "measure_closeness_membership_auc": "Test di inferenza di appartenenza (AUC)",
+    "measure_dependence_spearman": "Correlazione di rango",
+    "measure_dependence_copula_shrink": "Correzione delle correlazioni",
+    "measure_dependence_kept_own": "Estratta da sola",
+    "measure_dependence_network_not_kept": "Rete di dipendenze non mantenuta"
   }
 }

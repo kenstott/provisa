@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "ε einer Statistikfamilie",
     "measure_privacy_dropped": "Durch das Rauschen entfernt",
     "measure_privacy_mostly_noise": "Überwiegend Rauschen",
-    "measure_privacy_epsilon_charged": "Verbrauchtes ε"
+    "measure_privacy_epsilon_charged": "Verbrauchtes ε",
+    "closeness": "Nicht zu nah an einer echten Zeile",
+    "closenessHelp": "Jede erzeugte Zeile wird mit einer Stichprobe echter Zeilen verglichen; eine Zeile näher als der Schwellenwert wird neu gezogen und, wenn sie noch zu nah ist, mit ihren Kindern verworfen. Aus: Nähe wird nicht geprüft.",
+    "closenessThreshold": "Schwellenwert (Anteil des typischen Abstands echter Zeilen)",
+    "closenessDraws": "Ziehungen je Zeile",
+    "measure_closeness": "Nähe",
+    "measure_closeness_threshold": "Nähe-Schwellenwert",
+    "measure_closeness_redrawn": "Neu gezogene Zeilen",
+    "measure_closeness_dropped": "Als zu nah verworfene Zeilen",
+    "measure_closeness_cascaded": "Mit ihrem Elternteil verworfene Zeilen",
+    "measure_closeness_distance": "Abstand zur nächsten echten Zeile",
+    "measure_closeness_nndr": "Verhältnis der Nächste-Nachbarn-Abstände",
+    "measure_closeness_membership_auc": "Mitgliedschaftstest (AUC)",
+    "measure_dependence_spearman": "Rangkorrelation",
+    "measure_dependence_copula_shrink": "Korrektur der Korrelationen",
+    "measure_dependence_kept_own": "Eigenständig gezogen",
+    "measure_dependence_network_not_kept": "Abhängigkeitsnetz nicht übernommen"
   }
 }

@@ -88,6 +88,14 @@ import {
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
+import {
+  ListTable,
+  ListHead,
+  ListRow,
+  ListExpandRow,
+  ListEmpty,
+  ListDetail,
+} from "../components/list/ListTable";
 import { KeptTablesNotice } from "../components/KeptTablesNotice";
 import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
@@ -336,16 +344,16 @@ export function SourcesPage() {
       items: SOURCE_TYPES.filter((s) => s.category === cat)
         .filter((s) => s.value !== "soda" || !hostedPlane)
         .map((s) => {
-        const info = reachInfoFor(s.value, engineState);
-        return {
-          value: s.value,
-          label: `${pickerTypeLabel(s)}${reachSuffix(info)}`,
-          // REQ-1938: the picker shows the plain name with a reach icon instead of the suffix.
-          name: pickerTypeLabel(s),
-          reach: info,
-          disabled: !info.selectable,
-        };
-      }),
+          const info = reachInfoFor(s.value, engineState);
+          return {
+            value: s.value,
+            label: `${pickerTypeLabel(s)}${reachSuffix(info)}`,
+            // REQ-1938: the picker shows the plain name with a reach icon instead of the suffix.
+            name: pickerTypeLabel(s),
+            reach: info,
+            disabled: !info.selectable,
+          };
+        }),
     }));
 
   const resetSpFields = () => {
@@ -543,9 +551,14 @@ export function SourcesPage() {
       }
     }
     if (
-      (s.type === "delta_lake" || s.type === "iceberg" ||
-        s.type === "snowflake" || s.type === "databricks" || s.type === "bigquery" ||
-        s.type === "exasol" || s.type === "sqlserver" || s.type === "fabric" ||
+      (s.type === "delta_lake" ||
+        s.type === "iceberg" ||
+        s.type === "snowflake" ||
+        s.type === "databricks" ||
+        s.type === "bigquery" ||
+        s.type === "exasol" ||
+        s.type === "sqlserver" ||
+        s.type === "fabric" ||
         s.type === "synapse") &&
       s.federationHintsJson
     ) {
@@ -788,7 +801,9 @@ export function SourcesPage() {
             )
           : form.type === "databricks" && authFields.http_path
             ? { http_path: authFields.http_path }
-            : form.type === "bigquery" && authType === "service_account" && authFields.credentials_json
+            : form.type === "bigquery" &&
+                authType === "service_account" &&
+                authFields.credentials_json
               ? { credentials_path: authFields.credentials_json }
               : // REQ-990: a CSV/Parquet file in an object store carries that store's credentials,
                 // the store named by its path (S3, GCS HMAC keys, an Azure account key).
@@ -806,70 +821,72 @@ export function SourcesPage() {
                       ...icebergCatalogHints(authFields),
                     }
                   : form.type === "delta_lake" && authType === "aws"
-                  ? objectStoreHints("S3", authFields)
-                : // exasol: an optional TLS-fingerprint pin for a self-signed cert the truststore
-                  // can't chain (models.py's Source.jdbc_url reads federation_hints["tls_fingerprint"]).
-                  form.type === "exasol" && authType === "tls_fingerprint" && authFields.tls_fingerprint
-                  ? { tls_fingerprint: authFields.tls_fingerprint }
-                  : // sqlserver: an optional flag trusting a self-signed/internal-CA cert the
-                    // truststore can't chain — common on internal/on-prem deployments (models.py's
-                    // Source.jdbc_url reads federation_hints["trust_server_certificate"]).
-                    form.type === "sqlserver" && authType === "trust_server_certificate"
-                    ? { trust_server_certificate: "true" }
-                    : // fabric/synapse: an optional Azure AD service-principal identity pinned per-source
-                    // (mssql_warehouse.py's MssqlWarehouseDriver._token reads tenant_id/client_id/
-                    // client_secret); absent, the driver falls back to the ambient credential.
-                    (form.type === "fabric" || form.type === "synapse") &&
-                      authType === "service_principal"
-                    ? Object.fromEntries(
-                        (["tenant_id", "client_id", "client_secret"] as const)
-                          .filter((k) => authFields[k])
-                          .map((k) => [k, authFields[k]]),
-                      )
-                    : // REQ-1731: HiveDriver.configure() reads `auth_mechanism` from federation_hints;
-                      // PLAIN is the driver's own default, so only submit it when the operator picked a
-                      // non-default mechanism (GSSAPI/LDAP) — no point round-tripping the default.
-                      form.type === "hiveserver2" &&
-                        authFields.auth_mechanism &&
-                        authFields.auth_mechanism !== "PLAIN"
-                      ? { auth_mechanism: authFields.auth_mechanism }
-                      : // REQ-1739: websocket/rss connection extras that don't fit host/port/path
-                        // (use_ssl/subscribe_payload/event_path/reconnect_interval for websocket;
-                        // feed_url/poll_interval/use_ssl for rss) travel the same channel.
-                        form.type === "websocket"
-                        ? Object.fromEntries(
-                            (
-                              [
-                                ["use_ssl", wsUseSsl ? "true" : ""],
-                                ["subscribe_payload", wsSubscribePayload.trim()],
-                                ["event_path", wsEventPath.trim()],
-                                ["reconnect_interval", wsReconnectInterval.trim()],
-                              ] as const
-                            ).filter(([, v]) => v),
-                          )
-                        : form.type === "rss"
+                    ? objectStoreHints("S3", authFields)
+                    : // exasol: an optional TLS-fingerprint pin for a self-signed cert the truststore
+                      // can't chain (models.py's Source.jdbc_url reads federation_hints["tls_fingerprint"]).
+                      form.type === "exasol" &&
+                        authType === "tls_fingerprint" &&
+                        authFields.tls_fingerprint
+                      ? { tls_fingerprint: authFields.tls_fingerprint }
+                      : // sqlserver: an optional flag trusting a self-signed/internal-CA cert the
+                        // truststore can't chain — common on internal/on-prem deployments (models.py's
+                        // Source.jdbc_url reads federation_hints["trust_server_certificate"]).
+                        form.type === "sqlserver" && authType === "trust_server_certificate"
+                        ? { trust_server_certificate: "true" }
+                        : // fabric/synapse: an optional Azure AD service-principal identity pinned per-source
+                          // (mssql_warehouse.py's MssqlWarehouseDriver._token reads tenant_id/client_id/
+                          // client_secret); absent, the driver falls back to the ambient credential.
+                          (form.type === "fabric" || form.type === "synapse") &&
+                            authType === "service_principal"
                           ? Object.fromEntries(
-                              (
-                                [
-                                  ["feed_url", rssFeedUrl.trim()],
-                                  ["poll_interval", rssPollInterval.trim()],
-                                  ["use_ssl", rssUseSsl ? "true" : "false"],
-                                ] as const
-                              ).filter(([, v]) => v),
+                              (["tenant_id", "client_id", "client_secret"] as const)
+                                .filter((k) => authFields[k])
+                                .map((k) => [k, authFields[k]]),
                             )
-                          : // REQ-1740: sparql/source.py's SparqlSourceConfig.default_graph_uri —
-                            // optional, restricts queries to one named graph.
-                            form.type === "sparql" && authFields.default_graph_uri?.trim()
-                            ? { default_graph_uri: authFields.default_graph_uri.trim() }
-                            : // A type with no dedicated branch above has no UI field this form could
-                              // ever reconstruct its federation_hints from -- falling through to {}
-                              // unconditionally wiped them on every edit (confirmed: kaggle_owner/
-                              // kaggle_ref, stashed on create by KaggleFormSection, silently lost on
-                              // the next edit of that same csv/parquet source). Preserve verbatim
-                              // instead when editing such a type; a brand-new source has nothing yet.
-                              editingSourceId && editingSourceHintsJson
-                              ? (JSON.parse(editingSourceHintsJson) as Record<string, string>)
-                              : {};
+                          : // REQ-1731: HiveDriver.configure() reads `auth_mechanism` from federation_hints;
+                            // PLAIN is the driver's own default, so only submit it when the operator picked a
+                            // non-default mechanism (GSSAPI/LDAP) — no point round-tripping the default.
+                            form.type === "hiveserver2" &&
+                              authFields.auth_mechanism &&
+                              authFields.auth_mechanism !== "PLAIN"
+                            ? { auth_mechanism: authFields.auth_mechanism }
+                            : // REQ-1739: websocket/rss connection extras that don't fit host/port/path
+                              // (use_ssl/subscribe_payload/event_path/reconnect_interval for websocket;
+                              // feed_url/poll_interval/use_ssl for rss) travel the same channel.
+                              form.type === "websocket"
+                              ? Object.fromEntries(
+                                  (
+                                    [
+                                      ["use_ssl", wsUseSsl ? "true" : ""],
+                                      ["subscribe_payload", wsSubscribePayload.trim()],
+                                      ["event_path", wsEventPath.trim()],
+                                      ["reconnect_interval", wsReconnectInterval.trim()],
+                                    ] as const
+                                  ).filter(([, v]) => v),
+                                )
+                              : form.type === "rss"
+                                ? Object.fromEntries(
+                                    (
+                                      [
+                                        ["feed_url", rssFeedUrl.trim()],
+                                        ["poll_interval", rssPollInterval.trim()],
+                                        ["use_ssl", rssUseSsl ? "true" : "false"],
+                                      ] as const
+                                    ).filter(([, v]) => v),
+                                  )
+                                : // REQ-1740: sparql/source.py's SparqlSourceConfig.default_graph_uri —
+                                  // optional, restricts queries to one named graph.
+                                  form.type === "sparql" && authFields.default_graph_uri?.trim()
+                                  ? { default_graph_uri: authFields.default_graph_uri.trim() }
+                                  : // A type with no dedicated branch above has no UI field this form could
+                                    // ever reconstruct its federation_hints from -- falling through to {}
+                                    // unconditionally wiped them on every edit (confirmed: kaggle_owner/
+                                    // kaggle_ref, stashed on create by KaggleFormSection, silently lost on
+                                    // the next edit of that same csv/parquet source). Preserve verbatim
+                                    // instead when editing such a type; a brand-new source has nothing yet.
+                                    editingSourceId && editingSourceHintsJson
+                                    ? (JSON.parse(editingSourceHintsJson) as Record<string, string>)
+                                    : {};
       const federationHintsJson =
         Object.keys(federationHints).length > 0 ? JSON.stringify(federationHints) : undefined;
       // password auth (Snowflake) / personal-access-token auth (Databricks) collect into authFields,
@@ -887,33 +904,33 @@ export function SourcesPage() {
         form.type === "data_profiler"
           ? profilerMappingJson(authFields) // REQ-1934
           : form.type === "sharepoint"
-          ? JSON.stringify({
-              auth_type: spAuthType,
-              ...(spAuthType === "CERTIFICATE"
-                ? { certificate_path: spCertPath, certificate_password: spCertPassword }
-                : {}),
-              ...(spAuthType === "USERNAME_PASSWORD"
-                ? { sp_username: spUsername, sp_password: spPassword }
-                : {}),
-            })
-          : form.type === "splunk"
             ? JSON.stringify({
-                use_token: splunkAuthMode === "token",
-                ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+                auth_type: spAuthType,
+                ...(spAuthType === "CERTIFICATE"
+                  ? { certificate_path: spCertPath, certificate_password: spCertPassword }
+                  : {}),
+                ...(spAuthType === "USERNAME_PASSWORD"
+                  ? { sp_username: spUsername, sp_password: spPassword }
+                  : {}),
               })
-            : // The Trino gsheets catalog needs the service-account key path alongside the metadata
-              // sheet id (which rides in `database`), so it travels in the mapping like the other
-              // connectors' extra options.
-              form.type === "google_sheets"
-              ? JSON.stringify({ credentials_json: authFields.credentials_json ?? "" })
-              : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
-                // region/endpoint) are a mapping-discriminated config choice read by
-                // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
-                // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
-                // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
-                form.type === "hive" || form.type === "hive_s3"
-                ? JSON.stringify({ storage: lakeStorage, ...authFields })
-                : undefined;
+            : form.type === "splunk"
+              ? JSON.stringify({
+                  use_token: splunkAuthMode === "token",
+                  ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+                })
+              : // The Trino gsheets catalog needs the service-account key path alongside the metadata
+                // sheet id (which rides in `database`), so it travels in the mapping like the other
+                // connectors' extra options.
+                form.type === "google_sheets"
+                ? JSON.stringify({ credentials_json: authFields.credentials_json ?? "" })
+                : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
+                  // region/endpoint) are a mapping-discriminated config choice read by
+                  // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
+                  // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
+                  // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
+                  form.type === "hive" || form.type === "hive_s3"
+                  ? JSON.stringify({ storage: lakeStorage, ...authFields })
+                  : undefined;
       const sourcePayload = {
         ...coreForm,
         ...authCredentials,
@@ -949,7 +966,7 @@ export function SourcesPage() {
                   ? form.path
                   : filesTransport + form.path
                 : form.path || null
-            : null,
+              : null,
         database:
           form.type === "govdata"
             ? Array.from(
@@ -1453,305 +1470,271 @@ export function SourcesPage() {
           act on — see TablesPage.tsx's RegisterTableForm wrapper for the full explanation. */}
       {showForm && !editingSourceId && (
         <div className="page-aux">
-        <form
-          data-tour="sources-form"
-          className="form-card"
-          onSubmit={
-            form.type === "openapi"
-              ? handleOpenapiRegister
-              : form.type === "grpc"
-                ? handleGrpcRegister
-                : form.type === "graphql" || form.type in BRAND_CARRIER
-                  ? handleGraphqlRegister
-                  : // REQ-1780/1783: kaggle registers per-file through KaggleFormSection's own
-                    // "Add Dataset" button (each file needs its own createSource+registerTable
-                    // call, not one createSource for a single "kaggle" type — which does not
-                    // exist as a SourceType) — the outer submit has nothing of its own to do.
-                    form.type === "kaggle"
-                    ? (e: React.FormEvent) => e.preventDefault()
-                    : handleCreate
-          }
-        >
-          <TextInput
-            label={t("sourcesPage.idLabel")}
-            required
-            value={form.id}
-            onChange={(e) => setForm({ ...form, id: e.currentTarget.value })}
-            placeholder={t("sourcesPage.idPlaceholder")}
-            data-testid="sources-id-input"
-          />
-          <label>
-            {t("sourcesPage.typeLabel")}
-            <select
-              data-tour="sources-type"
-              data-testid="sources-type-select"
-              value={form.type}
-              onChange={(e) => handleTypeChange(e.target.value)}
-              // REQ-1938: clicking the field, or opening it from the keyboard, shows the picker
-              // dialog instead of the long native list. The select still holds the value, so
-              // setting it programmatically (selectOption) works unchanged.
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setTypePickerOpen(true);
-              }}
-              // A click that was not preceded by a mouse press (the guided tour's) opens it too.
-              onClick={() => setTypePickerOpen(true)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " " || (e.altKey && e.key === "ArrowDown")) {
+          <form
+            data-tour="sources-form"
+            className="form-card"
+            onSubmit={
+              form.type === "openapi"
+                ? handleOpenapiRegister
+                : form.type === "grpc"
+                  ? handleGrpcRegister
+                  : form.type === "graphql" || form.type in BRAND_CARRIER
+                    ? handleGraphqlRegister
+                    : // REQ-1780/1783: kaggle registers per-file through KaggleFormSection's own
+                      // "Add Dataset" button (each file needs its own createSource+registerTable
+                      // call, not one createSource for a single "kaggle" type — which does not
+                      // exist as a SourceType) — the outer submit has nothing of its own to do.
+                      form.type === "kaggle"
+                      ? (e: React.FormEvent) => e.preventDefault()
+                      : handleCreate
+            }
+          >
+            <TextInput
+              label={t("sourcesPage.idLabel")}
+              required
+              value={form.id}
+              onChange={(e) => setForm({ ...form, id: e.currentTarget.value })}
+              placeholder={t("sourcesPage.idPlaceholder")}
+              data-testid="sources-id-input"
+            />
+            <label>
+              {t("sourcesPage.typeLabel")}
+              <select
+                data-tour="sources-type"
+                data-testid="sources-type-select"
+                value={form.type}
+                onChange={(e) => handleTypeChange(e.target.value)}
+                // REQ-1938: clicking the field, or opening it from the keyboard, shows the picker
+                // dialog instead of the long native list. The select still holds the value, so
+                // setting it programmatically (selectOption) works unchanged.
+                onMouseDown={(e) => {
                   e.preventDefault();
                   setTypePickerOpen(true);
-                }
-              }}
-            >
-              {typeSelectData().map((group) => (
-                <optgroup key={group.group} label={group.group}>
-                  {group.items.map((item) => (
-                    <option key={item.value} value={item.value} disabled={item.disabled}>
-                      {item.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
-          <SourceTypePicker
-            opened={typePickerOpen}
-            onClose={() => setTypePickerOpen(false)}
-            groups={typeSelectData()}
-            value={form.type}
-            onPick={handleTypeChange}
-          />
-          <SourceFormFields {...sourceFormFieldsProps} />
-          {form.type !== "kaggle" && (
-            <Button type="submit" loading={submitting} data-testid="sources-submit">
-              {submitting ? t("sourcesPage.creating") : t("sourcesPage.create")}
-            </Button>
-          )}
-        </form>
+                }}
+                // A click that was not preceded by a mouse press (the guided tour's) opens it too.
+                onClick={() => setTypePickerOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " " || (e.altKey && e.key === "ArrowDown")) {
+                    e.preventDefault();
+                    setTypePickerOpen(true);
+                  }
+                }}
+              >
+                {typeSelectData().map((group) => (
+                  <optgroup key={group.group} label={group.group}>
+                    {group.items.map((item) => (
+                      <option key={item.value} value={item.value} disabled={item.disabled}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+            <SourceTypePicker
+              opened={typePickerOpen}
+              onClose={() => setTypePickerOpen(false)}
+              groups={typeSelectData()}
+              value={form.type}
+              onPick={handleTypeChange}
+            />
+            <SourceFormFields {...sourceFormFieldsProps} />
+            {form.type !== "kaggle" && (
+              <Button type="submit" loading={submitting} data-testid="sources-submit">
+                {submitting ? t("sourcesPage.creating") : t("sourcesPage.create")}
+              </Button>
+            )}
+          </form>
         </div>
       )}
 
       {/* REQ-1587: the page owns the vertical scroll, so the table's own scroller is the plain
           horizontal one — a Table.ScrollContainer would become the scrollport the header sticks to
           and, growing to its content, would never scroll vertically. */}
-      <div className="table-scroll">
-        <Table
-          striped
-          highlightOnHover
-          withTableBorder
-          verticalSpacing="xs"
-          className="data-table"
-          miw={860}
-        >
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("sourcesPage.colId")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colType")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colHost")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colPort")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colDatabase")}</Table.Th>
-              {hasRegions && <Table.Th>{t("regionSelector.columnHeader")}</Table.Th>}
-              <Table.Th>{t("sourcesPage.colNaming")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colCache")}</Table.Th>
-              <Table.Th>{t("sourcesPage.colEffectiveTtl")}</Table.Th>
-              <Table.Th>
-                <Text span visibleFrom="xs" fz="sm" fw={600}>
-                  {t("sourcesPage.colActions")}
-                </Text>
-              </Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {(() => {
-              const filtered = regionSources;
-              if (filtered.length === 0) {
-                return (
-                  <Table.Tr>
-                    <Table.Td colSpan={hasRegions ? 10 : 9} ta="center" c="dimmed">
-                      {t("sourcesPage.empty")}
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              }
-              const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-              return paged.map((s) => {
-                const isExpanded = expanded === s.id;
-                const isEditing = editingSourceId === s.id;
-                return (
-                  <React.Fragment key={s.id}>
-                    <Table.Tr
-                      data-testid={`sources-row-${s.id}`}
-                      onClick={() => {
-                        updateExpanded(isExpanded ? null : s.id);
-                        if (isEditing && isExpanded) {
-                          setEditingSourceId(null);
-                          handleCancelForm();
-                        }
-                      }}
-                      style={{
-                        cursor: "pointer",
-                        background: isExpanded ? "var(--surface)" : undefined,
-                      }}
-                    >
-                      <Table.Td>
-                        {s.id}
-                      </Table.Td>
-                      <Table.Td>
-                        {sourceTypeLabel(s.type, s.federationHintsJson)}
-                      </Table.Td>
-                      <Table.Td>{s.host}</Table.Td>
-                      <Table.Td>{s.port || "—"}</Table.Td>
-                      <Table.Td>{s.database || "—"}</Table.Td>
-                      {hasRegions && (
-                        <Table.Td c="dimmed" fz="0.85rem">
-                          {s.region ?? t("regionSelector.noRegion")}
-                        </Table.Td>
-                      )}
+      <ListTable minWidth={860} testId="sources-list">
+        <ListHead
+          columns={[
+            t("sourcesPage.colId"),
+            t("sourcesPage.colType"),
+            t("sourcesPage.colHost"),
+            t("sourcesPage.colPort"),
+            t("sourcesPage.colDatabase"),
+            ...(hasRegions ? [t("regionSelector.columnHeader")] : []),
+            t("sourcesPage.colNaming"),
+            t("sourcesPage.colCache"),
+            t("sourcesPage.colEffectiveTtl"),
+            t("sourcesPage.colActions"),
+          ]}
+        />
+        <Table.Tbody>
+          {(() => {
+            const filtered = regionSources;
+            if (filtered.length === 0) {
+              return <ListEmpty colSpan={hasRegions ? 10 : 9}>{t("sourcesPage.empty")}</ListEmpty>;
+            }
+            const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+            return paged.map((s) => {
+              const isExpanded = expanded === s.id;
+              const isEditing = editingSourceId === s.id;
+              return (
+                <React.Fragment key={s.id}>
+                  <ListRow
+                    testId={`sources-row-${s.id}`}
+                    onClick={() => {
+                      updateExpanded(isExpanded ? null : s.id);
+                      if (isEditing && isExpanded) {
+                        setEditingSourceId(null);
+                        handleCancelForm();
+                      }
+                    }}
+                  >
+                    <Table.Td>{s.id}</Table.Td>
+                    <Table.Td>{sourceTypeLabel(s.type, s.federationHintsJson)}</Table.Td>
+                    <Table.Td>{s.host}</Table.Td>
+                    <Table.Td>{s.port || "—"}</Table.Td>
+                    <Table.Td>{s.database || "—"}</Table.Td>
+                    {hasRegions && (
                       <Table.Td c="dimmed" fz="0.85rem">
-                        {s.gqlNamingConvention || t("sourcesPage.naOrInherit")}
+                        {s.region ?? t("regionSelector.noRegion")}
                       </Table.Td>
-                      <Table.Td c="dimmed" fz="0.85rem">
-                        {s.cacheEnabled ? t("sourcesPage.cacheOn") : t("sourcesPage.cacheOff")}
-                      </Table.Td>
-                      <Table.Td c="dimmed" fz="0.85rem">
-                        {getEffectiveTtl(s)}
-                      </Table.Td>
-                      <Table.Td onClick={(e) => e.stopPropagation()}>
-                        <Group gap="xs" wrap="wrap">
-                          <TagControl objectType="source" sourceId={s.id} />
-                          {DISCOVERABLE_TYPES.has(s.type) && (
-                            <Button
-                              size="compact-xs"
-                              variant="default"
-                              data-testid={`sources-discover-${s.id}`}
-                              onClick={() => {
-                                setDiscoverSourceId(s.id);
-                                setDiscoverSourceType(s.type);
-                                setMappingSourceId(null);
-                              }}
-                            >
-                              {t("sourcesPage.discover")}
-                            </Button>
-                          )}
-                          {MAPPING_TYPES.has(s.type) && (
-                            <Button
-                              size="compact-xs"
-                              variant="default"
-                              data-testid={`sources-map-table-${s.id}`}
-                              onClick={() => {
-                                setMappingSourceId(s.id);
-                                setMappingSourceType(s.type);
-                                setDiscoverSourceId(null);
-                              }}
-                            >
-                              {t("sourcesPage.mapTable")}
-                            </Button>
-                          )}
-                          {(s.type === "graphql" || s.type === "openapi" || s.type === "grpc") && (
-                            <Button
-                              size="compact-xs"
-                              variant="default"
-                              data-testid={`sources-refresh-schema-${s.id}`}
-                              onClick={() => handleRefreshSchema(s.id, s.type)}
-                              disabled={refreshingSourceId === s.id}
-                            >
-                              {refreshingSourceId === s.id
-                                ? t("sourcesPage.refreshing")
-                                : t("sourcesPage.refreshSchema")}
-                            </Button>
-                          )}
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                    {isExpanded && (
-                      <Table.Tr key={`${s.id}-detail`}>
-                        <Table.Td
-                          colSpan={hasRegions ? 10 : 9}
-                          style={{
-                            padding: "0.75rem 1rem",
-                            background: "var(--bg)",
-                            borderTop: "1px solid var(--border)",
-                          }}
-                        >
-                          {isEditing ? (
-                            <form
-                              className="form-card"
-                              onSubmit={
-                                form.type === "openapi"
-                                  ? handleOpenapiRegister
-                                  : form.type === "grpc"
-                                    ? handleGrpcRegister
-                                    : form.type === "graphql" || form.type in BRAND_CARRIER
-                                      ? handleGraphqlRegister
-                                      : handleCreate
-                              }
-                              style={{ margin: 0 }}
-                            >
-                              <TextInput
-                                label={t("sourcesPage.idLabel")}
-                                required
-                                value={form.id}
-                                onChange={(e) => setForm({ ...form, id: e.target.value })}
-                              />
-                              <Select
-                                label={t("sourcesPage.typeLabel")}
-                                value={form.type}
-                                onChange={(v) => v && handleTypeChange(v)}
-                                data={typeSelectData()}
-                                allowDeselect={false}
-                                searchable
-                              />
-                              <SourceFormFields {...sourceFormFieldsProps} />
-                              <Group
-                                justify="flex-end"
-                                align="flex-start"
-                                gap="sm"
-                                style={{ alignSelf: "end" }}
-                              >
-                                <Button
-                                  variant="default"
-                                  type="button"
-                                  leftSection={<X size={14} />}
-                                  onClick={handleCancelForm}
-                                >
-                                  {t("sourcesPage.cancelEdit")}
-                                </Button>
-                                <Button
-                                  variant="filled"
-                                  type="submit"
-                                  leftSection={<Check size={14} />}
-                                >
-                                  {t("sourcesPage.saveEdit")}
-                                </Button>
-                              </Group>
-                            </form>
-                          ) : (
-                            <SourceDetailPanel
-                              s={s}
-                              domainsEnabled={domainsEnabled}
-                              getEffectiveTtl={getEffectiveTtl}
-                              onEdit={() => handleEdit(s)}
-                              onNavigate={() =>
-                                navigate(`/tables?source=${encodeURIComponent(s.id)}`)
-                              }
-                              onDelete={async () => {
-                                const result = await deleteSource(s.id);
-                                if (refusal.refused(result, s.id)) return;
-                                if (expanded === s.id) updateExpanded(null);
-                                load();
-                              }}
-                            />
-                          )}
-                        </Table.Td>
-                      </Table.Tr>
                     )}
-                  </React.Fragment>
-                );
-              });
-            })()}
-          </Table.Tbody>
-        </Table>
-      </div>
+                    <Table.Td c="dimmed" fz="0.85rem">
+                      {s.gqlNamingConvention || t("sourcesPage.naOrInherit")}
+                    </Table.Td>
+                    <Table.Td c="dimmed" fz="0.85rem">
+                      {s.cacheEnabled ? t("sourcesPage.cacheOn") : t("sourcesPage.cacheOff")}
+                    </Table.Td>
+                    <Table.Td c="dimmed" fz="0.85rem">
+                      {getEffectiveTtl(s)}
+                    </Table.Td>
+                    <Table.Td onClick={(e) => e.stopPropagation()}>
+                      <Group gap="xs" wrap="wrap">
+                        <TagControl objectType="source" sourceId={s.id} />
+                        {DISCOVERABLE_TYPES.has(s.type) && (
+                          <Button
+                            size="compact-xs"
+                            variant="default"
+                            data-testid={`sources-discover-${s.id}`}
+                            onClick={() => {
+                              setDiscoverSourceId(s.id);
+                              setDiscoverSourceType(s.type);
+                              setMappingSourceId(null);
+                            }}
+                          >
+                            {t("sourcesPage.discover")}
+                          </Button>
+                        )}
+                        {MAPPING_TYPES.has(s.type) && (
+                          <Button
+                            size="compact-xs"
+                            variant="default"
+                            data-testid={`sources-map-table-${s.id}`}
+                            onClick={() => {
+                              setMappingSourceId(s.id);
+                              setMappingSourceType(s.type);
+                              setDiscoverSourceId(null);
+                            }}
+                          >
+                            {t("sourcesPage.mapTable")}
+                          </Button>
+                        )}
+                        {(s.type === "graphql" || s.type === "openapi" || s.type === "grpc") && (
+                          <Button
+                            size="compact-xs"
+                            variant="default"
+                            data-testid={`sources-refresh-schema-${s.id}`}
+                            onClick={() => handleRefreshSchema(s.id, s.type)}
+                            disabled={refreshingSourceId === s.id}
+                          >
+                            {refreshingSourceId === s.id
+                              ? t("sourcesPage.refreshing")
+                              : t("sourcesPage.refreshSchema")}
+                          </Button>
+                        )}
+                      </Group>
+                    </Table.Td>
+                  </ListRow>
+                  {isExpanded && (
+                    <ListExpandRow colSpan={hasRegions ? 10 : 9}>
+                      <ListDetail>
+                        {isEditing ? (
+                          <form
+                            className="form-card"
+                            onSubmit={
+                              form.type === "openapi"
+                                ? handleOpenapiRegister
+                                : form.type === "grpc"
+                                  ? handleGrpcRegister
+                                  : form.type === "graphql" || form.type in BRAND_CARRIER
+                                    ? handleGraphqlRegister
+                                    : handleCreate
+                            }
+                            style={{ margin: 0 }}
+                          >
+                            <TextInput
+                              label={t("sourcesPage.idLabel")}
+                              required
+                              value={form.id}
+                              onChange={(e) => setForm({ ...form, id: e.target.value })}
+                            />
+                            <Select
+                              label={t("sourcesPage.typeLabel")}
+                              value={form.type}
+                              onChange={(v) => v && handleTypeChange(v)}
+                              data={typeSelectData()}
+                              allowDeselect={false}
+                              searchable
+                            />
+                            <SourceFormFields {...sourceFormFieldsProps} />
+                            <Group
+                              justify="flex-end"
+                              align="flex-start"
+                              gap="sm"
+                              style={{ alignSelf: "end" }}
+                            >
+                              <Button
+                                variant="default"
+                                type="button"
+                                leftSection={<X size={14} />}
+                                onClick={handleCancelForm}
+                              >
+                                {t("sourcesPage.cancelEdit")}
+                              </Button>
+                              <Button
+                                variant="filled"
+                                type="submit"
+                                leftSection={<Check size={14} />}
+                              >
+                                {t("sourcesPage.saveEdit")}
+                              </Button>
+                            </Group>
+                          </form>
+                        ) : (
+                          <SourceDetailPanel
+                            s={s}
+                            domainsEnabled={domainsEnabled}
+                            getEffectiveTtl={getEffectiveTtl}
+                            onEdit={() => handleEdit(s)}
+                            onNavigate={() =>
+                              navigate(`/tables?source=${encodeURIComponent(s.id)}`)
+                            }
+                            onDelete={async () => {
+                              const result = await deleteSource(s.id);
+                              if (refusal.refused(result, s.id)) return;
+                              if (expanded === s.id) updateExpanded(null);
+                              load();
+                            }}
+                          />
+                        )}
+                      </ListDetail>
+                    </ListExpandRow>
+                  )}
+                </React.Fragment>
+              );
+            });
+          })()}
+        </Table.Tbody>
+      </ListTable>
 
       {(() => {
         const filtered = sources.filter((s) => {

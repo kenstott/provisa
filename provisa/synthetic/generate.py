@@ -130,6 +130,19 @@ class TablePlan:
     # REQ-1939, DEPENDENCE KEPT: the copula and network the columns are drawn by
     # (provisa.synthetic.dependence.DependencePlan); None where the run measured none.
     dependence: Any = None
+    # REQ-1939, NOT TOO CLOSE TO A REAL ROW: the draw the rows' values are drawn by (0: the
+    # first), and the columns every draw gives one value -- those a child's conditions or
+    # dependence read, which decide its rows, and what they are computed from.
+    draw: int = 0
+    fixed: frozenset[str] = frozenset()
+
+
+def _redraw(plan: TablePlan, column: str, salt: str) -> str:
+    """``salt`` for ``column``'s value draw in the plan's draw: the first draw's salt as it is,
+    a later draw's its own -- a column every draw fixes excepted."""
+    if plan.draw == 0 or column in plan.fixed:
+        return salt
+    return f"{salt}#r{plan.draw}"
 
 
 def _lit(value: str | None) -> str:
@@ -279,7 +292,9 @@ def column_expr(d: _Dialect, plan: TablePlan, col: ColumnPlan, key: str, index: 
     """The value of ``col`` in the row whose draws are keyed by ``key`` and numbered ``index``."""
 
     def u(salt: str, k: str = key) -> str:
-        return d.uniform(plan.seed, plan.name, col.name, salt, k)
+        # A non-driving foreign key's parent is structure, drawn once (REQ-1939, NOT TOO CLOSE).
+        drawn = salt if salt == "parent" else _redraw(plan, col.name, salt)
+        return d.uniform(plan.seed, plan.name, col.name, drawn, k)
 
     if col.key:
         value = _cast(col, _key_value(d, col, index))
@@ -324,7 +339,11 @@ def column_expr(d: _Dialect, plan: TablePlan, col: ColumnPlan, key: str, index: 
                     (
                         shape,
                         share,
-                        d.fill_shape(shape, draw_key, _lit(f"{plan.seed}:{plan.name}:{col.name}")),
+                        d.fill_shape(
+                            shape,
+                            draw_key,
+                            _lit(_redraw(plan, col.name, f"{plan.seed}:{plan.name}:{col.name}")),
+                        ),
                     )
                     for shape, share in col.shapes
                 ]
@@ -425,9 +444,14 @@ def _dependence_levels(d: _Dialect, plan: TablePlan, rows: str, alias: str, key:
     from provisa.synthetic.dependence import normal_cdf_sql
 
     dep = plan.dependence
+    # The copula and network draw together: a later draw redraws them all, unless one of their
+    # columns is fixed (REQ-1939, NOT TOO CLOSE TO A REAL ROW).
+    held = plan.draw == 0 or bool(set(dep.nodes) & plan.fixed)
 
     def uni(column: str, salt: str) -> str:
-        return d.uniform(plan.seed, plan.name, column, salt, key)
+        return d.uniform(
+            plan.seed, plan.name, column, salt if held else f"{salt}#r{plan.draw}", key
+        )
 
     levels: list[list[str]] = []
     if dep.copula:
@@ -606,14 +630,19 @@ def _decided_points(plan: TablePlan) -> list[str]:
 
 
 def _faked(
-    plan: TablePlan, dialect: str, base: str, child_tables: dict[str, str] | None = None
+    plan: TablePlan,
+    dialect: str,
+    base: str,
+    child_tables: dict[str, str] | None = None,
+    carry: tuple[str, ...] = (),
 ) -> str:
     """``base`` -- the generated rows, each faked column's digest beside them -- with every fake
     computed over it as a faked read computes it (provisa.fakes.projection.layered), then the
     row-spanning rules this pass computes (provisa.synthetic.group), then the fakes that read
     them, in ``dialect``. ``child_tables`` -- each generated child table's engine address, by its
     dataset name -- is given in the second pass, when the rules reading children are computed;
-    before it, a rule reading children keeps its column's drawn value."""
+    before it, a rule reading children keeps its column's drawn value. ``carry`` names further
+    columns of ``base`` carried through."""
     fakes = {c.name: c.fake for c in plan.columns if c.fake is not None}
     rules = [g for g in plan.group if child_tables is not None or not reads_children(g)]
     if not fakes and not rules:
@@ -640,17 +669,18 @@ def _faked(
         "g",
         columns,
         {n: c for n, c in fakes.items() if n not in after},
-        keep=later + tuple(p.strip('"') for n, p in points.items() if n in after),
+        keep=later + tuple(p.strip('"') for n, p in points.items() if n in after) + carry,
         uniforms={n: p for n, p in points.items() if n not in after},
     )
     if rules:
-        governed = group_levels(governed, "g", [c.name for c in plan.columns], rules, later)
+        governed = group_levels(governed, "g", [c.name for c in plan.columns], rules, later + carry)
     if after:
         governed = layered(
             governed,
             "g",
             columns,
             {n: fakes[n] for n in sorted(after)},
+            keep=carry,
             uniforms={n: p for n, p in points.items() if n in after},
         )
     physical = transpile_to_trino(governed) if dialect == "trino" else transpile(governed, dialect)
@@ -665,25 +695,34 @@ def _faked(
     return physical
 
 
+RID = "__rid"
+
+
 def generation_sql(
-    plan: TablePlan, dialect: str, child_tables: dict[str, str] | None = None
+    plan: TablePlan, dialect: str, child_tables: dict[str, str] | None = None, rid: bool = False
 ) -> str:
     """The one statement that generates ``plan``'s rows in ``dialect``; in the second pass,
-    ``child_tables`` gives the generated child tables its rules read (:func:`_faked`)."""
+    ``child_tables`` gives the generated child tables its rules read (:func:`_faked`). ``rid``:
+    each row also carries its number as ``__rid``, the same in every draw."""
     d = _Dialect(dialect)
+    carry = (RID,) if rid else ()
     if plan.fanout is None:
         exprs = [column_expr(d, plan, c, "i", "i") for c in plan.columns]
         exprs = _with_digests(d, plan, exprs, "i") + _decided_points(plan)
+        if rid:
+            exprs.append(f"i AS {_quoted(RID)}")
         rows = d.range_rows(plan.rows, "i")
         if plan.dependence is not None:
             rows = _dependence_levels(d, plan, rows, "t", "i")
-        return _faked(plan, dialect, f"SELECT {', '.join(exprs)} FROM {rows}", child_tables)
+        return _faked(plan, dialect, f"SELECT {', '.join(exprs)} FROM {rows}", child_tables, carry)
     parents, _sketch, _hot = plan.fanout
     count = _children(d, plan)
     key = "p, j" if d.name == "duckdb" else "concat(CAST(p AS varchar), ':', CAST(j AS varchar))"
     index = "(row_number() OVER (ORDER BY p, j) - 1)"
     exprs = [column_expr(d, plan, c, key, index) for c in plan.columns]
     exprs = _with_digests(d, plan, exprs, key) + _decided_points(plan)
+    if rid:
+        exprs.append(f"{index} AS {_quoted(RID)}")
     source = _parent_source(d, plan)
     # Every column of the parent rows is carried: the conditions and the dependence read them.
     if d.name == "duckdb":
@@ -692,4 +731,203 @@ def generation_sql(
         rows = f"(SELECT * FROM {source} CROSS JOIN UNNEST({d.children(count)}) AS u(j)) AS c"
     if plan.dependence is not None:
         rows = _dependence_levels(d, plan, rows, "c", key)
-    return _faked(plan, dialect, f"SELECT {', '.join(exprs)} FROM {rows}", child_tables)
+    return _faked(plan, dialect, f"SELECT {', '.join(exprs)} FROM {rows}", child_tables, carry)
+
+
+# -- not too close to a real row (REQ-1939; maintainer rulings W1, Z2, C1) -----------------------
+
+SAMPLE_ID = "__sid"
+
+
+@dataclass(frozen=True)
+class DistanceColumn:
+    """A column the distance between a generated and a real row reads: a number (temporal as
+    seconds since the epoch) apart by its difference over ``scale``, the real sample's
+    interquartile range; a category, or a number whose sample has none, apart by 1 unless equal.
+    The sample holds it as ``__d<position>``, a double or text."""
+
+    name: str
+    family: str  # numeric | temporal | text | boolean | other
+    scale: float | None  # None: equal or not
+    sql_type: str = ""
+
+
+@dataclass(frozen=True)
+class Closeness:
+    """How a table's rows are kept from its real rows: ``draws`` draws of each row's values, the
+    first whose nearest real row in ``sample`` (the real sample's engine address) is at least
+    ``threshold`` away kept, a row with none dropped; and the parents -- (foreign key column,
+    the parent's generated table's address, its key column) -- a row is dropped without, a
+    dropped row's children dropping with it (C1)."""
+
+    sample: str
+    threshold: float
+    draws: int
+    columns: tuple[DistanceColumn, ...]
+    parents: tuple[tuple[str, str, str], ...] = ()
+
+
+def distance_columns(plan: TablePlan) -> list[ColumnPlan]:
+    """The columns drawn from the real values: no key, foreign key, fake or rule decides them --
+    a rule spanning rows among them, computed in the plan's group, not as its column's fake."""
+    rules = {g.name for g in plan.group}
+    return [
+        c
+        for c in plan.columns
+        if not c.key
+        and c.foreign_key is None
+        and c.fake is None
+        and not c.marker
+        and c.name not in rules
+    ]
+
+
+def comparable(d: _Dialect, col: DistanceColumn, expr: str) -> str:
+    """``expr`` as the sample holds the column: a double, or text."""
+    if col.family == "numeric":
+        return f"CAST({expr} AS DOUBLE)"
+    if col.family == "temporal":
+        if d.name == "duckdb":
+            return f"CAST(epoch({expr}) AS DOUBLE)"
+        if "zone" in col.sql_type.lower():
+            return f"CAST(to_unixtime({expr}) AS DOUBLE)"
+        return f"CAST(to_unixtime(with_timezone(CAST({expr} AS timestamp(6)), 'UTC')) AS DOUBLE)"
+    return f"CAST({expr} AS VARCHAR)"
+
+
+def _distance(cols: tuple[DistanceColumn, ...], a: str, b: str) -> str:
+    """The mean of the columns' distances between rows ``a`` and ``b`` (both NULL: 0; one: 1)."""
+    parts = []
+    for i, c in enumerate(cols):
+        x, y = f"{a}.{_quoted(f'__d{i}')}", f"{b}.{_quoted(f'__d{i}')}"
+        if c.scale is not None:
+            parts.append(
+                f"COALESCE(ABS({x} - {y}) / {c.scale!r}, "
+                f"CASE WHEN {x} IS NULL AND {y} IS NULL THEN 0.0 ELSE 1.0 END)"
+            )
+        else:
+            parts.append(f"(CASE WHEN {x} IS NOT DISTINCT FROM {y} THEN 0.0 ELSE 1.0 END)")
+    return f"(({' + '.join(parts)}) / {len(parts)}.0)"
+
+
+def _kept_by_parents(close: Closeness, alias: str) -> str:
+    """Every foreign key's parent kept (or none referred to)."""
+    terms = [
+        f"({alias}.{_quoted(fk)} IS NULL OR {alias}.{_quoted(fk)} IN "
+        f"(SELECT pk.{_quoted(key)} FROM {address} AS pk))"
+        for fk, address, key in close.parents
+    ]
+    return " AND ".join(terms) if terms else "TRUE"
+
+
+def _candidates(
+    plan: TablePlan, dialect: str, close: Closeness, child_tables: dict[str, str] | None
+) -> str:
+    """The WITH clause: every draw of every row (``cand``), each draw's distance to its nearest
+    real row (``nn``) and the draw each row keeps (``pick``): its first far enough."""
+    from dataclasses import replace
+
+    d = _Dialect(dialect)
+    draws = " UNION ALL ".join(
+        f"SELECT {r} AS {_quoted('__draw')}, g.* FROM "
+        f"({generation_sql(replace(plan, draw=r), dialect, child_tables, rid=True)}) AS g"
+        for r in range(close.draws)
+    )
+    values = ", ".join(
+        f"{comparable(d, c, _quoted(c.name))} AS {_quoted(f'__d{i}')}"
+        for i, c in enumerate(close.columns)
+    )
+    rid, draw = _quoted(RID), _quoted("__draw")
+    return (
+        f"WITH cand AS ({draws}), "
+        f"ct AS (SELECT {rid}, {draw}, {values} FROM cand), "
+        f"nn AS (SELECT ct.{rid}, ct.{draw}, MIN({_distance(close.columns, 'ct', 's')}) AS nn "
+        f"FROM ct CROSS JOIN {close.sample} AS s GROUP BY ct.{rid}, ct.{draw}), "
+        f"pick AS (SELECT {rid}, MIN({draw}) AS {draw} FROM nn WHERE nn >= {close.threshold!r} "
+        f"GROUP BY {rid})"
+    )
+
+
+def closeness_sql(
+    plan: TablePlan, dialect: str, close: Closeness, child_tables: dict[str, str] | None = None
+) -> str:
+    """The table's rows, each its first draw far enough from every real row, those with none
+    and those whose parent was dropped left out (REQ-1939, NOT TOO CLOSE TO A REAL ROW). A table
+    with no column drawn from real values keeps its rows, its parents' drops excepted."""
+    cols = ", ".join(f"c.{_quoted(c.name)}" for c in plan.columns)
+    if not close.columns:
+        return (
+            f"SELECT {cols} FROM ({generation_sql(plan, dialect, child_tables)}) AS c "
+            f"WHERE {_kept_by_parents(close, 'c')}"
+        )
+    rid, draw = _quoted(RID), _quoted("__draw")
+    return (
+        f"{_candidates(plan, dialect, close, child_tables)} SELECT {cols} FROM cand AS c "
+        f"JOIN pick ON c.{rid} = pick.{rid} AND c.{draw} = pick.{draw} "
+        f"WHERE {_kept_by_parents(close, 'c')}"
+    )
+
+
+def closeness_counts_sql(plan: TablePlan, dialect: str, close: Closeness) -> str:
+    """For the report: the rows drawn again, dropped as too near, and dropped with a parent."""
+    if not close.columns:
+        return (
+            f"SELECT 0 AS redrawn, 0 AS dropped, COALESCE(SUM(CASE WHEN "
+            f"{_kept_by_parents(close, 'c')} THEN 0 ELSE 1 END), 0) AS cascaded "
+            f"FROM ({generation_sql(plan, dialect)}) AS c"
+        )
+    rid, draw = _quoted(RID), _quoted("__draw")
+    return (
+        f"{_candidates(plan, dialect, close, None)} SELECT "
+        f"COALESCE(SUM(CASE WHEN pick.{draw} > 0 THEN 1 ELSE 0 END), 0) AS redrawn, "
+        f"COALESCE(SUM(CASE WHEN pick.{rid} IS NULL THEN 1 ELSE 0 END), 0) AS dropped, "
+        f"COALESCE(SUM(CASE WHEN pick.{rid} IS NOT NULL AND NOT ({_kept_by_parents(close, 'c')}) "
+        f"THEN 1 ELSE 0 END), 0) AS cascaded "
+        f"FROM cand AS c0 LEFT JOIN pick ON c0.{rid} = pick.{rid} "
+        f"LEFT JOIN cand AS c ON c.{rid} = pick.{rid} AND c.{draw} = pick.{draw} "
+        f"WHERE c0.{draw} = 0"
+    )
+
+
+def _two_nearest(pairs: str, a_id: str, distance: str) -> str:
+    """Each row's nearest and second nearest distance over ``pairs``."""
+    return (
+        f"SELECT a_id, MAX(CASE WHEN k = 1 THEN dist END) AS nn1, "
+        f"MAX(CASE WHEN k = 2 THEN dist END) AS nn2 FROM (SELECT {a_id} AS a_id, {distance} AS "
+        f"dist, row_number() OVER (PARTITION BY {a_id} ORDER BY {distance}) AS k FROM {pairs}) "
+        f"AS r WHERE k <= 2 GROUP BY a_id"
+    )
+
+
+def sample_nearest_sql(close: Closeness) -> str:
+    """Each real sample row's nearest and second nearest other real row (the same in every
+    dialect)."""
+    sid = _quoted(SAMPLE_ID)
+    return _two_nearest(
+        f"{close.sample} AS a JOIN {close.sample} AS b ON a.{sid} <> b.{sid}",
+        f"a.{sid}",
+        _distance(close.columns, "a", "b"),
+    )
+
+
+def generated_nearest_sql(
+    plan: TablePlan, dialect: str, close: Closeness, table: str, limit: int, seed: int
+) -> str:
+    """Up to ``limit`` generated rows of ``table`` (its engine address), chosen by a draw of
+    their values, each with its nearest and second nearest real sample row."""
+    d = _Dialect(dialect)
+    values = ", ".join(
+        f"{comparable(d, c, 'x.' + _quoted(c.name))} AS {_quoted(f'__d{i}')}"
+        for i, c in enumerate(close.columns)
+    )
+    text = ", ".join(
+        f"COALESCE(CAST({_quoted(f'__d{i}')} AS VARCHAR), '')" for i in range(len(close.columns))
+    )
+    order = d.uniform(seed, plan.name, "", "closeness", f"concat_ws('|', {text})")
+    picked = (
+        f"(SELECT row_number() OVER (ORDER BY o, {text}) AS gid, * FROM (SELECT {order} AS o, * "
+        f"FROM (SELECT {values} FROM {table} AS x) AS v) AS w ORDER BY o LIMIT {limit}) AS a"
+    )
+    return _two_nearest(
+        f"{picked} CROSS JOIN {close.sample} AS b", "a.gid", _distance(close.columns, "a", "b")
+    )

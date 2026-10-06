@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "आँकड़ा परिवार का ε",
     "measure_privacy_dropped": "शोर से हटाया गया",
     "measure_privacy_mostly_noise": "अधिकतर शोर",
-    "measure_privacy_epsilon_charged": "खर्च किया गया ε"
+    "measure_privacy_epsilon_charged": "खर्च किया गया ε",
+    "closeness": "किसी वास्तविक पंक्ति के बहुत पास नहीं",
+    "closenessHelp": "हर उत्पन्न पंक्ति की तुलना वास्तविक पंक्तियों के नमूने से करें; सीमा से अधिक पास वाली पंक्ति फिर से निकाली जाती है, और फिर भी बहुत पास हो तो अपनी संतान पंक्तियों सहित हटा दी जाती है। बंद: निकटता की जाँच नहीं होती।",
+    "closenessThreshold": "सीमा (वास्तविक पंक्तियों की सामान्य दूरी का अंश)",
+    "closenessDraws": "प्रति पंक्ति निकासी",
+    "measure_closeness": "निकटता",
+    "measure_closeness_threshold": "निकटता सीमा",
+    "measure_closeness_redrawn": "फिर से निकाली गई पंक्तियाँ",
+    "measure_closeness_dropped": "बहुत पास होने से हटाई गई पंक्तियाँ",
+    "measure_closeness_cascaded": "अपने मूल के साथ हटाई गई पंक्तियाँ",
+    "measure_closeness_distance": "निकटतम वास्तविक पंक्ति से दूरी",
+    "measure_closeness_nndr": "निकटतम पड़ोसी दूरी अनुपात",
+    "measure_closeness_membership_auc": "सदस्यता-अनुमान परीक्षण (AUC)",
+    "measure_dependence_spearman": "रैंक सहसंबंध",
+    "measure_dependence_copula_shrink": "सहसंबंध सुधार",
+    "measure_dependence_kept_own": "स्वतंत्र रूप से निकाला गया",
+    "measure_dependence_network_not_kept": "निर्भरता नेटवर्क नहीं रखा गया"
   }
 }

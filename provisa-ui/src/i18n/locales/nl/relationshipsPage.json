@@ -41,6 +41,7 @@
     "modelingHelpTitle": "SQL-modelleerwerkbank",
     "modelingHelpBody": "Een werkruimte om een join uit te werken voordat je hem declareert: voer SQL uit op de geregistreerde tabellen, profileer de kolommen, teken de join op een canvas en promoveer het resultaat daarna tot een echte relatie zonder het hier opnieuw in te typen.",
     "suggestHelpTitle": "Voorgestelde relaties",
-    "suggestHelpBody": "Doorzoekt de geregistreerde tabellen over domeinen heen op waarschijnlijke joins en toont ze als kandidaten. Er wordt niets gedeclareerd tot je er een accepteert, en een afgewezen kandidaat blijft uit de lijst tot je de afwijzingen wist."
+    "suggestHelpBody": "Doorzoekt de geregistreerde tabellen over domeinen heen op waarschijnlijke joins en toont ze als kandidaten. Er wordt niets gedeclareerd tot je er een accepteert, en een afgewezen kandidaat blijft uit de lijst tot je de afwijzingen wist.",
+    "empty": "Nog geen relaties geregistreerd."
   }
 }

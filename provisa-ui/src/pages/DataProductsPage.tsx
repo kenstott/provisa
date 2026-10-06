@@ -52,6 +52,15 @@ import { domainToSqlName } from "../naming";
 import { columnDescriber } from "../components/lineage/column-descriptions";
 import { CustomPropertiesEditor } from "./data-products/CustomPropertiesEditor";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
+import {
+  ListTable,
+  ListHead,
+  ListRow,
+  ListExpandRow,
+  ListEmpty,
+  ListDetail,
+} from "../components/list/ListTable";
+import { PageLoading } from "../components/PageLoading";
 
 interface DataProductForm {
   id: string;
@@ -796,42 +805,38 @@ export function DataProductsPage() {
                 p.purpose.toLowerCase().includes(q),
             )
           : dataProducts;
-        return loading && dataProducts.length === 0 ? (
-          <Text size="sm" c="var(--text-muted)">
-            {t("dataProductsTab.loading")}
-          </Text>
-        ) : filtered.length === 0 ? (
-          <Text size="sm" c="var(--text-muted)" data-testid="data-products-empty">
-            {t("dataProductsTab.empty")}
-          </Text>
-        ) : (
-          <Table striped highlightOnHover data-testid="data-products-table">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("dataProductsTab.colId")}</Table.Th>
-                <Table.Th>{t("dataProductsTab.colDomain")}</Table.Th>
-                <Table.Th>{t("dataProductsTab.colName")}</Table.Th>
-                <Table.Th>{t("dataProductsTab.colOwner")}</Table.Th>
-                <Table.Th>{t("dataProductsTab.colStatus")}</Table.Th>
-                <Table.Th>{t("dataProductsTab.colPurpose")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
+        if (loading && dataProducts.length === 0) {
+          return <PageLoading message={t("dataProductsTab.loading")} />;
+        }
+        return (
+          <ListTable testId="data-products-table">
+            <ListHead
+              columns={[
+                t("dataProductsTab.colId"),
+                t("dataProductsTab.colDomain"),
+                t("dataProductsTab.colName"),
+                t("dataProductsTab.colOwner"),
+                t("dataProductsTab.colStatus"),
+                t("dataProductsTab.colPurpose"),
+              ]}
+            />
             <Table.Tbody>
+              {filtered.length === 0 && (
+                <ListEmpty colSpan={6} testId="data-products-empty">
+                  {t("dataProductsTab.empty")}
+                </ListEmpty>
+              )}
               {filtered.map((p) => {
                 const isExpanded = expanded === p.id;
                 const isEditing = editingId === p.id;
                 return (
                   <React.Fragment key={p.id}>
-                    <Table.Tr
-                      data-testid={`data-products-row-${p.id}`}
+                    <ListRow
+                      testId={`data-products-row-${p.id}`}
                       aria-expanded={isExpanded}
                       onClick={() => {
                         setExpanded(isExpanded ? null : p.id);
                         if (isEditing && isExpanded) closeForm();
-                      }}
-                      style={{
-                        cursor: "pointer",
-                        background: isExpanded ? "var(--surface)" : undefined,
                       }}
                     >
                       <Table.Td>
@@ -864,23 +869,10 @@ export function DataProductsPage() {
                           {p.purpose}
                         </Text>
                       </Table.Td>
-                    </Table.Tr>
+                    </ListRow>
                     {isExpanded && (
-                      <Table.Tr key={`${p.id}-detail`} data-testid="data-product-detail">
-                        <Table.Td
-                          colSpan={6}
-                          style={{
-                            padding: "0.75rem 1rem",
-                            background: "var(--bg)",
-                            borderTop: "1px solid var(--border)",
-                            // maxWidth: 0 stops this cell's flex-wrap content from ballooning the
-                            // table's auto-layout column widths to fit everything on one row — the
-                            // cell still renders at the table's actual (viewport-bound) width, which
-                            // lets the flex-wrap panels inside actually reflow on browser resize.
-                            maxWidth: 0,
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                      <ListExpandRow colSpan={6} testId="data-product-detail" contained>
+                        <ListDetail>
                           {isEditing ? (
                             formCard
                           ) : (
@@ -905,14 +897,14 @@ export function DataProductsPage() {
                               onDelete={() => setDeleteTarget(p.id)}
                             />
                           )}
-                        </Table.Td>
-                      </Table.Tr>
+                        </ListDetail>
+                      </ListExpandRow>
                     )}
                   </React.Fragment>
                 );
               })}
             </Table.Tbody>
-          </Table>
+          </ListTable>
         );
       })()}
 

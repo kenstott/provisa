@@ -67,6 +67,7 @@ import { DomainModeCard, NamingConventionsCard } from "../components/admin/setti
 import { PageLoading } from "../components/PageLoading";
 import { usePanelState } from "../hooks/usePanelState";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
+import { ListTable, ListHead, ListRow, ListEmpty } from "../components/list/ListTable";
 
 const ROUTE_TO_SECTION: Record<string, string> = {
   // Both routes open the merged dashboard; /admin/system-health keeps working as a deep link.
@@ -324,27 +325,22 @@ export function AdminPage() {
                 );
                 return (
                   <Stack gap="sm">
-                    <Table.ScrollContainer minWidth={480}>
-                      <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
-                        <Table.Thead>
-                          <Table.Tr>
-                            <Table.Th>{t("adminPage.colId")}</Table.Th>
-                            <Table.Th>{t("adminPage.colDescription")}</Table.Th>
-                            <Table.Th>{t("adminPage.colGqlAlias")}</Table.Th>
-                            <Table.Th>{t("adminPage.colSteward")}</Table.Th>
-                            <Table.Th>{t("adminPage.colActions")}</Table.Th>
-                          </Table.Tr>
-                        </Table.Thead>
+                    <ListTable minWidth={480} testId="domains-list">
+                        <ListHead
+                          columns={[
+                            t("adminPage.colId"),
+                            t("adminPage.colDescription"),
+                            t("adminPage.colGqlAlias"),
+                            t("adminPage.colSteward"),
+                            t("adminPage.colActions"),
+                          ]}
+                        />
                         <Table.Tbody>
                           {userDomains.length === 0 && (
-                            <Table.Tr>
-                              <Table.Td colSpan={5} ta="center" c="dimmed">
-                                {t("adminPage.noDomains")}
-                              </Table.Td>
-                            </Table.Tr>
+                            <ListEmpty colSpan={5}>{t("adminPage.noDomains")}</ListEmpty>
                           )}
                           {paged.map((d) => (
-                            <Table.Tr key={d.id}>
+                            <ListRow key={d.id}>
                               <Table.Td>
                                 {d.id}
                               </Table.Td>
@@ -375,11 +371,10 @@ export function AdminPage() {
                                   <Trash2 size={14} />
                                 </ActionIcon>
                               </Table.Td>
-                            </Table.Tr>
+                            </ListRow>
                           ))}
                         </Table.Tbody>
-                      </Table>
-                    </Table.ScrollContainer>
+                    </ListTable>
                     {totalPages > 1 && (
                       <Group justify="flex-end">
                         <Pagination

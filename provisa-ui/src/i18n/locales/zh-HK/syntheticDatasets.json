@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "統計類別的 ε",
     "measure_privacy_dropped": "因雜訊而捨棄",
     "measure_privacy_mostly_noise": "主要是雜訊",
-    "measure_privacy_epsilon_charged": "已消耗的 ε"
+    "measure_privacy_epsilon_charged": "已消耗的 ε",
+    "closeness": "不與真實行過於接近",
+    "closenessHelp": "將每個生成的行與真實行樣本比較；比閾值更近的行會重新抽取，若仍過近則連同其子行一併捨棄。關閉：不檢查接近程度。",
+    "closenessThreshold": "閾值（真實行之間典型距離的比例）",
+    "closenessDraws": "每行抽取次數",
+    "measure_closeness": "接近程度",
+    "measure_closeness_threshold": "接近閾值",
+    "measure_closeness_redrawn": "重新抽取的行",
+    "measure_closeness_dropped": "因過近而捨棄的行",
+    "measure_closeness_cascaded": "隨父行捨棄的行",
+    "measure_closeness_distance": "與最近真實行的距離",
+    "measure_closeness_nndr": "最近鄰距離比",
+    "measure_closeness_membership_auc": "成員推斷測試（AUC）",
+    "measure_dependence_spearman": "秩相關",
+    "measure_dependence_copula_shrink": "相關性修正",
+    "measure_dependence_kept_own": "單獨抽取",
+    "measure_dependence_network_not_kept": "未保留依賴網絡"
   }
 }

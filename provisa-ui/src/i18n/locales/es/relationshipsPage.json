@@ -41,6 +41,7 @@
     "modelingHelpTitle": "Banco de modelado SQL",
     "modelingHelpBody": "Un espacio para resolver un join antes de declararlo: ejecuta SQL sobre las tablas registradas, perfila las columnas, dibuja el join en un lienzo y luego promueve el resultado a una relación real sin volver a escribirla aquí.",
     "suggestHelpTitle": "Relaciones sugeridas",
-    "suggestHelpBody": "Recorre las tablas registradas de todos los dominios buscando joins probables y los lista como candidatos. No se declara nada hasta que aceptas uno, y un candidato rechazado queda fuera de la lista hasta que limpias los rechazos."
+    "suggestHelpBody": "Recorre las tablas registradas de todos los dominios buscando joins probables y los lista como candidatos. No se declara nada hasta que aceptas uno, y un candidato rechazado queda fuera de la lista hasta que limpias los rechazos.",
+    "empty": "Aún no hay relaciones registradas."
   }
 }

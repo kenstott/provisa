@@ -49,6 +49,7 @@ import { useRegionSelection } from "../../hooks/useRegionSelection";
 import { filterByRegion } from "../../hooks/regionFilter";
 import { RegionSelector } from "../RegionSelector";
 import { displayMvName } from "./mvDisplay";
+import { ListTable, ListRow } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -297,7 +298,7 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
               {purging ? t("cacheManager.response.purging") : t("cacheManager.response.purgeAll")}
             </Button>
           </Group>
-          <Table striped highlightOnHover withTableBorder>
+          <ListTable>
             <Table.Thead>
               <Table.Tr>
                 <SortableTh
@@ -323,7 +324,7 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
             </Table.Thead>
             <Table.Tbody>
               {paged.map((tbl) => (
-                <Table.Tr key={tbl.id}>
+                <ListRow key={tbl.id}>
                   <Table.Td>{tbl.alias || tbl.tableName}</Table.Td>
                   <Table.Td>{tbl.domainId}</Table.Td>
                   <Table.Td>{entriesByTable.get(tbl.id) ?? 0}</Table.Td>
@@ -337,10 +338,10 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
                       {t("cacheManager.response.purgeTable")}
                     </Button>
                   </Table.Td>
-                </Table.Tr>
+                </ListRow>
               ))}
             </Table.Tbody>
-          </Table>
+          </ListTable>
           {totalPages > 1 && (
             <Group justify="flex-end">
               <Pagination
@@ -402,7 +403,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
       {hotTables.length === 0 ? (
         <Text c="dimmed">{t("cacheManager.hot.empty")}</Text>
       ) : (
-        <Table striped highlightOnHover withTableBorder>
+        <ListTable>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("cacheManager.hot.table")}</Table.Th>
@@ -415,7 +416,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
           </Table.Thead>
           <Table.Tbody>
             {shownHot.map((h) => (
-              <Table.Tr key={`${h.kind}:${h.catalog}.${h.schemaName}.${h.tableName}`}>
+              <ListRow key={`${h.kind}:${h.catalog}.${h.schemaName}.${h.tableName}`}>
                 <Table.Td>{h.tableName}</Table.Td>
                 <Table.Td>{h.catalog}</Table.Td>
                 <Table.Td>{h.schemaName}</Table.Td>
@@ -428,10 +429,10 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
                     : h.rowCount}
                 </Table.Td>
                 <Table.Td>{t(`cacheManager.hot.kind_${h.kind}`)}</Table.Td>
-              </Table.Tr>
+              </ListRow>
             ))}
           </Table.Tbody>
-        </Table>
+        </ListTable>
       )}
       {platform && <HotTablesSettingsPanel />}
     </Stack>
@@ -487,7 +488,7 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
         <Text c="dimmed">{t("cacheManager.materialized.empty")}</Text>
       ) : (
         <>
-          <Table striped highlightOnHover withTableBorder>
+          <ListTable>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>{t("cacheManager.materialized.view")}</Table.Th>
@@ -503,7 +504,7 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
             </Table.Thead>
             <Table.Tbody>
               {paged.map((mv) => (
-                <Table.Tr key={mv.id}>
+                <ListRow key={mv.id}>
                   <Table.Td>
                     {/* Show the user's alias; mv.id stays the action key below. */}
                     <code>{displayMvName(mv.id)}</code>
@@ -552,10 +553,10 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
                       </Button>
                     </Group>
                   </Table.Td>
-                </Table.Tr>
+                </ListRow>
               ))}
             </Table.Tbody>
-          </Table>
+          </ListTable>
           {totalPages > 1 && (
             <Group justify="flex-end">
               <Pagination

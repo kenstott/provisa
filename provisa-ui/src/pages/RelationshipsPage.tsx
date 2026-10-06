@@ -45,6 +45,7 @@ import {
 } from "../components/relationships/relationship-types";
 import { AddRelationshipForm } from "../components/relationships/AddRelationshipForm";
 import { RelationshipRow } from "../components/relationships/RelationshipRow";
+import { ListTable, ListEmpty } from "../components/list/ListTable";
 import {
   ConflictModal,
   ReverseRelationshipModal,
@@ -520,8 +521,7 @@ export function RelationshipsPage() {
         </div>
       )}
 
-      <div className="table-scroll">
-        <Table className="data-table" style={{ width: "100%", tableLayout: "fixed" }}>
+      <ListTable testId="relationships-list" style={{ tableLayout: "fixed" }}>
           <Table.Thead>
             <Table.Tr>
               {(
@@ -725,14 +725,16 @@ export function RelationshipsPage() {
 
               if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
                 return (
-                  <Table.Tr>
-                    <Table.Td
-                      colSpan={domainsEnabled ? 7 : 6}
-                      style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}
-                    >
-                      {t("relationshipsPage.tooManyRelationships", { count: filtered.length })}
-                    </Table.Td>
-                  </Table.Tr>
+                  <ListEmpty colSpan={domainsEnabled ? 7 : 6}>
+                    {t("relationshipsPage.tooManyRelationships", { count: filtered.length })}
+                  </ListEmpty>
+                );
+              }
+              if (filtered.length === 0) {
+                return (
+                  <ListEmpty colSpan={domainsEnabled ? 7 : 6} testId="relationships-empty">
+                    {t("relationshipsPage.empty")}
+                  </ListEmpty>
                 );
               }
 
@@ -933,8 +935,7 @@ export function RelationshipsPage() {
               });
             })()}
           </Table.Tbody>
-        </Table>
-      </div>
+      </ListTable>
       {totalPages > 1 && (
         <Group gap="sm" align="center" justify="flex-end" py="sm">
           <ActionIcon
