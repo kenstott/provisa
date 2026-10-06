@@ -86,8 +86,8 @@ import {
   ListRow,
   ListExpandRow,
   ListEmpty,
-  ListLoading,
 } from "../components/list/ListTable";
+import { PageLoading } from "../components/PageLoading";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -596,7 +596,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // blocking the whole page on those hides cached rows unnecessarily and causes test timeouts
   // under concurrent load where backend schema rebuilds extend refetch latency to >10s.
   if (loading || (tablesLoading && tables.length === 0))
-    return <ListLoading message={translate("tablesPage.loading")} />;
+    return <PageLoading message={translate("tablesPage.loading")} />;
 
   return (
     <div className="page page-sticky-head">

@@ -38,9 +38,9 @@ import {
   ListRow,
   ListExpandRow,
   ListEmpty,
-  ListLoadingRow,
   ListDetail,
 } from "../components/list/ListTable";
+import { PageLoading } from "../components/PageLoading";
 
 interface MetricForm {
   name: string;
@@ -379,6 +379,9 @@ export function MetricsPage() {
         </Paper>
       )}
 
+      {loading && metrics.length === 0 ? (
+        <PageLoading message={t("metricsPage.loading")} />
+      ) : (
       <ListTable testId="metrics-table">
           <ListHead
             columns={[
@@ -390,10 +393,7 @@ export function MetricsPage() {
             ]}
           />
           <Table.Tbody>
-            {loading && metrics.length === 0 && (
-              <ListLoadingRow colSpan={5}>{t("metricsPage.loading")}</ListLoadingRow>
-            )}
-            {!loading && metrics.length === 0 && (
+            {metrics.length === 0 && (
               <ListEmpty colSpan={5} testId="metrics-empty">
                 {t("metricsPage.empty")}
               </ListEmpty>
@@ -466,6 +466,7 @@ export function MetricsPage() {
             })}
           </Table.Tbody>
       </ListTable>
+      )}
 
       {/* Delete confirm */}
       <Modal

@@ -57,3 +57,25 @@ describe("REQ-1940 list pages use the shared list component", () => {
     expect(tsx).not.toMatch(/<Table\s+striped/);
   });
 });
+
+// REQ-1430 / REQ-1940: a list page's loading state is the PageLoading spinner, never a bare text
+// line or an in-table row.
+describe("REQ-1940 list pages load with PageLoading", () => {
+  it.each(
+    [
+      "pages/TablesPage.tsx",
+      "pages/MetricsPage.tsx",
+      "pages/DataProductsPage.tsx",
+      "pages/RelationshipsPage.tsx",
+      "pages/CommandsPage.tsx",
+    ].map((p) => [p]),
+  )("%s", (page) => {
+    const tsx = src(page);
+    expect(tsx).toContain("<PageLoading");
+    expect(tsx).not.toContain("ListLoading");
+  });
+
+  it("the shared list parts define no loading variant of their own", () => {
+    expect(src("components/list/ListTable.tsx")).not.toContain("Loading");
+  });
+});

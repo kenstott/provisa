@@ -58,9 +58,9 @@ import {
   ListRow,
   ListExpandRow,
   ListEmpty,
-  ListLoadingRow,
   ListDetail,
 } from "../components/list/ListTable";
+import { PageLoading } from "../components/PageLoading";
 
 interface DataProductForm {
   id: string;
@@ -805,6 +805,9 @@ export function DataProductsPage() {
                 p.purpose.toLowerCase().includes(q),
             )
           : dataProducts;
+        if (loading && dataProducts.length === 0) {
+          return <PageLoading message={t("dataProductsTab.loading")} />;
+        }
         return (
           <ListTable testId="data-products-table">
             <ListHead
@@ -818,10 +821,7 @@ export function DataProductsPage() {
               ]}
             />
             <Table.Tbody>
-              {loading && dataProducts.length === 0 && (
-                <ListLoadingRow colSpan={6}>{t("dataProductsTab.loading")}</ListLoadingRow>
-              )}
-              {!(loading && dataProducts.length === 0) && filtered.length === 0 && (
+              {filtered.length === 0 && (
                 <ListEmpty colSpan={6} testId="data-products-empty">
                   {t("dataProductsTab.empty")}
                 </ListEmpty>

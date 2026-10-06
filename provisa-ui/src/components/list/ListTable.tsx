@@ -119,33 +119,7 @@ export function ListEmpty({
   );
 }
 
-/** In-table loading state: same row as the empty state, for pages whose header is already drawn. */
-export function ListLoadingRow({
-  colSpan,
-  children,
-  testId,
-}: {
-  colSpan: number;
-  children: ReactNode;
-  testId?: string;
-}) {
-  return (
-    <ListEmpty colSpan={colSpan} testId={testId}>
-      {children}
-    </ListEmpty>
-  );
-}
-
 /** Padded panel for simple expanded-row content (rich panels such as TableReadView bring their own). */
 export function ListDetail({ children }: { children: ReactNode }) {
   return <div className="list-detail">{children}</div>;
-}
-
-/** Loading state: the page-level text the Register Tables page shows while its list loads. */
-export function ListLoading({ message, testId }: { message: ReactNode; testId?: string }) {
-  return (
-    <div className="page" data-testid={testId}>
-      {message}
-    </div>
-  );
 }
