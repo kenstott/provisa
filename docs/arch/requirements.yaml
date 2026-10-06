@@ -76223,7 +76223,7 @@
     tolerance
 
 
-    And no generated value equals a real value of a column tagged pii
+    And a column whose values are unique has none of its real values reproduced
 
 
     And the tables are marked as generated
