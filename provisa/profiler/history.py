@@ -19,7 +19,7 @@ model store directly as the runs view does.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -48,18 +48,24 @@ async def relation(conn: Any, table_name: str, table_id: int, kind: str) -> Any:
 
 
 async def previous_runs(
-    conn: Any, table_name: str, table_id: int, before: datetime, limit: int
+    conn: Any, table_name: str, table_id: int, before: datetime, limit: int | None
 ) -> list[tuple[str, datetime]]:
-    """``[(run_id, run_time)]`` of the table's latest ``limit`` successful runs before ``before``,
-    latest first."""
+    """``[(run_id, run_time)]`` of the table's latest ``limit`` (None: all) successful runs before
+    ``before``, latest first."""
     runs = await relation(conn, table_name, table_id, "runs")
-    result = await conn.execute_core(
+    query = (
         select(runs.c.run_id, runs.c.run_time)
         .where(runs.c.status == "succeeded", runs.c.run_time < before)
         .order_by(runs.c.run_time.desc())
-        .limit(limit)
     )
-    return [(r[0], r[1]) for r in result.fetchall()]
+    result = await conn.execute_core(query if limit is None else query.limit(limit))
+    return [(r[0], as_utc(r[1])) for r in result.fetchall()]
+
+
+def as_utc(at: datetime) -> datetime:
+    """A stored run time as an aware UTC instant. Every run time is written aware in UTC; a store
+    whose timestamp type keeps no zone (SQLite) hands it back naive, still in UTC."""
+    return at.replace(tzinfo=UTC) if at.tzinfo is None else at.astimezone(UTC)
 
 
 async def run_results(

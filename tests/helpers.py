@@ -29,6 +29,19 @@ def unscoped_role(role_id: str, *capabilities: str) -> dict:
     return {"id": role_id, "capabilities": list(capabilities), "domain_access": ["*"]}
 
 
+#: A Data Profiler source's run defaults as the source form writes them (REQ-1934): every one is
+#: stored, so a test profiler's mapping is its cron plus these.
+PROFILER_RUN_DEFAULTS: dict = {
+    "low_cardinality_max": 100,
+    "drift_window": 7,
+    "drift_season": "none",
+    "drift_distance": 3.0,
+    "drift_slope": 3.0,
+    "drift_ks": 0.2,
+    "drift_psi": 0.25,
+}
+
+
 ALL_DATA_CAPABILITIES: list[str] = sorted(
     c.value
     for c in Capability

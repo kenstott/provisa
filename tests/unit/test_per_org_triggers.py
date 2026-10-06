@@ -22,6 +22,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from tests.helpers import PROFILER_RUN_DEFAULTS
 
 from provisa.core.models import ScheduledTrigger
 from provisa.core.repositories import scheduled_trigger as trigger_repo
@@ -242,7 +243,7 @@ async def test_a_profiler_is_scheduled_on_its_cron_beside_the_triggers(orgs):
                 id="prof",
                 type="data_profiler",
                 origin=ADMIN,
-                mapping={"cron": "0 3 * * *", "low_cardinality_max": 100},
+                mapping={"cron": "0 3 * * *", **PROFILER_RUN_DEFAULTS},
             )
         )
         await conn.execute_core(domains.insert().values(id="sales", origin=ADMIN))

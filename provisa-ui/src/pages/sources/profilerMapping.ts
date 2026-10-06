@@ -11,30 +11,47 @@
 // REQ-1934: a Data Profiler source's mapping (provisa/profiler/source.py profiler_settings) and the
 // form fields it is edited through.
 
-/** The low-cardinality threshold a new profiler starts from (REQ-1934): a column with no more
- * distinct values has its full value-frequency table recorded. The form is where it is defaulted. */
-export const DEFAULT_LOW_CARDINALITY_MAX = "100";
+/** The run defaults a new profiler starts from (REQ-1934), each stored in its mapping. The form is
+ * where they are defaulted: the low-cardinality threshold (a column with no more distinct values has
+ * its full value-frequency table recorded) and the drift window, season and thresholds. */
+export const PROFILER_DEFAULTS: Record<string, string> = {
+  low_cardinality_max: "100",
+  drift_window: "7",
+  drift_season: "none",
+  drift_distance: "3",
+  drift_slope: "3",
+  drift_ks: "0.2",
+  drift_psi: "0.25",
+};
+
+/** The drift seasons a profiler's baseline can follow (provisa/profiler/source.py DRIFT_SEASONS). */
+export const DRIFT_SEASONS = ["none", "daily", "weekly", "monthly"] as const;
+
+// The run defaults stored as text; every other one is a number.
+const TEXT_SETTINGS = new Set(["drift_season"]);
 
 /** The profiler's mapping as the source stores it, from the form's fields. */
 export function profilerMappingJson(authFields: Record<string, string>): string {
   const sample = (authFields.sample_above_cells ?? "").trim();
+  const defaults = Object.fromEntries(
+    Object.keys(PROFILER_DEFAULTS).map((k) => {
+      const v = (authFields[k] ?? "").trim();
+      return [k, TEXT_SETTINGS.has(k) ? v : Number(v)];
+    }),
+  );
   return JSON.stringify({
     cron: (authFields.cron ?? "").trim(),
     ...(sample === "" ? {} : { sample_above_cells: Number(sample) }),
-    low_cardinality_max: Number((authFields.low_cardinality_max ?? "").trim()),
+    ...defaults,
   });
 }
 
 /** The form's fields from a stored profiler mapping. */
 export function profilerFieldsFromMapping(mappingJson: string): Record<string, string> {
-  const m = JSON.parse(mappingJson) as {
-    cron?: string;
-    sample_above_cells?: number | null;
-    low_cardinality_max: number;
-  };
+  const m = JSON.parse(mappingJson) as Record<string, string | number | null | undefined>;
   return {
-    cron: m.cron ?? "",
+    cron: m.cron == null ? "" : String(m.cron),
     sample_above_cells: m.sample_above_cells == null ? "" : String(m.sample_above_cells),
-    low_cardinality_max: String(m.low_cardinality_max),
+    ...Object.fromEntries(Object.keys(PROFILER_DEFAULTS).map((k) => [k, String(m[k])])),
   };
 }

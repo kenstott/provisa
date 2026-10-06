@@ -8,16 +8,26 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { NumberInput, TextInput } from "@mantine/core";
+import { NumberInput, Select, TextInput } from "@mantine/core";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { DEFAULT_LOW_CARDINALITY_MAX } from "./profilerMapping";
+import { DRIFT_SEASONS, PROFILER_DEFAULTS } from "./profilerMapping";
+
+// A run default edited as a number: its mapping key, its i18n stem, whether it is whole, its minimum.
+const NUMBER_FIELDS: { key: string; stem: string; whole: boolean; min: number }[] = [
+  { key: "low_cardinality_max", stem: "lowCardinality", whole: true, min: 1 },
+  { key: "drift_window", stem: "driftWindow", whole: true, min: 1 },
+  { key: "drift_distance", stem: "driftDistance", whole: false, min: 0 },
+  { key: "drift_slope", stem: "driftSlope", whole: false, min: 0 },
+  { key: "drift_ks", stem: "driftKs", whole: false, min: 0 },
+  { key: "drift_psi", stem: "driftPsi", whole: false, min: 0 },
+];
 
 // REQ-1934: a Data Profiler source holds a name, a schedule and its run defaults, nothing else. The
-// schedule is a cron expression, the recurrence scheduled triggers use; the run defaults are the row
-// count above which a run profiles a sample of about that many rows (empty: every row), and the
-// low-cardinality threshold, defaulted here for a new profiler. All travel in the source's mapping
-// (provisa/profiler/source.py profiler_settings).
+// schedule is a cron expression, the recurrence scheduled triggers use; the run defaults are the cell
+// budget above which a run profiles a sample (empty: every row), the low-cardinality threshold, and
+// the drift window, season and thresholds, each defaulted here for a new profiler. All travel in the
+// source's mapping (provisa/profiler/source.py profiler_settings).
 export function ProfilerFormSection({
   authFields,
   setAuthFields,
@@ -27,8 +37,8 @@ export function ProfilerFormSection({
 }) {
   const { t } = useTranslation();
   useEffect(() => {
-    if (authFields.low_cardinality_max === undefined)
-      setAuthFields({ ...authFields, low_cardinality_max: DEFAULT_LOW_CARDINALITY_MAX });
+    const missing = Object.entries(PROFILER_DEFAULTS).filter(([k]) => authFields[k] === undefined);
+    if (missing.length > 0) setAuthFields({ ...authFields, ...Object.fromEntries(missing) });
   }, [authFields, setAuthFields]);
   return (
     <>
@@ -55,19 +65,38 @@ export function ProfilerFormSection({
         style={{ gridColumn: "1 / -1" }}
         data-testid="profiler-sample-input"
       />
-      <NumberInput
-        label={t("profilerFormSection.lowCardinalityLabel")}
-        description={t("profilerFormSection.lowCardinalityDescription")}
+      <Select
+        label={t("profilerFormSection.driftSeasonLabel")}
+        description={t("profilerFormSection.driftSeasonDescription")}
         required
-        min={1}
-        allowDecimal={false}
-        value={authFields.low_cardinality_max ?? ""}
-        onChange={(v) =>
-          setAuthFields({ ...authFields, low_cardinality_max: v === "" ? "" : String(v) })
-        }
+        allowDeselect={false}
+        data={DRIFT_SEASONS.map((s) => ({
+          value: s,
+          label: t(`profilerFormSection.driftSeason_${s}`),
+        }))}
+        value={authFields.drift_season ?? null}
+        onChange={(v) => v != null && setAuthFields({ ...authFields, drift_season: v })}
         style={{ gridColumn: "1 / -1" }}
-        data-testid="profiler-low-cardinality-input"
+        data-testid="profiler-drift_season-input"
       />
+      {NUMBER_FIELDS.map((f) => (
+        <NumberInput
+          key={f.key}
+          label={t(`profilerFormSection.${f.stem}Label`)}
+          description={t(`profilerFormSection.${f.stem}Description`)}
+          required
+          min={f.min}
+          allowDecimal={!f.whole}
+          value={authFields[f.key] ?? ""}
+          onChange={(v) => setAuthFields({ ...authFields, [f.key]: v === "" ? "" : String(v) })}
+          style={{ gridColumn: "1 / -1" }}
+          data-testid={
+            f.key === "low_cardinality_max"
+              ? "profiler-low-cardinality-input"
+              : `profiler-${f.key}-input`
+          }
+        />
+      ))}
     </>
   );
 }

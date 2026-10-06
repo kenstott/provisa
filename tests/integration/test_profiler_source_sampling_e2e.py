@@ -38,6 +38,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from tests.helpers import PROFILER_RUN_DEFAULTS
 import yaml
 
 pytestmark = [pytest.mark.integration]
@@ -193,7 +194,7 @@ def _config(pg: _Databases) -> dict:
                 "mapping": {
                     "cron": "0 3 * * *",
                     "sample_above_cells": _BUDGET,
-                    "low_cardinality_max": 100,
+                    **PROFILER_RUN_DEFAULTS,
                 },
             },
         ],

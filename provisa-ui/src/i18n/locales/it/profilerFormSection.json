@@ -6,6 +6,22 @@
     "sampleDescription": "Le celle sono righe × colonne profilate. Una tabella con più celle viene profilata da un campione di circa questo numero di celle, quindi una tabella larga campiona meno righe. Lasciare vuoto per profilare tutte le righe.",
     "samplePlaceholder": "Intera tabella",
     "lowCardinalityLabel": "Soglia di bassa cardinalità",
-    "lowCardinalityDescription": "In una colonna con non più valori distinti di questo numero ogni valore viene contato e può essere riconosciuta come categoria."
+    "lowCardinalityDescription": "In una colonna con non più valori distinti di questo numero ogni valore viene contato e può essere riconosciuta come categoria.",
+    "driftSeasonLabel": "Stagionalità della deriva",
+    "driftSeasonDescription": "Con quali esecuzioni precedenti viene confrontata un'esecuzione: tutte, oppure solo quelle nello stesso momento del giorno, della settimana o del mese (UTC).",
+    "driftSeason_none": "Nessuna — ogni esecuzione",
+    "driftSeason_daily": "Giornaliera — stessa ora",
+    "driftSeason_weekly": "Settimanale — stesso giorno della settimana",
+    "driftSeason_monthly": "Mensile — stesso giorno del mese",
+    "driftWindowLabel": "Finestra di deriva",
+    "driftWindowDescription": "Quante esecuzioni riuscite precedenti, nello stesso momento della stagione, formano la baseline. La deriva non viene misurata finché una tabella non è stata eseguita questo numero di volte.",
+    "driftDistanceLabel": "Soglia di distanza",
+    "driftDistanceDescription": "Una misura più lontana dalla mediana della finestra di questo numero di deviazioni assolute mediane è in deriva.",
+    "driftSlopeLabel": "Soglia di pendenza",
+    "driftSlopeDescription": "Una misura la cui tendenza la modifica di più di questo numero di deviazioni assolute mediane nell'arco della finestra è in deriva.",
+    "driftKsLabel": "Soglia KS",
+    "driftKsDescription": "Una distribuzione la cui statistica di Kolmogorov-Smirnov rispetto alla distribuzione aggregata della finestra supera questo valore è in deriva.",
+    "driftPsiLabel": "Soglia PSI",
+    "driftPsiDescription": "Una distribuzione il cui indice di stabilità della popolazione rispetto alla distribuzione aggregata della finestra supera questo valore è in deriva."
   }
 }

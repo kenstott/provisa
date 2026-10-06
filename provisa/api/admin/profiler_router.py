@@ -18,6 +18,8 @@
 * ``POST /admin/tables/{table_id}/profile-runs`` — Run Profile Now for one member.
 * ``GET  /admin/tables/{table_id}/profile-runs`` — its run history (View Profile Runs).
 * ``GET  /admin/tables/{table_id}/profile-runs/{run_id}`` — one run's results, safe for its viewer.
+* ``GET  /admin/tables/{table_id}/profile-runs/{run_id}/history`` — one measure across the run's
+  drift window, with the run's drift row (REQ-1934 DRIFT ACROSS RUNS), safe for its viewer.
 
 The run history and results are shown only to those who may edit the table (the
 ``table_registration`` capability); they are read straight from the result relations, as the
@@ -30,7 +32,6 @@ from typing import Any
 
 from fastapi import APIRouter, Header, Request
 from sqlalchemy import select
-from sqlalchemy.schema import CreateTable
 
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.app import state
@@ -65,6 +66,8 @@ async def list_profilers(request: Request) -> list[dict]:
                     "cron": settings.cron,
                     "sampleAboveCells": settings.sample_above_cells,
                     "lowCardinalityMax": settings.low_cardinality_max,
+                    "driftWindow": settings.drift_window,
+                    "driftSeason": settings.drift_season,
                     "members": [m["table_name"] for m in await members(conn, p["id"])],
                 }
             )
@@ -139,19 +142,11 @@ async def _member(conn: Any, table_id: int) -> dict:
 @router.post("/tables/{table_id}/profile-runs")
 async def run_profile_now(request: Request, table_id: int) -> dict:
     require_capability_request(request, "table_registration")
-    from provisa.core.schema_org import sources
     from provisa.profiler.run import ProfileError, profile_table
-    from provisa.profiler.source import profiler_settings
 
     async with _db().acquire() as conn:
         member = await _member(conn, table_id)
-        mapping = (
-            await conn.execute_core(
-                select(sources.c.mapping).where(sources.c.id == member["source_id"])
-            )
-        ).fetchone()
-    assert mapping is not None, "membership names a source the integrity guard keeps"
-    settings = profiler_settings(member["source_id"], dict(mapping[0]))
+        settings = await _settings(conn, member["source_id"])
     try:
         run = await profile_table(
             state,
@@ -165,12 +160,31 @@ async def run_profile_now(request: Request, table_id: int) -> dict:
 
 
 async def _relation(conn: Any, table_name: str, table_id: int, kind: str) -> Any:
-    from provisa.profiler.schema import result_sa_table
+    from provisa.profiler.history import relation
 
-    table = result_sa_table(table_name, table_id, kind)
-    # A member that has not run yet has an empty history, not a missing one.
-    await conn.execute_core(CreateTable(table, if_not_exists=True))
-    return table
+    return await relation(conn, table_name, table_id, kind)
+
+
+async def _settings(conn: Any, source_id: str) -> Any:
+    from provisa.core.schema_org import sources
+    from provisa.profiler.source import profiler_settings
+
+    mapping = (
+        await conn.execute_core(select(sources.c.mapping).where(sources.c.id == source_id))
+    ).fetchone()
+    assert mapping is not None, "membership names a source the integrity guard keeps"
+    return profiler_settings(source_id, dict(mapping[0]))
+
+
+def _viewer_roles(request: Request, x_provisa_role: str | None) -> frozenset[str]:
+    acting = getattr(request.state, "role", None) or x_provisa_role
+    if not acting:
+        raise ApiError(
+            400,
+            "profile.role_header_required",
+            "X-Provisa-Role header required: a profile run is shown as its viewer may see it",
+        )
+    return frozenset(r.strip() for r in acting.split(",") if r.strip())
 
 
 @router.get("/tables/{table_id}/profile-runs")
@@ -196,14 +210,7 @@ async def get_profile_run(
     from provisa.profiler.governance import column_rules, safe_run
     from provisa.profiler.schema import RESULT_KINDS
 
-    acting = getattr(request.state, "role", None) or x_provisa_role
-    if not acting:
-        raise ApiError(
-            400,
-            "profile.role_header_required",
-            "X-Provisa-Role header required: a profile run is shown as its viewer may see it",
-        )
-    roles = frozenset(r.strip() for r in acting.split(",") if r.strip())
+    roles = _viewer_roles(request, x_provisa_role)
     out: dict[str, list[dict]] = {}
     async with _db().acquire() as conn:
         member = await _member(conn, table_id)
@@ -215,3 +222,74 @@ async def get_profile_run(
     if not out["runs"]:
         raise ApiError(404, "profile.run_not_found", f"Run {run_id} not found", run_id=run_id)
     return safe_run(out, rules, roles)
+
+
+def _matches(column: Any, value: str | None) -> Any:
+    return column.is_(None) if value is None else column == value
+
+
+@router.get("/tables/{table_id}/profile-runs/{run_id}/history")
+async def get_measure_history(
+    request: Request,
+    table_id: int,
+    run_id: str,
+    scope: str,
+    measure: str,
+    column: str | None = None,
+    subject: str | None = None,
+    x_provisa_role: str | None = Header(None),
+) -> dict:
+    """One measure of a run across the run's drift window (REQ-1934 DRIFT ACROSS RUNS): the run's
+    drift row for it, and the measure's value in each window run and in the run, oldest first --
+    shown only when the viewer may see the drift row (governance.safe_run)."""
+    require_capability_request(request, "table_registration")
+    from provisa.profiler import compare
+    from provisa.profiler.governance import column_rules, safe_run
+    from provisa.profiler.history import MEASURE_KINDS, as_utc, previous_runs, run_results
+
+    roles = _viewer_roles(request, x_provisa_role)
+    async with _db().acquire() as conn:
+        member = await _member(conn, table_id)
+        settings = await _settings(conn, member["source_id"])
+        rules = await column_rules(conn, state, table_id)
+        drift = await _relation(conn, member["table_name"], table_id, "drift")
+        found = (
+            await conn.execute_core(
+                select(drift).where(
+                    drift.c.run_id == run_id,
+                    drift.c.scope == scope,
+                    drift.c.measure == measure,
+                    _matches(drift.c.column_name, column),
+                    _matches(drift.c.subject, subject),
+                )
+            )
+        ).fetchone()
+        shown = safe_run({"drift": [] if found is None else [dict(found._mapping)]}, rules, roles)
+        if not shown["drift"]:
+            raise ApiError(
+                404,
+                "profile.measure_not_found",
+                f"Run {run_id} records no {scope} measure {measure!r} this viewer may see",
+                run_id=run_id,
+            )
+        row = shown["drift"][0]
+        at = as_utc(row["run_time"])
+        earlier = await previous_runs(conn, member["table_name"], table_id, at, None)
+        window = compare.window_of(settings.drift_season, settings.drift_window, at, earlier)
+        timeline = [*reversed(window), (run_id, at)]
+        stored = await run_results(
+            conn, member["table_name"], table_id, [rid for rid, _ in timeline], MEASURE_KINDS
+        )
+    key = (scope, column, subject, measure)
+    points = []
+    for rid, at in timeline:
+        value = compare.measures_of(stored[rid]).scalars.get(key)
+        points.append(
+            {
+                "runId": rid,
+                "runTime": at.isoformat(),
+                "value": None if value is None else value.value,
+                "current": rid == run_id,
+            }
+        )
+    return {"drift": _jsonable(row), "points": points}

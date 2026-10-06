@@ -1,0 +1,21 @@
+{
+  "profileDriftPanel": {
+    "measure": "מדד",
+    "drift": "סחיפה",
+    "drifting": "בסחיפה",
+    "runTime": "זמן הרצה",
+    "value": "ערך",
+    "col_previous": "קודם",
+    "col_current": "נוכחי",
+    "col_change": "שינוי",
+    "col_ks_previous": "KS מול הקודם",
+    "col_psi_previous": "PSI מול הקודם",
+    "col_window_runs": "הרצות בחלון",
+    "col_baseline": "קו בסיס",
+    "col_spread": "MAD",
+    "col_distance": "מרחק (MAD)",
+    "col_slope_spread": "מגמה (MAD)",
+    "col_ks": "KS מול החלון",
+    "col_psi": "PSI מול החלון"
+  }
+}

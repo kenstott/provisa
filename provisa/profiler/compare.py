@@ -22,9 +22,12 @@ table. :func:`compare` turns two runs' measures into the run's ``drift`` rows.
 from __future__ import annotations
 
 import json
+import statistics
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
 from provisa.profiler.measures import sketch_cdf
 from provisa.profiler.statement import QUANTILE_POINTS
@@ -86,6 +89,7 @@ def measures_of(results: dict[str, list[dict]]) -> RunMeasures:
     (run,) = results["runs"]
     scalar(("table", None, None, "row_count"), run["row_count"], False, ())
     scalar(("table", None, None, "duplicate_share"), run["duplicate_share"], False, ())
+    scalar(("table", None, None, "freshness_seconds"), run["freshness_seconds"], False, ())
     for d in results.get("duplicates", []):
         if d["subject"] == "key":
             cols = tuple(json.loads(d["involved_columns"]))
@@ -268,6 +272,17 @@ def _row(
         "ks_previous": ks,
         "psi_previous": psi_value,
         "detail": detail,
+        # Set by window_drift, once the table has a full window of previous runs.
+        "window_runs": None,
+        "baseline": None,
+        "spread": None,
+        "distance": None,
+        "slope": None,
+        "slope_spread": None,
+        "ks": None,
+        "psi": None,
+        "drifting": None,
+        "drift_reason": None,
     }
 
 
@@ -385,3 +400,133 @@ def _category_rows(name: str, cur: Categories, prev: Categories) -> list[dict]:
             )
         )
     return rows
+
+
+# -- drift across runs ---------------------------------------------------------------------------
+
+
+def in_season(season: str, run_time: datetime, other: datetime) -> bool:
+    """Whether ``other`` is at the same point in ``season`` as ``run_time`` (UTC): the same hour of
+    the day (daily), weekday (weekly) or day of the month (monthly); every run for ``none``."""
+    a, b = run_time.astimezone(UTC), other.astimezone(UTC)
+    if season == "none":
+        return True
+    if season == "daily":
+        return a.hour == b.hour
+    if season == "weekly":
+        return a.weekday() == b.weekday()
+    if season == "monthly":
+        return a.day == b.day
+    raise ValueError(f"unknown drift season {season!r}")
+
+
+def window_of(
+    season: str, size: int, run_time: datetime, previous: list[tuple[str, datetime]]
+) -> list[tuple[str, datetime]]:
+    """The run's window: the latest ``size`` of ``previous`` (latest first) at its point in the
+    season. Fewer when the table has not run that often at that point yet."""
+    return [p for p in previous if in_season(season, run_time, p[1])][:size]
+
+
+def _slope(points: list[tuple[float, float]]) -> float | None:
+    """Least-squares slope of ``(x, y)`` points; None when every x is the same."""
+    n = len(points)
+    mx = sum(x for x, _ in points) / n
+    my = sum(y for _, y in points) / n
+    sxx = sum((x - mx) ** 2 for x, _ in points)
+    if sxx == 0:
+        return None
+    return sum((x - mx) * (y - my) for x, y in points) / sxx
+
+
+def window_drift(
+    rows: list[dict],
+    current: RunMeasures,
+    run_time: datetime,
+    window: list[tuple[datetime, RunMeasures]],
+    settings: Any,
+) -> None:
+    """Set each drift row's window measures in place (REQ-1934 DRIFT ACROSS RUNS; NO DRIFT BEFORE A
+    FULL WINDOW; SEASONAL AND ROBUST BASELINES): against the ``window`` (its runs' times and
+    measures) when it is full, every window field NULL otherwise. ``settings`` is the profiler's
+    ProfilerSettings."""
+    for row in rows:
+        row["window_runs"] = len(window)
+    if len(window) < settings.drift_window:
+        return
+    t0 = min(t for t, _ in window)
+    for row in rows:
+        key = (row["scope"], row["column_name"], row["subject"], row["measure"])
+        if key in current.scalars:
+            _scalar_drift(row, key, current, run_time, t0, window, settings)
+        elif row["measure"] == "distribution":
+            if row["scope"] == "column":
+                cur_sketch, past = current.sketches, [m.sketches for _, m in window]
+                name = row["column_name"]
+            else:
+                cur_sketch, past = current.fanouts, [m.fanouts for _, m in window]
+                name = row["subject"]
+            if all(name in p for p in past):
+                parts = [p[name] for p in past]
+                if sum(n for _, n in parts) > 0:
+                    row["ks"], row["psi"] = sketch_shift(parts, cur_sketch[name][0])
+                    _flag(row, settings)
+        elif row["measure"] == "category_shares":
+            name = row["column_name"]
+            past = [m.categories.get(name) for _, m in window]
+            rows_of = [m.scalars.get(("table", None, None, "row_count")) for _, m in window]
+            if all(p is not None for p in past) and all(r is not None for r in rows_of):
+                parts = [(p, int(r.value)) for p, r in zip(past, rows_of) if p and r]
+                if parts and sum(n for _, n in parts) > 0:
+                    pooled = pooled_categories(parts)
+                    row["ks"], row["psi"] = category_shift(pooled, current.categories[name].shares)
+                    _flag(row, settings)
+
+
+def _scalar_drift(
+    row: dict,
+    key: tuple,
+    current: RunMeasures,
+    run_time: datetime,
+    t0: datetime,
+    window: list[tuple[datetime, RunMeasures]],
+    settings: Any,
+) -> None:
+    past = [(t, m.scalars[key].value) for t, m in window if key in m.scalars]
+    if len(past) < settings.drift_window:
+        return  # the measure is younger than the window: no drift before a full window
+    value = current.scalars[key].value
+    values = [v for _, v in past]
+    baseline = statistics.median(values)
+    mad = statistics.median(abs(v - baseline) for v in values)
+    day = 86400.0
+    points = [((t - t0).total_seconds() / day, v) for t, v in past]
+    points.append(((run_time - t0).total_seconds() / day, value))
+    slope = _slope(points)
+    span = max(x for x, _ in points) - min(x for x, _ in points)
+    row.update(baseline=baseline, spread=mad, slope=slope)
+    if mad > 0:
+        row["distance"] = (value - baseline) / mad
+        if slope is not None:
+            row["slope_spread"] = slope * span / mad
+    reasons = []
+    if row["distance"] is not None and abs(row["distance"]) > settings.drift_distance:
+        reasons.append("distance")
+    # A measure constant across its window has no spread to measure a distance in: any change
+    # from that constant is drifting (REQ-1934 SEASONAL AND ROBUST BASELINES, MAD spread).
+    if mad == 0 and value != baseline:
+        reasons.append("distance")
+    if row["slope_spread"] is not None and abs(row["slope_spread"]) > settings.drift_slope:
+        reasons.append("slope")
+    row["drifting"] = bool(reasons)
+    row["drift_reason"] = ", ".join(reasons) or None
+
+
+def _flag(row: dict, settings: Any) -> None:
+    reasons = []
+    if row["ks"] > settings.drift_ks:
+        reasons.append("ks")
+    if row["psi"] > settings.drift_psi:
+        reasons.append("psi")
+    row["drifting"] = bool(reasons)
+    row["drift_reason"] = ", ".join(reasons) or None

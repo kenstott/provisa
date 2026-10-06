@@ -13,7 +13,9 @@
 A profiler source holds a name, a schedule and its run default, and nothing else. The schedule is a
 cron expression, the recurrence scheduled triggers use (REQ-1003), and fires on the same scheduler;
 the run defaults are ``sample_above_cells`` -- None profiles every row, a number is a budget of cells
-(rows times profiled columns): a table with more is profiled from a sample of about that many cells. Both live in the source's ``mapping`` (REQ-251).
+(rows times profiled columns): a table with more is profiled from a sample of about that many cells --
+the low-cardinality limit, and the drift window, season and thresholds. All live in the source's
+``mapping`` (REQ-251); the source form supplies each default, so a stored mapping holds every one.
 
 Membership is on the table (``registered_tables.profiler_source_id``); a table belongs to at most
 one profiler.
@@ -40,15 +42,58 @@ class ProfilerSettings:
     # A column with no more distinct values than this has its full value-frequency table recorded
     # and may be inferred a category (REQ-1934). The source form supplies its default.
     low_cardinality_max: int
+    # REQ-1934 DRIFT ACROSS RUNS: how many previous successful runs at the same point in the season
+    # a run's measures are set against, and the thresholds past which a measure is drifting.
+    drift_window: int
+    drift_season: str  # DRIFT_SEASONS
+    drift_distance: float  # distance from the baseline, in MADs
+    drift_slope: float  # the trend's change across the window, in MADs
+    drift_ks: float
+    drift_psi: float
+
+
+# none: every previous run; daily: runs at the same hour of the day; weekly: on the same weekday;
+# monthly: on the same day of the month -- each in UTC.
+DRIFT_SEASONS: tuple[str, ...] = ("none", "daily", "weekly", "monthly")
+
+_SETTINGS = (
+    "cron",
+    "sample_above_cells",
+    "low_cardinality_max",
+    "drift_window",
+    "drift_season",
+    "drift_distance",
+    "drift_slope",
+    "drift_ks",
+    "drift_psi",
+)
+
+
+def _positive_int(source_id: str, mapping: dict, name: str) -> int:
+    value = mapping.get(name)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(
+            f"profiler source {source_id!r}: {name} must be a positive whole number, got {value!r}"
+        )
+    return value
+
+
+def _positive_number(source_id: str, mapping: dict, name: str) -> float:
+    value = mapping.get(name)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise ValueError(
+            f"profiler source {source_id!r}: {name} must be a positive number, got {value!r}"
+        )
+    return float(value)
 
 
 def profiler_settings(source_id: str, mapping: dict) -> ProfilerSettings:
     """The profiler's settings from its mapping, or ValueError naming the source."""
-    unknown = set(mapping) - {"cron", "sample_above_cells", "low_cardinality_max"}
+    unknown = set(mapping) - set(_SETTINGS)
     if unknown:
         raise ValueError(
             f"profiler source {source_id!r}: unknown setting(s) {sorted(unknown)}; a profiler "
-            f"holds cron, sample_above_cells and low_cardinality_max only"
+            f"holds {', '.join(_SETTINGS)} only"
         )
     cron = mapping.get("cron")
     if not isinstance(cron, str) or not cron.strip():
@@ -65,13 +110,24 @@ def profiler_settings(source_id: str, mapping: dict) -> ProfilerSettings:
             f"profiler source {source_id!r}: sample_above_cells must be a positive whole number "
             f"or absent (profile every row), got {sample!r}"
         )
-    low = mapping.get("low_cardinality_max")
-    if isinstance(low, bool) or not isinstance(low, int) or low < 1:
+    low = _positive_int(source_id, mapping, "low_cardinality_max")
+    season = mapping.get("drift_season")
+    if season not in DRIFT_SEASONS:
         raise ValueError(
-            f"profiler source {source_id!r}: low_cardinality_max must be a positive whole number, "
-            f"got {low!r}"
+            f"profiler source {source_id!r}: drift_season must be one of {list(DRIFT_SEASONS)}, "
+            f"got {season!r}"
         )
-    return ProfilerSettings(cron=cron.strip(), sample_above_cells=sample, low_cardinality_max=low)
+    return ProfilerSettings(
+        cron=cron.strip(),
+        sample_above_cells=sample,
+        low_cardinality_max=low,
+        drift_window=_positive_int(source_id, mapping, "drift_window"),
+        drift_season=season,
+        drift_distance=_positive_number(source_id, mapping, "drift_distance"),
+        drift_slope=_positive_number(source_id, mapping, "drift_slope"),
+        drift_ks=_positive_number(source_id, mapping, "drift_ks"),
+        drift_psi=_positive_number(source_id, mapping, "drift_psi"),
+    )
 
 
 async def profiler_sources(conn: Any) -> list[dict]:

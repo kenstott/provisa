@@ -19,6 +19,8 @@ export interface Profiler {
   cron: string;
   sampleAboveCells: number | null;
   lowCardinalityMax: number;
+  driftWindow: number;
+  driftSeason: string;
   members: string[];
 }
 
@@ -125,6 +127,44 @@ export const runProfileNow = (tableId: number) =>
 
 export const fetchProfileRuns = (tableId: number) =>
   call<ProfileRun[]>("fetchProfileRuns", `/admin/tables/${tableId}/profile-runs`);
+
+/** One measure of a run, as its drift row identifies it (REQ-1934 DRIFT ACROSS RUNS). */
+export interface MeasureKey {
+  scope: string;
+  measure: string;
+  column: string | null;
+  subject: string | null;
+}
+
+export interface MeasurePoint {
+  runId: string;
+  runTime: string;
+  value: number | null;
+  current: boolean;
+}
+
+export interface MeasureHistory {
+  drift: Record<string, unknown>;
+  points: MeasurePoint[];
+}
+
+// One measure across the run's drift window, oldest first, as ``role`` may see it.
+export const fetchMeasureHistory = (
+  tableId: number,
+  runId: string,
+  role: string,
+  key: MeasureKey,
+) => {
+  const q = new URLSearchParams({ scope: key.scope, measure: key.measure });
+  if (key.column != null) q.set("column", key.column);
+  if (key.subject != null) q.set("subject", key.subject);
+  return call<MeasureHistory>(
+    "fetchMeasureHistory",
+    `/admin/tables/${tableId}/profile-runs/${encodeURIComponent(runId)}/history?${q}`,
+    "GET",
+    { "X-Provisa-Role": role },
+  );
+};
 
 // The run as ``role`` may see it: the server makes it safe for its viewer (REQ-1934).
 export const fetchProfileRun = (tableId: number, runId: string, role: string) =>

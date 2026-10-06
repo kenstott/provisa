@@ -18,6 +18,7 @@ import {
   type ProfileRunResults,
 } from "../../api/profiler";
 import { useAuth } from "../../context/AuthContext";
+import { ProfileDriftPanel } from "./ProfileDriftPanel";
 
 // The result relations shown for a run, in this order; ``runs`` is the list itself.
 const KINDS = [
@@ -208,7 +209,16 @@ export function ProfileRunsModal({
           </Tabs.List>
           {KINDS.map((k) => (
             <Tabs.Panel key={k} value={k} pt="xs">
-              <RowsTable rows={results[k] ?? []} testId={`profile-rows-${k}`} />
+              {k === "drift" && selected != null && role ? (
+                <ProfileDriftPanel
+                  tableId={tableId}
+                  runId={selected}
+                  role={role.id}
+                  rows={results.drift ?? []}
+                />
+              ) : (
+                <RowsTable rows={results[k] ?? []} testId={`profile-rows-${k}`} />
+              )}
             </Tabs.Panel>
           ))}
         </Tabs>

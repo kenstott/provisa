@@ -27,6 +27,7 @@ import urllib.request
 from typing import Any
 
 import pytest
+from tests.helpers import PROFILER_RUN_DEFAULTS
 import sqlalchemy as sa
 
 from tests.integration.worker_boot_harness import WorkerBoot, _config
@@ -68,7 +69,7 @@ def server():
             {
                 "id": "profiler",
                 "type": "data_profiler",
-                "mapping": {"cron": "0 3 * * *", "low_cardinality_max": 100},
+                "mapping": {"cron": "0 3 * * *", **PROFILER_RUN_DEFAULTS},
             }
         ],
         "tables": [

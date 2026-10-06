@@ -1,0 +1,21 @@
+{
+  "profileDriftPanel": {
+    "measure": "Meting",
+    "drift": "Drift",
+    "drifting": "drift",
+    "runTime": "Runtijd",
+    "value": "Waarde",
+    "col_previous": "Vorige",
+    "col_current": "Huidige",
+    "col_change": "Wijziging",
+    "col_ks_previous": "KS t.o.v. vorige",
+    "col_psi_previous": "PSI t.o.v. vorige",
+    "col_window_runs": "Runs in venster",
+    "col_baseline": "Basislijn",
+    "col_spread": "MAD",
+    "col_distance": "Afstand (MAD's)",
+    "col_slope_spread": "Trend (MAD's)",
+    "col_ks": "KS t.o.v. venster",
+    "col_psi": "PSI t.o.v. venster"
+  }
+}

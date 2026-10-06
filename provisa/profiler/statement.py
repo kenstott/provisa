@@ -163,8 +163,16 @@ def qualified(table: str) -> str:
     return f"{_ident(schema)}.{_ident(name)}"
 
 
-def count_sql(table: str) -> str:
-    return f"SELECT COUNT(*) AS row_count FROM {qualified(table)}"
+def count_sql(table: str, watermark: str | None) -> str:
+    """The table's row count, which sizes the sample, and -- where the table declares a temporal
+    watermark column (``watermark``, as published) -- its latest watermark in epoch seconds, over
+    the whole table, for the run's freshness (REQ-1934 FRESHNESS)."""
+    latest = (
+        f", MAX(EXTRACT(EPOCH FROM t.{_ident(watermark)})) AS watermark_max"
+        if watermark is not None
+        else ""
+    )
+    return f"SELECT COUNT(*) AS row_count{latest} FROM {qualified(table)} t"
 
 
 # REQ-1934: how a run reads its table. ``whole`` reads every row (the table fits the cell budget);

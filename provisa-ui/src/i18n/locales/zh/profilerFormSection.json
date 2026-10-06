@@ -6,6 +6,22 @@
     "sampleDescription": "单元格数为行数 × 画像的列数。单元格数超过此值的表将从约此单元格数的样本进行画像，因此列多的表抽样的行更少。留空则对每一行进行画像。",
     "samplePlaceholder": "整张表",
     "lowCardinalityLabel": "低基数阈值",
-    "lowCardinalityDescription": "不同值数量不超过此值的列会统计每个值，并可能被推断为类别。"
+    "lowCardinalityDescription": "不同值数量不超过此值的列会统计每个值，并可能被推断为类别。",
+    "driftSeasonLabel": "漂移季节性",
+    "driftSeasonDescription": "运行与哪些先前运行进行比较：所有运行，或仅与一天、一周或一个月中同一时点的运行比较（UTC）。",
+    "driftSeason_none": "无 — 每次运行",
+    "driftSeason_daily": "每日 — 同一小时",
+    "driftSeason_weekly": "每周 — 同一星期几",
+    "driftSeason_monthly": "每月 — 每月同一天",
+    "driftWindowLabel": "漂移窗口",
+    "driftWindowDescription": "季节中同一时点的多少次先前成功运行构成基线。在表运行达到此次数之前不测量漂移。",
+    "driftDistanceLabel": "距离阈值",
+    "driftDistanceDescription": "与窗口中位数的距离超过此数量中位数绝对偏差的指标即为漂移。",
+    "driftSlopeLabel": "斜率阈值",
+    "driftSlopeDescription": "其趋势在整个窗口中使其变化超过此数量中位数绝对偏差的指标即为漂移。",
+    "driftKsLabel": "KS 阈值",
+    "driftKsDescription": "相对于窗口合并分布的 Kolmogorov-Smirnov 统计量超过此值的分布即为漂移。",
+    "driftPsiLabel": "PSI 阈值",
+    "driftPsiDescription": "相对于窗口合并分布的群体稳定性指数超过此值的分布即为漂移。"
   }
 }

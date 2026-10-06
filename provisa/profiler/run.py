@@ -366,24 +366,53 @@ async def column_tags(conn: Any, table_id: int) -> dict[str, set[str]]:
 
 
 async def _comparison(
-    conn: Any, table_name: str, table_id: int, run_time: datetime, results: dict[str, list[dict]]
+    conn: Any,
+    table_name: str,
+    table_id: int,
+    run_time: datetime,
+    results: dict[str, list[dict]],
+    settings: ProfilerSettings,
 ) -> list[dict]:
-    """This run's drift rows: its comparison with the table's previous successful run (REQ-1934),
-    recorded with it as a measure of the run. Sets the runs row's ``previous_run_id``."""
+    """This run's drift rows (REQ-1934): its comparison with the table's previous successful run,
+    and each measure against the window of previous runs at the same point in the season, recorded
+    with the run as measures of it. Sets the runs row's ``previous_run_id`` and ``window_runs``."""
     from provisa.profiler import compare
     from provisa.profiler.history import MEASURE_KINDS, previous_runs, run_results
 
     (run,) = results["runs"]
-    found = await previous_runs(conn, table_name, table_id, run_time, 1)
+    found = await previous_runs(conn, table_name, table_id, run_time, None)
+    window = compare.window_of(settings.drift_season, settings.drift_window, run_time, found)
+    wanted = sorted({found[0][0]} | {rid for rid, _ in window}) if found else []
+    stored = await run_results(conn, table_name, table_id, wanted, MEASURE_KINDS)
     previous = None
     if found:
-        prev_id = found[0][0]
-        stored = await run_results(conn, table_name, table_id, [prev_id], MEASURE_KINDS)
-        previous = compare.measures_of(stored[prev_id])
-        run["previous_run_id"] = prev_id
-    rows = compare.compare(compare.measures_of(results), previous)
+        previous = compare.measures_of(stored[found[0][0]])
+        run["previous_run_id"] = found[0][0]
+    current = compare.measures_of(results)
+    rows = compare.compare(current, previous)
+    past = [(t, compare.measures_of(stored[rid])) for rid, t in window]
+    compare.window_drift(rows, current, run_time, past, settings)
+    run["window_runs"] = len(window)
     key = {"run_id": run["run_id"], "run_time": run["run_time"]}
     return [{**key, "previous_run_id": run["previous_run_id"], **r} for r in rows]
+
+
+async def declared_watermark(conn: Any, table_id: int) -> str | None:
+    """The watermark column the table declares in the model (its physical name), or None."""
+    from provisa.core.schema_org import registered_tables as rt
+
+    row = (
+        await conn.execute_core(select(rt.c.watermark_column).where(rt.c.id == table_id))
+    ).fetchone()
+    return None if row is None else row[0]
+
+
+def temporal_watermark(target: Target, declared: str | None) -> str | None:
+    """The declared watermark as the org admin reads it, when it is a temporal column: a freshness
+    is a time, so a table with no declared watermark, or one whose watermark is not a time (a
+    sequence number), or one the org admin cannot read, records no freshness (REQ-1934)."""
+    spec = next((c for c in target.columns if c.physical == declared), None)
+    return spec.name if spec is not None and spec.family == "temporal" else None
 
 
 @dataclass(frozen=True)
@@ -502,13 +531,18 @@ async def profile_table(
     started = time.monotonic()
     row_count: int | None = None
     fraction: float | None = None
+    freshness: float | None = None
     read: ProfileRead | None = None
     try:
         async with state.model_db.acquire() as conn:
             tags = await column_tags(conn, table_id)
+            declared = await declared_watermark(conn, table_id)
         target = resolve_target(state, table_id, table_name, tags)
-        _, count_rows = await _governed(count_sql(target.pgwire_name))
+        watermark = temporal_watermark(target, declared)
+        _, count_rows = await _governed(count_sql(target.pgwire_name, watermark))
         row_count = int(count_rows[0][0])
+        latest = count_rows[0][1] if watermark is not None else None
+        freshness = None if latest is None else run_time.timestamp() - float(latest)
         fraction = sample_fraction(row_count, len(target.columns), settings.sample_above_cells)
         read = await read_profile(
             state, target, row_count, fraction, settings.low_cardinality_max, random.Random()
@@ -544,6 +578,8 @@ async def profile_table(
             "duplicate_share": None if dups is None or not profiled else dups.extra / profiled,
             # Over every declared key; none declared, nothing to count.
             "key_duplicates": sum(k.repeated for k in keys) if keys else None,
+            "freshness_seconds": freshness,
+            "window_runs": None,  # set by the comparison below, once the run succeeded
             "duration_ms": int((time.monotonic() - started) * 1000),
             "status": status,
             "error": error,
@@ -552,7 +588,9 @@ async def profile_table(
     async with state.model_db.acquire() as conn:
         if status == "succeeded":
             try:
-                results["drift"] = await _comparison(conn, table_name, table_id, run_time, results)
+                results["drift"] = await _comparison(
+                    conn, table_name, table_id, run_time, results, settings
+                )
             except Exception as exc:  # recorded as the run's outcome, then re-raised below
                 status, error = "failed", f"{type(exc).__name__}: {exc}"
                 log.exception("comparing profile run %s of table %s failed", run_id, table_name)

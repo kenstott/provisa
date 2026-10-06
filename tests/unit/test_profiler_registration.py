@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import pytest
+from tests.helpers import PROFILER_RUN_DEFAULTS
 
 from provisa.core.models import Column, ProvisaConfig, Source, SourceType, Table
 from provisa.profiler.registration import derive_result_table, validate_config
@@ -31,7 +32,7 @@ def _profiler(mapping: dict | None = None) -> Source:
     return Source(
         id="prof",
         type=SourceType.data_profiler,
-        mapping=mapping or {"cron": "0 3 * * *", "low_cardinality_max": 100},
+        mapping=mapping or {"cron": "0 3 * * *", **PROFILER_RUN_DEFAULTS},
     )
 
 
@@ -68,12 +69,12 @@ def _config(*tables: Table, source: Source | None = None) -> ProvisaConfig:
 
 def test_settings_are_a_cron_and_an_optional_sample_size():
     assert (
-        profiler_settings("p", {"cron": "0 3 * * *", "low_cardinality_max": 100}).sample_above_cells
+        profiler_settings("p", {"cron": "0 3 * * *", **PROFILER_RUN_DEFAULTS}).sample_above_cells
         is None
     )
     assert (
         profiler_settings(
-            "p", {"cron": "*/5 * * * *", "sample_above_cells": 1000, "low_cardinality_max": 100}
+            "p", {"cron": "*/5 * * * *", "sample_above_cells": 1000, **PROFILER_RUN_DEFAULTS}
         ).sample_above_cells
         == 1000
     )
@@ -82,8 +83,8 @@ def test_settings_are_a_cron_and_an_optional_sample_size():
 @pytest.mark.parametrize(
     "mapping,message",
     [
-        ({"low_cardinality_max": 100}, "needs a cron schedule"),
-        ({"cron": "every day", "low_cardinality_max": 100}, "is invalid"),
+        ({**PROFILER_RUN_DEFAULTS}, "needs a cron schedule"),
+        ({"cron": "every day", **PROFILER_RUN_DEFAULTS}, "is invalid"),
         (
             {"cron": "0 3 * * *", "sample_above_cells": 0, "low_cardinality_max": 1},
             "sample_above_cells",
@@ -95,6 +96,19 @@ def test_settings_are_a_cron_and_an_optional_sample_size():
         ({"cron": "0 3 * * *"}, "low_cardinality_max must be a positive whole number"),
         ({"cron": "0 3 * * *", "low_cardinality_max": 0}, "low_cardinality_max must be"),
         ({"cron": "0 3 * * *", "low_cardinality_max": 100, "k": 5}, "unknown setting"),
+        # REQ-1934 DRIFT ACROSS RUNS: the window, season and thresholds are run defaults.
+        (
+            {"cron": "0 3 * * *", **PROFILER_RUN_DEFAULTS, "drift_season": "yearly"},
+            "drift_season must be one of",
+        ),
+        (
+            {"cron": "0 3 * * *", **PROFILER_RUN_DEFAULTS, "drift_window": 0},
+            "drift_window must be a positive whole number",
+        ),
+        (
+            {"cron": "0 3 * * *", **PROFILER_RUN_DEFAULTS, "drift_psi": 0},
+            "drift_psi must be a positive number",
+        ),
     ],
 )
 def test_settings_that_describe_no_schedule_are_refused(mapping, message):

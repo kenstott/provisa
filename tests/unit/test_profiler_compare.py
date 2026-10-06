@@ -13,6 +13,8 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -49,7 +51,7 @@ def _run(
             }
         )
     out: dict[str, list[dict]] = {
-        "runs": [{"row_count": rows, "duplicate_share": dup_share}],
+        "runs": [{"row_count": rows, "duplicate_share": dup_share, "freshness_seconds": None}],
         "columns": cols,
         "quantiles": [],
         "top_values": [],
@@ -138,3 +140,93 @@ def test_a_pooled_distribution_weighs_each_run_by_its_rows():
     assert pooled(10) == pytest.approx(0.25)
     with pytest.raises(ValueError, match="at least one row"):
         compare.mixture_cdf([(_sketch(0, 10), 0)])
+
+
+# -- drift across runs (REQ-1934 DRIFT ACROSS RUNS) ------------------------------------------------
+
+_T0 = datetime(2026, 9, 1, 3, 0, tzinfo=UTC)
+_SETTINGS = SimpleNamespace(
+    drift_window=4,
+    drift_season="none",
+    drift_distance=3.0,
+    drift_slope=3.0,
+    drift_ks=0.2,
+    drift_psi=0.25,
+)
+
+
+def _window(counts: list[int], **kw) -> list[tuple[datetime, compare.RunMeasures]]:
+    """Runs a day apart, oldest first, with the given row counts."""
+    return [
+        (_T0 + timedelta(days=i), compare.measures_of(_run(rows=n, **kw)))
+        for i, n in enumerate(counts)
+    ]
+
+
+def _drift(current: dict, window, settings=_SETTINGS) -> dict[tuple, dict]:
+    cur = compare.measures_of(current)
+    rows = compare.compare(cur, window[-1][1])
+    run_time = window[-1][0] + timedelta(days=1)
+    compare.window_drift(rows, cur, run_time, list(reversed(window)), settings)
+    return _by(rows)
+
+
+def test_no_drift_is_measured_before_a_full_window():
+    """REQ-1934 NO DRIFT BEFORE A FULL WINDOW: every window measure is NULL, the prior-run count is
+    recorded, and the comparison with the previous run still is."""
+    rows = _drift(_run(rows=500), _window([100, 100, 100]))
+    count = rows[("table", None, None, "row_count")]
+    assert count["window_runs"] == 3 and count["change"] == 400
+    window_fields = ("baseline", "spread", "distance", "slope", "ks", "psi", "drifting")
+    assert all(r[f] is None for r in rows.values() for f in window_fields)
+
+
+def test_a_run_far_from_its_windows_baseline_is_drifting_in_mad_units():
+    rows = _drift(_run(rows=130), _window([100, 102, 98, 101]))
+    count = rows[("table", None, None, "row_count")]
+    # median 100.5; absolute deviations 0.5, 1.5, 2.5, 0.5 -> MAD 1.0
+    assert (count["baseline"], count["spread"], count["window_runs"]) == (100.5, 1.0, 4)
+    assert count["distance"] == pytest.approx(29.5)
+    assert count["drifting"] is True and "distance" in count["drift_reason"]
+    steady = _drift(_run(rows=101), _window([100, 102, 98, 101]))
+    assert steady[("table", None, None, "row_count")]["drifting"] is False
+
+
+def test_a_gradual_drift_no_single_step_reveals_is_caught_by_its_slope():
+    rows = _drift(_run(rows=108), _window([100, 102, 104, 106]))
+    count = rows[("table", None, None, "row_count")]
+    # Each step is 2 rows; the trend across the window is far past the slope threshold in MADs.
+    assert count["slope"] == pytest.approx(2.0)
+    assert count["drifting"] is True and "slope" in count["drift_reason"]
+
+
+def test_a_measure_constant_across_its_window_that_changes_is_drifting():
+    rows = _drift(_run(rows=101), _window([100, 100, 100, 100]))
+    count = rows[("table", None, None, "row_count")]
+    assert count["spread"] == 0 and count["distance"] is None
+    assert count["drifting"] is True
+
+
+def test_a_distribution_shifted_from_the_pooled_window_is_drifting():
+    window = _window([100, 100, 100, 100])
+    rows = _drift(_run(amount=(50.0, 150.0), regions={"east": 90, "west": 10}), window)
+    dist = rows[("column", "amount", None, "distribution")]
+    assert dist["ks"] == pytest.approx(0.5) and dist["drifting"] is True
+    assert set(dist["drift_reason"].split(", ")) == {"ks", "psi"}
+    shares = rows[("column", "region", None, "category_shares")]
+    assert shares["psi"] > 0.25 and shares["drifting"] is True
+    calm = _drift(_run(), window)
+    assert calm[("column", "amount", None, "distribution")]["drifting"] is False
+
+
+def test_a_seasonal_window_holds_the_runs_at_the_same_point_in_the_season():
+    """REQ-1934 SEASONAL BASELINES: weekly -- the last N runs on the same weekday."""
+    monday = datetime(2026, 10, 5, 3, 0, tzinfo=UTC)
+    previous = [(f"r{i}", monday - timedelta(days=i)) for i in range(1, 30)]
+    window = compare.window_of("weekly", 3, monday, previous)
+    assert [rid for rid, _ in window] == ["r7", "r14", "r21"]
+    assert len(compare.window_of("none", 3, monday, previous)) == 3
+    assert [rid for rid, _ in compare.window_of("daily", 2, monday, previous)] == ["r1", "r2"]
+    assert compare.in_season("monthly", monday, monday - timedelta(days=30)) is True
+    with pytest.raises(ValueError, match="unknown drift season"):
+        compare.in_season("yearly", monday, monday)

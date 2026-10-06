@@ -73,6 +73,18 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
             "Key values held by more than one row, over every declared primary or unique key; "
             "empty where the table declares none.",
         ),
+        (
+            "freshness_seconds",
+            "double",
+            "Run time minus the latest value of the table's declared watermark column, in seconds; "
+            "empty where the table declares no temporal watermark.",
+        ),
+        (
+            "window_runs",
+            "integer",
+            "Previous successful runs at this run's point in the season, up to the profiler's "
+            "drift window.",
+        ),
         ("duration_ms", "bigint", "How long the run took."),
         ("status", "varchar", "succeeded | failed."),
         ("error", "varchar", "Why the run failed; empty when it succeeded."),
@@ -216,6 +228,37 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
             "Population stability index of the distribution against the previous run's.",
         ),
         ("detail", "varchar", "A change in kind: a column added or removed, a type changed."),
+        (
+            "window_runs",
+            "integer",
+            "Previous successful runs at this run's point in the season, up to the window; every "
+            "window measure below is empty until the window is full.",
+        ),
+        ("baseline", "double", "The window's median of the measure."),
+        ("spread", "double", "The window's median absolute deviation (MAD) from its baseline."),
+        ("distance", "double", "(current - baseline) / spread: how far the run lies, in MADs."),
+        ("slope", "double", "Least-squares slope of the measure over the window and run, per day."),
+        (
+            "slope_spread",
+            "double",
+            "The slope's change across the window's time span, in MADs.",
+        ),
+        (
+            "ks",
+            "double",
+            "Kolmogorov-Smirnov statistic of the distribution against the window's pooled one.",
+        ),
+        (
+            "psi",
+            "double",
+            "Population stability index of the distribution against the window's pooled one.",
+        ),
+        (
+            "drifting",
+            "boolean",
+            "Whether the distance, slope, KS or PSI passes the profiler's threshold.",
+        ),
+        ("drift_reason", "varchar", "Which thresholds were passed: distance, slope, ks, psi."),
     ),
 }
 

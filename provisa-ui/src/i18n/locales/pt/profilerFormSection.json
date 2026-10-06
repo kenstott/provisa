@@ -6,6 +6,22 @@
     "sampleDescription": "Células são linhas × colunas perfiladas. Uma tabela com mais células que isso é perfilada a partir de uma amostra de aproximadamente esse número de células, então uma tabela larga amostra menos linhas. Deixe vazio para perfilar todas as linhas.",
     "samplePlaceholder": "Tabela inteira",
     "lowCardinalityLabel": "Limite de baixa cardinalidade",
-    "lowCardinalityDescription": "Uma coluna com no máximo este número de valores distintos tem cada valor contado e pode ser inferida como categoria."
+    "lowCardinalityDescription": "Uma coluna com no máximo este número de valores distintos tem cada valor contado e pode ser inferida como categoria.",
+    "driftSeasonLabel": "Sazonalidade do desvio",
+    "driftSeasonDescription": "Com quais execuções anteriores uma execução é comparada: todas, ou apenas as do mesmo momento do dia, da semana ou do mês (UTC).",
+    "driftSeason_none": "Nenhuma — todas as execuções",
+    "driftSeason_daily": "Diária — mesma hora",
+    "driftSeason_weekly": "Semanal — mesmo dia da semana",
+    "driftSeason_monthly": "Mensal — mesmo dia do mês",
+    "driftWindowLabel": "Janela de desvio",
+    "driftWindowDescription": "Quantas execuções bem-sucedidas anteriores, no mesmo momento da sazonalidade, formam a linha de base. Nenhum desvio é medido até que a tabela tenha sido executada esse número de vezes.",
+    "driftDistanceLabel": "Limite de distância",
+    "driftDistanceDescription": "Uma medida mais distante da mediana da janela do que este número de desvios absolutos medianos está em desvio.",
+    "driftSlopeLabel": "Limite de inclinação",
+    "driftSlopeDescription": "Uma medida cuja tendência a altera em mais do que este número de desvios absolutos medianos ao longo da janela está em desvio.",
+    "driftKsLabel": "Limite de KS",
+    "driftKsDescription": "Uma distribuição cuja estatística de Kolmogorov-Smirnov em relação à distribuição agregada da janela excede este valor está em desvio.",
+    "driftPsiLabel": "Limite de PSI",
+    "driftPsiDescription": "Uma distribuição cujo índice de estabilidade populacional em relação à distribuição agregada da janela excede este valor está em desvio."
   }
 }
