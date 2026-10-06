@@ -179,7 +179,7 @@ orders: the fakes of a, b name one another in a cycle (a -> b -> a)
 
 ## General fake methods
 
-Any other name is a general fake method: a realistic generated value of one kind (a name, an address, a phone number). A method is checked when declared. It must exist, take the arguments given, and make values the column's type can hold: text, integer, decimal, boolean, date or timestamp. A method that returns a list, a pair, a record or binary data is refused for any column.
+Any other name is a general fake method: a realistic generated value of one kind (a name, an address, a phone number). A method is checked when declared. It must exist, take only the [arguments listed below](#method-arguments), and make values the column's type can hold: text, integer, decimal, boolean, date or timestamp.
 
 Pass arguments by name: `date_between(start_date='-5y', end_date='today')`, `pyint(min_value=1, max_value=100)`. The example outputs below come from one run; yours differ unless the column is stable.
 
@@ -234,9 +234,9 @@ Text unless noted.
 | `postcode()` | A postal code | `31691` |
 | `postalcode()` | A postal code (same as postcode) | `31691` |
 | `zipcode()` | A ZIP code | `31691` |
-| `postcode_in_state(state_abbr='NY')` | A postal code inside a given state | `11950` |
-| `postalcode_in_state(state_abbr='NY')` | A postal code inside a given state | `11950` |
-| `zipcode_in_state(state_abbr='NY')` | A ZIP code inside a given state | `11950` |
+| `postcode_in_state()` | A postal code inside a state | `52428` |
+| `postalcode_in_state()` | A postal code inside a state | `52428` |
+| `zipcode_in_state()` | A ZIP code inside a state | `52428` |
 | `postalcode_plus4()` | A ZIP+4 code | `31691-9710` |
 | `zipcode_plus4()` | A ZIP+4 code | `31691-9710` |
 | `country()` | A country name | `Dominica` |
@@ -476,7 +476,7 @@ Fill a template. # becomes a digit and ? a letter.
 
 ### Colours
 
-Colour methods that return a triple cannot fill a single column.
+Methods that make a colour as a triple of numbers cannot be declared; see below.
 
 | Method | Makes | Example |
 | --- | --- | --- |
@@ -540,7 +540,7 @@ Text unless noted.
 | `passport_dob()` | A date of birth for a passport (date) | `1938-05-14` |
 | `passport_full()` | A passport's fields on separate lines | `Jacqueline / Munoz / F / 14 May 1938 / 17 Mar...` |
 | `password(length=12)` | A random password | `FWe$!n759MRN` |
-| `pystr_format(string_format='??-####')` | A string shaped by a template | `xM-3982` |
+| `pystr_format()` | A string of letters and digits in a fixed shape | `E8-2593898L` |
 | `random_element(elements=('new', 'paid', 'shipped'))` | One value from a list you give | `new` |
 | `date_between_dates(date_start=datetime.date(2024,1,1), date_end=datetime.date(2024,12,31))` | A date between two dates you give | `2024-03-27` |
 | `date_time_between_dates(datetime_start=datetime.datetime(2024,1,1), datetime_end=datetime.datetime(2024,12,31))` | A timestamp between two timestamps you give | `2024-03-27 20:34:12` |
@@ -548,15 +548,90 @@ Text unless noted.
 | `csv()` | Sample records as comma-separated text | `"Joshua Wood","074 James Stravenue / Weaversi...` |
 | `tsv()` | Sample records as tab-separated text | `"Joshua Wood"	"074 James Stravenue / Weaversi...` |
 | `psv()` | Sample records as pipe-separated text | `"Joshua Wood"|"074 James Stravenue / Weaversi...` |
-| `dsv(delimiter=';')` | Sample records separated by a delimiter you give | `"Joshua Wood";"074 James Stravenue / Weaversi...` |
+| `dsv()` | Sample records as delimiter-separated text | `"Joshua Wood","074 James Stravenue / Weaversi` |
 | `fixed_width()` | Sample records in fixed-width columns as text | `Joshua Wood         19  / Kevin Jacobs       ...` |
-### Methods that make structures
+### Methods that make several values
 
-These make a list, a pair, a record, a time interval or binary data. No column holds those, so declaring any of them is refused: `binary`, `color_hsl`, `color_hsv`, `color_rgb`, `color_rgb_float`, `cryptocurrency`, `currency`, `enum`, `get_words_list`, `image`, `json_bytes`, `latlng`, `local_latlng`, `location_on_land`, `nic_handles`, `paragraphs`, `passport_dates`, `passport_owner`, `pydict`, `pyiterable`, `pylist`, `pyobject`, `pyset`, `pystruct`, `pytimezone`, `pytuple`, `random_choices`, `random_elements`, `random_letters`, `random_sample`, `randomize_nb_elements`, `sentences`, `simple_profile`, `tar`, `texts`, `time_delta`, `time_object`, `time_series`, `words`, `zip`.
+These methods make a list or a pair. Provisa shows the list as one text, joined by line for `paragraphs` and `texts`, by space for the others, and with no separator for `random_letters`. A `currency` or `cryptocurrency` shows its code.
 
-`xml` makes text but needs a component that is not always installed. Where it is missing, declaring `xml` is refused by name.
+| Method | Shows | Example |
+| --- | --- | --- |
+| `cryptocurrency()` | A cryptocurrency's code | `NMC` |
+| `currency()` | A currency's code | `IDR` |
+| `get_words_list()` | The whole word list, joined by spaces | `a ability able about above accept according account acros...` |
+| `nic_handles()` | Network information centre handles, joined by spaces | `MA93682-EQJO` |
+| `paragraphs()` | Paragraphs, one per line | `Name have page personal assume actually study else. Court...` |
+| `random_choices(elements=('a', 'b', 'c'))` | Elements drawn with repeats, joined by spaces | `c` |
+| `random_elements(elements=('a', 'b', 'c'))` | Elements drawn, joined by spaces | `c` |
+| `random_letters()` | Random letters run together | `mCtFGdaRnmZyRyHh` |
+| `random_sample(elements=('a', 'b', 'c'))` | A sample of elements, joined by spaces | `c` |
+| `sentences()` | Sentences, joined by spaces | `Or candidate trouble listen ok. Actually study else docto...` |
+| `texts()` | Blocks of text, one per line | `Name have page personal assume actually study else. Court...` |
+| `words()` | Words, joined by spaces | `draw name have` |
 
-For a single value from a pair, use the single-value method instead: `currency_code`, `currency_name` or `cryptocurrency_code`; `latitude` or `longitude`; `first_name` or `last_name`; `word` or `sentence`.
+### Methods no column can declare
+
+These 29 methods make bytes, several values at once (a coordinate pair is two columns, and Provisa has no point type), structures of mixed values, objects or generators, or need a class argument. Declaring one is refused by name, on every engine: `binary`, `color_hsl`, `color_hsv`, `color_rgb`, `color_rgb_float`, `enum`, `image`, `json_bytes`, `latlng`, `local_latlng`, `location_on_land`, `passport_dates`, `passport_owner`, `profile`, `pydict`, `pyiterable`, `pylist`, `pyobject`, `pyset`, `pystruct`, `pytimezone`, `pytuple`, `simple_profile`, `tar`, `time_delta`, `time_object`, `time_series`, `xml`, `zip`.
+
+For a single value from a pair, use the single-value method: `latitude` or `longitude`; `color` or `hex_color`; `first_name` or `last_name`.
+
+## Method arguments
+
+A method takes the arguments below, by name, and no others. The same arguments work on every engine, which is why any other is refused by name, with the list the method does take. A method not listed takes none.
+
+| Method | Arguments |
+| --- | --- |
+| `bothify` | `text`, `letters` |
+| `numerify` | `text` |
+| `lexify` | `text`, `letters` |
+| `hexify` | `text`, `upper` |
+| `pyint` | `min_value`, `max_value`, `step` |
+| `random_int` | `min`, `max`, `step` |
+| `random_number` | `digits`, `fix_len` |
+| `pyfloat` | `left_digits`, `right_digits`, `positive`, `min_value`, `max_value` |
+| `pydecimal` | `left_digits`, `right_digits`, `positive`, `min_value`, `max_value` |
+| `pystr` | `min_chars`, `max_chars`, `prefix`, `suffix` |
+| `password` | `length`, `special_chars`, `digits`, `upper_case`, `lower_case` |
+| `nic_handle` | `suffix` |
+| `nic_handles` | `count`, `suffix` |
+| `date` | `pattern`, `end_datetime` |
+| `time` | `pattern`, `end_datetime` |
+| `date_object` | `end_datetime` |
+| `date_time` | `end_datetime` |
+| `date_time_ad` | `start_datetime`, `end_datetime` |
+| `iso8601` | `end_datetime`, `sep` |
+| `boolean` | `chance_of_getting_true` |
+| `pybool` | `truth_probability` |
+| `random_element` | `elements` |
+| `date_between` | `start_date`, `end_date` |
+| `date_time_between` | `start_date`, `end_date` |
+| `date_between_dates` | `date_start`, `date_end` |
+| `date_time_between_dates` | `datetime_start`, `datetime_end` |
+| `future_date` | `end_date` |
+| `future_datetime` | `end_date` |
+| `past_date` | `start_date` |
+| `past_datetime` | `start_date` |
+| `date_of_birth` | `minimum_age`, `maximum_age` |
+| `date_this_century` | `before_today`, `after_today` |
+| `date_this_decade` | `before_today`, `after_today` |
+| `date_this_year` | `before_today`, `after_today` |
+| `date_this_month` | `before_today`, `after_today` |
+| `date_time_this_century` | `before_now`, `after_now` |
+| `date_time_this_decade` | `before_now`, `after_now` |
+| `date_time_this_year` | `before_now`, `after_now` |
+| `date_time_this_month` | `before_now`, `after_now` |
+| `unix_time` | `start_datetime`, `end_datetime` |
+| `words` | `nb`, `unique` |
+| `sentences` | `nb` |
+| `paragraphs` | `nb` |
+| `texts` | `nb_texts`, `max_nb_chars` |
+| `sentence` | `nb_words` |
+| `paragraph` | `nb_sentences` |
+| `text` | `max_nb_chars` |
+| `random_letters` | `length` |
+| `random_choices` | `elements`, `length` |
+| `random_elements` | `elements`, `length`, `unique` |
+| `random_sample` | `elements`, `length` |
 
 ## See also
 
