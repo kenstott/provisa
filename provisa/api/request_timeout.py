@@ -15,7 +15,15 @@ JSON:API, SQL over HTTP, Cypher over HTTP). This is that transport's boundary: t
 response passes before it leaves. A response that reaches it after the deadline has passed is
 not sent — the client is told the request timed out, naming the transport and the setting,
 whatever the route had produced (a result, or an error of its own shaped from the same expiry).
-A response already streaming when the deadline passes ends there."""
+A response already streaming when the deadline passes ends there.
+
+The timeout reply is not interrupted by the deadline it reports. The watchdog raises into the
+request thread again every period until the deadline's scope ends (``request_deadline``), so a
+reply sent while it still does could be cut short by that raise. Answering with the timeout
+therefore first stops the deadline, inside the thread's shield: no raise is pending once the
+shield is entered, and none is set after the deadline has stopped. The deterministic checks
+(``Deadline.check``, a blocking call refused on its way out) still end whatever the route goes
+on doing, since they read the clock."""
 
 # Requirements: REQ-1905
 
@@ -52,6 +60,7 @@ async def serve_within_deadline(
     app: Any, scope: Any, receive: Any, send: Any, deadline: Deadline
 ) -> None:
     """Run ``app`` for one HTTP request whose deadline is ``deadline`` (already bound)."""
+    shield = request_deadline.shielded()  # taken before the work (see request_deadline)
     started = False  # the route's own response has begun to leave
     streaming = False  # ... and is being sent in more than one piece
     replaced = False  # the route's response was withheld and the timeout sent in its place
@@ -62,6 +71,9 @@ async def serve_within_deadline(
             return  # the rest of a response that was not sent
         if message["type"] == "http.response.start":
             if deadline.fired:
+                with shield.lock:  # the watchdog raises nothing into the timeout reply
+                    shield.settle()
+                    deadline.stop()
                 replaced = True
                 await _send_timeout(send, deadline)
                 return
@@ -75,8 +87,13 @@ async def serve_within_deadline(
     try:
         await app(scope, receive, checked_send)
     except Exception as exc:
+        with shield.lock:
+            shield.settle()
+            answer = not (started or replaced) and deadline.fired
+            if answer:
+                deadline.stop()
         request_deadline.let_go(exc)  # what the interrupted frames held is released now
-        if started or replaced or not deadline.fired:
+        if not answer:
             raise
         # The request failed after its deadline had passed and nothing has been sent: what it
         # failed with is reported here, and the client is answered with the timeout.
