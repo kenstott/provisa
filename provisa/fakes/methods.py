@@ -195,11 +195,87 @@ _HOLDS: dict[str, tuple[type, ...]] = {
 }
 
 
-@lru_cache(maxsize=1)
-def _generator() -> Any:
+#: REQ-1494 (determinism): a fake is a keyed function of the value, so nothing it shows may depend
+#: on the wall clock. Every method whose default range starts or ends at "now" is relative to this
+#: instant instead, in UTC, on every engine: the Trino plugin's FakeMethods.REFERENCE_INSTANT and
+#: PL/Python (which runs this module) read the same instant.
+REFERENCE_INSTANT = _dt.datetime(2026, 7, 15, 12, 0, 0, tzinfo=_dt.timezone.utc)
+
+
+class _AnyDateTime(type):
+    # The providers test values with isinstance against these names: every datetime is one.
+    def __instancecheck__(cls, obj: Any) -> bool:
+        return isinstance(obj, _dt.datetime)
+
+
+class _AnyDate(type):
+    def __instancecheck__(cls, obj: Any) -> bool:
+        return isinstance(obj, _dt.date)
+
+
+class _PinnedDateTime(_dt.datetime, metaclass=_AnyDateTime):
+    @classmethod
+    def now(cls, tz: Any = None) -> Any:  # type: ignore[override]
+        at = cls.fromtimestamp(REFERENCE_INSTANT.timestamp(), _dt.timezone.utc)
+        return at.astimezone(tz) if tz is not None else at.replace(tzinfo=None)
+
+    @classmethod
+    def today(cls) -> Any:  # type: ignore[override]
+        return cls.now()
+
+
+class _PinnedDate(_dt.date, metaclass=_AnyDate):
+    @classmethod
+    def today(cls) -> Any:  # type: ignore[override]
+        return cls(REFERENCE_INSTANT.year, REFERENCE_INSTANT.month, REFERENCE_INSTANT.day)
+
+
+def _pin_clock() -> None:
+    """REQ-1494 (determinism): the library's date and time providers read "now", "today" and the
+    local time zone from their own module globals; they read the reference instant and UTC."""
+    from faker.providers import date_time
+    from faker.providers.passport import en_US as passport
+
+    date_time.datetime = _PinnedDateTime  # type: ignore[misc]
+    date_time.dtdate = _PinnedDate  # type: ignore[misc]
+    date_time._get_local_timezone = lambda: _dt.timezone.utc
+    passport.date = _PinnedDate  # type: ignore[misc]
+
+
+def _seeded_passport() -> Any:
+    """REQ-1494 (determinism): the library's passport_gender, and passport_full through it, draw
+    from the process-wide random rather than the generator's; these draw from the generator, so
+    the value's digest decides them."""
+    from faker.providers import BaseProvider
+
+    class SeededPassport(BaseProvider):
+        def passport_gender(self) -> str:
+            return self.generator.random.choices(["M", "F", "X"], weights=[0.493, 0.493, 0.014])[0]
+
+        def passport_full(self) -> str:
+            dob = self.generator.passport_dob()
+            birth, issue, expiry = self.generator.passport_dates(dob)
+            gender = self.passport_gender()
+            given, surname = self.generator.passport_owner(gender=gender)
+            number = self.generator.passport_number()
+            return f"{given}\n{surname}\n{gender}\n{birth}\n{issue}\n{expiry}\n{number}\n"
+
+    return SeededPassport
+
+
+def new_generator() -> Any:
+    """A generator of every fake method, deterministic in its seed (REQ-1494)."""
     from faker import Faker
 
-    return Faker(LOCALE)
+    _pin_clock()
+    gen = Faker(LOCALE)
+    gen.add_provider(_seeded_passport())
+    return gen
+
+
+@lru_cache(maxsize=1)
+def _generator() -> Any:
+    return new_generator()
 
 
 @lru_cache(maxsize=1)

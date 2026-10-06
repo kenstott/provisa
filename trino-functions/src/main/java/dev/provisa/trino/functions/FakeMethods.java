@@ -46,7 +46,13 @@ final class FakeMethods
 {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final LocalDate TODAY = LocalDate.of(2026, 1, 1);
+    /**
+     * REQ-1494 (determinism): a fake is a keyed function of the value, so nothing it shows depends on
+     * the wall clock. Every method whose default range starts or ends at "now" is relative to this
+     * instant, in UTC; provisa.fakes.methods.REFERENCE_INSTANT is the same instant on the Python side.
+     */
+    static final LocalDateTime REFERENCE_INSTANT = LocalDateTime.of(2026, 7, 15, 12, 0, 0);
+    private static final LocalDate TODAY = REFERENCE_INSTANT.toLocalDate();
 
     private record Ctx(Faker f, RandomService r, JsonNode a)
     {
@@ -149,7 +155,7 @@ final class FakeMethods
         }
     }
 
-    private static final LocalDateTime NOW = TODAY.atStartOfDay();
+    private static final LocalDateTime NOW = REFERENCE_INSTANT;
     private static final String ASCII_LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
     static LocalDateTime parseMoment(String spec)
@@ -425,10 +431,11 @@ final class FakeMethods
         g.put("itin", c -> "9" + c.digits(2) + "-7" + c.digits(1) + "-" + c.digits(4));
         g.put("credit_card_number", c -> c.f.business().creditCardNumber());
         g.put("credit_card_provider", c -> c.f.business().creditCardType());
-        g.put("credit_card_expire", c -> c.f.business().creditCardExpiry());
+        // From the reference instant, not the library's clock (REQ-1494 determinism).
+        g.put("credit_card_expire", FakeMethods::creditCardExpire);
         g.put("credit_card_security_code", c -> c.f.business().securityCode());
         g.put("credit_card_full", c -> c.f.business().creditCardType() + "\n" + c.f.name().fullName() + "\n"
-                + c.f.business().creditCardNumber() + " " + c.f.business().creditCardExpiry() + "\nCVV: " + c.f.business().securityCode() + "\n");
+                + c.f.business().creditCardNumber() + " " + creditCardExpire(c) + "\nCVV: " + c.f.business().securityCode() + "\n");
         g.put("currency_code", c -> c.f.money().currencyCode());
         g.put("currency_name", c -> c.f.currency().name());
         g.put("currency_symbol", c -> c.f.money().currencySymbol());
@@ -451,8 +458,15 @@ final class FakeMethods
         g.put("license_plate", c -> c.letters(3, true) + "-" + c.digits(4));
         g.put("vin", c -> c.f.vehicle().vin());
         g.put("passport_number", c -> c.f.passport().valid());
-        g.put("passport_gender", c -> c.pick("M", "F", "X"));
-        g.put("passport_full", c -> c.f.name().fullName() + "\n" + c.pick("M", "F", "X") + "\n" + c.f.passport().valid() + "\n");
+        g.put("passport_gender", FakeMethods::passportGender);
+        g.put("passport_full", c -> {
+            LocalDate dob = c.date(TODAY.minusYears(115), TODAY);
+            LocalDate issued = c.date(TODAY.minusYears(10).plusDays(1), TODAY);
+            DateTimeFormatter dmy = DateTimeFormatter.ofPattern("dd MMM yyyy", java.util.Locale.US);
+            return c.f.name().firstName() + "\n" + c.f.name().lastName() + "\n" + passportGender(c) + "\n"
+                    + dob.format(dmy) + "\n" + issued.format(dmy) + "\n" + issued.plusYears(10).format(dmy) + "\n"
+                    + c.f.passport().valid() + "\n";
+        });
         g.put("nic_handle", c -> c.letters(2 + c.r.nextInt(3), true) + c.digits(1 + c.r.nextInt(4)) + "-" + c.text("suffix", "FAKE"));
         g.put("ripe_id", c -> "ORG-" + c.letters(2 + c.r.nextInt(3), true) + c.digits(1 + c.r.nextInt(5)) + "-RIPE");
         g.put("iana_id", c -> String.valueOf(1 + c.r.nextInt(8888888)));
@@ -651,6 +665,19 @@ final class FakeMethods
             boolean after = c.flag("after_now", false);
             return c.between(before ? start.atStartOfDay() : NOW, after ? end.atStartOfDay().minusSeconds(1) : NOW);
         });
+    }
+
+    /** As the Python side's default: between the reference instant and ten years on, as MM/yy. */
+    private static String creditCardExpire(Ctx c)
+    {
+        return c.between(NOW, NOW.plusYears(10)).format(strftime(c.text("date_format", "%m/%y")));
+    }
+
+    /** As the Python side weighs them: M and F .493 each, X .014. */
+    private static String passportGender(Ctx c)
+    {
+        double u = c.r.nextDouble();
+        return u < 0.493 ? "M" : u < 0.986 ? "F" : "X";
     }
 
     private static long stepped(Ctx c, long min, long max, long step)

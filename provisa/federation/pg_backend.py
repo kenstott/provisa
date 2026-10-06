@@ -73,6 +73,13 @@ class PgBackend(NativeEngineBackend):
             engine_writes_store=EngineRun.STATEMENT in engine.caps.runs,
         )
 
+    @property
+    def computes_fakes(self) -> bool:  # type: ignore[override]
+        """REQ-1494: the engine's Postgres holds the fake functions (PL/Python), proven when its
+        runtime came up; until then, and where it cannot, faked reads are refused by name."""
+        runtime = getattr(self, "_runtime", None)
+        return runtime is not None and runtime.computes_fakes
+
     def transpile_physical(self, pg_sql: str) -> str:  # REQ-902
         """Postgres physical SQL, then collapse JSON_OBJECT colon syntax into flat json_build_object so
         nested-relationship queries survive pg_duckdb's transparent DuckDB execution path (REQ-902).

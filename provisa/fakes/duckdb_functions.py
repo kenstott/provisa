@@ -33,7 +33,7 @@ import threading
 from typing import Any
 
 from provisa.fakes.digest import FakeKeyMissing, digest, fingerprint, platform_key, tag
-from provisa.fakes.methods import LOCALE, column_value
+from provisa.fakes.methods import column_value, new_generator
 
 _local = threading.local()
 
@@ -41,9 +41,7 @@ _local = threading.local()
 def _generator() -> Any:
     gen = getattr(_local, "generator", None)
     if gen is None:
-        from faker import Faker
-
-        gen = _local.generator = Faker(LOCALE)
+        gen = _local.generator = new_generator()
     return gen
 
 

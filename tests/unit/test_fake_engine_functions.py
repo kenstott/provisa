@@ -68,6 +68,30 @@ def test_a_fake_method_is_one_fake_per_value(con):
     assert with_args == "3"
 
 
+def test_every_method_is_a_function_of_the_digest_alone(monkeypatch):
+    """REQ-1494 (determinism): the same digest gives the same value, whatever the clock, the
+    time zone or the process-wide random say between the two computations."""
+    import random
+    import time
+
+    from provisa.fakes.duckdb_functions import fake_method
+    from provisa.fakes.methods import UNSUPPORTED, method_names
+
+    declarable = [m for m in method_names() if m not in UNSUPPORTED]
+    seeds = (1, -7, 2**62)
+    first = {(m, s): fake_method(m, "{}", s) for m in declarable for s in seeds}
+    random.seed(12345)
+    time.sleep(1.1)  # the clock moves past a second: a method reading it would differ
+    monkeypatch.setenv("TZ", "Asia/Tokyo")
+    time.tzset()
+    try:
+        second = {(m, s): fake_method(m, "{}", s) for m in declarable for s in seeds}
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+    assert {k for k in first if first[k] != second[k]} == set()
+
+
 def test_without_the_key_no_fake_is_computed():
     previous = digest_mod._key
     digest_mod._key = None

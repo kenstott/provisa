@@ -185,6 +185,8 @@ Pass arguments by name: `date_between(start_date='-5y', end_date='today')`, `pyi
 
 A method not listed under Stable fakes above is computed by the serving engine's own implementation, seeded by the keyed digest of the real value. It is consistent within its region. Declaring such a method stable is refused, naming the methods that can be.
 
+**Now and today.** A method whose range starts or ends at now or today, by default or through an argument such as `end_date='now'` or `start_date='-30d'`, counts from one fixed reference instant, 15 July 2026 at 12:00 UTC, never from the clock. A value is the same at every read, on every engine and in every time zone. `date_time_this_month()` gives a time between 1 and 15 July 2026, and `date_time_between(start_date='-30d', end_date='now')` a time between 15 June and 15 July 2026.
+
 ### Names
 
 Return text unless noted.
@@ -398,28 +400,28 @@ Dates are dates, date-times are timestamps, the rest are text unless noted.
 
 | Method | Makes | Example |
 | --- | --- | --- |
-| `date()` | A date as text (YYYY-MM-DD) | `1983-07-05` |
-| `date_object()` | A date | `1983-07-05` |
-| `date_of_birth()` | A date of birth, 0 to 115 years ago | `1938-05-14` |
-| `date_this_year()` | A date this year | `2026-03-08` |
-| `date_this_month()` | A date this month | `2026-10-02` |
-| `date_this_decade()` | A date this decade | `2021-08-10` |
-| `date_this_century()` | A date this century | `2006-05-15` |
-| `date_between(start_date='-5y', end_date='today')` | A date between two bounds | `2022-12-13` |
-| `past_date()` | A date in the last 30 days | `2026-09-12` |
-| `future_date()` | A date in the next 30 days | `2026-10-13` |
-| `date_time()` | A timestamp since 1970 | `1983-07-05 13:56:18` |
-| `date_time_ad()` | A timestamp since year 1 | `0483-01-22 16:45:00` |
-| `date_time_this_year()` | A timestamp this year | `2026-03-08 06:03:17` |
-| `date_time_this_month()` | A timestamp this month | `2026-10-02 06:54:38` |
-| `date_time_this_decade()` | A timestamp this decade | `2021-08-10 20:53:53` |
-| `date_time_this_century()` | A timestamp this century | `2006-05-15 04:51:23` |
-| `date_time_between(start_date='-30d', end_date='now')` | A timestamp between two bounds | `2026-09-13 13:13:51` |
-| `past_datetime()` | A timestamp in the last 30 days | `2026-09-13 13:13:51` |
-| `future_datetime()` | A timestamp in the next 30 days | `2026-10-13 13:13:52` |
-| `iso8601()` | A timestamp as ISO 8601 text | `1983-07-05T13:56:18.828059` |
-| `unix_time()` | Seconds since 1970 (number) | `4.263e+08` |
-| `time()` | A time of day as text (HH:MM:SS) | `13:56:18` |
+| `date()` | A date as text (YYYY-MM-DD) | `1997-12-22` |
+| `date_object()` | A date | `1997-12-22` |
+| `date_of_birth()` | A date of birth, 0 to 115 years ago | `1967-12-07` |
+| `date_this_year()` | A date this year | `2026-04-07` |
+| `date_this_month()` | A date this month | `2026-07-07` |
+| `date_this_decade()` | A date this decade | `2023-03-27` |
+| `date_this_century()` | A date this century | `2013-02-16` |
+| `date_between(start_date='-5y', end_date='today')` | A date between two bounds | `2024-01-04` |
+| `past_date()` | A date in the last 30 days | `2026-06-29` |
+| `future_date()` | A date in the next 30 days | `2026-07-30` |
+| `date_time()` | A timestamp since 1970 | `1997-12-22 09:26:17` |
+| `date_time_ad()` | A timestamp since year 1 | `1003-03-29 11:17:12` |
+| `date_time_this_year()` | A timestamp this year | `2026-04-07 17:36:22` |
+| `date_time_this_month()` | A timestamp this month | `2026-07-08 04:11:26` |
+| `date_time_this_decade()` | A timestamp this decade | `2023-03-27 08:05:50` |
+| `date_time_this_century()` | A timestamp this century | `2013-02-16 20:36:31` |
+| `date_time_between(start_date='-30d', end_date='now')` | A timestamp between two bounds | `2026-06-30 08:15:24` |
+| `past_datetime()` | A timestamp in the last 30 days | `2026-06-30 08:15:23` |
+| `future_datetime()` | A timestamp in the next 30 days | `2026-07-30 08:15:24` |
+| `iso8601()` | A timestamp as ISO 8601 text | `1997-12-22T09:26:17.410707` |
+| `unix_time()` | Seconds since 1970 (number) | `8.828e+08` |
+| `time()` | A time of day as text (HH:MM:SS) | `09:26:17` |
 | `year()` | A year as text | `1983` |
 | `month()` | A month number as text | `07` |
 | `month_name()` | A month name | `July` |

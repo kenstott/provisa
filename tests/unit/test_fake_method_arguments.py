@@ -55,3 +55,19 @@ def test_a_range_argument_is_taken_and_another_refused_by_name():
         check_method(Method("date_of_birth", (("tzinfo", "UTC"),)), "date")
     with pytest.raises(FakeRefused, match="email\\(\\) takes no argument 'domain'.*it takes none"):
         check_method(Method("email", (("domain", "x.com"),)), "text")
+
+
+def test_the_python_side_and_the_trino_plugin_share_the_reference_instant():
+    from provisa.fakes.methods import REFERENCE_INSTANT
+
+    found = re.search(r"REFERENCE_INSTANT = LocalDateTime\.of\(([\d, ]+)\);", _JAVA.read_text())
+    assert found is not None
+    assert tuple(int(p) for p in found[1].split(",")) == (
+        REFERENCE_INSTANT.year,
+        REFERENCE_INSTANT.month,
+        REFERENCE_INSTANT.day,
+        REFERENCE_INSTANT.hour,
+        REFERENCE_INSTANT.minute,
+        REFERENCE_INSTANT.second,
+    )
+    assert REFERENCE_INSTANT.utcoffset() is not None and not REFERENCE_INSTANT.utcoffset()

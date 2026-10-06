@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -34,6 +36,48 @@ from urllib.parse import parse_qs, urlparse
 import pgserver
 
 REQUIRED = {"file_fdw", "postgres_fdw", "sqlite_fdw", "pg_duckdb", "pg_clickhouse", "mysql_fdw"}
+if sys.platform != "win32":
+    REQUIRED |= {"plpython3u"}  # REQ-1494: the pg engine's fake functions; not built for Windows
+
+# The repository root: the smoke runs Provisa's own fake functions and interpreter linking.
+_REPO = Path(__file__).resolve().parents[2]
+
+
+def _link_plpython(dl: Path) -> str:
+    """REQ-1494: link this interpreter beside plpython3 as staging does, and give the postmaster
+    its environment and a fake key; returns the key's hex."""
+    sys.path.insert(0, str(_REPO))
+    from provisa.fakes.digest import fingerprint
+    from provisa.pg_extensions.staging import link_interpreter, plpython_environment
+
+    link_interpreter(dl, sys.platform)
+    os.environ.update(plpython_environment())
+    key = secrets.token_bytes(32)
+    key_dir = Path(tempfile.mkdtemp(prefix="smoke_fake_keys_"))
+    (key_dir / f"{fingerprint(key)}.key").write_text(key.hex())
+    os.environ["PROVISA_FAKE_KEY_DIR"] = str(key_dir)
+    return key.hex()
+
+
+def _fake_functions_compute(db, key_hex: str) -> list[str]:
+    """The fake functions run on the bundle's PL/Python and agree with the embedded engine."""
+    from provisa.fakes.digest import digest, fingerprint
+    from provisa.fakes.duckdb_functions import fake_method
+    from provisa.fakes.pg_functions import FUNCTIONS_SQL
+
+    key = bytes.fromhex(key_hex)
+    db.psql(FUNCTIONS_SQL)
+    d = digest(key, "ann@example.com")
+    out = db.psql(
+        f"SELECT provisa_digest('{fingerprint(key)}', 'ann@example.com') || '|' || "
+        f"provisa_fake_method('email', '{{}}', {d})"
+    )
+    want = f"{d}|{fake_method('email', '{}', d)}"
+    if want in out:
+        print("  OK   plpython3u fake functions")
+        return []
+    print(f"  FAIL plpython3u fake functions: wanted {want}, got:\n{out}")
+    return ["plpython3u: the fake functions did not compute as the embedded engine does"]
 
 
 def _postgres_fdw_reads(db) -> list[str]:
@@ -95,6 +139,8 @@ def main(bundle: Path) -> int:
     for f in (bundle / "share" / "extension").glob("*"):
         shutil.copy(f, de / f.name)
 
+    key_hex = _link_plpython(dl) if "plpython3u" in keys else None
+
     base = tempfile.mkdtemp(prefix="smoke_pg_ext_")
     db = pgserver.get_server(base)
     # pg_duckdb requires preloading before CREATE EXTENSION
@@ -124,6 +170,9 @@ def main(bundle: Path) -> int:
         else:
             print(f"  FAIL {key}: CREATE EXTENSION did not register it")
             failures.append(f"{key}: did not load")
+
+    if key_hex is not None and not any(f.startswith("plpython3u") for f in failures):
+        failures += _fake_functions_compute(db, key_hex)
 
     if "postgres_fdw" in keys and not any(f.startswith("postgres_fdw") for f in failures):
         failures += _postgres_fdw_reads(db)

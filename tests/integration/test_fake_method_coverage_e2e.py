@@ -39,6 +39,27 @@ def test_every_method_is_computed_by_trino_or_named_unsupported(trino_conn):
     assert len(rows) == 5 * len(declarable)
 
 
+def test_every_method_is_a_function_of_the_digest_alone_on_trino(trino_conn):
+    """REQ-1494 (determinism): the same digest gives the same value at two reads a second apart."""
+    import time
+
+    declarable = [m for m in method_names() if m not in UNSUPPORTED]
+    values = ", ".join(f"('{m}')" for m in declarable)
+    sql = (
+        "SELECT m, d, provisa_fake_method(m, '{}', d) FROM (VALUES "
+        + values
+        + ") AS t(m) CROSS JOIN UNNEST(ARRAY[1, -7, 4611686018427387904]) AS s(d)"
+    )
+    cur = trino_conn.cursor()
+    cur.execute(sql)
+    first = {(m, d): v for m, d, v in cur.fetchall()}
+    time.sleep(1.1)  # the clock moves past a second: a method reading it would differ
+    cur.execute(sql)
+    second = {(m, d): v for m, d, v in cur.fetchall()}
+    assert len(first) == 3 * len(declarable)
+    assert {k for k in first if first[k] != second[k]} == set()
+
+
 @pytest.mark.parametrize("name", sorted(UNSUPPORTED))
 def test_a_method_no_column_holds_is_refused_by_name(name):
     with pytest.raises(FakeRefused, match="makes values no column can hold"):

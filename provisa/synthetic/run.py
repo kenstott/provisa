@@ -102,9 +102,10 @@ async def _profile_table_id(conn: Any, schema: str, reg: dict) -> int:
 
 
 async def read_profile(
-    conn: Any, *, org_id: str, env: str, reg: dict, run_id: str
+    conn: Any, *, org_id: str, env: str | None, reg: dict, run_id: str
 ) -> ProfiledTable:
-    """The profile run ``run_id`` of ``reg`` as environment ``env`` holds it."""
+    """The profile run ``run_id`` of ``reg`` as environment ``env`` holds it (None: prod, as
+    provisa.core.environments.org_schema reads it)."""
     from provisa.core.environments import org_schema
     from provisa.profiler.schema import result_sa_table
 

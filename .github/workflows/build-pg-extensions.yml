@@ -86,7 +86,7 @@ jobs:
           # The build's own PG install (and its libpq) is moved away first: the bundle must load
           # with nothing from the build tree present, as it does on a user's machine.
           mv "$HOME/.cache/provisa-fdw/pg162" "$HOME/.cache/provisa-fdw/pg162.moved-aside"
-          pip install pgserver asyncpg
+          pip install pgserver asyncpg pyyaml faker==40.41.0  # faker: the fake functions (REQ-1494), as uv.lock pins it
           python scripts/ci/smoke_pg_extensions.py "dist/pg-ext/${{ matrix.os }}-${{ matrix.arch }}"
 
       - name: Put the build tree back (the cache saves it)
