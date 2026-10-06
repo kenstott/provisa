@@ -2786,6 +2786,13 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     # with its mode and region, beating so a node that dies without stopping drops off.
     assert state.platform_state_db is not None  # brought up with the control planes at boot
     from provisa.core.platform_state import nodes as _cluster_nodes
+    from provisa.fakes import platform_key as _fake_key
+    from provisa.fakes.digest import set_key as _set_fake_key
+
+    # REQ-1494: the platform key every fake's digest is keyed by, created at the platform's first
+    # start, held by this process for its engine's functions and exported to a separate engine.
+    assert state.admin_db is not None  # the platform control plane holds the settings
+    _set_fake_key(_fake_key.ensure(state.admin_db))
 
     await _cluster_nodes.register(state.platform_state_db)
     _node_heartbeat = spawn_long_lived(

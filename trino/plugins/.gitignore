@@ -7,3 +7,5 @@ trino-file
 trino-calcite/
 trino-calcite
 *.zip
+provisa-functions/
+provisa-functions

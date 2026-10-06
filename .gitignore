@@ -174,3 +174,6 @@ None
 .playwright*
 
 
+
+# REQ-1494: the platform fake key Provisa exports to a separate engine (PROVISA_FAKE_KEY_DIR).
+.provisa/fake-key/

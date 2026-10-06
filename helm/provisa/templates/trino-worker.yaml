@@ -51,7 +51,12 @@ spec:
           env:
             - name: TRINO_NODE_TYPE
               value: worker
+            - name: PROVISA_FAKE_KEY_DIR  # REQ-1494
+              value: /etc/provisa/fake-key
           volumeMounts:
+            - name: fake-key
+              mountPath: /etc/provisa/fake-key
+              readOnly: true
             - name: config
               mountPath: /etc/trino/config.properties
               subPath: worker-config.properties
@@ -86,6 +91,9 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 30
       volumes:
+        - name: fake-key
+          secret:
+            secretName: {{ .Release.Name }}-fake-key
         - name: config
           configMap:
             name: {{ .Release.Name }}-trino-config

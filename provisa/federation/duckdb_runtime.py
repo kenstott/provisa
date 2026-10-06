@@ -184,6 +184,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             else {}
         )
         self._con = duckdb.connect(config=_cfg)
+        from provisa.fakes.duckdb_functions import register as register_fake_functions
+
+        register_fake_functions(self._con)  # REQ-1494: provisa_digest, provisa_fake_method
         self._engine = build_duckdb_engine()
         # An explicit materialize-store DSN override (tests). When None it is resolved lazily via the
         # engine's invariant (configured store → declared default → error) only when a materialize

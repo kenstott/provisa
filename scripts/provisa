@@ -42,6 +42,10 @@ PROJECT_DIR="$(read_config project_dir "")"
 # in the UI service's host-port publish (docker-compose.app.yml). Cloud deploys
 # set ui_port: 443 in config.yaml; desktop keeps the 3000 default (REQ-1254).
 export UI_PORT="$(read_config ui_port 3000)"
+# REQ-1494: the directory the platform fake key is written to (by Provisa, native or in its
+# container) and read from (by the engine's fake functions). Exported for compose interpolation
+# and for the native tier's own process.
+export PROVISA_FAKE_KEY_DIR="${PROVISA_FAKE_KEY_DIR:-${PROVISA_HOME}/fake-key}"
 API_PORT="$(read_config api_port 8000)"
 FLIGHT_PORT="$(read_config flight_port 8815)"
 AUTO_OPEN="$(read_config auto_open_browser true)"

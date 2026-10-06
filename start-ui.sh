@@ -54,6 +54,8 @@ export PROVISA_CHANGE_EVENT_BOOTSTRAP="${PROVISA_CHANGE_EVENT_BOOTSTRAP:-localho
 export KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
 export QUERY_ENGINE_CONTAINER="${QUERY_ENGINE_CONTAINER:-provisa-trino-1}"
 export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
+# REQ-1494: the platform fake key directory, written by this uvicorn and mounted into Trino.
+export PROVISA_FAKE_KEY_DIR="${PROVISA_FAKE_KEY_DIR:-$SCRIPT_DIR/.provisa/fake-key}"
 export PROVISA_UI_PORT="${PROVISA_UI_PORT:-3000}"
 
 # Compose files for dev: core services + dev overlay (ports, kafka, mongo, elasticsearch)

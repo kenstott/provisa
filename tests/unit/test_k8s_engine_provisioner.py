@@ -65,6 +65,9 @@ _CA_B64 = _self_signed_ca()
 
 @pytest.fixture()
 def configured(monkeypatch):
+    from provisa.fakes import digest
+
+    monkeypatch.setattr(digest, "_key", b"k" * 32)  # REQ-1494: the platform fake key, loaded
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_PROJECT", "provisa-saas")
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_LOCATION", "us-central1-a")
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_NAME", "provisa-saas-engine")
@@ -560,7 +563,29 @@ async def test_wake_applies_config_then_service_then_deployment(monkeypatch, con
     kinds = [
         json.loads(c.content)["kind"] for c in calls if c.method == "PATCH" and b"kind" in c.content
     ]
-    assert kinds == ["ConfigMap", "Service", "Deployment"]
+    assert kinds == ["Secret", "ConfigMap", "Service", "Deployment"]
+
+
+def test_every_engine_pod_holds_the_platform_fake_key(configured):
+    """REQ-1494: the engine's fake functions read the key a statement names by its fingerprint from
+    the mounted Secret, which holds it as <fingerprint>.key; the key is never in a statement."""
+    import base64
+
+    from provisa.fakes.digest import fingerprint
+
+    secret = prov._fake_key_manifest()
+    fp = fingerprint(b"k" * 32)
+    assert base64.b64decode(secret["data"][f"{fp}.key"]).decode() == (b"k" * 32).hex()
+    spec = prov._deployment_manifest("shared_1", "shared")["spec"]["template"]["spec"]
+    trino = spec["containers"][0]
+    assert {"name": "PROVISA_FAKE_KEY_DIR", "value": prov.FAKE_KEY_DIR} in trino["env"]
+    assert {"name": "fake-key", "mountPath": prov.FAKE_KEY_DIR, "readOnly": True} in trino[
+        "volumeMounts"
+    ]
+    assert {
+        "name": "fake-key",
+        "secret": {"secretName": prov.FAKE_KEY_SECRET, "defaultMode": 0o444},
+    } in spec["volumes"]
 
 
 @pytest.mark.asyncio

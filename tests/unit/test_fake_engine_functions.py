@@ -1,0 +1,187 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f942850b-d327-4e9c-8c97-5e2709afecfe
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The platform fake key and the fake functions inside the embedded engine (REQ-1494)."""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+
+import duckdb
+import pytest
+
+from provisa.fakes import digest as digest_mod
+from provisa.fakes import platform_key
+from provisa.fakes.duckdb_functions import register
+
+_KEY = b"k" * 32
+_FP = "1d169c852c85cba1"  # fingerprint(_KEY), as the engine plugin's own test pins it
+
+
+@pytest.fixture
+def con():
+    previous = digest_mod._key
+    digest_mod.set_key(_KEY)
+    c = duckdb.connect()
+    register(c)
+    yield c
+    digest_mod._key = previous
+
+
+def test_the_digest_is_the_published_definition(con):
+    expected = int.from_bytes(
+        hmac.new(_KEY, b"ann@example.com", hashlib.sha256).digest()[:8], "big", signed=True
+    )
+    assert digest_mod.fingerprint(_KEY) == _FP
+    (got,) = con.execute(f"SELECT provisa_digest('{_FP}', 'ann@example.com')").fetchone()
+    assert got == expected == digest_mod.digest(_KEY, "ann@example.com")
+    (null,) = con.execute(f"SELECT provisa_digest('{_FP}', NULL)").fetchone()
+    assert null is None
+
+
+def test_a_statement_names_the_key_by_fingerprint_and_another_key_is_refused(con):
+    with pytest.raises(duckdb.Error, match="holds no fake key 0000000000000000"):
+        con.execute("SELECT provisa_digest('0000000000000000', 'x')").fetchone()
+
+
+def test_a_fake_method_is_one_fake_per_value(con):
+    rows = con.execute(
+        f"SELECT v, provisa_fake_method('email', '{{}}', provisa_digest('{_FP}', v)) AS f "
+        "FROM (VALUES ('a'), ('b'), ('a')) t(v)"
+    ).fetchall()
+    fakes = {v: set() for v, _ in rows}
+    for v, f in rows:
+        fakes[v].add(f)
+        assert "@" in f
+    assert len(fakes["a"]) == 1 and fakes["a"] != fakes["b"]
+    (with_args,) = con.execute(
+        "SELECT provisa_fake_method('pyint', '{\"min_value\": 3, \"max_value\": 3}', 1)"
+    ).fetchone()
+    assert with_args == "3"
+
+
+def test_without_the_key_no_fake_is_computed():
+    previous = digest_mod._key
+    digest_mod._key = None
+    try:
+        c = duckdb.connect()
+        register(c)
+        with pytest.raises(duckdb.Error, match="platform fake key is not loaded"):
+            c.execute(f"SELECT provisa_digest('{_FP}', 'x')").fetchone()
+    finally:
+        digest_mod._key = previous
+
+
+class _Reversing:
+    """A stand-in encryption provider whose ciphertext is visibly not the plaintext."""
+
+    def encrypt(self, plaintext: bytes) -> bytes:
+        return b"enc:" + plaintext[::-1]
+
+    def decrypt(self, blob: bytes) -> bytes:
+        return blob[4:][::-1]
+
+
+@pytest.fixture
+def control_plane(tmp_path, monkeypatch):
+    from provisa.core import config_stamp, deployment_settings, settings_registry
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import metadata
+    from provisa.encryption import runtime
+
+    monkeypatch.setattr(runtime, "_service", _Reversing())
+    monkeypatch.setattr(deployment_settings, "_db", None)
+    monkeypatch.setattr(deployment_settings, "_held", None)
+    monkeypatch.delenv(settings_registry.IGNORE_STORED_ENV, raising=False)
+    monkeypatch.delenv(platform_key.KEY_DIR_ENV, raising=False)
+    monkeypatch.delenv(platform_key.DEPLOYMENT_KEY_ENV, raising=False)
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
+    with engine.begin() as conn:
+        metadata.create_all(
+            conn, tables=[metadata.tables["deployment_settings"], metadata.tables["config_stamp"]]
+        )
+        config_stamp.install(conn, config_stamp.PLATFORM_TABLES)
+    db = Database(engine, name="platform")
+    deployment_settings.bind(db)
+    yield db
+    engine.dispose()
+
+
+def _stored(db) -> str:
+    from provisa.core.schema_admin import deployment_settings as table
+
+    with db.engine.connect() as conn:
+        return conn.execute(table.select().where(table.c.key == "fakes.key")).one().value
+
+
+def test_the_platform_key_is_created_once_and_sealed(control_plane):
+    first = platform_key.ensure(control_plane)
+    assert len(first) == 32
+    assert platform_key.ensure(control_plane) == first
+    assert first.hex() not in _stored(control_plane)
+
+
+def test_a_second_creation_keeps_the_first_key(control_plane):
+    from provisa.core import deployment_settings
+
+    first = platform_key.ensure(control_plane)
+    assert not deployment_settings.create(control_plane, "fakes.key", "other", updated_by="x")
+    assert platform_key.ensure(control_plane) == first
+
+
+def test_the_key_is_written_to_the_engine_key_directory_by_fingerprint(
+    control_plane, tmp_path, monkeypatch
+):
+    monkeypatch.setenv(platform_key.KEY_DIR_ENV, str(tmp_path / "keys"))
+    key = platform_key.ensure(control_plane)
+    path = tmp_path / "keys" / f"{digest_mod.fingerprint(key)}.key"
+    assert path.read_text() == key.hex()
+
+
+def test_two_platforms_sharing_a_key_directory_keep_their_own_keys(tmp_path, monkeypatch):
+    """Two control planes (two test stacks, two servers) writing into one engine's directory: each
+    key file is named by its own fingerprint, so neither overwrites the other."""
+    from provisa.core import config_stamp, deployment_settings, settings_registry
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import metadata
+    from provisa.encryption import runtime
+
+    monkeypatch.setattr(runtime, "_service", _Reversing())
+    monkeypatch.delenv(settings_registry.IGNORE_STORED_ENV, raising=False)
+    monkeypatch.delenv(platform_key.DEPLOYMENT_KEY_ENV, raising=False)
+    monkeypatch.setenv(platform_key.KEY_DIR_ENV, str(tmp_path / "keys"))
+    keys = []
+    for name in ("one", "two"):
+        engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / name}.db")
+        with engine.begin() as conn:
+            metadata.create_all(
+                conn,
+                tables=[metadata.tables["deployment_settings"], metadata.tables["config_stamp"]],
+            )
+            config_stamp.install(conn, config_stamp.PLATFORM_TABLES)
+        db = Database(engine, name=name)
+        deployment_settings.bind(db)
+        monkeypatch.setattr(deployment_settings, "_held", None)
+        keys.append(platform_key.ensure(db))
+        engine.dispose()
+    assert keys[0] != keys[1]
+    for key in keys:
+        path = tmp_path / "keys" / f"{digest_mod.fingerprint(key)}.key"
+        assert path.read_text() == key.hex()
+
+
+def test_the_platform_key_is_created_from_the_deployments_key(control_plane, monkeypatch):
+    deployed = bytes(range(32))
+    monkeypatch.setenv(platform_key.DEPLOYMENT_KEY_ENV, deployed.hex())
+    assert platform_key.ensure(control_plane) == deployed
+    monkeypatch.setenv(platform_key.DEPLOYMENT_KEY_ENV, (b"x" * 32).hex())
+    with pytest.raises(platform_key.FakeKeyMismatch, match="is not the platform's"):
+        platform_key.ensure(control_plane)

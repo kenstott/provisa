@@ -157,6 +157,11 @@ jobs:
             ls "trino/plugins/$plugin"/*.jar >/dev/null
           done
 
+      # REQ-1494: Provisa's own function plugin (provisa_digest, provisa_fake_method), built from
+      # trino-functions/ in a Maven container; the engine's compose mounts it beside the others.
+      - name: Build the provisa-functions Trino plugin
+        run: scripts/build_trino_functions.sh
+
       # Pull before `up` so the compose wait below spends its budget on Trino's JVM boot rather
       # than on a 1 GB image download racing the healthcheck's start_period.
       - name: Pre-pull service images
