@@ -1402,6 +1402,8 @@ export function SourcesPage() {
                 e.preventDefault();
                 setTypePickerOpen(true);
               }}
+              // A click that was not preceded by a mouse press (the guided tour's) opens it too.
+              onClick={() => setTypePickerOpen(true)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " " || (e.altKey && e.key === "ArrowDown")) {
                   e.preventDefault();

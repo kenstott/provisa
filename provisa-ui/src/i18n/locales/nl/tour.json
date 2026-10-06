@@ -30,8 +30,8 @@
         "description": "➕ Nieuwe verbindingen beginnen met deze knop — PostgreSQL, Snowflake, MongoDB, een REST-API, een CSV, en 30+ andere."
       },
       "step3": {
-        "title": "53 brontypen",
-        "description": "Eén connectorlijst omvat elke categorie:<ul><li><strong>Databases</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Cloud warehouses</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Analytics / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Lakes &amp; bestanden</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL &amp; graaf</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>API's</strong> — REST, GraphQL, gRPC</li><li><strong>Streaming</strong> — Kafka</li><li><strong>Enterprise SaaS</strong> — SharePoint, Splunk · plus overheidsdata-abonnementen</li></ul>Kies er een, vul de verbinding in, Opslaan. De lijst ligt niet vast — de native federatie-engines zijn <strong>uitbreidbaar</strong>: declareer een aangepaste Postgres FDW of DuckDB-extensie in de configuratie en Provisa bereikt een nieuw brontype, zonder code."
+        "title": "58 brontypen, 13 categorieën",
+        "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op. De lijst ligt niet vast — de native federatie-engines zijn <strong>uitbreidbaar</strong>: declareer in de configuratie een eigen Postgres-FDW of DuckDB-extensie en Provisa bereikt een nieuw brontype, zonder code.</p>"
       },
       "step4": {
         "title": "Alles wordt een tabel",

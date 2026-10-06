@@ -208,3 +208,60 @@ describe("demo session reset", () => {
     expect(localStorage.getItem("provisa_tour_progress")).toBe("3");
   });
 });
+
+describe("a step that opens its own starting state", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.getElementById("sources-stand-in")?.remove();
+  });
+
+  it("resumes at the source-types step with the add-source form closed, and reaches the picker", async () => {
+    // A stand-in for /sources: the Add button toggles the form; the Type field opens the picker.
+    const root = document.createElement("div");
+    root.id = "sources-stand-in";
+    document.body.appendChild(root);
+    let formOpen = false;
+    const draw = () => {
+      root.innerHTML = "";
+      const add = document.createElement("button");
+      add.setAttribute("data-tour", "sources-add");
+      add.addEventListener("click", () => {
+        formOpen = !formOpen;
+        draw();
+      });
+      root.appendChild(add);
+      if (formOpen) {
+        const type = document.createElement("select");
+        type.setAttribute("data-tour", "sources-type");
+        type.addEventListener("click", () => {
+          const search = document.createElement("input");
+          search.setAttribute("data-testid", "source-type-picker-search");
+          root.appendChild(search);
+        });
+        root.appendChild(type);
+      }
+    };
+    draw();
+
+    const index = TOUR_STEPS.findIndex((s) => s.key === "step3");
+    localStorage.setItem("provisa_tour_progress", String(index));
+    renderTour();
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => {
+      chunksResolve();
+    });
+    for (let i = 0; i < 10; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+    }
+
+    expect(formOpen).toBe(true);
+    expect(root.querySelector('[data-testid="source-type-picker-search"]')).not.toBeNull();
+  });
+});

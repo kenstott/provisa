@@ -30,8 +30,8 @@
         "description": "➕ Новые подключения начинаются с этой кнопки — PostgreSQL, Snowflake, MongoDB, REST API, CSV и ещё 30+."
       },
       "step3": {
-        "title": "53 типа источников",
-        "description": "Один список коннекторов охватывает все категории:<ul><li><strong>Базы данных</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Облачные хранилища</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Аналитика / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Озёра данных и файлы</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL и графовые</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>API</strong> — REST, GraphQL, gRPC</li><li><strong>Потоковая передача</strong> — Kafka</li><li><strong>Корпоративный SaaS</strong> — SharePoint, Splunk · плюс государственные подписки на данные</li></ul>Выберите один, заполните подключение, сохраните. Список не фиксирован — нативные механизмы федерации <strong>расширяемы</strong>: объявите собственный FDW для Postgres или расширение DuckDB в конфигурации — и Provisa получит доступ к новому типу источника без кода."
+        "title": "58 типов источников, 13 категорий",
+        "description": "Один выбор перечисляет все типы по категориям: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Ищите по названию или псевдониму либо сузьте список чипами категорий. У каждого типа есть логотип и значок охвата: ⚡ — чтение вживую на месте, значок копии — там, где Provisa читает обновлённую реплику.<p>Выберите тип, заполните подключение, сохраните. Список не фиксирован: встроенные движки федерации <strong>расширяемы</strong>. Объявите в конфигурации собственный Postgres FDW или расширение DuckDB, и Provisa достанет новый тип источника без кода.</p>"
       },
       "step4": {
         "title": "Всё становится таблицей",

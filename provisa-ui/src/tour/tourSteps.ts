@@ -77,6 +77,13 @@ export interface TourStep {
   /** Key into the `tour.steps` i18n namespace for this step's title/description. */
   key: string;
   /**
+   * Clicks that open what `clickBefore` needs, run in order and only when it is not already there:
+   * each is clicked unless its `unlessPresent` selector already matches. A step that can be entered
+   * cold (Back from a later page, or a resume) names how to reach its own starting state, so it never
+   * depends on a predecessor having left the page open.
+   */
+  ensureOpen?: { click: string; unlessPresent: string }[];
+  /**
    * Selector clicked (and awaited) *before* highlighting — used to reveal the
    * target, e.g. opening an add-form or the ERD modal.
    */
@@ -149,11 +156,14 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step2",
   },
   {
-    element: '[data-tour="sources-type"]',
-    expandSelect: true,
+    // REQ-1938: clicking the Type field opens the picker dialog; the search box is the anchor. Next
+    // closes the dialog. The form stays open until the tour leaves /sources.
+    element: '[data-testid="source-type-picker-search"]',
     key: "step3",
-    clickBefore: SOURCES_ADD,
-    clickAfterNext: SOURCES_ADD,
+    // Entered cold (Back from /tables, or a resume) the form is closed: open it, then the picker.
+    ensureOpen: [{ click: SOURCES_ADD, unlessPresent: '[data-tour="sources-type"]' }],
+    clickBefore: '[data-tour="sources-type"]',
+    clickAfterNext: '[data-testid="source-type-picker-close"]',
   },
   {
     route: "/tables",

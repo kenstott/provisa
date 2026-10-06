@@ -30,8 +30,8 @@
         "description": "➕ 新規接続はこのボタンから始まります — PostgreSQL、Snowflake、MongoDB、REST API、CSV、その他30種類以上。"
       },
       "step3": {
-        "title": "53 種類のソースタイプ",
-        "description": "1つのコネクタ一覧があらゆるカテゴリをカバーします：<ul><li><strong>データベース</strong> — PostgreSQL、MySQL、MariaDB、Oracle、SQL Server、Greenplum</li><li><strong>クラウドウェアハウス</strong> — Snowflake、BigQuery、Databricks、Redshift、Microsoft Fabric、Azure Synapse</li><li><strong>分析 / OLAP</strong> — ClickHouse、Druid、Pinot</li><li><strong>レイク＆ファイル</strong> — Iceberg、Delta Lake、Hive、Parquet、CSV、JSON</li><li><strong>NoSQL＆グラフ</strong> — MongoDB、Cassandra、Redis、Neo4j</li><li><strong>API</strong> — REST、GraphQL、gRPC</li><li><strong>ストリーミング</strong> — Kafka</li><li><strong>エンタープライズ SaaS</strong> — SharePoint、Splunk · 加えて政府データのサブスクリプション</li></ul>1つ選び、接続情報を入力し、保存するだけです。この一覧は固定ではありません — ネイティブなフェデレーションエンジンは<strong>拡張可能</strong>です：カスタムの Postgres FDW や DuckDB 拡張を設定で宣言すれば、コード不要で新しいソースタイプに Provisa が対応します。"
+        "title": "58種類のソース、13カテゴリ",
+        "description": "ひとつのピッカーに、カテゴリ別にすべての種類が並びます：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。名前や別名で検索するか、カテゴリのチップで絞り込めます。各種類にはロゴと到達方法のアイコンが付きます。⚡ はその場でライブ読み取り、コピーのアイコンは Provisa が更新済みのレプリカを読む場合です。<p>ひとつ選び、接続を入力して保存します。この一覧は固定ではありません。ネイティブのフェデレーションエンジンは<strong>拡張可能</strong>で、独自の Postgres FDW や DuckDB 拡張を設定で宣言すれば、コードなしで Provisa が新しいソース種類に届きます。</p>"
       },
       "step4": {
         "title": "すべてがテーブルになる",
