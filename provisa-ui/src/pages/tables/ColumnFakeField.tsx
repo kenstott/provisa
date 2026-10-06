@@ -30,6 +30,7 @@ export function ColumnFakeField({
         onChange={(e) => onChange("fake", e.target.value)}
         placeholder={t("tableEditForm.fakePlaceholder")}
         data-testid={`table-edit-col-fake-${col.columnName}`}
+        data-tour="column-fake"
       />
       <Checkbox
         mt={4}

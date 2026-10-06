@@ -105,6 +105,38 @@
         "title": "建立品質合約",
         "description": "✅ 手寫合約，或逐欄建立檢查——空值率、列數、範圍、新鮮度——並在儲存前<strong>試執行</strong>。每次掃描都會追加，因此這張表<em>就是</em>品質歷史：可以繪製圖表、設定警示，也可以與任何數據聯結。"
       },
+      "stepProfilerTable": {
+        "title": "為表格做剖析",
+        "description": "📊 編輯任何一張表格，把它加入 <strong>Data Profiler</strong>。這是一種按排程為成員表格做剖析的來源，記錄欄位的形態、分布、數值頻率，以及每個父列的子列數目。"
+      },
+      "stepProfilerPanel": {
+        "title": "加入剖析器",
+        "description": "揀選一個剖析器並儲存，然後使用<strong>立即剖析</strong>和<strong>檢視剖析執行</strong>。結果會以表格形式落地，你可以像註冊其他表格一樣註冊並管治它們。在你註冊之前，沒有任何讀者看得到剖析。"
+      },
+      "stepProfilerChecks": {
+        "title": "漂移與檢查",
+        "description": "每次執行都會與該表格最近的執行比較，漂移的度量會被標記。例外由數據質素檢查器拋出。你亦可以接受剖析提出的約束，並把執行結果與 Provisa 以外提供的預期對照檢查。"
+      },
+      "stepFakes": {
+        "title": "宣告虛構值",
+        "description": "🎭 欄位列表的<strong>測試數據</strong>模式會顯示每個欄位的<strong>虛構值</strong>，例如 <code>email()</code>。只對可識別個人的欄位使用虛構值，其餘保持真實。每個欄位亦可附帶一條<strong>合成規則</strong>，只在產生合成數據時使用。"
+      },
+      "stepFakesFill": {
+        "title": "根據剖析填入虛構值",
+        "description": "✨ <strong>根據剖析填入</strong>會依據該表格最新的剖析，為識別性的欄位建議虛構值，為其餘欄位建議合成規則。在你儲存表單之前不會儲存任何內容。"
+      },
+      "stepEnvKinds": {
+        "title": "唯讀或可讀寫的測試環境",
+        "description": "非生產環境分為<strong>唯讀</strong>和<strong>可讀寫</strong>兩種。可讀寫環境保留自己的變更，寫入永遠不會去到數據來源。開啟<strong>測試數據</strong>後，每個欄位都顯示其虛構值，沒有虛構值的個人資料顯示為 NULL。"
+      },
+      "stepSynthetic": {
+        "title": "產生合成數據",
+        "description": "🧪 <strong>合成數據集</strong>用與已剖析表格形態相同的列填滿非生產環境，關係和扇出保持一致，規模任意。比較報告會顯示它與原數據有幾接近。"
+      },
+      "stepSyntheticPrivacy": {
+        "title": "以私隱為本的設計",
+        "description": "🔒 用私隱預算 ε 把數據集宣告為私有。產生器從剖析取用的每個統計量都會加入校準過的雜訊，報告會說明雜訊剔除了甚麼。"
+      },
       "step20": {
         "title": "建構你的交付管線",
         "description": "🔧 直接在這裡組合整條交付管線——毋須另一套 ETL 工具：<ul><li>👁️ <strong>檢視</strong>——建立於任何表格之上，可為暫時性或具體化，也可檢視之上再建檢視。</li><li>⚡ <strong>命令</strong>——受管治、有型別的操作（HTTP 服務、Python 模型、預存程序），身兼兩職：既是管線中的一個步驟，<em>也</em>是一個一流的 API，供下游應用程式與代理程式呼叫以操作你的數據——可從每種介面呼叫，並全面受管治與追蹤。</li><li>⭐ <strong>實體與事實</strong>——只需宣告一次維度或事實，Provisa 即可產生數據倉庫，不受方法論限制：3NF（Inmon）、星型結構描述（Kimball），或 Data Vault。</li><li>📏 <strong>指標</strong>——受管治的彙總定義（例如「淨收入」），粒度於查詢時綁定。定義一次；每種介面——SQL、GraphQL、AI 代理程式——都算出同一個數值，而建構於指標之上的檢視，會在指標定義變更時自動重新產生。</li></ul>"

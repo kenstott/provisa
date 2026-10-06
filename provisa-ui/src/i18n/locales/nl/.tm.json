@@ -4926,5 +4926,21 @@
   "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
   "nl/tableEditForm.json::tableEditForm.fakeHeader": "Fake",
   "nl/tableEditForm.json::tableEditForm.fakePlaceholder": "e.g. email() or categories((a, b))",
-  "nl/tableEditForm.json::tableEditForm.fakeStable": "Stable"
+  "nl/tableEditForm.json::tableEditForm.fakeStable": "Stable",
+  "nl/tour.json::tour.steps.stepProfilerTable.title": "Profile a table",
+  "nl/tour.json::tour.steps.stepProfilerTable.description": "📊 Edit any table to add it to a <strong>Data Profiler</strong>, a source that profiles its member tables on a schedule: column shapes, distributions, value frequencies and children per parent.",
+  "nl/tour.json::tour.steps.stepProfilerPanel.title": "Add it to a profiler",
+  "nl/tour.json::tour.steps.stepProfilerPanel.description": "Pick a profiler and save, then use <strong>Run Profile Now</strong> and <strong>View Profile Runs</strong>. Results land as tables you register and govern like any other. Until you register them, no reader sees a profile.",
+  "nl/tour.json::tour.steps.stepFakes.title": "Declare a fake",
+  "nl/tour.json::tour.steps.stepFakes.description": "🎭 The column list's <strong>Test data</strong> mode shows each column's <strong>fake</strong>, such as <code>email()</code>. Fake only the identifying columns and keep the rest real. A column can also carry a <strong>synthetic rule</strong>, used only when generating synthetic data.",
+  "nl/tour.json::tour.steps.stepSynthetic.title": "Generate synthetic data",
+  "nl/tour.json::tour.steps.stepSynthetic.description": "🧪 A <strong>synthetic dataset</strong> fills a non-production environment with rows shaped like your profiled tables, with the same relationships and fan-out, at any scale. A comparison report shows how close it came.",
+  "nl/tour.json::tour.steps.stepProfilerChecks.title": "Drift and checks",
+  "nl/tour.json::tour.steps.stepProfilerChecks.description": "Every run is compared with the table's recent runs, and a measure that drifts is flagged. A data-quality checker raises the exception. You can also accept constraints the profile proposes, and check runs against expectations from outside Provisa.",
+  "nl/tour.json::tour.steps.stepFakesFill.title": "Fill fakes from a profile",
+  "nl/tour.json::tour.steps.stepFakesFill.description": "✨ <strong>Fill from profile</strong> proposes fakes for identifying columns, and synthetic rules for the rest, from the table's latest profile. Nothing saves until you save the form.",
+  "nl/tour.json::tour.steps.stepEnvKinds.title": "Read or read-write test environments",
+  "nl/tour.json::tour.steps.stepEnvKinds.description": "A non-production environment is <strong>read</strong> or <strong>read-write</strong>. A read-write environment keeps its own changes, and a write never reaches a source. Turn on <strong>Test data</strong> and every column shows its fake, with unfaked personal data shown as NULL.",
+  "nl/tour.json::tour.steps.stepSyntheticPrivacy.title": "Private by design",
+  "nl/tour.json::tour.steps.stepSyntheticPrivacy.description": "🔒 Declare a dataset private with a privacy budget ε. Calibrated noise is added to every statistic the generator draws from a profile, and the report states what the noise dropped."
 }

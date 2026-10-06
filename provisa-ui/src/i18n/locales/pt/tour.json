@@ -105,6 +105,38 @@
         "title": "Monte um contrato de qualidade",
         "description": "✅ Escreva o contrato à mão ou construa verificações coluna por coluna — taxas de nulos, contagens de linhas, faixas, atualidade — e faça uma <strong>execução de teste</strong> antes de salvar. Cada varredura acrescenta linhas, então esta tabela <em>é</em> o histórico de qualidade: represente-a em gráficos, crie alertas sobre ela, junte-a a qualquer coisa."
       },
+      "stepProfilerTable": {
+        "title": "Perfilar uma tabela",
+        "description": "📊 Edite qualquer tabela para adicioná-la a um <strong>Data Profiler</strong>, uma fonte que perfila suas tabelas-membro conforme um agendamento: formatos de coluna, distribuições, frequências de valores e filhos por pai."
+      },
+      "stepProfilerPanel": {
+        "title": "Adicioná-la a um perfilador",
+        "description": "Escolha um perfilador e salve; depois use <strong>Perfilar agora</strong> e <strong>Ver execuções de perfil</strong>. Os resultados chegam como tabelas que você registra e governa como qualquer outra. Até que você as registre, nenhum leitor vê um perfil."
+      },
+      "stepProfilerChecks": {
+        "title": "Deriva e verificações",
+        "description": "Cada execução é comparada com as execuções recentes da tabela, e uma medida que deriva é sinalizada. Um verificador de qualidade de dados levanta a exceção. Você também pode aceitar as restrições que o perfil propõe e conferir as execuções com expectativas externas ao Provisa."
+      },
+      "stepFakes": {
+        "title": "Declarar um valor fictício",
+        "description": "🎭 O modo <strong>Dados de teste</strong> da lista de colunas mostra o <strong>valor fictício</strong> de cada coluna, como <code>email()</code>. Simule apenas as colunas identificadoras e mantenha o resto real. Uma coluna também pode ter uma <strong>regra sintética</strong>, usada somente ao gerar dados sintéticos."
+      },
+      "stepFakesFill": {
+        "title": "Preencher valores fictícios a partir de um perfil",
+        "description": "✨ <strong>Preencher a partir do perfil</strong> propõe, com base no perfil mais recente da tabela, valores fictícios para as colunas identificadoras e regras sintéticas para as demais. Nada é salvo até que você salve o formulário."
+      },
+      "stepEnvKinds": {
+        "title": "Ambientes de teste de leitura ou de leitura e escrita",
+        "description": "Um ambiente que não é de produção é de <strong>leitura</strong> ou de <strong>leitura e escrita</strong>. Um de leitura e escrita guarda suas próprias alterações, e uma escrita nunca chega a uma fonte. Ative <strong>Dados de teste</strong> e cada coluna mostra seu valor fictício; dados pessoais sem valor fictício aparecem como NULL."
+      },
+      "stepSynthetic": {
+        "title": "Gerar dados sintéticos",
+        "description": "🧪 Um <strong>conjunto de dados sintético</strong> preenche um ambiente que não é de produção com linhas no formato das suas tabelas perfiladas, com as mesmas relações e a mesma ramificação, em qualquer escala. Um relatório de comparação mostra o quanto ele se aproximou."
+      },
+      "stepSyntheticPrivacy": {
+        "title": "Privado por concepção",
+        "description": "🔒 Declare um conjunto de dados como privado com um orçamento de privacidade ε. Ruído calibrado é somado a cada estatística que o gerador tira de um perfil, e o relatório informa o que o ruído eliminou."
+      },
       "step20": {
         "title": "Construa seu pipeline de entrega",
         "description": "🔧 Componha todo o seu pipeline de entrega bem aqui — sem uma ferramenta de ETL separada:<ul><li>👁️ <strong>Exibições</strong> — sobre qualquer tabela, efêmeras ou materializadas, e exibições sobre exibições.</li><li>⚡ <strong>Comandos</strong> — operações governadas e tipadas (um serviço HTTP, um modelo Python, um procedimento armazenado) que cumprem dupla função: uma etapa dentro do seu pipeline <em>e</em> uma API de primeira classe que aplicativos e agentes downstream chamam para atuar sobre seus dados — invocável a partir de qualquer interface, totalmente governada e rastreada.</li><li>⭐ <strong>Entidades e fatos</strong> — declare uma dimensão ou fato uma vez e o Provisa gera o warehouse, neutro em relação à metodologia: 3FN (Inmon), esquema estrela (Kimball) ou Data Vault.</li><li>📏 <strong>Métricas</strong> — definições de agregados governadas (&ldquo;receita líquida&rdquo;) com granularidade vinculada no momento da consulta. Defina uma vez; toda interface — SQL, GraphQL, agentes de IA — calcula o mesmo número, e exibições construídas sobre uma métrica se regeneram quando sua definição muda.</li></ul>"

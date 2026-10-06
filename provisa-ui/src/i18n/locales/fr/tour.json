@@ -105,6 +105,38 @@
         "title": "Créer un contrat de qualité",
         "description": "✅ Rédigez le contrat à la main ou construisez les contrôles colonne par colonne — taux de valeurs nulles, nombres de lignes, plages, fraîcheur — et lancez une <strong>exécution à blanc</strong> avant d'enregistrer. Chaque analyse s'ajoute aux précédentes : cette table <em>est</em> donc l'historique de qualité — représentez-la, déclenchez des alertes dessus, joignez-la à ce que vous voulez."
       },
+      "stepProfilerTable": {
+        "title": "Profiler une table",
+        "description": "📊 Modifiez n'importe quelle table pour l'ajouter à un <strong>Data Profiler</strong>, une source qui profile ses tables membres selon un calendrier : formes des colonnes, distributions, fréquences des valeurs et enfants par parent."
+      },
+      "stepProfilerPanel": {
+        "title": "L'ajouter à un profileur",
+        "description": "Choisissez un profileur et enregistrez, puis utilisez <strong>Profiler maintenant</strong> et <strong>Voir les exécutions de profil</strong>. Les résultats arrivent sous forme de tables que vous enregistrez et gouvernez comme les autres. Tant que vous ne les enregistrez pas, aucun lecteur ne voit de profil."
+      },
+      "stepProfilerChecks": {
+        "title": "Dérive et contrôles",
+        "description": "Chaque exécution est comparée aux exécutions récentes de la table, et une mesure qui dérive est signalée. Un contrôleur de qualité des données lève l'exception. Vous pouvez aussi accepter les contraintes que propose le profil et vérifier les exécutions face à des attentes extérieures à Provisa."
+      },
+      "stepFakes": {
+        "title": "Déclarer une valeur fictive",
+        "description": "🎭 Le mode <strong>Données de test</strong> de la liste des colonnes affiche la <strong>valeur fictive</strong> de chaque colonne, comme <code>email()</code>. Ne masquez que les colonnes identifiantes et laissez le reste réel. Une colonne peut aussi porter une <strong>règle synthétique</strong>, utilisée uniquement pour générer des données synthétiques."
+      },
+      "stepFakesFill": {
+        "title": "Remplir les valeurs fictives depuis un profil",
+        "description": "✨ <strong>Remplir depuis le profil</strong> propose, d'après le dernier profil de la table, des valeurs fictives pour les colonnes identifiantes et des règles synthétiques pour les autres. Rien n'est enregistré avant que vous enregistriez le formulaire."
+      },
+      "stepEnvKinds": {
+        "title": "Environnements de test en lecture ou en lecture-écriture",
+        "description": "Un environnement hors production est en <strong>lecture</strong> ou en <strong>lecture-écriture</strong>. Un environnement en lecture-écriture conserve ses propres modifications, et une écriture n'atteint jamais une source. Activez <strong>Données de test</strong> et chaque colonne affiche sa valeur fictive ; les données personnelles sans valeur fictive apparaissent comme NULL."
+      },
+      "stepSynthetic": {
+        "title": "Générer des données synthétiques",
+        "description": "🧪 Un <strong>jeu de données synthétique</strong> remplit un environnement hors production de lignes à la forme de vos tables profilées, avec les mêmes relations et la même ramification, à n'importe quelle échelle. Un rapport de comparaison montre à quel point il s'en est approché."
+      },
+      "stepSyntheticPrivacy": {
+        "title": "Confidentialité par conception",
+        "description": "🔒 Déclarez un jeu de données privé avec un budget de confidentialité ε. Un bruit calibré est ajouté à chaque statistique que le générateur tire d'un profil, et le rapport indique ce que le bruit a supprimé."
+      },
       "step20": {
         "title": "Construisez votre pipeline de livraison",
         "description": "🔧 Composez tout votre pipeline de livraison ici même — sans outil ETL séparé :<ul><li>👁️ <strong>Vues</strong> — sur n'importe quelle table, éphémères ou matérialisées, et des vues sur des vues.</li><li>⚡ <strong>Commandes</strong> — des opérations typées et gouvernées (un service HTTP, un modèle Python, une procédure stockée) qui remplissent un double rôle : une étape au sein de votre pipeline, <em>et</em> une API de premier plan que les applications et agents en aval appellent pour agir sur vos données — invocable depuis toutes les surfaces, entièrement gouvernée et tracée.</li><li>⭐ <strong>Entités &amp; faits</strong> — déclarez une dimension ou un fait une seule fois, et Provisa génère l'entrepôt, indépendamment de la méthodologie : 3NF (Inmon), schéma en étoile (Kimball), ou Data Vault.</li><li>📏 <strong>Métriques</strong> — des définitions d'agrégats gouvernées (&ldquo;revenu net&rdquo;) dont la granularité se lie au moment de la requête. Définissez une seule fois ; chaque surface — SQL, GraphQL, agents IA — calcule le même chiffre, et les vues construites sur une métrique se régénèrent quand sa définition change.</li></ul>"

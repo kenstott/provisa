@@ -105,6 +105,38 @@
         "title": "构建质量契约",
         "description": "✅ 手写契约，或逐列构建检查——空值率、行数、取值范围、新鲜度——并在保存前<strong>试运行</strong>。每次扫描都会追加，因此这张表<em>就是</em>质量历史：可以绘图、设置告警，也可以与任何数据关联。"
       },
+      "stepProfilerTable": {
+        "title": "为表做画像",
+        "description": "📊 编辑任意一张表，把它加入 <strong>Data Profiler</strong>。这是一种按计划为成员表做画像的数据源，记录列的形态、分布、取值频率以及每个父行的子行数。"
+      },
+      "stepProfilerPanel": {
+        "title": "加入画像器",
+        "description": "选择一个画像器并保存，然后使用<strong>立即画像</strong>和<strong>查看画像运行</strong>。结果以表的形式落地，你可以像注册其他表一样注册并治理它们。在你注册之前，没有任何读者能看到画像。"
+      },
+      "stepProfilerChecks": {
+        "title": "漂移与检查",
+        "description": "每次运行都会与该表最近的运行比较，漂移的度量会被标记。异常由数据质量检查器抛出。你还可以接受画像提出的约束，并把运行结果与 Provisa 之外提供的预期对照检查。"
+      },
+      "stepFakes": {
+        "title": "声明虚构值",
+        "description": "🎭 列列表的<strong>测试数据</strong>模式会显示每一列的<strong>虚构值</strong>，例如 <code>email()</code>。只对能识别个人的列使用虚构值，其余保持真实。每一列还可以带一条<strong>合成规则</strong>，仅在生成合成数据时使用。"
+      },
+      "stepFakesFill": {
+        "title": "根据画像填充虚构值",
+        "description": "✨ <strong>根据画像填充</strong>会依据该表最新的画像，为识别性的列建议虚构值，为其余的列建议合成规则。在你保存表单之前不会保存任何内容。"
+      },
+      "stepEnvKinds": {
+        "title": "只读或可读写的测试环境",
+        "description": "非生产环境分为<strong>只读</strong>和<strong>可读写</strong>两种。可读写环境保留自己的变更，写入永远不会到达数据源。打开<strong>测试数据</strong>后，每一列都显示其虚构值，没有虚构值的个人数据显示为 NULL。"
+      },
+      "stepSynthetic": {
+        "title": "生成合成数据",
+        "description": "🧪 <strong>合成数据集</strong>用与已画像表形态相同的行填充非生产环境，关系和扇出保持一致，规模任意。对比报告会显示它与原数据有多接近。"
+      },
+      "stepSyntheticPrivacy": {
+        "title": "隐私优先的设计",
+        "description": "🔒 用隐私预算 ε 把数据集声明为私有。生成器从画像中取用的每个统计量都会加入校准过的噪声，报告会说明噪声剔除了什么。"
+      },
       "step20": {
         "title": "构建你的交付管道",
         "description": "🔧 在这里直接组建整条交付管道——不需要单独的 ETL 工具：<ul><li>👁️ <strong>视图</strong> —— 基于任意表，可以是临时的也可以是物化的，还支持视图之上的视图。</li><li>⚡ <strong>命令</strong> —— 受治理的、类型化的操作（一个 HTTP 服务、一个 Python 模型、一个存储过程），身兼两职：既是管道中的一个步骤，<em>也</em>是下游应用和智能体可调用的一等 API，用于对数据执行操作——可从每一种界面调用，完全受治理且可追踪。</li><li>⭐ <strong>实体与事实</strong> —— 声明一次维度或事实，Provisa 就会生成数据仓库，方法论中立：3NF（Inmon）、星型模式（Kimball）或 Data Vault。</li><li>📏 <strong>指标</strong> —— 受治理的聚合定义（“净收入”），粒度在查询时绑定。定义一次；每一种界面——SQL、GraphQL、AI 智能体——都计算出相同的数字，基于某个指标构建的视图会在该指标定义变化时自动重新生成。</li></ul>"

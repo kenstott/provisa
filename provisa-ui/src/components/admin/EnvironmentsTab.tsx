@@ -463,7 +463,7 @@ export function EnvironmentsTab() {
           <Tabs.Tab value="requests">{t("environmentsTab.tabRequests")}</Tabs.Tab>
           <Tabs.Tab value="repository">{t("environmentsTab.tabRepository")}</Tabs.Tab>
           <Tabs.Tab value="integration">{t("environmentsTab.tabIntegration")}</Tabs.Tab>
-          <Tabs.Tab value="synthetic">{t("syntheticDatasets.tab")}</Tabs.Tab>
+          <Tabs.Tab value="synthetic" data-tour="synthetic-tab">{t("syntheticDatasets.tab")}</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="environments" pt="md">

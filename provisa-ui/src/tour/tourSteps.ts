@@ -308,6 +308,59 @@ export const TOUR_STEPS: TourStep[] = [
     clickAfterNext: ".data-table tbody tr.clickable",
   },
   {
+    // REQ-1934: a table joins a Data Profiler from its editor. The profiler panel is not shown on a
+    // checker's results table, so these steps open a plain table of the demo's pet-store source.
+    route: "/tables?source=pet-store-sqlite",
+    capability: "table_registration",
+    prefetch: "settings",
+    element: '[data-testid="table-read-view-edit"]',
+    key: "stepProfilerTable",
+    clickBefore: ".data-table tbody tr.clickable",
+  },
+  {
+    // The edit form opens as this step's clickBefore; the fill-from-profile step's Next collapses
+    // the row, which also cancels the edit.
+    element: '[data-tour="profiler-panel"]',
+    key: "stepProfilerPanel",
+    clickBefore: '[data-testid="table-read-view-edit"]',
+  },
+  {
+    // REQ-1934: drift, checker exceptions, constraints and external expectations are surfaced from
+    // the profiler's runs; the panel is the nearest anchor that exists on every build.
+    element: '[data-tour="profiler-panel"]',
+    key: "stepProfilerChecks",
+  },
+  {
+    // REQ-1494: a column's kind of fake is declared in the same edit form.
+    element: '[data-tour="column-fake"]',
+    key: "stepFakes",
+  },
+  {
+    // REQ-1494: the fill-from-profile action sits with the column fakes; the Fake field is its anchor.
+    element: '[data-tour="column-fake"]',
+    key: "stepFakesFill",
+    clickAfterNext: ".data-table tbody tr.clickable",
+  },
+  {
+    // REQ-1493: an environment is read or read-write, and may be marked test data. Both are set on
+    // the Environments page; its root is the anchor.
+    route: "/admin/environments",
+    capability: "environment_management",
+    element: '[data-testid="environments-tab"]',
+    key: "stepEnvKinds",
+  },
+  {
+    // REQ-1939: synthetic datasets live on the Environments page, in a tab of their own. The tab
+    // itself is the anchor: the panel's body depends on a non-production environment existing.
+    element: '[data-tour="synthetic-tab"]',
+    key: "stepSynthetic",
+  },
+  {
+    // REQ-1939: differential privacy is a setting of the dataset; the tab is the anchor.
+    element: '[data-tour="synthetic-tab"]',
+    key: "stepSyntheticPrivacy",
+  },
+  {
     // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
     route: "/admin/glossary",
     // REQ-1590: stricter than the route's own gate. /admin/glossary opens to `glossary_read`, but
