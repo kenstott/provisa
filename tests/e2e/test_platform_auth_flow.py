@@ -245,7 +245,8 @@ class TestOrgEmailRuleOnRedemption:
         resp = await client.post(
             "/admin/invites/",
             json={"org_id": _ctx["org1"], "role_id": "analyst"},
-            headers=_basic("founder"),
+            # REQ-1235: /admin/invites is the org's own (tenant plane), so the request names it.
+            headers=_in_org("founder", _ctx["org1"]),
         )
         assert resp.status_code == 200, resp.text
         return resp.json()["token"]
@@ -380,7 +381,7 @@ class TestOnlyAssignedRoleRidesHeader:
         assert ran.json()["detail"] == "Role 'org_admin' is not assigned to this user"
 
         # The holder of the role is served.
-        held = await client.get("/data/proto/org_admin", headers=_basic("founder"))
+        held = await client.get("/data/proto/org_admin", headers=_in_org("founder", _ctx["org1"]))
         assert held.status_code == 200, held.text
 
 
@@ -517,12 +518,12 @@ class TestPlatformAdminHasZeroDataPlane:
         assign = await client.post(
             f"/admin/users/{ids['opsbot']}/assignments",
             json={"role_id": "platform_admin", "domain_id": "*"},
-            headers=_basic("founder"),
+            headers=_in_org("founder", org1),
         )
         assert assign.status_code == 200, assign.text
 
     async def test_role_carries_no_data_capability(self, client):
-        resp = await client.get("/admin/roles/", headers=_basic("founder"))
+        resp = await client.get("/admin/roles/", headers=_in_org("founder", _ctx["org1"]))
         assert resp.status_code == 200, resp.text
         roles = {r["id"]: r for r in resp.json()}
         caps = set(roles["platform_admin"]["capabilities"])
@@ -544,7 +545,7 @@ class TestPlatformAdminHasZeroDataPlane:
         gql = await client.post(
             "/data/graphql",
             json={"query": "{ sa__customers { id } }"},
-            headers=_basic("opsbot"),
+            headers=_in_org("opsbot", _ctx["org1"]),
         )
         assert gql.status_code == 400, gql.text
         body = gql.json()
@@ -554,7 +555,7 @@ class TestPlatformAdminHasZeroDataPlane:
         # Data plane, JSON:API: the same refusal.
         japi = await client.get(
             "/data/jsonapi/sales-analytics/customers",
-            headers={**_basic("opsbot"), "Accept": "application/vnd.api+json"},
+            headers={**_in_org("opsbot", _ctx["org1"]), "Accept": "application/vnd.api+json"},
         )
         assert japi.status_code == 400, japi.text
         assert "No schema available" in japi.text
@@ -563,7 +564,7 @@ class TestPlatformAdminHasZeroDataPlane:
         # The admin surface authorizes on the union of the caller's rights rather than on an
         # acting role's schema, so it is where a right standing in for another would show.
         # opsbot holds platform_admin and nothing else.
-        ops = _basic("opsbot")
+        ops = _in_org("opsbot", _ctx["org1"])
 
         read = await client.post(
             "/admin/graphql", json={"query": "{ rlsRules { __typename } }"}, headers=ops
@@ -595,16 +596,18 @@ class TestPlatformAdminHasZeroDataPlane:
 
         # Nothing was written by the refused calls.
         seen = await client.post(
-            "/admin/graphql", json={"query": "{ domains { id } }"}, headers=_basic("founder")
+            "/admin/graphql",
+            json={"query": "{ domains { id } }"},
+            headers=_in_org("founder", _ctx["org1"]),
         )
         assert "opsbotdomain" not in {d["id"] for d in seen.json()["data"]["domains"]}
-        listed = await client.get("/admin/roles/", headers=_basic("founder"))
+        listed = await client.get("/admin/roles/", headers=_in_org("founder", _ctx["org1"]))
         assert "opsrole" not in {r["id"] for r in listed.json()}
 
     async def test_the_bootstrap_administrator_keeps_both_planes(self, client):
         # founder holds platform_admin AND org_admin (the claim seats both): the same calls pass,
         # each on the org_admin right it names, and the control plane still answers.
-        founder = _basic("founder")
+        founder = _in_org("founder", _ctx["org1"])
 
         read = await client.post(
             "/admin/graphql", json={"query": "{ rlsRules { __typename } }"}, headers=founder
@@ -619,13 +622,13 @@ class TestPlatformAdminHasZeroDataPlane:
         text = await client.get("/admin/audit/queries/999999999/text", headers=founder)
         assert text.status_code == 404, text.text
 
-        orgs = await client.get("/admin/orgs/", headers=founder)
+        orgs = await client.get("/admin/orgs/", headers=_basic("founder"))
         assert orgs.status_code == 200, orgs.text
 
     async def test_a_role_definition_is_held_to_the_capability_vocabulary(self, client):
         # The retired wildcard strings are not capabilities, so no role can be defined with them —
         # by anyone, the holder of both planes included.
-        founder = _basic("founder")
+        founder = _in_org("founder", _ctx["org1"])
         unknown = await client.post(
             "/admin/roles/",
             json={"id": "wild", "capabilities": ["admin"], "domain_access": ["*"]},
@@ -707,7 +710,7 @@ class TestSchemaIsolatedTenantPlane:
         theirs = await client.post(
             "/admin/graphql",
             json={"query": "{ domains { id } }"},
-            headers=_basic("founder"),
+            headers=_in_org("founder", _ctx["org1"]),
         )
         assert theirs.status_code == 200, theirs.text
         founder_ids = {d["id"] for d in theirs.json()["data"]["domains"]}
