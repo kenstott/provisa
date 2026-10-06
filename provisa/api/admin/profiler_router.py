@@ -63,7 +63,7 @@ async def list_profilers(request: Request) -> list[dict]:
                 {
                     "id": p["id"],
                     "cron": settings.cron,
-                    "sampleAboveRows": settings.sample_above_rows,
+                    "sampleAboveCells": settings.sample_above_cells,
                     "lowCardinalityMax": settings.low_cardinality_max,
                     "members": [m["table_name"] for m in await members(conn, p["id"])],
                 }

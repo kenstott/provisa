@@ -33,7 +33,7 @@
     "kaggleTokenLabel": "Token API Kaggle",
     "refreshKaggleSubmit": "Aggiorna",
     "sampleWhole": "Intera tabella",
-    "sampleAbove": "Campione oltre {{rows}} righe",
+    "sampleAbove": "Campione oltre {{cells}} celle",
     "runProfilerTitle": "Esegui ora per ogni tabella membro",
     "profilerNoMembers": "Nessuna tabella fa parte di questo profiler.",
     "profilerRan": "{{table}}: profilata",

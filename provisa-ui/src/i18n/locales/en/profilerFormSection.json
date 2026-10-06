@@ -2,8 +2,8 @@
   "profilerFormSection": {
     "cronLabel": "Schedule (cron)",
     "cronDescription": "When the profiler runs, as a cron expression, e.g. 0 3 * * * for 03:00 daily.",
-    "sampleLabel": "Sample above rows",
-    "sampleDescription": "A table with more rows than this is profiled from a sample of about this many rows. Leave empty to profile every row.",
+    "sampleLabel": "Sample above cells",
+    "sampleDescription": "Cells are rows × profiled columns. A table with more cells than this is profiled from a sample of about this many cells, so a wide table samples fewer rows. Leave empty to profile every row.",
     "samplePlaceholder": "Whole table",
     "lowCardinalityLabel": "Low-cardinality threshold",
     "lowCardinalityDescription": "A column with no more distinct values than this has every value counted, and may be inferred a category."

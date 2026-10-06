@@ -2,8 +2,8 @@
   "profilerFormSection": {
     "cronLabel": "Pianificazione (cron)",
     "cronDescription": "Quando viene eseguito il profiler, come espressione cron, ad es. 0 3 * * * per le 03:00 ogni giorno.",
-    "sampleLabel": "Campiona oltre le righe",
-    "sampleDescription": "Una tabella con più righe viene profilata da un campione di circa questo numero di righe. Lasciare vuoto per profilare tutte le righe.",
+    "sampleLabel": "Campiona oltre le celle",
+    "sampleDescription": "Le celle sono righe × colonne profilate. Una tabella con più celle viene profilata da un campione di circa questo numero di celle, quindi una tabella larga campiona meno righe. Lasciare vuoto per profilare tutte le righe.",
     "samplePlaceholder": "Intera tabella",
     "lowCardinalityLabel": "Soglia di bassa cardinalità",
     "lowCardinalityDescription": "In una colonna con non più valori distinti di questo numero ogni valore viene contato e può essere riconosciuta come categoria."

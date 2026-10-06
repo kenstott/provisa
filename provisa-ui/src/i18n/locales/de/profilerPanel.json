@@ -6,7 +6,7 @@
     "addDescription": "Der Zeitplan des Profilers profiliert diese Tabelle. Wird mit der Tabelle gespeichert.",
     "none": "Es gibt keine Data-Profiler-Quelle",
     "scheduleWhole": "{{cron}}, ganze Tabelle",
-    "scheduleSample": "{{cron}}, Stichprobe ab {{rows}} Zeilen",
+    "scheduleSample": "{{cron}}, Stichprobe ab {{cells}} Zellen",
     "memberOf": "Profiliert von {{profiler}}",
     "unsaved": "Speichern Sie die Tabelle, um diese Änderung zu übernehmen.",
     "remove": "Aus Profiler entfernen",

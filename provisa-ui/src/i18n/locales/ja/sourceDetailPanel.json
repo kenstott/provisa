@@ -33,7 +33,7 @@
     "kaggleTokenLabel": "Kaggle API トークン",
     "refreshKaggleSubmit": "更新",
     "sampleWhole": "テーブル全体",
-    "sampleAbove": "{{rows}} 行を超えるとサンプル",
+    "sampleAbove": "{{cells}} セルを超えるとサンプル",
     "runProfilerTitle": "すべてのメンバーテーブルで今すぐ実行",
     "profilerNoMembers": "このプロファイラーに参加しているテーブルはありません。",
     "profilerRan": "{{table}}: プロファイル済み",

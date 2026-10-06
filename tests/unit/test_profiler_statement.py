@@ -101,10 +101,12 @@ def test_a_sample_reads_a_fraction_of_the_rows(con):
     assert 0 < agg.profiled_rows < 500
 
 
-def test_the_sample_fraction_comes_from_the_count_and_the_stated_size():
-    assert sample_fraction(1000, None) is None
-    assert sample_fraction(1000, 1000) is None
-    assert sample_fraction(1000, 250) == 0.25
+def test_the_sample_budget_is_in_cells_so_a_wide_table_samples_fewer_rows():
+    assert sample_fraction(1000, 4, None) is None
+    assert sample_fraction(1000, 4, 4000) is None
+    assert sample_fraction(1000, 4, 1000) == 0.25
+    # The same budget over a table ten times as wide samples a tenth as many rows.
+    assert sample_fraction(1000, 40, 1000) == 0.025
 
 
 def test_every_result_row_has_its_kinds_shipped_fields(con):

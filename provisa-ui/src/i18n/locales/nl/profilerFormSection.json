@@ -2,8 +2,8 @@
   "profilerFormSection": {
     "cronLabel": "Schema (cron)",
     "cronDescription": "Wanneer de profiler draait, als cron-expressie, bijv. 0 3 * * * voor dagelijks 03:00.",
-    "sampleLabel": "Steekproef boven rijen",
-    "sampleDescription": "Een tabel met meer rijen wordt geprofileerd uit een steekproef van ongeveer zoveel rijen. Leeg laten om elke rij te profileren.",
+    "sampleLabel": "Steekproef boven cellen",
+    "sampleDescription": "Cellen zijn rijen × geprofileerde kolommen. Een tabel met meer cellen wordt geprofileerd uit een steekproef van ongeveer zoveel cellen, dus een brede tabel neemt minder rijen. Leeg laten om elke rij te profileren.",
     "samplePlaceholder": "Hele tabel",
     "lowCardinalityLabel": "Drempel voor lage kardinaliteit",
     "lowCardinalityDescription": "Bij een kolom met niet meer verschillende waarden dan dit wordt elke waarde geteld, en kan deze als categorie worden herkend."

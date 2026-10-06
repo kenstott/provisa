@@ -33,7 +33,7 @@
     "kaggleTokenLabel": "Jeton d'API Kaggle",
     "refreshKaggleSubmit": "Actualiser",
     "sampleWhole": "Table entière",
-    "sampleAbove": "Échantillon au-delà de {{rows}} lignes",
+    "sampleAbove": "Échantillon au-delà de {{cells}} cellules",
     "runProfilerTitle": "Exécuter maintenant pour chaque table membre",
     "profilerNoMembers": "Aucune table n'a rejoint ce profileur.",
     "profilerRan": "{{table}} : profilée",

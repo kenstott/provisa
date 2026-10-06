@@ -33,7 +33,7 @@
     "kaggleTokenLabel": "Kaggle API-token",
     "refreshKaggleSubmit": "Vernieuwen",
     "sampleWhole": "Hele tabel",
-    "sampleAbove": "Steekproef boven {{rows}} rijen",
+    "sampleAbove": "Steekproef boven {{cells}} cellen",
     "runProfilerTitle": "Nu uitvoeren voor elke lidtabel",
     "profilerNoMembers": "Geen tabel hoort bij deze profiler.",
     "profilerRan": "{{table}}: geprofileerd",

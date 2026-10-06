@@ -68,13 +68,13 @@ def _config(*tables: Table, source: Source | None = None) -> ProvisaConfig:
 
 def test_settings_are_a_cron_and_an_optional_sample_size():
     assert (
-        profiler_settings("p", {"cron": "0 3 * * *", "low_cardinality_max": 100}).sample_above_rows
+        profiler_settings("p", {"cron": "0 3 * * *", "low_cardinality_max": 100}).sample_above_cells
         is None
     )
     assert (
         profiler_settings(
-            "p", {"cron": "*/5 * * * *", "sample_above_rows": 1000, "low_cardinality_max": 100}
-        ).sample_above_rows
+            "p", {"cron": "*/5 * * * *", "sample_above_cells": 1000, "low_cardinality_max": 100}
+        ).sample_above_cells
         == 1000
     )
 
@@ -85,12 +85,12 @@ def test_settings_are_a_cron_and_an_optional_sample_size():
         ({"low_cardinality_max": 100}, "needs a cron schedule"),
         ({"cron": "every day", "low_cardinality_max": 100}, "is invalid"),
         (
-            {"cron": "0 3 * * *", "sample_above_rows": 0, "low_cardinality_max": 1},
-            "sample_above_rows",
+            {"cron": "0 3 * * *", "sample_above_cells": 0, "low_cardinality_max": 1},
+            "sample_above_cells",
         ),
         (
-            {"cron": "0 3 * * *", "sample_above_rows": True, "low_cardinality_max": 1},
-            "sample_above_rows",
+            {"cron": "0 3 * * *", "sample_above_cells": True, "low_cardinality_max": 1},
+            "sample_above_cells",
         ),
         ({"cron": "0 3 * * *"}, "low_cardinality_max must be a positive whole number"),
         ({"cron": "0 3 * * *", "low_cardinality_max": 0}, "low_cardinality_max must be"),
@@ -161,4 +161,4 @@ def test_two_members_with_one_name_both_join():
 
 def test_a_profiler_with_invalid_settings_fails_the_config():
     with pytest.raises(ValueError, match="needs a cron schedule"):
-        validate_config(_config(source=_profiler({"sample_above_rows": 10})))
+        validate_config(_config(source=_profiler({"sample_above_cells": 10})))

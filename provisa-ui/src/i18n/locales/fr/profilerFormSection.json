@@ -2,8 +2,8 @@
   "profilerFormSection": {
     "cronLabel": "Planification (cron)",
     "cronDescription": "Quand le profileur s'exécute, sous forme d'expression cron, p. ex. 0 3 * * * pour 03:00 chaque jour.",
-    "sampleLabel": "Échantillonner au-delà de lignes",
-    "sampleDescription": "Une table qui compte plus de lignes est profilée à partir d'un échantillon d'environ ce nombre de lignes. Laissez vide pour profiler toutes les lignes.",
+    "sampleLabel": "Échantillonner au-delà de cellules",
+    "sampleDescription": "Les cellules sont les lignes × les colonnes profilées. Une table qui compte plus de cellules est profilée à partir d'un échantillon d'environ ce nombre de cellules : une table large échantillonne donc moins de lignes. Laissez vide pour profiler toutes les lignes.",
     "samplePlaceholder": "Table entière",
     "lowCardinalityLabel": "Seuil de faible cardinalité",
     "lowCardinalityDescription": "Une colonne qui n'a pas plus de valeurs distinctes que ce nombre voit chaque valeur comptée et peut être reconnue comme catégorie."

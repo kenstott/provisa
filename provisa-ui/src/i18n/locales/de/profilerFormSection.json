@@ -2,8 +2,8 @@
   "profilerFormSection": {
     "cronLabel": "Zeitplan (Cron)",
     "cronDescription": "Wann der Profiler läuft, als Cron-Ausdruck, z. B. 0 3 * * * für täglich 03:00 Uhr.",
-    "sampleLabel": "Stichprobe ab Zeilen",
-    "sampleDescription": "Eine Tabelle mit mehr Zeilen wird aus einer Stichprobe von etwa so vielen Zeilen profiliert. Leer lassen, um jede Zeile zu profilieren.",
+    "sampleLabel": "Stichprobe ab Zellen",
+    "sampleDescription": "Zellen sind Zeilen × profilierte Spalten. Eine Tabelle mit mehr Zellen wird aus einer Stichprobe von etwa so vielen Zellen profiliert, eine breite Tabelle also aus weniger Zeilen. Leer lassen, um jede Zeile zu profilieren.",
     "samplePlaceholder": "Ganze Tabelle",
     "lowCardinalityLabel": "Schwellenwert für geringe Kardinalität",
     "lowCardinalityDescription": "Bei einer Spalte mit höchstens so vielen unterschiedlichen Werten wird jeder Wert gezählt; sie kann als Kategorie erkannt werden."

@@ -2,8 +2,8 @@
   "profilerFormSection": {
     "cronLabel": "排程（cron）",
     "cronDescription": "剖析器的執行時間，以 cron 表達式表示，例如 0 3 * * * 表示每天 03:00。",
-    "sampleLabel": "超過此列數時抽樣",
-    "sampleDescription": "列數超過此值的資料表會以約此列數的樣本進行剖析。留空則剖析每一列。",
+    "sampleLabel": "超過此儲存格數時抽樣",
+    "sampleDescription": "儲存格數為列數 × 剖析的欄數。儲存格數超過此值的資料表會以約此儲存格數的樣本進行剖析，因此欄位多的資料表抽樣的列較少。留空則剖析每一列。",
     "samplePlaceholder": "整個資料表",
     "lowCardinalityLabel": "低基數閾值",
     "lowCardinalityDescription": "不同值數量不超過此值的欄會統計每個值，並可能被推斷為類別。"

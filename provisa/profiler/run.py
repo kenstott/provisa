@@ -149,11 +149,16 @@ async def _governed(sql: str) -> tuple[list[str], list[tuple]]:
     return list(result.column_names), [tuple(r) for r in result.rows]
 
 
-def sample_fraction(row_count: int, sample_above_rows: int | None) -> float | None:
-    """The fraction to sample, or None for the whole table."""
-    if sample_above_rows is None or row_count <= sample_above_rows:
+def sample_fraction(
+    row_count: int, column_count: int, sample_above_cells: int | None
+) -> float | None:
+    """The fraction to sample, or None for the whole table. The budget is in cells -- rows times
+    profiled columns -- because the profile's work grows with both, so a wide table samples fewer
+    rows than a narrow one under the same budget."""
+    cells = row_count * column_count
+    if sample_above_cells is None or cells <= sample_above_cells:
         return None
-    return sample_above_rows / row_count
+    return sample_above_cells / cells
 
 
 def result_rows(
@@ -318,7 +323,7 @@ async def profile_table(
         target = resolve_target(state, table_id, table_name, tags)
         _, count_rows = await _governed(count_sql(target.pgwire_name))
         row_count = int(count_rows[0][0])
-        fraction = sample_fraction(row_count, settings.sample_above_rows)
+        fraction = sample_fraction(row_count, len(target.columns), settings.sample_above_cells)
         names, rows = await _governed(
             profile_sql(
                 target.pgwire_name,

@@ -2,8 +2,8 @@
   "profilerFormSection": {
     "cronLabel": "スケジュール（cron）",
     "cronDescription": "プロファイラーを実行するタイミングを cron 式で指定します。例: 毎日 03:00 なら 0 3 * * *。",
-    "sampleLabel": "サンプリングする行数の閾値",
-    "sampleDescription": "これより行数の多いテーブルは、およそこの行数のサンプルからプロファイルされます。すべての行をプロファイルするには空欄にします。",
+    "sampleLabel": "サンプリングするセル数の閾値",
+    "sampleDescription": "セル数は行数 × プロファイル対象の列数です。これよりセル数の多いテーブルは、およそこのセル数のサンプルからプロファイルされるため、列の多いテーブルほどサンプル行数は少なくなります。すべての行をプロファイルするには空欄にします。",
     "samplePlaceholder": "テーブル全体",
     "lowCardinalityLabel": "低カーディナリティのしきい値",
     "lowCardinalityDescription": "異なる値の数がこれ以下の列は、すべての値が集計され、カテゴリと推定される場合があります。"

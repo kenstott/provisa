@@ -33,7 +33,7 @@
     "kaggleTokenLabel": "Kaggle-API-Token",
     "refreshKaggleSubmit": "Aktualisieren",
     "sampleWhole": "Ganze Tabelle",
-    "sampleAbove": "Stichprobe ab {{rows}} Zeilen",
+    "sampleAbove": "Stichprobe ab {{cells}} Zellen",
     "runProfilerTitle": "Jetzt für jede Mitgliedstabelle ausführen",
     "profilerNoMembers": "Keine Tabelle gehört zu diesem Profiler.",
     "profilerRan": "{{table}}: profiliert",

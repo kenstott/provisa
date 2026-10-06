@@ -6,7 +6,7 @@
     "addDescription": "La programación del perfilador perfila esta tabla. Se guarda con la tabla.",
     "none": "No existe ninguna fuente Data Profiler",
     "scheduleWhole": "{{cron}}, tabla completa",
-    "scheduleSample": "{{cron}}, muestra por encima de {{rows}} filas",
+    "scheduleSample": "{{cron}}, muestra por encima de {{cells}} celdas",
     "memberOf": "Perfilada por {{profiler}}",
     "unsaved": "Guarde la tabla para aplicar este cambio.",
     "remove": "Quitar del perfilador",

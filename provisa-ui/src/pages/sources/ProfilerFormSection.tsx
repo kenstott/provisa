@@ -48,9 +48,9 @@ export function ProfilerFormSection({
         placeholder={t("profilerFormSection.samplePlaceholder")}
         min={1}
         allowDecimal={false}
-        value={authFields.sample_above_rows ?? ""}
+        value={authFields.sample_above_cells ?? ""}
         onChange={(v) =>
-          setAuthFields({ ...authFields, sample_above_rows: v === "" ? "" : String(v) })
+          setAuthFields({ ...authFields, sample_above_cells: v === "" ? "" : String(v) })
         }
         style={{ gridColumn: "1 / -1" }}
         data-testid="profiler-sample-input"

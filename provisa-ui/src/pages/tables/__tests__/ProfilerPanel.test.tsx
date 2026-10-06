@@ -30,11 +30,11 @@ import i18n from "../../../i18n";
 
 const t = i18n.getFixedT("en");
 const PROFILERS = [
-  { id: "nightly", cron: "0 3 * * *", sampleAboveRows: null, lowCardinalityMax: 100, members: [] },
+  { id: "nightly", cron: "0 3 * * *", sampleAboveCells: null, lowCardinalityMax: 100, members: [] },
   {
     id: "hourly",
     cron: "0 * * * *",
-    sampleAboveRows: 50000,
+    sampleAboveCells: 50000,
     lowCardinalityMax: 100,
     members: ["orders"],
   },
@@ -64,7 +64,7 @@ describe("ProfilerPanel", () => {
     expect(api.fetchProfilers).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("profiler-add"));
     const option = await screen.findByText(
-      `hourly — ${t("profilerPanel.scheduleSample", { cron: "0 * * * *", rows: 50000 })}`,
+      `hourly — ${t("profilerPanel.scheduleSample", { cron: "0 * * * *", cells: 50000 })}`,
     );
     fireEvent.click(option);
     expect(setEditingTable).toHaveBeenCalledWith(

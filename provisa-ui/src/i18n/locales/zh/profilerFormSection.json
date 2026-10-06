@@ -2,8 +2,8 @@
   "profilerFormSection": {
     "cronLabel": "计划（cron）",
     "cronDescription": "画像器的运行时间，以 cron 表达式表示，例如 0 3 * * * 表示每天 03:00。",
-    "sampleLabel": "超过此行数时抽样",
-    "sampleDescription": "行数超过此值的表将从约此行数的样本进行画像。留空则对每一行进行画像。",
+    "sampleLabel": "超过此单元格数时抽样",
+    "sampleDescription": "单元格数为行数 × 画像的列数。单元格数超过此值的表将从约此单元格数的样本进行画像，因此列多的表抽样的行更少。留空则对每一行进行画像。",
     "samplePlaceholder": "整张表",
     "lowCardinalityLabel": "低基数阈值",
     "lowCardinalityDescription": "不同值数量不超过此值的列会统计每个值，并可能被推断为类别。"

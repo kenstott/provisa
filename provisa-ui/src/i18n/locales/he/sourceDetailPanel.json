@@ -33,7 +33,7 @@
     "kaggleTokenLabel": "אסימון API של Kaggle",
     "refreshKaggleSubmit": "רענון",
     "sampleWhole": "הטבלה כולה",
-    "sampleAbove": "מדגם מעל {{rows}} שורות",
+    "sampleAbove": "מדגם מעל {{cells}} תאים",
     "runProfilerTitle": "הרצה עכשיו לכל טבלה חברה",
     "profilerNoMembers": "אף טבלה לא הצטרפה לפרופיילר זה.",
     "profilerRan": "{{table}}: נוצר פרופיל",

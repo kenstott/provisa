@@ -112,9 +112,9 @@ export function SourceDetailPanel({
           ["schedule", profilerFields.cron],
           [
             "sample",
-            profilerFields.sample_above_rows === ""
+            profilerFields.sample_above_cells === ""
               ? t("sourceDetailPanel.sampleWhole")
-              : t("sourceDetailPanel.sampleAbove", { rows: profilerFields.sample_above_rows }),
+              : t("sourceDetailPanel.sampleAbove", { cells: profilerFields.sample_above_cells }),
           ],
           ["lowCardinality", profilerFields.low_cardinality_max],
         ] as [string, string | number][])

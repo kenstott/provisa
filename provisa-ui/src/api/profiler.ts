@@ -17,7 +17,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 export interface Profiler {
   id: string;
   cron: string;
-  sampleAboveRows: number | null;
+  sampleAboveCells: number | null;
   lowCardinalityMax: number;
   members: string[];
 }

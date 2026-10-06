@@ -2,8 +2,8 @@
   "profilerFormSection": {
     "cronLabel": "Programación (cron)",
     "cronDescription": "Cuándo se ejecuta el perfilador, como expresión cron, p. ej. 0 3 * * * para las 03:00 cada día.",
-    "sampleLabel": "Muestrear por encima de filas",
-    "sampleDescription": "Una tabla con más filas que este número se perfila a partir de una muestra de aproximadamente ese número de filas. Déjelo vacío para perfilar todas las filas.",
+    "sampleLabel": "Muestrear por encima de celdas",
+    "sampleDescription": "Las celdas son filas × columnas perfiladas. Una tabla con más celdas que este número se perfila a partir de una muestra de aproximadamente ese número de celdas, de modo que una tabla ancha muestrea menos filas. Déjelo vacío para perfilar todas las filas.",
     "samplePlaceholder": "Tabla completa",
     "lowCardinalityLabel": "Umbral de baja cardinalidad",
     "lowCardinalityDescription": "En una columna con no más valores distintos que este número se cuentan todos los valores y puede inferirse como categoría."

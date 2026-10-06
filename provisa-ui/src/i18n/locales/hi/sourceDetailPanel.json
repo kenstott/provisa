@@ -33,7 +33,7 @@
     "kaggleTokenLabel": "Kaggle API टोकन",
     "refreshKaggleSubmit": "रीफ़्रेश करें",
     "sampleWhole": "पूरी टेबल",
-    "sampleAbove": "{{rows}} पंक्तियों से अधिक पर नमूना",
+    "sampleAbove": "{{cells}} सेल से अधिक पर नमूना",
     "runProfilerTitle": "हर सदस्य टेबल के लिए अभी चलाएँ",
     "profilerNoMembers": "इस प्रोफ़ाइलर में कोई टेबल शामिल नहीं है।",
     "profilerRan": "{{table}}: प्रोफ़ाइल की गई",

@@ -50,9 +50,9 @@ export function ProfilerPanel({
   const profiler = profilers?.find((p) => p.id === memberOf) ?? null;
   const unsaved = memberOf !== savedProfilerId;
   const schedule = (p: Profiler) =>
-    p.sampleAboveRows == null
+    p.sampleAboveCells == null
       ? t("profilerPanel.scheduleWhole", { cron: p.cron })
-      : t("profilerPanel.scheduleSample", { cron: p.cron, rows: p.sampleAboveRows });
+      : t("profilerPanel.scheduleSample", { cron: p.cron, cells: p.sampleAboveCells });
 
   const runNow = async () => {
     setRunning(true);

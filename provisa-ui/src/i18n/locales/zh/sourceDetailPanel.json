@@ -33,7 +33,7 @@
     "kaggleTokenLabel": "Kaggle API 令牌",
     "refreshKaggleSubmit": "刷新",
     "sampleWhole": "整张表",
-    "sampleAbove": "超过 {{rows}} 行时抽样",
+    "sampleAbove": "超过 {{cells}} 个单元格时抽样",
     "runProfilerTitle": "立即为每个成员表运行",
     "profilerNoMembers": "没有表加入此画像器。",
     "profilerRan": "{{table}}：已画像",

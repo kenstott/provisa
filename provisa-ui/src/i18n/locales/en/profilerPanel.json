@@ -6,7 +6,7 @@
     "addDescription": "The profiler's schedule profiles this table. Saved with the table.",
     "none": "No Data Profiler source exists",
     "scheduleWhole": "{{cron}}, whole table",
-    "scheduleSample": "{{cron}}, sample above {{rows}} rows",
+    "scheduleSample": "{{cron}}, sample above {{cells}} cells",
     "memberOf": "Profiled by {{profiler}}",
     "unsaved": "Save the table to apply this change.",
     "remove": "Remove from Profiler",

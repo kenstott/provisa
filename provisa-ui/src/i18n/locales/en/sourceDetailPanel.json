@@ -33,7 +33,7 @@
     "kaggleTokenLabel": "Kaggle API token",
     "refreshKaggleSubmit": "Refresh",
     "sampleWhole": "Whole table",
-    "sampleAbove": "Sample above {{rows}} rows",
+    "sampleAbove": "Sample above {{cells}} cells",
     "runProfilerTitle": "Run now for every member table",
     "profilerNoMembers": "No table has joined this profiler.",
     "profilerRan": "{{table}}: profiled",

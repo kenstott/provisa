@@ -12,8 +12,8 @@
 
 A profiler source holds a name, a schedule and its run default, and nothing else. The schedule is a
 cron expression, the recurrence scheduled triggers use (REQ-1003), and fires on the same scheduler;
-the run defaults are ``sample_above_rows`` -- None profiles every row, a number samples about that many
-rows from a larger table. Both live in the source's ``mapping`` (REQ-251).
+the run defaults are ``sample_above_cells`` -- None profiles every row, a number is a budget of cells
+(rows times profiled columns): a table with more is profiled from a sample of about that many cells. Both live in the source's ``mapping`` (REQ-251).
 
 Membership is on the table (``registered_tables.profiler_source_id``); a table belongs to at most
 one profiler.
@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class ProfilerSettings:
     cron: str
-    sample_above_rows: int | None
+    sample_above_cells: int | None
     # A column with no more distinct values than this has its full value-frequency table recorded
     # and may be inferred a category (REQ-1934). The source form supplies its default.
     low_cardinality_max: int
@@ -44,11 +44,11 @@ class ProfilerSettings:
 
 def profiler_settings(source_id: str, mapping: dict) -> ProfilerSettings:
     """The profiler's settings from its mapping, or ValueError naming the source."""
-    unknown = set(mapping) - {"cron", "sample_above_rows", "low_cardinality_max"}
+    unknown = set(mapping) - {"cron", "sample_above_cells", "low_cardinality_max"}
     if unknown:
         raise ValueError(
             f"profiler source {source_id!r}: unknown setting(s) {sorted(unknown)}; a profiler "
-            f"holds cron, sample_above_rows and low_cardinality_max only"
+            f"holds cron, sample_above_cells and low_cardinality_max only"
         )
     cron = mapping.get("cron")
     if not isinstance(cron, str) or not cron.strip():
@@ -57,12 +57,12 @@ def profiler_settings(source_id: str, mapping: dict) -> ProfilerSettings:
         CronTrigger.from_crontab(cron)
     except ValueError as exc:
         raise ValueError(f"profiler source {source_id!r}: cron {cron!r} is invalid: {exc}") from exc
-    sample = mapping.get("sample_above_rows")
+    sample = mapping.get("sample_above_cells")
     if sample is not None and (
         isinstance(sample, bool) or not isinstance(sample, int) or sample < 1
     ):
         raise ValueError(
-            f"profiler source {source_id!r}: sample_above_rows must be a positive whole number "
+            f"profiler source {source_id!r}: sample_above_cells must be a positive whole number "
             f"or absent (profile every row), got {sample!r}"
         )
     low = mapping.get("low_cardinality_max")
@@ -71,7 +71,7 @@ def profiler_settings(source_id: str, mapping: dict) -> ProfilerSettings:
             f"profiler source {source_id!r}: low_cardinality_max must be a positive whole number, "
             f"got {low!r}"
         )
-    return ProfilerSettings(cron=cron.strip(), sample_above_rows=sample, low_cardinality_max=low)
+    return ProfilerSettings(cron=cron.strip(), sample_above_cells=sample, low_cardinality_max=low)
 
 
 async def profiler_sources(conn: Any) -> list[dict]:

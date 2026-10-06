@@ -17,10 +17,10 @@ export const DEFAULT_LOW_CARDINALITY_MAX = "100";
 
 /** The profiler's mapping as the source stores it, from the form's fields. */
 export function profilerMappingJson(authFields: Record<string, string>): string {
-  const sample = (authFields.sample_above_rows ?? "").trim();
+  const sample = (authFields.sample_above_cells ?? "").trim();
   return JSON.stringify({
     cron: (authFields.cron ?? "").trim(),
-    ...(sample === "" ? {} : { sample_above_rows: Number(sample) }),
+    ...(sample === "" ? {} : { sample_above_cells: Number(sample) }),
     low_cardinality_max: Number((authFields.low_cardinality_max ?? "").trim()),
   });
 }
@@ -29,12 +29,12 @@ export function profilerMappingJson(authFields: Record<string, string>): string 
 export function profilerFieldsFromMapping(mappingJson: string): Record<string, string> {
   const m = JSON.parse(mappingJson) as {
     cron?: string;
-    sample_above_rows?: number | null;
+    sample_above_cells?: number | null;
     low_cardinality_max: number;
   };
   return {
     cron: m.cron ?? "",
-    sample_above_rows: m.sample_above_rows == null ? "" : String(m.sample_above_rows),
+    sample_above_cells: m.sample_above_cells == null ? "" : String(m.sample_above_cells),
     low_cardinality_max: String(m.low_cardinality_max),
   };
 }

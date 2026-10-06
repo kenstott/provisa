@@ -33,7 +33,7 @@
     "kaggleTokenLabel": "Токен API Kaggle",
     "refreshKaggleSubmit": "Обновить",
     "sampleWhole": "Вся таблица",
-    "sampleAbove": "Выборка свыше {{rows}} строк",
+    "sampleAbove": "Выборка свыше {{cells}} ячеек",
     "runProfilerTitle": "Запустить сейчас для всех таблиц-участников",
     "profilerNoMembers": "Ни одна таблица не входит в этот профилировщик.",
     "profilerRan": "{{table}}: профилирована",

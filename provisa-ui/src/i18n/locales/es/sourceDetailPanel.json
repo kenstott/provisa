@@ -33,7 +33,7 @@
     "kaggleTokenLabel": "Token de API de Kaggle",
     "refreshKaggleSubmit": "Actualizar",
     "sampleWhole": "Tabla completa",
-    "sampleAbove": "Muestra por encima de {{rows}} filas",
+    "sampleAbove": "Muestra por encima de {{cells}} celdas",
     "runProfilerTitle": "Ejecutar ahora para cada tabla miembro",
     "profilerNoMembers": "Ninguna tabla se ha unido a este perfilador.",
     "profilerRan": "{{table}}: perfilada",

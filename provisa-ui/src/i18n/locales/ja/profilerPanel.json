@@ -6,7 +6,7 @@
     "addDescription": "プロファイラーのスケジュールでこのテーブルをプロファイルします。テーブルと一緒に保存されます。",
     "none": "Data Profiler ソースがありません",
     "scheduleWhole": "{{cron}}、テーブル全体",
-    "scheduleSample": "{{cron}}、{{rows}} 行を超えるとサンプル",
+    "scheduleSample": "{{cron}}、{{cells}} セルを超えるとサンプル",
     "memberOf": "{{profiler}} がプロファイル",
     "unsaved": "この変更を適用するにはテーブルを保存してください。",
     "remove": "プロファイラーから削除",

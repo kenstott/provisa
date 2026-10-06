@@ -35,16 +35,16 @@ describe("Data Profiler source fields", () => {
   it("keeps a stored threshold and round-trips the mapping", () => {
     const setAuthFields = vi.fn();
     const fields = profilerFieldsFromMapping(
-      JSON.stringify({ cron: "0 * * * *", sample_above_rows: 5000, low_cardinality_max: 40 }),
+      JSON.stringify({ cron: "0 * * * *", sample_above_cells: 5000, low_cardinality_max: 40 }),
     );
     render(<ProfilerFormSection authFields={fields} setAuthFields={setAuthFields} />);
     expect(setAuthFields).not.toHaveBeenCalled();
     expect(JSON.parse(profilerMappingJson(fields))).toEqual({
       cron: "0 * * * *",
-      sample_above_rows: 5000,
+      sample_above_cells: 5000,
       low_cardinality_max: 40,
     });
-    expect(JSON.parse(profilerMappingJson({ ...fields, sample_above_rows: "" }))).toEqual({
+    expect(JSON.parse(profilerMappingJson({ ...fields, sample_above_cells: "" }))).toEqual({
       cron: "0 * * * *",
       low_cardinality_max: 40,
     });
