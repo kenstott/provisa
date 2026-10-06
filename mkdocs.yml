@@ -134,6 +134,8 @@ nav:
       - Commands: commands.md
       - Column-Level Lineage: lineage.md
       - Environments: environments.md
+      - Building Test Environments: test-data.md
+      - Fake Methods: fake-methods.md
   - Security & Governance:
       - Security Model: security.md
       - Secrets: secrets.md

@@ -13,6 +13,8 @@ at env_routing.py lines 93-129]
 
 Environments are available to organizations on a paid plan. [inferred: REQ-1507]
 
+To fill a non-production environment with data that is safe to use, see [Building test environments](test-data.md).
+
 ## Environment names
 
 A name must match `[a-z][a-z0-9_]{1,31}` — two to thirty-two characters of lowercase letters,
@@ -294,3 +296,5 @@ provisa env deploy --org acme --env prod --ref "origin/main" \
 
 - [Deployment](deployment.md) — how to stand up the control plane environments connect to
 - [Commands](commands.md) — tracked functions and webhooks that appear in each environment's tree
+- [Building test environments](test-data.md) — profile production, declare fakes, generate synthetic data for a non-production environment
+- [Fake methods](fake-methods.md) — every kind of fake and every method a column can declare

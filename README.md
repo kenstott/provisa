@@ -383,6 +383,8 @@ See [docs/python-client.md](docs/python-client.md) for full reference.
 | Secret storage and `${secret:NAME}` references | [docs/secrets.md](docs/secrets.md) |
 | Business glossary and term curation | [docs/glossary.md](docs/glossary.md) |
 | Environments (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
+| Building test environments (profiling, fakes, synthetic data) | [docs/test-data.md](docs/test-data.md) |
+| Fake methods reference | [docs/fake-methods.md](docs/fake-methods.md) |
 | Supported source types | [docs/sources.md](docs/sources.md) |
 | SSE subscriptions | [docs/subscriptions.md](docs/subscriptions.md) |
 | JDBC, BI tools, Arrow Flight clients, Apollo Federation | [docs/integrations.md](docs/integrations.md) |
