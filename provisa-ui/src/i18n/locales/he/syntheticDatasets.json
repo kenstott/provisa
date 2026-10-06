@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "ε של משפחת סטטיסטיקות",
     "measure_privacy_dropped": "הוסר בשל הרעש",
     "measure_privacy_mostly_noise": "בעיקר רעש",
-    "measure_privacy_epsilon_charged": "ε שנוצל"
+    "measure_privacy_epsilon_charged": "ε שנוצל",
+    "closeness": "לא קרוב מדי לשורה אמיתית",
+    "closenessHelp": "כל שורה שנוצרה מושווית למדגם של שורות אמיתיות; שורה קרובה יותר מהסף נשלפת מחדש, ואם עדיין קרובה מדי היא מוסרת יחד עם ילדיה. כבוי: הקרבה אינה נבדקת.",
+    "closenessThreshold": "סף (חלק מהמרחק הטיפוסי בין שורות אמיתיות)",
+    "closenessDraws": "שליפות לכל שורה",
+    "measure_closeness": "קרבה",
+    "measure_closeness_threshold": "סף קרבה",
+    "measure_closeness_redrawn": "שורות שנשלפו מחדש",
+    "measure_closeness_dropped": "שורות שהוסרו כקרובות מדי",
+    "measure_closeness_cascaded": "שורות שהוסרו עם ההורה שלהן",
+    "measure_closeness_distance": "מרחק לשורה האמיתית הקרובה",
+    "measure_closeness_nndr": "יחס מרחקי השכן הקרוב",
+    "measure_closeness_membership_auc": "מבחן הסקת חברות (AUC)",
+    "measure_dependence_spearman": "מתאם דרגות",
+    "measure_dependence_copula_shrink": "תיקון המתאמים",
+    "measure_dependence_kept_own": "נשלפה בנפרד",
+    "measure_dependence_network_not_kept": "רשת התלויות לא נשמרה"
   }
 }

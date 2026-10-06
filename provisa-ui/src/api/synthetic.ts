@@ -56,6 +56,9 @@ export interface SyntheticDataset {
   assertions: string[];
   // REQ-1939, DIFFERENTIAL PRIVACY: the privacy budget; null when the dataset is not private.
   privateEpsilon: number | null;
+  // REQ-1939, NOT TOO CLOSE TO A REAL ROW: both null when closeness is not checked.
+  closenessThreshold: number | null;
+  closenessDraws: number | null;
 }
 
 export interface ProfiledTableRuns {
@@ -105,6 +108,8 @@ export const defineDataset = (
     fanoutConditions: FanoutCondition[];
     assertions: string[];
     privateEpsilon: number | null;
+    closenessThreshold: number | null;
+    closenessDraws: number | null;
   },
 ) =>
   call<{ id: string; storeSchema: string }>("defineDataset", env, `/${encodeURIComponent(id)}`, {

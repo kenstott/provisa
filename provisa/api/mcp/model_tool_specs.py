@@ -301,7 +301,11 @@ SPECS: list[dict] = [
             "relative to the profiled tables) and tables, each {tableId, profileEnv, runId, "
             "scale?} from list_synthetic_profile_runs. Refused verbatim for an invalid name, a "
             "table set missing a parent its relationships need, or a pii column with neither a "
-            "fake nor a synthetic rule. Redefining an existing id replaces it. " + _RIGHT_ENV
+            "fake nor a synthetic rule. Redefining an existing id replaces it. Optional: "
+            "fanoutConditions [{relationship, condition, count: {fixed} | {low, high} | "
+            "{measured: true}}], assertions [statement], privateEpsilon (makes it private), and "
+            "closenessThreshold with closenessDraws (both or neither; neither: closeness is not "
+            "checked). " + _RIGHT_ENV
         ),
         "input_schema": _obj(
             {
@@ -321,6 +325,22 @@ SPECS: list[dict] = [
                         "required": ["tableId", "profileEnv", "runId"],
                     },
                 },
+                "fanoutConditions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "relationship": {"type": "string"},
+                            "condition": {"type": "string"},
+                            "count": {"type": "object"},
+                        },
+                        "required": ["relationship", "condition", "count"],
+                    },
+                },
+                "assertions": {"type": "array", "items": {"type": "string"}},
+                "privateEpsilon": {"type": "number"},
+                "closenessThreshold": {"type": "number"},
+                "closenessDraws": {"type": "integer"},
             },
             ["dataset_id", "seed", "scale", "tables"],
         ),

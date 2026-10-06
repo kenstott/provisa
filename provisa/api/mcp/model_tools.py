@@ -456,11 +456,30 @@ async def define_synthetic_dataset(
     seed: int,
     scale: float,
     tables: list[dict],
+    fanoutConditions: list[dict] | None = None,  # noqa: N803 -- the tool's own argument names
+    assertions: list[str] | None = None,
+    privateEpsilon: float | None = None,  # noqa: N803
+    closenessThreshold: float | None = None,  # noqa: N803
+    closenessDraws: int | None = None,  # noqa: N803
 ) -> dict:
     require_role(role, state)
     from provisa.api.admin.synthetic_router import DatasetIn, define_dataset
 
-    body = DatasetIn(seed=seed, scale=scale, tables=tables)  # pyright: ignore[reportArgumentType]
+    given = {
+        "fanoutConditions": fanoutConditions,
+        "assertions": assertions,
+        "privateEpsilon": privateEpsilon,
+        "closenessThreshold": closenessThreshold,
+        "closenessDraws": closenessDraws,
+    }
+    body = DatasetIn(
+        seed=seed,
+        scale=scale,
+        tables=tables,  # pyright: ignore[reportArgumentType]
+        **{
+            k: v for k, v in given.items() if v is not None
+        },  # an argument left out takes DatasetIn's
+    )
     return await define_dataset(request, dataset_id, body)
 
 

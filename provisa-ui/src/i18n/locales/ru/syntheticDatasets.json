@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "ε семейства статистик",
     "measure_privacy_dropped": "Отброшено из-за шума",
     "measure_privacy_mostly_noise": "В основном шум",
-    "measure_privacy_epsilon_charged": "Израсходованное ε"
+    "measure_privacy_epsilon_charged": "Израсходованное ε",
+    "closeness": "Не слишком близко к реальной строке",
+    "closenessHelp": "Каждая сгенерированная строка сравнивается с выборкой реальных строк; строка ближе порога разыгрывается заново, а если всё ещё слишком близка — отбрасывается вместе с дочерними. Выключено: близость не проверяется.",
+    "closenessThreshold": "Порог (доля типичного расстояния между реальными строками)",
+    "closenessDraws": "Розыгрышей на строку",
+    "measure_closeness": "Близость",
+    "measure_closeness_threshold": "Порог близости",
+    "measure_closeness_redrawn": "Разыгранные заново строки",
+    "measure_closeness_dropped": "Отброшенные как слишком близкие",
+    "measure_closeness_cascaded": "Отброшенные вместе с родителем",
+    "measure_closeness_distance": "Расстояние до ближайшей реальной строки",
+    "measure_closeness_nndr": "Отношение расстояний до ближайших соседей",
+    "measure_closeness_membership_auc": "Тест вывода о принадлежности (AUC)",
+    "measure_dependence_spearman": "Ранговая корреляция",
+    "measure_dependence_copula_shrink": "Поправка корреляций",
+    "measure_dependence_kept_own": "Разыграна отдельно",
+    "measure_dependence_network_not_kept": "Сеть зависимостей не сохранена"
   }
 }

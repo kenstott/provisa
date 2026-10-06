@@ -41,6 +41,8 @@ const DATASET = {
   fanoutConditions: [],
   assertions: [],
   privateEpsilon: null,
+  closenessThreshold: null,
+  closenessDraws: null,
 };
 
 beforeEach(() => {
@@ -131,7 +133,25 @@ describe("SyntheticDatasetsPanel", () => {
         fanoutConditions: [],
         assertions: [],
         privateEpsilon: null,
+        closenessThreshold: null,
+        closenessDraws: null,
       }),
+    );
+  });
+
+  it("checks closeness to real rows with a threshold and a number of draws", async () => {
+    render(<SyntheticDatasetsPanel envs={["prod", "dev"]} />);
+    fireEvent.click(await screen.findByTestId("synthetic-table-customers"));
+    fireEvent.click(screen.getByTestId("synthetic-closeness"));
+    fireEvent.change(screen.getByTestId("synthetic-closeness-draws"), { target: { value: "5" } });
+    fireEvent.change(screen.getByTestId("synthetic-name"), { target: { value: "big" } });
+    fireEvent.click(screen.getByTestId("synthetic-define"));
+    await waitFor(() =>
+      expect(api.defineDataset).toHaveBeenCalledWith(
+        "dev",
+        "big",
+        expect.objectContaining({ closenessThreshold: 0.5, closenessDraws: 5 }),
+      ),
     );
   });
 

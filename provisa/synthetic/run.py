@@ -24,6 +24,7 @@ governed pipeline and compared with the profile it was drawn from (the report).
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -31,7 +32,8 @@ import sqlalchemy as sa
 from sqlalchemy import delete, insert, select
 
 from provisa.synthetic import datasets
-from provisa.synthetic.generate import generation_sql
+from provisa.synthetic import closeness
+from provisa.synthetic.generate import Closeness, closeness_sql, generation_sql
 from provisa.synthetic.group import reads_children
 from provisa.synthetic.privacy import report_entries as privacy_entries
 from provisa.synthetic.plan import (
@@ -469,6 +471,7 @@ async def _write_table(
     planned: PlannedTable,
     reg: dict,
     child_tables: dict[str, str] | None = None,
+    close: Closeness | None = None,
 ) -> int:
     from provisa.federation.data_replicator import data_replicator
     from provisa.federation.replica_address import ReplicaAddress, replica_table_name
@@ -488,9 +491,12 @@ async def _write_table(
     )
     engine_party = StoreReadingEngine(backend, state)
     target = backend.replica_target(state, address=address, args=args, engine=engine_party)
+    dialect = engine_rt.engine.name
     reader = _GeneratedRows(
         engine_rt,
-        generation_sql(planned.plan, engine_rt.engine.name, child_tables),
+        generation_sql(planned.plan, dialect, child_tables)
+        if close is None
+        else closeness_sql(planned.plan, dialect, close, child_tables),
         planned.plan.name,
     )
     copied = 0
@@ -502,6 +508,239 @@ async def _write_table(
     job = data_replicator(reader, target, engine_party, batch_rows=BATCH_ROWS)
     outcome = await job.run(progress)
     return outcome.rows_copied
+
+
+# -- not too close to a real row (REQ-1939; maintainer rulings W1, Z2, C1) -----------------------
+
+
+def _engine_rows(state: Any, sql: str, label: str) -> list[tuple]:
+    """The rows of the system's own statement over the dataset's store tables."""
+    from provisa.federation.execution_auth import SystemAuth, mint_system_token
+
+    engine_rt = state.federation_engine
+    _schema, stream = engine_rt.execute_engine_stream(
+        sql,
+        authorization=SystemAuth(
+            mint_system_token(), reason=f"synthetic:{label}", expected_sql=sql
+        ),
+    )
+    try:
+        return [tuple(r.values()) for b in stream for r in b.to_pylist()]
+    finally:
+        stream.close()
+
+
+class _LandedRows:
+    """One Arrow batch, read as a replica source."""
+
+    def __init__(self, batch: Any) -> None:
+        from provisa.federation.data_replicator import SourceCaps, SourceRead
+
+        self._batch = batch
+        self.caps = SourceCaps(frozenset({SourceRead.ARROW_STREAM}))
+
+    async def batches(self, batch_rows: int) -> Any:
+        from provisa.federation.replica_source import _bounded
+
+        for part in _bounded(self._batch, batch_rows):
+            yield part
+
+
+def sample_name(reg: dict) -> str:
+    """The store name of a table's real sample, beside its generated table and never registered."""
+    from provisa.federation.replica_address import replica_table_name
+
+    return replica_table_name("__closeness", reg["schema_name"], reg["table_name"])
+
+
+async def _land_sample(
+    state: Any, schema: str, p: PlannedTable, reg: dict, cols: list
+) -> tuple[str, list]:
+    """Up to SAMPLE_ROWS real rows of ``p``'s table, each column as the distance reads it, read
+    as the org admin through the governed pipeline in an order drawn from their values, landed as
+    an unregistered table of the dataset's store schema (W1); its address, and its columns as
+    :class:`provisa.synthetic.generate.DistanceColumn`."""
+    import asyncio
+
+    import pyarrow as pa
+
+    from provisa.federation.data_replicator import data_replicator
+    from provisa.federation.replica_address import ReplicaAddress
+    from provisa.federation.replica_builds import _model_row
+    from provisa.federation.replica_parties import StoreReadingEngine
+    from provisa.federation.replica_source import BATCH_ROWS
+    from provisa.federation.residency import resolve_landing_args
+    from provisa.profiler.run import _governed
+    from provisa.profiler.statement import _ident, qualified
+    from provisa.synthetic.generate import SAMPLE_ID, DistanceColumn
+
+    exposed = _exposer(state)
+    numbers = [c.family in ("numeric", "temporal") for c in cols]
+    values = []
+    for c, number in zip(cols, numbers):
+        x = f"x.{_ident(exposed(p.table, c.name))}"
+        if c.family == "temporal":
+            values.append(f"CAST(EXTRACT(EPOCH FROM {x}) AS DOUBLE PRECISION)")
+        elif number:
+            values.append(f"CAST({x} AS DOUBLE PRECISION)")
+        else:
+            values.append(f"CAST({x} AS TEXT)")
+    text = " || '|' || ".join(f"COALESCE(CAST({v} AS TEXT), '')" for v in values)
+    named = ", ".join(f"{v} AS d{i}" for i, v in enumerate(values))
+    _names, rows = await _governed(
+        f"SELECT {named} FROM {qualified(p.table.pgwire_name)} x ORDER BY MD5({text}) "
+        f"LIMIT {closeness.SAMPLE_ROWS}"
+    )
+    if len(rows) < 2:
+        raise DatasetRefused(
+            f"{p.table.name}: the closeness check compares with at least two real rows; the "
+            f"table has {len(rows)}"
+        )
+    arrays = {SAMPLE_ID: pa.array(range(len(rows)), pa.int64())}
+    distance_cols = []
+    for i, (c, number) in enumerate(zip(cols, numbers)):
+        column = [r[i] for r in rows]
+        if number:
+            floats = [None if v is None else float(v) for v in column]
+            arrays[f"__d{i}"] = pa.array(floats, pa.float64())
+            scale = closeness.scale_of([v for v in floats if v is not None])
+        else:
+            arrays[f"__d{i}"] = pa.array(column, pa.string())
+            scale = None
+        distance_cols.append(DistanceColumn(c.name, c.family, scale, c.sql_type))
+    batch = pa.RecordBatch.from_pydict(arrays)
+
+    engine_rt = state.federation_engine
+    backend = engine_rt.engine.backend
+    source, table, _ = await _model_row(
+        state, (reg["source_id"], reg["schema_name"], reg["table_name"])
+    )
+    args = replace(
+        resolve_landing_args(source, table, platform=backend.dialect),
+        columns=[(SAMPLE_ID, "bigint")]
+        + [(f"__d{i}", "double" if n else "text") for i, n in enumerate(numbers)],
+        pk_columns=[SAMPLE_ID],
+        watermark_column=None,
+    )
+    engine_party = StoreReadingEngine(backend, state)
+    name = sample_name(reg)
+    target = backend.replica_target(
+        state, address=ReplicaAddress(schema, name), args=args, engine=engine_party
+    )
+
+    async def progress(rows: int) -> None:
+        del rows  # a sample's landing reports nothing
+
+    await data_replicator(_LandedRows(batch), target, engine_party, batch_rows=BATCH_ROWS).run(
+        progress
+    )
+    catalog = await asyncio.to_thread(backend.replica_read_catalog, state)
+    address = ".".join('"' + x.replace('"', '""') + '"' for x in (catalog, schema, name) if x)
+    return address, distance_cols
+
+
+async def _closeness_of(
+    state: Any,
+    row: datasets.DatasetRow,
+    planned: list[PlannedTable],
+    registered: dict[int, dict],
+    addresses: dict[str, str],
+    landed: list[str],
+) -> tuple[dict[str, Closeness], dict[str, list[tuple[float, float]]], list[dict]]:
+    """Each table's closeness: its real sample landed (its name added to ``landed``, to be
+    dropped), the threshold measured over it, the parents its rows drop without; with each
+    sample row's two nearest others, and the report's rows for a table not checked."""
+    from provisa.synthetic.generate import distance_columns, sample_nearest_sql
+
+    assert row.closeness_threshold is not None and row.closeness_draws is not None
+    out: dict[str, Closeness] = {}
+    real: dict[str, list[tuple[float, float]]] = {}
+    unchecked: list[dict] = []
+    for p in planned:
+        reg = registered[p.table.table_id]
+        # A row's parents among the dataset's other tables (C1); a row referring to its own
+        # table is not dropped with its referent, which is generated beside it in one statement.
+        parents = tuple(
+            (c.name, addresses[c.foreign_key.parent_table], c.foreign_key.parent_key.name)
+            for c in p.plan.columns
+            if c.foreign_key is not None and c.foreign_key.parent_table != p.plan.name
+        )
+        cols = distance_columns(p.plan)
+        if not cols:
+            out[p.plan.name] = Closeness("", 0.0, 1, (), parents)
+            unchecked += closeness.unchecked_table(p.plan.name)
+            continue
+        landed.append(sample_name(reg))
+        address, distance_cols = await _land_sample(state, row.store_schema, p, reg, cols)
+        close = Closeness(address, 0.0, row.closeness_draws, tuple(distance_cols), parents)
+        pairs = [
+            (float(a), float(b))
+            for _id, a, b in _engine_rows(
+                state, sample_nearest_sql(close), f"{p.plan.name}:closeness"
+            )
+        ]
+        real[p.plan.name] = pairs
+        limit = closeness.threshold(row.closeness_threshold, [a for a, _ in pairs])
+        out[p.plan.name] = Closeness(
+            address, limit, row.closeness_draws, tuple(distance_cols), parents
+        )
+    return out, real, unchecked
+
+
+def _closeness_entries(
+    state: Any,
+    row: datasets.DatasetRow,
+    planned: list[PlannedTable],
+    closes: dict[str, Closeness],
+    real: dict[str, list[tuple[float, float]]],
+    addresses: dict[str, str],
+) -> list[dict]:
+    """The report's closeness rows of each checked table, measured while its sample is landed."""
+    from provisa.synthetic.generate import closeness_counts_sql, generated_nearest_sql
+
+    assert row.closeness_threshold is not None and row.closeness_draws is not None
+    dialect = state.federation_engine.engine.name
+    out = []
+    for p in planned:
+        close = closes[p.plan.name]
+        ((redrawn, dropped, cascaded),) = _engine_rows(
+            state, closeness_counts_sql(p.plan, dialect, close), f"{p.plan.name}:closeness"
+        )
+        if not close.columns:
+            out += closeness.cascaded_only(p.plan.name, int(cascaded))
+            continue
+        generated = [
+            (float(a), float(b))
+            for _id, a, b in _engine_rows(
+                state,
+                generated_nearest_sql(
+                    p.plan,
+                    dialect,
+                    close,
+                    addresses[p.plan.name],
+                    closeness.REPORT_ROWS,
+                    row.seed,
+                ),
+                f"{p.plan.name}:closeness",
+            )
+        ]
+        out += closeness.report_entries(
+            p.plan.name,
+            share=row.closeness_threshold,
+            limit=close.threshold,
+            draws=row.closeness_draws,
+            counts=(int(redrawn), int(dropped), int(cascaded)),
+            real=real[p.plan.name],
+            generated=generated,
+        )
+    return out
+
+
+async def _drop_samples(state: Any, schema: str, landed: list[str]) -> None:
+    from provisa.federation.store_scope import drop_synthetic_table
+
+    for name in landed:
+        await drop_synthetic_table(state.federation_engine.engine.materialize_store(), schema, name)
 
 
 async def _dataset_tables(
@@ -885,6 +1124,7 @@ async def generate(state: Any, dataset_id: str) -> None:
     async with state.model_db.acquire() as conn:
         row = await datasets.get_dataset(conn, dataset_id)
         await datasets.set_status(conn, dataset_id, "generating", error=None)
+    landed: list[str] = []  # the real samples landed for the closeness check, dropped below (W1)
     try:
         tables, relationships, registered = await _dataset_tables(state, row)
         edges = edges_of(relationships)
@@ -939,23 +1179,51 @@ async def generate(state: Any, dataset_id: str) -> None:
             conditions=row.fanout_conditions,
             measure_condition=lambda e, cond: condition_sketches[(e.relationship, cond)],
         )
+        addresses = await _generated_addresses(state, row.store_schema, planned, registered)
+        closes: dict[str, Closeness] = {}
+        real: dict[str, list[tuple[float, float]]] = {}
+        close_extra: list[dict] = []
+        if row.closeness_threshold is not None:
+            fixed = closeness.fixed_columns(planned)
+            planned = [
+                replace(p, plan=replace(p.plan, fixed=fixed.get(p.plan.name, frozenset())))
+                for p in planned
+            ]
+            closes, real, close_extra = await _closeness_of(
+                state, row, planned, registered, addresses, landed
+            )
         for p in planned:
-            await _write_table(state, row.store_schema, p, registered[p.table.table_id])
+            await _write_table(
+                state,
+                row.store_schema,
+                p,
+                registered[p.table.table_id],
+                close=closes.get(p.plan.name),
+            )
         # The second pass (REQ-1939, GENERATION IN PASSES): a table whose rules read its children
         # is generated again, the same rows, its rules now computed over the generated children.
         second = [p for p in planned if any(reads_children(g) for g in p.plan.group)]
-        if second:
-            addresses = await _generated_addresses(state, row.store_schema, planned, registered)
-            for p in _children_first(second):
-                await _write_table(
-                    state, row.store_schema, p, registered[p.table.table_id], addresses
-                )
+        for p in _children_first(second):
+            await _write_table(
+                state,
+                row.store_schema,
+                p,
+                registered[p.table.table_id],
+                addresses,
+                close=closes.get(p.plan.name),
+            )
+        if row.closeness_threshold is not None:
+            close_extra += _closeness_entries(state, row, planned, closes, real, addresses)
+        else:
+            close_extra = closeness.not_checked()
     except Exception as exc:
         async with state.model_db.acquire() as conn:
             await datasets.set_status(
                 conn, dataset_id, "failed", error=f"{type(exc).__name__}: {exc}"
             )
         raise
+    finally:
+        await _drop_samples(state, row.store_schema, landed)
     async with state.model_db.acquire() as conn:
         await datasets.set_status(conn, dataset_id, "generated", generated_at=datetime.now(UTC))
     # Its tables now read their copies here: the routes are republished with the model.
@@ -965,6 +1233,7 @@ async def generate(state: Any, dataset_id: str) -> None:
         + _condition_entries(state, planned)
         + await _assertion_entries(row.assertions)
         + privacy_entries(budget)
+        + close_extra
     )
     await report(state, dataset_id, planned, extra)
 

@@ -288,7 +288,11 @@ def dev(profiled) -> dict:
 
 
 def _define(
-    dev: dict, names: list[str], dataset: str = "load_test", epsilon: float | None = None
+    dev: dict,
+    names: list[str],
+    dataset: str = "load_test",
+    epsilon: float | None = None,
+    closeness: tuple[float, int] | None = None,
 ) -> tuple[int, Any]:
     return _call(
         dev["boot"],
@@ -321,6 +325,8 @@ def _define(
             if "purchases" in names
             else [],
             "privateEpsilon": epsilon,
+            "closenessThreshold": None if closeness is None else closeness[0],
+            "closenessDraws": None if closeness is None else closeness[1],
         },
         env=dev["env"],
     )
@@ -554,6 +560,101 @@ def test_a_private_dataset_is_measured_under_its_budget(profiled, generated):
     assert status == 200, plain
     [none] = [r for r in plain if r["measure"] == "privacy_guarantee"]
     assert none["note"].startswith("none")
+
+
+def test_generated_rows_keep_their_distance_from_real_rows(profiled):
+    """REQ-1939, NOT TOO CLOSE TO A REAL ROW (maintainer rulings W1, Z2, C1), in an environment of
+    its own. The distance reads five of a customer's columns (spent, a rule's, is not read). A
+    real customer's nearest other differs in its email only: 0.2. A generated one differs from
+    every real one at least in its email, its tier (declared values no real row holds) and its
+    region (an undeclared column of generated values): 0.6, under 3.5 times 0.2, so every customer
+    is dropped, and every purchase with it. An account is drawn again or dropped by its balance
+    and date."""
+    import duckdb
+
+    boot = profiled
+    env = _environment(boot, "close")
+    status, body = _define(
+        env, ["customers", "purchases", "accounts"], dataset="close_test", closeness=(3.5, 3)
+    )
+    assert status == 200, body
+    status, body = _call(boot, "POST", "/admin/synthetic-datasets/close_test/generate", env="close")
+    assert status == 200, (body, boot.log_text()[-6000:])
+    status, rows = _call(boot, "GET", "/admin/synthetic-datasets/close_test/report", env="close")
+    assert status == 200, rows
+    by = {(r["table"], r["measure"]): r for r in rows if r["measure"].startswith("closeness")}
+    assert by[("customers", "closeness_dropped")]["synthetic"] == 2 * _CUSTOMERS, by
+    assert _one(boot, "SELECT COUNT(*) AS n FROM sales.customers", env="close") == 0
+    # C1: a dropped customer's purchases drop with it.
+    assert by[("purchases", "closeness")]["note"].startswith("not checked"), by
+    assert by[("purchases", "closeness_cascaded")]["synthetic"] > 0, by
+    assert _one(boot, "SELECT COUNT(*) AS n FROM sales.purchases", env="close") == 0
+    accounts = _one(boot, "SELECT COUNT(*) AS n FROM sales.accounts", env="close")
+    redrawn = by[("accounts", "closeness_redrawn")]["synthetic"]
+    dropped = by[("accounts", "closeness_dropped")]["synthetic"]
+    assert accounts + dropped == 600 and redrawn > 0, by
+    threshold = by[("accounts", "closeness_threshold")]
+    assert threshold["synthetic"] == pytest.approx(3.5 * threshold["source"])
+    distances = [
+        r for r in rows if (r["table"], r["measure"]) == ("accounts", "closeness_distance")
+    ]
+    assert distances and all(r["synthetic"] >= threshold["synthetic"] for r in distances)
+    assert 0.0 <= by[("accounts", "closeness_membership_auc")]["synthetic"] <= 1.0
+    assert ("accounts", "closeness_nndr") in by
+    status, datasets_ = _call(boot, "GET", "/admin/synthetic-datasets", env="close")
+    assert status == 200, datasets_
+    [close] = [d for d in datasets_ if d["id"] == "close_test"]
+    assert (close["closenessThreshold"], close["closenessDraws"]) == (3.5, 3)
+    schema = close["storeSchema"]
+    # W1: the store's tables of the dataset are read only through the model, by no name of their
+    # own -- the real samples were such tables, never registered.
+    for role in ("analyst", "org_admin"):
+        status, body = _call(
+            boot,
+            "POST",
+            "/data/sql",
+            {"sql": f'SELECT * FROM "{schema}"."__closeness__public__accounts"'},
+            env="close",
+            role=role,
+        )
+        assert status != 200, body
+    # W1: the samples are dropped once generated. The store is read with the server stopped.
+    boot.stop()
+    try:
+        con = duckdb.connect(f"{boot.data_dir}/store.duckdb", read_only=True)
+        try:
+            left = con.execute(
+                "SELECT table_schema, table_name FROM information_schema.tables "
+                "WHERE table_name LIKE '%closeness%'"
+            ).fetchall()
+            generated = con.execute(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ?", [schema]
+            ).fetchone()
+        finally:
+            con.close()
+    finally:
+        boot.start()
+        boot.wait_all_ready(timeout=300)
+    assert left == []
+    assert generated is not None and generated[0] == 3
+
+
+def test_a_dataset_declaring_no_closeness_says_it_was_not_checked(generated):
+    status, rows = _call(
+        generated["boot"], "GET", "/admin/synthetic-datasets/load_test/report", env="dev"
+    )
+    assert status == 200, rows
+    [entry] = [r for r in rows if r["measure"] == "closeness"]
+    assert entry["note"].startswith("not checked"), entry
+
+
+def test_a_private_dataset_is_not_compared_with_real_rows(profiled):
+    env = _environment(profiled, "private_close")
+    status, body = _define(
+        env, ["accounts"], dataset="private_close", epsilon=1.0, closeness=(1, 2)
+    )
+    assert status == 422, body
+    assert "declare ε or closeness" in body["error"], body
 
 
 def test_a_private_dataset_refuses_text_columns_that_declare_nothing(profiled):

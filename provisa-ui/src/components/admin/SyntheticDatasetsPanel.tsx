@@ -61,6 +61,18 @@ const OWN_MEASURES = new Set([
   "privacy_dropped",
   "privacy_mostly_noise",
   "privacy_epsilon_charged",
+  "closeness",
+  "closeness_threshold",
+  "closeness_redrawn",
+  "closeness_dropped",
+  "closeness_cascaded",
+  "closeness_distance",
+  "closeness_nndr",
+  "closeness_membership_auc",
+  "dependence_spearman",
+  "dependence_copula_shrink",
+  "dependence_kept_own",
+  "dependence_network_not_kept",
 ]);
 
 // REQ-1939: an environment's synthetic datasets -- defined, generated, regenerated and dropped
@@ -84,6 +96,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
   const [conditions, setConditions] = useState<FanoutCondition[]>([]);
   const [assertions, setAssertions] = useState<string[]>([]);
   const [epsilon, setEpsilon] = useState<number | null>(null);
+  const [closeness, setCloseness] = useState<{ threshold: number; draws: number } | null>(null);
 
   const reload = useCallback(() => {
     if (!env) return;
@@ -142,6 +155,8 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
         fanoutConditions: conditions,
         assertions,
         privateEpsilon: epsilon,
+        closenessThreshold: closeness?.threshold ?? null,
+        closenessDraws: closeness?.draws ?? null,
       }),
     );
   const generated = relationships.filter(
@@ -397,6 +412,37 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
             onChange={(v) => setEpsilon(Number(v))}
             data-testid="synthetic-epsilon"
           />
+        )}
+      </Group>
+      <Group align="end">
+        <Checkbox
+          label={t("syntheticDatasets.closeness")}
+          description={t("syntheticDatasets.closenessHelp")}
+          checked={closeness !== null}
+          onChange={(e) =>
+            setCloseness(e.currentTarget.checked ? { threshold: 0.5, draws: 3 } : null)
+          }
+          data-testid="synthetic-closeness"
+        />
+        {closeness !== null && (
+          <>
+            <NumberInput
+              label={t("syntheticDatasets.closenessThreshold")}
+              min={0.01}
+              decimalScale={2}
+              value={closeness.threshold}
+              onChange={(v) => setCloseness({ ...closeness, threshold: Number(v) })}
+              data-testid="synthetic-closeness-threshold"
+            />
+            <NumberInput
+              label={t("syntheticDatasets.closenessDraws")}
+              min={1}
+              allowDecimal={false}
+              value={closeness.draws}
+              onChange={(v) => setCloseness({ ...closeness, draws: Number(v) })}
+              data-testid="synthetic-closeness-draws"
+            />
+          </>
         )}
       </Group>
       <DatasetConditions relationships={generated} value={conditions} onChange={setConditions} />

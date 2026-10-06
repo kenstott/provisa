@@ -60,6 +60,9 @@ class DatasetIn(BaseModel):
     assertions: list[str] = []
     # REQ-1939, DIFFERENTIAL PRIVACY: the privacy budget ε; omitted for a dataset not private.
     privateEpsilon: float | None = None
+    # REQ-1939, NOT TOO CLOSE TO A REAL ROW (ruling Z2): both omitted, the check is off.
+    closenessThreshold: float | None = None
+    closenessDraws: int | None = None
 
 
 def _db() -> Any:
@@ -107,6 +110,8 @@ async def list_datasets(request: Request) -> list[dict]:
             ],
             "assertions": list(r.assertions),
             "privateEpsilon": r.private_epsilon,
+            "closenessThreshold": r.closeness_threshold,
+            "closenessDraws": r.closeness_draws,
         }
         for r in rows
     ]
@@ -176,6 +181,8 @@ async def define_dataset(request: Request, dataset_id: str, body: DatasetIn) -> 
                 fanout_conditions=conditions,
                 assertions=body.assertions,
                 private_epsilon=body.privateEpsilon,
+                closeness_threshold=body.closenessThreshold,
+                closeness_draws=body.closenessDraws,
             )
     except (ValueError, DatasetRefused) as exc:
         raise _refused(exc, dataset_id) from exc

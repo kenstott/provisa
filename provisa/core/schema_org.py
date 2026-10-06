@@ -991,6 +991,9 @@ synthetic_datasets = Table(
     Column("assertions", JSON, nullable=False, default=list, server_default="[]"),
     # REQ-1939, DIFFERENTIAL PRIVACY: the dataset's privacy budget ε; NULL when not private
     Column("private_epsilon", Float),
+    # REQ-1939, NOT TOO CLOSE TO A REAL ROW: threshold and draws; both NULL when not checked
+    Column("closeness_threshold", Float),
+    Column("closeness_draws", Integer),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

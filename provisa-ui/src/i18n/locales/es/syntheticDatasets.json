@@ -71,6 +71,22 @@
     "measure_privacy_epsilon_family": "ε de una familia de estadísticas",
     "measure_privacy_dropped": "Descartado por el ruido",
     "measure_privacy_mostly_noise": "Sobre todo ruido",
-    "measure_privacy_epsilon_charged": "ε consumido"
+    "measure_privacy_epsilon_charged": "ε consumido",
+    "closeness": "No demasiado cerca de una fila real",
+    "closenessHelp": "Compara cada fila generada con una muestra de filas reales; una fila más cercana que el umbral se vuelve a extraer y, si sigue demasiado cerca, se descarta con sus hijas. Desactivado: no se comprueba la cercanía.",
+    "closenessThreshold": "Umbral (fracción de la distancia típica entre filas reales)",
+    "closenessDraws": "Extracciones por fila",
+    "measure_closeness": "Cercanía",
+    "measure_closeness_threshold": "Umbral de cercanía",
+    "measure_closeness_redrawn": "Filas extraídas de nuevo",
+    "measure_closeness_dropped": "Filas descartadas por cercanía",
+    "measure_closeness_cascaded": "Filas descartadas con su padre",
+    "measure_closeness_distance": "Distancia a la fila real más cercana",
+    "measure_closeness_nndr": "Razón de distancias al vecino más cercano",
+    "measure_closeness_membership_auc": "Prueba de inferencia de pertenencia (AUC)",
+    "measure_dependence_spearman": "Correlación de rangos",
+    "measure_dependence_copula_shrink": "Ajuste de correlaciones",
+    "measure_dependence_kept_own": "Extraída por sí sola",
+    "measure_dependence_network_not_kept": "Red de dependencias no conservada"
   }
 }
