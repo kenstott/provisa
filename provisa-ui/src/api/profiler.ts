@@ -92,10 +92,15 @@ export interface SourceRunOutcome {
 async function call<T>(
   op: string,
   path: string,
-  method: "GET" | "POST" = "GET",
+  method: "GET" | "POST" | "DELETE" = "GET",
   headers: Record<string, string> = {},
+  body?: unknown,
 ): Promise<T> {
-  const resp = await fetch(`${API_BASE}${path}`, { method, headers });
+  const resp = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: body === undefined ? headers : { ...headers, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(serverMessage(body, requestFailed(op, resp.status)));
@@ -173,4 +178,107 @@ export const fetchProfileRun = (tableId: number, runId: string, role: string) =>
     `/admin/tables/${tableId}/profile-runs/${encodeURIComponent(runId)}`,
     "GET",
     { "X-Provisa-Role": role },
+  );
+
+// -- constraints and checker exports (REQ-1934 PROPOSED CONSTRAINTS; EXCEPTIONS COME FROM CHECKERS)
+
+/** A checker table (Soda or Great Expectations) a check can be added to. */
+export interface CheckerTable {
+  id: number;
+  tableName: string;
+  sourceId: string;
+  checker: "soda" | "great_expectations";
+}
+
+/** The operator's decision on a constraint, as profiler_constraints stores it. */
+export interface ConstraintDecision {
+  id: string;
+  kind: string;
+  column_name: string;
+  other_column: string | null;
+  definition: string;
+  evidence: string;
+  share: number | null;
+  sampled: boolean;
+  status: "accepted" | "dismissed";
+  run_id: string;
+}
+
+export interface ConstraintDecisionInput {
+  kind: string;
+  column: string;
+  otherColumn: string | null;
+  definition: Record<string, unknown>;
+  evidence: string;
+  share: number | null;
+  sampled: boolean;
+  status: "accepted" | "dismissed";
+  runId: string;
+}
+
+export interface ExportResult {
+  checkerTable: CheckerTable;
+  added: boolean;
+}
+
+export interface ProfileCheckCandidates {
+  driftTableRegistered: boolean;
+  checkers: CheckerTable[];
+  expectationTables: { id: number; tableName: string; published: string }[];
+}
+
+const constraintsPath = (tableId: number) => `/admin/tables/${tableId}/profile-constraints`;
+
+export const fetchConstraints = (tableId: number) =>
+  call<{ decisions: ConstraintDecision[]; checkers: CheckerTable[] }>(
+    "fetchConstraints",
+    constraintsPath(tableId),
+  );
+
+export const decideConstraint = (tableId: number, input: ConstraintDecisionInput) =>
+  call<{ id: string }>("decideConstraint", constraintsPath(tableId), "POST", {}, input);
+
+export const forgetConstraint = (tableId: number, constraintId: string) =>
+  call<{ id: string }>(
+    "forgetConstraint",
+    `${constraintsPath(tableId)}/${encodeURIComponent(constraintId)}`,
+    "DELETE",
+  );
+
+export const exportConstraint = (
+  tableId: number,
+  constraintId: string,
+  checkerTableId: number | null,
+) =>
+  call<ExportResult>(
+    "exportConstraint",
+    `${constraintsPath(tableId)}/${encodeURIComponent(constraintId)}/export`,
+    "POST",
+    {},
+    { checkerTableId },
+  );
+
+export const fetchProfileChecks = (tableId: number) =>
+  call<ProfileCheckCandidates>("fetchProfileChecks", `/admin/tables/${tableId}/profile-checks`);
+
+export const createDriftCheck = (tableId: number, checkerTableId: number | null) =>
+  call<ExportResult>(
+    "createDriftCheck",
+    `/admin/tables/${tableId}/profile-checks/drift`,
+    "POST",
+    {},
+    { checkerTableId },
+  );
+
+export const createExpectationCheck = (
+  tableId: number,
+  expectationsTableId: number,
+  checkerTableId: number | null,
+) =>
+  call<ExportResult>(
+    "createExpectationCheck",
+    `/admin/tables/${tableId}/profile-checks/expectation`,
+    "POST",
+    {},
+    { expectationsTableId, checkerTableId },
   );

@@ -411,9 +411,12 @@ async def report(state: Any, dataset_id: str, planned: list[PlannedTable]) -> No
                 Sample("whole"),
                 REPORT_LOW_CARDINALITY,
                 target.keys,
+                target.checks,
             )
         )
-        synthetic = parse_profile_result(names, rows, target.columns, target.fanouts, target.keys)
+        synthetic = parse_profile_result(
+            names, rows, target.columns, target.fanouts, target.keys, target.checks
+        )
         entries += compare(p, synthetic, measures)
     async with state.model_db.acquire() as conn:
         async with conn.transaction():

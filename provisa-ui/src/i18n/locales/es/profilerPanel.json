@@ -12,6 +12,7 @@
     "remove": "Quitar del perfilador",
     "runNow": "Perfilar ahora",
     "viewRuns": "Ver ejecuciones de perfil",
-    "runDone": "Se perfilaron {{rows}} filas."
+    "runDone": "Se perfilaron {{rows}} filas.",
+    "constraints": "Restricciones"
   }
 }

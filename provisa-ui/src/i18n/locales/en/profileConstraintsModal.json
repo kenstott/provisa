@@ -1,0 +1,32 @@
+{
+  "profileConstraintsModal": {
+    "title": "Constraints of {{table}}",
+    "proposed": "Proposed by the latest run",
+    "none": "The latest run proposes no constraint, or the table has not been profiled.",
+    "decided": "Decided",
+    "noneDecided": "No constraint has been accepted or dismissed.",
+    "constraint": "Constraint",
+    "columns": "Columns",
+    "definition": "Definition",
+    "evidence": "Evidence",
+    "share": "Held for",
+    "sampled": "sample",
+    "accept": "Accept",
+    "edit": "Edit",
+    "acceptEdited": "Accept edited",
+    "cancel": "Cancel",
+    "dismiss": "Dismiss",
+    "export": "Export to checker",
+    "withdraw": "Withdraw",
+    "checkerLabel": "Checker table to export to",
+    "exported": "Added to the contract of {{table}}.",
+    "alreadyExported": "The contract of {{table}} already holds this check.",
+    "status_accepted": "Accepted",
+    "status_dismissed": "Dismissed",
+    "kind_not_null": "Never null",
+    "kind_unique": "Unique",
+    "kind_value_set": "Only recorded values",
+    "kind_range": "Within observed range",
+    "kind_ordering": "Never above or after"
+  }
+}

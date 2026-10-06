@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "चेकर तालिका",
+    "driftCheck": "ड्रिफ्ट जाँच बनाएँ",
+    "expectationsLabel": "अपेक्षा तालिका",
+    "expectationsPlaceholder": "अपेक्षा आकार की तालिका चुनें",
+    "noExpectations": "किसी पंजीकृत तालिका का आकार अपेक्षा आकार नहीं है",
+    "expectationCheck": "अपेक्षा जाँच बनाएँ",
+    "added": "{{table}} के अनुबंध में जोड़ा गया।",
+    "already": "{{table}} के अनुबंध में यह जाँच पहले से है।"
+  }
+}

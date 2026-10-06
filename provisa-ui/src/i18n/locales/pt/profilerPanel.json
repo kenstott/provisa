@@ -12,6 +12,7 @@
     "remove": "Remover do profiler",
     "runNow": "Perfilar agora",
     "viewRuns": "Ver execuções de perfil",
-    "runDone": "{{rows}} linhas perfiladas."
+    "runDone": "{{rows}} linhas perfiladas.",
+    "constraints": "Restrições"
   }
 }

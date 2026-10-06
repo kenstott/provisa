@@ -36,6 +36,8 @@
     "kind_repeats": "Am häufigsten wiederholte Zeilen",
     "kind_correlations": "Korrelationen",
     "kind_dependencies": "Abhängigkeiten",
-    "kind_joint_counts": "Gemeinsame Häufigkeiten"
+    "kind_joint_counts": "Gemeinsame Häufigkeiten",
+    "kind_constraints": "Vorgeschlagene Constraints",
+    "kind_constraint_checks": "Constraint-Prüfungen"
   }
 }

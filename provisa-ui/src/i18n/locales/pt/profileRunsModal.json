@@ -36,6 +36,8 @@
     "kind_repeats": "Linhas mais repetidas",
     "kind_correlations": "Correlações",
     "kind_dependencies": "Dependências",
-    "kind_joint_counts": "Contagens conjuntas"
+    "kind_joint_counts": "Contagens conjuntas",
+    "kind_constraints": "Restrições propostas",
+    "kind_constraint_checks": "Verificações de restrições"
   }
 }

@@ -12,6 +12,7 @@
     "remove": "プロファイラーから削除",
     "runNow": "今すぐプロファイル",
     "viewRuns": "プロファイル実行を表示",
-    "runDone": "{{rows}} 行をプロファイルしました。"
+    "runDone": "{{rows}} 行をプロファイルしました。",
+    "constraints": "制約"
   }
 }

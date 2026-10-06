@@ -36,6 +36,8 @@
     "kind_repeats": "重复最多的行",
     "kind_correlations": "相关性",
     "kind_dependencies": "依赖关系",
-    "kind_joint_counts": "联合计数"
+    "kind_joint_counts": "联合计数",
+    "kind_constraints": "建议的约束",
+    "kind_constraint_checks": "约束检查"
   }
 }

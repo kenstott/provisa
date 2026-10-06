@@ -15,10 +15,13 @@ The run reads AS THE ORG ADMIN through the one governed pipeline (``_govern_and_
 regions exist -- apply to what is profiled, and no reader's rules do. The profile is what the org
 admin reads; who reads the profile is decided by the result tables' own grants once registered.
 
-Two governed statements per run: the table's row count, which sizes the sample, and the one profile
-statement (``statement.profile_sql``). Everything else is computed from its aggregates
-(``measures``, ``plausible``) and appended to the member table's result relations (``schema``),
-written straight into the org's control-plane schema as an ingest table's rows are (REQ-1771).
+The governed statements of a run: the table's row count (with its latest watermark, for freshness),
+which sizes the sample; the one profile statement (``statement.profile_sql``), which also counts
+duplicate rows and keys and checks the accepted constraints; and the few further statements of the
+dependence measures (``dependence``). Everything else is computed from their aggregates
+(``measures``, ``plausible``, ``constraints``) and from the table's earlier runs (``compare``), and
+appended to the member table's result relations (``schema``), written straight into the org's
+control-plane schema as an ingest table's rows are (REQ-1771).
 
 REQ-1921 (regions) is not on this branch: when it lands, the region of the node running the profile
 is passed to ``_govern_and_route`` as the org admin's region attribute in :func:`_governed`, and
@@ -32,14 +35,14 @@ import logging
 import random
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.schema import CreateTable
 
-from provisa.profiler import dependence, measures, plausible
+from provisa.profiler import constraints, dependence, measures, plausible
 from provisa.profiler.dependence import ParentSpec
 from provisa.profiler.source import ProfilerSettings
 from provisa.profiler.schema import (
@@ -49,6 +52,7 @@ from provisa.profiler.schema import (
 )
 from provisa.profiler.statement import (
     QUANTILE_POINTS,
+    CheckSpec,
     TOP_N,
     ColumnSpec,
     FanoutSpec,
@@ -73,7 +77,15 @@ PROFILE_ROLE = "org_admin"
 # The result kinds profile_table writes beside the profile statement's: the run's own row, its
 # comparison with the runs before it, and the dependence measures of the further statements.
 NOT_FROM_THE_PROFILE_STATEMENT = frozenset(
-    {"runs", "drift", "correlations", "dependencies", "joint_counts"}
+    {
+        "runs",
+        "drift",
+        "correlations",
+        "dependencies",
+        "joint_counts",
+        "constraints",
+        "constraint_checks",
+    }
 )
 
 
@@ -93,6 +105,9 @@ class Target:
     key: str | None  # the single-column integer primary key, as published; None when there is none
     keys: list[KeySpec]  # declared primary and unique keys whose columns the org admin reads
     parents: list[ParentSpec]  # tables reached through many-to-one relationships
+    # The table's accepted constraints, checked by the profile statement (REQ-1934 PROPOSED
+    # CONSTRAINTS); attached by profile_table from the model store.
+    checks: list[CheckSpec]
 
 
 @dataclass(frozen=True)
@@ -192,6 +207,7 @@ def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, s
         key=key_spec.name if key_spec is not None and is_integer_key(key_spec) else None,
         keys=keys,
         parents=parents,
+        checks=[],  # the model store's, attached by profile_table; none for any other read
     )
 
 
@@ -507,7 +523,9 @@ async def _run_sample(
     except SampleClauseLost as exc:
         raise ProfileError(f"profile of {target.table_name!r}: {exc}") from exc
     names, rows = await _execute(plan)
-    return parse_profile_result(names, rows, target.columns, target.fanouts, target.keys)
+    return parse_profile_result(
+        names, rows, target.columns, target.fanouts, target.keys, target.checks
+    )
 
 
 async def _run_further(
@@ -538,6 +556,7 @@ class DependenceRead:
     fraction: float | None
     rows_read: int | None  # rows the pairs statement read
     network_rows: int | None  # rows the triples statement read
+    orderings: list[constraints.Proposal]  # one number or date never above or after another
 
 
 async def read_dependence(
@@ -562,7 +581,7 @@ async def read_dependence(
         settings.joint_max_distinct,
     )
     if len(cols) < 2:
-        return DependenceRead(empty, None, None, None, None)
+        return DependenceRead(empty, None, None, None, None, [])
     fraction = 1.0 if read.sample.fraction is None else read.sample.fraction
     psql = dependence.pairs_sql(
         target.pgwire_name, target.columns, target.parents, cols, read.sample
@@ -588,7 +607,14 @@ async def read_dependence(
         "dependencies": dependence.dependency_rows(singles, pair_sets, chosen, cols),
         "joint_counts": dependence.joint_rows(chosen, cols),
     }
-    return DependenceRead(rows, read.sample.method, fraction, first.rows, network_rows)
+    return DependenceRead(
+        rows,
+        read.sample.method,
+        fraction,
+        first.rows,
+        network_rows,
+        constraints.propose_orderings(pairs, cols),
+    )
 
 
 async def read_profile(
@@ -611,11 +637,12 @@ async def read_profile(
             sample,
             low_cardinality_max,
             target.keys,
+            target.checks,
         )
 
     def parse(result: tuple[list[str], list[tuple]]) -> ProfileAggregates:
         return parse_profile_result(
-            result[0], result[1], target.columns, target.fanouts, target.keys
+            result[0], result[1], target.columns, target.fanouts, target.keys, target.checks
         )
 
     if fraction is None:
@@ -692,7 +719,14 @@ async def profile_table(
         async with state.model_db.acquire() as conn:
             tags = await column_tags(conn, table_id)
             declared = await declared_watermark(conn, table_id)
+            accepted = await constraints.accepted_constraints(conn, table_id)
+            decided = {
+                d["signature"]: d["status"] for d in await constraints.decisions(conn, table_id)
+            }
         target = resolve_target(state, table_id, table_name, tags)
+        readable_names = {c.name for c in target.columns}
+        readable = [c for c in accepted if set(c.constraint.involved) <= readable_names]
+        target = replace(target, checks=[c.constraint.check() for c in readable])
         watermark = temporal_watermark(target, declared)
         _, count_rows = await _governed(count_sql(target.pgwire_name, watermark))
         row_count = int(count_rows[0][0])
@@ -704,7 +738,21 @@ async def profile_table(
         )
         results = result_rows(target, read.agg, run_id, run_time, settings.low_cardinality_max)
         dep = await read_dependence(target, read, settings)
-        for kind, kind_rows in dep.rows.items():
+        proposals = [
+            p
+            for col in read.agg.columns
+            for p in constraints.propose_for_column(
+                col, read.agg.profiled_rows, settings.low_cardinality_max
+            )
+        ] + dep.orderings
+        further = {
+            **dep.rows,
+            "constraints": constraints.proposal_rows(
+                proposals, decided, sampled=read.method != "whole"
+            ),
+            "constraint_checks": constraints.check_rows(accepted, readable, read.agg),
+        }
+        for kind, kind_rows in further.items():
             results[kind] = [{"run_id": run_id, "run_time": run_time, **r} for r in kind_rows]
         status, error = "succeeded", None
     except Exception as exc:  # recorded as the run's outcome, then re-raised below

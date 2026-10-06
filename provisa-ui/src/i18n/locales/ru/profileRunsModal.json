@@ -36,6 +36,8 @@
     "kind_repeats": "Наиболее повторяющиеся строки",
     "kind_correlations": "Корреляции",
     "kind_dependencies": "Зависимости",
-    "kind_joint_counts": "Совместные частоты"
+    "kind_joint_counts": "Совместные частоты",
+    "kind_constraints": "Предложенные ограничения",
+    "kind_constraint_checks": "Проверки ограничений"
   }
 }

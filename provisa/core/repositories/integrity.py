@@ -198,6 +198,8 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("synthetic_dataset_tables", "table_id", "table", "synthetic_dataset", "dataset_id"),
     _part("synthetic_dataset_tables", "dataset_id", "synthetic_dataset"),
     _part("synthetic_report", "dataset_id", "synthetic_dataset"),
+    # REQ-1934: a decision on a table's constraint is part of the table, removed with it.
+    _part("profiler_constraints", "table_id", "table"),
     _part("file_source_mtimes", "table_id", "table"),
     _part("glossary_term_refs", "table_id", "table"),
     _part("table_meta_links", "source_table_id", "table"),

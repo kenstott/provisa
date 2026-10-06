@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "Tabela do verificador",
+    "driftCheck": "Criar verificação de desvio",
+    "expectationsLabel": "Tabela de expectativas",
+    "expectationsPlaceholder": "Escolha uma tabela com o formato de expectativas",
+    "noExpectations": "Nenhuma tabela registrada tem o formato de expectativas",
+    "expectationCheck": "Criar verificação de expectativas",
+    "added": "Adicionada ao contrato de {{table}}.",
+    "already": "O contrato de {{table}} já contém esta verificação."
+  }
+}

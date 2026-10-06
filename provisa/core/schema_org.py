@@ -1024,6 +1024,31 @@ synthetic_dataset_tables = Table(
     Column("scale", Float),
 )
 
+# REQ-1934 PROPOSED CONSTRAINTS: the operator's decision on a constraint a profile proposed --
+# accepted (as proposed or edited), or dismissed so it is not proposed as new again. An accepted one
+# is checked by every later profile run of the table and binds synthetic generation (REQ-1939).
+profiler_constraints = Table(
+    "profiler_constraints",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    # kind|column|other: one decision per constraint of a table.
+    Column("signature", Text, nullable=False),
+    Column("kind", Text, nullable=False),  # not_null | unique | value_set | range | ordering
+    Column("column_name", Text, nullable=False),
+    Column("other_column", Text),
+    Column("definition", Text, nullable=False),  # JSON
+    Column("evidence", Text, nullable=False),
+    Column("share", Float),
+    Column("sampled", Boolean, nullable=False),
+    Column("status", Text, nullable=False),  # accepted | dismissed
+    Column("run_id", Text, nullable=False),  # the run that proposed it
+    Column("decided_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("table_id", "signature"),
+)
+
 # REQ-1939: how close a generated dataset came to the profiles it was drawn from.
 synthetic_report = Table(
     "synthetic_report",

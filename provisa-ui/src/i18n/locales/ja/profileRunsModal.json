@@ -36,6 +36,8 @@
     "kind_repeats": "最も多く繰り返された行",
     "kind_correlations": "相関",
     "kind_dependencies": "依存関係",
-    "kind_joint_counts": "同時度数"
+    "kind_joint_counts": "同時度数",
+    "kind_constraints": "提案された制約",
+    "kind_constraint_checks": "制約チェック"
   }
 }

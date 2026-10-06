@@ -36,6 +36,8 @@
     "kind_repeats": "Lignes les plus répétées",
     "kind_correlations": "Corrélations",
     "kind_dependencies": "Dépendances",
-    "kind_joint_counts": "Effectifs conjoints"
+    "kind_joint_counts": "Effectifs conjoints",
+    "kind_constraints": "Contraintes proposées",
+    "kind_constraint_checks": "Contrôles des contraintes"
   }
 }

@@ -1028,6 +1028,24 @@ CREATE TABLE IF NOT EXISTS synthetic_dataset_tables (
     PRIMARY KEY (dataset_id, table_id)
 );
 
+-- REQ-1934 PROPOSED CONSTRAINTS: the operator's decision on a constraint a profile proposed.
+CREATE TABLE IF NOT EXISTS profiler_constraints (
+    id            TEXT PRIMARY KEY,
+    table_id      INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    signature     TEXT NOT NULL,
+    kind          TEXT NOT NULL,
+    column_name   TEXT NOT NULL,
+    other_column  TEXT,
+    definition    TEXT NOT NULL,
+    evidence      TEXT NOT NULL,
+    share         DOUBLE PRECISION,
+    sampled       BOOLEAN NOT NULL,
+    status        TEXT NOT NULL,
+    run_id        TEXT NOT NULL,
+    decided_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (table_id, signature)
+);
+
 CREATE TABLE IF NOT EXISTS synthetic_report (
     id               SERIAL PRIMARY KEY,
     dataset_id       TEXT NOT NULL REFERENCES synthetic_datasets(id) ON DELETE CASCADE,

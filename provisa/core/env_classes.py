@@ -34,6 +34,9 @@ CARRIED: frozenset[str] = frozenset(
         "registered_tables",
         "table_columns",
         "relationships",
+        # REQ-1934: the operator's accepted and dismissed constraints are decisions about the
+        # model's tables, so they travel with them.
+        "profiler_constraints",
         "metrics",
         # ``roles`` and ``user_role_assignments`` are additionally SEEDED_AT_CREATION: CARRIED,
         # but only by a creation. See that class for why no later copy touches them.

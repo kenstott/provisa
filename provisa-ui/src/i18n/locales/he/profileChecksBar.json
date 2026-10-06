@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "טבלת בודק",
+    "driftCheck": "צור בדיקת סחיפה",
+    "expectationsLabel": "טבלת ציפיות",
+    "expectationsPlaceholder": "בחר טבלה במבנה הציפיות",
+    "noExpectations": "אין טבלה רשומה במבנה הציפיות",
+    "expectationCheck": "צור בדיקת ציפיות",
+    "added": "נוסף לחוזה של {{table}}.",
+    "already": "החוזה של {{table}} כבר כולל בדיקה זו."
+  }
+}

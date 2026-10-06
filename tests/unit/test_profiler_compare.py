@@ -85,9 +85,14 @@ def _by(rows: list[dict]) -> dict[tuple, dict]:
 
 def test_a_first_run_records_that_it_has_no_previous_run():
     rows = compare.compare(compare.measures_of(_run()), None)
-    assert [(r["scope"], r["measure"], r["detail"]) for r in rows] == [
-        ("run", "previous_run", "no previous run")
-    ]
+    assert (rows[0]["scope"], rows[0]["measure"], rows[0]["detail"]) == (
+        "run",
+        "previous_run",
+        "no previous run",
+    )
+    # Still one row per measure of the run, with nothing to set it beside.
+    count = _by(rows)[("table", None, None, "row_count")]
+    assert (count["current"], count["previous"], count["change"]) == (100, None, None)
 
 
 def test_an_unchanged_run_shows_no_change():

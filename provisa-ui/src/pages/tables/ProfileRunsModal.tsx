@@ -18,6 +18,7 @@ import {
   type ProfileRunResults,
 } from "../../api/profiler";
 import { useAuth } from "../../context/AuthContext";
+import { ProfileChecksBar } from "./ProfileChecksBar";
 import { ProfileDriftPanel } from "./ProfileDriftPanel";
 
 // The result relations shown for a run, in this order; ``runs`` is the list itself.
@@ -36,6 +37,8 @@ const KINDS = [
   "correlations",
   "dependencies",
   "joint_counts",
+  "constraints",
+  "constraint_checks",
   "duplicates",
   "repeats",
 ] as const;
@@ -133,6 +136,7 @@ export function ProfileRunsModal({
           {error}
         </Alert>
       )}
+      <ProfileChecksBar tableId={tableId} />
       {runs == null && !error && <Loader size="sm" />}
       {runs != null && runs.length === 0 && (
         <Text size="sm" c="dimmed" data-testid="profile-runs-none">

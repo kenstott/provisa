@@ -29,8 +29,9 @@ The catalog is authored against the shipped checkers:
   ``mostly`` kwarg. GX has NO warn level — an expectation succeeds or it does not — so its severity
   choice is ``fail`` alone rather than a warn that the results table would never report.
 
-Only the checks whose bodies the panel can fully author are listed. ``failed_rows``, ``metric`` and
-``schema`` take hand-written SQL or a column list, so they stay the raw editor's business — the raw
+Only the checks whose bodies the panel can fully author are listed, and ``failed_rows`` (REQ-1934: the
+profiler writes its SQL checks through it). ``metric`` and ``schema`` take hand-written SQL or a column
+list, so they stay the raw editor's business — the raw
 text is the source of truth and the builder is a view of it, so a check the picker cannot offer is
 still perfectly authorable.
 """
@@ -69,7 +70,7 @@ class CheckParam:
     """One editable field of a check's body, in the checker's own spelling."""
 
     name: str
-    # number | string | number_list | string_list | column | enum
+    # number | string | number_list | string_list | column | enum | boolean
     value_type: str
     required: bool = False
     # The permitted values when ``value_type`` is ``enum``; empty otherwise.
@@ -155,6 +156,17 @@ _SODA_KINDS: tuple[CheckKind, ...] = (
         levels=("fail", "warn"),
         threshold_units=("minute", "hour", "day"),
     ),
+    # REQ-1934: a check written in SQL -- the rows meeting ``expression``, or returned by
+    # ``query`` -- which is how a profiler's ordering constraint, temporal range, drift check and
+    # expectation check reach a Soda contract.
+    CheckKind(
+        check_type="failed_rows",
+        scope="dataset",
+        params=(CheckParam("expression", "string"), CheckParam("query", "string")),
+        comparators=_SODA_COMPARATORS,
+        metrics=("count", "percent"),
+        levels=("fail", "warn"),
+    ),
 )
 
 # GX's tolerance: the fraction of rows that may fail before the expectation does. Every row-wise
@@ -202,6 +214,24 @@ _GX_KINDS: tuple[CheckKind, ...] = (
         check_type="expect_table_row_count_to_be_between",
         scope="dataset",
         params=(CheckParam("min_value", "number"), CheckParam("max_value", "number")),
+    ),
+    # REQ-1934: one column never below another on the same row -- a profiler's ordering constraint.
+    CheckKind(
+        check_type="expect_column_pair_values_a_to_be_greater_than_b",
+        scope="dataset",
+        params=(
+            CheckParam("column_A", "column", required=True),
+            CheckParam("column_B", "column", required=True),
+            CheckParam("or_equal", "boolean"),
+            _MOSTLY,
+        ),
+    ),
+    # REQ-1934: the rows a SQL query over ``{batch}`` returns are unexpected -- a profiler's temporal
+    # range, drift check and expectation check.
+    CheckKind(
+        check_type="unexpected_rows_expectation",
+        scope="dataset",
+        params=(CheckParam("unexpected_rows_query", "string", required=True),),
     ),
 )
 

@@ -12,6 +12,7 @@
     "remove": "从画像器中移除",
     "runNow": "立即画像",
     "viewRuns": "查看画像运行",
-    "runDone": "已画像 {{rows}} 行。"
+    "runDone": "已画像 {{rows}} 行。",
+    "constraints": "约束"
   }
 }

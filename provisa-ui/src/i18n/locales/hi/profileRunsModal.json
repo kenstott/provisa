@@ -36,6 +36,8 @@
     "kind_repeats": "सबसे अधिक दोहराई गई पंक्तियाँ",
     "kind_correlations": "सहसंबंध",
     "kind_dependencies": "निर्भरताएँ",
-    "kind_joint_counts": "संयुक्त गणनाएँ"
+    "kind_joint_counts": "संयुक्त गणनाएँ",
+    "kind_constraints": "प्रस्तावित बाधाएँ",
+    "kind_constraint_checks": "बाधा जाँचें"
   }
 }

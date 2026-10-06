@@ -1,0 +1,32 @@
+{
+  "profileConstraintsModal": {
+    "title": "Vincoli di {{table}}",
+    "proposed": "Proposti dall'ultima esecuzione",
+    "none": "L'ultima esecuzione non propone alcun vincolo, oppure la tabella non è ancora stata profilata.",
+    "decided": "Decisi",
+    "noneDecided": "Nessun vincolo è stato ancora accettato o scartato.",
+    "constraint": "Vincolo",
+    "columns": "Colonne",
+    "definition": "Definizione",
+    "evidence": "Evidenza",
+    "share": "Rispettato per",
+    "sampled": "campione",
+    "accept": "Accetta",
+    "edit": "Modifica",
+    "acceptEdited": "Accetta modificato",
+    "cancel": "Annulla",
+    "dismiss": "Scarta",
+    "export": "Esporta nel checker",
+    "withdraw": "Ritira",
+    "checkerLabel": "Tabella del checker in cui esportare",
+    "exported": "Aggiunto al contratto di {{table}}.",
+    "alreadyExported": "Il contratto di {{table}} contiene già questo controllo.",
+    "status_accepted": "Accettato",
+    "status_dismissed": "Scartato",
+    "kind_not_null": "Mai null",
+    "kind_unique": "Univoco",
+    "kind_value_set": "Solo valori registrati",
+    "kind_range": "Entro l'intervallo osservato",
+    "kind_ordering": "Mai maggiore o successivo a"
+  }
+}

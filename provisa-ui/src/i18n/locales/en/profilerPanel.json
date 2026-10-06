@@ -12,6 +12,7 @@
     "remove": "Remove from Profiler",
     "runNow": "Run Profile Now",
     "viewRuns": "View Profile Runs",
-    "runDone": "Profiled {{rows}} rows."
+    "runDone": "Profiled {{rows}} rows.",
+    "constraints": "Constraints"
   }
 }

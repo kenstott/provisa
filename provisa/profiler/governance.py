@@ -73,7 +73,17 @@ COLUMN_KINDS = VALUE_KINDS | {"columns", "plausible_type"}
 # The kinds whose rows list every described column they speak of in ``involved_columns`` (a JSON
 # array), the ``column_name`` of a row among them; a row whose ``value_bearing`` is set holds values
 # of those columns.
-INVOLVED_KINDS = frozenset({"duplicates", "drift", "correlations", "dependencies", "joint_counts"})
+INVOLVED_KINDS = frozenset(
+    {
+        "duplicates",
+        "drift",
+        "correlations",
+        "dependencies",
+        "joint_counts",
+        "constraints",
+        "constraint_checks",
+    }
+)
 
 
 @dataclass(frozen=True)

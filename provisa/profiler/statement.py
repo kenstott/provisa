@@ -39,6 +39,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from provisa.compiler.sql_literals import sql_literal
 from provisa.dq.catalog import NUMERIC_TYPES
 
 # REQ-1934: the quantile sketch is 101 points, p0..p100.
@@ -88,6 +89,20 @@ class KeySpec:
 
     name: str
     columns: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CheckSpec:
+    """An accepted constraint as the profile statement checks it (REQ-1934 PROPOSED CONSTRAINTS):
+    ``column`` (and ``other``, for an ordering) as published; ``values`` for a value set; ``low``
+    and ``high`` for a range, in epoch seconds for a temporal column."""
+
+    kind: str  # not_null | unique | value_set | range | ordering
+    column: str
+    other: str | None = None
+    values: tuple[str, ...] = ()
+    low: float | None = None
+    high: float | None = None
 
 
 @dataclass
@@ -149,6 +164,8 @@ class ProfileAggregates:
     fanouts: list[FanoutAggregates]
     rows: DuplicateAggregates
     keys: list[DuplicateAggregates]
+    # Per accepted constraint checked, the rows breaking it (REQ-1934 PROPOSED CONSTRAINTS).
+    violations: list[int] = field(default_factory=list)
 
 
 def _ident(name: str) -> str:
@@ -342,11 +359,13 @@ def profile_sql(
     sample: Sample,
     low_cardinality_max: int,
     keys: list[KeySpec],
+    checks: list[CheckSpec],
 ) -> str:
     """The one statement profiling ``table``, reading what ``sample`` names;
     ``low_cardinality_max`` is the profiler's run default: a column with no more distinct values
     has every value returned, for its full value-frequency table. ``keys``: the table's declared
-    primary and unique keys, whose values held by more than one row are counted."""
+    primary and unique keys, whose values held by more than one row are counted. ``checks``: the
+    table's accepted constraints, whose breaking rows are counted."""
     if not columns:
         raise ValueError(f"table {table!r} has no column the org admin can read to profile")
     groups = _groups(columns, keys)
@@ -444,6 +463,11 @@ def profile_sql(
             f"PERCENTILE_CONT({q}) WITHIN GROUP (ORDER BY {_scalar(n)}) AS f{r}_q",
         ]
 
+    for j, check in enumerate(checks):
+        broken = _violation(check, columns)
+        if broken is not None:
+            aggs.append(f"COUNT({_scalar(f'CASE WHEN {broken} THEN 1 END')}) AS v{j}")
+
     keep = max(TOP_N, low_cardinality_max + 1)
     grouped = (
         "SELECT x.k AS k, x.val AS val, COUNT(*) AS cnt, "
@@ -460,6 +484,39 @@ def profile_sql(
         + f" FROM ({expanded}) x GROUP BY x.k, x.val"
     )
     return f"SELECT * FROM ({grouped}) z WHERE z.k = 0 OR z.rn <= {keep}"
+
+
+def _violation(check: CheckSpec, columns: list[ColumnSpec]) -> str | None:
+    """The predicate a row breaking ``check`` meets, over the expanded rows ``x``; None for a
+    uniqueness check, which the column's value group counts."""
+    names = [c.name for c in columns]
+    for name in (check.column, check.other):
+        if name is not None and name not in names:
+            raise ValueError(
+                f"constraint {check.kind} on {check.column!r}: {name!r} is not a column the org "
+                f"admin can read"
+            )
+    i = names.index(check.column)
+    a = f"x.{_ident(f'c{i}')}"
+    if check.kind == "not_null":
+        return f"{a} IS NULL"
+    if check.kind == "unique":
+        return None
+    if check.kind == "value_set":
+        if not check.values:
+            return f"{a} IS NOT NULL"
+        listed = ", ".join(sql_literal(v, "postgres") for v in check.values)
+        return f"{a} IS NOT NULL AND CAST({a} AS TEXT) NOT IN ({listed})"
+    if check.kind == "range":
+        if check.low is None or check.high is None:
+            raise ValueError(f"range constraint on {check.column!r} has no bounds")
+        v = _numeric_expr(_ident(f"c{i}"), columns[i].family)
+        return f"({v} < {check.low!r} OR {v} > {check.high!r})"
+    if check.kind == "ordering":
+        assert check.other is not None, "an ordering names its other column"
+        b = f"x.{_ident(f'c{names.index(check.other)}')}"
+        return f"{a} > {b}"
+    raise ValueError(f"unknown constraint kind {check.kind!r}")
 
 
 def _f(value: Any) -> float | None:
@@ -491,6 +548,7 @@ def parse_profile_result(
     columns: list[ColumnSpec],
     fanouts: list[FanoutSpec],
     keys: list[KeySpec],
+    checks: list[CheckSpec],
 ) -> ProfileAggregates:
     """The statement's result as aggregates per column and per relationship."""
     records = [dict(zip(column_names, r)) for r in rows]
@@ -581,6 +639,16 @@ def parse_profile_result(
                 quantiles=_quantiles(s[f"f{r}_q"]),
             )
         )
+    names = [c.name for c in columns]
+    violations = [
+        out[names.index(c.column)].repeated_rows if c.kind == "unique" else _i(s[f"v{j}"])
+        for j, c in enumerate(checks)
+    ]
     return ProfileAggregates(
-        profiled_rows=_i(s["cnt"]), columns=out, fanouts=fans, rows=row_dups, keys=key_dups
+        profiled_rows=_i(s["cnt"]),
+        columns=out,
+        fanouts=fans,
+        rows=row_dups,
+        keys=key_dups,
+        violations=violations,
     )

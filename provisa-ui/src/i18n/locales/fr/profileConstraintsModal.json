@@ -1,0 +1,32 @@
+{
+  "profileConstraintsModal": {
+    "title": "Contraintes de {{table}}",
+    "proposed": "Proposées par la dernière exécution",
+    "none": "La dernière exécution ne propose aucune contrainte, ou la table n'a pas encore été profilée.",
+    "decided": "Décidées",
+    "noneDecided": "Aucune contrainte n'a été acceptée ni écartée.",
+    "constraint": "Contrainte",
+    "columns": "Colonnes",
+    "definition": "Définition",
+    "evidence": "Éléments probants",
+    "share": "Respectée pour",
+    "sampled": "échantillon",
+    "accept": "Accepter",
+    "edit": "Modifier",
+    "acceptEdited": "Accepter la version modifiée",
+    "cancel": "Annuler",
+    "dismiss": "Écarter",
+    "export": "Exporter vers un vérificateur",
+    "withdraw": "Retirer",
+    "checkerLabel": "Table de vérificateur cible",
+    "exported": "Ajoutée au contrat de {{table}}.",
+    "alreadyExported": "Le contrat de {{table}} contient déjà ce contrôle.",
+    "status_accepted": "Acceptée",
+    "status_dismissed": "Écartée",
+    "kind_not_null": "Jamais nulle",
+    "kind_unique": "Unique",
+    "kind_value_set": "Valeurs enregistrées uniquement",
+    "kind_range": "Dans la plage observée",
+    "kind_ordering": "Jamais supérieure ni postérieure à"
+  }
+}

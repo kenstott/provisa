@@ -207,9 +207,24 @@ def pairs_sql(
         if numeric_b
         else "CAST(NULL AS DOUBLE PRECISION)"
     )
+    # Two numbers of one family (two dates, two amounts) are compared row by row, for the
+    # ordering constraints a profile proposes (REQ-1934 PROPOSED CONSTRAINTS).
+    comparable = [
+        (k, a)
+        for k, (a, b) in ks
+        if cols[a].kind == "number"
+        and cols[b].kind == "number"
+        and cols[a].family == cols[b].family
+    ]
+    ya = (
+        "CASE p.k " + " ".join(f"WHEN {k} THEN r.{_ident(f'y{a}')}" for k, a in comparable) + " END"
+        if comparable
+        else "CAST(NULL AS DOUBLE PRECISION)"
+    )
     selectors = ", ".join(f"({k})" for k, _ in ks)
     expanded = (
-        f"SELECT p.k AS k, {sa} AS sa, {sb} AS sb, {ua} AS ua, {ub} AS ub, {yb} AS yb "
+        f"SELECT p.k AS k, {sa} AS sa, {sb} AS sb, {ua} AS ua, {ub} AS ub, {yb} AS yb, "
+        f"{ya} AS ya "
         f"FROM ({ranked}) r CROSS JOIN (VALUES {selectors}) AS p(k)"
     )
     both = "x.ua IS NOT NULL AND x.ub IS NOT NULL"
@@ -221,7 +236,9 @@ def pairs_sql(
         f"SUM(CASE WHEN {both} THEN x.ua * x.ua END) AS sum_aa, "
         f"SUM(CASE WHEN {both} THEN x.ub * x.ub END) AS sum_bb, "
         f"SUM(CASE WHEN {both} THEN x.ua * x.ub END) AS sum_ab, "
-        "COUNT(x.yb) AS ny, SUM(x.yb) AS sum_y, SUM(x.yb * x.yb) AS sum_yy "
+        "COUNT(x.yb) AS ny, SUM(x.yb) AS sum_y, SUM(x.yb * x.yb) AS sum_yy, "
+        "COUNT(x.ya * x.yb) AS n_cmp, COUNT(CASE WHEN x.ya <= x.yb THEN 1 END) AS n_le, "
+        "COUNT(CASE WHEN x.ya >= x.yb THEN 1 END) AS n_ge "
         f"FROM ({expanded}) x GROUP BY x.k, x.sa, x.sb"
     )
 
@@ -268,6 +285,10 @@ class PairStats:
     sum_ab: float = 0.0
     # per state of a: (rows with a number b, sum of b, sum of b squared)
     by_a: dict[str | None, tuple[int, float, float]] = field(default_factory=dict)
+    # two numbers of one family: rows holding both, rows where a <= b, rows where a >= b
+    compared: int = 0
+    a_le_b: int = 0
+    a_ge_b: int = 0
 
     @property
     def rows(self) -> int:
@@ -284,6 +305,9 @@ def parse_pairs(
         s = out[pairs[int(r["k"]) - 1]]
         s.joint[(r["sa"], r["sb"])] = int(r["n"])
         s.nb += int(r["nb"])
+        s.compared += int(r["n_cmp"])
+        s.a_le_b += int(r["n_le"])
+        s.a_ge_b += int(r["n_ge"])
         for f in ("sum_a", "sum_b", "sum_aa", "sum_bb", "sum_ab"):
             if r[f] is not None:
                 setattr(s, f, getattr(s, f) + float(r[f]))

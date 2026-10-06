@@ -139,6 +139,14 @@ def measures_of(results: dict[str, list[dict]]) -> RunMeasures:
             False,
             cols,
         )
+    for c in results.get("constraint_checks", []):
+        cols = tuple(json.loads(c["involved_columns"]))
+        what = (
+            c["constraint"]
+            if c["other_column"] is None
+            else f"{c['constraint']} {c['other_column']}"
+        )
+        scalar(("constraint", c["column_name"], what, "pass_share"), c["pass_share"], False, cols)
     for d in results.get("dependencies", []):
         cols = tuple(json.loads(d["involved_columns"]))
         parents = ", ".join(p for p in (d["parent_1"], d["parent_2"]) if p is not None)
@@ -264,6 +272,7 @@ DRIFT_SCOPES = (
     "relationship",
     "correlation",
     "dependency",
+    "constraint",
 )
 
 
@@ -310,13 +319,15 @@ def _row(
 
 def compare(current: RunMeasures, previous: RunMeasures | None) -> list[dict]:
     """The current run's comparison with ``previous`` (None for a table's first run), as drift
-    rows without their run key."""
-    if previous is None:
-        return [_row("run", "previous_run", detail="no previous run")]
+    rows without their run key: one per measure of the run (REQ-1934, the drift rows shaped for a
+    checker to scan), its previous value beside it where the previous run recorded it."""
     rows: list[dict] = []
-    for key in sorted(set(current.scalars) & set(previous.scalars), key=str):
+    if previous is None:
+        rows.append(_row("run", "previous_run", detail="no previous run"))
+    for key in sorted(current.scalars, key=str):
         scope, column, subject, measure = key
-        cur, prev = current.scalars[key], previous.scalars[key]
+        cur = current.scalars[key]
+        prev = None if previous is None else previous.scalars.get(key)
         rows.append(
             _row(
                 scope,
@@ -326,9 +337,11 @@ def compare(current: RunMeasures, previous: RunMeasures | None) -> list[dict]:
                 involved=cur.involved,
                 value_bearing=cur.value_bearing,
                 current=cur.value,
-                previous=prev.value,
+                previous=None if prev is None else prev.value,
             )
         )
+    if previous is None:
+        return rows
     for name in sorted(set(current.types) - set(previous.types)):
         rows.append(
             _row("column", "added", column=name, involved=(name,), detail=current.types[name])

@@ -1,0 +1,12 @@
+{
+  "profileChecksBar": {
+    "checkerLabel": "チェッカーテーブル",
+    "driftCheck": "ドリフトチェックを作成",
+    "expectationsLabel": "期待値テーブル",
+    "expectationsPlaceholder": "期待値の形のテーブルを選択",
+    "noExpectations": "期待値の形を持つ登録済みテーブルがありません",
+    "expectationCheck": "期待値チェックを作成",
+    "added": "{{table}} のコントラクトに追加しました。",
+    "already": "{{table}} のコントラクトには既にこのチェックがあります。"
+  }
+}

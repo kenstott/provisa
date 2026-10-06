@@ -36,6 +36,8 @@
     "kind_repeats": "Meest herhaalde rijen",
     "kind_correlations": "Correlaties",
     "kind_dependencies": "Afhankelijkheden",
-    "kind_joint_counts": "Gezamenlijke aantallen"
+    "kind_joint_counts": "Gezamenlijke aantallen",
+    "kind_constraints": "Voorgestelde constraints",
+    "kind_constraint_checks": "Constraintcontroles"
   }
 }

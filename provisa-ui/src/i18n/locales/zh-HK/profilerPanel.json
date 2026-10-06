@@ -12,6 +12,7 @@
     "remove": "從剖析器移除",
     "runNow": "立即剖析",
     "viewRuns": "檢視剖析執行",
-    "runDone": "已剖析 {{rows}} 列。"
+    "runDone": "已剖析 {{rows}} 列。",
+    "constraints": "約束"
   }
 }

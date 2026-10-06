@@ -12,6 +12,7 @@
     "remove": "Retirer du profileur",
     "runNow": "Profiler maintenant",
     "viewRuns": "Voir les exécutions de profil",
-    "runDone": "{{rows}} lignes profilées."
+    "runDone": "{{rows}} lignes profilées.",
+    "constraints": "Contraintes"
   }
 }

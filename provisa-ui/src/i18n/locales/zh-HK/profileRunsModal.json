@@ -36,6 +36,8 @@
     "kind_repeats": "重複最多的行",
     "kind_correlations": "相關性",
     "kind_dependencies": "依賴關係",
-    "kind_joint_counts": "聯合計數"
+    "kind_joint_counts": "聯合計數",
+    "kind_constraints": "建議的約束",
+    "kind_constraint_checks": "約束檢查"
   }
 }

@@ -71,10 +71,10 @@ def _run(con, sql: str):
 
 
 def test_one_statement_profiles_every_column_and_relationship(con):
-    sql = profile_sql("d.orders", _COLUMNS, _FANOUT, _WHOLE, 100, [])
+    sql = profile_sql("d.orders", _COLUMNS, _FANOUT, _WHOLE, 100, [], [])
     assert len(sqlglot.parse(sql, read="postgres")) == 1
     names, rows = _run(con, sql)
-    agg = parse_profile_result(names, rows, _COLUMNS, _FANOUT, [])
+    agg = parse_profile_result(names, rows, _COLUMNS, _FANOUT, [], [])
     assert agg.profiled_rows == 500
     by = {c.spec.name: c for c in agg.columns}
 
@@ -103,8 +103,10 @@ def test_one_statement_profiles_every_column_and_relationship(con):
 
 
 def test_a_sample_reads_a_fraction_of_the_rows(con):
-    names, rows = _run(con, profile_sql("d.orders", _COLUMNS, [], Sample("random", 0.2), 100, []))
-    agg = parse_profile_result(names, rows, _COLUMNS, [], [])
+    names, rows = _run(
+        con, profile_sql("d.orders", _COLUMNS, [], Sample("random", 0.2), 100, [], [])
+    )
+    agg = parse_profile_result(names, rows, _COLUMNS, [], [], [])
     assert 0 < agg.profiled_rows < 500
 
 
@@ -119,10 +121,10 @@ def test_the_sample_budget_is_in_cells_so_a_wide_table_samples_fewer_rows():
 def test_every_result_row_has_its_kinds_shipped_fields(con):
     from datetime import UTC, datetime
 
-    names, rows = _run(con, profile_sql("d.orders", _COLUMNS, _FANOUT, _WHOLE, 100, []))
-    agg = parse_profile_result(names, rows, _COLUMNS, _FANOUT, [])
+    names, rows = _run(con, profile_sql("d.orders", _COLUMNS, _FANOUT, _WHOLE, 100, [], []))
+    agg = parse_profile_result(names, rows, _COLUMNS, _FANOUT, [], [])
     target = Target(
-        1, "orders", "d.orders", _COLUMNS, _FANOUT, {"code": {"pii"}}, None, None, [], []
+        1, "orders", "d.orders", _COLUMNS, _FANOUT, {"code": {"pii"}}, None, None, [], [], []
     )
     out = result_rows(target, agg, "r1", datetime.now(UTC), 100)
     # The run row, its comparison and the dependence measures are written by profile_table.
@@ -144,7 +146,7 @@ def test_every_result_row_has_its_kinds_shipped_fields(con):
 
 def test_a_table_with_no_readable_column_cannot_be_profiled():
     with pytest.raises(ValueError, match="no column the org admin can read"):
-        profile_sql("d.orders", [], [], _WHOLE, 100, [])
+        profile_sql("d.orders", [], [], _WHOLE, 100, [], [])
 
 
 def test_a_relationship_key_the_org_admin_cannot_read_is_refused():
@@ -155,6 +157,7 @@ def test_a_relationship_key_the_org_admin_cannot_read_is_refused():
             [FanoutSpec("x", "d.lines", "hidden", "order_id")],
             _WHOLE,
             100,
+            [],
             [],
         )
 
@@ -180,11 +183,11 @@ def test_the_low_cardinality_threshold_is_the_profilers_run_default(con):
     threshold of 8 and above, and not under 7."""
     from datetime import UTC, datetime
 
-    target = Target(1, "orders", "d.orders", _COLUMNS, [], {}, None, None, [], [])
+    target = Target(1, "orders", "d.orders", _COLUMNS, [], {}, None, None, [], [], [])
 
     def frequencies(low: int) -> int:
-        names, rows = _run(con, profile_sql("d.orders", _COLUMNS, [], _WHOLE, low, []))
-        agg = parse_profile_result(names, rows, _COLUMNS, [], [])
+        names, rows = _run(con, profile_sql("d.orders", _COLUMNS, [], _WHOLE, low, [], []))
+        agg = parse_profile_result(names, rows, _COLUMNS, [], [], [])
         out = result_rows(target, agg, "r", datetime.now(UTC), low)
         return len(
             [
@@ -215,8 +218,8 @@ def test_duplicate_rows_and_repeated_key_values_are_counted(con):
         ColumnSpec("amount", "integer", "numeric", "amount"),
     ]
     keys = [KeySpec("primary key", ("code",)), KeySpec("code_label", ("code", "label"))]
-    names, rows = _run(con, profile_sql("d.dups", cols, [], _WHOLE, 100, keys))
-    agg = parse_profile_result(names, rows, cols, [], keys)
+    names, rows = _run(con, profile_sql("d.dups", cols, [], _WHOLE, 100, keys, []))
+    agg = parse_profile_result(names, rows, cols, [], keys, [])
     assert (agg.rows.repeated, agg.rows.extra, agg.rows.top_counts) == (2, 3, [3, 2])
     pk, pair = agg.keys
     assert (pk.repeated, pk.extra) == (4, 5)
@@ -229,4 +232,4 @@ def test_a_key_the_org_admin_cannot_read_is_refused():
     from provisa.profiler.statement import KeySpec
 
     with pytest.raises(ValueError, match="key 'k'"):
-        profile_sql("d.orders", _COLUMNS, [], _WHOLE, 100, [KeySpec("k", ("hidden",))])
+        profile_sql("d.orders", _COLUMNS, [], _WHOLE, 100, [KeySpec("k", ("hidden",))], [])

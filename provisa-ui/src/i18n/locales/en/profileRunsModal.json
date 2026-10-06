@@ -36,6 +36,8 @@
     "kind_repeats": "Most repeated rows",
     "kind_correlations": "Correlations",
     "kind_dependencies": "Dependencies",
-    "kind_joint_counts": "Joint counts"
+    "kind_joint_counts": "Joint counts",
+    "kind_constraints": "Proposed constraints",
+    "kind_constraint_checks": "Constraint checks"
   }
 }

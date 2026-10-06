@@ -36,6 +36,8 @@
     "kind_repeats": "השורות החוזרות ביותר",
     "kind_correlations": "מתאמים",
     "kind_dependencies": "תלויות",
-    "kind_joint_counts": "ספירות משותפות"
+    "kind_joint_counts": "ספירות משותפות",
+    "kind_constraints": "אילוצים מוצעים",
+    "kind_constraint_checks": "בדיקות אילוצים"
   }
 }

@@ -12,6 +12,7 @@
     "remove": "Verwijderen uit profiler",
     "runNow": "Nu profileren",
     "viewRuns": "Profielruns bekijken",
-    "runDone": "{{rows}} rijen geprofileerd."
+    "runDone": "{{rows}} rijen geprofileerd.",
+    "constraints": "Constraints"
   }
 }

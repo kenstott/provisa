@@ -38,6 +38,7 @@ MEASURE_KINDS: tuple[str, ...] = (
     "duplicates",
     "correlations",
     "dependencies",
+    "constraint_checks",
 )
 
 

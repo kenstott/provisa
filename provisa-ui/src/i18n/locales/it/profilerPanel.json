@@ -12,6 +12,7 @@
     "remove": "Rimuovi dal profiler",
     "runNow": "Profila ora",
     "viewRuns": "Visualizza esecuzioni di profilo",
-    "runDone": "Profilate {{rows}} righe."
+    "runDone": "Profilate {{rows}} righe.",
+    "constraints": "Vincoli"
   }
 }
