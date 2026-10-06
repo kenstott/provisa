@@ -13,7 +13,10 @@
       "cache": "Кеш",
       "cacheTtl": "TTL кеша",
       "effectiveTtl": "Действующий TTL",
-      "allowedDomains": "Разрешённые домены"
+      "allowedDomains": "Разрешённые домены",
+      "schedule": "Расписание",
+      "sample": "Выборка",
+      "lowCardinality": "Порог низкой кардинальности"
     },
     "namingInherit": "наследовать (глобально)",
     "cacheEnabled": "включён",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "Обновить из Kaggle",
     "refreshKaggleHint": "Повторно загрузить {{owner}}/{{ref}} из Kaggle, перезаписав подготовленные файлы на месте. Ваш токен Kaggle не сохраняется — введите его снова для этого обновления.",
     "kaggleTokenLabel": "Токен API Kaggle",
-    "refreshKaggleSubmit": "Обновить"
+    "refreshKaggleSubmit": "Обновить",
+    "sampleWhole": "Вся таблица",
+    "sampleAbove": "Выборка свыше {{rows}} строк",
+    "runProfilerTitle": "Запустить сейчас для всех таблиц-участников",
+    "profilerNoMembers": "Ни одна таблица не входит в этот профилировщик.",
+    "profilerRan": "{{table}}: профилирована",
+    "profilerFailed": "{{table}}: {{error}}"
   }
 }

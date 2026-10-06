@@ -18,6 +18,7 @@ import { computeProfile } from "./helpers";
 import { TagControl } from "../../components/TagControl";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { OwnerResolutionIcon } from "../../components/OwnerResolution";
+import { LatestProfilePanel } from "./LatestProfilePanel";
 
 interface TableProfileResult {
   columns: string[];
@@ -46,6 +47,8 @@ interface TableReadViewProps {
   onPreview: (t: RegisteredTable) => void;
   // REQ-1318: opens the Views-page definition-mode editor (SQL | Metrics toggle).
   onEditDefinition?: (t: RegisteredTable) => void;
+  // REQ-1934: the table's registered profile columns table, when one is registered.
+  profileColumnsTable?: RegisteredTable | null;
 }
 
 export function TableReadView({
@@ -65,6 +68,7 @@ export function TableReadView({
   handleProfile,
   onPreview,
   onEditDefinition,
+  profileColumnsTable,
 }: TableReadViewProps) {
   const { t } = useTranslation();
 
@@ -383,6 +387,7 @@ export function TableReadView({
           {deployMsg[table.id].message}
         </Box>
       )}
+      {profileColumnsTable && <LatestProfilePanel profileTable={profileColumnsTable} />}
       {(() => {
         const p = tableProfiles[table.id];
         if (!p || p === "loading") return null;

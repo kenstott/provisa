@@ -1,0 +1,362 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2a9f5e13-c76b-48d1-9e3a-b4f0d8c2a671
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""One profile run of one member table (REQ-1934).
+
+The run reads AS THE ORG ADMIN through the one governed pipeline (``_govern_and_route`` then
+``_execute_plan``): the rules that bind the org admin -- its masks, its row rules, a region rule once
+regions exist -- apply to what is profiled, and no reader's rules do. The profile is what the org
+admin reads; who reads the profile is decided by the result tables' own grants once registered.
+
+Two governed statements per run: the table's row count, which sizes the sample, and the one profile
+statement (``statement.profile_sql``). Everything else is computed from its aggregates
+(``measures``, ``plausible``) and appended to the member table's result relations (``schema``),
+written straight into the org's control-plane schema as an ingest table's rows are (REQ-1771).
+
+REQ-1921 (regions) is not on this branch: when it lands, the region of the node running the profile
+is passed to ``_govern_and_route`` as the org admin's region attribute in :func:`_governed`, and
+recorded in the runs row's ``region``, which is NULL until then.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.schema import CreateTable
+
+from provisa.profiler import measures, plausible
+from provisa.profiler.source import ProfilerSettings
+from provisa.profiler.schema import (
+    RESULT_KINDS,
+    field_names,
+    result_sa_table,
+)
+from provisa.profiler.statement import (
+    QUANTILE_POINTS,
+    TOP_N,
+    ColumnSpec,
+    FanoutSpec,
+    ProfileAggregates,
+    count_sql,
+    family_of,
+    parse_profile_result,
+    profile_sql,
+)
+
+log = logging.getLogger(__name__)
+
+# The role every profile is read as (REQ-1934 amendment ONE READER: THE ORG ADMIN).
+PROFILE_ROLE = "org_admin"
+
+
+class ProfileError(Exception):
+    """A profile run could not read or profile its table."""
+
+
+@dataclass(frozen=True)
+class Target:
+    table_id: int
+    table_name: str  # the registered name the result relations are named after
+    pgwire_name: str  # domain.table as the org admin reads it
+    columns: list[ColumnSpec]
+    fanouts: list[FanoutSpec]
+    tags: dict[str, set[str]]  # column -> base tag ids
+
+
+@dataclass(frozen=True)
+class RunOutcome:
+    run_id: str
+    run_time: datetime
+    status: str
+    error: str | None
+    row_count: int | None
+    profiled_rows: int | None
+
+
+def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, set[str]]) -> Target:
+    """The member table as the org admin's compiled context publishes it."""
+    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.compiler.sql_rewrite import semantic_table_name
+
+    ctx = state.contexts.get(PROFILE_ROLE)
+    if ctx is None:
+        raise ProfileError(f"no compiled schema for role {PROFILE_ROLE!r}; cannot profile")
+    metas = {tm.table_id: tm for tm in ctx.tables.values()}
+    tm = metas.get(table_id)
+    if tm is None:
+        raise ProfileError(
+            f"table {table_name!r} (id {table_id}) is not readable by {PROFILE_ROLE}; nothing "
+            f"to profile"
+        )
+
+    def _name(meta: Any) -> str:
+        domain = domain_to_sql_name(meta.domain_id or meta.schema_name or "public")
+        return f"{domain}.{semantic_table_name(meta)}"
+
+    p2s: dict = ctx.physical_to_sql
+    col_types = state.schema_build_cache["column_types"][table_id]
+    columns: list[ColumnSpec] = []
+    exposed_by_phys: dict[str, str] = {}
+    for col in col_types:
+        exposed = p2s.get((table_id, col.column_name))
+        if exposed is None:
+            continue  # a column the org admin cannot see is not part of what it reads
+        exposed_by_phys[col.column_name] = exposed
+        columns.append(
+            ColumnSpec(exposed, col.data_type, family_of(col.data_type), col.column_name)
+        )
+
+    fanouts: list[FanoutSpec] = []
+    for (type_name, field_name), jm in ctx.joins.items():
+        if type_name != tm.type_name or jm.cardinality != "one-to-many" or jm.via is not None:
+            continue
+        if jm.source_expr or jm.target_expr or jm.source_constant is not None or jm.source_json_key:
+            continue  # computed edges have no child key column to count by
+        parent_key = exposed_by_phys.get(jm.source_column)
+        child_key = p2s.get((jm.target.table_id, jm.target_column))
+        if parent_key is None or child_key is None:
+            continue  # the org admin cannot read the join's keys
+        fanouts.append(FanoutSpec(field_name, _name(jm.target), parent_key, child_key))
+    return Target(
+        table_id=table_id,
+        table_name=table_name,
+        pgwire_name=_name(tm),
+        columns=columns,
+        fanouts=fanouts,
+        tags={exposed_by_phys[c]: t for c, t in tags.items() if c in exposed_by_phys},
+    )
+
+
+async def _governed(sql: str) -> tuple[list[str], list[tuple]]:
+    from provisa.api.app import state
+    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
+
+    plan = await _govern_and_route(sql, PROFILE_ROLE)
+    result = await _execute_plan(plan, state)
+    return list(result.column_names), [tuple(r) for r in result.rows]
+
+
+def sample_fraction(row_count: int, sample_above_rows: int | None) -> float | None:
+    """The fraction to sample, or None for the whole table."""
+    if sample_above_rows is None or row_count <= sample_above_rows:
+        return None
+    return sample_above_rows / row_count
+
+
+def result_rows(
+    target: Target,
+    agg: ProfileAggregates,
+    run_id: str,
+    run_time: datetime,
+    low_cardinality_max: int,
+) -> dict[str, list[dict]]:
+    """Every result relation's rows for one run, except ``runs``."""
+    key = {"run_id": run_id, "run_time": run_time}
+    out: dict[str, list[dict]] = {kind: [] for kind in RESULT_KINDS if kind != "runs"}
+    rows = agg.profiled_rows
+    for col in agg.columns:
+        name = col.spec.name
+        m = measures.moments(col)
+        out["columns"].append(
+            {
+                **key,
+                "column_name": name,
+                "physical_column": col.spec.physical,
+                "data_type": col.spec.data_type,
+                "family": col.spec.family,
+                "row_count": rows,
+                "null_count": rows - col.non_null,
+                "null_share": (rows - col.non_null) / rows if rows else None,
+                "distinct_count": col.distinct,
+                "distinct_ratio": col.distinct / rows if rows else None,
+                "min_value": col.min_text,
+                "max_value": col.max_text,
+                "mean": m.mean,
+                "stddev": m.stddev,
+                "variance": m.variance,
+                "skewness": m.skewness,
+                "kurtosis": m.kurtosis,
+                "log_mean": m.log_mean,
+                "log_variance": m.log_variance,
+                "integer_only": m.integer_only,
+                "zero_share": m.zero_share,
+                "length_min": col.length_min,
+                "length_max": col.length_max,
+            }
+        )
+        for measure, sketch in (("value", col.quantiles), ("length", col.length_quantiles)):
+            if sketch is None:
+                continue
+            out["quantiles"] += [
+                {**key, "column_name": name, "measure": measure, "q": q, "value": v}
+                for q, v in zip(QUANTILE_POINTS, sketch)
+            ]
+        if col.quantiles is not None:
+            out["histogram"] += [
+                {**key, "column_name": name, "bucket": b, "lo": lo, "hi": hi, "row_count": n}
+                for b, lo, hi, n in measures.histogram(col.quantiles, col.non_null)
+            ]
+        out["top_values"] += [
+            {**key, "column_name": name, "kind": "top", "rank": r, "value": v, "row_count": n}
+            for r, (v, n) in enumerate(col.values[:TOP_N], 1)
+        ]
+        if col.distinct + (1 if col.non_null < rows else 0) <= low_cardinality_max:
+            out["top_values"] += [
+                {
+                    **key,
+                    "column_name": name,
+                    "kind": "frequency",
+                    "rank": r,
+                    "value": v,
+                    "row_count": n,
+                }
+                for r, (v, n) in enumerate(col.values, 1)
+            ]
+        out["shapes"] += [
+            {**key, "column_name": name, "rank": r, "shape": s, "row_count": n}
+            for r, (s, n) in enumerate(col.shapes[:TOP_N], 1)
+        ]
+        for rank, fit in enumerate(measures.fits(col, m), 1):
+            out["fits"] += [
+                {**key, "column_name": name, "family": fit.family, "param": p, "value": v}
+                for p, v in fit.params.items()
+            ]
+            out["fit_quality"].append(
+                {
+                    **key,
+                    "column_name": name,
+                    "family": fit.family,
+                    "ks_stat": fit.ks_stat,
+                    "rank": rank,
+                }
+            )
+        label = plausible.infer(col, target.tags.get(name, set()), low_cardinality_max)
+        out["plausible_type"].append(
+            {
+                **key,
+                "column_name": name,
+                "plausible_type": label.plausible_type,
+                "confidence": label.confidence,
+                "evidence": label.evidence,
+            }
+        )
+    for fan in agg.fanouts:
+        out["fanout_runs"].append(
+            {
+                **key,
+                "relationship": fan.spec.relationship,
+                "child_table": fan.spec.child_table,
+                "parents": fan.parents,
+                "mean": fan.mean,
+                "max": fan.max,
+                "childless_share": fan.childless / fan.parents if fan.parents else None,
+            }
+        )
+        if fan.quantiles is not None:
+            out["fanout"] += [
+                {**key, "relationship": fan.spec.relationship, "q": q, "value": v}
+                for q, v in zip(QUANTILE_POINTS, fan.quantiles)
+            ]
+    for kind, kind_rows in out.items():
+        names = field_names(kind)
+        for r in kind_rows:
+            assert tuple(r) == names, f"{kind} row drifted from the shipped schema"
+    return out
+
+
+async def write_results(
+    conn: Any, table_name: str, table_id: int, rows: dict[str, list[dict]]
+) -> None:
+    """Append one run's rows, creating any result relation not yet there."""
+    for kind in RESULT_KINDS:
+        table = result_sa_table(table_name, table_id, kind)
+        await conn.execute_core(CreateTable(table, if_not_exists=True))
+        await conn.execute_core_many(table.insert(), rows.get(kind, []))
+
+
+async def column_tags(conn: Any, table_id: int) -> dict[str, set[str]]:
+    from provisa.core.schema_org import tag_assignments as ta
+
+    result = await conn.execute_core(
+        select(ta.c.column_name, ta.c.base_tag_id).where(
+            ta.c.object_type == "column", ta.c.table_id == table_id
+        )
+    )
+    tags: dict[str, set[str]] = {}
+    for column_name, base_tag_id in result.fetchall():
+        tags.setdefault(column_name, set()).add(base_tag_id)
+    return tags
+
+
+async def profile_table(
+    state: Any, *, table_id: int, table_name: str, settings: ProfilerSettings
+) -> RunOutcome:
+    """Run the profile of one member table and append it to its history. A failure is recorded as
+    a failed run and re-raised as :class:`ProfileError`."""
+    run_id = str(uuid.uuid4())
+    run_time = datetime.now(UTC)
+    started = time.monotonic()
+    row_count: int | None = None
+    fraction: float | None = None
+    profiled: int | None = None
+    try:
+        async with state.model_db.acquire() as conn:
+            tags = await column_tags(conn, table_id)
+        target = resolve_target(state, table_id, table_name, tags)
+        _, count_rows = await _governed(count_sql(target.pgwire_name))
+        row_count = int(count_rows[0][0])
+        fraction = sample_fraction(row_count, settings.sample_above_rows)
+        names, rows = await _governed(
+            profile_sql(
+                target.pgwire_name,
+                target.columns,
+                target.fanouts,
+                fraction,
+                settings.low_cardinality_max,
+            )
+        )
+        agg = parse_profile_result(names, rows, target.columns, target.fanouts)
+        profiled = agg.profiled_rows
+        results = result_rows(target, agg, run_id, run_time, settings.low_cardinality_max)
+        status, error = "succeeded", None
+    except Exception as exc:  # recorded as the run's outcome, then re-raised below
+        results = {}
+        status, error = "failed", f"{type(exc).__name__}: {exc}"
+        log.exception("profile run %s of table %s failed", run_id, table_name)
+    results["runs"] = [
+        {
+            "run_id": run_id,
+            "run_time": run_time,
+            "region": None,  # REQ-1921 not on this branch; see the module docstring
+            "profiled_table": table_name,
+            "row_count": row_count,
+            # Unknown when the run failed before the table was counted.
+            "sampled": None if row_count is None else fraction is not None,
+            "sample_fraction": None
+            if row_count is None
+            else (1.0 if fraction is None else fraction),
+            "profiled_rows": profiled,
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "status": status,
+            "error": error,
+        }
+    ]
+    async with state.model_db.acquire() as conn:
+        await write_results(conn, table_name, table_id, results)
+    outcome = RunOutcome(run_id, run_time, status, error, row_count, profiled)
+    if error is not None:
+        raise ProfileError(f"profile of table {table_name!r} failed: {error}")
+    return outcome

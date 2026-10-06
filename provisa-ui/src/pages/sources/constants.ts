@@ -161,6 +161,8 @@ export const SOURCE_TYPES = [
     category: "Data Quality",
     defaultPort: 0,
   },
+  // REQ-1934: built in — a schedule that profiles its member tables; no connection of its own.
+  { value: "data_profiler", label: "Data Profiler", category: "Data Quality", defaultPort: 0 },
   // Public Data
 ];
 
@@ -252,7 +254,12 @@ export const HOST_PORT_ONLY = new Set(["airport", "websocket", "rss", "pinot", "
 
 // Source types needing no connection fields at all beyond id/description (REQ-1739): ingest is a
 // pure push receiver, soda/great_expectations are DQ checkers that scan through pgwire.
-export const NO_CONNECTION_TYPES = new Set(["ingest", "soda", "great_expectations"]);
+export const NO_CONNECTION_TYPES = new Set([
+  "ingest",
+  "soda",
+  "great_expectations",
+  "data_profiler", // REQ-1934
+]);
 
 // REQ-1923: branded source types → the UI type that carries them. A brand is registered and
 // classified as its carrier; the source row records the brand in federation_hints.brand.

@@ -146,6 +146,9 @@ class SourceType(str, Enum):
     # great_expectations is Apache 2.0 and cloud-eligible).
     soda = "soda"
     great_expectations = "great_expectations"
+    # REQ-1934: the built-in Data Profiler — a schedule that profiles its member tables; its result
+    # relations are written into the org's control plane, read in place as ingest's are.
+    data_profiler = "data_profiler"
     # SaaS-API sources reached via Supabase `wrappers` (REQ-1871/1874) — each a STUB: the type is
     # registrable, but no connector/dialect/driver reaches it yet. Per REQ-1874's isolation policy,
     # each will attach through its own dedicated captive Postgres+wrappers instance (the
@@ -1063,6 +1066,9 @@ class Table(
     # observed target is DERIVED from this text rather than declared beside it (REQ-939); the
     # results columns are the shipped schema and are replaced at parse, not authored.
     dq_contract: str | None = None
+    # REQ-1934: the Data Profiler source this table is a member of. A table belongs to at most one
+    # profiler; the profiler's schedule profiles it and its result relations carry its history.
+    profiler_source_id: str | None = None
     view_sql: str | None = None  # when set, table is a Provisa-managed view
     # REQ-1318: declarative metric-composed view definition; mutually exclusive with
     # view_sql (one view concept, two definition forms — validated below).

@@ -35,6 +35,7 @@ import { AuthUserPass } from "./AuthUserPass";
 import { OpenApiFormSection } from "./OpenApiFormSection";
 import { KaggleFormSection } from "./KaggleFormSection";
 import { PushFeedFormSection } from "./PushFeedFormSection";
+import { ProfilerFormSection } from "./ProfilerFormSection";
 import { SparqlFormSection } from "./SparqlFormSection";
 import { SourceLoadManagementPanel } from "./SourceLoadManagementPanel";
 import type { SourceFormFieldsProps } from "./SourceFormFields";
@@ -545,6 +546,9 @@ export function SourceFormFieldsExtended({
             <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />
           )}
         </>
+      )}
+      {form.type === "data_profiler" && (
+        <ProfilerFormSection authFields={authFields} setAuthFields={setAuthFields} />
       )}
       {(form.type === "websocket" || form.type === "rss") && (
         <PushFeedFormSection

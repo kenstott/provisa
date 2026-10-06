@@ -300,6 +300,7 @@ export interface RegisteredTable {
   apiEndpoint: string | null;
   viewSql: string | null;
   dqContract: string | null; // REQ-1443: the checker contract this results table lands the scans of
+  profilerSourceId?: string | null; // REQ-1934: the Data Profiler source this table is a member of
   queryTemplate?: string | null; // REQ-1670: the Cypher a neo4j table runs (neo4j tables only)
   fileGlob?: string | null; // REQ-788: one logical table over a glob of files (files sources only)
   sourceFileColumn?: string | null; // REQ-788: optional column carrying each row's file path

@@ -316,7 +316,7 @@ def catalog_name_for_source(state: "AppState", source_type: str, source_id: str)
     fixed = fixed_catalog_for_engine(state)
     if fixed:
         return fixed
-    if source_type == "ingest":  # REQ-1771
+    if source_type in ("ingest", "data_profiler"):  # REQ-1771, REQ-1934
         # ingest has NO live connector on any engine (no TRINO_CONNECTORS entry, and the native/
         # DuckDB tier's own ATTACH loop — native_backend.py's _attach_registered — never attaches
         # one either): its rows land straight into the tenant control-plane DB (provisa/ingest/

@@ -42,6 +42,7 @@ import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
 import { TimeInput } from "@mantine/dates";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { DataQualityPanel } from "./DataQualityPanel";
+import { ProfilerPanel } from "./ProfilerPanel";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { useLivePolicyPreview } from "./useLivePolicyPreview";
 import { RoleTtlField } from "./RoleTtlField";
@@ -59,6 +60,8 @@ interface CacheTtlEdit {
 interface TableEditFormProps {
   editingTable: RegisteredTable;
   setEditingTable: React.Dispatch<React.SetStateAction<RegisteredTable | null>>;
+  /** REQ-1934: the table's profiler membership as last saved. */
+  savedProfilerId: string | null;
   editingColumnTypes: Record<string, string>;
   cacheTtlEdits: Record<number, CacheTtlEdit>;
   setCacheTtlEdits: React.Dispatch<React.SetStateAction<Record<number, CacheTtlEdit>>>;
@@ -81,6 +84,7 @@ interface TableEditFormProps {
 export function TableEditForm({
   editingTable,
   setEditingTable,
+  savedProfilerId,
   editingColumnTypes,
   cacheTtlEdits,
   setCacheTtlEdits,
@@ -713,6 +717,10 @@ export function TableEditForm({
           contractText={editingTable.dqContract ?? ""}
           onChange={(text) => setEditingTable({ ...editingTable, dqContract: text || null })}
         />
+      )}
+      {/* REQ-1934: any table but a checker's results or a profiler's own may join a profiler. */}
+      {editSource != null && !isCheckerTable && editSource.type !== "data_profiler" && (
+        <ProfilerPanel {...{ editingTable, savedProfilerId, setEditingTable }} />
       )}
       {(() => {
         const NOSQL = new Set(["mongodb", "cassandra"]);

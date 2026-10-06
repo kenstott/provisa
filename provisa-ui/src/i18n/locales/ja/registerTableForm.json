@@ -99,6 +99,13 @@
     "fileGlobPlaceholder": "例: orders/*.csv",
     "sourceFileColumnLabel": "ソースファイル列",
     "sourceFileColumnHint": "任意 — 各行のファイルパスを保持する列",
-    "sourceFileColumnPlaceholder": "例: _source_file"
+    "sourceFileColumnPlaceholder": "例: _source_file",
+    "profilerResultLabel": "プロファイル結果テーブル",
+    "profilerResultPlaceholder": "結果テーブルを選択",
+    "profilerNoMembers": "このプロファイラーに参加しているテーブルはありません",
+    "profilerResultOption": "{{member}} · {{kind}}",
+    "profilerRowRulesLabel": "ロールごとの行ルール",
+    "profilerRowRulesNone": "すべての閲覧者が記述されたすべての列を参照できます。",
+    "profilerRowRuleFailed": "テーブルは登録されましたが、{{role}} の行ルールは保存されませんでした: {{message}}"
   }
 }

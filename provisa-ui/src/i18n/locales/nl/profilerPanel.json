@@ -1,0 +1,17 @@
+{
+  "profilerPanel": {
+    "title": "Data Profiler",
+    "addLabel": "Toevoegen aan profiler",
+    "addPlaceholder": "Kies een profiler",
+    "addDescription": "Het schema van de profiler profileert deze tabel. Wordt met de tabel opgeslagen.",
+    "none": "Er bestaat geen Data Profiler-bron",
+    "scheduleWhole": "{{cron}}, hele tabel",
+    "scheduleSample": "{{cron}}, steekproef boven {{rows}} rijen",
+    "memberOf": "Geprofileerd door {{profiler}}",
+    "unsaved": "Sla de tabel op om deze wijziging toe te passen.",
+    "remove": "Verwijderen uit profiler",
+    "runNow": "Nu profileren",
+    "viewRuns": "Profielruns bekijken",
+    "runDone": "{{rows}} rijen geprofileerd."
+  }
+}

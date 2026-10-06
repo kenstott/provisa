@@ -1,0 +1,27 @@
+{
+  "profileRunsModal": {
+    "title": "{{table}} के प्रोफ़ाइल रन",
+    "none": "इस टेबल की अभी तक प्रोफ़ाइलिंग नहीं हुई है।",
+    "noRows": "इस रन के लिए कुछ दर्ज नहीं हुआ।",
+    "runTime": "रन समय",
+    "status": "स्थिति",
+    "rowCount": "पंक्तियाँ",
+    "profiledRows": "प्रोफ़ाइल की गईं",
+    "duration": "अवधि",
+    "error": "त्रुटि",
+    "status_succeeded": "सफल",
+    "status_failed": "विफल",
+    "sampled": "नमूना",
+    "ms": "{{ms}} ms",
+    "kind_columns": "कॉलम",
+    "kind_plausible_type": "संभावित प्रकार",
+    "kind_quantiles": "क्वांटाइल",
+    "kind_histogram": "हिस्टोग्राम",
+    "kind_top_values": "सबसे आम मान",
+    "kind_shapes": "मान के आकार",
+    "kind_fits": "फ़िट",
+    "kind_fit_quality": "फ़िट की गुणवत्ता",
+    "kind_fanout_runs": "प्रति पैरेंट चाइल्ड",
+    "kind_fanout": "चाइल्ड के क्वांटाइल"
+  }
+}

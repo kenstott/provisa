@@ -1,0 +1,27 @@
+{
+  "profileRunsModal": {
+    "title": "Запуски профилирования {{table}}",
+    "none": "Эта таблица ещё не профилировалась.",
+    "noRows": "Для этого запуска ничего не записано.",
+    "runTime": "Время запуска",
+    "status": "Статус",
+    "rowCount": "Строки",
+    "profiledRows": "Профилировано",
+    "duration": "Длительность",
+    "error": "Ошибка",
+    "status_succeeded": "Успешно",
+    "status_failed": "Сбой",
+    "sampled": "выборка",
+    "ms": "{{ms}} мс",
+    "kind_columns": "Столбцы",
+    "kind_plausible_type": "Вероятные типы",
+    "kind_quantiles": "Квантили",
+    "kind_histogram": "Гистограмма",
+    "kind_top_values": "Частые значения",
+    "kind_shapes": "Формы значений",
+    "kind_fits": "Аппроксимации",
+    "kind_fit_quality": "Качество аппроксимации",
+    "kind_fanout_runs": "Дочерних на родителя",
+    "kind_fanout": "Квантили дочерних"
+  }
+}

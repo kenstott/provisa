@@ -99,6 +99,13 @@
     "fileGlobPlaceholder": "例如 orders/*.csv",
     "sourceFileColumnLabel": "來源檔案欄",
     "sourceFileColumnHint": "可選 — 儲存每列檔案路徑的欄",
-    "sourceFileColumnPlaceholder": "例如 _source_file"
+    "sourceFileColumnPlaceholder": "例如 _source_file",
+    "profilerResultLabel": "剖析結果資料表",
+    "profilerResultPlaceholder": "選擇結果資料表",
+    "profilerNoMembers": "沒有資料表加入此剖析器",
+    "profilerResultOption": "{{member}} · {{kind}}",
+    "profilerRowRulesLabel": "按角色的列規則",
+    "profilerRowRulesNone": "每位讀者都能看到所有被描述的欄。",
+    "profilerRowRuleFailed": "資料表已註冊，但 {{role}} 的列規則未儲存：{{message}}"
   }
 }

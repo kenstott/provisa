@@ -1,0 +1,11 @@
+{
+  "profilerFormSection": {
+    "cronLabel": "Agendamento (cron)",
+    "cronDescription": "Quando o profiler é executado, como expressão cron, p. ex. 0 3 * * * para 03:00 diariamente.",
+    "sampleLabel": "Amostrar acima de linhas",
+    "sampleDescription": "Uma tabela com mais linhas que isso é perfilada a partir de uma amostra de aproximadamente esse número de linhas. Deixe vazio para perfilar todas as linhas.",
+    "samplePlaceholder": "Tabela inteira",
+    "lowCardinalityLabel": "Limite de baixa cardinalidade",
+    "lowCardinalityDescription": "Uma coluna com no máximo este número de valores distintos tem cada valor contado e pode ser inferida como categoria."
+  }
+}

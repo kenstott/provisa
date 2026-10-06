@@ -1,0 +1,27 @@
+{
+  "profileRunsModal": {
+    "title": "Profielruns van {{table}}",
+    "none": "Deze tabel is nog niet geprofileerd.",
+    "noRows": "Niets vastgelegd voor deze run.",
+    "runTime": "Runtijd",
+    "status": "Status",
+    "rowCount": "Rijen",
+    "profiledRows": "Geprofileerd",
+    "duration": "Duur",
+    "error": "Fout",
+    "status_succeeded": "Geslaagd",
+    "status_failed": "Mislukt",
+    "sampled": "steekproef",
+    "ms": "{{ms}} ms",
+    "kind_columns": "Kolommen",
+    "kind_plausible_type": "Plausibele typen",
+    "kind_quantiles": "Kwantielen",
+    "kind_histogram": "Histogram",
+    "kind_top_values": "Meest voorkomende waarden",
+    "kind_shapes": "Waardepatronen",
+    "kind_fits": "Fits",
+    "kind_fit_quality": "Fitkwaliteit",
+    "kind_fanout_runs": "Kinderen per ouder",
+    "kind_fanout": "Kwantielen van kinderen"
+  }
+}

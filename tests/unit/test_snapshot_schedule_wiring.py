@@ -28,6 +28,7 @@ def _table_input(**overrides):
         off_peak_tz=None,
         view_sql=None,
         dq_contract=None,  # REQ-1443
+        profiler_source_id=None,  # REQ-1934
         materialize=True,
         mv_refresh_interval=300,
         mv_debounce_quiet=0.0,

@@ -13,7 +13,10 @@
       "cache": "Cache",
       "cacheTtl": "Cache TTL",
       "effectiveTtl": "Effective TTL",
-      "allowedDomains": "Allowed Domains"
+      "allowedDomains": "Allowed Domains",
+      "schedule": "Schedule",
+      "sample": "Sample",
+      "lowCardinality": "Low-cardinality threshold"
     },
     "namingInherit": "inherit (global)",
     "cacheEnabled": "enabled",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "Refresh from Kaggle",
     "refreshKaggleHint": "Re-download {{owner}}/{{ref}} from Kaggle, overwriting the staged file(s) in place. Your Kaggle token is not stored — enter it again for this refresh.",
     "kaggleTokenLabel": "Kaggle API token",
-    "refreshKaggleSubmit": "Refresh"
+    "refreshKaggleSubmit": "Refresh",
+    "sampleWhole": "Whole table",
+    "sampleAbove": "Sample above {{rows}} rows",
+    "runProfilerTitle": "Run now for every member table",
+    "profilerNoMembers": "No table has joined this profiler.",
+    "profilerRan": "{{table}}: profiled",
+    "profilerFailed": "{{table}}: {{error}}"
   }
 }

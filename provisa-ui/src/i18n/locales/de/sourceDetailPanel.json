@@ -13,7 +13,10 @@
       "cache": "Cache",
       "cacheTtl": "Cache-TTL",
       "effectiveTtl": "Effektive TTL",
-      "allowedDomains": "Zulässige Domänen"
+      "allowedDomains": "Zulässige Domänen",
+      "schedule": "Zeitplan",
+      "sample": "Stichprobe",
+      "lowCardinality": "Schwellenwert für geringe Kardinalität"
     },
     "namingInherit": "geerbt (global)",
     "cacheEnabled": "aktiviert",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "Von Kaggle aktualisieren",
     "refreshKaggleHint": "{{owner}}/{{ref}} erneut von Kaggle herunterladen und die bereitgestellte(n) Datei(en) an Ort und Stelle überschreiben. Ihr Kaggle-Token wird nicht gespeichert – geben Sie es für diese Aktualisierung erneut ein.",
     "kaggleTokenLabel": "Kaggle-API-Token",
-    "refreshKaggleSubmit": "Aktualisieren"
+    "refreshKaggleSubmit": "Aktualisieren",
+    "sampleWhole": "Ganze Tabelle",
+    "sampleAbove": "Stichprobe ab {{rows}} Zeilen",
+    "runProfilerTitle": "Jetzt für jede Mitgliedstabelle ausführen",
+    "profilerNoMembers": "Keine Tabelle gehört zu diesem Profiler.",
+    "profilerRan": "{{table}}: profiliert",
+    "profilerFailed": "{{table}}: {{error}}"
   }
 }

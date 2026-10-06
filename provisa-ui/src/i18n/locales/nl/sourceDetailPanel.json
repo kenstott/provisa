@@ -13,7 +13,10 @@
       "cache": "Cache",
       "cacheTtl": "Cache-TTL",
       "effectiveTtl": "Effectieve TTL",
-      "allowedDomains": "Toegestane domeinen"
+      "allowedDomains": "Toegestane domeinen",
+      "schedule": "Schema",
+      "sample": "Steekproef",
+      "lowCardinality": "Drempel voor lage kardinaliteit"
     },
     "namingInherit": "overnemen (globaal)",
     "cacheEnabled": "ingeschakeld",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "Vernieuwen vanuit Kaggle",
     "refreshKaggleHint": "{{owner}}/{{ref}} opnieuw downloaden van Kaggle en de gestagede bestanden ter plekke overschrijven. Je Kaggle-token wordt niet opgeslagen — voer het voor deze vernieuwing opnieuw in.",
     "kaggleTokenLabel": "Kaggle API-token",
-    "refreshKaggleSubmit": "Vernieuwen"
+    "refreshKaggleSubmit": "Vernieuwen",
+    "sampleWhole": "Hele tabel",
+    "sampleAbove": "Steekproef boven {{rows}} rijen",
+    "runProfilerTitle": "Nu uitvoeren voor elke lidtabel",
+    "profilerNoMembers": "Geen tabel hoort bij deze profiler.",
+    "profilerRan": "{{table}}: geprofileerd",
+    "profilerFailed": "{{table}}: {{error}}"
   }
 }

@@ -37,11 +37,19 @@ _PURGE = "DELETE FROM s.orders WHERE day < '{{YYYY-MM-DD}}'"
 
 def _store(path):
     from provisa.core.database import Database, create_engine_from_url
-    from provisa.core.schema_org import metadata, scheduled_triggers
+    from provisa.core.schema_org import (
+        domains,
+        metadata,
+        registered_tables,
+        scheduled_triggers,
+        sources,
+    )
 
     engine = create_engine_from_url(f"sqlite+pysqlite:///{path}")
     with engine.begin() as raw:
-        metadata.create_all(raw, tables=[scheduled_triggers])
+        # The model store's sources and tables too: a Data Profiler's schedule (REQ-1934) is
+        # registered beside the triggers, read from its source and member tables.
+        metadata.create_all(raw, tables=[scheduled_triggers, sources, domains, registered_tables])
     return Database(engine, "model")
 
 
@@ -218,3 +226,49 @@ async def test_a_model_reload_of_a_non_prod_environment_schedules_nothing(orgs, 
 
     await model_reload.reschedule_triggers(SimpleNamespace(org_id="a", env="dev"))  # type: ignore[arg-type]
     assert worker.get_jobs() == []
+
+
+async def test_a_profiler_is_scheduled_on_its_cron_beside_the_triggers(orgs):
+    """REQ-1934: a Data Profiler source fires on the org's scheduler; its members' result
+    relations exist, empty, from the moment it is scheduled."""
+    import sqlalchemy as sa
+    from apscheduler.triggers.cron import CronTrigger
+
+    from provisa.core.schema_org import domains, registered_tables, sources
+
+    async with orgs["a"].acquire() as conn:
+        await conn.execute_core(
+            sources.insert().values(
+                id="prof",
+                type="data_profiler",
+                origin=ADMIN,
+                mapping={"cron": "0 3 * * *", "low_cardinality_max": 100},
+            )
+        )
+        await conn.execute_core(domains.insert().values(id="sales", origin=ADMIN))
+        await conn.execute_core(
+            registered_tables.insert().values(
+                source_id="prof",
+                domain_id="sales",
+                schema_name="public",
+                table_name="orders",
+                origin=ADMIN,
+                profiler_source_id="prof",
+            )
+        )
+    scheduler = background_scheduler()
+    assert await jobs.register_org_triggers(scheduler, "a", None) == 0
+    job = scheduler.get_job("profiler:prof:org_a")
+    assert job is not None and str(job.trigger) == str(CronTrigger.from_crontab("0 3 * * *"))
+    async with orgs["a"].acquire() as conn:
+        member_id = (await conn.execute_core(sa.select(registered_tables.c.id))).scalar()
+        rows = await conn.execute_core(
+            sa.text(f"SELECT COUNT(*) FROM orders_{member_id}_profile_runs")
+        )
+        assert rows.scalar() == 0
+    # The profiler gone from the model, its job goes too.
+    async with orgs["a"].acquire() as conn:
+        await conn.execute_core(registered_tables.delete())
+        await conn.execute_core(sources.delete())
+    await jobs.register_org_triggers(scheduler, "a", None)
+    assert scheduler.get_job("profiler:prof:org_a") is None

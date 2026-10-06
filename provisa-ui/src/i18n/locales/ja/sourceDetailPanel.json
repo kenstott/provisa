@@ -13,7 +13,10 @@
       "cache": "キャッシュ",
       "cacheTtl": "キャッシュ TTL",
       "effectiveTtl": "有効 TTL",
-      "allowedDomains": "許可ドメイン"
+      "allowedDomains": "許可ドメイン",
+      "schedule": "スケジュール",
+      "sample": "サンプル",
+      "lowCardinality": "低カーディナリティのしきい値"
     },
     "namingInherit": "継承(グローバル)",
     "cacheEnabled": "有効",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "Kaggle から更新",
     "refreshKaggleHint": "{{owner}}/{{ref}} を Kaggle から再ダウンロードし、ステージング済みのファイルをその場で上書きします。Kaggle トークンは保存されないため、この更新のために再度入力してください。",
     "kaggleTokenLabel": "Kaggle API トークン",
-    "refreshKaggleSubmit": "更新"
+    "refreshKaggleSubmit": "更新",
+    "sampleWhole": "テーブル全体",
+    "sampleAbove": "{{rows}} 行を超えるとサンプル",
+    "runProfilerTitle": "すべてのメンバーテーブルで今すぐ実行",
+    "profilerNoMembers": "このプロファイラーに参加しているテーブルはありません。",
+    "profilerRan": "{{table}}: プロファイル済み",
+    "profilerFailed": "{{table}}: {{error}}"
   }
 }

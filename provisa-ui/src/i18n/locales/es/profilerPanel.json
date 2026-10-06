@@ -1,0 +1,17 @@
+{
+  "profilerPanel": {
+    "title": "Data Profiler",
+    "addLabel": "Añadir al perfilador",
+    "addPlaceholder": "Elija un perfilador",
+    "addDescription": "La programación del perfilador perfila esta tabla. Se guarda con la tabla.",
+    "none": "No existe ninguna fuente Data Profiler",
+    "scheduleWhole": "{{cron}}, tabla completa",
+    "scheduleSample": "{{cron}}, muestra por encima de {{rows}} filas",
+    "memberOf": "Perfilada por {{profiler}}",
+    "unsaved": "Guarde la tabla para aplicar este cambio.",
+    "remove": "Quitar del perfilador",
+    "runNow": "Perfilar ahora",
+    "viewRuns": "Ver ejecuciones de perfil",
+    "runDone": "Se perfilaron {{rows}} filas."
+  }
+}

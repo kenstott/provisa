@@ -1,0 +1,27 @@
+{
+  "profileRunsModal": {
+    "title": "Profile runs of {{table}}",
+    "none": "This table has not been profiled yet.",
+    "noRows": "Nothing recorded for this run.",
+    "runTime": "Run time",
+    "status": "Status",
+    "rowCount": "Rows",
+    "profiledRows": "Profiled",
+    "duration": "Duration",
+    "error": "Error",
+    "status_succeeded": "Succeeded",
+    "status_failed": "Failed",
+    "sampled": "sample",
+    "ms": "{{ms}} ms",
+    "kind_columns": "Columns",
+    "kind_plausible_type": "Plausible types",
+    "kind_quantiles": "Quantiles",
+    "kind_histogram": "Histogram",
+    "kind_top_values": "Top values",
+    "kind_shapes": "Value shapes",
+    "kind_fits": "Fits",
+    "kind_fit_quality": "Fit quality",
+    "kind_fanout_runs": "Children per parent",
+    "kind_fanout": "Children quantiles"
+  }
+}

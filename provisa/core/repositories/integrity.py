@@ -184,6 +184,8 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("user_role_assignments", "domain_id", "domain", "role_assignment", "id"),
     # --- to a source ---------------------------------------------------------------------------
     _dep("registered_tables", "source_id", "source", "table", "id"),
+    # REQ-1934: a table's Data Profiler membership.
+    _dep("registered_tables", "profiler_source_id", "source", "table", "id"),
     _dep("tracked_functions", "source_id", "source", "command", "name"),
     _part("tag_assignments", "source_id", "source"),
     _part("provisa_sources", "source_id", "source"),

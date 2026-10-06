@@ -99,6 +99,13 @@
     "fileGlobPlaceholder": "bijv. orders/*.csv",
     "sourceFileColumnLabel": "Bronbestand-kolom",
     "sourceFileColumnHint": "optioneel — een kolom met het bestandspad van elke rij",
-    "sourceFileColumnPlaceholder": "bijv. _source_file"
+    "sourceFileColumnPlaceholder": "bijv. _source_file",
+    "profilerResultLabel": "Profielresultatentabel",
+    "profilerResultPlaceholder": "Kies een resultatentabel",
+    "profilerNoMembers": "Geen tabel hoort bij deze profiler",
+    "profilerResultOption": "{{member}} · {{kind}}",
+    "profilerRowRulesLabel": "Rijregels per rol",
+    "profilerRowRulesNone": "Elke lezer ziet elke beschreven kolom.",
+    "profilerRowRuleFailed": "De tabel is geregistreerd, maar de rijregel voor {{role}} is niet opgeslagen: {{message}}"
   }
 }

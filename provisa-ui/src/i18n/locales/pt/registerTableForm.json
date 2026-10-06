@@ -99,6 +99,13 @@
     "fileGlobPlaceholder": "ex. orders/*.csv",
     "sourceFileColumnLabel": "Coluna do arquivo de origem",
     "sourceFileColumnHint": "opcional — uma coluna com o caminho do arquivo de cada linha",
-    "sourceFileColumnPlaceholder": "ex. _source_file"
+    "sourceFileColumnPlaceholder": "ex. _source_file",
+    "profilerResultLabel": "Tabela de resultados do perfil",
+    "profilerResultPlaceholder": "Escolha uma tabela de resultados",
+    "profilerNoMembers": "Nenhuma tabela faz parte deste profiler",
+    "profilerResultOption": "{{member}} · {{kind}}",
+    "profilerRowRulesLabel": "Regras de linha por função",
+    "profilerRowRulesNone": "Todo leitor vê todas as colunas descritas.",
+    "profilerRowRuleFailed": "A tabela foi registrada, mas a regra de linha de {{role}} não foi salva: {{message}}"
   }
 }

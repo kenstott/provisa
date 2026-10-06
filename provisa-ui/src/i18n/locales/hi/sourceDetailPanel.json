@@ -13,7 +13,10 @@
       "cache": "कैश",
       "cacheTtl": "कैश TTL",
       "effectiveTtl": "प्रभावी TTL",
-      "allowedDomains": "अनुमत डोमेन"
+      "allowedDomains": "अनुमत डोमेन",
+      "schedule": "शेड्यूल",
+      "sample": "नमूना",
+      "lowCardinality": "कम कार्डिनैलिटी सीमा"
     },
     "namingInherit": "इनहेरिट (ग्लोबल)",
     "cacheEnabled": "सक्षम",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "Kaggle से रीफ़्रेश करें",
     "refreshKaggleHint": "{{owner}}/{{ref}} को Kaggle से दोबारा डाउनलोड करें, स्टेज की गई फ़ाइलों को उसी जगह ओवरराइट करते हुए। आपका Kaggle टोकन सहेजा नहीं जाता — इस रीफ़्रेश के लिए उसे फिर दर्ज करें।",
     "kaggleTokenLabel": "Kaggle API टोकन",
-    "refreshKaggleSubmit": "रीफ़्रेश करें"
+    "refreshKaggleSubmit": "रीफ़्रेश करें",
+    "sampleWhole": "पूरी टेबल",
+    "sampleAbove": "{{rows}} पंक्तियों से अधिक पर नमूना",
+    "runProfilerTitle": "हर सदस्य टेबल के लिए अभी चलाएँ",
+    "profilerNoMembers": "इस प्रोफ़ाइलर में कोई टेबल शामिल नहीं है।",
+    "profilerRan": "{{table}}: प्रोफ़ाइल की गई",
+    "profilerFailed": "{{table}}: {{error}}"
   }
 }

@@ -108,6 +108,9 @@ _MATERIALIZE_ONLY = frozenset(
         # the materialization store like any other produced dataset.
         "soda",
         "great_expectations",
+        # REQ-1934: a profiler's rows are written by its runs into the org's control plane, as
+        # ingest's are; there is no remote table to federate.
+        "data_profiler",
         # REQ-1730: sqlite/firebird/airport are DuckDB-ATTACH-only (no Trino/pg connector exists for
         # any of them) — before this, an engine with no connector raised UnreachableSource outright
         # rather than falling back to landing, the ONLY of Provisa's DIRECT/FETCH-shaped source

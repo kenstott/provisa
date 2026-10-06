@@ -1,0 +1,17 @@
+{
+  "profilerPanel": {
+    "title": "Data Profiler",
+    "addLabel": "Ajouter au profileur",
+    "addPlaceholder": "Choisissez un profileur",
+    "addDescription": "La planification du profileur profile cette table. Enregistré avec la table.",
+    "none": "Aucune source Data Profiler n'existe",
+    "scheduleWhole": "{{cron}}, table entière",
+    "scheduleSample": "{{cron}}, échantillon au-delà de {{rows}} lignes",
+    "memberOf": "Profilée par {{profiler}}",
+    "unsaved": "Enregistrez la table pour appliquer cette modification.",
+    "remove": "Retirer du profileur",
+    "runNow": "Profiler maintenant",
+    "viewRuns": "Voir les exécutions de profil",
+    "runDone": "{{rows}} lignes profilées."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "profilerPanel": {
+    "title": "Data Profiler",
+    "addLabel": "Zum Profiler hinzufügen",
+    "addPlaceholder": "Profiler auswählen",
+    "addDescription": "Der Zeitplan des Profilers profiliert diese Tabelle. Wird mit der Tabelle gespeichert.",
+    "none": "Es gibt keine Data-Profiler-Quelle",
+    "scheduleWhole": "{{cron}}, ganze Tabelle",
+    "scheduleSample": "{{cron}}, Stichprobe ab {{rows}} Zeilen",
+    "memberOf": "Profiliert von {{profiler}}",
+    "unsaved": "Speichern Sie die Tabelle, um diese Änderung zu übernehmen.",
+    "remove": "Aus Profiler entfernen",
+    "runNow": "Profil jetzt erstellen",
+    "viewRuns": "Profilläufe anzeigen",
+    "runDone": "{{rows}} Zeilen profiliert."
+  }
+}

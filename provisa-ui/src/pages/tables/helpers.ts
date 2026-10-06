@@ -31,6 +31,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     probeType: t.probeType || null,
     viewSql: t.viewSql || undefined,
     dqContract: t.dqContract || null, // REQ-1443
+    profilerSourceId: t.profilerSourceId || null, // REQ-1934
     queryTemplate: t.queryTemplate || null, // REQ-1670
     fileGlob: t.fileGlob || null, // REQ-788
     sourceFileColumn: t.sourceFileColumn || null, // REQ-788

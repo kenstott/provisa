@@ -435,6 +435,7 @@ async def _fetch_table_with_columns(
         paging_ceiling_rows=_state.config.graphql_remote.max_rows,
         view_sql=view_sql,
         dq_contract=row.get("dq_contract"),  # REQ-1443
+        profiler_source_id=row.get("profiler_source_id"),  # REQ-1934
         query_template=_query_template_for(row["table_name"]),  # REQ-1670
         file_glob=row.get("file_glob"),  # REQ-788
         source_file_column=row.get("source_file_column"),  # REQ-788

@@ -99,6 +99,13 @@
     "fileGlobPlaceholder": "z. B. orders/*.csv",
     "sourceFileColumnLabel": "Quelldatei-Spalte",
     "sourceFileColumnHint": "optional — eine Spalte mit dem Dateipfad jeder Zeile",
-    "sourceFileColumnPlaceholder": "z. B. _source_file"
+    "sourceFileColumnPlaceholder": "z. B. _source_file",
+    "profilerResultLabel": "Profil-Ergebnistabelle",
+    "profilerResultPlaceholder": "Ergebnistabelle auswählen",
+    "profilerNoMembers": "Keine Tabelle gehört zu diesem Profiler",
+    "profilerResultOption": "{{member}} · {{kind}}",
+    "profilerRowRulesLabel": "Zeilenregeln je Rolle",
+    "profilerRowRulesNone": "Jeder Leser sieht jede beschriebene Spalte.",
+    "profilerRowRuleFailed": "Die Tabelle wurde registriert, aber die Zeilenregel für {{role}} wurde nicht gespeichert: {{message}}"
   }
 }

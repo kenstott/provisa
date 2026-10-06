@@ -479,6 +479,26 @@ def _parsed_off_peak(off_peak_window: str | None, tz: str) -> "MutationResult | 
     return None
 
 
+def _refuse_invalid_profiler(
+    source_id: str, source_type: str, mapping: dict
+) -> MutationResult | None:  # REQ-1934
+    """A Data Profiler source's settings must describe a schedule and a run default."""
+    if source_type != "data_profiler":
+        return None
+    from provisa.profiler.source import profiler_settings
+
+    try:
+        profiler_settings(source_id, mapping)
+    except ValueError as exc:
+        return MutationResult(
+            success=False,
+            message=str(exc),
+            code="schema.profiler_invalid",
+            params={"source": source_id},
+        )
+    return None
+
+
 async def _refuse_over_source_limit(source_id: str) -> MutationResult | None:  # REQ-1513
     """Refuse a NEW source the org's plan has no room for, or None when there is room.
 
@@ -848,6 +868,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # credential. Done after the validation so a rejected source leaves no vault entry behind.
         password_ref = await persist_source_password(info, input.id, input.password)
         _mapping = _parse_mapping_json(input.mapping_json)
+        _profiler_refusal = _refuse_invalid_profiler(input.id, input.type, _mapping)  # REQ-1934
+        if _profiler_refusal is not None:
+            return _profiler_refusal
         if not _mapping:
             from provisa.dq.registration import is_checker_source_type
 
@@ -977,6 +1000,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 "Landed-table reconcile failed after create_source", exc_info=True
             )
 
+        if input.type == "data_profiler":  # REQ-1934: its schedule fires on the org's scheduler
+            from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
+
+            await reschedule_org_triggers()
         return MutationResult(
             success=True,
             message=f"Source {input.id!r} created",
@@ -1173,6 +1200,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             # REQ-1695: the literal a person retyped into the form replaces the vault entry under
             # the same name -- a rotation, not a second secret -- and the row keeps the reference.
             password_ref = await persist_source_password(info, input.id, input.password)
+            _profiler_refusal = _refuse_invalid_profiler(  # REQ-1934
+                input.id, input.type, _parse_mapping_json(input.mapping_json)
+            )
+            if _profiler_refusal is not None:
+                return _profiler_refusal
             model = SourceModel(
                 id=input.id,
                 type=SourceTypeEnum(input.type),
@@ -1311,6 +1343,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         spawn_background(_reindex(), name=f"catalog-reindex:{input.id}")
 
+        if input.type == "data_profiler":  # REQ-1934: a changed schedule reschedules
+            from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
+
+            await reschedule_org_triggers()
         return MutationResult(
             success=True,
             message=f"Source {input.id!r} updated",
@@ -1383,6 +1419,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _drop_source_on_engine(state, id)
             state.source_catalogs.pop(id, None)
             await _rebuild_schemas()
+            if _existing["type"] == "data_profiler":  # REQ-1934: its schedule goes with it
+                from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
+
+                await reschedule_org_triggers()
             return MutationResult(
                 success=True,
                 message=f"Source {id!r} deleted",
@@ -2280,6 +2320,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
             try:
                 await apply_dq_registration(_conn, model)
+                # REQ-1934: a profile result table's derivation, and a table's profiler membership.
+                from provisa.profiler.registration import apply_registration
+
+                await apply_registration(_conn, model)
             except ValueError as _dq_err:
                 return MutationResult(success=False, message=str(_dq_err))
             from provisa.api.admin.region_defaults import kept_region

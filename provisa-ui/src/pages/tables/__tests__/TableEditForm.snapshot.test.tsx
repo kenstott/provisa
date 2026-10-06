@@ -91,6 +91,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
 function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
   render(
     <TableEditForm
+      savedProfilerId={null}
       editingTable={table}
       setEditingTable={setEditingTable}
       editingColumnTypes={{}}

@@ -13,7 +13,10 @@
       "cache": "Caché",
       "cacheTtl": "TTL de caché",
       "effectiveTtl": "TTL efectivo",
-      "allowedDomains": "Dominios permitidos"
+      "allowedDomains": "Dominios permitidos",
+      "schedule": "Programación",
+      "sample": "Muestra",
+      "lowCardinality": "Umbral de baja cardinalidad"
     },
     "namingInherit": "heredar (global)",
     "cacheEnabled": "habilitada",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "Actualizar desde Kaggle",
     "refreshKaggleHint": "Vuelve a descargar {{owner}}/{{ref}} de Kaggle, sobrescribiendo en su lugar los archivos preparados. Su token de Kaggle no se almacena: introdúzcalo de nuevo para esta actualización.",
     "kaggleTokenLabel": "Token de API de Kaggle",
-    "refreshKaggleSubmit": "Actualizar"
+    "refreshKaggleSubmit": "Actualizar",
+    "sampleWhole": "Tabla completa",
+    "sampleAbove": "Muestra por encima de {{rows}} filas",
+    "runProfilerTitle": "Ejecutar ahora para cada tabla miembro",
+    "profilerNoMembers": "Ninguna tabla se ha unido a este perfilador.",
+    "profilerRan": "{{table}}: perfilada",
+    "profilerFailed": "{{table}}: {{error}}"
   }
 }

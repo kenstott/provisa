@@ -13,7 +13,10 @@
       "cache": "缓存",
       "cacheTtl": "缓存 TTL",
       "effectiveTtl": "生效 TTL",
-      "allowedDomains": "允许的域"
+      "allowedDomains": "允许的域",
+      "schedule": "计划",
+      "sample": "抽样",
+      "lowCardinality": "低基数阈值"
     },
     "namingInherit": "继承（全局）",
     "cacheEnabled": "已启用",
@@ -28,6 +31,12 @@
     "refreshKaggleTitle": "从 Kaggle 刷新",
     "refreshKaggleHint": "从 Kaggle 重新下载 {{owner}}/{{ref}}，就地覆盖已暂存的文件。您的 Kaggle 令牌不会被存储——本次刷新请重新输入。",
     "kaggleTokenLabel": "Kaggle API 令牌",
-    "refreshKaggleSubmit": "刷新"
+    "refreshKaggleSubmit": "刷新",
+    "sampleWhole": "整张表",
+    "sampleAbove": "超过 {{rows}} 行时抽样",
+    "runProfilerTitle": "立即为每个成员表运行",
+    "profilerNoMembers": "没有表加入此画像器。",
+    "profilerRan": "{{table}}：已画像",
+    "profilerFailed": "{{table}}：{{error}}"
   }
 }

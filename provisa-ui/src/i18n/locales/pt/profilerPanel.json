@@ -1,0 +1,17 @@
+{
+  "profilerPanel": {
+    "title": "Data Profiler",
+    "addLabel": "Adicionar ao profiler",
+    "addPlaceholder": "Escolha um profiler",
+    "addDescription": "O agendamento do profiler perfila esta tabela. Salvo com a tabela.",
+    "none": "Não existe nenhuma fonte Data Profiler",
+    "scheduleWhole": "{{cron}}, tabela inteira",
+    "scheduleSample": "{{cron}}, amostra acima de {{rows}} linhas",
+    "memberOf": "Perfilada por {{profiler}}",
+    "unsaved": "Salve a tabela para aplicar esta alteração.",
+    "remove": "Remover do profiler",
+    "runNow": "Perfilar agora",
+    "viewRuns": "Ver execuções de perfil",
+    "runDone": "{{rows}} linhas perfiladas."
+  }
+}

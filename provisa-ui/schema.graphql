@@ -580,6 +580,7 @@ type RegisteredTableType {
   viewSql: String
   viewMetrics: ViewMetricsType
   dqContract: String
+  profilerSourceId: String
   queryTemplate: String
   changeSignal: String
   probeQuery: String
@@ -804,6 +805,7 @@ input TableInput {
   uniqueConstraints: [UniqueConstraintInput!]! = []
   viewSql: String = null
   dqContract: String = null
+  profilerSourceId: String = null
   queryTemplate: String = null
   viewMetrics: ViewMetricsInput = null
   loadProtected: Boolean = null

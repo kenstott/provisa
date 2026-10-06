@@ -1,0 +1,27 @@
+{
+  "profileRunsModal": {
+    "title": "Execuções de perfil de {{table}}",
+    "none": "Esta tabela ainda não foi perfilada.",
+    "noRows": "Nada registrado para esta execução.",
+    "runTime": "Hora da execução",
+    "status": "Status",
+    "rowCount": "Linhas",
+    "profiledRows": "Perfiladas",
+    "duration": "Duração",
+    "error": "Erro",
+    "status_succeeded": "Concluída",
+    "status_failed": "Falhou",
+    "sampled": "amostra",
+    "ms": "{{ms}} ms",
+    "kind_columns": "Colunas",
+    "kind_plausible_type": "Tipos plausíveis",
+    "kind_quantiles": "Quantis",
+    "kind_histogram": "Histograma",
+    "kind_top_values": "Valores mais frequentes",
+    "kind_shapes": "Formatos de valor",
+    "kind_fits": "Ajustes",
+    "kind_fit_quality": "Qualidade do ajuste",
+    "kind_fanout_runs": "Filhos por pai",
+    "kind_fanout": "Quantis de filhos"
+  }
+}

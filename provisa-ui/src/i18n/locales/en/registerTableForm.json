@@ -99,6 +99,13 @@
     "fileGlobPlaceholder": "e.g. orders/*.csv",
     "sourceFileColumnLabel": "Source-file column",
     "sourceFileColumnHint": "optional — a column holding each row's file path",
-    "sourceFileColumnPlaceholder": "e.g. _source_file"
+    "sourceFileColumnPlaceholder": "e.g. _source_file",
+    "profilerResultLabel": "Profile result table",
+    "profilerResultPlaceholder": "Pick a result table",
+    "profilerNoMembers": "No table has joined this profiler",
+    "profilerResultOption": "{{member}} · {{kind}}",
+    "profilerRowRulesLabel": "Row rules, per role",
+    "profilerRowRulesNone": "Every reader sees every described column.",
+    "profilerRowRuleFailed": "The table was registered, but the row rule for {{role}} was not saved: {{message}}"
   }
 }

@@ -58,6 +58,9 @@ _HTTP_API_TYPES = frozenset(
 # operator who only wants the latest scan. hash/count would probe a dataset that does not exist until
 # the scan runs.
 _DQ_CHECKER_TYPES = frozenset({"soda", "great_expectations"})
+# REQ-1934: a profiler's result relations are appended by its own runs, on its own schedule, and
+# read in place: there is no upstream to probe.
+_DIRECT_WRITE_TYPES = frozenset({"data_profiler"})
 
 _ALL = frozenset({WATERMARK, HASH, COUNT, NONE})
 
@@ -67,7 +70,7 @@ def probe_capabilities(source_type: str) -> frozenset[str]:
     (the open-ended default) support all four; HTTP APIs all four (watermark/count conditional on the
     API surface); files hash|none; data-quality checkers watermark|none; streaming/push sources none
     (not on the probe axis)."""
-    if source_type in _STREAMING_TYPES:
+    if source_type in _STREAMING_TYPES or source_type in _DIRECT_WRITE_TYPES:
         return frozenset()
     if source_type in _FILE_TYPES:
         return frozenset({HASH, NONE})

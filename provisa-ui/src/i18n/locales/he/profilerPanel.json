@@ -1,0 +1,17 @@
+{
+  "profilerPanel": {
+    "title": "Data Profiler",
+    "addLabel": "הוספה לפרופיילר",
+    "addPlaceholder": "בחרו פרופיילר",
+    "addDescription": "התזמון של הפרופיילר יוצר פרופיל לטבלה זו. נשמר עם הטבלה.",
+    "none": "לא קיים מקור Data Profiler",
+    "scheduleWhole": "{{cron}}, הטבלה כולה",
+    "scheduleSample": "{{cron}}, מדגם מעל {{rows}} שורות",
+    "memberOf": "בפרופיל של {{profiler}}",
+    "unsaved": "שמרו את הטבלה כדי להחיל שינוי זה.",
+    "remove": "הסרה מהפרופיילר",
+    "runNow": "יצירת פרופיל עכשיו",
+    "viewRuns": "הצגת הרצות פרופיל",
+    "runDone": "נכללו בפרופיל {{rows}} שורות."
+  }
+}

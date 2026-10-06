@@ -1,0 +1,27 @@
+{
+  "profileRunsModal": {
+    "title": "{{table}} 的画像运行",
+    "none": "此表尚未进行数据画像。",
+    "noRows": "此次运行未记录任何内容。",
+    "runTime": "运行时间",
+    "status": "状态",
+    "rowCount": "行数",
+    "profiledRows": "已画像",
+    "duration": "耗时",
+    "error": "错误",
+    "status_succeeded": "成功",
+    "status_failed": "失败",
+    "sampled": "抽样",
+    "ms": "{{ms}} 毫秒",
+    "kind_columns": "列",
+    "kind_plausible_type": "推测类型",
+    "kind_quantiles": "分位数",
+    "kind_histogram": "直方图",
+    "kind_top_values": "高频值",
+    "kind_shapes": "值形态",
+    "kind_fits": "拟合",
+    "kind_fit_quality": "拟合质量",
+    "kind_fanout_runs": "每个父项的子项",
+    "kind_fanout": "子项分位数"
+  }
+}

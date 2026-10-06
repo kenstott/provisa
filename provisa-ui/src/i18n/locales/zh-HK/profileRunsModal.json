@@ -1,0 +1,27 @@
+{
+  "profileRunsModal": {
+    "title": "{{table}} 的剖析執行",
+    "none": "此資料表尚未剖析。",
+    "noRows": "此次執行沒有記錄任何內容。",
+    "runTime": "執行時間",
+    "status": "狀態",
+    "rowCount": "列數",
+    "profiledRows": "已剖析",
+    "duration": "耗時",
+    "error": "錯誤",
+    "status_succeeded": "成功",
+    "status_failed": "失敗",
+    "sampled": "抽樣",
+    "ms": "{{ms}} 毫秒",
+    "kind_columns": "欄",
+    "kind_plausible_type": "推測類型",
+    "kind_quantiles": "分位數",
+    "kind_histogram": "直方圖",
+    "kind_top_values": "常見值",
+    "kind_shapes": "值形態",
+    "kind_fits": "擬合",
+    "kind_fit_quality": "擬合品質",
+    "kind_fanout_runs": "每個父項的子項",
+    "kind_fanout": "子項分位數"
+  }
+}

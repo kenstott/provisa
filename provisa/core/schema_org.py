@@ -220,6 +220,8 @@ registered_tables = Table(
     Column("view_sql", Text),
     # REQ-1443: the data-quality contract a checker table's rows are the scan results of.
     Column("dq_contract", Text),
+    # REQ-1934: the Data Profiler source this table is a member of; NULL for none.
+    Column("profiler_source_id", Text),
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),

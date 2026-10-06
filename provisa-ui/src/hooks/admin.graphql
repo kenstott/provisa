@@ -216,6 +216,7 @@ query TablesQuery {
     apiEndpoint
     viewSql
     dqContract
+    profilerSourceId
     queryTemplate
     fileGlob
     sourceFileColumn

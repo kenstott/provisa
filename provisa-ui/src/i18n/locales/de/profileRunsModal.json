@@ -1,0 +1,27 @@
+{
+  "profileRunsModal": {
+    "title": "Profilläufe von {{table}}",
+    "none": "Diese Tabelle wurde noch nicht profiliert.",
+    "noRows": "Für diesen Lauf wurde nichts aufgezeichnet.",
+    "runTime": "Laufzeit",
+    "status": "Status",
+    "rowCount": "Zeilen",
+    "profiledRows": "Profiliert",
+    "duration": "Dauer",
+    "error": "Fehler",
+    "status_succeeded": "Erfolgreich",
+    "status_failed": "Fehlgeschlagen",
+    "sampled": "Stichprobe",
+    "ms": "{{ms}} ms",
+    "kind_columns": "Spalten",
+    "kind_plausible_type": "Plausible Typen",
+    "kind_quantiles": "Quantile",
+    "kind_histogram": "Histogramm",
+    "kind_top_values": "Häufigste Werte",
+    "kind_shapes": "Wertmuster",
+    "kind_fits": "Anpassungen",
+    "kind_fit_quality": "Anpassungsgüte",
+    "kind_fanout_runs": "Kinder pro Elternteil",
+    "kind_fanout": "Quantile der Kinder"
+  }
+}

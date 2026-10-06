@@ -122,6 +122,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
 function formEl(table: RegisteredTable) {
   return (
     <TableEditForm
+      savedProfilerId={null}
       editingTable={table}
       setEditingTable={vi.fn()}
       editingColumnTypes={{}}

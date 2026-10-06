@@ -1,0 +1,373 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8d2f6a41-c39e-4b75-a0d8-17e5b9c3f6a2
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The one profile statement (REQ-1934) and the reading of its result.
+
+A run reads the profiled table ONCE. Every measure comes out of a single grouped SELECT over the
+table's rows cross-joined to a small set of group selectors ``k``:
+
+* ``k = 0`` groups every row together; the table-wide aggregates (counts, extremes, moments, the
+  101-point quantile sketch, text lengths, children per parent) are computed only on that group,
+  each aggregate's input being ``CASE WHEN k = 0 THEN … END`` so the other groups feed it nulls;
+* ``k = i`` (one per profiled column) groups by the column's value, which yields its distinct count,
+  its most frequent values and, for a low-cardinality column, its whole value-frequency table;
+* ``k = n + j`` (one per text column) groups by the value's SHAPE — upper-case letters to ``A``,
+  lower-case to ``a``, digits to ``9``, other characters kept.
+
+A window ranks each group within its ``k`` and the outer filter keeps the ``k = 0`` row and the
+best-ranked value and shape groups, so the engine returns a bounded result whatever the table's
+size. Children per parent come from each child table aggregated by its key and left-joined to the
+profiled rows inside the same statement, so the profiled table is still scanned once.
+
+The statement is written in the governed SQL dialect (postgres) against the names pgwire publishes
+and goes through the one governed pipeline (``provisa.profiler.run``), which transpiles it for the
+engine.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+from provisa.dq.catalog import NUMERIC_TYPES
+
+# REQ-1934: the quantile sketch is 101 points, p0..p100.
+QUANTILE_POINTS: tuple[float, ...] = tuple(round(i / 100, 2) for i in range(101))
+# How many most-frequent values and shapes a run keeps per column.
+TOP_N = 20
+
+_NUMERIC = frozenset(NUMERIC_TYPES) | {"real", "decimal", "int", "float4", "float8", "int4", "int8"}
+_TEMPORAL = frozenset({"date", "timestamp", "timestamptz"})
+_TEXT = frozenset({"text", "varchar", "uuid", "char", "string"})
+_BOOLEAN = frozenset({"boolean", "bool"})
+
+
+def family_of(data_type: str | None) -> str:
+    """numeric | temporal | text | boolean | other — by the column's registered IR type."""
+    base = (data_type or "").lower().split("(")[0].strip()
+    if base in _NUMERIC:
+        return "numeric"
+    if base in _TEMPORAL:
+        return "temporal"
+    if base in _TEXT:
+        return "text"
+    if base in _BOOLEAN:
+        return "boolean"
+    return "other"
+
+
+@dataclass(frozen=True)
+class ColumnSpec:
+    name: str  # the column as pgwire publishes it to the org admin
+    data_type: str | None
+    family: str
+    physical: str  # the column's registered name
+
+
+@dataclass(frozen=True)
+class FanoutSpec:
+    relationship: str
+    child_table: str  # domain.table as pgwire publishes it
+    parent_key: str  # column of the profiled table
+    child_key: str  # column of the child table
+
+
+@dataclass
+class ColumnAggregates:
+    spec: ColumnSpec
+    non_null: int = 0
+    distinct: int = 0
+    min_text: str | None = None
+    max_text: str | None = None
+    vmin: float | None = None
+    vmax: float | None = None
+    m1: float | None = None
+    m2: float | None = None
+    m3: float | None = None
+    m4: float | None = None
+    stddev: float | None = None
+    log_m1: float | None = None
+    log_m2: float | None = None
+    positive: int = 0
+    integers: int = 0
+    zeros: int = 0
+    quantiles: list[float] | None = None
+    length_min: int | None = None
+    length_max: int | None = None
+    length_quantiles: list[float] | None = None
+    values: list[tuple[str | None, int]] = field(default_factory=list)
+    shapes: list[tuple[str | None, int]] = field(default_factory=list)
+
+
+@dataclass
+class FanoutAggregates:
+    spec: FanoutSpec
+    parents: int = 0
+    mean: float | None = None
+    max: int | None = None
+    childless: int = 0
+    quantiles: list[float] | None = None
+
+
+@dataclass
+class ProfileAggregates:
+    profiled_rows: int
+    columns: list[ColumnAggregates]
+    fanouts: list[FanoutAggregates]
+
+
+def _ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def qualified(table: str) -> str:
+    """``domain.table`` as a quoted two-part name."""
+    schema, _, name = table.partition(".")
+    if not name:
+        raise ValueError(f"expected a domain.table name, got {table!r}")
+    return f"{_ident(schema)}.{_ident(name)}"
+
+
+def count_sql(table: str) -> str:
+    return f"SELECT COUNT(*) AS row_count FROM {qualified(table)}"
+
+
+def _quantile_array() -> str:
+    return "ARRAY[" + ", ".join(f"{q:.2f}" for q in QUANTILE_POINTS) + "]"
+
+
+def _numeric_expr(col: str, family: str) -> str:
+    if family == "temporal":
+        return f"EXTRACT(EPOCH FROM x.{col})"
+    return f"CAST(x.{col} AS DOUBLE PRECISION)"
+
+
+def _shape_expr(expr: str) -> str:
+    inner = f"CAST({expr} AS TEXT)"
+    for pattern, cls in (("[A-Z]", "A"), ("[a-z]", "a"), ("[0-9]", "9")):
+        inner = f"REGEXP_REPLACE({inner}, '{pattern}', '{cls}', 'g')"
+    return inner
+
+
+def _scalar(expr: str) -> str:
+    return f"CASE WHEN x.k = 0 THEN {expr} END"
+
+
+@dataclass(frozen=True)
+class _Group:
+    k: int
+    column: int  # index into the column list
+    what: str  # value | shape
+
+
+def _groups(columns: list[ColumnSpec]) -> list[_Group]:
+    groups = [_Group(i + 1, i, "value") for i in range(len(columns))]
+    text = [i for i, c in enumerate(columns) if c.family == "text"]
+    groups += [_Group(len(columns) + 1 + j, i, "shape") for j, i in enumerate(text)]
+    return groups
+
+
+def profile_sql(
+    table: str,
+    columns: list[ColumnSpec],
+    fanouts: list[FanoutSpec],
+    sample_fraction: float | None,
+    low_cardinality_max: int,
+) -> str:
+    """The one statement profiling ``table``. ``sample_fraction`` None reads every row;
+    ``low_cardinality_max`` is the profiler's run default: a column with no more distinct values
+    has every value returned, for its full value-frequency table."""
+    if not columns:
+        raise ValueError(f"table {table!r} has no column the org admin can read to profile")
+    groups = _groups(columns)
+    col_refs = [_ident(c.name) for c in columns]
+
+    base_cols = [f"t.{ref} AS {_ident(f'c{i}')}" for i, ref in enumerate(col_refs)]
+    where = "" if sample_fraction is None else f" WHERE RANDOM() < {sample_fraction!r}"
+    base = f"SELECT {', '.join(base_cols)} FROM {qualified(table)} t{where}"
+    joins = ""
+    fan_cols: list[str] = []
+    names = [c.name for c in columns]
+    for r, fan in enumerate(fanouts):
+        if fan.parent_key not in names:
+            raise ValueError(
+                f"relationship {fan.relationship!r}: parent key {fan.parent_key!r} is not a "
+                f"column the org admin can read on {table!r}"
+            )
+        parent = _ident(f"c{names.index(fan.parent_key)}")
+        child = (
+            f"(SELECT {_ident(fan.child_key)} AS fk, COUNT(*) AS n "
+            f"FROM {qualified(fan.child_table)} GROUP BY {_ident(fan.child_key)})"
+        )
+        joins += f" LEFT JOIN {child} f{r} ON f{r}.fk = b.{parent}"
+        fan_cols.append(f"COALESCE(f{r}.n, 0) AS {_ident(f'n{r}')}")
+
+    val_cases = " ".join(
+        f"WHEN {g.k} THEN "
+        + (
+            f"CAST(b.{_ident(f'c{g.column}')} AS TEXT)"
+            if g.what == "value"
+            else _shape_expr(f"b.{_ident(f'c{g.column}')}")
+        )
+        for g in groups
+    )
+    selectors = ", ".join(f"({k})" for k in range(len(groups) + 1))
+    expanded = (
+        f"SELECT k.k AS k, CASE k.k {val_cases} END AS val, b.*"
+        + ("".join(f", {fc}" for fc in fan_cols))
+        + f" FROM ({base}) b{joins} CROSS JOIN (VALUES {selectors}) AS k(k)"
+    )
+
+    q = _quantile_array()
+    aggs: list[str] = []
+    for i, col in enumerate(columns):
+        c = _ident(f"c{i}")
+        aggs.append(f"COUNT({_scalar(f'x.{c}')}) AS a{i}_nn")
+        if col.family in ("numeric", "temporal"):
+            v = _numeric_expr(c, col.family)
+            aggs += [
+                f"MIN({_scalar(v)}) AS a{i}_min",
+                f"MAX({_scalar(v)}) AS a{i}_max",
+                f"AVG({_scalar(v)}) AS a{i}_m1",
+                f"AVG({_scalar(f'{v} * {v}')}) AS a{i}_m2",
+                f"AVG({_scalar(f'{v} * {v} * {v}')}) AS a{i}_m3",
+                f"AVG({_scalar(f'{v} * {v} * {v} * {v}')}) AS a{i}_m4",
+                f"STDDEV_POP({_scalar(v)}) AS a{i}_sd",
+                f"AVG({_scalar(f'CASE WHEN {v} > 0 THEN LN({v}) END')}) AS a{i}_l1",
+                f"AVG({_scalar(f'CASE WHEN {v} > 0 THEN LN({v}) * LN({v}) END')}) AS a{i}_l2",
+                f"COUNT({_scalar(f'CASE WHEN {v} > 0 THEN 1 END')}) AS a{i}_pos",
+                f"COUNT({_scalar(f'CASE WHEN {v} = FLOOR({v}) THEN 1 END')}) AS a{i}_int",
+                f"COUNT({_scalar(f'CASE WHEN {v} = 0 THEN 1 END')}) AS a{i}_zero",
+                f"PERCENTILE_CONT({q}) WITHIN GROUP (ORDER BY {_scalar(v)}) AS a{i}_q",
+            ]
+            if col.family == "temporal":
+                aggs += [
+                    f"CAST(MIN({_scalar(f'x.{c}')}) AS TEXT) AS a{i}_mint",
+                    f"CAST(MAX({_scalar(f'x.{c}')}) AS TEXT) AS a{i}_maxt",
+                ]
+        elif col.family == "text":
+            length = f"LENGTH(CAST(x.{c} AS TEXT))"
+            aggs += [
+                f"MIN({_scalar(f'x.{c}')}) AS a{i}_mint",
+                f"MAX({_scalar(f'x.{c}')}) AS a{i}_maxt",
+                f"MIN({_scalar(length)}) AS a{i}_lmin",
+                f"MAX({_scalar(length)}) AS a{i}_lmax",
+                f"PERCENTILE_CONT({q}) WITHIN GROUP (ORDER BY {_scalar(length)}) AS a{i}_lq",
+            ]
+    for r in range(len(fanouts)):
+        n = f"x.{_ident(f'n{r}')}"
+        aggs += [
+            f"COUNT({_scalar(n)}) AS f{r}_parents",
+            f"AVG({_scalar(f'CAST({n} AS DOUBLE PRECISION)')}) AS f{r}_mean",
+            f"MAX({_scalar(n)}) AS f{r}_max",
+            f"COUNT({_scalar(f'CASE WHEN {n} = 0 THEN 1 END')}) AS f{r}_zero",
+            f"PERCENTILE_CONT({q}) WITHIN GROUP (ORDER BY {_scalar(n)}) AS f{r}_q",
+        ]
+
+    keep = max(TOP_N, low_cardinality_max + 1)
+    grouped = (
+        "SELECT x.k AS k, x.val AS val, COUNT(*) AS cnt, "
+        "ROW_NUMBER() OVER (PARTITION BY x.k ORDER BY COUNT(*) DESC, x.val) AS rn, "
+        "COUNT(*) OVER (PARTITION BY x.k) AS ngroups, "
+        + ", ".join(aggs)
+        + f" FROM ({expanded}) x GROUP BY x.k, x.val"
+    )
+    return f"SELECT * FROM ({grouped}) z WHERE z.k = 0 OR z.rn <= {keep}"
+
+
+def _f(value: Any) -> float | None:
+    return None if value is None else float(value)
+
+
+def _i(value: Any) -> int:
+    if value is None:
+        raise ValueError("profile statement returned no count where one is always produced")
+    return int(value)
+
+
+def _quantiles(value: Any) -> list[float] | None:
+    if value is None:
+        return None
+    points = list(value)
+    if len(points) != len(QUANTILE_POINTS):
+        raise ValueError(
+            f"quantile sketch has {len(points)} points, expected {len(QUANTILE_POINTS)}"
+        )
+    if any(p is None for p in points):
+        return None
+    return [float(p) for p in points]
+
+
+def parse_profile_result(
+    column_names: list[str],
+    rows: list[tuple],
+    columns: list[ColumnSpec],
+    fanouts: list[FanoutSpec],
+) -> ProfileAggregates:
+    """The statement's result as aggregates per column and per relationship."""
+    records = [dict(zip(column_names, r)) for r in rows]
+    scalar = [r for r in records if r["k"] == 0]
+    if len(scalar) != 1:
+        raise ValueError(f"profile statement returned {len(scalar)} table-wide rows, expected 1")
+    s = scalar[0]
+    groups = _groups(columns)
+    by_k: dict[int, list[dict]] = {}
+    for r in records:
+        if r["k"] != 0:
+            by_k.setdefault(int(r["k"]), []).append(r)
+
+    out: list[ColumnAggregates] = []
+    for i, spec in enumerate(columns):
+        agg = ColumnAggregates(spec=spec, non_null=_i(s[f"a{i}_nn"]))
+        if spec.family in ("numeric", "temporal"):
+            agg.vmin, agg.vmax = _f(s[f"a{i}_min"]), _f(s[f"a{i}_max"])
+            agg.m1, agg.m2 = _f(s[f"a{i}_m1"]), _f(s[f"a{i}_m2"])
+            agg.m3, agg.m4 = _f(s[f"a{i}_m3"]), _f(s[f"a{i}_m4"])
+            agg.stddev = _f(s[f"a{i}_sd"])
+            agg.log_m1, agg.log_m2 = _f(s[f"a{i}_l1"]), _f(s[f"a{i}_l2"])
+            agg.positive, agg.integers = _i(s[f"a{i}_pos"]), _i(s[f"a{i}_int"])
+            agg.zeros = _i(s[f"a{i}_zero"])
+            agg.quantiles = _quantiles(s[f"a{i}_q"])
+            if spec.family == "temporal":
+                agg.min_text, agg.max_text = s[f"a{i}_mint"], s[f"a{i}_maxt"]
+            else:
+                agg.min_text = None if agg.vmin is None else repr(agg.vmin)
+                agg.max_text = None if agg.vmax is None else repr(agg.vmax)
+        elif spec.family == "text":
+            agg.min_text, agg.max_text = s[f"a{i}_mint"], s[f"a{i}_maxt"]
+            agg.length_min = None if s[f"a{i}_lmin"] is None else int(s[f"a{i}_lmin"])
+            agg.length_max = None if s[f"a{i}_lmax"] is None else int(s[f"a{i}_lmax"])
+            agg.length_quantiles = _quantiles(s[f"a{i}_lq"])
+        out.append(agg)
+    for g in groups:
+        ranked = sorted(by_k.get(g.k, []), key=lambda r: int(r["rn"]))
+        pairs = [(r["val"], int(r["cnt"])) for r in ranked]
+        agg = out[g.column]
+        if g.what == "value":
+            agg.values = pairs
+            group_count = int(ranked[0]["ngroups"]) if ranked else 0
+            has_null = agg.non_null < _i(s["cnt"])
+            agg.distinct = group_count - (1 if has_null else 0)
+        else:
+            agg.shapes = [p for p in pairs if p[0] is not None]
+
+    fans: list[FanoutAggregates] = []
+    for r, spec in enumerate(fanouts):
+        fans.append(
+            FanoutAggregates(
+                spec=spec,
+                parents=_i(s[f"f{r}_parents"]),
+                mean=_f(s[f"f{r}_mean"]),
+                max=None if s[f"f{r}_max"] is None else int(s[f"f{r}_max"]),
+                childless=_i(s[f"f{r}_zero"]),
+                quantiles=_quantiles(s[f"f{r}_q"]),
+            )
+        )
+    return ProfileAggregates(profiled_rows=_i(s["cnt"]), columns=out, fanouts=fans)
