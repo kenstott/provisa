@@ -77,3 +77,18 @@ export const checkColumnFake = (body: ColumnFakeCheck) =>
     method: "POST",
     body: JSON.stringify(body),
   });
+
+export interface FakeProposals {
+  runId: string;
+  // By column: a fake for an identifying column, else a synthetic rule.
+  columns: Record<string, { fake?: string; syntheticRule?: string }>;
+  // Columns tagged pii with no confident match: left for the operator.
+  unmatchedPii: string[];
+}
+
+// Fill from profile: proposals from the table's latest profile run; nothing is saved.
+export const proposeFakes = (tableId: number) =>
+  call<FakeProposals>("proposeFakes", "/admin/fakes/propose", {
+    method: "POST",
+    body: JSON.stringify({ tableId }),
+  });

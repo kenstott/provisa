@@ -8,11 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { ActionIcon, Badge, Checkbox, Table, TextInput } from "@mantine/core";
-import { SlidersHorizontal } from "lucide-react";
+import { ActionIcon, Badge, Button, Checkbox, Group, Table, Text, TextInput } from "@mantine/core";
+import { SlidersHorizontal, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { fetchFakeCatalog, type FakeCatalog } from "../../../api/fakes";
+import { fetchFakeCatalog, proposeFakes, type FakeCatalog } from "../../../api/fakes";
 import type { RegisteredTable } from "../../../types/admin";
 import { ColumnFakeDialog } from "./ColumnFakeDialog";
 
@@ -32,6 +32,30 @@ export function TestDataColumns({
   const [catalog, setCatalog] = useState<FakeCatalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<number | null>(null);
+  const [filled, setFilled] = useState<string | null>(null);
+  // REQ-1494: Fill from profile proposes for every column that declares neither a fake nor a rule;
+  // the proposals fill the form, which saves as any edit.
+  const fill = () => {
+    setError(null);
+    proposeFakes(table.id)
+      .then((p) => {
+        let n = 0;
+        table.columns.forEach((c, i) => {
+          const proposal = p.columns[c.columnName];
+          if (!proposal || c.fake || c.syntheticRule) return;
+          if (proposal.fake) updateEditCol(i, "fake", proposal.fake);
+          if (proposal.syntheticRule) updateEditCol(i, "syntheticRule", proposal.syntheticRule);
+          n += 1;
+        });
+        setFilled(
+          t("testData.filled", { count: n, run: p.runId }) +
+            (p.unmatchedPii.length
+              ? " " + t("testData.unmatchedPii", { columns: p.unmatchedPii.join(", ") })
+              : ""),
+        );
+      })
+      .catch((e: Error) => setError(e.message));
+  };
   useEffect(() => {
     fetchFakeCatalog()
       .then(setCatalog)
@@ -51,6 +75,23 @@ export function TestDataColumns({
   );
   return (
     <>
+      <Group justify="space-between">
+        <Button
+          size="xs"
+          variant="light"
+          leftSection={<Sparkles size={14} />}
+          onClick={fill}
+          data-tour="fill-from-profile"
+          data-testid="testdata-fill"
+        >
+          {t("testData.fillFromProfile")}
+        </Button>
+        {filled && (
+          <Text size="sm" c="dimmed" data-testid="testdata-filled">
+            {filled}
+          </Text>
+        )}
+      </Group>
       {error && <div className="error">{error}</div>}
       <Table className="data-table" data-testid="testdata-columns">
         <Table.Thead>

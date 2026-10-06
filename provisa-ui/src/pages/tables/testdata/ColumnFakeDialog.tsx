@@ -11,7 +11,7 @@
 import { Button, Group, Modal, Stack, Switch, Text } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { checkColumnFake, type FakeCatalog } from "../../../api/fakes";
+import { checkColumnFake, proposeFakes, type FakeCatalog } from "../../../api/fakes";
 import type { RegisteredTable, TableColumn } from "../../../types/admin";
 import { FakePicker } from "./FakePicker";
 
@@ -38,6 +38,24 @@ export function ColumnFakeDialog({
   const [rule, setRule] = useState(column.syntheticRule ?? "");
   const [stable, setStable] = useState(!!column.fakeStable);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  // REQ-1494: this column's proposal from the table's latest profile run.
+  const fill = () => {
+    proposeFakes(table.id)
+      .then((p) => {
+        const proposal = p.columns[column.columnName];
+        if (proposal?.fake) setFake(proposal.fake);
+        if (proposal?.syntheticRule) setRule(proposal.syntheticRule);
+        setNote(
+          proposal
+            ? null
+            : p.unmatchedPii.includes(column.columnName)
+              ? t("testData.noConfidentMatch")
+              : t("testData.noProposal"),
+        );
+      })
+      .catch((e: Error) => setNote(e.message));
+  };
   useEffect(() => {
     const timer = setTimeout(() => {
       checkColumnFake({
@@ -85,12 +103,20 @@ export function ColumnFakeDialog({
           rule
           testId="testdata-dialog-rule"
         />
+        {note && (
+          <Text size="sm" c="dimmed" data-testid="testdata-dialog-note">
+            {note}
+          </Text>
+        )}
         {refusal && (
           <Text c="red" size="sm" data-testid="testdata-dialog-refusal">
             {refusal}
           </Text>
         )}
         <Group justify="flex-end">
+          <Button variant="light" mr="auto" onClick={fill} data-testid="testdata-dialog-fill">
+            {t("testData.fillFromProfile")}
+          </Button>
           <Button variant="default" onClick={onClose}>
             {t("testData.cancel")}
           </Button>

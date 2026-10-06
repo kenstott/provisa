@@ -20,6 +20,11 @@
       "transform": "変換",
       "relative": "他の列に対する相対値",
       "rule": "合成ルールのみ"
-    }
+    },
+    "fillFromProfile": "プロファイルから入力",
+    "filled": "入力した列: {{count}}（プロファイル実行 {{run}}）。",
+    "unmatchedPii": "確実な一致のない PII（判断はお任せします）: {{columns}}。",
+    "noConfidentMatch": "プロファイルに確実な一致のない PII: フェイク値を宣言してください。",
+    "noProposal": "プロファイルはこの列に何も提案しません。"
   }
 }

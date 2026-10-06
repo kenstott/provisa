@@ -18,6 +18,7 @@ import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
 const api = vi.hoisted(() => ({
   fetchFakeCatalog: vi.fn(),
   checkColumnFake: vi.fn(),
+  proposeFakes: vi.fn(),
 }));
 vi.mock("../../../api/fakes", () => api);
 
@@ -176,6 +177,11 @@ const CATALOG = {
 beforeEach(() => {
   api.fetchFakeCatalog.mockReset().mockResolvedValue(CATALOG);
   api.checkColumnFake.mockReset().mockResolvedValue({ ok: true });
+  api.proposeFakes.mockReset().mockResolvedValue({
+    runId: "r1",
+    columns: { email: { fake: "email()" }, tier: { syntheticRule: "categories()" } },
+    unmatchedPii: ["secret"],
+  });
 });
 
 function testDataMode() {
@@ -256,5 +262,35 @@ describe("TableEditForm — a column's test data (REQ-1494)", () => {
     expect(plain.fake).toBeUndefined();
     expect(plain.fakeStable).toBeUndefined();
     expect(plain.syntheticRule).toBeUndefined();
+  });
+
+  it("fills from profile only the columns that declare nothing, and names unmatched pii", async () => {
+    const updateEditCol = vi.fn();
+    const columns = [
+      { ...EMAIL },
+      { ...EMAIL, id: 2, columnName: "tier", syntheticRule: "bool()" },
+    ];
+    renderForm(makeTable({ columns }), [SOURCE], updateEditCol);
+    testDataMode();
+    expect(screen.getByTestId("testdata-fill")).toHaveAttribute("data-tour", "fill-from-profile");
+    fireEvent.click(screen.getByTestId("testdata-fill"));
+    expect(await screen.findByTestId("testdata-filled")).toHaveTextContent("secret");
+    expect(api.proposeFakes).toHaveBeenCalledWith(2);
+    expect(updateEditCol).toHaveBeenCalledWith(0, "fake", "email()");
+    expect(updateEditCol).not.toHaveBeenCalledWith(1, "syntheticRule", "categories()");
+  });
+
+  it("fills one column's dialog from profile", async () => {
+    renderForm(makeTable({ columns: [{ ...EMAIL }] }), [SOURCE]);
+    testDataMode();
+    const [open] = screen.getAllByTestId("testdata-open-email");
+    await waitFor(() => expect(open).not.toBeDisabled());
+    fireEvent.click(open);
+    fireEvent.click(screen.getByTestId("testdata-dialog-fill"));
+    await waitFor(() =>
+      expect((screen.getByTestId("testdata-dialog-fake-text") as HTMLInputElement).value).toBe(
+        "email()",
+      ),
+    );
   });
 });

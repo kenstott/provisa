@@ -20,6 +20,11 @@
       "transform": "Transforms",
       "relative": "Relative to other columns",
       "rule": "Synthetic rules only"
-    }
+    },
+    "fillFromProfile": "Fill from profile",
+    "filled": "Columns filled: {{count}} (profile run {{run}}).",
+    "unmatchedPii": "Tagged pii with no confident match, left for you: {{columns}}.",
+    "noConfidentMatch": "Tagged pii, with no confident match in the profile: declare its fake.",
+    "noProposal": "The profile proposes nothing for this column."
   }
 }

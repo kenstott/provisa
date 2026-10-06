@@ -20,6 +20,11 @@
       "transform": "Transformationen",
       "relative": "Relativ zu anderen Spalten",
       "rule": "Nur synthetische Regeln"
-    }
+    },
+    "fillFromProfile": "Aus Profil füllen",
+    "filled": "Gefüllte Spalten: {{count}} (Profillauf {{run}}).",
+    "unmatchedPii": "PII ohne sichere Zuordnung, Ihnen überlassen: {{columns}}.",
+    "noConfidentMatch": "PII ohne sichere Zuordnung im Profil: Fake-Wert deklarieren.",
+    "noProposal": "Das Profil schlägt für diese Spalte nichts vor."
   }
 }

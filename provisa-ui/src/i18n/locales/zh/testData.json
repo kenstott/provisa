@@ -20,6 +20,11 @@
       "transform": "转换",
       "relative": "相对于其他列",
       "rule": "仅合成规则"
-    }
+    },
+    "fillFromProfile": "从画像填充",
+    "filled": "已填充的列：{{count}}（画像运行 {{run}}）。",
+    "unmatchedPii": "无可靠匹配的 PII，由您决定：{{columns}}。",
+    "noConfidentMatch": "画像中无可靠匹配的 PII：请声明其虚构值。",
+    "noProposal": "画像未为此列提出任何建议。"
   }
 }

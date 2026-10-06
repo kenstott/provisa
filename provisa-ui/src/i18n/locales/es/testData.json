@@ -20,6 +20,11 @@
       "transform": "Transformaciones",
       "relative": "Relativos a otras columnas",
       "rule": "Solo reglas sintéticas"
-    }
+    },
+    "fillFromProfile": "Rellenar desde el perfil",
+    "filled": "Columnas rellenadas: {{count}} (ejecución de perfil {{run}}).",
+    "unmatchedPii": "PII sin coincidencia segura, a su criterio: {{columns}}.",
+    "noConfidentMatch": "PII sin coincidencia segura en el perfil: declare su valor ficticio.",
+    "noProposal": "El perfil no propone nada para esta columna."
   }
 }

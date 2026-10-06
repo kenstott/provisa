@@ -449,3 +449,25 @@ def test_an_undeclared_boolean_keeps_its_share_of_true(generated):
     active = _shares(generated["boot"], "active")
     assert set(active) <= {True, False}, active
     assert active[True] == pytest.approx(0.8, abs=0.07)
+
+
+def test_fill_from_profile_proposes_fakes_for_identifying_columns_and_rules_for_the_rest(
+    profiled,
+):
+    """REQ-1494: from customers' latest profile run -- email and region (an address part, by its
+    name) identifying, so fakes; active (boolean) a synthetic rule; tier and segment, already
+    declared, nothing."""
+    engine = sa.create_engine(profiled.url)
+    with engine.connect() as conn:
+        (table_id,) = conn.execute(
+            sa.text(
+                f"SELECT id FROM org_{profiled.org_id}.registered_tables WHERE table_name = 'customers'"
+            )
+        ).one()
+    engine.dispose()
+    status, body = _call(profiled, "POST", "/admin/fakes/propose", {"tableId": table_id})
+    assert status == 200, body
+    assert body["columns"]["email"] == {"fake": "email()"}
+    assert body["columns"]["region"] == {"fake": "state()"}
+    assert body["columns"]["active"] == {"syntheticRule": "bool()"}
+    assert "tier" not in body["columns"] and "segment" not in body["columns"]

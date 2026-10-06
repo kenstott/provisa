@@ -15,6 +15,9 @@
 * ``POST /admin/fakes/check`` -- whether a column's fake, synthetic rule and stable flag would be
   saved: the table's other columns and the model's relationships as stored, this column as given.
   A refusal is answered 422 with the save's own message.
+* ``POST /admin/fakes/propose`` -- Fill from profile: a fake for each identifying column and a
+  synthetic rule for the others, from the table's latest profile run in the selected environment,
+  for every column that declares neither. Nothing is saved.
 """
 
 from __future__ import annotations
@@ -84,3 +87,42 @@ async def check_column_fake(request: Request, body: ColumnFakeIn) -> dict[str, A
     except FakeRefused as exc:
         raise ApiError(422, "schema.fake_refused", str(exc), column=body.column) from exc
     return {"ok": True}
+
+
+class ProposeIn(BaseModel):
+    tableId: int
+
+
+@router.post("/propose")
+async def propose_fakes(request: Request, body: ProposeIn) -> dict[str, Any]:
+    require_capability_request(request, _RIGHT)
+    from provisa.api.admin.db_queries import fetch_tables
+    from provisa.core.request_context import current_env, require_current_org
+    from provisa.fakes.propose import latest_facts, propose
+    from provisa.profiler.run import column_tags
+
+    if state.model_db is None:
+        raise ApiError(503, "fakes.database_unavailable", "Database unavailable")
+    async with state.model_db.acquire() as conn:
+        reg = next((t for t in await fetch_tables(conn) if t["id"] == body.tableId), None)
+        if reg is None:
+            raise ApiError(404, "fakes.table_not_found", f"table {body.tableId} is not registered")
+        latest = await latest_facts(
+            conn, org_id=require_current_org(), env=current_env.get(), reg=reg
+        )
+        tags = await column_tags(conn, body.tableId)
+    if latest is None:
+        raise ApiError(
+            422,
+            "fakes.no_profile_run",
+            f"table {reg['table_name']!r} has no succeeded profile run in this environment; "
+            "run its profiler first",
+            table=reg["table_name"],
+        )
+    run_id, facts = latest
+    declared = {
+        c["column_name"] for c in reg["columns"] if c.get("fake") or c.get("synthetic_rule")
+    }
+    pii = {c for c, tagged in tags.items() if "pii" in tagged}
+    out = propose(run_id, facts, pii, declared)
+    return {"runId": out.run_id, "columns": out.columns, "unmatchedPii": out.unmatched_pii}

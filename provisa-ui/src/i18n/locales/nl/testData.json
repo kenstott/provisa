@@ -20,6 +20,11 @@
       "transform": "Transformaties",
       "relative": "Relatief aan andere kolommen",
       "rule": "Alleen synthetische regels"
-    }
+    },
+    "fillFromProfile": "Vullen uit profiel",
+    "filled": "Gevulde kolommen: {{count}} (profielrun {{run}}).",
+    "unmatchedPii": "PII zonder zekere match, aan u overgelaten: {{columns}}.",
+    "noConfidentMatch": "PII zonder zekere match in het profiel: declareer de nepwaarde.",
+    "noProposal": "Het profiel stelt niets voor voor deze kolom."
   }
 }

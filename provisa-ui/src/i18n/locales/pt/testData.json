@@ -20,6 +20,11 @@
       "transform": "Transformações",
       "relative": "Relativos a outras colunas",
       "rule": "Somente regras sintéticas"
-    }
+    },
+    "fillFromProfile": "Preencher a partir do perfil",
+    "filled": "Colunas preenchidas: {{count}} (execução do perfil {{run}}).",
+    "unmatchedPii": "PII sem correspondência segura, para sua decisão: {{columns}}.",
+    "noConfidentMatch": "PII sem correspondência segura no perfil: declare o valor fictício.",
+    "noProposal": "O perfil não propõe nada para esta coluna."
   }
 }
