@@ -63,7 +63,7 @@ from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("root")]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
@@ -204,7 +204,7 @@ def planes(monkeypatch):
     from provisa.api.org_runtime import OrgRegistry, OrgRuntime
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
-    monkeypatch.setattr(app_state, "org_id", "root", raising=False)
+    # The app serves "root" and is bound to it (pytestmark deployment_org).
 
     # The org runtime is the data plane; these tests exercise the control plane, so each org's
     # runtime carries its real tenant Database and nothing more. An org created mid-test has no
@@ -303,6 +303,12 @@ def _make_app(planes) -> FastAPI:
 
 def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def _pat_in_root() -> dict[str, str]:
+    """pat, the platform administrator, on a tenant-plane request: /admin/users is not the platform
+    plane, so the request names pat's own org (REQ-1935: a cross_org principal has no implied org)."""
+    return {**_auth("tok-pat"), "x-org-provisa": "root"}
 
 
 def _alice_in_acme() -> dict[str, str]:
@@ -816,7 +822,7 @@ def test_the_holder_of_the_cross_org_right_deletes_the_account_everywhere(planes
     a tombstone wherever the id is recorded."""
     _give_profile(planes, "dana")
     with TestClient(_make_app(planes)) as client:
-        resp = client.delete("/admin/users/dana", headers=_auth("tok-pat"))
+        resp = client.delete("/admin/users/dana", headers=_pat_in_root())
     assert resp.status_code == 200, resp.text
     from provisa.core.org_membership import tombstone_id
 
@@ -843,7 +849,7 @@ def test_the_holder_of_the_cross_org_right_deletes_the_account_everywhere(planes
 
 def test_an_administrator_cannot_delete_the_last_org_admin_of_an_org(planes):
     with TestClient(_make_app(planes)) as client:
-        resp = client.delete("/admin/users/alice", headers=_auth("tok-pat"))
+        resp = client.delete("/admin/users/alice", headers=_pat_in_root())
     assert resp.status_code == 409, resp.text
     body = resp.json()
     assert body["code"] == "users.last_org_admin", body
@@ -853,7 +859,7 @@ def test_an_administrator_cannot_delete_the_last_org_admin_of_an_org(planes):
 
 def test_an_administrator_cannot_delete_the_last_platform_admin(planes):
     with TestClient(_make_app(planes)) as client:
-        resp = client.delete("/admin/users/pat", headers=_auth("tok-pat"))
+        resp = client.delete("/admin/users/pat", headers=_pat_in_root())
     assert resp.status_code == 409, resp.text
     assert resp.json()["code"] == "users.last_platform_admin", resp.text
     assert _memberships(planes, "pat") == ["root"]
