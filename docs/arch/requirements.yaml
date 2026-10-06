@@ -49214,7 +49214,7 @@
     environment is stable unless declared otherwise, since test data is extracted, kept and compared over
     time. Fakes there are computed by the serving engine like every other fake, so ordering, filtering,
     grouping, joining and aggregating work on them. The Environments page of the admin shows a Test data
-    switch on each environment with one line on what it does. Stable fakes of numbers, dates and times also keep order: the fake is a keyed transform that only ever rises with the value, so a smaller real value always shows a smaller fake, equal values show equal fakes, and comparisons, ranges, sorts, minimums, maximums and top-N select the same rows they would over the real values, on every engine and in every region. Such a fake reveals the order of the values, which the operator accepts by declaring the column stable. A fake not declared stable keeps no order, and comparisons and sorts over it are consistent only among the fakes themselves.'
+    switch on each environment with one line on what it does. Comparisons, ranges and sorts over a faked column are over its faked values, which define their own order; no fake keeps the order of the real values. A stable fake gives the same values, so the same order and the same results, on every engine and in every region; a fake not declared stable gives them within one engine and region.'
   use_case: A data scientist, or an LLM acting under its own identity, works on masked data that behaves
     like the real data (joins match, counts are right, values look real) without any personal data reaching
     them. An analyst joins a masked customer table to a masked orders table and gets the row counts the
