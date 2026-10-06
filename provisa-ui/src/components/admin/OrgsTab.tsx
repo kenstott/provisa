@@ -41,7 +41,7 @@ import {
 import type { Org, OrgMember, OrgInvite } from "../../api/admin";
 import { FilterInput } from "./FilterInput";
 import { inviteUrl } from "../../lib/authHost";
-import { ListTable } from "../list/ListTable";
+import { ListTable, ListRow } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -256,7 +256,7 @@ export function OrgsTab() {
             {pagedOrgs.map((org) => {
               const expanded = expandedOrgId === org.id;
               return (
-                <Table.Tr key={org.id}>
+                <ListRow key={org.id}>
                   <Table.Td>{org.id}</Table.Td>
                   <Table.Td>{org.name}</Table.Td>
                   <Table.Td>
@@ -337,7 +337,7 @@ export function OrgsTab() {
                       </ActionIcon>
                     )}
                   </Table.Td>
-                </Table.Tr>
+                </ListRow>
               );
             })}
           </Table.Tbody>
@@ -425,7 +425,7 @@ export function OrgsTab() {
               </Table.Tr>
             )}
             {pagedInvites.map((inv) => (
-              <Table.Tr key={inv.token}>
+              <ListRow key={inv.token}>
                 <Table.Td>{inv.org_name}</Table.Td>
                 <Table.Td>
                   <Badge variant="light" color={inv.role_id === "org_admin" ? "blue" : "gray"}>
@@ -472,7 +472,7 @@ export function OrgsTab() {
                     )}
                   </Group>
                 </Table.Td>
-              </Table.Tr>
+              </ListRow>
             ))}
           </Table.Tbody>
         </ListTable>

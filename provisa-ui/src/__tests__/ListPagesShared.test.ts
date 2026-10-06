@@ -50,6 +50,8 @@ describe("REQ-1940 list pages use the shared list component", () => {
     const tsx = src(page);
     expect(tsx).toMatch(/from "(\.\.\/)+(components\/)?list\/ListTable"/);
     // No page-local list styling: no striped/bordered Mantine tables or scroll containers.
+    // Item rows are ListRow, so every list gets the stripe and hover.
+    expect(tsx).toContain("<ListRow");
     expect(tsx).not.toContain("<Table.ScrollContainer");
     expect(tsx).not.toMatch(/<Table\s+striped/);
   });

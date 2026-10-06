@@ -59,7 +59,7 @@ import { RepoIntegrationPanel } from "./RepoIntegrationPanel";
 import { SyntheticDatasetsPanel } from "./SyntheticDatasetsPanel";
 import { SyntheticSeedFields } from "./SyntheticSeedFields";
 import type { SyntheticSeed } from "./syntheticSeed";
-import { ListTable } from "../list/ListTable";
+import { ListTable, ListRow } from "../list/ListTable";
 
 const PROD = "prod";
 
@@ -538,7 +538,7 @@ export function EnvironmentsTab() {
               </Table.Thead>
               <Table.Tbody>
                 {envs.map((e) => (
-                  <Table.Tr key={e.name} data-testid={`env-row-${e.name}`}>
+                  <ListRow key={e.name} testId={`env-row-${e.name}`}>
                     <Table.Td>
                       <Group gap="xs">
                         <Text size="sm">{e.name}</Text>
@@ -678,7 +678,7 @@ export function EnvironmentsTab() {
                         )}
                       </Group>
                     </Table.Td>
-                  </Table.Tr>
+                  </ListRow>
                 ))}
               </Table.Tbody>
             </ListTable>

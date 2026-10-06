@@ -51,7 +51,7 @@ import {
   type SecretsServiceState,
   type Vault,
 } from "../../api/secrets";
-import { ListTable } from "../list/ListTable";
+import { ListTable, ListRow } from "../list/ListTable";
 
 /**
  * REQ-1557, REQ-1558: the org's secrets — NAMES GO IN, VALUES NEVER COME BACK OUT.
@@ -350,7 +350,7 @@ function SecretsVault({ vault, header }: VaultProps) {
           </Table.Thead>
           <Table.Tbody>
             {state.secrets.map((s) => (
-              <Table.Tr key={s.name} data-testid={`secret-row-${s.name}`}>
+              <ListRow key={s.name} testId={`secret-row-${s.name}`}>
                 <Table.Td>
                   <Code>{s.name}</Code>
                 </Table.Td>
@@ -416,7 +416,7 @@ function SecretsVault({ vault, header }: VaultProps) {
                     </Group>
                   )}
                 </Table.Td>
-              </Table.Tr>
+              </ListRow>
             ))}
           </Table.Tbody>
         </ListTable>

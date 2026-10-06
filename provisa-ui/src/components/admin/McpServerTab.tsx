@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { useTranslation, Trans } from "react-i18next";
 import { Alert, Badge, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { fetchMcpServer, type McpServerStatus } from "../../api/admin";
-import { ListTable } from "../list/ListTable";
+import { ListTable, ListRow } from "../list/ListTable";
 
 // REQ-1008: read-only status of the in-process MCP server. It is enabled purely via the
 // PROVISA_MCP_PORT env var at boot, so this tab reports current state + how to enable it rather
@@ -101,10 +101,10 @@ export function McpServerTab() {
           </Table.Thead>
           <Table.Tbody>
             {status.tools.map((tool) => (
-              <Table.Tr key={tool.name}>
+              <ListRow key={tool.name}>
                 <Table.Td ff="monospace">{tool.name}</Table.Td>
                 <Table.Td>{tool.description}</Table.Td>
-              </Table.Tr>
+              </ListRow>
             ))}
           </Table.Tbody>
         </ListTable>

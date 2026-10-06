@@ -38,7 +38,7 @@ import {
 } from "../../api/admin";
 import type { LocalUser, UserAssignment } from "../../api/admin";
 import { useCapability } from "../../hooks/useCapability";
-import { ListTable } from "../list/ListTable";
+import { ListTable, ListRow } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -196,7 +196,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
             {paged.map((u) => {
               const expanded = expandedUserId === u.id;
               return (
-                <Table.Tr key={u.id}>
+                <ListRow key={u.id}>
                   <Table.Td>
                     <Button
                       variant="subtle"
@@ -290,7 +290,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
                       <Trash2 size={14} />
                     </ActionIcon>
                   </Table.Td>
-                </Table.Tr>
+                </ListRow>
               );
             })}
           </Table.Tbody>

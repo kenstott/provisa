@@ -40,7 +40,7 @@ import {
 } from "../../api/synthetic";
 import { DatasetAssertions } from "./synthetic/DatasetAssertions";
 import { DatasetConditions } from "./synthetic/DatasetConditions";
-import { ListTable } from "../list/ListTable";
+import { ListTable, ListRow } from "../list/ListTable";
 
 const PROD = "prod";
 
@@ -188,7 +188,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
         </Table.Thead>
         <Table.Tbody>
           {datasets.map((d) => (
-            <Table.Tr key={d.id} data-testid={`synthetic-row-${d.id}`}>
+            <ListRow key={d.id} testId={`synthetic-row-${d.id}`}>
               <Table.Td>{d.id}</Table.Td>
               <Table.Td>
                 <Badge
@@ -243,7 +243,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
                   </Button>
                 </Group>
               </Table.Td>
-            </Table.Tr>
+            </ListRow>
           ))}
         </Table.Tbody>
       </ListTable>
@@ -265,7 +265,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
             </Table.Thead>
             <Table.Tbody>
               {report.rows.map((r, i) => (
-                <Table.Tr key={i}>
+                <ListRow key={i}>
                   <Table.Td>{r.table}</Table.Td>
                   <Table.Td>{r.column ?? ""}</Table.Td>
                   <Table.Td>{measureLabel(r.measure)}</Table.Td>
@@ -273,7 +273,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
                   <Table.Td>{syntheticCell(r)}</Table.Td>
                   <Table.Td>{num(r.delta)}</Table.Td>
                   <Table.Td>{r.note ?? ""}</Table.Td>
-                </Table.Tr>
+                </ListRow>
               ))}
             </Table.Tbody>
           </Table>
@@ -323,7 +323,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
             {runs.map((r) => {
               const p = picked[r.tableId];
               return (
-                <Table.Tr key={r.tableId}>
+                <ListRow key={r.tableId}>
                   <Table.Td>
                     <Checkbox
                       label={r.tableName}
@@ -374,7 +374,7 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
                       }
                     />
                   </Table.Td>
-                </Table.Tr>
+                </ListRow>
               );
             })}
           </Table.Tbody>

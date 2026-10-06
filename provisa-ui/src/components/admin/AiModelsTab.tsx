@@ -42,7 +42,7 @@ import {
   type VectorModel,
 } from "../../api/aiModels";
 import { usePanelState } from "../../hooks/usePanelState";
-import { ListTable } from "../list/ListTable";
+import { ListTable, ListRow } from "../list/ListTable";
 
 // REQ-464, REQ-419, REQ-500, REQ-370, REQ-1790: configure per-operation AI model assignments, the
 // embedding-model registry, custom AI endpoints (openai/anthropic style), and the NL rate limit.
@@ -438,7 +438,7 @@ export function AiModelsTab() {
           </Table.Thead>
           <Table.Tbody>
             {s.vector_models.map((vm, i) => (
-              <Table.Tr key={i}>
+              <ListRow key={i}>
                 <Table.Td>
                   <TextInput
                     aria-label={t("aiModelsTab.vectorId")}
@@ -493,7 +493,7 @@ export function AiModelsTab() {
                     <Trash2 size={16} />
                   </ActionIcon>
                 </Table.Td>
-              </Table.Tr>
+              </ListRow>
             ))}
           </Table.Tbody>
         </ListTable>
@@ -526,7 +526,7 @@ export function AiModelsTab() {
           </Table.Thead>
           <Table.Tbody>
             {s.ai_endpoints.map((ep, i) => (
-              <Table.Tr key={i}>
+              <ListRow key={i}>
                 <Table.Td>
                   <TextInput
                     aria-label={t("aiModelsTab.endpointId")}
@@ -585,7 +585,7 @@ export function AiModelsTab() {
                     <Trash2 size={16} />
                   </ActionIcon>
                 </Table.Td>
-              </Table.Tr>
+              </ListRow>
             ))}
           </Table.Tbody>
         </ListTable>

@@ -32,7 +32,7 @@ import {
 } from "../../hooks/useAdminOpsQueries";
 import { useRoles } from "../../hooks/useAdminQueries";
 import { fetchActions, type TrackedWebhook } from "../../api/actions";
-import { ListTable } from "../list/ListTable";
+import { ListTable, ListRow } from "../list/ListTable";
 
 const PAGE_SIZE = 50;
 
@@ -296,7 +296,7 @@ export function ScheduledTasks() {
               </Table.Thead>
               <Table.Tbody>
                 {paged.map((task) => (
-                  <Table.Tr key={task.id}>
+                  <ListRow key={task.id}>
                     <Table.Td>
                       <Text ff="monospace" fz="sm">
                         {task.id}
@@ -366,7 +366,7 @@ export function ScheduledTasks() {
                         </Button>
                       </Group>
                     </Table.Td>
-                  </Table.Tr>
+                  </ListRow>
                 ))}
               </Table.Tbody>
             </ListTable>

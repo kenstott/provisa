@@ -14,7 +14,7 @@ import { notifications } from "@mantine/notifications";
 import { useTranslation } from "react-i18next";
 import { decideMergeRequest, fetchMergeRequests } from "../../api/environments";
 import type { MergeRequest } from "../../api/environments";
-import { ListTable } from "../list/ListTable";
+import { ListTable, ListRow } from "../list/ListTable";
 
 const STATE_COLOR: Record<string, string> = {
   open: "blue",
@@ -101,7 +101,7 @@ export function MergeRequestsPanel({ orgId, canDecide }: { orgId: string; canDec
           </Table.Thead>
           <Table.Tbody>
             {requests.map((r) => (
-              <Table.Tr key={r.id} data-testid={`merge-request-${r.id}`}>
+              <ListRow key={r.id} testId={`merge-request-${r.id}`}>
                 <Table.Td>
                   <Text size="sm">
                     {sourceOf(r)} → {r.target_env}
@@ -173,7 +173,7 @@ export function MergeRequestsPanel({ orgId, canDecide }: { orgId: string; canDec
                     </Text>
                   )}
                 </Table.Td>
-              </Table.Tr>
+              </ListRow>
             ))}
           </Table.Tbody>
         </ListTable>
