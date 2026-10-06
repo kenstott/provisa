@@ -85,7 +85,7 @@ PROVISA_BENCH_ORDERS=200000 PROVISA_BENCH_NEO4J_ORDERS=20000 \
   ./start-ui-install.sh --demo perf
 ```
 
-The first start also builds a custom PostgreSQL image, which compiles several extensions. For a customer demo, build a demo of your own, as below, and treat `perf` as a worked example of the layout. I have not started `perf` on a laptop for this guide.
+The first start also builds a custom PostgreSQL image, which compiles several extensions. For a customer demo, build a demo of your own, as below, and treat `perf` as a worked example of the layout.
 
 ### Add a toy source on top
 
@@ -518,7 +518,7 @@ The two combine: `./start-ui-install.sh --demo retail --source=redis`.
 
 1. **Open on the Sources page.** Show the registered sources and their types. Then show **Tables**: every source becomes the same kind of table.
 2. **Take the product tour.** The first time the UI opens, it offers a guided tour. The compass icon in the toolbar starts it again at any time. It registers a source, exposes tables and then queries them in several languages, in about five minutes. Press `Esc` or click outside to leave.
-3. **Run one query that crosses sources.** Use the SQL page. The retail query above joins a database table to a table loaded from the CSV.
+3. **Run one query that crosses tables.** Use the SQL page. The retail query above joins orders to stores and totals revenue by region. To show a join across sources, join a retail table to a pet-store table, or add a toy source with `--source`.
 4. **Show the same query in GraphQL.** One model, many query languages.
 5. **Show governance.** Open **Security** and show roles and row rules. Connect a SQL client to pgwire (`postgresql://admin:ignored@localhost:5439/provisa`) and show the same data there.
 6. **Ask Polly.** Polly is the data assistant, in a panel at the side of the UI. It needs an LLM vendor and credential first. Without one, Polly shows "Polly isn't set up yet" and a button to the AI Models page (`/admin/ai-models`). Configure it before the session. The natural-language page in the tour uses seeded answers and works without one.
