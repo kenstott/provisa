@@ -225,3 +225,35 @@ def test_shipped_promotions_name_fields_the_runner_actually_writes():
     emitted = {"max_timestamp", "dataset_rows_tested"}
     assert {p["field"] for p in DQ_PROMOTIONS} <= emitted
     assert all(p["jsonb_column"] == "diagnostics" for p in DQ_PROMOTIONS)
+
+
+@pytest.mark.asyncio
+async def test_a_connection_written_with_references_reaches_the_checker_resolved(monkeypatch):
+    # The store holds a checker source's mapping as written (REQ-1919): its port may be the
+    # reference the config gave, which the checker's int field cannot parse until it is resolved.
+    import provisa.dq.runner as runner
+
+    monkeypatch.setenv("PROVISA_TEST_DQ_PORT", "6543")
+    sent: dict = {}
+
+    async def _capture(payload: dict, *, timeout: float) -> dict:
+        sent.update(payload)
+        return {"checker": "soda", "checker_version": "x", "checks": []}
+
+    monkeypatch.setattr(runner, "_run_worker", _capture)
+    await run_contract(
+        checker="soda",
+        contract_text="dataset: provisa/sales/orders",
+        connection={
+            "host": "localhost",
+            "port": "${env:PROVISA_TEST_DQ_PORT:-5439}",
+            "database": "provisa",
+            "user": "u",
+            "password": "p",
+        },
+        data_source_name="provisa",
+        scan_id="s",
+        scan_time=SCAN_TIME,
+        target_table="sales.orders",
+    )
+    assert sent["connection"]["port"] == "6543"

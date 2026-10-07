@@ -111,10 +111,14 @@ async def run_contract(
             f"contract dataset {dataset!r} names data source {declared_source!r} but the source is "
             f"configured as {data_source_name!r}; the contract and the endpoint must agree"
         )
+    # The store holds a source's mapping as written (REQ-1919), so a field may still be a
+    # ``${env:...}``/``${secret:...}`` reference; it is resolved here, where it is used (REQ-251).
+    from provisa.core.secrets import resolve_secrets_in_dict
+
     payload = {
         "checker": checker,
         "contract_text": contract_text,
-        "connection": connection,
+        "connection": resolve_secrets_in_dict(connection),
         "data_source_name": data_source_name,
         "sampler_limit": sampler_limit,
     }
