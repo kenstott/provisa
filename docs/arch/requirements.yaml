@@ -77038,3 +77038,19 @@
   - REQ-1942
   - REQ-1944
   notes: 'Maintainer 2026-10-07: rethinking the product tour -- the deeper dives should be menu driven, 5-7 topics the user can select from with cards, and Done returns you to the menu. Maintainer (later): a new user starts with the core tour; the core tour could have a button to select the Deep Dives.'
+- id: REQ-1946
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Enterprise Sources
+  priority: SHOULD
+  type: behavioral
+  description: 'Salesforce is a source type. A Salesforce source names the org''s My Domain login URL and one complete credential set -- a connected app''s consumer key and secret (client credentials), a username and password with the consumer key and secret and an optional security token, or a pre-issued access token with its instance URL -- and optionally an API version; every sObject the credential can query is a table the steward may register, and nothing is registered automatically. On Trino the source is read through the trino-salesforce connector, which reads only. On every other engine it is reached through the bundled pgwire-salesforce server, the way a SharePoint source is reached through pgwire-sharepoint, and through that server it is read and written: insert, update and delete on a registered sObject are mutations, governed, audited and handled per environment as any other mutation is. A SharePoint source is written through pgwire-sharepoint the same way. A write to a Salesforce or SharePoint source whose only reader on the serving engine is read-only is refused, naming the reason. Salesforce appears in the source pick list under Enterprise, in the source documentation, and in every count of source types the product states, the tour''s among them. Both adapters are fetched from the pinned engine release, as the SharePoint ones are.'
+  use_case: A sales-operations steward connects the company's Salesforce org, registers Account and Opportunity,
+    joins them to the warehouse's invoices, and lets an approved role correct an Opportunity's stage with a SQL UPDATE.
+  related_reqs:
+  - REQ-1690
+  - REQ-1730
+  - REQ-1923
+  - REQ-1942
+  notes: 'Maintainer 2026-10-07: added new pgwire-salesforce (RW) and trino-salesforce (R) adapters; wire these into the data sources similar to sharepoint; add them to the data sources pick list, the docs, and the product tour references to number of datasources. Maintainer (later): the pgwire server is being rewritten now -- sharepoint and salesforce will support RW on pgwire-*. Adapters are on calcite branch feat/salesforce-adapter; no engine release carries them yet -- wire now, pin on release.'
