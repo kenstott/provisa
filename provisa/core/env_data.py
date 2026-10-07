@@ -37,7 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, insert, select, update
 
 from provisa.core.env_classes import (
     BINDING_COLUMN,
@@ -46,10 +46,12 @@ from provisa.core.env_classes import (
     COPIED,
     DATA_MODES,
     INHERIT,
+    SYNTHETIC,
     TEST_FAKE,
     TEST_SYNTHETIC,
     UNBOUND,
     UNBOUND_MODE,
+    model_type,
 )
 
 if TYPE_CHECKING:
@@ -118,12 +120,27 @@ async def unbind(conn: "Connection", schema: str, source_ids: list[str] | None) 
     ids = await _source_ids(conn, schema, source_ids)
     if ids:
         sources = _table("sources", schema)
+        await _give_back_model_types(conn, sources, ids)
         await conn.execute_core(
             update(sources)
             .where(sources.c.id.in_(ids))
             .values({**CLEARED_SOURCE_CONNECTION, BINDING_COLUMN: UNBOUND})
         )
     return ids
+
+
+async def _give_back_model_types(conn: "Connection", sources: Any, ids: list[str]) -> None:
+    """Give each of ``ids`` bound to a synthetic store the type the model gives it back
+    (REQ-1942): its ``type`` was the store's only while it was bound there."""
+    rows = await conn.execute_core(
+        select(sources.c.id, sources.c.synthetic).where(
+            sources.c.id.in_(ids), sources.c[BINDING_COLUMN] == SYNTHETIC
+        )
+    )
+    for sid, held in rows.fetchall():
+        await conn.execute_core(
+            update(sources).where(sources.c.id == sid).values(type=held["model_type"])
+        )
 
 
 async def recopy(
@@ -144,7 +161,10 @@ async def recopy(
         for r in (
             await conn.execute_core(
                 select(
-                    parent.c.id, parent.c[BINDING_COLUMN], *(parent.c[c] for c in columns)
+                    parent.c.id,
+                    parent.c.type,
+                    parent.c[BINDING_COLUMN],
+                    *(parent.c[c] for c in columns),
                 ).where(parent.c.id.in_(ids))
             )
         ).fetchall()
@@ -157,13 +177,18 @@ async def recopy(
             + " to copy a connection from"
         )
     sources = _table("sources", schema)
+    await _give_back_model_types(conn, sources, ids)
     for sid in ids:
         row = rows[sid]
-        values = (
-            {**CLEARED_SOURCE_CONNECTION, BINDING_COLUMN: UNBOUND}
-            if row[BINDING_COLUMN] == UNBOUND
-            else {**{c: row[c] for c in columns}, BINDING_COLUMN: COPIED}
-        )
+        if row[BINDING_COLUMN] == UNBOUND:
+            values = {**CLEARED_SOURCE_CONNECTION, BINDING_COLUMN: UNBOUND}
+        elif row[BINDING_COLUMN] == SYNTHETIC:
+            # The parent's source is its synthetic store: the copy reads the same generated
+            # data, its type the store's as the parent's is.
+            values = {**{c: row[c] for c in columns}, "type": row["type"]}
+            values[BINDING_COLUMN] = SYNTHETIC
+        else:
+            values = {**{c: row[c] for c in columns}, BINDING_COLUMN: COPIED}
         await conn.execute_core(update(sources).where(sources.c.id == sid).values(values))
     return ids
 
@@ -183,11 +208,96 @@ async def bind_own(
     if source_id in BUILT_IN_SOURCE_IDS:
         raise DataChoiceRefused(f"{source_id!r} is built in; its connection is the platform's")
     sources = _table("sources", schema)
+    await _give_back_model_types(conn, sources, [source_id])
     done = await conn.execute_core(
-        update(sources).where(sources.c.id == source_id).values({**connection, BINDING_COLUMN: OWN})
+        update(sources)
+        .where(sources.c.id == source_id)
+        .values({**connection, "synthetic": None, BINDING_COLUMN: OWN})
     )
     if done.rowcount == 0:
         raise DataChoiceRefused(f"no source {source_id!r} in this environment")
+
+
+async def bind_synthetic(
+    conn: "Connection",
+    schema: str,
+    *,
+    store_type: str,
+    store_schema: str,
+    generated: dict[str, list[list[str]]],
+) -> list[str]:
+    """Bind each source of ``generated`` -- source id -> its generated tables, each as
+    [schema_name, table_name] -- in the environment whose schema is ``schema`` to its synthetic
+    store (REQ-1942): its type becomes ``store_type``, its connection columns are cleared and its
+    ``synthetic`` column names ``store_schema``, the tables generated there and the type the model
+    gives it. What it was bound to before is remembered, once: a regeneration keeps the binding
+    the first generation replaced. The ids it bound."""
+    sources = _table("sources", schema)
+    kept = _table("synthetic_source_bindings", schema)
+    columns = sorted(BINDING_COLUMNS["sources"])
+    rows = {
+        r._mapping["id"]: dict(r._mapping)
+        for r in (
+            await conn.execute_core(
+                select(
+                    sources.c.id,
+                    sources.c.type,
+                    sources.c[BINDING_COLUMN],
+                    *(sources.c[c] for c in columns),
+                ).where(sources.c.id.in_(sorted(generated)))
+            )
+        ).fetchall()
+    }
+    missing = sorted(set(generated) - set(rows))
+    if missing:
+        raise DataChoiceRefused("no source " + ", ".join(repr(m) for m in missing))
+    remembered = {r[0] for r in (await conn.execute_core(select(kept.c.source_id))).fetchall()}
+    for sid in sorted(generated):
+        row = rows[sid]
+        if sid not in remembered:
+            await conn.execute_core(
+                insert(kept).values(
+                    source_id=sid, previous={k: v for k, v in row.items() if k != "id"}
+                )
+            )
+        await conn.execute_core(
+            update(sources)
+            .where(sources.c.id == sid)
+            .values(
+                {
+                    **CLEARED_SOURCE_CONNECTION,
+                    "type": store_type,
+                    "synthetic": {
+                        "schema": store_schema,
+                        "tables": generated[sid],
+                        "model_type": model_type(row),
+                    },
+                    BINDING_COLUMN: SYNTHETIC,
+                }
+            )
+        )
+    return sorted(generated)
+
+
+async def restore_synthetic(conn: "Connection", schema: str) -> list[str]:
+    """Give every source generating bound to the synthetic store, in the environment whose schema
+    is ``schema``, the type, binding and connection it had before (REQ-1942), and forget them.
+    A source edited since -- no longer bound to the store -- is the environment's own choice and
+    is left as it is. The ids it restored."""
+    sources = _table("sources", schema)
+    kept = _table("synthetic_source_bindings", schema)
+    remembered = (await conn.execute_core(select(kept.c.source_id, kept.c.previous))).fetchall()
+    restored = []
+    for sid, previous in remembered:
+        done = await conn.execute_core(
+            update(sources)
+            .where(sources.c.id == sid, sources.c[BINDING_COLUMN] == SYNTHETIC)
+            .values(previous)
+        )
+        if done.rowcount:
+            restored.append(sid)
+    await conn.execute_core(delete(kept))
+    return sorted(restored)
 
 
 async def uncovered_sensitive(conn: "Connection", schema: str) -> list[str]:

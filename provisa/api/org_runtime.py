@@ -226,7 +226,7 @@ class OrgRuntime:
     # so its own commands: a Test (synthetic) environment defines fewer than its parent.
     tracked_functions: dict[str, dict] = field(default_factory=dict)
     tracked_webhooks: dict[str, dict] = field(default_factory=dict)
-    # REQ-1942: command name -> why it is not defined here: a command of a generated API source
+    # REQ-1942: command name -> why it is not defined here: a command of a source bound to a synthetic store
     # in a Test (synthetic) environment. A call to one is refused saying so.
     undefined_commands: dict[str, str] = field(default_factory=dict)
 

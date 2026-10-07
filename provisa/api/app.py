@@ -1744,12 +1744,13 @@ async def _unbound_sources(conn: Any) -> set[str]:
     """The ids of the environment's sources with no connection (REQ-1491, REQ-1942): they get no
     pool, because an empty host is not an absent one. Every other source's connection is the
     environment's own row -- given in it or copied from its parent -- and nothing is resolved
-    through the parent."""
-    from provisa.core.env_classes import BINDING_COLUMN, UNBOUND
+    through the parent. A source bound to a synthetic store is among them: its tables are read
+    from the store by the engine, never through a connection of the source's own."""
+    from provisa.core.env_classes import BINDING_COLUMN, SYNTHETIC, UNBOUND
     from provisa.core.schema_org import sources as sources_t
 
     result = await conn.execute_core(
-        select(sources_t.c.id).where(sources_t.c[BINDING_COLUMN] == UNBOUND)
+        select(sources_t.c.id).where(sources_t.c[BINDING_COLUMN].in_((UNBOUND, SYNTHETIC)))
     )
     return {r[0] for r in result.fetchall()}
 

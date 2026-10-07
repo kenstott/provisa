@@ -189,18 +189,25 @@ async def edit_data_choices(
         if step.reads_parent:
             await _reads_parent(request, org_id, row["parent"])
         schema = org_schema(org_id, name)
-        async with _pool().acquire() as conn, conn.transaction():
-            try:
-                if body.data_mode == TEST_FAKE:
+        if body.data_mode == TEST_FAKE:
+            async with _pool().acquire() as conn:
+                try:
                     await env_data.refuse_uncovered_sensitive(conn, schema, name)
-                if step.binding is not None:
+                except env_data.DataChoiceRefused as exc:
+                    raise _refused(org_id, name, exc) from exc
+        if row["data_mode"] == TEST_SYNTHETIC and row["synthetic_dataset"] is not None:
+            # The generated model goes with the mode: each source is bound again to what it was
+            # bound to before generating, and the generated rows are dropped.
+            detail["sources_restored"] = await _drop_model(org_id, name, row["synthetic_dataset"])
+            connectivity = True
+        if step.binding is not None:
+            async with _pool().acquire() as conn, conn.transaction():
+                try:
                     await _rebind(conn, org_id, row, step.binding, None)
                     connectivity = True
-            except env_data.DataChoiceRefused as exc:
-                raise _refused(org_id, name, exc) from exc
+                except env_data.DataChoiceRefused as exc:
+                    raise _refused(org_id, name, exc) from exc
         if row["data_mode"] == TEST_SYNTHETIC and row["synthetic_dataset"] is not None:
-            # Its tables read their sources again: the generated model goes with the mode.
-            await _drop_model(org_id, name, row["synthetic_dataset"])
             await set_data(
                 _admin_pool(),
                 org_id,
@@ -527,6 +534,7 @@ async def confirm_generation(request: Request, org_id: str, name: str, body: Con
         runs=runs,
         seed=body.seed,
         scale=body.scale,
+        rows=shown["estimatedRows"],
     )
     return {"status": "generating", "tables": len(runs), "warning": shown["digest"]}
 
@@ -557,8 +565,9 @@ async def _env_runtime(org_id: str, name: str) -> Any:
     return await ensure_org_runtime(org_id, name)
 
 
-async def _drop_model(org_id: str, name: str, dataset_id: str) -> None:
-    """Drop ``name``'s generated model, in its own runtime."""
+async def _drop_model(org_id: str, name: str, dataset_id: str) -> list[str]:
+    """Drop ``name``'s generated model, in its own runtime, and bind each source generating bound
+    to the synthetic store to what it was bound to before (REQ-1942); the sources restored."""
     from provisa.core.request_context import (
         reset_current_env,
         reset_current_org,
@@ -571,10 +580,13 @@ async def _drop_model(org_id: str, name: str, dataset_id: str) -> None:
     org_token = set_current_org(org_id)
     env_token = set_current_env(name)
     try:
+        async with _pool().acquire() as conn, conn.transaction():
+            restored = await env_data.restore_synthetic(conn, org_schema(org_id, name))
         await drop(_state(), dataset_id)
     finally:
         reset_current_env(env_token)
         reset_current_org(org_token)
+    return restored
 
 
 async def kept_counts(conn: Any, schema: str) -> dict[int, int]:

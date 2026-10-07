@@ -254,7 +254,7 @@ async def invoke_command(
         return await _invoke_webhook(name, args, state, role_id)
     reason = state.undefined_commands.get(name)
     if reason is not None:
-        # REQ-1942: a command of a generated API source is not defined in a Test (synthetic)
+        # REQ-1942: a command of a source bound to a synthetic store is not defined in a Test (synthetic)
         # environment; the call is refused saying why, on every surface.
         raise ApiError(409, "functions.not_defined_synthetic", reason, name=name)
     raise unknown_command(name)

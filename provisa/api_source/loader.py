@@ -67,7 +67,12 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
     from provisa.encryption import encryption_service  # REQ-686
 
     _enc = encryption_service()
-    src_rows = await conn.fetch("SELECT id, type, base_url, spec_url, auth FROM api_sources")
+    # REQ-1942: a source bound to a synthetic store is no API here -- its tables are read from
+    # the store, and nothing in the environment calls it.
+    src_rows = await conn.fetch(
+        "SELECT id, type, base_url, spec_url, auth FROM api_sources WHERE id NOT IN "
+        "(SELECT id FROM sources WHERE binding = 'synthetic')"
+    )
     api_sources: dict[str, ApiSource] = {}
     for r in src_rows:
         # REQ-686: auth is encrypted at rest — decrypt before use.
@@ -88,7 +93,8 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
     ep_rows = await conn.fetch(
         "SELECT id, source_id, path, method, table_name, columns, ttl, "
         "response_root, error_path, pk_column, pagination, max_concurrency, default_params, "
-        "promotions, body_encoding, query_template, response_normalizer FROM api_endpoints"
+        "promotions, body_encoding, query_template, response_normalizer FROM api_endpoints "
+        "WHERE source_id NOT IN (SELECT id FROM sources WHERE binding = 'synthetic')"
     )
     api_endpoints: dict[str, ApiEndpoint] = {}
     for r in ep_rows:

@@ -73,7 +73,11 @@ ALTER TABLE sources ADD COLUMN IF NOT EXISTS password_ref TEXT NOT NULL DEFAULT 
 -- (copied), or nothing (unbound) -- the source's connection values. A copy between environments carries the
 -- row and never the binding, and an empty value is not an absent one, so an unbound source is
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'));
+-- ``synthetic``: bound to the environment's synthetic store by generating its model -- type and
+-- connection; the ``synthetic`` column names the store schema, the tables generated there and the
+-- type the model gives the source ({schema, tables, model_type}).
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound', 'synthetic'));
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS synthetic JSONB;
 
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
@@ -1032,6 +1036,21 @@ CREATE TABLE IF NOT EXISTS synthetic_dataset_tables (
     run_id        TEXT NOT NULL,
     scale         DOUBLE PRECISION,
     PRIMARY KEY (dataset_id, table_id)
+);
+
+-- REQ-1942: what each source of a Test (synthetic) environment was bound to before generating
+-- bound it to the synthetic store; dropping the dataset or leaving the mode restores exactly that.
+-- REQ-1942: each finished whole-model generation of the environment -- the rows it generated
+-- and the seconds it took -- which the next generation's time is estimated from.
+CREATE TABLE IF NOT EXISTS synthetic_generations (
+    finished_at   TIMESTAMPTZ PRIMARY KEY,
+    generated_rows BIGINT NOT NULL,
+    seconds       DOUBLE PRECISION NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS synthetic_source_bindings (
+    source_id     TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+    previous      JSONB NOT NULL
 );
 
 -- REQ-1934 PROPOSED CONSTRAINTS: the operator's decision on a constraint a profile proposed.

@@ -687,6 +687,17 @@ def test_a_test_synthetic_environment_plans_its_whole_model(profiled):
     assert status == 200 and detail["test_data"]["synthetic"]["status"] is None, detail
 
 
+def _table_deltas(report: Any) -> list[dict]:
+    """Every per-table delta ({table, added, changed, ...}) anywhere in a merge report."""
+    if isinstance(report, dict):
+        if {"table", "changed"} <= report.keys():
+            return [report]
+        return [d for v in report.values() for d in _table_deltas(v)]
+    if isinstance(report, list):
+        return [d for v in report for d in _table_deltas(v)]
+    return []
+
+
 def test_generate_answers_the_warning_and_generates_only_once_it_is_confirmed(profiled):
     """REQ-1942: Generate answers the Limitations of Synthetic Data warning and generates
     nothing; confirming its digest generates the whole model in the background; a digest that is
@@ -781,6 +792,46 @@ def test_generate_answers_the_warning_and_generates_only_once_it_is_confirmed(pr
     assert synthetic["status"] == "ready", (synthetic, boot.log_text()[-6000:])
     assert _one(boot, "SELECT COUNT(*) AS n FROM sales.orders", env="twostep") == 6
     assert _one(boot, "SELECT COUNT(*) AS n FROM sales.customers", env="twostep") == _CUSTOMERS // 2
+
+    # Generating bound every source to the synthetic store, type and connection.
+    status, before = _call(boot, "GET", f"{base}/whole/detail")
+    real = {s["id"]: (s["type"], s["binding"]) for s in before["sources"]}
+    status, detail = _call(boot, "GET", f"{base}/twostep/detail")
+    becomes = {s["id"]: s["becomes"] for s in shown["sources"]}
+    bound = {s["id"]: (s["type"], s["binding"]) for s in detail["sources"]}
+    assert becomes and set(bound) == set(real), (shown["sources"], detail)
+    for sid, state in bound.items():
+        # Each source whose tables were generated; one with no table of the model is left alone.
+        assert state == ((becomes[sid], "synthetic") if sid in becomes else real[sid]), detail
+    # An environment created from it copies those connections and reads the same generated data.
+    status, body = _call(
+        boot, "POST", base, {"name": "twochild", "from_env": "twostep", "data_mode": "inherit"}
+    )
+    assert status == 200, body
+    assert _one(boot, "SELECT COUNT(*) AS n FROM sales.orders", env="twochild") == 6
+    status, child = _call(boot, "GET", f"{base}/twochild/detail")
+    inherited = {s["id"]: (s["type"], s["binding"]) for s in child["sources"]}
+    assert all(inherited[sid] == (kind, "synthetic") for sid, kind in becomes.items()), child
+    # A merge of the synthetic environment carries the model's type of a source, never the store's.
+    status, plan = _call(
+        boot,
+        "POST",
+        f"{base}/whole/merge",
+        {"from_env": "twostep", "dry_run": True, "message": "what a merge would carry"},
+    )
+    assert status == 200, plan
+    touched = {t["table"] for t in _table_deltas(plan)}
+    assert "table_columns" in touched and "sources" not in touched, plan
+    # Leaving Test (synthetic) binds each source to what it was bound to before.
+    status, body = _call(
+        boot, "PATCH", f"{base}/twostep/data", {"data_mode": "unbound", "confirm_discard": True}
+    )
+    assert status == 200 and body["change"]["sources_restored"] == sorted(becomes), body
+    status, detail = _call(boot, "GET", f"{base}/twostep/detail")
+    assert {s["id"]: s["type"] for s in detail["sources"]} == {
+        sid: kind for sid, (kind, _) in real.items()
+    }, detail
+    assert {s["binding"] for s in detail["sources"]} == {"unbound"}, detail
 
 
 def test_a_declared_profile_generates_a_table_with_no_data_to_profile(profiled):

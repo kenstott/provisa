@@ -122,12 +122,18 @@ async def owned_if_reconnected(conn: "Connection", values: dict) -> dict:  # REQ
     they change the connection of a source whose connection was copied from the parent or is none:
     a connection edited in an environment is one it gave itself. A new row is its own already
     (the column's default); an edit that leaves the connection as it is keeps its binding."""
-    from provisa.core.env_classes import BINDING_COLUMN, BINDING_COLUMNS, OWN
+    from provisa.core.env_classes import BINDING_COLUMN, BINDING_COLUMNS, OWN, SYNTHETIC
 
     existing = await get(conn, values["id"])
     if existing is None or existing[BINDING_COLUMN] == OWN:
         return values
     columns = BINDING_COLUMNS["sources"] & values.keys()
+    if existing[BINDING_COLUMN] == SYNTHETIC:
+        # REQ-1942: a source bound to the synthetic store that a developer edits -- back to an
+        # API of their own, say -- is theirs from then on: its type is part of that binding.
+        if all(values[c] == existing[c] for c in columns | {"type"}):
+            return values
+        return {**values, "synthetic": None, BINDING_COLUMN: OWN}
     if all(values[c] == existing[c] for c in columns):
         return values
     return {**values, BINDING_COLUMN: OWN}

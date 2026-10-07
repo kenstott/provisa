@@ -76,3 +76,18 @@ def test_the_sensitive_refusal_names_every_uncovered_column():
     assert "customers.email, customers.name" in message
     assert "'qa' is Test (fake)" in message
     assert "sensitive_data" in message
+
+
+def test_a_source_bound_to_a_synthetic_store_keeps_the_models_type_in_its_binding():
+    """REQ-1942: its ``type`` is the store's while it is bound there; what a merge, a deploy and
+    a tree carry is the type the model gives it."""
+    from provisa.core.env_classes import BINDINGS, SYNTHETIC, model_type
+
+    assert SYNTHETIC in BINDINGS
+    bound = {
+        "type": "postgresql",
+        "binding": SYNTHETIC,
+        "synthetic": {"schema": "s", "tables": [], "model_type": "openapi"},
+    }
+    assert model_type(bound) == "openapi"
+    assert model_type({"type": "openapi", "binding": "copied", "synthetic": None}) == "openapi"

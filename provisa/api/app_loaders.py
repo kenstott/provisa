@@ -1478,7 +1478,7 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
         }
         for r in fn_rows
     ]
-    # REQ-1942: the commands backed by a generated API source are not defined in a Test
+    # REQ-1942: the commands backed by a source bound to a synthetic store are not defined in a Test
     # (synthetic) environment -- omitted here, the one place every surface's commands come from,
     # and kept by name so a call to one is refused saying why (action_exec.invoke_command).
     from provisa.synthetic.env_model import undefined_commands

@@ -198,6 +198,8 @@ class _Registry(NamedTuple):
     promoted: frozenset[tuple[str, str, str]]
     #: REQ-1939: table id -> (dataset, store schema) of each generated synthetic dataset's table.
     synthetic: dict[int, tuple[str, str]]
+    #: REQ-1942: the ids of the sources bound to a synthetic store.
+    bound: frozenset[str] = frozenset()
 
 
 async def _registry(state: Any) -> _Registry:
@@ -214,16 +216,17 @@ async def _registry(state: Any) -> _Registry:
     tdb = getattr(state, "tenant_db", None)
     if config is None or mdb is None or tdb is None:
         return _Registry([], {}, frozenset(), frozenset(), {})
-    from provisa.synthetic.datasets import generated_tables
+    from provisa.synthetic.datasets import generated_tables, synthetic_sources
 
     # REQ-1922: the registry is the model (model store); what is promoted is this region's state.
     async with mdb.acquire() as conn:
         registered = await fetch_tables(conn)
         sources = {s.id: s for s in await registered_sources(state, conn)}
         synthetic = await generated_tables(conn)
+        bound = frozenset(await synthetic_sources(conn))
     async with tdb.acquire() as conn:
         promoted, serving = await promotion(conn, lambda: store_identity(state))
-    return _Registry(registered, sources, serving, promoted, synthetic)
+    return _Registry(registered, sources, serving, promoted, synthetic, bound)
 
 
 def _replica_key(reg: dict) -> tuple[str, str, str]:
@@ -236,7 +239,7 @@ def _served_from_replica(
     """The tables with a replica on ``engine`` by the one decision (``reads_replica``), where the
     tables replicated for being busy are ``busy``: the serving set for what reads go to, the
     promoted set for what has (or is to have) a replica."""
-    registered, sources, _serving, _promoted, synthetic = registry
+    registered, sources, _serving, _promoted, synthetic, _bound = registry
     out: list[tuple[Any, dict]] = []
     for reg in registered:
         src = sources.get(reg["source_id"])
@@ -250,32 +253,23 @@ def _served_from_replica(
 
 
 def _unavailable(registry: _Registry) -> dict[int, str]:
-    """REQ-1942: once an environment's whole model is generated, the API tables it holds no
-    generated copy of -- those needing a required parameter, with no declared profile -- and why
-    a read of each is refused."""
-    from provisa.synthetic.env_model import (
-        DATASET_ID,
-        api_source_types,
-        required_parameters,
-        unavailable_reason,
-    )
+    """REQ-1942: the tables of a source bound to a synthetic store that the store holds no
+    generated copy of -- an API table that needs a required parameter, with no declared profile
+    -- and why a read of each is refused. Nothing calls the API it was read from."""
+    from provisa.synthetic.env_model import unavailable_reason
 
-    if DATASET_ID not in {dataset for dataset, _ in registry.synthetic.values()}:
-        return {}
-    api = api_source_types()
-    out: dict[int, str] = {}
-    for reg in registry.registered:
-        src = registry.sources.get(reg["source_id"])
-        if src is None or reg["id"] in registry.synthetic or _source_type(src) not in api:
-            continue
-        out[reg["id"]] = unavailable_reason(
-            reg["table_name"], required_parameters(reg, _source_type(src))
+    return {
+        reg["id"]: unavailable_reason(
+            reg["table_name"],
+            [c["column_name"] for c in reg["columns"] if c["native_filter_type"] is not None],
         )
-    return out
+        for reg in registry.registered
+        if reg["source_id"] in registry.bound and reg["id"] not in registry.synthetic
+    }
 
 
 def _floored(registry: _Registry) -> dict[int, tuple[str, str]]:
-    registered, sources, serving, _promoted, synthetic = registry
+    registered, sources, serving, _promoted, synthetic, _bound = registry
     floored: dict[int, tuple[str, str]] = {}
     for reg in registered:
         src = sources.get(reg["source_id"])

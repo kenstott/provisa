@@ -139,6 +139,11 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "synthetic_datasets",
         "synthetic_dataset_tables",
         "synthetic_report",
+        # REQ-1942: what its sources were bound to before generating bound them to its
+        # synthetic store; restored there, and nowhere else.
+        "synthetic_source_bindings",
+        # REQ-1942: how long its own generations took, in its own store.
+        "synthetic_generations",
     }
 )
 
@@ -177,7 +182,22 @@ BINDING_COLUMN = "binding"
 OWN = "own"
 COPIED = "copied"
 UNBOUND = "unbound"
-BINDINGS = (OWN, COPIED, UNBOUND)
+#: REQ-1942: bound to a synthetic store by generating a Test (synthetic) environment's model. The
+#: row's ``type`` is the store's, its connection columns are cleared and its ``synthetic`` column
+#: names the store schema; the platform resolves the store. An environment created from it copies
+#: that binding like any other and reads the same generated data.
+SYNTHETIC = "synthetic"
+BINDINGS = (OWN, COPIED, UNBOUND, SYNTHETIC)
+
+
+def model_type(row: dict) -> str:
+    """The type the MODEL gives the source ``row`` (a ``sources`` row): its ``type``, except
+    while it is bound to a synthetic store, when ``type`` is the store's and the model's is kept
+    in ``synthetic`` (REQ-1942). What a merge, a deploy and a tree compare and carry."""
+    if row[BINDING_COLUMN] == SYNTHETIC:
+        return row["synthetic"]["model_type"]
+    return row["type"]
+
 
 #: An environment's data modes (REQ-1942); prod has none -- it is always real.
 INHERIT = "inherit"
@@ -233,6 +253,7 @@ BINDING_COLUMNS: dict[str, frozenset[str]] = {
             "federation_hints",
             "mapping",
             "cdc",
+            "synthetic",
         }
     ),
     "api_sources": frozenset({"base_url", "spec_url", "auth"}),
@@ -254,6 +275,7 @@ CLEARED_SOURCE_CONNECTION: dict[str, object] = {
     "federation_hints": {},
     "mapping": {},
     "cdc": None,
+    "synthetic": None,
 }
 
 

@@ -56,12 +56,14 @@ from provisa.core.env_classes import (
     BINDING_COLUMN,
     BINDING_COLUMNS,
     COPIED,
+    SYNTHETIC,
     UNBOUND,
     CARRIED,
     IDENTITY_ONLY,
     SEEDED_AT_CREATION,
     binding_columns,
     carries_setting,
+    model_type,
 )
 from provisa.core.env_conflicts import Conflict
 from provisa.core.env_conflicts import detect as detect_conflicts
@@ -419,9 +421,16 @@ async def _copy_table(
 
     inserts: list[dict] = []
     updates: list[tuple[tuple, dict]] = []
+    typed = table.name == "sources" and strip_identities
     for key, row in source_rows.items():
         carried = {c: row[c] for c in columns}
         current = target_rows.get(key)
+        if typed:
+            # REQ-1942: what travels is the type the MODEL gives the source. A row bound to a
+            # synthetic store holds the store's type in its place, as part of its binding.
+            carried["type"] = model_type(row)
+            if current is not None and current[BINDING_COLUMN] == SYNTHETIC:
+                current = {**current, "type": model_type(current)}
         if current is None:
             delta.added.append(_render(key))
             if table.name in IDENTITY_ONLY and strip_identities:
@@ -429,7 +438,13 @@ async def _copy_table(
                 # mode says -- copied as the environment it comes from wrote it (a reference to a
                 # secret or a variable stays that reference), or none until the environment gives
                 # it one. Only a new row: an existing row's connection is its environment's own.
-                if landing == COPIED and row[BINDING_COLUMN] != UNBOUND:
+                if landing == COPIED and row[BINDING_COLUMN] == SYNTHETIC:
+                    # Bound to a synthetic store: the copy reads the same generated data, its
+                    # type the store's as the row's it is copied from is.
+                    carried.update({c: row[c] for c in BINDING_COLUMNS[table.name]})
+                    carried["type"] = row["type"]
+                    carried[BINDING_COLUMN] = SYNTHETIC
+                elif landing == COPIED and row[BINDING_COLUMN] != UNBOUND:
                     carried.update({c: row[c] for c in BINDING_COLUMNS[table.name]})
                     carried[BINDING_COLUMN] = COPIED
                 else:
@@ -437,7 +452,12 @@ async def _copy_table(
             inserts.append(carried)
         elif any(current[c] != carried[c] for c in columns):
             delta.changed.append(_render(key))
-            updates.append((key, {c: carried[c] for c in columns if current[c] != carried[c]}))
+            changed = {c: carried[c] for c in columns if current[c] != carried[c]}
+            if typed and "type" in changed and target_rows[key][BINDING_COLUMN] == SYNTHETIC:
+                # The model's type of a row bound to a synthetic store is kept in its binding.
+                held = {**target_rows[key]["synthetic"], "model_type": changed.pop("type")}
+                changed["synthetic"] = held
+            updates.append((key, changed))
         else:
             delta.unchanged += 1
 
