@@ -152,7 +152,9 @@ class TestActingOutsideThePinIsRefused:
         pinned(PIN)
         with pytest.raises(ApiError) as exc:
             await router.create_environment(
-                _request(), "acme", router.CreateEnvBody(name="mine", from_env="prod")
+                _request(),
+                "acme",
+                router.CreateEnvBody(name="mine", from_env="prod", data_mode="unbound"),
             )
         assert exc.value.code == "environments.pinned"
 

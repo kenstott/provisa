@@ -58,6 +58,7 @@
     "domainsToggle": "域（{{checked}}/{{total}}）",
     "domainsLabel": "域",
     "tourResume": "继续引导教程",
+    "tourMenu": "打开深入探索",
     "tourStart": "开始引导教程",
     "userMenu": "用户菜单",
     "profile": "个人资料",

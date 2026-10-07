@@ -1,5 +1,6 @@
 {
   "tableEditForm": {
+    "hidingOnlyNote": "Vous pouvez modifier la façon dont les colonnes de cette table sont masquées : qui voit chaque colonne, ses masques, ainsi que les valeurs fictives et les règles synthétiques de ses colonnes sensibles. L'enregistrement, le renommage et les autres paramètres de la table nécessitent le droit d'enregistrement des tables.",
     "sqlAliasLabel": "Alias SQL",
     "sqlAliasHelp": "Le nom de champ GraphQL/Cypher exposé dans l'API. Par défaut, le nom de la table. Le modifier renomme l'entité dans toutes les requêtes et la documentation SDL.",
     "sqlAliasPlaceholder": "Remplacement du nom sémantique",

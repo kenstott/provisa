@@ -224,6 +224,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # it; readers take a snapshot under the lock.
         self._ch_lock = threading.Lock()
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
+        # REQ-1529: the ATTACH each raw alias was made with, so an environment reaching the same
+        # source id through a different connection gets an attach of its own.
+        self._raw_attach_ddl: dict[str, str] = {}
         self._ext_loaded: set[str] = (
             set()
         )  # community/extension connectors LOADed on this connection
@@ -253,12 +256,22 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
     # -- source exposure -------------------------------------------------------
 
-    def _phys_name(self, source: Any) -> str:
-        """The catalog-qualified physical name the compiler emits: ``"catalog"."schema"."table"``.
-        The engine's catalog for a source is its id with hyphens normalized (see core.catalog)."""
+    @staticmethod
+    def _catalog_of(source: Any) -> str:
+        """The catalog the compiler names ``source``'s tables under. The attach walk hands each
+        source over with the catalog of the org environment being served (REQ-1266, REQ-1529:
+        each environment its own); an introspection attach hands none and is prod's, whose catalog
+        is the source id with hyphens normalized (see core.catalog)."""
+        from provisa.compiler.naming import attach_catalog
         from provisa.core.catalog import _to_catalog_name
 
-        catalog = _to_catalog_name(source.id)
+        if "catalog" in vars(source):
+            return attach_catalog(source)
+        return _to_catalog_name(source.id)
+
+    def _phys_name(self, source: Any) -> str:
+        """The catalog-qualified physical name the compiler emits: ``"catalog"."schema"."table"``."""
+        catalog = self._catalog_of(source)
         if catalog not in self._phys_catalogs:
             # A writable in-memory catalog so the 3-part physical name resolves (an ATTACHed remote
             # DB is read-only and cannot host the schema/view the compiler references).
@@ -312,9 +325,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         catalog-physical name (checked against the catalog, so nothing else is dropped) and any
         ClickHouse HTTP relation registered for it. Called when the table's reads move to its
         replica (REQ-1912): nothing on the engine may then read the source."""
-        from provisa.core.catalog import _to_catalog_name
-
-        parts = [_to_catalog_name(source.id), source.schema_name, source.table_name]
+        parts = [self._catalog_of(source), source.schema_name, source.table_name]
         with self._ch_lock:
             self._ch_relations.pop((parts[0].lower(), parts[1].lower(), parts[2].lower()), None)
         if parts[0] not in self._phys_catalogs:
@@ -441,9 +452,27 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._con.execute(f"LOAD {ext}")
                 self._ext_loaded.add(ext)
         raw_alias = details.get("raw_alias", source.id)
+        attach = details["attach"]
+        if raw_alias in self._raw_attached and self._raw_attach_ddl[raw_alias] != attach:
+            # REQ-1529, REQ-1942: one source id reached through another connection -- an
+            # environment that binds the source to a database of its own (a dev lane repointed,
+            # a synthetic lane bound to its store). It gets an attach of its own, named for the
+            # catalog it is read under; an environment inheriting the connection shares the one
+            # already attached, the ATTACH being the same.
+            catalog_alias = f"{raw_alias}__{self._catalog_of(source)}"
+            attach = attach.replace(f'"{raw_alias}"', f'"{catalog_alias}"')
+            if (
+                catalog_alias in self._raw_attached
+                and self._raw_attach_ddl[catalog_alias] != attach
+            ):
+                # The environment's binding changed: its old connection is let go.
+                self._con.execute(f'DETACH "{catalog_alias}"')
+                self._raw_attached.discard(catalog_alias)
+            raw_alias = catalog_alias
         if raw_alias not in self._raw_attached:
-            self._con.execute(details["attach"])
+            self._con.execute(attach)
             self._raw_attached.add(raw_alias)
+            self._raw_attach_ddl[raw_alias] = attach
         return raw_alias
 
     # -- source introspection without a registered table (REQ-1673) -------------------------------

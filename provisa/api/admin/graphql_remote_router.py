@@ -144,6 +144,8 @@ async def _persist_source(  # REQ-307, REQ-1923
     ``federation_hints``. ``cache_ttl`` is the source's cache TTL when the caller declared one: the
     clock its landed tables refresh on (REQ-1907); None leaves the row's as it is."""
     from provisa.api.admin.schema_common import store_source_password
+    from provisa.core.repositories.source import owned_if_reconnected
+    from provisa.core.request_context import active_env
     from provisa.graphql_remote.brands import BRAND_HINT, NAMESPACE_HINT
 
     identity = getattr(request.state, "identity", None)
@@ -163,14 +165,20 @@ async def _persist_source(  # REQ-307, REQ-1923
         "description": description,
         "federation_hints": hints,
         "password_ref": await store_source_password(
-            getattr(identity, "user_id", None), source_id, secret
+            getattr(identity, "user_id", None), source_id, secret, env=active_env()
         ),
     }
-    updated = ["path", "description", "username", "federation_hints", "password_ref"]
     if cache_ttl is not None:
         row["cache_ttl"] = cache_ttl
-        updated.append("cache_ttl")
-    await conn.upsert(sources, row, index_elements=["id"], update_columns=updated)
+    values = await owned_if_reconnected(conn, row)
+    await conn.upsert(
+        sources,
+        values,
+        index_elements=["id"],
+        update_columns=[
+            c for c in values if c not in ("id", "type", "host", "port", "database", "dialect")
+        ],
+    )
 
 
 async def _register_branded_source(request: Request, body: "GraphQLRemoteSourceRequest") -> dict:

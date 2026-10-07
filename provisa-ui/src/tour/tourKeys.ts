@@ -40,3 +40,9 @@ export const TOUR_OFFERED_KEY = "provisa_tour_offered";
  * new visitor: it sets this flag so the reset is already spent and its seen-flag survives.
  */
 export const TOUR_DEMO_RESET_KEY = "provisa_tour_demo_reset";
+
+/**
+ * REQ-1945: JSON array of Deep Dives topic ids this viewer has completed (Done on the topic's last
+ * step). Per viewer, device-scoped like the other tour keys.
+ */
+export const TOUR_TOPICS_DONE_KEY = "provisa_tour_topics_done";

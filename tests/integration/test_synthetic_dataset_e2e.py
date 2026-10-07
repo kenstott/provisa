@@ -265,7 +265,7 @@ def _environment(boot, name: str) -> dict:
         boot,
         "POST",
         f"/admin/orgs/{boot.org_id}/environments",
-        {"name": name, "inherit_connections": True},
+        {"name": name, "data_mode": "inherit"},
     )
     assert status == 200, body
     status, runs = _call(boot, "GET", "/admin/synthetic-datasets/-/profile-runs?env=prod", env=name)
@@ -657,6 +657,118 @@ def test_a_private_dataset_is_not_compared_with_real_rows(profiled):
     assert "declare ε or closeness" in body["error"], body
 
 
+def test_a_test_synthetic_environment_plans_its_whole_model(profiled):
+    """REQ-1942: every table not backed by an API is planned from its parent's latest successful
+    profile run; one with none (orders, which no profiler covers) keeps Generate refused, by
+    name."""
+    boot = profiled
+    status, body = _call(
+        boot,
+        "POST",
+        f"/admin/orgs/{boot.org_id}/environments",
+        {"name": "whole", "data_mode": "test_synthetic"},
+    )
+    assert status == 200, body
+    status, plan = _call(
+        boot, "GET", f"/admin/orgs/{boot.org_id}/environments/whole/synthetic/plan"
+    )
+    assert status == 200, plan
+    by = {t["tableName"]: t for t in plan["tables"]}
+    assert set(by) == {"customers", "purchases", "contacts", "accounts", "orders"}, by
+    assert by["customers"]["selected"] == by["customers"]["runs"][0]["runId"]
+    assert by["orders"]["selected"] is None and plan["ready"] is False
+    assert plan["apiTables"] == []
+    status, body = _call(
+        boot, "POST", f"/admin/orgs/{boot.org_id}/environments/whole/synthetic", {}
+    )
+    assert status == 422 and "orders" in body["error"], body
+    status, detail = _call(boot, "GET", f"/admin/orgs/{boot.org_id}/environments/whole/detail")
+    assert status == 200 and detail["test_data"]["synthetic"]["status"] is None, detail
+
+
+def test_a_declared_profile_generates_a_table_with_no_data_to_profile(profiled):
+    """REQ-1942: a declared profile is stored as a profile run is, listed beside the parent's runs,
+    and generated from by the one path; a column with no fact, fake or rule is refused by name."""
+    boot = profiled
+    status, body = _call(
+        boot,
+        "POST",
+        f"/admin/orgs/{boot.org_id}/environments",
+        {"name": "declaring", "data_mode": "test_synthetic"},
+    )
+    assert status == 200, body
+    plan_path = f"/admin/orgs/{boot.org_id}/environments/declaring/synthetic/plan"
+    status, plan = _call(boot, "GET", plan_path)
+    assert status == 200, plan
+    orders = next(t for t in plan["tables"] if t["tableName"] == "orders")
+    assert orders["selected"] is None, orders
+    declare = f"/admin/tables/{orders['tableId']}/declared-profiles"
+    status, body = _call(
+        boot, "POST", declare, {"profile": {"rowCount": 12, "columns": {}}}, env="declaring"
+    )
+    assert status == 422 and "orders.region" in body["error"], body
+    mars = {"nullShare": 0, "values": [{"value": "mars", "weight": 1}]}
+    ids = {"nullShare": 0, "distinctCount": 12, "range": {"min": 1, "max": 12}}
+    status, body = _call(
+        boot,
+        "POST",
+        declare,
+        {"profile": {"rowCount": 12, "columns": {"id": ids, "region": mars}}},
+        env="declaring",
+    )
+    assert status == 200, body
+    run_id = body["runId"]
+    status, plan = _call(boot, "GET", plan_path)
+    orders = next(t for t in plan["tables"] if t["tableName"] == "orders")
+    assert orders["selected"] == run_id and orders["uncovered"] == [], orders
+    assert orders["runs"][0]["origin"] == "declared" and orders["runs"][0]["env"] == "declaring"
+    status, body = _call(
+        boot,
+        "PUT",
+        "/admin/synthetic-datasets/declared",
+        {
+            "seed": 1,
+            "scale": 1,
+            "tables": [{"tableId": orders["tableId"], "profileEnv": "declaring", "runId": run_id}],
+        },
+        env="declaring",
+    )
+    assert status == 200, body
+    status, body = _call(
+        boot, "POST", "/admin/synthetic-datasets/declared/generate", env="declaring"
+    )
+    assert status == 200, (body, boot.log_text()[-6000:])
+    assert _one(boot, "SELECT COUNT(*) AS n FROM sales.orders", env="declaring") == 12
+    status, rows = _sql(boot, "SELECT DISTINCT region FROM sales.orders", env="declaring")
+    assert status == 200 and rows == [{"region": "mars"}], rows
+
+    # A measured run copied into a declared profile and changed: ten times the customers.
+    customers = next(t for t in plan["tables"] if t["tableName"] == "customers")
+    measured = next(r for r in customers["runs"] if r["origin"] == "measured")
+    status, body = _call(
+        boot,
+        "GET",
+        f"/admin/tables/{customers['tableId']}/profile-runs/{measured['runId']}/declared",
+    )
+    assert status == 200, body
+    profile = body["profile"]
+    assert profile["rowCount"] == _CUSTOMERS, profile
+    profile["rowCount"] *= 10
+    status, body = _call(
+        boot,
+        "POST",
+        f"/admin/tables/{customers['tableId']}/declared-profiles",
+        {"profile": profile},
+        env="declaring",
+    )
+    assert status == 200, body
+    status, plan = _call(boot, "GET", plan_path)
+    customers = next(t for t in plan["tables"] if t["tableName"] == "customers")
+    # The parent's measured run stays preselected; the what-if is listed to choose.
+    assert customers["selected"] == measured["runId"], customers
+    assert body["runId"] in {r["runId"] for r in customers["runs"]}, customers
+
+
 def test_a_private_dataset_refuses_text_columns_that_declare_nothing(profiled):
     env = _environment(profiled, "private_refused")
     status, body = _define(env, ["customers"], dataset="private_no", epsilon=1.0)
@@ -695,7 +807,7 @@ def test_an_environment_can_start_on_synthetic_data(profiled):
         f"/admin/orgs/{boot.org_id}/environments",
         {
             "name": "seeded",
-            "inherit_connections": True,
+            "data_mode": "inherit",
             "synthetic": {
                 "dataset": "boot",
                 "tables": ["customers", "purchases"],

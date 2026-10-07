@@ -95,6 +95,8 @@ import {
 } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PageLoading } from "../components/PageLoading";
+import { useCapability } from "../hooks/useCapability";
+import { hidingDomains } from "../lib/capabilities";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -166,19 +168,29 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
   const { checkedDomains, domainsEnabled } = useDomainFilter();
+  // REQ-1944: without table_registration the page is a governance surface -- the tables of the
+  // domains the caller's hiding rights reach, editable only in how their columns are hidden.
+  const tableEditor = useCapability("table_registration");
+  const hidingOnly = !tableEditor;
+  const { selectedRoles } = useAuth();
+  const governedDomains = useMemo(
+    () => (hidingOnly ? hidingDomains(selectedRoles) : null),
+    [hidingOnly, selectedRoles],
+  );
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredTables = useMemo(
     () =>
       tables.filter((t) => {
         if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
         if (viewsOnly && !t.viewSql) return false;
+        if (governedDomains !== null && !governedDomains.has(t.domainId ?? "")) return false;
         if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
         const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
         if (terms.length === 0) return true;
         const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
         return terms.every((term) => haystack.includes(term));
       }),
-    [tables, viewsOnly, checkedDomains, tableSearch],
+    [tables, viewsOnly, checkedDomains, tableSearch, governedDomains],
   );
   const listColumns = useMemo<ListColumn<RegisteredTable>[]>(
     () => [
@@ -573,6 +585,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         setError(result.message);
         return;
       }
+      if (hidingOnly) {
+        // REQ-1944: a governance-only editor changed how columns are hidden and nothing else; the
+        // table's naming, TTLs, paging, replication and load protection are the table editor's.
+        await reload();
+        setEditingTable(null);
+        return;
+      }
       // Apply naming convention directly — skip handleNamingChange to avoid its intermediate
       // reload() call which fires refetchTables() and races with updateTable's refetchQueries.
       const _namingVal = editingTable.gqlNamingConvention ?? "";
@@ -699,7 +718,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           error={regionError}
         />
         <div className="page-actions">
-          {!viewsOnly && (
+          {!viewsOnly && !hidingOnly && (
             <Button
               data-tour="tables-add"
               data-testid="tables-add-toggle"
@@ -710,17 +729,19 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               {showForm ? <X size={14} /> : translate("tablesPage.addTable")}
             </Button>
           )}
-          <Button
-            variant="default"
-            data-testid="views-add-toggle"
-            // REQ-1318: on the Views page, Add View opens the definition-mode form
-            // (SQL | Metrics toggle); elsewhere it keeps routing to the SQL editor.
-            onClick={() => (viewsOnly ? setShowViewForm(!showViewForm) : navigate("/sql"))}
-            title={translate("tablesPage.addViewTitle")}
-          >
-            {viewsOnly && showViewForm ? <X size={14} /> : translate("tablesPage.addView")}
-          </Button>
-          {!viewsOnly && (
+          {!hidingOnly && (
+            <Button
+              variant="default"
+              data-testid="views-add-toggle"
+              // REQ-1318: on the Views page, Add View opens the definition-mode form
+              // (SQL | Metrics toggle); elsewhere it keeps routing to the SQL editor.
+              onClick={() => (viewsOnly ? setShowViewForm(!showViewForm) : navigate("/sql"))}
+              title={translate("tablesPage.addViewTitle")}
+            >
+              {viewsOnly && showViewForm ? <X size={14} /> : translate("tablesPage.addView")}
+            </Button>
+          )}
+          {!viewsOnly && !hidingOnly && (
             <Button
               variant="default"
               data-testid="tables-model-toggle"
@@ -1025,48 +1046,49 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     <Table.Td>{t.columns.length}</Table.Td>
                     <Table.Td onClick={(e) => e.stopPropagation()}>
                       <Group gap="xs" wrap="nowrap">
-                        {(() => {
-                          const srcType = sources.find((s) => s.id === t.sourceId)?.type;
-                          const hasCacheable =
-                            srcType === "graphql_remote" ||
-                            srcType === "openapi" ||
-                            srcType === "grpc_remote";
-                          // REQ-968: only a table whose rows are LANDED can be rebuilt on demand.
-                          // The server derives that from the same policy resolution (REQ-1143) this
-                          // reads, so the button appears exactly where the mutation would accept it.
-                          const serving = t.refreshPolicySummary?.serving;
-                          const isLanded = serving === "scheduled" || serving === "frozen";
-                          return (
-                            <>
-                              {isLanded && (
-                                <Button
-                                  size="compact-xs"
-                                  variant="default"
-                                  title={translate("tablesPage.runNowTitle")}
-                                  onClick={() => {
-                                    setRegenReason("");
-                                    setRegenTable(t);
-                                  }}
-                                  data-testid={`tables-run-now-${t.tableName}`}
-                                >
-                                  {translate("tablesPage.runNow")}
-                                </Button>
-                              )}
-                              {hasCacheable && (
-                                <Button
-                                  size="compact-xs"
-                                  variant="default"
-                                  onClick={() => handlePurgeTableCache(t.id)}
-                                  disabled={purging[t.id]}
-                                >
-                                  {purging[t.id]
-                                    ? translate("tablesPage.purging")
-                                    : translate("tablesPage.invalidateCache")}
-                                </Button>
-                              )}
-                            </>
-                          );
-                        })()}
+                        {!hidingOnly &&
+                          (() => {
+                            const srcType = sources.find((s) => s.id === t.sourceId)?.type;
+                            const hasCacheable =
+                              srcType === "graphql_remote" ||
+                              srcType === "openapi" ||
+                              srcType === "grpc_remote";
+                            // REQ-968: only a table whose rows are LANDED can be rebuilt on demand.
+                            // The server derives that from the same policy resolution (REQ-1143) this
+                            // reads, so the button appears exactly where the mutation would accept it.
+                            const serving = t.refreshPolicySummary?.serving;
+                            const isLanded = serving === "scheduled" || serving === "frozen";
+                            return (
+                              <>
+                                {isLanded && (
+                                  <Button
+                                    size="compact-xs"
+                                    variant="default"
+                                    title={translate("tablesPage.runNowTitle")}
+                                    onClick={() => {
+                                      setRegenReason("");
+                                      setRegenTable(t);
+                                    }}
+                                    data-testid={`tables-run-now-${t.tableName}`}
+                                  >
+                                    {translate("tablesPage.runNow")}
+                                  </Button>
+                                )}
+                                {hasCacheable && (
+                                  <Button
+                                    size="compact-xs"
+                                    variant="default"
+                                    onClick={() => handlePurgeTableCache(t.id)}
+                                    disabled={purging[t.id]}
+                                  >
+                                    {purging[t.id]
+                                      ? translate("tablesPage.purging")
+                                      : translate("tablesPage.invalidateCache")}
+                                  </Button>
+                                )}
+                              </>
+                            );
+                          })()}
                       </Group>
                     </Table.Td>
                   </ListRow>
@@ -1075,6 +1097,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       {!isEditing ? (
                         <TableReadView
                           t={t}
+                          hidingOnly={hidingOnly}
                           dataProducts={dataProducts}
                           navigate={navigate}
                           viewsOnly={viewsOnly}
@@ -1102,6 +1125,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       ) : (
                         editingTable && (
                           <TableEditForm
+                            hidingOnly={hidingOnly}
                             editingTable={editingTable}
                             setEditingTable={setEditingTable}
                             savedProfilerId={

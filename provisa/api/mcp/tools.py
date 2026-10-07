@@ -660,9 +660,18 @@ async def create_data_product(  # REQ-1855
     from provisa.core.repositories import domain as domain_repo
 
     require_capability_request(request, "data_product_rw")
+    from provisa.api.admin.capabilities import require_right_in_domains_request
+
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as conn:
+        # REQ-1944: the product's domain, and the one it is moved out of when it exists.
+        stored = await data_product_repo.get(conn, id)
+        require_right_in_domains_request(
+            request,
+            "data_product_rw",
+            {domain_id} | ({stored["domain_id"]} if stored is not None else set()),
+        )
         if await domain_repo.get(conn, domain_id) is None:
             raise ValueError(f"Domain not found: {domain_id}")
         model = DataProductModel(
@@ -691,9 +700,14 @@ async def delete_data_product(state: Any, role: str, request: Any, id: str) -> d
     from provisa.core.repositories import data_product as data_product_repo
 
     require_capability_request(request, "data_product_rw")
+    from provisa.api.admin.capabilities import require_right_in_domains_request
+
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as conn:
+        stored = await data_product_repo.get(conn, id)
+        if stored is not None:  # REQ-1944: an absent product is the not-found below
+            require_right_in_domains_request(request, "data_product_rw", {stored["domain_id"]})
         deleted = await data_product_repo.delete(conn, id)
     if not deleted:
         raise ValueError(f"Data product not found: {id}")

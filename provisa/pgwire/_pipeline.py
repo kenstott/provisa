@@ -201,6 +201,9 @@ class _Plan:
     # statement with no acting principal (an unsecured Flight ticket) has no audit record.
     role_id: str | None = field(default=None)
     table_ids: tuple[int, ...] = field(default=())
+    # REQ-1942: a mutation in a Reversible environment, kept in its change log rather than run on
+    # the source (provisa.pgwire.kept_mutations). None for every other plan.
+    kept: Any = field(default=None)
     # REQ-544 (amended 2026-09-30): the request's response-cache OPT-IN (`-- @provisa cache=true`
     # / `cache_ttl=N`; GraphQL @cached on its own endpoint). False — the default — means the plan
     # neither reads nor writes the response cache. cache_ttl is the request's chosen entry
@@ -667,12 +670,13 @@ def _reject_view_writes(parsed: Any, state: Any) -> None:
     view_map = getattr(state, "view_sql_map", None)
     if not view_map:
         return
-    if not isinstance(parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge)):
+    if not isinstance(
+        parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge, _exp.TruncateTable)
+    ):
         return
-    target = parsed.this
-    tbl = (
-        target if isinstance(target, _exp.Table) else (target.find(_exp.Table) if target else None)
-    )
+    from provisa.compiler.write_admission import target_table
+
+    tbl = target_table(parsed)
     if tbl is not None and tbl.name in view_map:
         op = type(parsed).__name__.upper()
         raise PermissionError(
@@ -698,6 +702,10 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
     established target to write to, which is REQ-1491's guarantee that a new environment reaches
     nothing until somebody says what it reaches.
 
+    REQ-1942 puts the environment's mutation handling first: Refused refuses every mutation, naming
+    the environment; Direct changes only data the environment owns, so the target's source must be
+    bound to a connection of its own -- never inherited from its parent.
+
     Checked on the ONE pipeline every raw-SQL surface funnels through, for the same reason
     REQ-1157's view guard is: a check on one surface is a check the next surface does not have.
     prod returns immediately — it inherits from nothing, so every binding it has is its own.
@@ -710,12 +718,23 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
     env = active_env()
     if env == PROD:
         return
-    if not isinstance(parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge)):
+    if not isinstance(
+        parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge, _exp.TruncateTable)
+    ):
         return
-    target = parsed.this
-    tbl = (
-        target if isinstance(target, _exp.Table) else (target.find(_exp.Table) if target else None)
-    )
+    # REQ-1942: what a mutation in this environment does, chosen with its data mode.
+    from provisa.core.env_classes import DIRECT, REFUSED
+
+    handling = state._active_runtime().mutation_handling
+    kind = type(parsed).__name__.upper()
+    if handling == REFUSED:
+        raise PermissionError(
+            f"{kind} is refused in environment {env!r}: its mutation handling is Refused "
+            "(REQ-1942). An environment_data holder can make it Reversible or Direct."
+        )
+    from provisa.compiler.write_admission import target_table
+
+    tbl = target_table(parsed)
     if tbl is None:
         return
     source_id = next(
@@ -727,11 +746,25 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
             f"{env!r}: it is not a registered table, so which binding the write would travel "
             f"cannot be established, and a write with no established target is what REQ-1491 refuses."
         )
+    if handling != DIRECT:
+        # REQ-1942, Reversible: kept in the environment's change log, never run on the source --
+        # except an API's mutation, which cannot be kept: its effect is opaque.
+        from provisa.synthetic.env_model import api_source_types
+
+        if state.source_types.get(source_id) in api_source_types():
+            raise PermissionError(
+                f"{kind} into {tbl.name!r} is refused in environment {env!r}: its mutation "
+                f"handling is Reversible, and an API's mutation cannot be reversed (REQ-1942)."
+            )
+        return
     if getattr(state, "source_binding_env", {}).get(source_id) is None:
+        # REQ-1942: a Direct mutation changes only data the environment owns -- never through a
+        # connection copied from its parent, whose data is the parent's, nor one it left unbound.
         raise PermissionError(
-            f"{type(parsed).__name__.upper()} into {tbl.name!r} is not allowed in environment "
-            f"{env!r}: source {source_id!r} is unbound in {env!r} and in every environment it "
-            f"inherited from (REQ-1491). Bind it to write to it."
+            f"{kind} into {tbl.name!r} is not allowed in environment {env!r}: its mutation "
+            f"handling is Direct, which changes only data the environment owns, and source "
+            f"{source_id!r} is not bound to a connection of {env!r}'s own (REQ-1491, REQ-1942). "
+            f"Bind it to a database of the environment's own to write to it."
         )
 
 
@@ -1324,7 +1357,7 @@ async def govern_statement(
     # command while it is prepared. The slot itself refuses one governed while a schema rebuild
     # was moving the state it read.
     if not isinstance(
-        _parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge)
+        _parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
     ) and not _calls_a_registered_command(_parsed_input, state):
         _slot.keep(governed)
     return governed
@@ -1408,10 +1441,37 @@ async def route_governed(
     # REQ-031: an UPDATE/DELETE/INSERT/MERGE always routes DIRECT — the engine terminal takes no
     # writes. decide_route only applies that rule when told; the raw-SQL surfaces (pgwire, /data/sql)
     # parse the statement themselves, so the type must be passed through explicitly.
-    _is_mutation = isinstance(_parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
+    _is_mutation = isinstance(
+        _parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
+    )
     from provisa.compiler.write_admission import written_table_id
 
     _written_table_id = written_table_id(_parsed_input, governed.gov_ctx) if _is_mutation else None
+    from provisa.core.env_classes import REVERSIBLE
+
+    if _is_mutation and state._active_runtime().mutation_handling == REVERSIBLE:
+        # REQ-1942: kept in the environment's change log; the source is never written.
+        from provisa.pgwire.kept_mutations import KeptMutation
+
+        assert _written_table_id is not None
+        return _Plan(
+            route=Route.DIRECT,
+            sql=governed_semantic,
+            source_id="",
+            dialect="postgres",
+            exec_params=embedded_params,
+            audit=_audit,
+            stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
+            route_reason="kept in the environment's change log (Reversible)",
+            role_id=role_id,
+            table_ids=_table_ids,
+            kept=KeptMutation(
+                statement=governed_semantic,
+                table_id=_written_table_id,
+                role_id=role_id,
+                params=embedded_params,
+            ),
+        )
     # REQ-1897: a read whose result is rows — not a write, an EXPLAIN, or a sink delivery.
     _raw_cacheable = not _is_mutation and explain is None and deliver is None
     # REQ-544 (amended 2026-09-30): the response cache is per-request opt-in — a `-- @provisa
@@ -1879,8 +1939,10 @@ def _pk_bounds_inputs(semantic_sql: str, state: Any) -> tuple[tuple[Any, ...], .
 
     ast = sqlglot.parse_one(semantic_sql, read="postgres")
     written = None
-    if isinstance(ast, (exp.Insert, exp.Update, exp.Delete, exp.Merge)):
-        written = ast.this.this if isinstance(ast.this, exp.Schema) else ast.this
+    if isinstance(ast, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)):
+        from provisa.compiler.write_admission import target_table
+
+        written = target_table(ast)
     joined: dict[str, int] = {}
     for join in ast.find_all(exp.Join):
         if isinstance(join.this, exp.Table) and join.this.name in row_tables:
@@ -2819,6 +2881,11 @@ async def prepare_residency_and_check_cache(plan: _Plan, state: Any) -> QueryRes
 async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027, REQ-028
     from provisa.transpiler.router import Route
 
+    if plan.kept is not None:
+        # REQ-1942: a Reversible environment's mutation, kept in its change log.
+        from provisa.pgwire.kept_mutations import keep
+
+        return await keep(plan.kept, state)
     engine = state.federation_engine
 
     if plan.materialize is not None:
@@ -3209,7 +3276,14 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         )
         # A write is not kept: its admission checks (view writes, unbound branch writes) run per call.
         if not isinstance(
-            _governed.parsed, (_sg_exp.Insert, _sg_exp.Update, _sg_exp.Delete, _sg_exp.Merge)
+            _governed.parsed,
+            (
+                _sg_exp.Insert,
+                _sg_exp.Update,
+                _sg_exp.Delete,
+                _sg_exp.Merge,
+                _sg_exp.TruncateTable,
+            ),
         ):
             _slot.keep(_governed)
     sql, _compiled_tree, gov_ctx = _governed.sql, _governed.parsed, _governed.gov_ctx
@@ -3571,7 +3645,9 @@ async def _route_compiled(
 
     from provisa.compiler.write_admission import written_table_id
 
-    _is_write = isinstance(_compiled_tree, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
+    _is_write = isinstance(
+        _compiled_tree, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
+    )
     _written_table_id = written_table_id(_compiled_tree, gov_ctx) if _is_write else None
 
     # Post-governance optimization stage (may REMOVE sources): lower to catalog-physical, then

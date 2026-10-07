@@ -123,3 +123,13 @@ def test_lowering_is_idempotent_and_never_renames_a_physical_name():
     # Already physical: left as it is.
     physical = normalize_table_refs('SELECT "placed" FROM "public"."events"', _ctx())
     assert _columns(physical) == {"placed"}
+
+
+def test_a_truncate_target_is_qualified_with_no_alias():
+    """REQ-1942: TRUNCATE's grammar has no place for an alias, and a TRUNCATE has no column
+    qualifiers for one to keep bound."""
+    import sqlglot
+
+    lowered = normalize_table_refs("TRUNCATE TABLE sales.events", _ctx())
+    assert " AS " not in lowered.upper()
+    assert isinstance(sqlglot.parse_one(lowered, read="postgres"), sqlglot.exp.TruncateTable)

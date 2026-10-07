@@ -116,7 +116,6 @@
     "remoteHelp": "此組織的模型鏡像到的位置。清空欄位即停止鏡像。",
     "webhookLabel": "狀態 Webhook",
     "webhookHelp": "每次推送的結果會回報到此處。",
-    "integrationProjection": "存放庫是模型的投影，絕不是模型的權威來源。",
     "integrationSaved": "已儲存。",
     "probe": "檢查",
     "probeChecking": "正在檢查遠端…",

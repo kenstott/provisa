@@ -138,7 +138,7 @@ def created(monkeypatch):
 
 
 async def _create(name: str, from_env: str = "prod"):
-    body = er.CreateEnvBody(name=name, from_env=from_env, inherit_connections=True)
+    body = er.CreateEnvBody(name=name, from_env=from_env, data_mode="inherit")
     return await er.create_environment(_Request(), ORG, body)
 
 

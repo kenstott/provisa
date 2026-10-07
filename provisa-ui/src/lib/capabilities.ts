@@ -34,6 +34,43 @@ export function hasCapability(capabilities: string[], cap: Capability): boolean 
 export interface CapabilityRequirement {
   capability: Capability;
   orCapability?: Capability;
+  /** REQ-1944: further rights, any one of which also opens the surface. */
+  anyOf?: Capability[];
+}
+
+/**
+ * REQ-1944: the governance rights that change how a table's columns are hidden -- grants, masks,
+ * sensitive columns' fakes and tags. Each opens the Tables surface without `table_registration`;
+ * the holder edits only those fields, in the domains its roles reach.
+ */
+export const HIDING_RIGHTS: Capability[] = [
+  "masking_config",
+  "column_grant",
+  "access_config",
+  "sensitive_data",
+];
+
+/** REQ-1944: who reaches the Tables surface -- the table editor, or a holder of a hiding right. */
+export const TABLES_SURFACE: CapabilityRequirement = {
+  capability: "table_registration",
+  anyOf: HIDING_RIGHTS,
+};
+
+/**
+ * REQ-1944: the domains a holder of the hiding rights governs -- the union of `domain_access`
+ * over the roles that CARRY one of them (never every role held, as on the server), or `null`
+ * when one of those roles reaches every domain.
+ */
+export function hidingDomains(
+  roles: { capabilities: string[]; domain_access: string[] }[],
+): Set<string> | null {
+  const out = new Set<string>();
+  for (const role of roles) {
+    if (!role.capabilities.some((c) => (HIDING_RIGHTS as string[]).includes(c))) continue;
+    if (role.domain_access.includes("*")) return null;
+    for (const d of role.domain_access) out.add(d);
+  }
+  return out;
 }
 
 /**
@@ -43,6 +80,7 @@ export interface CapabilityRequirement {
  */
 export function isDemonstrated(demonstrated: string[], req: CapabilityRequirement): boolean {
   if (demonstrated.includes(req.capability)) return true;
+  if ((req.anyOf ?? []).some((c) => demonstrated.includes(c))) return true;
   return req.orCapability !== undefined && demonstrated.includes(req.orCapability);
 }
 
@@ -67,5 +105,6 @@ export function unionDemonstrated(
 /** Does this capability set open a surface described by `req`? */
 export function meetsRequirement(capabilities: string[], req: CapabilityRequirement): boolean {
   if (hasCapability(capabilities, req.capability)) return true;
+  if ((req.anyOf ?? []).some((c) => hasCapability(capabilities, c))) return true;
   return req.orCapability !== undefined && hasCapability(capabilities, req.orCapability);
 }

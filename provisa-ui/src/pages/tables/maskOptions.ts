@@ -8,13 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The column mask types the table editor offers; "fake" shows the column's declared fake (REQ-1494).
+// The column mask types the table editor offers. A fake is not one: it is the column's own
+// declaration, read in a Test (fake) environment by every role (REQ-1942).
 export function maskOptions(t: (key: string) => string) {
   return [
     { value: "", label: t("tableEditForm.maskNone") },
     { value: "regex", label: t("tableEditForm.maskRegex") },
     { value: "constant", label: t("tableEditForm.maskConstant") },
     { value: "truncate", label: t("tableEditForm.maskTruncate") },
-    { value: "fake", label: t("tableEditForm.maskFake") },
   ];
 }

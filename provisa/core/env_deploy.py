@@ -46,8 +46,9 @@ from sqlalchemy import Table, delete, select
 
 from provisa.core import schema_org as org
 from provisa.core.env_classes import (
-    BOUND_COLUMN,
+    BINDING_COLUMN,
     CARRIED,
+    UNBOUND,
     IDENTITY_ONLY,
     SEEDED_AT_CREATION,
     binding_columns,
@@ -653,8 +654,9 @@ async def _apply(
 async def _upsert_identity(conn: "Connection", table: Table, rows: list[dict[str, Any]]) -> None:
     """An identity-only kind: update what is here, insert what is not, delete nothing.
 
-    A row this deploy introduces is marked unbound (REQ-1491) -- an empty host is not an absent one,
-    and the connection builder would read the column defaults as localhost.
+    A row this deploy introduces is marked unbound (REQ-1491, REQ-1942): a tree carries no
+    connection, and an empty host is not an absent one -- the connection builder would read the
+    column defaults as localhost. Re-copy from parent, or a connection of its own, binds it.
     """
     key = next(iter(table.primary_key.columns)).name
     present = {
@@ -669,5 +671,5 @@ async def _upsert_identity(conn: "Connection", table: Table, rows: list[dict[str
                     table.update().where(table.c[key] == row[key]).values(**values)
                 )
         else:
-            inserts.append({**row, BOUND_COLUMN: False})
+            inserts.append({**row, BINDING_COLUMN: UNBOUND})
     await _insert_rows(conn, table, inserts)

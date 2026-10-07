@@ -569,6 +569,9 @@ class Tag(BaseModel):  # REQ-1373, REQ-1375
     # The permitted parameter values are not here — they are maintainer-editable data in the
     # tag_param_values table, so a code-defined tuple would be a second, stale source.
     param_policy: str = "none"
+    # REQ-1943: the Sensitive data option. A column carrying a tag with it set is a sensitive
+    # column, whose hiding only a holder of the sensitive_data right changes.
+    sensitive: bool = False
 
 
 # REQ-1375: the system tags are code-defined intrinsics — present in EVERY install, never
@@ -595,6 +598,7 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
         applies_to=["column"],
         is_system=True,
         expires_policy="hidden",  # pii does not lapse
+        sensitive=True,  # REQ-1943: set, and locked -- a system tag is never redefined
     ),
     Tag(
         id="deprecated",
@@ -806,7 +810,7 @@ class Column(
     visible_to: list[str]
     writable_by: list[str] = []  # roles allowed to mutate this column
     unmasked_to: list[str] = []  # roles that see unmasked data
-    mask_type: str | None = None  # regex, constant, truncate, fake (REQ-1494)
+    mask_type: str | None = None  # regex, constant, truncate (REQ-1942: a fake is not a mask)
     mask_pattern: str | None = None  # regex pattern
     mask_replace: str | None = None  # regex replacement
     mask_value: str | None = None  # constant value
@@ -851,8 +855,13 @@ class Column(
 
     @model_validator(mode="after")
     def _fake_is_a_kind(self) -> "Column":
-        if self.fake is None and self.mask_type == "fake":
-            raise ValueError(f"column {self.name}: masked with a fake but declares no fake")
+        if self.mask_type == "fake":
+            # REQ-1942: a fake is the column's own declaration (``fake``), read in place of the
+            # column's values in a Test (fake) environment, by every role -- never a role mask.
+            raise ValueError(
+                f"column {self.name}: a fake is not a role mask. Declare it as the column's fake, "
+                "and read it in a Test (fake) environment"
+            )
         from provisa.fakes.kinds import FakeRefused, parse
 
         try:

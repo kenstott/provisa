@@ -54,6 +54,8 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "observability",
     "environment_management",
     "environment_switch",
+    "environment_data", // REQ-1942
+    "sensitive_data", // REQ-1943
     "glossary_read", // REQ-1590
     "glossary_rw", // REQ-1590
     "org_glossary_rw", // REQ-1592

@@ -17,6 +17,7 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import type { MockedResponse } from "@apollo/client/testing";
 import { theme } from "../theme/theme";
 import i18n from "../i18n";
+import { PollyProvider } from "../context/PollyContext";
 
 // Wraps components in the same MantineProvider + i18n runtime the app uses so
 // component tests exercise real theming and translated strings (REQ-1016). The
@@ -32,7 +33,9 @@ function makeWrapper(mocks: readonly MockedResponse[], initialEntries?: MemoryRo
       <MockedProvider mocks={mocks}>
         <MantineProvider theme={theme} defaultColorScheme="dark">
           <I18nextProvider i18n={i18n}>
-            <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
+            <MemoryRouter initialEntries={initialEntries}>
+              <PollyProvider>{children}</PollyProvider>
+            </MemoryRouter>
           </I18nextProvider>
         </MantineProvider>
       </MockedProvider>

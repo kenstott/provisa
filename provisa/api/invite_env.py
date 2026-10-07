@@ -88,6 +88,7 @@ async def redeem_env(invite: dict, user_id: str) -> RedeemedEnv:
 
     from provisa.api.admin.orgs_router import _org_model_db
     from provisa.api.app import state
+    from provisa.core.env_classes import DIRECT, INHERIT
     from provisa.core.env_create import create_environment
     from provisa.core.env_store import get_env, set_expiry
 
@@ -140,7 +141,11 @@ async def redeem_env(invite: dict, user_id: str) -> RedeemedEnv:
             # measured from the last request it served rather than from this moment. A visitor still
             # working an hour in keeps their environment; one who walked away loses it on schedule.
             idle_ttl_seconds=invite["env_ttl_seconds"],
-            branched_from=source_env,
+            # REQ-1942: the visitor reads the source environment's data, through connections
+            # copied in below as its own (forked from the files they read, REQ-1620): its
+            # mutations change those copies and nothing of the source environment's.
+            data_mode=INHERIT,
+            mutation_handling=DIRECT,
             note=f"provisioned for {user_id}",
             # REQ-1602: a visitor's environment never binds its own sources, so it needs the source
             # env's real connections copied in at creation, not stripped -- the ordinary REQ-1491

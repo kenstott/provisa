@@ -231,6 +231,12 @@ CONFIG_YAML = yaml.dump(
 async def test_apply_runs_the_settled_sequence(monkeypatch):
     _grant(monkeypatch, {"org_settings"})
     seen = _wire_apply(monkeypatch)
+    import provisa.security.sensitive as sensitive
+
+    async def _no_changes(conn, config):  # the config touches no sensitive column
+        return []
+
+    monkeypatch.setattr(sensitive, "config_changes", _no_changes)
 
     resp = await ir.apply_import(ir.ImportApplyRequest(config_yaml=CONFIG_YAML), _request())
 
@@ -348,3 +354,22 @@ async def test_preview_converts_a_ddn_project(monkeypatch):
     resp = await ir.preview_import(req, _request())
     assert resp.flavor == DDN
     assert "pgconn" in resp.summary.source_ids
+
+
+@pytest.mark.asyncio
+async def test_an_apply_changing_a_sensitive_columns_hiding_needs_the_right(monkeypatch):
+    """REQ-1943: a configuration that sets a sensitive column's fake, mask or grants is applied
+    only by a holder of sensitive_data."""
+    _grant(monkeypatch, {"org_settings"})
+    seen = _wire_apply(monkeypatch)
+    import provisa.security.sensitive as sensitive
+
+    async def _changes(conn, config):
+        return ["customers.email (fake)"]
+
+    monkeypatch.setattr(sensitive, "config_changes", _changes)
+    with pytest.raises(ApiError) as exc:
+        await ir.apply_import(ir.ImportApplyRequest(config_yaml=CONFIG_YAML), _request())
+    assert exc.value.status_code == 403
+    assert "sensitive_data" in exc.value.detail and "customers.email (fake)" in exc.value.detail
+    assert "apply_config" not in seen["order"]

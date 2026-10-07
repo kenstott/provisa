@@ -25,6 +25,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { BrandMark } from "./BrandMark";
 import { CapabilityGate } from "./CapabilityGate";
+import { HIDING_RIGHTS } from "../lib/capabilities";
 import { useTour } from "../tour/useTour";
 import { RoleSelector } from "./RoleSelector";
 import { OrgSwitcher } from "./OrgSwitcher";
@@ -44,8 +45,22 @@ export function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
-  const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrgId } = useAuth();
-  const { startTour, canResume, status: tourStatus, available: tourAvailable } = useTour();
+  const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrgId } =
+    useAuth();
+  const {
+    startTour,
+    canResume,
+    coreSeen,
+    status: tourStatus,
+    available: tourAvailable,
+  } = useTour();
+  // REQ-1945: a part-way core tour resumes; once the core tour has been seen the button opens the
+  // Deep Dives menu.
+  const tourLabel = canResume
+    ? t("navBar.tourResume")
+    : coreSeen
+      ? t("navBar.tourMenu")
+      : t("navBar.tourStart");
   const { setNode: setSubnavExtraNode } = useSubnavExtraSlot();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -91,7 +106,12 @@ export function NavBar() {
   async function handleLogout() {
     // Only show upgrade modal for sandbox trial users, not for control-plane roles (platform_admin)
     const isControlPlane = capabilities?.some((cap) => cap === "cross_org");
-    console.log("[logout] activeOrgId=%s isControlPlane=%s capabilities=%o", activeOrgId, isControlPlane, capabilities);
+    console.log(
+      "[logout] activeOrgId=%s isControlPlane=%s capabilities=%o",
+      activeOrgId,
+      isControlPlane,
+      capabilities,
+    );
     if (activeOrgId === "sandbox" && !isControlPlane) {
       setShowUpgradeModal(true);
     } else {
@@ -165,7 +185,7 @@ export function NavBar() {
               {t("navBar.sources")}
             </NavLink>
           </CapabilityGate>
-          <CapabilityGate capability="table_registration">
+          <CapabilityGate capability="table_registration" anyOf={HIDING_RIGHTS}>
             <NavLink to="/tables" data-tour="nav-tables">
               {t("navBar.tables")}
             </NavLink>
@@ -261,11 +281,11 @@ export function NavBar() {
           {/* No launcher where the viewer's rights open none of the tour's pages — a button
               whose tour would be empty is worse than no button. */}
           {tourAvailable && (
-            <Tooltip label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}>
+            <Tooltip label={tourLabel}>
               <ActionIcon
                 variant="default"
                 size="lg"
-                aria-label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}
+                aria-label={tourLabel}
                 className="navbar-tour-btn"
                 // The launch prefetch can run for seconds on a loaded machine; the button itself has
                 // to show that the click landed, or it gets clicked again while the tour is starting.

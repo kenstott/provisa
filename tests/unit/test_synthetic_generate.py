@@ -203,6 +203,19 @@ def test_values_follow_their_profile(con):
     assert cplan.undeclared == ["id", "region", "email"]
 
 
+def test_a_declared_category_is_generated_as_the_values_written(con):
+    """REQ-1942: a declared profile's values are the operator's own, generated as written."""
+    from dataclasses import replace
+
+    table = _customers()
+    table = replace(table, profile=replace(table.profile, declared=True))
+    [cplan] = plan_tables([table], [], seed=7, names=_NAMES, count_rows=_count, measure=_unmeasured)
+    regions = Counter(r["region"] for r in _run(cplan.plan, con))
+    assert set(regions) == {"east", "west", "north"}
+    total = sum(regions.values())
+    assert regions["east"] / total == pytest.approx(0.5, abs=0.04)
+
+
 def test_a_numeric_column_is_drawn_through_its_sketch(con):
     planned = plan_tables(
         [_customers(), _purchases()],

@@ -88,6 +88,15 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # REQ-1573: be served by an environment other than prod — the right the org-routing middleware
     # checks when a request names one. Held by org_admin and developer; an analyst works in prod.
     ENVIRONMENT_SWITCH = "environment_switch"
+    # REQ-1942: change an environment's data choices -- its data mode, its sources' bindings,
+    # read-only or read-write, its synthetic settings -- including creating it reading real data.
+    # Held by org_admin alone: a developer switching an environment to Test (fake) with no fakes
+    # declared would expose real data.
+    ENVIRONMENT_DATA = "environment_data"
+    # REQ-1943: reveal or hide a sensitive column -- add or remove a sensitive tag on a column,
+    # set or clear a tag's Sensitive data option, change a sensitive column's role masks, fake,
+    # synthetic rule or column grants -- in every environment, prod included.
+    SENSITIVE_DATA = "sensitive_data"
     # REQ-1590: the business glossary's two rights. Reading the glossary is not administering the
     # org — an analyst looks a term up to understand a column — so it is its own right rather than
     # ORG_SETTINGS, which gated the whole surface and shut every non-admin out of it. GLOSSARY_RW is

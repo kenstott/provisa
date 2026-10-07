@@ -189,7 +189,7 @@ async def test_rest_refuses_a_role_that_would_inherit_a_domain_the_caller_does_n
     assert await _role_row(plane, "r3") is None
 
 
-async def test_rest_update_adds_only_what_the_caller_reaches_and_removes_freely(plane):
+async def test_rest_update_needs_every_domain_the_role_reaches_before_and_after(plane):
     with pytest.raises(ApiError) as err:
         await roles_router.update_role(
             "seller",
@@ -204,9 +204,16 @@ async def test_rest_update_adds_only_what_the_caller_reaches_and_removes_freely(
         roles_router.UpdateRoleBody(domain_access=["sales", "finance"]),
         _request("everywhere"),
     )
-    # Taking finance away again needs no reach of finance.
+    # REQ-1531 (amended 2026-10-07): taking finance away again is an act in finance too -- the
+    # role reaches it -- so a sales administrator is refused, and one reaching it may.
+    with pytest.raises(ApiError) as err:
+        await roles_router.update_role(
+            "seller", roles_router.UpdateRoleBody(domain_access=["sales"]), _request("sales_admin")
+        )
+    assert err.value.code == "auth.domain_denied"
+    assert (await _role_row(plane, "seller"))["domain_access"] == ["sales", "finance"]
     await roles_router.update_role(
-        "seller", roles_router.UpdateRoleBody(domain_access=["sales"]), _request("sales_admin")
+        "seller", roles_router.UpdateRoleBody(domain_access=["sales"]), _request("everywhere")
     )
     assert (await _role_row(plane, "seller"))["domain_access"] == ["sales"]
 
@@ -234,9 +241,11 @@ async def test_graphql_redefining_a_role_adds_only_what_the_caller_reaches(plane
     with pytest.raises(PermissionError, match="No access to domain 'finance'"):
         await _create_role("sales_admin", "seller", ["sales", "finance"])
     assert (await _role_row(plane, "seller"))["domain_access"] == ["sales"]
-    # The auditor role reaches finance already; a sales administrator may narrow nothing it
-    # cannot reach, but leaving finance on it adds nothing.
-    assert (await _create_role("sales_admin", "auditor", ["finance"])).success is True
+    # REQ-1531 (amended 2026-10-07): the auditor role reaches finance, so redefining it is an act
+    # in finance even when finance stays on it.
+    with pytest.raises(PermissionError, match="No access to domain 'finance'"):
+        await _create_role("sales_admin", "auditor", ["finance"])
+    assert (await _create_role("everywhere", "auditor", ["finance"])).success is True
 
 
 # --- a source ------------------------------------------------------------------------------------

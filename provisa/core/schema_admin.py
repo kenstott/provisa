@@ -413,12 +413,6 @@ environments = Table(
     # observes. A change whose commit did not land sets this instead; rebuilding re-serializes
     # every carried class and clears it.
     Column("drifted", Boolean, nullable=False, server_default=false()),
-    # REQ-1529: the base this environment branched from, or NULL when it IS a base. A base is what
-    # an org_admin creates, binds with its own credentials and grants membership in; a branch is
-    # what a member creates from one, and it reaches the base's sources by reference rather than
-    # holding a copy of where they point (REQ-1491). Self-referential FK: a branch cannot name an
-    # environment of another org, and a base cannot be dropped while a branch still resolves
-    # through it, which RESTRICT enforces rather than a check somebody has to remember.
     # REQ-1543: WHERE THE ENVIRONMENT IS in its own history, and where an undo departed from.
     # ``deployed_sha`` is the commit whose tree the environment's model equals -- written by the
     # write-through that committed it and by the deploy that applied it, and NOT the same as the
@@ -442,12 +436,44 @@ environments = Table(
     # which is prod.
     Column("origin_sha", Text),
     Column("redo_sha", Text),
-    Column("branched_from", Text),
+    # REQ-1942: the environment this one was created from, whatever its data mode -- NULL for prod
+    # alone. Its sources inherit through it by reference (REQ-1491, REQ-1529), each as its own
+    # ``binding`` says, so any environment can be switched back to Inherit at any time; and it is
+    # where a merge goes back to. RESTRICT: a parent cannot be dropped while an environment
+    # resolves through it.
+    Column("parent", Text),
+    # REQ-1942: where the environment's data comes from -- inherit | unbound | test_fake |
+    # test_synthetic -- and what a mutation in it does: refused (the default), reversible (kept in
+    # its own change log over data it never changes) or direct (changes data it owns). prod has
+    # no data mode: it is always real.
+    Column("data_mode", Text),
+    Column("mutation_handling", Text, nullable=False, server_default="refused"),
+    # REQ-1942, Test (synthetic): its whole-model generation -- generating | ready | failed, the
+    # reason it failed, and the dataset it generated.
+    Column("data_status", Text),
+    Column("data_error", Text),
+    Column("synthetic_dataset", Text),
     ForeignKeyConstraint(
-        ["org_id", "branched_from"],
+        ["org_id", "parent"],
         ["environments.org_id", "environments.name"],
         ondelete="RESTRICT",
-        name="environments_branched_from_fkey",
+        name="environments_parent_fkey",
+    ),
+    CheckConstraint(
+        "(name = 'prod') = (parent IS NULL) AND (name = 'prod') = (data_mode IS NULL)",
+        name="environments_parent_and_mode_check",
+    ),
+    CheckConstraint(
+        "data_mode IN ('inherit', 'unbound', 'test_fake', 'test_synthetic')",
+        name="environments_data_mode_check",
+    ),
+    CheckConstraint(
+        "mutation_handling IN ('refused', 'reversible', 'direct')",
+        name="environments_mutation_handling_check",
+    ),
+    CheckConstraint(
+        "data_status IN ('generating', 'ready', 'failed')",
+        name="environments_data_status_check",
     ),
 )
 

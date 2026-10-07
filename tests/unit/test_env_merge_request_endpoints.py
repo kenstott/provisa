@@ -442,7 +442,7 @@ class TestRetiringTheSourceOfAMerge:
             def as_dict(self):
                 return {"added": 1, "changed": 0, "removed": 0}
 
-        async def copy_model(db, org_id, source, target, *, mode, removals):
+        async def copy_model(db, org_id, source, target, *, mode, removals, landing):
             return _Report()
 
         async def plan_copy(db, org_id, source, target, *, mode, removals):

@@ -519,26 +519,83 @@ def unbind() -> None:
     _current.set(None)
 
 
-@contextlib.contextmanager
-def bound(dl: Deadline) -> Generator[None]:
+def _enter_scope(dl: Deadline, shield: _ThreadShield) -> None:
+    """Put the calling thread inside ``dl``'s scope, inside the shield: no raise is set while the
+    scope is half entered. The deadline may already have passed — a loaded machine can hold the
+    thread between creating the deadline and getting here for longer than the budget — and then
+    the watchdog raises as soon as the shield is let go."""
+    with shield.lock:
+        shield.settle()
+        dl._enter(shield)  # noqa: SLF001
+
+
+class _Scope:
+    """A thread's stay inside a deadline's scope, as a ``with`` block (REQ-1905).
+
+    A class rather than a generator, for where a raise can land. A generator-based context
+    manager is suspended at its ``yield`` while ``contextlib`` hands its value to the ``with``:
+    a raise landing there — the door between entering the scope and the block — is outside every
+    ``try`` the generator has and outside the block. It escapes as a bare :class:`DeadlinePassed`
+    and leaves the thread inside the scope, raised into until the abandoned generator is
+    collected. Here the scope is entered by the last call of ``__enter__``, inside its ``try``;
+    from there to the block the interpreter executes no point at which a raise is delivered, and
+    the block's own exception handling begins as ``__enter__`` returns.
+
+    ``every_failure``: whatever the work fails with once the deadline has passed is reported as the
+    timeout (a request's own deadline); otherwise only the watchdog's raise is. ``stops``: the
+    deadline ends with the block (its owner does not outlive it)."""
+
+    __slots__ = ("_dl", "_every_failure", "_outer", "_shield", "_stops")
+
+    def __init__(self, dl: Deadline, *, every_failure: bool, stops: bool) -> None:
+        self._dl = dl
+        self._every_failure = every_failure
+        self._stops = stops
+        self._shield = shielded()
+        self._outer: Deadline | None = None
+
+    def __enter__(self) -> Deadline:
+        self._outer = _current.get()
+        try:
+            _current.set(self._dl)
+            _enter_scope(self._dl, self._shield)
+        except BaseException as exc:
+            self._end(exc)
+            raise
+        return self._dl
+
+    def __exit__(self, exc_type: object, exc: BaseException | None, tb: object) -> bool:
+        self._end(exc)
+        return False
+
+    def _end(self, exc: BaseException | None) -> None:
+        """Leave the scope; raise the deadline's own error in place of ``exc`` when it is what
+        ``exc`` stands for."""
+        dl, shield = self._dl, self._shield
+        try:
+            if isinstance(exc, Exception):
+                let_go(exc)
+                if self._reports_timeout(exc):
+                    raise dl.expired_error() from exc
+        finally:
+            with shield.lock:
+                shield.settle()
+                dl._leave(shield)  # noqa: SLF001
+            _current.set(self._outer)
+            if self._stops:
+                dl.stop()
+
+    def _reports_timeout(self, exc: Exception) -> bool:
+        if not self._every_failure:
+            return isinstance(exc, DeadlinePassed)
+        dl = self._dl
+        return dl.fired and not dl.ended_early and not isinstance(exc, RequestTimedOut)
+
+
+def bound(dl: Deadline) -> contextlib.AbstractContextManager[Deadline]:
     """Bind ``dl`` for the enclosed work and unbind it after, WITHOUT stopping it: for a deadline
     whose owner outlives the block (a Flight stream pulled batch by batch, REQ-1905)."""
-    shield = shielded()
-    token = _current.set(dl)
-    dl._enter(shield)  # noqa: SLF001
-    try:
-        yield
-    except DeadlinePassed as exc:
-        let_go(exc)
-        raise dl.expired_error() from exc
-    except Exception as exc:
-        let_go(exc)
-        raise
-    finally:
-        with shield.lock:
-            shield.settle()
-            dl._leave(shield)  # noqa: SLF001
-        _current.reset(token)
+    return _Scope(dl, every_failure=False, stops=False)
 
 
 def hold(dl: Deadline) -> _ThreadShield:
@@ -552,7 +609,7 @@ def hold(dl: Deadline) -> _ThreadShield:
     """
     shield = shielded()
     _current.set(dl)
-    dl._enter(shield)  # noqa: SLF001
+    _enter_scope(dl, shield)
     return shield
 
 
@@ -595,8 +652,7 @@ def open_request(transport: str) -> Deadline:
     )
 
 
-@contextlib.contextmanager
-def request(transport: str) -> Generator[Deadline]:
+def request(transport: str) -> contextlib.AbstractContextManager[Deadline]:
     """Bind the deadline of a request arriving on ``transport`` for the whole of it (REQ-1905).
 
     Whatever the request then fails with, once its deadline has passed the failure it reports is
@@ -606,53 +662,17 @@ def request(transport: str) -> Generator[Deadline]:
 
     outer = _current.get()
     if outer is not None and outer.remaining() <= request_timeout_for(transport):
-        yield outer
-        return
-    shield = shielded()
-    dl = open_request(transport)
-    token = _current.set(dl)
-    dl._enter(shield)  # noqa: SLF001
-    try:
-        yield dl
-    except Exception as exc:
-        let_go(exc)
-        if dl.fired and not dl.ended_early and not isinstance(exc, RequestTimedOut):
-            raise dl.expired_error() from exc
-        raise
-    finally:
-        with shield.lock:
-            shield.settle()
-            dl._leave(shield)  # noqa: SLF001
-        _current.reset(token)
-        dl.stop()
+        return contextlib.nullcontext(outer)
+    return _Scope(open_request(transport), every_failure=True, stops=True)
 
 
-@contextlib.contextmanager
-def within(timeout: float) -> Generator[Deadline]:
+def within(timeout: float) -> contextlib.AbstractContextManager[Deadline]:
     """Bind a deadline of ``timeout`` seconds for the enclosed work (the tighter of this and any
     enclosing deadline wins)."""
     outer = _current.get()
     if outer is not None and outer.remaining() <= timeout:
-        yield outer
-        return
-    shield = shielded()
-    dl = Deadline(timeout)
-    token = _current.set(dl)
-    dl._enter(shield)  # noqa: SLF001
-    try:
-        yield dl
-    except DeadlinePassed as exc:
-        let_go(exc)
-        raise dl.expired_error() from exc
-    except Exception as exc:
-        let_go(exc)
-        raise
-    finally:
-        with shield.lock:
-            shield.settle()
-            dl._leave(shield)  # noqa: SLF001
-        _current.reset(token)
-        dl.stop()
+        return contextlib.nullcontext(outer)
+    return _Scope(Deadline(timeout), every_failure=False, stops=True)
 
 
 @contextlib.contextmanager

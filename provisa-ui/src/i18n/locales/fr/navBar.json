@@ -58,6 +58,7 @@
     "domainsToggle": "Domaines ({{checked}}/{{total}})",
     "domainsLabel": "Domaines",
     "tourResume": "Reprendre la visite guidée",
+    "tourMenu": "Ouvrir Approfondir",
     "tourStart": "Suivre une visite guidée",
     "userMenu": "Menu utilisateur",
     "profile": "Profil",

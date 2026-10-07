@@ -117,6 +117,24 @@ async def run_table_profile(state: Any, role: str, request: Any, table_id: int) 
     return await run_profile_now(request, table_id)
 
 
+async def declare_table_profile(
+    state: Any, role: str, request: Any, table_id: int, profile: dict
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin.profiler_router import DeclaredProfileBody, declare_profile
+
+    return await declare_profile(request, table_id, DeclaredProfileBody(profile=profile))
+
+
+async def get_profile_run_as_declared(
+    state: Any, role: str, request: Any, table_id: int, run_id: str
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin.profiler_router import run_as_declared
+
+    return await run_as_declared(request, table_id, run_id, x_provisa_role=role)
+
+
 async def list_profile_runs(state: Any, role: str, request: Any, table_id: int) -> list[dict]:
     require_role(role, state)
     from provisa.api.admin.profiler_router import list_profile_runs as route
@@ -128,7 +146,12 @@ async def _latest_succeeded_run(request: Any, table_id: int) -> str:
     from provisa.api.admin.profiler_router import list_profile_runs as route
 
     runs = await route(request, table_id)  # newest first
-    latest = next((r for r in runs if r["status"] == "succeeded"), None)
+    from provisa.profiler.declared import DECLARED
+
+    # REQ-1942: the latest MEASURED run; a declared profile measured nothing.
+    latest = next(
+        (r for r in runs if r["status"] == "succeeded" and r["sample_method"] != DECLARED), None
+    )
     if latest is None:
         raise ValueError(
             f"table {table_id} has no succeeded profile run; run run_table_profile first"
@@ -382,7 +405,10 @@ async def set_column_fake(
     current value; an empty string clears a fake or a synthetic rule. Checked by the editor's own
     check before the save."""
     require_role(role, state)
-    _require_table_editor(request)
+    from provisa.api.admin._hiding_guard import require_hiding_editor_request
+
+    # REQ-1944: a fake is a hiding field -- a steward sets it too; the save checks the domain.
+    require_hiding_editor_request(request)
     from provisa.api.admin.fakes_router import ColumnFakeIn, check_column_fake
 
     table = await table_edit.read_table(table_id)
@@ -502,6 +528,118 @@ async def drop_synthetic_dataset(state: Any, role: str, request: Any, dataset_id
     from provisa.api.admin.synthetic_router import drop_dataset
 
     return await drop_dataset(request, dataset_id)
+
+
+# -- environment data choices (REQ-1942) -------------------------------------------------------
+
+
+async def get_environment_detail(state: Any, role: str, request: Any, env: str) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import environment_detail
+
+    require_capability_request(request, "environment_management")
+    return await environment_detail(request, require_active_org_id(request), env)
+
+
+async def set_environment_data(
+    state: Any,
+    role: str,
+    request: Any,
+    env: str,
+    dataMode: str | None = None,  # noqa: N803 -- the tool's own argument names
+    mutationHandling: str | None = None,  # noqa: N803
+    confirmDiscard: bool = False,  # noqa: N803
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import DataChoicesBody, edit_data_choices
+
+    require_capability_request(request, "environment_data")
+    body = DataChoicesBody(
+        data_mode=dataMode,  # pyright: ignore[reportArgumentType]
+        mutation_handling=mutationHandling,  # pyright: ignore[reportArgumentType]
+        confirm_discard=confirmDiscard,
+    )
+    return await edit_data_choices(request, require_active_org_id(request), env, body)
+
+
+async def set_source_binding(
+    state: Any,
+    role: str,
+    request: Any,
+    env: str,
+    sourceId: str,  # noqa: N803 -- the tool's own argument names
+    binding: str,
+    connection: dict | None = None,
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import BindingBody
+    from provisa.api.admin.environment_data_router import set_source_binding as _set
+
+    require_capability_request(request, "environment_data")
+    body = BindingBody(binding=binding, **(connection or {}))  # pyright: ignore[reportArgumentType]
+    return await _set(request, require_active_org_id(request), env, sourceId, body)
+
+
+async def recopy_environment_sources(
+    state: Any, role: str, request: Any, env: str, sources: list[str] | None = None
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import RecopyBody, recopy_sources
+
+    require_capability_request(request, "environment_data")
+    return await recopy_sources(
+        request, require_active_org_id(request), env, RecopyBody(sources=sources)
+    )
+
+
+async def get_environment_synthetic_plan(state: Any, role: str, request: Any, env: str) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import synthetic_plan
+
+    require_capability_request(request, "environment_management")
+    return await synthetic_plan(request, require_active_org_id(request), env)
+
+
+async def generate_environment_model(
+    state: Any,
+    role: str,
+    request: Any,
+    env: str,
+    runs: dict | None = None,
+    seed: int = 0,
+    scale: float = 1.0,
+    confirmDiscard: bool = False,  # noqa: N803 -- the tool's own argument names
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import GenerateBody
+    from provisa.api.admin.environment_data_router import generate_model as _generate
+
+    require_capability_request(request, "environment_data")
+    given = {"runs": {int(k): v for k, v in runs.items()}} if runs is not None else {}
+    body = GenerateBody(seed=seed, scale=scale, confirm_discard=confirmDiscard, **given)
+    return await _generate(request, require_active_org_id(request), env, body)
+
+
+async def reset_environment_mutations(state: Any, role: str, request: Any, env: str) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import reset_mutations
+
+    require_capability_request(request, "environment_data")
+    return await reset_mutations(request, require_active_org_id(request), env)
 
 
 # -- config ------------------------------------------------------------------------------------

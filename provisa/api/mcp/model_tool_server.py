@@ -69,6 +69,16 @@ def register(
         return await mt.run_table_profile(*ctx(role), table_id)
 
     @described
+    async def declare_table_profile(table_id: int, profile: dict, role: str | None = None) -> dict:
+        return await mt.declare_table_profile(*ctx(role), table_id, profile)
+
+    @described
+    async def get_profile_run_as_declared(
+        table_id: int, run_id: str, role: str | None = None
+    ) -> dict:
+        return await mt.get_profile_run_as_declared(*ctx(role), table_id, run_id)
+
+    @described
     async def list_profile_runs(table_id: int, role: str | None = None) -> list[dict]:
         return await mt.list_profile_runs(*ctx(role), table_id)
 
@@ -207,6 +217,59 @@ def register(
     @described
     async def drop_synthetic_dataset(dataset_id: str, role: str | None = None) -> dict:
         return await mt.drop_synthetic_dataset(*ctx(role), dataset_id)
+
+    @described
+    async def get_environment_detail(env: str, role: str | None = None) -> dict:
+        return await mt.get_environment_detail(*ctx(role), env)
+
+    @described
+    async def set_environment_data(
+        env: str,
+        dataMode: str | None = None,  # noqa: N803 -- the tool's argument names
+        mutationHandling: str | None = None,  # noqa: N803
+        confirmDiscard: bool = False,  # noqa: N803
+        role: str | None = None,
+    ) -> dict:
+        return await mt.set_environment_data(
+            *ctx(role), env, dataMode, mutationHandling, confirmDiscard
+        )
+
+    @described
+    async def set_source_binding(
+        env: str,
+        sourceId: str,  # noqa: N803 -- the tool's argument names
+        binding: str,
+        connection: dict | None = None,
+        role: str | None = None,
+    ) -> dict:
+        return await mt.set_source_binding(*ctx(role), env, sourceId, binding, connection)
+
+    @described
+    async def recopy_environment_sources(
+        env: str, sources: list[str] | None = None, role: str | None = None
+    ) -> dict:
+        return await mt.recopy_environment_sources(*ctx(role), env, sources)
+
+    @described
+    async def get_environment_synthetic_plan(env: str, role: str | None = None) -> dict:
+        return await mt.get_environment_synthetic_plan(*ctx(role), env)
+
+    @described
+    async def generate_environment_model(
+        env: str,
+        runs: dict | None = None,
+        seed: int = 0,
+        scale: float = 1.0,
+        confirmDiscard: bool = False,  # noqa: N803 -- the tool's argument names
+        role: str | None = None,
+    ) -> dict:
+        return await mt.generate_environment_model(
+            *ctx(role), env, runs, seed, scale, confirmDiscard
+        )
+
+    @described
+    async def reset_environment_mutations(env: str, role: str | None = None) -> dict:
+        return await mt.reset_environment_mutations(*ctx(role), env)
 
     @described
     async def export_model_config(role: str | None = None) -> dict:

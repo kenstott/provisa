@@ -167,6 +167,7 @@ class TagType:  # REQ-1373, REQ-1375
     # the value must be one of param_values — the list is closed, because an open one would
     # accept "entity:custmoer" and the misspelt type then reads downstream as absence.
     param_policy: str = "none"
+    sensitive: bool = False  # REQ-1943: the Sensitive data option
     param_values: list[TagParamValueType] = strawberry.field(default_factory=list)
 
 
@@ -754,6 +755,7 @@ class TagInput:  # REQ-1373
     reason_policy: str = "optional"  # hidden | optional | required
     expires_policy: str = "optional"
     param_policy: str = "none"  # REQ-1467: none | required
+    sensitive: bool = False  # REQ-1943: the Sensitive data option
 
 
 @strawberry.input

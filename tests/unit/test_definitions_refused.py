@@ -204,13 +204,8 @@ def test_the_client_ctas_module_is_gone():
 @pytest.mark.parametrize(
     "sql", ["TRUNCATE TABLE t", "truncate sales.orders", "-- nightly\nTRUNCATE t"]
 )
-def test_truncate_is_refused_naming_delete(sql):
-    """TRUNCATE empties a table whatever the role may see and cannot carry a row filter, so it
-    is not a data write: refused on every surface, with DELETE named as the governed way."""
-    expected = "TRUNCATE is not available here: use DELETE, which is governed."
-    with pytest.raises(DefinitionNotAvailable) as from_tree:
-        refuse_definition(sqlglot.parse_one(sql, read="postgres"))
-    assert str(from_tree.value) == expected
-    with pytest.raises(DefinitionNotAvailable) as from_text:
-        refuse_definition_text(sql)
-    assert str(from_text.value) == expected
+def test_truncate_is_a_mutation_not_a_definition(sql):
+    """REQ-1942: TRUNCATE is a mutation, admitted like any (provisa.compiler.write_admission:
+    the write right, no row filter on the table) -- not a definition refused here."""
+    refuse_definition(sqlglot.parse_one(sql, read="postgres"))
+    refuse_definition_text(sql)

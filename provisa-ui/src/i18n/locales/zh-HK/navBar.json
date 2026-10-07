@@ -58,6 +58,7 @@
     "domainsToggle": "領域（{{checked}}/{{total}}）",
     "domainsLabel": "領域",
     "tourResume": "繼續導覽",
+    "tourMenu": "開啟深入探索",
     "tourStart": "開始導覽",
     "userMenu": "使用者選單",
     "profile": "個人檔案",

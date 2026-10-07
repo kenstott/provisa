@@ -1,5 +1,6 @@
 {
   "tableEditForm": {
+    "hidingOnlyNote": "您可以更改此表各欄的隱藏方式：誰能看到每一欄、欄的遮罩，以及敏感欄的偽造值和合成規則。註冊、重新命名及表的其他設定需要「表註冊」權限。",
     "sqlAliasLabel": "SQL 別名",
     "sqlAliasHelp": "在 API 中公開的 GraphQL/Cypher 欄位名稱。預設為數據表名稱。變更此項會在所有查詢及 SDL 文件中重新命名該實體。",
     "sqlAliasPlaceholder": "語義名稱覆寫",

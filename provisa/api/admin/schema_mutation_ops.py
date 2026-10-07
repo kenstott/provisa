@@ -436,6 +436,13 @@ async def register_table(
             if isinstance(_paging, MutationResult):
                 return _paging
             model.pagination = _paging
+        from provisa.api.admin._hiding_guard import table_hiding_refusal
+
+        _hiding_refusal = await table_hiding_refusal(  # REQ-1943, REQ-1944
+            info, _conn, model, editor=True
+        )
+        if _hiding_refusal is not None:
+            return _hiding_refusal
         try:
             model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
             table_id = await table_repo.upsert(_conn, model)

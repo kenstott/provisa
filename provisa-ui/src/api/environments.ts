@@ -40,11 +40,11 @@ export interface Environment {
   expires_at: string | null;
   protected: boolean;
   drifted: boolean;
-  // REQ-1529/REQ-1538: an environment with no `branched_from` carries its OWN connections;
-  // anything else resolves them from the environment it was created from. The registry stores that
-  // one column and nothing else -- owning your connections IS holding no branched_from, so
-  // `isBase` derives it rather than reading a field the server has never sent.
-  branched_from: string | null;
+  // REQ-1942: the environment this one was created from (null for prod alone), where its data
+  // comes from, and what a mutation in it does. Prod has no data mode: it is always real.
+  parent: string | null;
+  data_mode: "inherit" | "unbound" | "test_fake" | "test_synthetic" | null;
+  mutation_handling: "refused" | "reversible" | "direct";
   // REQ-1553: which way the history is open from where this environment stands. The cursor lives
   // in the control plane and the line lives in git, so neither end is derivable in the browser --
   // the server answers both with the row rather than leaving a button to be refused after it is
@@ -59,9 +59,10 @@ export interface Environment {
   expired_kept_by: Record<string, number>;
 }
 
-/** REQ-1529: an environment bound with its own source credentials, which is what members branch. */
+/** REQ-1529, REQ-1942: an environment that does not read its parent's connections -- prod, or one
+ * whose data mode is not Inherit. */
 export function isBase(env: Environment): boolean {
-  return env.branched_from === null;
+  return env.data_mode !== "inherit";
 }
 
 /**
@@ -148,17 +149,15 @@ export async function fetchEnvironments(orgId: string): Promise<Environment[]> {
  * Create an environment (REQ-1488, REQ-1528).
  *
  * `from_env` is the environment whose model the new one starts from, copied whole.
- * `inherit_connections` says the new environment resolves that one's connection coordinates —
- * host, port, database, username — by reference instead of carrying its own (REQ-1538). It
- * defaults to false on the server and is left out here unless the caller asks for it: a dev
- * environment made from prod should get prod's model and none of prod's databases.
+ * `data_mode` is where its data comes from (REQ-1942): `inherit` resolves that one's connection
+ * coordinates by reference; `unbound` carries none until the environment binds its own.
  */
 export async function createEnvironment(
   orgId: string,
   body: {
     name: string;
     from_env: string;
-    inherit_connections?: boolean;
+    data_mode: "inherit" | "unbound" | "test_fake" | "test_synthetic";
     expires_at?: string | null;
     // REQ-1939: start the environment on a synthetic dataset of these tables.
     synthetic?: {

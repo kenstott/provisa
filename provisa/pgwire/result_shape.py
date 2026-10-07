@@ -135,6 +135,8 @@ def derive_result_shape(
     ``table_map`` is the governance context's name -> table id resolution, ``ctx`` the role's
     compilation context and ``column_types`` the registry's per-table column types."""
     tree = sqlglot.parse_one(governed_sql, read="postgres")
+    if isinstance(tree, exp.TruncateTable):
+        return []  # REQ-1942: a TRUNCATE returns no rows
     if isinstance(tree, (exp.Insert, exp.Update, exp.Delete, exp.Merge)):
         return _returning_shape(tree, table_map, ctx, column_types)
     if not isinstance(tree, exp.Query):

@@ -38,8 +38,10 @@ if TYPE_CHECKING:
 
 from provisa.compiler.sql_types import key_list
 from provisa.core.paging import stored_paging
+from provisa.security.sensitive import SENSITIVE_DATA
 from provisa.core.repositories import rls as rls_repo
-from provisa.api.admin.capabilities import require_capability
+from provisa.api.admin.capabilities import require_capability, require_right_in_domains
+from provisa.security.rights import ALL_DOMAINS
 from provisa.api.admin.types import (
     CalendarInput,
     ColumnAliasType,
@@ -326,6 +328,45 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
             params={"objectType": model.object_type},
         )
     return None
+
+
+def _require_tag_editor(info: StrawberryInfo) -> None:  # REQ-1944
+    """The surface gate for tag definitions and assignments: a table editor, or a holder of
+    sensitive_data (whose reach the per-tag checks then narrow). Admits the caller to ask; what
+    the edit then needs is decided once the tag is known."""
+    from provisa.api.admin.capabilities import has_capability
+
+    if not has_capability(info, SENSITIVE_DATA):
+        require_capability(info, "table_registration")
+
+
+def _require_sensitive_tag_definer(info: StrawberryInfo) -> None:  # REQ-1944
+    """Editing a sensitive tag's definition (not its option): a table editor as before, or a
+    holder of sensitive_data reaching every domain -- the tag hides columns in all of them."""
+    from provisa.api.admin.capabilities import has_capability, holds_right_in_domains
+
+    if holds_right_in_domains(info, SENSITIVE_DATA, {ALL_DOMAINS}):
+        return
+    if not has_capability(info, "table_registration"):
+        require_right_in_domains(info, SENSITIVE_DATA, {ALL_DOMAINS})
+
+
+async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
+    info: StrawberryInfo,
+    conn: "Connection",
+    tag_row: dict,
+    object_type: str,
+    table_id: int | None,
+) -> None:
+    """A sensitive tag on a column decides how its values are hidden: sensitive_data in the
+    domain of the column's table (REQ-1944). Any other assignment is a table editor's act."""
+    if not (tag_row["sensitive"] and object_type == "column"):
+        require_capability(info, "table_registration")
+        return
+    from provisa.api.admin.domain_guard import table_domain
+
+    assert table_id is not None  # _assignment_target_problem: a column names its table
+    require_right_in_domains(info, SENSITIVE_DATA, {await table_domain(conn, table_id)})
 
 
 async def _refresh_config_tags() -> None:  # REQ-1373/1377
@@ -1562,11 +1603,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import data_product as data_product_repo
         from provisa.core.repositories import domain as domain_repo
 
+        from provisa.api.admin.capabilities import require_right_in_domains
+
         require_capability(info, "data_product_rw")
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
             conn = cast("Connection", conn)
+            # REQ-1944: the product's domain, and the one it is moved out of when it exists.
+            stored = await data_product_repo.get(conn, input.id)
+            require_right_in_domains(
+                info,
+                "data_product_rw",
+                {input.domain_id} | ({stored["domain_id"]} if stored is not None else set()),
+            )
             if await domain_repo.get(conn, input.domain_id) is None:
                 return MutationResult(
                     success=False,
@@ -1604,10 +1654,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin.capabilities import require_capability
         from provisa.core.repositories import data_product as data_product_repo
 
+        from provisa.api.admin.capabilities import require_right_in_domains
+
         require_capability(info, "data_product_rw")  # REQ-1634: see create_data_product
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            stored = await data_product_repo.get(cast("Connection", conn), id)
+            if stored is not None:  # REQ-1944: an absent product is the not-found below
+                require_right_in_domains(info, "data_product_rw", {stored["domain_id"]})
             try:
                 deleted = await data_product_repo.delete(cast("Connection", conn), id)
             except data_product_repo.DataProductDeleteRefused as refused:
@@ -1638,8 +1693,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def upsert_tag(
         self, info: StrawberryInfo, input: TagInput
-    ) -> MutationResult:  # REQ-1373, REQ-1375
-        require_capability(info, "table_registration")
+    ) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944
+        _require_tag_editor(info)
         from provisa.core.models import (
             DERIVED_TAG_IDS,
             SYSTEM_TAG_IDS,
@@ -1702,9 +1757,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             reason_policy=input.reason_policy,
             expires_policy=input.expires_policy,
             param_policy=input.param_policy,
+            sensitive=input.sensitive,
         )
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            existing = await tag_repo.get(cast("Connection", conn), input.id)
+            was_sensitive = bool(existing is not None and existing["sensitive"])
+            if input.sensitive != was_sensitive:
+                # REQ-1943: setting or clearing the Sensitive data option reveals or hides every
+                # column carrying the tag -- in every domain, so the right must reach them all
+                # (REQ-1944).
+                require_right_in_domains(info, SENSITIVE_DATA, {ALL_DOMAINS})
+            elif was_sensitive:
+                # REQ-1944: a sensitive tag's definition is maintained by whoever governs
+                # sensitive columns across the org, or by a table editor as before.
+                _require_sensitive_tag_definer(info)
+            else:
+                require_capability(info, "table_registration")
             await tag_repo.upsert(cast("Connection", conn), model)
         await _refresh_config_tags()
         return MutationResult(
@@ -1717,8 +1786,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def delete_tag(
         self, info: StrawberryInfo, id: str
-    ) -> MutationResult:  # REQ-1373, REQ-1375
-        require_capability(info, "table_registration")
+    ) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944
+        _require_tag_editor(info)
         from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS, base_tag_id
         from provisa.core.repositories import tag as tag_repo
 
@@ -1733,6 +1802,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            existing = await tag_repo.get(cast("Connection", conn), id)
+            if existing is not None and existing["sensitive"]:
+                # REQ-1943: deleting a sensitive tag removes it from every column carrying it,
+                # in every domain (REQ-1944).
+                require_right_in_domains(info, SENSITIVE_DATA, {ALL_DOMAINS})
+            else:
+                require_capability(info, "table_registration")
             deleted = await tag_repo.delete(cast("Connection", conn), id)
         if not deleted:
             return MutationResult(
@@ -1752,8 +1828,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def assign_tag(
         self, info: StrawberryInfo, input: TagAssignmentInput
-    ) -> MutationResult:  # REQ-1376/1377
-        require_capability(info, "table_registration")
+    ) -> MutationResult:  # REQ-1376/1377, REQ-1944
+        _require_tag_editor(info)
         from provisa.core.models import TagAssignment as TagAssignmentModel
         from provisa.core.repositories import tag as tag_repo
 
@@ -1793,6 +1869,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.tag_not_found",
                     params={"tag": input.tag_id},
                 )
+            await _require_tag_assignment_right(
+                info, cast("Connection", conn), tag_row, input.object_type, input.table_id
+            )
             # REQ-1443: a derived tag reports state the table already carries, so assigning it
             # would either duplicate that state or contradict it — the registration is the only
             # way to change it.
@@ -1889,8 +1968,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def unassign_tag(
         self, info: StrawberryInfo, input: TagAssignmentInput
-    ) -> MutationResult:  # REQ-1377
-        require_capability(info, "table_registration")
+    ) -> MutationResult:  # REQ-1377, REQ-1944
+        _require_tag_editor(info)
         from provisa.core.models import TagAssignment as TagAssignmentModel
         from provisa.core.repositories import tag as tag_repo
 
@@ -1908,6 +1987,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return problem
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            tag_row = await tag_repo.get(cast("Connection", conn), input.tag_id)
+            if tag_row is None:
+                require_capability(info, "table_registration")
+            else:
+                # REQ-1943: removing a sensitive tag from a column stops it being sensitive.
+                await _require_tag_assignment_right(
+                    info, cast("Connection", conn), tag_row, input.object_type, input.table_id
+                )
             removed = await tag_repo.unassign(
                 cast("Connection", conn), input.tag_id, model.object_key()
             )
@@ -2093,6 +2180,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin.capabilities import require_reach_of_added_domains
 
         held = next((r for r in existing if r["id"] == input.id), None)
+        if held is not None:
+            # REQ-1531: redefining a role is an act in every domain it reaches now, not only in
+            # the ones the change adds.
+            require_right_in_domains(
+                info, "user_management", effective_domain_access(input.id, existing)
+            )
         require_reach_of_added_domains(
             info,
             None if held is None else effective_domain_access(input.id, existing),
@@ -2294,9 +2387,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, input: TableInput
     ) -> MutationResult:  # REQ-016, REQ-020, REQ-155, REQ-156
         """Update an existing table's alias, description, and column metadata."""
-        from provisa.api.admin.capabilities import require_capability
+        from provisa.api.admin._hiding_guard import require_table_save
 
-        require_capability(info, "table_registration", domain_id=input.domain_id)
+        _editor, input = await require_table_save(info, input)  # REQ-1944
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()
@@ -2417,6 +2510,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _delta_refusal = await table_delta_refusal(_conn, model)  # REQ-874
             if _delta_refusal is not None:
                 return _delta_refusal
+            from provisa.api.admin._hiding_guard import table_hiding_refusal
+
+            _hiding_refusal = await table_hiding_refusal(  # REQ-1943, REQ-1944
+                info, _conn, model, editor=_editor
+            )
+            if _hiding_refusal is not None:
+                return _hiding_refusal
             try:
                 model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
                 table_id = await table_repo.upsert(_conn, model)
@@ -2600,8 +2700,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import role as role_repo
 
         require_capability(info, "user_management")  # REQ-1531: see create_role
+        from provisa.security.inheritance import effective_domain_access
+
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            existing = await role_repo.list_all(cast("Connection", conn))
+            if any(r["id"] == id for r in existing):
+                # REQ-1531: removing a role is an act in every domain it reaches.
+                require_right_in_domains(
+                    info, "user_management", effective_domain_access(id, existing)
+                )
             try:
                 deleted = await role_repo.delete(cast("Connection", conn), id)
             except role_repo.RoleDeleteRefused as refused:
@@ -2735,7 +2843,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # REQ-1531: an RLS rule decides who sees which rows of a domain's tables. Writing one is the
         # masking surface, and it lands in a domain — named directly for a domain-level rule, or the
         # table's own for a table-level one.
-        from provisa.api.admin.capabilities import require_capability, require_domain
+        from provisa.api.admin.capabilities import require_capability
         from provisa.api.admin.domain_guard import table_domain_by_name
         from provisa.core.models import RLSRule as RLSRuleModel
 
@@ -2744,7 +2852,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if input.action_name:  # REQ-1679: the target is a tracked function or webhook
             return await _upsert_action_rls_rule(info, input)
         if input.domain_id:
-            require_domain(info, input.domain_id)
+            require_right_in_domains(info, "masking_config", {input.domain_id})
         elif input.table_id:
             async with pool.acquire() as _gconn:
                 _dom = await table_domain_by_name(cast("Connection", _gconn), input.table_id)
@@ -2755,7 +2863,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.table_not_found",
                     params={"table": input.table_id},
                 )
-            require_domain(info, _dom)
+            require_right_in_domains(info, "masking_config", {_dom})
         # REQ-1676: the predicate is parsed and resolved against the model here, at save, so a
         # rule the administrator cannot query with is refused with the reason instead of failing
         # closed for the role at its first query.
@@ -2814,7 +2922,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         domain_id: Optional[str] = None,
         action_name: Optional[str] = None,
     ) -> MutationResult:  # REQ-1531, REQ-1679
-        from provisa.api.admin.capabilities import require_capability, require_domain
+        from provisa.api.admin.capabilities import require_capability
         from provisa.api.admin.domain_guard import table_domain
 
         require_capability(info, "masking_config")  # REQ-1531: see upsert_rls_rule
@@ -2827,11 +2935,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     getattr(state, "tracked_webhooks", None) or {}
                 ).get(action_name)
                 if action is not None and action.get("domain_id"):
-                    require_domain(info, action["domain_id"])
+                    require_right_in_domains(info, "masking_config", {action["domain_id"]})
             elif domain_id:
-                require_domain(info, domain_id)
+                require_right_in_domains(info, "masking_config", {domain_id})
             elif table_id is not None:
-                require_domain(info, await table_domain(cast("Connection", conn), table_id))
+                require_right_in_domains(
+                    info, "masking_config", {await table_domain(cast("Connection", conn), table_id)}
+                )
             deleted = await rls_repo.delete(
                 cast("Connection", conn),
                 role_id,
@@ -4206,7 +4316,6 @@ async def _upsert_action_rls_rule(
 ) -> MutationResult:  # REQ-1679
     """An RLS rule over an action's response contract: validated against the contract the way
     a table rule is validated against the table (REQ-1676), gated on the action's domain."""
-    from provisa.api.admin.capabilities import require_domain
     from provisa.api.app import state
     from provisa.api.data.action_governance import contract_columns
     from provisa.compiler.rls_validate import validate_rls_predicate
@@ -4224,7 +4333,7 @@ async def _upsert_action_rls_rule(
             params={"action": name},
         )
     if action.get("domain_id"):
-        require_domain(info, action["domain_id"])
+        require_right_in_domains(info, "masking_config", {action["domain_id"]})
     cols = contract_columns(action)
     if cols is None:
         return MutationResult(

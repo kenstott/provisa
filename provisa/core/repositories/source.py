@@ -108,13 +108,29 @@ async def upsert(  # REQ-012, REQ-250, REQ-1919
     from provisa.core.repositories.region import require_selected
 
     await require_selected(conn, f"source {source.id}", source.region)  # REQ-1921
-    values = _source_values(source)
+    values = await owned_if_reconnected(conn, _source_values(source))
     await conn.upsert(
         sources,
         values,
         index_elements=["id"],
         update_columns=[c for c in values if c != "id"],
     )
+
+
+async def owned_if_reconnected(conn: "Connection", values: dict) -> dict:  # REQ-1942
+    """``values`` -- a ``sources`` row about to be written -- marked the environment's OWN when
+    they change the connection of a source whose connection was copied from the parent or is none:
+    a connection edited in an environment is one it gave itself. A new row is its own already
+    (the column's default); an edit that leaves the connection as it is keeps its binding."""
+    from provisa.core.env_classes import BINDING_COLUMN, BINDING_COLUMNS, OWN
+
+    existing = await get(conn, values["id"])
+    if existing is None or existing[BINDING_COLUMN] == OWN:
+        return values
+    columns = BINDING_COLUMNS["sources"] & values.keys()
+    if all(values[c] == existing[c] for c in columns):
+        return values
+    return {**values, BINDING_COLUMN: OWN}
 
 
 async def count_billable(conn: "Connection") -> int:  # REQ-1513

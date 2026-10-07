@@ -19,6 +19,7 @@ import { NavBar } from "./components/NavBar";
 import { AdminRail } from "./components/AdminRail";
 import { NAV_GROUPS, entryItem } from "./components/navGroups";
 import { CapabilityGate } from "./components/CapabilityGate";
+import { HIDING_RIGHTS } from "./lib/capabilities";
 import { CredentialCheck } from "./components/CredentialCheck";
 import { PageLoading } from "./components/PageLoading";
 import { OnboardGate } from "./components/OnboardGate";
@@ -31,6 +32,7 @@ import { MaintenanceBanner } from "./components/MaintenanceBanner"; // REQ-1466
 import { LicenseBadge } from "./components/LicenseBadge";
 import { ChatPanel } from "./components/ChatPanel";
 import { fetchSetupStatus } from "./api/setup";
+import { PollyProvider } from "./context/PollyContext";
 import { TourProvider } from "./tour/useTour";
 import { TourAutoStart } from "./tour/TourAutoStart";
 import { prefetchPageChunksOnIdle } from "./pageChunks";
@@ -250,6 +252,7 @@ function App() {
               <OnboardGate onSessionExpired={handleLoginSuccess}>
                 <DomainFilterProvider>
                   <RequireAuth>
+                    <PollyProvider>
                     <TourProvider>
                       <SubnavExtraProvider>
                         <TourAutoStart demoMode={demoMode} />
@@ -289,8 +292,10 @@ function App() {
                                 <Route
                                   path="/tables"
                                   element={
+                                    // REQ-1944: a holder of a hiding right reaches it too.
                                     <CapabilityGate
                                       capability="table_registration"
+                                      anyOf={HIDING_RIGHTS}
                                       fallback={<NotAuthorized />}
                                     >
                                       <TablesPage />
@@ -603,6 +608,7 @@ function App() {
                         </div>
                       </SubnavExtraProvider>
                     </TourProvider>
+                    </PollyProvider>
                   </RequireAuth>
                 </DomainFilterProvider>
               </OnboardGate>

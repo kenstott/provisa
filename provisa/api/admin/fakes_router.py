@@ -48,7 +48,9 @@ class ColumnFakeIn(BaseModel):
 
 @router.get("/catalog")
 async def fake_catalog(request: Request) -> dict[str, Any]:
-    require_capability_request(request, _RIGHT)
+    from provisa.api.admin._hiding_guard import require_hiding_editor_request
+
+    require_hiding_editor_request(request)  # REQ-1944: the kinds a steward chooses a fake from
     from provisa.fakes.catalog import catalog
 
     return catalog()
@@ -56,7 +58,9 @@ async def fake_catalog(request: Request) -> dict[str, Any]:
 
 @router.post("/check")
 async def check_column_fake(request: Request, body: ColumnFakeIn) -> dict[str, Any]:
-    require_capability_request(request, _RIGHT)
+    from provisa.api.admin._hiding_guard import require_hiding_editor_request
+
+    require_hiding_editor_request(request)  # REQ-1944: a steward checks the fake it saves
     from provisa.api.admin._fake_guard import check_model
     from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
     from provisa.fakes.kinds import FakeRefused
