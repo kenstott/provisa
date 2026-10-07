@@ -508,7 +508,8 @@ _TRINO_PLUGINS = (
 # CONNECTOR_RELEASE, for the same reason, and each entry goes when _TRINO_PLUGIN_VERSION moves.
 #   trino-salesforce: 0.108.0 is the first release that has it (REQ-1946).
 #   trino-cloudops: 0.108.0 is the first whose plugin takes the `schema` property (REQ-1947).
-_TRINO_PLUGIN_VERSIONS: dict[str, str] = {
+# A plain assignment of literals: integration-suite.yml's "Trino plugin pin" step reads it.
+_TRINO_PLUGIN_VERSIONS = {
     "trino-salesforce": "0.108.0",
     "trino-cloudops": "0.108.0",
 }

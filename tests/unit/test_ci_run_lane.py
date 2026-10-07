@@ -196,11 +196,14 @@ def test_the_trino_plugin_pin_step_names_the_harness_pin():
     out = subprocess.run(  # noqa: S603 — the workflow's own step, run at the repo root
         ["bash", "-c", script], cwd=REPO, capture_output=True, text=True, check=True
     ).stdout
-    conftest = (REPO / "tests" / "conftest.py").read_text()
-    version = re.search(r'^_TRINO_PLUGIN_VERSION = "([^"]+)"$', conftest, re.M)
-    assert version is not None
+    import tests.conftest as harness
+
+    # The cache key names the pin and every plugin fetched at a version of its own.
+    own = harness._TRINO_PLUGIN_VERSIONS
+    key = "_".join([harness._TRINO_PLUGIN_VERSION, *(f"{n}-{own[n]}" for n in sorted(own))])
     lines = out.splitlines()
-    assert lines[0] == f"version={version.group(1)}"
-    jars = lines[1].removeprefix("jars=").split()
-    assert len(jars) == 3
-    assert all(j.endswith(f"-{version.group(1)}.jar") for j in jars)
+    assert lines[0] == f"version={key}"
+    assert lines[1].removeprefix("jars=").split() == [
+        f"trino/plugins/{n}/{n}-{harness._trino_plugin_version(n)}.jar"
+        for n in harness._TRINO_PLUGINS
+    ]
