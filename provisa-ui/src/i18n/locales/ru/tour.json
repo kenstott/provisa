@@ -27,7 +27,7 @@
       },
       "step2": {
         "title": "Зарегистрируйте источник",
-        "description": "➕ Новые подключения начинаются с этой кнопки — PostgreSQL, Snowflake, MongoDB, REST API, CSV и ещё 30+."
+        "description": "➕ Новые подключения начинаются с этой кнопки — PostgreSQL, Snowflake, MongoDB, REST API, CSV и ещё 50+."
       },
       "step3": {
         "title": "58 типов источников, 13 категорий",

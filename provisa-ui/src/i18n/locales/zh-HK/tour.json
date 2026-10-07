@@ -27,7 +27,7 @@
       },
       "step2": {
         "title": "登記數據來源",
-        "description": "➕ 新連接由這個按鈕開始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及 30 多種其他類型。"
+        "description": "➕ 新連接由這個按鈕開始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及 50 多種其他類型。"
       },
       "step3": {
         "title": "58 種數據來源類型，13 個類別",

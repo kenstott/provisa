@@ -27,7 +27,7 @@
       },
       "step2": {
         "title": "Register a source",
-        "description": "➕ New connections start with this button — PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and 30+ more."
+        "description": "➕ New connections start with this button — PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and 50+ more."
       },
       "step3": {
         "title": "58 source types, 13 categories",

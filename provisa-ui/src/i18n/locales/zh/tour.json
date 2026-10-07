@@ -27,7 +27,7 @@
       },
       "step2": {
         "title": "注册一个数据源",
-        "description": "➕ 新连接从这个按钮开始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，还有 30 多种其他类型。"
+        "description": "➕ 新连接从这个按钮开始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，还有 50 多种其他类型。"
       },
       "step3": {
         "title": "58 种数据源类型，13 个类别",

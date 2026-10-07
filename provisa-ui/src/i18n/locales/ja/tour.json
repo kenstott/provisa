@@ -27,7 +27,7 @@
       },
       "step2": {
         "title": "ソースを登録する",
-        "description": "➕ 新規接続はこのボタンから始まります — PostgreSQL、Snowflake、MongoDB、REST API、CSV、その他30種類以上。"
+        "description": "➕ 新規接続はこのボタンから始まります — PostgreSQL、Snowflake、MongoDB、REST API、CSV、その他50種類以上。"
       },
       "step3": {
         "title": "58種類のソース、13カテゴリ",

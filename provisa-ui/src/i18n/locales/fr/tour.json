@@ -27,7 +27,7 @@
       },
       "step2": {
         "title": "Enregistrer une source",
-        "description": "➕ Les nouvelles connexions démarrent avec ce bouton — PostgreSQL, Snowflake, MongoDB, une API REST, un CSV, et plus de 30 autres."
+        "description": "➕ Les nouvelles connexions démarrent avec ce bouton — PostgreSQL, Snowflake, MongoDB, une API REST, un CSV, et plus de 50 autres."
       },
       "step3": {
         "title": "58 types de source, 13 catégories",
