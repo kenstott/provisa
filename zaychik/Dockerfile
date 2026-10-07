@@ -8,6 +8,11 @@ WORKDIR /src
 COPY fix-decode-peer-identity.patch /tmp/
 RUN git apply /tmp/fix-decode-peer-identity.patch
 
+# Maven's HTTP transport retries a request three times and only on 429 and 503. Maven Central
+# answering one POM with 502 Bad Gateway therefore failed the whole image build on the first try.
+# A gateway error is retried too, five times, with the transport's own backoff.
+ENV MAVEN_ARGS="-Daether.connector.http.retryHandler.count=5 -Daether.connector.http.retryHandler.serviceUnavailable=429,502,503,504"
+
 # Separate dependency download so it's cached independently of source changes
 RUN mvn dependency:go-offline -q
 RUN mvn clean package -DskipTests && mvn dependency:copy-dependencies
