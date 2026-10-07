@@ -98,7 +98,11 @@ def test_one_source_is_attached_under_each_environments_catalog(monkeypatch):
     backend._runtime.attach_source = lambda source: attached.append(source.catalog)
     config = SimpleNamespace(
         sources=[_src("sales")],
-        tables=[SimpleNamespace(source_id="sales", schema_name="public", table_name="orders")],
+        tables=[
+            SimpleNamespace(
+                source_id="sales", schema_name="public", table_name="orders", region=None
+            )
+        ],
     )
     for catalog in ("org_acme__sales", "org_acme_env_qa__sales"):
         state = SimpleNamespace(

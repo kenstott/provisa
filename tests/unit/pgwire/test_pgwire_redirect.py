@@ -110,6 +110,8 @@ async def test_a_write_asked_to_be_delivered_is_refused_by_name(monkeypatch):
     from tests.unit.test_governed_sql_engine_internals import _state
 
     state = _state(["*"])
+    # REQ-1942: prod's runtime -- a write goes to its source, not to a change log.
+    state._active_runtime = lambda: SimpleNamespace(mutation_handling=None)
     state.tables = [
         {
             **t,
