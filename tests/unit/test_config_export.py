@@ -44,39 +44,87 @@ async def _run(
     from provisa.api.admin import config_export
 
     conn = object()
-    with (
-        patch.object(config_export, "read_config", lambda: base),
-        patch(
-            "provisa.api.admin.schema_helpers._get_pool",
-            AsyncMock(return_value=_FakePool(conn)),
-        ),
-        patch("provisa.core.repositories.table.list_all", AsyncMock(return_value=tables)),
-        patch(
-            "provisa.core.repositories.relationship.list_all", AsyncMock(return_value=rels or [])
-        ),
-        patch("provisa.core.repositories.role.list_all", AsyncMock(return_value=roles or [])),
-        patch("provisa.core.repositories.rls.list_all", AsyncMock(return_value=rls or [])),
-        patch("provisa.core.repositories.domain.list_all", AsyncMock(return_value=domains or [])),
-        patch(
-            "provisa.core.repositories.metric.list_all", AsyncMock(return_value=metrics or [])
-        ),  # REQ-1317
-        patch(
-            "provisa.core.repositories.data_product.list_all",
-            AsyncMock(return_value=data_products or []),
-        ),  # REQ-1634
+    # One ExitStack rather than one `with` of every patch: CPython 3.12's compiler crashes
+    # (SIGSEGV) on a with-statement of this many context managers in an async function.
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch.object(config_export, "read_config", lambda: base))
+        stack.enter_context(
+            patch(
+                "provisa.api.admin.schema_helpers._get_pool",
+                AsyncMock(return_value=_FakePool(conn)),
+            )
+        )
+        stack.enter_context(
+            patch("provisa.core.repositories.table.list_all", AsyncMock(return_value=tables))
+        )
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.relationship.list_all",
+                AsyncMock(return_value=rels or []),
+            )
+        )
+        stack.enter_context(
+            patch("provisa.core.repositories.role.list_all", AsyncMock(return_value=roles or []))
+        )
+        stack.enter_context(
+            patch("provisa.core.repositories.rls.list_all", AsyncMock(return_value=rls or []))
+        )
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.domain.list_all", AsyncMock(return_value=domains or [])
+            )
+        )
+        # REQ-1317
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.metric.list_all", AsyncMock(return_value=metrics or [])
+            )
+        )
+        # REQ-1634
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.data_product.list_all",
+                AsyncMock(return_value=data_products or []),
+            )
+        )
         # REQ-1919: every other section the store holds — none, unless a test gives some.
-        patch("provisa.core.repositories.source.list_all", AsyncMock(return_value=sources or [])),
-        patch("provisa.core.repositories.region.list_stores", AsyncMock(return_value=[])),
-        patch("provisa.core.repositories.region.list_regions", AsyncMock(return_value=[])),
-        patch("provisa.core.repositories.function.list_functions", AsyncMock(return_value=[])),
-        patch("provisa.core.repositories.function.list_webhooks", AsyncMock(return_value=[])),
-        patch("provisa.core.repositories.scheduled_trigger.list_all", AsyncMock(return_value=[])),
-        patch("provisa.core.repositories.tag.list_all", AsyncMock(return_value=[])),
-        patch("provisa.core.repositories.tag.list_assignments", AsyncMock(return_value=[])),
-        patch("provisa.core.store_config._glossary_terms", AsyncMock(return_value=[])),
-        patch("provisa.core.store_config._naming_rules", AsyncMock(return_value=[])),
-        patch("provisa.core.repositories.kafka_source.list_specs", AsyncMock(return_value=[])),
-    ):
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.source.list_all", AsyncMock(return_value=sources or [])
+            )
+        )
+        stack.enter_context(
+            patch("provisa.core.repositories.region.list_stores", AsyncMock(return_value=[]))
+        )
+        stack.enter_context(
+            patch("provisa.core.repositories.region.list_regions", AsyncMock(return_value=[]))
+        )
+        stack.enter_context(
+            patch("provisa.core.repositories.function.list_functions", AsyncMock(return_value=[]))
+        )
+        stack.enter_context(
+            patch("provisa.core.repositories.function.list_webhooks", AsyncMock(return_value=[]))
+        )
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.scheduled_trigger.list_all", AsyncMock(return_value=[])
+            )
+        )
+        stack.enter_context(
+            patch("provisa.core.repositories.tag.list_all", AsyncMock(return_value=[]))
+        )
+        stack.enter_context(
+            patch("provisa.core.repositories.tag.list_assignments", AsyncMock(return_value=[]))
+        )
+        stack.enter_context(
+            patch("provisa.core.store_config._glossary_terms", AsyncMock(return_value=[]))
+        )
+        stack.enter_context(
+            patch("provisa.core.store_config._naming_rules", AsyncMock(return_value=[]))
+        )
+        stack.enter_context(
+            patch("provisa.core.repositories.kafka_source.list_specs", AsyncMock(return_value=[]))
+        )
         return await config_export.build_live_config()
 
 
