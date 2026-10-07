@@ -356,6 +356,7 @@ export function ChatPanel() {
             size="xl"
             radius="xl"
             data-testid="chat-panel-toggle"
+            data-tour="polly-toggle"
             loading={checkingConfig}
             style={{ position: "fixed", bottom: 16, right: 16, zIndex: 200 }}
             onClick={() => void openChat()}

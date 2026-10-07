@@ -11,6 +11,8 @@ import { TOUR_STEPS } from "../src/tour/tourSteps";
 // progress value is an index into the same list. Both are derived here so inserting a step
 // re-points the test instead of silently walking it onto the wrong surface.
 const TOTAL_STEPS = TOUR_STEPS.length;
+// 0-based index of the first /tables step; the steps before it all sit on /sources.
+const TABLES_STEP = TOUR_STEPS.findIndex((s) => s.route === "/tables");
 const RELATIONSHIPS_STEP = TOUR_STEPS.findIndex((s) => s.route === "/relationships");
 
 // The waits below budget 60 s for the first popover alone — the app bundle boot, the identity
@@ -48,7 +50,7 @@ test("tour does not show a step's popover over a page still loading its data", a
   // swaps the button label once the *new* step's async waitForElement chain has resolved and
   // `highlight()` has actually run, so waiting on the label (not just "a popover is visible")
   // guarantees each click lands on the step it's meant to.
-  for (let n = 1; n <= 4; n++) {
+  for (let n = 1; n <= TABLES_STEP; n++) {
     // The first label has a different budget from the rest: reaching it means the app bundle has
     // booted, TourAutoStart has fired, and the tour has navigated /tables -> /sources and paid
     // that route's first-visit chunk fetch — all on a runner where five other workers are
@@ -56,7 +58,7 @@ test("tour does not show a step's popover over a page still loading its data", a
     // reliably. Once step0's popover is up, every later step is an in-app transition and 5s is
     // ample, so the extra budget is spent only where the work actually is.
     await expect(nextBtn).toHaveText(`Next (${n}/${TOTAL_STEPS})`, { timeout: n === 1 ? 60000 : 5000 });
-    if (n < 4) await nextBtn.click();
+    if (n < TABLES_STEP) await nextBtn.click();
   }
   await nextBtn.click(); // enters step4: navigates to /tables, highlights nav-tables
 
@@ -68,15 +70,15 @@ test("tour does not show a step's popover over a page still loading its data", a
   // `expect()` polls each carry their own IPC round-trip and would let the 1s query delay
   // elapse between them, hiding the very race this test exists to catch.
   const state = await page.waitForFunction(
-    (total: number) => {
+    ([total, tablesStep]: [number, number]) => {
       const nextBtnEl = document.querySelector(".driver-popover-next-btn");
-      if (nextBtnEl?.textContent?.trim() !== `Next (5/${total})`) return null;
+      if (nextBtnEl?.textContent?.trim() !== `Next (${tablesStep + 1}/${total})`) return null;
       const loading = Array.from(document.querySelectorAll(".page")).some(
         (el) => el.textContent?.trim() === "Loading tables...",
       );
       return { loading };
     },
-    TOTAL_STEPS,
+    [TOTAL_STEPS, TABLES_STEP],
     // Entering step4 navigates to /tables and pays that route's first-visit chunk fetch, so the
     // wait for its popover is a page transition, not an in-place DOM update. The budget does not
     // weaken the assertion: what is asserted is the loading state captured in the same tick the

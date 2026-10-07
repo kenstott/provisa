@@ -150,6 +150,15 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step0",
   },
   {
+    // Polly's open button sits in the always-mounted shell. Cold entry with the panel open (the
+    // toggle is replaced by the panel) closes it first. Routeless: stays on step0's page.
+    element: '[data-tour="polly-toggle"]',
+    key: "stepPolly",
+    ensureOpen: [
+      { click: '[data-testid="chat-panel-close"]', unlessPresent: '[data-tour="polly-toggle"]' },
+    ],
+  },
+  {
     route: "/sources",
     capability: "source_registration",
     prefetch: "settings",

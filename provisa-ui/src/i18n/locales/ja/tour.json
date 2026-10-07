@@ -21,6 +21,10 @@
         "title": "ようこそ、ツアーを始めましょう",
         "description": "🧭 このコンパスで、いつでもツアーを再開できます。いつでも終了できます。アプリをクリックするか <kbd>Esc</kbd> を押してください。<p><strong>Provisa</strong> は、データパスには関与しない、データのためのアクティブなセマンティックレイヤーです。</p><p>🎯 <strong>コア全体が 1 つの短い演習です。</strong>いくつかのデータベースを接続し、<strong>7 通りの方法</strong>でクエリを実行します。構文を使わず、普通の言葉で質問することもできます。所要時間は約 5 分で、<strong>デスクトップ上で完結</strong>します。サーバーも、構築するインフラも不要です(それは準備ができてからで構いません)。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>その<em>後</em>のすべて、つまりソースの追加、フェデレーション、ファイル、リレーションシップ、ビュー、スケジュールされたパイプラインは、プラットフォームとともに<strong>成長する</strong>ためのものであり、初日に必要なものではありません。コアの終わりの位置はお知らせします。</p><p>準備はいいですか？ ソースを接続しましょう。 →</p>"
       },
+      "stepPolly": {
+        "title": "設定アシスタントの Polly をご紹介",
+        "description": "<p>💬 <strong>Polly</strong> は、普通の言葉で Provisa を設定します。ドキュメントを読むよりずっと簡単です。</p><p><em>「Postgres を登録して」 · 「customers テーブルのメール列をフェイクにして」 · 「合成データで QA 環境を作って」 · 「給与は誰が見られる?」</em></p><p>Polly は <strong>UI と同じガバナンス付き API と権限</strong>で動作するため、あなたにできることだけを実行できます。チャットボタンからいつでも開けます。</p>"
+      },
       "step1": {
         "title": "まずはソースから",
         "description": "フェデレーションしたいものはすべてここに登録します：<div class='tour-tags'><span>🗄️ データベース</span><span>🏢 ウェアハウス</span><span>🔌 API</span><span>📄 ファイル</span><span>☁️ SaaS</span></div><p>Provisa はこれらすべてを、クエリ可能な一つの<strong>グラフ</strong>へと統合します。</p>"
