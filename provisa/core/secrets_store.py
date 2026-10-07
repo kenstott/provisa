@@ -170,6 +170,14 @@ async def _recorded_fingerprint(conn: "Connection") -> str | None:
     return None if row is None else row[0]
 
 
+async def recorded_key_fingerprint(admin_db: "Database") -> str | None:
+    """The fingerprint of the master key this deployment's secrets are written under, or None
+    while it has stored none. What the encryption settings show in place of the key, and what
+    stops a second key being generated over the first (REQ-918)."""
+    async with admin_db.acquire() as conn:
+        return await _recorded_fingerprint(conn)
+
+
 def _require_the_deployments_key(recorded: str) -> None:
     """Refuse unless the master key this worker holds is the one the deployment recorded."""
     from provisa.encryption.providers import master_key_fingerprint

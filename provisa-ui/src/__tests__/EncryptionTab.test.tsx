@@ -20,8 +20,9 @@ vi.mock("../api/admin", () => ({
   generateEncryptionKey: vi.fn(),
 }));
 
-import { fetchEncryption, setEncryption } from "../api/admin";
+import { fetchEncryption, generateEncryptionKey, setEncryption } from "../api/admin";
 const mockFetch = vi.mocked(fetchEncryption);
+const mockGenerate = vi.mocked(generateEncryptionKey);
 const mockSet = vi.mocked(setEncryption);
 
 function state(overrides: Partial<EncryptionState> = {}): EncryptionState {
@@ -29,6 +30,7 @@ function state(overrides: Partial<EncryptionState> = {}): EncryptionState {
     provider: "null",
     key_id: null,
     key_present: null,
+    key_fingerprint: null,
     providers: [
       {
         key: "null",
@@ -67,6 +69,7 @@ describe("EncryptionTab", () => {
   beforeEach(() => {
     mockFetch.mockReset();
     mockSet.mockReset();
+    mockGenerate.mockReset();
     mockSet.mockResolvedValue({ success: true, restart_required: true });
   });
 
@@ -97,5 +100,29 @@ describe("EncryptionTab", () => {
     await userEvent.click(screen.getByTestId("save-encryption-button"));
     await waitFor(() => expect(mockSet).toHaveBeenCalled());
     expect(mockSet.mock.calls[0][0]).toMatchObject({ provider: "local" });
+  });
+
+  // REQ-918: a master key is provisioned, never replaced.
+  it("offers to generate a master key when the deployment has recorded none", async () => {
+    mockFetch.mockResolvedValue(state({ provider: "local", key_present: false }));
+    mockGenerate.mockResolvedValue({ stored: true, key_id: "master" });
+    render(<EncryptionTab />);
+    const button = await screen.findByTestId("generate-key-button");
+    expect(button).toHaveTextContent("Generate master key");
+    expect(screen.queryByTestId("master-key-fingerprint")).not.toBeInTheDocument();
+    await userEvent.click(button);
+    await waitFor(() => expect(mockGenerate).toHaveBeenCalledWith({ key_id: null }));
+  });
+
+  it("shows the recorded key's fingerprint and offers no way to replace it", async () => {
+    mockFetch.mockResolvedValue(
+      state({ provider: "local", key_present: true, key_fingerprint: "fb98f0cf0a1b2c3d" }),
+    );
+    render(<EncryptionTab />);
+    expect(await screen.findByTestId("master-key-fingerprint")).toHaveTextContent(
+      "fb98f0cf0a1b2c3d",
+    );
+    expect(screen.queryByTestId("generate-key-button")).not.toBeInTheDocument();
+    expect(screen.queryByText(/rotat/i)).not.toBeInTheDocument();
   });
 });

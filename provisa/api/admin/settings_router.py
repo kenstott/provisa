@@ -1087,6 +1087,31 @@ def _encryption_providers() -> list[dict]:
     ]
 
 
+async def _deployment_key_fingerprint() -> str | None:
+    """The fingerprint of the master key this deployment has recorded its secrets under, or None
+    while it has recorded none."""
+    from provisa.api.app import state
+    from provisa.core.secrets_store import recorded_key_fingerprint
+
+    assert state.admin_db is not None, (
+        "the deployment's key record is in the platform control plane"
+    )
+    return await recorded_key_fingerprint(state.admin_db)
+
+
+async def _key_in_use(key_id: str | None) -> str | None:
+    """The fingerprint of the master key already in use under ``key_id``, or None when there is
+    none and one may be provisioned (REQ-918).
+
+    Two things make a key in use. The deployment's record: the key its stored secrets are written
+    under, whichever host holds it. And a key this host already holds under ``key_id``: column
+    and row-filter encryption write under it without recording it, so a deployment that has
+    stored no secret can still have data only that key opens."""
+    from provisa.encryption.providers import master_key_fingerprint
+
+    return await _deployment_key_fingerprint() or master_key_fingerprint(key_id)
+
+
 @router.get("/admin/encryption")
 async def get_encryption(request: Request):  # REQ-918
     """Encryption provider + master-key status for the admin UI."""
@@ -1105,6 +1130,10 @@ async def get_encryption(request: Request):  # REQ-918
         "provider": provider,
         "key_id": key_id,
         "key_present": master_key_present(key_id) if provider == "local" else None,
+        # The key in use, by fingerprint (never the key), whatever the provider: the secrets
+        # vault writes under the host's key when no provider is selected. Once there is one, no
+        # other is generated: see generate_encryption_key.
+        "key_fingerprint": await _key_in_use(key_id),
         "providers": providers,
         # Per-provider persisted config (mirrors /admin/auth). key_id stays top-level for `local`.
         # REQ-1575: minus every field the registry marks secret — a KMS credential is not something
@@ -1255,7 +1284,15 @@ async def set_secrets_service(request: Request):  # REQ-1557, REQ-1558
 
 @router.post("/admin/encryption/generate-key")
 async def generate_encryption_key(request: Request):  # REQ-918, REQ-1574, REQ-1801
-    """Generate a fresh AES-256 master key into the OS keychain under ``key_id``. Never returns it.
+    """Provision a fresh AES-256 master key into the OS keychain under ``key_id``. Never returns it.
+
+    A key is PROVISIONED, never replaced (REQ-918). The deployment records the fingerprint of the
+    key its secrets are written under with the first secret it stores, and every worker checks the
+    key it holds against that record before it starts. A key generated over that one would open
+    none of what is stored and would stop the next start (VaultKeyError), and nothing here
+    re-wraps what the old key wrote. The same holds for a key this host already holds that no
+    secret has recorded yet: encrypted columns and row filters are written under it. So a request
+    is refused (409), naming the fingerprint, whenever a key is in use (_key_in_use).
 
     REQ-1574 amends REQ-918, whose one-time display was the last place a key was ever shown by any
     surface. A key that reaches the browser has been through a response body, a devtools network
@@ -1266,12 +1303,12 @@ async def generate_encryption_key(request: Request):  # REQ-918, REQ-1574, REQ-1
 
     REQ-1801: takes effect immediately, no restart. Storing the key is only half the job — the
     running process's EncryptionService was built once at startup from whatever key existed then
-    (or none), and nothing rebuilt it after this endpoint wrote a new one, so a freshly-generated
-    key sat in the keychain unused until the next restart. Since the provider here is always
-    "local" (the only one this endpoint's keychain path applies to) and its config hasn't changed
-    — only the key material backing it has — re-running configure_encryption with the SAME
-    provider/config is exactly the idempotent re-provision it's documented to support, not a
-    provider swap (which is what still legitimately needs the PUT /admin/encryption restart note).
+    (or none), and nothing rebuilt it after this endpoint wrote one, so a freshly-generated key sat
+    in the keychain unused until the next restart. Since the provider here is always "local" (the
+    only one this endpoint's keychain path applies to) and its config hasn't changed — only the
+    key material backing it has — re-running configure_encryption with the SAME provider/config is
+    exactly the idempotent re-provision it's documented to support, not a provider swap (which is
+    what still legitimately needs the PUT /admin/encryption restart note).
     """
     require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     from provisa.encryption import configure_encryption
@@ -1279,6 +1316,15 @@ async def generate_encryption_key(request: Request):  # REQ-918, REQ-1574, REQ-1
 
     body = await request.json()
     key_id = body.get("key_id") or None
+    in_use = await _key_in_use(key_id)
+    if in_use is not None:
+        raise ApiError(
+            409,
+            "encryption.key_in_use",
+            f"a master key is already in use (fingerprint {in_use}). A new key would open nothing "
+            "written under it, so none is generated.",
+            fingerprint=in_use,
+        )
     if not store_master_key(generate_master_key_b64(), key_id):
         raise ApiError(
             503,
@@ -1289,8 +1335,8 @@ async def generate_encryption_key(request: Request):  # REQ-918, REQ-1574, REQ-1
             env_var="PROVISA_ENCRYPTION_KEY",
         )
 
-    # REQ-1801: rebuild the live service NOW, from the SAME provider/config already active — this
-    # is a key rotation on the running "local" provider, not a provider change, so none of
+    # REQ-1801: rebuild the live service NOW, from the SAME provider/config already active — the
+    # running "local" provider gains its key, it does not change provider, so none of
     # PUT /admin/encryption's restart caveats apply.
     enc_cfg = read_config().get("encryption", {}) or {}
     configure_encryption("local", key_id=key_id, config=enc_cfg.get("local", {}))

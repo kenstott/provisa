@@ -353,6 +353,75 @@ class TestSettingsGraphqlRemoteAndSampling:
 # --- Encryption provider registry (REQ-918) -------------------------------------
 
 
+@pytest.fixture
+def recorded_key(monkeypatch):
+    """The fingerprint the deployment has recorded its secrets under, held in memory: the record
+    is a row in the platform control plane, which this module's bare app does not have.
+    tests/integration/test_settings_router_api.py reads the real row.
+
+    The host starts with no master key either (the session's key store may hold one another test
+    minted), so a test states the key it runs with."""
+    import provisa.api.admin.settings_router as router_mod
+
+    held: dict[str, str | None] = {"fingerprint": None}
+
+    async def _recorded():
+        return held["fingerprint"]
+
+    monkeypatch.setattr(router_mod, "_deployment_key_fingerprint", _recorded)
+    monkeypatch.delenv("PROVISA_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setattr("provisa.encryption.providers._load_from_keychain", lambda key_id: None)
+    return held
+
+
+@pytest.mark.usefixtures("recorded_key")
+class TestMasterKeyIsProvisionedNeverReplaced:
+    """REQ-918: a deployment whose secrets are written under a key generates no other."""
+
+    def test_the_settings_show_no_fingerprint_while_no_key_is_in_use(self, client):
+        assert client.get("/admin/encryption").json()["key_fingerprint"] is None
+
+    def test_the_settings_show_the_recorded_keys_fingerprint(self, client, recorded_key):
+        recorded_key["fingerprint"] = "fb98f0cf0a1b2c3d"
+        assert client.get("/admin/encryption").json()["key_fingerprint"] == "fb98f0cf0a1b2c3d"
+
+    def test_a_key_this_host_holds_is_shown_and_not_replaced(self, client, monkeypatch):
+        """No secret has recorded it, but encrypted columns and row filters are written under it."""
+        import base64
+        import hashlib
+
+        key = bytes(range(32))
+        monkeypatch.setattr(
+            "provisa.encryption.providers._load_from_keychain",
+            lambda key_id: base64.b64encode(key).decode(),
+        )
+        stored: list[str | None] = []
+        monkeypatch.setattr(
+            "provisa.encryption.providers.store_master_key",
+            lambda key_b64, key_id: stored.append(key_id) or True,
+        )
+        fingerprint = hashlib.sha256(key).hexdigest()[:16]
+        assert client.get("/admin/encryption").json()["key_fingerprint"] == fingerprint
+
+        r = client.post("/admin/encryption/generate-key", json={})
+        assert r.status_code == 409, r.text
+        assert fingerprint in r.json()["detail"]
+        assert stored == []
+
+    def test_generating_is_refused_once_a_key_is_recorded(self, client, recorded_key, monkeypatch):
+        stored: list[str | None] = []
+        monkeypatch.setattr(
+            "provisa.encryption.providers.store_master_key",
+            lambda key_b64, key_id: stored.append(key_id) or True,
+        )
+        recorded_key["fingerprint"] = "fb98f0cf0a1b2c3d"
+        r = client.post("/admin/encryption/generate-key", json={})
+        assert r.status_code == 409, r.text
+        assert "fb98f0cf0a1b2c3d" in r.json()["detail"]
+        assert stored == []  # the key this host holds is untouched
+
+
+@pytest.mark.usefixtures("recorded_key")
 class TestEncryptionProviders:
     def test_get_lists_registry_providers_with_fields_and_availability(self, client):
         body = client.get("/admin/encryption").json()
@@ -449,8 +518,11 @@ class TestEncryptionProviders:
         assert read_config()["encryption"]["acme_hsm"]["endpoint"] == "https://hsm.internal"
 
 
+@pytest.mark.usefixtures("recorded_key")
 class TestGenerateEncryptionKey:  # REQ-918, REQ-1801
-    """POST /admin/encryption/generate-key must take effect immediately, no restart."""
+    """POST /admin/encryption/generate-key must take effect immediately, no restart. These run as
+    a deployment that has recorded no key; TestMasterKeyIsProvisionedNeverReplaced is the one
+    that has."""
 
     @pytest.fixture(autouse=True)
     def _reset_encryption_service(self):

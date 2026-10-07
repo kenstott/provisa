@@ -1177,6 +1177,10 @@ export interface EncryptionState {
   provider: string;
   key_id: string | null;
   key_present: boolean | null;
+  /** The fingerprint of the master key in use: the one this deployment's secrets are recorded
+   *  under, else the one this host holds; null when there is none. A deployment with one
+   *  generates no other (REQ-918). */
+  key_fingerprint: string | null;
   providers: EncryptionProvider[];
   /** Per-provider persisted config (keyed by provider key), minus every secret field (REQ-1575). */
   config: Record<string, Record<string, unknown>>;
@@ -1206,7 +1210,9 @@ export async function setEncryption(body: {
 }
 
 // REQ-1574: the key is generated INTO the OS keychain and is never returned. With no keychain to
-// hold it the server refuses (503) rather than putting a master key on the wire.
+// hold it the server refuses (503) rather than putting a master key on the wire. REQ-918: a
+// deployment whose secrets are already written under a key refuses too (409) — it provisions a
+// key, it does not replace one.
 export async function generateEncryptionKey(body: {
   key_id?: string | null;
 }): Promise<{ stored: boolean; key_id: string }> {
