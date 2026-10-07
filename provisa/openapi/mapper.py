@@ -52,7 +52,7 @@ class OpenAPIMutation:  # REQ-317
     # REQ-1924: a GET whose response declares no row schema. It changes nothing in the remote
     # system; it is a command because what it answers is not rows a table could hold.
     reads: bool = False
-    # Its answer is a file (``application/octet-stream``): one binary value, not rows or text.
+    # Its answer is a file (a media type that is neither text nor JSON): one binary value.
     binary: bool = False
 
 
@@ -105,14 +105,48 @@ def _success_response(operation: SchemaPath) -> SchemaPath | None:
     return next((responses / code for code in ("200", "2xx", "default") if code in responses), None)
 
 
-# A response of this media type is a file: one binary value, not rows or text.
-_BINARY_MEDIA = "application/octet-stream"
+def _media(name: str) -> str:
+    """A media type without its parameters (``application/json;charset=UTF-8`` is JSON)."""
+    return name.split(";", 1)[0].strip().lower()
+
+
+def _is_json(media: str) -> bool:
+    return media == "application/json" or media.endswith("+json")
+
+
+def _is_text(media: str) -> bool:
+    """A media type whose answer is text, or is not said (``*/*``): JSON, XML, ``text/*``."""
+    return (
+        _is_json(media)
+        or media.startswith("text/")
+        or media == "application/xml"
+        or media.endswith("+xml")
+        or "*" in media
+    )
+
+
+def _json_schema(body: SchemaPath) -> SchemaPath | None:
+    """The JSON schema a response or a request body declares: under its JSON media type
+    (OpenAPI 3.x), or on the response itself (Swagger 2.0)."""
+    content = _at(body, "content")
+    if content is None:
+        return _at(body, "schema")
+    return next(
+        (
+            schema
+            for name in content.str_keys()
+            if _is_json(_media(name))
+            for schema in [_at(content, name, "schema")]
+            if schema is not None
+        ),
+        None,
+    )
 
 
 def _answers_binary(root: SchemaPath, operation: SchemaPath) -> bool:
-    """Whether every media type the operation declares for its answer is binary: the keys of
-    the success response's ``content`` (OpenAPI 3.x), or the operation's ``produces``, else the
-    spec's (Swagger 2.0)."""
+    """Whether the operation answers with a file: every media type it declares for its answer is
+    one that is neither text nor JSON. The media types are the keys of the success response's
+    ``content`` (OpenAPI 3.x), or the operation's ``produces``, else the spec's (Swagger 2.0)."""
     response = _success_response(operation)
     content = None if response is None else _at(response, "content")
     if content is not None:
@@ -122,26 +156,21 @@ def _answers_binary(root: SchemaPath, operation: SchemaPath) -> bool:
         if produces is None:
             produces = _at(root, "produces")
         media = [] if produces is None else list(produces.read_value())
-    return bool(media) and all(m == _BINARY_MEDIA for m in media)
+    return bool(media) and not any(_is_text(_media(m)) for m in media)
 
 
 def _extract_response_schema(operation: SchemaPath) -> tuple[dict | None, bool]:
-    """(row schema, is_list) of the 200/2xx/default response; is_list when it is an array."""
-    for code in ("200", "2xx", "default"):
-        resp = _at(operation, "responses", code)
-        if resp is None:
-            continue
-        # OpenAPI 3.x declares the schema per media type; Swagger 2.0 on the response itself.
-        for where in (("content", "application/json", "schema"), ("schema",)):
-            schema = _at(resp, *where)
-            if schema is not None:
-                return _row_schema(schema)
-    return None, False
+    """(row schema, is_list) of the success response; is_list when it is an array. Only that
+    response is read: one declared beside it (``default``) is the error the remote answers with."""
+    response = _success_response(operation)
+    schema = None if response is None else _json_schema(response)
+    return (None, False) if schema is None else _row_schema(schema)
 
 
 def _extract_request_schema(operation: SchemaPath) -> dict | None:
     """The request body's schema: ``requestBody`` (OpenAPI 3.x) or the body parameter (Swagger 2.0)."""
-    schema = _at(operation, "requestBody", "content", "application/json", "schema")
+    body = _at(operation, "requestBody")
+    schema = None if body is None else _json_schema(body)
     if schema is not None:
         return _row_schema(schema)[0]
     for param in _at(operation, "parameters") or ():

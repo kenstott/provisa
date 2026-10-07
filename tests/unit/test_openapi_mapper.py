@@ -434,3 +434,55 @@ def test_swagger_2_declares_a_file_by_what_the_operation_produces():
     }
     _, commands = parse_spec(spec)
     assert {c.operation_id: c.binary for c in commands} == {"getDownload": True, "getLog": False}
+
+
+# -- which response and which media type the rows are read from ------------------------------------
+
+_ERROR = {
+    "description": "error",
+    "content": {
+        "application/json": {
+            "schema": {"type": "object", "properties": {"error": {"type": "string"}}}
+        }
+    },
+}
+
+
+def test_a_json_media_type_with_parameters_gives_the_columns():
+    typed = {
+        "200": {
+            "description": "ok",
+            "content": {
+                "application/json;charset=UTF-8": {
+                    "schema": {"type": "object", "properties": {"id": {"type": "integer"}}}
+                }
+            },
+        }
+    }
+    (query,), commands = parse_spec(_get({"responses": typed}))
+    assert (set(query.response_schema["properties"]), commands) == ({"id"}, [])
+
+
+def test_the_error_response_is_never_read_as_the_rows():
+    untyped = {"200": {"description": "the diff"}, "default": _ERROR}
+    queries, (command,) = parse_spec(_get({"responses": untyped}))
+    assert (queries, command.response_schema, command.reads) == ([], None, True)
+
+
+def test_a_pdf_is_a_file_and_the_error_beside_it_is_not_its_columns():
+    declared = {
+        "200": {
+            "description": "the invoice",
+            "content": {"application/pdf": {"schema": {"type": "string", "format": "binary"}}},
+        },
+        "default": _ERROR,
+    }
+    queries, (command,) = parse_spec(_get({"responses": declared}))
+    assert (queries, command.binary, command.response_schema) == ([], True, None)
+
+
+def test_an_answer_declared_as_text_or_as_anything_is_not_a_file():
+    for media in ("text/plain", "*/*", "application/xml"):
+        declared = {"200": {"description": "ok", "content": {media: {}}}}
+        _, (command,) = parse_spec(_get({"responses": declared}))
+        assert command.binary is False, media

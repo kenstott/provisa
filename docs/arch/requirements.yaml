@@ -4720,6 +4720,11 @@
     fields need.
     (Amended 2026-10-07, A GET THAT ANSWERS NO ROWS) A GET whose response declares no schema, or
     whose declared answer is a file, is offered as a command and not as a table (REQ-1924).
+    (Amended 2026-10-07, WHICH RESPONSE IS THE ROWS) A table's columns are read from the success
+    response only -- 200, else 2xx, else a default declared with neither. A default declared
+    beside a success response is the error the remote answers with and is never read as the rows.
+    The JSON schema is the one under the response's JSON media type, whatever parameters the
+    media type carries (application/json;charset=UTF-8 is JSON).
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/
@@ -71988,6 +71993,9 @@
     offered the same way and answers one row with one bytea column named result; every surface
     carries that value as it carries any bytea. The steward registers the ones wanted, as for any
     command.
+    (Amended 2026-10-07, ANY ANSWER THAT IS NOT TEXT IS A FILE) A declared answer is a file when
+    none of the media types declared for it is text -- JSON, XML, text/* -- or unspecified (*/*).
+    A PDF, an archive or an image is a file as application/octet-stream is.
   use_case: GitHub offers 267 mutations and a team wants three of them. Registering all of them as
     commands when the source is added would put 264 unwanted commands in the model, each needing a
     domain and a grant; registering them one at a time keeps the model to what the team chose.

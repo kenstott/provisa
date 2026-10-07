@@ -19,7 +19,7 @@ in the remote system.
 An OpenAPI source also offers each GET whose response declares no row schema -- a diff, a log,
 an untyped document, a file. It is a command because what it answers is not rows a table could
 hold; it reads, so it is registered as a query and none of what holds for a write holds for it.
-An operation that answers with a file (``application/octet-stream``) answers one binary value.
+An operation that answers with a file (a media type neither text nor JSON) answers one binary value.
 
 A call is passed through as is. Provisa does not shape, type or check the input: each argument
 the caller gives goes to the remote unchanged, with the source's credential, and the remote's
