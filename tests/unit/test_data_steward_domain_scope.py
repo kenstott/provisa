@@ -25,13 +25,15 @@ import types
 from typing import Any
 
 import pytest
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 
 import provisa.api.app as appmod
 from provisa.api.admin import schema_mutation
+from provisa.api.errors import ApiError
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import _init_schema_portable
 from provisa.core.schema_org import (
+    data_products,
     domains,
     roles,
     sources,
@@ -232,3 +234,55 @@ async def test_deleting_a_row_rule_outside_the_stewards_domain_is_refused(plane)
         await M().delete_rls_rule(
             _info(plane.steward), "sales_role", table_id=plane.ids["invoices"]
         )
+
+
+# --- data products (data_product_rw) -------------------------------------------------------------
+
+
+def _product(domain_id: str, product_id: str = "p1") -> Any:
+    from provisa.api.admin.types import DataProductInput
+
+    return DataProductInput(id=product_id, domain_id=domain_id, name=product_id)
+
+
+async def _product_ids(db: Database) -> set[str]:
+    async with db.acquire() as conn:
+        return {r[0] for r in (await conn.execute_core(select(data_products.c.id))).fetchall()}
+
+
+async def test_a_data_product_in_the_stewards_domain_is_created_and_deleted(plane):
+    assert (await M().create_data_product(_info(plane.steward), _product("sales"))).success
+    assert (await M().delete_data_product(_info(plane.steward), "p1")).success
+    assert await _product_ids(plane.db) == set()
+
+
+async def test_a_data_product_in_another_domain_is_refused(plane):
+    with pytest.raises(PermissionError, match="'finance'"):
+        await M().create_data_product(_info(plane.steward), _product("finance"))
+    assert await _product_ids(plane.db) == set()
+
+
+async def test_another_domains_product_can_be_neither_moved_in_nor_deleted(plane):
+    assert (await M().create_data_product(_info("steward_everywhere"), _product("finance"))).success
+    with pytest.raises(PermissionError, match="'finance'"):
+        await M().create_data_product(_info(plane.steward), _product("sales"))
+    with pytest.raises(PermissionError, match="'finance'"):
+        await M().delete_data_product(_info(plane.steward), "p1")
+    assert await _product_ids(plane.db) == {"p1"}
+
+
+async def test_the_mcp_data_product_tools_are_scoped_alike(plane, monkeypatch):
+    from provisa.api.mcp import tools
+
+    # The role's built schema is not what this asks about; its rights and domains are.
+    monkeypatch.setattr(tools, "require_role", lambda _role, _state: None)
+    request = _request(plane.steward)
+    with pytest.raises(ApiError, match="'finance'"):
+        await tools.create_data_product(
+            appmod.state, plane.steward, request, id="p2", domain_id="finance", name="p2"
+        )
+    assert (
+        await tools.create_data_product(
+            appmod.state, plane.steward, request, id="p2", domain_id="sales", name="p2"
+        )
+    )["id"] == "p2"

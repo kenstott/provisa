@@ -1532,11 +1532,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import data_product as data_product_repo
         from provisa.core.repositories import domain as domain_repo
 
+        from provisa.api.admin.capabilities import require_right_in_domains
+
         require_capability(info, "data_product_rw")
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
             conn = cast("Connection", conn)
+            # REQ-1944: the product's domain, and the one it is moved out of when it exists.
+            stored = await data_product_repo.get(conn, input.id)
+            require_right_in_domains(
+                info,
+                "data_product_rw",
+                {input.domain_id} | ({stored["domain_id"]} if stored is not None else set()),
+            )
             if await domain_repo.get(conn, input.domain_id) is None:
                 return MutationResult(
                     success=False,
@@ -1574,10 +1583,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin.capabilities import require_capability
         from provisa.core.repositories import data_product as data_product_repo
 
+        from provisa.api.admin.capabilities import require_right_in_domains
+
         require_capability(info, "data_product_rw")  # REQ-1634: see create_data_product
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            stored = await data_product_repo.get(cast("Connection", conn), id)
+            if stored is not None:  # REQ-1944: an absent product is the not-found below
+                require_right_in_domains(info, "data_product_rw", {stored["domain_id"]})
             try:
                 deleted = await data_product_repo.delete(cast("Connection", conn), id)
             except data_product_repo.DataProductDeleteRefused as refused:
