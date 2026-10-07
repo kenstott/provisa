@@ -1,0 +1,462 @@
+name: Integration suite lanes
+
+# The container-backed suite: tests/integration, tests/steps and tests/e2e, which provision their
+# own Docker Compose stacks (tests/conftest.py, tests/itest_stack.py), plus the Helm chart on a
+# minikube of its own. tests/unit runs in unit-tests.yml and is not repeated here.
+#
+# Lanes are scripts/test-all's (scripts/ci/run_lane.py holds them): each groups the tests whose
+# session-provisioned services fit one Docker host together. The two largest lanes are cut into
+# file shards so each job fits a runner. One test session per runner, so the harness's stack slot
+# (acquire_stack_slot) always admits it; the first step of every job prints the slot count.
+#
+# The warehouse lane uses live cloud warehouses and their credentials (repo secrets). It runs
+# nightly against the integration branch and on demand, not on every push. A warehouse test that
+# cannot run because something is not set FAILS, naming what (tests/skip_is_failure.py).
+#
+# Secrets reach only the jobs and steps that need them (warehouse, e2e, the suite lane's
+# Splunk CIM fetch), and only on pushes to this repository's own branches and on schedule/dispatch;
+# there is no pull_request trigger here.
+
+# Called by integration-suite.yml, which holds the triggers and the run queue. `github` here is
+# the caller's context (its event, ref and sha); the inputs are the dispatcher's, passed through.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+        default: ""
+      lanes:
+        type: string
+        required: false
+        default: "all"
+      include_warehouse:
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  # The harness tears its own stacks down at session end; nothing is kept between steps.
+  PYTEST_DOCKER_KEEP: ""
+  # The Splunk CIM add-on release scripts/fetch-splunk-cim.sh vendors (and the cache key names).
+  SPLUNK_CIM_VERSION: "6.1.0"
+  # A lane whose interpreter dies on a signal leaves its traceback and the output written before it:
+  # without these the block-buffered pytest output was lost and the lane ended in a bare exit code.
+  PYTHONFAULTHANDLER: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  # Which lanes this run tests: every one on a push, the dispatcher's choice on demand, none of the
+  # suite on the nightly (warehouse-only) schedule. The matrix comes from scripts/ci/run_lane.py,
+  # which refuses an unknown lane name rather than dispatching an empty run.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      suite: ${{ steps.plan.outputs.suite }}
+      cluster: ${{ steps.plan.outputs.cluster }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - id: plan
+        env:
+          LANES: ${{ github.event_name == 'workflow_dispatch' && inputs.lanes || 'all' }}
+        run: |
+          matrix=$(python3 scripts/ci/run_lane.py --matrix "$LANES")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          suite=$(python3 -c "import json,sys; print('true' if json.loads(sys.argv[1])['include'] else 'false')" "$matrix")
+          echo "suite=$suite" >> "$GITHUB_OUTPUT"
+          case ",${LANES// /}," in *,all,*|*,cluster,*) c=true;; *) c=false;; esac
+          echo "cluster=$c" >> "$GITHUB_OUTPUT"
+
+  suite:
+    name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
+    needs: plan
+    if: github.event_name != 'schedule' && needs.plan.outputs.suite == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      # First, before any step that can fail: the result upload and the image cache run on
+      # failure too, and read this step's names. Run after an install that failed, it never ran
+      # and they were named "lane-" and "images--".
+      - &lane-key
+        name: Lane cache key
+        id: key
+        run: |
+          # A lane with no shards is named by itself ("e2e"), not with a trailing dash.
+          name="${{ matrix.lane }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}"
+          echo "lane=${name//\//of}" >> "$GITHUB_OUTPUT"
+          echo "compose=${{ hashFiles('docker-compose.core.yml', 'docker-compose.test.yml', 'docker-compose.e2e.yml') }}" >> "$GITHUB_OUTPUT"
+
+      - &install-uv
+        name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # The SQL Server warehouse replica target (provisa/federation/mssql_warehouse_runtime.py)
+      # connects through Microsoft's ODBC Driver 18, which the runner image does not ship; its
+      # requires_sqlserver tests run in the suite shards.
+      - &install-mssql-odbc
+        name: Install Microsoft ODBC Driver 18 for SQL Server
+        run: |
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+            | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          curl -fsSL "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
+            | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+          sudo apt-get update -q
+          sudo ACCEPT_EULA=Y apt-get install -y -q msodbcsql18 unixodbc-dev
+          odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
+
+      - &install-deps
+        name: Install dependencies
+        run: |
+          uv sync --frozen --extra dev
+          uv pip install -e "provisa-client/[dev]" -q
+
+      # tests/conftest.py fetches the pinned Trino plugin jars (_TRINO_PLUGINS at
+      # _TRINO_PLUGIN_VERSION) from Maven Central at collection; a refused fetch there ends the lane
+      # before any test runs. The jars are cached by that pin: restored here, saved after the lane
+      # whatever its outcome once every jar is present, so Maven Central is hit once per pin.
+      - &trino-plugin-pin
+        name: Trino plugin pin
+        id: trino-pin
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import ast
+          tree = ast.parse(open("tests/conftest.py").read())
+          pins = {
+              t.id: ast.literal_eval(n.value)
+              for n in tree.body if isinstance(n, ast.Assign)
+              for t in n.targets if isinstance(t, ast.Name)
+              and t.id in ("_TRINO_PLUGIN_VERSION", "_TRINO_PLUGINS")
+          }
+          version = pins["_TRINO_PLUGIN_VERSION"]
+          print(f"version={version}")
+          print("jars=" + " ".join(f"trino/plugins/{n}/{n}-{version}.jar" for n in pins["_TRINO_PLUGINS"]))
+          EOF
+
+      - &restore-trino-plugins
+        name: Restore Trino plugins
+        id: trino-plugins
+        uses: actions/cache/restore@v4
+        with:
+          path: trino/plugins/trino-*
+          key: trino-plugins-${{ steps.trino-pin.outputs.version }}
+
+      # Images this lane pulled last time, so a run is not dominated by pulls. Keyed on the compose
+      # files: a changed image tag is a new key.
+      - &restore-images
+        name: Restore images
+        id: images
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/images.tar.zst
+          key: images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}
+
+      - &load-images
+        name: Load images
+        if: steps.images.outputs.cache-hit == 'true'
+        run: zstd -dc ~/images.tar.zst | docker load
+
+      # The itest splunk service bind-mounts the Splunk CIM add-on (docker-compose.test.yml), which
+      # is licensed from Splunkbase and gitignored. tests/conftest.py fetches it
+      # (scripts/fetch-splunk-cim.sh) only when it is about to start splunk, so only a
+      # requires_splunk test needs it, and one that cannot get it fails by name while the rest of
+      # the lane runs. The tarball is cached by version: restored here, saved after the lane
+      # whatever the lane's outcome, so Splunkbase is hit once per version.
+      - name: Restore Splunk CIM tarball
+        id: splunk-cim
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/provisa-splunk-cim
+          key: splunk-cim-${{ env.SPLUNK_CIM_VERSION }}
+
+      - &stack-slots
+        name: Stack slots on this runner
+        run: |
+          uv run python -c "from tests.itest_stack import concurrent_session_limit as n; \
+            print('docker stack slots on this runner:', n()); assert n() >= 1"
+
+      - name: Run lane
+        run: |
+          uv run python scripts/ci/run_lane.py ${{ matrix.lane }} \
+            ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} \
+            --junitxml "results/${{ steps.key.outputs.lane }}/junit.xml"
+        env:
+          # The e2e lane's LLM-evaluation tests reach the live model.
+          ANTHROPIC_API_KEY: ${{ matrix.lane == 'e2e' && secrets.ANTHROPIC_API_KEY || '' }}
+          # For the Splunk CIM fetch tests/conftest.py runs before starting splunk.
+          SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
+          SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
+
+      # A fetch inside the lane leaves the tarball at the restored path; save it under the same key,
+      # also when the lane failed (actions/cache's own post-step saves only on success).
+      - name: Splunk CIM tarball fetched
+        id: splunk-cim-fetched
+        if: always() && steps.splunk-cim.outputs.cache-hit != 'true'
+        run: |
+          if [ -s ~/.cache/provisa-splunk-cim/Splunk_SA_CIM-${SPLUNK_CIM_VERSION}.tgz ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache Splunk CIM tarball
+        if: always() && steps.splunk-cim-fetched.outputs.present == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/provisa-splunk-cim
+          key: splunk-cim-${{ env.SPLUNK_CIM_VERSION }}
+
+      - &why
+        name: Containers that were not healthy
+        if: failure()
+        run: |
+          docker ps -a --format '{{.Names}}\t{{.Status}}'
+          for c in $(docker ps -a --filter health=unhealthy --filter status=exited --format '{{.Names}}'); do
+            echo "=== $c"; docker logs --tail 200 "$c" 2>&1
+          done
+
+      - &save-images
+        name: Save images
+        if: always() && steps.images.outputs.cache-hit != 'true'
+        run: docker save $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>') | zstd -T0 -3 -o ~/images.tar.zst
+
+      - &cache-images
+        name: Cache images
+        if: always() && steps.images.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/images.tar.zst
+          key: images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}
+
+      - &trino-plugins-fetched
+        name: Trino plugins fetched
+        id: trino-plugins-fetched
+        if: always() && steps.trino-plugins.outputs.cache-hit != 'true'
+        run: |
+          for jar in ${{ steps.trino-pin.outputs.jars }}; do
+            if [ ! -s "$jar" ]; then echo "present=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          done
+          echo "present=true" >> "$GITHUB_OUTPUT"
+
+      - &cache-trino-plugins
+        name: Cache Trino plugins
+        if: always() && steps.trino-plugins-fetched.outputs.present == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: trino/plugins/trino-*
+          key: trino-plugins-${{ steps.trino-pin.outputs.version }}
+
+      - &upload
+        name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-${{ steps.key.outputs.lane }}
+          path: results/
+          if-no-files-found: error
+
+  cluster:
+    name: cluster (helm on minikube)
+    needs: plan
+    if: github.event_name != 'schedule' && needs.plan.outputs.cluster == 'true'
+    runs-on: ubuntu-latest
+    # Past tests/e2e/test_helm_minikube.py's per-test bound (CLUSTER_TEST_BOUND_S, the sum of its
+    # named deadlines) plus these prep steps, so a stalled call fails with its own message before
+    # the job is cancelled and its log lost. tests/unit/test_helm_minikube_bounds.py holds this.
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - *install-uv
+      - *install-deps
+
+      - *trino-plugin-pin
+      - *restore-trino-plugins
+
+      - name: Install minikube and helm
+        run: |
+          curl -fsSLo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube /usr/local/bin/minikube
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Build the zaychik image the chart deploys
+        run: docker compose -f docker-compose.core.yml build zaychik && docker tag zaychik:latest provisa-zaychik:latest
+
+      # tests/e2e/test_helm_minikube.py builds provisa:latest, starts a minikube profile of its own
+      # under a kubeconfig of its own, installs the chart with auth.provider=local, and deletes the
+      # profile however it ends.
+      - name: Run lane
+        run: |
+          uv run python scripts/ci/run_lane.py cluster --junitxml results/cluster/junit.xml
+
+      - *trino-plugins-fetched
+      - *cache-trino-plugins
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-cluster
+          path: results/
+          if-no-files-found: error
+
+  warehouse:
+    name: warehouse (live cloud warehouses)
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_warehouse)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+      BIGQUERY_LOCATION: ${{ secrets.BIGQUERY_LOCATION }}
+      BIGQUERY_TEST_GCS_BUCKET: ${{ secrets.BIGQUERY_TEST_GCS_BUCKET }}
+      GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
+      FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
+      FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
+      FABRIC_WORKSPACE_ID: ${{ secrets.FABRIC_WORKSPACE_ID }}
+      FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
+      FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
+      REDSHIFT_AWS_ACCESS_KEY_ID: ${{ secrets.REDSHIFT_AWS_ACCESS_KEY_ID }}
+      REDSHIFT_AWS_SECRET_ACCESS_KEY: ${{ secrets.REDSHIFT_AWS_SECRET_ACCESS_KEY }}
+      REDSHIFT_AWS_REGION: ${{ secrets.REDSHIFT_AWS_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_OVERRIDE: ${{ secrets.AWS_ENDPOINT_OVERRIDE }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # GovData's engine fetches its R2 read credentials with this key.
+      ASKAMERICA_API_KEY: ${{ secrets.ASKAMERICA_API_KEY }}
+      SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}
+      SINGLESTORE_PORT: ${{ secrets.SINGLESTORE_PORT }}
+      SINGLESTORE_USERNAME: ${{ secrets.SINGLESTORE_USERNAME }}
+      SINGLESTORE_PASSWORD: ${{ secrets.SINGLESTORE_PASSWORD }}
+      SINGLESTORE_DATABASE: ${{ secrets.SINGLESTORE_DATABASE }}
+      SP_AUTH_TYPE: ${{ secrets.SP_AUTH_TYPE }}
+      SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
+      SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
+      SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
+      # Synapse provisions through the Azure CLI, logged in as this service principal.
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      # Synapse's region, pinned: probing which regions accept a new SQL server reads the
+      # subscription, and the CI principal holds rights on FABRIC_RESOURCE_GROUP only.
+      SYNAPSE_AZ_LOCATION: centralus
+      # The Google Sheets read reaches the live sheet only when asked to.
+      PROVISA_GSHEETS_LIVE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Nightly: the integration branch. On demand: the ref asked for.
+          ref: ${{ github.event_name == 'schedule' && 'integration' || inputs.ref || github.sha }}
+      - *install-uv
+      - *install-mssql-odbc  # Fabric's SQL endpoint is reached through ODBC Driver 18
+      - *install-deps
+
+      - *trino-plugin-pin
+      - *restore-trino-plugins
+
+      # Every credential the lane needs, checked before anything runs: a missing one fails the lane
+      # by name rather than surfacing as a skipped test.
+      - name: Credentials present
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+          SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
+        run: |
+          missing=""
+          for v in SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_WAREHOUSE \
+                   SNOWFLAKE_DATABASE DATABRICKS_SERVER_HOSTNAME DATABRICKS_HTTP_PATH \
+                   DATABRICKS_TOKEN GOOGLE_CLOUD_PROJECT GOOGLE_APPLICATION_CREDENTIALS_JSON \
+                   BIGQUERY_LOCATION BIGQUERY_TEST_GCS_BUCKET GSHEETS_TEST_SHEET_ID \
+                   FABRIC_SQL_SERVER FABRIC_DATABASE FABRIC_WORKSPACE_ID \
+                   REDSHIFT_AWS_ACCESS_KEY_ID REDSHIFT_AWS_SECRET_ACCESS_KEY \
+                   AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_OVERRIDE \
+                   SINGLESTORE_HOST SINGLESTORE_PORT SINGLESTORE_USERNAME SINGLESTORE_PASSWORD \
+                   SINGLESTORE_DATABASE CLOUDFLARE_ACCOUNT_ID ASKAMERICA_API_KEY SP_AUTH_TYPE SP_CLIENT_ID SP_SITE_URL SP_TENANT_ID \
+                   AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID SP_CERT_P12_BASE64; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::warehouse lane cannot run; repo secrets not set:$missing"
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/gcp-key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
+          # SharePoint authenticates with the app's client certificate (a password-less PFX), not a
+          # client secret; the certificate is gitignored, so it arrives as a base64 secret.
+          # It goes where compose mounts it into Trino from: ./sharepoint.pfx (docker-compose.core.yml).
+          printf '%s' "$SP_CERT_P12_BASE64" | base64 -d > "$GITHUB_WORKSPACE/sharepoint.pfx"
+          echo "SP_CERT_PATH=$GITHUB_WORKSPACE/sharepoint.pfx" >> "$GITHUB_ENV"
+          echo "PROVISA_E2E_SHAREPOINT_CERT_HOST=$GITHUB_WORKSPACE/sharepoint.pfx" >> "$GITHUB_ENV"
+
+      # GovData's JDBC driver is the calcite engine's govdata jar, from the engine release
+      # provisa/runtime_deps/pgwire_bundles.py pins (RELEASE_TAG); the test loads lib/calcite-govdata-*.jar.
+      - name: GovData engine jar (engine-v0.106.3)
+        run: |
+          mkdir -p lib
+          curl -fsSL -o lib/calcite-govdata-all.jar \
+            https://github.com/kenstott/calcite/releases/download/engine-v0.106.3/sih-govdata.jar
+          echo "5fffec5511ec2a9e3e4a6bc48386ca6c23c377448910d510090783031245d0a3  lib/calcite-govdata-all.jar" \
+            | sha256sum -c -
+
+      - name: Azure CLI login (Synapse provisioning)
+        run: az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
+
+      - *stack-slots
+
+      - name: Run lane
+        run: uv run python scripts/ci/run_lane.py warehouse --junitxml results/warehouse/junit.xml
+
+      - *trino-plugins-fetched
+      - *cache-trino-plugins
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-warehouse
+          path: results/
+          if-no-files-found: error
+
+  report:
+    name: results by lane
+    needs: [plan, suite, cluster, warehouse]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lane-*
+          path: artifacts
+          merge-multiple: true
+      - name: Table
+        run: |
+          set -o pipefail
+          python3 scripts/ci/lane_report.py artifacts \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            | tee -a "$GITHUB_STEP_SUMMARY"

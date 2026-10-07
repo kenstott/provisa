@@ -119,6 +119,9 @@ def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock
     ctx = MagicMock()
     ctx.tables = {}
     ctx.joins = {}
+    # REQ-1942: the context of an environment whose data is served. Left to the mock, the field
+    # is a truthy attribute and governance refuses every statement with it.
+    ctx.refusal = None
     state = no_replica_routes(MagicMock())
     state.contexts = {role: ctx}
     state.rls_contexts = {role: RLSContext.empty()}

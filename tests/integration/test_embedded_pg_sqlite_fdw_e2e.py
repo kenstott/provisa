@@ -6,19 +6,17 @@
 
 """E2E: sqlite_fdw attaches a SQLite file IN PLACE inside a stock embedded PG (REQ-907).
 
-No docker. Provisions a pgserver embedded PG 16.2, installs sqlite_fdw (built against the cached PG 16.2
-source; its only runtime dep is the OS libsqlite3), then drives the REAL SqliteFdwConnector DDL to
+No docker. Provisions a pgserver embedded PG 16.2, stages the sqlite_fdw the product ships (the
+provisa-pg-ext wheel's bundle for this platform; its only runtime dep is the OS libsqlite3), then drives the REAL SqliteFdwConnector DDL to
 attach the demo orders.sqlite and reads it through the REAL compiler pipeline with an RLS predicate —
 asserting on returned rows. Unlike pg_duckdb, an FDW executes in Postgres, so the postgres dialect (with
 nested SQL/JSON) runs unchanged.
 
-Skips unless sqlite_fdw is prebuilt in the cache.
+A platform the wheel ships no bundle for fails loudly (BundledPgExtensionsMissing), never skips.
 """
 
 from __future__ import annotations
 
-import shutil
-import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -40,33 +38,20 @@ from provisa.compiler.context import build_context  # noqa: E402
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical  # noqa: E402
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.connector_duckdb import SqliteFdwConnector  # noqa: E402
+from provisa.pg_extensions.staging import stage_bundled_pg_extensions  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
 from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _SQLITE = Path(__file__).parent.parent.parent / "demo" / "files" / "orders.sqlite"
 _ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
-_CACHE = Path.home() / ".cache" / "provisa-fdw" / "pg162"
-_SQLITE_FDW = _CACHE / "lib" / "postgresql" / "sqlite_fdw.dylib"
-
-
-def _install_sqlite_fdw() -> None:
-    src_lib = _CACHE / "lib" / "postgresql"
-    src_ext = _CACHE / "share" / "postgresql" / "extension"
-    pginstall = Path(pgserver.__file__).parent / "pginstall"
-    dl = pginstall / "lib" / "postgresql"
-    de = pginstall / "share" / "postgresql" / "extension"
-    suffix = "dylib" if (dl / "plpgsql.dylib").exists() else "so"
-    shutil.copy(src_lib / f"sqlite_fdw.{suffix}", dl / f"sqlite_fdw.{suffix}")
-    shutil.copy(src_ext / "sqlite_fdw.control", de / "sqlite_fdw.control")
-    for f in src_ext.glob("sqlite_fdw--*.sql"):
-        shutil.copy(f, de / f.name)
 
 
 @pytest.fixture(scope="session")
 def embedded_pg_sqlite_fdw():
-    if sys.platform != "darwin" or not _SQLITE_FDW.exists():
-        pytest.skip("sqlite_fdw not prebuilt in cache")
-    _install_sqlite_fdw()
+    # The sqlite_fdw the product ships: the provisa-pg-ext wheel's bundle for this platform,
+    # staged as the embedded tier stages it. A platform with no bundle fails
+    # (BundledPgExtensionsMissing); it does not skip.
+    stage_bundled_pg_extensions(Path(pgserver.__file__).parent / "pginstall")
     server = pgserver.get_server(tempfile.mkdtemp(prefix="provisa_sqlite_fdw_"))
     yield server
 

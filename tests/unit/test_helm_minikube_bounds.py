@@ -73,7 +73,7 @@ def test_the_module_is_marked_with_that_bound():
 def test_the_cluster_job_outlasts_the_bound():
     m = _helm_module()
     workflow = yaml.safe_load(
-        (REPO / ".github" / "workflows" / "integration-suite.yml").read_text()
+        (REPO / ".github" / "workflows" / "integration-suite-lanes.yml").read_text()
     )
     minutes = workflow["jobs"]["cluster"]["timeout-minutes"]
     assert minutes * 60 >= m.CLUSTER_TEST_BOUND_S + _JOB_PREP_S, (
