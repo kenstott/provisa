@@ -68,6 +68,7 @@ def _si():
                 "table_name": "orders",
                 "write_ops": registry_write_ops("bigquery"),
                 "write_returns_rows": registry_write_returns_rows("bigquery"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],

@@ -9,7 +9,7 @@ Every query ultimately executes through the federation engine, which provides fe
 | **Direct-capable** | Yes | Yes | PostgreSQL, MySQL, MariaDB, SingleStore, SQL Server, Oracle, DuckDB |
 | **Federation only** | No | Yes | Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-backed) |
 | **Direct-read (replica)** | Yes | Yes | Snowflake, Databricks, ClickHouse — driver reads data and lands a replica; queries run against the replica in the active engine |
-| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Salesforce, Splunk |
+| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Salesforce, Cloud inventory, Splunk |
 
 **Direct-capable** sources execute single-source queries via their native driver (sub-100ms), bypassing the federation engine (REQ-027, REQ-229). They retain full connector support and participate in federation when joined with other sources (REQ-028).
 
@@ -172,7 +172,7 @@ After adding the source, register its tables through the normal Register Table s
 
 ### Enterprise SaaS Connectors
 
-SharePoint, Salesforce and Splunk register through Apache Calcite connectors (kenstott/calcite fork). None has a direct driver — Provisa materializes their rows by launching the connector's bundled Calcite pgwire server (`pgwire-sharepoint`, `pgwire-splunk`), connecting to it as a generic PostgreSQL endpoint, and landing the rows into the materialize store for federation (REQ-954). Both connectors always enable case-insensitive name matching, matching each product's own case-insensitive semantics (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+SharePoint, Salesforce, cloud inventory and Splunk register through Apache Calcite connectors (kenstott/calcite fork). None has a direct driver — Provisa materializes their rows by launching the connector's bundled Calcite pgwire server (`pgwire-sharepoint`, `pgwire-splunk`), connecting to it as a generic PostgreSQL endpoint, and landing the rows into the materialize store for federation (REQ-954). Both connectors always enable case-insensitive name matching, matching each product's own case-insensitive semantics (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
@@ -205,7 +205,7 @@ When the connector does not expose `information_schema.columns`, register the ta
 
 Every sObject the credential can query is a table the steward may register (`Account`, `Opportunity`, custom `*__c` objects); nothing is registered automatically (REQ-1946). Columns and types come from the sObject's describe. Filters, projections, sorts and limits are pushed down as SOQL. [tool-verified: `provisa/federation/pgwire_replica.py` `_salesforce_operand`; `provisa/federation/trino_connectors.py` `TrinoSalesforceConnector`]
 
-A Salesforce source names the org's My Domain login URL and one complete credential set, chosen by `mapping.auth_type`. An incomplete set is refused when the source is used, naming the missing value. Each secret may be a `${secret:…}` or `${env:…}` reference.
+A Salesforce source names the org's My Domain login URL and one complete credential set, chosen by `mapping.auth_type`. An incomplete set is refused when the source is used, naming the missing value. Each secret may be a `${secret:…}` or `${env:…}` reference. A secret typed as a literal is stored in the org vault and the source keeps its reference.
 
 | Source field | Connector property | Notes |
 | --- | --- | --- |
@@ -222,7 +222,7 @@ For `CLIENT_CREDENTIALS` the connected app needs *Enable Client Credentials Flow
 
 **Reads.** On Trino the source is read through the `salesforce` catalog, which reads only. On every other engine the engine attaches the source's pgwire server and reads it in place.
 
-**Writes.** `INSERT`, `UPDATE` and `DELETE` on a registered sObject are mutations: governed, audited and handled per environment as any other mutation is. On every engine, Trino included, a write runs on the source's pgwire server; on Trino that server runs for writes alone. Each statement is sent to Salesforce and committed when it runs, so it cannot be rolled back. The server does not return the rows it writes: a statement with a `RETURNING` clause is refused, and GraphQL offers no mutation fields for these tables; SQL `INSERT`, `UPDATE`, `DELETE` and `COPY` are the write paths. A SharePoint source is written the same way. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`; `provisa/api/data/pgwire_write.py`]
+**Writes.** `INSERT`, `UPDATE` and `DELETE` on a registered sObject are mutations: governed, audited and handled per environment as any other mutation is. On every engine, Trino included, a write runs on the source's pgwire server; on Trino that server runs for writes alone. Each statement is sent to Salesforce and committed when it runs, so it cannot be rolled back. The server does not return the rows it writes: a statement with a `RETURNING` clause is refused, and GraphQL offers no mutation fields for these tables; SQL `INSERT`, `UPDATE`, `DELETE` and `COPY` are the write paths. A write is one plain statement on one table: `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING`, `MERGE` and `TRUNCATE` are refused, naming the form. A SharePoint source is written the same way. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`; `provisa/api/data/pgwire_write.py`]
 
 **Startup.** Before it listens, the source's server reads the columns of every sObject, about four minutes for an org with 1,200 of them. That is paid once: the describe results are kept in the source's own state directory under the instance's data directory. The server is started when the source is registered or loaded. Until it listens, Register Table shows the connector as starting and a write is answered with the same message instead of waiting. [tool-verified: `provisa/federation/pgwire_replica.py` `build_model_json`, `start_endpoint`]
 
@@ -249,6 +249,45 @@ Username-password flow:
     sf_username: ops@acme.com
     sf_password: ${env:SF_PASSWORD}
     security_token: ${env:SF_SECURITY_TOKEN}
+```
+
+#### `cloudops`
+
+Cloud inventory lays out the resources of Azure, AWS and GCP as one set of tables: `compute_resources`, `storage_resources`, `kubernetes_clusters`, `database_resources`, `network_resources`, `iam_resources`, `container_registries`, and `compute_security_groups`, which ties a compute resource to its security groups. Each table has one set of columns across the three clouds, and its `cloud_provider` column names the cloud a row came from. The source reads only, and its tables are registered by a steward like any other (REQ-1947). [tool-verified: `provisa/federation/cloudops.py` `cloudops_settings`; `provisa/federation/trino_connectors.py` `TrinoCloudopsConnector`]
+
+A source names one or more clouds. Each cloud is all or nothing: a cloud with some of its required values and not the rest is refused, naming what is missing, and so is a source naming no cloud. The source reads exactly the clouds it names. Every value lives in `mapping`, and each secret may be a `${secret:…}` or `${env:…}` reference. A secret typed as a literal is stored in the org vault and the source keeps its reference.
+
+| Cloud | `mapping` key | Connector property | Notes |
+| --- | --- | --- | --- |
+| Azure | `azure_tenant_id` | `azure.tenant-id` | Required |
+| Azure | `azure_client_id` | `azure.client-id` | Required; the app registration's client ID |
+| Azure | `azure_client_secret` | `azure.client-secret` | Required; secret |
+| Azure | `azure_subscription_ids` | `azure.subscription-ids` | Required; comma-separated |
+| AWS | `aws_access_key_id` | `aws.access-key-id` | Required |
+| AWS | `aws_secret_access_key` | `aws.secret-access-key` | Required; secret |
+| AWS | `aws_region` | `aws.region` | Required, for example `us-east-1` |
+| AWS | `aws_account_ids` | `aws.account-ids` | Required; comma-separated |
+| AWS | `aws_role_arn` | `aws.role-arn` | Optional; a role to assume for cross-account access |
+| GCP | `gcp_credentials_path` | `gcp.credentials-path` | Required; ABSOLUTE path to a service-account JSON key file |
+| GCP | `gcp_project_ids` | `gcp.project-ids` | Required; comma-separated |
+| — | `cache_ttl_minutes` | `cache.ttl-minutes` | Optional; how long a result is reused before the clouds are asked again (adapter default 5) |
+
+The GCP key file is opened by whatever reads the source. On Trino that is the Trino server, so the path must exist there. On every other engine it is the source's pgwire server on the Provisa host, whose working directory is its own state directory, so a relative path is refused.
+
+On Trino the source is read through the `cloudops` catalog. On every other engine the engine attaches the source's pgwire server and reads it in place, as a SharePoint source is read.
+
+```yaml
+- id: cloud-estate
+  type: cloudops
+  mapping:
+    aws_access_key_id: ${env:CLOUDOPS_AWS_ACCESS_KEY_ID}
+    aws_secret_access_key: ${env:CLOUDOPS_AWS_SECRET_ACCESS_KEY}
+    aws_region: us-east-1
+    aws_account_ids: "111111111111,222222222222"
+    azure_tenant_id: ${env:CLOUDOPS_AZURE_TENANT_ID}
+    azure_client_id: ${env:CLOUDOPS_AZURE_CLIENT_ID}
+    azure_client_secret: ${env:CLOUDOPS_AZURE_CLIENT_SECRET}
+    azure_subscription_ids: "sub-1,sub-2"
 ```
 
 #### `splunk`

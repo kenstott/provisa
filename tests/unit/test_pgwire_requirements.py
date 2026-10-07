@@ -994,6 +994,7 @@ class TestReq586CopyFromAdmitted:
                     "table_name": "orders",
                     "write_ops": write_ops,
                     "write_returns_rows": bool(write_ops),
+                    "write_refused_forms": [],
                     "columns": [
                         {"column_name": "id", "visible_to": ["dev"], "writable_by": ["dev"]}
                     ],

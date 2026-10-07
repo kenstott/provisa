@@ -189,6 +189,7 @@ async def test_a_table_kept_in_another_region_is_read_where_that_region_reads_it
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
     monkeypatch.setattr("provisa.synthetic.datasets.generated_tables", _no_synthetic_tables)
+    monkeypatch.setattr("provisa.synthetic.datasets.synthetic_sources", _no_synthetic_tables)
     monkeypatch.setattr("provisa.federation.replica_state.promotion", no_promoted_tables)
     monkeypatch.setattr("provisa.federation.replica_builds.store_identity", no_engine_store)
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)

@@ -159,6 +159,7 @@ def _si(customers_schema: str, orders_schema: str) -> SchemaInput:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -172,6 +173,7 @@ def _si(customers_schema: str, orders_schema: str) -> SchemaInput:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ],  # fmt: skip
         relationships=[

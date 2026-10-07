@@ -52,6 +52,7 @@ BUNDLE_CONNECTOR: dict[str, str] = {
     "files": "file",
     "sharepoint": "sharepoint",
     "salesforce": "salesforce",
+    "cloudops": "cloudops",
     "splunk": "splunk",
 }
 

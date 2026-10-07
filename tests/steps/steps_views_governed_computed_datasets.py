@@ -109,6 +109,7 @@ def _dataset_def(kind: str) -> dict:
         "table_name": "secured_dataset",
         "write_ops": registry_write_ops("postgresql", view=kind == "view"),
         "write_returns_rows": registry_write_returns_rows("postgresql", view=kind == "view"),
+        "write_refused_forms": [],
         "kind": kind,
         "columns": _COLUMNS,
     }

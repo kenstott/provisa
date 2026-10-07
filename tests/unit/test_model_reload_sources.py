@@ -47,6 +47,7 @@ def _row(sid: str, host: str = "db1") -> dict:
         "path": None,
         "federation_hints": {},
         "binding": "own",
+        "synthetic": None,
         "description": "",
         # REQ-1919: the pool's settings are the row's.
         "pool_min": 1,

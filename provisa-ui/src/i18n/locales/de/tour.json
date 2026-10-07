@@ -10,7 +10,7 @@
     },
     "welcome": {
       "title": "Geführte Tour starten?",
-      "body": "Ein fünfminütiger Rundgang: eine Quelle verbinden und sie auf sieben Arten abfragen. Jederzeit verlassen — der Kompass in der Symbolleiste öffnet die Tour wieder, wann immer Sie möchten.",
+      "body": "Ein fünfminütiger Rundgang: eine Quelle verbinden und sie in der Sprache oder mit dem Werkzeug abfragen, die Sie ohnehin nutzen. Jederzeit verlassen — der Kompass in der Symbolleiste öffnet die Tour wieder, wann immer Sie möchten.",
       "never": "Nicht mehr anzeigen",
       "later": "Später",
       "start": "Tour starten",
@@ -19,9 +19,10 @@
     },
     "menu": {
       "title": "Deep Dives",
-      "intro": "Ein Modell für Ihre Daten, Metadaten und Verarbeitung, synchron gehalten und überall wiederverwendet. Wählen Sie ein Thema: Jedes ist eine kurze eigene Tour, und mit „Fertig“ kehren Sie hierher zurück.",
+      "intro": "Ein Modell für Ihre Daten, Metadaten und Verarbeitung, synchron gehalten und überall wiederverwendet. Wählen Sie ein Thema: Jedes ist eine kurze eigene Tour, und mit „Fertig“ kehren Sie hierher zurück. Der Kompass in der Symbolleiste öffnet dieses Menü jederzeit wieder.",
       "completed": "Abgeschlossen",
-      "steps": "Schritte: {{count}}"
+      "steps": "Schritte: {{count}}",
+      "coreTour": "Kerntour starten"
     },
     "topics": {
       "connect": {
@@ -60,7 +61,7 @@
     "steps": {
       "step0": {
         "title": "Willkommen, machen wir die Tour",
-        "description": "🧭 Dieser Kompass öffnet die Tour jederzeit erneut. Gehen Sie, wann Sie möchten – klicken Sie auf die App oder drücken Sie <kbd>Esc</kbd>.<p><strong>Provisa</strong> ist ein einziges Modell, das Ihre Daten, deren Metadaten und die Verarbeitung dazwischen enthält. Dasselbe Modell definiert Ihre Datenlandschaft und betreibt sie – alles ist eine Sache, und es hält sich aus dem Datenpfad heraus.</p><p>Deshalb <strong>bleibt alles synchron</strong> und ist <strong>Wiederverwendung eingebaut</strong>: Eine einmal definierte Beziehung, Metrik, Maskierung oder Regel gilt für jede Schnittstelle, jede Umgebung und jede Rolle. Doppelte Tabellen und Metriken, doppelte Befehle und Regeln, sogar zwei Systeme, die dieselben Daten liefern, stehen im Modell nebeneinander – Duplikate sind leicht zu erkennen und einfach zu beseitigen.</p><p>Es ist kompakt, erweiterbar und komponierbar. Es fügt sich neben Ihren Bestand ein, bringt Ordnung ins Durcheinander und lässt alle Datenprofis ihr Fachwissen einbringen, ohne ihre Fantasie zu begrenzen – es nimmt nur die Fleißarbeit ab.</p><p>🎯 <strong>Der Kern ist eine kurze Übung:</strong> Verbinden Sie eine Datenbank und fragen Sie sie dann auf <strong>sieben Arten</strong> ab – oder fragen Sie einfach in normaler Sprache. Etwa fünf Minuten, <strong>direkt von Ihrem Desktop</strong>, ohne Infrastruktur aufzusetzen.</p><div class='tour-tags'><span>Natürliche Sprache</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles Weitere ist ein <strong>Deep Dive</strong>, den Sie aus einem Menü wählen, wenn Sie bereit sind.</p><p>Bereit? Verbinden wir eine Quelle. →</p>"
+        "description": "🧭 Dieser Kompass öffnet die Tour jederzeit erneut. Gehen Sie, wann Sie möchten – klicken Sie auf die App oder drücken Sie <kbd>Esc</kbd>.<p><strong>Provisa</strong> ist ein einziges Modell, das Ihre Daten, deren Metadaten und die Verarbeitung dazwischen enthält. Dasselbe Modell definiert Ihre Datenlandschaft und betreibt sie – alles ist eine Sache, und es hält sich aus dem Datenpfad heraus.</p><p>Deshalb <strong>bleibt alles synchron</strong> und ist <strong>Wiederverwendung eingebaut</strong>: Eine einmal definierte Beziehung, Metrik, Maskierung oder Regel gilt für jede Schnittstelle, jede Umgebung und jede Rolle. Doppelte Tabellen und Metriken, doppelte Befehle und Regeln, sogar zwei Systeme, die dieselben Daten liefern, stehen im Modell nebeneinander – Duplikate sind leicht zu erkennen und einfach zu beseitigen.</p><p>Es ist kompakt, erweiterbar und komponierbar. Es fügt sich neben Ihren Bestand ein, bringt Ordnung ins Durcheinander und lässt alle Datenprofis ihr Fachwissen einbringen, ohne ihre Fantasie zu begrenzen – es nimmt nur die Fleißarbeit ab.</p><p>🎯 <strong>Der Kern ist eine kurze Übung:</strong> Verbinden Sie eine Datenbank und fragen Sie sie dann in der Sprache oder mit dem Werkzeug ab, die Sie ohnehin nutzen – oder fragen Sie einfach in normaler Sprache. Etwa fünf Minuten, <strong>direkt von Ihrem Desktop</strong>, ohne Infrastruktur aufzusetzen.</p><div class='tour-tags'><span>Natürliche Sprache</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles Weitere ist ein <strong>Deep Dive</strong>, den Sie aus einem Menü wählen, wenn Sie bereit sind.</p><p>Bereit? Verbinden wir eine Quelle. →</p>"
       },
       "stepPolly": {
         "title": "Lernen Sie Polly kennen, Ihre Einrichtungshilfe",
@@ -75,7 +76,7 @@
         "description": "➕ Neue Verbindungen beginnen mit dieser Schaltfläche — PostgreSQL, Snowflake, MongoDB, eine REST-API, eine CSV und 50+ weitere."
       },
       "step3": {
-        "title": "59 Quellentypen, 13 Kategorien",
+        "title": "60 Quellentypen, 13 Kategorien",
         "description": "Eine Auswahl listet jeden Typ, nach Kategorie gruppiert: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Suchen Sie nach Name oder Alias oder grenzen Sie mit den Kategorie-Chips ein. Jeder Typ zeigt sein Logo und ein Reichweiten-Symbol: ⚡ direkt vor Ort gelesen, oder ein Kopie-Symbol, wo Provisa ein aktualisiertes Replikat liest.<p>Wählen Sie einen aus, tragen Sie die Verbindung ein, speichern Sie.</p>"
       },
       "step4": {
@@ -85,6 +86,10 @@
       "step5": {
         "title": "Spalten & Richtlinie wählen",
         "description": "Quelle, Schema und Tabelle wählen, dann Spalten auswählen — jede mit ihrer eigenen Richtlinie:<ul><li>🎭 <strong>Maskierung</strong> — Werte je nach Rolle schwärzen</li><li>👁️ <strong>Sichtbarkeit</strong> — Spalte ein- oder ausblenden</li><li>🏷️ <strong>Aliase</strong> — für das Modell umbenennen</li></ul><p>Das ist die ganze Einrichtung — eine Quelle und ein paar Tabellen. 🚀 Jetzt fragen wir sie ab. →</p>"
+      },
+      "stepQuery": {
+        "title": "Fragen Sie auf Ihre Weise",
+        "description": "💬 Sie fragen in der Sprache oder mit dem Werkzeug, die Sie ohnehin nutzen — SQL, GraphQL, Cypher, normale Sprache über Polly oder ein BI-Werkzeug bzw. ein Treiber — und jedes liest dasselbe governte Modell, sodass Antwort und Regeln dieselben sind, welches Sie auch wählen."
       },
       "step6": {
         "title": "SQL (1 von 7 Oberflächen)",
@@ -120,7 +125,7 @@
       },
       "step14": {
         "title": "Das ist der Fünf-Minuten-Kern",
-        "description": "✅ Sie haben es gerade von Anfang bis Ende gesehen: <strong>eine Quelle, auf sieben Arten abgefragt — oder einfach in normalem Deutsch gefragt.</strong> Das ist das ganze Versprechen — und Sie könnten genau hier aufhören.<p><kbd>Esc</kbd> jederzeit drücken; 🧭 der Kompass oben spielt diese Tour jederzeit erneut ab.</p><p>👉 Alles, was folgt, ist, <strong>wie Provisa mit Ihnen wächst</strong> — optionale Tiefe, keine erforderlichen Schritte:</p><ul><li>🔗 Tabellen über Quellen hinweg zu einem <strong>Graphen</strong> verknüpfen</li><li>🔐 Ihn <strong>governen</strong> — Rollen, Row-Level-Sicherheit, Spaltenmaskierung</li><li>🏗️ Eine <strong>Delivery-Pipeline</strong> bauen — Sichten, ein materialisiertes Warehouse, Lineage</li><li>⚙️ Ihn <strong>betreiben</strong> — eine Engine wählen, in Produktion bringen</li></ul><p>Weitermachen? →</p>"
+        "description": "✅ Sie haben es gerade von Anfang bis Ende gesehen: <strong>eine Quelle, abgefragt in der Sprache oder mit dem Werkzeug, die Sie ohnehin nutzen — oder einfach in normalem Deutsch gefragt.</strong> Das ist das ganze Versprechen — und Sie könnten genau hier aufhören.<p>Alles Weitere ist ein <strong>Deep Dive</strong>: Daten verbinden, Beziehungen, Modellierung, Governance, Abfragen, Testdaten, Veröffentlichen und Betrieb. „Fertig“ öffnet den Deep-Dives-Katalog.</p>"
       },
       "step15": {
         "title": "Den Graphen verbinden",
@@ -130,6 +135,14 @@
         "title": "Eine Beziehung definieren",
         "description": "🔗 Eine Quellspalte einer Zielspalte zuordnen und die <strong>Kardinalität</strong> festlegen:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Oder Provisa Beziehungen mit KI für Sie <strong>ableiten</strong> lassen.</p>"
       },
+      "stepRelsSuggest": {
+        "title": "Beziehungen vorschlagen",
+        "description": "✨ Die Funkeln-Schaltfläche sucht nach wahrscheinlichen Joins: Sie liest die Fremdschlüssel, die Ihre Quellen deklarieren, und lässt, wenn ein KI-Modellschlüssel konfiguriert ist, das Modell weitere ableiten. Nichts wird deklariert, bis Sie einen Kandidaten annehmen; ein abgelehnter bleibt draußen, bis Sie die Ablehnungen zurücksetzen."
+      },
+      "stepRelsList": {
+        "title": "Alle Beziehungen in einer Liste",
+        "description": "📋 Die Beziehungen des Modells, ob eine Quelle sie deklariert oder nicht, filter- und sortierbar. Klappen Sie eine Zeile auf, um sie zu bearbeiten oder ihre Umkehrung hinzuzufügen. Eine Rolle durchläuft nur die Beziehungen, für die sie Rechte hat."
+      },
       "step17": {
         "title": "Das ERD ansehen",
         "description": "Das Entity-Relationship-Diagramm stellt Ihr gesamtes föderiertes Modell dar — jede registrierte Tabelle und die Beziehungen zwischen ihnen."
@@ -138,9 +151,25 @@
         "title": "Zugriffskontrolle (RBAC)",
         "description": "🔐 Das Registrieren einer Tabelle legt spaltenweisen Zugriff fest, direkt mit Rollen verdrahtet:<div class='tour-tags'><span>👁️ Lesen</span><span>✏️ Schreiben</span></div><p>Das ist <strong>rollenbasierte Zugriffskontrolle</strong> — und die Rollen selbst werden hier auf der Sicherheitsseite definiert.</p>"
       },
+      "stepRoleInherit": {
+        "title": "Rollen erben",
+        "description": "👪 Eine Rolle kann von einer übergeordneten Rolle erben: Sie erhält deren Berechtigungen, Spaltensichtbarkeit und Zeilenregeln, und ihre eigene Zeilenregel für eine Tabelle ersetzt die der übergeordneten. Die Rolle trägt außerdem ihre Fähigkeiten sowie ihre Raten- und Komplexitätslimits."
+      },
       "step19": {
         "title": "Row-Level-Sicherheit",
         "description": "🔎 Sobald Rollen existieren, noch feiner werden — einschränken, welche <strong>Zeilen</strong> jede Rolle sieht, mit attributbasierten Prädikaten:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Datengetrieben und pro Zeile erzwungen — über jede Quelle und jedes Protokoll hinweg.</p>"
+      },
+      "stepDomains": {
+        "title": "Domänen und ihre Stewards",
+        "description": "🗂️ Eine Domäne gruppiert Tabellen, und ihr Data Steward steuert diesen Teil des Modells: wer was sieht, Masken und Zeilenregeln, sensible Daten sowie ihr Glossar und ihre Datenprodukte."
+      },
+      "stepTags": {
+        "title": "Tags tragen Bedeutung",
+        "description": "🏷️ Ein Tag ist ein organisationsweites Label mit fester Bedeutung, angewendet auf Quellen, Tabellen, Spalten, Beziehungen oder Befehle. Tags tragen Verhalten, nicht nur Dokumentation, und ein Tag kann beim Anwenden eine Begründung, ein Ablaufdatum oder einen Parameter verlangen."
+      },
+      "stepRequests": {
+        "title": "Beziehungsanträge",
+        "description": "✋ Ein Beziehungsantrag braucht zwei Genehmigungen, bevor er ausgeführt werden kann. Genehmigen Sie ihn, führen Sie ihn aus oder lehnen Sie ihn mit einem Grund aus einer festen Liste ab; erledigte Anträge wandern in den Tab „Erledigt“."
       },
       "stepQualityTable": {
         "title": "Ein Qualitäts-Checker ist einfach eine Quelle",
@@ -190,17 +219,33 @@
         "title": "In ein Live-Warehouse materialisieren",
         "description": "🏗️ Eine Sicht materialisieren, und Sie erhalten eine vollständige ETL-Engine, deklariert statt skriptiert:<ul><li>📅 <strong>Geplante Snapshots</strong> nach echten <strong>Geschäftskalendern</strong> — Wiederholungsregeln, Feiertage, Geschäftstage-Gating und eine Abschluss-Karenzzeit, sodass es nach <em>Ihrem</em> Berichtskalender ausgelöst wird, nicht nur nach einer Uhr.</li><li>🗄️ <strong>Speichern als…</strong> — <strong>ersetzen</strong>, <strong>upserten</strong> oder Historie mit <strong>Snapshot</strong> / <strong>Delta</strong> behalten, plus inkrementelle Berechnung.</li><li>🕰️ <strong>Zeitreise</strong> — bitemporale Historie; das Modell zu jedem beliebigen Zeitpunkt abfragen.</li><li>⚡ <strong>Nahezu Echtzeit</strong>-Aktualisierung mit Entprellung, oder frische-getriebene Neuveröffentlichung bei sich ändernden Eingaben.</li></ul>"
       },
+      "stepMetrics": {
+        "title": "Metriken, einmal definiert",
+        "description": "📏 Eine Metrik ist die fachliche Definition einer Kennzahl, eine Aggregation über eine Faktentabelle. Einmal definiert, berechnen SQL, GraphQL, die Explore-Oberfläche und jede darauf aufbauende Sicht dieselbe Zahl; eine Sicht wird neu erzeugt, wenn sich ihre Metrik ändert."
+      },
+      "stepCommands": {
+        "title": "Befehle",
+        "description": "⚡ Ein Befehl ist eine governte, typisierte Operation, etwa ein HTTP-Dienst, ein Python-Modell oder eine gespeicherte Prozedur. Einmal registriert, ist er von jeder Oberfläche aufrufbar, mit denselben Rechten und derselben Nachverfolgung wie eine Abfrage."
+      },
       "step22": {
         "title": "Lineage, durchgehend",
         "description": "🧬 <strong>Lineage ist die Abhängigkeitsspur, die Ihre Ableitungen hinterlassen:</strong> woraus jede View, berechnete Spalte oder Metrik besteht und was von ihr abhängt. Das ist eine echte, analysierte Abfrage – verfolgen Sie <code>name_upper</code> durch seine Transformationen zurück zu den genauen <strong>Quellspalten</strong>, die es speisen.<p>Es wird nichts ausgeführt – die Abfrage wird nur analysiert.</p>"
       },
+      "stepObservability": {
+        "title": "Traces und Debug-Tracing",
+        "description": "🔭 Das Tracing zeichnet einen Span pro Anfrage auf. Der Tab Debug-Tracing ergänzt einen Span pro Pipeline-Stufe und pro Quellaufruf, mit SQL-Text. Das erzeugt Last, schalten Sie es also für eine Organisation, Rolle oder Quelle nur für eine bestimmte Zeit ein; danach schaltet es sich selbst ab."
+      },
+      "stepCache": {
+        "title": "Caches und Replikate",
+        "description": "🗄️ Diese Schichten sind getrennt. Der Antwort-Cache hält Abfrageergebnisse, und eine Anfrage nimmt per @cached oder SQL-Kommentar daran teil. Kleine Nachschlagetabellen werden gespiegelt, um Joins zu beschleunigen. Ein Replikat einer Quelltabelle, die sich nicht anbinden lässt, liegt im dauerhaften Speicher, neben materialisierten Sichten."
+      },
+      "stepScheduled": {
+        "title": "Geplante Aufgaben",
+        "description": "⏱️ Führen Sie einen Webhook oder eine SQL-Anweisung nach einem Cron-Zeitplan aus. Eine SQL-Aufgabe läuft als eine Rolle Ihrer Wahl, sodass die Governance greift, und jede Aufgabe zeigt ihren letzten und nächsten Lauf."
+      },
       "step23": {
         "title": "Betreiben",
         "description": "Die Admin-Seiten betreiben die Plattform:<ul><li>⚙️ Ihre <strong>Föderations-Engine</strong> wählen und konfigurieren — austauschbar: DuckDB (eingebettet, ohne Konfiguration), Trino, PostgreSQL, ClickHouse, oder ein Cloud-Warehouse als erstklassige Engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Jederzeit austauschen — das Modell, die Oberflächen und die Governance darüber ändern sich nie.</li><li>🔗 Welche Engine Sie auch wählen, sie bringt ihre eigene Reichweite für <strong>Live-externe Daten</strong> mit — Parquet, Iceberg, Delta werden direkt vor Ort gelesen, ohne Kopieren, Zugangsdaten automatisch bereitgestellt. Alles, was sie nicht live verknüpfen kann, landet als governte Replik.</li><li>🔑 <strong>Verschlüsselungsschlüssel</strong> verwalten und <strong>Auth-Provider</strong> anbinden</li><li>📊 Vollständige <strong>Observability</strong> — zu jedem OpenTelemetry-Collector für erstklassiges Trace-Management umleiten</li><li>📤 <strong>Die Konfiguration des Modells exportieren</strong> – das ganze Modell oder ausgewählte Abschnitte – als Datei zum Prüfen, Vergleichen und Ausliefern per CI/CD</li></ul><p>Dasselbe Modell wandert von der lokalen Entwicklung bis zur Produktion, bei jedem Schritt validiert — kein Neuschreiben:</p><ul><li><strong>Entwickeln</strong> — eingebettetes DuckDB, kein Docker. Lokal bauen &amp; validieren.</li><li><strong>Im großen Maßstab validieren</strong> — Docker, eine Engine + Observability hochfahren. Verhalten gegen Produktions-Engines nachweisen.</li><li><strong>Befördern</strong> — auf Ihre eigene Infrastruktur zeigen, über CI/CD bauen, in Produktion ausliefern.</li></ul>"
-      },
-      "step24": {
-        "title": "Das war die Tour — jetzt machen Sie sie zu Ihrer eigenen",
-        "description": "🎉 Sie sind wieder dort, wo Sie angefangen haben. Jetzt machen Sie es zu Ihrem eigenen:<ul><li>1️⃣ Eine Ihrer echten <strong>Quellen</strong> registrieren</li><li>2️⃣ Ein paar <strong>Tabellen</strong> freigeben, eine oder zwei <strong>Beziehungen</strong> ziehen</li><li>3️⃣ Sie von <strong>Erkunden</strong> aus in jeder Sprache abfragen:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p><kbd>pgwire</kbd>- oder <kbd>Bolt</kbd>-Tools darauf richten — alles funktioniert einfach.</p><p>📚 Der Tab <strong>Doku</strong> enthält die vollständigen Anleitungen. 🧭 Der Kompass oben spielt diese Tour jederzeit erneut ab. Viel Freude mit Provisa.</p>"
       },
       "stepPreview": {
         "title": "Vorschau für jede Tabelle",
@@ -210,6 +255,10 @@
         "title": "Management-Berichte, eingebaut",
         "description": "📊 Das Audit-Log, das Sie eben abgefragt haben, speist auch <strong>fertige Berichte</strong> — Nutzungsranking, PII-Zugriffe, Richtlinien-Ablehnungen, Query-Health — jeweils eine Governance-Sicht in der <code>ops</code>-Domäne. Ein eigener Bericht ist eine einzige SQL-Anweisung und wird zum katalogisierten, exportierbaren Datenprodukt wie jede andere Tabelle."
       },
+      "stepProductForm": {
+        "title": "Ein Datenprodukt definieren",
+        "description": "📦 Nennen Sie Eigentümer und Team, Zweck, Nutzung, SLA und Support und wählen Sie dann die Tabellen und Befehle, die es enthält. Das sind die Felder, die veröffentlicht werden. Eine Tabelle gehört nur dann zu einem Produkt, wenn beide dieselbe Domäne haben."
+      },
       "stepGlossary": {
         "title": "Ein lebendiges Fachglossar",
         "description": "📖 Jeder Begriff verweist zurück auf die Spalten, die ihn tragen — pflegen Sie Namen, Definitionen und typisierte Beziehungen (Art von, Teil von, Synonym von) von Hand, oder lassen Sie die KI die Lücken füllen: <strong>✨ Definitionen</strong> entwirft nur Begriffe, denen noch eine fehlt, und <strong>✨ Beziehungen</strong> schlägt Verknüpfungen im gesamten Glossar vor. Markieren Sie einen Begriff als <strong>vom Export ausgeschlossen</strong>, damit er nicht in den veröffentlichten Metadaten erscheint."
@@ -217,6 +266,10 @@
       "stepDataProducts": {
         "title": "Datenprodukte, veröffentlicht dort, wo Konsumenten bereits suchen",
         "description": "📦 Jedes Produkt hier spricht <strong>ODPS</strong> (den Open Data Product Standard) – Eigentümer, Team, Zweck, Einschränkungen, Nutzung, SLA, Support, benutzerdefinierte Eigenschaften – und Provisa veröffentlicht es automatisch direkt in <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong>, sodass es als natives Produkt in dem Katalog erscheint, den Ihre Konsumenten ohnehin nutzen.<p>🔁 Es gibt keinen separaten Exportschritt, den man vergessen könnte: Die Spezifikation wird jedes Mal <strong>aus dem Live-Modell abgeleitet</strong> – Tabellen, Lineage, Tags, Glossarbegriffe –, sodass das Veröffentlichte nicht veralten kann wie eine von Hand gepflegte ODPS-Datei.</p><p>✅ Jedes Produkt trägt außerdem die <strong>Glossarbegriffe</strong>, die seine Spalten definieren, und die <strong>Datenqualitätsergebnisse</strong> der Checker, die es prüfen.</p>"
+      },
+      "stepGlossaryTerm": {
+        "title": "Einen Begriff hinzufügen",
+        "description": "📖 Ein Begriff benennt ein fachliches Konzept, listet die Spalten auf, die es tragen, und sagt, was es bedeutet. Begriffe für reale Spalten werden für Sie abgeleitet; fügen Sie nur dann einen von Hand hinzu, wenn keine einzelne Spalte das Konzept trägt."
       },
       "stepPublish": {
         "title": "In den Werkzeugen Ihrer Organisation veröffentlichen",

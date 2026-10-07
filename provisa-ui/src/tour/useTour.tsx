@@ -659,10 +659,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
               endTour("dismissed");
             },
             // Inject a "Start" button that jumps back to the opening step, so a
-            // visitor can restart the tour from any popover. Omitted on step 0,
-            // where it would be a no-op.
+            // visitor can restart the core tour from any popover. Omitted on step 0,
+            // where it would be a no-op, and on a topic, whose card carries Deep Dives
+            // instead: the way back to the core tour's start is the catalog's control.
             onPopoverRender: (popover) => {
-              if (!isFirst) {
+              if (!isFirst && scopeRef.current === "core") {
                 const startBtn = document.createElement("button");
                 startBtn.type = "button";
                 startBtn.className = "driver-popover-start-btn";
@@ -673,8 +674,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
                 });
                 popover.footerButtons.prepend(startBtn);
               }
-              // REQ-1945: every core step can leave for the Deep Dives menu at once.
-              if (scopeRef.current === "core") {
+              // REQ-1945: every card, core or topic, can leave for the Deep Dives menu at once.
+              {
                 const deepBtn = document.createElement("button");
                 deepBtn.type = "button";
                 deepBtn.className = "driver-popover-deepdives-btn";
@@ -829,6 +830,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         topics={menuTopics}
         completed={completedTopics()}
         onPick={(id) => launch(id, true)}
+        onCore={() => launch("core", true)}
         onClose={() => setMenuOpen(false)}
       />
       <TourStatusOverlay

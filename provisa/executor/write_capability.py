@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from provisa.executor.writable import resolve_write_path, write_returns_rows
+from provisa.executor.writable import resolve_write_path, write_refused_forms, write_returns_rows
 
 if TYPE_CHECKING:
     from provisa.federation.engine import FederationEngine
@@ -78,3 +78,17 @@ def table_write_returns_rows(
         return False
     assert source_type is not None  # a table that takes a write has a source
     return write_returns_rows(source_type, engine)
+
+
+def table_write_refused_forms(
+    table: dict[str, Any], source_type: str | None, engine: "FederationEngine | None"
+) -> frozenset[str]:
+    """The statement forms a write to ``table`` does not carry — its write route's own
+    (``executor/writable.write_refused_forms``), carried on the table's record beside
+    ``write_ops`` (``write_refused_forms``). An upsert is an INSERT ... ON CONFLICT, so GraphQL
+    offers none where that form is refused; a SQL statement in a refused form is refused at
+    admission, naming the form."""
+    if not table_write_ops(table, source_type, engine):
+        return frozenset()
+    assert source_type is not None  # a table that takes a write has a source
+    return write_refused_forms(source_type, engine)

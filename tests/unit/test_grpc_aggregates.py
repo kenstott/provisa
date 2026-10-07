@@ -60,6 +60,7 @@ def _make_si(enable_aggregates: bool = False, enable_group_by: bool = False):
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         }
     ]
     column_types = {

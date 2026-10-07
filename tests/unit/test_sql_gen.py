@@ -49,6 +49,7 @@ def _build_schema_and_ctx(
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -63,6 +64,7 @@ def _build_schema_and_ctx(
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
     if relationships is None:
@@ -387,6 +389,7 @@ class TestPagination:
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -400,6 +403,7 @@ class TestPagination:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 3,
@@ -413,6 +417,7 @@ class TestPagination:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         column_types = {
@@ -443,6 +448,7 @@ class TestPagination:
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -456,6 +462,7 @@ class TestPagination:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 4,
@@ -469,6 +476,7 @@ class TestPagination:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         column_types = {
@@ -499,6 +507,7 @@ class TestPagination:
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -512,6 +521,7 @@ class TestPagination:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 3,
@@ -525,6 +535,7 @@ class TestPagination:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         column_types = {
@@ -697,6 +708,7 @@ class TestNestedRelationship:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -711,6 +723,7 @@ class TestNestedRelationship:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         relationships = [
@@ -768,6 +781,7 @@ class TestNestedRelationship:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -782,6 +796,7 @@ class TestNestedRelationship:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         relationships = [
@@ -825,6 +840,7 @@ class TestNestedRelationship:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -839,6 +855,7 @@ class TestNestedRelationship:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         relationships = [
@@ -882,6 +899,7 @@ class TestNestedRelationship:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -896,6 +914,7 @@ class TestNestedRelationship:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 3,
@@ -910,6 +929,7 @@ class TestNestedRelationship:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         relationships = [
@@ -961,6 +981,7 @@ class TestNestedRelationship:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -974,6 +995,7 @@ class TestNestedRelationship:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         rels = [
@@ -1046,6 +1068,7 @@ class TestJoinTypeCast:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -1059,6 +1082,7 @@ class TestJoinTypeCast:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         rels = [
@@ -1103,6 +1127,7 @@ class TestJoinTypeCast:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -1116,6 +1141,7 @@ class TestJoinTypeCast:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         rels = [
@@ -1203,6 +1229,7 @@ class TestRelationshipVisibility:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -1216,6 +1243,7 @@ class TestRelationshipVisibility:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         rels = [
@@ -1318,6 +1346,7 @@ class TestOpsDefaultLimit:
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -1331,6 +1360,7 @@ class TestOpsDefaultLimit:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 3,
@@ -1344,6 +1374,7 @@ class TestOpsDefaultLimit:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         column_types = {
@@ -1410,6 +1441,7 @@ class TestGqlJsonBlobExtraction:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -1431,6 +1463,7 @@ class TestGqlJsonBlobExtraction:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         relationships = [

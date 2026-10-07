@@ -59,6 +59,7 @@ def _build_schema_and_ctx():
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
+            "write_refused_forms": [],
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},

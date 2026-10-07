@@ -67,6 +67,7 @@ def _schema_input() -> SchemaInput:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -83,6 +84,7 @@ def _schema_input() -> SchemaInput:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ],
         relationships=[
@@ -136,6 +138,7 @@ def client(monkeypatch):
                 "table_name": "inquiries",
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             }
         }
     }

@@ -157,6 +157,13 @@ export const SOURCE_TYPES = [
   // Enterprise SaaS
   { value: "sharepoint", label: "SharePoint", category: "Enterprise", defaultPort: 0 },
   { value: "salesforce", label: "Salesforce", category: "Enterprise", defaultPort: 0 }, // REQ-1946
+  // REQ-1947
+  {
+    value: "cloudops",
+    label: "Cloud Inventory (Azure / AWS / GCP)",
+    category: "Enterprise",
+    defaultPort: 0,
+  },
   { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
   // Data Quality (REQ-1443) — a checker scans a governed table through Provisa's own pgwire
   // endpoint; the source itself needs no connection fields (dq/contract.py). soda is Elastic

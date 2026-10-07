@@ -508,6 +508,7 @@ class SchemaGenerationEngine:
             "table_name": table.table_name,
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
+            "write_refused_forms": [],
             "columns": [
                 {"column_name": col.name, "visible_to": list(col.visible_to)}
                 for col in table.columns
@@ -923,6 +924,7 @@ def _build_schema_input_with_root_ids(root_table_ids: set[int] | None) -> Any:
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
+            "write_refused_forms": [],
             "columns": [
                 {"column_name": "id", "visible_to": []},
                 {"column_name": "customer_id", "visible_to": []},
@@ -936,6 +938,7 @@ def _build_schema_input_with_root_ids(root_table_ids: set[int] | None) -> Any:
             "table_name": "customers",
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
+            "write_refused_forms": [],
             "columns": [
                 {"column_name": "id", "visible_to": []},
                 {"column_name": "name", "visible_to": []},

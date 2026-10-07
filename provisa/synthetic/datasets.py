@@ -111,13 +111,75 @@ def check_scale(scale: float, what: str) -> None:
 
 
 async def generated_tables(conn: Any) -> dict[int, tuple[str, str]]:
-    """``{table_id: (dataset, store schema)}`` for every table of a generated dataset."""
+    """``{table_id: (dataset, store schema)}`` for every table read from a synthetic store in the
+    environment ``conn`` is scoped to: each table of a generated dataset of its own (REQ-1939),
+    and each generated table of a source bound to a synthetic store (REQ-1942) -- by generating
+    its whole model here, or copied from the environment it was created from, whose generated
+    data it then reads."""
+    from provisa.core.env_classes import BINDING_COLUMN, SYNTHETIC
+    from provisa.core.schema_org import registered_tables as rt
+    from provisa.core.schema_org import sources
+    from provisa.synthetic.env_model import DATASET_ID
+
+    out: dict[int, tuple[str, str]] = {}
+    bound = await conn.execute_core(
+        select(sources.c.id, sources.c.synthetic).where(sources.c[BINDING_COLUMN] == SYNTHETIC)
+    )
+    held = {sid: where for sid, where in bound.fetchall()}
+    if held:
+        tables = await conn.execute_core(
+            select(rt.c.id, rt.c.source_id, rt.c.schema_name, rt.c.table_name).where(
+                rt.c.source_id.in_(sorted(held))
+            )
+        )
+        for tid, sid, schema_name, table_name in tables.fetchall():
+            if [schema_name, table_name] in held[sid]["tables"]:
+                out[tid] = (DATASET_ID, held[sid]["schema"])
     result = await conn.execute_core(
         select(sdt.c.table_id, sd.c.id, sd.c.store_schema)
         .select_from(sdt.join(sd, sd.c.id == sdt.c.dataset_id))
-        .where(sd.c.status == "generated")
+        .where(sd.c.status == "generated", sd.c.id != DATASET_ID)
     )
-    return {tid: (ds, schema) for tid, ds, schema in result.fetchall()}
+    out.update({tid: (ds, schema) for tid, ds, schema in result.fetchall()})
+    return out
+
+
+async def synthetic_sources(conn: Any) -> dict[str, dict]:
+    """``{source id: its synthetic binding}`` for each source bound to a synthetic store in the
+    environment ``conn`` is scoped to (REQ-1942): {schema, tables, model_type}."""
+    from provisa.core.env_classes import BINDING_COLUMN, SYNTHETIC
+    from provisa.core.schema_org import sources
+
+    bound = await conn.execute_core(
+        select(sources.c.id, sources.c.synthetic).where(sources.c[BINDING_COLUMN] == SYNTHETIC)
+    )
+    return {sid: where for sid, where in bound.fetchall()}
+
+
+def as_generated(tables: list[dict], bound: dict[str, dict]) -> list[dict]:
+    """``tables`` (fetch_tables rows) as an environment reads them where ``bound`` -- source id ->
+    its synthetic binding -- binds their source to a synthetic store (REQ-1942). A generated
+    table is an ordinary table there: a required parameter generated with it is a column of it,
+    a filter like any other, of the type it was generated as; any other argument of the API it
+    was read from is no column of it. The model's own rows are untouched: this is how the
+    environment reads them, never what it stores."""
+    out = []
+    for t in tables:
+        held = bound.get(t["source_id"])
+        if held is None or [t["schema_name"], t["table_name"]] not in held["tables"]:
+            out.append(t)
+            continue
+        typed = held["parameters"].get(f"{t['schema_name']}.{t['table_name']}", {})
+        columns = []
+        for c in t["columns"]:
+            if c["native_filter_type"] is None:
+                columns.append(c)
+            elif c["column_name"] in typed:
+                columns.append(
+                    {**c, "native_filter_type": None, "data_type": typed[c["column_name"]]}
+                )
+        out.append({**t, "columns": columns})
+    return out
 
 
 class TableNotAvailable(ValueError):

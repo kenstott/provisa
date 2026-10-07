@@ -40,11 +40,13 @@ from pathlib import Path, PurePath
 from typing import Any, Callable
 
 from provisa.core.secrets import resolve_secrets
+from provisa.federation.cloudops import cloudops_settings
+from provisa.federation.connector_config import MissingConnectorConfig
 from provisa.runtime_deps import BundleResolver, BundleSpec, bundle_spec_for
 
 # The pgwire-replica source types (mirror of strategy._CONNECTOR_PGWIRE_REPLICA). A type here has a
 # bundled Calcite pgwire server and is landed through this module when no engine connector reaches it.
-PGWIRE_REPLICA_TYPES = frozenset({"files", "sharepoint", "splunk", "salesforce"})
+PGWIRE_REPLICA_TYPES = frozenset({"files", "sharepoint", "splunk", "salesforce", "cloudops"})
 
 # Default ports (REQ-955): the pgwire endpoint (--port) and the Calcite child JVM (--calcite-child).
 # Each source gets a UNIQUE pair allocated up from these bases so servers never collide.
@@ -75,12 +77,8 @@ _SCHEMA_FACTORY: dict[str, str] = {
     "sharepoint": "org.apache.calcite.adapter.sharepoint.SharePointListSchemaFactory",
     "splunk": "org.apache.calcite.adapter.splunk.SplunkSchemaFactory",
     "salesforce": "org.apache.calcite.adapter.salesforce.SalesforceSchemaFactory",
+    "cloudops": "org.apache.calcite.adapter.ops.CloudOpsSchemaFactory",
 }
-
-
-class MissingConnectorConfig(Exception):  # REQ-955
-    """A pgwire-replica source is missing required creds/paths for its ``model.json`` operand. Raised
-    on fail-loud config resolution; never a partial or defaulted operand."""
 
 
 class PortAllocationError(Exception):  # REQ-955
@@ -373,6 +371,7 @@ _OPERAND_BUILDERS: dict[str, Callable[[Any], dict]] = {
     "sharepoint": _sharepoint_operand,
     "splunk": _splunk_operand,
     "salesforce": _salesforce_operand,
+    "cloudops": cloudops_settings,
 }
 
 

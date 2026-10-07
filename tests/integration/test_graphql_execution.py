@@ -53,6 +53,7 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
+            "write_refused_forms": [],
             "enable_aggregates": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
@@ -71,6 +72,7 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
             "table_name": "customers",
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
+            "write_refused_forms": [],
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},

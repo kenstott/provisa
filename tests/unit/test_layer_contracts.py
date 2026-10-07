@@ -156,6 +156,7 @@ def _build_minimal_ctx():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         }
     ]
     column_types = {1: [_col("id", "integer"), _col("amount", "decimal(10,2)")]}

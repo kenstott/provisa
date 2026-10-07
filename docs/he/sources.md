@@ -291,6 +291,45 @@ SharePoint ו-Splunk נרשמים דרך מחברי Apache Calcite (kenstott/cal
     security_token: ${env:SF_SECURITY_TOKEN}
 ```
 
+#### `cloudops`
+
+מלאי הענן מציג את המשאבים של Azure,‏ AWS ו-GCP כסט אחד של טבלאות: `compute_resources`, `storage_resources`, `kubernetes_clusters`, `database_resources`, `network_resources`, `iam_resources`, `container_registries`, `compute_security_groups`. לכל טבלה אותן עמודות בשלושת העננים, והעמודה `cloud_provider` מציינת מאיזה ענן הגיעה כל שורה. המקור קורא בלבד, והטבלאות שלו נרשמות על ידי steward כמו כל טבלה אחרת (REQ-1947). [tool-verified: `provisa/federation/cloudops.py` `cloudops_settings`; `provisa/federation/trino_connectors.py` `TrinoCloudopsConnector`]
+
+מקור מציין ענן אחד או יותר. כל ענן הוא הכול או כלום: ענן שרק חלק מערכי החובה שלו מולאו נדחה, תוך ציון מה חסר, וכך גם מקור שאינו מציין אף ענן. המקור קורא בדיוק את העננים שהוא מציין. כל הערכים נמצאים ב-`mapping`; כל סוד יכול להיות הפניה מסוג `${secret:…}` או `${env:…}`, וסוד שהוקלד ישירות נשמר בכספת של הארגון.
+
+| ענן | מפתח `mapping` | מאפיין מחבר | הערות |
+| --- | --- | --- | --- |
+| Azure | `azure_tenant_id` | `azure.tenant-id` | חובה |
+| Azure | `azure_client_id` | `azure.client-id` | חובה |
+| Azure | `azure_client_secret` | `azure.client-secret` | חובה; סוד |
+| Azure | `azure_subscription_ids` | `azure.subscription-ids` | חובה; מופרדים בפסיקים |
+| AWS | `aws_access_key_id` | `aws.access-key-id` | חובה |
+| AWS | `aws_secret_access_key` | `aws.secret-access-key` | חובה; סוד |
+| AWS | `aws_region` | `aws.region` | חובה |
+| AWS | `aws_account_ids` | `aws.account-ids` | חובה; מופרדים בפסיקים |
+| AWS | `aws_role_arn` | `aws.role-arn` | אופציונלי |
+| GCP | `gcp_credentials_path` | `gcp.credentials-path` | חובה |
+| GCP | `gcp_project_ids` | `gcp.project-ids` | חובה; מופרדים בפסיקים |
+| — | `cache_ttl_minutes` | `cache.ttl-minutes` | אופציונלי |
+
+קובץ המפתח של GCP נפתח על ידי מי שקורא את המקור: ב-Trino זהו שרת Trino, ובכל מנוע אחר זהו שרת ה-pgwire של המקור במארח של Provisa. הנתיב חייב להיות מוחלט.
+
+ב-Trino המקור נקרא דרך הקטלוג `cloudops`. בכל מנוע אחר, המנוע מצרף את שרת ה-pgwire של המקור וקורא אותו במקומו, כמו מקור SharePoint.
+
+```yaml
+- id: cloud-estate
+  type: cloudops
+  mapping:
+    aws_access_key_id: ${env:CLOUDOPS_AWS_ACCESS_KEY_ID}
+    aws_secret_access_key: ${env:CLOUDOPS_AWS_SECRET_ACCESS_KEY}
+    aws_region: us-east-1
+    aws_account_ids: "111111111111,222222222222"
+    azure_tenant_id: ${env:CLOUDOPS_AZURE_TENANT_ID}
+    azure_client_id: ${env:CLOUDOPS_AZURE_CLIENT_ID}
+    azure_client_secret: ${env:CLOUDOPS_AZURE_CLIENT_SECRET}
+    azure_subscription_ids: "sub-1,sub-2"
+```
+
 #### `splunk`
 
 תוצאות חיפוש Splunk ניתנות לשאילתה כטבלאות (לדוגמה `internal_server`) (REQ-721). כתובת ה-URL של המחבר מגיעה מ-`base_url`, או נבנית כ-`https://{host}:{port}` עם פורט ברירת מחדל `8089` (REQ-722). אימות: כאשר `mapping.use_token` הוא `true` (ברירת המחדל), `password` מועבר כאסימון ה-API; כאשר `false`, `username` ו-`password` מועברים כאישורים נפרדים (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]

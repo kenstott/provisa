@@ -51,6 +51,8 @@ def _gov(write_ops: set[str]) -> GovernanceContext:
     gov.all_columns = {1: [("id", "integer"), ("region", "varchar")]}
     gov.writable_columns = {1: frozenset({"id", "region"})}
     gov.write_ops = {1: frozenset(write_ops)}
+    gov.write_returns_rows = {1: bool(write_ops)}
+    gov.write_refused_forms = {1: frozenset()}
     return gov
 
 

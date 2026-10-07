@@ -38,6 +38,7 @@ import { KaggleFormSection } from "./KaggleFormSection";
 import { PushFeedFormSection } from "./PushFeedFormSection";
 import { ProfilerFormSection } from "./ProfilerFormSection";
 import { SalesforceFields } from "./SalesforceFields";
+import { CloudopsFields } from "./CloudopsFields";
 import { SparqlFormSection } from "./SparqlFormSection";
 import { SourceLoadManagementPanel } from "./SourceLoadManagementPanel";
 import { RegionSelect } from "../../components/admin/RegionSelect";
@@ -572,6 +573,9 @@ export function SourceFormFieldsExtended({
           rssUseSsl={rssUseSsl}
           setRssUseSsl={setRssUseSsl}
         />
+      )}
+      {form.type === "cloudops" && (
+        <CloudopsFields fields={authFields} setFields={setAuthFields} />
       )}
       {form.type === "salesforce" && (
         <SalesforceFields

@@ -73,6 +73,7 @@ def _tbl(i: int, sid: str, tname: str, cols: list[str]) -> dict:
         "table_name": tname,
         "write_ops": registry_write_ops({1: "csv", 2: "sqlite", 3: "parquet"}[i]),
         "write_returns_rows": registry_write_returns_rows({1: "csv", 2: "sqlite", 3: "parquet"}[i]),
+        "write_refused_forms": [],
         "columns": [{"column_name": c, "visible_to": ["admin"]} for c in cols],
     }
 

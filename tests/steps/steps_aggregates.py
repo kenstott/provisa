@@ -51,6 +51,7 @@ def _registered_table(shared_data):
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
+            "write_refused_forms": [],
             "enable_aggregates": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
@@ -191,6 +192,7 @@ def _role_without_aggregations(shared_data):
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
+            "write_refused_forms": [],
             # Table-level aggregates auto-detection is enabled; gating must be per-role.
             "enable_aggregates": True,
             "columns": [

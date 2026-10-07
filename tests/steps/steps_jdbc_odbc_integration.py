@@ -321,6 +321,7 @@ def jdbc_client_get_columns(shared_data):
             "table_name": table_name,
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
+            "write_refused_forms": [],
             "governance": "pre-app",
             "columns": [
                 {"column_name": name, "visible_to": [], "native_filter_type": None}

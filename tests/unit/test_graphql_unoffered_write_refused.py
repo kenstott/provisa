@@ -47,6 +47,7 @@ def _table(table_id: int, name: str, write_ops: list[str]) -> dict:
         ],
         "write_ops": write_ops,
         "write_returns_rows": bool(write_ops),
+        "write_refused_forms": [],
     }
 
 

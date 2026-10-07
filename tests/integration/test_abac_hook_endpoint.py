@@ -72,6 +72,7 @@ def _build_schema():
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
+            "write_refused_forms": [],
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "region", "visible_to": ["admin"]},

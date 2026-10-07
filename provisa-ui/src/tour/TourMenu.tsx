@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { useTranslation } from "react-i18next";
-import { Badge, Group, Modal, Paper, SimpleGrid, Stack, Text, UnstyledButton } from "@mantine/core";
+import { Badge, Button, Group, Modal, Paper, SimpleGrid, Stack, Text, UnstyledButton } from "@mantine/core";
 import { Check } from "lucide-react";
 import type { TopicId } from "./tourSteps";
 
@@ -23,6 +23,7 @@ export function TourMenu({
   topics,
   completed,
   onPick,
+  onCore,
   onClose,
 }: {
   opened: boolean;
@@ -30,6 +31,8 @@ export function TourMenu({
   topics: { id: TopicId; steps: number }[];
   completed: readonly TopicId[];
   onPick: (id: TopicId) => void;
+  /** Begin the core tour at its first step. */
+  onCore: () => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -44,7 +47,12 @@ export function TourMenu({
       data-testid="tour-menu"
     >
       <Stack gap="md">
-        <Text size="sm">{t("tour.menu.intro")}</Text>
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Text size="sm">{t("tour.menu.intro")}</Text>
+          <Button variant="light" size="xs" onClick={onCore} data-testid="tour-menu-core-tour">
+            {t("tour.menu.coreTour")}
+          </Button>
+        </Group>
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
           {topics.map(({ id, steps }) => (
             <UnstyledButton

@@ -114,6 +114,22 @@
     "sfAccessToken": "存取權杖",
     "sfInstanceUrl": "執行個體 URL",
     "sfApiVersion": "API 版本",
-    "sfApiVersionHelp": "選填，例如 v61.0"
+    "sfApiVersionHelp": "選填，例如 v61.0",
+    "coNameACloud": "請至少填寫 Azure、AWS 或 GCP 其中一個雲端。",
+    "coCloudsNamed": "此數據來源讀取：{{clouds}}",
+    "coRequiredWithCloud": "指定此雲端後為必填",
+    "coAzureTenantId": "租用戶 ID",
+    "coAzureClientId": "用戶端 ID",
+    "coAzureClientSecret": "用戶端密碼",
+    "coAzureSubscriptionIds": "訂閱 ID",
+    "coAwsAccessKeyId": "存取金鑰 ID",
+    "coAwsSecretAccessKey": "秘密存取金鑰",
+    "coAwsRegion": "區域",
+    "coAwsAccountIds": "帳戶 ID",
+    "coAwsRoleArn": "要擔任的角色 (ARN)",
+    "coGcpCredentialsPath": "服務帳戶金鑰檔案",
+    "coGcpProjectIds": "專案 ID",
+    "coCacheTtlMinutes": "快取（分鐘）",
+    "coCacheTtlMinutesHelp": "再次查詢各雲端之前，結果重複使用的時間"
   }
 }

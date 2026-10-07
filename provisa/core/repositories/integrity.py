@@ -190,6 +190,8 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("tracked_functions", "source_id", "source", "command", "name"),
     _part("tag_assignments", "source_id", "source"),
     _part("provisa_sources", "source_id", "source"),
+    # REQ-1942: what a source was bound to before its synthetic store goes with the source.
+    _part("synthetic_source_bindings", "source_id", "source"),
     _part("api_sources", "id", "source", of="api_source", owner="id"),
     _part("kafka_sources", "id", "source", of="kafka_source", owner="id"),
     # --- to a registered table (a view is one) -------------------------------------------------

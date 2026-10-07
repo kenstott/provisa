@@ -130,8 +130,26 @@ class _Pools:
     def has(self, source_id: str) -> bool:
         return any(a["source_id"] == source_id for a in self.added)
 
-    async def add(self, **kw) -> None:
-        self.added.append(kw)
+    async def add_driver(self, source_id: str, driver, dialect: str) -> None:
+        self.added.append(
+            {
+                "source_id": source_id,
+                "driver": type(driver).__name__,
+                "dialect": dialect,
+                "connected_to": driver.connected_to,
+            }
+        )
+
+
+@pytest.fixture(autouse=True)
+def _no_real_connection(monkeypatch):
+    """The write driver's connect, recorded instead of dialled."""
+    from provisa.executor.drivers.pgwire_server import PgwireServerDriver
+
+    async def _connect(self, host, port, database, user, password, min_pool=1, max_pool=5):
+        self.connected_to = (host, port, database, user, password)
+
+    monkeypatch.setattr(PgwireServerDriver, "connect", _connect)
 
 
 def _state(source_type: str = "salesforce") -> SimpleNamespace:
@@ -157,12 +175,9 @@ async def test_the_pool_is_the_postgresql_driver_on_the_servers_endpoint(monkeyp
     assert state.source_pools.added == [
         {
             "source_id": "sf-sales",
-            "source_type": "postgresql",
-            "host": "127.0.0.1",
-            "port": 5999,
-            "database": "provisa",
-            "user": "provisa",
-            "password": "",
+            "driver": "PgwireServerDriver",
+            "dialect": "postgres",
+            "connected_to": ("127.0.0.1", 5999, "provisa", "provisa", ""),
         }
     ]
 
@@ -362,7 +377,7 @@ def test_a_view_returns_no_written_rows():
     assert table_write_returns_rows({"view_sql": "SELECT 1"}, "postgresql", None) is False
 
 
-def _write_gov(returns_rows: bool):
+def _write_gov(returns_rows: bool, refused_forms=()):
     from provisa.compiler.stage2 import GovernanceContext
 
     gov = GovernanceContext()
@@ -373,6 +388,7 @@ def _write_gov(returns_rows: bool):
     gov.writable_columns = {1: frozenset({"id", "name"})}
     gov.write_ops = {1: frozenset({"insert", "update", "delete"})}
     gov.write_returns_rows = {1: returns_rows}
+    gov.write_refused_forms = {1: frozenset(refused_forms)}
     return gov
 
 
@@ -405,7 +421,7 @@ def test_the_same_write_without_returning_is_admitted():
     )
 
 
-def _schema(returns_rows: bool):
+def _schema(returns_rows: bool, refused_forms=()):
     from provisa.compiler.introspect import ColumnMetadata
     from provisa.compiler.schema_gen import SchemaInput, generate_schema
 
@@ -421,6 +437,7 @@ def _schema(returns_rows: bool):
         ],
         "write_ops": ["delete", "insert", "update"],
         "write_returns_rows": returns_rows,
+        "write_refused_forms": list(refused_forms),
     }
     cols = [
         ColumnMetadata(column_name="id", data_type="varchar(18)", is_nullable=False),
@@ -448,3 +465,170 @@ def test_graphql_offers_no_mutation_field_where_written_rows_are_not_returned():
     offered = _schema(True)
     assert offered.mutation_type is not None
     assert [name for name in offered.mutation_type.fields if "account" in name.lower()]
+
+
+# -- a server that commits each write as it runs --------------------------------------------------
+
+
+def test_the_write_driver_never_opens_a_transaction():
+    from provisa.executor.drivers.pgwire_server import PgwireServerDriver
+    from provisa.executor.drivers.postgresql import PostgreSQLDriver
+
+    driver = PgwireServerDriver()
+    assert isinstance(driver, PostgreSQLDriver)
+    # The two PostgreSQL paths that BEGIN (a streamed read's cursor, the raw passthrough gated on
+    # it) are not offered, so no ROLLBACK can follow a write.
+    assert driver.supports_streaming is False
+    # Each statement is its own: the connections are autocommit.
+    driver._connect_kwargs = {"host": "h", "port": 1, "database": "d", "user": "u", "password": ""}
+    assert driver._conn_kwargs()["autocommit"] is True
+
+
+@_aio
+async def test_the_write_driver_refuses_a_server_side_cursor():
+    from provisa.executor.drivers.pgwire_server import PgwireServerDriver
+
+    with pytest.raises(NotImplementedError, match="transaction"):
+        await PgwireServerDriver().open_stream("SELECT 1")
+
+
+@_aio
+async def test_the_pool_holds_a_given_driver_once():
+    from provisa.executor.pool import SourcePool
+
+    class _Driver:
+        supports_streaming = False
+        closed = False
+
+        async def close(self):
+            self.closed = True
+
+    pool, first, second = SourcePool(), _Driver(), _Driver()
+    await pool.add_driver("sf-sales", first, "postgres")  # pyright: ignore[reportArgumentType]
+    await pool.add_driver("sf-sales", second, "postgres")  # pyright: ignore[reportArgumentType]
+    assert pool.get("sf-sales") is first
+    assert pool.dialect_for("sf-sales") == "postgres"
+    assert pool.supports_stream("sf-sales") is False
+    assert second.closed and not first.closed
+
+
+# -- the statement forms the server does not take -------------------------------------------------
+
+_FORMS = {
+    "on_conflict": "INSERT INTO sf.account (id, name) VALUES ('1', 'A') ON CONFLICT (id) DO NOTHING",
+    "update_from": "UPDATE sf.account SET name = 'A' FROM sf.account AS o WHERE account.id = o.id",
+    "delete_using": "DELETE FROM sf.account USING sf.account AS o WHERE account.id = o.id",
+    "merge": (
+        "MERGE INTO sf.account AS t USING (SELECT '1' AS id, 'A' AS name) AS s ON t.id = s.id "
+        "WHEN MATCHED THEN UPDATE SET name = s.name "
+        "WHEN NOT MATCHED THEN INSERT (id, name) VALUES (s.id, s.name)"
+    ),
+    "truncate": "TRUNCATE TABLE sf.account",
+}
+
+
+@pytest.mark.parametrize("source_type", ["sharepoint", "salesforce"])
+def test_the_pgwire_route_refuses_every_form_beyond_a_plain_write(source_type):
+    from provisa.executor.writable import WRITE_FORMS, write_refused_forms
+    from provisa.executor.write_capability import table_write_refused_forms
+
+    assert write_refused_forms(source_type, None) == WRITE_FORMS == set(_FORMS)
+    assert table_write_refused_forms({"table_name": "Account"}, source_type, None) == WRITE_FORMS
+
+
+def test_every_route_declares_the_forms_it_refuses():
+    from provisa.executor.writable import _ROUTE_REFUSED_FORMS, write_refused_forms
+
+    assert set(_ROUTE_REFUSED_FORMS) == set(WritePath)
+    assert write_refused_forms("postgresql", None) == frozenset()
+    assert write_refused_forms("mongodb", None) == frozenset()  # no write route: no write at all
+
+
+@pytest.mark.parametrize("form", sorted(_FORMS))
+def test_a_refused_form_is_refused_at_admission_naming_the_form(form):
+    import sqlglot
+
+    from provisa.compiler.write_admission import WriteFormNotSupported, write_form
+
+    tree = sqlglot.parse_one(_FORMS[form], read="postgres")
+    assert write_form(tree) == form
+    with pytest.raises(WriteFormNotSupported, match="'account' does not take") as refused:
+        admit_write_for(tree, _write_gov(True, refused_forms=set(_FORMS)))
+    assert refused.value.form == form
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "INSERT INTO sf.account (id, name) VALUES ('1', 'A')",
+        "UPDATE sf.account SET name = 'A' WHERE id = '1'",
+        "DELETE FROM sf.account WHERE id = '1'",
+    ],
+)
+def test_a_plain_write_has_no_form_and_is_admitted(sql):
+    import sqlglot
+
+    from provisa.compiler.write_admission import write_form
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    assert write_form(tree) is None
+    admit_write_for(tree, _write_gov(True, refused_forms=set(_FORMS)))
+
+
+def admit_write_for(tree, gov):
+    from provisa.compiler.write_admission import admit_write
+
+    return admit_write(tree, gov)
+
+
+def test_graphql_offers_no_upsert_where_on_conflict_is_refused():
+    # With written rows returned (the flag as it will be at the pin) the insert, update and
+    # delete fields are offered and the upsert, an INSERT ... ON CONFLICT, is not.
+    offered = _schema(True, refused_forms=["on_conflict"])
+    names = [n.lower() for n in offered.mutation_type.fields if "account" in n.lower()]
+    assert names and not [n for n in names if "upsert" in n]
+    assert [n for n in _schema(True).mutation_type.fields if "upsert" in n.lower()]
+
+
+# -- a source bound to a synthetic store (REQ-1942) ---------------------------------------------------
+
+
+@_aio
+async def test_a_synthetic_bound_salesforce_source_has_no_pgwire_write_server_or_route(monkeypatch):
+    """Bound to a synthetic store, the source's row takes the store's type and keeps the model's
+    in its binding. The pgwire write route is decided by the row's type, so it does not apply:
+    no server is started for the source and no write pool is opened on one."""
+    from provisa.core import connection_loop
+    from provisa.core.env_classes import BINDING_COLUMN, SYNTHETIC, model_type
+    from provisa.core.repositories.source import _source_values, source_from_row
+
+    row = {
+        **_source_values(_salesforce()),
+        "type": "postgresql",  # the store's
+        BINDING_COLUMN: SYNTHETIC,
+        "synthetic": {"model_type": "salesforce", "tables": [], "parameters": {}},
+    }
+    assert model_type(row) == "salesforce"
+    source = source_from_row(row)
+    assert source.type.value == "postgresql"
+
+    spawned: list[str] = []
+
+    def _spawn(coro, *, name=None):
+        coro.close()
+        spawned.append(name)
+
+    monkeypatch.setattr(connection_loop, "spawn_background", _spawn)
+    pgwire_write.start_write_server(source)
+    assert spawned == []
+
+    assert resolve_write_path(source.type.value, None) is not WritePath.PGWIRE
+    assert not is_written_through_pgwire_server(source.type.value)
+
+    def _never(source):
+        raise AssertionError("no pgwire server is asked for")
+
+    monkeypatch.setattr(pr, "ensure_endpoint_for_discovery", _never)
+    state = _state(source.type.value)
+    await pgwire_write.ensure_write_pool(state, "sf-sales")
+    assert state.source_pools.added == []

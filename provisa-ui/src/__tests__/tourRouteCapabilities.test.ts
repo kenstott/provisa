@@ -89,7 +89,7 @@ describe("guided tour route gates", () => {
   // step highlights the AI-generation buttons, which only a curator is shown. The right named must
   // still carry the viewer through the gate, which is what this map records — and the seeds grant
   // glossary_rw only alongside glossary_read.
-  const IMPLIED_GATE: Record<string, string> = { glossary_rw: "glossary_read" };
+  const IMPLIED_GATE: Record<string, string> = { glossary_rw: "glossary_read", data_product_rw: "data_product_read" };
 
   it.each(TOUR_STEPS.filter((s) => s.route).map((s) => [s.key, s.route!, s.capability] as const))(
     "step %s declares the gate its route carries",

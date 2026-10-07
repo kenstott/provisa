@@ -68,6 +68,7 @@ def petstore():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
         {
             "id": 2,
@@ -84,6 +85,7 @@ def petstore():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
     ]
     si = SchemaInput(
@@ -116,6 +118,7 @@ def petstore():
                 "enable_group_by": True,
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             }
             for t in tables
         ]

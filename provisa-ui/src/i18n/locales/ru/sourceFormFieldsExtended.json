@@ -114,6 +114,22 @@
     "sfAccessToken": "Токен доступа",
     "sfInstanceUrl": "URL экземпляра",
     "sfApiVersion": "Версия API",
-    "sfApiVersionHelp": "Необязательно, например v61.0"
+    "sfApiVersionHelp": "Необязательно, например v61.0",
+    "coNameACloud": "Заполните хотя бы одно из облаков: Azure, AWS или GCP.",
+    "coCloudsNamed": "Этот источник читает: {{clouds}}",
+    "coRequiredWithCloud": "Обязательно, если это облако указано",
+    "coAzureTenantId": "ID арендатора",
+    "coAzureClientId": "ID клиента",
+    "coAzureClientSecret": "Секрет клиента",
+    "coAzureSubscriptionIds": "ID подписок",
+    "coAwsAccessKeyId": "ID ключа доступа",
+    "coAwsSecretAccessKey": "Секретный ключ доступа",
+    "coAwsRegion": "Регион",
+    "coAwsAccountIds": "ID учётных записей",
+    "coAwsRoleArn": "Принимаемая роль (ARN)",
+    "coGcpCredentialsPath": "Файл ключа сервисного аккаунта",
+    "coGcpProjectIds": "ID проектов",
+    "coCacheTtlMinutes": "Кэш (минуты)",
+    "coCacheTtlMinutesHelp": "Как долго результат используется повторно, прежде чем облака опрашиваются снова"
   }
 }

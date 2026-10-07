@@ -48,6 +48,7 @@ from provisa.core import schema_org as org
 from provisa.core.env_classes import (
     BINDING_COLUMN,
     CARRIED,
+    SYNTHETIC,
     UNBOUND,
     IDENTITY_ONLY,
     SEEDED_AT_CREATION,
@@ -662,10 +663,20 @@ async def _upsert_identity(conn: "Connection", table: Table, rows: list[dict[str
     present = {
         dict(r._mapping)[key] for r in (await conn.execute_core(select(table.c[key]))).fetchall()
     }
+    # REQ-1942: a source bound to a synthetic store holds the store's type; the type the tree
+    # gives it is the model's, kept in its binding until the binding is restored.
+    synthetic: dict[Any, dict] = {}
+    if table.name == "sources":
+        held = await conn.execute_core(
+            select(table.c[key], table.c.synthetic).where(table.c[BINDING_COLUMN] == SYNTHETIC)
+        )
+        synthetic = {r[0]: r[1] for r in held.fetchall()}
     inserts = []
     for row in rows:
         if row[key] in present:
             values = {k: v for k, v in row.items() if k != key}
+            if row[key] in synthetic and "type" in values:
+                values["synthetic"] = {**synthetic[row[key]], "model_type": values.pop("type")}
             if values:
                 await conn.execute_core(
                     table.update().where(table.c[key] == row[key]).values(**values)

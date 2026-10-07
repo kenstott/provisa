@@ -499,6 +499,7 @@ export function RelationshipsPage() {
               testId="rels-suggest-help"
               target={
                 <ActionIcon
+                  data-tour="rels-suggest"
                   variant="subtle"
                   aria-label={
                     discovering

@@ -47,6 +47,7 @@ def _build_lake_ctx(source_type: str):
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         }
     ]
     column_types = {

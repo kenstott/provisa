@@ -413,9 +413,29 @@ async def declare(state: Any, table_id: int, table_name: str, doc: Any) -> str:
     scoped to; its run id."""
     from provisa.profiler.run import resolve_target, write_results
 
+    from dataclasses import replace
+
+    from provisa.profiler.statement import ColumnSpec, family_of
+    from provisa.synthetic.env_model import parameter_columns
+
     target = resolve_target(state, table_id, table_name, {})
     run_id = f"{DECLARED}-{uuid.uuid4().hex}"
     async with state.model_db.acquire() as conn:
+        # REQ-1942: a required parameter of an API table is generated as a column of it, so a
+        # declared profile states its facts as it does any column's.
+        typed = (await parameter_columns(conn)).get(table_id, {})
+        held = {c.physical for c in target.columns}
+        target = replace(
+            target,
+            columns=[
+                *target.columns,
+                *(
+                    ColumnSpec(name, kind, family_of(kind), name)
+                    for name, kind in typed.items()
+                    if name not in held
+                ),
+            ],
+        )
         covered = await covered_columns(conn, target)
         rows = results(target, doc, covered, run_id, datetime.now(UTC))
         await write_results(conn, table_name, table_id, rows)
