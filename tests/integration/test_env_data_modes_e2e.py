@@ -146,9 +146,10 @@ def test_recopy_from_parent_restores_a_cleared_connection(boot):
 
 
 def test_an_unbound_environment_reads_through_no_binding_of_prods(boot):
+    before = len(boot.log_text())
     _environment(boot, "base", "unbound")
     status, body = _orders(boot, "base")
-    assert status != 200, body
+    assert status != 200, (body, boot.log_text()[before:][-6000:])
 
 
 def test_a_new_environments_mutations_are_refused_naming_it(boot):

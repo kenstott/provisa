@@ -98,7 +98,8 @@
       "unknown_command": "未知命令「{{name}}」",
       "write_not_admitted": "角色 '{{role}}' 不能執行此寫入：寫入需要寫入權限、對所寫每一欄的寫入權限，以及該角色的行過濾器允許的行。",
       "write_not_supported": "'{{table}}' 不接受 {{operation}}：其資料來源無法執行",
-      "table_is_draft": "{{table}} 是草稿：在其領域的擁有者發佈之前停止服務"
+      "table_is_draft": "{{table}} 是草稿：在其領域的擁有者發佈之前停止服務",
+      "source_unbound": "來源 '{{source}}' 在環境 '{{env}}' 中沒有連線：請綁定它，或從父環境重新複製"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",

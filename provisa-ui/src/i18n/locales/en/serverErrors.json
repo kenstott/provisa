@@ -98,7 +98,8 @@
       "unknown_command": "Unknown command '{{name}}'",
       "write_not_admitted": "Role '{{role}}' may not make this write: a write needs the write right, write access to every column it writes, and rows the role's row filter admits.",
       "write_not_supported": "'{{table}}' does not take {{operation}}: its source cannot carry it",
-      "table_is_draft": "{{table}} is a draft: out of service until its domain's owners release it"
+      "table_is_draft": "{{table}} is a draft: out of service until its domain's owners release it",
+      "source_unbound": "Source '{{source}}' has no connection in environment '{{env}}': bind it, or re-copy it from the parent"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",

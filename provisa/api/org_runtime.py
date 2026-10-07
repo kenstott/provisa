@@ -106,6 +106,12 @@ class OrgRuntime:
     # (fake) environment whose model holds a sensitive column with no fake. Set by each schema
     # build; None when the environment serves.
     data_refusal: str | None = None
+    # REQ-1491, REQ-1942: the ids of this environment's sources that have no connection (binding
+    # ``unbound``). A statement naming one is refused before it is routed: the engine is shared by
+    # the org's environments and still holds the attach prod made of the same source, so "no pool"
+    # alone does not keep the read from prod's data. Set by each schema build from the rows it
+    # read; always empty for prod.
+    unbound_sources: frozenset[str] = frozenset()
     # REQ-1942: per table with kept mutations (Reversible), its change log's address and primary
     # key. Set by each schema build; empty for prod.
     kept: dict[int, tuple[str, list[str]]] = field(default_factory=dict)

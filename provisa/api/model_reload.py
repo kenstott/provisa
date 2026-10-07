@@ -113,6 +113,12 @@ async def _reconcile_sources(rows: dict[str, dict]) -> None:
     from provisa.core.repositories.source import source_from_row
 
     rt = state._active_runtime()
+    # REQ-1942: first, and whatever happens to the pools below -- what a read is refused by.
+    rt.unbound_sources = (
+        frozenset()
+        if rt.env == PROD
+        else frozenset(sid for sid, row in rows.items() if row[BINDING_COLUMN] == UNBOUND)
+    )
     seen = {sid: _connection(row) for sid, row in rows.items() if sid not in BUILT_IN_SOURCE_IDS}
     known = rt.source_rows
     if known is None:

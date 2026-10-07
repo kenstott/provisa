@@ -3140,6 +3140,7 @@
   "es/serverErrors.json::serverErrors.data.schema_cache_not_ready": "Schema build cache not ready",
   "es/serverErrors.json::serverErrors.data.sql_generation_failed": "Could not generate valid SQL after 3 attempts: {{error}}",
   "es/serverErrors.json::serverErrors.data.table_is_draft": "{{table}} is a draft: out of service until its domain's owners release it",
+  "es/serverErrors.json::serverErrors.data.source_unbound": "Source '{{source}}' has no connection in environment '{{env}}': bind it, or re-copy it from the parent",
   "es/serverErrors.json::serverErrors.data.table_not_found": "Table '{{table}}' not found",
   "es/serverErrors.json::serverErrors.data.unknown_action_field": "Unknown action field: '{{field}}'",
   "es/serverErrors.json::serverErrors.data.unknown_command": "Unknown command '{{name}}'",

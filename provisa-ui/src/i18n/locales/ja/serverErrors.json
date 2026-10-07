@@ -98,7 +98,8 @@
       "unknown_command": "不明なコマンド「{{name}}」です",
       "write_not_admitted": "ロール '{{role}}' はこの書き込みを実行できません。書き込みには、書き込み権限、書き込む各列への書き込みアクセス、およびロールの行フィルターが許可する行が必要です。",
       "write_not_supported": "'{{table}}' は {{operation}} を受け付けません: そのソースでは実行できません",
-      "table_is_draft": "{{table}} は下書きです: ドメインの所有者が公開するまで停止中です"
+      "table_is_draft": "{{table}} は下書きです: ドメインの所有者が公開するまで停止中です",
+      "source_unbound": "ソース '{{source}}' は環境 '{{env}}' に接続がありません: バインドするか、親から再コピーしてください"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",

@@ -98,7 +98,8 @@
       "unknown_command": "Comando desconocido: '{{name}}'",
       "write_not_admitted": "El rol '{{role}}' no puede realizar esta escritura: una escritura requiere el derecho de escritura, acceso de escritura a cada columna que escribe y filas que admita el filtro de filas del rol.",
       "write_not_supported": "'{{table}}' no admite {{operation}}: su origen no puede realizarlo",
-      "table_is_draft": "{{table}} es un borrador: fuera de servicio hasta que los responsables de su dominio la liberen"
+      "table_is_draft": "{{table}} es un borrador: fuera de servicio hasta que los responsables de su dominio la liberen",
+      "source_unbound": "El origen '{{source}}' no tiene conexión en el entorno '{{env}}': vincúlelo o vuelva a copiarlo del entorno principal"
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",

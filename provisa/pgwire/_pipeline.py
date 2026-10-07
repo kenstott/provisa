@@ -361,6 +361,23 @@ async def _optimize_and_route(
         sources = reduce_sources_for_routing(governed_sql, gov_ctx, ctx, _inlined)
     else:
         sources = extract_sources(governed_sql, gov_ctx, ctx)
+    # REQ-1491, REQ-1942: a source this environment holds unbound is reached through no
+    # connection, on any route. Refused here, before routing: the reroute below hands a source
+    # with no pool to the engine, and the org's environments share that engine, which still holds
+    # the attach prod made of the same source.
+    _rt = state._active_runtime()
+    _named_unbound = [sid for sid in sorted(sources) if sid in _rt.unbound_sources]
+    if _named_unbound:
+        from provisa.api.errors import ApiError
+
+        raise ApiError(
+            409,
+            "data.source_unbound",
+            f"source {_named_unbound[0]!r} has no connection in environment {_rt.env!r}: bind "
+            "it, or re-copy it from the parent",
+            source=_named_unbound[0],
+            env=_rt.env,
+        )
     default_source = next(
         (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
         next(iter(state.source_pools.source_ids), "pg"),
