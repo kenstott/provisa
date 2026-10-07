@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS stores (
     id      TEXT PRIMARY KEY,
     url     TEXT NOT NULL,
     kind    TEXT,                           -- REQ-1922: the engine kind, on a region's engine store
-    binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'inherited', 'unbound'))  -- REQ-1491, REQ-1942
+    binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'))  -- REQ-1491, REQ-1942
 );
 
 CREATE TABLE IF NOT EXISTS org_regions (
@@ -69,11 +69,11 @@ CREATE TABLE IF NOT EXISTS sources (
 -- operator wrote themselves is stored verbatim. Empty means the source needs no password.
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS password_ref TEXT NOT NULL DEFAULT '';
 
--- REQ-1491, REQ-1942: how this environment reaches -- its own binding, its parent's by reference
--- (inherited), or nothing (unbound) -- the source's connection values. A copy between environments carries the
+-- REQ-1491, REQ-1942: how this environment reaches -- a connection given in it (own), one copied from its parent
+-- (copied), or nothing (unbound) -- the source's connection values. A copy between environments carries the
 -- row and never the binding, and an empty value is not an absent one, so an unbound source is
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'inherited', 'unbound'));
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'));
 
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
@@ -820,11 +820,11 @@ CREATE TABLE IF NOT EXISTS kafka_sources (
 );
 ALTER TABLE kafka_sources ALTER COLUMN bootstrap_servers SET DEFAULT '';
 
--- REQ-1491, REQ-1942: how this environment reaches -- its own binding, its parent's by reference
--- (inherited), or nothing (unbound) -- the cluster's bootstrap servers. A copy between environments carries the
+-- REQ-1491, REQ-1942: how this environment reaches -- a connection given in it (own), one copied from its parent
+-- (copied), or nothing (unbound) -- the cluster's bootstrap servers. A copy between environments carries the
 -- row and never the binding, and an empty value is not an absent one, so an unbound kafka source is
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
-ALTER TABLE kafka_sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'inherited', 'unbound'));
+ALTER TABLE kafka_sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'));
 
 CREATE TABLE IF NOT EXISTS kafka_topics (
     id              SERIAL PRIMARY KEY,
@@ -851,11 +851,11 @@ CREATE TABLE IF NOT EXISTS kafka_sinks (
 );
 ALTER TABLE kafka_sinks ALTER COLUMN topic SET DEFAULT '';
 
--- REQ-1491, REQ-1942: how this environment reaches -- its own binding, its parent's by reference
--- (inherited), or nothing (unbound) -- the sink's target topic. A copy between environments carries the
+-- REQ-1491, REQ-1942: how this environment reaches -- a connection given in it (own), one copied from its parent
+-- (copied), or nothing (unbound) -- the sink's target topic. A copy between environments carries the
 -- row and never the binding, and an empty value is not an absent one, so an unbound kafka sink is
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
-ALTER TABLE kafka_sinks ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'inherited', 'unbound'));
+ALTER TABLE kafka_sinks ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'));
 
 -- API Sources (Phase U)
 CREATE TABLE IF NOT EXISTS api_sources (
@@ -868,11 +868,11 @@ CREATE TABLE IF NOT EXISTS api_sources (
 );
 ALTER TABLE api_sources ALTER COLUMN base_url SET DEFAULT '';
 
--- REQ-1491, REQ-1942: how this environment reaches -- its own binding, its parent's by reference
--- (inherited), or nothing (unbound) -- the API's base URL and auth. A copy between environments carries the
+-- REQ-1491, REQ-1942: how this environment reaches -- a connection given in it (own), one copied from its parent
+-- (copied), or nothing (unbound) -- the API's base URL and auth. A copy between environments carries the
 -- row and never the binding, and an empty value is not an absent one, so an unbound API source is
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
-ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'inherited', 'unbound'));
+ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'));
 
 CREATE TABLE IF NOT EXISTS api_endpoints (
     id              SERIAL PRIMARY KEY,

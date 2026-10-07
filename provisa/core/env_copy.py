@@ -54,6 +54,9 @@ from sqlalchemy import MetaData, Table, delete, select
 
 from provisa.core.env_classes import (
     BINDING_COLUMN,
+    BINDING_COLUMNS,
+    COPIED,
+    UNBOUND,
     CARRIED,
     IDENTITY_ONLY,
     SEEDED_AT_CREATION,
@@ -422,9 +425,15 @@ async def _copy_table(
         if current is None:
             delta.added.append(_render(key))
             if table.name in IDENTITY_ONLY and strip_identities:
-                # REQ-1491, REQ-1942: a row this copy creates is reached as the target's data
-                # mode says -- through its parent, or not at all until the environment binds it.
-                carried[BINDING_COLUMN] = landing
+                # REQ-1942: a row this copy creates carries its connection as the target's data
+                # mode says -- copied as the environment it comes from wrote it (a reference to a
+                # secret or a variable stays that reference), or none until the environment gives
+                # it one. Only a new row: an existing row's connection is its environment's own.
+                if landing == COPIED and row[BINDING_COLUMN] != UNBOUND:
+                    carried.update({c: row[c] for c in BINDING_COLUMNS[table.name]})
+                    carried[BINDING_COLUMN] = COPIED
+                else:
+                    carried[BINDING_COLUMN] = UNBOUND
             inserts.append(carried)
         elif any(current[c] != carried[c] for c in columns):
             delta.changed.append(_render(key))

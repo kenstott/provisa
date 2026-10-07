@@ -27,14 +27,18 @@ Every environment other than `prod` has one **data mode**, chosen when you creat
 
 | Data mode | What its tables show |
 | --- | --- |
-| Inherit | The parent environment's real rows. Its sources read the parent's connections by reference, so nothing about where they point is copied. |
+| Inherit | The parent environment's real rows, through connections copied from the parent. |
 | Unbound | Nothing until you bind a source to a database of the environment's own. The whole model is there, with no connections. |
 | Test (fake) | The parent's real rows, with every column that declares a fake read through its fake, by every role. |
 | Test (synthetic) | Rows generated from the parent's profile runs into the environment's own store. |
 
 The environment an environment was created from is always recorded as its parent, whatever its mode, so you can switch any environment back to Inherit at any time.
 
-Inheriting is a property of each source. A source is **inherited** (it reads the parent's connection), **bound** to a connection of the environment's own, or **unbound**. Choosing Inherit or Unbound sets every source at once; the Test modes leave each source as it is. You can change one source's binding from the environment's detail panel.
+When an environment is created as anything but Unbound, each source's connection is copied from the parent exactly as the parent wrote it. A reference to a secret or a variable is copied as that reference, so the copy names the same credential. From then on the environment's sources are its own: edit them on the Sources page like any other. A change in the parent no longer reaches them.
+
+Each source says where its connection came from: **copied** from the parent, **own** (given in this environment), or **unbound** (none). Editing a copied source's connection makes it own. A password typed in an environment is stored under a name of that environment's own, so it never replaces the parent's. **Re-copy from parent** copies the parent's connections again, for one source or for all of them. Choosing Inherit re-copies every source; choosing Unbound clears every one; the Test modes leave each source as it is.
+
+A model merged or deployed into an environment brings no connections: a source new to the environment arrives unbound until you re-copy it or give it a connection.
 
 A fake applies only in a Test (fake) environment. `prod` never fakes, and neither do Inherit and Unbound. The engine computes the fakes as it serves the read, so ordering, filtering, grouping and joining work on the fakes the reader sees.
 
@@ -69,7 +73,7 @@ A Test (fake) environment never shows a sensitive column unless that column decl
 Mutation handling is chosen alongside the data mode and applies to any of them. A new environment's mutation handling is **Refused**.
 
 - **Refused.** Every mutation is refused, naming the environment.
-- **Direct.** Mutations change the data, but only data the environment owns: a source bound to a database of its own. A mutation through an inherited source is refused, so an environment never writes into its parent's real data.
+- **Direct.** Mutations change the data, but only data the environment owns: a source bound to a database of its own. A mutation through a connection copied from the parent is refused, so an environment never writes into its parent's real data.
 - **Reversible.** Mutations are kept in the environment's own change log and the data underneath is never changed. Reads show the data with the log applied: the latest version of each row by its key, and a deleted row left out. **Reset mutations** on the environment's detail panel drops the log, returning the environment to its baseline: the parent's real rows, the generated rows, or a database of its own. Every table written this way needs a primary key. A MERGE is kept as what each of its clauses would write. In a Test (fake) environment a kept row is matched by its key as the environment reads it, and a written row is never faked again.
 
 A `TRUNCATE` is a mutation like any other, and runs as itself; it is never rewritten to a `DELETE`. Because it cannot apply a row filter, it runs only for a role that holds the `write` right and has no row filter on the table; otherwise it is refused, naming the filter, and `DELETE` is the way to remove the rows the role can see. Under Reversible a `TRUNCATE` is kept as one entry: reads then show only what was written after it, and Reset mutations brings the rows back.

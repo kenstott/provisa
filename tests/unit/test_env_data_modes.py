@@ -25,11 +25,11 @@ from provisa.core.env_data import DataChoiceRefused, sensitive_refusal, transiti
 @pytest.mark.parametrize(
     ("mode", "landing"),
     [
-        ("inherit", "inherited"),
-        ("test_fake", "inherited"),
-        ("test_synthetic", "inherited"),
+        ("inherit", "copied"),
+        ("test_fake", "copied"),
+        ("test_synthetic", "copied"),
         ("unbound", "unbound"),
-        (None, "unbound"),  # prod: no parent to inherit through
+        (None, "unbound"),  # prod: no parent to copy from
     ],
 )
 def test_a_new_source_lands_as_the_mode_says(mode, landing):
@@ -43,8 +43,8 @@ def test_an_unknown_mode_is_refused():
         transition("inherit", "shadow")
 
 
-def test_inherit_and_unbound_set_every_source_and_the_test_modes_set_none():
-    assert transition("unbound", "inherit").binding == "inherited"
+def test_inherit_recopies_unbound_clears_and_the_test_modes_keep_every_source():
+    assert transition("unbound", "inherit").binding == "copied"
     assert transition("inherit", "unbound").binding == "unbound"
     assert transition("inherit", "test_fake").binding is None
     assert transition("unbound", "test_synthetic").binding is None

@@ -281,19 +281,6 @@ async def _set(db: "Database", org_id: str, name: str, **values: Any) -> None:
         )
 
 
-async def landing_of(db: "Database", org_id: str, name: str | None) -> str:
-    """How a source row new to environment ``name`` is reached (REQ-1942): as its data mode says
-    (:func:`provisa.core.env_classes.landing_binding`); prod (``None`` or ``prod``) has none."""
-    from provisa.core.env_classes import landing_binding
-
-    if name is None or name == PROD:
-        return landing_binding(None)
-    row = await get_env(db, org_id, name)
-    if row is None:
-        raise KeyError(f"organization {org_id!r} has no environment {name!r}")
-    return landing_binding(row["data_mode"])
-
-
 async def set_data(db: "Database", org_id: str, name: str, **values: Any) -> None:
     """Write an environment's data choices or its generation state (REQ-1942): ``data_mode``,
     ``mutation_handling``, ``data_status``, ``data_error``, ``synthetic_dataset``. prod has none."""

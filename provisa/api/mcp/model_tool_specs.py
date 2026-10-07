@@ -409,19 +409,33 @@ SPECS: list[dict] = [
     {
         "name": "set_source_binding",
         "description": (
-            "REQ-1942: set one source's binding in an environment: inherited (the parent's "
-            "connection, by reference), unbound, or own -- a connection of the environment's own, "
-            "given as connection {host, port, database, username, password} or {path}. Needs "
-            "environment_data; a caller without it is refused 'Missing capability'."
+            "REQ-1942: set one source's binding in an environment: copied (its connection copied "
+            "again from the parent, as the parent wrote it), unbound (cleared), or own -- a "
+            "connection of the environment's own, given as connection {host, port, database, "
+            "username, password} or {path}. Needs environment_data; a caller without it is "
+            "refused 'Missing capability'."
         ),
         "input_schema": _obj(
             {
                 "env": {"type": "string"},
                 "sourceId": {"type": "string"},
-                "binding": {"type": "string", "enum": ["inherited", "unbound", "own"]},
+                "binding": {"type": "string", "enum": ["copied", "unbound", "own"]},
                 "connection": {"type": "object"},
             },
             ["env", "sourceId", "binding"],
+        ),
+    },
+    {
+        "name": "recopy_environment_sources",
+        "description": (
+            "REQ-1942: Re-copy from parent -- replace the connection of each named source in an "
+            "environment (every source when sources is omitted) with its parent's, exactly as the "
+            "parent wrote it. Needs environment_data; a caller without it is refused 'Missing "
+            "capability'."
+        ),
+        "input_schema": _obj(
+            {"env": {"type": "string"}, "sources": {"type": "array", "items": {"type": "string"}}},
+            ["env"],
         ),
     },
     {
@@ -498,7 +512,8 @@ SYSTEM_SECTION = (
     "run_profiler, run_table_profile, decide_profile_constraint, forget_profile_constraint, "
     "export_profile_constraint, create_drift_check, create_expectation_check, set_column_fake, "
     "define_synthetic_dataset, generate_synthetic_dataset, drop_synthetic_dataset, "
-    "set_environment_data, set_source_binding, generate_environment_model, "
+    "set_environment_data, set_source_binding, recopy_environment_sources, "
+    "generate_environment_model, "
     "reset_environment_mutations "
     "(get_environment_detail and get_environment_synthetic_plan read). Confirm with "
     "present_choice (mode='yes_no') before drop_synthetic_dataset and before set_table_profiler "

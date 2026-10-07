@@ -706,8 +706,12 @@ _SOURCE_SECRET_PREFIX = "source_"
 _SOURCE_SECRET_SUFFIX = "_password"
 
 
-def source_password_secret_name(source_id: str) -> str:  # REQ-1695
-    """The org-vault name holding ``source_id``'s password.
+def source_password_secret_name(source_id: str, env: str) -> str:  # REQ-1695, REQ-1942
+    """The org-vault name holding ``source_id``'s password as typed in environment ``env``.
+
+    Prod's is the source's own name. A password typed in any other environment is that
+    environment's, under a name of its own, so typing it never rotates the parent's credential;
+    a reference copied from the parent keeps naming the parent's.
 
     A source id may carry hyphens, dots and slashes; a secret name may carry none of them
     (``secrets_store.NAME``), so every character outside the grammar becomes an underscore. The
@@ -720,7 +724,10 @@ def source_password_secret_name(source_id: str) -> str:  # REQ-1695
 
     from provisa.core.secrets_store import validate_name
 
-    normalized = re.sub(r"[^A-Za-z0-9_]", "_", source_id)
+    from provisa.core.environments import PROD
+
+    owner = source_id if env == PROD else f"{source_id}__env_{env}"
+    normalized = re.sub(r"[^A-Za-z0-9_]", "_", owner)
     return validate_name(f"{_SOURCE_SECRET_PREFIX}{normalized}{_SOURCE_SECRET_SUFFIX}")
 
 
@@ -741,16 +748,23 @@ async def persist_source_password(info: StrawberryInfo, source_id: str, password
     the Secrets screen is: the name is the identity and the new value replaces the old.
     """
     from provisa.api.admin.capabilities import _identity_from_info
+    from provisa.core.request_context import active_env
 
     identity = _identity_from_info(info)
     return await store_source_password(
-        getattr(identity, "user_id", None) if identity is not None else None, source_id, password
+        getattr(identity, "user_id", None) if identity is not None else None,
+        source_id,
+        password,
+        env=active_env(),
     )
 
 
-async def store_source_password(actor: str | None, source_id: str, password: str) -> str:
+async def store_source_password(
+    actor: str | None, source_id: str, password: str, *, env: str
+) -> str:
     """:func:`persist_source_password` for a caller that is not a GraphQL resolver -- a REST
-    admin router names the acting user itself. The same three cases."""
+    admin router names the acting user and the environment the password was typed in itself.
+    The same three cases."""
     if not password:
         return ""
     if "${" in password:
@@ -760,7 +774,7 @@ async def store_source_password(actor: str | None, source_id: str, password: str
     from provisa.core.request_context import require_current_org
 
     assert state.admin_db is not None, "the platform control plane holds every org's vault"
-    name = source_password_secret_name(source_id)
+    name = source_password_secret_name(source_id, env)
     await secrets_store.put(
         state.admin_db,
         require_current_org(),
@@ -781,7 +795,10 @@ async def forget_source_password(source_id: str, password_ref: str) -> None:
     comparison is against the generated name, which is exactly that distinction. The entry is
     kept while the same source in another environment of the org still names it.
     """
-    if password_ref != f"${{secret:{source_password_secret_name(source_id)}}}":
+    from provisa.core.request_context import active_env
+
+    name = source_password_secret_name(source_id, active_env())
+    if password_ref != f"${{secret:{name}}}":
         return
     from provisa.api.app import state
     from provisa.core import secrets_store
@@ -791,7 +808,6 @@ async def forget_source_password(source_id: str, password_ref: str) -> None:
 
     assert state.admin_db is not None, "the platform control plane holds every org's vault"
     org_id = require_current_org()
-    name = source_password_secret_name(source_id)
     try:
         await secrets_store.remove(
             state.admin_db,

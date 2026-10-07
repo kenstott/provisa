@@ -12,9 +12,11 @@
 
 Every environment other than prod has one data mode -- Inherit, Unbound, Test (fake) or Test
 (synthetic) -- and is read-only or read-write. Its parent is always recorded, so any environment
-can be switched back to Inherit at any time. Inheriting is a property of each source (its
-``binding``: own, inherited or unbound, :mod:`provisa.core.env_bindings`); Inherit and Unbound set
-every source at once, the Test modes leave each source as it is.
+can be switched back to Inherit at any time. An environment's sources are its own: each one's
+connection was given in it (``binding`` own), copied from the parent as the parent wrote it
+(copied), or is none (unbound). Nothing is resolved through the parent at build time. Inherit copies
+every connection from the parent again, Unbound clears every one, the Test modes leave each as it
+is.
 
 A change of data mode that changes row keys -- to or from Test (synthetic), or regenerating it --
 discards the environment's change log, and is refused unless the caller confirms it. A change
@@ -39,10 +41,11 @@ from sqlalchemy import func, select, update
 
 from provisa.core.env_classes import (
     BINDING_COLUMN,
-    BINDINGS,
+    BINDING_COLUMNS,
+    CLEARED_SOURCE_CONNECTION,
+    COPIED,
     DATA_MODES,
     INHERIT,
-    INHERITED,
     TEST_FAKE,
     TEST_SYNTHETIC,
     UNBOUND,
@@ -69,8 +72,8 @@ class DataChoiceRefused(ValueError):
 
 @dataclass(frozen=True)
 class Transition:
-    """What a change of data mode does: the binding it sets on every source (None: each source
-    keeps its own), whether it discards the change log, and whether it needs the right to read
+    """What a change of data mode does: the binding it gives every source -- COPIED: each copied
+    again from the parent; UNBOUND: each cleared; None: each keeps its own -- whether it discards the change log, and whether it needs the right to read
     the parent's data."""
 
     binding: str | None
@@ -85,27 +88,18 @@ def transition(current: str, target: str) -> Transition:
         if mode not in DATA_MODES:
             raise DataChoiceRefused(f"unknown data mode {mode!r}; one of {DATA_MODES}")
     return Transition(
-        binding={INHERIT: INHERITED, UNBOUND_MODE: UNBOUND}.get(target),
+        binding={INHERIT: COPIED, UNBOUND_MODE: UNBOUND}.get(target),
         # Row keys change to or from synthetic rows, and on regenerating them.
         discards_change_log=TEST_SYNTHETIC in (current, target),
         reads_parent=target == INHERIT,
     )
 
 
-async def set_bindings(
-    conn: "Connection", schema: str, binding: str, source_ids: list[str] | None
-) -> list[str]:
-    """Set the binding of ``source_ids`` (None: every source the model holds, the built-in ones
-    excepted) in the environment whose schema is ``schema``; the ids it set. A source's own
-    binding is never set here: a source becomes its own by being given a connection."""
+async def _source_ids(conn: "Connection", schema: str, source_ids: list[str] | None) -> list[str]:
+    """``source_ids`` checked against the sources the environment whose schema is ``schema`` holds
+    (None: every one of them), the built-in ones excepted -- their connection is the platform's."""
     from provisa.core.models import BUILT_IN_SOURCE_IDS
 
-    if binding not in BINDINGS:
-        raise DataChoiceRefused(f"unknown binding {binding!r}; one of {BINDINGS}")
-    if binding not in (INHERITED, UNBOUND):
-        raise DataChoiceRefused(
-            "a source's own binding is its connection: bind it by giving it one"
-        )
     sources = _table("sources", schema)
     rows = (await conn.execute_core(select(sources.c.id))).fetchall()
     known = {r[0] for r in rows} - set(BUILT_IN_SOURCE_IDS)
@@ -115,10 +109,62 @@ async def set_bindings(
         raise DataChoiceRefused(
             "no source " + ", ".join(repr(m) for m in missing) + " in this environment"
         )
+    return ids
+
+
+async def unbind(conn: "Connection", schema: str, source_ids: list[str] | None) -> list[str]:
+    """Clear the connection of ``source_ids`` (None: every source) in the environment whose schema
+    is ``schema``, marking each UNBOUND; the ids it cleared."""
+    ids = await _source_ids(conn, schema, source_ids)
     if ids:
+        sources = _table("sources", schema)
         await conn.execute_core(
-            update(sources).where(sources.c.id.in_(ids)).values({BINDING_COLUMN: binding})
+            update(sources)
+            .where(sources.c.id.in_(ids))
+            .values({**CLEARED_SOURCE_CONNECTION, BINDING_COLUMN: UNBOUND})
         )
+    return ids
+
+
+async def recopy(
+    conn: "Connection", parent_schema: str, schema: str, source_ids: list[str] | None
+) -> list[str]:
+    """Copy the connection of ``source_ids`` (None: every source) from the parent, whose schema is
+    ``parent_schema``, into the environment whose schema is ``schema`` (REQ-1942): each exactly as
+    the parent wrote it -- a reference to a secret or a variable stays that reference -- marked
+    COPIED, or UNBOUND where the parent has none. The ids it copied. A source the parent does not
+    hold has nothing to copy, and is refused by name."""
+    ids = await _source_ids(conn, schema, source_ids)
+    if not ids:
+        return ids
+    columns = sorted(BINDING_COLUMNS["sources"])
+    parent = _table("sources", parent_schema)
+    rows = {
+        r._mapping["id"]: dict(r._mapping)
+        for r in (
+            await conn.execute_core(
+                select(
+                    parent.c.id, parent.c[BINDING_COLUMN], *(parent.c[c] for c in columns)
+                ).where(parent.c.id.in_(ids))
+            )
+        ).fetchall()
+    }
+    orphans = sorted(set(ids) - set(rows))
+    if orphans:
+        raise DataChoiceRefused(
+            "the parent holds no source "
+            + ", ".join(repr(o) for o in orphans)
+            + " to copy a connection from"
+        )
+    sources = _table("sources", schema)
+    for sid in ids:
+        row = rows[sid]
+        values = (
+            {**CLEARED_SOURCE_CONNECTION, BINDING_COLUMN: UNBOUND}
+            if row[BINDING_COLUMN] == UNBOUND
+            else {**{c: row[c] for c in columns}, BINDING_COLUMN: COPIED}
+        )
+        await conn.execute_core(update(sources).where(sources.c.id == sid).values(values))
     return ids
 
 
@@ -128,7 +174,7 @@ async def bind_own(
     """Bind ``source_id`` in the environment whose schema is ``schema`` to a connection of its
     own (REQ-1942): ``connection`` gives its binding columns (host, port, database, username,
     password_ref, path); the row is marked OWN. Nothing of the parent's binding is kept."""
-    from provisa.core.env_classes import BINDING_COLUMNS, OWN
+    from provisa.core.env_classes import OWN
     from provisa.core.models import BUILT_IN_SOURCE_IDS
 
     unknown = sorted(set(connection) - BINDING_COLUMNS["sources"])

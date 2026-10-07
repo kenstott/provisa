@@ -235,6 +235,12 @@ def register(
         return await mt.set_source_binding(*ctx(role), env, sourceId, binding, connection)
 
     @described
+    async def recopy_environment_sources(
+        env: str, sources: list[str] | None = None, role: str | None = None
+    ) -> dict:
+        return await mt.recopy_environment_sources(*ctx(role), env, sources)
+
+    @described
     async def get_environment_synthetic_plan(env: str, role: str | None = None) -> dict:
         return await mt.get_environment_synthetic_plan(*ctx(role), env)
 

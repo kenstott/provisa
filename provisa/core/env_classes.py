@@ -167,15 +167,17 @@ def carries_setting(key: str) -> bool:
     return head not in NEVER_SETTING_PREFIXES
 
 
-#: The column an IDENTITY_ONLY row carries how the environment reaches it in (REQ-1491,
-#: REQ-1942): its OWN binding, its parent environment's binding by reference (INHERITED), or
-#: nothing (UNBOUND). Never copied: a row a copy creates lands as the target environment's data
-#: mode says (:func:`landing_binding`), whatever the source row said.
+#: The column an IDENTITY_ONLY row says where its connection came from in (REQ-1491, REQ-1942):
+#: given in this environment (OWN), copied from the parent as the parent wrote it (COPIED), or
+#: none (UNBOUND). An environment's sources are its own once created: a copied connection is the
+#: environment's to read and edit, and nothing is resolved through the parent. COPIED is kept
+#: apart from OWN for one reason: a Direct mutation never writes through a connection the
+#: environment did not give itself -- that one reaches its parent's data.
 BINDING_COLUMN = "binding"
 OWN = "own"
-INHERITED = "inherited"
+COPIED = "copied"
 UNBOUND = "unbound"
-BINDINGS = (OWN, INHERITED, UNBOUND)
+BINDINGS = (OWN, COPIED, UNBOUND)
 
 #: An environment's data modes (REQ-1942); prod has none -- it is always real.
 INHERIT = "inherit"
@@ -195,14 +197,14 @@ MUTATION_HANDLINGS = (REFUSED, REVERSIBLE, DIRECT)
 
 
 def landing_binding(data_mode: str | None) -> str:
-    """How a row new to an environment is reached (REQ-1942): through the parent in every mode
-    that reads the parent's data -- Inherit, and both Test modes, whose real or API reads are the
-    parent's -- and not at all in Unbound, or in prod (``None``), which has no parent."""
+    """What a source row new to an environment carries (REQ-1942): its connection copied from the
+    environment it comes from, as written there, in every mode that reads the parent's data --
+    Inherit, and both Test modes -- and none in Unbound, or in prod (``None``)."""
     if data_mode is None or data_mode == UNBOUND_MODE:
         return UNBOUND
     if data_mode not in DATA_MODES:
         raise ValueError(f"unknown data mode {data_mode!r}; one of {DATA_MODES}")
-    return INHERITED
+    return COPIED
 
 
 #: The columns of an IDENTITY_ONLY table that say WHERE the environment points, per REQ-1491.
@@ -222,8 +224,9 @@ BINDING_COLUMNS: dict[str, frozenset[str]] = {
             "port",
             "database",
             "username",
-            # REQ-1695: a password reference names a credential in the vault of the environment
-            # that supplied it. A copy carries neither the credential nor the name of one.
+            # REQ-1695: a password reference names a credential in the vault. A merge or deploy
+            # carries neither the credential nor the name of one; a source new to an environment
+            # that reads its parent's data copies the name as the parent wrote it (REQ-1942).
             "password_ref",
             "dialect",
             "path",
@@ -236,6 +239,21 @@ BINDING_COLUMNS: dict[str, frozenset[str]] = {
     "kafka_sources": frozenset({"bootstrap_servers", "schema_registry_url", "auth_type"}),
     "kafka_sinks": frozenset({"topic"}),
     "stores": frozenset({"url"}),  # REQ-1922: where a region's data is kept is the environment's
+}
+
+
+#: A source with no connection: its binding columns as an unbound row holds them.
+CLEARED_SOURCE_CONNECTION: dict[str, object] = {
+    "host": "",
+    "port": 0,
+    "database": "",
+    "username": "",
+    "password_ref": "",
+    "dialect": "",
+    "path": None,
+    "federation_hints": {},
+    "mapping": {},
+    "cdc": None,
 }
 
 

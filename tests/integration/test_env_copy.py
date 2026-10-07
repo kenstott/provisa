@@ -118,6 +118,7 @@ async def seeded(envs):
         port=5432,
         database="analytics",
         username="prod_reader",
+        password_ref="${secret:source_warehouse_password}",
         dialect="postgresql",
         description="the warehouse",
     )
@@ -183,13 +184,15 @@ class TestCreationCopy:
         (original,) = await seeded.rows(sources)
         assert original["binding"] == "own"
 
-    async def test_a_row_lands_inherited_where_the_environment_reads_its_parent(self, seeded):
-        # REQ-1942: an environment created reading its parent's data reaches each source through
-        # the parent's binding, by reference; nothing of the parent's connection is copied.
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="inherited")
+    async def test_a_row_copies_its_connection_where_the_environment_reads_its_parent(self, seeded):
+        # REQ-1942: an environment created reading its parent's data copies each source's
+        # connection as the parent wrote it; the copy is then the environment's own row.
+        (original,) = await seeded.rows(sources)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="copied")
         (copied,) = await seeded.rows(sources, ENV)
-        assert copied["binding"] == "inherited"
-        assert (copied["host"], copied["port"]) == ("", 0)
+        assert copied["binding"] == "copied"
+        for column in ("host", "port", "database", "username", "password_ref", "dialect"):
+            assert copied[column] == original[column], column
 
     async def test_settings_naming_a_runtime_stay_with_the_environment_that_set_them(self, seeded):
         await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound")

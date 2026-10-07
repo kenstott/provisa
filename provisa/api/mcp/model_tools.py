@@ -563,6 +563,20 @@ async def set_source_binding(
     return await _set(request, require_active_org_id(request), env, sourceId, body)
 
 
+async def recopy_environment_sources(
+    state: Any, role: str, request: Any, env: str, sources: list[str] | None = None
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import RecopyBody, recopy_sources
+
+    require_capability_request(request, "environment_data")
+    return await recopy_sources(
+        request, require_active_org_id(request), env, RecopyBody(sources=sources)
+    )
+
+
 async def get_environment_synthetic_plan(state: Any, role: str, request: Any, env: str) -> dict:
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id

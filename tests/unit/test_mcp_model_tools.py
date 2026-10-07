@@ -168,9 +168,10 @@ _REFUSALS = [
     ("set_environment_data", {"env": "dev", "dataMode": "inherit"}, _DATA_RIGHT),
     (
         "set_source_binding",
-        {"env": "dev", "sourceId": "pg", "binding": "inherited"},
+        {"env": "dev", "sourceId": "pg", "binding": "copied"},
         _DATA_RIGHT,
     ),
+    ("recopy_environment_sources", {"env": "dev"}, _DATA_RIGHT),
     ("get_environment_synthetic_plan", {"env": "dev"}, _ENV_RIGHT),
     ("generate_environment_model", {"env": "dev"}, _DATA_RIGHT),
     ("reset_environment_mutations", {"env": "dev"}, _DATA_RIGHT),

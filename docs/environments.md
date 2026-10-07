@@ -57,22 +57,16 @@ marked `unbound` rather than left blank: an empty host is not an absent one, and
 builder would read it as `localhost:5432`. [tool-verified: `BOUND_COLUMN = "bound"` at
 env_classes.py line 143; `BINDING_COLUMNS` dict at env_classes.py lines 155-172]
 
-An environment's sources resolve in one of two ways.
-
-**Base** — the environment carries its own credentials. An org_admin creates a base and then binds
-each source explicitly. [tool-verified: `CreateEnvBody.inherit_connections = False` (default) at
-environments_router.py line 227; "binding a base is an org_admin's act" comment at line 358]
-
-**Branch** — the environment inherits the base's credentials by reference. Nothing is copied.
-When a query needs a connection, resolution walks up the `branched_from` chain and stops at the
-first environment whose row is bound. Rotating a credential on the base propagates to every branch
-of it with no action required. Revoking it revokes for all of them at once. No secret is ever
-materialized anywhere a branch, an export, or a repository could carry it away.
-[tool-verified: `resolve()` at env_bindings.py lines 114-151; `lineage()` at env_bindings.py
-lines 74-102; env_bindings.py module docstring lines 11-33]
-
-To create a branch, set **Inherit connections** in the Environments panel. The default is off.
-[tool-verified: `environmentsTab.json` key `inheritConnections`; `inheritHelp2` string]
+An environment created as anything but Unbound copies each source's connection from its parent,
+exactly as the parent wrote it: a `${secret:...}` or `${env:...}` reference is copied as that
+reference, never resolved. After creation the copy is the environment's own row, editable on the
+Sources page, and nothing is resolved through the parent when the environment's runtime is built.
+Each source's `binding` says where its connection came from: `copied`, `own` (given in this
+environment) or `unbound`. Editing a copied connection makes it `own`. **Re-copy from parent**
+(`POST /admin/orgs/{org}/environments/{name}/sources/recopy`) copies the parent's connections
+again. A merge or deploy carries no connections, so a source it introduces arrives `unbound`.
+[tool-verified: `_copy_table` at env_copy.py; `recopy` and `unbind` at env_data.py;
+`owned_if_reconnected` at repositories/source.py]
 
 ## The git projection
 

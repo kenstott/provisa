@@ -77,7 +77,7 @@ stores = Table(
     # never the binding).
     Column(
         "binding", Text, nullable=False, server_default="own"
-    ),  # REQ-1942: own | inherited | unbound
+    ),  # REQ-1942: own | copied | unbound
 )
 
 org_regions = Table(
@@ -138,7 +138,7 @@ sources = Table(
     # path refuses a query naming it rather than dialling whatever is local to the node.
     Column(
         "binding", Text, nullable=False, server_default="own"
-    ),  # REQ-1942: own | inherited | unbound
+    ),  # REQ-1942: own | copied | unbound
     # REQ-1695: the source's password as a SECRET REFERENCE, never a credential. A literal typed
     # into the Sources form is put into the org vault (provisa.core.secrets_store) and what lands
     # here is the ``${secret:NAME}`` that names it; a reference the operator typed themselves is
@@ -783,7 +783,7 @@ kafka_sources = Table(
     # path refuses a query naming it rather than dialling whatever is local to the node.
     Column(
         "binding", Text, nullable=False, server_default="own"
-    ),  # REQ-1942: own | inherited | unbound
+    ),  # REQ-1942: own | copied | unbound
 )
 
 kafka_topics = Table(
@@ -821,7 +821,7 @@ kafka_sinks = Table(
     # path refuses a query naming it rather than dialling whatever is local to the node.
     Column(
         "binding", Text, nullable=False, server_default="own"
-    ),  # REQ-1942: own | inherited | unbound
+    ),  # REQ-1942: own | copied | unbound
 )
 
 api_sources = Table(
@@ -840,7 +840,7 @@ api_sources = Table(
     # path refuses a query naming it rather than dialling whatever is local to the node.
     Column(
         "binding", Text, nullable=False, server_default="own"
-    ),  # REQ-1942: own | inherited | unbound
+    ),  # REQ-1942: own | copied | unbound
     CheckConstraint(
         "type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')",
         name="api_sources_type_check",

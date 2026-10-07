@@ -724,8 +724,8 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
             )
         return
     if getattr(state, "source_binding_env", {}).get(source_id) is None:
-        # REQ-1942: a Direct mutation changes only data the environment owns -- never a source it
-        # inherits, whose data is its parent's, nor one it leaves unbound.
+        # REQ-1942: a Direct mutation changes only data the environment owns -- never through a
+        # connection copied from its parent, whose data is the parent's, nor one it left unbound.
         raise PermissionError(
             f"{kind} into {tbl.name!r} is not allowed in environment {env!r}: its mutation "
             f"handling is Direct, which changes only data the environment owns, and source "

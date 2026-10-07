@@ -374,7 +374,7 @@ class AppState:
 
         REQ-1488/REQ-1529: the environment is part of the identity of a runtime, not a variation
         within one. A branch holds a separate copy of the model in a separate schema and reaches
-        its sources through bindings it may have inherited read-only, so serving it from its base's
+        its sources through connections of its own, so serving it from its base's
         runtime would hand it the base's pools and compiled schemas. ``runtime_key`` keys prod on
         the bare org id, so an org that never created an environment resolves exactly as before."""
         org_id = require_current_org()
@@ -541,13 +541,10 @@ class AppState:
 
     @property
     def source_binding_env(self) -> dict[str, str]:
-        """source_id → the environment that SUPPLIED its connection values (REQ-1529).
-
-        The active environment itself when it bound the source, an ancestor when it inherited the
-        binding. The write path reads it to establish that the write HAS a target at all — a source
-        absent from this map is unbound here and in everything this environment inherited from, and
-        REQ-1491 refuses a write with nowhere to land. Whether the writer may write is their roles'
-        answer, not this map's (REQ-1539). Empty for prod, which inherits from nobody.
+        """source_id → the environment, for each source whose connection was given in it (REQ-1529,
+        REQ-1942): a connection copied from the parent is not one, so a Direct mutation never
+        writes through it to the parent's data. Whether the writer may write is their roles'
+        answer, not this map's (REQ-1539). Empty for prod.
         """
         return self._active_runtime().source_binding_env
 
@@ -1718,35 +1715,18 @@ async def _require_org_serves_here(org_id: str) -> None:
         await require_serves_here(conn, org_id, process_region.region())
 
 
-async def _with_inherited_sources(
-    conn: Any, org_id: str, env: str, config: Any
-) -> tuple[Any, set[str]]:
-    """``config`` -- an environment's store configuration -- with each inherited source given the
-    connection the environment reaches it through (REQ-1529, REQ-1942,
-    provisa.core.env_bindings), so the pools and engine catalogs it builds point where its
-    parent's bindings do; and the ids of the sources it reaches through no connection, which get
-    no pool: an empty host is not an absent one (REQ-1491)."""
-    from provisa.core.env_bindings import inherited_sources
+async def _unbound_sources(conn: Any) -> set[str]:
+    """The ids of the environment's sources with no connection (REQ-1491, REQ-1942): they get no
+    pool, because an empty host is not an absent one. Every other source's connection is the
+    environment's own row -- given in it or copied from its parent -- and nothing is resolved
+    through the parent."""
     from provisa.core.env_classes import BINDING_COLUMN, UNBOUND
-    from provisa.core.repositories.source import source_from_row
     from provisa.core.schema_org import sources as sources_t
 
-    assert state.admin_db is not None, "the admin plane holds the environment registry"
-    rows = {
-        r._mapping["id"]: dict(r._mapping)
-        for r in (await conn.execute_core(select(sources_t))).fetchall()
-    }
-    resolved = await inherited_sources(conn, state.admin_db, org_id, env, rows)
-    inherited = {sid for sid, row in resolved.items() if row is not rows[sid]}
-    unbound = {sid for sid, row in resolved.items() if row[BINDING_COLUMN] == UNBOUND}
-    config = config.model_copy(
-        update={
-            "sources": [
-                source_from_row(resolved[s.id]) if s.id in inherited else s for s in config.sources
-            ]
-        }
+    result = await conn.execute_core(
+        select(sources_t.c.id).where(sources_t.c[BINDING_COLUMN] == UNBOUND)
     )
-    return config, unbound
+    return {r[0] for r in result.fetchall()}
 
 
 async def build_org_runtime(
@@ -2021,11 +2001,8 @@ async def _build_org_runtime(
                     org_config = await store_config(state.raw_config, conn)
                 unbound: set[str] = set()
                 if env != PROD:
-                    # REQ-1529, REQ-1942: an inherited source points where its parent's binding
-                    # does; an unbound one is reached through no connection.
-                    org_config, unbound = await _with_inherited_sources(
-                        conn, org_id, env, org_config
-                    )
+                    # REQ-1942: an unbound source is reached through no connection.
+                    unbound = await _unbound_sources(conn)
             # Populate the org-prefixed catalog-name map FIRST so the physical registration
             # attaches each source under the org's own catalog name (not the bare, default-org
             # name) — the cross-org collision guard (REQ-1266).
@@ -2325,16 +2302,6 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             r._mapping["id"]: dict(r._mapping)
             for r in (await conn.execute_core(select(_sources_t))).fetchall()
         }
-        if active_env() != PROD:
-            # REQ-1529: a branch's unbound sources point where its base's bindings do; the rows
-            # stay marked unbound, so the write guard below reads them as not the branch's own.
-            from provisa.core.env_bindings import inherited_sources
-            from provisa.core.request_context import require_current_org
-
-            assert state.admin_db is not None, "the admin plane holds the environment registry"
-            sources = await inherited_sources(
-                conn, state.admin_db, require_current_org(), active_env(), sources
-            )
         # Backfill state.source_types; patch postgresql sources to use the engine catalog names.
         # REQ-1729: also backfill state.source_catalogs — a source registered through a REST
         # router (graphql-remote, openapi) writes straight to the ``sources`` table and never

@@ -123,11 +123,6 @@ def wired(monkeypatch):
     monkeypatch.setattr(er, "_squash", _squash)
     monkeypatch.setattr(er, "_admin_pool", lambda: "admin-db")
 
-    async def landing_of(admin_db, org_id, name):
-        return "inherited"
-
-    monkeypatch.setattr(er, "landing_of", landing_of)
-
     class _Registry:
         """Nothing is cached in a unit test, which is the REQ-1544 "uncached" case: the next
         request would build the runtime from the rows the call just wrote."""

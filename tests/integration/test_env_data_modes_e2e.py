@@ -8,10 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""An environment created as Inherit reads through its parent's bindings; one created as Unbound
-reads through none (REQ-1491, REQ-1529, REQ-1538, REQ-1942), on a real server: a created
-environment's sources carry no connection, and a statement routed to a source directly runs in the
-inheriting environment on the connection prod bound."""
+"""An environment created as Inherit copies each source's connection from its parent and reads
+through the copy; one created as Unbound reads through none (REQ-1491, REQ-1529, REQ-1538,
+REQ-1942), on a real server."""
 
 # Requirements: REQ-1491, REQ-1529, REQ-1538, REQ-1942
 
@@ -120,15 +119,30 @@ def _write(b, env: str):
     )
 
 
-def test_an_inheriting_environment_reads_the_real_table_through_its_parents_binding(boot):
+def test_an_inheriting_environment_reads_the_real_table_through_its_copied_connection(boot):
     before = len(boot.log_text())
     _environment(boot, "branch", "inherit")
     status, body = _orders(boot, "branch")
     since = boot.log_text()[before:]
     assert status == 200, (body, since[-4000:])
     assert body["data"]["sql"] == [{"n": 2}]
-    # Its pool dialled prod's coordinates, not the stripped row's.
+    # Its pool dialled the coordinates copied from prod.
     assert "direct pool for 'sales-pg'" not in since, since[-4000:]
+
+
+def test_recopy_from_parent_restores_a_cleared_connection(boot):
+    """REQ-1942: after creation the copy is the environment's own: clearing it leaves the source
+    unreadable there, and Re-copy from parent copies prod's connection again."""
+    _environment(boot, "recopied", "inherit")
+    path = f"/admin/orgs/{boot.org_id}/environments/recopied/sources"
+    status, body = _call(boot, "PUT", f"{path}/sales-pg/binding", {"binding": "unbound"})
+    assert status == 200, body
+    status, body = _orders(boot, "recopied")
+    assert status != 200, body
+    status, body = _call(boot, "POST", f"{path}/recopy", {})
+    assert status == 200 and "sales-pg" in body["sources"], body
+    status, body = _orders(boot, "recopied")
+    assert status == 200 and body["data"]["sql"] == [{"n": 2}], body
 
 
 def test_an_unbound_environment_reads_through_no_binding_of_prods(boot):
@@ -145,7 +159,7 @@ def test_a_new_environments_mutations_are_refused_naming_it(boot):
     assert "'readonly'" in json.dumps(body) and "Refused" in json.dumps(body), body
 
 
-def test_a_direct_mutation_never_writes_through_an_inherited_source(boot):
+def test_a_direct_mutation_never_writes_through_a_copied_connection(boot):
     _environment(boot, "direct", "inherit")
     status, body = _call(
         boot,
@@ -189,11 +203,16 @@ def test_the_detail_shows_each_sources_binding_and_a_change_of_keys_asks_to_conf
     assert status == 409 and "confirm" in json.dumps(body).lower(), body
     status, body = _call(
         boot,
-        "PUT",
-        f"/admin/orgs/{boot.org_id}/environments/detailed/sources/sales-pg/binding",
-        {"binding": "inherited"},
+        "POST",
+        f"/admin/orgs/{boot.org_id}/environments/detailed/sources/recopy",
+        {"sources": ["sales-pg"]},
     )
-    assert status == 200, body
+    assert status == 200 and body["sources"] == ["sales-pg"], body
+    status, detail = _call(
+        boot, "GET", f"/admin/orgs/{boot.org_id}/environments/detailed/detail", None
+    )
+    assert status == 200, detail
+    assert {"id": "sales-pg", "type": "postgresql", "binding": "copied"} in detail["sources"]
     status, rows = _orders(boot, "detailed")
     assert status == 200 and rows["data"]["sql"] == [{"n": 2}], rows
 

@@ -16,9 +16,9 @@ name against the org's plan ceiling, provisions the schema and its stores, and c
 in — one act, and if any part of it fails the ones that landed are undone, because an environment
 that exists and holds half a model is worse than one that does not exist.
 
-Every environment this creates is UNBOUND (REQ-1491), whatever it was created from. Binding is a
-second, deliberate act against an environment that already exists, which is what makes it
-impossible for one call to produce an environment pointed at production.
+An environment this creates copies each source's connection from its parent as the parent wrote
+it -- a reference to a secret or a variable stays that reference -- unless it is created Unbound
+(REQ-1942), which needs no right to read the parent's data. After creation its sources are its own.
 """
 
 # Requirements: REQ-1487, REQ-1488, REQ-1489, REQ-1490, REQ-1491, REQ-1504, REQ-1523, REQ-1524,
@@ -55,11 +55,10 @@ from provisa.core.env_retire import (
     kinds_and_counts,
     retire_environment,
 )
-from provisa.core.env_classes import INHERIT, REFUSED, TEST_FAKE, UNBOUND_MODE
+from provisa.core.env_classes import INHERIT, REFUSED, TEST_FAKE, UNBOUND, UNBOUND_MODE
 from provisa.core.env_store import (
     EnvironmentLimitError,
     get_env,
-    landing_of,
     list_envs,
     set_expiry,
     set_protected,
@@ -780,7 +779,7 @@ async def merge_into_environment(request: Request, org_id: str, name: str, body:
             name,
             mode=MERGE,
             removals=body.removals,
-            landing=await landing_of(_admin_pool(), org_id, name),
+            landing=UNBOUND,  # REQ-1942: a merge copies no connection
         )
     retired = None
     refreshed = None
@@ -985,7 +984,6 @@ async def deploy_into_environment(
                 tree,
                 ref=sha,
                 seed=body.seed,
-                landing=await landing_of(_admin_pool(), org_id, name),
             )
     except DeployError as exc:
         # REQ-1496: a tree that does not hold is refused WHOLE. Nothing partial has landed -- the
@@ -1099,7 +1097,6 @@ async def _move(request: Request, org_id: str, name: str, forward: bool) -> dict
             name,
             tree,
             ref=target,
-            landing=await landing_of(_admin_pool(), org_id, name),
         )
     except DeployError as exc:
         raise ApiError(
@@ -1707,7 +1704,6 @@ async def pull_environment(request: Request, org_id: str, name: str) -> dict:
             tree,
             ref=sha,
             base_sha=base_sha,
-            landing=await landing_of(_admin_pool(), org_id, name),
         )
     except DeployError as exc:
         raise ApiError(

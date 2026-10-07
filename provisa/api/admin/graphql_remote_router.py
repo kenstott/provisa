@@ -135,6 +135,8 @@ async def _persist_source(  # REQ-307, REQ-1923
     reference (REQ-1695); the namespace, the auth scheme and the brand ride in
     ``federation_hints``."""
     from provisa.api.admin.schema_common import store_source_password
+    from provisa.core.repositories.source import owned_if_reconnected
+    from provisa.core.request_context import active_env
     from provisa.graphql_remote.brands import BRAND_HINT, NAMESPACE_HINT
 
     identity = getattr(request.state, "identity", None)
@@ -142,8 +144,8 @@ async def _persist_source(  # REQ-307, REQ-1923
     hints = {NAMESPACE_HINT: namespace, **_auth_hints(auth)}
     if brand_id:
         hints[BRAND_HINT] = brand_id
-    await conn.upsert(
-        sources,
+    values = await owned_if_reconnected(
+        conn,
         {
             "id": source_id,
             "type": "graphql_remote",
@@ -156,11 +158,17 @@ async def _persist_source(  # REQ-307, REQ-1923
             "description": description,
             "federation_hints": hints,
             "password_ref": await store_source_password(
-                getattr(identity, "user_id", None), source_id, secret
+                getattr(identity, "user_id", None), source_id, secret, env=active_env()
             ),
         },
+    )
+    await conn.upsert(
+        sources,
+        values,
         index_elements=["id"],
-        update_columns=["path", "description", "username", "federation_hints", "password_ref"],
+        update_columns=[
+            c for c in values if c not in ("id", "type", "host", "port", "database", "dialect")
+        ],
     )
 
 

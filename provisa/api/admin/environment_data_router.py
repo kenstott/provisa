@@ -42,7 +42,7 @@ from provisa.api.admin.environments_router import (
 )
 from provisa.api.errors import ApiError
 from provisa.core import env_data, model_change
-from provisa.core.env_classes import INHERITED, TEST_FAKE, TEST_SYNTHETIC
+from provisa.core.env_classes import COPIED, TEST_FAKE, TEST_SYNTHETIC, UNBOUND
 from provisa.core.env_store import set_data
 from provisa.core.environments import PROD, org_schema
 
@@ -59,10 +59,10 @@ class DataChoicesBody(BaseModel):
 
 
 class BindingBody(BaseModel):
-    """One source's binding: through the parent's connection, none, or a connection of the
-    environment's own -- given here, its password stored in the org's vault."""
+    """One source's binding: its connection copied again from the parent, none, or a connection
+    of the environment's own -- given here, its password stored in the org's vault."""
 
-    binding: Literal["inherited", "unbound", "own"]
+    binding: Literal["copied", "unbound", "own"]
     host: str | None = None
     port: int | None = None
     database: str | None = None
@@ -77,19 +77,18 @@ def _refused(org_id: str, env: str, exc: env_data.DataChoiceRefused) -> ApiError
 
 async def _visible(org_id: str, env: str) -> dict[str, Any]:
     """What making ``env`` read its parent's real rows makes visible, and to how many members:
-    its inherited sources, the tables reading them, and the members who may be served by it."""
+    its sources whose connection is copied from the parent, the tables reading them, and the
+    members who may be served by it."""
     from provisa.core.schema_admin import user_org_memberships as m
 
     schema = org_schema(org_id, env)
     async with _pool().acquire() as conn:
         bindings = await env_data.source_bindings(conn, schema)
-        inherited = [b["id"] for b in bindings if b["binding"] == INHERITED]
+        copied = [b["id"] for b in bindings if b["binding"] == COPIED]
         rt = env_data._table("registered_tables", schema)
         tables = (
             await conn.execute_core(
-                select(rt.c.table_name)
-                .where(rt.c.source_id.in_(inherited))
-                .order_by(rt.c.table_name)
+                select(rt.c.table_name).where(rt.c.source_id.in_(copied)).order_by(rt.c.table_name)
             )
         ).fetchall()
     async with _admin_pool().acquire() as conn:
@@ -102,7 +101,7 @@ async def _visible(org_id: str, env: str) -> dict[str, Any]:
         ).fetchone()
     assert row is not None  # COUNT over a table is a row
     return {
-        "sources": inherited,
+        "sources": copied,
         "tables": [t[0] for t in tables],
         "members": int(row[0]),
     }
@@ -147,8 +146,9 @@ async def environment_detail(request: Request, org_id: str, name: str) -> dict:
 async def edit_data_choices(
     request: Request, org_id: str, name: str, body: DataChoicesBody
 ) -> dict:
-    """Change the environment's data mode and whether it takes writes (REQ-1942). Inherit and
-    Unbound set every source's binding; the Test modes leave each as it is. Test (fake) is refused
+    """Change the environment's data mode and whether it takes writes (REQ-1942). Inherit copies
+    every source's connection from the parent again, Unbound clears every one; the Test modes
+    leave each as it is. Test (fake) is refused
     while a sensitive column has no fake. A change to or from Test (synthetic) discards the change log
     and is refused without ``confirm_discard``."""
     await _confined(request, org_id, name)
@@ -194,7 +194,7 @@ async def edit_data_choices(
                 if body.data_mode == TEST_FAKE:
                     await env_data.refuse_uncovered_sensitive(conn, schema, name)
                 if step.binding is not None:
-                    await env_data.set_bindings(conn, schema, step.binding, None)
+                    await _rebind(conn, org_id, row, step.binding, None)
                     connectivity = True
             except env_data.DataChoiceRefused as exc:
                 raise _refused(org_id, name, exc) from exc
@@ -237,9 +237,9 @@ async def edit_data_choices(
 async def set_source_binding(
     request: Request, org_id: str, name: str, source_id: str, body: BindingBody
 ) -> dict:
-    """Set one source's binding: through the parent's connection, or none (REQ-1942). A source
-    becomes the environment's own by being given a connection. Inheriting shows the parent's
-    real rows, so it needs the right to read them there, and is audited."""
+    """Set one source's binding: its connection copied again from the parent, none, or one of the
+    environment's own (REQ-1942). Copying shows the parent's real rows, so it needs the right to
+    read them there, and is audited."""
     await _confined(request, org_id, name)
     actor = await _member(request, org_id, DATA_CAPABILITY)
     row = await _known(org_id, name)
@@ -251,7 +251,7 @@ async def set_source_binding(
             org=org_id,
             env=name,
         )
-    if body.binding == INHERITED:
+    if body.binding == COPIED:
         await _reads_parent(request, org_id, row["parent"])
     connection = {
         k: v
@@ -274,7 +274,7 @@ async def set_source_binding(
 
         # The environment's own credential, under a name of its own: the parent's is untouched.
         connection["password_ref"] = await store_source_password(
-            actor, f"{source_id}__env_{name}", body.password or ""
+            actor, source_id, body.password or "", env=name
         )
     elif connection or body.password is not None:
         raise ApiError(
@@ -289,19 +289,64 @@ async def set_source_binding(
             if body.binding == "own":
                 await env_data.bind_own(conn, org_schema(org_id, name), source_id, connection)
             else:
-                await env_data.set_bindings(
-                    conn, org_schema(org_id, name), body.binding, [source_id]
-                )
+                await _rebind(conn, org_id, row, body.binding, [source_id])
         except env_data.DataChoiceRefused as exc:
             raise _refused(org_id, name, exc) from exc
     detail: dict[str, Any] = {"source": source_id, "binding": body.binding}
     if body.binding == "own":
         detail["connection"] = {k: v for k, v in connection.items() if k != "password_ref"}
-    if body.binding == INHERITED:
+    if body.binding == COPIED:
         detail["made_visible"] = await _visible(org_id, name)
     await _audit(org_id, actor, "environment.binding", name, detail)
     refreshed = await _refresh(org_id, name, connectivity=True)
     return {"source": source_id, "binding": body.binding, "refreshed": refreshed}
+
+
+async def _rebind(
+    conn: Any, org_id: str, row: dict[str, Any], binding: str, source_ids: list[str] | None
+) -> list[str]:
+    """Copy ``source_ids``' connections (None: every source) from the environment ``row``'s parent
+    again (COPIED), or clear them (UNBOUND); the ids it changed."""
+    schema = org_schema(org_id, row["name"])
+    if binding == COPIED:
+        return await env_data.recopy(conn, org_schema(org_id, row["parent"]), schema, source_ids)
+    assert binding == UNBOUND, binding  # BindingBody and transition() name no other
+    return await env_data.unbind(conn, schema, source_ids)
+
+
+class RecopyBody(BaseModel):
+    """Which sources to copy from the parent again; none named: every one."""
+
+    sources: list[str] | None = None
+
+
+@router.post("/{name}/sources/recopy")
+@model_change.commits_itself  # REQ-1524: writes the environment's model, which it commits itself
+async def recopy_sources(request: Request, org_id: str, name: str, body: RecopyBody) -> dict:
+    """Re-copy from parent (REQ-1942): replace each named source's connection (every source's,
+    when none is named) with the parent's, exactly as the parent wrote it. Shows the parent's real
+    rows, so it needs the right to read them there, and is audited."""
+    await _confined(request, org_id, name)
+    actor = await _member(request, org_id, DATA_CAPABILITY)
+    row = await _known(org_id, name)
+    if name == PROD:
+        raise ApiError(
+            409,
+            "environments.prod_immutable",
+            f"{PROD!r} has no parent: its sources are its own.",
+            org=org_id,
+            env=name,
+        )
+    await _reads_parent(request, org_id, row["parent"])
+    async with _pool().acquire() as conn, conn.transaction():
+        try:
+            ids = await _rebind(conn, org_id, row, COPIED, body.sources)
+        except env_data.DataChoiceRefused as exc:
+            raise _refused(org_id, name, exc) from exc
+    detail = {"sources": ids, "made_visible": await _visible(org_id, name)}
+    await _audit(org_id, actor, "environment.recopy", name, detail)
+    refreshed = await _refresh(org_id, name, connectivity=True)
+    return {"sources": ids, "refreshed": refreshed}
 
 
 class GenerateBody(BaseModel):

@@ -38,7 +38,7 @@ from sqlalchemy import select, update
 
 from provisa.core.env_copy import MERGE, copy_model, plan_copy
 from provisa.core.env_deploy import deploy_tree, plan_deploy
-from provisa.core.env_store import landing_of
+from provisa.core.env_classes import UNBOUND
 from provisa.core.environments import PROD
 from provisa.core.schema_admin import env_merge_requests, environments
 
@@ -297,7 +297,6 @@ async def decide(
             _tree_at(org_id, request["source_sha"]),
             ref=request["source_sha"],
             seed=bool(request["seed"]),
-            landing=await landing_of(admin_db, org_id, request["target_env"]),
         )
     else:
         applied = await copy_model(
@@ -307,7 +306,7 @@ async def decide(
             request["target_env"],
             mode=MERGE,
             removals=bool(request["removals"]),
-            landing=await landing_of(admin_db, org_id, request["target_env"]),
+            landing=UNBOUND,  # REQ-1942: a merge copies no connection
         )
     await _set(
         admin_db,
