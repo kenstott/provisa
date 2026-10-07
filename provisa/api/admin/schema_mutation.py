@@ -2357,7 +2357,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Update an existing table's alias, description, and column metadata."""
         from provisa.api.admin._hiding_guard import require_table_save
 
-        _editor = await require_table_save(info, input)  # REQ-1944
+        _editor, input = await require_table_save(info, input)  # REQ-1944
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()

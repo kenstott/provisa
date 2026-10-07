@@ -117,6 +117,7 @@ async def plane(request, monkeypatch):
                     schema_name="public",
                     table_name=table_name,
                     governance="pre-approved",
+                    modeling_role="fact",
                     columns=[
                         Column(name="id", visible_to=[], data_type="varchar"),
                         Column(name="email", visible_to=[], data_type="varchar"),
@@ -416,6 +417,27 @@ async def test_a_steward_may_not_change_anything_but_hiding(plane):
     edited = await _input(plane.ids["orders"])
     edited.description = "renamed"
     with pytest.raises(PermissionError, match="table_registration.*description"):
+        await M().update_table(_info(plane.steward), edited)
+
+
+async def test_a_stewards_save_keeps_what_its_form_leaves_unset(plane):
+    # A form that omits a setting it does not govern (here the modeling role) leaves it as stored.
+    edited = await _input(plane.ids["orders"])
+    edited.modeling_role = None
+    _column(edited, "amount").mask_type = "constant"
+    _column(edited, "amount").mask_value = "0"
+    result = await M().update_table(_info(plane.steward), edited)
+    assert result.success is True, result.message
+    from provisa.core.repositories import table as table_repo
+
+    async with plane.db.acquire() as conn:
+        assert (await table_repo.get(conn, plane.ids["orders"]))["modeling_role"] == "fact"
+
+
+async def test_a_steward_may_not_set_what_it_does_not_govern(plane):
+    edited = await _input(plane.ids["orders"])
+    edited.modeling_role = "dimension"
+    with pytest.raises(PermissionError, match="modeling_role"):
         await M().update_table(_info(plane.steward), edited)
 
 

@@ -154,65 +154,95 @@ def _normal(value: Any) -> Any:
     return value
 
 
-async def non_hiding_changes(input_: Any) -> list[str]:
-    """What a table save ``input_`` changes besides its columns' hiding fields -- every field
-    named. A table not yet registered is all change."""
-    from provisa.api.mcp.table_edit import read_table, table_input
+def _set(value: Any, default: Any) -> bool:
+    """Whether a save gives ``value`` rather than leaving the field at its input default."""
+    return _normal(value) != _normal(default)
 
+
+def _defaults(obj: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for f in dataclasses.fields(obj):
+        if f.default is not dataclasses.MISSING:
+            out[f.name] = f.default
+        elif f.default_factory is not dataclasses.MISSING:
+            out[f.name] = f.default_factory()
+        else:
+            out[f.name] = None
+    return out
+
+
+async def steward_input(input_: Any) -> tuple[Any, list[str]]:
+    """The save a caller without ``table_registration`` makes, and what else it tried to change.
+
+    The save is the table AS STORED (``table_edit.table_input``, the editor's own full input)
+    with each column's hiding fields taken from ``input_``: every setting the caller does not
+    govern is written back as it is, whether its form sent it or left it at the input default --
+    a form that omits a field (load protection, the modeling role) must not reset it. A field
+    ``input_`` does set, to a value other than the stored one, is a change the caller may not
+    make, and is named. A table not yet registered is all change.
+    """
     from provisa.api.admin.schema_helpers import _get_pool
+    from provisa.api.mcp.table_edit import read_table, table_input
 
     pool = await _get_pool()
     async with pool.acquire() as conn:
         stored = await stored_table(conn, input_)
     if stored is None:
-        return [f"table {input_.table_name!r} (not registered)"]
+        return input_, [f"table {input_.table_name!r} (not registered)"]
     current = table_input(await read_table(stored["id"]))
-    out: list[str] = []
-    defaults = {f.name: f.default for f in dataclasses.fields(input_)}
+    changes: list[str] = []
+    defaults = _defaults(input_)
     for name in _UNREAD_FIELDS:
-        if _normal(getattr(input_, name)) != _normal(defaults[name]):
-            out.append(name)
+        if _set(getattr(input_, name), defaults[name]):
+            changes.append(name)
     for f in dataclasses.fields(current):
         if f.name in _UNREAD_FIELDS or f.name == "columns":
             continue
-        if _normal(getattr(input_, f.name)) != _normal(getattr(current, f.name)):
-            out.append(f.name)
-    saved = {c.name: c for c in input_.columns}
-    held = {c.name: c for c in current.columns}
-    if set(saved) != set(held):
-        out.append("columns")
-    for name in sorted(set(saved) & set(held)):
-        a, b = _normal(saved[name]), _normal(held[name])
-        for key in a:
-            if key in HIDING_FIELDS:
-                continue
-            if a[key] != b.get(key):
-                out.append(f"{name}.{key}")
-    return out
+        given = getattr(input_, f.name)
+        if _set(given, defaults[f.name]) and _normal(given) != _normal(getattr(current, f.name)):
+            changes.append(f.name)
+    given_columns = {c.name: c for c in input_.columns}
+    held_columns = {c.name: c for c in current.columns}
+    if set(given_columns) != set(held_columns):
+        changes.append("columns")
+    for name in sorted(set(given_columns) & set(held_columns)):
+        given, held = given_columns[name], held_columns[name]
+        column_defaults = _defaults(given)
+        for f in dataclasses.fields(given):
+            value = getattr(given, f.name)
+            if f.name in HIDING_FIELDS:
+                setattr(held, f.name, value)
+            elif _set(value, column_defaults[f.name]) and _normal(value) != _normal(
+                getattr(held, f.name)
+            ):
+                changes.append(f"{name}.{f.name}")
+    return current, changes
 
 
-async def require_table_save(info: Any, input_: Any) -> bool:  # REQ-1944
-    """The gate on ``update_table``. Returns whether the caller saves as the table's editor.
+async def require_table_save(info: Any, input_: Any) -> tuple[bool, Any]:  # REQ-1944
+    """The gate on ``update_table``: whether the caller saves as the table's editor, and the input
+    to save.
 
-    A ``table_registration`` holder saves the table into ``input_.domain_id`` as before. A caller
+    A ``table_registration`` holder saves ``input_`` into ``input_.domain_id`` as before. A caller
     without it may save only a change to columns' hiding fields, and only while holding one of the
     governance rights -- which right each field needs, in which domain, is
-    :func:`table_hiding_refusal`'s question. Anything else in the save is refused by name.
+    :func:`table_hiding_refusal`'s question -- and what is saved is :func:`steward_input`'s
+    stored table with those fields applied. Anything else the save sets is refused by name.
     """
     from provisa.api.admin.capabilities import has_capability, require_capability
 
     if has_capability(info, "table_registration"):
         require_capability(info, "table_registration", domain_id=input_.domain_id)
-        return True
+        return True, input_
     if not any(has_capability(info, right) for right in GOVERNANCE_RIGHTS):
         require_capability(info, "table_registration")
-    changes = await non_hiding_changes(input_)
+    saved, changes = await steward_input(input_)
     if changes:
         raise PermissionError(
             "Missing capability: 'table_registration' -- without it a table save may change "
             "only how its columns are hidden; this one also changes " + ", ".join(changes)
         )
-    return False
+    return False, saved
 
 
 async def table_hiding_refusal(
