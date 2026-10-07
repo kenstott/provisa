@@ -247,10 +247,14 @@ async def test_the_sources_auth_is_stored_and_reaches_the_caller_and_a_refresh_k
 
 
 def _operation(params: list[str], *, is_list: bool = True, link: bool = False):
+    from jsonschema_path import SchemaPath
+
     from provisa.openapi.mapper import propose_paging
 
-    operation = {"responses": {"200": {"headers": {"Link": {}} if link else {}}}}
-    return propose_paging({}, operation, [{"name": p, "type": "integer"} for p in params], is_list)
+    operation = SchemaPath.from_dict(
+        {"responses": {"200": {"headers": {"Link": {}} if link else {}}}}
+    )
+    return propose_paging(operation, [{"name": p, "type": "integer"} for p in params], is_list)
 
 
 def test_an_operation_with_offset_and_limit_is_offered_offset_paging():

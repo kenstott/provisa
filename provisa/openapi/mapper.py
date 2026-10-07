@@ -8,13 +8,20 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Parse an OpenAPI 3.x or Swagger 2.0 spec into query and mutation descriptors."""
+"""Map an OpenAPI 3.x or Swagger 2.0 spec to query and mutation descriptors.
+
+The spec is read through ``jsonschema_path``, which follows its references; nothing here resolves
+one. What is here is the mapping: which operation is a table or a command, and its columns."""
 
 from __future__ import annotations
+
+import re
 from dataclasses import dataclass, field
 
+from jsonschema_path import SchemaPath
+from referencing.exceptions import Unresolvable
+
 from provisa.core.paging import PaginationConfig, PaginationType
-import re
 
 # Requirements: REQ-314, REQ-316, REQ-317, REQ-408
 
@@ -44,105 +51,77 @@ class OpenAPIMutation:  # REQ-317
     response_schema: dict | None = None
 
 
-def _resolve_ref(spec: dict, ref: str) -> dict:
-    """Resolve a $ref like #/components/schemas/Foo or #/definitions/Foo."""
-    if not ref.startswith("#/"):
-        raise ValueError(f"unresolvable external $ref: {ref}")
-    parts = ref.lstrip("#/").split("/")
-    node = spec
-    for part in parts:
-        if not isinstance(node, dict) or part not in node:
-            raise ValueError(f"unresolvable $ref: {ref}")
-        node = node[part]
-    if not isinstance(node, dict):
-        raise ValueError(f"$ref does not resolve to an object: {ref}")
+# What an undeclared section of a spec reads as.
+_NOTHING = SchemaPath.from_dict({})
+
+
+def _at(node: SchemaPath, *keys: str) -> SchemaPath | None:
+    """The node under ``keys``, or None where the spec does not declare it."""
+    for key in keys:
+        if key not in node:
+            return None
+        node = node / key
     return node
 
 
-def _resolve_properties(spec: dict, schema: dict) -> dict:
-    """Resolve $ref on each property of an object schema (one level deep)."""
-    props = schema.get("properties")
-    if not props:
-        return schema
-    resolved_props = {
-        name: _resolve_ref(spec, prop["$ref"]) if "$ref" in prop else prop
-        for name, prop in props.items()
-    }
-    return {**schema, "properties": resolved_props}
+_SCALAR_TYPES = {"string", "number", "boolean", "integer"}
+
+# How far a schema's properties are read: a table's columns, and the fields of an object column.
+_PROPERTY_DEPTH = 2
 
 
-def _maybe_resolve(spec: dict, schema: dict | None) -> dict | None:
-    if schema is None:
+def _schema(node: SchemaPath, depth: int = _PROPERTY_DEPTH) -> dict:
+    """A schema as a table reads it: the members of an ``allOf`` as one set of properties, and
+    each property likewise down to ``depth``. References are followed by the spec reader."""
+    schema = dict(node.read_value())
+    properties: dict = {}
+    for member in _at(node, "allOf") or ():
+        merged = _schema(member, depth)
+        properties.update(merged.pop("properties", {}))
+        schema = {**merged, **schema}
+    for name, prop in (_at(node, "properties") or _NOTHING).str_items():
+        properties[name] = _schema(prop, depth - 1) if depth > 1 else dict(prop.read_value())
+    schema.pop("allOf", None)
+    if properties:
+        schema["properties"] = properties
+    return schema
+
+
+def _row_schema(node: SchemaPath) -> tuple[dict, bool]:
+    """(the schema of one row, whether the declared schema is an array of them)."""
+    is_list = node.read_value().get("type") == "array" and "items" in node
+    return _schema(node / "items" if is_list else node), is_list
+
+
+def _success_response(operation: SchemaPath) -> SchemaPath | None:
+    responses = _at(operation, "responses")
+    if responses is None:
         return None
-    if "$ref" in schema:
-        resolved = _resolve_ref(spec, schema["$ref"])
-        # Unwrap array wrapper after resolving
-        if resolved.get("type") == "array" and "items" in resolved:
-            items = resolved["items"]
-            if "$ref" in items:
-                items = _resolve_ref(spec, items["$ref"])
-            return _resolve_properties(spec, items)
-        return _resolve_properties(spec, resolved)
-    if schema.get("type") == "array" and "items" in schema:
-        items = schema["items"]
-        if "$ref" in items:
-            items = _resolve_ref(spec, items["$ref"])
-        return _resolve_properties(spec, items)
-    return _resolve_properties(spec, schema)
+    return next((responses / code for code in ("200", "2xx", "default") if code in responses), None)
 
 
-def _raw_schema_is_list(spec: dict, schema: dict) -> bool:
-    """Return True if schema (before unwrapping) represents an array response."""
-    if schema.get("type") == "array":
-        return True
-    if "$ref" in schema:
-        resolved = _resolve_ref(spec, schema["$ref"])
-        return resolved.get("type") == "array"
-    return False
-
-
-def _extract_response_schema(spec: dict, operation: dict) -> tuple[dict | None, bool]:
-    """Extract JSON Schema from 200/2xx/default response.
-
-    Returns (item_schema, is_list) where is_list is True when the raw response was array-typed.
-    """
-    responses = operation.get("responses", {})
+def _extract_response_schema(operation: SchemaPath) -> tuple[dict | None, bool]:
+    """(row schema, is_list) of the 200/2xx/default response; is_list when it is an array."""
     for code in ("200", "2xx", "default"):
-        resp = responses.get(code)
+        resp = _at(operation, "responses", code)
         if resp is None:
             continue
-        if "$ref" in resp:
-            resp = _resolve_ref(spec, resp["$ref"])
-        content = resp.get("content", {})
-        json_content = content.get("application/json", {})
-        schema = json_content.get("schema")
-        if schema is not None:
-            return _maybe_resolve(spec, schema), _raw_schema_is_list(spec, schema)
-        # Swagger 2.0 puts schema directly on response
-        schema = resp.get("schema")
-        if schema is not None:
-            return _maybe_resolve(spec, schema), _raw_schema_is_list(spec, schema)
+        # OpenAPI 3.x declares the schema per media type; Swagger 2.0 on the response itself.
+        for where in (("content", "application/json", "schema"), ("schema",)):
+            schema = _at(resp, *where)
+            if schema is not None:
+                return _row_schema(schema)
     return None, False
 
 
-def _extract_request_schema(spec: dict, operation: dict) -> dict | None:
-    """Extract JSON Schema from requestBody (OpenAPI 3) or parameters body (Swagger 2)."""
-    # OpenAPI 3.x
-    body = operation.get("requestBody")
-    if body:
-        if "$ref" in body:
-            body = _resolve_ref(spec, body["$ref"])
-        content = body.get("content", {})
-        json_content = content.get("application/json", {})
-        schema = json_content.get("schema")
-        if schema is not None:
-            return _maybe_resolve(spec, schema)
-    # Swagger 2.0 — body parameter
-    for param in operation.get("parameters", []):
-        if param.get("in") == "body":
-            schema = param.get("schema")
-            if schema:
-                return _maybe_resolve(spec, schema)
+def _extract_request_schema(operation: SchemaPath) -> dict | None:
+    """The request body's schema: ``requestBody`` (OpenAPI 3.x) or the body parameter (Swagger 2.0)."""
+    schema = _at(operation, "requestBody", "content", "application/json", "schema")
+    if schema is not None:
+        return _row_schema(schema)[0]
+    for param in _at(operation, "parameters") or ():
+        if param.read_value().get("in") == "body" and "schema" in param:
+            return _row_schema(param / "schema")[0]
     return None
 
 
@@ -156,22 +135,22 @@ def _operation_id(operation: dict, method: str, path: str) -> str:
     return _slugify(f"{method}_{path}")
 
 
-def _merge_parameters(path_level: list, op_level: list) -> list:
-    """Merge path-level and operation-level parameters; op-level overrides by name+in."""
-    result = {(p["name"], p["in"]): p for p in path_level if isinstance(p, dict)}
-    for p in op_level:
-        if isinstance(p, dict):
-            result[(p["name"], p["in"])] = p
-    return list(result.values())
+def _parameters(path_item: SchemaPath, operation: SchemaPath | None) -> list[dict]:
+    """The operation's parameters: the path's, overridden by the operation's own (by name+in)."""
+    merged = {
+        (p["name"], p["in"]): p
+        for node in (path_item, operation)
+        if node is not None
+        for p in (param.read_value() for param in _at(node, "parameters") or ())
+    }
+    return list(merged.values())
 
 
-def _extract_params(spec: dict, params: list) -> tuple[list[dict], list[dict]]:
+def _extract_params(params: list[dict]) -> tuple[list[dict], list[dict]]:
     """Split parameters into path_params and query_params."""
     path_params: list[dict] = []
     query_params: list[dict] = []
     for p in params:
-        if "$ref" in p:
-            p = _resolve_ref(spec, p["$ref"])
         location = p.get("in", "")
         schema = p.get("schema", {})
         param_type = schema.get("type") if isinstance(schema, dict) else p.get("type", "string")
@@ -183,27 +162,29 @@ def _extract_params(spec: dict, params: list) -> tuple[list[dict], list[dict]]:
     return path_params, query_params
 
 
+def operation_parameters(spec: dict, path: str, method: str = "get") -> list[dict]:
+    """The declared parameters of ``method`` at ``path``; none where the spec has no such path."""
+    path_item = _at(SchemaPath.from_dict(spec), "paths", path)
+    if path_item is None:
+        return []
+    return _parameters(path_item, _at(path_item, method))
+
+
 # Query parameter names that say how an operation pages (REQ-318). First match wins.
 _PAGE_NAMES = ("page", "page_number", "pageNumber", "page_no")
 _OFFSET_NAMES = ("offset", "skip", "start")
 _SIZE_NAMES = ("limit", "per_page", "perPage", "page_size", "pageSize", "size", "top", "count")
 
 
-def _declares_link_header(spec: dict, operation: dict) -> bool:
+def _declares_link_header(operation: SchemaPath) -> bool:
     """Whether the operation's success response declares a ``Link`` header (RFC 8288 paging)."""
-    responses = operation.get("responses", {})
-    for code in ("200", "2xx", "default"):
-        resp = responses.get(code)
-        if resp is None:
-            continue
-        if "$ref" in resp:
-            resp = _resolve_ref(spec, resp["$ref"])
-        return any(name.lower() == "link" for name in (resp.get("headers") or {}))
-    return False
+    response = _success_response(operation)
+    headers = None if response is None else _at(response, "headers")
+    return headers is not None and any(name.lower() == "link" for name in headers.str_keys())
 
 
 def propose_paging(
-    spec: dict, operation: dict, query_params: list[dict], is_list: bool
+    operation: SchemaPath, query_params: list[dict], is_list: bool
 ) -> PaginationConfig | None:
     """The paging a GET operation suggests, from what it declares: a page-number parameter, an
     offset with a size parameter, or a ``Link`` response header. Only a list response is paged
@@ -224,7 +205,7 @@ def propose_paging(
         return PaginationConfig.model_validate(
             {"type": PaginationType.offset, "page_param": offset, "page_size_param": size}
         )
-    if _declares_link_header(spec, operation):
+    if _declares_link_header(operation):
         return PaginationConfig.model_validate({"type": PaginationType.link_header})
     return None
 
@@ -237,33 +218,37 @@ def parse_spec(
 
     operation_overrides: {operationId: "query" | "mutation"} — takes priority over x-provisa-kind.
     """
+    try:
+        return _map_operations(SchemaPath.from_dict(spec), operation_overrides or {})
+    except Unresolvable as exc:
+        # The reader's own message carries the whole spec; name the reference only.
+        raise ValueError(f"unresolvable $ref: {exc.ref}") from None
+
+
+def _map_operations(
+    root: SchemaPath, overrides: dict[str, str]
+) -> tuple[list[OpenAPIQuery], list[OpenAPIMutation]]:
     queries: list[OpenAPIQuery] = []
     mutations: list[OpenAPIMutation] = []
-    _op_overrides = operation_overrides or {}
 
-    paths = spec.get("paths", {})
-    for path, path_item in paths.items():
-        if not isinstance(path_item, dict):
+    for path, path_item in (_at(root, "paths") or _NOTHING).str_items():
+        if not isinstance(path_item.read_value(), dict):
             continue
-        path_level_params = path_item.get("parameters", [])
 
         for method in ("get", "post", "put", "patch", "delete"):
-            operation = path_item.get(method)
+            operation = _at(path_item, method)
             if operation is None:
                 continue
-            op_params = operation.get("parameters", [])
-            merged = _merge_parameters(path_level_params, op_params)
-            path_params, query_params = _extract_params(spec, merged)
-            op_id = _operation_id(operation, method, path)
-            summary = operation.get("summary") or operation.get("description")
-            response_schema, is_list = _extract_response_schema(spec, operation)
+            raw = operation.read_value()
+            path_params, query_params = _extract_params(_parameters(path_item, operation))
+            op_id = _operation_id(raw, method, path)
+            summary = raw.get("summary") or raw.get("description")
+            response_schema, is_list = _extract_response_schema(operation)
 
             # Payload override > x-provisa-kind > GET heuristic
             explicit_kind = (
-                _op_overrides.get(op_id, "").lower()
-                or (operation.get("x-provisa-kind") or "").lower()
+                overrides.get(op_id, "").lower() or (raw.get("x-provisa-kind") or "").lower()
             )
-            _SCALAR_TYPES = {"string", "number", "boolean", "integer"}
             response_is_scalar = (
                 isinstance(response_schema, dict) and response_schema.get("type") in _SCALAR_TYPES
             )
@@ -282,18 +267,17 @@ def parse_spec(
                         query_params=query_params,
                         response_schema=response_schema,
                         is_list=is_list,
-                        pagination=propose_paging(spec, operation, query_params, is_list),
+                        pagination=propose_paging(operation, query_params, is_list),
                     )
                 )
             else:
-                input_schema = _extract_request_schema(spec, operation)
                 mutations.append(
                     OpenAPIMutation(
                         operation_id=op_id,
                         path=path,
                         method=method.upper(),
                         summary=summary,
-                        input_schema=input_schema,
+                        input_schema=_extract_request_schema(operation),
                         response_schema=response_schema,
                     )
                 )

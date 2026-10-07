@@ -287,3 +287,75 @@ def test_mutation_with_request_body_schema():
     props = m.input_schema.get("properties", {})
     assert "name" in props
     assert "email" in props
+
+
+# -- composed schemas and referenced parameters, as a published Swagger 2.0 spec writes them --------
+
+_COMPOSED = {
+    "swagger": "2.0",
+    "info": {"title": "Test", "version": "1.0.0"},
+    "parameters": {"Slug": {"name": "slug", "in": "path", "type": "string", "required": True}},
+    "definitions": {
+        "object": {
+            "type": "object",
+            "properties": {"type": {"type": "string"}},
+        },
+        "account": {
+            "allOf": [
+                {"$ref": "#/definitions/object"},
+                {"type": "object", "properties": {"uuid": {"type": "string"}}},
+            ]
+        },
+        "repository": {
+            "allOf": [
+                {"$ref": "#/definitions/object"},
+                {
+                    "type": "object",
+                    "properties": {
+                        "full_name": {"type": "string"},
+                        "size": {"type": "integer"},
+                        "owner": {"$ref": "#/definitions/account"},
+                        "parent": {"$ref": "#/definitions/repository"},
+                    },
+                },
+            ]
+        },
+    },
+    "paths": {
+        "/repositories/{slug}": {
+            "parameters": [{"$ref": "#/parameters/Slug"}],
+            "get": {
+                "operationId": "getRepository",
+                "responses": {
+                    "200": {"description": "ok", "schema": {"$ref": "#/definitions/repository"}}
+                },
+            },
+        }
+    },
+}
+
+
+def test_allof_members_are_one_set_of_properties():
+    (query,), _ = parse_spec(_COMPOSED)
+    props = query.response_schema["properties"]
+    assert set(props) == {"type", "full_name", "size", "owner", "parent"}
+    assert props["size"]["type"] == "integer"
+
+
+def test_a_composed_property_is_an_object_with_its_fields():
+    (query,), _ = parse_spec(_COMPOSED)
+    owner = query.response_schema["properties"]["owner"]
+    assert owner["type"] == "object"
+    assert set(owner["properties"]) == {"type", "uuid"}
+
+
+def test_a_schema_that_refers_to_itself_is_read():
+    (query,), _ = parse_spec(_COMPOSED)
+    parent = query.response_schema["properties"]["parent"]
+    assert parent["type"] == "object"
+    assert "full_name" in parent["properties"]
+
+
+def test_a_referenced_parameter_is_read():
+    (query,), _ = parse_spec(_COMPOSED)
+    assert query.path_params == [{"name": "slug", "type": "string"}]

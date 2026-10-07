@@ -63,19 +63,10 @@ def openapi_operation(spec: dict, source_id: str, table_name: str) -> OpenAPIQue
 
 def default_params_from_spec(spec: dict, path: str) -> dict:
     """Extract enum/default values for GET query params at path for pre-population."""
-    path_item = spec.get("paths", {}).get(path, {})
-    raw_params = list(path_item.get("parameters", []))
-    op = path_item.get("get", {})
-    if op:
-        raw_params = raw_params + list(op.get("parameters", []))
+    from provisa.openapi.mapper import operation_parameters
+
     defaults: dict = {}
-    for p in raw_params:
-        if "$ref" in p:
-            ref_parts = p["$ref"].lstrip("#/").split("/")
-            node = spec
-            for part in ref_parts:
-                node = node.get(part, {})
-            p = node
+    for p in operation_parameters(spec, path):
         if p.get("in") != "query":
             continue
         name = p.get("name", "")

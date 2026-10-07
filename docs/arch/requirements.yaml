@@ -4713,6 +4713,11 @@
     `responses.2xx`) schema determines the virtual table's column set. (Amended 2026-10-02,
     REGISTRATION IS CURATION) Adding an OpenAPI source registers no tables. Every table the source offers is listed by the Register Table picker, and the steward registers the ones wanted through the mutation every source uses; that registration is the curation step, and a registered table is then governed like any other (REQ-1923). The spec is
     parsed when the source is added and kept with it; each GET operation is a table on offer.
+    (Amended 2026-10-07, SPEC READ BY A LIBRARY) The spec is read through a maintained spec library
+    that follows its references; Provisa has no reference resolver of its own. A response schema
+    composed with allOf is read as one set of properties, so its columns are those of every member.
+    A schema that refers to itself is read as far as a table's columns and an object column's
+    fields need.
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/
