@@ -149,12 +149,13 @@ class NativeEngineBackend(EngineBackend):
     def __init__(self, engine: Any) -> None:
         super().__init__(engine)
         self._runtime: Any = None
-        # Each table by its identity (source_id, schema, table): two sources may both hold
-        # ``schema.table``, and each has its own attach.
-        self._attached: set[tuple[str, str, str]] = set()
+        # Each table by its identity (catalog, source_id, schema, table): two sources may both hold
+        # ``schema.table``, and each has its own attach; and one engine serves several org
+        # environments, each attaching the same source under its own catalog (REQ-1266, REQ-1529).
+        self._attached: set[tuple[str, str, str, str]] = set()
         # Tables whose live attach this process has removed because their reads moved to the
         # replica (REQ-1912) — removed once, whichever process created it.
-        self._detached: set[tuple[str, str, str]] = set()
+        self._detached: set[tuple[str, str, str, str]] = set()
         # The registry state the last complete walk covered: the identities of (config,
         # runtime_sources, tables, model_db). A schema rebuild REPLACES those objects (app.py
         # publishes a new source map and a new table list; nothing mutates them in place), so an
@@ -163,7 +164,7 @@ class NativeEngineBackend(EngineBackend):
         # Tables whose attach was refused for a DECLARED reason in the walked registry state (a
         # source type this engine lands instead of attaching, REQ-841). Not retried until the
         # registry changes. A driver error is not remembered: an offline source is retried.
-        self._refused: set[tuple[str, str, str]] = set()
+        self._refused: set[tuple[str, str, str, str]] = set()
         self._refused_in: tuple[Any, Any, Any, Any] | None = None
         self._walk_lock = threading.Lock()
 
@@ -331,7 +332,7 @@ class NativeEngineBackend(EngineBackend):
         complete = True
         # A table listed by both the config and the registry: one attempt. Keyed by the table's
         # identity — two sources may both hold ``schema.table``, and each is attached.
-        tried: set[tuple[str, str, str]] = set()
+        tried: set[tuple[str, str, str, str]] = set()
         sources = {s.id: s for s in config.sources}
 
         # Merge in dynamically created sources that exist in the DB but not in the YAML config.
@@ -380,7 +381,7 @@ class NativeEngineBackend(EngineBackend):
         def _attach_tbl(src: Any, schema_name: str, table_name: str) -> None:
             """Attach one table into the runtime; skip if already attached or attach fails."""
             nonlocal complete
-            key = (src.id, schema_name, table_name)
+            key = (state.source_catalogs[src.id], src.id, schema_name, table_name)
             if key in tried:
                 return
             if floor_setting(src) is not None:

@@ -260,18 +260,18 @@ class TestWhatALoadDoesNotCarry:
         # say about it — a deploy must not blank a credential somebody established deliberately.
         await _seed(org)
         await _seed(org, ENV)
-        await org.update(sources, "warehouse", env=ENV, host="dev-db.internal", bound=True)
+        await org.update(sources, "warehouse", env=ENV, host="dev-db.internal", binding="own")
         await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef")
         (source,) = await org.rows(sources, ENV)
         assert source["host"] == "dev-db.internal"
-        assert source["bound"] is True
+        assert source["binding"] == "own"
 
     async def test_a_source_the_tree_introduces_arrives_unbound(self, org):
         await _seed(org)
         await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef")
         (source,) = await org.rows(sources, ENV)
         assert source["host"] == ""
-        assert source["bound"] is False
+        assert source["binding"] == "unbound"
 
     async def test_a_source_the_tree_stopped_naming_is_left_where_it_is(self, org):
         # Dropping it would destroy the binding, and a model that no longer names the source is not

@@ -25,9 +25,21 @@ import { useTranslation } from "react-i18next";
 import { driver, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
-import { TOUR_STEPS, stepRoute, tourItinerary, LINEAGE_DEMO_SQL, type TourStep } from "./tourSteps";
+import {
+  TOUR_STEPS,
+  TOUR_SCOPES,
+  TOPIC_IDS,
+  stepRoute,
+  tourItinerary,
+  LINEAGE_DEMO_SQL,
+  type TourScope,
+  type TourStep,
+} from "./tourSteps";
+import { TourMenu } from "./TourMenu";
+import { completedTopics, markTopicCompleted } from "./tourTopics";
 import { EXPANDED_STORAGE_KEY as DATA_PRODUCTS_EXPANDED_KEY } from "../pages/DataProductsPage";
 import { useAuth } from "../context/AuthContext";
+import { usePolly } from "../context/pollyState";
 import { hasCapability } from "../lib/capabilities";
 import { prefetchAllPageChunks } from "../pageChunks";
 import { useTourPrefetch } from "../hooks/useAdminQueries";
@@ -38,6 +50,7 @@ import {
   TOUR_DEMO_RESET_KEY,
   TOUR_DECLINED_KEY,
   TOUR_OFFERED_KEY,
+  TOUR_TOPICS_DONE_KEY,
 } from "./tourKeys";
 
 // localStorage keys owned by NlPage — mirrored here so the tour can seed a
@@ -244,6 +257,7 @@ export function resetTourStateForDemoSession(): void {
   localStorage.removeItem(TOUR_PROGRESS_KEY);
   // The previous visitor's "never again" is not this visitor's.
   localStorage.removeItem(TOUR_DECLINED_KEY);
+  localStorage.removeItem(TOUR_TOPICS_DONE_KEY);
 }
 
 /** True once the guided tour has been completed or dismissed on this browser. */
@@ -282,6 +296,10 @@ export function resolveTourOffer(): void {
   sessionStorage.setItem(TOUR_OFFERED_KEY, "answered");
 }
 
+function isCoreStep(index: number): boolean {
+  return TOUR_SCOPES.core.includes(TOUR_STEPS[index].key);
+}
+
 /**
  * The saved mid-tour step to resume from, or null if none / out of range. Only
  * steps past the first resume — the opening step is a fresh start.
@@ -290,7 +308,8 @@ export function tourResumeStep(): number | null {
   const raw = localStorage.getItem(TOUR_PROGRESS_KEY);
   if (raw === null) return null;
   const n = parseInt(raw, 10);
-  return Number.isInteger(n) && n > 0 && n < TOUR_STEPS.length ? n : null;
+  // Only the core tour is resumable (REQ-1945): a topic that is left returns to the menu.
+  return Number.isInteger(n) && n > 0 && n < TOUR_STEPS.length && isCoreStep(n) ? n : null;
 }
 
 /**
@@ -334,8 +353,13 @@ export type TourStatus =
   | null;
 
 interface TourContextValue {
-  /** Launch the guided feature tour. Resumes from saved progress unless { restart: true }. */
+  /**
+   * The tour button. Resumes a core tour left part-way unless { restart: true } (which starts the
+   * core tour from the top); once the core tour has been seen it opens the Deep Dives menu.
+   */
   startTour: (opts?: { restart?: boolean }) => void;
+  /** True once the core tour has been taken or left, so the button opens the Deep Dives menu. */
+  coreSeen: boolean;
   running: boolean;
   /** True when an earlier session was dismissed mid-tour and can be resumed. */
   canResume: boolean;
@@ -416,25 +440,51 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // Bumped by Retry so the runner effect re-enters the same step index.
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<TourStatus>(null);
+  // Which tour (the core tour or one Deep Dives topic) activeStep belongs to, and whether the
+  // Deep Dives menu is open (REQ-1945).
+  const [activeScope, setActiveScope] = useState<TourScope | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const prefetchTourData = useTourPrefetch();
   const { capabilities } = useAuth();
+  // REQ-1945: a step that refers to Polly opens the panel through the launcher's own handler. Read through
+  // a ref because the runner's closure predates the render that last changed its state.
+  const polly = usePolly();
+  const pollyRef = useRef(polly);
+  useEffect(() => {
+    pollyRef.current = polly;
+  }, [polly]);
+  // Whether the tour opened the panel, so it closes only what it opened: a Polly the viewer already
+  // had open is theirs to close.
+  const tourOpenedPollyRef = useRef(false);
+  const closeTourPolly = useCallback(() => {
+    if (!tourOpenedPollyRef.current) return;
+    tourOpenedPollyRef.current = false;
+    pollyRef.current.closePolly();
+  }, []);
   // The steps this viewer may actually be shown, in order, as indices into TOUR_STEPS. Everything
   // that used to count against TOUR_STEPS.length — the numbering, what Next/Back move to, which
   // step is last — counts against this instead, so a tour with steps dropped is a shorter whole
   // tour rather than one that ends early or numbers past its end.
-  const itinerary = useMemo(
-    () => tourItinerary((capability) => hasCapability(capabilities, capability)),
-    [capabilities],
-  );
+  const itineraries = useMemo(() => {
+    const meets = (capability: Parameters<typeof hasCapability>[1]) =>
+      hasCapability(capabilities, capability);
+    const out = { core: tourItinerary(meets, "core") } as Record<TourScope, number[]>;
+    for (const id of TOPIC_IDS) out[id] = tourItinerary(meets, id);
+    return out;
+  }, [capabilities]);
+  // The active tour's steps. Everything below that walked "the tour" walks this.
+  const itinerary = itineraries[activeScope ?? "core"];
   // Read inside handlers whose closure predates a capability refresh. Effects only: startTour reads
   // the memo itself, because a child's effect runs before its parent's — `?tour=1` (TourAutoStart,
   // a child of this provider) called startTour on the very render the rights landed, when this ref
   // still held the empty itinerary of the render before. startTour declines an empty one, and the
   // param is spent by then, so the tour never started at all.
   const itineraryRef = useRef(itinerary);
+  const scopeRef = useRef<TourScope | null>(null);
   useEffect(() => {
     itineraryRef.current = itinerary;
-  }, [itinerary]);
+    scopeRef.current = activeScope;
+  }, [itinerary, activeScope]);
   const driverRef = useRef<Driver | null>(null);
   const currentPathRef = useRef<string>("");
   // Mirrors activeStep for handlers (onDestroyed) whose closure predates the current step.
@@ -446,21 +496,29 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // A step whose anchor never arrives no longer ends the tour at all — it raises the "stuck" status
   // and offers Retry / Skip / Exit. Ending on it used to discard the saved index too, so one slow
   // page cost the visitor their whole position and the next Resume silently restarted at step 0.
-  const endTour = useCallback((how: "completed" | "dismissed") => {
+  //
+  // REQ-1945: the core tour ends on the Deep Dives menu (Done, or its Deep Dives button, "deepdives"),
+  // and so does every topic however it ends; only a dismissed core tour saves a position instead.
+  const endTour = useCallback((how: "completed" | "dismissed" | "deepdives") => {
     setStatus(null);
     localStorage.setItem(TOUR_SEEN_KEY, "true");
+    const scope = scopeRef.current;
     if (how !== "dismissed") {
       localStorage.removeItem(TOUR_PROGRESS_KEY);
-    } else if (activeStepRef.current != null) {
+    } else if (scope === "core" && activeStepRef.current != null) {
       localStorage.setItem(TOUR_PROGRESS_KEY, String(activeStepRef.current));
     }
+    if (how === "completed" && scope && scope !== "core") markTopicCompleted(scope);
+    if (how !== "dismissed" || scope !== "core") setMenuOpen(true);
     cleanupPrep();
+    closeTourPolly();
     // Null the ref before destroy so onDestroyed treats this as an intentional end, not a dismissal.
     const inst = driverRef.current;
     driverRef.current = null;
     inst?.destroy();
     setActiveStep(null);
-  }, []);
+    setActiveScope(null);
+  }, [closeTourPolly]);
 
   const clickIfPresent = (selector?: string) => {
     if (!selector) return;
@@ -525,6 +583,18 @@ export function TourProvider({ children }: { children: ReactNode }) {
           } else {
             navigate(route);
           }
+        }
+        // REQ-1945: Polly open for a step that refers to Polly; closed again, if the tour opened it,
+        // on the first step that does not. A panel that fails to open leaves the anchor missing, so
+        // the step fails loudly through the stuck status below -- no fallback anchor.
+        if (step.pollyOpen) {
+          if (!pollyRef.current.open) {
+            tourOpenedPollyRef.current = true;
+            await pollyRef.current.openPolly();
+            if (cancelled) return;
+          }
+        } else {
+          closeTourPolly();
         }
         for (const open of step.ensureOpen ?? []) {
           if (document.querySelector(open.unlessPresent)) continue;
@@ -603,8 +673,21 @@ export function TourProvider({ children }: { children: ReactNode }) {
                 });
                 popover.footerButtons.prepend(startBtn);
               }
-              // On the closing step, offer a shortcut straight to the Docs tab.
-              if (isLast) {
+              // REQ-1945: every core step can leave for the Deep Dives menu at once.
+              if (scopeRef.current === "core") {
+                const deepBtn = document.createElement("button");
+                deepBtn.type = "button";
+                deepBtn.className = "driver-popover-deepdives-btn";
+                deepBtn.dataset.testid = "tour-deep-dives";
+                deepBtn.textContent = t("tour.nav.deepDives");
+                deepBtn.addEventListener("click", () => {
+                  clickIfPresent(step.clickAfterNext);
+                  endTour("deepdives");
+                });
+                popover.footerButtons.prepend(deepBtn);
+              }
+              // On the closing step of the last topic, offer a shortcut straight to the Docs tab.
+              if (isLast && scopeRef.current === "operate") {
                 const docsBtn = document.createElement("button");
                 docsBtn.type = "button";
                 docsBtn.className = "driver-popover-docs-btn";
@@ -639,7 +722,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
       clearTimeout(waitingTimer);
     };
     // `attempt` is the Retry trigger: it re-runs this effect on the same step index.
-  }, [activeStep, attempt, navigate, endTour, t]);
+  }, [activeStep, attempt, navigate, endTour, closeTourPolly, t]);
 
   // Start the tour. Resumes from saved progress by default; pass { restart: true } to force step 0.
   //
@@ -649,14 +732,15 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // page stuck on its own "Loading…" state. Awaiting every page chunk before the first step removes
   // that source of the race; the in-flight guard (`driverRef.current` set immediately) still blocks
   // a double-start from a second click during the wait.
-  const startTour = useCallback(
-    (opts?: { restart?: boolean }) => {
+  // Run one tour: the core tour (resuming a saved position unless `fresh`) or a Deep Dives topic.
+  const launch = useCallback(
+    (scope: TourScope, fresh: boolean) => {
       if (driverRef.current) return;
-      // Nothing this viewer may open: every step's page is denied to them. There is no tour to
-      // give, and the offer itself is withheld (see `tourAvailable`), so this is the belt to that
-      // brace rather than a state anyone reaches by clicking.
-      if (itinerary.length === 0) return;
-      const resuming = !opts?.restart && tourResumeStep() !== null;
+      const steps = itineraries[scope];
+      // Nothing this viewer may open: every step's page is denied to them.
+      if (steps.length === 0) return;
+      const resuming = scope === "core" && !fresh && tourResumeStep() !== null;
+      setMenuOpen(false);
       // The prefetch below is seconds of work on a loaded machine and the button gives no feedback
       // of its own; without this the click looks ignored and gets clicked again.
       setStatus({ kind: "preparing", resuming });
@@ -668,50 +752,85 @@ export function TourProvider({ children }: { children: ReactNode }) {
         stageRadius: 8,
         disableActiveInteraction: true,
         onDestroyed: () => {
-          // Covers backdrop clicks / Esc, which bypass onCloseClick — treat as an early
-          // dismissal and save the current step so the next launch resumes there.
+          // Covers backdrop clicks / Esc, which bypass onCloseClick -- an early dismissal: the core
+          // tour saves its step so the next launch resumes there, a topic returns to the menu.
           if (driverRef.current) {
             localStorage.setItem(TOUR_SEEN_KEY, "true");
-            if (activeStepRef.current != null) {
-              localStorage.setItem(TOUR_PROGRESS_KEY, String(activeStepRef.current));
+            if (scope === "core") {
+              if (activeStepRef.current != null) {
+                localStorage.setItem(TOUR_PROGRESS_KEY, String(activeStepRef.current));
+              }
+            } else {
+              setMenuOpen(true);
             }
             cleanupPrep();
+            closeTourPolly();
             driverRef.current = null;
             setStatus(null);
             setActiveStep(null);
+            setActiveScope(null);
           }
         },
       });
       // Both halves of "the destination is ready": its chunk is compiled and its queries are in the
       // cache. Waiting for the data too is what keeps a step from landing on a page still painting
-      // its own "Loading…" state.
+      // its own "Loading..." state.
       void Promise.all([prefetchAllPageChunks(), prefetchTourData()]).then(() => {
-        // The wait may have outlasted a dismissal (e.g. immediate Esc) — don't resurrect it.
+        // The wait may have outlasted a dismissal (e.g. immediate Esc) -- don't resurrect it.
         if (!driverRef.current) {
           setStatus(null);
           return;
         }
         // The step's own runner takes over the status from here: it clears it when the anchor
-        // lands, or replaces it with waiting/stuck.
-        // The itinerary's own first step, which is TOUR_STEPS[0] only when this viewer gets it. A
-        // resumed index outside the itinerary is snapped forward by the runner effect.
-        setActiveStep(opts?.restart ? itinerary[0] : (tourResumeStep() ?? itinerary[0]));
+        // lands, or replaces it with waiting/stuck. A resumed index outside the itinerary is
+        // snapped forward by the runner effect.
+        setActiveScope(scope);
+        setActiveStep(scope === "core" && !fresh ? (tourResumeStep() ?? steps[0]) : steps[0]);
       });
     },
-    [itinerary, prefetchTourData],
+    [itineraries, prefetchTourData, closeTourPolly],
   );
+
+  // REQ-1945: the tour button. A core tour left part-way resumes; once the core tour has been seen
+  // the button opens the Deep Dives menu; a first launch (or { restart: true }) runs the core tour.
+  const startTour = useCallback(
+    (opts?: { restart?: boolean }) => {
+      if (driverRef.current) return;
+      if (TOPIC_IDS.every((id) => itineraries[id].length === 0) && itineraries.core.length === 0) {
+        return;
+      }
+      if (opts?.restart) launch("core", true);
+      else if (tourResumeStep() !== null) launch("core", false);
+      else if (hasSeenTour() || itineraries.core.length === 0) setMenuOpen(true);
+      else launch("core", true);
+    },
+    [itineraries, launch],
+  );
+
+  const menuTopics = TOPIC_IDS.filter((id) => itineraries[id].length > 0).map((id) => ({
+    id,
+    steps: itineraries[id].length,
+  }));
 
   return (
     <TourContext.Provider
       value={{
         startTour,
+        coreSeen: hasSeenTour(),
         running: activeStep !== null,
         canResume: tourResumeStep() !== null,
         status,
-        available: itinerary.length > 0,
+        available: TOPIC_IDS.some((id) => itineraries[id].length > 0) || itineraries.core.length > 0,
       }}
     >
       {children}
+      <TourMenu
+        opened={menuOpen}
+        topics={menuTopics}
+        completed={completedTopics()}
+        onPick={(id) => launch(id, true)}
+        onClose={() => setMenuOpen(false)}
+      />
       <TourStatusOverlay
         status={status}
         onRetry={() => {

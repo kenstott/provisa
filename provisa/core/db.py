@@ -97,6 +97,15 @@ _ORG_ADMIN_CAPABILITIES: list[str] = [
     # modeler hold neither.
     "environment_management",
     "environment_switch",
+    # REQ-1942: changing an environment's data choices -- its data mode, its sources' bindings,
+    # read-only or read-write, its synthetic settings -- including creating it reading real data.
+    # org_admin ALONE: a developer switching an environment to Test (fake) with no fakes declared
+    # would expose real data.
+    "environment_data",
+    # REQ-1943: revealing or hiding a sensitive column -- its sensitive tags, the Sensitive data
+    # option on a tag, its role masks, fake, synthetic rule and column grants. org_admin by
+    # default, meant to be granted to a data steward; no developer holds it.
+    "sensitive_data",
     # REQ-1590: the glossary's two rights. Reading a term is not administering the org, so
     # every seeded role reads; curation stays with the roles that own the model.
     "glossary_read",
@@ -174,6 +183,25 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             "glossary_read",
             "glossary_rw",
             "data_product_read",  # REQ-1634
+        ],
+    ),
+    # REQ-1944: data_steward owns a domain's governance and nothing operational; its edits are
+    # checked against the domain of what they change. Must match schema.sql's seed row.
+    (
+        "data_steward",
+        [
+            "access_config",
+            "column_grant",
+            "masking_config",
+            "sensitive_data",
+            "glossary_read",
+            "glossary_rw",
+            "data_product_read",
+            "data_product_rw",
+            "usage",
+            "query_development",
+            "full_results",
+            "view_governance",
         ],
     ),
     # REQ-1597: sandbox is what a "Try it Out" invitation confers. It is org_admin's capability list
@@ -463,6 +491,14 @@ async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy:
                 if "glossary_rw" not in caps:
                     caps.add("glossary_rw")
                     changed = True
+            # REQ-1942: org_admin alone changes an environment's data choices.
+            if role_id == "org_admin" and "environment_data" not in caps:
+                caps.add("environment_data")
+                changed = True
+            # REQ-1943: and, by default, alone reveals or hides a sensitive column.
+            if role_id == "org_admin" and "sensitive_data" not in caps:
+                caps.add("sensitive_data")
+                changed = True
             # REQ-1592: org_admin alone owns the org's glossary — see the seed table above.
             if role_id == "org_admin" and "org_glossary_rw" not in caps:
                 caps.add("org_glossary_rw")
@@ -589,6 +625,14 @@ async def apply_tenancy_role_grants(  # REQ-1337
                 "UPDATE roles SET capabilities = capabilities || "
                 f"'[\"{right}\"]'::jsonb"
                 f" WHERE id IN ('org_admin', 'developer') AND NOT capabilities ? '{right}'"
+            )
+        # REQ-1942, REQ-1943: an environment's data choices and a sensitive column's hiding are
+        # org_admin's by default.
+        for right in ("environment_data", "sensitive_data"):
+            await conn.execute(
+                "UPDATE roles SET capabilities = capabilities || "
+                f"'[\"{right}\"]'::jsonb"
+                f" WHERE id = 'org_admin' AND NOT capabilities ? '{right}'"
             )
         # REQ-1590: the glossary's two rights, on the same terms as the seed — every system role
         # reads, and curation stays with the roles that own the model. Re-asserted for the same

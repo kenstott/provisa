@@ -168,9 +168,45 @@ def carries_setting(key: str) -> bool:
     return head not in NEVER_SETTING_PREFIXES
 
 
-#: The column an IDENTITY_ONLY row carries its boundness in (REQ-1491). Never copied: a copy
-#: produces an unbound row in the target whatever the source row said.
-BOUND_COLUMN = "bound"
+#: The column an IDENTITY_ONLY row says where its connection came from in (REQ-1491, REQ-1942):
+#: given in this environment (OWN), copied from the parent as the parent wrote it (COPIED), or
+#: none (UNBOUND). An environment's sources are its own once created: a copied connection is the
+#: environment's to read and edit, and nothing is resolved through the parent. COPIED is kept
+#: apart from OWN for one reason: a Direct mutation never writes through a connection the
+#: environment did not give itself -- that one reaches its parent's data.
+BINDING_COLUMN = "binding"
+OWN = "own"
+COPIED = "copied"
+UNBOUND = "unbound"
+BINDINGS = (OWN, COPIED, UNBOUND)
+
+#: An environment's data modes (REQ-1942); prod has none -- it is always real.
+INHERIT = "inherit"
+UNBOUND_MODE = "unbound"
+TEST_FAKE = "test_fake"
+TEST_SYNTHETIC = "test_synthetic"
+DATA_MODES = (INHERIT, UNBOUND_MODE, TEST_FAKE, TEST_SYNTHETIC)
+
+#: What a mutation in an environment does (REQ-1942): refused, naming the environment (the
+#: default); kept in the environment's own change log, the data underneath never changed
+#: (reversible); or applied to data the environment owns, never through an inherited source
+#: (direct).
+REFUSED = "refused"
+REVERSIBLE = "reversible"
+DIRECT = "direct"
+MUTATION_HANDLINGS = (REFUSED, REVERSIBLE, DIRECT)
+
+
+def landing_binding(data_mode: str | None) -> str:
+    """What a source row new to an environment carries (REQ-1942): its connection copied from the
+    environment it comes from, as written there, in every mode that reads the parent's data --
+    Inherit, and both Test modes -- and none in Unbound, or in prod (``None``)."""
+    if data_mode is None or data_mode == UNBOUND_MODE:
+        return UNBOUND
+    if data_mode not in DATA_MODES:
+        raise ValueError(f"unknown data mode {data_mode!r}; one of {DATA_MODES}")
+    return COPIED
+
 
 #: The columns of an IDENTITY_ONLY table that say WHERE the environment points, per REQ-1491.
 #: These stay behind. Everything else on those tables is identity or governance and travels.
@@ -189,8 +225,9 @@ BINDING_COLUMNS: dict[str, frozenset[str]] = {
             "port",
             "database",
             "username",
-            # REQ-1695: a password reference names a credential in the vault of the environment
-            # that supplied it. A copy carries neither the credential nor the name of one.
+            # REQ-1695: a password reference names a credential in the vault. A merge or deploy
+            # carries neither the credential nor the name of one; a source new to an environment
+            # that reads its parent's data copies the name as the parent wrote it (REQ-1942).
             "password_ref",
             "dialect",
             "path",
@@ -206,6 +243,21 @@ BINDING_COLUMNS: dict[str, frozenset[str]] = {
 }
 
 
+#: A source with no connection: its binding columns as an unbound row holds them.
+CLEARED_SOURCE_CONNECTION: dict[str, object] = {
+    "host": "",
+    "port": 0,
+    "database": "",
+    "username": "",
+    "password_ref": "",
+    "dialect": "",
+    "path": None,
+    "federation_hints": {},
+    "mapping": {},
+    "cdc": None,
+}
+
+
 def binding_columns(table: str) -> frozenset[str]:
     """The columns of ``table`` that no copy ever supplies, plus its boundness marker.
 
@@ -215,4 +267,4 @@ def binding_columns(table: str) -> frozenset[str]:
     """
     if table not in IDENTITY_ONLY:
         raise KeyError(f"{table!r} is not an IDENTITY_ONLY table; it has no binding columns")
-    return BINDING_COLUMNS[table] | {BOUND_COLUMN}
+    return BINDING_COLUMNS[table] | {BINDING_COLUMN}

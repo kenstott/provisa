@@ -58,7 +58,8 @@ from provisa.security.mutation_authz import ColumnNotWritable
 if TYPE_CHECKING:
     from provisa.compiler.stage2 import GovernanceContext
 
-WRITES = (exp.Insert, exp.Update, exp.Delete, exp.Merge)
+# REQ-1942: TRUNCATE is a mutation too, run as itself -- never rewritten to a DELETE.
+WRITES = (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
 
 _SESSION_TERM = re.compile(r"current_setting\(\s*'provisa\.([A-Za-z0-9_]+)'\s*\)", re.IGNORECASE)
 
@@ -78,7 +79,12 @@ class WriteNotSupported(NotAvailableHere):
 
 
 WRITE_OPS: tuple[str, ...] = ("insert", "update", "delete")
-_OPERATIONS = {"INSERT": ("insert",), "UPDATE": ("update",), "DELETE": ("delete",)}
+_OPERATIONS = {
+    "INSERT": ("insert",),
+    "UPDATE": ("update",),
+    "DELETE": ("delete",),
+    "TRUNCATETABLE": ("delete",),  # it removes rows, as DELETE does
+}
 
 
 def require_write_op(gov: "GovernanceContext", table_id: int, name: str, kind: str) -> None:
@@ -99,8 +105,18 @@ def _kind(tree: exp.Expression) -> str:
     return type(tree).__name__.upper()
 
 
+def target_table(tree: exp.Expression) -> exp.Table:
+    """The table a write targets."""
+    return _target(tree)[0]
+
+
 def _target(tree: exp.Expression) -> tuple[exp.Table, list[str] | None]:
     """The table a write targets, and for an INSERT the columns it lists (None: none listed)."""
+    if isinstance(tree, exp.TruncateTable):
+        tables = [t for t in tree.expressions if isinstance(t, exp.Table)]
+        if len(tables) != 1:
+            raise WriteNotAdmitted("TRUNCATE empties one table at a time")
+        return tables[0], None
     this = tree.this
     if isinstance(this, exp.Schema):
         return this.this, [c.name for c in this.expressions]
@@ -368,6 +384,13 @@ def admit_write(
 
     _require_columns(gov, table_id, written_columns(tree, gov, table_id))
 
+    if isinstance(tree, exp.TruncateTable) and table_id in gov.rls_rules:
+        # REQ-1942: a TRUNCATE empties the table whatever the role may see; it cannot carry the
+        # row filter, so a role with one is refused it.
+        raise WriteNotAdmitted(
+            f"TRUNCATE of {table.name!r}: role {gov.role_id!r} has a row filter on this table "
+            f"({gov.rls_rules[table_id]}), which a TRUNCATE cannot apply. Use DELETE, which does."
+        )
     if table_id not in gov.rls_rules:
         return tree
 

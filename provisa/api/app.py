@@ -41,6 +41,7 @@ from provisa.api.app_loaders import (
     _META_TABLE_ALIAS,
     _apply_server_and_engine_config,
     _build_and_register_schemas,
+    _load_kept,
     _build_source_pools_and_enums,
     _populate_source_catalog_names,
     _init_ingest_engines,
@@ -249,8 +250,6 @@ class AppState:
     security_high: bool = (
         False  # REQ-693: high-security mode (pgwire off, data endpoints KMS-gated)
     )
-    tracked_functions: dict[str, dict] = {}  # gql field name → fn dict
-    tracked_webhooks: dict[str, dict] = {}  # gql field name → wh dict
     # REQ-885: deny-by-default egress allow-list for hosted http/grpc UDFs. host or host:port
     # entries; empty ⇒ all external egress denied (loopback/Provisa pgwire is always allowed).
     udf_egress_allowlist: list[str] = []
@@ -376,7 +375,7 @@ class AppState:
 
         REQ-1488/REQ-1529: the environment is part of the identity of a runtime, not a variation
         within one. A branch holds a separate copy of the model in a separate schema and reaches
-        its sources through bindings it may have inherited read-only, so serving it from its base's
+        its sources through connections of its own, so serving it from its base's
         runtime would hand it the base's pools and compiled schemas. ``runtime_key`` keys prod on
         the bare org id, so an org that never created an environment resolves exactly as before."""
         org_id = require_current_org()
@@ -548,19 +547,43 @@ class AppState:
 
     @property
     def source_binding_env(self) -> dict[str, str]:
-        """source_id → the environment that SUPPLIED its connection values (REQ-1529).
-
-        The active environment itself when it bound the source, an ancestor when it inherited the
-        binding. The write path reads it to establish that the write HAS a target at all — a source
-        absent from this map is unbound here and in everything this environment inherited from, and
-        REQ-1491 refuses a write with nowhere to land. Whether the writer may write is their roles'
-        answer, not this map's (REQ-1539). Empty for prod, which inherits from nobody.
+        """source_id → the environment, for each source whose connection was given in it (REQ-1529,
+        REQ-1942): a connection copied from the parent is not one, so a Direct mutation never
+        writes through it to the parent's data. Whether the writer may write is their roles'
+        answer, not this map's (REQ-1539). Empty for prod.
         """
         return self._active_runtime().source_binding_env
 
     @source_binding_env.setter
     def source_binding_env(self, value: dict[str, str]) -> None:
         self._active_runtime().source_binding_env = value
+
+    @property
+    def tracked_functions(self) -> dict[str, dict]:
+        """The active environment's commands, by the names every surface calls them by."""
+        return self._active_runtime().tracked_functions
+
+    @tracked_functions.setter
+    def tracked_functions(self, value: dict[str, dict]) -> None:
+        self._active_runtime().tracked_functions = value
+
+    @property
+    def tracked_webhooks(self) -> dict[str, dict]:
+        """The active environment's webhooks, by the names every surface calls them by."""
+        return self._active_runtime().tracked_webhooks
+
+    @tracked_webhooks.setter
+    def tracked_webhooks(self, value: dict[str, dict]) -> None:
+        self._active_runtime().tracked_webhooks = value
+
+    @property
+    def undefined_commands(self) -> dict[str, str]:
+        """Command name -> why it is not defined in the active environment (REQ-1942)."""
+        return self._active_runtime().undefined_commands
+
+    @undefined_commands.setter
+    def undefined_commands(self, value: dict[str, str]) -> None:
+        self._active_runtime().undefined_commands = value
 
     @property
     def source_types(self) -> dict[str, str]:
@@ -1532,12 +1555,17 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
         from provisa.core.env_store import get_env
 
         _ephemeral = False
+        # REQ-1942: the environment's data choices, read off the runtime by the query path. PROD
+        # has none: it is always real, and its mutations change its own data.
+        _data_mode: str | None = None
+        _mutation_handling: str | None = None
         if env is not None and env != PROD:
             assert state.admin_db is not None, "the admin plane holds the environment registry"
             _row = await get_env(state.admin_db, org_id, env)
             if _row is None:
                 raise KeyError(f"organization {org_id!r} has no environment {env!r}")
             _ephemeral = _row["expires_at"] is not None
+            _data_mode, _mutation_handling = _row["data_mode"], _row["mutation_handling"]
         external_engine, engine_kind, engine_url, storage_url = (
             lane.external_engine,
             lane.engine_kind,
@@ -1570,6 +1598,8 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
             engine_url=engine_url,
             shard=lane.shard,
             storage_url=storage_url,
+            data_mode=_data_mode,
+            mutation_handling=_mutation_handling,
         )
 
     return await state.org_registry.get_or_build(runtime_key(org_id, env), _builder)
@@ -1726,29 +1756,18 @@ async def _require_org_serves_here(org_id: str) -> None:
         await require_serves_here(conn, org_id, process_region.region())
 
 
-async def _with_inherited_sources(conn: Any, org_id: str, env: str, config: Any) -> Any:
-    """``config`` -- an environment's store configuration -- with each source its rows leave
-    unbound given the connection the environment inherits for it (REQ-1529,
-    provisa.core.env_bindings): the pools and engine catalogs a branch builds point where its
-    base's bindings do."""
-    from provisa.core.env_bindings import inherited_sources
-    from provisa.core.repositories.source import source_from_row
+async def _unbound_sources(conn: Any) -> set[str]:
+    """The ids of the environment's sources with no connection (REQ-1491, REQ-1942): they get no
+    pool, because an empty host is not an absent one. Every other source's connection is the
+    environment's own row -- given in it or copied from its parent -- and nothing is resolved
+    through the parent."""
+    from provisa.core.env_classes import BINDING_COLUMN, UNBOUND
     from provisa.core.schema_org import sources as sources_t
 
-    assert state.admin_db is not None, "the admin plane holds the environment registry"
-    rows = {
-        r._mapping["id"]: dict(r._mapping)
-        for r in (await conn.execute_core(select(sources_t))).fetchall()
-    }
-    resolved = await inherited_sources(conn, state.admin_db, org_id, env, rows)
-    inherited = {sid for sid, row in resolved.items() if row is not rows[sid]}
-    return config.model_copy(
-        update={
-            "sources": [
-                source_from_row(resolved[s.id]) if s.id in inherited else s for s in config.sources
-            ]
-        }
+    result = await conn.execute_core(
+        select(sources_t.c.id).where(sources_t.c[BINDING_COLUMN] == UNBOUND)
     )
+    return {r[0] for r in result.fetchall()}
 
 
 async def build_org_runtime(
@@ -1756,6 +1775,8 @@ async def build_org_runtime(
     *,
     env: str = PROD,
     ephemeral: bool = False,
+    data_mode: str | None = None,
+    mutation_handling: str | None = None,
     include_demo: bool = False,
     isolated_engine: bool = False,
     external_engine: tuple[str, int] | None = None,
@@ -1775,6 +1796,8 @@ async def build_org_runtime(
             org_id,
             env=env,
             ephemeral=ephemeral,
+            data_mode=data_mode,
+            mutation_handling=mutation_handling,
             include_demo=include_demo,
             isolated_engine=isolated_engine,
             external_engine=external_engine,
@@ -1790,6 +1813,8 @@ async def _build_org_runtime(
     *,
     env: str = PROD,
     ephemeral: bool = False,
+    data_mode: str | None = None,
+    mutation_handling: str | None = None,
     include_demo: bool = False,
     isolated_engine: bool = False,
     external_engine: tuple[str, int] | None = None,
@@ -1820,7 +1845,13 @@ async def _build_org_runtime(
     from provisa.core.db import apply_tenancy_role_grants, init_schema
     from provisa.audit.query_log import init_audit_schema
 
-    rt = OrgRuntime(org_id=org_id, env=env, ephemeral=ephemeral)
+    rt = OrgRuntime(
+        org_id=org_id,
+        env=env,
+        ephemeral=ephemeral,
+        data_mode=data_mode,
+        mutation_handling=mutation_handling,
+    )
     key = runtime_key(org_id, env)
     # REQ-1448: sampled BEFORE the CREATE CATALOG statements below are issued, not after. A shard
     # that restarts part-way through this build must leave the runtime stamped with the OLD
@@ -2015,9 +2046,10 @@ async def _build_org_runtime(
                         await rebuild_from_config(seed, conn, state.federation_engine)
                 async with bound_to_request_org():
                     org_config = await store_config(state.raw_config, conn)
+                unbound: set[str] = set()
                 if env != PROD:
-                    # REQ-1529: a branch's unbound sources point where its base's bindings do.
-                    org_config = await _with_inherited_sources(conn, org_id, env, org_config)
+                    # REQ-1942: an unbound source is reached through no connection.
+                    unbound = await _unbound_sources(conn)
             # Populate the org-prefixed catalog-name map FIRST so the physical registration
             # attaches each source under the org's own catalog name (not the bare, default-org
             # name) — the cross-org collision guard (REQ-1266).
@@ -2036,7 +2068,12 @@ async def _build_org_runtime(
                     f"org {org_id!r}: {len(failed_catalogs)} source catalog(s) could not be issued "
                     f"on its engine: {', '.join(sorted(failed_catalogs))}"
                 )
-            await _build_source_pools_and_enums(org_config)
+            # REQ-1491: a source reached through no connection gets no pool.
+            await _build_source_pools_and_enums(
+                org_config.model_copy(
+                    update={"sources": [s for s in org_config.sources if s.id not in unbound]}
+                )
+            )
             await _resolve_pk_from_sources()
 
         await _require_org_serves_here(org_id)  # REQ-1922
@@ -2314,16 +2351,6 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             r._mapping["id"]: dict(r._mapping)
             for r in (await conn.execute_core(select(_sources_t))).fetchall()
         }
-        if active_env() != PROD:
-            # REQ-1529: a branch's unbound sources point where its base's bindings do; the rows
-            # stay marked unbound, so the write guard below reads them as not the branch's own.
-            from provisa.core.env_bindings import inherited_sources
-            from provisa.core.request_context import require_current_org
-
-            assert state.admin_db is not None, "the admin plane holds the environment registry"
-            sources = await inherited_sources(
-                conn, state.admin_db, require_current_org(), active_env(), sources
-            )
         # Backfill state.source_types; patch postgresql sources to use the engine catalog names.
         # REQ-1729: also backfill state.source_catalogs — a source registered through a REST
         # router (graphql-remote, openapi) writes straight to the ``sources`` table and never
@@ -2366,8 +2393,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                     for k, v in _src_dict.items()
                 }
         if _env != PROD:
+            from provisa.core.env_classes import BINDING_COLUMN, OWN
+
             state.source_binding_env = {
-                sid: _env for sid, row in sources.items() if row.get("bound")
+                sid: _env for sid, row in sources.items() if row[BINDING_COLUMN] == OWN
             }
         # Publish the full DB source map so NativeEngineBackend._attach_registered can attach
         # dynamically registered sources that are not in state.config (YAML-loaded only).
@@ -2485,6 +2514,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         rls_rules = await _rls_repo.list_all(conn)
 
         await _load_masking_rules(conn, col_types_converted, roles, role_chains_by_id)
+        await _load_kept(conn)  # REQ-1942
         await _check_fakes(conn)  # REQ-1494
 
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
@@ -3630,6 +3660,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.environments_router import router as environments_router  # REQ-1487
 
     app.include_router(environments_router)
+    from provisa.api.admin.environment_data_router import router as environment_data_router
+
+    app.include_router(environment_data_router)  # REQ-1942
     from provisa.api.admin.secrets_router import router as secrets_router  # REQ-1558
 
     app.include_router(secrets_router)

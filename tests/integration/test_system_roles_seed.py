@@ -10,7 +10,7 @@
 
 """REQ-1297: every org schema seeds exactly the system roles, and the retired ids are gone.
 
-The ids — platform_admin, org_admin, developer, analyst, modeler and sandbox (REQ-1597) — are the
+The ids — platform_admin, org_admin, developer, analyst, modeler, sandbox (REQ-1597) and data_steward (REQ-1944) — are the
 whole role vocabulary.
 'admin' and 'superadmin' survive only as CAPABILITY strings; as ROLE ids they are retired, and an
 assignment naming one is rewritten to platform_admin the next time the seed runs over the schema.
@@ -86,6 +86,7 @@ async def test_the_system_roles_and_nothing_else_are_seeded(tenant_db):
         "analyst",
         "modeler",
         "sandbox",
+        "data_steward",  # REQ-1944
     }
 
 

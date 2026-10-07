@@ -1251,11 +1251,29 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     meanwhile; a set cleared first and refilled here would answer those requests unmasked.
     """
     from provisa.api.app import state
+    from provisa.core.env_classes import TEST_FAKE
     from provisa.security.inheritance import holds_grant
     from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
 
     chains = role_chains if role_chains is not None else {r["id"]: [r["id"]] for r in roles}
     rules: dict[Any, dict[str, Any]] = {}
+    # REQ-1942: a fake is the column's own declaration, never a role mask, and it is read only in
+    # a Test (fake) environment -- there by every role, whatever the column's masks; prod and
+    # every other mode never fake.
+    runtime = state._active_runtime()
+    faking = runtime.data_mode == TEST_FAKE
+    runtime.data_refusal = None
+    if faking:
+        from provisa.core.env_data import sensitive_refusal, uncovered_sensitive
+        from provisa.core.environments import org_schema
+        from provisa.core.request_context import require_current_org
+
+        uncovered = await uncovered_sensitive(conn, org_schema(require_current_org(), runtime.env))
+        if uncovered:
+            runtime.data_refusal = sensitive_refusal(runtime.env, uncovered)
+    condition = _table_columns_t.c.mask_type.is_not(None)
+    if faking:
+        condition = condition | _table_columns_t.c.fake.is_not(None)
 
     masking_rows = [
         dict(_r._mapping)
@@ -1273,11 +1291,45 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
                     _table_columns_t.c.fake,  # REQ-1494
                     _table_columns_t.c.fake_stable,
                     _table_columns_t.c.fake_stable_version,
-                ).where(_table_columns_t.c.mask_type.is_not(None))
+                ).where(condition)
             )
         ).fetchall()
     ]
     for mrow in masking_rows:
+        if mrow["mask_type"] == MaskType.fake.value:
+            raise RuntimeError(
+                f"table {mrow['table_id']} column {mrow['column_name']!r} is masked with a fake; "
+                "a fake is the column's own declaration, read in a Test (fake) environment "
+                "(REQ-1942), never a role mask"
+            )
+        if faking and mrow["fake"] is not None:
+            fake_rule = MaskingRule(
+                mask_type=MaskType.fake,
+                fake=mrow["fake"],
+                fake_stable=bool(mrow["fake_stable"]),
+                fake_stable_version=mrow["fake_stable_version"],
+            )
+            data_type = next(
+                (
+                    cm.data_type
+                    for cm in col_types_converted.get(mrow["table_id"], [])
+                    if cm.column_name == mrow["column_name"]
+                ),
+                None,
+            )
+            if data_type is None:
+                raise RuntimeError(
+                    f"table {mrow['table_id']} column {mrow['column_name']!r} declares a fake "
+                    "but is not among the table's columns"
+                )
+            for role in roles:
+                rules.setdefault((mrow["table_id"], role["id"]), {})[mrow["column_name"]] = (
+                    fake_rule,
+                    data_type,
+                )
+            continue
+        if mrow["mask_type"] is None:
+            continue
         mask_rule = MaskingRule(
             mask_type=MaskType(mrow["mask_type"]),
             pattern=mrow["mask_pattern"],
@@ -1305,6 +1357,41 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
                 continue
             rules.setdefault((table_id, role["id"]), {})[col_name] = (mask_rule, data_type)
     state.masking_rules = rules
+
+
+async def _load_kept(conn: Any) -> None:  # REQ-1942
+    """The tables of this environment with kept mutations (Reversible), each with its change log's
+    address -- the environment's schema on the control plane, which the engine reads as its
+    ``provisa_admin`` catalog -- and its primary key, published on the runtime. Prod keeps none:
+    its mutations change its own data."""
+    from provisa.api.app import state
+    from provisa.core.env_changes import log_name, logged
+    from provisa.core.environments import PROD, org_schema
+    from provisa.core.request_context import require_current_org
+
+    runtime = state._active_runtime()
+    if runtime.env == PROD:
+        runtime.kept = {}
+        return
+    schema = org_schema(require_current_org(), runtime.env)
+    tables = await logged(conn, schema)
+    kept: dict[int, tuple[str, list[str]]] = {}
+    for table_id in sorted(tables):
+        rows = (
+            await conn.execute_core(
+                select(_table_columns_t.c.column_name).where(
+                    _table_columns_t.c.table_id == table_id,
+                    _table_columns_t.c.is_primary_key.is_(True),
+                )
+            )
+        ).fetchall()
+        key = [r[0] for r in rows]
+        if not key:
+            raise RuntimeError(
+                f"table {table_id} has kept mutations but no primary key to apply them by"
+            )
+        kept[table_id] = (f'"provisa_admin"."{schema}"."{log_name(table_id)}"', key)
+    runtime.kept = kept
 
 
 async def _check_fakes(conn: Any) -> None:  # REQ-1494
@@ -1393,6 +1480,14 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
         }
         for r in fn_rows
     ]
+    # REQ-1942: the commands backed by a generated API source are not defined in a Test
+    # (synthetic) environment -- omitted here, the one place every surface's commands come from,
+    # and kept by name so a call to one is refused saying why (action_exec.invoke_command).
+    from provisa.synthetic.env_model import undefined_commands
+
+    undefined = await undefined_commands(conn)
+    not_defined = [f for f in tracked_functions if f["name"] in undefined]
+    tracked_functions = [f for f in tracked_functions if f["name"] not in undefined]
     tracked_webhooks = [
         {
             **dict(r),
@@ -1437,6 +1532,10 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     state.tracked_functions = {}
     for f in tracked_functions:
         _register(state.tracked_functions, f)
+    refused: dict[str, dict] = {}
+    for f in not_defined:
+        _register(refused, f)
+    state.undefined_commands = {key: undefined[f["name"]] for key, f in refused.items()}
     state.tracked_webhooks = {}
     for w in tracked_webhooks:
         _register(state.tracked_webhooks, w)
@@ -1503,7 +1602,10 @@ def register_role_surface(state: Any, role: dict, rls: Any) -> None:
     # gets fixed at the source, matching generate_proto below.
     state.schemas[role["id"]] = generate_schema(si)
     state.table_path_maps[role["id"]] = build_table_path_map(si)
-    state.contexts[role["id"]] = build_context(si)
+    ctx = build_context(si)
+    ctx.refusal = state._active_runtime().data_refusal  # REQ-1942
+    ctx.kept = dict(state._active_runtime().kept)  # REQ-1942
+    state.contexts[role["id"]] = ctx
     state.rls_contexts[role["id"]] = rls
     # No swallow: an unmapped column type is a real gap in the proto type map, not a reason to
     # silently disable gRPC for the role. Let generate_proto raise so it surfaces at startup and

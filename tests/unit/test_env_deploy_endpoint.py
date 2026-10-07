@@ -105,6 +105,7 @@ def wired(monkeypatch):
     monkeypatch.setattr(er, "_audit", _audit)
     monkeypatch.setattr(er, "_member_count", _member_count)
     monkeypatch.setattr(er, "_admin_pool", lambda: "admin-db")
+
     monkeypatch.setattr(er, "plan_deploy", plan_deploy)
     monkeypatch.setattr(er, "deploy_tree", deploy_tree)
     monkeypatch.setattr(env_approvals, "is_protected", is_protected)

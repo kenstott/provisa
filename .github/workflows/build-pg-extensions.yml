@@ -244,7 +244,9 @@ jobs:
 
   # The version just published, installed from PyPI into a clean virtualenv on each platform and
   # proven there (scripts/ci/pg_ext_clean_staging.py): the smoke test above runs where the bundle
-  # was built; this runs where nothing of the build is.
+  # was built; this runs where nothing of the build is. It stages through the product's own staging
+  # (which links the venv interpreter's libpython beside plpython3, REQ-1494) and runs the fake
+  # functions in PL/Python: faker and pyyaml are what that product code imports (as uv.lock pins them).
   verify-published:
     name: verify published ${{ matrix.platform }}
     needs: wheel
@@ -267,7 +269,7 @@ jobs:
           # PyPI serves a new upload within a minute or two; ask until it does, bounded.
           for i in $(seq 1 20); do
             "$RUNNER_TEMP/v/bin/pip" install -q --no-cache-dir "provisa-pg-ext==$version" \
-              pgserver==0.1.4 "psycopg[binary]" && break
+              pgserver==0.1.4 "psycopg[binary]" faker==40.41.0 pyyaml==6.0.3 && break
             [ "$i" = 20 ] && { echo "::error::provisa-pg-ext==$version not installable from PyPI"; exit 1; }
             sleep 15
           done

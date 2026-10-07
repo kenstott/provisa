@@ -75,7 +75,9 @@ stores = Table(
     Column("kind", Text),
     # REQ-1491: whether this environment has supplied the store's URL (a copy carries the row,
     # never the binding).
-    Column("bound", Boolean, nullable=False, server_default=true()),
+    Column(
+        "binding", Text, nullable=False, server_default="own"
+    ),  # REQ-1942: own | copied | unbound
 )
 
 org_regions = Table(
@@ -134,7 +136,9 @@ sources = Table(
     # carries the row and never the binding, and an empty host is not an absent one — the
     # connection builder reads it as localhost — so an unbound source is MARKED, and the query
     # path refuses a query naming it rather than dialling whatever is local to the node.
-    Column("bound", Boolean, nullable=False, server_default=true()),
+    Column(
+        "binding", Text, nullable=False, server_default="own"
+    ),  # REQ-1942: own | copied | unbound
     # REQ-1695: the source's password as a SECRET REFERENCE, never a credential. A literal typed
     # into the Sources form is put into the org vault (provisa.core.secrets_store) and what lands
     # here is the ``${secret:NAME}`` that names it; a reference the operator typed themselves is
@@ -343,7 +347,7 @@ table_columns = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
     CheckConstraint(
-        "mask_type IN ('regex', 'constant', 'truncate', 'fake')",
+        "mask_type IN ('regex', 'constant', 'truncate')",
         name="table_columns_mask_type_check",
     ),
 )
@@ -461,6 +465,8 @@ tags = Table(
     Column("expires_policy", Text, nullable=False, server_default="optional"),
     # REQ-1467: whether assignments carry a "{tag}:{value}" parameter.
     Column("param_policy", Text, nullable=False, server_default="none"),
+    # REQ-1943: the Sensitive data option.
+    Column("sensitive", Boolean, nullable=False, server_default=false()),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "reason_policy IN ('hidden', 'optional', 'required')",
@@ -796,7 +802,9 @@ kafka_sources = Table(
     # carries the row and never the binding, and an empty host is not an absent one — the
     # connection builder reads it as localhost — so an unbound source is MARKED, and the query
     # path refuses a query naming it rather than dialling whatever is local to the node.
-    Column("bound", Boolean, nullable=False, server_default=true()),
+    Column(
+        "binding", Text, nullable=False, server_default="own"
+    ),  # REQ-1942: own | copied | unbound
 )
 
 kafka_topics = Table(
@@ -832,7 +840,9 @@ kafka_sinks = Table(
     # carries the row and never the binding, and an empty host is not an absent one — the
     # connection builder reads it as localhost — so an unbound source is MARKED, and the query
     # path refuses a query naming it rather than dialling whatever is local to the node.
-    Column("bound", Boolean, nullable=False, server_default=true()),
+    Column(
+        "binding", Text, nullable=False, server_default="own"
+    ),  # REQ-1942: own | copied | unbound
 )
 
 api_sources = Table(
@@ -849,7 +859,9 @@ api_sources = Table(
     # carries the row and never the binding, and an empty host is not an absent one — the
     # connection builder reads it as localhost — so an unbound source is MARKED, and the query
     # path refuses a query naming it rather than dialling whatever is local to the node.
-    Column("bound", Boolean, nullable=False, server_default=true()),
+    Column(
+        "binding", Text, nullable=False, server_default="own"
+    ),  # REQ-1942: own | copied | unbound
     CheckConstraint(
         "type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')",
         name="api_sources_type_check",

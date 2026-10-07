@@ -58,6 +58,7 @@
     "domainsToggle": "Domains ({{checked}}/{{total}})",
     "domainsLabel": "Domains",
     "tourResume": "Resume guided tour",
+    "tourMenu": "Open Deep Dives",
     "tourStart": "Take a guided tour",
     "userMenu": "User menu",
     "profile": "Profile",

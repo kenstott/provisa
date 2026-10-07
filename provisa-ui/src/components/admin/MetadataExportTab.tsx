@@ -157,6 +157,7 @@ export function MetadataExportTab() {
         color="yellow"
         icon={<TriangleAlert size={16} />}
         data-testid="metadata-export-not-entitled"
+        data-tour="metadata-export"
         title={t("metadataExportTab.notEntitledTitle")}
       >
         {t("metadataExportTab.notEntitled", { tier: s.required_tier })}
@@ -177,7 +178,7 @@ export function MetadataExportTab() {
   );
 
   return (
-    <Stack maw={860} gap="md">
+    <Stack maw={860} gap="md" data-tour="metadata-export">
       <Text c="dimmed" size="sm">
         {t("metadataExportTab.intro")}
       </Text>

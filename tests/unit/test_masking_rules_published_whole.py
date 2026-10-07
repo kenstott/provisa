@@ -47,7 +47,11 @@ def _mask_row(column: str, unmasked_to: list[str]) -> dict:
 
 def test_the_previous_rules_stay_in_force_until_the_new_set_is_published(monkeypatch):
     previous = {(7, "analyst"): {"name": ("the previous rule", "varchar")}}
-    state = SimpleNamespace(masking_rules=previous)
+    state = SimpleNamespace(
+        masking_rules=previous,
+        # prod: no data mode, so nothing is faked (REQ-1942)
+        _active_runtime=lambda: SimpleNamespace(data_mode=None, env="prod", data_refusal=None),
+    )
     monkeypatch.setattr(app_module, "state", state)
     seen_during_the_read: list[object] = []
 

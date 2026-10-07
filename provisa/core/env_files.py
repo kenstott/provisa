@@ -54,7 +54,7 @@ from urllib.parse import quote, unquote
 
 import yaml
 
-from provisa.core.env_classes import BINDING_COLUMNS, BOUND_COLUMN
+from provisa.core.env_classes import BINDING_COLUMN, BINDING_COLUMNS
 
 #: Written by storage, not by the model: a surrogate key, the tenancy a row lives under, or a stamp
 #: recording when the row was written. None of them survive a copy into another environment, and
@@ -133,7 +133,7 @@ def _model_columns(table: str, row: dict[str, Any]) -> dict[str, Any]:
     """``row`` less everything that is storage, derivation, or a binding."""
     excluded = STORAGE_COLUMNS | DERIVED_COLUMNS | DERIVED_COLUMNS_BY_TABLE.get(table, frozenset())
     if table in BINDING_COLUMNS:
-        excluded = excluded | BINDING_COLUMNS[table] | {BOUND_COLUMN}
+        excluded = excluded | BINDING_COLUMNS[table] | {BINDING_COLUMN}
     return {k: v for k, v in row.items() if k not in excluded and v is not None}
 
 

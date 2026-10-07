@@ -116,7 +116,6 @@
     "remoteHelp": "Dove viene replicato il modello di questa organizzazione. Svuota il campo per interrompere la replica.",
     "webhookLabel": "Webhook di stato",
     "webhookHelp": "Dove viene riportato l'esito di ogni push.",
-    "integrationProjection": "Il repository è una proiezione del modello, mai la sua autorità.",
     "integrationSaved": "Salvato.",
     "probe": "Verifica",
     "probeChecking": "Verifica del remote…",

@@ -38,6 +38,7 @@ from sqlalchemy import select, update
 
 from provisa.core.env_copy import MERGE, copy_model, plan_copy
 from provisa.core.env_deploy import deploy_tree, plan_deploy
+from provisa.core.env_classes import UNBOUND
 from provisa.core.environments import PROD
 from provisa.core.schema_admin import env_merge_requests, environments
 
@@ -305,6 +306,7 @@ async def decide(
             request["target_env"],
             mode=MERGE,
             removals=bool(request["removals"]),
+            landing=UNBOUND,  # REQ-1942: a merge copies no connection
         )
     await _set(
         admin_db,

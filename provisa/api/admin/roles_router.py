@@ -124,6 +124,21 @@ async def _require_reach_of_added(
     require_reach_of_added_domains_request(request, before, _reach(own_after, parent_after))
 
 
+async def _require_reach_of_existing(conn, request: Request, role_id: str) -> None:  # REQ-1531
+    """Changing or removing a role is an act in every domain it reaches now -- listed or
+    inherited -- so the caller's user_management must reach each. A role that does not exist is
+    the act's own not-found."""
+    from provisa.api.admin.capabilities import require_right_in_domains_request
+    from provisa.core.repositories import role as role_repo
+    from provisa.security.inheritance import effective_domain_access
+
+    rows = await role_repo.list_all(conn)
+    if any(r["id"] == role_id for r in rows):
+        require_right_in_domains_request(
+            request, "user_management", effective_domain_access(role_id, rows)
+        )
+
+
 @router.post("/")
 async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-059, REQ-060, REQ-215
     # REQ-1531: a role carries capabilities AND domain_access, so minting one widens scope.
@@ -248,6 +263,7 @@ async def update_role(
         new_parent = (
             body.parent_role_id if body.parent_role_id is not None else existing["parent_role_id"]
         )
+        await _require_reach_of_existing(conn, request, role_id)  # REQ-1531
         new_values = (
             body.residency_values
             if body.residency_values is not None
@@ -296,6 +312,7 @@ async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-
 
     pool = _pool(request)
     async with pool.acquire() as conn:
+        await _require_reach_of_existing(conn, request, role_id)  # REQ-1531
         try:
             deleted = await role_repo.delete(conn, role_id)
         except role_repo.RoleDeleteRefused as refused:

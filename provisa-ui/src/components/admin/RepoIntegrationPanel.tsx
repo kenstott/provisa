@@ -232,9 +232,6 @@ export function RepoIntegrationPanel({
         >
           {t("environmentsTab.save")}
         </Button>
-        <Text size="sm" c="dimmed">
-          {t("environmentsTab.integrationProjection")}
-        </Text>
       </Group>
     </Stack>
   );

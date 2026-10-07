@@ -66,7 +66,7 @@ def test_row_round_trip_preserves_the_reference(password):
     )
     # A row as the control plane hands it back: the write projection plus the columns the table
     # defaults, which the mapper ignores because they are not model fields.
-    row = {**_source_values(original), "bound": True, "cache_enabled": True}
+    row = {**_source_values(original), "binding": "own", "cache_enabled": True}
     assert source_from_row(row).password == password
 
 
@@ -92,11 +92,19 @@ def test_the_mapper_refuses_a_row_with_no_password_ref():
     ],
 )
 def test_secret_name_is_derived_from_the_source_id(source_id, expected):
-    assert source_password_secret_name(source_id) == expected
+    assert source_password_secret_name(source_id, "prod") == expected
+
+
+def test_a_password_typed_in_another_environment_is_named_for_it():
+    """REQ-1942: typing a password in an environment never rotates its parent's credential."""
+    assert source_password_secret_name("sales-pg", "dev") == "source_sales_pg__env_dev_password"
+    assert source_password_secret_name("sales-pg", "dev") != source_password_secret_name(
+        "sales-pg", "prod"
+    )
 
 
 @pytest.mark.parametrize("source_id", ["splunk-demo", "sales/crm.prod", "9lives", "_x", "A.B-C"])
 def test_every_derived_name_is_storable(source_id):
     """The vault's own grammar accepts it -- including a source id that starts with a digit, which
     the ``source_`` prefix is there to make legal."""
-    assert NAME.match(source_password_secret_name(source_id))
+    assert NAME.match(source_password_secret_name(source_id, "prod"))

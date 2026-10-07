@@ -1635,7 +1635,13 @@ export function SourcesPage() {
                           }
                         }}
                       >
-                        <Table.Td>{s.id}</Table.Td>
+                        <Table.Td>
+                          {/* As on Tables: the tag chips follow the identifier, the edit-tags control follows the chips. */}
+                          <Group gap="0.35rem">
+                            {s.id}
+                            <TagControl objectType="source" sourceId={s.id} />
+                          </Group>
+                        </Table.Td>
                         <Table.Td>{sourceTypeLabel(s.type, s.federationHintsJson)}</Table.Td>
                         <Table.Td>{s.host}</Table.Td>
                         <Table.Td>{s.port || "—"}</Table.Td>
@@ -1656,7 +1662,6 @@ export function SourcesPage() {
                         </Table.Td>
                         <Table.Td onClick={(e) => e.stopPropagation()}>
                           <Group gap="xs" wrap="wrap">
-                            <TagControl objectType="source" sourceId={s.id} />
                             {DISCOVERABLE_TYPES.has(s.type) && (
                               <Button
                                 size="compact-xs"

@@ -15,7 +15,14 @@ provisa.fakes.measured; a plain value here so the compiler reads it without the 
 
 from __future__ import annotations
 
+import contextvars
 from dataclasses import dataclass
+
+#: REQ-1494, REQ-1942: set while the model build measures the values a fake computes from. The
+#: measurement reads the real values -- in a Test (fake) environment every other read is faked, so
+#: a measurement read through the fakes would wait on itself. Task-local: a request served beside
+#: the measurement is governed as ever.
+MEASURING: contextvars.ContextVar[bool] = contextvars.ContextVar("provisa_measuring", default=False)
 
 
 @dataclass(frozen=True)

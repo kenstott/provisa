@@ -8,11 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Faked reads on a real server (REQ-1494), on the embedded engine (the Trino engine's faked reads
-are tests/integration/test_fake_reads_trino_e2e.py): a column masked
-with its declared fake shows the fake to a masked role and the real value to a role it is unmasked
-to; filters, grouping and matching work on the fakes; a relative fake follows the faked column it
-names."""
+"""Faked reads on a real server (REQ-1494, REQ-1942), on the embedded engine (the Trino engine's
+faked reads are tests/integration/test_fake_reads_trino_e2e.py): in a Test (fake) environment a
+column declaring a fake shows the fake to every role, and prod never fakes; filters, grouping and
+matching work on the fakes; a relative fake follows the faked column it names."""
 
 from __future__ import annotations
 
@@ -38,7 +37,11 @@ def _col(name: str, data_type: str, **extra) -> dict:
 
 
 def _faked(decl: str) -> dict:
-    return {"mask_type": "fake", "fake": decl, "unmasked_to": ["org_admin"]}
+    return {"fake": decl}
+
+
+#: The Test (fake) environment the faked reads are made in (REQ-1942).
+_QA = "qa"
 
 
 @pytest.fixture(scope="module", params=["duckdb"])
@@ -118,16 +121,43 @@ def server(request):
         engine.dispose()
         boot.start()
         boot.wait_all_ready(timeout=300)
+        status, body = _call(
+            boot,
+            "POST",
+            f"/admin/orgs/{boot.org_id}/environments",
+            {"name": _QA, "data_mode": "test_fake"},
+        )
+        assert status == 200, body
         yield boot
     finally:
         boot.cleanup()
 
 
-def _sql(boot, sql: str, role: str) -> list[dict]:
+def _call(boot, method: str, path: str, body: Any = None, env: str | None = None):
+    headers = {"Content-Type": "application/json", "x-provisa-role": "org_admin"}
+    if env is not None:
+        headers["x-provisa-env"] = env
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{boot.ports['http']}{path}",
+        data=None if body is None else json.dumps(body).encode(),
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        return exc.code, {"error": exc.read().decode()}
+
+
+def _sql(boot, sql: str, role: str, env: str | None = _QA) -> list[dict]:
+    headers = {"Content-Type": "application/json", "x-provisa-role": role}
+    if env is not None:
+        headers["x-provisa-env"] = env
     req = urllib.request.Request(
         f"http://127.0.0.1:{boot.ports['http']}/data/sql",
         data=json.dumps({"sql": sql}).encode(),
-        headers={"Content-Type": "application/json", "x-provisa-role": role},
+        headers=headers,
         method="POST",
     )
     try:
@@ -138,14 +168,16 @@ def _sql(boot, sql: str, role: str) -> list[dict]:
     return body["data"]["sql"]
 
 
-def test_a_masked_role_reads_fakes_and_an_unmasked_one_the_real_values(server):
+def test_every_role_reads_fakes_in_test_fake_and_prod_never_fakes(server):
     real = {f"p{i}@real.example" for i in range(40)}
-    analyst = _sql(server, "SELECT id, email FROM sales.people ORDER BY id", "analyst")
-    admin = _sql(server, "SELECT id, email FROM sales.people ORDER BY id", "org_admin")
-    assert {r["email"] for r in admin} <= real
-    assert not {r["email"] for r in analyst} & real
-    by_id = {r["id"]: r["email"] for r in analyst}
-    assert by_id[1] == by_id[41] and len(set(by_id.values())) == 40
+    query = "SELECT id, email FROM sales.people ORDER BY id"
+    for role in ("analyst", "org_admin"):
+        faked = _sql(server, query, role)
+        assert not {r["email"] for r in faked} & real, role
+        by_id = {r["id"]: r["email"] for r in faked}
+        assert by_id[1] == by_id[41] and len(set(by_id.values())) == 40
+        # REQ-1942: prod is always real.
+        assert {r["email"] for r in _sql(server, query, role, env=None)} <= real
 
 
 def test_filters_grouping_and_matching_work_on_the_fakes(server):

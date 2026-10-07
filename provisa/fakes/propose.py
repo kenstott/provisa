@@ -148,10 +148,12 @@ async def latest_facts(
         return _qualified(result_sa_table(reg["table_name"], tid, kind), schema)
 
     runs = rel("runs")
+    from provisa.profiler.declared import measured
+
     row = (
         await conn.execute_core(
             select(runs.c.run_id)
-            .where(runs.c.status == "succeeded")
+            .where(runs.c.status == "succeeded", measured(runs))  # REQ-1942: what the data holds
             .order_by(runs.c.run_time.desc())
             .limit(1)
         )

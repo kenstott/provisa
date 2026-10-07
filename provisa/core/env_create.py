@@ -38,6 +38,7 @@ from provisa.core import model_change
 from provisa.core import settings_registry
 from provisa.core.env_copy import REPLACE, CopyReport, adopt_role_definition, copy_model
 from provisa.core.env_source_files import fork_file_sources
+from provisa.core.env_classes import landing_binding
 from provisa.core.env_store import forget_env, reserve_env
 from provisa.core.redis_location import redis_url
 
@@ -64,7 +65,8 @@ async def create_environment(
     created_by: str | None,
     expires_at: datetime | None,
     idle_ttl_seconds: int | None = None,
-    branched_from: str | None,
+    data_mode: str,
+    mutation_handling: str,
     note: str,
     strip_identities: bool = True,
     define_role_from: tuple[str, str] | None = None,
@@ -75,7 +77,10 @@ async def create_environment(
     anything the provisioning or the copy raises. Every caller renders those; none of them is
     swallowed here, and a raised error leaves nothing behind.
 
-    ``strip_identities`` is REQ-1491's convenience by default (an IDENTITY_ONLY row lands unbound,
+    ``data_mode`` and ``mutation_handling`` are its data choices (REQ-1942); a stripped row lands as the
+    mode says (:func:`provisa.core.env_classes.landing_binding`).
+
+    ``strip_identities`` is REQ-1491's convenience by default (an IDENTITY_ONLY row lands stripped,
     stripped of the source's connection details). REQ-1602's sandbox visitor environments pass
     ``strip_identities=False`` so the copy carries the real, already-bound connections verbatim --
     a visitor gets a working demo, not an environment it would first have to bind itself.
@@ -102,7 +107,10 @@ async def create_environment(
         created_by=created_by,
         expires_at=expires_at,
         idle_ttl_seconds=idle_ttl_seconds,
-        branched_from=branched_from,
+        # REQ-1942: the environment it is created from is always recorded, whatever its mode.
+        parent=from_env,
+        data_mode=data_mode,
+        mutation_handling=mutation_handling,
     )
     try:
         await provision_org(
@@ -123,6 +131,7 @@ async def create_environment(
             # them to be usable at all; every later copy leaves the target's own answer alone.
             seed=True,
             strip_identities=strip_identities,
+            landing=landing_binding(data_mode),
         )
         if expires_at is not None:
             # REQ-1620: an EPHEMERAL environment, and only that one. Every other environment is a

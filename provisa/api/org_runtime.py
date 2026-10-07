@@ -97,6 +97,19 @@ class OrgRuntime:
     # business (REQ-1620 covers the file-backed ones by forking them, not by refusing them).
     ephemeral: bool = False
 
+    # REQ-1942: this environment's data mode (inherit | unbound | test_fake | test_synthetic) and
+    # what a mutation in it does (refused | reversible | direct). None for prod, which is always
+    # real. Read once when the runtime is built; a change of either rebuilds it.
+    data_mode: str | None = None
+    mutation_handling: str | None = None
+    # REQ-1942: why every request into this environment is refused, while it stands -- a Test
+    # (fake) environment whose model holds a sensitive column with no fake. Set by each schema
+    # build; None when the environment serves.
+    data_refusal: str | None = None
+    # REQ-1942: per table with kept mutations (Reversible), its change log's address and primary
+    # key. Set by each schema build; empty for prod.
+    kept: dict[int, tuple[str, list[str]]] = field(default_factory=dict)
+
     # REQ-1043/REQ-1067/REQ-1244: per-org federation engine. ``None`` means this org runs on the
     # SHARED engine (the pooled lane, REQ-1243 lane a — every org starts here); an isolated-engine
     # org (orgs.isolated_engine) carries its OWN EngineRuntime plus its own terminal-connection
@@ -210,6 +223,15 @@ class OrgRuntime:
     # Recorded at rebuild time because that is when the lineage walk happens, and read by the write
     # path, which must not walk it again per statement.
     source_binding_env: dict[str, str] = field(default_factory=dict)
+
+    # The commands of this environment's model, by the names every surface calls them by
+    # (app_loaders._load_tracked_functions_and_webhooks). Each environment holds its own model,
+    # so its own commands: a Test (synthetic) environment defines fewer than its parent.
+    tracked_functions: dict[str, dict] = field(default_factory=dict)
+    tracked_webhooks: dict[str, dict] = field(default_factory=dict)
+    # REQ-1942: command name -> why it is not defined here: a command of a generated API source
+    # in a Test (synthetic) environment. A call to one is refused saying so.
+    undefined_commands: dict[str, str] = field(default_factory=dict)
 
     # Raw-SQL governance inputs (published once per org at schema-load time).
     tables: list[dict] = field(default_factory=list)

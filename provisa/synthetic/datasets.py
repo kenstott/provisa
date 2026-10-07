@@ -120,6 +120,19 @@ async def generated_tables(conn: Any) -> dict[int, tuple[str, str]]:
     return {tid: (ds, schema) for tid, ds, schema in result.fetchall()}
 
 
+class TableNotAvailable(ValueError):
+    """A read of a table a Test (synthetic) environment holds no generated copy of (REQ-1942)."""
+
+
+def refuse_unavailable(routes: Any, table_ids: list[int]) -> None:
+    """Refuse a statement reading a table that is not available in a Test (synthetic)
+    environment, saying why and that declaring a profile generates it (REQ-1942)."""
+    for table_id in table_ids:
+        reason = routes.unavailable.get(table_id)
+        if reason is not None:
+            raise TableNotAvailable(reason)
+
+
 def refuse_mixed_data(routes: Any, table_ids: list[int]) -> None:
     """Refuse a statement reading a synthetic table beside one reading real data, naming both:
     their keys share nothing, so the result would look plausible and mean nothing (REQ-1487).

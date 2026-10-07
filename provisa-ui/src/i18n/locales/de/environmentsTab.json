@@ -116,7 +116,6 @@
     "remoteHelp": "Wohin das Modell dieser Organisation gespiegelt wird. Leeren Sie das Feld, um das Spiegeln zu beenden.",
     "webhookLabel": "Status-Webhook",
     "webhookHelp": "Wohin das Ergebnis jedes Pushs gemeldet wird.",
-    "integrationProjection": "Das Repository ist eine Projektion des Modells, niemals dessen maßgebliche Instanz.",
     "integrationSaved": "Gespeichert.",
     "probe": "Prüfen",
     "probeChecking": "Remote wird geprüft…",

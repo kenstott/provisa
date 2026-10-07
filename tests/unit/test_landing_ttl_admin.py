@@ -327,6 +327,8 @@ def _table_patches(db: Database):
     return (
         patch("provisa.api.admin.schema_mutation._get_pool", new=AsyncMock(return_value=_Pool(db))),
         patch("provisa.api.admin.capabilities.require_capability", return_value=None),
+        # The caller holds every right: the paired right-in-domain check (REQ-1944) too.
+        patch("provisa.api.admin.capabilities.right_domain_refusal", return_value=None),
         patch(
             "provisa.api.admin.schema_mutation._build_columns_for_input",
             new=AsyncMock(

@@ -11,11 +11,15 @@
 
 """Prove a PUBLISHED provisa-pg-ext works on a clean install.
 
-Run inside a throwaway virtualenv that holds only the published wheel, pgserver and psycopg: it
-copies the wheel's bundle for ``<platform>`` into that venv's own pgserver (the layout the product
-stages), starts the server with pg_duckdb preloaded, creates every extension the bundle carries,
-and reads through postgres_fdw (libpq), sqlite_fdw and pg_duckdb. No build tree is on the machine,
-so whatever loads came from the wheel.
+Run inside a throwaway virtualenv that holds only the published wheel, pgserver, psycopg and what
+the fake functions import (faker, pyyaml for the staging module's package): it stages the wheel's
+bundle for ``<platform>`` into that venv's own pgserver through the product's own staging
+(``provisa.pg_extensions.staging``, from this checkout) -- which links the venv interpreter's
+libpython beside plpython3 (REQ-1494) -- starts the server with pg_duckdb preloaded and the
+postmaster environment PL/Python needs, creates every extension the bundle carries, reads through
+postgres_fdw (libpq), sqlite_fdw and pg_duckdb, and computes the fake functions in PL/Python
+against the same functions computed here. No build tree is on the machine, so whatever loads came
+from the wheel.
 
 Usage: pg_ext_clean_staging.py <darwin-arm64 | linux-x64>
 """
@@ -25,7 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
+import secrets
 import sqlite3
 import sys
 import tempfile
@@ -35,15 +39,44 @@ import pgserver
 import psycopg
 from provisa_pg_ext import ext_root  # type: ignore[import-not-found]
 
+# The checkout's root: the staging and the fake functions are the product's own, not a copy.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from provisa.fakes.digest import definition_hash, digest, fingerprint  # noqa: E402
+from provisa.fakes.duckdb_functions import fake_method  # noqa: E402
+from provisa.fakes.pg_functions import FUNCTIONS_SQL  # noqa: E402
+from provisa.pg_extensions.staging import (  # noqa: E402
+    bundle_platform,
+    plpython_environment,
+    stage_bundled_pg_extensions,
+)
+
+
+def _fake_functions_compute(c: psycopg.Connection, key: bytes) -> None:
+    """REQ-1494: the fake functions run on the wheel's PL/Python, import provisa.fakes from the
+    postmaster's PYTHONPATH, and agree with the same functions computed in this interpreter."""
+    c.execute(FUNCTIONS_SQL)  # type: ignore[arg-type]
+    d = digest(key, "ann@example.com")
+    h = definition_hash("email", {}, None, "varchar")
+    got = c.execute(
+        "SELECT provisa_digest(%s, %s), provisa_fake_method('email', '{}', %s, %s)",
+        (fingerprint(key), "ann@example.com", d, h),
+    ).fetchone()
+    want = (d, fake_method("email", "{}", d, h))
+    assert got == want, f"PL/Python fake functions computed {got}, this interpreter {want}"
+    print("plpython3u fake functions:", got)
+
 
 def main(platform: str) -> int:
+    assert bundle_platform() == platform, f"this host is {bundle_platform()}, not {platform}"
     src = ext_root() / platform
     pginstall = Path(pgserver.__file__).parent / "pginstall"
-    suffix = "dylib" if platform.startswith("darwin") else "so"
-    for f in (src / "lib").glob(f"*.{suffix}"):
-        shutil.copy2(f, pginstall / "lib" / "postgresql" / f.name)
-    for f in (src / "share" / "extension").iterdir():
-        shutil.copy2(f, pginstall / "share" / "postgresql" / "extension" / f.name)
+    stage_bundled_pg_extensions(pginstall)
+    os.environ.update(plpython_environment())
+    key = secrets.token_bytes(32)
+    key_dir = Path(tempfile.mkdtemp(prefix="pgext-clean-keys-"))
+    (key_dir / f"{fingerprint(key)}.key").write_text(key.hex())
+    os.environ["PROVISA_FAKE_KEY_DIR"] = str(key_dir)
     manifest = json.loads((src / "manifest.json").read_text())
     stale = [
         a["file"]
@@ -100,6 +133,8 @@ def main(platform: str) -> int:
             read = c.execute("SELECT * FROM duckdb.query('SELECT 42 AS answer')").fetchall()
             assert read == [(42,)], read
             print("pg_duckdb read:", read)
+
+            _fake_functions_compute(c, key)
     finally:
         db.cleanup()
     print("CLEAN STAGING OK")

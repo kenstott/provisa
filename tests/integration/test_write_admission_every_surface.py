@@ -405,12 +405,30 @@ def test_an_unqualified_delete_removes_only_the_rows_the_role_can_read(server, s
 
 
 @pytest.mark.parametrize("surface", ["sql_http", "mcp"])
-@pytest.mark.parametrize("role", ["org_admin", "east_writer", "east_reader"])
-def test_truncate_is_refused_for_every_role(server, source, surface, role):
+def test_truncate_runs_for_a_writer_with_no_row_filter(server, source, surface):
+    """REQ-1942: TRUNCATE is a mutation run as itself, for a role holding write with no row filter
+    on the table."""
     send = _sql_http if surface == "sql_http" else _mcp
-    accepted, answer = send(server, role, "TRUNCATE TABLE sales.orders")
+    accepted, answer = send(server, "org_admin", "TRUNCATE TABLE sales.orders")
+    assert accepted, answer
+    assert source() == []
+
+
+@pytest.mark.parametrize("surface", ["sql_http", "mcp"])
+def test_truncate_is_refused_for_a_role_with_a_row_filter_naming_delete(server, source, surface):
+    send = _sql_http if surface == "sql_http" else _mcp
+    accepted, answer = send(server, "east_writer", "TRUNCATE TABLE sales.orders")
     assert not accepted, answer
-    assert "TRUNCATE is not available here: use DELETE, which is governed." in answer
+    assert "row filter" in answer and "region = 'east'" in answer and "DELETE" in answer, answer
+    assert source() == _SEED
+
+
+@pytest.mark.parametrize("surface", ["sql_http", "mcp"])
+def test_truncate_is_refused_for_a_role_without_write(server, source, surface):
+    send = _sql_http if surface == "sql_http" else _mcp
+    accepted, answer = send(server, "east_reader", "TRUNCATE TABLE sales.orders")
+    assert not accepted, answer
+    assert "'write'" in answer, answer
     assert source() == _SEED
 
 

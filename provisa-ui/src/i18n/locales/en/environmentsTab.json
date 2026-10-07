@@ -116,7 +116,6 @@
     "remoteHelp": "Where this organization's model is mirrored. Clear the field to stop mirroring.",
     "webhookLabel": "Status webhook",
     "webhookHelp": "Where the result of each push is reported.",
-    "integrationProjection": "The repository is a projection of the model, never its authority.",
     "integrationSaved": "Saved.",
     "probe": "Check",
     "probeChecking": "Checking the remote…",

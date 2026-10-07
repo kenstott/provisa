@@ -59,7 +59,7 @@ async def test_every_source_is_its_row_and_builtins_stay_out(monkeypatch):
             "type": "postgresql",
             "host": "other",
             "port": 1,
-            "bound": True,
+            "binding": "own",
             "password_ref": "",
         },
         {

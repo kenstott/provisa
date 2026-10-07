@@ -23,11 +23,10 @@ lowers to are covered by the same check. A surface whose protocol has a definiti
 that never becomes a SQL statement (a Cypher ``CREATE INDEX``, an Airport ``create_table``
 action) raises the same :class:`DefinitionNotAvailable` where it recognises it.
 
-Data writes are not definitions: ``INSERT`` / ``UPDATE`` / ``DELETE`` / ``MERGE`` parse as their
-own statement kinds and are not touched here; they are admitted by
-``provisa.compiler.write_admission``. ``TRUNCATE`` is refused here with them: it empties a table
-whatever the role may see and cannot carry a row filter, so it is not a data write — ``DELETE``
-is."""
+Data writes are not definitions: ``INSERT`` / ``UPDATE`` / ``DELETE`` / ``MERGE`` / ``TRUNCATE``
+parse as their own statement kinds and are not touched here; they are mutations, admitted by
+``provisa.compiler.write_admission`` (REQ-1942: a TRUNCATE runs as itself, for a role holding the
+write right with no row filter on the table)."""
 
 from __future__ import annotations
 
@@ -40,9 +39,6 @@ _HOW = (
     "is not available here: create it in the model (admin pages, admin API or config), or "
     "create it in the data source and admit it into the model."
 )
-
-
-_USE_DELETE = "is not available here: use DELETE, which is governed."
 
 
 class NotAvailableHere(ValueError):
@@ -64,21 +60,16 @@ class TableIsDraft(NotAvailableHere):
 
 
 class DefinitionNotAvailable(NotAvailableHere):
-    """A statement that defines, alters or drops a relation, sent through a query protocol —
-    or a TRUNCATE, which empties one outside every rule a data write is admitted by."""
+    """A statement that defines, alters or drops a relation, sent through a query protocol."""
 
     def __init__(self, kind: str) -> None:
         self.kind = kind
-        super().__init__(f"{kind} {_USE_DELETE if kind == 'TRUNCATE' else _HOW}")
+        super().__init__(f"{kind} {_HOW}")
 
 
 def definition_kind(tree: Any) -> str | None:
     """The statement kind of ``tree`` when it defines, alters or drops something — ``CREATE
     TABLE``, ``DROP VIEW``, ``ALTER TABLE`` … — else None."""
-    if isinstance(tree, exp.TruncateTable):
-        # Not a data write: it removes every row whatever the role may see, and cannot carry a
-        # row filter. Refused on every surface; DELETE is the governed way to remove rows.
-        return "TRUNCATE"
     if isinstance(tree, exp.Create):
         verb = "CREATE"
     elif isinstance(tree, exp.Drop):
@@ -108,7 +99,7 @@ def refuse_definition(tree: Any) -> None:
 # is followed by a pattern, ``(``, never a word — and DROP / ALTER write no rows in either.
 _LEADING_COMMENTS_RE = re.compile(r"^(?:\s+|--[^\n]*\n?|//[^\n]*\n?|/\*.*?\*/)+", re.DOTALL)
 _OPENS_AS_DEFINITION_RE = re.compile(
-    r"(?P<verb>CREATE|DROP|ALTER|TRUNCATE)\s+"
+    r"(?P<verb>CREATE|DROP|ALTER)\s+"
     r"(?:(?:OR|REPLACE|TEMP|TEMPORARY|MATERIALIZED|RECURSIVE|GLOBAL|LOCAL|UNLOGGED|UNIQUE|RANGE|"
     r"TEXT|POINT|LOOKUP|FULLTEXT|VECTOR|BTREE|COMPOSITE)\s+)*"
     # ... but not a word that is being assigned to: Cypher's ``CREATE p = (a)-[:R]->(b)`` names a
@@ -126,10 +117,7 @@ def refuse_definition_text(text: str) -> None:
     language detection. Everything else is refused from its parsed tree (:func:`refuse_definition`)."""
     m = _OPENS_AS_DEFINITION_RE.match(_LEADING_COMMENTS_RE.sub("", text, count=1))
     if m:
-        verb = m.group("verb").upper()
-        raise DefinitionNotAvailable(
-            verb if verb == "TRUNCATE" else f"{verb} {m.group('object').upper()}"
-        )
+        raise DefinitionNotAvailable(f"{m.group('verb').upper()} {m.group('object').upper()}")
 
 
 def definition_refusal(exc: BaseException | None) -> NotAvailableHere | None:

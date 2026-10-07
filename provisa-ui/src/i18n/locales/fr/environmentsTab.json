@@ -116,7 +116,6 @@
     "remoteHelp": "L'endroit où le modèle de cette organisation est répliqué. Videz le champ pour arrêter la réplication.",
     "webhookLabel": "Webhook d'état",
     "webhookHelp": "L'endroit où le résultat de chaque envoi est signalé.",
-    "integrationProjection": "Le dépôt est une projection du modèle, jamais son autorité.",
     "integrationSaved": "Enregistré.",
     "probe": "Vérifier",
     "probeChecking": "Vérification du dépôt distant…",

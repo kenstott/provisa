@@ -38,6 +38,7 @@ import { IANA_TIME_ZONES, NAMING_CONVENTIONS } from "./constants";
 import { ColumnModes } from "./testdata/ColumnModes";
 import { maskOptions } from "./maskOptions";
 import { DescriptionField } from "./DescriptionField";
+import { ColumnNameCell } from "./ColumnNameCell";
 import { FieldLabel } from "./FieldLabel";
 import { MaterializedViewPanels } from "./MaterializedViewPanels";
 import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
@@ -45,9 +46,7 @@ import { DeltaFieldset } from "./DeltaFieldset";
 import { TimeInput } from "@mantine/dates";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { DataQualityPanel } from "./DataQualityPanel";
-import { ColumnBadge } from "./ColumnBadge";
 import { ProfilerPanel } from "./ProfilerPanel";
-import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { useLivePolicyPreview } from "./useLivePolicyPreview";
 import { RoleTtlField } from "./RoleTtlField";
 import { PagingField } from "./PagingField";
@@ -83,6 +82,11 @@ interface TableEditFormProps {
   cancelEditing: () => void;
   handleSaveEdit: () => void;
   updateEditCol: (i: number, key: string, value: string | string[] | boolean) => void;
+  /**
+   * REQ-1944: the editor holds a hiding right but not table_registration -- only how the columns
+   * are hidden (grants, masks, fakes, synthetic rules) is editable; the server refuses the rest.
+   */
+  hidingOnly?: boolean;
 }
 
 export function TableEditForm({
@@ -106,6 +110,7 @@ export function TableEditForm({
   cancelEditing,
   handleSaveEdit,
   updateEditCol,
+  hidingOnly = false,
 }: TableEditFormProps) {
   const { t } = useTranslation();
   const roleOptions = roles.map((r) => ({ id: r.id, label: r.id }));
@@ -191,569 +196,583 @@ export function TableEditForm({
           </Alert>
         </div>
       )}
-      <div className="form-card" style={{ marginBottom: "0.75rem" }}>
-        <TextInput
-          label={
-            <FieldLabel
-              text={t("tableEditForm.sqlAliasLabel")}
-              help={t("tableEditForm.sqlAliasHelp")}
-            />
-          }
-          value={editingTable.alias || ""}
-          onChange={(e) =>
-            setEditingTable({
-              ...editingTable,
-              alias: e.target.value || null,
-            })
-          }
-          placeholder={t("tableEditForm.sqlAliasPlaceholder")}
-        />
-        <Select
-          label={
-            <FieldLabel
-              text={t("tableEditForm.namingConventionLabel")}
-              help={t("tableEditForm.namingConventionHelp")}
-            />
-          }
-          data={NAMING_CONVENTIONS.map((nc) => ({
-            value: nc.value,
-            label: nc.label,
-          }))}
-          value={editingTable.gqlNamingConvention ?? ""}
-          onChange={(v) =>
-            setEditingTable({
-              ...editingTable,
-              gqlNamingConvention: v || null,
-            })
-          }
-          comboboxProps={{ withinPortal: true }}
-          allowDeselect={false}
-        />
-        {/* REQ-1921: its region and its draft flag, each saved on its own. */}
-        <TablePlacementFields table={editingTable} isView={isView} onChange={setEditingTable} />
-        {!isView && (
-          <CollapsibleSection
-            title={t("tableEditForm.loadManagementTitle")}
-            testId="load-management-panel"
-            info={{
-              label: t("tableEditForm.loadManagementInfoLabel"),
-              text: t("tableEditForm.loadManagementInfo"),
-            }}
-          >
-            {/* The operator's load and recency controls, grouped: cache TTL (the floor), the per-role
-                TTL list (REQ-1907), materialization and load protection (REQ-826/1141). */}
-            <Text size="xs" c="dimmed" data-testid="load-management-help">
-              {t("tableEditForm.loadManagementHelp")}
-            </Text>
-            <NumberInput
+      {hidingOnly && (
+        <Alert color="blue" mx="1.5rem" mb="0.75rem" data-testid="table-edit-hiding-only">
+          {t("tableEditForm.hidingOnlyNote")}
+        </Alert>
+      )}
+      {!hidingOnly && (
+        <>
+          <div className="form-card" style={{ marginBottom: "0.75rem" }}>
+            <TextInput
               label={
                 <FieldLabel
-                  text={t("tableEditForm.cacheTtlLabel")}
-                  help={t("tableEditForm.cacheTtlHelp")}
+                  text={t("tableEditForm.sqlAliasLabel")}
+                  help={t("tableEditForm.sqlAliasHelp")}
                 />
               }
-              min={0}
-              value={
-                cacheTtlEdits[editingTable.id]?.value ??
-                (editingTable.cacheTtl != null ? editingTable.cacheTtl : "")
+              value={editingTable.alias || ""}
+              onChange={(e) =>
+                setEditingTable({
+                  ...editingTable,
+                  alias: e.target.value || null,
+                })
               }
-              onChange={(v) =>
-                setCacheTtlEdits((prev) => ({
-                  ...prev,
-                  [editingTable.id]: {
-                    ...prev[editingTable.id],
-                    value: v === "" ? "" : String(v),
-                    dirty: true,
-                  },
-                }))
-              }
-              placeholder={t("tableEditForm.cacheTtlPlaceholder")}
-              error={
-                ttlSignalError
-                  ? t("tableEditForm.cacheTtlRequiredForSignal", {
-                      signal: editingTable.changeSignal ?? editSource?.changeSignal,
-                    })
-                  : undefined
-              }
-            />
-            <RoleTtlField
-              rows={editingTable.roleTtl}
-              onChange={(roleTtl) => setEditingTable({ ...editingTable, roleTtl })}
-              roles={roles}
-              floorTtl={floorTtl}
-            />
-            {editingTable.pagingKind !== null && (
-              <PagingField
-                kind={editingTable.pagingKind}
-                paging={editingTable.pagination}
-                onChange={(pagination) => setEditingTable({ ...editingTable, pagination })}
-                ceilingRows={editingTable.pagingCeilingRows}
-              />
-            )}
-            <ReplicateSelect
-              value={editingTable.replicate}
-              onChange={(replicate) => setEditingTable({ ...editingTable, replicate })}
-              scope="table"
-              loadProtected={editingTable.loadProtected ?? editSource?.loadProtected ?? false}
-              testId="table-replicate-select"
-            />
-            <ReplicaBuildLine
-              sourceId={editingTable.sourceId}
-              schemaName={editingTable.schemaName}
-              tableName={editingTable.tableName}
+              placeholder={t("tableEditForm.sqlAliasPlaceholder")}
             />
             <Select
-              // REQ-1141: load protection — scheduled-refresh-only; the query path never pulls the source.
               label={
                 <FieldLabel
-                  text={t("tableEditForm.loadProtectedLabel")}
-                  help={t("tableEditForm.loadProtectedHelp")}
+                  text={t("tableEditForm.namingConventionLabel")}
+                  help={t("tableEditForm.namingConventionHelp")}
                 />
               }
-              data={[
-                { value: "inherit", label: t("tableEditForm.inheritSource") },
-                { value: "on", label: t("tableEditForm.on") },
-                { value: "off", label: t("tableEditForm.off") },
-              ]}
-              value={
-                editingTable.loadProtected == null
-                  ? "inherit"
-                  : editingTable.loadProtected
-                    ? "on"
-                    : "off"
-              }
+              data={NAMING_CONVENTIONS.map((nc) => ({
+                value: nc.value,
+                label: nc.label,
+              }))}
+              value={editingTable.gqlNamingConvention ?? ""}
               onChange={(v) =>
                 setEditingTable({
                   ...editingTable,
-                  loadProtected: v === "inherit" ? null : v === "on",
+                  gqlNamingConvention: v || null,
                 })
               }
               comboboxProps={{ withinPortal: true }}
               allowDeselect={false}
             />
-            {effLoadProtected && (
+            {/* REQ-1921: its region and its draft flag, each saved on its own. */}
+            <TablePlacementFields table={editingTable} isView={isView} onChange={setEditingTable} />
+            {!isView && (
               <CollapsibleSection
-                title={t("tableEditForm.sourceProtectionPanel")}
-                testId="mv-protection-panel"
-                defaultOpen
+                title={t("tableEditForm.loadManagementTitle")}
+                testId="load-management-panel"
+                info={{
+                  label: t("tableEditForm.loadManagementInfoLabel"),
+                  text: t("tableEditForm.loadManagementInfo"),
+                }}
               >
-                {/* REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is
-                  open. Two time widgets (opens/closes) compose the string; both blank = no window. */}
-                <div data-testid="off-peak-window">
-                  <FieldLabel
-                    text={t("tableEditForm.offPeakWindowLabel")}
-                    help={t("tableEditForm.offPeakWindowHelp")}
-                  />
-                  <Group gap="xs" grow>
-                    <TimeInput
-                      aria-label={t("tableEditForm.offPeakOpensAria")}
-                      data-testid="off-peak-opens"
-                      label={t("tableEditForm.offPeakOpens")}
-                      value={(editingTable.offPeakWindow ?? "").split("-")[0] ?? ""}
-                      onChange={(e) => {
-                        const end = (editingTable.offPeakWindow ?? "").split("-")[1] ?? "";
-                        const start = e.currentTarget.value;
-                        setEditingTable({
-                          ...editingTable,
-                          offPeakWindow: start || end ? `${start}-${end}` : null,
-                        });
-                      }}
-                    />
-                    <TimeInput
-                      aria-label={t("tableEditForm.offPeakClosesAria")}
-                      data-testid="off-peak-closes"
-                      label={t("tableEditForm.offPeakCloses")}
-                      value={(editingTable.offPeakWindow ?? "").split("-")[1] ?? ""}
-                      onChange={(e) => {
-                        const start = (editingTable.offPeakWindow ?? "").split("-")[0] ?? "";
-                        const end = e.currentTarget.value;
-                        setEditingTable({
-                          ...editingTable,
-                          offPeakWindow: start || end ? `${start}-${end}` : null,
-                        });
-                      }}
-                    />
-                  </Group>
-                </div>
-                <Select
-                  // REQ-1141: IANA zone for the off-peak window. Picklist of the runtime's supported zones
-                  // (Intl.supportedValuesOf) — the same identifiers ZoneInfo accepts server-side — so the
-                  // window can never be saved against an unparseable zone.
+                {/* The operator's load and recency controls, grouped: cache TTL (the floor), the per-role
+                TTL list (REQ-1907), materialization and load protection (REQ-826/1141). */}
+                <Text size="xs" c="dimmed" data-testid="load-management-help">
+                  {t("tableEditForm.loadManagementHelp")}
+                </Text>
+                <NumberInput
                   label={
                     <FieldLabel
-                      text={t("tableEditForm.offPeakTzLabel")}
-                      help={t("tableEditForm.offPeakTzHelp")}
+                      text={t("tableEditForm.cacheTtlLabel")}
+                      help={t("tableEditForm.cacheTtlHelp")}
                     />
                   }
-                  data={IANA_TIME_ZONES}
-                  value={editingTable.offPeakTz ?? ""}
+                  min={0}
+                  value={
+                    cacheTtlEdits[editingTable.id]?.value ??
+                    (editingTable.cacheTtl != null ? editingTable.cacheTtl : "")
+                  }
+                  onChange={(v) =>
+                    setCacheTtlEdits((prev) => ({
+                      ...prev,
+                      [editingTable.id]: {
+                        ...prev[editingTable.id],
+                        value: v === "" ? "" : String(v),
+                        dirty: true,
+                      },
+                    }))
+                  }
+                  placeholder={t("tableEditForm.cacheTtlPlaceholder")}
+                  error={
+                    ttlSignalError
+                      ? t("tableEditForm.cacheTtlRequiredForSignal", {
+                          signal: editingTable.changeSignal ?? editSource?.changeSignal,
+                        })
+                      : undefined
+                  }
+                />
+                <RoleTtlField
+                  rows={editingTable.roleTtl}
+                  onChange={(roleTtl) => setEditingTable({ ...editingTable, roleTtl })}
+                  roles={roles}
+                  floorTtl={floorTtl}
+                />
+                {editingTable.pagingKind !== null && (
+                  <PagingField
+                    kind={editingTable.pagingKind}
+                    paging={editingTable.pagination}
+                    onChange={(pagination) => setEditingTable({ ...editingTable, pagination })}
+                    ceilingRows={editingTable.pagingCeilingRows}
+                  />
+                )}
+                <ReplicateSelect
+                  value={editingTable.replicate}
+                  onChange={(replicate) => setEditingTable({ ...editingTable, replicate })}
+                  scope="table"
+                  loadProtected={editingTable.loadProtected ?? editSource?.loadProtected ?? false}
+                  testId="table-replicate-select"
+                />
+                <ReplicaBuildLine
+                  sourceId={editingTable.sourceId}
+                  schemaName={editingTable.schemaName}
+                  tableName={editingTable.tableName}
+                />
+                <Select
+                  // REQ-1141: load protection — scheduled-refresh-only; the query path never pulls the source.
+                  label={
+                    <FieldLabel
+                      text={t("tableEditForm.loadProtectedLabel")}
+                      help={t("tableEditForm.loadProtectedHelp")}
+                    />
+                  }
+                  data={[
+                    { value: "inherit", label: t("tableEditForm.inheritSource") },
+                    { value: "on", label: t("tableEditForm.on") },
+                    { value: "off", label: t("tableEditForm.off") },
+                  ]}
+                  value={
+                    editingTable.loadProtected == null
+                      ? "inherit"
+                      : editingTable.loadProtected
+                        ? "on"
+                        : "off"
+                  }
                   onChange={(v) =>
                     setEditingTable({
                       ...editingTable,
-                      offPeakTz: v || null,
+                      loadProtected: v === "inherit" ? null : v === "on",
                     })
                   }
-                  searchable
-                  clearable
-                  placeholder="UTC"
                   comboboxProps={{ withinPortal: true }}
+                  allowDeselect={false}
                 />
+                {effLoadProtected && (
+                  <CollapsibleSection
+                    title={t("tableEditForm.sourceProtectionPanel")}
+                    testId="mv-protection-panel"
+                    defaultOpen
+                  >
+                    {/* REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is
+                  open. Two time widgets (opens/closes) compose the string; both blank = no window. */}
+                    <div data-testid="off-peak-window">
+                      <FieldLabel
+                        text={t("tableEditForm.offPeakWindowLabel")}
+                        help={t("tableEditForm.offPeakWindowHelp")}
+                      />
+                      <Group gap="xs" grow>
+                        <TimeInput
+                          aria-label={t("tableEditForm.offPeakOpensAria")}
+                          data-testid="off-peak-opens"
+                          label={t("tableEditForm.offPeakOpens")}
+                          value={(editingTable.offPeakWindow ?? "").split("-")[0] ?? ""}
+                          onChange={(e) => {
+                            const end = (editingTable.offPeakWindow ?? "").split("-")[1] ?? "";
+                            const start = e.currentTarget.value;
+                            setEditingTable({
+                              ...editingTable,
+                              offPeakWindow: start || end ? `${start}-${end}` : null,
+                            });
+                          }}
+                        />
+                        <TimeInput
+                          aria-label={t("tableEditForm.offPeakClosesAria")}
+                          data-testid="off-peak-closes"
+                          label={t("tableEditForm.offPeakCloses")}
+                          value={(editingTable.offPeakWindow ?? "").split("-")[1] ?? ""}
+                          onChange={(e) => {
+                            const start = (editingTable.offPeakWindow ?? "").split("-")[0] ?? "";
+                            const end = e.currentTarget.value;
+                            setEditingTable({
+                              ...editingTable,
+                              offPeakWindow: start || end ? `${start}-${end}` : null,
+                            });
+                          }}
+                        />
+                      </Group>
+                    </div>
+                    <Select
+                      // REQ-1141: IANA zone for the off-peak window. Picklist of the runtime's supported zones
+                      // (Intl.supportedValuesOf) — the same identifiers ZoneInfo accepts server-side — so the
+                      // window can never be saved against an unparseable zone.
+                      label={
+                        <FieldLabel
+                          text={t("tableEditForm.offPeakTzLabel")}
+                          help={t("tableEditForm.offPeakTzHelp")}
+                        />
+                      }
+                      data={IANA_TIME_ZONES}
+                      value={editingTable.offPeakTz ?? ""}
+                      onChange={(v) =>
+                        setEditingTable({
+                          ...editingTable,
+                          offPeakTz: v || null,
+                        })
+                      }
+                      searchable
+                      clearable
+                      placeholder="UTC"
+                      comboboxProps={{ withinPortal: true }}
+                    />
+                  </CollapsibleSection>
+                )}
               </CollapsibleSection>
             )}
-          </CollapsibleSection>
-        )}
-        <div style={{ gridColumn: "1 / -1" }}>
-          <FieldLabel
-            text={t("tableEditForm.descriptionLabel")}
-            help={t("tableEditForm.descriptionHelp")}
-          />
-          <DescriptionField
-            value={editingTable.description || ""}
-            onChange={(v) => setEditingTable({ ...editingTable, description: v || null })}
-            placeholder={t("tableEditForm.descriptionPlaceholder")}
-            rows={2}
-            generating={generatingDesc}
-            onGenerate={async () => {
-              setGeneratingDesc(true);
-              try {
-                const desc = await generateTableDescription(editingTable.id);
-                if (desc) setEditingTable({ ...editingTable, description: desc });
-              } finally {
-                setGeneratingDesc(false);
-              }
-            }}
-          />
-        </div>
-        {editingTable.viewSql && (
-          <>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <FieldLabel
+                text={t("tableEditForm.descriptionLabel")}
+                help={t("tableEditForm.descriptionHelp")}
+              />
+              <DescriptionField
+                value={editingTable.description || ""}
+                onChange={(v) => setEditingTable({ ...editingTable, description: v || null })}
+                placeholder={t("tableEditForm.descriptionPlaceholder")}
+                rows={2}
+                generating={generatingDesc}
+                onGenerate={async () => {
+                  setGeneratingDesc(true);
+                  try {
+                    const desc = await generateTableDescription(editingTable.id);
+                    if (desc) setEditingTable({ ...editingTable, description: desc });
+                  } finally {
+                    setGeneratingDesc(false);
+                  }
+                }}
+              />
+            </div>
+            {editingTable.viewSql && (
+              <>
+                <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
+                  <Checkbox
+                    checked={editingTable.materialize}
+                    onChange={(e) =>
+                      setEditingTable({
+                        ...editingTable,
+                        materialize: e.currentTarget.checked,
+                      })
+                    }
+                    label={t("tableEditForm.materializedViewLabel")}
+                  />
+                  <Text size="sm" c="dimmed">
+                    {t("tableEditForm.materializedViewDesc")}
+                  </Text>
+                  <Tooltip label={t("tableEditForm.materializedViewHelp")} multiline w={320}>
+                    <Text
+                      component="span"
+                      size="xs"
+                      c="dimmed"
+                      style={{ cursor: "help", lineHeight: 1 }}
+                    >
+                      ⓘ
+                    </Text>
+                  </Tooltip>
+                </Group>
+                {editingTable.materialize && (
+                  <MaterializedViewPanels
+                    editingTable={editingTable}
+                    setEditingTable={setEditingTable}
+                  />
+                )}
+              </>
+            )}
+            <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
+              {isCheckerTable ? (
+                // REQ-1443 clause 10: a checker table's membership is inherited from the table its
+                // contract scans — the server derives it, so it is shown, never chosen.
+                <TextInput
+                  label={t("tableEditForm.dataProductLabel")}
+                  value={
+                    editingTable.productId == null
+                      ? t("tableEditForm.dataProductNone")
+                      : (dataProducts.find((p) => p.id === editingTable.productId)?.name ??
+                        editingTable.productId)
+                  }
+                  readOnly
+                  disabled
+                  data-testid="table-edit-product-id"
+                />
+              ) : (
+                <Select
+                  label={t("tableEditForm.dataProductLabel")}
+                  placeholder={t("tableEditForm.dataProductNone")}
+                  clearable
+                  // REQ-1634: a table may only join a data product owned by its own domain.
+                  data={dataProducts
+                    .filter((p) => p.domainId === editingTable.domainId)
+                    .map((p) => ({ value: p.id, label: p.name }))}
+                  value={editingTable.productId}
+                  onChange={(value) =>
+                    setEditingTable({
+                      ...editingTable,
+                      productId: value,
+                    })
+                  }
+                  data-testid="table-edit-product-id"
+                />
+              )}
+              <Text size="sm" c="dimmed">
+                {isCheckerTable
+                  ? t("tableEditForm.dataProductInherited")
+                  : t("tableEditForm.dataProductDesc")}
+              </Text>
+            </Group>
             <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
               <Checkbox
-                checked={editingTable.materialize}
+                checked={editingTable.enableAggregates}
                 onChange={(e) =>
                   setEditingTable({
                     ...editingTable,
-                    materialize: e.currentTarget.checked,
+                    enableAggregates: e.currentTarget.checked,
                   })
                 }
-                label={t("tableEditForm.materializedViewLabel")}
+                label={t("tableEditForm.enableAggregatesLabel")}
               />
               <Text size="sm" c="dimmed">
-                {t("tableEditForm.materializedViewDesc")}
+                {t("tableEditForm.enableAggregatesDesc")}
               </Text>
-              <Tooltip label={t("tableEditForm.materializedViewHelp")} multiline w={320}>
-                <Text
-                  component="span"
-                  size="xs"
-                  c="dimmed"
-                  style={{ cursor: "help", lineHeight: 1 }}
-                >
-                  ⓘ
-                </Text>
-              </Tooltip>
             </Group>
-            {editingTable.materialize && (
-              <MaterializedViewPanels
-                editingTable={editingTable}
-                setEditingTable={setEditingTable}
+            <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
+              <Checkbox
+                checked={editingTable.enableGroupBy}
+                onChange={(e) =>
+                  setEditingTable({
+                    ...editingTable,
+                    enableGroupBy: e.currentTarget.checked,
+                  })
+                }
+                label={t("tableEditForm.enableGroupByLabel")}
+              />
+              <Text size="sm" c="dimmed">
+                {t("tableEditForm.enableGroupByDesc")}
+              </Text>
+            </Group>
+            {editingTable.apiEndpoint && (
+              <TextInput
+                style={{ gridColumn: "1 / -1" }}
+                label={t("tableEditForm.apiEndpointLabel")}
+                readOnly
+                value={editingTable.apiEndpoint}
+                styles={{ input: { color: "var(--text-muted)", cursor: "default" } }}
               />
             )}
-          </>
-        )}
-        <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
-          {isCheckerTable ? (
-            // REQ-1443 clause 10: a checker table's membership is inherited from the table its
-            // contract scans — the server derives it, so it is shown, never chosen.
-            <TextInput
-              label={t("tableEditForm.dataProductLabel")}
-              value={
-                editingTable.productId == null
-                  ? t("tableEditForm.dataProductNone")
-                  : (dataProducts.find((p) => p.id === editingTable.productId)?.name ??
-                    editingTable.productId)
-              }
-              readOnly
-              disabled
-              data-testid="table-edit-product-id"
-            />
-          ) : (
             <Select
-              label={t("tableEditForm.dataProductLabel")}
-              placeholder={t("tableEditForm.dataProductNone")}
-              clearable
-              // REQ-1634: a table may only join a data product owned by its own domain.
-              data={dataProducts
-                .filter((p) => p.domainId === editingTable.domainId)
-                .map((p) => ({ value: p.id, label: p.name }))}
-              value={editingTable.productId}
-              onChange={(value) =>
+              label={
+                <FieldLabel
+                  text={t("tableEditForm.changeSignalLabel")}
+                  help={t("tableEditForm.changeSignalHelp")}
+                />
+              }
+              data={[
+                { value: "", label: t("tableEditForm.csInherit") },
+                { value: "ttl", label: t("tableEditForm.csTtl") },
+                { value: "probe", label: t("tableEditForm.csProbe") },
+                { value: "ttl_probe", label: t("tableEditForm.csTtlProbe") },
+                { value: "native", label: t("tableEditForm.csNative") },
+                { value: "debezium", label: t("tableEditForm.csDebezium") },
+                { value: "kafka", label: t("tableEditForm.csKafka") },
+              ]}
+              value={editingTable.changeSignal ?? ""}
+              onChange={(v) =>
                 setEditingTable({
                   ...editingTable,
-                  productId: value,
+                  changeSignal: v || null,
                 })
               }
-              data-testid="table-edit-product-id"
+              comboboxProps={{ withinPortal: true }}
+              allowDeselect={false}
             />
-          )}
-          <Text size="sm" c="dimmed">
-            {isCheckerTable
-              ? t("tableEditForm.dataProductInherited")
-              : t("tableEditForm.dataProductDesc")}
-          </Text>
-        </Group>
-        <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
-          <Checkbox
-            checked={editingTable.enableAggregates}
-            onChange={(e) =>
-              setEditingTable({
-                ...editingTable,
-                enableAggregates: e.currentTarget.checked,
-              })
-            }
-            label={t("tableEditForm.enableAggregatesLabel")}
-          />
-          <Text size="sm" c="dimmed">
-            {t("tableEditForm.enableAggregatesDesc")}
-          </Text>
-        </Group>
-        <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
-          <Checkbox
-            checked={editingTable.enableGroupBy}
-            onChange={(e) =>
-              setEditingTable({
-                ...editingTable,
-                enableGroupBy: e.currentTarget.checked,
-              })
-            }
-            label={t("tableEditForm.enableGroupByLabel")}
-          />
-          <Text size="sm" c="dimmed">
-            {t("tableEditForm.enableGroupByDesc")}
-          </Text>
-        </Group>
-        {editingTable.apiEndpoint && (
-          <TextInput
-            style={{ gridColumn: "1 / -1" }}
-            label={t("tableEditForm.apiEndpointLabel")}
-            readOnly
-            value={editingTable.apiEndpoint}
-            styles={{ input: { color: "var(--text-muted)", cursor: "default" } }}
-          />
-        )}
-        <Select
-          label={
-            <FieldLabel
-              text={t("tableEditForm.changeSignalLabel")}
-              help={t("tableEditForm.changeSignalHelp")}
-            />
-          }
-          data={[
-            { value: "", label: t("tableEditForm.csInherit") },
-            { value: "ttl", label: t("tableEditForm.csTtl") },
-            { value: "probe", label: t("tableEditForm.csProbe") },
-            { value: "ttl_probe", label: t("tableEditForm.csTtlProbe") },
-            { value: "native", label: t("tableEditForm.csNative") },
-            { value: "debezium", label: t("tableEditForm.csDebezium") },
-            { value: "kafka", label: t("tableEditForm.csKafka") },
-          ]}
-          value={editingTable.changeSignal ?? ""}
-          onChange={(v) =>
-            setEditingTable({
-              ...editingTable,
-              changeSignal: v || null,
-            })
-          }
-          comboboxProps={{ withinPortal: true }}
-          allowDeselect={false}
-        />
-        {(editingTable.changeSignal === "ttl" || editingTable.changeSignal === "ttl_probe") &&
-          (() => {
-            // A __derived__ view has no Cache TTL — its ttl cadence is the materialized view's
-            // Refresh Interval. A non-materialized view can't honor ttl (nothing to refresh).
-            if (isView) {
-              return editingTable.materialize ? (
-                <Text style={{ gridColumn: "1 / -1" }} size="xs" c="dimmed">
-                  {t("tableEditForm.ttlViewRefreshes", {
-                    sec: editingTable.mvRefreshInterval,
-                  })}
-                </Text>
-              ) : (
-                <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
-                  {t("tableEditForm.ttlViewNeedsMv")}{" "}
-                  <strong>{t("tableEditForm.materializedViewLabel")}</strong>{" "}
-                  {t("tableEditForm.ttlViewNeedsMvPost")}
-                </Text>
-              );
-            }
-            const cs = sources.find((s) => s.id === editingTable.sourceId);
-            // Mirror the Cache TTL input's value resolution: the staged edit
-            // (cacheTtlEdits) wins, then the table value, then the source.
-            const staged = cacheTtlEdits[editingTable.id]?.value;
-            const tableTtl =
-              staged != null && staged !== ""
-                ? Number(staged)
-                : staged === ""
-                  ? null
-                  : editingTable.cacheTtl;
-            const effTtl = tableTtl ?? cs?.cacheTtl ?? null;
-            const fromTable = tableTtl != null;
-            return effTtl == null ? (
-              <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
-                {t("tableEditForm.ttlNeedsIntervalPre")}{" "}
-                <strong>{t("tableEditForm.cacheTtlLabel")}</strong>{" "}
-                {t("tableEditForm.ttlNeedsIntervalPost")}
-              </Text>
-            ) : (
-              <Text style={{ gridColumn: "1 / -1" }} size="xs" c="dimmed">
-                {t("tableEditForm.refreshesEvery", {
-                  sec: effTtl,
-                  source: fromTable
-                    ? t("tableEditForm.sourceTable")
-                    : t("tableEditForm.sourceSource"),
-                })}
-              </Text>
-            );
-          })()}
-        {(editingTable.changeSignal === "debezium" || editingTable.changeSignal === "kafka") &&
-          (() => {
-            const cs = sources.find((s) => s.id === editingTable.sourceId);
-            const hasCdc = !!cs?.cdc?.bootstrapServers;
-            const hasPk = editingTable.columns.some((c) => c.isPrimaryKey);
-            // Debezium derives {prefix}.{schema}.{table}; a plain Kafka feed
-            // consumes the topic named for the table (kafka_provider: topic=table).
-            const topic =
-              editingTable.changeSignal === "debezium"
-                ? `${cs?.cdc?.topicPrefix}.${editingTable.schemaName}.${editingTable.tableName}`
-                : editingTable.tableName;
-            return (
-              <>
-                {hasCdc ? (
-                  <Text style={{ gridColumn: "1 / -1" }} size="xs" c="dimmed">
-                    {t("tableEditForm.cdcTransportPre")}
-                    {cs!.cdc!.bootstrapServers}
-                    {t("tableEditForm.cdcTransportMid")} <code>{topic}</code>.{" "}
-                    {t("tableEditForm.cdcTransportPost")}
+            {(editingTable.changeSignal === "ttl" || editingTable.changeSignal === "ttl_probe") &&
+              (() => {
+                // A __derived__ view has no Cache TTL — its ttl cadence is the materialized view's
+                // Refresh Interval. A non-materialized view can't honor ttl (nothing to refresh).
+                if (isView) {
+                  return editingTable.materialize ? (
+                    <Text style={{ gridColumn: "1 / -1" }} size="xs" c="dimmed">
+                      {t("tableEditForm.ttlViewRefreshes", {
+                        sec: editingTable.mvRefreshInterval,
+                      })}
+                    </Text>
+                  ) : (
+                    <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
+                      {t("tableEditForm.ttlViewNeedsMv")}{" "}
+                      <strong>{t("tableEditForm.materializedViewLabel")}</strong>{" "}
+                      {t("tableEditForm.ttlViewNeedsMvPost")}
+                    </Text>
+                  );
+                }
+                const cs = sources.find((s) => s.id === editingTable.sourceId);
+                // Mirror the Cache TTL input's value resolution: the staged edit
+                // (cacheTtlEdits) wins, then the table value, then the source.
+                const staged = cacheTtlEdits[editingTable.id]?.value;
+                const tableTtl =
+                  staged != null && staged !== ""
+                    ? Number(staged)
+                    : staged === ""
+                      ? null
+                      : editingTable.cacheTtl;
+                const effTtl = tableTtl ?? cs?.cacheTtl ?? null;
+                const fromTable = tableTtl != null;
+                return effTtl == null ? (
+                  <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
+                    {t("tableEditForm.ttlNeedsIntervalPre")}{" "}
+                    <strong>{t("tableEditForm.cacheTtlLabel")}</strong>{" "}
+                    {t("tableEditForm.ttlNeedsIntervalPost")}
                   </Text>
                 ) : (
-                  <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
-                    {editingTable.changeSignal} {t("tableEditForm.cdcMissingPre")}{" "}
-                    <strong>{t("tableEditForm.cdcMissingBold")}</strong>.{" "}
-                    {t("tableEditForm.cdcMissingPost")}
+                  <Text style={{ gridColumn: "1 / -1" }} size="xs" c="dimmed">
+                    {t("tableEditForm.refreshesEvery", {
+                      sec: effTtl,
+                      source: fromTable
+                        ? t("tableEditForm.sourceTable")
+                        : t("tableEditForm.sourceSource"),
+                    })}
                   </Text>
-                )}
-                {!hasPk && (
-                  <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
-                    {t("tableEditForm.noPkPre")} <strong>{t("tableEditForm.noPkBold")}</strong>{" "}
-                    {t("tableEditForm.noPkPost")}
-                  </Text>
-                )}
-              </>
-            );
-          })()}
-        {(editingTable.changeSignal === "probe" || editingTable.changeSignal === "ttl_probe") &&
-          (() => {
-            const src = sources.find((s) => s.id === editingTable.sourceId);
-            const caps = sourceProbeTypes(src?.type);
-            if (caps.length === 0) return null;
-            return (
-              <Select
+                );
+              })()}
+            {(editingTable.changeSignal === "debezium" || editingTable.changeSignal === "kafka") &&
+              (() => {
+                const cs = sources.find((s) => s.id === editingTable.sourceId);
+                const hasCdc = !!cs?.cdc?.bootstrapServers;
+                const hasPk = editingTable.columns.some((c) => c.isPrimaryKey);
+                // Debezium derives {prefix}.{schema}.{table}; a plain Kafka feed
+                // consumes the topic named for the table (kafka_provider: topic=table).
+                const topic =
+                  editingTable.changeSignal === "debezium"
+                    ? `${cs?.cdc?.topicPrefix}.${editingTable.schemaName}.${editingTable.tableName}`
+                    : editingTable.tableName;
+                return (
+                  <>
+                    {hasCdc ? (
+                      <Text style={{ gridColumn: "1 / -1" }} size="xs" c="dimmed">
+                        {t("tableEditForm.cdcTransportPre")}
+                        {cs!.cdc!.bootstrapServers}
+                        {t("tableEditForm.cdcTransportMid")} <code>{topic}</code>.{" "}
+                        {t("tableEditForm.cdcTransportPost")}
+                      </Text>
+                    ) : (
+                      <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
+                        {editingTable.changeSignal} {t("tableEditForm.cdcMissingPre")}{" "}
+                        <strong>{t("tableEditForm.cdcMissingBold")}</strong>.{" "}
+                        {t("tableEditForm.cdcMissingPost")}
+                      </Text>
+                    )}
+                    {!hasPk && (
+                      <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
+                        {t("tableEditForm.noPkPre")} <strong>{t("tableEditForm.noPkBold")}</strong>{" "}
+                        {t("tableEditForm.noPkPost")}
+                      </Text>
+                    )}
+                  </>
+                );
+              })()}
+            {(editingTable.changeSignal === "probe" || editingTable.changeSignal === "ttl_probe") &&
+              (() => {
+                const src = sources.find((s) => s.id === editingTable.sourceId);
+                const caps = sourceProbeTypes(src?.type);
+                if (caps.length === 0) return null;
+                return (
+                  <Select
+                    style={{ gridColumn: "1 / -1" }}
+                    label={
+                      <FieldLabel
+                        text={t("tableEditForm.probeTypeLabel")}
+                        help={t("tableEditForm.probeTypeHelp")}
+                      />
+                    }
+                    data={[
+                      { value: "", label: t("tableEditForm.probeTypeAuto") },
+                      ...caps.map((pt) => ({
+                        value: pt,
+                        label:
+                          pt +
+                          (pt === "watermark"
+                            ? t("tableEditForm.probeAppendSuffix")
+                            : t("tableEditForm.probeReplaceSuffix")),
+                      })),
+                    ]}
+                    value={editingTable.probeType ?? ""}
+                    onChange={(v) =>
+                      setEditingTable({
+                        ...editingTable,
+                        probeType: v || null,
+                      })
+                    }
+                    comboboxProps={{ withinPortal: true }}
+                    allowDeselect={false}
+                  />
+                );
+              })()}
+            {(editingTable.changeSignal === "probe" ||
+              editingTable.changeSignal === "ttl_probe") && (
+              <TextInput
                 style={{ gridColumn: "1 / -1" }}
                 label={
                   <FieldLabel
-                    text={t("tableEditForm.probeTypeLabel")}
-                    help={t("tableEditForm.probeTypeHelp")}
+                    text={t("tableEditForm.freshnessProbeLabel")}
+                    help={t("tableEditForm.freshnessProbeHelp")}
                   />
                 }
-                data={[
-                  { value: "", label: t("tableEditForm.probeTypeAuto") },
-                  ...caps.map((pt) => ({
-                    value: pt,
-                    label:
-                      pt +
-                      (pt === "watermark"
-                        ? t("tableEditForm.probeAppendSuffix")
-                        : t("tableEditForm.probeReplaceSuffix")),
-                  })),
-                ]}
-                value={editingTable.probeType ?? ""}
-                onChange={(v) =>
+                value={editingTable.probeQuery ?? ""}
+                onChange={(e) =>
                   setEditingTable({
                     ...editingTable,
-                    probeType: v || null,
+                    probeQuery: e.target.value || null,
                   })
                 }
-                comboboxProps={{ withinPortal: true }}
-                allowDeselect={false}
+                placeholder={t("tableEditForm.freshnessProbePlaceholder")}
               />
-            );
-          })()}
-        {(editingTable.changeSignal === "probe" || editingTable.changeSignal === "ttl_probe") && (
-          <TextInput
-            style={{ gridColumn: "1 / -1" }}
-            label={
-              <FieldLabel
-                text={t("tableEditForm.freshnessProbeLabel")}
-                help={t("tableEditForm.freshnessProbeHelp")}
-              />
-            }
-            value={editingTable.probeQuery ?? ""}
-            onChange={(e) =>
-              setEditingTable({
-                ...editingTable,
-                probeQuery: e.target.value || null,
-              })
-            }
-            placeholder={t("tableEditForm.freshnessProbePlaceholder")}
-          />
-        )}
-        <LiveDeliveryFieldset
-          editingTable={editingTable}
-          setEditingTable={setEditingTable}
-          editingColumnTypes={editingColumnTypes}
-          sources={sources}
-          settings={settings}
-        />
-        <DeltaFieldset editingTable={editingTable} setEditingTable={setEditingTable} />
-      </div>
-      {/* REQ-1443 clause 7: a checker source's table lands that checker's scans, so its contract is
+            )}
+            <LiveDeliveryFieldset
+              editingTable={editingTable}
+              setEditingTable={setEditingTable}
+              editingColumnTypes={editingColumnTypes}
+              sources={sources}
+              settings={settings}
+            />
+            <DeltaFieldset editingTable={editingTable} setEditingTable={setEditingTable} />
+          </div>
+          {/* REQ-1443 clause 7: a checker source's table lands that checker's scans, so its contract is
           edited here. Only a checker source has one — every other table has no contract to build. */}
-      {editSource != null && isCheckerTable && (
-        <DataQualityPanel
-          checker={(editSource.type ?? "").toLowerCase()}
-          sourceId={editSource.id}
-          tableId={editingTable.id}
-          contractText={editingTable.dqContract ?? ""}
-          onChange={(text) => setEditingTable({ ...editingTable, dqContract: text || null })}
-        />
-      )}
-      {/* REQ-1934: any table but a checker's results or a profiler's own may join a profiler. */}
-      {editSource != null && !isCheckerTable && editSource.type !== "data_profiler" && (
-        <ProfilerPanel {...{ editingTable, savedProfilerId, setEditingTable }} />
-      )}
-      {(() => {
-        const NOSQL = new Set(["mongodb", "cassandra"]);
-        const src = sources.find((s) => s.id === editingTable.sourceId);
-        // Views and materialized views are read-only — no INSERT/UPDATE path, so presets never apply.
-        const isReadOnlyView = editingTable.viewSql != null;
-        const isMutable = src && !NOSQL.has((src.type ?? "").toLowerCase()) && !isReadOnlyView;
-        return isMutable ? (
+          {editSource != null && isCheckerTable && (
+            <DataQualityPanel
+              checker={(editSource.type ?? "").toLowerCase()}
+              sourceId={editSource.id}
+              tableId={editingTable.id}
+              contractText={editingTable.dqContract ?? ""}
+              onChange={(text) => setEditingTable({ ...editingTable, dqContract: text || null })}
+            />
+          )}
+          {/* REQ-1934: any table but a checker's results or a profiler's own may join a profiler. */}
+          {editSource != null && !isCheckerTable && editSource.type !== "data_profiler" && (
+            <ProfilerPanel {...{ editingTable, savedProfilerId, setEditingTable }} />
+          )}
+          {(() => {
+            const NOSQL = new Set(["mongodb", "cassandra"]);
+            const src = sources.find((s) => s.id === editingTable.sourceId);
+            // Views and materialized views are read-only — no INSERT/UPDATE path, so presets never apply.
+            const isReadOnlyView = editingTable.viewSql != null;
+            const isMutable = src && !NOSQL.has((src.type ?? "").toLowerCase()) && !isReadOnlyView;
+            return isMutable ? (
+              <div style={{ paddingInline: "1.5rem" }}>
+                <ColumnPresetsEditor
+                  presets={editingTable.columnPresets}
+                  columns={editingTable.columns.map((c) => c.columnName)}
+                  columnTypes={editingColumnTypes}
+                  onChange={(presets) =>
+                    setEditingTable({ ...editingTable, columnPresets: presets })
+                  }
+                />
+              </div>
+            ) : null;
+          })()}
+          {/* REQ-1093: table-level UNIQUE constraints editor */}
           <div style={{ paddingInline: "1.5rem" }}>
-            <ColumnPresetsEditor
-              presets={editingTable.columnPresets}
+            <UniquesPanel
+              uniques={editingTable.uniqueConstraints ?? []}
               columns={editingTable.columns.map((c) => c.columnName)}
-              columnTypes={editingColumnTypes}
-              onChange={(presets) => setEditingTable({ ...editingTable, columnPresets: presets })}
+              onChange={(uniques) =>
+                setEditingTable({ ...editingTable, uniqueConstraints: uniques })
+              }
             />
           </div>
-        ) : null;
-      })()}
-      {/* REQ-1093: table-level UNIQUE constraints editor */}
-      <div style={{ paddingInline: "1.5rem" }}>
-        <UniquesPanel
-          uniques={editingTable.uniqueConstraints ?? []}
-          columns={editingTable.columns.map((c) => c.columnName)}
-          onChange={(uniques) => setEditingTable({ ...editingTable, uniqueConstraints: uniques })}
-        />
-      </div>
+        </>
+      )}
       <div style={{ paddingInline: "1.5rem" }}>
         <ColumnModes
           table={editingTable}
@@ -780,41 +799,13 @@ export function TableEditForm({
                 {editingTable.columns.map((c, i) => (
                   <Fragment key={c.id}>
                     <Table.Tr data-testid={`column-row-${c.columnName}`}>
-                      <Table.Td>
-                        {/* REQ-1387: glossary term summary card on column-name hover. */}
-                        <ColumnGlossaryHover tableId={editingTable.id} columnName={c.columnName}>
-                          <code>{c.columnName}</code>
-                        </ColumnGlossaryHover>
-                        {c.nativeFilterType && (
-                          <ColumnBadge
-                            color={c.nativeFilterType === "path_param" ? "yellow" : "blue"}
-                          >
-                            {c.nativeFilterType === "path_param"
-                              ? t("tableEditForm.pathBadge")
-                              : t("tableEditForm.queryBadge")}
-                          </ColumnBadge>
-                        )}
-                        {c.isForeignKey && (
-                          <ColumnBadge color="green">{t("tableEditForm.fkBadge")}</ColumnBadge>
-                        )}
-                        {c.isAlternateKey && (
-                          <ColumnBadge color="yellow">{t("tableEditForm.akBadge")}</ColumnBadge>
-                        )}
-                        {/* REQ-1360: metadata-only discoverability badges, gated by the table's own
-                      enableAggregates/enableGroupBy — never governed/reusable, that stays the
-                      named metrics: path. */}
-                        {editingTable.enableAggregates && c.isImplicitMeasure && (
-                          <ColumnBadge color="grape">{t("tableEditForm.measureBadge")}</ColumnBadge>
-                        )}
-                        {editingTable.enableGroupBy && c.isImplicitDimension && (
-                          <ColumnBadge color="cyan">{t("tableEditForm.dimBadge")}</ColumnBadge>
-                        )}
-                      </Table.Td>
+                      <ColumnNameCell table={editingTable} c={c} />
                       <Table.Td style={{ textAlign: "center" }}>
                         <Checkbox
                           aria-label={t("tableEditForm.primaryKeyAria")}
                           title={t("tableEditForm.primaryKeyAria")}
                           checked={c.isPrimaryKey || false}
+                          disabled={hidingOnly}
                           onChange={(e) =>
                             updateEditCol(i, "isPrimaryKey", e.currentTarget.checked)
                           }
@@ -829,6 +820,7 @@ export function TableEditForm({
                           ).map((v) => ({ value: v, label: v }))}
                           value={c.dataType ? toIrType(c.dataType) : null}
                           onChange={(v) => updateEditCol(i, "dataType", v ?? "")}
+                          disabled={hidingOnly}
                           searchable
                           comboboxProps={{ withinPortal: true }}
                           styles={{ input: { fontFamily: "monospace" } }}
@@ -839,30 +831,35 @@ export function TableEditForm({
                           aria-label={t("tableEditForm.sqlAliasHeader")}
                           value={c.alias || c.computedSqlAlias}
                           onChange={(e) => updateEditCol(i, "alias", e.target.value)}
+                          disabled={hidingOnly}
                         />
                       </Table.Td>
                       <Table.Td>
-                        <DescriptionField
-                          value={c.description || ""}
-                          onChange={(v) => updateEditCol(i, "description", v)}
-                          placeholder={t("tableEditForm.descriptionHeader")}
-                          rows={1}
-                          generating={generatingColDesc === c.columnName}
-                          onGenerate={async () => {
-                            setGeneratingColDesc(c.columnName);
-                            try {
-                              const desc = await generateColumnDescription(
-                                editingTable.id,
-                                c.columnName,
-                              );
-                              if (desc) updateEditCol(i, "description", desc);
-                            } catch (err) {
-                              console.error("generateColumnDescription failed:", err);
-                            } finally {
-                              setGeneratingColDesc(null);
-                            }
-                          }}
-                        />
+                        {hidingOnly ? (
+                          <Text size="sm">{c.description || ""}</Text>
+                        ) : (
+                          <DescriptionField
+                            value={c.description || ""}
+                            onChange={(v) => updateEditCol(i, "description", v)}
+                            placeholder={t("tableEditForm.descriptionHeader")}
+                            rows={1}
+                            generating={generatingColDesc === c.columnName}
+                            onGenerate={async () => {
+                              setGeneratingColDesc(c.columnName);
+                              try {
+                                const desc = await generateColumnDescription(
+                                  editingTable.id,
+                                  c.columnName,
+                                );
+                                if (desc) updateEditCol(i, "description", desc);
+                              } catch (err) {
+                                console.error("generateColumnDescription failed:", err);
+                              } finally {
+                                setGeneratingColDesc(null);
+                              }
+                            }}
+                          />
+                        )}
                       </Table.Td>
                       <Table.Td>
                         <MultiSelect
@@ -878,6 +875,7 @@ export function TableEditForm({
                           value={c.writableBy}
                           onChange={(selected) => updateEditCol(i, "writableBy", selected)}
                           ariaLabel={t("tableEditForm.writableByHeader")}
+                          disabled={hidingOnly}
                         />
                       </Table.Td>
                       <Table.Td>
@@ -900,6 +898,7 @@ export function TableEditForm({
                           ]}
                           value={c.scope || "domain"}
                           onChange={(v) => updateEditCol(i, "scope", v ?? "domain")}
+                          disabled={hidingOnly}
                           comboboxProps={{ withinPortal: true }}
                           allowDeselect={false}
                         />
@@ -910,6 +909,7 @@ export function TableEditForm({
                             aria-label={t("tableEditForm.jsonPathHeader")}
                             value={c.path || ""}
                             onChange={(e) => updateEditCol(i, "path", e.target.value)}
+                            disabled={hidingOnly}
                             placeholder="payload.order_id"
                             data-testid={`table-edit-col-path-${c.columnName}`}
                           />

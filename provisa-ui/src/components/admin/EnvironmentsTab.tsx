@@ -185,7 +185,7 @@ export function EnvironmentsTab() {
       const made = await createEnvironment(orgId, {
         name,
         from_env: from,
-        inherit_connections: inherits,
+        data_mode: inherits ? "inherit" : "unbound",
         ...(synthetic ? { synthetic } : {}),
       });
       notifications.show({
@@ -311,9 +311,10 @@ export function EnvironmentsTab() {
 
   function openMerge(env: Environment) {
     setMergeSource(env);
-    // A base environment has no `branched_from`, so it opens with nothing chosen and the merge is
-    // refused until somebody names a target — the server refuses it too (REQ-1549).
-    setMergeInto(env.branched_from);
+    // An environment merges back into the one it was created from; prod has none, so it opens with
+    // nothing chosen and the merge is refused until somebody names a target — the server refuses
+    // it too (REQ-1549).
+    setMergeInto(env.parent);
     setRemovals(false);
     setMessage("");
     setRetireSource(false);
@@ -465,7 +466,9 @@ export function EnvironmentsTab() {
           <Tabs.Tab value="requests">{t("environmentsTab.tabRequests")}</Tabs.Tab>
           <Tabs.Tab value="repository">{t("environmentsTab.tabRepository")}</Tabs.Tab>
           <Tabs.Tab value="integration">{t("environmentsTab.tabIntegration")}</Tabs.Tab>
-          <Tabs.Tab value="synthetic" data-tour="synthetic-tab">{t("syntheticDatasets.tab")}</Tabs.Tab>
+          <Tabs.Tab value="synthetic" data-tour="synthetic-tab">
+            {t("syntheticDatasets.tab")}
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="environments" pt="md">
@@ -513,182 +516,193 @@ export function EnvironmentsTab() {
             <SyntheticSeedFields envs={names} seed={synthetic} setSeed={setSynthetic} />
 
             <SortGroupTable
-          testPrefix="environments"
-          rows={envs}
-          columns={[
-            { key: "name", label: t("environmentsTab.colName"), sortValue: (e) => e.name },
-            { key: "kind", label: t("environmentsTab.colKind"), sortValue: (e) => e.branched_from ?? "", groupValue: (e) => e.branched_from ?? "" },
-            { key: "createdBy", label: t("environmentsTab.colCreatedBy"), sortValue: (e) => e.created_by ?? "", groupValue: (e) => e.created_by ?? "" },
-            { key: "expires", label: t("environmentsTab.colExpires"), sortValue: (e) => e.expires_at ?? "" },
-          ]}
-          headers={[
-            { col: "name" },
-            { col: "kind" },
-            t("environmentsTab.colRepo"),
-            { col: "createdBy" },
-            { col: "expires" },
-            (
-              <Group gap={4} align="center" wrap="nowrap">
-                {t("environmentsTab.colProtected")}
-                <HelpBubble
-                  title={t("environmentsTab.protectedTitle")}
-                  paragraphs={[
-                    t("environmentsTab.protectedHelp"),
-                    t("environmentsTab.protectedHelp2"),
-                  ]}
-                  ariaLabel={t("environmentsTab.protectedTitle")}
-                  testId="env-protected-help"
-                />
-              </Group>
-            ),
-            t("environmentsTab.colActions"),
-          ]}
-          colSpan={7}
-          rowKey={(e) => e.name}
-          render={(e) => (
-                  <ListRow key={e.name} testId={`env-row-${e.name}`}>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <Text size="sm">{e.name}</Text>
-                        {e.drifted && (
-                          <Tooltip label={t("environmentsTab.driftedHelp")}>
-                            <Badge color="orange" data-testid={`env-drifted-${e.name}`}>
-                              {t("environmentsTab.drifted")}
-                            </Badge>
-                          </Tooltip>
-                        )}
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>
-                      {isBase(e) ? (
+              testPrefix="environments"
+              rows={envs}
+              columns={[
+                { key: "name", label: t("environmentsTab.colName"), sortValue: (e) => e.name },
+                {
+                  key: "kind",
+                  label: t("environmentsTab.colKind"),
+                  sortValue: (e) => e.parent ?? "",
+                  groupValue: (e) => e.parent ?? "",
+                },
+                {
+                  key: "createdBy",
+                  label: t("environmentsTab.colCreatedBy"),
+                  sortValue: (e) => e.created_by ?? "",
+                  groupValue: (e) => e.created_by ?? "",
+                },
+                {
+                  key: "expires",
+                  label: t("environmentsTab.colExpires"),
+                  sortValue: (e) => e.expires_at ?? "",
+                },
+              ]}
+              headers={[
+                { col: "name" },
+                { col: "kind" },
+                t("environmentsTab.colRepo"),
+                { col: "createdBy" },
+                { col: "expires" },
+                <Group gap={4} align="center" wrap="nowrap">
+                  {t("environmentsTab.colProtected")}
+                  <HelpBubble
+                    title={t("environmentsTab.protectedTitle")}
+                    paragraphs={[
+                      t("environmentsTab.protectedHelp"),
+                      t("environmentsTab.protectedHelp2"),
+                    ]}
+                    ariaLabel={t("environmentsTab.protectedTitle")}
+                    testId="env-protected-help"
+                  />
+                </Group>,
+                t("environmentsTab.colActions"),
+              ]}
+              colSpan={7}
+              rowKey={(e) => e.name}
+              render={(e) => (
+                <ListRow key={e.name} testId={`env-row-${e.name}`}>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <Text size="sm">{e.name}</Text>
+                      {e.drifted && (
+                        <Tooltip label={t("environmentsTab.driftedHelp")}>
+                          <Badge color="orange" data-testid={`env-drifted-${e.name}`}>
+                            {t("environmentsTab.drifted")}
+                          </Badge>
+                        </Tooltip>
+                      )}
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>
+                    {isBase(e) ? (
+                      <Text size="sm" c="dimmed">
+                        {t("environmentsTab.ownConnections")}
+                      </Text>
+                    ) : (
+                      <Badge variant="light" data-testid={`env-inherits-${e.name}`}>
+                        {t("environmentsTab.branchOf", { env: e.parent })}
+                      </Badge>
+                    )}
+                  </Table.Td>
+                  <Table.Td>
+                    {(() => {
+                      const badge = syncBadge(e.name);
+                      // No row for this branch means the sync call has not answered yet, which
+                      // is not the same as being in sync and is not drawn as if it were.
+                      return badge === null ? (
                         <Text size="sm" c="dimmed">
-                          {t("environmentsTab.ownConnections")}
+                          —
                         </Text>
                       ) : (
-                        <Badge variant="light" data-testid={`env-inherits-${e.name}`}>
-                          {t("environmentsTab.branchOf", { env: e.branched_from })}
-                        </Badge>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      {(() => {
-                        const badge = syncBadge(e.name);
-                        // No row for this branch means the sync call has not answered yet, which
-                        // is not the same as being in sync and is not drawn as if it were.
-                        return badge === null ? (
-                          <Text size="sm" c="dimmed">
-                            —
-                          </Text>
-                        ) : (
-                          <Badge
-                            color={badge.color}
-                            variant="light"
-                            data-testid={`env-sync-${e.name}`}
-                            data-state={badge.id}
-                          >
-                            {badge.label}
-                          </Badge>
-                        );
-                      })()}
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm">{e.created_by ?? "—"}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm">{e.expires_at ?? "—"}</Text>
-                      {Object.keys(e.expired_kept_by).length > 0 && (
-                        // REQ-1918: past its expiry and still standing, because something still
-                        // refers to it. Said on the row so nobody has to read the server's log.
-                        <Tooltip
-                          multiline
-                          w={300}
-                          withArrow
-                          label={t("environmentsTab.expiredKeptHint", {
-                            reasons: Object.entries(e.expired_kept_by)
-                              .map(
-                                ([kind, count]) =>
-                                  `${t(`dependentsDialog.kind.${kind}`)}: ${count}`,
-                              )
-                              .join("; "),
-                          })}
-                        >
-                          <Badge
-                            size="xs"
-                            color="yellow"
-                            variant="light"
-                            data-testid={`env-expired-kept-${e.name}`}
-                          >
-                            {t("environmentsTab.expiredKept")}
-                          </Badge>
-                        </Tooltip>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <Switch
-                        checked={e.protected}
-                        disabled={!canAdminister}
-                        onChange={() => toggleProtected(e)}
-                        data-testid={`env-protected-${e.name}`}
-                        aria-label={t("environmentsTab.colProtected")}
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <Button
-                          size="compact-sm"
+                        <Badge
+                          color={badge.color}
                           variant="light"
-                          leftSection={<GitMerge size={14} aria-hidden />}
-                          onClick={() => openMerge(e)}
-                          data-testid={`env-merge-${e.name}`}
+                          data-testid={`env-sync-${e.name}`}
+                          data-state={badge.id}
                         >
-                          {t("environmentsTab.merge")}
-                        </Button>
-                        {/* REQ-1546: the repair for a branch the best-effort mirror could not
+                          {badge.label}
+                        </Badge>
+                      );
+                    })()}
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{e.created_by ?? "—"}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{e.expires_at ?? "—"}</Text>
+                    {Object.keys(e.expired_kept_by).length > 0 && (
+                      // REQ-1918: past its expiry and still standing, because something still
+                      // refers to it. Said on the row so nobody has to read the server's log.
+                      <Tooltip
+                        multiline
+                        w={300}
+                        withArrow
+                        label={t("environmentsTab.expiredKeptHint", {
+                          reasons: Object.entries(e.expired_kept_by)
+                            .map(
+                              ([kind, count]) => `${t(`dependentsDialog.kind.${kind}`)}: ${count}`,
+                            )
+                            .join("; "),
+                        })}
+                      >
+                        <Badge
+                          size="xs"
+                          color="yellow"
+                          variant="light"
+                          data-testid={`env-expired-kept-${e.name}`}
+                        >
+                          {t("environmentsTab.expiredKept")}
+                        </Badge>
+                      </Tooltip>
+                    )}
+                  </Table.Td>
+                  <Table.Td>
+                    <Switch
+                      checked={e.protected}
+                      disabled={!canAdminister}
+                      onChange={() => toggleProtected(e)}
+                      data-testid={`env-protected-${e.name}`}
+                      aria-label={t("environmentsTab.colProtected")}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <Button
+                        size="compact-sm"
+                        variant="light"
+                        leftSection={<GitMerge size={14} aria-hidden />}
+                        onClick={() => openMerge(e)}
+                        data-testid={`env-merge-${e.name}`}
+                      >
+                        {t("environmentsTab.merge")}
+                      </Button>
+                      {/* REQ-1546: the repair for a branch the best-effort mirror could not
                             send, and the way to take what the remote holds. Both are asked for
                             here rather than run on a timer. */}
-                        <Tooltip label={t("environmentsTab.push")}>
-                          <ActionIcon
-                            variant="subtle"
-                            loading={busy === e.name}
-                            onClick={() => push(e)}
-                            aria-label={t("environmentsTab.push")}
-                            data-testid={`env-push-${e.name}`}
-                          >
-                            <ArrowUpFromLine size={14} aria-hidden />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Tooltip label={t("environmentsTab.pull")}>
-                          <ActionIcon
-                            variant="subtle"
-                            loading={busy === e.name}
-                            onClick={() => pull(e)}
-                            aria-label={t("environmentsTab.pull")}
-                            data-testid={`env-pull-${e.name}`}
-                          >
-                            <ArrowDownToLine size={14} aria-hidden />
-                          </ActionIcon>
-                        </Tooltip>
-                        {/* REQ-1552: stepping this environment's history is offered where the
+                      <Tooltip label={t("environmentsTab.push")}>
+                        <ActionIcon
+                          variant="subtle"
+                          loading={busy === e.name}
+                          onClick={() => push(e)}
+                          aria-label={t("environmentsTab.push")}
+                          data-testid={`env-push-${e.name}`}
+                        >
+                          <ArrowUpFromLine size={14} aria-hidden />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label={t("environmentsTab.pull")}>
+                        <ActionIcon
+                          variant="subtle"
+                          loading={busy === e.name}
+                          onClick={() => pull(e)}
+                          aria-label={t("environmentsTab.pull")}
+                          data-testid={`env-pull-${e.name}`}
+                        >
+                          <ArrowDownToLine size={14} aria-hidden />
+                        </ActionIcon>
+                      </Tooltip>
+                      {/* REQ-1552: stepping this environment's history is offered where the
                             change was made -- the environment switcher -- not here. */}
-                        {/* prod exists from the org's creation and is refused by the server; the
+                      {/* prod exists from the org's creation and is refused by the server; the
                             button is withheld rather than left to fail (REQ-1487). */}
-                        {e.name !== PROD && canAdminister && (
-                          <Button
-                            size="compact-sm"
-                            color="red"
-                            variant="subtle"
-                            leftSection={<Trash2 size={14} aria-hidden />}
-                            onClick={() => openDelete(e)}
-                            data-testid={`env-delete-${e.name}`}
-                          >
-                            {t("environmentsTab.delete")}
-                          </Button>
-                        )}
-                      </Group>
-                    </Table.Td>
-                  </ListRow>
-                )}
-        />
+                      {e.name !== PROD && canAdminister && (
+                        <Button
+                          size="compact-sm"
+                          color="red"
+                          variant="subtle"
+                          leftSection={<Trash2 size={14} aria-hidden />}
+                          onClick={() => openDelete(e)}
+                          data-testid={`env-delete-${e.name}`}
+                        >
+                          {t("environmentsTab.delete")}
+                        </Button>
+                      )}
+                    </Group>
+                  </Table.Td>
+                </ListRow>
+              )}
+            />
           </Stack>
         </Tabs.Panel>
 

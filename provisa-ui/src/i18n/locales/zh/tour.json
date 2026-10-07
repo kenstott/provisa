@@ -5,7 +5,8 @@
       "next": "下一步 ({{current}}/{{total}})",
       "back": "上一步",
       "start": "开始",
-      "docs": "文档"
+      "docs": "文档",
+      "deepDives": "深入探索"
     },
     "welcome": {
       "title": "开始向导式浏览？",
@@ -16,10 +17,54 @@
       "resume": "继续浏览",
       "restart": "重新开始"
     },
+    "menu": {
+      "title": "深入探索",
+      "intro": "一个模型承载你的数据、元数据和处理,保持同步,并在各处复用。选择一个主题:每个主题都是一段独立的简短导览,点击“完成”即可返回此处。",
+      "completed": "已完成",
+      "steps": "步骤数:{{count}}"
+    },
+    "topics": {
+      "connect": {
+        "title": "连接你的数据",
+        "summary": "数据源类型、注册表、副本和实时读取。"
+      },
+      "relationships": {
+        "title": "关系",
+        "summary": "声明表之间的关联,无论在同一数据源内还是跨数据源,也无论数据源自身是否声明。只需声明一次,所有接口都遵循。"
+      },
+      "model": {
+        "title": "建模",
+        "summary": "补充数据源所没有的内容:视图、计算列、指标和命令,每一项只需定义一次,就为每个接口、环境和角色所用。"
+      },
+      "govern": {
+        "title": "治理",
+        "summary": "角色与域、行规则、脱敏、敏感数据和数据管理员。"
+      },
+      "query": {
+        "title": "随处查询",
+        "summary": "通过同一条受管管道使用 SQL、GraphQL、Cypher、REST 和 MCP。"
+      },
+      "testdata": {
+        "title": "测试数据与环境",
+        "summary": "分析器、伪造值、合成数据、环境和数据模式。"
+      },
+      "publish": {
+        "title": "发布",
+        "summary": "数据产品、目录条目和血缘,发布到你的组织所使用的外部工具。"
+      },
+      "operate": {
+        "title": "运维",
+        "summary": "管理报表、可观测性,以及运行平台的管理页面。"
+      }
+    },
     "steps": {
       "step0": {
         "title": "欢迎，来看看导览",
-        "description": "🧭 此指南针可随时重新打开导览。可随时离开——点击应用或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是为您的数据打造的主动语义层，且不介入数据路径。</p><p>🎯 <strong>整个核心只是一个简短的练习：</strong>连接几个数据库，然后以<strong>七种方式</strong>查询它们——或者跳过语法，直接用自然语言提问。大约五分钟，<strong>直接在您的桌面上完成</strong>：无需服务器，无需搭建基础设施（等您准备好后再说）。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>此后的一切——更多数据源、联邦、文件、关系、视图、定时管道——是您随平台<strong>成长</strong>的方式，而不是第一天所必需的。我们会标出核心在哪里结束。</p><p>准备好了吗？让我们连接一个数据源。→</p>"
+        "description": "🧭 此指南针可随时重新打开导览。可随时离开——点击应用或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是一个统一的模型,承载你的数据、数据的元数据以及两者之间的处理。同一个模型既定义你的数据资产,也负责运行它——这是同一件事,并且不介入数据路径。</p><p>因此<strong>一切保持同步</strong>,<strong>复用是内置的</strong>:关系、指标、脱敏或规则只需定义一次,就为每个接口、环境和角色所用。重复的表和指标、重复的命令和规则,甚至两个提供相同数据的系统,都并排出现在模型里,所以重复很容易发现,也很容易清除。</p><p>它小巧、可扩展、可组合。它嵌入你现有的体系旁边,为杂乱带来秩序,让每位数据专业人员发挥专长而不限制想象力——它只去掉繁琐的体力活。</p><p>🎯 <strong>核心是一个简短的练习:</strong>连接一个数据库,然后用<strong>七种方式</strong>查询它——或者直接用自然语言提问。大约五分钟,<strong>直接在你的桌面上</strong>完成,无需搭建任何基础设施。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>之后的一切都是<strong>深入探索</strong>,准备好时从菜单中选择。</p><p>准备好了吗？让我们连接一个数据源。→</p>"
+      },
+      "stepPolly": {
+        "title": "认识 Polly,你的设置助手",
+        "description": "<p>💬 <strong>Polly</strong> 用自然语言来设置 Provisa——比阅读文档轻松得多。</p><p><em>“注册我的 Postgres” · “把 customers 表的邮箱列伪造成假数据” · “用合成数据创建一个 QA 环境” · “谁能看到薪资?”</em></p><p>Polly 通过<strong>与界面相同的受管 API 和权限</strong>工作,因此只能做你能做的事。Polly 已在此打开；聊天按钮可随时重新打开此面板。</p>"
       },
       "step1": {
         "title": "从数据源开始",
@@ -27,11 +72,11 @@
       },
       "step2": {
         "title": "注册一个数据源",
-        "description": "➕ 新连接从这个按钮开始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，还有 30 多种其他类型。"
+        "description": "➕ 新连接从这个按钮开始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，还有 50 多种其他类型。"
       },
       "step3": {
         "title": "58 种数据源类型，13 个类别",
-        "description": "一个选择器按类别列出所有类型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名称或别名搜索，也可以用类别标签缩小范围。每种类型都有徽标和可达性图标：⚡ 表示就地实时读取，复制图标表示 Provisa 读取已刷新的副本。<p>选一个，填写连接，保存。这个列表并非固定不变：原生联邦引擎<strong>可扩展</strong>，只需在配置中声明自定义的 Postgres FDW 或 DuckDB 扩展，Provisa 就能接入新的数据源类型，无需编写代码。</p>"
+        "description": "一个选择器按类别列出所有类型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名称或别名搜索，也可以用类别标签缩小范围。每种类型都有徽标和可达性图标：⚡ 表示就地实时读取，复制图标表示 Provisa 读取已刷新的副本。<p>选一个，填写连接，保存。</p>"
       },
       "step4": {
         "title": "一切都会变成表",
@@ -115,7 +160,7 @@
       },
       "stepProfilerChecks": {
         "title": "漂移与检查",
-        "description": "每次运行都会与该表最近的运行比较，漂移的度量会被标记。异常由数据质量检查器抛出。你还可以接受画像提出的约束，并把运行结果与 Provisa 之外提供的预期对照检查。"
+        "description": "每次运行都会与该表最近的运行比较，漂移的度量会被标记。异常由数据质量检查器抛出。你还可以接受画像提出的约束，并把运行结果与 Provisa 之外提供的预期对照检查。也可以把约束作为检查导出到 <strong>Soda</strong> 或 <strong>Great Expectations</strong> 检查器的契约中。"
       },
       "stepFakes": {
         "title": "声明虚构值",
@@ -147,11 +192,11 @@
       },
       "step22": {
         "title": "端到端的血缘",
-        "description": "🧬 <strong>血缘并非不透明。</strong>这是一条经过分析的真实查询。每个结果列都会被追溯到它的转换过程——跟踪 <code>name_upper</code>——以及连接到具体提供数据的<strong>源列</strong>。<p>命令是以声明式方式定义的，因此每一步都会被记录；物化视图从定义上就保留完整的血缘。此处不会真正执行——查询仅被分析。</p><p>→ 最后一步：在生产环境中运维它。</p>"
+        "description": "🧬 <strong>血缘是你的派生对象留下的依赖轨迹:</strong>每个视图、计算列或指标由什么构成,以及什么依赖于它。这是一条经过分析的真实查询——沿着 <code>name_upper</code> 的转换一路追溯到为它提供数据的精确<strong>源列</strong>。<p>不会执行任何内容——查询只会被分析。</p>"
       },
       "step23": {
         "title": "运维它",
-        "description": "管理页面负责运行整个平台：<ul><li>⚙️ 选择并配置你的<strong>联邦引擎</strong>——可插拔：DuckDB（内嵌、零配置）、Trino、PostgreSQL、ClickHouse，或将云数据仓库作为一等引擎（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。随时切换——模型、界面，以及其上的治理都不会改变。</li><li>🔗 无论选择哪个引擎，都自带其自身的<strong>实时外部数据</strong>接入能力——原地读取 Parquet、Iceberg、Delta，零拷贝，凭证自动预配。任何无法实时连接的数据，都会落地为一份受治理的副本。</li><li>🔑 管理<strong>加密密钥</strong>并接入<strong>身份验证提供方</strong></li><li>📊 完整的<strong>可观测性</strong> —— 可重定向到任意 OpenTelemetry 采集器，实现企业级的追踪管理</li></ul><p>同一个模型可以从本地开发一路走到生产环境，每一步都经过验证——无需重写：</p><ul><li><strong>开发</strong> —— 内嵌 DuckDB，无需 Docker。在本地构建与验证。</li><li><strong>规模化验证</strong> —— 使用 Docker，启动一个引擎加可观测性组件。针对生产级引擎验证行为。</li><li><strong>晋级</strong> —— 指向你自己的基础设施，通过 CI/CD 构建，上线到生产环境。</li></ul>"
+        "description": "管理页面负责运行整个平台：<ul><li>⚙️ 选择并配置你的<strong>联邦引擎</strong>——可插拔：DuckDB（内嵌、零配置）、Trino、PostgreSQL、ClickHouse，或将云数据仓库作为一等引擎（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。随时切换——模型、界面，以及其上的治理都不会改变。</li><li>🔗 无论选择哪个引擎，都自带其自身的<strong>实时外部数据</strong>接入能力——原地读取 Parquet、Iceberg、Delta，零拷贝，凭证自动预配。任何无法实时连接的数据，都会落地为一份受治理的副本。</li><li>🔑 管理<strong>加密密钥</strong>并接入<strong>身份验证提供方</strong></li><li>📊 完整的<strong>可观测性</strong> —— 可重定向到任意 OpenTelemetry 采集器，实现企业级的追踪管理</li><li>📤 <strong>导出模型配置</strong>——整个模型或选定部分——为文件，用于审阅、比对并通过 CI/CD 发布</li></ul><p>同一个模型可以从本地开发一路走到生产环境，每一步都经过验证——无需重写：</p><ul><li><strong>开发</strong> —— 内嵌 DuckDB，无需 Docker。在本地构建与验证。</li><li><strong>规模化验证</strong> —— 使用 Docker，启动一个引擎加可观测性组件。针对生产级引擎验证行为。</li><li><strong>晋级</strong> —— 指向你自己的基础设施，通过 CI/CD 构建，上线到生产环境。</li></ul>"
       },
       "step24": {
         "title": "导览到此结束——现在轮到你了",
@@ -171,7 +216,11 @@
       },
       "stepDataProducts": {
         "title": "数据产品，发布在消费者已经在看的地方",
-        "description": "📦 这里的每个产品都遵循 <strong>ODPS</strong>（Open Data Product Standard）——所有者、团队、用途、限制、使用方式、SLA、支持、自定义属性——Provisa 会将其自动发布到 <strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong>，使其在您的消费者已在使用的目录中显示为原生产品。<p>🔁 没有需要您记得去做的单独导出步骤：规范每次都<strong>由实时模型派生</strong>——表、血缘、标签、术语表条目——因此发布的内容不会像手工维护的 ODPS 文件那样过时。</p>"
+        "description": "📦 这里的每个产品都遵循 <strong>ODPS</strong>（Open Data Product Standard）——所有者、团队、用途、限制、使用方式、SLA、支持、自定义属性——Provisa 会将其自动发布到 <strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong>，使其在您的消费者已在使用的目录中显示为原生产品。<p>🔁 没有需要您记得去做的单独导出步骤：规范每次都<strong>由实时模型派生</strong>——表、血缘、标签、术语表条目——因此发布的内容不会像手工维护的 ODPS 文件那样过时。</p><p>✅ 每个产品还带有定义其列的<strong>术语表条目</strong>，以及扫描它的检查器给出的<strong>数据质量结果</strong>。</p>"
+      },
+      "stepPublish": {
+        "title": "发布到你的组织所用的工具",
+        "description": "📤 <strong>发布到你的组织本来就在查看的地方。</strong>目录条目(表、列、域、数据管理员、已批准的关系)、数据产品和列级血缘会发送出去,每个目标接收其所支持的内容:<strong>DataHub、OpenMetadata、Collibra、Atlan 和 Apache Atlas</strong> 作为目录,<strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong> 作为数据产品列表,血缘则通过 <strong>OpenLineage</strong> 发送。<p>发布仅为向外单向:Provisa 绝不会把目标读回来当作事实来源。</p>"
       }
     },
     "status": {

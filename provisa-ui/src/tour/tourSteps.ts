@@ -74,6 +74,11 @@ export interface TourStep {
    * dead on a loaded machine.
    */
   prefetch?: string;
+  /**
+   * REQ-1945: the step refers to Polly, so the runner opens the Polly panel (through the launcher's own
+   * handler) before anchoring, and the tour closes it on moving to a step without this flag.
+   */
+  pollyOpen?: boolean;
   /** Key into the `tour.steps` i18n namespace for this step's title/description. */
   key: string;
   /**
@@ -148,6 +153,14 @@ export const TOUR_STEPS: TourStep[] = [
     element: ".navbar-tour-btn",
     readySelector: SOURCES_ADD,
     key: "step0",
+  },
+  {
+    // REQ-1945: the step shows Polly open, never the closed launcher: the runner opens the panel through
+    // the launcher's own handler and the tour closes it again on moving to a step that does not
+    // reference Polly. Routeless: stays on step0's page.
+    element: '[data-testid="chat-panel"]',
+    pollyOpen: true,
+    key: "stepPolly",
   },
   {
     route: "/sources",
@@ -348,8 +361,15 @@ export const TOUR_STEPS: TourStep[] = [
     key: "stepProfilerChecks",
   },
   {
-    // REQ-1494: a column's kind of fake is declared in the column list's Test data mode.
-    element: '[data-tour="table-columns-mode"]',
+    // REQ-1494: a column's kind of fake is declared in the column list's Test data mode, so the
+    // step switches the column list to that mode and points at the test-data columns.
+    ensureOpen: [
+      {
+        click: '[data-tour="table-columns-mode"] input[value="testdata"]',
+        unlessPresent: '[data-testid="testdata-columns"]',
+      },
+    ],
+    element: '[data-testid="testdata-columns"]',
     key: "stepFakes",
   },
   {
@@ -401,6 +421,14 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="data-products-content"]',
     readySelector: '[data-testid="data-product-detail"]',
     key: "stepDataProducts",
+  },
+  {
+    // REQ-1945: publishing the model, its data products and lineage out to a catalog. The anchor is
+    // the Metadata Export page root, which paints in both the entitled and not-entitled states.
+    route: "/admin/metadata-export",
+    capability: "org_settings",
+    element: '[data-tour="metadata-export"]',
+    key: "stepPublish",
   },
   {
     route: "/views",
@@ -455,6 +483,49 @@ export const TOUR_STEPS: TourStep[] = [
 ];
 
 /**
+ * REQ-1945: the tour is a short CORE tour plus a menu of Deep Dives, each its own tour. Every step
+ * belongs to exactly one scope (asserted by tourScopes.test.ts), named by its `key`. Order inside a
+ * scope is TOUR_STEPS order, so the narrative of the flat list is kept and a routeless step still
+ * inherits the nearest preceding routed step, wherever that step's own scope lies.
+ */
+export const TOPIC_IDS = [
+  "connect",
+  "relationships",
+  "model",
+  "govern",
+  "query",
+  "testdata",
+  "publish",
+  "operate",
+] as const;
+export type TopicId = (typeof TOPIC_IDS)[number];
+export type TourScope = "core" | TopicId;
+
+export const TOUR_SCOPES: Record<TourScope, readonly string[]> = {
+  core: ["step0", "stepPolly", "step1", "step2", "step6", "step13", "step14"],
+  connect: ["step3", "step4", "step5", "stepPreview"],
+  relationships: ["step15", "step16", "step17"],
+  model: ["step20", "step21", "step22"],
+  govern: ["step18", "step19"],
+  query: ["step7", "step8", "step9", "step10", "step11", "step12"],
+  testdata: [
+    "stepQualityTable",
+    "stepQualityPanel",
+    "stepProfilerTable",
+    "stepProfilerPanel",
+    "stepProfilerChecks",
+    "stepFakes",
+    "stepFakesFill",
+    "stepEnvKinds",
+    "stepSynthetic",
+    "stepSyntheticPrivacy",
+  ],
+  // The glossary step stays here until its topic is decided (REQ-1945 open question).
+  publish: ["stepGlossary", "stepDataProducts", "stepPublish"],
+  operate: ["stepReports", "step23", "step24"],
+};
+
+/**
  * The route step `index` must be on, walking back to the nearest preceding step that declares one.
  *
  * A step omits `route` when it continues on the page its predecessor navigated to (e.g. the
@@ -488,7 +559,10 @@ export function stepRoute(index: number): string | undefined {
  * `meets` is passed in rather than imported so this stays pure data logic; the runner supplies
  * `meetsRequirement` bound to the signed-in capabilities.
  */
-export function tourItinerary(meets: (capability: Capability) => boolean): number[] {
+export function tourItinerary(
+  meets: (capability: Capability) => boolean,
+  scope?: TourScope,
+): number[] {
   const out: number[] = [];
   // Whether the route currently in force is one this viewer may open. Steps before the first
   // routed step (there are none today) would inherit `true` — no gate to fail.
@@ -500,7 +574,9 @@ export function tourItinerary(meets: (capability: Capability) => boolean): numbe
       }
       ownerAllowed = meets(step.capability);
     }
-    if (ownerAllowed) out.push(i);
+    // The owner walk covers every step, so a scoped run whose first step is routeless still
+    // resolves its owner's rights; the scope only filters what is kept.
+    if (ownerAllowed && (scope === undefined || TOUR_SCOPES[scope].includes(step.key))) out.push(i);
   });
   return out;
 }

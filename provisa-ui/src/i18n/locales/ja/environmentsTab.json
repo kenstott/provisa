@@ -116,7 +116,6 @@
     "remoteHelp": "この組織のモデルのミラー先です。ミラーリングを停止するには、フィールドを空にします。",
     "webhookLabel": "ステータス Webhook",
     "webhookHelp": "各プッシュの結果の通知先です。",
-    "integrationProjection": "リポジトリはモデルのプロジェクションであり、モデルの正本ではありません。",
     "integrationSaved": "保存しました。",
     "probe": "確認",
     "probeChecking": "リモートを確認しています…",

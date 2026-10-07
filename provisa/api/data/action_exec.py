@@ -252,6 +252,11 @@ async def invoke_command(
     # POST — the function dispatcher rejects scalar-only external calls (they can't batch).
     if name in (getattr(state, "tracked_webhooks", None) or {}):
         return await _invoke_webhook(name, args, state, role_id)
+    reason = state.undefined_commands.get(name)
+    if reason is not None:
+        # REQ-1942: a command of a generated API source is not defined in a Test (synthetic)
+        # environment; the call is refused saying why, on every surface.
+        raise ApiError(409, "functions.not_defined_synthetic", reason, name=name)
     raise unknown_command(name)
 
 

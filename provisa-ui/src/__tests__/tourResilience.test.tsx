@@ -21,6 +21,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { MantineProvider } from "@mantine/core";
 import { TOUR_STEPS } from "../tour/tourSteps";
 
 // One `t` for the whole suite, not one per render. The runner effect lists `t` in its
@@ -43,6 +44,20 @@ vi.mock("../hooks/useAdminQueries", () => ({
   useTourPrefetch: () => () => Promise.resolve(),
 }));
 
+// The tour reads Polly's state to open it for steps that refer to Polly (REQ-1945); these suites do
+// not exercise that, so the panel is closed with inert handlers.
+vi.mock("../context/pollyState", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../context/pollyState")>()),
+  usePolly: () => ({
+    open: false,
+    checkingConfig: false,
+    unconfiguredReason: null,
+    setUnconfiguredReason: () => {},
+    openPolly: () => Promise.resolve(),
+    closePolly: () => {},
+  }),
+}));
+
 // TourProvider now reads the signed-in rights to decide which steps this viewer is shown. These
 // suites are about the offer and the recovery behaviour, not about gating, so the viewer holds
 // every right the tour's steps name — the whole tour is on the itinerary and nothing is dropped.
@@ -63,13 +78,19 @@ function Launcher() {
   );
 }
 
+// Only the core tour resumes (REQ-1945), so the saved position these tests use is a core step whose
+// anchor an unmounted app cannot supply: the Sources navigation step.
+const CORE_STEP = TOUR_STEPS.findIndex((s) => s.key === "step1");
+
 function renderTour() {
   return render(
-    <MemoryRouter>
-      <TourProvider>
-        <Launcher />
-      </TourProvider>
-    </MemoryRouter>,
+    <MantineProvider>
+      <MemoryRouter>
+        <TourProvider>
+          <Launcher />
+        </TourProvider>
+      </MemoryRouter>
+    </MantineProvider>,
   );
 }
 
@@ -85,7 +106,7 @@ describe("tour resilience under load", () => {
   });
 
   it("says it is resuming while the launch prefetch runs", async () => {
-    localStorage.setItem("provisa_tour_progress", "5");
+    localStorage.setItem("provisa_tour_progress", String(CORE_STEP));
     renderTour();
 
     fireEvent.click(screen.getByText("launch"));
@@ -99,7 +120,7 @@ describe("tour resilience under load", () => {
   });
 
   it("keeps the saved step when an anchor never arrives, and offers a way on", async () => {
-    localStorage.setItem("provisa_tour_progress", "5");
+    localStorage.setItem("provisa_tour_progress", String(CORE_STEP));
     renderTour();
 
     fireEvent.click(screen.getByText("launch"));
@@ -107,7 +128,7 @@ describe("tour resilience under load", () => {
       chunksResolve();
     });
 
-    // Nothing of the app is mounted here, so step 5's anchor cannot appear — exactly the shape of
+    // Nothing of the app is mounted here, so the core step's anchor cannot appear — exactly the shape of
     // a page that never finishes loading.
     await act(async () => {
       vi.advanceTimersByTime(2000);
@@ -122,7 +143,7 @@ describe("tour resilience under load", () => {
     expect(screen.getByText("tour.status.skip")).toBeInTheDocument();
 
     // The position survives the failed step — this is what the old endTour("failed") threw away.
-    expect(localStorage.getItem("provisa_tour_progress")).toBe("5");
+    expect(localStorage.getItem("provisa_tour_progress")).toBe(String(CORE_STEP));
   });
 
   it("stays stuck when the step fails before the waiting hint, instead of spinning forever", async () => {
@@ -167,7 +188,7 @@ describe("tour resilience under load", () => {
   });
 
   it("exits a stuck step with the position saved", async () => {
-    localStorage.setItem("provisa_tour_progress", "5");
+    localStorage.setItem("provisa_tour_progress", String(CORE_STEP));
     renderTour();
 
     fireEvent.click(screen.getByText("launch"));
@@ -180,7 +201,7 @@ describe("tour resilience under load", () => {
 
     fireEvent.click(screen.getByText("tour.status.exit"));
     expect(screen.queryByText("tour.status.stuck")).not.toBeInTheDocument();
-    expect(localStorage.getItem("provisa_tour_progress")).toBe("5");
+    expect(localStorage.getItem("provisa_tour_progress")).toBe(String(CORE_STEP));
   });
 });
 
@@ -248,10 +269,12 @@ describe("a step that opens its own starting state", () => {
     };
     draw();
 
-    const index = TOUR_STEPS.findIndex((s) => s.key === "step3");
-    localStorage.setItem("provisa_tour_progress", String(index));
+    // step3 belongs to the Connect topic: the core tour has been seen, so the tour button opens the
+    // Deep Dives menu, and picking the topic runs it from its first step.
+    localStorage.setItem("provisa_tour_seen", "true");
     renderTour();
     fireEvent.click(screen.getByText("launch"));
+    fireEvent.click(await screen.findByTestId("tour-topic-connect"));
     await act(async () => {
       chunksResolve();
     });

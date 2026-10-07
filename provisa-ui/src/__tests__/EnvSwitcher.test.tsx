@@ -79,7 +79,9 @@ function env(name: string, overrides: Partial<Environment> = {}): Environment {
     expired_kept_by: {},
     protected: false,
     drifted: false,
-    branched_from: name === "prod" ? null : "prod",
+    parent: name === "prod" ? null : "prod",
+    data_mode: name === "prod" ? null : "inherit",
+    mutation_handling: "refused",
     can_undo: true,
     can_redo: false,
     deployed_sha: "aaaaaaa",
@@ -321,7 +323,11 @@ describe("EnvSwitcher", () => {
   // branch under a header that said prod.
   it("names the pinned environment, not prod, for a confined membership", async () => {
     auth.orgMemberships = [{ org_id: "acme", env_name: "ephemeral_a3446a2c" }];
-    mockFetch.mockResolvedValue([env("prod"), env("ephemeral_a3446a2c"), env("ephemeral_0c57a70a")]);
+    mockFetch.mockResolvedValue([
+      env("prod"),
+      env("ephemeral_a3446a2c"),
+      env("ephemeral_0c57a70a"),
+    ]);
     render(<EnvSwitcher />);
     expect(await screen.findByTestId("env-switcher-trigger")).toHaveTextContent(
       "Env: ephemeral_a3446a2c",
@@ -332,7 +338,11 @@ describe("EnvSwitcher", () => {
     // The rest of the org's list is other visitors' branches: naming them tells one visitor about
     // another's, and choosing one is refused server-side with `env.switch_forbidden`.
     auth.orgMemberships = [{ org_id: "acme", env_name: "ephemeral_a3446a2c" }];
-    mockFetch.mockResolvedValue([env("prod"), env("ephemeral_a3446a2c"), env("ephemeral_0c57a70a")]);
+    mockFetch.mockResolvedValue([
+      env("prod"),
+      env("ephemeral_a3446a2c"),
+      env("ephemeral_0c57a70a"),
+    ]);
     render(<EnvSwitcher />);
     fireEvent.click(await screen.findByTestId("env-switcher-trigger"));
     expect(await screen.findByText("ephemeral_a3446a2c")).toBeInTheDocument();

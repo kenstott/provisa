@@ -5,7 +5,8 @@
       "next": "Next ({{current}}/{{total}})",
       "back": "Back",
       "start": "Start",
-      "docs": "Docs"
+      "docs": "Docs",
+      "deepDives": "Deep Dives"
     },
     "welcome": {
       "title": "Take the guided tour?",
@@ -16,10 +17,54 @@
       "resume": "Resume tour",
       "restart": "Start over"
     },
+    "menu": {
+      "title": "Deep Dives",
+      "intro": "One model for your data, metadata and processing, kept in sync and reused everywhere. Pick a topic: each is a short tour of its own, and Done brings you back here.",
+      "completed": "Completed",
+      "steps": "Steps: {{count}}"
+    },
+    "topics": {
+      "connect": {
+        "title": "Connect your data",
+        "summary": "Source types, registering tables, replicas and live reads."
+      },
+      "relationships": {
+        "title": "Relationships",
+        "summary": "Declare how tables relate, within a source and across sources, whether or not a source declares it. Declared once, every surface follows."
+      },
+      "model": {
+        "title": "Model it",
+        "summary": "Add what your sources don't have: views, calculated columns, metrics and commands, each defined once and used by every surface, environment and role."
+      },
+      "govern": {
+        "title": "Govern it",
+        "summary": "Roles and domains, row rules, masks, sensitive data and the data steward."
+      },
+      "query": {
+        "title": "Query it everywhere",
+        "summary": "SQL, GraphQL, Cypher, REST and MCP through one governed pipeline."
+      },
+      "testdata": {
+        "title": "Test data and environments",
+        "summary": "The profiler, fakes, synthetic data, environments and data modes."
+      },
+      "publish": {
+        "title": "Publish it",
+        "summary": "Data products, catalog entries and lineage, published to the external tools your org uses."
+      },
+      "operate": {
+        "title": "Operate it",
+        "summary": "Management reports, observability and the admin pages that run the platform."
+      }
+    },
     "steps": {
       "step0": {
         "title": "Welcome, let's take the tour",
-        "description": "🧭 This compass reopens the tour anytime. Leave whenever — click the app or press <kbd>Esc</kbd>.<p><strong>Provisa</strong> is an active semantic layer for your data that stays out of the data path.</p><p>🎯 <strong>The whole core is one short exercise:</strong> connect some databases, then query them <strong>seven ways</strong> — or skip the syntax and just ask in plain English. About five minutes, <strong>right from your desktop</strong>: no servers, no infrastructure to stand up (that comes later, when you're ready).</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Everything <em>after</em> that — more sources, federation, files, relationships, views, scheduled pipelines — is how you <strong>grow</strong> with the platform, not what you need on day one. We'll flag where the core ends.</p><p>Ready? Let's connect a source. →</p>"
+        "description": "🧭 This compass reopens the tour anytime. Leave whenever — click the app or press <kbd>Esc</kbd>.<p><strong>Provisa</strong> is one model that holds your data, its metadata and the processing between them. The same model defines your data estate and operates it — it is all one thing, and it stays out of the data path.</p><p>That is why <strong>everything stays in sync</strong>, and why <strong>reuse is built in</strong>: a relationship, metric, mask or rule defined once serves every surface, environment and role. Duplicate tables and metrics, duplicate commands and rules, even two systems serving the same data sit side by side in the model, so duplication is easy to see and simple to remove.</p><p>It is compact, extensible and composable. It slots in beside what you have, brings order to the sprawl, and lets every data professional apply their expertise without limiting their imagination — it only removes the drudgery.</p><p>🎯 <strong>The core is one short exercise:</strong> connect a database, then query it <strong>seven ways</strong> — or just ask in plain English. About five minutes, <strong>right from your desktop</strong>, with no infrastructure to stand up.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Everything after that is a <strong>Deep Dive</strong> you pick from a menu when you are ready.</p><p>Ready? Let's connect a source. →</p>"
+      },
+      "stepPolly": {
+        "title": "Meet Polly, your setup assistant",
+        "description": "<p>💬 <strong>Polly</strong> sets Provisa up in plain language — much easier than reading the docs.</p><p><em>“register my Postgres” · “fake the email column in the customers table” · “create a QA environment on synthetic data” · “who can see salaries?”</em></p><p>Polly works through the <strong>same governed APIs and rights as the UI</strong>, so it can only do what you can. Polly is open here; the chat button reopens this panel anytime.</p>"
       },
       "step1": {
         "title": "Start with Sources",
@@ -27,11 +72,11 @@
       },
       "step2": {
         "title": "Register a source",
-        "description": "➕ New connections start with this button — PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and 30+ more."
+        "description": "➕ New connections start with this button — PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and 50+ more."
       },
       "step3": {
         "title": "58 source types, 13 categories",
-        "description": "One picker lists every type, grouped by category: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Search by name or alias, or narrow with the category chips. Each type shows its logo and a reach icon: ⚡ read live in place, or a copy icon where Provisa reads a refreshed replica.<p>Pick one, fill the connection, Save. The list isn't fixed — the native federation engines are <strong>extensible</strong>: declare a custom Postgres FDW or DuckDB extension in config and Provisa reaches a new source type, no code.</p>"
+        "description": "One picker lists every type, grouped by category: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Search by name or alias, or narrow with the category chips. Each type shows its logo and a reach icon: ⚡ read live in place, or a copy icon where Provisa reads a refreshed replica.<p>Pick one, fill the connection, Save.</p>"
       },
       "step4": {
         "title": "Everything becomes a table",
@@ -115,7 +160,7 @@
       },
       "stepProfilerChecks": {
         "title": "Drift and checks",
-        "description": "Every run is compared with the table's recent runs, and a measure that drifts is flagged. A data-quality checker raises the exception. You can also accept constraints the profile proposes, and check runs against expectations from outside Provisa."
+        "description": "Every run is compared with the table's recent runs, and a measure that drifts is flagged. A data-quality checker raises the exception. You can also accept constraints the profile proposes, and check runs against expectations from outside Provisa. A constraint can also be exported as a check in the contract of a <strong>Soda</strong> or <strong>Great Expectations</strong> checker."
       },
       "stepFakes": {
         "title": "Declare a fake",
@@ -147,11 +192,11 @@
       },
       "step22": {
         "title": "Lineage, end to end",
-        "description": "🧬 <strong>Lineage isn't opaque.</strong> This is a real query, analyzed. Each result column is traced back through its transforms — follow <code>name_upper</code> — and joins to the exact <strong>source columns</strong> that feed it.<p>Commands are declaratively defined, so every step is captured; materialized views retain full lineage by definition. Nothing runs — the query is only analyzed.</p><p>→ Last stop: operating it in production.</p>"
+        "description": "🧬 <strong>Lineage is the dependency trail your derivations leave:</strong> what each view, calculated column or metric is built from, and what depends on it. This is a real query, analyzed — follow <code>name_upper</code> back through its transforms to the exact <strong>source columns</strong> that feed it.<p>Nothing runs — the query is only analyzed.</p>"
       },
       "step23": {
         "title": "Operate it",
-        "description": "The Admin pages run the platform:<ul><li>⚙️ Choose and configure your <strong>federation engine</strong> — pluggable: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, or a cloud warehouse as a first-class engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Swap it anytime — the model, the surfaces, and the governance above it never change.</li><li>🔗 Whichever engine you pick brings its own <strong>live external data</strong> reach — Parquet, Iceberg, Delta read in place, zero-copy, credentials auto-provisioned. Anything it can't link live lands as a governed replica.</li><li>🔑 Manage <strong>encryption keys</strong> and wire up <strong>auth providers</strong></li><li>📊 Full <strong>observability</strong> — redirect to any OpenTelemetry collector for enterprise-class trace management</li></ul><p>The same model travels from local dev to production, validated at every step — no rewrite:</p><ul><li><strong>Develop</strong> — embedded DuckDB, no Docker. Build &amp; validate locally.</li><li><strong>Validate at scale</strong> — Docker, spin up an engine + observability. Prove behavior against production engines.</li><li><strong>Promote</strong> — point at your own infrastructure, build through CI/CD, ship to production.</li></ul>"
+        "description": "The Admin pages run the platform:<ul><li>⚙️ Choose and configure your <strong>federation engine</strong> — pluggable: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, or a cloud warehouse as a first-class engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Swap it anytime — the model, the surfaces, and the governance above it never change.</li><li>🔗 Whichever engine you pick brings its own <strong>live external data</strong> reach — Parquet, Iceberg, Delta read in place, zero-copy, credentials auto-provisioned. Anything it can't link live lands as a governed replica.</li><li>🔑 Manage <strong>encryption keys</strong> and wire up <strong>auth providers</strong></li><li>📊 Full <strong>observability</strong> — redirect to any OpenTelemetry collector for enterprise-class trace management</li><li>📤 <strong>Export the model's configuration</strong> — the whole model or chosen sections — as a file to review, diff and ship through CI/CD</li></ul><p>The same model travels from local dev to production, validated at every step — no rewrite:</p><ul><li><strong>Develop</strong> — embedded DuckDB, no Docker. Build &amp; validate locally.</li><li><strong>Validate at scale</strong> — Docker, spin up an engine + observability. Prove behavior against production engines.</li><li><strong>Promote</strong> — point at your own infrastructure, build through CI/CD, ship to production.</li></ul>"
       },
       "step24": {
         "title": "That's the tour — now make it yours",
@@ -171,7 +216,11 @@
       },
       "stepDataProducts": {
         "title": "Data products, published where consumers already look",
-        "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard) — owner, team, purpose, limitations, usage, SLA, support, custom properties — and Provisa auto-publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There's no separate export step to forget: the spec is <strong>derived from the live model</strong> — tables, lineage, tags, glossary terms — every time, so what's published can't drift out of date the way a hand-maintained ODPS file would.</p>"
+        "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard) — owner, team, purpose, limitations, usage, SLA, support, custom properties — and Provisa auto-publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There's no separate export step to forget: the spec is <strong>derived from the live model</strong> — tables, lineage, tags, glossary terms — every time, so what's published can't drift out of date the way a hand-maintained ODPS file would.</p><p>✅ Each product also carries the <strong>glossary terms</strong> that define its columns and the <strong>data-quality results</strong> of the checkers that scan it.</p>"
+      },
+      "stepPublish": {
+        "title": "Publish to the tools your org uses",
+        "description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, Atlan and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only: Provisa never reads a target back as a source of truth.</p>"
       }
     },
     "status": {

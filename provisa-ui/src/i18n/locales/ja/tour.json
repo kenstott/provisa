@@ -5,7 +5,8 @@
       "next": "次へ ({{current}}/{{total}})",
       "back": "戻る",
       "start": "開始",
-      "docs": "ドキュメント"
+      "docs": "ドキュメント",
+      "deepDives": "ディープダイブ"
     },
     "welcome": {
       "title": "ガイドツアーを開始しますか？",
@@ -16,10 +17,54 @@
       "resume": "ツアーを再開",
       "restart": "最初から始める"
     },
+    "menu": {
+      "title": "ディープダイブ",
+      "intro": "データ、メタデータ、処理のための 1 つのモデルが、同期を保ち、あらゆる場所で再利用されます。トピックを選んでください。それぞれが独立した短いツアーで、「完了」でここに戻ります。",
+      "completed": "完了",
+      "steps": "ステップ数: {{count}}"
+    },
+    "topics": {
+      "connect": {
+        "title": "データをつなぐ",
+        "summary": "ソースの種類、テーブルの登録、レプリカとライブ読み取り。"
+      },
+      "relationships": {
+        "title": "リレーションシップ",
+        "summary": "テーブル同士の関係を、ソース内でもソース間でも、ソースが宣言しているかどうかにかかわらず定義します。一度定義すれば、すべてのサーフェスがそれに従います。"
+      },
+      "model": {
+        "title": "モデル化する",
+        "summary": "ソースにないものを追加します。ビュー、計算列、メトリクス、コマンドは、それぞれ一度定義すれば、すべてのサーフェス、環境、ロールで使われます。"
+      },
+      "govern": {
+        "title": "ガバナンス",
+        "summary": "ロールとドメイン、行ルール、マスク、機微データ、データスチュワード。"
+      },
+      "query": {
+        "title": "どこからでもクエリ",
+        "summary": "SQL、GraphQL、Cypher、REST、MCP を 1 つのガバナンス付きパイプラインで。"
+      },
+      "testdata": {
+        "title": "テストデータと環境",
+        "summary": "プロファイラー、フェイク、合成データ、環境、データモード。"
+      },
+      "publish": {
+        "title": "公開する",
+        "summary": "データプロダクト、カタログエントリ、リネージを、組織が使う外部ツールに公開します。"
+      },
+      "operate": {
+        "title": "運用する",
+        "summary": "管理レポート、オブザーバビリティ、プラットフォームを動かす管理ページ。"
+      }
+    },
     "steps": {
       "step0": {
         "title": "ようこそ、ツアーを始めましょう",
-        "description": "🧭 このコンパスで、いつでもツアーを再開できます。いつでも終了できます。アプリをクリックするか <kbd>Esc</kbd> を押してください。<p><strong>Provisa</strong> は、データパスには関与しない、データのためのアクティブなセマンティックレイヤーです。</p><p>🎯 <strong>コア全体が 1 つの短い演習です。</strong>いくつかのデータベースを接続し、<strong>7 通りの方法</strong>でクエリを実行します。構文を使わず、普通の言葉で質問することもできます。所要時間は約 5 分で、<strong>デスクトップ上で完結</strong>します。サーバーも、構築するインフラも不要です(それは準備ができてからで構いません)。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>その<em>後</em>のすべて、つまりソースの追加、フェデレーション、ファイル、リレーションシップ、ビュー、スケジュールされたパイプラインは、プラットフォームとともに<strong>成長する</strong>ためのものであり、初日に必要なものではありません。コアの終わりの位置はお知らせします。</p><p>準備はいいですか？ ソースを接続しましょう。 →</p>"
+        "description": "🧭 このコンパスで、いつでもツアーを再開できます。いつでも終了できます。アプリをクリックするか <kbd>Esc</kbd> を押してください。<p><strong>Provisa</strong> は、データ、そのメタデータ、そしてその間の処理を 1 つに収めたモデルです。同じモデルがデータ資産を定義し、運用もします。すべてが 1 つのものであり、データパスには関与しません。</p><p>だから<strong>すべてが同期したまま</strong>になり、<strong>再利用が最初から組み込まれて</strong>います。一度定義したリレーションシップ、メトリクス、マスク、ルールは、すべてのサーフェス、環境、ロールで使われます。重複したテーブルやメトリクス、重複したコマンドやルール、さらには同じデータを提供する 2 つのシステムまで、モデルの中で並んで見えるため、重複は見つけやすく、取り除きやすくなります。</p><p>コンパクトで、拡張でき、組み合わせられます。既存の環境の隣に収まり、散らかったものを整理し、すべてのデータ専門家が想像力を制限されることなく専門性を発揮できるようにします。取り除くのは面倒な作業だけです。</p><p>🎯 <strong>コアは 1 つの短い演習です。</strong>データベースを 1 つ接続し、<strong>7 通りの方法</strong>でクエリを実行します。普通の言葉で質問することもできます。所要時間は約 5 分で、<strong>デスクトップ上で完結</strong>し、構築するインフラはありません。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>それ以降はすべて、準備ができたときにメニューから選ぶ<strong>ディープダイブ</strong>です。</p><p>準備はいいですか？ ソースを接続しましょう。 →</p>"
+      },
+      "stepPolly": {
+        "title": "設定アシスタントの Polly をご紹介",
+        "description": "<p>💬 <strong>Polly</strong> は、普通の言葉で Provisa を設定します。ドキュメントを読むよりずっと簡単です。</p><p><em>「Postgres を登録して」 · 「customers テーブルのメール列をフェイクにして」 · 「合成データで QA 環境を作って」 · 「給与は誰が見られる?」</em></p><p>Polly は <strong>UI と同じガバナンス付き API と権限</strong>で動作するため、あなたにできることだけを実行できます。Polly はここで開いています。チャットボタンでこのパネルをいつでも開き直せます。</p>"
       },
       "step1": {
         "title": "まずはソースから",
@@ -27,11 +72,11 @@
       },
       "step2": {
         "title": "ソースを登録する",
-        "description": "➕ 新規接続はこのボタンから始まります — PostgreSQL、Snowflake、MongoDB、REST API、CSV、その他30種類以上。"
+        "description": "➕ 新規接続はこのボタンから始まります — PostgreSQL、Snowflake、MongoDB、REST API、CSV、その他50種類以上。"
       },
       "step3": {
         "title": "58種類のソース、13カテゴリ",
-        "description": "ひとつのピッカーに、カテゴリ別にすべての種類が並びます：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。名前や別名で検索するか、カテゴリのチップで絞り込めます。各種類にはロゴと到達方法のアイコンが付きます。⚡ はその場でライブ読み取り、コピーのアイコンは Provisa が更新済みのレプリカを読む場合です。<p>ひとつ選び、接続を入力して保存します。この一覧は固定ではありません。ネイティブのフェデレーションエンジンは<strong>拡張可能</strong>で、独自の Postgres FDW や DuckDB 拡張を設定で宣言すれば、コードなしで Provisa が新しいソース種類に届きます。</p>"
+        "description": "ひとつのピッカーに、カテゴリ別にすべての種類が並びます：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。名前や別名で検索するか、カテゴリのチップで絞り込めます。各種類にはロゴと到達方法のアイコンが付きます。⚡ はその場でライブ読み取り、コピーのアイコンは Provisa が更新済みのレプリカを読む場合です。<p>ひとつ選び、接続を入力して保存します。</p>"
       },
       "step4": {
         "title": "すべてがテーブルになる",
@@ -115,7 +160,7 @@
       },
       "stepProfilerChecks": {
         "title": "ドリフトとチェック",
-        "description": "実行のたびに、テーブルの直近の実行と比較し、ドリフトした指標に印を付けます。例外を上げるのはデータ品質チェッカーです。プロファイルが提案する制約を承認したり、Provisa の外で作られた期待値と実行結果を照合したりすることもできます。"
+        "description": "実行のたびに、テーブルの直近の実行と比較し、ドリフトした指標に印を付けます。例外を上げるのはデータ品質チェッカーです。プロファイルが提案する制約を承認したり、Provisa の外で作られた期待値と実行結果を照合したりすることもできます。制約を <strong>Soda</strong> または <strong>Great Expectations</strong> チェッカーのコントラクトにチェックとしてエクスポートすることもできます。"
       },
       "stepFakes": {
         "title": "フェイク値を宣言する",
@@ -147,11 +192,11 @@
       },
       "step22": {
         "title": "リネージ、エンドツーエンド",
-        "description": "🧬 <strong>リネージはブラックボックスではありません。</strong>これは実際のクエリを解析したものです。各結果カラムは、その変換をさかのぼって追跡され — <code>name_upper</code> を追ってみてください — それを供給する正確な<strong>ソースカラム</strong>への結合までたどれます。<p>コマンドは宣言的に定義されているため、すべてのステップが記録されます。マテリアライズドビューは定義上、完全なリネージを保持します。何も実行されません — クエリは解析されるだけです。</p><p>→ 最後は、本番環境での運用です。</p>"
+        "description": "🧬 <strong>リネージとは、派生物が残す依存関係の跡です。</strong>各ビュー、計算列、メトリクスが何から作られ、何がそれに依存しているかを示します。これは実際のクエリを解析したものです。<code>name_upper</code> を変換をたどって、それを供給する正確な<strong>ソース列</strong>まで追ってください。<p>何も実行されません。クエリは解析されるだけです。</p>"
       },
       "step23": {
         "title": "運用する",
-        "description": "Admin ページがプラットフォームを運用します：<ul><li>⚙️ <strong>フェデレーションエンジン</strong>の選択と設定 — プラガブルです：DuckDB（組み込み、ゼロコンフィグ）、Trino、PostgreSQL、ClickHouse、あるいはクラウドウェアハウスを一級エンジンとして使用（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。いつでも切り替え可能で、モデル、サーフェス、その上のガバナンスは変わりません。</li><li>🔗 選んだエンジンごとに、独自の<strong>ライブな外部データ</strong>アクセスが付いてきます — Parquet、Iceberg、Delta をその場で、ゼロコピーで読み取り、認証情報も自動的にプロビジョニングされます。ライブでリンクできないものは、ガバナンス済みのレプリカとして着地します。</li><li>🔑 <strong>暗号化キー</strong>の管理と<strong>認証プロバイダー</strong>の設定</li><li>📊 完全な<strong>オブザーバビリティ</strong> — エンタープライズ級のトレース管理のため、任意の OpenTelemetry コレクターへリダイレクト可能</li></ul><p>同じモデルがローカル開発から本番環境まで、各ステップで検証されながら移行します — 書き換え不要です：</p><ul><li><strong>開発</strong> — 組み込み DuckDB、Docker 不要。ローカルで構築・検証します。</li><li><strong>大規模検証</strong> — Docker で、エンジンとオブザーバビリティを立ち上げます。本番エンジンに対して動作を検証します。</li><li><strong>昇格</strong> — 自社のインフラを指定し、CI/CD を通してビルドし、本番環境へ出荷します。</li></ul>"
+        "description": "Admin ページがプラットフォームを運用します：<ul><li>⚙️ <strong>フェデレーションエンジン</strong>の選択と設定 — プラガブルです：DuckDB（組み込み、ゼロコンフィグ）、Trino、PostgreSQL、ClickHouse、あるいはクラウドウェアハウスを一級エンジンとして使用（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。いつでも切り替え可能で、モデル、サーフェス、その上のガバナンスは変わりません。</li><li>🔗 選んだエンジンごとに、独自の<strong>ライブな外部データ</strong>アクセスが付いてきます — Parquet、Iceberg、Delta をその場で、ゼロコピーで読み取り、認証情報も自動的にプロビジョニングされます。ライブでリンクできないものは、ガバナンス済みのレプリカとして着地します。</li><li>🔑 <strong>暗号化キー</strong>の管理と<strong>認証プロバイダー</strong>の設定</li><li>📊 完全な<strong>オブザーバビリティ</strong> — エンタープライズ級のトレース管理のため、任意の OpenTelemetry コレクターへリダイレクト可能</li><li>📤 <strong>モデルの構成をエクスポート</strong> — モデル全体または選んだセクション — し、ファイルとしてレビュー、差分確認、CI/CD での展開に使えます</li></ul><p>同じモデルがローカル開発から本番環境まで、各ステップで検証されながら移行します — 書き換え不要です：</p><ul><li><strong>開発</strong> — 組み込み DuckDB、Docker 不要。ローカルで構築・検証します。</li><li><strong>大規模検証</strong> — Docker で、エンジンとオブザーバビリティを立ち上げます。本番エンジンに対して動作を検証します。</li><li><strong>昇格</strong> — 自社のインフラを指定し、CI/CD を通してビルドし、本番環境へ出荷します。</li></ul>"
       },
       "step24": {
         "title": "ツアーは以上です — 次はあなたの番です",
@@ -171,7 +216,11 @@
       },
       "stepDataProducts": {
         "title": "データプロダクトを、利用者がすでに見ている場所で公開",
-        "description": "📦 ここにあるすべてのプロダクトは <strong>ODPS</strong>(Open Data Product Standard)に対応しています。オーナー、チーム、目的、制限事項、使用方法、SLA、サポート、カスタムプロパティを備え、Provisa が <strong>Snowflake Horizon</strong> と <strong>BigQuery Dataplex</strong> に直接自動公開するため、利用者がすでに使っているカタログにネイティブのプロダクトとして表示されます。<p>🔁 忘れてしまいがちな別のエクスポート手順はありません。仕様は毎回、テーブル、リネージ、タグ、用語集の用語を含む<strong>ライブモデルから導出</strong>されるため、手作業で管理する ODPS ファイルのように、公開内容が古くなることはありません。</p>"
+        "description": "📦 ここにあるすべてのプロダクトは <strong>ODPS</strong>(Open Data Product Standard)に対応しています。オーナー、チーム、目的、制限事項、使用方法、SLA、サポート、カスタムプロパティを備え、Provisa が <strong>Snowflake Horizon</strong> と <strong>BigQuery Dataplex</strong> に直接自動公開するため、利用者がすでに使っているカタログにネイティブのプロダクトとして表示されます。<p>🔁 忘れてしまいがちな別のエクスポート手順はありません。仕様は毎回、テーブル、リネージ、タグ、用語集の用語を含む<strong>ライブモデルから導出</strong>されるため、手作業で管理する ODPS ファイルのように、公開内容が古くなることはありません。</p><p>✅ 各プロダクトには、列を定義する<strong>用語集の用語</strong>と、それをスキャンするチェッカーの<strong>データ品質結果</strong>も含まれます。</p>"
+      },
+      "stepPublish": {
+        "title": "組織のツールに公開",
+        "description": "📤 <strong>組織がすでに見ている場所へ公開します。</strong>カタログエントリ(テーブル、列、ドメイン、スチュワード、承認済みリレーションシップ)、データプロダクト、列レベルのリネージが送られ、各送信先は対応するものを受け取ります。カタログとしては <strong>DataHub、OpenMetadata、Collibra、Atlan、Apache Atlas</strong>、データプロダクトの掲載先としては <strong>Snowflake Horizon</strong> と <strong>BigQuery Dataplex</strong>、リネージは <strong>OpenLineage</strong> 経由です。<p>公開は外向きのみです。Provisa が送信先を真実の情報源として読み戻すことはありません。</p>"
       }
     },
     "status": {

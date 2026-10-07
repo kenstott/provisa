@@ -75,6 +75,7 @@ def _state() -> SimpleNamespace:
     return SimpleNamespace(
         tracked_functions={},
         tracked_webhooks={"add_pet": wh, "ps__addPet": wh},  # raw + gql-field-name alias
+        undefined_commands={},
         rls_contexts={},
         role_chains={},
         federation_engine=_Engine(),

@@ -116,7 +116,6 @@
     "remoteHelp": "Waar het model van deze organisatie naartoe wordt gespiegeld. Maak het veld leeg om het spiegelen te stoppen.",
     "webhookLabel": "Statuswebhook",
     "webhookHelp": "Waar het resultaat van elke push wordt gemeld.",
-    "integrationProjection": "De repository is een projectie van het model, nooit de autoriteit erover.",
     "integrationSaved": "Opgeslagen.",
     "probe": "Controleren",
     "probeChecking": "De remote controleren…",

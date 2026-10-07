@@ -119,7 +119,7 @@ class TestWhatNeverReachesAFile:
                 "database": "sales",
                 "username": "svc",
                 "mapping": {"schema": "public"},
-                "bound": True,
+                "binding": "own",
                 "description": "the sales database",
             },
         )

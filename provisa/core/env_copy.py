@@ -53,7 +53,10 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import MetaData, Table, delete, select
 
 from provisa.core.env_classes import (
-    BOUND_COLUMN,
+    BINDING_COLUMN,
+    BINDING_COLUMNS,
+    COPIED,
+    UNBOUND,
     CARRIED,
     IDENTITY_ONLY,
     SEEDED_AT_CREATION,
@@ -223,6 +226,7 @@ async def plan_copy(
             removals,
             seed,
             strip_identities,
+            None,  # a plan writes no row, so no row lands
             apply=False,
         )
 
@@ -237,6 +241,7 @@ async def copy_model(
     removals: bool = False,
     seed: bool = False,
     strip_identities: bool = True,
+    landing: str,
 ) -> CopyReport:
     """Carry ``source_env``'s governed model into ``target_env``. One transaction (REQ-1490).
 
@@ -248,10 +253,22 @@ async def copy_model(
     creates carries none of the source's binding columns and lands unbound. A caller that instead
     wants the real connection details copied along with the row -- REQ-1602's sandbox visitor
     environments -- passes ``strip_identities=False``.
+
+    ``landing`` is how a stripped row the copy creates is reached in ``target_env`` (REQ-1942,
+    :func:`provisa.core.env_classes.landing_binding` of its data mode).
     """
     async with db.acquire() as conn, conn.transaction():
         report = await _copy(
-            conn, org_id, source_env, target_env, mode, removals, seed, strip_identities, apply=True
+            conn,
+            org_id,
+            source_env,
+            target_env,
+            mode,
+            removals,
+            seed,
+            strip_identities,
+            landing,
+            apply=True,
         )
     return report
 
@@ -319,9 +336,11 @@ async def _copy(
     removals: bool,
     seed: bool,
     strip_identities: bool,
+    landing: str | None,
     *,
     apply: bool,
 ) -> CopyReport:
+    assert (landing is not None) == apply, "a copy that writes says how its new rows land"
     if mode not in (REPLACE, MERGE):
         raise ValueError(f"unknown copy mode: {mode!r}")
     src_schema = org_schema(org_id, source_env)
@@ -354,7 +373,14 @@ async def _copy(
         table_removals = (removals or mode == REPLACE) and table.name in carried
         report.tables.append(
             await _copy_table(
-                conn, table, src_schema, dst_schema, table_removals, strip_identities, apply
+                conn,
+                table,
+                src_schema,
+                dst_schema,
+                table_removals,
+                strip_identities,
+                landing,
+                apply,
             )
         )
     settings_removals = removals or mode == REPLACE
@@ -378,6 +404,7 @@ async def _copy_table(
     dst_schema: str,
     removals: bool,
     strip_identities: bool,
+    landing: str | None,
     apply: bool,
 ) -> TableDelta:
     src = _scoped(table, src_schema)
@@ -398,8 +425,15 @@ async def _copy_table(
         if current is None:
             delta.added.append(_render(key))
             if table.name in IDENTITY_ONLY and strip_identities:
-                # REQ-1491: a row this copy creates points nowhere until the environment binds it.
-                carried[BOUND_COLUMN] = False
+                # REQ-1942: a row this copy creates carries its connection as the target's data
+                # mode says -- copied as the environment it comes from wrote it (a reference to a
+                # secret or a variable stays that reference), or none until the environment gives
+                # it one. Only a new row: an existing row's connection is its environment's own.
+                if landing == COPIED and row[BINDING_COLUMN] != UNBOUND:
+                    carried.update({c: row[c] for c in BINDING_COLUMNS[table.name]})
+                    carried[BINDING_COLUMN] = COPIED
+                else:
+                    carried[BINDING_COLUMN] = UNBOUND
             inserts.append(carried)
         elif any(current[c] != carried[c] for c in columns):
             delta.changed.append(_render(key))

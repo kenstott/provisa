@@ -56,6 +56,7 @@ def _code_tag_row(tag: Tag) -> dict:
         "reason_policy": tag.reason_policy,
         "expires_policy": tag.expires_policy,
         "param_policy": tag.param_policy,
+        "sensitive": tag.sensitive,
     }
 
 
@@ -78,6 +79,7 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "reason_policy": tag.reason_policy,
             "expires_policy": tag.expires_policy,
             "param_policy": tag.param_policy,
+            "sensitive": tag.sensitive,
         },
         index_elements=["id"],
         update_columns=[
@@ -86,6 +88,7 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "reason_policy",
             "expires_policy",
             "param_policy",
+            "sensitive",
         ],
     )
 
