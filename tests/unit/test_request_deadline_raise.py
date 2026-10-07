@@ -320,8 +320,12 @@ def test_a_deadline_that_passed_before_its_scope_was_entered_ends_in_the_timeout
             with request_deadline.within(0.001):
                 _spin(10.0)
         else:
-            with request_deadline.bound(request_deadline.Deadline(0.001)):
-                _spin(10.0)
+            owned = request_deadline.Deadline(0.001)
+            try:
+                with request_deadline.bound(owned):
+                    _spin(10.0)
+            finally:
+                owned.stop()  # bound() leaves the deadline to its owner
     assert not isinstance(raised.value, DeadlinePassed)
     assert not request_deadline.shielded().inside
     assert request_deadline.current() is None

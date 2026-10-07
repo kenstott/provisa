@@ -178,6 +178,7 @@ async def test_bolt_sends_the_warnings_as_notifications_with_the_runs_success():
         patch.object(session, "send_success", lambda meta=None: successes.append(meta or {})),
     ):
         await session.handle_run(["MATCH (p:Pets) RETURN p.id AS id", {}, {}])
+    session._end_request()  # the RUN's records are never pulled here; its request ends with the test
     (meta,) = successes
     (note,) = meta["notifications"]
     assert note["code"] == "Provisa.api.answer_cut" and note["severity"] == "WARNING"
