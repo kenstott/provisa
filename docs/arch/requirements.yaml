@@ -51955,81 +51955,11 @@
   category: Environments
   priority: SHOULD
   type: behavioral
-  description: 'EVERY MUTATION THAT NAMES A DOMAIN MUST BE GATED ON IT, AND EVERY MUTATION THAT OUGHT
-    TO NAME ONE MUST NAME ONE. REQ-1530 makes a role''s domain_access the limit on what a member may change;
-    a limit is only real where it is checked, and today the check runs in two places. ``require_capability(info,
-    cap, domain_id=...)`` already exists and already answers correctly -- registering a table and updating
-    a table pass it -- so this is about the ops that never call it and the ops that have no domain to
-    pass. WHAT IS ALREADY GATED: register_table on the non-view path, and update_table. WHAT NAMES A DOMAIN
-    AND IS NOT GATED: delete_table (no capability check at all), upsert_rls_rule and delete_rls_rule (no
-    check at all, and domain_id is already in the input -- a domain-level RLS rule IS the governance of
-    somebody else''s domain), upsert_metric and delete_metric (gated on table_registration with no domain;
-    a metric''s domain is the domain of the table it measures), tracked_functions and tracked_webhooks
-    (both carry domain_id), and tag assignment (the domain is the assignment target''s). WHAT HAS NO DOMAIN
-    OF ITS OWN AND NEEDS ONE DERIVED: a VIEW. Registering a view carries the domain it is registered into,
-    which gates one half; the other half is the SQL, because free-hand view_sql names its tables directly.
-    Without a second check a developer on sales writes a view selecting from a finance table and registers
-    it into sales, and the finance data arrives inside a domain finance does not own. Both halves are
-    required: the domain being registered into must be one of theirs, and every table the view reads must
-    be one they may read. The dependency parse that the materialized-view relationship gate already performs
-    yields exactly that table set. Creating a FACT or a DIMENSION is the same shape -- both are registrations
-    over existing tables, so both are permitted only over tables within the caller''s domains, and the
-    dimension links a fact creates are relationships subject to the rule below. RELATIONSHIPS ARE OWNED
-    BY DIRECTION. A relationship row is source_table_id -> target_table_id with its alias unique on the
-    source, so the edge hangs off the SOURCE table and the source table''s domain owns it. The target
-    is referenced rather than changed, and traversing to it is reading -- the target''s own RLS and masking
-    still apply at query time -- so creating an edge requires the source''s domain and does not require
-    the target''s. What a cross-domain edge does do is make another team''s table reachable from your
-    part of the graph, which its owner should see: such an edge lands needs_review, a column relationships
-    already carries. WHAT A DEVELOPER MUST NOT DO AT ANY DOMAIN, because these are escalation rather than
-    scope: create_role and delete_role (a role carries domain_access, so minting a role with ``*`` is
-    minting yourself out of the limit -- neither has any check today), create_domain and delete_domain
-    (creating a domain is not an act inside one, and deleting one CASCADEs the registered_tables and rls_rules
-    that belong to it -- neither has any check today), and update_source_allowed_domains (widening a source''s
-    allowed list reaches into a domain through the back door). Source registration itself needs no new
-    rule: a developer does not hold source_registration (REQ-1528). TWO PROPERTIES OF THE GATE ITSELF.
-    It lives in the GraphQL resolver layer, so a guard added there is a guard on one surface -- config
-    loading, the environments router and any REST admin router writing these tables go around it, and
-    the check belongs low enough that they cannot. And it returns early for an anonymous identity and
-    when the org is in single-domain mode, both correct, both meaning the whole scheme is inert until
-    an org actually uses domains. FINALLY, AN OUT-OF-DOMAIN EDIT SHOULD QUEUE RATHER THAN ERROR: the queue-a-creation-request
-    path already exists for the missing-capability case, and REQ-1530 already routes such a request to
-    the domain''s owners, so the developer''s work becomes a proposal instead of a refusal.
+  description: 'EVERY MUTATION THAT NAMES A DOMAIN MUST BE GATED ON IT, AND EVERY MUTATION THAT OUGHT TO NAME ONE MUST NAME ONE. REQ-1530 makes a role''s domain_access the limit on what a member may change; a limit is only real where it is checked, and today the check runs in two places. ``require_capability(info, cap, domain_id=...)`` already exists and already answers correctly -- registering a table and updating a table pass it -- so this is about the ops that never call it and the ops that have no domain to pass. WHAT IS ALREADY GATED: register_table on the non-view path, and update_table. WHAT NAMES A DOMAIN AND IS NOT GATED: delete_table (no capability check at all), upsert_rls_rule and delete_rls_rule (no check at all, and domain_id is already in the input -- a domain-level RLS rule IS the governance of somebody else''s domain), upsert_metric and delete_metric (gated on table_registration with no domain; a metric''s domain is the domain of the table it measures), tracked_functions and tracked_webhooks (both carry domain_id), and tag assignment (the domain is the assignment target''s). WHAT HAS NO DOMAIN OF ITS OWN AND NEEDS ONE DERIVED: a VIEW. Registering a view carries the domain it is registered into, which gates one half; the other half is the SQL, because free-hand view_sql names its tables directly. Without a second check a developer on sales writes a view selecting from a finance table and registers it into sales, and the finance data arrives inside a domain finance does not own. Both halves are required: the domain being registered into must be one of theirs, and every table the view reads must be one they may read. The dependency parse that the materialized-view relationship gate already performs yields exactly that table set. Creating a FACT or a DIMENSION is the same shape -- both are registrations over existing tables, so both are permitted only over tables within the caller''s domains, and the dimension links a fact creates are relationships subject to the rule below. RELATIONSHIPS ARE OWNED BY DIRECTION. A relationship row is source_table_id -> target_table_id with its alias unique on the source, so the edge hangs off the SOURCE table and the source table''s domain owns it. The target is referenced rather than changed, and traversing to it is reading -- the target''s own RLS and masking still apply at query time -- so creating an edge requires the source''s domain and does not require the target''s. What a cross-domain edge does do is make another team''s table reachable from your part of the graph, which its owner should see: such an edge lands needs_review, a column relationships already carries. WHAT A DEVELOPER MUST NOT DO AT ANY DOMAIN, because these are escalation rather than scope: create_role and delete_role (a role carries domain_access, so minting a role with ``*`` is minting yourself out of the limit -- neither has any check today), create_domain and delete_domain (creating a domain is not an act inside one, and deleting one CASCADEs the registered_tables and rls_rules that belong to it -- neither has any check today), and update_source_allowed_domains (widening a source''s allowed list reaches into a domain through the back door). Source registration itself needs no new rule: a developer does not hold source_registration (REQ-1528). TWO PROPERTIES OF THE GATE ITSELF. It lives in the GraphQL resolver layer, so a guard added there is a guard on one surface -- config loading, the environments router and any REST admin router writing these tables go around it, and the check belongs low enough that they cannot. And it returns early for an anonymous identity and when the org is in single-domain mode, both correct, both meaning the whole scheme is inert until an org actually uses domains. FINALLY, AN OUT-OF-DOMAIN EDIT SHOULD QUEUE RATHER THAN ERROR: the queue-a-creation-request path already exists for the missing-capability case, and REQ-1530 already routes such a request to the domain''s owners, so the developer''s work becomes a proposal instead of a refusal.
 
-    (Amended 2026-08-21, WHAT THE BUILD SETTLED:) The domain half of the gate is now a function of its
-    own, ``capabilities.require_domain(info, domain_id)``, because an act can be permitted by more than
-    one right — registering a view is allowed to a holder of create_view OR query_development — while
-    the question of which domains it may touch has a single answer regardless of which right carried the
-    caller in; ``require_capability``''s domain argument now calls it, [SUPERSEDED by REQ-1327, 2026-10-03
-    -- platform_admin holds zero data capabilities, so there is no platform bypass: require_domain has
-    two exemptions (provisa/api/admin/capabilities.py:145-148) and tests/unit/test_domain_guard.py:94-98
-    asserts the platform administrator is scoped like anyone else. Kept here for history; do not implement
-    against it.] so the three exemptions (dev/no-auth, the platform bypass, single-domain mode) are written
-    once [END SUPERSEDED BLOCK]. The scope it reads is ``rights.domain_access_for_claims``, the companion
-    of capabilities_for_claims, which resolves claims to ``roles.domain_access`` and never to the claim''s
-    ``:domain`` suffix — the previous implementation read the suffix, which contradicted REQ-1530. ``*``
-    is interpreted in one place only, ``env_authority.domains_within``. THE CAPABILITY EACH UNGATED MUTATION
-    NOW NAMES: create_domain and delete_domain take org_settings (the org''s domain vocabulary is the
-    org_admin''s; a member scoped to sales must not answer their own scoping by minting a domain, and
-    there is no domain to be a member of yet, so membership does not apply); create_role and delete_role
-    take user_management (a role carries both capabilities and domain_access, so minting one is how a
-    member would widen their own scope); upsert_rls_rule and delete_rls_rule take masking_config plus
-    the domain the rule lands in — named directly for a domain-level rule, looked up from the table for
-    a table-level one; delete_table takes table_registration plus the domain that holds the table, looked
-    up from the id; update_source_allowed_domains takes source_registration and is NOT gated by membership
-    in the domains being listed, because widening the list is granting reach rather than exercising it.
-    A fact and a dim need no gate of their own: both lower to register_table, which is gated. THE VIEW''S
-    TWO HALVES are both applied at the free-hand path in register_table — the domain registered into,
-    and every table the SQL reads, resolved through ``domain_guard.view_read_domains``; CTE names are
-    excluded because a CTE is defined in the statement rather than read from the model, and unparseable
-    SQL raises rather than returning an empty set. THE RELATIONSHIP asks about the SOURCE table''s domain,
-    and when the target lives in another domain the row is written with ``needs_review`` re-asserted AFTER
-    the upsert — rel_repo''s upsert clears that flag on conflict because REQ-020 treats a save as an explicit
-    re-review, and a cross-domain edge is not the source steward''s to clear. Both the view and the relationship
-    queue a creation request on an out-of-domain edit rather than raising, matching what a missing right
-    already does; the mutations that delete or administer raise.
+    (Amended 2026-08-21, WHAT THE BUILD SETTLED:) The domain half of the gate is now a function of its own, ``capabilities.require_domain(info, domain_id)``, because an act can be permitted by more than one right — registering a view is allowed to a holder of create_view OR query_development — while the question of which domains it may touch has a single answer regardless of which right carried the caller in; ``require_capability``''s domain argument now calls it, [SUPERSEDED by REQ-1327, 2026-10-03 -- platform_admin holds zero data capabilities, so there is no platform bypass: require_domain has two exemptions (provisa/api/admin/capabilities.py:145-148) and tests/unit/test_domain_guard.py:94-98 asserts the platform administrator is scoped like anyone else. Kept here for history; do not implement against it.] so the three exemptions (dev/no-auth, the platform bypass, single-domain mode) are written once [END SUPERSEDED BLOCK]. The scope it reads is ``rights.domain_access_for_claims``, the companion of capabilities_for_claims, which resolves claims to ``roles.domain_access`` and never to the claim''s ``:domain`` suffix — the previous implementation read the suffix, which contradicted REQ-1530. ``*`` is interpreted in one place only, ``env_authority.domains_within``. THE CAPABILITY EACH UNGATED MUTATION NOW NAMES: create_domain and delete_domain take org_settings (the org''s domain vocabulary is the org_admin''s; a member scoped to sales must not answer their own scoping by minting a domain, and there is no domain to be a member of yet, so membership does not apply); create_role and delete_role take user_management (a role carries both capabilities and domain_access, so minting one is how a member would widen their own scope); upsert_rls_rule and delete_rls_rule take masking_config plus the domain the rule lands in — named directly for a domain-level rule, looked up from the table for a table-level one; delete_table takes table_registration plus the domain that holds the table, looked up from the id; update_source_allowed_domains takes source_registration and is NOT gated by membership in the domains being listed, because widening the list is granting reach rather than exercising it. A fact and a dim need no gate of their own: both lower to register_table, which is gated. THE VIEW''S TWO HALVES are both applied at the free-hand path in register_table — the domain registered into, and every table the SQL reads, resolved through ``domain_guard.view_read_domains``; CTE names are excluded because a CTE is defined in the statement rather than read from the model, and unparseable SQL raises rather than returning an empty set. THE RELATIONSHIP asks about the SOURCE table''s domain, and when the target lives in another domain the row is written with ``needs_review`` re-asserted AFTER the upsert — rel_repo''s upsert clears that flag on conflict because REQ-020 treats a save as an explicit re-review, and a cross-domain edge is not the source steward''s to clear. Both the view and the relationship queue a creation request on an out-of-domain edit rather than raising, matching what a missing right already does; the mutations that delete or administer raise.
 
-    '
+    (Amended 2026-10-07, A ROLE''S DOMAINS ARE ALL ACTED IN:) Redefining a role, removing a domain from it, or deleting it is an act in every domain the role reaches before and after the change, so it needs user_management reaching every one of them; a manager reaching only sales cannot change, narrow or delete a role that reaches finance. Removing a domain is no longer exempt.'
   use_case: A developer on the sales domain writes a view over a finance table and registers it into sales;
     the registration is refused because the view reads a table outside their domains, and what they get
     back is a request awaiting the finance owner rather than an error.
@@ -52088,6 +52018,7 @@
   - REQ-1317
   - REQ-1528
   - REQ-1530
+  notes: 'Maintainer 2026-10-07: changing or deleting a role requires reaching every domain the role already covers (REQ-1944 audit found a sales-only manager could redefine a finance role''s rights).'
 - id: REQ-1532
   status: proposed
   target: 2026-Q4
