@@ -62,6 +62,7 @@ from graphql.language.ast import FieldNode
 from pytest_bdd import given, scenarios, then, when
 
 from provisa.api.data.subscription_sse import _collect_related_tables
+from provisa.core.database import Capabilities
 from provisa.subscriptions.base import ChangeEvent
 from provisa.subscriptions.debezium_provider import DebeziumNotificationProvider
 from provisa.subscriptions.pg_provider import CHANNEL_PREFIX, PgNotificationProvider
@@ -96,6 +97,21 @@ def _pg_env() -> dict:
         database=os.environ.get("PG_DATABASE", "provisa"),
         user=os.environ.get("PG_USER", "provisa"),
         password=os.environ.get("PG_PASSWORD", "provisa"),
+    )
+
+
+def _control_plane_db():
+    from provisa.core.database import Database, create_engine_from_url  # noqa: PLC0415
+
+    env = _pg_env()
+    return Database(
+        create_engine_from_url(
+            f"postgresql://{env['user']}:{env['password']}@{env['host']}"
+            f":{env['port']}/{env['database']}",
+            pool_size=1,
+            max_overflow=0,
+        ),
+        name="org",
     )
 
 
@@ -184,6 +200,14 @@ def given_provisa_registered_pg_table(shared_data: dict) -> None:
                 ]
                 source_types = {source_id: "postgresql"}
 
+        finally:
+            await pool.close()
+
+        # The control-plane Database's connection: what startup hands the install
+        # (provisa/api/app.py, ``state.model_db.acquire()``).
+        db = _control_plane_db()
+        try:
+            async with db.acquire() as conn:
                 installed = await ensure_pg_notify_triggers(conn, tables, source_types)
                 assert table in installed, "trigger must be installed on the registered table"
 
@@ -191,7 +215,7 @@ def given_provisa_registered_pg_table(shared_data: dict) -> None:
                 installed_again = await ensure_pg_notify_triggers(conn, tables, source_types)
                 assert table in installed_again
         finally:
-            await pool.close()
+            await db.close()
 
     asyncio.run(_setup())
     shared_data["pg_env"] = _pg_env()
@@ -310,10 +334,11 @@ class _PrivilegeError(Exception):
 
 
 class _FailingConn:
-    """Connection whose execute() raises, simulating lack of CREATE privilege."""
+    """A PostgreSQL control-plane connection whose execute() raises, simulating lack of CREATE
+    privilege. Its catalog probe reports every asked-for relation as a base table, so the install
+    is attempted (and refused) rather than skipped as a view."""
 
-    # A PostgreSQL control-plane connection: it carries LISTEN/NOTIFY.
-    capabilities = SimpleNamespace(dialect="postgresql", listen_notify=True)
+    capabilities = Capabilities.for_dialect("postgresql")
 
     def __init__(self) -> None:
         self.attempts: list[str] = []
@@ -322,9 +347,8 @@ class _FailingConn:
     async def advisory_lock(self, _key: int):
         yield self
 
-    async def fetch(self, _sql: str, schemas: list[str], names: list[str]) -> list[dict]:
-        # The catalog's answer to the base-table lookup: the table is an ordinary table.
-        return [{"schema": s, "name": n} for s, n in zip(schemas, names)]
+    async def fetch(self, sql: str, wanted: list[dict]) -> list[dict]:
+        return wanted
 
     async def execute(self, sql: str, *args) -> None:
         self.attempts.append(sql)

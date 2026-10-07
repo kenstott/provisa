@@ -41,6 +41,7 @@ import {
 import { DatasetAssertions } from "./synthetic/DatasetAssertions";
 import { DatasetConditions } from "./synthetic/DatasetConditions";
 import { ListTable, ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
 
 const PROD = "prod";
 
@@ -191,18 +192,26 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
           {error}
         </Alert>
       )}
-      <ListTable testId="synthetic-datasets">
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>{t("syntheticDatasets.colName")}</Table.Th>
-            <Table.Th>{t("syntheticDatasets.colStatus")}</Table.Th>
-            <Table.Th>{t("syntheticDatasets.colScale")}</Table.Th>
-            <Table.Th>{t("syntheticDatasets.colTables")}</Table.Th>
-            <Table.Th />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {datasets.map((d) => (
+      <SortGroupTable
+          testPrefix="synthetic"
+          testId="synthetic-datasets"
+          rows={datasets}
+          columns={[
+            { key: "name", label: t("syntheticDatasets.colName"), sortValue: (d) => d.id },
+            { key: "status", label: t("syntheticDatasets.colStatus"), sortValue: (d) => d.status, groupValue: (d) => d.status },
+            { key: "scale", label: t("syntheticDatasets.colScale"), sortValue: (d) => d.scale },
+            { key: "tables", label: t("syntheticDatasets.colTables"), sortValue: (d) => d.tables.length },
+          ]}
+          headers={[
+            { col: "name" },
+            { col: "status" },
+            { col: "scale" },
+            { col: "tables" },
+            "",
+          ]}
+          colSpan={5}
+          rowKey={(d) => d.id}
+          render={(d) => (
             <ListRow key={d.id} testId={`synthetic-row-${d.id}`}>
               <Table.Td>{d.id}</Table.Td>
               <Table.Td>
@@ -259,9 +268,8 @@ export function SyntheticDatasetsPanel({ envs }: { envs: string[] }) {
                 </Group>
               </Table.Td>
             </ListRow>
-          ))}
-        </Table.Tbody>
-      </ListTable>
+          )}
+        />
 
       {report && (
         <Stack gap={4} data-testid="synthetic-report">

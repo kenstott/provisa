@@ -226,10 +226,16 @@ class TestDatasetChangeEvents:
 # ---------------------------------------------------------------------------
 
 
-async def _every_pair_is_a_base_table(_sql, schemas, names):
-    """The catalog's answer to the trigger walk's base-table lookup: every named relation is an
-    ordinary table (relkind r)."""
-    return [{"schema": s, "name": n} for s, n in zip(schemas, names)]
+def _pg_conn(execute, base: list[str]) -> MagicMock:
+    """A PostgreSQL control-plane connection double: its catalog reports ``base`` as the base
+    tables (the up-front base-table probe, REQ-258), and ``execute`` runs each CREATE TRIGGER."""
+    from provisa.core.database import Capabilities
+
+    conn = MagicMock()
+    conn.capabilities = Capabilities.for_dialect("postgresql")
+    conn.fetch = AsyncMock(return_value=[{"schema": "public", "name": t} for t in base])
+    conn.execute = execute
+    return conn
 
 
 class TestSubscriptionTriggerFallback:
@@ -239,10 +245,7 @@ class TestSubscriptionTriggerFallback:
         from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
         # Mock connection that always raises on execute (simulates insufficient privilege)
-        failing_conn = MagicMock()
-        failing_conn.capabilities.listen_notify = True  # a PostgreSQL control plane
-        failing_conn.fetch = AsyncMock(side_effect=_every_pair_is_a_base_table)
-        failing_conn.execute = AsyncMock(side_effect=Exception("permission denied"))
+        failing_conn = _pg_conn(AsyncMock(side_effect=Exception("permission denied")), ["orders"])
 
         tables = [
             {"table_name": "orders", "schema_name": "public", "source_id": "sales-pg"},
@@ -258,10 +261,7 @@ class TestSubscriptionTriggerFallback:
         from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
         # Mock connection where execute succeeds
-        ok_conn = MagicMock()
-        ok_conn.capabilities.listen_notify = True  # a PostgreSQL control plane
-        ok_conn.fetch = AsyncMock(side_effect=_every_pair_is_a_base_table)
-        ok_conn.execute = AsyncMock(return_value=None)
+        ok_conn = _pg_conn(AsyncMock(return_value=None), ["orders"])
 
         tables = [
             {"table_name": "orders", "schema_name": "public", "source_id": "sales-pg"},
@@ -275,10 +275,7 @@ class TestSubscriptionTriggerFallback:
         # REQ-566: non-PostgreSQL sources are not attempted for trigger installation
         from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
-        conn = MagicMock()
-        conn.capabilities.listen_notify = True  # a PostgreSQL control plane
-        conn.fetch = AsyncMock(side_effect=_every_pair_is_a_base_table)
-        conn.execute = AsyncMock(return_value=None)
+        conn = _pg_conn(AsyncMock(return_value=None), ["orders"])
 
         tables = [
             {"table_name": "events", "schema_name": "public", "source_id": "kafka-src"},
@@ -303,10 +300,7 @@ class TestSubscriptionTriggerFallback:
                 raise Exception("permission denied for orders")
             # customers succeeds
 
-        conn = MagicMock()
-        conn.capabilities.listen_notify = True  # a PostgreSQL control plane
-        conn.fetch = AsyncMock(side_effect=_every_pair_is_a_base_table)
-        conn.execute = _execute_side_effect
+        conn = _pg_conn(_execute_side_effect, ["orders", "customers"])
 
         tables = [
             {"table_name": "orders", "schema_name": "public", "source_id": "sales-pg"},

@@ -111,6 +111,10 @@ if [ ! -x "$PBS_DIR/python/bin/python3" ]; then
   curl -fsSL "https://github.com/astral-sh/python-build-standalone/releases/download/$PBS_RELEASE/cpython-$PBS_PYTHON+$PBS_RELEASE-$PBS_TRIPLE-install_only.tar.gz" \
     | tar xz -C "$PBS_DIR"
 fi
+# python-build-standalone records the prefix it was BUILT at ("/install") in its sysconfig data, so
+# PostgreSQL's configure looks for libpython in /install/lib and stops with "could not find shared
+# library for Python". Point the recorded prefix at where this copy actually lives.
+perl -pi -e "s#\"/install#\"$PBS_DIR/python#g" "$PBS_DIR"/python/lib/python3.12/_sysconfigdata_*.py
 PY_BUILD="$CACHE/postgresql-$PG_VERSION-plpython"
 if [ ! -e "$PKGLIB/plpython3.$SUF" ]; then
   rm -rf "$PY_BUILD"; mkdir -p "$PY_BUILD"
@@ -118,7 +122,10 @@ if [ ! -e "$PKGLIB/plpython3.$SUF" ]; then
     "$CACHE/postgresql-$PG_VERSION/configure" --without-icu --without-readline --without-zlib \
       --without-gssapi --with-python PYTHON="$PBS_DIR/python/bin/python3" --prefix="$PREFIX" >/dev/null
     make -C src/backend generated-headers >/dev/null
-    make -C src/pl/plpython >/dev/null && make -C src/pl/plpython install >/dev/null )
+    # On darwin an in-tree module links with -bundle_loader against src/backend/postgres, which this
+    # out-of-tree build never makes; it resolves against the postgres the core build installed.
+    PLPY_MAKE=(); [ "$OS" = darwin ] && PLPY_MAKE=("BE_DLLLIBS=-bundle_loader $PREFIX/bin/postgres")
+    make -C src/pl/plpython "${PLPY_MAKE[@]}" >/dev/null && make -C src/pl/plpython "${PLPY_MAKE[@]}" install >/dev/null )
 fi
 
 echo "== build pg_duckdb (vcpkg: csv/parquet/json + httpfs + iceberg) =="

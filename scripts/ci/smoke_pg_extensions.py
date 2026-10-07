@@ -61,18 +61,19 @@ def _link_plpython(dl: Path) -> str:
 
 def _fake_functions_compute(db, key_hex: str) -> list[str]:
     """The fake functions run on the bundle's PL/Python and agree with the embedded engine."""
-    from provisa.fakes.digest import digest, fingerprint
+    from provisa.fakes.digest import definition_hash, digest, fingerprint
     from provisa.fakes.duckdb_functions import fake_method
     from provisa.fakes.pg_functions import FUNCTIONS_SQL
 
     key = bytes.fromhex(key_hex)
     db.psql(FUNCTIONS_SQL)
     d = digest(key, "ann@example.com")
+    h = definition_hash("email", {}, None, "varchar")
     out = db.psql(
         f"SELECT provisa_digest('{fingerprint(key)}', 'ann@example.com') || '|' || "
-        f"provisa_fake_method('email', '{{}}', {d})"
+        f"provisa_fake_method('email', '{{}}', {d}, {h})"
     )
-    want = f"{d}|{fake_method('email', '{}', d)}"
+    want = f"{d}|{fake_method('email', '{}', d, h)}"
     if want in out:
         print("  OK   plpython3u fake functions")
         return []

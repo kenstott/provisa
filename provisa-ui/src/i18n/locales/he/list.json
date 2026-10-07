@@ -1,0 +1,9 @@
+{
+  "list": {
+    "sortAscending": "ממוין בסדר עולה",
+    "sortDescending": "ממוין בסדר יורד",
+    "sortNone": "לא ממוין",
+    "groupBy": "קיבוץ לפי {{label}}",
+    "ungroupLevel": "ביטול קיבוץ (רמה {{level}})"
+  }
+}

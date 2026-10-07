@@ -15,7 +15,8 @@ import { notifications } from "@mantine/notifications";
 import { Trash2 } from "lucide-react";
 import { fetchOrgRoles, deleteOrgRole } from "../../api/admin";
 import type { Role } from "../../types/auth";
-import { ListTable, ListHead, ListRow, ListEmpty } from "../list/ListTable";
+import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../list/ListTable";
+import { useListSortGroup, pageItems, type ListColumn } from "../list/useListSortGroup";
 
 const PAGE_SIZE = 50;
 
@@ -41,24 +42,46 @@ export function RolesTab({ orgId }: RolesTabProps) {
   };
 
   const totalPages = Math.max(1, Math.ceil(orgRoles.length / PAGE_SIZE));
-  const paged = orgRoles.slice((rolePage - 1) * PAGE_SIZE, rolePage * PAGE_SIZE);
+  // REQ-1940: sort and group are the shared list mechanism.
+  const roleColumns: ListColumn<Role>[] = [
+    { key: "id", label: t("rolesTab.colId"), sortValue: (r) => r.id },
+    {
+      key: "capabilities",
+      label: t("rolesTab.colCapabilities"),
+      sortValue: (r) => r.capabilities.join(", "),
+      groupValue: (r) => r.capabilities.join(", "),
+    },
+    {
+      key: "domains",
+      label: t("rolesTab.colDomainAccess"),
+      sortValue: (r) => r.domain_access.join(", "),
+      groupValue: (r) => r.domain_access.join(", ") || t("rolesTab.noDomains"),
+    },
+  ];
+  const sortGroup = useListSortGroup(orgRoles, roleColumns, "org-roles");
 
   return (
     <Stack gap="md">
       <Title order={4}>{t("rolesTab.heading", { orgId })}</Title>
       <ListTable minWidth={640} testId="org-roles-list">
           <ListHead
+            sortGroup={sortGroup}
             columns={[
-              t("rolesTab.colId"),
-              t("rolesTab.colCapabilities"),
-              t("rolesTab.colDomainAccess"),
+              { col: "id" },
+              { col: "capabilities" },
+              { col: "domains" },
               t("rolesTab.colActions"),
             ]}
           />
           <Table.Tbody>
             {orgRoles.length === 0 && <ListEmpty colSpan={4}>{t("rolesTab.empty")}</ListEmpty>}
-            {paged.map((role) => (
-              <ListRow key={role.id}>
+            <ListItems
+              state={sortGroup}
+              items={pageItems(sortGroup, rolePage - 1, PAGE_SIZE)}
+              colSpan={4}
+              rowKey={(role) => role.id}
+              render={(role) => (
+              <ListRow>
                 <Table.Td>
                   {role.id}
                 </Table.Td>
@@ -87,10 +110,11 @@ export function RolesTab({ orgId }: RolesTabProps) {
                   </>
                 )}
               </ListRow>
-            ))}
+              )}
+            />
           </Table.Tbody>
       </ListTable>
-      {totalPages > 1 && (
+      {totalPages > 1 && sortGroup.groupBy.length === 0 && (
         <Group justify="flex-end">
           <Pagination total={totalPages} value={rolePage} onChange={setRolePage} size="sm" />
         </Group>

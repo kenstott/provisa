@@ -67,7 +67,8 @@ import { DomainModeCard, NamingConventionsCard } from "../components/admin/setti
 import { PageLoading } from "../components/PageLoading";
 import { usePanelState } from "../hooks/usePanelState";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
-import { ListTable, ListHead, ListRow, ListEmpty } from "../components/list/ListTable";
+import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
+import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 
 const ROUTE_TO_SECTION: Record<string, string> = {
   // Both routes open the merged dashboard; /admin/system-health keeps working as a deep link.
@@ -203,6 +204,26 @@ export function AdminPage() {
 
   const domainsEnabled = settings?.naming.use_domains !== false;
 
+  // REQ-1940: sort and group are the shared list mechanism.
+  const IMPLICIT_DOMAIN_IDS = new Set(["", "meta", "ops"]);
+  const userDomains = domains.filter((d) => !IMPLICIT_DOMAIN_IDS.has(d.id));
+  const domainColumns: ListColumn<(typeof domains)[number]>[] = [
+    { key: "id", label: t("adminPage.colId"), sortValue: (d) => d.id },
+    {
+      key: "description",
+      label: t("adminPage.colDescription"),
+      sortValue: (d) => d.description ?? "",
+    },
+    { key: "alias", label: t("adminPage.colGqlAlias"), sortValue: (d) => domainGqlAlias(d) },
+    {
+      key: "steward",
+      label: t("adminPage.colSteward"),
+      sortValue: (d) => d.steward ?? "",
+      groupValue: (d) => d.steward ?? "",
+    },
+  ];
+  const domainSortGroup = useListSortGroup(userDomains, domainColumns, "domains");
+
   const handleAddDomain = async () => {
     if (!newDomainId.trim()) return;
     await createDomain(newDomainId.trim(), newDomainDesc.trim(), newDomainAlias.trim() || null);
@@ -316,22 +337,17 @@ export function AdminPage() {
             )}
             {domainsEnabled &&
               (() => {
-                const IMPLICIT_DOMAIN_IDS = new Set(["", "meta", "ops"]);
-                const userDomains = domains.filter((d) => !IMPLICIT_DOMAIN_IDS.has(d.id));
                 const totalPages = Math.max(1, Math.ceil(userDomains.length / PAGE_SIZE));
-                const paged = userDomains.slice(
-                  domainPage * PAGE_SIZE,
-                  (domainPage + 1) * PAGE_SIZE,
-                );
                 return (
                   <Stack gap="sm">
                     <ListTable minWidth={480} testId="domains-list">
                         <ListHead
+                          sortGroup={domainSortGroup}
                           columns={[
-                            t("adminPage.colId"),
-                            t("adminPage.colDescription"),
-                            t("adminPage.colGqlAlias"),
-                            t("adminPage.colSteward"),
+                            { col: "id" },
+                            { col: "description" },
+                            { col: "alias" },
+                            { col: "steward" },
                             t("adminPage.colActions"),
                           ]}
                         />
@@ -339,8 +355,13 @@ export function AdminPage() {
                           {userDomains.length === 0 && (
                             <ListEmpty colSpan={5}>{t("adminPage.noDomains")}</ListEmpty>
                           )}
-                          {paged.map((d) => (
-                            <ListRow key={d.id}>
+                          <ListItems
+                            state={domainSortGroup}
+                            items={pageItems(domainSortGroup, domainPage, PAGE_SIZE)}
+                            colSpan={5}
+                            rowKey={(d) => d.id}
+                            render={(d) => (
+                            <ListRow>
                               <Table.Td>
                                 {d.id}
                               </Table.Td>
@@ -372,10 +393,11 @@ export function AdminPage() {
                                 </ActionIcon>
                               </Table.Td>
                             </ListRow>
-                          ))}
+                            )}
+                          />
                         </Table.Tbody>
                     </ListTable>
-                    {totalPages > 1 && (
+                    {totalPages > 1 && domainSortGroup.groupBy.length === 0 && (
                       <Group justify="flex-end">
                         <Pagination
                           total={totalPages}

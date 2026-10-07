@@ -80,7 +80,8 @@ import type {
   GlossaryTermDetail,
   GlossaryTermSummary,
 } from "../../api/glossary";
-import { ListTable, ListRow } from "../list/ListTable";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
 
 // Per-viewer list-filter preferences; never reachable from other viewers or the server.
 function readStoredBool(key: string, fallback: boolean): boolean {
@@ -792,18 +793,26 @@ export function GlossaryTab() {
                   {t("glossaryTab.noRefs")}
                 </Text>
               ) : (
-                <ListTable minWidth={480}>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>{t("glossaryTab.colColumn")}</Table.Th>
-                        <Table.Th>{t("glossaryTab.colTable")}</Table.Th>
-                        <Table.Th>{t("glossaryTab.colSource")}</Table.Th>
-                        <Table.Th>{t("glossaryTab.colDomain")}</Table.Th>
-                        {canEdit && <Table.Th>{t("glossaryTab.colMove")}</Table.Th>}
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {detail.refs.map((ref) => (
+                <SortGroupTable
+          testPrefix="glossary-refs"
+          minWidth={480}
+          rows={detail.refs}
+          columns={[
+            { key: "column", label: t("glossaryTab.colColumn"), sortValue: (r) => r.column_name },
+            { key: "table", label: t("glossaryTab.colTable"), sortValue: (r) => r.alias || r.table_name },
+            { key: "source", label: t("glossaryTab.colSource"), sortValue: (r) => r.source_id, groupValue: (r) => r.source_id },
+            { key: "domain", label: t("glossaryTab.colDomain"), sortValue: (r) => r.domain_id, groupValue: (r) => r.domain_id },
+          ]}
+          headers={[
+            { col: "column" },
+            { col: "table" },
+            { col: "source" },
+            { col: "domain" },
+            ...(canEdit ? [t("glossaryTab.colMove")] : []),
+          ]}
+          colSpan={5}
+          rowKey={(ref) => `${ref.table_id}:${ref.column_name}`}
+          render={(ref) => (
                         <ListRow
                           key={`${ref.table_id}:${ref.column_name}`}
                           testId={`glossary-ref-${ref.table_id}-${ref.column_name}`}
@@ -826,9 +835,8 @@ export function GlossaryTab() {
                             </Table.Td>
                           )}
                         </ListRow>
-                      ))}
-                    </Table.Tbody>
-                  </ListTable>
+                      )}
+        />
               )}
 
               <Group gap="xs" align="center">

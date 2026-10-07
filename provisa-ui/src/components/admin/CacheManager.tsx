@@ -35,7 +35,6 @@ import {
   useRefreshMV,
   useToggleMV,
 } from "../../hooks/useAdminOpsQueries";
-import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
 import {
   HotTablesSettingsPanel,
   MaterializedSettingsPanel,
@@ -49,7 +48,8 @@ import { useRegionSelection } from "../../hooks/useRegionSelection";
 import { filterByRegion } from "../../hooks/regionFilter";
 import { RegionSelector } from "../RegionSelector";
 import { displayMvName } from "./mvDisplay";
-import { ListTable, ListRow } from "../list/ListTable";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
 
 const PAGE_SIZE = 50;
 
@@ -93,30 +93,6 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
   );
 }
 
-type SortDir = "asc" | "desc";
-
-function SortableTh({
-  label,
-  active,
-  dir,
-  onSort,
-}: {
-  label: string;
-  active: boolean;
-  dir: SortDir;
-  onSort: () => void;
-}) {
-  const Icon = !active ? ChevronsUpDown : dir === "asc" ? ChevronUp : ChevronDown;
-  return (
-    <Table.Th onClick={onSort} style={{ cursor: "pointer", userSelect: "none" }}>
-      <Group gap={4} wrap="nowrap">
-        {label}
-        <Icon size={14} opacity={active ? 1 : 0.4} />
-      </Group>
-    </Table.Th>
-  );
-}
-
 export function CacheManager() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<TabKey>("response");
@@ -156,19 +132,7 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
   const [msg, setMsg] = useState("");
   const [tableSearch, setTableSearch] = useState("");
   const [tablePage, setTablePage] = useState(0);
-  const [sortKey, setSortKey] = useState<"table" | "domain" | "entries">("table");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-
-  const toggleSort = (key: "table" | "domain" | "entries") => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-    setTablePage(0);
-  };
-
+  const [tablesGrouped, setTablesGrouped] = useState(false);
   const handlePurgeAll = async () => {
     setPurging(true);
     setMsg("");
@@ -218,20 +182,8 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
       (tbl.alias || tbl.tableName).toLowerCase().includes(q) ||
       (tbl.domainId ?? "").toLowerCase().includes(q),
   );
-  const sorted = [...filtered].sort((a, b) => {
-    let cmp: number;
-    if (sortKey === "entries") {
-      cmp = (entriesByTable.get(a.id) ?? 0) - (entriesByTable.get(b.id) ?? 0);
-    } else if (sortKey === "domain") {
-      cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
-    } else {
-      cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
-    }
-    return sortDir === "asc" ? cmp : -cmp;
-  });
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(tablePage, totalPages - 1);
-  const paged = sorted.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   return (
     <Stack gap="md">
@@ -298,51 +250,51 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
               {purging ? t("cacheManager.response.purging") : t("cacheManager.response.purgeAll")}
             </Button>
           </Group>
-          <ListTable>
-            <Table.Thead>
-              <Table.Tr>
-                <SortableTh
-                  label={t("cacheManager.response.table")}
-                  active={sortKey === "table"}
-                  dir={sortDir}
-                  onSort={() => toggleSort("table")}
-                />
-                <SortableTh
-                  label={t("cacheManager.response.domain")}
-                  active={sortKey === "domain"}
-                  dir={sortDir}
-                  onSort={() => toggleSort("domain")}
-                />
-                <SortableTh
-                  label={t("cacheManager.response.cachedEntries")}
-                  active={sortKey === "entries"}
-                  dir={sortDir}
-                  onSort={() => toggleSort("entries")}
-                />
-                <Table.Th />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {paged.map((tbl) => (
-                <ListRow key={tbl.id}>
-                  <Table.Td>{tbl.alias || tbl.tableName}</Table.Td>
-                  <Table.Td>{tbl.domainId}</Table.Td>
-                  <Table.Td>{entriesByTable.get(tbl.id) ?? 0}</Table.Td>
-                  <Table.Td>
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      onClick={() => handlePurgeTable(tbl.id, tbl.tableName)}
-                      data-testid={`purge-table-btn-${tbl.id}`}
-                    >
-                      {t("cacheManager.response.purgeTable")}
-                    </Button>
-                  </Table.Td>
-                </ListRow>
-              ))}
-            </Table.Tbody>
-          </ListTable>
-          {totalPages > 1 && (
+          <SortGroupTable
+            testPrefix="cache-tables"
+            rows={filtered}
+            columns={[
+              {
+                key: "table",
+                label: t("cacheManager.response.table"),
+                sortValue: (x) => x.alias || x.tableName,
+              },
+              {
+                key: "domain",
+                label: t("cacheManager.response.domain"),
+                sortValue: (x) => x.domainId ?? "",
+                groupValue: (x) => x.domainId ?? "",
+              },
+              {
+                key: "entries",
+                label: t("cacheManager.response.cachedEntries"),
+                sortValue: (x) => entriesByTable.get(x.id) ?? 0,
+              },
+            ]}
+            headers={[{ col: "table" }, { col: "domain" }, { col: "entries" }, ""]}
+            colSpan={4}
+            rowKey={(tbl) => tbl.id}
+            page={{ index: safePage, size: PAGE_SIZE }}
+            onGroupedChange={setTablesGrouped}
+            render={(tbl) => (
+              <ListRow key={tbl.id}>
+                <Table.Td>{tbl.alias || tbl.tableName}</Table.Td>
+                <Table.Td>{tbl.domainId}</Table.Td>
+                <Table.Td>{entriesByTable.get(tbl.id) ?? 0}</Table.Td>
+                <Table.Td>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    onClick={() => handlePurgeTable(tbl.id, tbl.tableName)}
+                    data-testid={`purge-table-btn-${tbl.id}`}
+                  >
+                    {t("cacheManager.response.purgeTable")}
+                  </Button>
+                </Table.Td>
+              </ListRow>
+            )}
+          />
+          {totalPages > 1 && !tablesGrouped && (
             <Group justify="flex-end">
               <Pagination
                 total={totalPages}
@@ -378,6 +330,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
     connected,
     (h) => h.region ?? null,
   );
+  type HotRow = (typeof hotTables)[number];
   return (
     <Stack gap="md">
       <Text size="sm" c="dimmed">
@@ -403,36 +356,67 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
       {hotTables.length === 0 ? (
         <Text c="dimmed">{t("cacheManager.hot.empty")}</Text>
       ) : (
-        <ListTable>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("cacheManager.hot.table")}</Table.Th>
-              <Table.Th>{t("cacheManager.hot.catalog")}</Table.Th>
-              <Table.Th>{t("cacheManager.hot.schema")}</Table.Th>
-              {hasRegions && <Table.Th>{t("regionSelector.columnHeader")}</Table.Th>}
-              <Table.Th>{t("cacheManager.hot.rows")}</Table.Th>
-              <Table.Th>{t("cacheManager.hot.kind")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {shownHot.map((h) => (
-              <ListRow key={`${h.kind}:${h.catalog}.${h.schemaName}.${h.tableName}`}>
-                <Table.Td>{h.tableName}</Table.Td>
-                <Table.Td>{h.catalog}</Table.Td>
-                <Table.Td>{h.schemaName}</Table.Td>
-                {hasRegions && <Table.Td>{h.region ?? t("regionSelector.noRegion")}</Table.Td>}
-                {/* A candidate has nothing mirrored yet, and a replica still being built has
+        <SortGroupTable
+          testPrefix="cache-hot"
+          rows={shownHot}
+          columns={[
+            { key: "table", label: t("cacheManager.hot.table"), sortValue: (h) => h.tableName },
+            {
+              key: "catalog",
+              label: t("cacheManager.hot.catalog"),
+              sortValue: (h) => h.catalog,
+              groupValue: (h) => h.catalog,
+            },
+            {
+              key: "schema",
+              label: t("cacheManager.hot.schema"),
+              sortValue: (h) => h.schemaName,
+              groupValue: (h) => h.schemaName,
+            },
+            // REQ-1922: the table's region, when the platform declares regions.
+            ...(hasRegions
+              ? [
+                  {
+                    key: "region",
+                    label: t("regionSelector.columnHeader"),
+                    sortValue: (h: HotRow) => h.region ?? "",
+                    groupValue: (h: HotRow) => h.region ?? t("regionSelector.noRegion"),
+                  },
+                ]
+              : []),
+            { key: "rows", label: t("cacheManager.hot.rows"), sortValue: (h) => h.rowCount },
+            {
+              key: "kind",
+              label: t("cacheManager.hot.kind"),
+              sortValue: (h) => t(`cacheManager.hot.kind_${h.kind}`),
+              groupValue: (h) => t(`cacheManager.hot.kind_${h.kind}`),
+            },
+          ]}
+          headers={[
+            { col: "table" },
+            { col: "catalog" },
+            { col: "schema" },
+            ...(hasRegions ? [{ col: "region" }] : []),
+            { col: "rows" },
+            { col: "kind" },
+          ]}
+          colSpan={hasRegions ? 6 : 5}
+          rowKey={(h) => `${h.kind}:${h.catalog}.${h.schemaName}.${h.tableName}`}
+          render={(h) => (
+            <ListRow key={`${h.kind}:${h.catalog}.${h.schemaName}.${h.tableName}`}>
+              <Table.Td>{h.tableName}</Table.Td>
+              <Table.Td>{h.catalog}</Table.Td>
+              <Table.Td>{h.schemaName}</Table.Td>
+              {hasRegions && <Table.Td>{h.region ?? t("regionSelector.noRegion")}</Table.Td>}
+              {/* A candidate has nothing mirrored yet, and a replica still being built has
                     nothing to read yet: neither has a row count to report. */}
-                <Table.Td>
-                  {h.kind === "hot_candidate" || h.kind === "replica_building"
-                    ? unknown
-                    : h.rowCount}
-                </Table.Td>
-                <Table.Td>{t(`cacheManager.hot.kind_${h.kind}`)}</Table.Td>
-              </ListRow>
-            ))}
-          </Table.Tbody>
-        </ListTable>
+              <Table.Td>
+                {h.kind === "hot_candidate" || h.kind === "replica_building" ? unknown : h.rowCount}
+              </Table.Td>
+              <Table.Td>{t(`cacheManager.hot.kind_${h.kind}`)}</Table.Td>
+            </ListRow>
+          )}
+        />
       )}
       {platform && <HotTablesSettingsPanel />}
     </Stack>
@@ -456,8 +440,8 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
     setRefreshing(null);
   };
 
+  const [mvGrouped, setMvGrouped] = useState(false);
   const totalPages = Math.max(1, Math.ceil(mvList.length / PAGE_SIZE));
-  const paged = mvList.slice(mvPage * PAGE_SIZE, (mvPage + 1) * PAGE_SIZE);
 
   return (
     <Stack gap="md">
@@ -488,76 +472,115 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
         <Text c="dimmed">{t("cacheManager.materialized.empty")}</Text>
       ) : (
         <>
-          <ListTable>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("cacheManager.materialized.view")}</Table.Th>
-                <Table.Th>{t("cacheManager.materialized.sourceTables")}</Table.Th>
-                <Table.Th>{t("cacheManager.materialized.target")}</Table.Th>
-                <Table.Th>{t("cacheManager.materialized.status")}</Table.Th>
-                <Table.Th>{t("cacheManager.materialized.rows")}</Table.Th>
-                <Table.Th>{t("cacheManager.materialized.lastRefresh")}</Table.Th>
-                <Table.Th>{t("cacheManager.materialized.interval")}</Table.Th>
-                <Table.Th>{t("cacheManager.materialized.error")}</Table.Th>
-                <Table.Th />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {paged.map((mv) => (
-                <ListRow key={mv.id}>
-                  <Table.Td>
-                    {/* Show the user's alias; mv.id stays the action key below. */}
-                    <code>{displayMvName(mv.id)}</code>
-                  </Table.Td>
-                  <Table.Td>{mv.sourceTables.join(", ")}</Table.Td>
-                  <Table.Td>
-                    <code>{mv.targetTable}</code>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge color={MV_STATUS_COLOR[mv.status] ?? "gray"} variant="light">
-                      {mv.status}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>{mv.rowCount ?? unknown}</Table.Td>
-                  <Table.Td>
-                    {mv.lastRefreshAt
-                      ? new Date(mv.lastRefreshAt * 1000).toLocaleTimeString()
-                      : t("cacheManager.materialized.never")}
-                  </Table.Td>
-                  <Table.Td>{mv.refreshInterval}s</Table.Td>
-                  <Table.Td maw={200} c="red">
-                    {mv.lastError || ""}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs" wrap="nowrap">
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        onClick={() => handleRefresh(mv.id)}
-                        disabled={refreshing === mv.id}
-                        data-testid={`mv-refresh-btn-${mv.id}`}
-                      >
-                        {refreshing === mv.id
-                          ? t("cacheManager.materialized.refreshing")
-                          : t("cacheManager.materialized.refresh")}
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        onClick={() => toggleMV(mv.id, !mv.enabled)}
-                        data-testid={`mv-toggle-btn-${mv.id}`}
-                      >
-                        {mv.enabled
-                          ? t("cacheManager.materialized.disable")
-                          : t("cacheManager.materialized.enable")}
-                      </Button>
-                    </Group>
-                  </Table.Td>
-                </ListRow>
-              ))}
-            </Table.Tbody>
-          </ListTable>
-          {totalPages > 1 && (
+          <SortGroupTable
+            testPrefix="cache-mv"
+            rows={mvList}
+            columns={[
+              {
+                key: "view",
+                label: t("cacheManager.materialized.view"),
+                sortValue: (mv) => displayMvName(mv.id),
+              },
+              {
+                key: "sourceTables",
+                label: t("cacheManager.materialized.sourceTables"),
+                sortValue: (mv) => mv.sourceTables.join(", "),
+              },
+              {
+                key: "target",
+                label: t("cacheManager.materialized.target"),
+                sortValue: (mv) => mv.targetTable,
+              },
+              {
+                key: "status",
+                label: t("cacheManager.materialized.status"),
+                sortValue: (mv) => mv.status,
+                groupValue: (mv) => mv.status,
+              },
+              {
+                key: "rows",
+                label: t("cacheManager.materialized.rows"),
+                sortValue: (mv) => mv.rowCount ?? 0,
+              },
+              {
+                key: "lastRefresh",
+                label: t("cacheManager.materialized.lastRefresh"),
+                sortValue: (mv) => mv.lastRefreshAt ?? 0,
+              },
+              {
+                key: "interval",
+                label: t("cacheManager.materialized.interval"),
+                sortValue: (mv) => mv.refreshInterval,
+              },
+            ]}
+            headers={[
+              { col: "view" },
+              { col: "sourceTables" },
+              { col: "target" },
+              { col: "status" },
+              { col: "rows" },
+              { col: "lastRefresh" },
+              { col: "interval" },
+              t("cacheManager.materialized.error"),
+            ]}
+            colSpan={8}
+            rowKey={(mv) => mv.id}
+            page={{ index: mvPage, size: PAGE_SIZE }}
+            onGroupedChange={setMvGrouped}
+            render={(mv) => (
+              <ListRow key={mv.id}>
+                <Table.Td>
+                  {/* Show the user's alias; mv.id stays the action key below. */}
+                  <code>{displayMvName(mv.id)}</code>
+                </Table.Td>
+                <Table.Td>{mv.sourceTables.join(", ")}</Table.Td>
+                <Table.Td>
+                  <code>{mv.targetTable}</code>
+                </Table.Td>
+                <Table.Td>
+                  <Badge color={MV_STATUS_COLOR[mv.status] ?? "gray"} variant="light">
+                    {mv.status}
+                  </Badge>
+                </Table.Td>
+                <Table.Td>{mv.rowCount ?? unknown}</Table.Td>
+                <Table.Td>
+                  {mv.lastRefreshAt
+                    ? new Date(mv.lastRefreshAt * 1000).toLocaleTimeString()
+                    : t("cacheManager.materialized.never")}
+                </Table.Td>
+                <Table.Td>{mv.refreshInterval}s</Table.Td>
+                <Table.Td maw={200} c="red">
+                  {mv.lastError || ""}
+                </Table.Td>
+                <Table.Td>
+                  <Group gap="xs" wrap="nowrap">
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      onClick={() => handleRefresh(mv.id)}
+                      disabled={refreshing === mv.id}
+                      data-testid={`mv-refresh-btn-${mv.id}`}
+                    >
+                      {refreshing === mv.id
+                        ? t("cacheManager.materialized.refreshing")
+                        : t("cacheManager.materialized.refresh")}
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      onClick={() => toggleMV(mv.id, !mv.enabled)}
+                      data-testid={`mv-toggle-btn-${mv.id}`}
+                    >
+                      {mv.enabled
+                        ? t("cacheManager.materialized.disable")
+                        : t("cacheManager.materialized.enable")}
+                    </Button>
+                  </Group>
+                </Table.Td>
+              </ListRow>
+            )}
+          />
+          {totalPages > 1 && !mvGrouped && (
             <Group justify="flex-end">
               <Pagination
                 total={totalPages}

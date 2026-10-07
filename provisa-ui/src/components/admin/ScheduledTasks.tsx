@@ -32,7 +32,8 @@ import {
 } from "../../hooks/useAdminOpsQueries";
 import { useRoles } from "../../hooks/useAdminQueries";
 import { fetchActions, type TrackedWebhook } from "../../api/actions";
-import { ListTable, ListRow } from "../list/ListTable";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
 
 const PAGE_SIZE = 50;
 
@@ -47,6 +48,7 @@ export function ScheduledTasks() {
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [taskPage, setTaskPage] = useState(1);
+  const [grouped, setGrouped] = useState(false);
 
   const [webhooks, setWebhooks] = useState<TrackedWebhook[]>([]);
   useEffect(() => {
@@ -143,7 +145,6 @@ export function ScheduledTasks() {
   if (loading) return <Text>{t("scheduledTasks.loading")}</Text>;
 
   const totalPages = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE));
-  const paged = tasks.slice((taskPage - 1) * PAGE_SIZE, taskPage * PAGE_SIZE);
 
   return (
     <Stack gap="md">
@@ -276,26 +277,35 @@ export function ScheduledTasks() {
         <Text c="dimmed">{t("scheduledTasks.empty")}</Text>
       ) : (
         <>
-          <ListTable minWidth={800}>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>{t("scheduledTasks.colId")}</Table.Th>
-                  <Table.Th>{t("scheduledTasks.colName")}</Table.Th>
-                  <Table.Th>{t("scheduledTasks.colCron")}</Table.Th>
-                  <Table.Th>{t("scheduledTasks.colKind")}</Table.Th>
-                  <Table.Th>{t("scheduledTasks.colTarget")}</Table.Th>
-                  <Table.Th>{t("scheduledTasks.colEnabled")}</Table.Th>
-                  <Table.Th>{t("scheduledTasks.colLastRun")}</Table.Th>
-                  <Table.Th>{t("scheduledTasks.colNextRun")}</Table.Th>
-                  <Table.Th>
-                    <Text span visibleFrom="xs" fz="sm" fw={600}>
-                      {t("scheduledTasks.colActions")}
-                    </Text>
-                  </Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {paged.map((task) => (
+          <SortGroupTable
+          testPrefix="scheduled-tasks"
+          minWidth={800}
+          rows={tasks}
+          columns={[
+            { key: "id", label: t("scheduledTasks.colId"), sortValue: (k) => k.id },
+            { key: "name", label: t("scheduledTasks.colName"), sortValue: (k) => k.name },
+            { key: "cron", label: t("scheduledTasks.colCron"), sortValue: (k) => k.cronExpression },
+            { key: "kind", label: t("scheduledTasks.colKind"), sortValue: (k) => k.kind, groupValue: (k) => k.kind },
+            { key: "enabled", label: t("scheduledTasks.colEnabled"), sortValue: (k) => (k.enabled ? 1 : 0), groupValue: (k) => String(k.enabled) },
+            { key: "lastRun", label: t("scheduledTasks.colLastRun"), sortValue: (k) => k.lastRunAt ?? "" },
+            { key: "nextRun", label: t("scheduledTasks.colNextRun"), sortValue: (k) => k.nextRunAt ?? "" },
+          ]}
+          headers={[
+            { col: "id" },
+            { col: "name" },
+            { col: "cron" },
+            { col: "kind" },
+            t("scheduledTasks.colTarget"),
+            { col: "enabled" },
+            { col: "lastRun" },
+            { col: "nextRun" },
+            t("scheduledTasks.colActions"),
+          ]}
+          colSpan={9}
+          rowKey={(task) => task.id}
+          page={{ index: taskPage - 1, size: PAGE_SIZE }}
+          onGroupedChange={setGrouped}
+          render={(task) => (
                   <ListRow key={task.id}>
                     <Table.Td>
                       <Text ff="monospace" fz="sm">
@@ -367,10 +377,9 @@ export function ScheduledTasks() {
                       </Group>
                     </Table.Td>
                   </ListRow>
-                ))}
-              </Table.Tbody>
-            </ListTable>
-          {totalPages > 1 && (
+                )}
+        />
+          {totalPages > 1 && !grouped && (
             <Group justify="flex-end">
               <Pagination total={totalPages} value={taskPage} onChange={setTaskPage} size="sm" />
             </Group>

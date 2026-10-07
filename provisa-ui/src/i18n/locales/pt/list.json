@@ -1,0 +1,9 @@
+{
+  "list": {
+    "sortAscending": "ordenado crescente",
+    "sortDescending": "ordenado decrescente",
+    "sortNone": "sem ordenação",
+    "groupBy": "Agrupar por {{label}}",
+    "ungroupLevel": "Desagrupar (nível {{level}})"
+  }
+}

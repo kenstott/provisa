@@ -47,7 +47,8 @@ import { useLocalStorage } from "../components/graph/graph-persistence";
 import { useRoles } from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
 import { inviteUrl } from "../lib/authHost";
-import { ListTable, ListHead, ListRow, ListEmpty } from "../components/list/ListTable";
+import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
+import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 
 // REQ-1266: org_admin self-service team management. The org_admin invites people into their
 // active org and picks the role each invitee is granted on redemption (the invite carries
@@ -202,6 +203,63 @@ export function TeamPage() {
     return "—";
   };
 
+  // REQ-1940: sort and group are the shared list mechanism.
+  const inviteStatus = (inv: OrgInvite) =>
+    isSpent(inv)
+      ? t("teamPage.spentStatus")
+      : inv.used_at
+        ? t("teamPage.usedStatus", { date: new Date(inv.used_at).toLocaleDateString() })
+        : t("teamPage.activeStatus");
+  const memberColumns: ListColumn<OrgMember>[] = [
+    {
+      key: "person",
+      label: t("teamPage.colPerson"),
+      sortValue: (m) => m.display_name ?? m.email ?? m.user_id,
+    },
+    {
+      key: "provider",
+      label: t("teamPage.colProvider"),
+      sortValue: (m) => m.provider ?? "—",
+      groupValue: (m) => m.provider ?? "—",
+    },
+    {
+      key: "orgAdmin",
+      label: t("teamPage.colOrgAdmin"),
+      sortValue: (m) => (m.is_org_admin ? t("teamPage.yes") : t("teamPage.no")),
+      groupValue: (m) => (m.is_org_admin ? t("teamPage.yes") : t("teamPage.no")),
+    },
+  ];
+  const inviteColumns: ListColumn<OrgInvite>[] = [
+    { key: "token", label: t("teamPage.colToken"), sortValue: (i) => i.token },
+    { key: "email", label: t("teamPage.colEmail"), sortValue: (i) => i.email ?? "—" },
+    {
+      key: "role",
+      label: t("teamPage.colRole"),
+      sortValue: (i) => i.role_id ?? "—",
+      groupValue: (i) => i.role_id ?? "—",
+    },
+    {
+      key: "expires",
+      label: t("teamPage.colExpires"),
+      sortValue: (i) => new Date(i.expires_at).getTime(),
+    },
+    { key: "uses", label: t("teamPage.colUses"), sortValue: (i) => i.uses },
+    {
+      key: "environment",
+      label: t("teamPage.colEnvironment"),
+      sortValue: (i) => envSummary(i),
+      groupValue: (i) => envSummary(i),
+    },
+    {
+      key: "status",
+      label: t("teamPage.colStatus"),
+      sortValue: (i) => inviteStatus(i),
+      groupValue: (i) => inviteStatus(i),
+    },
+  ];
+  const memberSortGroup = useListSortGroup(members, memberColumns, "team-members");
+  const inviteSortGroup = useListSortGroup(invites, inviteColumns, "team-invites");
+
   const handleCreate = async () => {
     if (!activeOrgId || !roleId) return;
     setError(null);
@@ -282,21 +340,21 @@ export function TeamPage() {
           <Accordion.Panel>
             <ListTable minWidth={640} testId="team-members">
                 <ListHead
- columns={[
-t("teamPage.colPerson"),
-t("teamPage.colProvider"),
-t("teamPage.colOrgAdmin"),
-t("teamPage.colActions"),
-]}
+ sortGroup={memberSortGroup}
+ columns={[{ col: "person" }, { col: "provider" }, { col: "orgAdmin" }, t("teamPage.colActions")]}
  />
                 <Table.Tbody>
                   {members.length === 0 && (
                     <ListEmpty colSpan={4}>{t("teamPage.noMembers")}</ListEmpty>
                   )}
-                  {members.map((m) => {
+                  <ListItems
+                    state={memberSortGroup}
+                    colSpan={4}
+                    rowKey={(m) => m.user_id}
+                    render={(m) => {
                     const lastAdmin = m.is_org_admin && adminCount <= 1;
                     return (
-                      <ListRow key={m.user_id} testId={`team-member-${m.user_id}`}>
+                      <ListRow testId={`team-member-${m.user_id}`}>
                         <Table.Td>
                           <Text size="sm">{m.display_name ?? m.email ?? m.user_id}</Text>
                           {m.email && m.display_name && (
@@ -340,7 +398,8 @@ t("teamPage.colActions"),
                         </Table.Td>
                       </ListRow>
                     );
-                  })}
+                    }}
+                  />
                 </Table.Tbody>
             </ListTable>
           </Accordion.Panel>
@@ -433,14 +492,15 @@ t("teamPage.colActions"),
 
             <ListTable minWidth={640} testId="team-invites">
                 <ListHead
+ sortGroup={inviteSortGroup}
  columns={[
-t("teamPage.colToken"),
-t("teamPage.colEmail"),
-t("teamPage.colRole"),
-t("teamPage.colExpires"),
-t("teamPage.colUses"),
-t("teamPage.colEnvironment"),
-t("teamPage.colStatus"),
+{ col: "token" },
+{ col: "email" },
+{ col: "role" },
+{ col: "expires" },
+{ col: "uses" },
+{ col: "environment" },
+{ col: "status" },
 t("teamPage.colActions"),
 ]}
  />
@@ -448,8 +508,12 @@ t("teamPage.colActions"),
                   {invites.length === 0 && (
                     <ListEmpty colSpan={8}>{t("teamPage.noInvites")}</ListEmpty>
                   )}
-                  {invites.map((inv) => (
-                    <ListRow key={inv.token}>
+                  <ListItems
+                    state={inviteSortGroup}
+                    colSpan={8}
+                    rowKey={(inv) => inv.token}
+                    render={(inv) => (
+                    <ListRow>
                       <Table.Td>
                         <Text ff="monospace" span>
                           {inv.token.slice(0, 8)}…
@@ -499,7 +563,8 @@ t("teamPage.colActions"),
                         </Group>
                       </Table.Td>
                     </ListRow>
-                  ))}
+                    )}
+                  />
                 </Table.Tbody>
             </ListTable>
           </Accordion.Panel>

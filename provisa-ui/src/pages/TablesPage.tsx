@@ -15,7 +15,7 @@ import { RegionSelector } from "../components/RegionSelector";
 import { useState, useEffect, Fragment, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Network, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, Layers, X } from "lucide-react";
+import { Network, FileSpreadsheet, X } from "lucide-react";
 import {
   ActionIcon,
   Alert,
@@ -85,7 +85,15 @@ import {
   replicateContradictsLoadProtection,
   resolvedReplicate,
 } from "../components/admin/replicate";
-import { ListTable, ListRow, ListExpandRow, ListEmpty } from "../components/list/ListTable";
+import {
+  ListTable,
+  ListHead,
+  ListGroupRow,
+  ListRow,
+  ListExpandRow,
+  ListEmpty,
+} from "../components/list/ListTable";
+import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PageLoading } from "../components/PageLoading";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
@@ -146,23 +154,20 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [showViewForm, setShowViewForm] = useState(false);
   const [editingViewDef, setEditingViewDef] = useState<RegisteredTable | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tableSearch, setTableSearch] = useState(() => searchParams.get("source") ?? "");
+  // `?source=` seeds the filter box, and seeds it again whenever it changes while the page stays
+  // mounted (the tour moves /tables?source=dq-checker -> /tables?source=pet-store-sqlite in place).
+  const sourceParam = searchParams.get("source");
+  const [tableSearch, setTableSearch] = useState(sourceParam ?? "");
+  const [seededSource, setSeededSource] = useState(sourceParam);
+  if (sourceParam !== seededSource) {
+    setSeededSource(sourceParam);
+    setTableSearch(sourceParam ?? "");
+  }
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
-  const [groupBy, setGroupBy] = useState<Array<"source" | "domain">>([]);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const toggleGroupBy = (col: "source" | "domain") =>
-    setGroupBy((prev) => (prev.includes(col) ? prev.filter((g) => g !== col) : [...prev, col]));
-  const [sortCol, setSortCol] = useState<"source" | "domain" | "table" | "cols" | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { checkedDomains, domainsEnabled } = useDomainFilter();
-  const { domainAccess, role: activeRole } = useAuth();
-  // REQ-1922: the region selector filters the list; a name search crosses regions (filter off).
-  const { regions, connected, error: regionError } = useRegionChoices();
-  const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
-  const hasRegions = regions.length > 0;
-  const nameSearchActive = tableSearch.trim().length > 0;
-  const baseTables = useMemo(
+  // REQ-1940: sort and group are the shared list mechanism.
+  const filteredTables = useMemo(
     () =>
       tables.filter((t) => {
         if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
@@ -175,10 +180,40 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       }),
     [tables, viewsOnly, checkedDomains, tableSearch],
   );
-  // A name search crosses regions; otherwise the region selection filters the list (REQ-1922).
+  const listColumns = useMemo<ListColumn<RegisteredTable>[]>(
+    () => [
+      {
+        key: "source",
+        label: translate("tablesPage.colSource"),
+        sortValue: (t) => t.sourceId,
+        groupValue: (t) => t.sourceId,
+      },
+      {
+        key: "domain",
+        label: translate("tablesPage.colDomain"),
+        sortValue: (t) => t.domainId ?? "",
+        groupValue: (t) => (t.domainId ? normalizeDomain(t.domainId) : "(none)"),
+      },
+      {
+        key: "table",
+        label: translate("tablesPage.colTable"),
+        sortValue: (t) => t.alias || t.tableName,
+      },
+      { key: "cols", label: translate("tablesPage.colCols"), sortValue: (t) => t.columns.length },
+    ],
+    [translate],
+  );
+  // REQ-1922: the region selector filters the list; a name search crosses regions (filter off).
+  const { regions, connected, error: regionError } = useRegionChoices();
+  const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
+  const hasRegions = regions.length > 0;
+  const nameSearchActive = tableSearch.trim().length > 0;
   const { visible: regionTables, hidden: regionHidden } = nameSearchActive
-    ? { visible: baseTables, hidden: 0 }
-    : filterByRegion(baseTables, regionSel, connected, (t) => t.region ?? null);
+    ? { visible: filteredTables, hidden: 0 }
+    : filterByRegion(filteredTables, regionSel, connected, (t) => t.region ?? null);
+  const sortGroup = useListSortGroup(regionTables, listColumns, "tables");
+  const groupBy = sortGroup.groupBy;
+  const { domainAccess, role: activeRole } = useAuth();
   // REQ-1592: the model-report download. Busy while the server builds the workbook.
   const [reportBusy, setReportBusy] = useState(false);
 
@@ -352,11 +387,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   useEffect(() => {
     setPage(0);
   }, [tableSearch, checkedDomains, groupBy]);
-
-  const groupByKey = groupBy.join(",");
-  useEffect(() => {
-    setCollapsedGroups(new Set());
-  }, [groupByKey]);
 
   // REQ-1592: send the page's domain filter along, so the workbook covers what the page shows. A
   // selection of every domain is no selection at all — omitting the parameter then leaves the
@@ -823,243 +853,33 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       )}
 
       <ListTable testId="tables-list">
-        <Table.Thead>
-          <Table.Tr>
-            {(
-              [
-                ["source", "tablesPage.colSource"],
-                ["domain", "tablesPage.colDomain"],
-                ["table", "tablesPage.colTable"],
-              ] as const
-            )
-              .filter(([col]) => domainsEnabled || col !== "domain")
-              .map(([col, labelKey]) => {
-                const label = translate(labelKey);
-                const isGroupable = col === "source" || col === "domain";
-                const groupLevel = groupBy.indexOf(col as "source" | "domain");
-                const isGrouped = groupLevel !== -1;
-                const sortActive = sortCol === col;
-                const sortLabel = sortActive
-                  ? sortDir === "asc"
-                    ? translate("tablesPage.sortAscending")
-                    : translate("tablesPage.sortDescending")
-                  : translate("tablesPage.sortNone");
-                return (
-                  <Table.Th key={col} style={{ whiteSpace: "nowrap" }}>
-                    <Group gap={4} wrap="nowrap" component="span">
-                      <button
-                        type="button"
-                        data-testid={`tables-sort-${col}`}
-                        onClick={() => {
-                          if (sortCol !== col) {
-                            setSortCol(col);
-                            setSortDir("asc");
-                          } else if (sortDir === "asc") setSortDir("desc");
-                          else {
-                            setSortCol(null);
-                            setSortDir("asc");
-                          }
-                        }}
-                        aria-label={`${label}, ${sortLabel}`}
-                        style={{
-                          cursor: "pointer",
-                          userSelect: "none",
-                          background: "none",
-                          border: "none",
-                          padding: 0,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "0.25rem",
-                          font: "inherit",
-                          color: "inherit",
-                        }}
-                      >
-                        {label}
-                        {sortActive ? (
-                          sortDir === "asc" ? (
-                            <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
-                          ) : (
-                            <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
-                          )
-                        ) : (
-                          <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
-                        )}
-                      </button>
-                      {isGroupable && (
-                        <ActionIcon
-                          variant="transparent"
-                          size="xs"
-                          data-testid={`tables-group-${col}`}
-                          aria-label={
-                            isGrouped
-                              ? translate("tablesPage.ungroupLevel", { level: groupLevel + 1 })
-                              : translate("tablesPage.groupBy", { label })
-                          }
-                          title={
-                            isGrouped
-                              ? translate("tablesPage.ungroupLevel", { level: groupLevel + 1 })
-                              : translate("tablesPage.groupBy", { label })
-                          }
-                          onClick={() => toggleGroupBy(col)}
-                          style={{ opacity: isGrouped ? 1 : 0.35 }}
-                        >
-                          <Layers
-                            size={11}
-                            color={isGrouped ? "var(--primary, #6366f1)" : undefined}
-                            aria-hidden="true"
-                          />
-                        </ActionIcon>
-                      )}
-                      {isGroupable && isGrouped && (
-                        <Text span fz="0.65rem" c="var(--primary, #6366f1)">
-                          {groupLevel + 1}
-                        </Text>
-                      )}
-                    </Group>
-                  </Table.Th>
-                );
-              })}
-            <Table.Th>{translate("tablesPage.colNaming")}</Table.Th>
-            <Table.Th>{translate("tablesPage.colCacheTtl")}</Table.Th>
-            <Table.Th>{translate("tablesPage.colEffectiveTtl")}</Table.Th>
-            {hasRegions && <Table.Th>{translate("regionSelector.columnHeader")}</Table.Th>}
-            <Table.Th style={{ whiteSpace: "nowrap" }}>
-              {(() => {
-                const label = translate("tablesPage.colCols");
-                const sortActive = sortCol === "cols";
-                const sortLabel = sortActive
-                  ? sortDir === "asc"
-                    ? translate("tablesPage.sortAscending")
-                    : translate("tablesPage.sortDescending")
-                  : translate("tablesPage.sortNone");
-                return (
-                  <button
-                    type="button"
-                    data-testid="tables-sort-cols"
-                    onClick={() => {
-                      if (sortCol !== "cols") {
-                        setSortCol("cols");
-                        setSortDir("asc");
-                      } else if (sortDir === "asc") setSortDir("desc");
-                      else {
-                        setSortCol(null);
-                        setSortDir("asc");
-                      }
-                    }}
-                    aria-label={`${label}, ${sortLabel}`}
-                    style={{
-                      cursor: "pointer",
-                      userSelect: "none",
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.25rem",
-                      font: "inherit",
-                      color: "inherit",
-                    }}
-                  >
-                    {label}
-                    {sortActive ? (
-                      sortDir === "asc" ? (
-                        <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
-                      ) : (
-                        <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
-                      )
-                    ) : (
-                      <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
-                    )}
-                  </button>
-                );
-              })()}
-            </Table.Th>
-            <Table.Th></Table.Th>
-          </Table.Tr>
-        </Table.Thead>
+        <ListHead
+          sortGroup={sortGroup}
+          columns={[
+            { col: "source" },
+            ...(domainsEnabled ? [{ col: "domain" }] : []),
+            { col: "table" },
+            translate("tablesPage.colNaming"),
+            translate("tablesPage.colCacheTtl"),
+            translate("tablesPage.colEffectiveTtl"),
+            ...(hasRegions ? [translate("regionSelector.columnHeader")] : []),
+            { col: "cols" },
+            "",
+          ]}
+        />
         <Table.Tbody>
           {(() => {
-            const filtered = [...regionTables];
-
-            if (sortCol) {
-              filtered.sort((a, b) => {
-                let cmp = 0;
-                if (sortCol === "source") cmp = a.sourceId.localeCompare(b.sourceId);
-                else if (sortCol === "domain")
-                  cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
-                else if (sortCol === "table")
-                  cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
-                else if (sortCol === "cols") cmp = a.columns.length - b.columns.length;
-                return sortDir === "asc" ? cmp : -cmp;
-              });
-            }
-
-            const getGroupKey = (t: RegisteredTable, col: "source" | "domain") =>
-              col === "source" ? t.sourceId : t.domainId ? normalizeDomain(t.domainId) : "(none)";
-
-            const colLabel = (col: "source" | "domain") => (col === "source" ? "Source" : "Domain");
-
-            type GroupItem =
-              | { type: "header"; level: 1 | 2; key: string; label: string; count: number }
-              | { type: "row"; t: RegisteredTable };
-
-            let items: GroupItem[];
-
-            if (groupBy.length === 0) {
-              items = filtered
-                .slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-                .map((t) => ({ type: "row" as const, t }));
-            } else {
-              items = [];
-              const l1Col = groupBy[0];
-              const l2Col = groupBy[1];
-              const l1Map = new Map<string, RegisteredTable[]>();
-              for (const t of filtered) {
-                const k = getGroupKey(t, l1Col);
-                if (!l1Map.has(k)) l1Map.set(k, []);
-                l1Map.get(k)!.push(t);
-              }
-              for (const [l1Key, l1Tables] of [...l1Map.entries()].sort(([a], [b]) =>
-                a.localeCompare(b),
-              )) {
-                items.push({
-                  type: "header",
-                  level: 1,
-                  key: l1Key,
-                  label: `${colLabel(l1Col)}: ${l1Key}`,
-                  count: l1Tables.length,
-                });
-                if (collapsedGroups.has(l1Key)) continue;
-                if (!l2Col) {
-                  for (const t of l1Tables) items.push({ type: "row", t });
-                } else {
-                  const l2Map = new Map<string, RegisteredTable[]>();
-                  for (const t of l1Tables) {
-                    const k = getGroupKey(t, l2Col);
-                    if (!l2Map.has(k)) l2Map.set(k, []);
-                    l2Map.get(k)!.push(t);
-                  }
-                  for (const [l2Key, l2Tables] of [...l2Map.entries()].sort(([a], [b]) =>
-                    a.localeCompare(b),
-                  )) {
-                    const compositeKey = `${l1Key}|${l2Key}`;
-                    items.push({
-                      type: "header",
-                      level: 2,
-                      key: compositeKey,
-                      label: `${colLabel(l2Col)}: ${l2Key}`,
-                      count: l2Tables.length,
-                    });
-                    if (collapsedGroups.has(compositeKey)) continue;
-                    for (const t of l2Tables) items.push({ type: "row", t });
-                  }
-                }
-              }
-            }
+            const items =
+              groupBy.length === 0
+                ? sortGroup.items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+                : sortGroup.items;
 
             if (items.length === 0) {
               return (
-                <ListEmpty colSpan={domainsEnabled ? 12 : 11} testId="tables-empty">
+                <ListEmpty
+                  colSpan={(domainsEnabled ? 12 : 11) + (hasRegions ? 1 : 0)}
+                  testId="tables-empty"
+                >
                   {translate("tablesPage.empty")}
                 </ListEmpty>
               );
@@ -1067,53 +887,25 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
             return items.map((item) => {
               if (item.type === "header") {
-                const isL1 = item.level === 1;
-                const isCollapsed = collapsedGroups.has(item.key);
-                const toggleCollapsed = () =>
-                  setCollapsedGroups((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(item.key)) next.delete(item.key);
-                    else next.add(item.key);
-                    return next;
-                  });
                 return (
-                  <Table.Tr key={`grp-${item.key}`}>
-                    <Table.Td
-                      colSpan={(domainsEnabled ? 9 : 8) + (hasRegions ? 1 : 0)}
-                      role="button"
-                      tabIndex={0}
-                      aria-expanded={!isCollapsed}
-                      onClick={toggleCollapsed}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          toggleCollapsed();
-                        }
-                      }}
-                      style={{
-                        fontWeight: isL1 ? 600 : 500,
-                        fontSize: isL1 ? "0.8rem" : "0.75rem",
-                        padding: isL1 ? "0.35rem 0.75rem" : "0.25rem 1.5rem",
-                        color: isL1 ? "var(--text-muted)" : "var(--text-muted)",
-                        background: isL1
-                          ? "var(--surface)"
-                          : "var(--surface-raised, var(--surface))",
-                        borderTop: isL1 ? "2px solid var(--border)" : "1px solid var(--border)",
-                        cursor: "pointer",
-                        userSelect: "none",
-                      }}
-                    >
-                      {isCollapsed ? "▶" : "▼"} {item.label}{" "}
-                      <span style={{ fontWeight: "normal", opacity: 0.7 }}>({item.count})</span>
-                    </Table.Td>
-                  </Table.Tr>
+                  <ListGroupRow
+                    key={`grp-${item.key}`}
+                    colSpan={(domainsEnabled ? 9 : 8) + (hasRegions ? 1 : 0)}
+                    level={item.level}
+                    label={item.label}
+                    count={item.count}
+                    collapsed={sortGroup.collapsed.has(item.key)}
+                    onToggle={() => sortGroup.toggleCollapsed(item.key)}
+                  />
                 );
               }
-              const t = item.t;
+              const t = item.row;
               const isEditing = editingTable?.id === t.id;
               const row = (
                 <Fragment key={t.id}>
                   <ListRow
+                    // A stable per-table anchor (source.table) for tour steps that open one row.
+                    data-table-row={`${t.sourceId}.${t.tableName}`}
                     onClick={() => {
                       setExpanded(expanded === t.id ? null : t.id);
                       if (expanded === t.id) cancelEditing();
@@ -1347,16 +1139,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       </ListTable>
 
       {(() => {
-        const filtered = tables.filter((t) => {
-          if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
-          if (viewsOnly && !t.viewSql) return false;
-          if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId))
-            return false;
-          const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
-          if (terms.length === 0) return true;
-          const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
-          return terms.every((term) => haystack.includes(term));
-        });
+        const filtered = regionTables;
         if (groupBy.length > 0) return null;
         const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
         if (totalPages === 1) return null;

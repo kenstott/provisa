@@ -11,9 +11,6 @@ import pytest
 import httpx
 from pytest_bdd import given, when, then, scenarios, parsers
 
-from types import SimpleNamespace
-
-from provisa.compiler.naming import source_to_catalog
 from provisa.federation.connector import Mechanism
 from provisa.federation.connector_base import ProbeResult
 from provisa.federation.connector_duckdb import MysqlFdwConnector, SqliteFdwConnector
@@ -231,17 +228,12 @@ def connector_probes_functional_availability(shared_data):
     )
 
 
-def _attach_view(source) -> SimpleNamespace:
-    """The view of a source a connector is handed at attach time: its fields plus the catalog
-    the engine names its attach objects after (REQ-1266/1529; native_backend._walk_registry)."""
-    return SimpleNamespace(**source.model_dump(), catalog=source_to_catalog(source.id))
-
-
 @then(
     "if available, the connector attaches the SQLite file (CREATE SERVER OPTIONS(database path) + IMPORT FOREIGN SCHEMA) or remote MySQL (CREATE SERVER + CREATE FOREIGN TABLE IMPORT FOREIGN SCHEMA)"
 )
 def connector_attaches_sources(shared_data):
     from provisa.core.models import Source, SourceType
+    from tests.helpers import attaching  # REQ-1266/1529: as the engine attaches a source
 
     sqlite_connector: SqliteFdwConnector = shared_data["sqlite_connector"]
     mysql_connector: MysqlFdwConnector = shared_data["mysql_connector"]
@@ -258,7 +250,7 @@ def connector_attaches_sources(shared_data):
         path="/data/orders.sqlite",
     )
 
-    sqlite_details = sqlite_connector.details(_attach_view(sqlite_source))
+    sqlite_details = sqlite_connector.details(attaching(sqlite_source, sqlite_source.id))
     sqlite_ddl = sqlite_details["attach_ddl"]
 
     assert isinstance(sqlite_ddl, (list, tuple)), "attach_ddl must be a sequence of DDL statements"
@@ -289,7 +281,7 @@ def connector_attaches_sources(shared_data):
         password="mypass",
     )
 
-    mysql_details = mysql_connector.details(_attach_view(mysql_source))
+    mysql_details = mysql_connector.details(attaching(mysql_source, mysql_source.id))
     mysql_ddl = mysql_details["attach_ddl"]
 
     assert isinstance(mysql_ddl, (list, tuple)), (
@@ -468,7 +460,7 @@ def queries_emit_iceberg_scan_with_allow_moved_paths(shared_data):
         path="s3://my-bucket/warehouse/orders",
     )
 
-    details = connector.details(_attach_view(source))
+    details = connector.details(source)
 
     assert "scan" in details, "connector details must contain a 'scan' key"
     scan = details["scan"]

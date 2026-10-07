@@ -1,0 +1,9 @@
+{
+  "list": {
+    "sortAscending": "आरोही क्रम में",
+    "sortDescending": "अवरोही क्रम में",
+    "sortNone": "क्रमबद्ध नहीं",
+    "groupBy": "{{label}} के अनुसार समूहित करें",
+    "ungroupLevel": "समूह हटाएँ (स्तर {{level}})"
+  }
+}

@@ -14,8 +14,8 @@ An org secret is referred to by text: ``${secret:NAME}`` in a source's password 
 host or path, a hint, a webhook header, a setting. A secret is deleted only when nothing stored
 in the org names it, so the delete asks here first and is refused with the list.
 
-The search is over STORED ROWS: every text and JSON column of every table in each environment
-schema of the org, and of the org's own rows in the platform plane. The columns come from the
+The search is over STORED ROWS: every text and JSON column of every model-store table in each
+environment schema of the org, and of the org's own rows in the platform plane. The columns come from the
 schema's own definitions (``schema_org.metadata``, ``schema_admin.metadata``), so a column added
 later is searched without anything being registered for it. It runs only when a secret is being
 deleted. It compares stored text with the reference's literal text; it never resolves a
@@ -111,6 +111,18 @@ class SecretReference:
             "environment": self.environment,
             "unreadable": self.unreadable,
         }
+
+
+def _model_tables() -> list[SATable]:
+    """The environment tables the search reads: the model store's (REQ-1919, REQ-1922).
+
+    Each environment is searched through its model handle, which refuses a region's state and
+    record tables. Those hold what a region did (builds, change events, the request record), not
+    a stored value that is resolved as a secret reference, so no reference can take effect there.
+    """
+    from provisa.core.store_sides import RECORD, STATE
+
+    return [t for t in schema_org.metadata.sorted_tables if t.name not in STATE | RECORD]
 
 
 def reference_text(name: str) -> str:
@@ -211,16 +223,6 @@ def _names_it(ciphertext: Any, literal: str) -> bool | None:
     return literal in plaintext
 
 
-def _kept_elsewhere(holds: str | None, table_name: str) -> bool:
-    """Whether a handle that holds ``holds`` (None: an unguarded one) does not keep
-    ``table_name``: another store's tables are not read through it (REQ-1922)."""
-    from provisa.core.store_sides import TABLES
-
-    return holds is not None and any(
-        table_name in tables for side, tables in TABLES.items() if side != holds
-    )
-
-
 async def references(
     admin_db: "Database", org_id: str, name: str, *, environments: "Mapping[str, Database]"
 ) -> list[SecretReference]:
@@ -240,12 +242,7 @@ async def references(
     try:
         for environment in sorted(environments):
             async with environments[environment].acquire() as conn:
-                for table in schema_org.metadata.sorted_tables:
-                    if _kept_elsewhere(conn.holds, table.name):
-                        # Only the model holds values an operator declared. A state or record
-                        # table is written by the runtime alone (REQ-1920), so it names no secret,
-                        # and its store is not this handle's (REQ-1922).
-                        continue
+                for table in _model_tables():
                     found.extend(await _in_table(conn, table, literal, environment=environment))
     finally:
         reset_current_org(token)

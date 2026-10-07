@@ -79,8 +79,12 @@ async def planes(tmp_path) -> Planes:
     admin = Database(admin_engine, name="admin")
     environments: dict[str, Database] = {}
     for env in ("prod", "dev"):
+        # Each environment's plane is its model handle, guarded as the server's is (REQ-1922:
+        # secrets_router._environment_planes passes ``runtime.model_db``).
         plane = Database(
-            create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / f'{env}.db'}"), name=env
+            create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / f'{env}.db'}"),
+            name=env,
+            holds="model",
         )
         await _init_schema_portable(plane)
         environments[env] = plane

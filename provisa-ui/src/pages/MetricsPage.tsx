@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -39,7 +39,9 @@ import {
   ListExpandRow,
   ListEmpty,
   ListDetail,
+  ListItems,
 } from "../components/list/ListTable";
+import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PageLoading } from "../components/PageLoading";
 
 interface MetricForm {
@@ -334,6 +336,29 @@ export function MetricsPage() {
     />
   );
 
+
+  // REQ-1940: sort and group are the shared list mechanism.
+  const metricColumns = useMemo<ListColumn<Metric>[]>(
+    () => [
+      { key: "name", label: t("metricsPage.colName"), sortValue: (m) => m.name },
+      { key: "expression", label: t("metricsPage.colExpression"), sortValue: (m) => m.expression },
+      {
+        key: "datatype",
+        label: t("metricsPage.colDatatype"),
+        sortValue: (m) => m.datatype ?? "",
+        groupValue: (m) => m.datatype ?? "",
+      },
+      {
+        key: "description",
+        label: t("metricsPage.colDescription"),
+        sortValue: (m) => m.description ?? "",
+      },
+      { key: "aiContext", label: t("metricsPage.colAiContext"), sortValue: (m) => m.aiContext ?? "" },
+    ],
+    [t],
+  );
+  const sortGroup = useListSortGroup(metrics, metricColumns, "metrics");
+
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "1rem 1.25rem" }}>
       <Group justify="space-between" mb="md">
@@ -384,12 +409,13 @@ export function MetricsPage() {
       ) : (
       <ListTable testId="metrics-table">
           <ListHead
+            sortGroup={sortGroup}
             columns={[
-              t("metricsPage.colName"),
-              t("metricsPage.colExpression"),
-              t("metricsPage.colDatatype"),
-              t("metricsPage.colDescription"),
-              t("metricsPage.colAiContext"),
+              { col: "name" },
+              { col: "expression" },
+              { col: "datatype" },
+              { col: "description" },
+              { col: "aiContext" },
             ]}
           />
           <Table.Tbody>
@@ -398,7 +424,11 @@ export function MetricsPage() {
                 {t("metricsPage.empty")}
               </ListEmpty>
             )}
-            {metrics.map((m) => {
+            <ListItems
+              state={sortGroup}
+              colSpan={5}
+              rowKey={(m) => m.name}
+              render={(m) => {
               const isExpanded = expanded === m.name;
               const isEditing = editingName === m.name;
               return (
@@ -463,7 +493,8 @@ export function MetricsPage() {
                   )}
                 </React.Fragment>
               );
-            })}
+              }}
+            />
           </Table.Tbody>
       </ListTable>
       )}

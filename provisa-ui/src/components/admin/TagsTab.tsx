@@ -39,7 +39,8 @@ import type { Tag, TagFieldPolicy, TagObjectType, TagParamPolicy } from "../../t
 import { baseTagId } from "../../types/admin";
 import { FilterInput } from "./FilterInput";
 import { HelpBubble } from "../HelpBubble";
-import { ListTable, ListRow } from "../list/ListTable";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
 
 const PAGE_SIZE = 50;
 
@@ -106,7 +107,7 @@ export function TagsTab() {
     .sort((a, b) => (a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1));
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const [grouped, setGrouped] = useState(false);
 
   const resetForm = () => {
     setEditingId(null);
@@ -304,25 +305,29 @@ export function TagsTab() {
         </Stack>
       )}
 
-      <ListTable minWidth={640}>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("tagsTab.colId")}</Table.Th>
-              <Table.Th>{t("tagsTab.colDescription")}</Table.Th>
-              <Table.Th>{t("tagsTab.colAppliesTo")}</Table.Th>
-              <Table.Th>{t("tagsTab.colAssignments")}</Table.Th>
-              <Table.Th>{t("tagsTab.colActions")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {filtered.length === 0 && (
-              <Table.Tr>
-                <Table.Td colSpan={5} ta="center" c="dimmed">
-                  {t("tagsTab.empty")}
-                </Table.Td>
-              </Table.Tr>
-            )}
-            {paged.map((tag) => [
+      <SortGroupTable
+          testPrefix="tags"
+          minWidth={640}
+          rows={filtered}
+          columns={[
+            { key: "id", label: t("tagsTab.colId"), sortValue: (g) => g.id },
+            { key: "description", label: t("tagsTab.colDescription"), sortValue: (g) => g.description },
+            { key: "appliesTo", label: t("tagsTab.colAppliesTo"), sortValue: (g) => g.appliesTo.join(", "), groupValue: (g) => g.appliesTo.join(", ") },
+            { key: "assignments", label: t("tagsTab.colAssignments"), sortValue: (g) => assignmentCounts[baseTagId(g.id)] ?? 0 },
+          ]}
+          headers={[
+            { col: "id" },
+            { col: "description" },
+            { col: "appliesTo" },
+            { col: "assignments" },
+            t("tagsTab.colActions"),
+          ]}
+          colSpan={5}
+          rowKey={(tag) => tag.id}
+          empty={t("tagsTab.empty")}
+          page={{ index: safePage - 1, size: PAGE_SIZE }}
+          onGroupedChange={setGrouped}
+          render={(tag) => [
               <ListRow key={tag.id} testId={`tags-row-${tag.id}`}>
                 <Table.Td>
                   {tag.id}
@@ -476,10 +481,9 @@ export function TagsTab() {
                   </Table.Td>
                 </Table.Tr>
               ),
-            ])}
-          </Table.Tbody>
-        </ListTable>
-      {totalPages > 1 && (
+            ]}
+        />
+      {totalPages > 1 && !grouped && (
         <Group justify="flex-end">
           <Pagination
             total={totalPages}

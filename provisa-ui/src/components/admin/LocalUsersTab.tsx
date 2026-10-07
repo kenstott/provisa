@@ -38,7 +38,8 @@ import {
 } from "../../api/admin";
 import type { LocalUser, UserAssignment } from "../../api/admin";
 import { useCapability } from "../../hooks/useCapability";
-import { ListTable, ListRow } from "../list/ListTable";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
 
 const PAGE_SIZE = 50;
 
@@ -162,8 +163,8 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
     }));
   };
 
+  const [grouped, setGrouped] = useState(false);
   const totalPages = Math.max(1, Math.ceil(localUsers.length / PAGE_SIZE));
-  const paged = localUsers.slice((userPage - 1) * PAGE_SIZE, userPage * PAGE_SIZE);
   const domainOptions = [
     { value: "*", label: t("localUsers.allDomains") },
     ...allDomains.map((d) => ({ value: d, label: d })),
@@ -171,29 +172,29 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
 
   return (
     <Stack gap="md">
-      <ListTable minWidth={640}>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("localUsers.colUsername")}</Table.Th>
-              <Table.Th>{t("localUsers.colEmail")}</Table.Th>
-              <Table.Th>{t("localUsers.colDisplayName")}</Table.Th>
-              <Table.Th>{t("localUsers.colActive")}</Table.Th>
-              <Table.Th>
-                <Text span visibleFrom="xs" fz="sm" fw={600}>
-                  {t("localUsers.actions")}
-                </Text>
-              </Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {localUsers.length === 0 && (
-              <Table.Tr>
-                <Table.Td colSpan={5} ta="center" c="dimmed">
-                  {t("localUsers.empty")}
-                </Table.Td>
-              </Table.Tr>
-            )}
-            {paged.map((u) => {
+      <SortGroupTable
+          testPrefix="local-users"
+          minWidth={640}
+          rows={localUsers}
+          columns={[
+            { key: "username", label: t("localUsers.colUsername"), sortValue: (u) => u.username },
+            { key: "email", label: t("localUsers.colEmail"), sortValue: (u) => u.email ?? "" },
+            { key: "displayName", label: t("localUsers.colDisplayName"), sortValue: (u) => u.display_name ?? "" },
+            { key: "active", label: t("localUsers.colActive"), sortValue: (u) => String(u.is_active), groupValue: (u) => String(u.is_active) },
+          ]}
+          headers={[
+            { col: "username" },
+            { col: "email" },
+            { col: "displayName" },
+            { col: "active" },
+            t("localUsers.actions"),
+          ]}
+          colSpan={5}
+          rowKey={(u) => u.id}
+          empty={t("localUsers.empty")}
+          page={{ index: userPage - 1, size: PAGE_SIZE }}
+          onGroupedChange={setGrouped}
+          render={(u) => {
               const expanded = expandedUserId === u.id;
               return (
                 <ListRow key={u.id}>
@@ -292,10 +293,9 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
                   </Table.Td>
                 </ListRow>
               );
-            })}
-          </Table.Tbody>
-        </ListTable>
-      {totalPages > 1 && (
+            }}
+        />
+      {totalPages > 1 && !grouped && (
         <Group justify="flex-end">
           <Pagination total={totalPages} value={userPage} onChange={setUserPage} size="sm" />
         </Group>

@@ -79,3 +79,48 @@ describe("REQ-1940 list pages load with PageLoading", () => {
     expect(src("components/list/ListTable.tsx")).not.toContain("Loading");
   });
 });
+
+// REQ-1940: sort and group are standard on every list. Exempt: RelationshipRow (row markup only —
+// its page wires the sort), SystemHealth (a fixed component-status board, not an item list) and
+// AiModelsTab (inline-editable config grids addressed by array index, which a reorder would break).
+const SORT_EXEMPT = new Set([
+  "components/relationships/RelationshipRow.tsx",
+  "components/admin/SystemHealth.tsx",
+  "components/admin/AiModelsTab.tsx",
+]);
+
+// Lists with no categorical column (nothing to group by).
+const NO_GROUP = new Set([
+  "components/admin/McpServerTab.tsx",
+  "components/admin/SecretsTab.tsx",
+  "components/admin/ScheduledTasks.tsx",
+]);
+
+describe("REQ-1940 list pages wire sort and group", () => {
+  it.each(LIST_PAGES.filter((p) => !SORT_EXEMPT.has(p)).map((p) => [p]))("%s", (page) => {
+    const tsx = src(page);
+    expect(tsx).toMatch(/useListSortGroup\(|<SortGroupTable/);
+    expect(tsx).toContain("sortValue:");
+    if (!NO_GROUP.has(page)) expect(tsx).toContain("groupValue:");
+    // No page keeps its own sort/group state or header controls.
+    expect(tsx).not.toMatch(/useState<[^>]*"asc" \| "desc"/);
+    expect(tsx).not.toContain("ArrowUpDown");
+    expect(tsx).not.toContain("setCollapsedGroups");
+  });
+
+  it("every { col } header cell has the sortGroup that draws it", () => {
+    for (const page of LIST_PAGES) {
+      const tsx = src(page);
+      if (/\{ col: "/.test(tsx) && !tsx.includes("<SortGroupTable")) {
+        expect(tsx, page).toContain("sortGroup={");
+      }
+    }
+  });
+
+  it("TablesPage keeps its sort/group test ids through the shared prefix", () => {
+    expect(src("pages/TablesPage.tsx")).toContain(
+      // REQ-1922: the region selection narrows the filtered list before it is sorted and grouped.
+      'useListSortGroup(regionTables, listColumns, "tables")',
+    );
+  });
+});

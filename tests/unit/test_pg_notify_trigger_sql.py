@@ -20,8 +20,8 @@ transaction.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
 
+from provisa.core.database import Capabilities
 from provisa.subscriptions.pg_provider import CHANNEL_PREFIX
 from provisa.subscriptions.pg_triggers import MAX_NOTIFY_BYTES, _trigger_sql
 
@@ -74,7 +74,7 @@ def test_a_view_is_served_by_polling_without_attempting_a_trigger(caplog) -> Non
     from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
     class _FakeConn:
-        capabilities = SimpleNamespace(dialect="postgresql", listen_notify=True)
+        capabilities = Capabilities.for_dialect("postgresql")
 
         def __init__(self, base: set[tuple[str, str]]) -> None:
             self._base = base
@@ -86,13 +86,9 @@ def test_a_view_is_served_by_polling_without_attempting_a_trigger(caplog) -> Non
             self.locked.append(key)  # the walk runs under the plane's lock
             yield self
 
-        async def fetch(self, sql, schemas, names):  # noqa: ANN001
+        async def fetch(self, sql, wanted):  # noqa: ANN001
             assert "relkind" in sql  # the up-front base-table decision
-            return [
-                {"schema": s, "name": n}
-                for s, n in zip(schemas, names, strict=False)
-                if (s, n) in self._base
-            ]
+            return [w for w in wanted if (w["schema"], w["name"]) in self._base]
 
         async def execute(self, sql):  # noqa: ANN001
             self.executed.append(sql)
@@ -127,7 +123,7 @@ def test_a_non_postgres_control_plane_installs_no_triggers_and_does_not_query_pg
     from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
     class _SqliteConn:
-        capabilities = SimpleNamespace(dialect="sqlite", listen_notify=False)
+        capabilities = Capabilities.for_dialect("sqlite")
 
         async def fetch(self, *_a, **_k):  # noqa: ANN002, ANN003
             raise AssertionError("pg_class probe must not run on a non-postgres control plane")

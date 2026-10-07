@@ -25,7 +25,8 @@ import {
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
-import { ListTable, ListHead, ListRow, ListEmpty } from "../components/list/ListTable";
+import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
+import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -177,7 +178,44 @@ export function RequestsPage() {
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  // REQ-1940: sort and group are the shared list mechanism.
+  const requestColumns: ListColumn<CreationRequest>[] = [
+    { key: "id", label: t("requestsPage.colId"), sortValue: (r) => r.id },
+    {
+      key: "type",
+      label: t("requestsPage.colType"),
+      sortValue: (r) => r.request_type,
+      groupValue: (r) => r.request_type,
+    },
+    {
+      key: "requester",
+      label: t("requestsPage.colRequester"),
+      sortValue: (r) => r.requested_by ?? t("requestsPage.none"),
+      groupValue: (r) => r.requested_by ?? t("requestsPage.none"),
+    },
+    {
+      key: "submitted",
+      label: t("requestsPage.colSubmitted"),
+      sortValue: (r) => new Date(r.created_at).getTime(),
+    },
+    {
+      key: "approvals",
+      label: t("requestsPage.colApprovals"),
+      sortValue: (r) => r.approvals.length,
+    },
+    {
+      key: "status",
+      label: t("requestsPage.colStatus"),
+      sortValue: (r) => r.status,
+      groupValue: (r) => r.status,
+    },
+    {
+      key: "reason",
+      label: t("requestsPage.colReason"),
+      sortValue: (r) => r.rejection_reason ?? t("requestsPage.none"),
+    },
+  ];
+  const sortGroup = useListSortGroup(filtered, requestColumns, "requests");
 
   const rejectingRequest = rows.find((r) => r.id === rejectingId);
   const reasonOptions = (reasons[rejectingRequest?.request_type ?? ""] ?? []).map((r) => ({
@@ -265,16 +303,17 @@ export function RequestsPage() {
       <ListTable minWidth={900}>
         <ListHead
           columns={[
-            t("requestsPage.colId"),
-            t("requestsPage.colType"),
-            t("requestsPage.colRequester"),
-            t("requestsPage.colSubmitted"),
+            { col: "id" },
+            { col: "type" },
+            { col: "requester" },
+            { col: "submitted" },
             t("requestsPage.colPayload"),
-            t("requestsPage.colApprovals"),
-            t("requestsPage.colStatus"),
-            t("requestsPage.colReason"),
+            { col: "approvals" },
+            { col: "status" },
+            { col: "reason" },
             t("requestsPage.colActions"),
           ]}
+          sortGroup={sortGroup}
         />
         <Table.Tbody>
           {filtered.length === 0 && (
@@ -284,9 +323,14 @@ export function RequestsPage() {
                 : t("requestsPage.empty", { tab })}
             </ListEmpty>
           )}
-          {filtered.length > 0 &&
-            paged.map((row) => (
-                  <ListRow key={row.id}>
+          {filtered.length > 0 && (
+            <ListItems
+              state={sortGroup}
+              items={pageItems(sortGroup, safePage - 1, PAGE_SIZE)}
+              colSpan={9}
+              rowKey={(row) => row.id}
+              render={(row) => (
+                  <ListRow>
                     <Table.Td>{row.id}</Table.Td>
                     <Table.Td>{row.request_type}</Table.Td>
                     <Table.Td>{row.requested_by ?? t("requestsPage.none")}</Table.Td>
@@ -352,10 +396,12 @@ export function RequestsPage() {
                       )}
                     </Table.Td>
                   </ListRow>
-                ))}
+              )}
+            />
+          )}
         </Table.Tbody>
       </ListTable>
-      {totalPages > 1 && (
+      {totalPages > 1 && sortGroup.groupBy.length === 0 && (
         <Group justify="flex-end">
           <Pagination total={totalPages} value={safePage} onChange={setPage} size="sm" />
         </Group>

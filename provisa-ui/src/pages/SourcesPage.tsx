@@ -12,7 +12,7 @@ import { useSetSourceRegion, useRegionChoices } from "../hooks/useRegionQueries"
 import { useRegionSelection } from "../hooks/useRegionSelection";
 import { filterByRegion } from "../hooks/regionFilter";
 import { RegionSelector } from "../components/RegionSelector";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Check, X } from "lucide-react";
@@ -95,7 +95,9 @@ import {
   ListExpandRow,
   ListEmpty,
   ListDetail,
+  ListItems,
 } from "../components/list/ListTable";
+import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { KeptTablesNotice } from "../components/KeptTablesNotice";
 import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
@@ -141,16 +143,15 @@ export function SourcesPage() {
   const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
-  // REQ-1922: the region selector filters the list; a name search crosses regions (region filter off).
   const { regions, connected, error: regionError } = useRegionChoices();
   const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
   const hasRegions = regions.length > 0;
-  const searchActive = !!sourceSearch.trim();
-  const searchedSources = React.useMemo(
+  // REQ-1940: sort and group are the shared list mechanism.
+  const filteredSources = useMemo(
     () =>
       sources.filter((s) => {
         if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
-        if (!searchActive) return true;
+        if (!sourceSearch.trim()) return true;
         const q = sourceSearch.toLowerCase();
         return (
           s.id.toLowerCase().includes(q) ||
@@ -158,11 +159,52 @@ export function SourcesPage() {
           (s.description ?? "").toLowerCase().includes(q)
         );
       }),
-    [sources, sourceSearch, searchActive],
+    [sources, sourceSearch],
   );
+  const listColumns = useMemo<ListColumn<Source>[]>(
+    () => [
+      { key: "id", label: t("sourcesPage.colId"), sortValue: (s) => s.id },
+      {
+        key: "type",
+        label: t("sourcesPage.colType"),
+        sortValue: (s) => sourceTypeLabel(s.type, s.federationHintsJson),
+        groupValue: (s) => sourceTypeLabel(s.type, s.federationHintsJson),
+      },
+      { key: "host", label: t("sourcesPage.colHost"), sortValue: (s) => s.host ?? "" },
+      { key: "port", label: t("sourcesPage.colPort"), sortValue: (s) => s.port ?? 0 },
+      { key: "database", label: t("sourcesPage.colDatabase"), sortValue: (s) => s.database ?? "" },
+      ...(hasRegions
+        ? [
+            {
+              key: "region",
+              label: t("regionSelector.columnHeader"),
+              sortValue: (s: Source) => s.region ?? "",
+              groupValue: (s: Source) => s.region ?? t("regionSelector.noRegion"),
+            },
+          ]
+        : []),
+      {
+        key: "naming",
+        label: t("sourcesPage.colNaming"),
+        sortValue: (s) => s.gqlNamingConvention || t("sourcesPage.naOrInherit"),
+        groupValue: (s) => s.gqlNamingConvention || t("sourcesPage.naOrInherit"),
+      },
+      {
+        key: "cache",
+        label: t("sourcesPage.colCache"),
+        sortValue: (s) => (s.cacheEnabled ? 1 : 0),
+        groupValue: (s) => (s.cacheEnabled ? t("sourcesPage.cacheOn") : t("sourcesPage.cacheOff")),
+      },
+    ],
+    [t, hasRegions],
+  );
+  // REQ-1922: the region selector filters the list; a name search crosses regions (region
+  // filter off).
+  const searchActive = !!sourceSearch.trim();
   const { visible: regionSources, hidden: regionHidden } = searchActive
-    ? { visible: searchedSources, hidden: 0 }
-    : filterByRegion(searchedSources, regionSel, connected, (s) => s.region ?? null);
+    ? { visible: filteredSources, hidden: 0 }
+    : filterByRegion(filteredSources, regionSel, connected, (s) => s.region ?? null);
+  const sortGroup = useListSortGroup(regionSources, listColumns, "sources");
   const [form, setForm] = useState<SourceFormState>({
     id: "",
     type: "postgresql",
@@ -1553,202 +1595,202 @@ export function SourcesPage() {
           and, growing to its content, would never scroll vertically. */}
       <ListTable minWidth={860} testId="sources-list">
         <ListHead
+          sortGroup={sortGroup}
           columns={[
-            t("sourcesPage.colId"),
-            t("sourcesPage.colType"),
-            t("sourcesPage.colHost"),
-            t("sourcesPage.colPort"),
-            t("sourcesPage.colDatabase"),
-            ...(hasRegions ? [t("regionSelector.columnHeader")] : []),
-            t("sourcesPage.colNaming"),
-            t("sourcesPage.colCache"),
+            { col: "id" },
+            { col: "type" },
+            { col: "host" },
+            { col: "port" },
+            { col: "database" },
+            ...(hasRegions ? [{ col: "region" }] : []),
+            { col: "naming" },
+            { col: "cache" },
             t("sourcesPage.colEffectiveTtl"),
             t("sourcesPage.colActions"),
           ]}
         />
         <Table.Tbody>
           {(() => {
-            const filtered = regionSources;
-            if (filtered.length === 0) {
+            if (regionSources.length === 0) {
               return <ListEmpty colSpan={hasRegions ? 10 : 9}>{t("sourcesPage.empty")}</ListEmpty>;
             }
-            const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-            return paged.map((s) => {
-              const isExpanded = expanded === s.id;
-              const isEditing = editingSourceId === s.id;
-              return (
-                <React.Fragment key={s.id}>
-                  <ListRow
-                    testId={`sources-row-${s.id}`}
-                    onClick={() => {
-                      updateExpanded(isExpanded ? null : s.id);
-                      if (isEditing && isExpanded) {
-                        setEditingSourceId(null);
-                        handleCancelForm();
-                      }
-                    }}
-                  >
-                    <Table.Td>{s.id}</Table.Td>
-                    <Table.Td>{sourceTypeLabel(s.type, s.federationHintsJson)}</Table.Td>
-                    <Table.Td>{s.host}</Table.Td>
-                    <Table.Td>{s.port || "—"}</Table.Td>
-                    <Table.Td>{s.database || "—"}</Table.Td>
-                    {hasRegions && (
-                      <Table.Td c="dimmed" fz="0.85rem">
-                        {s.region ?? t("regionSelector.noRegion")}
-                      </Table.Td>
-                    )}
-                    <Table.Td c="dimmed" fz="0.85rem">
-                      {s.gqlNamingConvention || t("sourcesPage.naOrInherit")}
-                    </Table.Td>
-                    <Table.Td c="dimmed" fz="0.85rem">
-                      {s.cacheEnabled ? t("sourcesPage.cacheOn") : t("sourcesPage.cacheOff")}
-                    </Table.Td>
-                    <Table.Td c="dimmed" fz="0.85rem">
-                      {getEffectiveTtl(s)}
-                    </Table.Td>
-                    <Table.Td onClick={(e) => e.stopPropagation()}>
-                      <Group gap="xs" wrap="wrap">
-                        <TagControl objectType="source" sourceId={s.id} />
-                        {DISCOVERABLE_TYPES.has(s.type) && (
-                          <Button
-                            size="compact-xs"
-                            variant="default"
-                            data-testid={`sources-discover-${s.id}`}
-                            onClick={() => {
-                              setDiscoverSourceId(s.id);
-                              setDiscoverSourceType(s.type);
-                              setMappingSourceId(null);
-                            }}
-                          >
-                            {t("sourcesPage.discover")}
-                          </Button>
+            return (
+              <ListItems
+                state={sortGroup}
+                items={pageItems(sortGroup, page, PAGE_SIZE)}
+                colSpan={hasRegions ? 10 : 9}
+                rowKey={(s) => s.id}
+                render={(s) => {
+                  const isExpanded = expanded === s.id;
+                  const isEditing = editingSourceId === s.id;
+                  return (
+                    <React.Fragment key={s.id}>
+                      <ListRow
+                        testId={`sources-row-${s.id}`}
+                        onClick={() => {
+                          updateExpanded(isExpanded ? null : s.id);
+                          if (isEditing && isExpanded) {
+                            setEditingSourceId(null);
+                            handleCancelForm();
+                          }
+                        }}
+                      >
+                        <Table.Td>{s.id}</Table.Td>
+                        <Table.Td>{sourceTypeLabel(s.type, s.federationHintsJson)}</Table.Td>
+                        <Table.Td>{s.host}</Table.Td>
+                        <Table.Td>{s.port || "—"}</Table.Td>
+                        <Table.Td>{s.database || "—"}</Table.Td>
+                        {hasRegions && (
+                          <Table.Td c="dimmed" fz="0.85rem">
+                            {s.region ?? t("regionSelector.noRegion")}
+                          </Table.Td>
                         )}
-                        {MAPPING_TYPES.has(s.type) && (
-                          <Button
-                            size="compact-xs"
-                            variant="default"
-                            data-testid={`sources-map-table-${s.id}`}
-                            onClick={() => {
-                              setMappingSourceId(s.id);
-                              setMappingSourceType(s.type);
-                              setDiscoverSourceId(null);
-                            }}
-                          >
-                            {t("sourcesPage.mapTable")}
-                          </Button>
-                        )}
-                        {(s.type === "graphql" || s.type === "openapi" || s.type === "grpc") && (
-                          <Button
-                            size="compact-xs"
-                            variant="default"
-                            data-testid={`sources-refresh-schema-${s.id}`}
-                            onClick={() => handleRefreshSchema(s.id, s.type)}
-                            disabled={refreshingSourceId === s.id}
-                          >
-                            {refreshingSourceId === s.id
-                              ? t("sourcesPage.refreshing")
-                              : t("sourcesPage.refreshSchema")}
-                          </Button>
-                        )}
-                      </Group>
-                    </Table.Td>
-                  </ListRow>
-                  {isExpanded && (
-                    <ListExpandRow colSpan={hasRegions ? 10 : 9}>
-                      <ListDetail>
-                        {isEditing ? (
-                          <form
-                            className="form-card"
-                            onSubmit={
-                              form.type === "openapi"
-                                ? handleOpenapiRegister
-                                : form.type === "grpc"
-                                  ? handleGrpcRegister
-                                  : form.type === "graphql" || form.type in BRAND_CARRIER
-                                    ? handleGraphqlRegister
-                                    : handleCreate
-                            }
-                            style={{ margin: 0 }}
-                          >
-                            <TextInput
-                              label={t("sourcesPage.idLabel")}
-                              required
-                              value={form.id}
-                              onChange={(e) => setForm({ ...form, id: e.target.value })}
-                            />
-                            <Select
-                              label={t("sourcesPage.typeLabel")}
-                              value={form.type}
-                              onChange={(v) => v && handleTypeChange(v)}
-                              data={typeSelectData()}
-                              allowDeselect={false}
-                              searchable
-                            />
-                            <SourceFormFields {...sourceFormFieldsProps} />
-                            <Group
-                              justify="flex-end"
-                              align="flex-start"
-                              gap="sm"
-                              style={{ alignSelf: "end" }}
-                            >
+                        <Table.Td c="dimmed" fz="0.85rem">
+                          {s.gqlNamingConvention || t("sourcesPage.naOrInherit")}
+                        </Table.Td>
+                        <Table.Td c="dimmed" fz="0.85rem">
+                          {s.cacheEnabled ? t("sourcesPage.cacheOn") : t("sourcesPage.cacheOff")}
+                        </Table.Td>
+                        <Table.Td c="dimmed" fz="0.85rem">
+                          {getEffectiveTtl(s)}
+                        </Table.Td>
+                        <Table.Td onClick={(e) => e.stopPropagation()}>
+                          <Group gap="xs" wrap="wrap">
+                            <TagControl objectType="source" sourceId={s.id} />
+                            {DISCOVERABLE_TYPES.has(s.type) && (
                               <Button
+                                size="compact-xs"
                                 variant="default"
-                                type="button"
-                                leftSection={<X size={14} />}
-                                onClick={handleCancelForm}
+                                data-testid={`sources-discover-${s.id}`}
+                                onClick={() => {
+                                  setDiscoverSourceId(s.id);
+                                  setDiscoverSourceType(s.type);
+                                  setMappingSourceId(null);
+                                }}
                               >
-                                {t("sourcesPage.cancelEdit")}
+                                {t("sourcesPage.discover")}
                               </Button>
+                            )}
+                            {MAPPING_TYPES.has(s.type) && (
                               <Button
-                                variant="filled"
-                                type="submit"
-                                leftSection={<Check size={14} />}
+                                size="compact-xs"
+                                variant="default"
+                                data-testid={`sources-map-table-${s.id}`}
+                                onClick={() => {
+                                  setMappingSourceId(s.id);
+                                  setMappingSourceType(s.type);
+                                  setDiscoverSourceId(null);
+                                }}
                               >
-                                {t("sourcesPage.saveEdit")}
+                                {t("sourcesPage.mapTable")}
                               </Button>
-                            </Group>
-                          </form>
-                        ) : (
-                          <SourceDetailPanel
-                            s={s}
-                            domainsEnabled={domainsEnabled}
-                            getEffectiveTtl={getEffectiveTtl}
-                            onEdit={() => handleEdit(s)}
-                            onNavigate={() =>
-                              navigate(`/tables?source=${encodeURIComponent(s.id)}`)
-                            }
-                            onDelete={async () => {
-                              const result = await deleteSource(s.id);
-                              if (refusal.refused(result, s.id)) return;
-                              if (expanded === s.id) updateExpanded(null);
-                              load();
-                            }}
-                          />
-                        )}
-                      </ListDetail>
-                    </ListExpandRow>
-                  )}
-                </React.Fragment>
-              );
-            });
+                            )}
+                            {(s.type === "graphql" ||
+                              s.type === "openapi" ||
+                              s.type === "grpc") && (
+                              <Button
+                                size="compact-xs"
+                                variant="default"
+                                data-testid={`sources-refresh-schema-${s.id}`}
+                                onClick={() => handleRefreshSchema(s.id, s.type)}
+                                disabled={refreshingSourceId === s.id}
+                              >
+                                {refreshingSourceId === s.id
+                                  ? t("sourcesPage.refreshing")
+                                  : t("sourcesPage.refreshSchema")}
+                              </Button>
+                            )}
+                          </Group>
+                        </Table.Td>
+                      </ListRow>
+                      {isExpanded && (
+                        <ListExpandRow colSpan={hasRegions ? 10 : 9}>
+                          <ListDetail>
+                            {isEditing ? (
+                              <form
+                                className="form-card"
+                                onSubmit={
+                                  form.type === "openapi"
+                                    ? handleOpenapiRegister
+                                    : form.type === "grpc"
+                                      ? handleGrpcRegister
+                                      : form.type === "graphql" || form.type in BRAND_CARRIER
+                                        ? handleGraphqlRegister
+                                        : handleCreate
+                                }
+                                style={{ margin: 0 }}
+                              >
+                                <TextInput
+                                  label={t("sourcesPage.idLabel")}
+                                  required
+                                  value={form.id}
+                                  onChange={(e) => setForm({ ...form, id: e.target.value })}
+                                />
+                                <Select
+                                  label={t("sourcesPage.typeLabel")}
+                                  value={form.type}
+                                  onChange={(v) => v && handleTypeChange(v)}
+                                  data={typeSelectData()}
+                                  allowDeselect={false}
+                                  searchable
+                                />
+                                <SourceFormFields {...sourceFormFieldsProps} />
+                                <Group
+                                  justify="flex-end"
+                                  align="flex-start"
+                                  gap="sm"
+                                  style={{ alignSelf: "end" }}
+                                >
+                                  <Button
+                                    variant="default"
+                                    type="button"
+                                    leftSection={<X size={14} />}
+                                    onClick={handleCancelForm}
+                                  >
+                                    {t("sourcesPage.cancelEdit")}
+                                  </Button>
+                                  <Button
+                                    variant="filled"
+                                    type="submit"
+                                    leftSection={<Check size={14} />}
+                                  >
+                                    {t("sourcesPage.saveEdit")}
+                                  </Button>
+                                </Group>
+                              </form>
+                            ) : (
+                              <SourceDetailPanel
+                                s={s}
+                                domainsEnabled={domainsEnabled}
+                                getEffectiveTtl={getEffectiveTtl}
+                                onEdit={() => handleEdit(s)}
+                                onNavigate={() =>
+                                  navigate(`/tables?source=${encodeURIComponent(s.id)}`)
+                                }
+                                onDelete={async () => {
+                                  const result = await deleteSource(s.id);
+                                  if (refusal.refused(result, s.id)) return;
+                                  if (expanded === s.id) updateExpanded(null);
+                                  load();
+                                }}
+                              />
+                            )}
+                          </ListDetail>
+                        </ListExpandRow>
+                      )}
+                    </React.Fragment>
+                  );
+                }}
+              />
+            );
           })()}
         </Table.Tbody>
       </ListTable>
 
       {(() => {
-        const filtered = sources.filter((s) => {
-          if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
-          if (!sourceSearch.trim()) return true;
-          const q = sourceSearch.toLowerCase();
-          return (
-            s.id.toLowerCase().includes(q) ||
-            s.type.toLowerCase().includes(q) ||
-            (s.description ?? "").toLowerCase().includes(q)
-          );
-        });
+        const filtered = filteredSources;
         const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-        if (totalPages === 1) return null;
+        if (totalPages === 1 || sortGroup.groupBy.length > 0) return null;
         return (
           <Group justify="flex-end" gap="xs" align="center" py="xs">
             <ActionIcon

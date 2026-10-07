@@ -15,7 +15,6 @@ import { Trash2, Pencil, Check, X } from "lucide-react";
 import {
   Alert,
   Button,
-  Checkbox,
   Group,
   ActionIcon,
   NumberInput,
@@ -48,6 +47,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ResidencyGrant } from "../components/admin/ResidencyGrant";
+import { CapabilityGrid, DomainsNote } from "./security/RoleFormParts";
 import { useRegionChoices } from "../hooks/useRegionQueries";
 import {
   ListTable,
@@ -56,49 +56,9 @@ import {
   ListExpandRow,
   ListEmpty,
   ListDetail,
+  ListItems,
 } from "../components/list/ListTable";
-
-const ALL_CAPABILITIES: Capability[] = [
-  "source_registration",
-  "table_registration",
-  "create_relationship",
-  "access_config",
-  "query_development",
-  "approve_view",
-  "full_results",
-  "usage",
-  "read_restricted",
-  "approve_relationship",
-  "create_view",
-  "column_grant",
-  "user_management",
-  "masking_config",
-  // REQ-1590: granted and revoked here like any other right — read opens the glossary, rw curates it.
-  "glossary_read",
-  "glossary_rw",
-];
-
-/**
- * A role is always one or more domains, or all: "All Domains" is the only way to say all, and
- * the server refuses a role saved with none. The editor therefore never lets an empty picker
- * look like "unrestricted" — it says what is required and withholds Save until it is met.
- *
- * Two messages, for two states. A form with no domain chosen yet states the requirement. An
- * EXISTING role that has ended up with none (the server's backstop: such a role reads no data)
- * is told so, because that is a fact about the role as it stands, not about the form.
- */
-function DomainsNote({ savedWithNone }: { savedWithNone: boolean }) {
-  const { t } = useTranslation();
-  return savedWithNone ? (
-    <Text size="sm" c="orange" role="note" data-testid="role-no-domains-note">
-      {t("securityPage.noDomainsNote")}
-    </Text>
-  ) : (
-    <Text size="sm" c="red" role="alert" data-testid="role-domains-required">
-      {t("securityPage.domainsRequired")}
-    </Text>
-  );
-}
+import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 
 /** A role may be saved once it lists a domain — its own, or one a parent role hands down. */
 function listsADomain(form: { domainAccess: string[]; parentRoleId: string }): boolean {
@@ -126,32 +86,6 @@ const EMPTY_RULE = {
   applyToDomain: false,
   applyToAction: false,
 };
-
-function CapabilityGrid({
-  value,
-  onToggle,
-  label,
-}: {
-  value: Capability[];
-  onToggle: (cap: Capability) => void;
-  label: string;
-}) {
-  return (
-    <Checkbox.Group label={label} value={value} data-testid="capability-grid">
-      <Group gap="sm" mt="xs" style={{ rowGap: "0.35rem" }}>
-        {ALL_CAPABILITIES.map((cap) => (
-          <Checkbox
-            key={cap}
-            label={cap}
-            checked={value.includes(cap)}
-            onChange={() => onToggle(cap)}
-            size="sm"
-          />
-        ))}
-      </Group>
-    </Checkbox.Group>
-  );
-}
 
 export function SecurityRolesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them, and
@@ -289,6 +223,27 @@ export function SecurityRolesPage() {
     { id: "*", label: t("securityPage.allDomains") },
     ...domains.map((d) => ({ id: d.id, label: d.id })),
   ];
+
+  // REQ-1940: sort and group are the shared list mechanism.
+  const filteredRoles = roles.filter(
+    (r) => !roleSearch.trim() || r.id.toLowerCase().includes(roleSearch.toLowerCase()),
+  );
+  const roleColumns: ListColumn<Role>[] = [
+    { key: "id", label: t("securityPage.colId"), sortValue: (r) => r.id },
+    {
+      key: "capabilities",
+      label: t("securityPage.colCapabilities"),
+      sortValue: (r) => r.capabilities.join(", "),
+      groupValue: (r) => r.capabilities.join(", "),
+    },
+    {
+      key: "domains",
+      label: t("securityPage.colDomainAccess"),
+      sortValue: (r) => r.domain_access.join(", "),
+      groupValue: (r) => r.domain_access.join(", ") || t("securityPage.noDomains"),
+    },
+  ];
+  const roleSortGroup = useListSortGroup(filteredRoles, roleColumns, "roles");
 
   if (loading) return <PageLoading message={t("securityPage.loadingRoles")} />;
 
@@ -438,19 +393,16 @@ export function SecurityRolesPage() {
 
       <ListTable minWidth={480} testId="roles-list">
         <ListHead
-          columns={[
-            t("securityPage.colId"),
-            t("securityPage.colCapabilities"),
-            t("securityPage.colDomainAccess"),
-          ]}
+          sortGroup={roleSortGroup}
+          columns={[{ col: "id" }, { col: "capabilities" }, { col: "domains" }]}
         />
         <Table.Tbody>
-          {roles
-            .filter(
-              (r) => !roleSearch.trim() || r.id.toLowerCase().includes(roleSearch.toLowerCase()),
-            )
-            .map((r) => (
-              <React.Fragment key={r.id}>
+          <ListItems
+            state={roleSortGroup}
+            colSpan={3}
+            rowKey={(r) => r.id}
+            render={(r) => (
+              <React.Fragment>
                 <ListRow
                   onClick={() => {
                     setExpandedRole(expandedRole === r.id ? null : r.id);
@@ -582,7 +534,8 @@ export function SecurityRolesPage() {
                   </ListExpandRow>
                 )}
               </React.Fragment>
-            ))}
+            )}
+          />
         </Table.Tbody>
       </ListTable>
       {refusal.dialog}
@@ -741,6 +694,50 @@ export function SecurityRlsPage() {
     setError("");
   };
 
+  const filtered = rules.filter((r) => {
+    if (selectedDomain !== "all") {
+      const ruleDomain = r.actionName
+        ? actions.find((a) => a.name === r.actionName)?.domainId
+        : r.domainId
+          ? r.domainId
+          : tables.find((t) => t.id === r.tableId)?.domainId;
+      if (ruleDomain !== selectedDomain) return false;
+    }
+    if (!ruleSearch.trim()) return true;
+    const q = ruleSearch.toLowerCase();
+    const scope = r.actionName
+      ? `action:${r.actionName}`
+      : r.domainId
+        ? `domain:${r.domainId}`
+        : (tableLabelById[r.tableId!] ?? String(r.tableId));
+    return r.roleId.toLowerCase().includes(q) || scope.toLowerCase().includes(q);
+  });
+
+  // REQ-1940: sort and group are the shared list mechanism.
+  const ruleScope = (r: RLSRule) =>
+    r.actionName
+      ? r.actionName
+      : r.domainId
+        ? r.domainId
+        : (tableLabelById[r.tableId!] ?? String(r.tableId));
+  const ruleColumns: ListColumn<RLSRule>[] = [
+    { key: "id", label: t("securityPage.colId"), sortValue: (r) => r.id },
+    {
+      key: "scope",
+      label: t("securityPage.colTableOrDomain"),
+      sortValue: ruleScope,
+      groupValue: ruleScope,
+    },
+    {
+      key: "role",
+      label: t("securityPage.colRole"),
+      sortValue: (r) => r.roleId,
+      groupValue: (r) => r.roleId,
+    },
+    { key: "filter", label: t("securityPage.colFilter"), sortValue: (r) => r.filterExpr },
+  ];
+  const ruleSortGroup = useListSortGroup(filtered, ruleColumns, "rules");
+
   if (loading) return <PageLoading message={t("securityPage.loadingRules")} />;
 
   // A plain element, not a nested component: a component declared during render gets a new identity
@@ -819,25 +816,6 @@ export function SecurityRlsPage() {
     </>
   );
 
-  const filtered = rules.filter((r) => {
-    if (selectedDomain !== "all") {
-      const ruleDomain = r.actionName
-        ? actions.find((a) => a.name === r.actionName)?.domainId
-        : r.domainId
-          ? r.domainId
-          : tables.find((t) => t.id === r.tableId)?.domainId;
-      if (ruleDomain !== selectedDomain) return false;
-    }
-    if (!ruleSearch.trim()) return true;
-    const q = ruleSearch.toLowerCase();
-    const scope = r.actionName
-      ? `action:${r.actionName}`
-      : r.domainId
-        ? `domain:${r.domainId}`
-        : (tableLabelById[r.tableId!] ?? String(r.tableId));
-    return r.roleId.toLowerCase().includes(q) || scope.toLowerCase().includes(q);
-  });
-
   return (
     <Stack gap="md" p="md">
       {error && (
@@ -902,12 +880,8 @@ export function SecurityRlsPage() {
 
       <ListTable minWidth={640} testId="rules-list">
         <ListHead
-          columns={[
-            t("securityPage.colId"),
-            t("securityPage.colTableOrDomain"),
-            t("securityPage.colRole"),
-            t("securityPage.colFilter"),
-          ]}
+          sortGroup={ruleSortGroup}
+          columns={[{ col: "id" }, { col: "scope" }, { col: "role" }, { col: "filter" }]}
         />
         <Table.Tbody>
           {filtered.length === 0 && (
@@ -917,124 +891,129 @@ export function SecurityRlsPage() {
                 : t("securityPage.noRulesMatchFilter")}
             </ListEmpty>
           )}
-          {filtered.map((r) => (
-            <React.Fragment key={r.id}>
-              <ListRow
-                onClick={() => {
-                  setExpandedRule(expandedRule === r.id ? null : r.id);
-                  setEditingRuleInRow(null);
-                }}
-              >
-                <Table.Td>{r.id}</Table.Td>
-                <Table.Td>
-                  {r.actionName ? (
-                    <span data-testid={`rule-scope-${r.id}`}>
-                      <Text span c="dimmed" fz="0.75em">
-                        {t("securityPage.actionPrefix")}{" "}
-                      </Text>
-                      {r.actionName}
-                    </span>
-                  ) : r.domainId ? (
-                    <>
-                      <Text span c="dimmed" fz="0.75em">
-                        {t("securityPage.domainPrefix")}{" "}
-                      </Text>
-                      {r.domainId}
-                    </>
-                  ) : (
-                    (tableLabelById[r.tableId!] ?? String(r.tableId))
-                  )}
-                </Table.Td>
-                <Table.Td>{r.roleId}</Table.Td>
-                <Table.Td>
-                  <Text component="code">{r.filterExpr}</Text>
-                </Table.Td>
-              </ListRow>
-              {expandedRule === r.id && (
-                <ListExpandRow colSpan={4}>
-                  <ListDetail>
-                    {editingRuleInRow !== r.id ? (
-                      <Stack gap="xs">
-                        <Text>
-                          <strong>{t("securityPage.labelId")}</strong> {r.id}
+          <ListItems
+            state={ruleSortGroup}
+            colSpan={4}
+            rowKey={(r) => r.id}
+            render={(r) => (
+              <React.Fragment>
+                <ListRow
+                  onClick={() => {
+                    setExpandedRule(expandedRule === r.id ? null : r.id);
+                    setEditingRuleInRow(null);
+                  }}
+                >
+                  <Table.Td>{r.id}</Table.Td>
+                  <Table.Td>
+                    {r.actionName ? (
+                      <span data-testid={`rule-scope-${r.id}`}>
+                        <Text span c="dimmed" fz="0.75em">
+                          {t("securityPage.actionPrefix")}{" "}
                         </Text>
-                        {r.actionName ? (
-                          <Text>
-                            <strong>{t("securityPage.labelAction")}</strong> {r.actionName}
-                          </Text>
-                        ) : r.domainId ? (
-                          <Text>
-                            <strong>{t("securityPage.labelDomain")}</strong> {r.domainId}
-                          </Text>
-                        ) : (
-                          <Text>
-                            <strong>{t("securityPage.labelTable")}</strong>{" "}
-                            {tableLabelById[r.tableId!] ?? String(r.tableId)}
-                          </Text>
-                        )}
-                        <Text>
-                          <strong>{t("securityPage.labelRole")}</strong> {r.roleId}
+                        {r.actionName}
+                      </span>
+                    ) : r.domainId ? (
+                      <>
+                        <Text span c="dimmed" fz="0.75em">
+                          {t("securityPage.domainPrefix")}{" "}
                         </Text>
-                        <Text>
-                          <strong>{t("securityPage.labelFilter")}</strong>{" "}
-                          <Text component="code" span>
-                            {r.filterExpr}
-                          </Text>
-                        </Text>
-                        <Group gap="xs">
-                          <ActionIcon
-                            variant="subtle"
-                            aria-label={t("securityPage.edit")}
-                            data-testid={`edit-rule-${r.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startEditingRule(r);
-                            }}
-                          >
-                            <Pencil size={14} />
-                          </ActionIcon>
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            aria-label={t("securityPage.delete")}
-                            data-testid={`delete-rule-${r.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteRule(r);
-                            }}
-                          >
-                            <Trash2 size={14} />
-                          </ActionIcon>
-                        </Group>
-                      </Stack>
+                        {r.domainId}
+                      </>
                     ) : (
-                      <Stack gap="sm">
-                        {ruleFormFields}
-                        <Group justify="flex-end">
-                          <Button
-                            variant="default"
-                            leftSection={<X size={14} />}
-                            onClick={() => setEditingRuleInRow(null)}
-                          >
-                            {t("securityPage.cancel")}
-                          </Button>
-                          <Button
-                            variant="filled"
-                            color="blue"
-                            leftSection={<Check size={14} />}
-                            onClick={handleSaveRule}
-                            disabled={saving}
-                          >
-                            {t("securityPage.save")}
-                          </Button>
-                        </Group>
-                      </Stack>
+                      (tableLabelById[r.tableId!] ?? String(r.tableId))
                     )}
-                  </ListDetail>
-                </ListExpandRow>
-              )}
-            </React.Fragment>
-          ))}
+                  </Table.Td>
+                  <Table.Td>{r.roleId}</Table.Td>
+                  <Table.Td>
+                    <Text component="code">{r.filterExpr}</Text>
+                  </Table.Td>
+                </ListRow>
+                {expandedRule === r.id && (
+                  <ListExpandRow colSpan={4}>
+                    <ListDetail>
+                      {editingRuleInRow !== r.id ? (
+                        <Stack gap="xs">
+                          <Text>
+                            <strong>{t("securityPage.labelId")}</strong> {r.id}
+                          </Text>
+                          {r.actionName ? (
+                            <Text>
+                              <strong>{t("securityPage.labelAction")}</strong> {r.actionName}
+                            </Text>
+                          ) : r.domainId ? (
+                            <Text>
+                              <strong>{t("securityPage.labelDomain")}</strong> {r.domainId}
+                            </Text>
+                          ) : (
+                            <Text>
+                              <strong>{t("securityPage.labelTable")}</strong>{" "}
+                              {tableLabelById[r.tableId!] ?? String(r.tableId)}
+                            </Text>
+                          )}
+                          <Text>
+                            <strong>{t("securityPage.labelRole")}</strong> {r.roleId}
+                          </Text>
+                          <Text>
+                            <strong>{t("securityPage.labelFilter")}</strong>{" "}
+                            <Text component="code" span>
+                              {r.filterExpr}
+                            </Text>
+                          </Text>
+                          <Group gap="xs">
+                            <ActionIcon
+                              variant="subtle"
+                              aria-label={t("securityPage.edit")}
+                              data-testid={`edit-rule-${r.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startEditingRule(r);
+                              }}
+                            >
+                              <Pencil size={14} />
+                            </ActionIcon>
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              aria-label={t("securityPage.delete")}
+                              data-testid={`delete-rule-${r.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteRule(r);
+                              }}
+                            >
+                              <Trash2 size={14} />
+                            </ActionIcon>
+                          </Group>
+                        </Stack>
+                      ) : (
+                        <Stack gap="sm">
+                          {ruleFormFields}
+                          <Group justify="flex-end">
+                            <Button
+                              variant="default"
+                              leftSection={<X size={14} />}
+                              onClick={() => setEditingRuleInRow(null)}
+                            >
+                              {t("securityPage.cancel")}
+                            </Button>
+                            <Button
+                              variant="filled"
+                              color="blue"
+                              leftSection={<Check size={14} />}
+                              onClick={handleSaveRule}
+                              disabled={saving}
+                            >
+                              {t("securityPage.save")}
+                            </Button>
+                          </Group>
+                        </Stack>
+                      )}
+                    </ListDetail>
+                  </ListExpandRow>
+                )}
+              </React.Fragment>
+            )}
+          />
         </Table.Tbody>
       </ListTable>
     </Stack>
