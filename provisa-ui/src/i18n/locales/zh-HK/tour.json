@@ -135,6 +135,14 @@
         "title": "定義關係",
         "description": "🔗 將來源欄位對應到目標欄位，並設定<strong>基數</strong>：<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ 也可以讓 Provisa 用 AI 為你<strong>推斷</strong>關係。</p>"
       },
+      "stepRelsSuggest": {
+        "title": "建議關係",
+        "description": "✨ 閃光按鈕會尋找可能的連接：它讀取你的資料來源所宣告的外鍵，並在設定了 AI 模型金鑰時，讓模型推斷更多。在你接受候選之前不會宣告任何內容，被拒絕的候選會一直排除在外，直到你清除拒絕記錄。"
+      },
+      "stepRelsList": {
+        "title": "所有關係集中在一個清單",
+        "description": "📋 模型中的關係，無論資料來源是否宣告，均可篩選和排序。展開一列即可編輯它或新增其反向關係。角色只會走訪它擁有權限的關係。"
+      },
       "step17": {
         "title": "查看 ERD",
         "description": "實體關係圖（ERD）會呈現你整個聯邦模型——每個已登記的表格，以及它們之間的關係。"
@@ -143,9 +151,25 @@
         "title": "存取控制（RBAC）",
         "description": "🔐 登記表格時會設定逐欄位的存取權限，並直接連結到角色：<div class='tour-tags'><span>👁️ 讀取</span><span>✏️ 寫入</span></div><p>這就是<strong>角色型存取控制</strong>——而角色本身則在「安全」頁面定義。</p>"
       },
+      "stepRoleInherit": {
+        "title": "角色可以繼承",
+        "description": "👪 角色可以繼承父角色：它取得父角色的授權、欄位可見性和列規則，而它自己針對某張表的列規則會取代父角色的規則。角色還帶有自己的能力以及速率和複雜度限制。"
+      },
       "step19": {
         "title": "行級安全",
         "description": "🔎 有了角色之後，可以再細緻一點——用屬性型判斷式限制每個角色可以看到哪些<strong>資料列</strong>：<p><code>region = user.region AND status != 'archived'</code></p><p>📐 由數據驅動，並按資料列逐一強制執行——涵蓋每個數據來源與每種協定。</p>"
+      },
+      "stepDomains": {
+        "title": "網域及其資料管理員",
+        "description": "🗂️ 網域將表分組，其資料管理員負責治理模型的這一部分：誰能看到什麼、遮罩和列規則、敏感資料，以及它的術語表和資料產品。"
+      },
+      "stepTags": {
+        "title": "標籤承載含義",
+        "description": "🏷️ 標籤是全組織統一、含義固定的標記，可套用於資料來源、表、欄位、關係或指令。標籤承載的是行為，而不只是文件，並且標籤在套用時可以要求填寫原因、到期日期或參數。"
+      },
+      "stepRequests": {
+        "title": "關係請求",
+        "description": "✋ 關係請求需要兩次核准才能執行。你可以核准、執行，或從固定清單中選擇原因後拒絕；已處理的請求會移到「已處理」分頁。"
       },
       "stepQualityTable": {
         "title": "品質檢查器也只是一個數據來源",
@@ -195,9 +219,29 @@
         "title": "具體化為即時數據倉庫",
         "description": "🏗️ 將檢視具體化，即可獲得一個完整的 ETL 引擎，以宣告方式而非撰寫指令碼方式建立：<ul><li>📅 按真實<strong>營業日曆</strong>執行的<strong>排程快照</strong>——重複規則、假期、營業日限制，以及結算寬限期，讓它按<em>你</em>的報表日曆觸發，而不只是照著時鐘。</li><li>🗄️ <strong>儲存方式……</strong>——<strong>取代</strong>、<strong>更新插入（upsert）</strong>，或用<strong>快照</strong>／<strong>差異（delta）</strong>保留歷史，並支援增量運算。</li><li>🕰️ <strong>時光回溯</strong>——雙時態歷史記錄；可查詢模型在任何時間點的狀態。</li><li>⚡ 以防彈跳（debounce）方式進行<strong>近乎即時</strong>的重新整理，或按新鮮度驅動、隨輸入變化重新發佈。</li></ul>"
       },
+      "stepMetrics": {
+        "title": "指標，定義一次",
+        "description": "📏 指標是某個度量的業務定義，即對一張事實表的聚合。定義一次後，SQL、GraphQL、探索畫布以及基於它建立的每個檢視都會計算出同一個數字；指標變更時，檢視會重新產生。"
+      },
+      "stepCommands": {
+        "title": "指令",
+        "description": "⚡ 指令是受治理的、有型別的操作，例如 HTTP 服務、Python 模型或預存程序。註冊一次，即可從每個介面呼叫，權限和追蹤與查詢相同。"
+      },
       "step22": {
         "title": "血緣，從頭到尾",
         "description": "🧬 <strong>血緣是你的衍生物件留下的依賴軌跡:</strong>每個檢視、計算欄位或指標由什麼構成,以及什麼依賴於它。這是一條經過分析的真實查詢——沿著 <code>name_upper</code> 的轉換一路追溯到為它提供數據的精確<strong>來源欄位</strong>。<p>不會執行任何內容——查詢只會被分析。</p>"
+      },
+      "stepObservability": {
+        "title": "追蹤與除錯追蹤",
+        "description": "🔭 追蹤為每個請求記錄一個 span。「除錯追蹤」分頁會為每個管線階段和每次資料來源呼叫各增加一個 span，並附帶 SQL 文字。這會增加負載，因此只在一段設定的時間內針對某個組織、角色或資料來源開啟；時間到後它會自動關閉。"
+      },
+      "stepCache": {
+        "title": "快取與副本",
+        "description": "🗄️ 這些層彼此獨立。回應快取保存查詢結果，請求透過 @cached 或 SQL 註解選擇加入。小型查閱表會被鏡像以加速連接。無法直接掛接的來源表副本存放在持久儲存中，與物化檢視放在一起。"
+      },
+      "stepScheduled": {
+        "title": "排程工作",
+        "description": "⏱️ 依 cron 排程執行 webhook 或 SQL 陳述式。SQL 工作以你選擇的角色執行，因此治理依然生效，並且每個工作都顯示上次和下次執行時間。"
       },
       "step23": {
         "title": "營運它",
@@ -211,6 +255,10 @@
         "title": "內建管理報表",
         "description": "📊 您剛才查詢過的稽核日誌也提供<strong>現成的報表</strong> — 使用排名、PII 存取、政策拒絕、查詢健康 — 每個都是 <code>ops</code> 網域中受治理的檢視。新增自己的報表只需一句 SQL，它會像任何資料表一樣成為已編目、可匯出的資料產品。"
       },
+      "stepProductForm": {
+        "title": "定義資料產品",
+        "description": "📦 填寫擁有者和團隊、目的、用途、SLA 和支援，然後選擇它包含的表和指令。這些就是會被發佈的欄位。只有當表與產品屬於同一個網域時，表才能加入該產品。"
+      },
       "stepGlossary": {
         "title": "一部鮮活的業務術語表",
         "description": "📖 每個術語都會關聯回攜帶它的欄位——手動維護名稱、定義和類型化關係(是一種、是其一部分、同義詞),或者讓 AI 來補全空白:<strong>✨ 定義</strong>只為尚無定義的術語起草內容,<strong>✨ 關係</strong>在整個術語表範圍內提出關聯建議。將某個術語標記為<strong>從匯出中排除</strong>,即可使其不出現在已發佈的中繼資料中。"
@@ -218,6 +266,10 @@
       "stepDataProducts": {
         "title": "數據產品，發佈在消費者已在使用的地方",
         "description": "📦 這裡的每個產品都遵循 <strong>ODPS</strong>（Open Data Product Standard）— 擁有者、團隊、用途、限制、使用方式、SLA、支援、自訂屬性 — 而 Provisa 會把它直接自動發佈到 <strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong>，讓它成為消費者已在使用的目錄中的原生產品。<p>🔁 沒有需要記得去做的獨立匯出步驟：規格每次都<strong>由即時模型衍生</strong> — 數據表、血緣、標籤、詞彙表術語 — 所以已發佈的內容不會像人手維護的 ODPS 檔案那樣過時。</p><p>✅ 每個產品亦帶有定義其欄位的<strong>詞彙表術語</strong>，以及掃描它的檢查器所給出的<strong>數據質素結果</strong>。</p>"
+      },
+      "stepGlossaryTerm": {
+        "title": "新增術語",
+        "description": "📖 術語為一個業務概念命名，列出承載它的欄位，並說明其含義。真實欄位的術語會自動為你衍生；對於沒有單一欄位能承載的概念，再手動新增。"
       },
       "stepPublish": {
         "title": "發布到你的機構所用的工具",

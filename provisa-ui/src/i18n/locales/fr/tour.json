@@ -135,6 +135,14 @@
         "title": "Définir une relation",
         "description": "🔗 Associez une colonne source à une colonne cible et définissez la <strong>cardinalité</strong> :<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Ou laissez Provisa <strong>déduire</strong> les relations pour vous grâce à l'IA.</p>"
       },
+      "stepRelsSuggest": {
+        "title": "Suggérer des relations",
+        "description": "✨ Le bouton étincelles cherche des jointures probables : il lit les clés étrangères que vos sources déclarent et, si une clé de modèle d'IA est configurée, demande au modèle d'en déduire d'autres. Rien n'est déclaré tant que vous n'acceptez pas un candidat, et un candidat rejeté reste écarté jusqu'à l'effacement des rejets."
+      },
+      "stepRelsList": {
+        "title": "Toutes les relations dans une liste",
+        "description": "📋 Les relations du modèle, qu'une source les déclare ou non, filtrables et triables. Développez une ligne pour la modifier ou ajouter sa réciproque. Un rôle ne parcourt que les relations sur lesquelles il a des droits."
+      },
       "step17": {
         "title": "Consulter le diagramme entité-relation",
         "description": "Le diagramme entité-relation affiche l'ensemble de votre modèle fédéré — chaque table enregistrée et les relations qui les lient."
@@ -143,9 +151,25 @@
         "title": "Contrôle d'accès (RBAC)",
         "description": "🔐 L'enregistrement d'une table définit l'accès par colonne, directement rattaché aux rôles :<div class='tour-tags'><span>👁️ Lecture</span><span>✏️ Écriture</span></div><p>C'est le <strong>contrôle d'accès basé sur les rôles</strong> — et les rôles eux-mêmes se définissent ici, sur la page Sécurité.</p>"
       },
+      "stepRoleInherit": {
+        "title": "Les rôles héritent",
+        "description": "👪 Un rôle peut hériter d'un parent : il reçoit ses droits, la visibilité des colonnes et les règles de ligne, et sa propre règle de ligne pour une table remplace celle du parent. Le rôle porte aussi ses capacités et ses limites de débit et de complexité."
+      },
       "step19": {
         "title": "Sécurité au niveau des lignes",
         "description": "🔎 Une fois les rôles définis, allez plus loin — restreignez les <strong>lignes</strong> visibles par chaque rôle avec des prédicats basés sur des attributs :<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Piloté par les données et appliqué ligne par ligne — sur toutes les sources et tous les protocoles.</p>"
+      },
+      "stepDomains": {
+        "title": "Domaines et leurs responsables de données",
+        "description": "🗂️ Un domaine regroupe des tables, et son responsable de données gouverne cette partie du modèle : qui voit quoi, masques et règles de ligne, données sensibles, ainsi que son glossaire et ses produits de données."
+      },
+      "stepTags": {
+        "title": "Les étiquettes portent un sens",
+        "description": "🏷️ Une étiquette est un libellé commun à toute l'organisation, de sens fixe, appliqué à des sources, tables, colonnes, relations ou commandes. Les étiquettes portent un comportement, pas seulement de la documentation, et une étiquette peut exiger un motif, une date d'expiration ou un paramètre à son application."
+      },
+      "stepRequests": {
+        "title": "Demandes de relation",
+        "description": "✋ Une demande de relation requiert deux approbations avant de pouvoir être exécutée. Approuvez-la, exécutez-la ou rejetez-la avec un motif tiré d'une liste fixe ; les demandes traitées passent dans l'onglet Traitées."
       },
       "stepQualityTable": {
         "title": "Un vérificateur de qualité n'est qu'une source",
@@ -195,9 +219,29 @@
         "title": "Matérialiser en un entrepôt vivant",
         "description": "🏗️ Matérialisez une vue et vous obtenez un moteur ETL complet, déclaré et non scripté :<ul><li>📅 <strong>Instantanés planifiés</strong> sur de véritables <strong>calendriers métier</strong> — règles de récurrence, jours fériés, restriction aux jours ouvrés, et une période de grâce de clôture, pour qu'il se déclenche selon <em>votre</em> calendrier de reporting, pas seulement une horloge.</li><li>🗄️ <strong>Enregistrer sous…</strong> — <strong>remplacer</strong>, <strong>upsert</strong>, ou conserver l'historique avec <strong>instantané</strong> / <strong>delta</strong>, plus le calcul incrémental.</li><li>🕰️ <strong>Voyage dans le temps</strong> — historique bitemporel ; interrogez le modèle tel qu'il était à n'importe quel instant.</li><li>⚡ Actualisation en <strong>quasi temps réel</strong> avec anti-rebond, ou republication pilotée par la fraîcheur à mesure que les entrées changent.</li></ul>"
       },
+      "stepMetrics": {
+        "title": "Métriques, définies une fois",
+        "description": "📏 Une métrique est la définition métier d'une mesure, un agrégat sur une table de faits. Définie une fois, elle fait calculer le même chiffre à SQL, GraphQL, au canevas d'exploration et à chaque vue qui en dépend ; une vue est régénérée quand sa métrique change."
+      },
+      "stepCommands": {
+        "title": "Commandes",
+        "description": "⚡ Une commande est une opération gouvernée et typée, comme un service HTTP, un modèle Python ou une procédure stockée. Enregistrez-la une fois et appelez-la depuis chaque surface, avec les mêmes droits et le même traçage qu'une requête."
+      },
       "step22": {
         "title": "Traçabilité, de bout en bout",
         "description": "🧬 <strong>Le lignage est la piste de dépendances que laissent vos dérivations :</strong> de quoi chaque vue, colonne calculée ou métrique est construite, et ce qui en dépend. Voici une vraie requête, analysée : suivez <code>name_upper</code> à travers ses transformations jusqu'aux <strong>colonnes sources</strong> exactes qui l'alimentent.<p>Rien ne s'exécute : la requête est seulement analysée.</p>"
+      },
+      "stepObservability": {
+        "title": "Traces et traçage de débogage",
+        "description": "🔭 Le traçage enregistre un span par requête. L'onglet Traçage de débogage ajoute un span par étape du pipeline et par appel à une source, avec le texte SQL. Il ajoute de la charge : activez-le pour une organisation, un rôle ou une source pendant une durée donnée ; il s'éteint de lui-même."
+      },
+      "stepCache": {
+        "title": "Caches et répliques",
+        "description": "🗄️ Ces couches sont distinctes. Le cache de réponses conserve les résultats de requêtes, et une requête y participe avec @cached ou un commentaire SQL. Les petites tables de référence sont mises en miroir pour accélérer les jointures. Une réplique d'une table source impossible à attacher vit dans le stockage durable, à côté des vues matérialisées."
+      },
+      "stepScheduled": {
+        "title": "Tâches planifiées",
+        "description": "⏱️ Exécutez un webhook ou une instruction SQL selon un calendrier cron. Une tâche SQL s'exécute sous un rôle de votre choix, donc la gouvernance s'applique, et chaque tâche affiche sa dernière et sa prochaine exécution."
       },
       "step23": {
         "title": "Exploitez-le",
@@ -211,6 +255,10 @@
         "title": "Rapports de gestion intégrés",
         "description": "📊 Le journal d'audit interrogé plus tôt alimente aussi des <strong>rapports prêts à l'emploi</strong> — classement d'usage, accès aux PII, refus de politiques, santé des requêtes — chacun une vue gouvernée dans le domaine <code>ops</code>. Ajouter le vôtre tient en une seule instruction SQL, et il devient un produit de données catalogué et exportable comme toute autre table."
       },
+      "stepProductForm": {
+        "title": "Définir un produit de données",
+        "description": "📦 Indiquez le propriétaire et l'équipe, l'objectif, l'usage, le SLA et le support, puis choisissez les tables et commandes qu'il contient. Ce sont les champs publiés. Une table rejoint un produit seulement si les deux partagent le même domaine."
+      },
       "stepGlossary": {
         "title": "Un glossaire métier vivant",
         "description": "📖 Chaque terme est relié aux colonnes qui le portent — gérez les noms, les définitions et les relations typées (type de, partie de, synonyme de) à la main, ou laissez l'IA combler les lacunes : <strong>✨ Définitions</strong> ne rédige que les termes qui n'en ont pas encore, et <strong>✨ Relations</strong> propose des liens sur l'ensemble du glossaire. Marquez un terme comme <strong>exclu de l'export</strong> pour le tenir hors des métadonnées publiées."
@@ -218,6 +266,10 @@
       "stepDataProducts": {
         "title": "Des produits de données publiés là où les consommateurs regardent déjà",
         "description": "📦 Chaque produit ici parle <strong>ODPS</strong> (l'Open Data Product Standard) : propriétaire, équipe, objectif, limites, utilisation, SLA, support, propriétés personnalisées. Provisa le publie automatiquement dans <strong>Snowflake Horizon</strong> et <strong>BigQuery Dataplex</strong>, où il apparaît comme un produit natif du catalogue que vos consommateurs utilisent déjà.<p>🔁 Aucune étape d'export distincte à oublier : la spécification est <strong>dérivée du modèle en direct</strong> (tables, traçabilité, étiquettes, termes du glossaire) à chaque fois ; ce qui est publié ne peut donc pas devenir obsolète comme le ferait un fichier ODPS tenu à la main.</p><p>✅ Chaque produit porte aussi les <strong>termes du glossaire</strong> qui définissent ses colonnes et les <strong>résultats de qualité des données</strong> des vérificateurs qui l'analysent.</p>"
+      },
+      "stepGlossaryTerm": {
+        "title": "Ajouter un terme",
+        "description": "📖 Un terme nomme un concept métier, liste les colonnes qui le portent et dit ce qu'il signifie. Les termes des colonnes réelles sont dérivés pour vous ; ajoutez-en un à la main pour un concept qu'aucune colonne ne porte seule."
       },
       "stepPublish": {
         "title": "Publier vers les outils de votre organisation",

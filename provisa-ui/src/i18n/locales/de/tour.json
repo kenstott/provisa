@@ -135,6 +135,14 @@
         "title": "Eine Beziehung definieren",
         "description": "🔗 Eine Quellspalte einer Zielspalte zuordnen und die <strong>Kardinalität</strong> festlegen:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Oder Provisa Beziehungen mit KI für Sie <strong>ableiten</strong> lassen.</p>"
       },
+      "stepRelsSuggest": {
+        "title": "Beziehungen vorschlagen",
+        "description": "✨ Die Funkeln-Schaltfläche sucht nach wahrscheinlichen Joins: Sie liest die Fremdschlüssel, die Ihre Quellen deklarieren, und lässt, wenn ein KI-Modellschlüssel konfiguriert ist, das Modell weitere ableiten. Nichts wird deklariert, bis Sie einen Kandidaten annehmen; ein abgelehnter bleibt draußen, bis Sie die Ablehnungen zurücksetzen."
+      },
+      "stepRelsList": {
+        "title": "Alle Beziehungen in einer Liste",
+        "description": "📋 Die Beziehungen des Modells, ob eine Quelle sie deklariert oder nicht, filter- und sortierbar. Klappen Sie eine Zeile auf, um sie zu bearbeiten oder ihre Umkehrung hinzuzufügen. Eine Rolle durchläuft nur die Beziehungen, für die sie Rechte hat."
+      },
       "step17": {
         "title": "Das ERD ansehen",
         "description": "Das Entity-Relationship-Diagramm stellt Ihr gesamtes föderiertes Modell dar — jede registrierte Tabelle und die Beziehungen zwischen ihnen."
@@ -143,9 +151,25 @@
         "title": "Zugriffskontrolle (RBAC)",
         "description": "🔐 Das Registrieren einer Tabelle legt spaltenweisen Zugriff fest, direkt mit Rollen verdrahtet:<div class='tour-tags'><span>👁️ Lesen</span><span>✏️ Schreiben</span></div><p>Das ist <strong>rollenbasierte Zugriffskontrolle</strong> — und die Rollen selbst werden hier auf der Sicherheitsseite definiert.</p>"
       },
+      "stepRoleInherit": {
+        "title": "Rollen erben",
+        "description": "👪 Eine Rolle kann von einer übergeordneten Rolle erben: Sie erhält deren Berechtigungen, Spaltensichtbarkeit und Zeilenregeln, und ihre eigene Zeilenregel für eine Tabelle ersetzt die der übergeordneten. Die Rolle trägt außerdem ihre Fähigkeiten sowie ihre Raten- und Komplexitätslimits."
+      },
       "step19": {
         "title": "Row-Level-Sicherheit",
         "description": "🔎 Sobald Rollen existieren, noch feiner werden — einschränken, welche <strong>Zeilen</strong> jede Rolle sieht, mit attributbasierten Prädikaten:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Datengetrieben und pro Zeile erzwungen — über jede Quelle und jedes Protokoll hinweg.</p>"
+      },
+      "stepDomains": {
+        "title": "Domänen und ihre Stewards",
+        "description": "🗂️ Eine Domäne gruppiert Tabellen, und ihr Data Steward steuert diesen Teil des Modells: wer was sieht, Masken und Zeilenregeln, sensible Daten sowie ihr Glossar und ihre Datenprodukte."
+      },
+      "stepTags": {
+        "title": "Tags tragen Bedeutung",
+        "description": "🏷️ Ein Tag ist ein organisationsweites Label mit fester Bedeutung, angewendet auf Quellen, Tabellen, Spalten, Beziehungen oder Befehle. Tags tragen Verhalten, nicht nur Dokumentation, und ein Tag kann beim Anwenden eine Begründung, ein Ablaufdatum oder einen Parameter verlangen."
+      },
+      "stepRequests": {
+        "title": "Beziehungsanträge",
+        "description": "✋ Ein Beziehungsantrag braucht zwei Genehmigungen, bevor er ausgeführt werden kann. Genehmigen Sie ihn, führen Sie ihn aus oder lehnen Sie ihn mit einem Grund aus einer festen Liste ab; erledigte Anträge wandern in den Tab „Erledigt“."
       },
       "stepQualityTable": {
         "title": "Ein Qualitäts-Checker ist einfach eine Quelle",
@@ -195,9 +219,29 @@
         "title": "In ein Live-Warehouse materialisieren",
         "description": "🏗️ Eine Sicht materialisieren, und Sie erhalten eine vollständige ETL-Engine, deklariert statt skriptiert:<ul><li>📅 <strong>Geplante Snapshots</strong> nach echten <strong>Geschäftskalendern</strong> — Wiederholungsregeln, Feiertage, Geschäftstage-Gating und eine Abschluss-Karenzzeit, sodass es nach <em>Ihrem</em> Berichtskalender ausgelöst wird, nicht nur nach einer Uhr.</li><li>🗄️ <strong>Speichern als…</strong> — <strong>ersetzen</strong>, <strong>upserten</strong> oder Historie mit <strong>Snapshot</strong> / <strong>Delta</strong> behalten, plus inkrementelle Berechnung.</li><li>🕰️ <strong>Zeitreise</strong> — bitemporale Historie; das Modell zu jedem beliebigen Zeitpunkt abfragen.</li><li>⚡ <strong>Nahezu Echtzeit</strong>-Aktualisierung mit Entprellung, oder frische-getriebene Neuveröffentlichung bei sich ändernden Eingaben.</li></ul>"
       },
+      "stepMetrics": {
+        "title": "Metriken, einmal definiert",
+        "description": "📏 Eine Metrik ist die fachliche Definition einer Kennzahl, eine Aggregation über eine Faktentabelle. Einmal definiert, berechnen SQL, GraphQL, die Explore-Oberfläche und jede darauf aufbauende Sicht dieselbe Zahl; eine Sicht wird neu erzeugt, wenn sich ihre Metrik ändert."
+      },
+      "stepCommands": {
+        "title": "Befehle",
+        "description": "⚡ Ein Befehl ist eine governte, typisierte Operation, etwa ein HTTP-Dienst, ein Python-Modell oder eine gespeicherte Prozedur. Einmal registriert, ist er von jeder Oberfläche aufrufbar, mit denselben Rechten und derselben Nachverfolgung wie eine Abfrage."
+      },
       "step22": {
         "title": "Lineage, durchgehend",
         "description": "🧬 <strong>Lineage ist die Abhängigkeitsspur, die Ihre Ableitungen hinterlassen:</strong> woraus jede View, berechnete Spalte oder Metrik besteht und was von ihr abhängt. Das ist eine echte, analysierte Abfrage – verfolgen Sie <code>name_upper</code> durch seine Transformationen zurück zu den genauen <strong>Quellspalten</strong>, die es speisen.<p>Es wird nichts ausgeführt – die Abfrage wird nur analysiert.</p>"
+      },
+      "stepObservability": {
+        "title": "Traces und Debug-Tracing",
+        "description": "🔭 Das Tracing zeichnet einen Span pro Anfrage auf. Der Tab Debug-Tracing ergänzt einen Span pro Pipeline-Stufe und pro Quellaufruf, mit SQL-Text. Das erzeugt Last, schalten Sie es also für eine Organisation, Rolle oder Quelle nur für eine bestimmte Zeit ein; danach schaltet es sich selbst ab."
+      },
+      "stepCache": {
+        "title": "Caches und Replikate",
+        "description": "🗄️ Diese Schichten sind getrennt. Der Antwort-Cache hält Abfrageergebnisse, und eine Anfrage nimmt per @cached oder SQL-Kommentar daran teil. Kleine Nachschlagetabellen werden gespiegelt, um Joins zu beschleunigen. Ein Replikat einer Quelltabelle, die sich nicht anbinden lässt, liegt im dauerhaften Speicher, neben materialisierten Sichten."
+      },
+      "stepScheduled": {
+        "title": "Geplante Aufgaben",
+        "description": "⏱️ Führen Sie einen Webhook oder eine SQL-Anweisung nach einem Cron-Zeitplan aus. Eine SQL-Aufgabe läuft als eine Rolle Ihrer Wahl, sodass die Governance greift, und jede Aufgabe zeigt ihren letzten und nächsten Lauf."
       },
       "step23": {
         "title": "Betreiben",
@@ -211,6 +255,10 @@
         "title": "Management-Berichte, eingebaut",
         "description": "📊 Das Audit-Log, das Sie eben abgefragt haben, speist auch <strong>fertige Berichte</strong> — Nutzungsranking, PII-Zugriffe, Richtlinien-Ablehnungen, Query-Health — jeweils eine Governance-Sicht in der <code>ops</code>-Domäne. Ein eigener Bericht ist eine einzige SQL-Anweisung und wird zum katalogisierten, exportierbaren Datenprodukt wie jede andere Tabelle."
       },
+      "stepProductForm": {
+        "title": "Ein Datenprodukt definieren",
+        "description": "📦 Nennen Sie Eigentümer und Team, Zweck, Nutzung, SLA und Support und wählen Sie dann die Tabellen und Befehle, die es enthält. Das sind die Felder, die veröffentlicht werden. Eine Tabelle gehört nur dann zu einem Produkt, wenn beide dieselbe Domäne haben."
+      },
       "stepGlossary": {
         "title": "Ein lebendiges Fachglossar",
         "description": "📖 Jeder Begriff verweist zurück auf die Spalten, die ihn tragen — pflegen Sie Namen, Definitionen und typisierte Beziehungen (Art von, Teil von, Synonym von) von Hand, oder lassen Sie die KI die Lücken füllen: <strong>✨ Definitionen</strong> entwirft nur Begriffe, denen noch eine fehlt, und <strong>✨ Beziehungen</strong> schlägt Verknüpfungen im gesamten Glossar vor. Markieren Sie einen Begriff als <strong>vom Export ausgeschlossen</strong>, damit er nicht in den veröffentlichten Metadaten erscheint."
@@ -218,6 +266,10 @@
       "stepDataProducts": {
         "title": "Datenprodukte, veröffentlicht dort, wo Konsumenten bereits suchen",
         "description": "📦 Jedes Produkt hier spricht <strong>ODPS</strong> (den Open Data Product Standard) – Eigentümer, Team, Zweck, Einschränkungen, Nutzung, SLA, Support, benutzerdefinierte Eigenschaften – und Provisa veröffentlicht es automatisch direkt in <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong>, sodass es als natives Produkt in dem Katalog erscheint, den Ihre Konsumenten ohnehin nutzen.<p>🔁 Es gibt keinen separaten Exportschritt, den man vergessen könnte: Die Spezifikation wird jedes Mal <strong>aus dem Live-Modell abgeleitet</strong> – Tabellen, Lineage, Tags, Glossarbegriffe –, sodass das Veröffentlichte nicht veralten kann wie eine von Hand gepflegte ODPS-Datei.</p><p>✅ Jedes Produkt trägt außerdem die <strong>Glossarbegriffe</strong>, die seine Spalten definieren, und die <strong>Datenqualitätsergebnisse</strong> der Checker, die es prüfen.</p>"
+      },
+      "stepGlossaryTerm": {
+        "title": "Einen Begriff hinzufügen",
+        "description": "📖 Ein Begriff benennt ein fachliches Konzept, listet die Spalten auf, die es tragen, und sagt, was es bedeutet. Begriffe für reale Spalten werden für Sie abgeleitet; fügen Sie nur dann einen von Hand hinzu, wenn keine einzelne Spalte das Konzept trägt."
       },
       "stepPublish": {
         "title": "In den Werkzeugen Ihrer Organisation veröffentlichen",

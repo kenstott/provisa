@@ -302,6 +302,18 @@ export const TOUR_STEPS: TourStep[] = [
     clickAfterNext: RELS_ADD,
   },
   {
+    route: "/relationships",
+    capability: "create_relationship",
+    element: '[data-tour="rels-suggest"]',
+    key: "stepRelsSuggest",
+  },
+  {
+    route: "/relationships",
+    capability: "create_relationship",
+    element: '[data-testid="relationships-list"]',
+    key: "stepRelsList",
+  },
+  {
     // Own the route so Back from RBAC (/security/roles) returns here instead of hanging on
     // clickBefore (the ERD trigger only exists on /relationships).
     route: "/relationships",
@@ -319,11 +331,38 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step18",
   },
   {
+    route: "/security/roles",
+    capability: "access_config",
+    readySelector: '[data-testid="toggle-role-form"]',
+    clickBefore: '[data-testid="toggle-role-form"]',
+    clickAfterNext: '[data-testid="toggle-role-form"]',
+    element: '[data-testid="role-parent-select"]',
+    key: "stepRoleInherit",
+  },
+  {
     route: "/security/rls",
     capability: "access_config",
     element: '.subnav a[href="/security/rls"]',
     readySelector: '[data-testid="toggle-rule-form"]',
     key: "step19",
+  },
+  {
+    route: "/admin/domains",
+    capability: "org_settings",
+    element: '[data-testid="domain-settings-panel"]',
+    key: "stepDomains",
+  },
+  {
+    route: "/admin/tags",
+    capability: "org_settings",
+    element: '[data-testid="tags-scope-bar"]',
+    key: "stepTags",
+  },
+  {
+    route: "/admin/requests",
+    capability: "org_settings",
+    element: '[data-testid="requests-tab-pending"]',
+    key: "stepRequests",
   },
   {
     // REQ-1443: the demo's checker source lands its scans as an ordinary table, so the quality
@@ -406,16 +445,6 @@ export const TOUR_STEPS: TourStep[] = [
     key: "stepSyntheticPrivacy",
   },
   {
-    // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
-    route: "/admin/glossary",
-    // REQ-1590: stricter than the route's own gate. /admin/glossary opens to `glossary_read`, but
-    // what this step points at is the AI-generation buttons, which only a curator is shown — so a
-    // read-only viewer skips the step rather than waiting out an anchor that never mounts.
-    capability: "glossary_rw",
-    element: '[data-testid="glossary-bulk-definitions-btn"]',
-    key: "stepGlossary",
-  },
-  {
     // REQ-1660: the ODPS-aligned data product catalog, and its always-reconciled auto-publish
     // to warehouse-native product surfaces (Snowflake Horizon, BigQuery Dataplex).
     route: "/data-products",
@@ -429,6 +458,30 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="data-products-content"]',
     readySelector: '[data-testid="data-product-detail"]',
     key: "stepDataProducts",
+  },
+  {
+    route: "/data-products",
+    capability: "data_product_rw",
+    clickBefore: '[data-testid="data-products-new-button"]',
+    clickAfterNext: '[data-testid="data-product-cancel-button"]',
+    element: '[data-testid="data-product-form"]',
+    key: "stepProductForm",
+  },
+  {
+    // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
+    route: "/admin/glossary",
+    // REQ-1590: stricter than the route's own gate. /admin/glossary opens to `glossary_read`, but
+    // what this step points at is the AI-generation buttons, which only a curator is shown — so a
+    // read-only viewer skips the step rather than waiting out an anchor that never mounts.
+    capability: "glossary_rw",
+    element: '[data-testid="glossary-bulk-definitions-btn"]',
+    key: "stepGlossary",
+  },
+  {
+    route: "/admin/glossary",
+    capability: "glossary_rw",
+    element: '[data-testid="glossary-new-btn"]',
+    key: "stepGlossaryTerm",
   },
   {
     // REQ-1945: publishing the model, its data products and lineage out to a catalog. The anchor is
@@ -455,6 +508,18 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step21",
   },
   {
+    route: "/metrics",
+    capability: "table_registration",
+    element: '[data-testid="metrics-new-button"]',
+    key: "stepMetrics",
+  },
+  {
+    route: "/commands",
+    capability: "table_registration",
+    element: '[data-testid="commands-toggle-form"]',
+    key: "stepCommands",
+  },
+  {
     route: `/lineage?sql=${encodeURIComponent(LINEAGE_DEMO_SQL)}`,
     capability: "table_registration",
     prefetch: "lineageDemo",
@@ -472,6 +537,24 @@ export const TOUR_STEPS: TourStep[] = [
     capability: "observability",
     element: '[data-testid="reports-list"]',
     key: "stepReports",
+  },
+  {
+    route: "/admin/observability",
+    capability: "observability",
+    element: '[data-testid="observability-debug-trace-tab"]',
+    key: "stepObservability",
+  },
+  {
+    route: "/admin/cache",
+    capability: "org_settings",
+    element: '[data-testid="cache-tab-response"]',
+    key: "stepCache",
+  },
+  {
+    route: "/admin/scheduled-tasks",
+    capability: "org_settings",
+    element: '[data-testid="scheduled-tasks-toggle-form"]',
+    key: "stepScheduled",
   },
   {
     route: "/admin/overview",
@@ -504,9 +587,9 @@ export type TourScope = "core" | TopicId;
 export const TOUR_SCOPES: Record<TourScope, readonly string[]> = {
   core: ["step0", "stepPolly", "step1", "step2", "stepQuery", "step14"],
   connect: ["step3", "step4", "step5", "stepPreview"],
-  relationships: ["step15", "step16", "step17"],
-  model: ["step20", "step21", "step22"],
-  govern: ["step18", "step19"],
+  relationships: ["step15", "step16", "stepRelsSuggest", "stepRelsList", "step17"],
+  model: ["step20", "step21", "stepMetrics", "stepCommands", "step22"],
+  govern: ["step18", "stepRoleInherit", "step19", "stepDomains", "stepTags", "stepRequests"],
   query: ["step6", "step7", "step8", "step9", "step10", "step11", "step12", "step13"],
   testdata: [
     "stepQualityTable",
@@ -520,9 +603,8 @@ export const TOUR_SCOPES: Record<TourScope, readonly string[]> = {
     "stepSynthetic",
     "stepSyntheticPrivacy",
   ],
-  // The glossary step stays here until its topic is decided (REQ-1945 open question).
-  publish: ["stepGlossary", "stepDataProducts", "stepPublish"],
-  operate: ["stepReports", "step23"],
+  publish: ["stepDataProducts", "stepProductForm", "stepGlossary", "stepGlossaryTerm", "stepPublish"],
+  operate: ["stepReports", "stepObservability", "stepCache", "stepScheduled", "step23"],
 };
 
 /**

@@ -59,6 +59,10 @@ describe("tour scopes", () => {
     ]);
   });
 
+  it("gives every Deep Dive topic at least four steps", () => {
+    for (const id of TOPIC_IDS) expect(TOUR_SCOPES[id].length, id).toBeGreaterThanOrEqual(4);
+  });
+
   it("ends no topic, and not the core tour, on a whole-tour sign-off", () => {
     for (const id of TOPIC_IDS) expect(TOUR_SCOPES[id].at(-1), id).not.toBe("step24");
     expect(TOUR_STEPS.map((s) => s.key)).not.toContain("step24");

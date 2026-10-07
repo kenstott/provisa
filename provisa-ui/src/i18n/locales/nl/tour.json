@@ -135,6 +135,14 @@
         "title": "Definieer een relatie",
         "description": "🔗 Koppel een bronkolom aan een doelkolom en stel de <strong>cardinaliteit</strong> in:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Of laat Provisa relaties voor je <strong>afleiden</strong> met AI.</p>"
       },
+      "stepRelsSuggest": {
+        "title": "Relaties voorstellen",
+        "description": "✨ De glinsterknop zoekt waarschijnlijke joins: hij leest de foreign keys die je bronnen declareren en laat, als een sleutel voor een AI-model is ingesteld, het model er meer afleiden. Er wordt niets gedeclareerd totdat je een kandidaat accepteert, en een afgewezen kandidaat blijft weg tot je de afwijzingen wist."
+      },
+      "stepRelsList": {
+        "title": "Alle relaties in één lijst",
+        "description": "📋 De relaties van het model, of een bron ze nu declareert of niet, filterbaar en sorteerbaar. Klap een rij uit om haar te bewerken of de omgekeerde toe te voegen. Een rol doorloopt alleen de relaties waarop hij rechten heeft."
+      },
       "step17": {
         "title": "Bekijk het ERD",
         "description": "Het entity-relationship diagram brengt je hele gefedereerde model in beeld — elke geregistreerde tabel en de relaties ertussen."
@@ -143,9 +151,25 @@
         "title": "Toegangscontrole (RBAC)",
         "description": "🔐 Het registreren van een tabel stelt toegang per kolom in, rechtstreeks gekoppeld aan rollen:<div class='tour-tags'><span>👁️ Lezen</span><span>✏️ Schrijven</span></div><p>Dat is <strong>role-based access control</strong> — en de rollen zelf worden hier op de Beveiliging-pagina gedefinieerd.</p>"
       },
+      "stepRoleInherit": {
+        "title": "Rollen erven",
+        "description": "👪 Een rol kan erven van een bovenliggende rol: hij krijgt de rechten, kolomzichtbaarheid en rijregels van de ouder, en zijn eigen rijregel voor een tabel vervangt die van de ouder. De rol draagt ook zijn bevoegdheden en zijn snelheids- en complexiteitslimieten."
+      },
       "step19": {
         "title": "Beveiliging op rijniveau",
         "description": "🔎 Zodra rollen bestaan, ga je fijnmaziger — beperk welke <strong>rijen</strong> elke rol ziet met attribuutgebaseerde predicaten:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Datagedreven en per rij afgedwongen — over elke bron en elk protocol.</p>"
+      },
+      "stepDomains": {
+        "title": "Domeinen en hun stewards",
+        "description": "🗂️ Een domein groepeert tabellen, en zijn data steward beheert dat deel van het model: wie wat ziet, maskers en rijregels, gevoelige gegevens, en zijn glossarium en dataproducten."
+      },
+      "stepTags": {
+        "title": "Tags dragen betekenis",
+        "description": "🏷️ Een tag is één organisatiebreed label met een vaste betekenis, toegepast op bronnen, tabellen, kolommen, relaties of commando's. Tags dragen gedrag, niet alleen documentatie, en een tag kan bij het toepassen een reden, een vervaldatum of een parameter vereisen."
+      },
+      "stepRequests": {
+        "title": "Relatieverzoeken",
+        "description": "✋ Een relatieverzoek heeft twee goedkeuringen nodig voordat het kan worden uitgevoerd. Keur het goed, voer het uit of wijs het af met een reden uit een vaste lijst; afgehandelde verzoeken gaan naar het tabblad Afgehandeld."
       },
       "stepQualityTable": {
         "title": "Een kwaliteitschecker is gewoon een bron",
@@ -195,9 +219,29 @@
         "title": "Materialiseer naar een live warehouse",
         "description": "🏗️ Materialiseer een view en je krijgt een volledige ETL-engine, gedeclareerd in plaats van gescript:<ul><li>📅 <strong>Geplande snapshots</strong> op echte <strong>bedrijfskalenders</strong> — herhalingsregels, feestdagen, gating op werkdagen, en een afsluitmarge, zodat het draait op <em>jouw</em> rapportagekalender, niet enkel op de klok.</li><li>🗄️ <strong>Opslaan als…</strong> — <strong>vervangen</strong>, <strong>upserten</strong>, of geschiedenis bijhouden met <strong>snapshot</strong> / <strong>delta</strong>, plus incrementele berekening.</li><li>🕰️ <strong>Time travel</strong> — bitemporele geschiedenis; bevraag het model zoals het was op elk gewenst moment.</li><li>⚡ <strong>Bijna-realtime</strong> verversing met debounce, of freshness-gestuurde herpublicatie naarmate invoer verandert.</li></ul>"
       },
+      "stepMetrics": {
+        "title": "Metrics, één keer gedefinieerd",
+        "description": "📏 Een metric is de zakelijke definitie van een maat, een aggregatie over één feitentabel. Definieer haar één keer en SQL, GraphQL, het verkenningsdoek en elke view die erop is gebouwd berekenen hetzelfde getal; een view wordt opnieuw gegenereerd als zijn metric verandert."
+      },
+      "stepCommands": {
+        "title": "Commando's",
+        "description": "⚡ Een commando is een beheerde, getypeerde bewerking, zoals een HTTP-service, een Python-model of een stored procedure. Registreer het één keer en roep het aan vanaf elk oppervlak, met dezelfde rechten en tracing als een query."
+      },
       "step22": {
         "title": "Lineage, van begin tot eind",
         "description": "🧬 <strong>Lineage is het afhankelijkheidsspoor dat je afgeleiden achterlaten:</strong> waaruit elke view, berekende kolom of metric is opgebouwd en wat ervan afhangt. Dit is een echte query, geanalyseerd — volg <code>name_upper</code> via zijn transformaties terug naar de exacte <strong>bronkolommen</strong> die hem voeden.<p>Er wordt niets uitgevoerd — de query wordt alleen geanalyseerd.</p>"
+      },
+      "stepObservability": {
+        "title": "Traces en debug-tracing",
+        "description": "🔭 Tracing legt één span per verzoek vast. Het tabblad Debug-tracing voegt een span toe per pijplijnfase en per bronaanroep, met SQL-tekst. Het kost belasting, dus zet het voor een bepaalde tijd aan voor één organisatie, rol of bron; het gaat vanzelf uit als de tijd om is."
+      },
+      "stepCache": {
+        "title": "Caches en replica's",
+        "description": "🗄️ Deze lagen staan los van elkaar. De responscache bewaart queryresultaten, en een verzoek doet mee via @cached of een SQL-commentaar. Kleine opzoektabellen worden gespiegeld om joins te versnellen. Een replica van een brontabel die niet kan worden gekoppeld, staat in de duurzame opslag, naast gematerialiseerde views."
+      },
+      "stepScheduled": {
+        "title": "Geplande taken",
+        "description": "⏱️ Voer een webhook of een SQL-instructie uit volgens een cron-schema. Een SQL-taak draait als een rol naar keuze, dus governance geldt, en elke taak toont zijn laatste en volgende uitvoering."
       },
       "step23": {
         "title": "Beheer het",
@@ -211,6 +255,10 @@
         "title": "Ingebouwde managementrapporten",
         "description": "📊 Het auditlog dat u eerder bevroeg voedt ook <strong>kant-en-klare rapporten</strong> — gebruiksranking, PII-toegang, beleidsweigeringen, querygezondheid — elk een governed view in het <code>ops</code>-domein. Een eigen rapport toevoegen is één SQL-statement, en het wordt een gecatalogiseerd, exporteerbaar dataproduct als elke andere tabel."
       },
+      "stepProductForm": {
+        "title": "Een dataproduct definiëren",
+        "description": "📦 Geef de eigenaar en het team, het doel, het gebruik, de SLA en de ondersteuning op en kies dan de tabellen en commando's die het bevat. Dit zijn de velden die worden gepubliceerd. Een tabel hoort alleen bij een product als beide hetzelfde domein delen."
+      },
       "stepGlossary": {
         "title": "Een levend bedrijfsglossarium",
         "description": "📖 Elke term verwijst terug naar de kolommen die hem dragen — beheer namen, definities en getypeerde relaties (soort van, onderdeel van, synoniem van) handmatig, of laat AI de leemtes opvullen: <strong>✨ Definities</strong> stelt alleen concepten op voor termen die er nog geen hebben, en <strong>✨ Relaties</strong> stelt koppelingen voor in het hele glossarium. Markeer een term als <strong>uitgesloten van export</strong> om hem buiten de gepubliceerde metadata te houden."
@@ -218,6 +266,10 @@
       "stepDataProducts": {
         "title": "Dataproducten, gepubliceerd waar afnemers al kijken",
         "description": "📦 Elk product hier spreekt <strong>ODPS</strong> (de Open Data Product Standard) — eigenaar, team, doel, beperkingen, gebruik, SLA, ondersteuning, aangepaste eigenschappen — en Provisa publiceert het automatisch rechtstreeks in <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong>, zodat het verschijnt als native product in de catalogus die je afnemers al gebruiken.<p>🔁 Er is geen aparte exportstap die je kunt vergeten: de specificatie wordt telkens <strong>afgeleid uit het live model</strong> — tabellen, lineage, tags, glossariumtermen — dus wat is gepubliceerd kan niet verouderen zoals een met de hand onderhouden ODPS-bestand.<p>✅ Elk product draagt ook de <strong>glossariumtermen</strong> die de kolommen definiëren en de <strong>datakwaliteitsresultaten</strong> van de checkers die het scannen.</p>"
+      },
+      "stepGlossaryTerm": {
+        "title": "Een term toevoegen",
+        "description": "📖 Een term benoemt één zakelijk concept, noemt de kolommen die het dragen en zegt wat het betekent. Termen voor echte kolommen worden voor je afgeleid; voeg er alleen met de hand een toe voor een concept dat geen enkele kolom alleen draagt."
       },
       "stepPublish": {
         "title": "Publiceren naar de tools van je organisatie",

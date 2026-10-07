@@ -135,6 +135,14 @@
         "title": "Defina um relacionamento",
         "description": "🔗 Mapeie uma coluna de origem para uma coluna de destino e defina a <strong>cardinalidade</strong>:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Ou deixe o Provisa <strong>inferir</strong> relacionamentos para você com IA.</p>"
       },
+      "stepRelsSuggest": {
+        "title": "Sugerir relacionamentos",
+        "description": "✨ O botão de brilho procura junções prováveis: lê as chaves estrangeiras que suas fontes declaram e, se houver uma chave de modelo de IA configurada, pede ao modelo que infira mais. Nada é declarado até você aceitar um candidato, e um rejeitado fica de fora até você limpar as rejeições."
+      },
+      "stepRelsList": {
+        "title": "Todos os relacionamentos em uma lista",
+        "description": "📋 Os relacionamentos do modelo, quer uma fonte os declare ou não, com filtro e ordenação. Expanda uma linha para editá-la ou adicionar o inverso. Um papel só percorre os relacionamentos sobre os quais tem direitos."
+      },
       "step17": {
         "title": "Veja o ERD",
         "description": "O diagrama de entidade-relacionamento renderiza todo o seu modelo federado — cada tabela registrada e os relacionamentos entre elas."
@@ -143,9 +151,25 @@
         "title": "Controle de acesso (RBAC)",
         "description": "🔐 Registrar uma tabela define acesso por coluna, conectado diretamente às funções:<div class='tour-tags'><span>👁️ Leitura</span><span>✏️ Escrita</span></div><p>Isso é <strong>controle de acesso baseado em função</strong> — e as próprias funções são definidas aqui, na página de Segurança.</p>"
       },
+      "stepRoleInherit": {
+        "title": "Os papéis herdam",
+        "description": "👪 Um papel pode herdar de um pai: recebe suas concessões, a visibilidade de colunas e as regras de linha, e a regra de linha própria do papel para uma tabela substitui a do pai. O papel também carrega suas capacidades e seus limites de taxa e complexidade."
+      },
       "step19": {
         "title": "Segurança em nível de linha",
         "description": "🔎 Uma vez que as funções existam, vá mais a fundo — restrinja quais <strong>linhas</strong> cada função vê com predicados baseados em atributos:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Orientado por dados e aplicado por linha — em todas as fontes e protocolos.</p>"
+      },
+      "stepDomains": {
+        "title": "Domínios e seus stewards",
+        "description": "🗂️ Um domínio agrupa tabelas, e seu data steward governa essa parte do modelo: quem vê o quê, máscaras e regras de linha, dados sensíveis, e seu glossário e seus produtos de dados."
+      },
+      "stepTags": {
+        "title": "Tags carregam significado",
+        "description": "🏷️ Uma tag é um rótulo de toda a organização com significado fixo, aplicado a fontes, tabelas, colunas, relacionamentos ou comandos. As tags carregam comportamento, não só documentação, e uma tag pode exigir um motivo, uma data de expiração ou um parâmetro ao ser aplicada."
+      },
+      "stepRequests": {
+        "title": "Solicitações de relacionamento",
+        "description": "✋ Uma solicitação de relacionamento precisa de duas aprovações antes de poder ser executada. Aprove-a, execute-a ou rejeite-a com um motivo de uma lista fixa; as solicitações resolvidas vão para a aba Resolvidas."
       },
       "stepQualityTable": {
         "title": "Um verificador de qualidade é apenas uma fonte",
@@ -195,9 +219,29 @@
         "title": "Materialize em um warehouse ao vivo",
         "description": "🏗️ Materialize uma exibição e você obtém um mecanismo de ETL completo, declarado, não roteirizado:<ul><li>📅 <strong>Instantâneos agendados</strong> em <strong>calendários comerciais</strong> reais — regras de recorrência, feriados, restrição por dia útil e um período de carência de fechamento, para que dispare no <em>seu</em> calendário de relatórios, não apenas em um relógio.</li><li>🗄️ <strong>Armazenar como…</strong> — <strong>substituir</strong>, <strong>upsert</strong> ou manter histórico com <strong>snapshot</strong> / <strong>delta</strong>, além de computação incremental.</li><li>🕰️ <strong>Viagem no tempo</strong> — histórico bitemporal; consulte o modelo como estava em qualquer ponto no tempo.</li><li>⚡ Atualização <strong>quase em tempo real</strong> com debounce, ou republicação orientada por atualidade conforme as entradas mudam.</li></ul>"
       },
+      "stepMetrics": {
+        "title": "Métricas, definidas uma vez",
+        "description": "📏 Uma métrica é a definição de negócio de uma medida, uma agregação sobre uma tabela de fatos. Defina-a uma vez e SQL, GraphQL, a tela de exploração e toda visão construída sobre ela calculam o mesmo número; uma visão é regenerada quando sua métrica muda."
+      },
+      "stepCommands": {
+        "title": "Comandos",
+        "description": "⚡ Um comando é uma operação governada e tipada, como um serviço HTTP, um modelo Python ou uma stored procedure. Registre-o uma vez e chame-o de qualquer superfície, com os mesmos direitos e o mesmo rastreamento de uma consulta."
+      },
       "step22": {
         "title": "Linhagem, de ponta a ponta",
         "description": "🧬 <strong>Linhagem é o rastro de dependências que suas derivações deixam:</strong> do que cada visão, coluna calculada ou métrica é feita e o que depende dela. Esta é uma consulta real, analisada: siga <code>name_upper</code> pelas suas transformações até as <strong>colunas de origem</strong> exatas que o alimentam.<p>Nada é executado: a consulta é apenas analisada.</p>"
+      },
+      "stepObservability": {
+        "title": "Traces e rastreamento de depuração",
+        "description": "🔭 O rastreamento registra um span por solicitação. A aba Rastreamento de depuração acrescenta um span por etapa do pipeline e por chamada a uma fonte, com o texto SQL. Isso aumenta a carga, então ative-o para uma organização, papel ou fonte por um tempo determinado; ele se desliga sozinho ao fim."
+      },
+      "stepCache": {
+        "title": "Caches e réplicas",
+        "description": "🗄️ Estas camadas são separadas. O cache de respostas guarda resultados de consultas, e uma solicitação participa com @cached ou um comentário SQL. Pequenas tabelas de consulta são espelhadas para acelerar junções. Uma réplica de uma tabela de origem que não pode ser anexada fica no armazenamento durável, ao lado das visões materializadas."
+      },
+      "stepScheduled": {
+        "title": "Tarefas agendadas",
+        "description": "⏱️ Execute um webhook ou uma instrução SQL em um agendamento cron. Uma tarefa SQL roda como um papel de sua escolha, então a governança se aplica, e cada tarefa mostra sua última e sua próxima execução."
       },
       "step23": {
         "title": "Opere",
@@ -211,6 +255,10 @@
         "title": "Relatórios de gestão incorporados",
         "description": "📊 O log de auditoria que você consultou antes também alimenta <strong>relatórios prontos</strong> — ranking de uso, acessos a PII, negações de política, saúde das consultas — cada um uma visão governada no domínio <code>ops</code>. Adicionar o seu é uma única instrução SQL, e ele vira um produto de dados catalogado e exportável como qualquer outra tabela."
       },
+      "stepProductForm": {
+        "title": "Definir um produto de dados",
+        "description": "📦 Informe o proprietário e a equipe, o propósito, o uso, o SLA e o suporte, e depois escolha as tabelas e os comandos que ele contém. São os campos que são publicados. Uma tabela só entra em um produto quando ambos compartilham o mesmo domínio."
+      },
       "stepGlossary": {
         "title": "Um glossário de negócio vivo",
         "description": "📖 Cada termo remete às colunas que o carregam — cure nomes, definições e relações tipadas (tipo de, parte de, sinônimo de) manualmente, ou deixe a IA preencher as lacunas: <strong>✨ Definições</strong> rascunha apenas os termos que ainda não têm uma, e <strong>✨ Relações</strong> propõe vínculos em todo o glossário. Marque um termo como <strong>excluído da exportação</strong> para mantê-lo fora dos metadados publicados."
@@ -218,6 +266,10 @@
       "stepDataProducts": {
         "title": "Produtos de dados, publicados onde os consumidores já procuram",
         "description": "📦 Todo produto aqui fala <strong>ODPS</strong> (o Open Data Product Standard) — proprietário, equipe, finalidade, limitações, uso, SLA, suporte, propriedades personalizadas — e o Provisa o publica automaticamente no <strong>Snowflake Horizon</strong> e no <strong>BigQuery Dataplex</strong>, aparecendo como um produto nativo no catálogo que seus consumidores já usam.<p>🔁 Não há etapa de exportação separada para esquecer: a especificação é <strong>derivada do modelo ativo</strong> — tabelas, linhagem, tags, termos do glossário — a cada vez, então o que é publicado não pode ficar desatualizado como um arquivo ODPS mantido à mão.</p><p>✅ Cada produto também leva os <strong>termos do glossário</strong> que definem suas colunas e os <strong>resultados de qualidade de dados</strong> dos verificadores que o analisam.</p>"
+      },
+      "stepGlossaryTerm": {
+        "title": "Adicionar um termo",
+        "description": "📖 Um termo nomeia um conceito de negócio, lista as colunas que o carregam e diz o que significa. Os termos de colunas reais são derivados para você; adicione um à mão para um conceito que nenhuma coluna carrega sozinha."
       },
       "stepPublish": {
         "title": "Publicar nas ferramentas da sua organização",
