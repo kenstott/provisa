@@ -745,6 +745,13 @@ def pytest_configure(config):
     from provisa.core import process_region
 
     process_region.bind_launch({}, requested=None)
+    # A session that dies outside any test (collection, the stack bring-up) shows where it was:
+    # every thread's stack is written to stderr each PYTEST_DUMP_STACKS_EVERY seconds.
+    dump_every = os.environ.get("PYTEST_DUMP_STACKS_EVERY")
+    if dump_every:
+        import faulthandler
+
+        faulthandler.dump_traceback_later(int(dump_every), repeat=True)
     config.pluginmanager.register(_DockerServiceManager())
     config.addinivalue_line(
         "markers",
