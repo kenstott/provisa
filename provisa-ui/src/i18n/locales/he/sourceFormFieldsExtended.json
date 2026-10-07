@@ -101,6 +101,19 @@
     "cacheTtlRequiredForSignal": "אות השינוי {{signal}} קובע עדכניות לפי TTL של מטמון, לכן יש להגדיר TTL של מטמון.",
     "accessToken": "אסימון גישה",
     "accessTokenHint": "נשמר בכספת הסודות. מתקבלת גם הפניה מסוג ${secret:NAME} או ${env:NAME}.",
-    "brandNamespaceHint": "קידומת לשמות הטבלאות של מקור זה. השאירו ריק לברירת המחדל."
+    "brandNamespaceHint": "קידומת לשמות הטבלאות של מקור זה. השאירו ריק לברירת המחדל.",
+    "sfLoginUrl": "כתובת URL להתחברות",
+    "sfLoginUrlHelp": "כתובת ה-My Domain של הארגון שלך (Setup, ואז My Domain)",
+    "sfAccessTokenAuth": "אסימון גישה",
+    "sfConsumerKey": "Consumer Key",
+    "sfConsumerSecret": "Consumer Secret",
+    "sfUsername": "שם משתמש ב-Salesforce",
+    "sfPassword": "סיסמת Salesforce",
+    "sfSecurityToken": "אסימון אבטחה",
+    "sfSecurityTokenHelp": "רק אם הארגון שלך דורש אחד",
+    "sfAccessToken": "אסימון גישה",
+    "sfInstanceUrl": "כתובת URL של המופע",
+    "sfApiVersion": "גרסת API",
+    "sfApiVersionHelp": "אופציונלי, לדוגמה v61.0"
   }
 }

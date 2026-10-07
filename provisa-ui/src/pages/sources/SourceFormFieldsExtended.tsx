@@ -36,6 +36,7 @@ import { OpenApiFormSection } from "./OpenApiFormSection";
 import { KaggleFormSection } from "./KaggleFormSection";
 import { PushFeedFormSection } from "./PushFeedFormSection";
 import { ProfilerFormSection } from "./ProfilerFormSection";
+import { SalesforceFields } from "./SalesforceFields";
 import { SparqlFormSection } from "./SparqlFormSection";
 import { SourceLoadManagementPanel } from "./SourceLoadManagementPanel";
 import type { SourceFormFieldsProps } from "./SourceFormFields";
@@ -567,6 +568,14 @@ export function SourceFormFieldsExtended({
           setRssPollInterval={setRssPollInterval}
           rssUseSsl={rssUseSsl}
           setRssUseSsl={setRssUseSsl}
+        />
+      )}
+      {form.type === "salesforce" && (
+        <SalesforceFields
+          form={form}
+          setForm={setForm}
+          fields={authFields}
+          setFields={setAuthFields}
         />
       )}
       {form.type === "sharepoint" && (

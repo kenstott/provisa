@@ -101,6 +101,19 @@
     "cacheTtlRequiredForSignal": "変更シグナル {{signal}} はキャッシュTTLで鮮度を判断するため、キャッシュTTLを設定してください。",
     "accessToken": "アクセストークン",
     "accessTokenHint": "シークレットボールトに保存されます。${secret:NAME} または ${env:NAME} の参照も指定できます。",
-    "brandNamespaceHint": "このソースのテーブル名の接頭辞。既定値を使う場合は空欄のままにします。"
+    "brandNamespaceHint": "このソースのテーブル名の接頭辞。既定値を使う場合は空欄のままにします。",
+    "sfLoginUrl": "ログインURL",
+    "sfLoginUrlHelp": "組織の「私のドメイン」のURL（[設定] から [私のドメイン]）",
+    "sfAccessTokenAuth": "アクセストークン",
+    "sfConsumerKey": "コンシューマー鍵",
+    "sfConsumerSecret": "コンシューマーの秘密",
+    "sfUsername": "Salesforceユーザー名",
+    "sfPassword": "Salesforceパスワード",
+    "sfSecurityToken": "セキュリティトークン",
+    "sfSecurityTokenHelp": "組織で必要な場合のみ",
+    "sfAccessToken": "アクセストークン",
+    "sfInstanceUrl": "インスタンスURL",
+    "sfApiVersion": "APIバージョン",
+    "sfApiVersionHelp": "任意（例: v61.0）"
   }
 }

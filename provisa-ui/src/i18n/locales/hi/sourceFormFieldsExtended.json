@@ -101,6 +101,19 @@
     "cacheTtlRequiredForSignal": "{{signal}} परिवर्तन संकेत कैश TTL से नवीनता आँकता है, इसलिए कैश TTL सेट करें।",
     "accessToken": "एक्सेस टोकन",
     "accessTokenHint": "सीक्रेट वॉल्ट में संग्रहीत होता है। ${secret:NAME} या ${env:NAME} संदर्भ भी स्वीकार्य है।",
-    "brandNamespaceHint": "इस स्रोत की टेबल के नामों का उपसर्ग। डिफ़ॉल्ट के लिए खाली छोड़ें।"
+    "brandNamespaceHint": "इस स्रोत की टेबल के नामों का उपसर्ग। डिफ़ॉल्ट के लिए खाली छोड़ें।",
+    "sfLoginUrl": "लॉगिन URL",
+    "sfLoginUrlHelp": "आपके संगठन का My Domain URL (Setup, फिर My Domain)",
+    "sfAccessTokenAuth": "एक्सेस टोकन",
+    "sfConsumerKey": "कंज़्यूमर की",
+    "sfConsumerSecret": "कंज़्यूमर सीक्रेट",
+    "sfUsername": "Salesforce उपयोगकर्ता नाम",
+    "sfPassword": "Salesforce पासवर्ड",
+    "sfSecurityToken": "सुरक्षा टोकन",
+    "sfSecurityTokenHelp": "केवल तब जब आपके संगठन को इसकी आवश्यकता हो",
+    "sfAccessToken": "एक्सेस टोकन",
+    "sfInstanceUrl": "इंस्टेंस URL",
+    "sfApiVersion": "API संस्करण",
+    "sfApiVersionHelp": "वैकल्पिक, उदाहरण के लिए v61.0"
   }
 }

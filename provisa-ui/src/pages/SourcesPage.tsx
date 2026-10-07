@@ -71,6 +71,7 @@ import {
 } from "./sources/sourceHelpers";
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
 import { profilerFieldsFromMapping, profilerMappingJson } from "./sources/profilerMapping";
+import { salesforceFieldsFromMapping, salesforceMappingJson } from "./sources/salesforce";
 import { sourceLoadFieldsValid } from "./sources/loadManagement";
 import { SourceFormFields } from "./sources/SourceFormFields";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
@@ -592,6 +593,9 @@ export function SourcesPage() {
       // REQ-1934: the profiler's schedule and run default live in its mapping.
       setAuthFields(profilerFieldsFromMapping(s.mappingJson));
     }
+    if (s.type === "salesforce" && s.mappingJson) {
+      setAuthFields(salesforceFieldsFromMapping(s.mappingJson)); // REQ-1946
+    }
     if (s.type === "google_sheets" && s.mappingJson) {
       const m = JSON.parse(s.mappingJson) as Record<string, string>;
       setAuthFields({ credentials_json: m.credentials_json });
@@ -881,6 +885,8 @@ export function SourcesPage() {
       const spMappingJson =
         form.type === "data_profiler"
           ? profilerMappingJson(authFields) // REQ-1934
+          : form.type === "salesforce"
+          ? salesforceMappingJson(authFields) // REQ-1946
           : form.type === "sharepoint"
           ? JSON.stringify({
               auth_type: spAuthType,

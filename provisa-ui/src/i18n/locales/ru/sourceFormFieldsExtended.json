@@ -101,6 +101,19 @@
     "cacheTtlRequiredForSignal": "Сигнал изменений {{signal}} оценивает актуальность по TTL кеша, поэтому задайте TTL кеша.",
     "accessToken": "Токен доступа",
     "accessTokenHint": "Хранится в хранилище секретов. Допускается также ссылка вида ${secret:NAME} или ${env:NAME}.",
-    "brandNamespaceHint": "Префикс имён таблиц этого источника. Оставьте пустым, чтобы использовать значение по умолчанию."
+    "brandNamespaceHint": "Префикс имён таблиц этого источника. Оставьте пустым, чтобы использовать значение по умолчанию.",
+    "sfLoginUrl": "URL для входа",
+    "sfLoginUrlHelp": "URL «Мой домен» вашей организации (Настройка, затем Мой домен)",
+    "sfAccessTokenAuth": "Токен доступа",
+    "sfConsumerKey": "Ключ клиента",
+    "sfConsumerSecret": "Секрет клиента",
+    "sfUsername": "Имя пользователя Salesforce",
+    "sfPassword": "Пароль Salesforce",
+    "sfSecurityToken": "Токен безопасности",
+    "sfSecurityTokenHelp": "Только если его требует ваша организация",
+    "sfAccessToken": "Токен доступа",
+    "sfInstanceUrl": "URL экземпляра",
+    "sfApiVersion": "Версия API",
+    "sfApiVersionHelp": "Необязательно, например v61.0"
   }
 }

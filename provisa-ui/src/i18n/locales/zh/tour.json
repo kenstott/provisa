@@ -76,7 +76,7 @@
         "description": "➕ 新连接从这个按钮开始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，还有 50 多种其他类型。"
       },
       "step3": {
-        "title": "58 种数据源类型，13 个类别",
+        "title": "59 种数据源类型，13 个类别",
         "description": "一个选择器按类别列出所有类型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名称或别名搜索，也可以用类别标签缩小范围。每种类型都有徽标和可达性图标：⚡ 表示就地实时读取，复制图标表示 Provisa 读取已刷新的副本。<p>选一个，填写连接，保存。</p>"
       },
       "step4": {
