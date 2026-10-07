@@ -1,5 +1,6 @@
 {
   "tableEditForm": {
+    "hidingOnlyNote": "Sie können ändern, wie die Spalten dieser Tabelle verborgen werden: wer jede Spalte sieht, ihre Masken sowie die Fakes und synthetischen Regeln ihrer sensiblen Spalten. Registrieren, Umbenennen und die übrigen Einstellungen der Tabelle erfordern das Recht „Tabellenregistrierung“.",
     "sqlAliasLabel": "SQL-Alias",
     "sqlAliasHelp": "Der in der API sichtbare GraphQL-/Cypher-Feldname. Standard ist der Tabellenname. Eine Änderung benennt die Entität in allen Abfragen und SDL-Dokumenten um.",
     "sqlAliasPlaceholder": "Semantischen Namen überschreiben",

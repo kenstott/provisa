@@ -4368,6 +4368,7 @@
   "fr/tableEditForm.json::tableEditForm.grainHelp": "When a version is cut: a nesting period (daily…annual), or a custom Outlook/iCalendar recurrence.",
   "fr/tableEditForm.json::tableEditForm.grainLabel": "Recurrence",
   "fr/tableEditForm.json::tableEditForm.grainPlaceholder": "Select a recurrence",
+  "fr/tableEditForm.json::tableEditForm.hidingOnlyNote": "You can change how this table's columns are hidden: who sees each column, its masks, and the fakes and synthetic rules of its sensitive columns. Registering, renaming and the table's other settings need the Table registration right.",
   "fr/tableEditForm.json::tableEditForm.incrementalHelp": "Apply the input's reported changes to the prior landed state instead of re-running the query — the classic way to keep a derived table cheaply in sync with a source's change stream (CDC), applying its inserts/updates by key each refresh rather than recopying the whole source. It maintains CURRENT state (no versions). The same change stream commonly feeds a SEPARATE history table too: this incremental table is the live mirror, while a Time Travel delta MV off the same deltas appends each change as a new version — one stream, two tables (current + full history). Requires a primary key and an incrementalizable view; an infeasible declaration is rejected at registration.",
   "fr/tableEditForm.json::tableEditForm.incrementalLabel": "Incremental maintenance",
   "fr/tableEditForm.json::tableEditForm.inheritSource": "Inherit source",

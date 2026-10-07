@@ -1,5 +1,6 @@
 {
   "tableEditForm": {
+    "hidingOnlyNote": "您可以更改此表各列的隐藏方式：谁能看到每一列、列的掩码，以及敏感列的伪造值和合成规则。注册、重命名及表的其他设置需要“表注册”权限。",
     "sqlAliasLabel": "SQL 别名",
     "sqlAliasHelp": "在 API 中公开的 GraphQL/Cypher 字段名。默认为表名。修改后将在所有查询和 SDL 文档中重命名该实体。",
     "sqlAliasPlaceholder": "语义名称覆盖",

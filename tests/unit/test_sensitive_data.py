@@ -31,11 +31,8 @@ from provisa.core.schema_org import (
     tag_assignments,
     tags,
 )
-from provisa.security.sensitive import (
-    hiding_changes,
-    refuse_unpermitted_change,
-    system_sensitive_tag_ids,
-)
+from provisa.api.admin._hiding_guard import hiding_refusal
+from provisa.security.sensitive import hiding_changes, system_sensitive_tag_ids
 
 _STORED = {
     "visible_to": ["analyst"],
@@ -115,37 +112,49 @@ async def model(tmp_path) -> Database:
 
 def _table(*columns) -> SimpleNamespace:
     return SimpleNamespace(
-        source_id="pg", schema_name="public", table_name="people", columns=list(columns)
+        source_id="pg",
+        schema_name="public",
+        table_name="people",
+        domain_id="sales",
+        columns=list(columns),
     )
 
 
-async def test_a_caller_without_the_right_cannot_change_a_sensitive_columns_hiding(model):
+# REQ-1943, REQ-1944: who may change how a sensitive column is hidden is decided by the table save's
+# hiding guard -- the right a role carries, paired with its domains.
+_ROLES = {
+    "editor": {"id": "editor", "capabilities": ["table_registration"], "domain_access": ["*"]},
+    "steward": {"id": "steward", "capabilities": ["sensitive_data"], "domain_access": ["sales"]},
+}
+_STATE = SimpleNamespace(roles=_ROLES)
+
+
+def _as(role_id: str) -> SimpleNamespace:
+    return SimpleNamespace(user_id="u1", roles=[role_id])
+
+
+async def _refusal(model: Database, role_id: str, table: SimpleNamespace) -> str | None:
     async with model.acquire() as conn:
-        refused = await refuse_unpermitted_change(
-            conn,
-            _table(_col("email", fake="email()"), _col("deal", mask_type="constant")),
-            holds=False,
-        )
+        return await hiding_refusal(conn, table, identity=_as(role_id), state=_STATE, editor=True)
+
+
+async def test_a_caller_without_the_right_cannot_change_a_sensitive_columns_hiding(model):
+    refused = await _refusal(
+        model, "editor", _table(_col("email", fake="email()"), _col("deal", mask_type="constant"))
+    )
     assert refused is not None and "sensitive_data" in refused
     assert "email (fake)" in refused and "deal (mask_type)" in refused
 
 
 async def test_a_column_that_is_not_sensitive_is_open_to_a_table_editor(model):
-    async with model.acquire() as conn:
-        assert (
-            await refuse_unpermitted_change(
-                conn, _table(_col("amount", fake="uniform(min=1, max=9)")), holds=False
-            )
-            is None
-        )
+    assert (
+        await _refusal(model, "editor", _table(_col("amount", fake="uniform(min=1, max=9)")))
+        is None
+    )
 
 
 async def test_a_holder_of_the_right_may_change_it(model):
-    async with model.acquire() as conn:
-        assert (
-            await refuse_unpermitted_change(conn, _table(_col("email", fake="email()")), holds=True)
-            is None
-        )
+    assert await _refusal(model, "steward", _table(_col("email", fake="email()"))) is None
 
 
 def test_in_test_synthetic_a_sensitive_columns_rule_may_not_copy_real_values():

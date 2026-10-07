@@ -1,5 +1,6 @@
 {
   "tableEditForm": {
+    "hidingOnlyNote": "Você pode alterar como as colunas desta tabela são ocultadas: quem vê cada coluna, suas máscaras e os valores fictícios e regras sintéticas de suas colunas sensíveis. Registrar, renomear e as demais configurações da tabela exigem o direito de registro de tabelas.",
     "sqlAliasLabel": "Alias SQL",
     "sqlAliasHelp": "O nome do campo GraphQL/Cypher exposto na API. O padrão é o nome da tabela. Alterar isso renomeia a entidade em todas as consultas e docs SDL.",
     "sqlAliasPlaceholder": "Substituição do nome semântico",

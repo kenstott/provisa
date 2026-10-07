@@ -1,5 +1,6 @@
 {
   "tableEditForm": {
+    "hidingOnlyNote": "U kunt wijzigen hoe de kolommen van deze tabel worden verborgen: wie elke kolom ziet, de maskers ervan en de nepwaarden en synthetische regels van de gevoelige kolommen. Registreren, hernoemen en de overige instellingen van de tabel vereisen het recht Tabelregistratie.",
     "sqlAliasLabel": "SQL-alias",
     "sqlAliasHelp": "De GraphQL/Cypher-veldnaam die in de API wordt getoond. Standaard de tabelnaam. Wijzigen hernoemt de entiteit in alle query's en SDL-documentatie.",
     "sqlAliasPlaceholder": "Semantische naamoverschrijving",

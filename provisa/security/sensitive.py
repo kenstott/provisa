@@ -117,33 +117,6 @@ def refusal(changes: list[str]) -> str:
     )
 
 
-async def refuse_unpermitted_change(conn: "Connection", table: Any, *, holds: bool) -> str | None:
-    """The refusal of a save of ``table`` that changes how a sensitive column is hidden, by a
-    caller not holding the sensitive_data right; None when it may be saved."""
-    if holds:
-        return None
-    from provisa.core.repositories.table import load_columns
-    from provisa.core.schema_org import registered_tables as rt
-
-    row = (
-        await conn.execute_core(
-            select(rt.c.id).where(
-                rt.c.source_id == table.source_id,
-                rt.c.schema_name == table.schema_name,
-                rt.c.table_name == table.table_name,
-            )
-        )
-    ).fetchone()
-    if row is None:
-        return None  # a new table: no column of it carries a tag yet
-    sensitive = await sensitive_columns(conn, row[0])
-    if not sensitive:
-        return None
-    stored = {c["column_name"]: c for c in await load_columns(conn, row[0])}
-    changes = hiding_changes(stored, list(table.columns), sensitive)
-    return refusal(changes) if changes else None
-
-
 async def config_changes(conn: "Connection", config: Any) -> list[str]:
     """What applying ``config`` (a configuration, which adds and updates and removes nothing,
     REQ-1919) would change about how sensitive columns are hidden: a tag whose Sensitive data
