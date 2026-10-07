@@ -180,6 +180,9 @@ jobs:
           # The isolated lane's interpreter dies during the stack bring-up with nothing shown:
           # pytest captures output while the session's hooks run, so it is not captured there.
           PYTEST_ADDOPTS: ${{ matrix.lane == 'isolated' && '--capture=no' || '' }}
+          # Each import the isolated lane makes, on stderr: the last one before the interpreter
+          # dies names where it died (it dies before any test runs, with nothing else shown).
+          PYTHONPROFILEIMPORTTIME: ${{ matrix.lane == 'isolated' && '1' || '' }}
           # For the Splunk CIM fetch tests/conftest.py runs before starting splunk.
           SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
           SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
