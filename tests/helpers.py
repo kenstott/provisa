@@ -235,8 +235,9 @@ def hold_registered_tables(
     monkeypatch, *names: str, source_id: str = "src", schema: str = "public"
 ):
     """Make the app state's model hold registered tables ``names`` (on ``source_id``/``schema``)
-    — what a view's inputs are resolved against before it is refreshed or wired
-    (provisa/mv/view_inputs.py)."""
+    and nothing else — what a view's inputs are resolved against before it is refreshed or wired
+    (provisa/mv/view_inputs.py, which also reads the compiled role contexts: a context an app
+    built earlier in the process left behind would name tables of another model)."""
     from provisa.api.app import state
 
     monkeypatch.setattr(
@@ -247,6 +248,7 @@ def hold_registered_tables(
             for i, name in enumerate(names, 1)
         ],
     )
+    monkeypatch.setattr(state, "contexts", {})
 
 
 def derived_lineage(views: list, tables: list[tuple[str, str, str]]) -> dict[str, set[str]]:

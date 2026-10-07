@@ -9,6 +9,17 @@
 # Usage (core + test in the SAME project):
 #   docker compose -p provisa-itest -f docker-compose.core.yml -f docker-compose.test.yml up -d --wait
 services:
+  # One test session's Postgres serves every module's in-process app and the multi-worker launches
+  # (each worker opens its model, state, record and platform handles): the server's default of 100
+  # connections ran out ("sorry, too many clients already") in the config-sync evidence launches.
+  # The same limit the embedded test Postgres runs with (tests/embedded_pg.py).
+  postgres:
+    command: >
+      postgres
+      -c wal_level=logical
+      -c max_replication_slots=10
+      -c max_wal_senders=10
+      -c max_connections=300
   kafka:
     hostname: kafka
     restart: unless-stopped
