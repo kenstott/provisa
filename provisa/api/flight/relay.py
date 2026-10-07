@@ -61,20 +61,30 @@ class FlightRelay:
         # reuse_port: every worker process binds this same address, and the bind fails loudly
         # (OSError) on a platform that cannot share it.
         self._listener = socket.create_server((host, port), reuse_port=True)
-        threading.Thread(
+        self._acceptor = threading.Thread(
             target=self._accept_loop, name=f"flight-relay-accept-{port}", daemon=True
-        ).start()
+        )
+        self._acceptor.start()
 
     def close(self) -> None:
-        """Stop listening and drop every relayed connection."""
+        """Stop listening and drop every relayed connection.
+
+        A socket is shut down or closed only while no other thread can close it: a descriptor
+        closed under a thread still about to use it is reused by the next socket the process opens
+        (another server's listener, another connection), and that thread's shutdown or accept then
+        lands on the new one. So the listener is closed only once its accept thread has returned,
+        and a relayed connection's sockets are shut down here and closed by their relay thread
+        under the same lock."""
         with self._guard:
             self._closed = True
-            open_now = list(self._connections)
-        # shutdown() before close(): close alone does not wake a thread blocked in accept().
-        _shutdown(self._listener)
+            for sock in self._connections:
+                _shutdown(sock)
+        # Neither close nor (on darwin) shutdown wakes a thread blocked in accept(): a connection
+        # does. The accept loop sees the relay closed, drops it, and returns.
+        if self._acceptor.is_alive():
+            socket.create_connection(self._listener.getsockname()[:2], timeout=5).close()
+        self._acceptor.join()
         self._listener.close()
-        for sock in open_now:
-            _shutdown(sock)
 
     def _accept_loop(self) -> None:
         while True:
@@ -84,6 +94,9 @@ class FlightRelay:
                 if self._closed:
                     return
                 raise
+            if self._closed:
+                client.close()  # the connection close() made to wake this thread, or a late one
+                return
             threading.Thread(
                 target=self._relay, args=(client,), name="flight-relay", daemon=True
             ).start()
@@ -122,8 +135,8 @@ class FlightRelay:
         with self._guard:
             self._connections.discard(client)
             self._connections.discard(upstream)
-        client.close()
-        upstream.close()
+            client.close()
+            upstream.close()
 
 
 def _shutdown(sock: socket.socket) -> None:
