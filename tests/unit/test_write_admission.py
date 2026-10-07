@@ -271,3 +271,25 @@ def test_a_write_is_not_bounded_by_the_roles_row_ceiling():
     sql = "UPDATE sales.orders SET region = 'x' WHERE id = 1"
     assert apply_governance(sql, gov) == sql
     assert apply_governance("SELECT id FROM sales.orders", gov).endswith("LIMIT 100")
+
+
+# --- TRUNCATE (REQ-1942) --------------------------------------------------------------------------
+
+
+def test_truncate_runs_as_itself_for_a_writer_with_no_row_filter():
+    assert apply_governance("TRUNCATE TABLE sales.orders", _gov()).upper().startswith("TRUNCATE")
+
+
+def test_truncate_needs_the_write_right():
+    with pytest.raises(WriteNotAdmitted, match="does not hold the 'write' right"):
+        apply_governance("TRUNCATE TABLE sales.orders", _gov(can_write=False))
+
+
+def test_truncate_is_refused_under_a_row_filter_naming_it_and_delete():
+    with pytest.raises(WriteNotAdmitted, match=r"row filter.*region = 'east'.*Use DELETE"):
+        apply_governance("TRUNCATE TABLE sales.orders", _gov(rls=_EAST))
+
+
+def test_truncate_empties_one_table_at_a_time():
+    with pytest.raises(WriteNotAdmitted, match="one table at a time"):
+        apply_governance("TRUNCATE TABLE sales.orders, sales.orders", _gov())

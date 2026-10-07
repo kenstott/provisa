@@ -267,3 +267,28 @@ def test_a_lane_repointed_to_its_own_database_reads_it_through_the_engine(boot):
     _sql(boot, "repointed", "INSERT INTO sales.orders (id, region) VALUES (7, 'east')")
     assert [r["id"] for r in _rows(boot, "repointed")] == [1, 2, 7]
     assert [r["id"] for r in _rows(boot, None)] == [1, 2]
+
+
+def test_a_kept_truncate_hides_the_rows_before_it_and_reset_restores_them(boot):
+    """REQ-1942: under Reversible a TRUNCATE is one marker: TRUNCATE then INSERT reads as just the
+    inserts, and Reset mutations brings the parent's rows back."""
+    prod = _rows(boot, None)
+    _environment(boot, "emptied", "inherit")
+    status, body = _call(
+        boot,
+        "PATCH",
+        f"/admin/orgs/{boot.org_id}/environments/emptied/data",
+        {"mutation_handling": "reversible"},
+    )
+    assert status == 200, body
+    _sql(boot, "emptied", "INSERT INTO sales.orders (id, region) VALUES (8, 'early')")
+    _sql(boot, "emptied", "TRUNCATE TABLE sales.orders")
+    assert _rows(boot, "emptied") == []
+    _sql(boot, "emptied", "INSERT INTO sales.orders (id, region) VALUES (9, 'north')")
+    assert _rows(boot, "emptied") == [{"id": 9, "region": "north"}]
+    assert _rows(boot, None) == prod  # the parent's real rows are untouched
+    status, body = _call(
+        boot, "POST", f"/admin/orgs/{boot.org_id}/environments/emptied/mutations/reset"
+    )
+    assert status == 200, body
+    assert _rows(boot, "emptied") == prod

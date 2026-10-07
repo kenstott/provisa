@@ -636,12 +636,13 @@ def _reject_view_writes(parsed: Any, state: Any) -> None:
     view_map = getattr(state, "view_sql_map", None)
     if not view_map:
         return
-    if not isinstance(parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge)):
+    if not isinstance(
+        parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge, _exp.TruncateTable)
+    ):
         return
-    target = parsed.this
-    tbl = (
-        target if isinstance(target, _exp.Table) else (target.find(_exp.Table) if target else None)
-    )
+    from provisa.compiler.write_admission import target_table
+
+    tbl = target_table(parsed)
     if tbl is not None and tbl.name in view_map:
         op = type(parsed).__name__.upper()
         raise PermissionError(
@@ -683,7 +684,9 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
     env = active_env()
     if env == PROD:
         return
-    if not isinstance(parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge)):
+    if not isinstance(
+        parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge, _exp.TruncateTable)
+    ):
         return
     # REQ-1942: what a mutation in this environment does, chosen with its data mode.
     from provisa.core.env_classes import DIRECT, REFUSED
@@ -695,10 +698,9 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
             f"{kind} is refused in environment {env!r}: its mutation handling is Refused "
             "(REQ-1942). An environment_data holder can make it Reversible or Direct."
         )
-    target = parsed.this
-    tbl = (
-        target if isinstance(target, _exp.Table) else (target.find(_exp.Table) if target else None)
-    )
+    from provisa.compiler.write_admission import target_table
+
+    tbl = target_table(parsed)
     if tbl is None:
         return
     source_id = next(
@@ -1317,7 +1319,7 @@ async def govern_statement(
     # command while it is prepared. The slot itself refuses one governed while a schema rebuild
     # was moving the state it read.
     if not isinstance(
-        _parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge)
+        _parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
     ) and not _calls_a_registered_command(_parsed_input, state):
         _slot.keep(governed)
     return governed
@@ -1396,7 +1398,9 @@ async def route_governed(
     # REQ-031: an UPDATE/DELETE/INSERT/MERGE always routes DIRECT — the engine terminal takes no
     # writes. decide_route only applies that rule when told; the raw-SQL surfaces (pgwire, /data/sql)
     # parse the statement themselves, so the type must be passed through explicitly.
-    _is_mutation = isinstance(_parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
+    _is_mutation = isinstance(
+        _parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
+    )
     from provisa.compiler.write_admission import written_table_id
 
     _written_table_id = written_table_id(_parsed_input, governed.gov_ctx) if _is_mutation else None
@@ -1883,8 +1887,10 @@ def _pk_bounds_inputs(semantic_sql: str, state: Any) -> tuple[tuple[Any, ...], .
 
     ast = sqlglot.parse_one(semantic_sql, read="postgres")
     written = None
-    if isinstance(ast, (exp.Insert, exp.Update, exp.Delete, exp.Merge)):
-        written = ast.this.this if isinstance(ast.this, exp.Schema) else ast.this
+    if isinstance(ast, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)):
+        from provisa.compiler.write_admission import target_table
+
+        written = target_table(ast)
     joined: dict[str, int] = {}
     for join in ast.find_all(exp.Join):
         if isinstance(join.this, exp.Table) and join.this.name in row_tables:
@@ -3151,7 +3157,14 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         _governed = await _govern_compiled(sql, role_id, state, _session_vars, exec_params)
         # A write is not kept: its admission checks (view writes, unbound branch writes) run per call.
         if not isinstance(
-            _governed.parsed, (_sg_exp.Insert, _sg_exp.Update, _sg_exp.Delete, _sg_exp.Merge)
+            _governed.parsed,
+            (
+                _sg_exp.Insert,
+                _sg_exp.Update,
+                _sg_exp.Delete,
+                _sg_exp.Merge,
+                _sg_exp.TruncateTable,
+            ),
         ):
             _slot.keep(_governed)
     sql, _compiled_tree, gov_ctx = _governed.sql, _governed.parsed, _governed.gov_ctx
@@ -3360,7 +3373,9 @@ async def _route_compiled(
 
     from provisa.compiler.write_admission import written_table_id
 
-    _is_write = isinstance(_compiled_tree, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
+    _is_write = isinstance(
+        _compiled_tree, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
+    )
     _written_table_id = written_table_id(_compiled_tree, gov_ctx) if _is_write else None
 
     # Post-governance optimization stage (may REMOVE sources): lower to catalog-physical, then

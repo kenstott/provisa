@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 PREFIX = "__changes__"
 UPSERT = "upsert"
 DELETE = "delete"
+#: A TRUNCATE: one marker, no key -- every row read before it is deleted.
+TRUNCATE = "truncate"
 #: The log's own columns, beside the table's.
 SEQ, OP, AT, BY = "__seq", "__op", "__at", "__by"
 
@@ -57,7 +59,7 @@ def log_table(schema: str, table_id: int, columns: list[tuple[str, str]]) -> sa.
         sa.Column(AT, sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column(BY, sa.Text),
         *(sa.Column(name, to_sqlalchemy(ir)) for name, ir in columns),
-        sa.CheckConstraint(f"{OP} IN ('{UPSERT}', '{DELETE}')"),
+        sa.CheckConstraint(f"{OP} IN ('{UPSERT}', '{DELETE}', '{TRUNCATE}')"),
     )
 
 
@@ -72,10 +74,15 @@ async def keep(
 ) -> int:
     """Keep ``rows`` -- each a version of one row, every column given for an upsert, the key for a
     delete -- in table ``table_id``'s log, creating it on the first; how many were kept."""
-    if op not in (UPSERT, DELETE):
-        raise ValueError(f"a kept mutation is {UPSERT!r} or {DELETE!r}, not {op!r}")
+    if op not in (UPSERT, DELETE, TRUNCATE):
+        raise ValueError(f"a kept mutation is {UPSERT!r}, {DELETE!r} or {TRUNCATE!r}, not {op!r}")
+    if op == TRUNCATE and rows:
+        raise ValueError("a kept TRUNCATE is one marker, with no rows")
     table = log_table(schema, table_id, columns)
     await conn.execute_core(sa.schema.CreateTable(table, if_not_exists=True))
+    if op == TRUNCATE:
+        await conn.execute_core(table.insert().values({OP: op, BY: by}))
+        return 0
     if rows:
         await conn.execute_core(table.insert().values([{**row, OP: op, BY: by} for row in rows]))
     return len(rows)
@@ -108,8 +115,9 @@ def overlay_sql(
     base: str, log: str, key: list[str], columns: list[str], log_filter: str | None = None
 ) -> str:
     """``base`` -- a statement reading a table's rows -- with ``log`` -- the qualified address of
-    its change log -- applied: a row whose key the log holds is left out, and the latest version
-    of each key in the log is added unless it is a delete. ``key`` the primary key's columns,
+    its change log -- applied in ``__seq`` order: after a truncate marker, the base and every
+    version before the latest marker count as deleted; otherwise a row whose key the log holds is
+    left out, and the latest version of each key in the log is added unless it is a delete. ``key`` the primary key's columns,
     ``columns`` every column, in the order ``base`` gives them. ``log_filter``: the table's row
     filter over the log's versions (alias ``l``), which ``base`` has applied to its own rows; None
     for a table with none. In the governed dialect."""
@@ -121,11 +129,16 @@ def overlay_sql(
     latest_cols = ", ".join(f"l.{q(c)}" for c in columns)
     key_match = " AND ".join(f"k.{q(c)} = b.{q(c)}" for c in key)
     partition = ", ".join(q(c) for c in key)
+    marked = f"{q(OP)} = '{TRUNCATE}'"
+    # The latest truncate marker's position: versions at or before it went with the base.
+    cut = f"COALESCE((SELECT MAX(t.{q(SEQ)}) FROM {log} AS t WHERE t.{marked}), -1)"
     return (
         f"SELECT {cols} FROM ({base}) AS b WHERE NOT EXISTS "
-        f"(SELECT 1 FROM {log} AS k WHERE {key_match}) "
+        f"(SELECT 1 FROM {log} AS t WHERE t.{marked}) AND NOT EXISTS "
+        f"(SELECT 1 FROM {log} AS k WHERE k.{q(OP)} <> '{TRUNCATE}' AND {key_match}) "
         f"UNION ALL SELECT {latest_cols} FROM (SELECT *, ROW_NUMBER() OVER "
-        f"(PARTITION BY {partition} ORDER BY {q(SEQ)} DESC) AS {q('__rank')} FROM {log}) AS l "
+        f"(PARTITION BY {partition} ORDER BY {q(SEQ)} DESC) AS {q('__rank')} FROM {log} "
+        f"WHERE {q(OP)} <> '{TRUNCATE}' AND {q(SEQ)} > {cut}) AS l "
         f"WHERE l.{q('__rank')} = 1 AND l.{q(OP)} = '{UPSERT}'"
         + (f" AND ({log_filter})" if log_filter is not None else "")
     )

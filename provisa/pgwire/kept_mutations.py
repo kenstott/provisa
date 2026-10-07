@@ -16,7 +16,9 @@ mutations apply -- and kept in the table's change log (:mod:`provisa.core.env_ch
 
 * INSERT: each row it supplies, as a new version of its key;
 * UPDATE: each row its WHERE reaches, with its SET expressions applied, as a new version;
-* DELETE: each key its WHERE reaches, as a deletion.
+* DELETE: each key its WHERE reaches, as a deletion;
+* TRUNCATE: one marker -- every row read before it is deleted (its admission requires the write
+  right and no row filter on the table).
 
 A table written this way needs a primary key, by which the versions are applied. MERGE is not kept.
 """
@@ -47,8 +49,10 @@ def _q(name: str) -> str:
 def _reads(tree: Any, columns: list[str], key: list[str]) -> tuple[str, str, list[str]]:
     """The read that says what ``tree`` writes: (its statement, the kept op, the columns it
     gives)."""
-    from provisa.core.env_changes import DELETE, UPSERT
+    from provisa.core.env_changes import DELETE, TRUNCATE, UPSERT
 
+    if isinstance(tree, exp.TruncateTable):
+        return "", TRUNCATE, []  # one marker: nothing to read
     if isinstance(tree, exp.Insert):
         target = tree.this
         listed = [c.name for c in target.expressions] if isinstance(target, exp.Schema) else columns
@@ -105,9 +109,11 @@ async def keep(mutation: KeptMutation, state: Any) -> Any:
         )
     tree = sqlglot.parse_one(mutation.statement, read="postgres")
     read, op, given = _reads(tree, columns, key)
-    plan = await _govern_and_route(read, mutation.role_id, params=mutation.params)
-    result = await _execute_plan(plan, state)
-    rows = [dict(zip(given, r, strict=True)) for r in result.rows]
+    rows: list[dict[str, Any]] = []
+    if read:
+        plan = await _govern_and_route(read, mutation.role_id, params=mutation.params)
+        result = await _execute_plan(plan, state)
+        rows = [dict(zip(given, r, strict=True)) for r in result.rows]
     types = [(c["column_name"], to_ir(c["data_type"])) for c in table["columns"]]
     schema = org_schema(require_current_org(), active_env())
     first = mutation.table_id not in state._active_runtime().kept

@@ -110,3 +110,39 @@ def test_a_merge_is_not_kept():
             ["id", "region"],
             ["id"],
         )
+
+
+def test_a_kept_truncate_deletes_the_base_and_every_earlier_version():
+    """TRUNCATE then INSERT reads as just the inserts; a version kept before the marker is gone."""
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE orders AS SELECT * FROM (VALUES (1, 'east'), (2, 'west')) t(id, region)"
+    )
+    _log(
+        con,
+        [
+            (1, "upsert", 5, "early"),  # before the marker: gone with the base
+            (2, "truncate", None, None),
+            (3, "upsert", 9, "north"),
+            (4, "upsert", 1, "after"),
+        ],
+    )
+    sql = overlay_sql("SELECT * FROM orders", "log", ["id"], ["id", "region"])
+    rows = con.execute(f"SELECT * FROM ({sql}) s ORDER BY id").fetchall()
+    assert rows == [(1, "after"), (9, "north")]
+
+
+def test_a_truncate_alone_leaves_nothing():
+    con = duckdb.connect()
+    con.execute("CREATE TABLE orders AS SELECT * FROM (VALUES (1, 'east')) t(id, region)")
+    _log(con, [(1, "truncate", None, None)])
+    sql = overlay_sql("SELECT * FROM orders", "log", ["id"], ["id", "region"])
+    assert con.execute(f"SELECT * FROM ({sql}) s").fetchall() == []
+
+
+def test_a_truncate_is_kept_as_one_marker_with_nothing_to_read():
+    assert _reads(_parsed("TRUNCATE TABLE sales.orders"), ["id", "region"], ["id"]) == (
+        "",
+        "truncate",
+        [],
+    )

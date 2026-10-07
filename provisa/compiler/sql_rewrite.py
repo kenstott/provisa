@@ -262,6 +262,9 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         # producing "missing FROM-clause entry" / "no such table" at execution.
         alias_q = alias if alias else name
         quoted_aliases.add(alias_q)
+        # REQ-1942: a TRUNCATE's target takes no alias -- its grammar has no place for one, and
+        # it has no column qualifiers to keep bound.
+        truncated = isinstance(node.parent, exp.TruncateTable)
         new_tbl = exp.Table(
             this=exp.Identifier(this=table_q, quoted=True),
             db=exp.Identifier(this=schema_q, quoted=True),
@@ -273,7 +276,9 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
             # below (they're built unquoted upstream, e.g. graph_rewriter._build_row_cast) —
             # Postgres folds an unquoted qualifier to lowercase, which stops matching a quoted
             # mixed-case alias like "mRegisteredTa".
-            alias=exp.TableAlias(this=exp.Identifier(this=alias_q, quoted=True)),
+            alias=None
+            if truncated
+            else exp.TableAlias(this=exp.Identifier(this=alias_q, quoted=True)),
             # REQ-1934: a TABLESAMPLE on the ref is part of what it reads; rebuilt without it, a
             # block-sampled profile statement became a whole-table read.
             sample=node.args.get("sample"),
