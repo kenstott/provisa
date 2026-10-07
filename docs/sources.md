@@ -9,7 +9,7 @@ Every query ultimately executes through the federation engine, which provides fe
 | **Direct-capable** | Yes | Yes | PostgreSQL, MySQL, MariaDB, SingleStore, SQL Server, Oracle, DuckDB |
 | **Federation only** | No | Yes | Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-backed) |
 | **Direct-read (replica)** | Yes | Yes | Snowflake, Databricks, ClickHouse — driver reads data and lands a replica; queries run against the replica in the active engine |
-| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Splunk |
+| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Salesforce, Splunk |
 
 **Direct-capable** sources execute single-source queries via their native driver (sub-100ms), bypassing the federation engine (REQ-027, REQ-229). They retain full connector support and participate in federation when joined with other sources (REQ-028).
 
@@ -23,25 +23,26 @@ Every query ultimately executes through the federation engine, which provides fe
 
 ## All Sources
 
-Provisa registers **54** source types. The tables below cover all 54; the index is the count. [tool-verified: `provisa/core/models.py` `SourceType`; Kaggle counted as a distinct source even though it registers through the `files` connector internally]
+Provisa registers **59** source types, the ones the Sources form offers. The tables below cover all 59; the index is the count. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`; Kaggle, GitHub and GitLab are counted as distinct sources even though they register through the `files` and `graphql_remote` connectors internally]
 
 | # | Group | Source types |
 | --- | --- | --- |
-| 1–13 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport` |
-| 14–20 | [Cloud data warehouses](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `fabric`, `synapse`, `trino` |
-| 21–25 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 26–30 | [Data lake / open table formats](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hudi`, `hive`, `hive_s3` |
-| 31–33 | [NoSQL](#nosql) | `mongodb`, `cassandra`, `redis` |
-| 34–36 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 37 | [Push receiver](#push-receiver) | `ingest` |
-| 38–39 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
-| 40–43 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files` |
-| 44–45 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
-| 46–47 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `splunk` |
-| 48–50 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote` |
-| 51 | [GovData](#govdata) | `govdata` |
-| 52–53 | [Data quality checkers](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
-| 54 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source — see [Kaggle datasets](#kaggle-datasets)) |
+| 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
+| 16–22 | [Cloud data warehouses](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `fabric`, `synapse`, `trino` |
+| 23–27 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 28–31 | [Data lake / open table formats](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 32–34 | [NoSQL](#nosql) | `mongodb`, `cassandra`, `redis` |
+| 35–37 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 38 | [Push receiver](#push-receiver) | `ingest` |
+| 39–40 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
+| 41–44 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files` |
+| 45–46 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
+| 47–49 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `splunk` |
+| 50–54 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab |
+| 55 | [GovData](#govdata) | `govdata` |
+| 56–57 | [Data quality checkers](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
+| 58 | [Data profiler](#data-profiler) | `data_profiler` |
+| 59 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source — see [Kaggle datasets](#kaggle-datasets)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms) (REQ-027). "Connector Name" is the federated connector used when the source participates in multi-source JOINs (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
@@ -62,10 +63,20 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `tidb` | aiomysql (mysql wire) | mysql | mysql | Yes |
 | `firebird` | — | — (DuckDB extension) | — | No |
 | `airport` | — | — (DuckDB extension) | — | No |
+| `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | No |
+| `hiveserver2` | impyla (HiveServer2 over Thrift) | — | hive | No |
 
 Wire-compatible databases reuse a base wire's JDBC driver, native async driver, and dialect — CockroachDB, YugabyteDB, and Greenplum ride the PostgreSQL wire; TiDB rides the MySQL wire. They need only registry entries, no new connector code. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
 
 `firebird` (Firebird 3/4/5) and `airport` (Arrow Flight server) are registered source types reached in place via DuckDB community extensions when DuckDB is the active engine — no direct driver, no federated connector. [tool-verified: `provisa/core/models.py` lines 44, 93] (REQ-899)
+
+#### `saphana`
+
+SAP HANA is read through its own driver and replicated into the active engine's store, so it is reachable on every engine. The form takes host, port (default 39015), username, password and database; on a multi-tenant system the database names the tenant. Register Table lists the schemas the user can read, with HANA's system schemas left out. [tool-verified: `provisa/executor/drivers/registry.py` `_SQLALCHEMY_FALLBACK`; `provisa/api/admin/introspect.py` `_SAPHANA_SYSTEM_SCHEMAS`] (REQ-1753)
+
+#### `hiveserver2`
+
+A HiveServer2 endpoint read directly over Thrift, for a Hive deployment where the endpoint is the only thing reachable. It is distinct from `hive` and `hive_s3`, which read the warehouse's files and metastore and never go through HiveServer2. Rows are read through the endpoint and replicated into the active engine's store. The form takes host, port (default 10000), username, password and database; `federation_hints.auth_mechanism` selects the authentication (default `PLAIN`, for example `GSSAPI` for Kerberos). [tool-verified: `provisa/executor/drivers/hive.py` `HiveDriver`; `provisa/core/models.py` `SourceType.hiveserver2`] (REQ-1731)
 
 ### Cloud Data Warehouses
 
@@ -197,7 +208,7 @@ After adding the source, register its tables through the normal Register Table s
 
 ### Enterprise SaaS Connectors
 
-SharePoint and Splunk register through Apache Calcite connectors (kenstott/calcite fork). Neither has a direct driver — Provisa launches the connector's bundled Calcite pgwire server (`pgwire-sharepoint`, `pgwire-splunk`) and reaches it as a generic PostgreSQL endpoint. On the DuckDB engine that endpoint is attached live through the postgres extension: Register Table lists the connector's tables from the attached catalog, queries read the connector in place, and filters and projections push down to Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Every other engine lands the rows into the materialize store for federation (REQ-954). The bundles are fetched per OS/arch from the pinned `kenstott/calcite` release (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`]. Both connectors always enable case-insensitive name matching, matching each product's own case-insensitive semantics (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+SharePoint, Salesforce and Splunk register through Apache Calcite connectors (kenstott/calcite fork). None has a direct driver — Provisa launches the connector's bundled Calcite pgwire server (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-splunk`) and reaches it as a generic PostgreSQL endpoint. On the DuckDB engine that endpoint is attached live through the postgres extension: Register Table lists the connector's tables from the attached catalog, queries read the connector in place, and filters and projections push down to Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Every other engine lands the rows into the materialize store for federation (REQ-954). The bundles are fetched per OS/arch from the pinned `kenstott/calcite` release (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`]. All three connectors always enable case-insensitive name matching, matching each product's own case-insensitive semantics (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
@@ -242,6 +253,56 @@ Certificate auth, with the absolute path and the always-present password:
     certificate_password: ${env:SP_CERT_PASSWORD}
 ```
 
+#### `salesforce`
+
+Every sObject the credential can query is a table the steward may register (`Account`, `Opportunity`, custom `*__c` objects); nothing is registered automatically (REQ-1946). Columns and types come from the sObject's describe. Filters, projections, sorts and limits are pushed down as SOQL. [tool-verified: `provisa/federation/pgwire_replica.py` `_salesforce_operand`; `provisa/federation/trino_connectors.py` `TrinoSalesforceConnector`]
+
+A Salesforce source names the org's My Domain login URL and one complete credential set, chosen by `mapping.auth_type`. An incomplete set is refused when the source is used, naming the missing value. Each secret may be a `${secret:…}` or `${env:…}` reference.
+
+| Source field | Connector property | Notes |
+| --- | --- | --- |
+| `base_url` or `host` | `login-url` | The org's My Domain URL (Setup, then My Domain). `login.salesforce.com` does not work for the client-credentials flow |
+| `username` | `client-id` | The connected app's consumer key |
+| `password` | `client-secret` | The connected app's consumer secret |
+| `mapping.auth_type` | — | `CLIENT_CREDENTIALS` (default), `USERNAME_PASSWORD` or `ACCESS_TOKEN` |
+| `mapping.sf_username`, `mapping.sf_password` | `username`, `password` | `USERNAME_PASSWORD` only, alongside the consumer key and secret |
+| `mapping.security_token` | `security-token` | `USERNAME_PASSWORD` only; optional |
+| `mapping.access_token`, `mapping.instance_url` | `access-token`, `instance-url` | `ACCESS_TOKEN` only; no consumer key or secret |
+| `mapping.api_version` | `api-version` | Optional, for example `v61.0` |
+
+For `CLIENT_CREDENTIALS` the connected app needs *Enable Client Credentials Flow* and a *Run As* user; every read and write runs with that user's permissions. Orgs created since Summer '23 block the username-password flow by default.
+
+**Reads.** On Trino the source is read through the `salesforce` catalog, which reads only. On every other engine the engine attaches the source's pgwire server and reads it in place.
+
+**Writes.** `INSERT`, `UPDATE` and `DELETE` on a registered sObject are mutations: governed, audited and handled per environment as any other mutation is. On every engine, Trino included, a write runs on the source's pgwire server; on Trino that server runs for writes alone. Each statement is sent to Salesforce and committed when it runs, so it cannot be rolled back. The server does not return the rows it writes: a statement with a `RETURNING` clause is refused, and GraphQL offers no mutation fields for these tables; SQL `INSERT`, `UPDATE`, `DELETE` and `COPY` are the write paths. A SharePoint source is written the same way. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`; `provisa/api/data/pgwire_write.py`]
+
+**Startup.** Before it listens, the source's server reads the columns of every sObject, about four minutes for an org with 1,200 of them. That is paid once: the describe results are kept in the source's own state directory under the instance's data directory. The server is started when the source is registered or loaded. Until it listens, Register Table shows the connector as starting and a write is answered with the same message instead of waiting. [tool-verified: `provisa/federation/pgwire_replica.py` `build_model_json`, `start_endpoint`]
+
+```yaml
+- id: sales-salesforce
+  type: salesforce
+  base_url: https://acme.my.salesforce.com
+  username: ${env:SF_CONSUMER_KEY}
+  password: ${env:SF_CONSUMER_SECRET}
+  mapping:
+    api_version: v61.0
+```
+
+Username-password flow:
+
+```yaml
+- id: sales-salesforce
+  type: salesforce
+  base_url: https://acme.my.salesforce.com
+  username: ${env:SF_CONSUMER_KEY}
+  password: ${env:SF_CONSUMER_SECRET}
+  mapping:
+    auth_type: USERNAME_PASSWORD
+    sf_username: ops@acme.com
+    sf_password: ${env:SF_PASSWORD}
+    security_token: ${env:SF_SECURITY_TOKEN}
+```
+
 #### `splunk`
 
 Splunk search results are queryable as tables (e.g. `internal_server`) (REQ-721). The connector URL comes from `base_url`, or is constructed as `https://{host}:{port}` with a default port of `8089` (REQ-722). Auth: when `mapping.use_token` is `true` (the default), `password` is passed as the API token; when `false`, `username` and `password` are passed as separate credentials (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]
@@ -281,6 +342,10 @@ Register any HTTP endpoint as a queryable table. [tool-verified: `provisa/core/m
 API responses are fetched, cached in PostgreSQL (configurable TTL), and exposed as GraphQL types (REQ-309, REQ-318, REQ-327). Cached tables participate in federated queries like any other source (REQ-313).
 
 **JSONB rules**: Complex columns (objects, arrays) stored as JSONB are not filterable (REQ-119). Sub-field access uses `->>` extraction in SQL (REQ-151). Relationships are declared between tables using scalar FK columns — JSONB blob columns are not join targets. Use JSONB promotion to convert nested fields into native scalar columns when filtering or joining on them is needed (REQ-119).
+
+#### GitHub and GitLab
+
+GitHub and GitLab are branded sources carried by `graphql_remote`: each appears in the Sources form under its own name and registers as a remote GraphQL source that records its brand. The form takes a personal access token and nothing else. The endpoint (`https://api.github.com/graphql`, `https://gitlab.com/api/graphql`) and the schema ship with Provisa, so the schema is not introspected at registration. The token is checked when the source is added. Adding the source registers no tables: every table the schema offers is available under the source's namespace (`gh`, `gl`), and the steward registers the ones wanted. A field the token may not read is left out of a table when it is registered. [tool-verified: `provisa/graphql_remote/brands.py` `BRANDS`] (REQ-1923)
 
 ### GovData
 
@@ -350,6 +415,10 @@ reference you wrote yourself names a secret you own for your own reasons, so it 
 `password_ref` does not travel between environments (REQ-1491). A branch or a copied environment
 supplies its own connection values, and the vault a reference names belongs to whichever
 environment supplied it. [tool-verified: `provisa/core/env_classes.py` `BINDING_COLUMNS`]
+
+### Data Profiler
+
+A data profiler is a source that holds a name, a schedule and run defaults, and nothing else. It is never introspected. Tables of other sources are added to it, and each run measures them and writes its rows into the org's control plane, where they are read like any other source's tables. See [Test data](test-data.md) for creating a profiler and adding tables to it. [tool-verified: `provisa/core/models.py` `SourceType.data_profiler`; `provisa/federation/strategy.py` `_MATERIALIZE_ONLY`] (REQ-1934)
 
 ### Data Quality Checkers (REQ-1443)
 
@@ -595,7 +664,7 @@ All sources share a common set of fields. [tool-verified: `provisa/core/models.p
 | `cache_schema` | No | `api_cache` | Schema within the cache catalog |
 | `naming_convention` | No | `null` | Override global naming convention for this source (REQ-194) |
 | `federation_hints` | No | `{}` | Session properties passed to the federation engine, and extended connection params for warehouse sources (REQ-278, REQ-281) |
-| `mapping` | No | `{}` | Type-specific connector settings for NoSQL and SaaS sources (e.g. SharePoint `auth_type`, Splunk `use_token`) (REQ-251) |
+| `mapping` | No | `{}` | Type-specific connector settings for NoSQL and SaaS sources (e.g. SharePoint `auth_type`, Salesforce `auth_type`, Splunk `use_token`) (REQ-251) |
 | `allowed_domains` | No | `[]` | Restrict source to specific domains; empty = unrestricted |
 | `description` | No | `""` | Human-readable description |
 

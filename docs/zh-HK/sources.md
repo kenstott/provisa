@@ -189,6 +189,56 @@ SharePoint 清單被列舉為結構描述，並以可查詢的表對外呈現（
     auth_type: CLIENT_CREDENTIALS
 ```
 
+#### `salesforce`
+
+憑證可以查詢的每個 sObject 都是數據管理員可以註冊的表格（`Account`、`Opportunity`、自訂 `*__c` 物件）；不會自動註冊任何內容 (REQ-1946)。欄位和類型來自 sObject 的 describe。篩選、投影、排序和限制會以 SOQL 的形式下推到 Salesforce。 [tool-verified: `provisa/federation/pgwire_replica.py` `_salesforce_operand`; `provisa/federation/trino_connectors.py` `TrinoSalesforceConnector`]
+
+Salesforce 數據來源需要指定機構的「我的網域」登入 URL 和一套完整的憑證，由 `mapping.auth_type` 選擇。使用數據來源時，不完整的憑證會被拒絕，並指出缺少的值。每個密鑰都可以是 `${secret:…}` 或 `${env:…}` 參照。
+
+| 數據來源欄位 | 連接器屬性 | 備註 |
+| --- | --- | --- |
+| `base_url` / `host` | `login-url` | 機構的「我的網域」URL（設定，然後是「我的網域」）。`login.salesforce.com` 不適用於用戶端憑證流程 |
+| `username` | `client-id` | 已連線應用程式的用戶金鑰 |
+| `password` | `client-secret` | 已連線應用程式的用戶密碼 |
+| `mapping.auth_type` | — | `CLIENT_CREDENTIALS`（預設）、`USERNAME_PASSWORD` 或 `ACCESS_TOKEN` |
+| `mapping.sf_username`, `mapping.sf_password` | `username`, `password` | 僅限 `USERNAME_PASSWORD`，與用戶金鑰和用戶密碼一併使用 |
+| `mapping.security_token` | `security-token` | 僅限 `USERNAME_PASSWORD`；選填 |
+| `mapping.access_token`, `mapping.instance_url` | `access-token`, `instance-url` | 僅限 `ACCESS_TOKEN`；不需要用戶金鑰或用戶密碼 |
+| `mapping.api_version` | `api-version` | 選填，例如 `v61.0` |
+
+對於 `CLIENT_CREDENTIALS`，已連線應用程式需要啟用 *Enable Client Credentials Flow* 並設定 *Run As* 使用者；每次讀取和寫入都以該使用者的權限執行。自 Summer '23 起建立的機構預設會封鎖使用者名稱密碼流程。
+
+**讀取。** 在 Trino 上，數據來源透過唯讀的 `salesforce` 目錄讀取。在其他任何引擎上，引擎會掛載數據來源的 pgwire 伺服器並就地讀取。
+
+**寫入。** 對已註冊 sObject 的 `INSERT`、`UPDATE` 和 `DELETE` 屬於變更操作：與其他任何變更一樣受治理、經審計，並按環境處理。在每個引擎上（包括 Trino），寫入都在數據來源的 pgwire 伺服器上執行；在 Trino 上，該伺服器只為寫入而運行。每條陳述式都會傳送到 Salesforce 並在執行時提交，因此無法回滾，亦不支援 `RETURNING`。SharePoint 數據來源以同樣的方式寫入。 [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`; `provisa/api/data/pgwire_write.py`]
+
+**啟動。** 在開始接受連線之前，數據來源的伺服器會讀取每個 sObject 的欄位，對於擁有 1,200 個 sObject 的機構大約需要四分鐘。這個代價只付一次：describe 結果儲存在執行個體數據目錄下該數據來源自己的狀態目錄中。伺服器在數據來源註冊或載入時啟動。在它開始接受連線之前，「註冊表格」會顯示連接器正在啟動，寫入會收到相同的訊息而不是等待。 [tool-verified: `provisa/federation/pgwire_replica.py` `build_model_json`, `start_endpoint`]
+
+```yaml
+- id: sales-salesforce
+  type: salesforce
+  base_url: https://acme.my.salesforce.com
+  username: ${env:SF_CONSUMER_KEY}
+  password: ${env:SF_CONSUMER_SECRET}
+  mapping:
+    api_version: v61.0
+```
+
+使用者名稱密碼流程：
+
+```yaml
+- id: sales-salesforce
+  type: salesforce
+  base_url: https://acme.my.salesforce.com
+  username: ${env:SF_CONSUMER_KEY}
+  password: ${env:SF_CONSUMER_SECRET}
+  mapping:
+    auth_type: USERNAME_PASSWORD
+    sf_username: ops@acme.com
+    sf_password: ${env:SF_PASSWORD}
+    security_token: ${env:SF_SECURITY_TOKEN}
+```
+
 #### `splunk`
 
 Splunk 搜尋結果可作為表查詢（例如 `internal_server`）（REQ-721）。連接器 URL 來自 `base_url`，或以 `https://{host}:{port}` 建構，預設連接埠為 `8089`（REQ-722）。驗證：當 `mapping.use_token` 為 `true`（預設）時，`password` 作為 API 權杖傳遞；為 `false` 時，`username` 與 `password` 作為獨立憑證傳遞（REQ-723）。 [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]

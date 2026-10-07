@@ -242,6 +242,56 @@ SharePoint и Splunk регистрируются через коннектор�
     certificate_password: ${env:SP_CERT_PASSWORD}
 ```
 
+#### `salesforce`
+
+Каждый sObject, который доступен учётным данным для запросов, — это таблица, которую стюард может зарегистрировать (`Account`, `Opportunity`, пользовательские объекты `*__c`); автоматически ничего не регистрируется (REQ-1946). Столбцы и типы берутся из describe объекта. Фильтры, проекции, сортировки и лимиты передаются в Salesforce в виде SOQL. [tool-verified: `provisa/federation/pgwire_replica.py` `_salesforce_operand`; `provisa/federation/trino_connectors.py` `TrinoSalesforceConnector`]
+
+Источник Salesforce указывает URL входа «Мой домен» организации и один полный набор учётных данных, выбираемый через `mapping.auth_type`. Неполный набор отклоняется при использовании источника с указанием недостающего значения. Каждый секрет может быть ссылкой `${secret:…}` или `${env:…}`.
+
+| Поле источника | Свойство коннектора | Примечания |
+| --- | --- | --- |
+| `base_url` / `host` | `login-url` | URL «Мой домен» организации (Настройка, затем Мой домен). `login.salesforce.com` не работает с потоком client credentials |
+| `username` | `client-id` | Ключ клиента подключённого приложения |
+| `password` | `client-secret` | Секрет клиента подключённого приложения |
+| `mapping.auth_type` | — | `CLIENT_CREDENTIALS` (по умолчанию), `USERNAME_PASSWORD` или `ACCESS_TOKEN` |
+| `mapping.sf_username`, `mapping.sf_password` | `username`, `password` | Только `USERNAME_PASSWORD`, вместе с ключом и секретом клиента |
+| `mapping.security_token` | `security-token` | Только `USERNAME_PASSWORD`; необязательно |
+| `mapping.access_token`, `mapping.instance_url` | `access-token`, `instance-url` | Только `ACCESS_TOKEN`; без ключа и секрета клиента |
+| `mapping.api_version` | `api-version` | Необязательно, например `v61.0` |
+
+Для `CLIENT_CREDENTIALS` подключённому приложению нужны *Enable Client Credentials Flow* и пользователь *Run As*; каждое чтение и каждая запись выполняются с правами этого пользователя. Организации, созданные начиная с Summer '23, по умолчанию блокируют поток «имя пользователя и пароль».
+
+**Чтение.** В Trino источник читается через каталог `salesforce`, который только читает. В любом другом движке движок подключает pgwire-сервер источника и читает его на месте.
+
+**Запись.** `INSERT`, `UPDATE` и `DELETE` над зарегистрированным sObject — это мутации: они управляются, попадают в аудит и обрабатываются по правилам среды, как любая другая мутация. В каждом движке, включая Trino, запись выполняется на pgwire-сервере источника; в Trino этот сервер работает только для записи. Каждая инструкция отправляется в Salesforce и фиксируется при выполнении, поэтому её нельзя откатить, а `RETURNING` не поддерживается. Источник SharePoint записывается так же. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`; `provisa/api/data/pgwire_write.py`]
+
+**Запуск.** Прежде чем принимать подключения, сервер источника читает столбцы каждого sObject — около четырёх минут для организации с 1200 объектами. Это оплачивается один раз: результаты describe хранятся в собственном каталоге состояния источника внутри каталога данных экземпляра. Сервер запускается при регистрации или загрузке источника. Пока он не принимает подключения, «Регистрация таблицы» показывает, что коннектор запускается, а запись получает то же сообщение, а не ждёт. [tool-verified: `provisa/federation/pgwire_replica.py` `build_model_json`, `start_endpoint`]
+
+```yaml
+- id: sales-salesforce
+  type: salesforce
+  base_url: https://acme.my.salesforce.com
+  username: ${env:SF_CONSUMER_KEY}
+  password: ${env:SF_CONSUMER_SECRET}
+  mapping:
+    api_version: v61.0
+```
+
+Поток «имя пользователя и пароль»:
+
+```yaml
+- id: sales-salesforce
+  type: salesforce
+  base_url: https://acme.my.salesforce.com
+  username: ${env:SF_CONSUMER_KEY}
+  password: ${env:SF_CONSUMER_SECRET}
+  mapping:
+    auth_type: USERNAME_PASSWORD
+    sf_username: ops@acme.com
+    sf_password: ${env:SF_PASSWORD}
+    security_token: ${env:SF_SECURITY_TOKEN}
+```
+
 #### `splunk`
 
 Результаты поиска Splunk доступны для запросов как таблицы (например, `internal_server`) (REQ-721). URL коннектора берётся из `base_url` либо формируется как `https://{host}:{port}` со значением порта по умолчанию `8089` (REQ-722). Аутентификация: когда `mapping.use_token` равно `true` (по умолчанию), `password` передаётся как API-токен; когда `false`, `username` и `password` передаются как отдельные учётные данные (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]

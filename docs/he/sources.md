@@ -241,6 +241,56 @@ SharePoint ו-Splunk נרשמים דרך מחברי Apache Calcite (kenstott/cal
     certificate_password: ${env:SP_CERT_PASSWORD}
 ```
 
+#### `salesforce`
+
+כל sObject שפרטי ההזדהות יכולים לתשאל הוא טבלה שה-steward רשאי לרשום (`Account`, `Opportunity`, אובייקטים מותאמים `*__c`); דבר אינו נרשם אוטומטית (REQ-1946). העמודות והטיפוסים מגיעים מה-describe של ה-sObject. סינונים, הטלות, מיונים והגבלות מועברים ל-Salesforce כ-SOQL. [tool-verified: `provisa/federation/pgwire_replica.py` `_salesforce_operand`; `provisa/federation/trino_connectors.py` `TrinoSalesforceConnector`]
+
+מקור Salesforce מציין את כתובת ההתחברות My Domain של הארגון וסט שלם אחד של פרטי הזדהות, שנבחר באמצעות `mapping.auth_type`. סט חלקי נדחה בעת השימוש במקור, תוך ציון הערך החסר. כל סוד יכול להיות הפניה מסוג `${secret:…}` או `${env:…}`.
+
+| שדה מקור | מאפיין מחבר | הערות |
+| --- | --- | --- |
+| `base_url` / `host` | `login-url` | כתובת ה-My Domain של הארגון (Setup, ואז My Domain). `login.salesforce.com` אינו פועל בזרימת client credentials |
+| `username` | `client-id` | ה-consumer key של האפליקציה המחוברת |
+| `password` | `client-secret` | ה-consumer secret של האפליקציה המחוברת |
+| `mapping.auth_type` | — | `CLIENT_CREDENTIALS` (ברירת מחדל), `USERNAME_PASSWORD` או `ACCESS_TOKEN` |
+| `mapping.sf_username`, `mapping.sf_password` | `username`, `password` | `USERNAME_PASSWORD` בלבד, לצד ה-consumer key וה-consumer secret |
+| `mapping.security_token` | `security-token` | `USERNAME_PASSWORD` בלבד; אופציונלי |
+| `mapping.access_token`, `mapping.instance_url` | `access-token`, `instance-url` | `ACCESS_TOKEN` בלבד; ללא consumer key או consumer secret |
+| `mapping.api_version` | `api-version` | אופציונלי, לדוגמה `v61.0` |
+
+עבור `CLIENT_CREDENTIALS` האפליקציה המחוברת זקוקה ל-*Enable Client Credentials Flow* ולמשתמש *Run As*; כל קריאה וכתיבה רצה עם ההרשאות של אותו משתמש. ארגונים שנוצרו מאז Summer '23 חוסמים כברירת מחדל את זרימת שם המשתמש והסיסמה.
+
+**קריאות.** ב-Trino המקור נקרא דרך הקטלוג `salesforce`, שרק קורא. בכל מנוע אחר, המנוע מצרף את שרת ה-pgwire של המקור וקורא אותו במקומו.
+
+**כתיבות.** `INSERT`, `UPDATE` ו-`DELETE` על sObject רשום הן מוטציות: נשלטות, מתועדות בביקורת ומטופלות לפי סביבה ככל מוטציה אחרת. בכל מנוע, כולל Trino, כתיבה רצה על שרת ה-pgwire של המקור; ב-Trino שרת זה רץ לכתיבות בלבד. כל פקודה נשלחת ל-Salesforce ומאושרת עם ביצועה, ולכן אי אפשר לבטל אותה, ו-`RETURNING` אינו נתמך. מקור SharePoint נכתב באותה דרך. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`; `provisa/api/data/pgwire_write.py`]
+
+**הפעלה.** לפני שהוא מקבל חיבורים, שרת המקור קורא את העמודות של כל sObject, כארבע דקות לארגון עם 1,200 כאלה. המחיר משולם פעם אחת: תוצאות ה-describe נשמרות בספריית המצב של המקור עצמו, תחת ספריית הנתונים של המופע. השרת מופעל כשהמקור נרשם או נטען. עד שהוא מקבל חיבורים, רישום טבלה מציג את המחבר כמתחיל לפעול, וכתיבה מקבלת את אותה הודעה במקום להמתין. [tool-verified: `provisa/federation/pgwire_replica.py` `build_model_json`, `start_endpoint`]
+
+```yaml
+- id: sales-salesforce
+  type: salesforce
+  base_url: https://acme.my.salesforce.com
+  username: ${env:SF_CONSUMER_KEY}
+  password: ${env:SF_CONSUMER_SECRET}
+  mapping:
+    api_version: v61.0
+```
+
+זרימת שם משתמש וסיסמה:
+
+```yaml
+- id: sales-salesforce
+  type: salesforce
+  base_url: https://acme.my.salesforce.com
+  username: ${env:SF_CONSUMER_KEY}
+  password: ${env:SF_CONSUMER_SECRET}
+  mapping:
+    auth_type: USERNAME_PASSWORD
+    sf_username: ops@acme.com
+    sf_password: ${env:SF_PASSWORD}
+    security_token: ${env:SF_SECURITY_TOKEN}
+```
+
 #### `splunk`
 
 תוצאות חיפוש Splunk ניתנות לשאילתה כטבלאות (לדוגמה `internal_server`) (REQ-721). כתובת ה-URL של המחבר מגיעה מ-`base_url`, או נבנית כ-`https://{host}:{port}` עם פורט ברירת מחדל `8089` (REQ-722). אימות: כאשר `mapping.use_token` הוא `true` (ברירת המחדל), `password` מועבר כאסימון ה-API; כאשר `false`, `username` ו-`password` מועברים כאישורים נפרדים (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]

@@ -230,6 +230,56 @@ Autenticación por certificado, con la ruta absoluta y la contraseña siempre pr
     certificate_password: ${env:SP_CERT_PASSWORD}
 ```
 
+#### `salesforce`
+
+Cada sObject que la credencial puede consultar es una tabla que el steward puede registrar (`Account`, `Opportunity`, objetos personalizados `*__c`); nada se registra automáticamente (REQ-1946). Las columnas y los tipos provienen del describe del sObject. Los filtros, las proyecciones, las ordenaciones y los límites se delegan a Salesforce como SOQL. [tool-verified: `provisa/federation/pgwire_replica.py` `_salesforce_operand`; `provisa/federation/trino_connectors.py` `TrinoSalesforceConnector`]
+
+Una fuente Salesforce indica la URL de inicio de sesión de Mi dominio de la organización y un conjunto completo de credenciales, elegido con `mapping.auth_type`. Un conjunto incompleto se rechaza cuando se usa la fuente, indicando el valor que falta. Cada secreto puede ser una referencia `${secret:…}` o `${env:…}`.
+
+| Campo de origen | Propiedad del conector | Notas |
+| --- | --- | --- |
+| `base_url` / `host` | `login-url` | URL de Mi dominio de la organización (Configuración, luego Mi dominio). `login.salesforce.com` no funciona con el flujo de credenciales de cliente |
+| `username` | `client-id` | Clave de consumidor de la aplicación conectada |
+| `password` | `client-secret` | Secreto de consumidor de la aplicación conectada |
+| `mapping.auth_type` | — | `CLIENT_CREDENTIALS` (predeterminado), `USERNAME_PASSWORD` o `ACCESS_TOKEN` |
+| `mapping.sf_username`, `mapping.sf_password` | `username`, `password` | Solo `USERNAME_PASSWORD`, junto con la clave y el secreto de consumidor |
+| `mapping.security_token` | `security-token` | Solo `USERNAME_PASSWORD`; opcional |
+| `mapping.access_token`, `mapping.instance_url` | `access-token`, `instance-url` | Solo `ACCESS_TOKEN`; sin clave ni secreto de consumidor |
+| `mapping.api_version` | `api-version` | Opcional, por ejemplo `v61.0` |
+
+Para `CLIENT_CREDENTIALS`, la aplicación conectada necesita *Enable Client Credentials Flow* y un usuario *Run As*; cada lectura y escritura se ejecuta con los permisos de ese usuario. Las organizaciones creadas desde Summer '23 bloquean de forma predeterminada el flujo de usuario y contraseña.
+
+**Lecturas.** En Trino la fuente se lee a través del catálogo `salesforce`, que solo lee. En cualquier otro motor, el motor adjunta el servidor pgwire de la fuente y la lee en su lugar.
+
+**Escrituras.** `INSERT`, `UPDATE` y `DELETE` sobre un sObject registrado son mutaciones: gobernadas, auditadas y tratadas por entorno como cualquier otra mutación. En todos los motores, Trino incluido, una escritura se ejecuta en el servidor pgwire de la fuente; en Trino ese servidor se ejecuta solo para las escrituras. Cada sentencia se envía a Salesforce y se confirma al ejecutarse, por lo que no puede revertirse; `RETURNING` no está soportado. Una fuente SharePoint se escribe de la misma manera. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`; `provisa/api/data/pgwire_write.py`]
+
+**Arranque.** Antes de aceptar conexiones, el servidor de la fuente lee las columnas de cada sObject, unos cuatro minutos para una organización con 1.200. Se paga una vez: los resultados de describe se guardan en el directorio de estado propio de la fuente, bajo el directorio de datos de la instancia. El servidor se inicia cuando la fuente se registra o se carga. Hasta que acepta conexiones, Registrar tabla muestra el conector como iniciándose y una escritura recibe el mismo mensaje en lugar de esperar. [tool-verified: `provisa/federation/pgwire_replica.py` `build_model_json`, `start_endpoint`]
+
+```yaml
+- id: sales-salesforce
+  type: salesforce
+  base_url: https://acme.my.salesforce.com
+  username: ${env:SF_CONSUMER_KEY}
+  password: ${env:SF_CONSUMER_SECRET}
+  mapping:
+    api_version: v61.0
+```
+
+Flujo de usuario y contraseña:
+
+```yaml
+- id: sales-salesforce
+  type: salesforce
+  base_url: https://acme.my.salesforce.com
+  username: ${env:SF_CONSUMER_KEY}
+  password: ${env:SF_CONSUMER_SECRET}
+  mapping:
+    auth_type: USERNAME_PASSWORD
+    sf_username: ops@acme.com
+    sf_password: ${env:SF_PASSWORD}
+    security_token: ${env:SF_SECURITY_TOKEN}
+```
+
 #### `splunk`
 
 Los resultados de búsqueda de Splunk son consultables como tablas (por ejemplo, `internal_server`) (REQ-721). La URL del conector proviene de `base_url`, o se construye como `https://{host}:{port}` con un puerto predeterminado de `8089` (REQ-722). Autenticación: cuando `mapping.use_token` es `true` (el predeterminado), `password` se pasa como el token de la API; cuando es `false`, `username` y `password` se pasan como credenciales separadas (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]
