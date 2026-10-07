@@ -1294,6 +1294,20 @@ VALUES (
       "full_results","usage","glossary_read","glossary_rw","data_product_read"]'::jsonb,
     '["*"]'::jsonb,
     NULL
+),
+-- REQ-1944: data_steward owns a domain's governance -- its tables' visibility, row rules, column grants,
+-- masks, sensitive columns, glossary and data products -- and audits with full results. Nothing
+-- operational: no write, source/table registration, user management, org settings or
+-- environment data. Every edit those rights allow is checked against the domain of what it
+-- changes (provisa/api/admin/capabilities.py right_domain_refusal). Seeded reaching every domain
+-- (a small team has one steward); per-domain stewards are copies with a narrower domain_access.
+(
+    'data_steward',
+    '["access_config","column_grant","masking_config","sensitive_data","glossary_read",
+      "glossary_rw","data_product_read","data_product_rw","usage","query_development",
+      "full_results","view_governance"]'::jsonb,
+    '["*"]'::jsonb,
+    NULL
 )
 ON CONFLICT (id) DO NOTHING;
 

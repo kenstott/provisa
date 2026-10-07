@@ -185,6 +185,25 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             "data_product_read",  # REQ-1634
         ],
     ),
+    # REQ-1944: data_steward owns a domain's governance and nothing operational; its edits are
+    # checked against the domain of what they change. Must match schema.sql's seed row.
+    (
+        "data_steward",
+        [
+            "access_config",
+            "column_grant",
+            "masking_config",
+            "sensitive_data",
+            "glossary_read",
+            "glossary_rw",
+            "data_product_read",
+            "data_product_rw",
+            "usage",
+            "query_development",
+            "full_results",
+            "view_governance",
+        ],
+    ),
     # REQ-1597: sandbox is what a "Try it Out" invitation confers. It is org_admin's capability list
     # minus a DENYLIST, rather than a list built up from analyst, because the point of the sandbox is
     # that a stranger can do everything the product does — register a source, model it, govern it,
