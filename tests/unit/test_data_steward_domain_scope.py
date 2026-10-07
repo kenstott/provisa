@@ -28,7 +28,7 @@ import pytest
 from sqlalchemy import insert, select
 
 import provisa.api.app as appmod
-from provisa.api.admin import schema_mutation
+from provisa.api.admin import roles_router, schema_mutation
 from provisa.api.errors import ApiError
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import _init_schema_portable
@@ -399,3 +399,27 @@ async def test_a_table_editor_still_sets_a_fake_on_a_column_that_is_not_sensitiv
     _column(edited, "amount").fake = "uniform(min=1, max=9)"
     result = await M().update_table(_info("editor"), edited)
     assert result.success is True, result.message
+
+
+# --- roles: user_management reaches the role's existing domains ----------------------------------
+
+
+async def test_access_config_does_not_admit_role_definitions(plane):
+    with pytest.raises(ApiError, match="user_management"):
+        await roles_router.update_role(
+            "sales_role",
+            roles_router.UpdateRoleBody(capabilities=["usage"]),
+            _request(plane.steward),
+        )
+
+
+async def test_a_role_reaching_another_domain_is_neither_edited_nor_deleted(plane):
+    request = _request("admin_sales")
+    with pytest.raises(ApiError, match="'finance'"):
+        await roles_router.update_role(
+            "finance_role", roles_router.UpdateRoleBody(domain_access=["sales"]), request
+        )
+    with pytest.raises(ApiError, match="'finance'"):
+        await roles_router.delete_role("finance_role", request)
+    with pytest.raises(PermissionError, match="'finance'"):
+        await M().delete_role(_info("admin_sales"), "finance_role")

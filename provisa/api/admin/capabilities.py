@@ -192,7 +192,10 @@ def require_reach_of_added_domains(  # REQ-1531
     ``allowed_domains``: the caller must reach each domain the change adds (all of them, when it
     adds ``*``). Adding a domain to a role is how reach is handed out and adding one to a source
     is how a source is opened to a domain, so neither may hand out more than the caller holds.
-    Removing a domain needs no reach. ``before`` is None for an object being created."""
+    Closing a source to a domain needs no reach. A role is different (REQ-1531, amended
+    2026-10-07): redefining one, removing a domain from it or deleting it is an act in every
+    domain it reaches, which its update and delete paths check before this one. ``before`` is
+    None for an object being created."""
     from provisa.security.rights import domains_added
 
     for domain_id in sorted(domains_added(before, after, empty_is_all=empty_is_all)):

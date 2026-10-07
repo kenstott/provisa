@@ -2149,6 +2149,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin.capabilities import require_reach_of_added_domains
 
         held = next((r for r in existing if r["id"] == input.id), None)
+        if held is not None:
+            # REQ-1531: redefining a role is an act in every domain it reaches now, not only in
+            # the ones the change adds.
+            require_right_in_domains(
+                info, "user_management", effective_domain_access(input.id, existing)
+            )
         require_reach_of_added_domains(
             info,
             None if held is None else effective_domain_access(input.id, existing),
@@ -2648,8 +2654,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import role as role_repo
 
         require_capability(info, "user_management")  # REQ-1531: see create_role
+        from provisa.security.inheritance import effective_domain_access
+
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            existing = await role_repo.list_all(cast("Connection", conn))
+            if any(r["id"] == id for r in existing):
+                # REQ-1531: removing a role is an act in every domain it reaches.
+                require_right_in_domains(
+                    info, "user_management", effective_domain_access(id, existing)
+                )
             try:
                 deleted = await role_repo.delete(cast("Connection", conn), id)
             except role_repo.RoleDeleteRefused as refused:
