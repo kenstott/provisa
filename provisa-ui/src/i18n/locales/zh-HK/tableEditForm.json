@@ -254,9 +254,12 @@
       "pageSize": "頁面大小",
       "cursorParam": "游標參數",
       "cursorField": "下一個游標欄位",
-      "maxPages": "頁數上限"
+      "maxPages": "頁數上限",
+      "rowsField": "資料列所在的屬性"
     },
     "pagingCutNote": "在 API 仍有更多資料時達到頁數上限的讀取會被報告為已截斷。",
+    "pagingRowsFieldHelp": "回應中包含資料列的屬性，例如分頁包裝中的 values 或 data。當回應本身就是資料列時請留空。資料表的欄位即該處物件的欄位。",
+    "pagingRowsFieldFixed": "在註冊資料表時設定。如要從其他位置讀取資料列，請重新註冊該資料表。",
     "pagingTypeRequired": "請選擇分頁類型，或清空分頁欄位。",
     "pagingPositive": "請使用不小於 1 的整數。",
     "pagingAboveCeiling": "最多 {{ceiling}}：資料表可以降低營運者的上限，但不能提高。",

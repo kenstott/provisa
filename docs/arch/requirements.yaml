@@ -4731,6 +4731,16 @@
     property is proposed as the table's row location when the table is offered, the way its paging
     is proposed (REQ-318). The steward accepts or edits it at registration. The table's columns are
     those of the objects at the row location, and each read takes its rows from there.
+    (Amended 2026-10-07, ROW LOCATION AS BUILT) The row location is one of the table's paging
+    settings (REQ-318) and may be declared with no paging type, for an answer that is wrapped and
+    not paged. It is proposed only when the response has no identity of its own -- no id, key or
+    name property -- and the objects in its one list declare their fields, so that a single thing
+    holding one list is not taken for a page. A row location the response does not have is refused
+    when the table is registered. It is set at registration and kept afterwards -- an edit of the
+    table's paging that names another is refused, since the table's columns are those of the objects
+    there; the table is registered again to read its rows from elsewhere. A cursor is not proposed
+    for a wrapped list, since nothing in a spec says which field or parameter carries it; the
+    steward declares it.
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/

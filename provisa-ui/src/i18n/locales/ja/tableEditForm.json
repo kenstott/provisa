@@ -254,9 +254,12 @@
       "pageSize": "ページサイズ",
       "cursorParam": "カーソルパラメーター",
       "cursorField": "次カーソルのフィールド",
-      "maxPages": "最大ページ数"
+      "maxPages": "最大ページ数",
+      "rowsField": "行の場所"
     },
     "pagingCutNote": "API にまだデータがあるのに最大ページ数に達した読み取りは、切り詰めとして報告されます。",
+    "pagingRowsFieldHelp": "応答のうち行を保持するプロパティです（ページラッパーの values や data など）。応答そのものが行である場合は空のままにします。テーブルの列は、そこにあるオブジェクトの列になります。",
+    "pagingRowsFieldFixed": "テーブルの登録時に設定されます。別の場所から行を読み取るには、テーブルを登録し直してください。",
     "pagingTypeRequired": "ページングの種類を選ぶか、ページングのフィールドを空にしてください。",
     "pagingPositive": "1 以上の整数を使ってください。",
     "pagingAboveCeiling": "最大 {{ceiling}}: テーブルはオペレーターの上限を下げられますが、上げることはできません。",

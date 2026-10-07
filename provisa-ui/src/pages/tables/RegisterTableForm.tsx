@@ -902,6 +902,7 @@ export function RegisterTableForm({
           paging={pagination}
           onChange={setPagination}
           ceilingRows={pagingCeilingRows}
+          rowsFieldEditable
         />
       )}
       {!isChecker && !isQueryApi && (

@@ -24,6 +24,7 @@ export const NO_PAGING: Paging = {
   pageSize: null,
   maxPages: null,
   maxRows: null,
+  rowsField: null,
 };
 
 const FIELDS = Object.keys(NO_PAGING) as (keyof Paging)[];
@@ -71,7 +72,10 @@ export function pagingProblem(
     }
     return null;
   }
-  if (declared.type === null) return { key: "tableEditForm.pagingTypeRequired" };
+  // Where the rows are may be declared by itself: an answer wrapped and not paged.
+  if (declared.type === null) {
+    return declared.rowsField ? null : { key: "tableEditForm.pagingTypeRequired" };
+  }
   if (!positive(declared.pageSize) || !positive(declared.maxPages)) {
     return { key: "tableEditForm.pagingPositive" };
   }

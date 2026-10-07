@@ -254,9 +254,12 @@
       "pageSize": "Seitengröße",
       "cursorParam": "Cursor-Parameter",
       "cursorField": "Feld für nächsten Cursor",
-      "maxPages": "Max. Seiten"
+      "maxPages": "Max. Seiten",
+      "rowsField": "Zeilen liegen unter"
     },
     "pagingCutNote": "Ein Lesevorgang, der Max. Seiten erreicht, während die API mehr hat, wird als abgeschnitten gemeldet.",
+    "pagingRowsFieldHelp": "Die Eigenschaft der Antwort, die die Zeilen enthält, etwa values oder data eines Seiten-Wrappers. Leer lassen, wenn die Antwort selbst die Zeilen ist. Die Spalten der Tabelle sind die der Objekte dort.",
+    "pagingRowsFieldFixed": "Bei der Registrierung der Tabelle festgelegt. Registrieren Sie die Tabelle erneut, um ihre Zeilen von anderer Stelle zu lesen.",
     "pagingTypeRequired": "Wählen Sie einen Paginierungstyp oder leeren Sie die Paginierungsfelder.",
     "pagingPositive": "Verwenden Sie eine ganze Zahl ab 1.",
     "pagingAboveCeiling": "Höchstens {{ceiling}}: Eine Tabelle darf die Grenze des Betreibers senken, nie erhöhen.",

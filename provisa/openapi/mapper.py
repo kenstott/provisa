@@ -35,7 +35,10 @@ class OpenAPIQuery:  # REQ-316
     path_params: list[dict] = field(default_factory=list)  # [{name, type}]
     query_params: list[dict] = field(default_factory=list)  # [{name, type}]
     response_schema: dict | None = None  # JSON Schema of 200 response (item schema if is_list)
-    is_list: bool = False  # True when the raw 200 response was an array type
+    is_list: bool = False  # True when the rows are an array: the response, or its rows_field
+    # REQ-316: the property of the response the rows sit under (a page wrapper's ``values``);
+    # None when the response is the rows. ``response_schema`` is the schema of one row there.
+    rows_field: str | None = None
     # REQ-318: the paging the operation's parameters and responses suggest, offered to the steward
     # who registers the table (accepted or edited there); None when nothing suggests one.
     pagination: PaginationConfig | None = None
@@ -159,12 +162,76 @@ def _answers_binary(root: SchemaPath, operation: SchemaPath) -> bool:
     return bool(media) and not any(_is_text(_media(m)) for m in media)
 
 
-def _extract_response_schema(operation: SchemaPath) -> tuple[dict | None, bool]:
-    """(row schema, is_list) of the success response; is_list when it is an array. Only that
-    response is read: one declared beside it (``default``) is the error the remote answers with."""
+def _property(node: SchemaPath, name: str) -> SchemaPath | None:
+    """The property ``name`` of an object schema, declared on it or on a member of its ``allOf``."""
+    found = _at(node, "properties", name)
+    if found is not None:
+        return found
+    return next(
+        (p for member in _at(node, "allOf") or () for p in [_property(member, name)] if p), None
+    )
+
+
+# A response that carries one of these is a thing in its own right, not a page of things.
+_IDENTITY = frozenset({"id", "key", "name"})
+
+
+def _wrapped_rows(schema: SchemaPath) -> str | None:
+    """The property a page wrapper holds its rows under (REQ-316): the response is an object
+    with exactly one property that is an array of objects, and no identity of its own. Offered
+    to the steward as where the table's rows are; nothing is read from it until it is accepted."""
+    properties = _schema(schema, 1).get("properties") or {}
+    if _IDENTITY & set(properties):
+        return None
+    lists = [
+        name
+        for name, prop in properties.items()
+        if prop.get("type") == "array" and _holds_objects(_property(schema, name))
+    ]
+    return lists[0] if len(lists) == 1 else None
+
+
+def _holds_objects(array: SchemaPath | None) -> bool:
+    items = None if array is None else _at(array, "items")
+    if items is None:
+        return False
+    item = _schema(items, 1)
+    return bool(item.get("properties"))
+
+
+_PROPOSED = object()  # the row location the spec suggests, where the caller names none
+
+
+class NoRowsField(LookupError):
+    """A row location (``rows_field``) that names no property of the operation's response."""
+
+    def __init__(self, rows_field: str) -> None:
+        self.rows_field = rows_field
+        super().__init__(f"the response has no property {rows_field!r} to read rows from")
+
+
+def _extract_response_schema(
+    operation: SchemaPath, rows_field: object = _PROPOSED
+) -> tuple[dict | None, bool, str | None]:
+    """(row schema, is_list, rows_field) of the success response. Only that response is read:
+    one declared beside it (``default``) is the error the remote answers with. The rows are at
+    ``rows_field`` -- a property of the response, None for the response itself -- which is the
+    one the spec suggests (:func:`_wrapped_rows`) unless the caller names it."""
     response = _success_response(operation)
     schema = None if response is None else _json_schema(response)
-    return (None, False) if schema is None else _row_schema(schema)
+    if schema is None:
+        return None, False, None
+    is_array = schema.read_value().get("type") == "array"
+    if rows_field is _PROPOSED:
+        field = None if is_array else _wrapped_rows(schema)
+    else:
+        field = None if rows_field is None else str(rows_field)
+    if field is None:
+        return (*_row_schema(schema), None)
+    rows = None if is_array else _property(schema, field)
+    if rows is None:
+        raise NoRowsField(field)
+    return (*_row_schema(rows), field)
 
 
 def _extract_request_schema(operation: SchemaPath) -> dict | None:
@@ -226,8 +293,19 @@ def operation_parameters(spec: dict, path: str, method: str = "get") -> list[dic
 
 # Query parameter names that say how an operation pages (REQ-318). First match wins.
 _PAGE_NAMES = ("page", "page_number", "pageNumber", "page_no")
-_OFFSET_NAMES = ("offset", "skip", "start")
-_SIZE_NAMES = ("limit", "per_page", "perPage", "page_size", "pageSize", "size", "top", "count")
+_OFFSET_NAMES = ("offset", "skip", "start", "startAt")
+_SIZE_NAMES = (
+    "limit",
+    "per_page",
+    "perPage",
+    "page_size",
+    "pageSize",
+    "pagelen",
+    "maxResults",
+    "size",
+    "top",
+    "count",
+)
 
 
 def _declares_link_header(operation: SchemaPath) -> bool:
@@ -238,49 +316,59 @@ def _declares_link_header(operation: SchemaPath) -> bool:
 
 
 def propose_paging(
-    operation: SchemaPath, query_params: list[dict], is_list: bool
+    operation: SchemaPath,
+    query_params: list[dict],
+    is_list: bool,
+    rows_field: str | None = None,
 ) -> PaginationConfig | None:
-    """The paging a GET operation suggests, from what it declares: a page-number parameter, an
-    offset with a size parameter, or a ``Link`` response header. Only a list response is paged
-    this way. A cursor carried in a wrapped response is not proposed: the rows of such a response
-    sit under a root no OpenAPI table declares."""
+    """The paging a GET operation suggests, from what it declares: where its rows are
+    (``rows_field``, a page wrapper's property), and how it pages -- a page-number parameter, an
+    offset with a size parameter, or a ``Link`` response header. Only a list is paged. A cursor
+    is not proposed: nothing in a spec says which field or parameter carries it."""
     if not is_list:
         return None
+    declared: dict = {} if rows_field is None else {"rows_field": rows_field}
     names = [p["name"] for p in query_params]
     size = next((n for n in _SIZE_NAMES if n in names), None)
     page = next((n for n in _PAGE_NAMES if n in names), None)
+    offset = next((n for n in _OFFSET_NAMES if n in names), None)
     if page is not None:
-        declared = {"type": PaginationType.page_number, "page_param": page}
+        declared |= {"type": PaginationType.page_number, "page_param": page}
         if size is not None:
             declared["page_size_param"] = size
-        return PaginationConfig.model_validate(declared)
-    offset = next((n for n in _OFFSET_NAMES if n in names), None)
-    if offset is not None and size is not None:
-        return PaginationConfig.model_validate(
-            {"type": PaginationType.offset, "page_param": offset, "page_size_param": size}
-        )
-    if _declares_link_header(operation):
-        return PaginationConfig.model_validate({"type": PaginationType.link_header})
-    return None
+    elif offset is not None and size is not None:
+        declared |= {
+            "type": PaginationType.offset,
+            "page_param": offset,
+            "page_size_param": size,
+        }
+    elif _declares_link_header(operation):
+        declared["type"] = PaginationType.link_header
+    return PaginationConfig.model_validate(declared) if declared else None
 
 
 def parse_spec(
     spec: dict,
     operation_overrides: dict[str, str] | None = None,
+    rows_fields: dict[str, str | None] | None = None,
 ) -> tuple[list[OpenAPIQuery], list[OpenAPIMutation]]:  # REQ-314, REQ-316, REQ-317, REQ-408
     """Parse an OpenAPI 3.x or Swagger 2.0 spec into queries and mutations.
 
     operation_overrides: {operationId: "query" | "mutation"} — takes priority over x-provisa-kind.
+    rows_fields: {operationId: where a registered table's rows are} — the property its paging
+    names, None for the response itself; an operation not in it takes what the spec suggests.
     """
     try:
-        return _map_operations(SchemaPath.from_dict(spec), operation_overrides or {})
+        return _map_operations(
+            SchemaPath.from_dict(spec), operation_overrides or {}, rows_fields or {}
+        )
     except Unresolvable as exc:
         # The reader's own message carries the whole spec; name the reference only.
         raise ValueError(f"unresolvable $ref: {exc.ref}") from None
 
 
 def _map_operations(
-    root: SchemaPath, overrides: dict[str, str]
+    root: SchemaPath, overrides: dict[str, str], rows_fields: dict[str, str | None]
 ) -> tuple[list[OpenAPIQuery], list[OpenAPIMutation]]:
     queries: list[OpenAPIQuery] = []
     mutations: list[OpenAPIMutation] = []
@@ -298,7 +386,9 @@ def _map_operations(
             path_params, query_params = _extract_params(_parameters(path_item, operation))
             op_id = _operation_id(raw, method, path)
             summary = raw.get("summary") or raw.get("description")
-            response_schema, is_list = _extract_response_schema(operation)
+            response_schema, is_list, rows_field = _extract_response_schema(
+                operation, rows_fields[op_id] if op_id in rows_fields else _PROPOSED
+            )
 
             # Payload override > x-provisa-kind > a GET that declares the rows it answers with
             explicit_kind = (
@@ -323,7 +413,8 @@ def _map_operations(
                         query_params=query_params,
                         response_schema=response_schema,
                         is_list=is_list,
-                        pagination=propose_paging(operation, query_params, is_list),
+                        rows_field=rows_field,
+                        pagination=propose_paging(operation, query_params, is_list, rows_field),
                     )
                 )
             else:

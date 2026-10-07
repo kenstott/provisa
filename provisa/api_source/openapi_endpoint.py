@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
 
-from provisa.core.paging import paging_row
+from provisa.core.paging import PaginationConfig, paging_row
 from provisa.core.schema_org import api_endpoints, api_sources, registered_tables, table_columns
 
 if TYPE_CHECKING:
@@ -49,16 +49,28 @@ def normalize_op_id(s: str) -> str:
     return re.sub(r"[_-]", "", s).lower()
 
 
-def openapi_operation(spec: dict, source_id: str, table_name: str) -> OpenAPIQuery:
-    """The GET operation ``table_name`` is read from (matched on its operation id)."""
-    from provisa.openapi.mapper import parse_spec
-
-    queries, _ = parse_spec(spec)
+def _operation(queries: list[OpenAPIQuery], source_id: str, table_name: str) -> OpenAPIQuery:
     wanted = normalize_op_id(table_name)
     for query in queries:
         if normalize_op_id(query.operation_id) == wanted:
             return query
     raise NoOperation(source_id, table_name)
+
+
+def openapi_operation(
+    spec: dict, source_id: str, table_name: str, pagination: PaginationConfig | None
+) -> OpenAPIQuery:
+    """The GET operation ``table_name`` is read from (matched on its operation id), its rows
+    read where the table's ``pagination`` says they are (REQ-316): the property it names, or the
+    answer itself when it names none."""
+    from provisa.openapi.mapper import parse_spec
+
+    query = _operation(parse_spec(spec)[0], source_id, table_name)
+    rows_field = None if pagination is None else pagination.rows_field
+    if rows_field == query.rows_field:
+        return query
+    queries, _ = parse_spec(spec, rows_fields={query.operation_id: rows_field})
+    return _operation(queries, source_id, table_name)
 
 
 def default_params_from_spec(spec: dict, path: str) -> dict:
@@ -182,7 +194,7 @@ async def register_openapi_endpoint(
     served from, derived from its registration: the operation of its name, its columns and
     default params, and a copy of the table's own paging. The source's ``api_sources`` row
     (:func:`register_openapi_source`) is written before it."""
-    match = openapi_operation(spec, table.source_id, table.table_name)
+    match = openapi_operation(spec, table.source_id, table.table_name, table.pagination)
     columns = endpoint_columns(match)
     defaults = default_params_from_spec(spec, match.path)
     await conn.upsert(
@@ -198,6 +210,7 @@ async def register_openapi_endpoint(
             "promotions": table.promotions,
             # REQ-318: a copy of the table's own paging, the one place it is authored.
             "pagination": paging_row(table.pagination),
+            "response_root": match.rows_field,  # REQ-316: where the table's paging says its rows are
         },
         index_elements=["table_name"],
         update_columns=[
@@ -208,6 +221,7 @@ async def register_openapi_endpoint(
             "default_params",
             "promotions",
             "pagination",
+            "response_root",
         ],
     )
     for col in columns:

@@ -309,3 +309,106 @@ def test_the_stewards_paging_at_registration_is_checked_like_any_other():
     assert declared_paging(state, "openapi", "petstore", "listPets", PagingInput()) is None
     refused = declared_paging(state, "postgresql", "pg", "orders", PagingInput(type="offset"))
     assert (refused.success, refused.code) == (False, "schema.paging_not_paged")
+
+
+# -- a page wrapper: the rows are read where the table's paging says (REQ-316) ----------------------
+
+WRAPPED_SPEC = {
+    "openapi": "3.0.0",
+    "paths": {
+        "/pets": {
+            "get": {
+                "operationId": "listPets",
+                "parameters": SPEC["paths"]["/pets"]["get"]["parameters"],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "total": {"type": "integer"},
+                                        "values": SPEC["paths"]["/pets"]["get"]["responses"]["200"][
+                                            "content"
+                                        ]["application/json"]["schema"],
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    },
+}
+
+
+def _wrapped_state():
+    state = _state()
+    state.openapi_specs["petstore"]["spec"] = WRAPPED_SPEC
+    return state
+
+
+def _wrapped_pages():
+    pages = {0: [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}], 2: [{"id": 3, "name": "c"}]}
+    return respx.get(f"{BASE}/pets").mock(
+        side_effect=lambda request: httpx.Response(
+            200, json={"total": 3, "values": pages[int(request.url.params["offset"])]}
+        )
+    )
+
+
+async def test_a_wrapped_list_is_offered_with_where_its_rows_are():
+    from provisa.openapi.mapper import parse_spec
+
+    (query,), _ = parse_spec(WRAPPED_SPEC)
+    assert query.pagination == PaginationConfig(
+        rows_field="values", type="offset", page_param="offset", page_size_param="limit"
+    )
+
+
+@respx.mock
+async def test_a_wrapped_lists_rows_are_read_page_by_page_to_the_short_page(control_plane):
+    state = _wrapped_state()
+    table = _table(max_pages=10)
+    table.pagination = PaginationConfig(type="offset", page_size=2, rows_field="values")
+    await _register_in_the_admin(control_plane, state, table)
+    route = _wrapped_pages()
+    endpoint = state.api_endpoints["listPets"]
+    assert endpoint.response_root == "values"
+    assert [c.name for c in endpoint.columns][:2] == ["id", "name"]
+    rows, cut = answer_rows(
+        endpoint, await call_api(endpoint, {}, state.api_sources["petstore"].base_url)
+    )
+    assert [r["id"] for r in rows] == [1, 2, 3] and cut is None
+    assert route.call_count == 2  # the short page ended it
+
+
+@respx.mock
+async def test_a_wrapped_answer_that_is_not_paged_is_read_once(control_plane):
+    state = _wrapped_state()
+    table = _table(max_pages=10)
+    table.pagination = PaginationConfig(rows_field="values")
+    await _register_in_the_admin(control_plane, state, table)
+    route = respx.get(f"{BASE}/pets").mock(
+        return_value=httpx.Response(200, json={"total": 1, "values": [{"id": 9, "name": "z"}]})
+    )
+    endpoint = state.api_endpoints["listPets"]
+    rows, cut = answer_rows(
+        endpoint, await call_api(endpoint, {}, state.api_sources["petstore"].base_url)
+    )
+    assert [(r["id"], r["name"]) for r in rows] == [(9, "z")]
+    assert (cut, route.call_count) == (None, 1)
+
+
+async def test_a_row_location_the_response_does_not_have_is_refused_by_name(control_plane):
+    from provisa.api.admin._openapi_table_registration import persist_openapi_endpoint
+    from provisa.core.repositories import table as table_repo
+
+    table = _table(max_pages=10)
+    table.pagination = PaginationConfig(rows_field="items")
+    async with control_plane.acquire() as conn:
+        await table_repo.upsert(conn, table)
+        refused = await persist_openapi_endpoint(_wrapped_state(), conn, table)
+    assert (refused.success, refused.code) == (False, "schema.openapi_no_rows_field")
+    assert refused.params == {"table": "listPets", "rows_field": "items"}

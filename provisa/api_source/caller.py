@@ -131,6 +131,15 @@ class Paging:
     more: bool | None = None
 
 
+def _short_page(endpoint: ApiEndpoint, page: Any, page_size: int) -> bool:
+    """Whether ``page`` holds fewer rows than a full page, so it is the last one. The rows are
+    where the endpoint says they are (its ``response_root``)."""
+    from provisa.api_source.flattener import _navigate_path
+
+    rows = _navigate_path(page, endpoint.response_root)
+    return isinstance(rows, list) and len(rows) < page_size
+
+
 async def _pages(
     client: httpx.AsyncClient,
     endpoint: ApiEndpoint,
@@ -155,7 +164,7 @@ async def _pages(
     # loop, same pattern as _off_loop in provisa/pgwire/_pipeline.py.
     loop = asyncio.get_running_loop()
     pagination = endpoint.pagination
-    if pagination is None:
+    if pagination is None or pagination.type is None:  # one answer, wrapped or not
         resp = await _request_with_retry(
             client,
             endpoint.method,
@@ -240,8 +249,7 @@ async def _pages(
             )
             data = await loop.run_in_executor(None, resp.json)
             yield data
-            # Heuristic: if response is a list shorter than page_size, we're done
-            if isinstance(data, list) and len(data) < page_size:
+            if _short_page(endpoint, data, page_size):
                 break
             offset += page_size
 
@@ -265,7 +273,7 @@ async def _pages(
             )
             data = await loop.run_in_executor(None, resp.json)
             yield data
-            if isinstance(data, list) and len(data) < page_size:
+            if _short_page(endpoint, data, page_size):
                 break
 
 

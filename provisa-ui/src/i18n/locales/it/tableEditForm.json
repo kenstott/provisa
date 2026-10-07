@@ -254,9 +254,12 @@
       "pageSize": "Dimensione pagina",
       "cursorParam": "Parametro cursore",
       "cursorField": "Campo cursore successivo",
-      "maxPages": "Pagine massime"
+      "maxPages": "Pagine massime",
+      "rowsField": "Le righe sono sotto"
     },
     "pagingCutNote": "Una lettura che raggiunge Pagine massime mentre l'API ha altri dati viene segnalata come troncata.",
+    "pagingRowsFieldHelp": "La proprietà della risposta che contiene le righe, come values o data in un involucro di pagina. Lascia vuoto quando la risposta è costituita dalle righe stesse. Le colonne della tabella sono quelle degli oggetti che si trovano lì.",
+    "pagingRowsFieldFixed": "Impostato alla registrazione della tabella. Registra di nuovo la tabella per leggere le sue righe da un'altra posizione.",
     "pagingTypeRequired": "Scegli un tipo di paginazione o svuota i campi di paginazione.",
     "pagingPositive": "Usa un numero intero pari o superiore a 1.",
     "pagingAboveCeiling": "Al massimo {{ceiling}}: una tabella può abbassare il limite dell'operatore, mai alzarlo.",

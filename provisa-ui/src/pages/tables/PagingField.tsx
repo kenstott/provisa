@@ -24,6 +24,9 @@ interface PagingFieldProps {
   paging: Paging | null;
   onChange: (paging: Paging) => void;
   ceilingRows: number | null;
+  // REQ-316: where a REST answer's rows are is set when the table is registered and shown,
+  // not edited, afterwards (the table's columns are those of the objects there).
+  rowsFieldEditable?: boolean;
 }
 
 const TYPES: PagingType[] = ["offset", "page_number", "cursor", "link_header"];
@@ -50,7 +53,13 @@ const READS: Record<PagingType, { field: keyof Paging; fallback?: string }[]> = 
 
 const NUMERIC = new Set<keyof Paging>(["pageSize", "maxPages", "maxRows"]);
 
-export function PagingField({ kind, paging, onChange, ceilingRows }: PagingFieldProps) {
+export function PagingField({
+  kind,
+  paging,
+  onChange,
+  ceilingRows,
+  rowsFieldEditable = false,
+}: PagingFieldProps) {
   const { t } = useTranslation();
   const staged = paging ?? NO_PAGING;
   const problem = pagingProblem(kind, paging, ceilingRows);
@@ -88,7 +97,7 @@ export function PagingField({ kind, paging, onChange, ceilingRows }: PagingField
   // Changing the type keeps only what the new type reads.
   const pickType = (value: string | null) => {
     const type = value as PagingType | null;
-    const kept: Partial<Paging> = { maxPages: staged.maxPages };
+    const kept: Partial<Paging> = { maxPages: staged.maxPages, rowsField: staged.rowsField };
     for (const { field } of type ? READS[type] : []) kept[field] = staged[field] as never;
     onChange({ ...NO_PAGING, ...kept, type });
   };
@@ -154,6 +163,21 @@ export function PagingField({ kind, paging, onChange, ceilingRows }: PagingField
         <Text size="xs" c="dimmed" data-testid="paging-cut-note">
           {t("tableEditForm.pagingCutNote")}
         </Text>
+      )}
+      {(rowsFieldEditable || staged.rowsField !== null) && (
+        <TextInput
+          mt={4}
+          aria-label={t("tableEditForm.pagingFields.rowsField")}
+          label={t("tableEditForm.pagingFields.rowsField")}
+          description={t(
+            rowsFieldEditable
+              ? "tableEditForm.pagingRowsFieldHelp"
+              : "tableEditForm.pagingRowsFieldFixed",
+          )}
+          value={staged.rowsField ?? ""}
+          readOnly={!rowsFieldEditable}
+          onChange={(e) => set({ rowsField: e.currentTarget.value || null })}
+        />
       )}
     </div>
   );

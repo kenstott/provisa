@@ -10,7 +10,9 @@
 
 """Unit tests for provisa.openapi.mapper."""
 
-from provisa.openapi.mapper import parse_spec, OpenAPIQuery, OpenAPIMutation
+import pytest
+
+from provisa.openapi.mapper import NoRowsField, OpenAPIMutation, OpenAPIQuery, parse_spec
 
 
 # A response that declares the rows it answers with.
@@ -486,3 +488,97 @@ def test_an_answer_declared_as_text_or_as_anything_is_not_a_file():
         declared = {"200": {"description": "ok", "content": {media: {}}}}
         _, (command,) = parse_spec(_get({"responses": declared}))
         assert command.binary is False, media
+
+
+# -- a page wrapper: where the rows are (REQ-316) --------------------------------------------------
+
+_REPO = {"type": "object", "properties": {"slug": {"type": "string"}, "size": {"type": "integer"}}}
+
+
+def _wrapper_spec(wrapper: dict, parameters: list[str] = ()) -> dict:
+    return {
+        "swagger": "2.0",
+        "info": {"title": "Test", "version": "1.0.0"},
+        "definitions": {"repo": _REPO, "page": wrapper},
+        "paths": {
+            "/repos": {
+                "get": {
+                    "operationId": "listRepos",
+                    "parameters": [
+                        {"name": name, "in": "query", "type": "integer"} for name in parameters
+                    ],
+                    "responses": {
+                        "200": {"description": "ok", "schema": {"$ref": "#/definitions/page"}}
+                    },
+                }
+            }
+        },
+    }
+
+
+_PAGE = {
+    "allOf": [
+        {"type": "object", "properties": {"next": {"type": "string"}, "size": {"type": "integer"}}},
+        {
+            "type": "object",
+            "properties": {"values": {"type": "array", "items": {"$ref": "#/definitions/repo"}}},
+        },
+    ]
+}
+
+
+def test_a_page_wrappers_rows_are_offered_where_they_are():
+    (query,), _ = parse_spec(_wrapper_spec(_PAGE))
+    assert (query.rows_field, query.is_list) == ("values", True)
+    assert set(query.response_schema["properties"]) == {"slug", "size"}
+    assert query.pagination.model_dump(exclude_unset=True) == {"rows_field": "values"}
+
+
+def test_the_paging_offered_for_a_wrapped_list_names_its_rows_and_its_parameters():
+    (query,), _ = parse_spec(_wrapper_spec(_PAGE, ["startAt", "maxResults"]))
+    assert query.pagination.model_dump(mode="json", exclude_unset=True) == {
+        "rows_field": "values",
+        "type": "offset",
+        "page_param": "startAt",
+        "page_size_param": "maxResults",
+    }
+
+
+def test_a_thing_with_one_list_of_its_own_is_not_a_page():
+    commit = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "parents": {"type": "array", "items": {"$ref": "#/definitions/repo"}},
+        },
+    }
+    (query,), _ = parse_spec(_wrapper_spec(commit))
+    assert (query.rows_field, query.pagination) == (None, None)
+    assert set(query.response_schema["properties"]) == {"id", "parents"}
+
+
+def test_a_response_with_two_lists_or_a_list_of_values_is_not_a_page():
+    two = {
+        "type": "object",
+        "properties": {
+            "open": {"type": "array", "items": {"$ref": "#/definitions/repo"}},
+            "closed": {"type": "array", "items": {"$ref": "#/definitions/repo"}},
+        },
+    }
+    scalars = {
+        "type": "object",
+        "properties": {"tags": {"type": "array", "items": {"type": "string"}}},
+    }
+    for wrapper in (two, scalars):
+        (query,), _ = parse_spec(_wrapper_spec(wrapper))
+        assert query.rows_field is None
+
+
+def test_a_registered_table_reads_its_rows_where_it_says():
+    spec = _wrapper_spec(_PAGE)
+    (whole,), _ = parse_spec(spec, rows_fields={"listRepos": None})
+    assert (whole.rows_field, whole.is_list) == (None, False)
+    assert set(whole.response_schema["properties"]) == {"next", "size", "values"}
+
+    with pytest.raises(NoRowsField, match="'items'"):
+        parse_spec(spec, rows_fields={"listRepos": "items"})

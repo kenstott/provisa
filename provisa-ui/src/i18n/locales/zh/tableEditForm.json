@@ -254,9 +254,12 @@
       "pageSize": "页大小",
       "cursorParam": "游标参数",
       "cursorField": "下一个游标字段",
-      "maxPages": "最大页数"
+      "maxPages": "最大页数",
+      "rowsField": "行所在的属性"
     },
     "pagingCutNote": "在 API 还有更多数据时达到最大页数的读取会被报告为已截断。",
+    "pagingRowsFieldHelp": "响应中包含行的属性，例如分页包装中的 values 或 data。当响应本身就是行时请留空。表的列即该处对象的列。",
+    "pagingRowsFieldFixed": "在注册表时设置。要从其他位置读取行，请重新注册该表。",
     "pagingTypeRequired": "请选择分页类型，或清空分页字段。",
     "pagingPositive": "请使用不小于 1 的整数。",
     "pagingAboveCeiling": "最多 {{ceiling}}：表可以降低操作员的上限，但不能提高。",

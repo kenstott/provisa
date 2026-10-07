@@ -279,6 +279,7 @@ class PagingType:  # REQ-318
     page_size: int | None = None
     max_pages: int | None = None
     max_rows: int | None = None
+    rows_field: str | None = None  # REQ-316: where a REST answer's rows are
 
 
 @strawberry.type
@@ -650,6 +651,7 @@ class PagingInput:  # REQ-318
     page_size: int | None = None
     max_pages: int | None = None
     max_rows: int | None = None
+    rows_field: str | None = None  # REQ-316: where a REST answer's rows are
 
 
 @strawberry.input

@@ -254,9 +254,12 @@
       "pageSize": "Page size",
       "cursorParam": "Cursor parameter",
       "cursorField": "Next-cursor field",
-      "maxPages": "Max pages"
+      "maxPages": "Max pages",
+      "rowsField": "Rows are under"
     },
     "pagingCutNote": "A read that reaches Max pages while the API has more is reported as cut.",
+    "pagingRowsFieldHelp": "The property of the answer that holds the rows, such as a page wrapper's values or data. Leave empty when the answer is the rows. The table's columns are those of the objects there.",
+    "pagingRowsFieldFixed": "Set when the table was registered. Register the table again to read its rows from elsewhere.",
     "pagingTypeRequired": "Choose a paging type, or clear the paging fields.",
     "pagingPositive": "Use a whole number of 1 or more.",
     "pagingAboveCeiling": "At most {{ceiling}}: a table may lower the operator's bound, never raise it.",

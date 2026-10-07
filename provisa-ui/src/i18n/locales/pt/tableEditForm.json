@@ -254,9 +254,12 @@
       "pageSize": "Tamanho de página",
       "cursorParam": "Parâmetro de cursor",
       "cursorField": "Campo do próximo cursor",
-      "maxPages": "Máximo de páginas"
+      "maxPages": "Máximo de páginas",
+      "rowsField": "As linhas estão em"
     },
     "pagingCutNote": "Uma leitura que atinge Máximo de páginas enquanto a API tem mais é informada como cortada.",
+    "pagingRowsFieldHelp": "A propriedade da resposta que contém as linhas, como values ou data em um invólucro de página. Deixe vazio quando a própria resposta são as linhas. As colunas da tabela são as dos objetos que estão ali.",
+    "pagingRowsFieldFixed": "Definido quando a tabela foi registrada. Registre a tabela novamente para ler suas linhas de outro lugar.",
     "pagingTypeRequired": "Escolha um tipo de paginação ou limpe os campos de paginação.",
     "pagingPositive": "Use um número inteiro igual ou maior que 1.",
     "pagingAboveCeiling": "No máximo {{ceiling}}: uma tabela pode reduzir o limite do operador, nunca aumentá-lo.",

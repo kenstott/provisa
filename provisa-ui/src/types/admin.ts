@@ -265,6 +265,8 @@ export interface Paging {
   pageSize: number | null;
   maxPages: number | null;
   maxRows: number | null;
+  // REQ-316: the property of a REST answer its rows sit under; null when the answer is the rows.
+  rowsField: string | null;
 }
 
 export interface RegisteredTable {

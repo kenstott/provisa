@@ -97,6 +97,7 @@ async def save_table_paging(
             select(
                 registered_tables.c.source_id,
                 registered_tables.c.table_name,
+                registered_tables.c.pagination,
                 sources.c.type,
             )
             .join(sources, sources.c.id == registered_tables.c.source_id)
@@ -110,6 +111,17 @@ async def save_table_paging(
     pagination = declared_paging(state, row.type, row.source_id, row.table_name, paging)
     if isinstance(pagination, MutationResult):
         return pagination
+    # REQ-316: a table's columns are those of the objects at its row location, so the location is
+    # set when the table is registered and an edit of its paging keeps it.
+    kept = stored_paging(row.pagination)
+    kept_field = None if kept is None else kept.rows_field
+    if (None if pagination is None else pagination.rows_field) != kept_field:
+        return _refused(
+            "schema.paging_rows_field_fixed",
+            {"table": row.table_name, "rows_field": kept_field or ""},
+            f"table {row.table_name!r}: where its rows are ({kept_field!r}) is set when the table "
+            "is registered; register the table again to read its rows from elsewhere",
+        )
     stored = paging_row(pagination)
     await conn.execute_core(
         update(registered_tables)

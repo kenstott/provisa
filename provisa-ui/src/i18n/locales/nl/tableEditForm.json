@@ -254,9 +254,12 @@
       "pageSize": "Paginagrootte",
       "cursorParam": "Cursorparameter",
       "cursorField": "Veld voor volgende cursor",
-      "maxPages": "Max. pagina's"
+      "maxPages": "Max. pagina's",
+      "rowsField": "Rijen staan onder"
     },
     "pagingCutNote": "Een leesbewerking die Max. pagina's bereikt terwijl de API meer heeft, wordt als afgekapt gemeld.",
+    "pagingRowsFieldHelp": "De eigenschap van het antwoord die de rijen bevat, zoals values of data in een pagina-wrapper. Laat leeg als het antwoord zelf de rijen is. De kolommen van de tabel zijn die van de objecten daar.",
+    "pagingRowsFieldFixed": "Ingesteld bij het registreren van de tabel. Registreer de tabel opnieuw om de rijen ergens anders te lezen.",
     "pagingTypeRequired": "Kies een pagineringstype, of maak de pagineringsvelden leeg.",
     "pagingPositive": "Gebruik een geheel getal van 1 of meer.",
     "pagingAboveCeiling": "Hoogstens {{ceiling}}: een tabel mag de grens van de beheerder verlagen, nooit verhogen.",

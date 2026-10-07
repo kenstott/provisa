@@ -191,6 +191,7 @@ query TablesQuery {
       pageSize
       maxPages
       maxRows
+      rowsField
     }
     pagingCeilingRows
     replicate
@@ -535,6 +536,7 @@ query AvailableTables($sourceId: String!, $schemaName: String!) {
       pageSize
       maxPages
       maxRows
+      rowsField
     }
     pagingCeilingRows
   }
