@@ -104,6 +104,7 @@
     "brandNamespaceHint": "Prefisso dei nomi delle tabelle di questa origine. Lasciare vuoto per il valore predefinito.",
     "sfLoginUrl": "URL di accesso",
     "sfLoginUrlHelp": "L'URL Dominio personale della tua organizzazione (Imposta, poi Dominio personale)",
+    "sfLoginUrlInvalid": "Inserisci l'URL Dominio personale completo, che inizi con https://",
     "sfAccessTokenAuth": "Token di accesso",
     "sfConsumerKey": "Chiave consumatore",
     "sfConsumerSecret": "Segreto consumatore",

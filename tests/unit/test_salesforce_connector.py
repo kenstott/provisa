@@ -76,6 +76,28 @@ def test_login_url_may_ride_in_host(tmp_path):
     assert operand["loginUrl"] == LOGIN_URL
 
 
+@pytest.mark.parametrize(
+    "login_url",
+    ["acme.my.salesforce.com", "http://acme.my.salesforce.com", "https://"],
+)
+def test_a_login_url_that_is_not_the_full_https_url_is_refused_by_both_readers(tmp_path, login_url):
+    # The adapter appends the token path to the URL as written; a bare host fails there as an
+    # unknown URL. The scheme is never added for the steward.
+    source = _source(base_url=login_url)
+    with pytest.raises(pr.MissingConnectorConfig, match=r"loginUrl must be the full https://"):
+        _operand(source, tmp_path)
+    with pytest.raises(pr.MissingConnectorConfig, match=r"loginUrl must be the full https://"):
+        _props(source)
+
+
+def test_a_missing_login_url_is_refused_by_both_readers(tmp_path):
+    source = _source(base_url=None)
+    with pytest.raises(pr.MissingConnectorConfig, match="requires loginUrl"):
+        _operand(source, tmp_path)
+    with pytest.raises(pr.MissingConnectorConfig, match="requires loginUrl"):
+        _props(source)
+
+
 def test_username_password_operand_carries_the_optional_security_token(tmp_path):
     src = _source(
         mapping={
@@ -243,6 +265,21 @@ def test_trino_client_credentials_props():
 def test_trino_always_matches_names_case_insensitively():
     # The connector refuses to start without it: sObject names are mixed case.
     assert _props(_source())["case-insensitive-name-matching"] == "true"
+
+
+def test_trino_keeps_each_sources_describe_results_on_the_volume_trino_keeps():
+    # The plugin's own default is under the Trino user's home, lost with the container: every
+    # restart would describe the whole org again, out of its daily API allowance.
+    from provisa.federation.trino_connectors import SALESFORCE_DESCRIBE_CACHE_ROOT
+
+    assert SALESFORCE_DESCRIBE_CACHE_ROOT.startswith("/data/trino/cache/")
+    one = _props(_source())["describe-cache-directory"]
+    assert one == f"{SALESFORCE_DESCRIBE_CACHE_ROOT}/sf_sales"
+    other = _source()
+    other.id = "sf-service"
+    assert (
+        _props(other)["describe-cache-directory"] == f"{SALESFORCE_DESCRIBE_CACHE_ROOT}/sf_service"
+    )
 
 
 def test_trino_username_password_props():

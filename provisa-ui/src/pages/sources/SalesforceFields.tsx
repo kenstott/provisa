@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import {
   SALESFORCE_AUTH_TYPES,
   salesforceAuthType,
+  salesforceLoginUrlValid,
   salesforceUsesConnectedApp,
   type SalesforceAuthType,
 } from "./salesforce";
@@ -57,6 +58,11 @@ export function SalesforceFields<F extends ConnectionForm>({
         description={t("sourceFormFieldsExtended.sfLoginUrlHelp")}
         value={form.host}
         onChange={(e) => setForm({ ...form, host: e.currentTarget.value })}
+        error={
+          form.host && !salesforceLoginUrlValid(form.host)
+            ? t("sourceFormFieldsExtended.sfLoginUrlInvalid")
+            : undefined
+        }
         placeholder="https://acme.my.salesforce.com"
         style={{ gridColumn: "1 / -1" }}
         data-testid="salesforce-login-url-input"

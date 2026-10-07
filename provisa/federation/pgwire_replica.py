@@ -42,6 +42,7 @@ from typing import Any, Callable
 from provisa.core.secrets import resolve_secrets
 from provisa.federation.cloudops import cloudops_settings
 from provisa.federation.connector_config import MissingConnectorConfig
+from provisa.federation.salesforce import salesforce_login_url
 from provisa.runtime_deps import BundleResolver, BundleSpec, bundle_spec_for
 
 # The pgwire-replica source types (mirror of strategy._CONNECTOR_PGWIRE_REPLICA). A type here has a
@@ -323,10 +324,7 @@ def _salesforce_operand(source: Any) -> dict:
     sObject twice."""
     mapping = {k: _rs(v) if isinstance(v, str) else v for k, v in (source.mapping or {}).items()}
     who = f"salesforce source {source.id!r}"
-    login_url = _rs(source.base_url) or _rs(source.host)
-    if not login_url:
-        raise MissingConnectorConfig(f"{who}: requires loginUrl (the org's My Domain URL)")
-    operand: dict = {"loginUrl": login_url, "lowercaseAliases": False}
+    operand: dict = {"loginUrl": salesforce_login_url(source), "lowercaseAliases": False}
     auth_type = mapping.get("auth_type", "CLIENT_CREDENTIALS")
     if auth_type not in SALESFORCE_AUTH_TYPES:
         raise MissingConnectorConfig(
