@@ -25,6 +25,7 @@ from sqlalchemy import insert, select, update
 from provisa.core.models import (
     ControlPlaneConfig,
     Domain,
+    STORED_MODEL,
     ProvisaConfig,
     Source,
     Table,
@@ -241,7 +242,7 @@ def load_control_plane(config_path: str | Path | None) -> ControlPlaneConfig:  #
     return ControlPlaneConfig()
 
 
-def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250
+def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # REQ-250
     """Parse and validate a config dict.
 
     Resolve secret references (``${provider:ref}``) on the raw dict BEFORE pydantic
@@ -250,11 +251,15 @@ def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250
     ``port``) reaches pydantic as the literal template and fails int-parsing.
     Resolution is idempotent, so the later per-field ``resolve_secrets(...)`` calls
     stay no-ops.
+
+    ``stored``: ``data`` is the model the store holds (:func:`parse_store_raw`), parsed with the
+    ``STORED_MODEL`` validation context.
     """
     from provisa.core.secrets import resolve_secrets_in_dict
 
     config = ProvisaConfig.model_validate(
-        kafka_topics_as_tables(views_as_tables(resolve_secrets_in_dict(data)))
+        kafka_topics_as_tables(views_as_tables(resolve_secrets_in_dict(data))),
+        context={STORED_MODEL: stored},
     )
     # What is STORED is the config as written: a credential stays the reference the file gave,
     # and its value is resolved where it is used.
@@ -1669,7 +1674,7 @@ async def store_raw(raw: dict, conn: "Connection") -> dict:  # REQ-1919
 
 def parse_store_raw(raw: dict) -> ProvisaConfig:  # REQ-1919
     """The configuration the process runs, parsed from :func:`store_raw`'s dict."""
-    config = parse_config_dict(raw)
+    config = parse_config_dict(raw, stored=True)
     _expand_view_metrics(config)
     return config
 
