@@ -1304,9 +1304,7 @@ ON CONFLICT (id) DO NOTHING;
 -- make every capability added later invisible to them until someone remembered this row; taking
 -- away is the direction that stays correct.
 --
--- Six rights are withheld, each because it reaches something the environment does not contain
--- (environment_data, REQ-1942: a visitor's environment's data is the invitation's choice;
--- sensitive_data, REQ-1943: the sample's sensitive columns stay as the org declared them):
+-- Four rights are withheld, each because it reaches something the environment does not contain:
 -- environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin is
 -- pointless against a role that can name another); environment_management spends the org's plan
 -- ceiling and drops other environments' schemas; user_management would let a visitor confer roles
@@ -1319,7 +1317,7 @@ ON CONFLICT (id) DO NOTHING;
 -- can do everything the product does except reach past the environment it was minted in and write
 -- back to the shared sample sources it points at -- viewing settings and telemetry is not that.
 --
--- REQ-1602/REQ-1608: five of the six are DEMONSTRATED rather than merely absent. A visitor is
+-- REQ-1602/REQ-1608: three of the four are DEMONSTRATED rather than merely absent. A visitor is
 -- being shown the product, so the surfaces those rights open stay on the page -- disabled, and
 -- badged as belonging to the production system. Withholding them by hiding them would make the
 -- sandbox look like a smaller product instead of the same one with the org's own controls held
@@ -1330,10 +1328,11 @@ INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id)
 VALUES (
     'sandbox',
     '["access_config","approve_relationship","approve_view","column_grant","create_relationship",
-      "create_view","data_product_read","data_product_rw","full_results","glossary_read",
-      "glossary_rw","masking_config","observability","org_settings","query_development",
-      "source_registration","table_registration","usage","view_governance","write"]'::jsonb,
-    '["environment_data","environment_management","environment_switch","org_glossary_rw","sensitive_data"]'::jsonb,
+      "create_view","data_product_read","data_product_rw","environment_data","full_results",
+      "glossary_read","glossary_rw","masking_config","observability","org_settings",
+      "query_development","sensitive_data","source_registration","table_registration","usage",
+      "view_governance","write"]'::jsonb,
+    '["environment_management","environment_switch","org_glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
@@ -1344,9 +1343,9 @@ ON CONFLICT (id) DO NOTHING;
 -- release of this same reconcile left with `user_management`, `org_settings` or `observability`
 -- still in it.
 UPDATE roles
-SET demonstrated = '["environment_data","environment_management","environment_switch","org_glossary_rw","sensitive_data"]'::jsonb
+SET demonstrated = '["environment_management","environment_switch","org_glossary_rw"]'::jsonb
 WHERE id = 'sandbox'
-  AND demonstrated <> '["environment_data","environment_management","environment_switch","org_glossary_rw","sensitive_data"]'::jsonb;
+  AND demonstrated <> '["environment_management","environment_switch","org_glossary_rw"]'::jsonb;
 
 UPDATE roles
 SET capabilities = (SELECT jsonb_agg(DISTINCT v ORDER BY v)

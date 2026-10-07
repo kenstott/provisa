@@ -547,6 +547,7 @@ async def set_source_binding(
     env: str,
     sourceId: str,  # noqa: N803 -- the tool's own argument names
     binding: str,
+    connection: dict | None = None,
 ) -> dict:
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id
@@ -555,7 +556,7 @@ async def set_source_binding(
     from provisa.api.admin.environment_data_router import set_source_binding as _set
 
     require_capability_request(request, "environment_data")
-    body = BindingBody(binding=binding)  # pyright: ignore[reportArgumentType]
+    body = BindingBody(binding=binding, **(connection or {}))  # pyright: ignore[reportArgumentType]
     return await _set(request, require_active_org_id(request), env, sourceId, body)
 
 

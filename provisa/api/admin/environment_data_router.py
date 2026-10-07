@@ -59,9 +59,16 @@ class DataChoicesBody(BaseModel):
 
 
 class BindingBody(BaseModel):
-    """One source's binding: through the parent's connection, or none."""
+    """One source's binding: through the parent's connection, none, or a connection of the
+    environment's own -- given here, its password stored in the org's vault."""
 
-    binding: Literal["inherited", "unbound"]
+    binding: Literal["inherited", "unbound", "own"]
+    host: str | None = None
+    port: int | None = None
+    database: str | None = None
+    username: str | None = None
+    password: str | None = None
+    path: str | None = None
 
 
 def _refused(org_id: str, env: str, exc: env_data.DataChoiceRefused) -> ApiError:
@@ -246,12 +253,50 @@ async def set_source_binding(
         )
     if body.binding == INHERITED:
         await _reads_parent(request, org_id, row["parent"])
+    connection = {
+        k: v
+        for k, v in body.model_dump(
+            include={"host", "port", "database", "username", "path"}
+        ).items()
+        if v is not None
+    }
+    if body.binding == "own":
+        if not connection:
+            raise ApiError(
+                422,
+                "environments.data_refused",
+                f"Binding {source_id!r} to a connection of {name!r}'s own needs the connection: "
+                "host, port, database and username, or a path.",
+                org=org_id,
+                env=name,
+            )
+        from provisa.api.admin.schema_common import store_source_password
+
+        # The environment's own credential, under a name of its own: the parent's is untouched.
+        connection["password_ref"] = await store_source_password(
+            actor, f"{source_id}__env_{name}", body.password or ""
+        )
+    elif connection or body.password is not None:
+        raise ApiError(
+            422,
+            "environments.data_refused",
+            f"A connection is given only when binding {source_id!r} to one of {name!r}'s own.",
+            org=org_id,
+            env=name,
+        )
     async with _pool().acquire() as conn, conn.transaction():
         try:
-            await env_data.set_bindings(conn, org_schema(org_id, name), body.binding, [source_id])
+            if body.binding == "own":
+                await env_data.bind_own(conn, org_schema(org_id, name), source_id, connection)
+            else:
+                await env_data.set_bindings(
+                    conn, org_schema(org_id, name), body.binding, [source_id]
+                )
         except env_data.DataChoiceRefused as exc:
             raise _refused(org_id, name, exc) from exc
     detail: dict[str, Any] = {"source": source_id, "binding": body.binding}
+    if body.binding == "own":
+        detail["connection"] = {k: v for k, v in connection.items() if k != "password_ref"}
     if body.binding == INHERITED:
         detail["made_visible"] = await _visible(org_id, name)
     await _audit(org_id, actor, "environment.binding", name, detail)

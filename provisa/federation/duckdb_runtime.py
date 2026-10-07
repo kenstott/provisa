@@ -217,7 +217,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._ch_lock = threading.Lock()
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
         # REQ-1529: the ATTACH each raw alias was made with, so an environment reaching the same
-        # source id through a different connection is refused rather than handed this one.
+        # source id through a different connection gets an attach of its own.
         self._raw_attach_ddl: dict[str, str] = {}
         self._ext_loaded: set[str] = (
             set()
@@ -444,18 +444,27 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._con.execute(f"LOAD {ext}")
                 self._ext_loaded.add(ext)
         raw_alias = details.get("raw_alias", source.id)
+        attach = details["attach"]
+        if raw_alias in self._raw_attached and self._raw_attach_ddl[raw_alias] != attach:
+            # REQ-1529, REQ-1942: one source id reached through another connection -- an
+            # environment that binds the source to a database of its own (a dev lane repointed,
+            # a synthetic lane bound to its store). It gets an attach of its own, named for the
+            # catalog it is read under; an environment inheriting the connection shares the one
+            # already attached, the ATTACH being the same.
+            catalog_alias = f"{raw_alias}__{self._catalog_of(source)}"
+            attach = attach.replace(f'"{raw_alias}"', f'"{catalog_alias}"')
+            if (
+                catalog_alias in self._raw_attached
+                and self._raw_attach_ddl[catalog_alias] != attach
+            ):
+                # The environment's binding changed: its old connection is let go.
+                self._con.execute(f'DETACH "{catalog_alias}"')
+                self._raw_attached.discard(catalog_alias)
+            raw_alias = catalog_alias
         if raw_alias not in self._raw_attached:
-            self._con.execute(details["attach"])
+            self._con.execute(attach)
             self._raw_attached.add(raw_alias)
-            self._raw_attach_ddl[raw_alias] = details["attach"]
-        elif self._raw_attach_ddl[raw_alias] != details["attach"]:
-            # REQ-1529: this engine reaches one connection per source id. An environment that
-            # binds the source to another one would read through this one, so it is refused.
-            raise RuntimeError(
-                f"source {source.id!r} is attached on the native engine through another "
-                f"connection; an environment that binds it to a database of its own needs an "
-                f"engine that keeps one per environment (the Trino tier)"
-            )
+            self._raw_attach_ddl[raw_alias] = attach
         return raw_alias
 
     # -- source introspection without a registered table (REQ-1673) -------------------------------

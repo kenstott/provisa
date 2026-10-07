@@ -136,8 +136,6 @@ _SANDBOX_DENIED: frozenset[str] = frozenset(
     {
         "environment_switch",
         "environment_management",
-        "environment_data",  # REQ-1942: a visitor's environment's data is the invitation's choice
-        "sensitive_data",  # REQ-1943: the sample's sensitive columns stay as the org declared them
         "user_management",
         "org_glossary_rw",
     }
@@ -194,9 +192,7 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     # make every new capability invisible to them until someone remembered to add it here; taking
     # away is the direction that stays correct.
     #
-    # Six rights are withheld, each because it reaches something the environment does not contain
-    # (environment_data, REQ-1942: a visitor's environment's data is the invitation's choice;
-    # sensitive_data, REQ-1943: the sample's sensitive columns stay as the org declared them):
+    # Four rights are withheld, each because it reaches something the environment does not contain:
     # environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin
     # would be pointless against a role that could name another); environment_management would spend
     # the org's plan ceiling and can drop another environment's schemas; user_management would let a

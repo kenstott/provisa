@@ -14,6 +14,7 @@
 # Requirements: REQ-164, REQ-165, REQ-194, REQ-253, REQ-302, REQ-303, REQ-416
 
 import os
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
@@ -145,6 +146,32 @@ def _require_trigger_roles(request: Request, body: bytes) -> None:  # REQ-1003
         require_trigger_role(request, trigger["role"])
 
 
+async def _refuse_sensitive_changes(request: Request, path: Path, body: bytes) -> None:
+    """REQ-1943: a configuration applied by a caller not holding sensitive_data -- a platform
+    administrator holds no data rights -- may not change how a sensitive column is hidden; it is
+    refused, naming the changes, before anything is written. Read beside the deployment's file,
+    so its includes resolve as they will."""
+    from provisa.api.admin.capabilities import has_capability_request
+    from provisa.api.app import state
+    from provisa.api.errors import ApiError
+    from provisa.core.config_loader import parse_config_dict, read_config_with_includes
+    from provisa.security.sensitive import SENSITIVE_DATA, config_changes, refusal
+
+    if has_capability_request(request, SENSITIVE_DATA):
+        return
+    probe = path.with_name(f".{path.name}.sensitive-check")
+    probe.write_bytes(body)
+    try:
+        config = parse_config_dict(read_config_with_includes(probe))
+    finally:
+        probe.unlink()
+    assert state.model_db is not None, "a configuration is applied to the acting org's store"
+    async with state.model_db.acquire() as conn:
+        changes = await config_changes(conn, config)
+    if changes:
+        raise ApiError(403, "config.sensitive_data_required", refusal(changes))
+
+
 @router.put("/admin/config")
 async def upload_config(request: Request):  # REQ-164, REQ-1919
     """Upload a revised config YAML, reload the deployment's settings from it, and apply it to the
@@ -172,6 +199,7 @@ async def upload_config(request: Request):  # REQ-164, REQ-1919
         ).encode("utf-8")
 
     path = config_path()
+    await _refuse_sensitive_changes(request, path, body)  # REQ-1943
     if not path.exists() or path.read_bytes() != body:
         if path.exists():
             backup = path.with_suffix(".yaml.bak")

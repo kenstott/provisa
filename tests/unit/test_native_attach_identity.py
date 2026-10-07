@@ -116,11 +116,11 @@ def test_the_duckdb_runtime_names_each_environments_catalog_as_the_compiler_does
     assert DuckDBFederationRuntime._catalog_of(SimpleNamespace(id="sales-pg")) == "sales_pg"
 
 
-def test_a_source_reached_through_another_connection_is_refused():
-    """REQ-1529: the native engine keeps one connection per source id; an environment binding the
-    source to another database is refused rather than read through the first."""
-    import pytest
-
+def test_each_environments_connection_to_a_source_has_its_own_attach():
+    """REQ-1529, REQ-1942 on DuckDB: an environment inheriting the connection shares the attach
+    already made (the ATTACH is the same); one whose own binding points elsewhere -- a dev lane
+    repointed, a synthetic lane bound to its store -- gets an attach named for its catalog; a
+    changed binding lets the old connection go."""
     from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 
     ran: list[str] = []
@@ -132,14 +132,35 @@ def test_a_source_reached_through_another_connection_is_refused():
         _raw_attach_ddl={},
         _ext_loaded=set(),
         _engine=SimpleNamespace(connector_for=lambda _type: SimpleNamespace(extension=None)),
+        _catalog_of=DuckDBFederationRuntime._catalog_of,
     )
-    pg = SimpleNamespace(id="sales-pg", type=SimpleNamespace(value="postgresql"))
-    prod = {"attach": "ATTACH 'host=prod' AS \"_src_sales-pg\"", "raw_alias": "_src_sales-pg"}
-    assert DuckDBFederationRuntime._attach_raw(runtime, pg, prod) == "_src_sales-pg"
-    assert (
-        DuckDBFederationRuntime._attach_raw(runtime, pg, prod) == "_src_sales-pg"
-    )  # inherited: shared
-    assert ran == [prod["attach"]]
-    own = {"attach": "ATTACH 'host=dev' AS \"_src_sales-pg\"", "raw_alias": "_src_sales-pg"}
-    with pytest.raises(RuntimeError, match="another connection"):
-        DuckDBFederationRuntime._attach_raw(runtime, pg, own)
+
+    def source(catalog: str):
+        return SimpleNamespace(
+            id="sales-pg", type=SimpleNamespace(value="postgresql"), catalog=catalog
+        )
+
+    def details(host: str):
+        return {
+            "attach": f"ATTACH 'host={host}' AS \"_src_sales-pg\"",
+            "raw_alias": "_src_sales-pg",
+        }
+
+    attach = DuckDBFederationRuntime._attach_raw
+    assert attach(runtime, source("sales_pg"), details("prod")) == "_src_sales-pg"
+    # Inherited: the same connection, the same attach.
+    assert attach(runtime, source("org_x_env_qa__sales_pg"), details("prod")) == "_src_sales-pg"
+    # Repointed to the lane's own database: an attach of its own.
+    dev = attach(runtime, source("org_x_env_dev__sales_pg"), details("dev"))
+    assert dev == "_src_sales-pg__org_x_env_dev__sales_pg"
+    # A synthetic lane bound to its store: likewise.
+    store = attach(runtime, source("org_x_env_syn__sales_pg"), details("store"))
+    assert store == "_src_sales-pg__org_x_env_syn__sales_pg"
+    assert ran == [
+        "ATTACH 'host=prod' AS \"_src_sales-pg\"",
+        f"ATTACH 'host=dev' AS \"{dev}\"",
+        f"ATTACH 'host=store' AS \"{store}\"",
+    ]
+    # The dev lane rebound to another database: its old connection is let go first.
+    assert attach(runtime, source("org_x_env_dev__sales_pg"), details("dev2")) == dev
+    assert ran[-2:] == [f'DETACH "{dev}"', f"ATTACH 'host=dev2' AS \"{dev}\""]

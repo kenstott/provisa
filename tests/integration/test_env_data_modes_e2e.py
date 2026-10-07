@@ -235,3 +235,35 @@ def test_a_reversible_environment_keeps_its_mutations_and_resets_to_its_baseline
     )
     assert status == 200 and len(body["tables"]) == 1, body
     assert _rows(boot, "kept") == prod
+
+
+def test_a_lane_repointed_to_its_own_database_reads_it_through_the_engine(boot):
+    """REQ-1942 on DuckDB: an Unbound lane binds the source to a connection of its own -- here the
+    same database reached another way, so the engine attaches it apart from prod's -- and a read
+    the engine serves (its kept mutations apply) reads through that attach."""
+    _environment(boot, "repointed", "unbound")
+    pg_port = int(os.environ.get("PG_PORT", "5432"))
+    status, body = _call(
+        boot,
+        "PUT",
+        f"/admin/orgs/{boot.org_id}/environments/repointed/sources/sales-pg/binding",
+        {
+            "binding": "own",
+            "host": "127.0.0.1",
+            "port": pg_port,
+            "database": boot.database,
+            "username": "provisa",
+            "password": os.environ.get("PG_PASSWORD", "provisa"),
+        },
+    )
+    assert status == 200, body
+    status, body = _call(
+        boot,
+        "PATCH",
+        f"/admin/orgs/{boot.org_id}/environments/repointed/data",
+        {"mutation_handling": "reversible"},
+    )
+    assert status == 200, body
+    _sql(boot, "repointed", "INSERT INTO sales.orders (id, region) VALUES (7, 'east')")
+    assert [r["id"] for r in _rows(boot, "repointed")] == [1, 2, 7]
+    assert [r["id"] for r in _rows(boot, None)] == [1, 2]

@@ -410,15 +410,16 @@ SPECS: list[dict] = [
         "name": "set_source_binding",
         "description": (
             "REQ-1942: set one source's binding in an environment: inherited (the parent's "
-            "connection, by reference) or unbound. A source becomes the environment's own by "
-            "being given a connection. Needs environment_data; a caller without it is refused "
-            "'Missing capability'."
+            "connection, by reference), unbound, or own -- a connection of the environment's own, "
+            "given as connection {host, port, database, username, password} or {path}. Needs "
+            "environment_data; a caller without it is refused 'Missing capability'."
         ),
         "input_schema": _obj(
             {
                 "env": {"type": "string"},
                 "sourceId": {"type": "string"},
-                "binding": {"type": "string", "enum": ["inherited", "unbound"]},
+                "binding": {"type": "string", "enum": ["inherited", "unbound", "own"]},
+                "connection": {"type": "object"},
             },
             ["env", "sourceId", "binding"],
         ),

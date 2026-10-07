@@ -229,9 +229,10 @@ def register(
         env: str,
         sourceId: str,  # noqa: N803 -- the tool's argument names
         binding: str,
+        connection: dict | None = None,
         role: str | None = None,
     ) -> dict:
-        return await mt.set_source_binding(*ctx(role), env, sourceId, binding)
+        return await mt.set_source_binding(*ctx(role), env, sourceId, binding, connection)
 
     @described
     async def get_environment_synthetic_plan(env: str, role: str | None = None) -> dict:

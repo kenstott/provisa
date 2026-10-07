@@ -122,6 +122,28 @@ async def set_bindings(
     return ids
 
 
+async def bind_own(
+    conn: "Connection", schema: str, source_id: str, connection: dict[str, Any]
+) -> None:
+    """Bind ``source_id`` in the environment whose schema is ``schema`` to a connection of its
+    own (REQ-1942): ``connection`` gives its binding columns (host, port, database, username,
+    password_ref, path); the row is marked OWN. Nothing of the parent's binding is kept."""
+    from provisa.core.env_classes import BINDING_COLUMNS, OWN
+    from provisa.core.models import BUILT_IN_SOURCE_IDS
+
+    unknown = sorted(set(connection) - BINDING_COLUMNS["sources"])
+    if unknown:
+        raise DataChoiceRefused(f"not a source's connection: {', '.join(unknown)}")
+    if source_id in BUILT_IN_SOURCE_IDS:
+        raise DataChoiceRefused(f"{source_id!r} is built in; its connection is the platform's")
+    sources = _table("sources", schema)
+    done = await conn.execute_core(
+        update(sources).where(sources.c.id == source_id).values({**connection, BINDING_COLUMN: OWN})
+    )
+    if done.rowcount == 0:
+        raise DataChoiceRefused(f"no source {source_id!r} in this environment")
+
+
 async def uncovered_sensitive(conn: "Connection", schema: str) -> list[str]:
     """Every sensitive column that declares no fake, as ``table.column``, in the environment whose
     schema is ``schema``: what Test (fake) would show real (REQ-1942, REQ-1943)."""
