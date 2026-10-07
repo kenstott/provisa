@@ -77054,3 +77054,18 @@
   - REQ-1923
   - REQ-1942
   notes: 'Maintainer 2026-10-07: added new pgwire-salesforce (RW) and trino-salesforce (R) adapters; wire these into the data sources similar to sharepoint; add them to the data sources pick list, the docs, and the product tour references to number of datasources. Maintainer (later): the pgwire server is being rewritten now -- sharepoint and salesforce will support RW on pgwire-*. Adapters are on calcite branch feat/salesforce-adapter; no engine release carries them yet -- wire now, pin on release.'
+- id: REQ-1947
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Enterprise Sources
+  priority: MAY
+  type: behavioral
+  description: 'Cloud inventory is a source type. A cloud inventory source names the credentials and scope of one or more of Azure (tenant, client id and secret, subscriptions), AWS (access key and secret, region, accounts, optionally a role to assume) and GCP (a service-account credential, projects), and offers the same tables whichever clouds it names: compute resources, storage resources, Kubernetes clusters, database resources, network resources, IAM resources and container registries, each with one set of columns across the three clouds and a column naming the cloud a row came from. It reads only. On Trino it is read through the trino-cloudops connector; on every other engine through the bundled pgwire-cloudops server, as a SharePoint source is read. Its tables are registered by a steward like any other, and its credentials are secrets. It appears in the source pick list under Enterprise, in the source documentation, and in every count of source types the product states.'
+  use_case: A platform lead connects the company's three clouds and joins database resources to the sources registered
+    in the model to list the managed databases nobody governs yet.
+  related_reqs:
+  - REQ-1690
+  - REQ-1730
+  - REQ-1946
+  notes: 'Maintainer 2026-10-07: review same for cloudops -- it lays out all your cloud resources in a normalized way across azure/gcp/aws; (later) queue cloudops behind salesforce. Lead assessment given to the maintainer: cheap to wire (pgwire-cloudops and trino-cloudops are already in the engine release workflows); a quick-start and estate-inventory source rather than a headline -- Steampipe and CloudQuery are far broader but do not normalize across clouds; no cost data in the adapter today.'
