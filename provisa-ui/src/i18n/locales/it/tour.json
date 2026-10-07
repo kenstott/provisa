@@ -169,7 +169,7 @@
       },
       "stepRequests": {
         "title": "Richieste di relazione",
-        "description": "✋ Una richiesta di relazione richiede due approvazioni prima di poter essere eseguita. Approvala, eseguila o rifiutala con un motivo tratto da un elenco fisso; le richieste risolte passano alla scheda Risolte."
+        "description": "✋ Questa richiesta arriva da qualcuno che non può creare relazioni da solo, spesso da fuori del tuo dominio, e vuole collegare le sue tabelle alle tue: di solito è il primo passo per chiedere i tuoi dati. Le relazioni sono governate, quindi approvarne una cambia quali query sono lecite: un ruolo che può fare join solo lungo relazioni approvate potrà ora farli attraverso questa. Una richiesta di relazione richiede due approvazioni prima di poter essere eseguita. Approvala, eseguila o rifiutala con un motivo tratto da un elenco fisso; le richieste risolte passano alla scheda Risolte."
       },
       "stepQualityTable": {
         "title": "Un verificatore di qualità è semplicemente un'origine",

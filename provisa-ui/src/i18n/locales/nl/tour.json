@@ -169,7 +169,7 @@
       },
       "stepRequests": {
         "title": "Relatieverzoeken",
-        "description": "✋ Een relatieverzoek heeft twee goedkeuringen nodig voordat het kan worden uitgevoerd. Keur het goed, voer het uit of wijs het af met een reden uit een vaste lijst; afgehandelde verzoeken gaan naar het tabblad Afgehandeld."
+        "description": "✋ Dit verzoek komt van iemand die zelf geen relaties mag aanmaken, vaak van buiten uw domein, en die zijn tabellen aan de uwe wil koppelen – meestal de eerste stap om uw data op te vragen. Relaties worden bestuurd, dus een goedkeuring verandert welke query's geldig zijn: een rol die alleen langs goedgekeurde relaties mag joinen, kan nu ook via deze relatie joinen. Een relatieverzoek heeft twee goedkeuringen nodig voordat het kan worden uitgevoerd. Keur het goed, voer het uit of wijs het af met een reden uit een vaste lijst; afgehandelde verzoeken gaan naar het tabblad Afgehandeld."
       },
       "stepQualityTable": {
         "title": "Een kwaliteitschecker is gewoon een bron",
