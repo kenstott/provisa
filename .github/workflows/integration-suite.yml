@@ -102,6 +102,36 @@ jobs:
           uv sync --frozen --extra dev
           uv pip install -e "provisa-client/[dev]" -q
 
+      # tests/conftest.py fetches the pinned Trino plugin jars (_TRINO_PLUGINS at
+      # _TRINO_PLUGIN_VERSION) from Maven Central at collection; a refused fetch there ends the lane
+      # before any test runs. The jars are cached by that pin: restored here, saved after the lane
+      # whatever its outcome once every jar is present, so Maven Central is hit once per pin.
+      - &trino-plugin-pin
+        name: Trino plugin pin
+        id: trino-pin
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import ast
+          tree = ast.parse(open("tests/conftest.py").read())
+          pins = {
+              t.id: ast.literal_eval(n.value)
+              for n in tree.body if isinstance(n, ast.Assign)
+              for t in n.targets if isinstance(t, ast.Name)
+              and t.id in ("_TRINO_PLUGIN_VERSION", "_TRINO_PLUGINS")
+          }
+          version = pins["_TRINO_PLUGIN_VERSION"]
+          print(f"version={version}")
+          print("jars=" + " ".join(f"trino/plugins/{n}/{n}-{version}.jar" for n in pins["_TRINO_PLUGINS"]))
+          EOF
+
+      - &restore-trino-plugins
+        name: Restore Trino plugins
+        id: trino-plugins
+        uses: actions/cache/restore@v4
+        with:
+          path: trino/plugins/trino-*
+          key: trino-plugins-${{ steps.trino-pin.outputs.version }}
+
       - &lane-key
         name: Lane cache key
         id: key
@@ -162,6 +192,24 @@ jobs:
           path: ~/images.tar.zst
           key: images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}
 
+      - &trino-plugins-fetched
+        name: Trino plugins fetched
+        id: trino-plugins-fetched
+        if: always() && steps.trino-plugins.outputs.cache-hit != 'true'
+        run: |
+          for jar in ${{ steps.trino-pin.outputs.jars }}; do
+            if [ ! -s "$jar" ]; then echo "present=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          done
+          echo "present=true" >> "$GITHUB_OUTPUT"
+
+      - &cache-trino-plugins
+        name: Cache Trino plugins
+        if: always() && steps.trino-plugins-fetched.outputs.present == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: trino/plugins/trino-*
+          key: trino-plugins-${{ steps.trino-pin.outputs.version }}
+
       - &upload
         name: Upload results
         if: always()
@@ -184,6 +232,9 @@ jobs:
       - *install-uv
       - *install-deps
 
+      - *trino-plugin-pin
+      - *restore-trino-plugins
+
       - name: Install minikube and helm
         run: |
           curl -fsSLo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
@@ -199,6 +250,9 @@ jobs:
       - name: Run lane
         run: |
           uv run python scripts/ci/run_lane.py cluster --junitxml results/cluster/junit.xml
+
+      - *trino-plugins-fetched
+      - *cache-trino-plugins
 
       - name: Upload results
         if: always()
@@ -257,6 +311,9 @@ jobs:
       - *install-uv
       - *install-deps
 
+      - *trino-plugin-pin
+      - *restore-trino-plugins
+
       # Every credential the lane needs, checked before anything runs: a missing one fails the lane
       # by name rather than surfacing as a skipped test.
       - name: Credentials present
@@ -289,6 +346,9 @@ jobs:
 
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py warehouse --junitxml results/warehouse/junit.xml
+
+      - *trino-plugins-fetched
+      - *cache-trino-plugins
 
       - name: Upload results
         if: always()
