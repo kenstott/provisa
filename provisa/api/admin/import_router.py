@@ -256,6 +256,15 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
             409, "import.no_active_org", "no org is bound to this request; sign in to an org first"
         )
 
+    from provisa.api.admin.capabilities import has_capability_request
+    from provisa.security.sensitive import SENSITIVE_DATA, config_changes, refusal
+
+    if not has_capability_request(request, SENSITIVE_DATA):  # REQ-1943
+        async with state.model_db.acquire() as conn:
+            changes = await config_changes(conn, config)
+        if changes:
+            raise ApiError(403, "import.sensitive_data_required", refusal(changes))
+
     await apply_configuration(config)
 
     log.info(

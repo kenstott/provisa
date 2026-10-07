@@ -20,8 +20,9 @@ A change of data mode that changes row keys -- to or from Test (synthetic), or r
 discards the environment's change log, and is refused unless the caller confirms it. A change
 between Inherit and Test (fake) keeps it.
 
-Test (fake) never shows a column tagged pii unless that column declares a fake: entering it, and
-every request into it, is refused while any pii column has none (:func:`uncovered_pii`).
+Test (fake) never shows a sensitive column (REQ-1943: one carrying a tag with the Sensitive data
+option, pii among them) unless that column declares a fake: entering it, and every request into
+it, is refused while any sensitive column has none (:func:`uncovered_sensitive`).
 
 Each function here acts on an environment from outside its runtime, so it names the environment's
 schema in every statement.
@@ -50,9 +51,6 @@ from provisa.core.env_classes import (
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
-
-#: The tag a column is personal data by (REQ-1494, REQ-1943).
-PII_TAG = "pii"
 
 TEST_MODES = (TEST_FAKE, TEST_SYNTHETIC)
 
@@ -124,12 +122,15 @@ async def set_bindings(
     return ids
 
 
-async def uncovered_pii(conn: "Connection", schema: str) -> list[str]:
-    """Every column tagged pii that declares no fake, as ``table.column``, in the environment
-    whose schema is ``schema``: what Test (fake) would show real (REQ-1942)."""
+async def uncovered_sensitive(conn: "Connection", schema: str) -> list[str]:
+    """Every sensitive column that declares no fake, as ``table.column``, in the environment whose
+    schema is ``schema``: what Test (fake) would show real (REQ-1942, REQ-1943)."""
+    from provisa.security.sensitive import sensitive_tag_ids
+
     rt = _table("registered_tables", schema)
     tc = _table("table_columns", schema)
     ta = _table("tag_assignments", schema)
+    sensitive = await sensitive_tag_ids(conn, _table("tags", schema))
     result = await conn.execute_core(
         select(rt.c.table_name, ta.c.column_name)
         .select_from(
@@ -137,25 +138,30 @@ async def uncovered_pii(conn: "Connection", schema: str) -> list[str]:
                 tc, (tc.c.table_id == ta.c.table_id) & (tc.c.column_name == ta.c.column_name)
             )
         )
-        .where(ta.c.object_type == "column", ta.c.base_tag_id == PII_TAG, tc.c.fake.is_(None))
+        .where(
+            ta.c.object_type == "column",
+            ta.c.base_tag_id.in_(sorted(sensitive)),
+            tc.c.fake.is_(None),
+        )
     )
     return sorted({f"{t}.{c}" for t, c in result.fetchall()})
 
 
-def pii_refusal(env: str, columns: list[str]) -> str:
-    """The refusal of Test (fake) while ``columns`` -- pii with no fake -- would show real."""
+def sensitive_refusal(env: str, columns: list[str]) -> str:
+    """The refusal of Test (fake) while ``columns`` -- sensitive, with no fake -- would show
+    real."""
     return (
-        f"environment {env!r} is Test (fake), and these columns are tagged pii and declare no "
-        f"fake, so they would show real values: {', '.join(columns)}. Declare a fake on each "
-        f"(a holder of the pii right can), or choose another data mode."
+        f"environment {env!r} is Test (fake), and these sensitive columns declare no fake, so "
+        f"they would show real values: {', '.join(columns)}. A holder of the sensitive_data right "
+        f"can declare a fake on each; or choose another data mode."
     )
 
 
-async def refuse_uncovered_pii(conn: "Connection", schema: str, env: str) -> None:
-    """Refuse Test (fake) in ``env`` while a pii column declares no fake."""
-    columns = await uncovered_pii(conn, schema)
+async def refuse_uncovered_sensitive(conn: "Connection", schema: str, env: str) -> None:
+    """Refuse Test (fake) in ``env`` while a sensitive column declares no fake."""
+    columns = await uncovered_sensitive(conn, schema)
     if columns:
-        raise DataChoiceRefused(pii_refusal(env, columns))
+        raise DataChoiceRefused(sensitive_refusal(env, columns))
 
 
 async def faked_column_count(conn: "Connection", schema: str) -> int:

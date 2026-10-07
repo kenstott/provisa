@@ -459,6 +459,8 @@ tags = Table(
     Column("expires_policy", Text, nullable=False, server_default="optional"),
     # REQ-1467: whether assignments carry a "{tag}:{value}" parameter.
     Column("param_policy", Text, nullable=False, server_default="none"),
+    # REQ-1943: the Sensitive data option.
+    Column("sensitive", Boolean, nullable=False, server_default=false()),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "reason_policy IN ('hidden', 'optional', 'required')",

@@ -761,6 +761,9 @@ async def _dataset_tables(
         relationships = await fetch_relationships(conn)
         ctx = state.contexts[PROFILE_ROLE]
         metas = {tm.table_id: tm for tm in ctx.tables.values()}
+        from provisa.security.sensitive import sensitive_tag_ids
+
+        sensitive = await sensitive_tag_ids(conn)  # REQ-1943
         out = []
         for t in row.tables:
             reg = registered.get(t.table_id)
@@ -798,7 +801,8 @@ async def _dataset_tables(
                     ),
                     scale=t.scale if t.scale is not None else row.scale,
                     profile=profile,
-                    pii=frozenset(c for c, tagged in tags.items() if "pii" in tagged),
+                    # REQ-1943: its sensitive columns -- those carrying a sensitive tag.
+                    pii=frozenset(c for c, tagged in tags.items() if tagged & sensitive),
                     # REQ-1494, REQ-1939: what generates each column -- its synthetic rule, else
                     # its fake.
                     fakes={
@@ -1127,6 +1131,11 @@ async def generate(state: Any, dataset_id: str) -> None:
     landed: list[str] = []  # the real samples landed for the closeness check, dropped below (W1)
     try:
         tables, relationships, registered = await _dataset_tables(state, row)
+        from provisa.core.env_classes import TEST_SYNTHETIC
+        from provisa.synthetic.plan import refuse_copied_sensitive
+
+        if state._active_runtime().data_mode == TEST_SYNTHETIC:
+            refuse_copied_sensitive(tables)  # REQ-1943
         edges = edges_of(relationships)
         measured_conditions = [c for c in row.fanout_conditions if c.count == {"measured": True}]
         budget = measurer = None

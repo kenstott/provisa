@@ -154,7 +154,7 @@ def test_the_detail_shows_each_sources_binding_and_a_change_of_keys_asks_to_conf
     assert detail["parent"] == "prod" and detail["data_mode"] == "unbound"
     assert detail["mutation_handling"] == "refused"
     assert {"id": "sales-pg", "type": "postgresql", "binding": "unbound"} in detail["sources"]
-    assert detail["test_data"]["pii_without_fake"] == ["orders.region"]
+    assert detail["test_data"]["sensitive_without_fake"] == ["orders.region"]
     status, body = _call(
         boot,
         "PATCH",

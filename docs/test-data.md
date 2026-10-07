@@ -46,9 +46,23 @@ Changing an environment's data choices (its data mode, its sources' bindings, it
 
 Creating an environment as Inherit, or switching one to Inherit, also needs the right to read the parent's data. The change is audited with the real data it makes visible and how many members can see it.
 
+### Sensitive columns
+
+A tag definition has a **Sensitive data** option. A column carrying any tag with it set is a sensitive column. The built-in `pii` tag has the option set, and it cannot be cleared. You can set it on tags of your own, such as `mnpi`. Sensitivity is never passed on: a view's column or a calculated column derived from a sensitive column is sensitive only if you tag it.
+
+The `sensitive_data` right governs every way a sensitive column's values are revealed or hidden, in every environment, `prod` included:
+
+- adding or removing a sensitive tag on a column;
+- setting or clearing the Sensitive data option on a tag;
+- changing a sensitive column's role masks, fake, synthetic rule or column grants.
+
+`org_admin` holds it by default; grant it to a data steward role. No developer holds it. Role masks on columns that are not sensitive need `masking_config`, and fakes and synthetic rules on them are open to anyone who may edit the table.
+
+In a Test (synthetic) environment, a sensitive column may not take a rule that copies real values into the generated rows, such as `categories()` drawn from the profile, or `profile()`.
+
 ### Test (fake) and sensitive columns
 
-A Test (fake) environment never shows a sensitive column unless that column declares a fake. While any such column has no fake, creating or switching to Test (fake) is refused, and so is every request into a Test (fake) environment. The refusal names the columns. A holder of the sensitive data right can declare their fakes.
+A Test (fake) environment never shows a sensitive column unless that column declares a fake. While any such column has no fake, creating or switching to Test (fake) is refused, and so is every request into a Test (fake) environment. The refusal names the columns. A holder of the `sensitive_data` right can declare their fakes.
 
 ### Mutation handling
 

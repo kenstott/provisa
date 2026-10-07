@@ -226,14 +226,37 @@ def _key_column(
     return ColumnPlan(name, typ, "text", key=True, key_shape=prof.shapes[0][0])
 
 
+def copies_real_values(kind: FakeKind) -> bool:
+    """Whether generating by ``kind`` writes real values into the generated rows: a categories()
+    drawing its values from the profile, or a profile() fake (REQ-1943)."""
+    from provisa.fakes.kinds import Profile
+
+    return isinstance(kind, Profile) or (isinstance(kind, Categories) and not kind.values)
+
+
 def check_pii(tables: list[DatasetTable]) -> None:
-    """Refuse generating any column tagged pii with neither a fake nor a synthetic rule, naming
-    every one: its values cannot be generated from its profile (REQ-1939, REQ-1494)."""
+    """Refuse generating a sensitive column (REQ-1943: one carrying a tag with the Sensitive data
+    option, pii among them) that declares neither a fake nor a synthetic rule, naming every one:
+    its values cannot be generated from its profile (REQ-1939, REQ-1494)."""
     undeclared = sorted(f"{t.name}.{c}" for t in tables for c in t.pii if c not in t.fakes)
     if undeclared:
         raise DatasetRefused(
-            "these columns are tagged pii and declare neither a fake nor a synthetic rule, so their "
+            "these columns are sensitive and declare neither a fake nor a synthetic rule, so their "
             "values cannot be generated: " + ", ".join(undeclared) + "; declare one for each"
+        )
+
+
+def refuse_copied_sensitive(tables: list[DatasetTable]) -> None:
+    """In a Test (synthetic) environment, refuse a sensitive column whose rule copies real values
+    into the generated rows, naming every one (REQ-1943)."""
+    copying = sorted(
+        f"{t.name}.{c}" for t in tables for c in t.pii if copies_real_values(t.fakes[c])
+    )
+    if copying:
+        raise DatasetRefused(
+            "these columns are sensitive and their rule copies real values into the generated "
+            "rows: " + ", ".join(copying) + "; a holder of the sensitive_data right can give each "
+            "a rule that names its values or generates them"
         )
 
 

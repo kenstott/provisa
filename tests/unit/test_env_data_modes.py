@@ -19,7 +19,7 @@ from __future__ import annotations
 import pytest
 
 from provisa.core.env_classes import landing_binding
-from provisa.core.env_data import DataChoiceRefused, pii_refusal, transition
+from provisa.core.env_data import DataChoiceRefused, sensitive_refusal, transition
 
 
 @pytest.mark.parametrize(
@@ -71,7 +71,8 @@ def test_only_inheriting_needs_the_right_to_read_the_parent():
     assert not transition("inherit", "unbound").reads_parent
 
 
-def test_the_pii_refusal_names_every_uncovered_column():
-    message = pii_refusal("qa", ["customers.email", "customers.name"])
+def test_the_sensitive_refusal_names_every_uncovered_column():
+    message = sensitive_refusal("qa", ["customers.email", "customers.name"])
     assert "customers.email, customers.name" in message
     assert "'qa' is Test (fake)" in message
+    assert "sensitive_data" in message

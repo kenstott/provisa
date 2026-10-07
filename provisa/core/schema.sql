@@ -496,7 +496,9 @@ CREATE TABLE IF NOT EXISTS tags (
     -- REQ-1467: whether assignments of this tag carry a "{tag}:{value}" parameter. No
     -- 'optional': a bare `entity` beside `entity:customer` would need a reading, and the only
     -- reading available is a guessed entity type.
-    param_policy   TEXT NOT NULL DEFAULT 'none' CHECK (param_policy IN ('none', 'required'))
+    param_policy   TEXT NOT NULL DEFAULT 'none' CHECK (param_policy IN ('none', 'required')),
+    -- REQ-1943: the Sensitive data option: a column carrying this tag is a sensitive column.
+    sensitive      BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- REQ-1467: the permitted parameter values for a parameterized tag. Its own table rather than a
@@ -1250,7 +1252,7 @@ VALUES (
       "approve_view","approve_relationship","access_config","user_management",
       "masking_config","column_grant","view_governance","query_development",
       "full_results","write","usage","org_settings","observability",
-      "environment_management","environment_switch","environment_data",
+      "environment_management","environment_switch","environment_data","sensitive_data",
       "glossary_read","glossary_rw","org_glossary_rw",
       "data_product_read","data_product_rw"]'::jsonb,
     '["*"]'::jsonb,
@@ -1302,8 +1304,9 @@ ON CONFLICT (id) DO NOTHING;
 -- make every capability added later invisible to them until someone remembered this row; taking
 -- away is the direction that stays correct.
 --
--- Five rights are withheld, each because it reaches something the environment does not contain
--- (environment_data, REQ-1942: a visitor's environment's data is the invitation's choice):
+-- Six rights are withheld, each because it reaches something the environment does not contain
+-- (environment_data, REQ-1942: a visitor's environment's data is the invitation's choice;
+-- sensitive_data, REQ-1943: the sample's sensitive columns stay as the org declared them):
 -- environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin is
 -- pointless against a role that can name another); environment_management spends the org's plan
 -- ceiling and drops other environments' schemas; user_management would let a visitor confer roles
@@ -1316,7 +1319,7 @@ ON CONFLICT (id) DO NOTHING;
 -- can do everything the product does except reach past the environment it was minted in and write
 -- back to the shared sample sources it points at -- viewing settings and telemetry is not that.
 --
--- REQ-1602/REQ-1608: four of the five are DEMONSTRATED rather than merely absent. A visitor is
+-- REQ-1602/REQ-1608: five of the six are DEMONSTRATED rather than merely absent. A visitor is
 -- being shown the product, so the surfaces those rights open stay on the page -- disabled, and
 -- badged as belonging to the production system. Withholding them by hiding them would make the
 -- sandbox look like a smaller product instead of the same one with the org's own controls held
@@ -1330,7 +1333,7 @@ VALUES (
       "create_view","data_product_read","data_product_rw","full_results","glossary_read",
       "glossary_rw","masking_config","observability","org_settings","query_development",
       "source_registration","table_registration","usage","view_governance","write"]'::jsonb,
-    '["environment_data","environment_management","environment_switch","org_glossary_rw"]'::jsonb,
+    '["environment_data","environment_management","environment_switch","org_glossary_rw","sensitive_data"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
@@ -1341,9 +1344,9 @@ ON CONFLICT (id) DO NOTHING;
 -- release of this same reconcile left with `user_management`, `org_settings` or `observability`
 -- still in it.
 UPDATE roles
-SET demonstrated = '["environment_data","environment_management","environment_switch","org_glossary_rw"]'::jsonb
+SET demonstrated = '["environment_data","environment_management","environment_switch","org_glossary_rw","sensitive_data"]'::jsonb
 WHERE id = 'sandbox'
-  AND demonstrated <> '["environment_data","environment_management","environment_switch","org_glossary_rw"]'::jsonb;
+  AND demonstrated <> '["environment_data","environment_management","environment_switch","org_glossary_rw","sensitive_data"]'::jsonb;
 
 UPDATE roles
 SET capabilities = (SELECT jsonb_agg(DISTINCT v ORDER BY v)
@@ -1397,6 +1400,12 @@ UPDATE roles SET capabilities = capabilities || '["environment_data"]'::jsonb
 WHERE id = 'org_admin'
   AND org_id IS NULL
   AND NOT capabilities @> '["environment_data"]'::jsonb;
+
+-- REQ-1943: sensitive_data -- revealing or hiding a sensitive column -- on the same terms.
+UPDATE roles SET capabilities = capabilities || '["sensitive_data"]'::jsonb
+WHERE id = 'org_admin'
+  AND org_id IS NULL
+  AND NOT capabilities @> '["sensitive_data"]'::jsonb;
 
 -- REQ-1297: the role ids 'admin' and 'superadmin' are retired. Rewrite existing assignments naming
 -- them to platform_admin, then drop the rows, so nothing resolves them afterward. The rewrite runs

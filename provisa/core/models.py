@@ -548,6 +548,9 @@ class Tag(BaseModel):  # REQ-1373, REQ-1375
     # The permitted parameter values are not here — they are maintainer-editable data in the
     # tag_param_values table, so a code-defined tuple would be a second, stale source.
     param_policy: str = "none"
+    # REQ-1943: the Sensitive data option. A column carrying a tag with it set is a sensitive
+    # column, whose hiding only a holder of the sensitive_data right changes.
+    sensitive: bool = False
 
 
 # REQ-1375: the system tags are code-defined intrinsics — present in EVERY install, never
@@ -574,6 +577,7 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
         applies_to=["column"],
         is_system=True,
         expires_policy="hidden",  # pii does not lapse
+        sensitive=True,  # REQ-1943: set, and locked -- a system tag is never redefined
     ),
     Tag(
         id="deprecated",

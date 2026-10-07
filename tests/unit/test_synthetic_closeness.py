@@ -351,7 +351,10 @@ async def test_the_real_samples_are_dropped_when_generation_fails(monkeypatch):
     monkeypatch.setattr(run, "_closeness_of", closeness_of)
     monkeypatch.setattr(run, "_write_table", write_table)
     monkeypatch.setattr(run, "_drop_samples", drop_samples)
-    state = SimpleNamespace(model_db=SimpleNamespace(acquire=acquire))
+    state = SimpleNamespace(
+        model_db=SimpleNamespace(acquire=acquire),
+        _active_runtime=lambda: SimpleNamespace(data_mode="inherit"),
+    )
     with pytest.raises(RuntimeError, match="refused the write"):
         await run.generate(state, "d")
     assert dropped == [("s", ["__closeness__public__t"])]

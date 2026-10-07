@@ -493,16 +493,16 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
     if body.data_mode == TEST_FAKE:
         # REQ-1942: the new environment holds the parent's model, so its sensitive columns are
         # the parent's; one with no fake would show real values.
-        from provisa.core.env_data import pii_refusal, uncovered_pii
+        from provisa.core.env_data import sensitive_refusal, uncovered_sensitive
         from provisa.core.environments import org_schema
 
         async with _pool().acquire() as conn:
-            uncovered = await uncovered_pii(conn, org_schema(org_id, body.from_env))
+            uncovered = await uncovered_sensitive(conn, org_schema(org_id, body.from_env))
         if uncovered:
             raise ApiError(
                 422,
                 "environments.data_refused",
-                pii_refusal(body.name, uncovered),
+                sensitive_refusal(body.name, uncovered),
                 org=org_id,
                 env=body.name,
             )

@@ -102,6 +102,10 @@ _ORG_ADMIN_CAPABILITIES: list[str] = [
     # org_admin ALONE: a developer switching an environment to Test (fake) with no fakes declared
     # would expose real data.
     "environment_data",
+    # REQ-1943: revealing or hiding a sensitive column -- its sensitive tags, the Sensitive data
+    # option on a tag, its role masks, fake, synthetic rule and column grants. org_admin by
+    # default, meant to be granted to a data steward; no developer holds it.
+    "sensitive_data",
     # REQ-1590: the glossary's two rights. Reading a term is not administering the org, so
     # every seeded role reads; curation stays with the roles that own the model.
     "glossary_read",
@@ -133,6 +137,7 @@ _SANDBOX_DENIED: frozenset[str] = frozenset(
         "environment_switch",
         "environment_management",
         "environment_data",  # REQ-1942: a visitor's environment's data is the invitation's choice
+        "sensitive_data",  # REQ-1943: the sample's sensitive columns stay as the org declared them
         "user_management",
         "org_glossary_rw",
     }
@@ -189,8 +194,9 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     # make every new capability invisible to them until someone remembered to add it here; taking
     # away is the direction that stays correct.
     #
-    # Five rights are withheld, each because it reaches something the environment does not contain
-    # (environment_data, REQ-1942: a visitor's environment's data is the invitation's choice):
+    # Six rights are withheld, each because it reaches something the environment does not contain
+    # (environment_data, REQ-1942: a visitor's environment's data is the invitation's choice;
+    # sensitive_data, REQ-1943: the sample's sensitive columns stay as the org declared them):
     # environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin
     # would be pointless against a role that could name another); environment_management would spend
     # the org's plan ceiling and can drop another environment's schemas; user_management would let a
@@ -466,6 +472,10 @@ async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy:
             if role_id == "org_admin" and "environment_data" not in caps:
                 caps.add("environment_data")
                 changed = True
+            # REQ-1943: and, by default, alone reveals or hides a sensitive column.
+            if role_id == "org_admin" and "sensitive_data" not in caps:
+                caps.add("sensitive_data")
+                changed = True
             # REQ-1592: org_admin alone owns the org's glossary — see the seed table above.
             if role_id == "org_admin" and "org_glossary_rw" not in caps:
                 caps.add("org_glossary_rw")
@@ -593,11 +603,14 @@ async def apply_tenancy_role_grants(  # REQ-1337
                 f"'[\"{right}\"]'::jsonb"
                 f" WHERE id IN ('org_admin', 'developer') AND NOT capabilities ? '{right}'"
             )
-        # REQ-1942: changing an environment's data choices is org_admin's alone.
-        await conn.execute(
-            "UPDATE roles SET capabilities = capabilities || '[\"environment_data\"]'::jsonb"
-            " WHERE id = 'org_admin' AND NOT capabilities ? 'environment_data'"
-        )
+        # REQ-1942, REQ-1943: an environment's data choices and a sensitive column's hiding are
+        # org_admin's by default.
+        for right in ("environment_data", "sensitive_data"):
+            await conn.execute(
+                "UPDATE roles SET capabilities = capabilities || "
+                f"'[\"{right}\"]'::jsonb"
+                f" WHERE id = 'org_admin' AND NOT capabilities ? '{right}'"
+            )
         # REQ-1590: the glossary's two rights, on the same terms as the seed — every system role
         # reads, and curation stays with the roles that own the model. Re-asserted for the same
         # reason as the rights above: an org whose role rows predate REQ-1590 keeps them otherwise,

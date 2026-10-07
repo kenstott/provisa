@@ -1262,13 +1262,13 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     faking = runtime.data_mode == TEST_FAKE
     runtime.data_refusal = None
     if faking:
-        from provisa.core.env_data import pii_refusal, uncovered_pii
+        from provisa.core.env_data import sensitive_refusal, uncovered_sensitive
         from provisa.core.environments import org_schema
         from provisa.core.request_context import require_current_org
 
-        uncovered = await uncovered_pii(conn, org_schema(require_current_org(), runtime.env))
+        uncovered = await uncovered_sensitive(conn, org_schema(require_current_org(), runtime.env))
         if uncovered:
-            runtime.data_refusal = pii_refusal(runtime.env, uncovered)
+            runtime.data_refusal = sensitive_refusal(runtime.env, uncovered)
     condition = _table_columns_t.c.mask_type.is_not(None)
     if faking:
         condition = condition | _table_columns_t.c.fake.is_not(None)

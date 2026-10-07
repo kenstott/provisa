@@ -592,6 +592,7 @@ class Query:  # REQ-021, REQ-042
                 derived=bool(r["derived"]),
                 param_policy=r["param_policy"],
                 param_values=by_tag.get(r["id"], []),
+                sensitive=bool(r["sensitive"]),
             )
             for r in rows
         ]

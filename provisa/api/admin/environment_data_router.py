@@ -104,7 +104,7 @@ async def _visible(org_id: str, env: str) -> dict[str, Any]:
 @router.get("/{name}/detail")
 async def environment_detail(request: Request, org_id: str, name: str) -> dict:
     """The environment's detail (REQ-1942): its parent, data mode, read-only or read-write, each
-    source's binding, and its test data -- the faked column count and the pii columns with no
+    source's binding, and its test data -- the faked column count and the sensitive columns with no
     fake, or the synthetic dataset's status. Prod has no data mode: it is always real."""
     await _member(request, org_id, MANAGE_CAPABILITY)
     await _confined(request, org_id, name)
@@ -113,7 +113,7 @@ async def environment_detail(request: Request, org_id: str, name: str) -> dict:
     async with _pool().acquire() as conn:
         bindings = await env_data.source_bindings(conn, schema)
         faked = await env_data.faked_column_count(conn, schema)
-        uncovered = await env_data.uncovered_pii(conn, schema)
+        uncovered = await env_data.uncovered_sensitive(conn, schema)
     return {
         "name": name,
         "parent": row["parent"],
@@ -122,7 +122,7 @@ async def environment_detail(request: Request, org_id: str, name: str) -> dict:
         "sources": bindings,
         "test_data": {
             "faked_columns": faked,
-            "pii_without_fake": uncovered,
+            "sensitive_without_fake": uncovered,
             "synthetic": {
                 "dataset": row["synthetic_dataset"],
                 "status": row["data_status"],
@@ -139,7 +139,7 @@ async def edit_data_choices(
 ) -> dict:
     """Change the environment's data mode and whether it takes writes (REQ-1942). Inherit and
     Unbound set every source's binding; the Test modes leave each as it is. Test (fake) is refused
-    while a pii column has no fake. A change to or from Test (synthetic) discards the change log
+    while a sensitive column has no fake. A change to or from Test (synthetic) discards the change log
     and is refused without ``confirm_discard``."""
     await _confined(request, org_id, name)
     actor = await _member(request, org_id, DATA_CAPABILITY)
@@ -182,7 +182,7 @@ async def edit_data_choices(
         async with _pool().acquire() as conn, conn.transaction():
             try:
                 if body.data_mode == TEST_FAKE:
-                    await env_data.refuse_uncovered_pii(conn, schema, name)
+                    await env_data.refuse_uncovered_sensitive(conn, schema, name)
                 if step.binding is not None:
                     await env_data.set_bindings(conn, schema, step.binding, None)
                     connectivity = True

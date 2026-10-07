@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
 from provisa.compiler.sql_types import key_list
 from provisa.core.paging import stored_paging
+from provisa.security.sensitive import SENSITIVE_DATA
 from provisa.core.repositories import rls as rls_repo
 from provisa.api.admin.capabilities import require_capability
 from provisa.api.admin.types import (
@@ -1671,9 +1672,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             reason_policy=input.reason_policy,
             expires_policy=input.expires_policy,
             param_policy=input.param_policy,
+            sensitive=input.sensitive,
         )
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            existing = await tag_repo.get(cast("Connection", conn), input.id)
+            if input.sensitive != bool(existing is not None and existing["sensitive"]):
+                # REQ-1943: setting or clearing the Sensitive data option reveals or hides every
+                # column carrying the tag.
+                require_capability(info, SENSITIVE_DATA)
             await tag_repo.upsert(cast("Connection", conn), model)
         await _refresh_config_tags()
         return MutationResult(
@@ -1702,6 +1709,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            existing = await tag_repo.get(cast("Connection", conn), id)
+            if existing is not None and existing["sensitive"]:
+                # REQ-1943: deleting a sensitive tag removes it from every column carrying it.
+                require_capability(info, SENSITIVE_DATA)
             deleted = await tag_repo.delete(cast("Connection", conn), id)
         if not deleted:
             return MutationResult(
@@ -1837,6 +1848,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.tag_param_not_allowed",
                     params={"tag": model.base_tag_id(), "value": param},
                 )
+            if tag_row["sensitive"] and input.object_type == "column":
+                # REQ-1943: a sensitive tag on a column decides how its values are hidden.
+                require_capability(info, SENSITIVE_DATA)
             if input.object_type not in list(tag_row["applies_to"] or []):
                 return MutationResult(
                     success=False,
@@ -1877,6 +1891,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return problem
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            tag_row = await tag_repo.get(cast("Connection", conn), input.tag_id)
+            if tag_row is not None and tag_row["sensitive"] and input.object_type == "column":
+                # REQ-1943: removing a sensitive tag from a column stops it being sensitive.
+                require_capability(info, SENSITIVE_DATA)
             removed = await tag_repo.unassign(
                 cast("Connection", conn), input.tag_id, model.object_key()
             )
@@ -2385,6 +2403,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _delta_refusal = table_delta_refusal(model)  # REQ-874
             if _delta_refusal is not None:
                 return _delta_refusal
+            from provisa.api.admin.capabilities import has_capability
+            from provisa.security.sensitive import refuse_unpermitted_change
+
+            _sensitive_refusal = await refuse_unpermitted_change(  # REQ-1943
+                _conn, model, holds=has_capability(info, SENSITIVE_DATA)
+            )
+            if _sensitive_refusal is not None:
+                return MutationResult(
+                    success=False, message=_sensitive_refusal, code="schema.sensitive_data_required"
+                )
             try:
                 model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
                 table_id = await table_repo.upsert(_conn, model)
