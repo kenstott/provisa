@@ -129,10 +129,6 @@ export const SOURCE_TYPES = [
   // API
   { value: "openapi", label: "REST API (OpenAPI)", category: "API", defaultPort: 443 },
   { value: "graphql", label: "GraphQL", category: "API", defaultPort: 443 },
-  // REQ-1923: a branded source — the remote GraphQL source with the system's endpoint, schema
-  // and credential handling already supplied. The user sees the brand as an ordinary type.
-  { value: "github", label: "GitHub", category: "API", defaultPort: 443 },
-  { value: "gitlab", label: "GitLab", category: "API", defaultPort: 443 },
   { value: "grpc", label: "gRPC", category: "API", defaultPort: 50051 },
   // Streaming
   { value: "kafka", label: "Kafka", category: "Streaming", defaultPort: 9092 },
@@ -149,6 +145,10 @@ export const SOURCE_TYPES = [
   // Enterprise SaaS
   { value: "sharepoint", label: "SharePoint", category: "Enterprise", defaultPort: 0 },
   { value: "salesforce", label: "Salesforce", category: "Enterprise", defaultPort: 0 }, // REQ-1946
+  // REQ-1923: a branded source — the remote GraphQL source with the system's endpoint, schema
+  // and credential handling already supplied. The user sees the brand as an ordinary type.
+  { value: "github", label: "GitHub", category: "Enterprise", defaultPort: 443 },
+  { value: "gitlab", label: "GitLab", category: "Enterprise", defaultPort: 443 },
   { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
   // Data Quality (REQ-1443) — a checker scans a governed table through Provisa's own pgwire
   // endpoint; the source itself needs no connection fields (dq/contract.py). soda is Elastic
