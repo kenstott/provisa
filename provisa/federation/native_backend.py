@@ -102,6 +102,26 @@ def _same_registry(
     return walked is not None and all(a is b for a, b in zip(walked, registry, strict=True))
 
 
+def _file_glob_tables(tables: list[Any]) -> dict[str, list[dict]]:  # REQ-788
+    """{source_id: [the file adapter's glob-table spec, ...]} for every registered table that
+    declares a ``file_glob`` -- a config Table or a registered-table row, one spec per table."""
+    by_source: dict[str, list[dict]] = {}
+    for table in tables:
+        row = table if isinstance(table, dict) else vars(table)
+        if not row.get("file_glob"):
+            continue
+        specs = by_source.setdefault(row["source_id"], [])
+        if all(spec["name"] != row["table_name"] for spec in specs):
+            specs.append(
+                {
+                    "name": row["table_name"],
+                    "file_glob": row["file_glob"],
+                    "source_file_column": row.get("source_file_column"),
+                }
+            )
+    return by_source
+
+
 class NativeEngineBackend(EngineBackend):
     """In-process execution terminal shared by all native engines. ``is_connected`` is inherited True
     — a native engine is live once built. Subclasses supply ``_new_runtime`` and, if the runtime
@@ -353,6 +373,10 @@ class NativeEngineBackend(EngineBackend):
         def _rs(v: Any) -> Any:
             return resolve_secrets(v) if isinstance(v, str) else v
 
+        # REQ-788: each files source's file_glob tables, read off the registered tables (the model
+        # the store holds, REQ-1919): the attach builds the adapter's merged glob table from them.
+        glob_tables = _file_glob_tables([*config.tables, *(getattr(state, "tables", None) or [])])
+
         def _attach_tbl(src: Any, schema_name: str, table_name: str) -> None:
             """Attach one table into the runtime; skip if already attached or attach fails."""
             nonlocal complete
@@ -433,7 +457,7 @@ class NativeEngineBackend(EngineBackend):
                 # REQ-788: the source's file_glob table specs drive the file adapter's merged
                 # glob tables (pgwire_replica._files_operand). Dropping them here builds the
                 # endpoint without the merged table, so the glob table is never queryable.
-                file_glob_tables=getattr(src, "file_glob_tables", []) or [],
+                file_glob_tables=glob_tables.get(src.id, []),
                 schema_name=schema_name,
                 table_name=table_name,
             )
