@@ -792,6 +792,10 @@ def test_generate_answers_the_warning_and_generates_only_once_it_is_confirmed(pr
         assert time.monotonic() < deadline, ("generation did not finish", boot.log_text()[-8000:])
         time.sleep(1)
     assert synthetic["status"] == "ready", (synthetic, boot.log_text()[-6000:])
+    # The report on the generated rows is its own outcome: here it succeeded.
+    assert synthetic["report"] == {"status": "ready", "error": None}, synthetic
+    status, report = _call(boot, "GET", "/admin/synthetic-datasets/model/report", env="twostep")
+    assert status == 200 and report, report
     assert _one(boot, "SELECT COUNT(*) AS n FROM sales.orders", env="twostep") == 6
     assert _one(boot, "SELECT COUNT(*) AS n FROM sales.customers", env="twostep") == _CUSTOMERS // 2
 

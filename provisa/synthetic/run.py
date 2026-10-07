@@ -1291,7 +1291,7 @@ async def generate(state: Any, dataset_id: str, *, bind: Any = None) -> None:
     _require_non_prod(_env())
     async with state.model_db.acquire() as conn:
         row = await datasets.get_dataset(conn, dataset_id)
-        await datasets.set_status(conn, dataset_id, "generating", error=None)
+        await datasets.set_status(conn, dataset_id, "generating", error=None, report_error=None)
     landed: list[str] = []  # the real samples landed for the closeness check, dropped below (W1)
     try:
         tables, relationships, registered = await _dataset_tables(state, row)
@@ -1404,19 +1404,40 @@ async def generate(state: Any, dataset_id: str, *, bind: Any = None) -> None:
         await _drop_samples(state, row.store_schema, landed)
     async with state.model_db.acquire() as conn:
         await datasets.set_status(conn, dataset_id, "generated", generated_at=datetime.now(UTC))
-    if bind is not None:
-        await bind()
-    else:
+
+    async def _report() -> None:
+        extra = (
+            await _dependence_entries(state, planned, private=row.private_epsilon is not None)
+            + _condition_entries(state, planned)
+            + await _assertion_entries(row.assertions)
+            + privacy_entries(budget)
+            + close_extra
+        )
+        await report(state, dataset_id, planned, extra)
+
+    if bind is None:
         # Its tables now read their copies here: the routes are republished with the model.
         await _rebuild_schemas()
-    extra = (
-        await _dependence_entries(state, planned, private=row.private_epsilon is not None)
-        + _condition_entries(state, planned)
-        + await _assertion_entries(row.assertions)
-        + privacy_entries(budget)
-        + close_extra
-    )
-    await report(state, dataset_id, planned, extra)
+        await _report()
+        return
+    await bind()
+    try:
+        await _report()
+    except Exception as exc:  # noqa: BLE001 -- REQ-1942: see below
+        # REQ-1942: generating and reporting are two outcomes. The rows are generated and the
+        # environment's sources are bound to them, so it serves them: it is Ready. The report's
+        # failure is the report's own -- recorded here and shown as such, with no report of an
+        # earlier generation left standing in its place -- never the generation's.
+        log.exception("the report on generated dataset %s failed", dataset_id)
+        from provisa.core.schema_org import synthetic_report
+
+        async with state.model_db.acquire() as conn:
+            await conn.execute_core(
+                delete(synthetic_report).where(synthetic_report.c.dataset_id == dataset_id)
+            )
+            await datasets.set_status(
+                conn, dataset_id, "generated", report_error=f"{type(exc).__name__}: {exc}"
+            )
 
 
 async def drop(state: Any, dataset_id: str) -> None:

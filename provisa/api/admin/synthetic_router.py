@@ -205,9 +205,21 @@ async def generate_dataset(request: Request, dataset_id: str) -> dict:
 @router.get("/{dataset_id}/report")
 async def dataset_report(request: Request, dataset_id: str) -> list[dict]:
     require_capability_request(request, _RIGHT)
+    from provisa.core.schema_org import synthetic_datasets as sd
     from provisa.core.schema_org import synthetic_report as sr
 
     async with _db().acquire() as conn:
+        failed = (
+            await conn.execute_core(select(sd.c.report_error).where(sd.c.id == dataset_id))
+        ).fetchone()
+        if failed is not None and failed[0] is not None:
+            # REQ-1942: the rows were generated and are served; their report failed.
+            raise ApiError(
+                409,
+                "synthetic.report_failed",
+                f"The report on synthetic dataset {dataset_id!r} failed: {failed[0]}",
+                dataset=dataset_id,
+            )
         result = await conn.execute_core(
             select(sr).where(sr.c.dataset_id == dataset_id).order_by(sr.c.id)
         )

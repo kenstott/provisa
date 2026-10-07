@@ -389,3 +389,96 @@ async def test_closeness_settings_are_both_or_neither_and_never_private(settings
             tables=[DatasetTableRow(table_id=1, profile_env="prod", run_id="r", scale=None)],
             **settings,
         )
+
+
+async def test_a_report_that_fails_after_binding_leaves_the_dataset_generated(monkeypatch):
+    """REQ-1942: generating and reporting are two outcomes. Once the rows are written and the
+    sources bound, a report that raises does not fail the generation: the dataset stays
+    generated and the report's own error is recorded."""
+    from contextlib import asynccontextmanager
+
+    from provisa.synthetic import run
+    from provisa.synthetic.plan import PlannedTable
+
+    row = SimpleNamespace(
+        closeness_threshold=None,
+        closeness_draws=None,
+        private_epsilon=None,
+        fanout_conditions=(),
+        store_schema="s",
+        seed=1,
+        assertions=(),
+        tables=(),
+    )
+    planned = [PlannedTable(table=SimpleNamespace(table_id=1), plan=TablePlan("t", 1, ()))]
+    statuses: list = []
+    order: list[str] = []
+
+    async def get_dataset(conn, dataset_id):
+        return row
+
+    async def set_status(conn, dataset_id, status, **kw):
+        statuses.append((status, kw))
+
+    async def dataset_tables(state, r):
+        return [], [], {1: {"table_name": "t"}}
+
+    async def nothing(*a, **kw):
+        return {}
+
+    async def no_entries(*a, **kw):
+        return []
+
+    async def write_table(*a, **kw):
+        order.append("written")
+        return 1
+
+    async def bind():
+        order.append("bound")
+
+    async def report(*a, **kw):
+        order.append("reported")
+        raise RuntimeError("the generated table could not be profiled")
+
+    class _Conn:
+        async def execute_core(self, stmt):
+            return None
+
+    @asynccontextmanager
+    async def acquire():
+        yield _Conn()
+
+    monkeypatch.setattr(run.datasets, "get_dataset", get_dataset)
+    monkeypatch.setattr(run.datasets, "set_status", set_status)
+    monkeypatch.setattr(run, "_require_non_prod", lambda env: "dev")
+    monkeypatch.setattr(run, "_dataset_tables", dataset_tables)
+    monkeypatch.setattr(run, "_pinned_runs", nothing)
+    monkeypatch.setattr(run, "plan_tables", lambda *a, **kw: planned)
+    monkeypatch.setattr(run, "_generated_addresses", nothing)
+    monkeypatch.setattr(run, "_write_table", write_table)
+    monkeypatch.setattr(run, "_drop_samples", nothing)
+    monkeypatch.setattr(run, "_dependence_entries", no_entries)
+    monkeypatch.setattr(run, "_condition_entries", lambda *a, **kw: [])
+    monkeypatch.setattr(run, "report", report)
+    state = SimpleNamespace(
+        model_db=SimpleNamespace(acquire=acquire),
+        _active_runtime=lambda: SimpleNamespace(data_mode="inherit"),
+    )
+    await run.generate(state, "model", bind=bind)
+    assert order == ["written", "bound", "reported"]
+    assert [s for s, _ in statuses] == ["generating", "generated", "generated"]
+    assert statuses[0][1]["report_error"] is None
+    assert statuses[-1][1] == {
+        "report_error": "RuntimeError: the generated table could not be profiled"
+    }
+    # A generation that fails before binding is Failed, and binds nothing.
+    order.clear()
+    statuses.clear()
+
+    async def refused(*a, **kw):
+        raise RuntimeError("the store refused the write")
+
+    monkeypatch.setattr(run, "_write_table", refused)
+    with pytest.raises(RuntimeError, match="the store refused the write"):
+        await run.generate(state, "model", bind=bind)
+    assert order == [] and [s for s, _ in statuses] == ["generating", "failed"]
