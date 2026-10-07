@@ -133,6 +133,12 @@ const DATA_PRODUCTS_COLLAPSED_ROW =
 const DATA_PRODUCTS_EXPANDED_ROW =
   '[data-testid="data-products-table"] tbody tr[aria-expanded="true"]';
 
+// Rows of the Tables page by their `data-table-row` anchor (source.table). A step that opens one
+// particular table names its row: the generic first row is whatever the filter put first, and while
+// a route is still changing it can be a row of the page being left.
+const QUALITY_ROW = '[data-table-row="dq-checker.pets_scan"]';
+const PROFILER_ROW = '[data-table-row="pet-store-sqlite.pets"]';
+
 export const TOUR_STEPS: TourStep[] = [
   // ─── SPINE: the five-minute core (register a source → expose tables → query it eight ways) ───
   {
@@ -300,14 +306,15 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     // REQ-1443: the demo's checker source lands its scans as an ordinary table, so the quality
-    // contract is edited where every other table setting is. `?source=` seeds the filter box, so
-    // the first row is the checker's results table — expand it and its edit control appears.
+    // contract is edited where every other table setting is. `?source=` seeds the filter box, and
+    // the checker's results table is opened by its row anchor — expand it and its edit control
+    // appears.
     route: "/tables?source=dq-checker",
     capability: "table_registration",
     prefetch: "settings",
     element: '[data-testid="table-read-view-edit"]',
     key: "stepQualityTable",
-    clickBefore: ".data-table tbody tr.clickable",
+    clickBefore: QUALITY_ROW,
   },
   {
     // The edit form is already open from the previous step's highlight target; opening it is this
@@ -315,17 +322,17 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="dq-panel"]',
     key: "stepQualityPanel",
     clickBefore: '[data-testid="table-read-view-edit"]',
-    clickAfterNext: ".data-table tbody tr.clickable",
+    clickAfterNext: QUALITY_ROW,
   },
   {
     // REQ-1934: a table joins a Data Profiler from its editor. The profiler panel is not shown on a
-    // checker's results table, so these steps open a plain table of the demo's pet-store source.
+    // checker's results table, so these steps open the demo's plain pet-store `pets` table.
     route: "/tables?source=pet-store-sqlite",
     capability: "table_registration",
     prefetch: "settings",
     element: '[data-testid="table-read-view-edit"]',
     key: "stepProfilerTable",
-    clickBefore: ".data-table tbody tr.clickable",
+    clickBefore: PROFILER_ROW,
   },
   {
     // The edit form opens as this step's clickBefore; the fill-from-profile step's Next collapses
@@ -349,7 +356,7 @@ export const TOUR_STEPS: TourStep[] = [
     // REQ-1494: the fill-from-profile action sits with the column list's test-data mode.
     element: '[data-tour="table-columns-mode"]',
     key: "stepFakesFill",
-    clickAfterNext: ".data-table tbody tr.clickable",
+    clickAfterNext: PROFILER_ROW,
   },
   {
     // REQ-1493: an environment is read or read-write, and may be marked test data. Both are set on

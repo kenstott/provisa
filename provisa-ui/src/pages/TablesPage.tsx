@@ -148,7 +148,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [showViewForm, setShowViewForm] = useState(false);
   const [editingViewDef, setEditingViewDef] = useState<RegisteredTable | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tableSearch, setTableSearch] = useState(() => searchParams.get("source") ?? "");
+  // `?source=` seeds the filter box, and seeds it again whenever it changes while the page stays
+  // mounted (the tour moves /tables?source=dq-checker -> /tables?source=pet-store-sqlite in place).
+  const sourceParam = searchParams.get("source");
+  const [tableSearch, setTableSearch] = useState(sourceParam ?? "");
+  const [seededSource, setSeededSource] = useState(sourceParam);
+  if (sourceParam !== seededSource) {
+    setSeededSource(sourceParam);
+    setTableSearch(sourceParam ?? "");
+  }
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
   const { checkedDomains, domainsEnabled } = useDomainFilter();
@@ -848,6 +856,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 const row = (
                   <Fragment key={t.id}>
                     <ListRow
+                      // A stable per-table anchor (source.table) for tour steps that open one row.
+                      data-table-row={`${t.sourceId}.${t.tableName}`}
                       onClick={() => {
                         setExpanded(expanded === t.id ? null : t.id);
                         if (expanded === t.id) cancelEditing();
