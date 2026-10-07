@@ -22,7 +22,7 @@
       "intro": "Un modelo para sus datos, metadatos y procesamiento, siempre sincronizado y reutilizado en todas partes. Elija un tema: cada uno es un recorrido breve e independiente, y «Listo» le devuelve aquí. La brújula de la barra de herramientas vuelve a abrir este menú en cualquier momento.",
       "completed": "Completado",
       "steps": "Pasos: {{count}}",
-      "coreTour": "Iniciar el recorrido principal"
+      "coreTour": "Empezar desde el principio"
     },
     "topics": {
       "connect": {

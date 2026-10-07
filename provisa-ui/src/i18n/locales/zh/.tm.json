@@ -4886,7 +4886,7 @@
   "zh/testData.json::testData.syntheticRule": "Synthetic rule",
   "zh/testData.json::testData.unmatchedPii": "Tagged pii with no confident match, left for you: {{columns}}.",
   "zh/tour.json::tour.menu.completed": "Completed",
-  "zh/tour.json::tour.menu.coreTour": "Start the core tour",
+  "zh/tour.json::tour.menu.coreTour": "Start at the Beginning",
   "zh/tour.json::tour.menu.intro": "One model for your data, metadata and processing, kept in sync and reused everywhere. Pick a topic: each is a short tour of its own, and Done brings you back here. The compass in the toolbar reopens this menu anytime.",
   "zh/tour.json::tour.menu.steps": "Steps: {{count}}",
   "zh/tour.json::tour.menu.title": "Deep Dives",

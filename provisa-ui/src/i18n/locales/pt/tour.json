@@ -22,7 +22,7 @@
       "intro": "Um modelo para seus dados, metadados e processamento, sincronizado e reaproveitado em todo lugar. Escolha um tópico: cada um é um tour curto e independente, e Concluir leva você de volta aqui. A bússola na barra de ferramentas reabre este menu a qualquer momento.",
       "completed": "Concluído",
       "steps": "Passos: {{count}}",
-      "coreTour": "Iniciar o tour principal"
+      "coreTour": "Começar do início"
     },
     "topics": {
       "connect": {

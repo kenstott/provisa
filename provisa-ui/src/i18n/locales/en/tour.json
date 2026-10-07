@@ -22,7 +22,7 @@
       "intro": "One model for your data, metadata and processing, kept in sync and reused everywhere. Pick a topic: each is a short tour of its own, and Done brings you back here. The compass in the toolbar reopens this menu anytime.",
       "completed": "Completed",
       "steps": "Steps: {{count}}",
-      "coreTour": "Start the core tour"
+      "coreTour": "Start at the Beginning"
     },
     "topics": {
       "connect": {

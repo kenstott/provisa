@@ -22,7 +22,7 @@
       "intro": "Un modello per i tuoi dati, metadati ed elaborazione, sincronizzato e riusato ovunque. Scegli un argomento: ognuno è un breve tour a sé, e «Fine» ti riporta qui. La bussola nella barra degli strumenti riapre questo menu in qualsiasi momento.",
       "completed": "Completato",
       "steps": "Passi: {{count}}",
-      "coreTour": "Avvia il tour principale"
+      "coreTour": "Inizia dall'inizio"
     },
     "topics": {
       "connect": {

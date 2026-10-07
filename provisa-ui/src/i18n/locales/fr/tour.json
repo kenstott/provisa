@@ -22,7 +22,7 @@
       "intro": "Un modèle pour vos données, métadonnées et traitements, synchronisé et réutilisé partout. Choisissez un sujet : chacun est une courte visite à part entière, et « Terminé » vous ramène ici. La boussole de la barre d'outils rouvre ce menu à tout moment.",
       "completed": "Terminé",
       "steps": "Étapes : {{count}}",
-      "coreTour": "Lancer la visite principale"
+      "coreTour": "Commencer par le début"
     },
     "topics": {
       "connect": {

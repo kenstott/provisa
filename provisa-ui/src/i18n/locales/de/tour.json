@@ -22,7 +22,7 @@
       "intro": "Ein Modell für Ihre Daten, Metadaten und Verarbeitung, synchron gehalten und überall wiederverwendet. Wählen Sie ein Thema: Jedes ist eine kurze eigene Tour, und mit „Fertig“ kehren Sie hierher zurück. Der Kompass in der Symbolleiste öffnet dieses Menü jederzeit wieder.",
       "completed": "Abgeschlossen",
       "steps": "Schritte: {{count}}",
-      "coreTour": "Kerntour starten"
+      "coreTour": "Ganz von vorn beginnen"
     },
     "topics": {
       "connect": {

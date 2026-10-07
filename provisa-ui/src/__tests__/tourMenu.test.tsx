@@ -59,6 +59,30 @@ describe("TourMenu", () => {
     fireEvent.click(screen.getByTestId("tour-menu-core-tour"));
     expect(onCore).toHaveBeenCalledTimes(1);
   });
+
+  it("shows the core-tour button's whole label, sized to its text, in every locale", async () => {
+    render(
+      <TourMenu
+        opened
+        topics={TOPIC_IDS.map((id) => ({ id, steps: TOUR_SCOPES[id].length }))}
+        completed={[]}
+        onPick={() => {}}
+        onCore={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "Start at the Beginning" });
+    expect(button).toBe(screen.getByTestId("tour-menu-core-tour"));
+    // Mantine's label is nowrap + overflow hidden, so a shrinkable or fixed-width button clips it.
+    expect(button.style.flexShrink).toBe("0");
+    expect(button.style.width).toBe("");
+    expect(button.style.maxWidth).toBe("");
+
+    for (const lng of ["de", "ru", "fr", "es", "pt", "it", "nl", "ja", "zh", "zh-HK", "he", "hi"]) {
+      const { default: catalog } = await import(`../i18n/locales/${lng}/tour.json`);
+      expect(catalog.tour.menu.coreTour.length, lng).toBeGreaterThan(0);
+    }
+  });
 });
 
 function Compass() {
