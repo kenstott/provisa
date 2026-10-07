@@ -39,7 +39,7 @@ from provisa.compiler.sql_types import key_list
 from provisa.core.paging import stored_paging
 from provisa.security.sensitive import SENSITIVE_DATA
 from provisa.core.repositories import rls as rls_repo
-from provisa.api.admin.capabilities import require_capability
+from provisa.api.admin.capabilities import require_capability, require_right_in_domains
 from provisa.api.admin.types import (
     CalendarInput,
     ColumnAliasType,
@@ -2717,7 +2717,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # REQ-1531: an RLS rule decides who sees which rows of a domain's tables. Writing one is the
         # masking surface, and it lands in a domain — named directly for a domain-level rule, or the
         # table's own for a table-level one.
-        from provisa.api.admin.capabilities import require_capability, require_domain
+        from provisa.api.admin.capabilities import require_capability
         from provisa.api.admin.domain_guard import table_domain_by_name
         from provisa.core.models import RLSRule as RLSRuleModel
 
@@ -2726,7 +2726,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if input.action_name:  # REQ-1679: the target is a tracked function or webhook
             return await _upsert_action_rls_rule(info, input)
         if input.domain_id:
-            require_domain(info, input.domain_id)
+            require_right_in_domains(info, "masking_config", {input.domain_id})
         elif input.table_id:
             async with pool.acquire() as _gconn:
                 _dom = await table_domain_by_name(cast("Connection", _gconn), input.table_id)
@@ -2737,7 +2737,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.table_not_found",
                     params={"table": input.table_id},
                 )
-            require_domain(info, _dom)
+            require_right_in_domains(info, "masking_config", {_dom})
         # REQ-1676: the predicate is parsed and resolved against the model here, at save, so a
         # rule the administrator cannot query with is refused with the reason instead of failing
         # closed for the role at its first query.
@@ -2796,7 +2796,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         domain_id: Optional[str] = None,
         action_name: Optional[str] = None,
     ) -> MutationResult:  # REQ-1531, REQ-1679
-        from provisa.api.admin.capabilities import require_capability, require_domain
+        from provisa.api.admin.capabilities import require_capability
         from provisa.api.admin.domain_guard import table_domain
 
         require_capability(info, "masking_config")  # REQ-1531: see upsert_rls_rule
@@ -2809,11 +2809,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     getattr(state, "tracked_webhooks", None) or {}
                 ).get(action_name)
                 if action is not None and action.get("domain_id"):
-                    require_domain(info, action["domain_id"])
+                    require_right_in_domains(info, "masking_config", {action["domain_id"]})
             elif domain_id:
-                require_domain(info, domain_id)
+                require_right_in_domains(info, "masking_config", {domain_id})
             elif table_id is not None:
-                require_domain(info, await table_domain(cast("Connection", conn), table_id))
+                require_right_in_domains(
+                    info, "masking_config", {await table_domain(cast("Connection", conn), table_id)}
+                )
             deleted = await rls_repo.delete(
                 cast("Connection", conn),
                 role_id,
@@ -4046,7 +4048,6 @@ async def _upsert_action_rls_rule(
 ) -> MutationResult:  # REQ-1679
     """An RLS rule over an action's response contract: validated against the contract the way
     a table rule is validated against the table (REQ-1676), gated on the action's domain."""
-    from provisa.api.admin.capabilities import require_domain
     from provisa.api.app import state
     from provisa.api.data.action_governance import contract_columns
     from provisa.compiler.rls_validate import validate_rls_predicate
@@ -4064,7 +4065,7 @@ async def _upsert_action_rls_rule(
             params={"action": name},
         )
     if action.get("domain_id"):
-        require_domain(info, action["domain_id"])
+        require_right_in_domains(info, "masking_config", {action["domain_id"]})
     cols = contract_columns(action)
     if cols is None:
         return MutationResult(

@@ -46,6 +46,13 @@ GATE_NAMES = frozenset(
         "require_capability_request",
         "require_domain",
         "require_domain_request",
+        # REQ-1944: a governance right paired with the domains of the roles carrying it
+        "require_right_in_domains",
+        "require_right_in_domains_request",
+        "holds_right_in_domains",
+        # provisa.api.admin._hiding_guard (REQ-1944)
+        "require_table_save",
+        "require_hiding_editor_request",
         # provisa.api.admin.domain_guard
         "require_table_domain",
         # capability resolution done in-handler

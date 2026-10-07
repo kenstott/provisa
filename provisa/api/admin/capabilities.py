@@ -23,7 +23,7 @@ from provisa.security.rights import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     import strawberry
     import strawberry.types
@@ -327,3 +327,92 @@ def has_capability(info: "strawberry.types.Info", capability: str) -> bool:  # R
         return True
     except PermissionError:
         return False
+
+
+# --- REQ-1944: a governance right is exercised only in the domains of the roles that carry it ---
+
+
+def _rights_scope(identity, state, rights: "tuple[str, ...]") -> frozenset[str] | None:
+    """The domains any of ``rights`` reaches for ``identity``, ``None`` for every domain.
+
+    Paired per role (``domain_access_for_capability``), never the union over every role held:
+    a role carrying ``masking_config`` in sales plus a read-only role in finance must not resolve
+    to masking in finance (REQ-1592's composition gap, REQ-1944).
+    """
+    from provisa.core.env_authority import domains_within
+
+    claims = getattr(identity, "roles", [])
+    roles = getattr(state, "roles", {})
+    scoped: set[str] = set()
+    for right in rights:
+        scoped |= domain_access_for_capability(claims, roles, right)
+    allowed = domains_within(sorted(scoped))
+    return None if allowed is None else frozenset(allowed)
+
+
+def right_domain_refusal(  # REQ-1944
+    identity, state, rights: "str | tuple[str, ...]", domains: "Iterable[str]"
+) -> str | None:
+    """Why ``identity`` may not exercise ``rights`` (any one of them) on objects in ``domains``,
+    or None when it may.
+
+    ``domains`` are the domains of what the edit CHANGES. ``"*"`` among them names an object of
+    the whole org (a tag definition): only a right reaching every domain may change it. The
+    refusal names the domain. The dev/no-auth principal is exempt, as at every capability gate;
+    single-domain mode keeps the right check and drops the domain check.
+    """
+    from provisa.core import domain_policy
+    from provisa.security.rights import ALL_DOMAINS
+
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return None
+    wanted = (rights,) if isinstance(rights, str) else tuple(rights)
+    held = _resolved_capabilities(identity, state)
+    if not set(wanted) & held:
+        return "Missing capability: " + " or ".join(repr(r) for r in wanted)
+    if domain_policy.single_domain():
+        return None
+    allowed = _rights_scope(identity, state, wanted)
+    if allowed is None:
+        return None
+    label = " or ".join(repr(r) for r in wanted)
+    for domain_id in sorted(set(domains)):
+        if domain_id == ALL_DOMAINS:
+            return f"{label} must reach every domain to change an object of the whole org"
+        if domain_id not in allowed:
+            return f"No access to domain {domain_id!r} for {label}"
+    return None
+
+
+def require_right_in_domains(  # REQ-1944
+    info: "strawberry.types.Info", rights: "str | tuple[str, ...]", domains: "Iterable[str]"
+) -> None:
+    """GraphQL gate: :func:`right_domain_refusal` raised as ``PermissionError``."""
+    from provisa.api.app import state
+
+    refusal = right_domain_refusal(_identity_from_info(info), state, rights, domains)
+    if refusal is not None:
+        raise PermissionError(refusal)
+
+
+def holds_right_in_domains(  # REQ-1944
+    info: "strawberry.types.Info", rights: "str | tuple[str, ...]", domains: "Iterable[str]"
+) -> bool:
+    """Non-raising :func:`require_right_in_domains`."""
+    from provisa.api.app import state
+
+    return right_domain_refusal(_identity_from_info(info), state, rights, domains) is None
+
+
+def require_right_in_domains_request(  # REQ-1944
+    request, rights: "str | tuple[str, ...]", domains: "Iterable[str]"
+) -> None:
+    """REST twin of :func:`require_right_in_domains`, raising ``ApiError(403)``."""
+    from provisa.api.app import state
+    from provisa.api.errors import ApiError
+
+    refusal = right_domain_refusal(getattr(request.state, "identity", None), state, rights, domains)
+    if refusal is None:
+        return
+    code = "auth.missing_capability" if refusal.startswith("Missing") else "auth.domain_denied"
+    raise ApiError(403, code, refusal)
