@@ -70,7 +70,7 @@ Mutation handling is chosen alongside the data mode and applies to any of them. 
 
 - **Refused.** Every mutation is refused, naming the environment.
 - **Direct.** Mutations change the data, but only data the environment owns: a source bound to a database of its own. A mutation through an inherited source is refused, so an environment never writes into its parent's real data.
-- **Reversible.** Mutations are kept in the environment's own change log and the data underneath is never changed.
+- **Reversible.** Mutations are kept in the environment's own change log and the data underneath is never changed. Reads show the data with the log applied: the latest version of each row by its key, and a deleted row left out. **Reset mutations** on the environment's detail panel drops the log, returning the environment to its baseline: the parent's real rows, the generated rows, or a database of its own. Every table written this way needs a primary key. MERGE is not kept. In a Test (fake) environment a kept row is matched by its key as the environment reads it, and a written row is never faked again.
 
 A change of data mode that changes row keys (to or from Test (synthetic), or regenerating it) discards the kept mutations. The edit asks you to confirm first. A change between Inherit and Test (fake) keeps them.
 

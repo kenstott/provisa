@@ -251,5 +251,9 @@ def register(
         )
 
     @described
+    async def reset_environment_mutations(env: str, role: str | None = None) -> dict:
+        return await mt.reset_environment_mutations(*ctx(role), env)
+
+    @described
     async def export_model_config(role: str | None = None) -> dict:
         return await mt.export_model_config(*ctx(role))

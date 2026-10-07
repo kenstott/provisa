@@ -114,12 +114,15 @@ async def environment_detail(request: Request, org_id: str, name: str) -> dict:
         bindings = await env_data.source_bindings(conn, schema)
         faked = await env_data.faked_column_count(conn, schema)
         uncovered = await env_data.uncovered_sensitive(conn, schema)
+        kept = await kept_counts(conn, schema)
     return {
         "name": name,
         "parent": row["parent"],
         "data_mode": row["data_mode"],
         "mutation_handling": None if name == PROD else row["mutation_handling"],
         "sources": bindings,
+        # REQ-1942: the mutations kept in its change log, by table id, as Reset mutations drops.
+        "kept_mutations": kept,
         "test_data": {
             "faked_columns": faked,
             "sensitive_without_fake": uncovered,
@@ -203,7 +206,9 @@ async def edit_data_choices(
         await set_data(_admin_pool(), org_id, name, data_mode=body.data_mode)
         connectivity = True  # the runtime reads its data mode when it is built
         detail["data_mode"] = {"from": row["data_mode"], "to": body.data_mode}
-        detail["change_log_discarded"] = step.discards_change_log
+        detail["change_log_discarded"] = (
+            await _discard_kept(org_id, name) if step.discards_change_log else []
+        )
         if step.reads_parent:
             detail["made_visible"] = await _visible(org_id, name)
     if body.mutation_handling is not None and body.mutation_handling != row["mutation_handling"]:
@@ -352,6 +357,7 @@ async def generate_model(request: Request, org_id: str, name: str, body: Generat
             org=org_id,
             env=name,
         )
+    discarded = await _discard_kept(org_id, name)  # regenerating changes the row keys
     await set_data(
         _admin_pool(),
         org_id,
@@ -365,7 +371,7 @@ async def generate_model(request: Request, org_id: str, name: str, body: Generat
         actor,
         "environment.generate",
         name,
-        {"runs": runs, "seed": body.seed, "scale": body.scale},
+        {"runs": runs, "seed": body.seed, "scale": body.scale, "change_log_discarded": discarded},
     )
     start(
         _state(),
@@ -403,3 +409,50 @@ async def _drop_model(org_id: str, name: str, dataset_id: str) -> None:
     finally:
         reset_current_env(env_token)
         reset_current_org(org_token)
+
+
+async def kept_counts(conn: Any, schema: str) -> dict[int, int]:
+    """How many versions each table's change log keeps, by table id."""
+    import sqlalchemy as sa
+
+    from provisa.core.env_changes import log_name, logged
+
+    out: dict[int, int] = {}
+    for table_id in sorted(await logged(conn, schema)):
+        quoted = '"' + schema.replace('"', '""') + '"'
+        row = (
+            await conn.execute_core(
+                sa.text(f'SELECT COUNT(*) FROM {quoted}."{log_name(table_id)}"')
+            )
+        ).fetchone()
+        out[table_id] = int(row[0])
+    return out
+
+
+async def _discard_kept(org_id: str, name: str) -> list[int]:
+    """Drop ``name``'s kept mutations; the tables whose mutations were dropped."""
+    from provisa.core.env_changes import reset
+
+    async with _pool().acquire() as conn:
+        return await reset(conn, org_schema(org_id, name))
+
+
+@router.post("/{name}/mutations/reset")
+async def reset_mutations(request: Request, org_id: str, name: str) -> dict:
+    """Reset mutations (REQ-1942): drop the environment's kept mutations, returning it to its
+    baseline -- the parent's real rows, the generated rows, or a database of its own."""
+    await _confined(request, org_id, name)
+    actor = await _member(request, org_id, DATA_CAPABILITY)
+    await _known(org_id, name)
+    if name == PROD:
+        raise ApiError(
+            409,
+            "environments.prod_immutable",
+            f"{PROD!r} keeps no mutations: its mutations change its own data.",
+            org=org_id,
+            env=name,
+        )
+    discarded = await _discard_kept(org_id, name)
+    await _audit(org_id, actor, "environment.reset_mutations", name, {"tables": discarded})
+    refreshed = await _refresh(org_id, name, connectivity=True)
+    return {"tables": discarded, "refreshed": refreshed}

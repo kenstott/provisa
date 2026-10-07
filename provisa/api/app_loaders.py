@@ -1357,6 +1357,41 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     state.masking_rules = rules
 
 
+async def _load_kept(conn: Any) -> None:  # REQ-1942
+    """The tables of this environment with kept mutations (Reversible), each with its change log's
+    address -- the environment's schema on the control plane, which the engine reads as its
+    ``provisa_admin`` catalog -- and its primary key, published on the runtime. Prod keeps none:
+    its mutations change its own data."""
+    from provisa.api.app import state
+    from provisa.core.env_changes import log_name, logged
+    from provisa.core.environments import PROD, org_schema
+    from provisa.core.request_context import require_current_org
+
+    runtime = state._active_runtime()
+    if runtime.env == PROD:
+        runtime.kept = {}
+        return
+    schema = org_schema(require_current_org(), runtime.env)
+    tables = await logged(conn, schema)
+    kept: dict[int, tuple[str, list[str]]] = {}
+    for table_id in sorted(tables):
+        rows = (
+            await conn.execute_core(
+                select(_table_columns_t.c.column_name).where(
+                    _table_columns_t.c.table_id == table_id,
+                    _table_columns_t.c.is_primary_key.is_(True),
+                )
+            )
+        ).fetchall()
+        key = [r[0] for r in rows]
+        if not key:
+            raise RuntimeError(
+                f"table {table_id} has kept mutations but no primary key to apply them by"
+            )
+        kept[table_id] = (f'"provisa_admin"."{schema}"."{log_name(table_id)}"', key)
+    runtime.kept = kept
+
+
 async def _check_fakes(conn: Any) -> None:  # REQ-1494
     """The model's fakes, checked together as a save checks them, so a model loaded from config
     holds no fake a save would refuse."""
@@ -1554,6 +1589,7 @@ def register_role_surface(state: Any, role: dict, rls: Any) -> None:
     state.table_path_maps[role["id"]] = build_table_path_map(si)
     ctx = build_context(si)
     ctx.refusal = state._active_runtime().data_refusal  # REQ-1942
+    ctx.kept = dict(state._active_runtime().kept)  # REQ-1942
     state.contexts[role["id"]] = ctx
     state.rls_contexts[role["id"]] = rls
     # No swallow: an unmapped column type is a real gap in the proto type map, not a reason to

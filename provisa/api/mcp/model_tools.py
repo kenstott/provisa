@@ -591,6 +591,16 @@ async def generate_environment_model(
     return await _generate(request, require_active_org_id(request), env, body)
 
 
+async def reset_environment_mutations(state: Any, role: str, request: Any, env: str) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import reset_mutations
+
+    require_capability_request(request, "environment_data")
+    return await reset_mutations(request, require_active_org_id(request), env)
+
+
 # -- config ------------------------------------------------------------------------------------
 
 

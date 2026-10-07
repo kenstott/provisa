@@ -41,6 +41,7 @@ from provisa.api.app_loaders import (
     _META_TABLE_ALIAS,
     _apply_server_and_engine_config,
     _build_and_register_schemas,
+    _load_kept,
     _build_source_pools_and_enums,
     _populate_source_catalog_names,
     _init_ingest_engines,
@@ -2492,6 +2493,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         rls_rules = await _rls_repo.list_all(conn)
 
         await _load_masking_rules(conn, col_types_converted, roles, role_chains_by_id)
+        await _load_kept(conn)  # REQ-1942
         await _check_fakes(conn)  # REQ-1494
 
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(

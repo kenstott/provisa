@@ -207,7 +207,7 @@ class TestCeilingWiring:
     """REQ-005 / REQ-263(4): per-role and per-table row ceilings populated from config."""
 
     def test_role_max_rows_populates_limit_ceiling(self):
-        ctx = SimpleNamespace(tables={}, refusal=None)
+        ctx = SimpleNamespace(tables={}, refusal=None, kept={})
         gov = build_governance_context(
             "analyst", None, {}, ctx, [], role={"max_rows": 500, "domain_access": ["*"]}
         )
@@ -215,14 +215,14 @@ class TestCeilingWiring:
 
     def test_role_without_full_results_gets_default_row_limit(self, monkeypatch):
         monkeypatch.setenv("PROVISA_DEFAULT_ROW_LIMIT", "10000")
-        ctx = SimpleNamespace(tables={}, refusal=None)
+        ctx = SimpleNamespace(tables={}, refusal=None, kept={})
         gov = build_governance_context(
             "analyst", None, {}, ctx, [], role={"capabilities": [], "domain_access": ["*"]}
         )
         assert gov.limit_ceiling == 10000
 
     def test_full_results_role_is_uncapped(self):
-        ctx = SimpleNamespace(tables={}, refusal=None)
+        ctx = SimpleNamespace(tables={}, refusal=None, kept={})
         gov = build_governance_context(
             "admin",
             None,
@@ -235,12 +235,12 @@ class TestCeilingWiring:
 
     def test_missing_role_arg_gets_default_row_limit(self, monkeypatch):
         monkeypatch.setenv("PROVISA_DEFAULT_ROW_LIMIT", "10000")
-        ctx = SimpleNamespace(tables={}, refusal=None)
+        ctx = SimpleNamespace(tables={}, refusal=None, kept={})
         gov = build_governance_context("analyst", None, {}, ctx, [], role=unscoped_role("analyst"))
         assert gov.limit_ceiling == 10000
 
     def test_table_max_rows_populates_table_ceilings(self):
-        ctx = SimpleNamespace(tables={}, refusal=None)
+        ctx = SimpleNamespace(tables={}, refusal=None, kept={})
         tables = [{"id": 1, "columns": [], "max_rows": 10}]
         gov = build_governance_context(
             "analyst", None, {}, ctx, tables, role=unscoped_role("analyst")

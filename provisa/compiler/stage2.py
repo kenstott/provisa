@@ -62,6 +62,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # the engine computes them under.
     fake_columns: dict[int, dict[str, Any]] = field(default_factory=dict)
     fake_fingerprint: str | None = None
+    # REQ-1942: per table with kept mutations (a Reversible environment), its change log's
+    # address and primary key; the table is read with the log applied.
+    kept: dict[int, tuple[str, list[str]]] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -150,6 +153,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         for col_name, (rule, dtype) in col_map.items():
             gov.masking_rules[(table_id, col_name)] = (rule, dtype)
     _bind_fakes(gov)
+    gov.kept = dict(ctx.kept)  # REQ-1942
 
     # Column visibility is each column's visible_to grant and nothing above it: no capability sees
     # every column regardless (REQ-1327). The lockdown domains (ops) need an explicit grant; the
@@ -411,8 +415,14 @@ def _govern_select(
     # below reads the projection's fake.
     projected: set[int] = set()
     for tbl, tid in table_refs:
+        faked = None
         if tid is not None and tid in gov_ctx.fake_columns:
-            _project_faked(node, tbl, tid, gov_ctx)
+            faked = _project_faked(node, tbl, tid, gov_ctx)
+            projected.add(id(tbl))
+        if tid is not None and tid in gov_ctx.kept:
+            # REQ-1942: the environment's kept mutations, over the faked rows where there are
+            # fakes -- a written row is never faked again.
+            _project_kept(node, tbl, faked, tid, gov_ctx)
             projected.add(id(tbl))
 
     # --- Every other reference to a governed column (expressions, WHERE, JOIN ON, GROUP BY,
@@ -488,7 +498,7 @@ _GOVERNED = "provisa_governed"
 
 def _project_faked(
     node: exp.Select, tbl: exp.Table, tid: int, gov_ctx: GovernanceContext
-) -> None:  # REQ-1494
+) -> exp.Subquery:  # REQ-1494
     """Put the faked projection of ``tbl`` in its place in ``node``, under the same alias."""
     from provisa.compiler.naming import apply_sql_name
     from provisa.fakes.checks import family
@@ -522,6 +532,49 @@ def _project_faked(
             col.set("db", None)
             col.set("catalog", None)
     tbl.replace(subquery)
+    return subquery
+
+
+def _project_kept(
+    node: exp.Select,
+    tbl: exp.Table,
+    faked: exp.Subquery | None,
+    tid: int,
+    gov_ctx: GovernanceContext,
+) -> None:  # REQ-1942
+    """Put ``tbl`` -- or ``faked``, its faked projection already in its place -- with its change
+    log applied in its place in ``node``, under the same alias. The row filter reads the table's
+    rows and the log's versions alike."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.core.env_changes import overlay_sql
+
+    alias = _alias_for(tbl)
+    log, key = gov_ctx.kept[tid]
+    column_types = {name: dtype for name, dtype in gov_ctx.all_columns.get(tid, [])}
+    rls = gov_ctx.rls_rules.get(tid)
+    if faked is not None:
+        base = faked.this.sql(dialect="postgres")  # the row filter is inside the projection
+    else:
+        plain = tbl.copy()
+        plain.set("alias", None)
+        base = f"SELECT * FROM {plain.sql(dialect='postgres')} AS {_quote(alias)}"
+        if rls is not None:
+            base += f" WHERE {_qualify_filter(rls, alias, column_types)}"
+    sql = overlay_sql(
+        base,
+        log,
+        [apply_sql_name(k) for k in key],
+        [apply_sql_name(name) for name, _ in gov_ctx.all_columns[tid]],
+        None if rls is None else _qualify_filter(rls, "l", column_types),
+    )
+    projection = sqlglot.parse_one(f"SELECT * FROM ({sql}) AS {_quote(alias)}", read="postgres")
+    subquery = projection.args["from_"].this
+    subquery.meta[_GOVERNED] = True  # its own references are already governed
+    for col in node.find_all(exp.Column):
+        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
+            col.set("db", None)
+            col.set("catalog", None)
+    (faked if faked is not None else tbl).replace(subquery)
 
 
 def _quote(name: str) -> str:

@@ -456,6 +456,16 @@ SPECS: list[dict] = [
         ),
     },
     {
+        "name": "reset_environment_mutations",
+        "description": (
+            "REQ-1942: Reset mutations -- drop the mutations a Reversible environment keeps, "
+            "returning it to its baseline (the parent's real rows, the generated rows, or a "
+            "database of its own). Irreversible: confirm with present_choice (mode='yes_no') "
+            "first. Needs environment_data; a caller without it is refused 'Missing capability'."
+        ),
+        "input_schema": _obj({"env": {"type": "string"}}, ["env"]),
+    },
+    {
         "name": "export_model_config",
         "description": (
             "REQ-1919/REQ-1304: export the acting org's governed model as a config file (YAML): "
@@ -487,7 +497,8 @@ SYSTEM_SECTION = (
     "run_profiler, run_table_profile, decide_profile_constraint, forget_profile_constraint, "
     "export_profile_constraint, create_drift_check, create_expectation_check, set_column_fake, "
     "define_synthetic_dataset, generate_synthetic_dataset, drop_synthetic_dataset, "
-    "set_environment_data, set_source_binding, generate_environment_model "
+    "set_environment_data, set_source_binding, generate_environment_model, "
+    "reset_environment_mutations "
     "(get_environment_detail and get_environment_synthetic_plan read). Confirm with "
     "present_choice (mode='yes_no') before drop_synthetic_dataset and before set_table_profiler "
     "removes a table from its profiler. propose_fakes saves nothing: show its proposals, ask which "

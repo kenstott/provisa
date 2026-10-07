@@ -40,6 +40,31 @@ def boot():
     )
     # REQ-1942: a pii column with no fake, so Test (fake) is refused naming it.
     b._extra_config = {
+        # REQ-1942: a table a Reversible environment can keep mutations of -- its key declared,
+        # its columns writable by org_admin.
+        "tables": [
+            {
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema": "public",
+                "table": "orders",
+                "columns": [
+                    {
+                        "name": "id",
+                        "data_type": "integer",
+                        "is_primary_key": True,
+                        "visible_to": ["org_admin", "analyst"],
+                        "writable_by": ["org_admin"],
+                    },
+                    {
+                        "name": "region",
+                        "data_type": "varchar",
+                        "visible_to": ["org_admin", "analyst"],
+                        "writable_by": ["org_admin"],
+                    },
+                ],
+            }
+        ],
         "tag_assignments": [
             {
                 "tag_id": "pii",
@@ -171,3 +196,42 @@ def test_the_detail_shows_each_sources_binding_and_a_change_of_keys_asks_to_conf
     assert status == 200, body
     status, rows = _orders(boot, "detailed")
     assert status == 200 and rows["data"]["sql"] == [{"n": 2}], rows
+
+
+def _rows(b, env: str | None) -> list[dict]:
+    status, body = _call(
+        b, "POST", "/data/sql", {"sql": "SELECT id, region FROM sales.orders ORDER BY id"}, env
+    )
+    assert status == 200, body
+    return body["data"]["sql"]
+
+
+def _sql(b, env: str, sql: str) -> None:
+    status, body = _call(b, "POST", "/data/sql", {"sql": sql}, env)
+    assert status == 200, body
+
+
+def test_a_reversible_environment_keeps_its_mutations_and_resets_to_its_baseline(boot):
+    """REQ-1942: under Reversible the parent's rows are never changed; the environment reads them
+    with its kept mutations applied, and Reset mutations returns it to them."""
+    prod = _rows(boot, None)
+    _environment(boot, "kept", "inherit")
+    status, body = _call(
+        boot,
+        "PATCH",
+        f"/admin/orgs/{boot.org_id}/environments/kept/data",
+        {"mutation_handling": "reversible"},
+    )
+    assert status == 200, body
+    _sql(boot, "kept", "INSERT INTO sales.orders (id, region) VALUES (9, 'north')")
+    _sql(boot, "kept", "UPDATE sales.orders SET region = 'south' WHERE id = 1")
+    _sql(boot, "kept", "DELETE FROM sales.orders WHERE id = 2")
+    assert _rows(boot, "kept") == [{"id": 1, "region": "south"}, {"id": 9, "region": "north"}]
+    assert _rows(boot, None) == prod  # the parent's real rows are untouched
+    status, detail = _call(boot, "GET", f"/admin/orgs/{boot.org_id}/environments/kept/detail")
+    assert status == 200 and sum(detail["kept_mutations"].values()) == 3, detail
+    status, body = _call(
+        boot, "POST", f"/admin/orgs/{boot.org_id}/environments/kept/mutations/reset"
+    )
+    assert status == 200 and len(body["tables"]) == 1, body
+    assert _rows(boot, "kept") == prod

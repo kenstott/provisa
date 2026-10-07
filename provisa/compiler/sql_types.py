@@ -130,6 +130,9 @@ class CompilationContext:
     # REQ-1942: why every statement compiled for this environment is refused (a Test (fake)
     # environment showing a sensitive column with no fake); None when it serves.
     refusal: str | None = None
+    # REQ-1942: per table with kept mutations (a Reversible environment), its change log's
+    # address and primary key columns.
+    kept: dict[int, tuple[str, list[str]]] = field(default_factory=dict)
 
     # Root query field_name → TableMeta
     tables: dict[str, TableMeta] = field(default_factory=dict)

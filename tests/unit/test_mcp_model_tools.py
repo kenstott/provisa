@@ -173,6 +173,7 @@ _REFUSALS = [
     ),
     ("get_environment_synthetic_plan", {"env": "dev"}, _ENV_RIGHT),
     ("generate_environment_model", {"env": "dev"}, _DATA_RIGHT),
+    ("reset_environment_mutations", {"env": "dev"}, _DATA_RIGHT),
     ("export_model_config", {}, "user_management in acme required"),
 ]
 

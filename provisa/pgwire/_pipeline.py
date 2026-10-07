@@ -197,6 +197,9 @@ class _Plan:
     # statement with no acting principal (an unsecured Flight ticket) has no audit record.
     role_id: str | None = field(default=None)
     table_ids: tuple[int, ...] = field(default=())
+    # REQ-1942: a mutation in a Reversible environment, kept in its change log rather than run on
+    # the source (provisa.pgwire.kept_mutations). None for every other plan.
+    kept: Any = field(default=None)
     # REQ-544 (amended 2026-09-30): the request's response-cache OPT-IN (`-- @provisa cache=true`
     # / `cache_ttl=N`; GraphQL @cached on its own endpoint). False — the default — means the plan
     # neither reads nor writes the response cache. cache_ttl is the request's chosen entry
@@ -692,11 +695,6 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
             f"{kind} is refused in environment {env!r}: its mutation handling is Refused "
             "(REQ-1942). An environment_data holder can make it Reversible or Direct."
         )
-    if handling != DIRECT:
-        raise PermissionError(
-            f"{kind} is refused in environment {env!r}: its mutation handling is {handling!r}, "
-            "and mutations kept in an environment's change log are not available yet (REQ-1942)."
-        )
     target = parsed.this
     tbl = (
         target if isinstance(target, _exp.Table) else (target.find(_exp.Table) if target else None)
@@ -712,6 +710,17 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
             f"{env!r}: it is not a registered table, so which binding the write would travel "
             f"cannot be established, and a write with no established target is what REQ-1491 refuses."
         )
+    if handling != DIRECT:
+        # REQ-1942, Reversible: kept in the environment's change log, never run on the source --
+        # except an API's mutation, which cannot be kept: its effect is opaque.
+        from provisa.synthetic.env_model import api_source_types
+
+        if state.source_types.get(source_id) in api_source_types():
+            raise PermissionError(
+                f"{kind} into {tbl.name!r} is refused in environment {env!r}: its mutation "
+                f"handling is Reversible, and an API's mutation cannot be reversed (REQ-1942)."
+            )
+        return
     if getattr(state, "source_binding_env", {}).get(source_id) is None:
         # REQ-1942: a Direct mutation changes only data the environment owns -- never a source it
         # inherits, whose data is its parent's, nor one it leaves unbound.
@@ -1391,6 +1400,31 @@ async def route_governed(
     from provisa.compiler.write_admission import written_table_id
 
     _written_table_id = written_table_id(_parsed_input, governed.gov_ctx) if _is_mutation else None
+    from provisa.core.env_classes import REVERSIBLE
+
+    if _is_mutation and state._active_runtime().mutation_handling == REVERSIBLE:
+        # REQ-1942: kept in the environment's change log; the source is never written.
+        from provisa.pgwire.kept_mutations import KeptMutation
+
+        assert _written_table_id is not None
+        return _Plan(
+            route=Route.DIRECT,
+            sql=governed_semantic,
+            source_id="",
+            dialect="postgres",
+            exec_params=embedded_params,
+            audit=_audit,
+            stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
+            route_reason="kept in the environment's change log (Reversible)",
+            role_id=role_id,
+            table_ids=_table_ids,
+            kept=KeptMutation(
+                statement=governed_semantic,
+                table_id=_written_table_id,
+                role_id=role_id,
+                params=embedded_params,
+            ),
+        )
     # REQ-1897: a read whose result is rows — not a write, an EXPLAIN, or a sink delivery.
     _raw_cacheable = not _is_mutation and explain is None and deliver is None
     # REQ-544 (amended 2026-09-30): the response cache is per-request opt-in — a `-- @provisa
@@ -2783,6 +2817,11 @@ async def prepare_residency_and_check_cache(plan: _Plan, state: Any) -> QueryRes
 async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027, REQ-028
     from provisa.transpiler.router import Route
 
+    if plan.kept is not None:
+        # REQ-1942: a Reversible environment's mutation, kept in its change log.
+        from provisa.pgwire.kept_mutations import keep
+
+        return await keep(plan.kept, state)
     engine = state.federation_engine
 
     if plan.materialize is not None:

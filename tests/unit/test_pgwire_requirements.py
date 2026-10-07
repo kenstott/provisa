@@ -978,7 +978,7 @@ class TestReq586CopyFromAdmitted:
             roles={"dev": {"id": "dev", "capabilities": capabilities, "domain_access": ["*"]}},
             rls_contexts={"dev": RLSContext.empty()},
             masking_rules={},
-            contexts={"dev": SimpleNamespace(tables={}, refusal=None)},
+            contexts={"dev": SimpleNamespace(tables={}, refusal=None, kept={})},
             tables=[
                 {
                     "id": 1,
