@@ -286,3 +286,50 @@ async def test_the_mcp_data_product_tools_are_scoped_alike(plane, monkeypatch):
             appmod.state, plane.steward, request, id="p2", domain_id="sales", name="p2"
         )
     )["id"] == "p2"
+
+
+# --- sensitive tags (sensitive_data) -------------------------------------------------------------
+
+
+def _assignment(table_id: int, tag_id: str = "mnpi", column: str = "amount") -> Any:
+    from provisa.api.admin.types import TagAssignmentInput
+
+    return TagAssignmentInput(
+        tag_id=tag_id, object_type="column", table_id=table_id, column_name=column
+    )
+
+
+async def test_a_sensitive_tag_on_a_column_in_the_stewards_domain_is_assigned(plane):
+    result = await M().assign_tag(_info(plane.steward), _assignment(plane.ids["orders"]))
+    assert result.success is True, result.message
+    result = await M().unassign_tag(_info(plane.steward), _assignment(plane.ids["orders"]))
+    assert result.success is True, result.message
+
+
+async def test_a_sensitive_tag_on_another_domains_column_is_refused(plane):
+    with pytest.raises(PermissionError, match="'finance'"):
+        await M().assign_tag(_info(plane.steward), _assignment(plane.ids["invoices"]))
+    with pytest.raises(PermissionError, match="'finance'"):
+        await M().unassign_tag(
+            _info(plane.steward), _assignment(plane.ids["invoices"], "pii", "email")
+        )
+
+
+async def test_a_steward_does_not_assign_an_ordinary_tag(plane):
+    # Not a sensitive tag: the table editor's act, which the steward does not hold.
+    with pytest.raises(PermissionError, match="table_registration"):
+        await M().assign_tag(
+            _info(plane.steward), _assignment(plane.ids["orders"], "deprecated", "amount")
+        )
+
+
+def _tag(sensitive: bool) -> Any:
+    from provisa.api.admin.types import TagInput
+
+    return TagInput(id="mnpi", description="", applies_to=["column"], sensitive=sensitive)
+
+
+async def test_the_sensitive_option_on_a_tag_needs_every_domain(plane):
+    with pytest.raises(PermissionError, match="every domain"):
+        await M().upsert_tag(_info(plane.steward), _tag(False))
+    assert (await M().upsert_tag(_info("steward_everywhere"), _tag(False))).success
