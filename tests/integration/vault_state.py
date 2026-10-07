@@ -59,3 +59,29 @@ def vault_left_as_found(engine: Engine):
         yield
     finally:
         restore_vault(engine, snapshot)
+
+
+def vault_set_aside(engine: Engine) -> tuple[list[dict], list[dict]]:
+    """Take every secret and the deployment's key record out of the vault, returning them.
+
+    For a module that runs as a deployment with a key of its own: the boot decrypts the org's
+    vault under the key it holds (REQ-1919), and what other modules stored was written under the
+    session's key."""
+    with engine.begin() as conn:
+        secrets = [dict(row._mapping) for row in conn.execute(secrets_store.select())]
+        record = [dict(row._mapping) for row in conn.execute(deployment_encryption_key.select())]
+        conn.execute(secrets_store.delete())
+        conn.execute(deployment_encryption_key.delete())
+    return secrets, record
+
+
+def vault_put_back(engine: Engine, saved: tuple[list[dict], list[dict]]) -> None:
+    """Replace the vault and the key record with what :func:`vault_set_aside` took out."""
+    secrets, record = saved
+    with engine.begin() as conn:
+        conn.execute(secrets_store.delete())
+        conn.execute(deployment_encryption_key.delete())
+        if secrets:
+            conn.execute(secrets_store.insert(), secrets)
+        if record:
+            conn.execute(deployment_encryption_key.insert(), record)

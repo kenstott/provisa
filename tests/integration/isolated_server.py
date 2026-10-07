@@ -114,10 +114,12 @@ def _first_start(org_id: str, tenant_url: str) -> None:
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
 
-    from tests.boot_seeds_its_own_deployment import empty_org_model
+    from tests import boot_seeds_its_own_deployment as first_start
 
     with ThreadPoolExecutor(max_workers=1) as pool:
-        pool.submit(asyncio.run, empty_org_model(org_id, tenant_url)).result()
+        pool.submit(asyncio.run, first_start.empty_org_model(org_id, tenant_url)).result()
+    # An in-process boot of the same org that follows seeds again: the store is no longer its.
+    first_start._SEEDED_FROM.pop(org_id, None)  # noqa: SLF001
 
 
 class IsolatedServer:

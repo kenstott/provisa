@@ -40,27 +40,26 @@ async def client():
 
     from provisa.api.app import create_app
     from provisa.core.database import Database, create_engine_from_url
-    from provisa.core.schema_admin import REGISTRY_TABLES, deployment_encryption_key
+    from provisa.core.schema_admin import REGISTRY_TABLES
     from provisa.core.schema_admin import metadata as admin_metadata
 
-    from tests.integration.vault_state import restore_vault, vault_snapshot
+    from tests.integration.vault_state import vault_put_back, vault_set_aside
 
     # This module is a deployment given a key of its own, on a control plane other suites of the
     # session also use: the record of which key the deployment's secrets are written under
-    # (REQ-684) is this module's for its duration and nobody's afterwards. It is set aside before
-    # the boot, which already reads the vault under the key it holds (REQ-1919: the boot binds the
-    # org's secrets to read its model), and put back after, with whatever was stored here removed:
-    # a secret left in the acting org's vault was written under this module's key, and every later
-    # server of the session would be a worker without that key.
+    # (REQ-684) is this module's for its duration and nobody's afterwards. The vault and that record
+    # are set aside before the boot, which already decrypts the org's vault under the key it holds
+    # (REQ-1919: the boot binds the org's secrets to read its model) -- what other modules stored
+    # was written under the session's key -- and put back after, exactly: a secret left in the
+    # vault was written under this module's key, and every later server of the session would be a
+    # worker without that key.
     platform = Database(
         create_engine_from_url(os.environ["PLATFORM_DATABASE_URL"]), name="platform"
     )
     with platform.engine.begin() as conn:
         # The registry the boot creates: present already when an earlier module booted.
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
-    found = vault_snapshot(platform.engine)
-    with platform.engine.begin() as conn:
-        conn.execute(deployment_encryption_key.delete())
+    saved = vault_set_aside(platform.engine)
 
     app = create_app()
 
@@ -78,7 +77,7 @@ async def client():
                         },
                     )
     finally:
-        restore_vault(platform.engine, found)
+        vault_put_back(platform.engine, saved)
         await platform.close()
         if previous is None:
             os.environ.pop("PROVISA_ENCRYPTION_KEY", None)
