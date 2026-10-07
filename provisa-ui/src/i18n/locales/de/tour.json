@@ -75,7 +75,7 @@
         "description": "➕ Neue Verbindungen beginnen mit dieser Schaltfläche — PostgreSQL, Snowflake, MongoDB, eine REST-API, eine CSV und 50+ weitere."
       },
       "step3": {
-        "title": "59 Quellentypen, 13 Kategorien",
+        "title": "60 Quellentypen, 13 Kategorien",
         "description": "Eine Auswahl listet jeden Typ, nach Kategorie gruppiert: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Suchen Sie nach Name oder Alias oder grenzen Sie mit den Kategorie-Chips ein. Jeder Typ zeigt sein Logo und ein Reichweiten-Symbol: ⚡ direkt vor Ort gelesen, oder ein Kopie-Symbol, wo Provisa ein aktualisiertes Replikat liest.<p>Wählen Sie einen aus, tragen Sie die Verbindung ein, speichern Sie.</p>"
       },
       "step4": {

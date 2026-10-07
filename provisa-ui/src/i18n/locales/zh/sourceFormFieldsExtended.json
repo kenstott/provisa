@@ -114,6 +114,22 @@
     "sfAccessToken": "访问令牌",
     "sfInstanceUrl": "实例 URL",
     "sfApiVersion": "API 版本",
-    "sfApiVersionHelp": "可选，例如 v61.0"
+    "sfApiVersionHelp": "可选，例如 v61.0",
+    "coNameACloud": "请至少填写 Azure、AWS 或 GCP 中的一个云。",
+    "coCloudsNamed": "此数据源读取：{{clouds}}",
+    "coRequiredWithCloud": "指定此云后为必填",
+    "coAzureTenantId": "租户 ID",
+    "coAzureClientId": "客户端 ID",
+    "coAzureClientSecret": "客户端密码",
+    "coAzureSubscriptionIds": "订阅 ID",
+    "coAwsAccessKeyId": "访问密钥 ID",
+    "coAwsSecretAccessKey": "秘密访问密钥",
+    "coAwsRegion": "区域",
+    "coAwsAccountIds": "账户 ID",
+    "coAwsRoleArn": "要代入的角色 (ARN)",
+    "coGcpCredentialsPath": "服务账号密钥文件",
+    "coGcpProjectIds": "项目 ID",
+    "coCacheTtlMinutes": "缓存（分钟）",
+    "coCacheTtlMinutesHelp": "再次查询各云之前，结果被重复使用的时长"
   }
 }

@@ -114,6 +114,22 @@
     "sfAccessToken": "アクセストークン",
     "sfInstanceUrl": "インスタンスURL",
     "sfApiVersion": "APIバージョン",
-    "sfApiVersionHelp": "任意（例: v61.0）"
+    "sfApiVersionHelp": "任意（例: v61.0）",
+    "coNameACloud": "Azure、AWS、GCP のうち少なくとも1つを入力してください。",
+    "coCloudsNamed": "このソースが読み取るクラウド: {{clouds}}",
+    "coRequiredWithCloud": "このクラウドを指定した場合は必須",
+    "coAzureTenantId": "テナントID",
+    "coAzureClientId": "クライアントID",
+    "coAzureClientSecret": "クライアントシークレット",
+    "coAzureSubscriptionIds": "サブスクリプションID",
+    "coAwsAccessKeyId": "アクセスキーID",
+    "coAwsSecretAccessKey": "シークレットアクセスキー",
+    "coAwsRegion": "リージョン",
+    "coAwsAccountIds": "アカウントID",
+    "coAwsRoleArn": "引き受けるロール (ARN)",
+    "coGcpCredentialsPath": "サービスアカウントのキーファイル",
+    "coGcpProjectIds": "プロジェクトID",
+    "coCacheTtlMinutes": "キャッシュ（分）",
+    "coCacheTtlMinutesHelp": "クラウドに再度問い合わせるまで結果を再利用する時間"
   }
 }

@@ -77,6 +77,7 @@ import {
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
 import { profilerFieldsFromMapping, profilerMappingJson } from "./sources/profilerMapping";
 import { salesforceFieldsFromMapping, salesforceMappingJson } from "./sources/salesforce";
+import { cloudopsFieldsFromMapping, cloudopsMappingJson } from "./sources/cloudops";
 import { sourceLoadFieldsValid } from "./sources/loadManagement";
 import { SourceFormFields } from "./sources/SourceFormFields";
 import { icebergCatalogHints } from "./sources/icebergCatalog";
@@ -645,6 +646,9 @@ export function SourcesPage() {
       // REQ-1934: the profiler's schedule and run default live in its mapping.
       setAuthFields(profilerFieldsFromMapping(s.mappingJson));
     }
+    if (s.type === "cloudops" && s.mappingJson) {
+      setAuthFields(cloudopsFieldsFromMapping(s.mappingJson)); // REQ-1947
+    }
     if (s.type === "salesforce" && s.mappingJson) {
       setAuthFields(salesforceFieldsFromMapping(s.mappingJson)); // REQ-1946
     }
@@ -949,6 +953,8 @@ export function SourcesPage() {
       const spMappingJson =
         form.type === "data_profiler"
           ? profilerMappingJson(authFields) // REQ-1934
+          : form.type === "cloudops"
+          ? cloudopsMappingJson(authFields) // REQ-1947
           : form.type === "salesforce"
           ? salesforceMappingJson(authFields) // REQ-1946
           : form.type === "sharepoint"

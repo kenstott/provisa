@@ -114,6 +114,22 @@
     "sfAccessToken": "Access Token",
     "sfInstanceUrl": "Instance URL",
     "sfApiVersion": "API Version",
-    "sfApiVersionHelp": "Optional, for example v61.0"
+    "sfApiVersionHelp": "Optional, for example v61.0",
+    "coNameACloud": "Fill in at least one of Azure, AWS or GCP.",
+    "coCloudsNamed": "This source reads: {{clouds}}",
+    "coRequiredWithCloud": "Required once this cloud is named",
+    "coAzureTenantId": "Tenant ID",
+    "coAzureClientId": "Client ID",
+    "coAzureClientSecret": "Client Secret",
+    "coAzureSubscriptionIds": "Subscription IDs",
+    "coAwsAccessKeyId": "Access Key ID",
+    "coAwsSecretAccessKey": "Secret Access Key",
+    "coAwsRegion": "Region",
+    "coAwsAccountIds": "Account IDs",
+    "coAwsRoleArn": "Role to Assume (ARN)",
+    "coGcpCredentialsPath": "Service Account Key File",
+    "coGcpProjectIds": "Project IDs",
+    "coCacheTtlMinutes": "Cache (minutes)",
+    "coCacheTtlMinutesHelp": "How long a result is reused before the clouds are asked again"
   }
 }
