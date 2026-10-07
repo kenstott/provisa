@@ -108,6 +108,18 @@ async def drop_org_schema(org_id: str) -> None:
         await conn.close()
 
 
+def _first_start(org_id: str, tenant_url: str) -> None:
+    """Empty ``org_id``'s model store (tests.boot_seeds_its_own_deployment.empty_org_model), from
+    sync code that may run inside a test's event loop: on a thread of its own."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    from tests.boot_seeds_its_own_deployment import empty_org_model
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(asyncio.run, empty_org_model(org_id, tenant_url)).result()
+
+
 class IsolatedServer:
     """Manages one isolated Provisa server subprocess. ``start()`` blocks until the
     HTTP /health (and, if requested, the Arrow Flight port) is reachable."""
@@ -154,6 +166,7 @@ class IsolatedServer:
         self.pgwire_port = free_port() if enable_pgwire else 0
         self.grpc_port = free_port()
         self._proc: subprocess.Popen | None = None
+        self._started_once = False
         self._cfg_path: str | None = None
         self._tmpdir: tempfile.TemporaryDirectory | None = None
 
@@ -214,6 +227,13 @@ class IsolatedServer:
     # is booting rather than broken still says why in its stderr when the deadline passes.
     def start(self, *, timeout: float = 300.0) -> None:
         self._cfg_path = self._write_config()
+        if not self._started_once and self._control_plane != "sqlite":
+            # REQ-1919: a configuration seeds the model store once, at a deployment's first start.
+            # Each server object is its own deployment, so its first start is a first start: the
+            # org's model is emptied and seeded from this server's configuration. A later start of
+            # the same object is a restart and keeps the store as it is.
+            _first_start(self.org_id, {**os.environ, **self._extra_env}["TENANT_DATABASE_URL"])
+        self._started_once = True
         env = {
             **os.environ,
             **self._control_plane_env(),
