@@ -28,7 +28,7 @@ import pytest
 from sqlalchemy import insert, select
 
 import provisa.api.app as appmod
-from provisa.api.admin import roles_router, schema_mutation
+from provisa.api.admin import actions_router, roles_router, schema_mutation
 from provisa.api.errors import ApiError
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import _init_schema_portable
@@ -423,3 +423,25 @@ async def test_a_role_reaching_another_domain_is_neither_edited_nor_deleted(plan
         await roles_router.delete_role("finance_role", request)
     with pytest.raises(PermissionError, match="'finance'"):
         await M().delete_role(_info("admin_sales"), "finance_role")
+
+
+# --- command reclassification (access_config) ----------------------------------------------------
+
+
+async def test_a_steward_declares_its_domains_command_read_safe(plane):
+    body = actions_router.KindInput(kind="query")
+    result = await actions_router.reclassify_function(_request(plane.steward), "of_sales", body)
+    assert result["kind"] == "query"
+
+
+async def test_reclassifying_another_domains_command_is_refused(plane):
+    body = actions_router.KindInput(kind="query")
+    with pytest.raises(ApiError, match="'finance'"):
+        await actions_router.reclassify_function(_request(plane.steward), "of_finance", body)
+    async with plane.db.acquire() as conn:
+        kind = (
+            await conn.execute_core(
+                select(tracked_functions.c.kind).where(tracked_functions.c.name == "of_finance")
+            )
+        ).scalar_one()
+    assert kind == "mutation"

@@ -227,6 +227,85 @@ def _saved_domain(request: Request, name: str, domain_id: str) -> str:  # REQ-15
     return resolved
 
 
+async def _require_reclassification(  # REQ-870, REQ-1944
+    request: Request,
+    conn,
+    table,
+    name: str,
+    kind: str,
+    domain_id: str,
+    *,
+    explicit: bool = False,
+) -> None:
+    """Declaring a stored WRITE command read-safe is reclassification: governance, not the
+    command's editor, decides it. It needs ``access_config`` in the command's domain -- the one it
+    sits in and the one it is saved into. A new command, or one keeping its kind, is not a
+    reclassification. An editor saving a command as a write is never a demotion and is not asked
+    here; the reclassification endpoint (``explicit``) refuses promotion."""
+    from provisa.api.admin.capabilities import require_right_in_domains_request
+    from provisa.security.mutation_authz import MutationKind, classify_kind
+
+    if not explicit and classify_kind(kind) is MutationKind.WRITE:
+        return
+    row = (
+        await conn.execute_core(select(table.c.kind, table.c.domain_id).where(table.c.name == name))
+    ).fetchone()
+    if row is None:
+        return
+    current, target = classify_kind(row[0]), classify_kind(kind)
+    if current is target:
+        return
+    if current is MutationKind.READ:
+        raise ApiError(
+            422,
+            "actions.promotion_refused",
+            f"{name!r} is read-safe; a read cannot be promoted to a write",
+            name=name,
+        )
+    require_right_in_domains_request(
+        request, "access_config", {d for d in (row[1], domain_id) if d}
+    )
+
+
+class KindInput(BaseModel):  # REQ-870
+    kind: str
+
+
+async def _reclassify(request: Request, table, name: str, kind: str) -> dict:  # REQ-870, REQ-1944
+    from provisa.api.app import state
+
+    if state.model_db is None:
+        raise ApiError(503, "actions.database_not_connected", "Database not connected")
+    async with state.model_db.acquire() as conn:
+        row = (
+            await conn.execute_core(select(table.c.domain_id).where(table.c.name == name))
+        ).fetchone()
+        if row is None:
+            raise ApiError(404, "actions.not_found", f"{name!r} not found", name=name)
+        await _require_reclassification(
+            request, conn, table, name, kind, row[0] or "", explicit=True
+        )
+        await conn.execute_core(
+            update(table).where(table.c.name == name).values(kind=kind, updated_at=func.now())
+        )
+    from provisa.api.app import _rebuild_schemas
+
+    await _rebuild_schemas()
+    return {"success": True, "name": name, "kind": kind}
+
+
+@router.put("/functions/{name}/kind")
+async def reclassify_function(request: Request, name: str, body: KindInput):  # REQ-870, REQ-1944
+    """Declare a tracked function read-safe: ``access_config`` in its domain, nothing else."""
+    return await _reclassify(request, tracked_functions, name, body.kind)
+
+
+@router.put("/webhooks/{name}/kind")
+async def reclassify_webhook(request: Request, name: str, body: KindInput):  # REQ-870, REQ-1944
+    """Declare a tracked webhook read-safe: ``access_config`` in its domain, nothing else."""
+    return await _reclassify(request, tracked_webhooks, name, body.kind)
+
+
 @router.post("/functions")
 async def create_function(
     request: Request,
@@ -271,6 +350,10 @@ async def create_function(
     )
     # return_schema is a JSON column — pass the Python object directly (no double-encoding).
     async with state.model_db.acquire() as _conn:
+        # REQ-870: re-registering a stored command read-safe is a reclassification.
+        await _require_reclassification(
+            request, _conn, tracked_functions, body.name, body.kind, body.domainId
+        )
         await function_repo.upsert_function(_conn, func, return_schema=body.returnSchema)
 
     log.info("Saved tracked function %s", body.name)
@@ -299,6 +382,9 @@ async def update_function(
     async with state.model_db.acquire() as conn:
         # REQ-1531: moving it needs the domain it is moved out of as well.
         await _require_its_domain(request, conn, tracked_functions, name)
+        await _require_reclassification(
+            request, conn, tracked_functions, name, body.kind, body.domainId
+        )
         if body.productId is not None:
             # REQ-1634: same domain-membership gate as function_repo.upsert_function; the
             # update path writes tracked_functions directly and must not bypass it.
@@ -407,6 +493,10 @@ async def create_webhook(
     from provisa.core.repositories import creation_request as cr_repo
 
     async with state.model_db.acquire() as conn:
+        # REQ-870: re-registering a stored webhook read-safe is a reclassification.
+        await _require_reclassification(
+            request, conn, tracked_webhooks, body.name, body.kind, body.domainId
+        )
         await conn.upsert(
             tracked_webhooks,
             {
@@ -481,6 +571,9 @@ async def update_webhook(request: Request, name: str, body: WebhookInput):  # RE
     async with state.model_db.acquire() as conn:
         # REQ-1531: moving it needs the domain it is moved out of as well.
         await _require_its_domain(request, conn, tracked_webhooks, name)
+        await _require_reclassification(
+            request, conn, tracked_webhooks, name, body.kind, body.domainId
+        )
         result = await conn.execute_core(
             update(tracked_webhooks)
             .where(tracked_webhooks.c.name == name)
