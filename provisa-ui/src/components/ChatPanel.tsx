@@ -52,7 +52,7 @@ import { useAuth } from "../context/AuthContext";
 import { useMcpChat } from "../hooks/useMcpChat";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { RefreshMv } from "../hooks/admin.graphql";
-import { fetchMcpChatStatus } from "../api/mcpChat";
+import { usePolly } from "../context/pollyState";
 import type { MutationResult } from "../types/admin";
 import type { ChoiceAnswer, ClientToolResult, PresentChoiceRequest } from "../mcp/clientTools";
 import { useLocalStorage } from "./graph/graph-persistence";
@@ -108,31 +108,15 @@ export function ChatPanel() {
   const roleId = selectedRoles.map((r) => r.id).join(",") || (role?.id ?? "");
   const navigate = useNavigate();
   const location = useLocation();
-  const [open, setOpen] = useState(false);
+  const {
+    open,
+    checkingConfig,
+    unconfiguredReason,
+    setUnconfiguredReason,
+    openPolly,
+    closePolly,
+  } = usePolly();
   const [draft, setDraft] = useState("");
-
-  // REQ-1804: checked on toggle click, before opening the panel — an unconfigured LLM shows an
-  // explanatory modal at the button instead of an open panel that only reveals the problem after
-  // the user has already typed and sent a message.
-  const [checkingConfig, setCheckingConfig] = useState(false);
-  const [unconfiguredReason, setUnconfiguredReason] = useState<string | null>(null);
-  const openChat = async () => {
-    setCheckingConfig(true);
-    try {
-      const status = await fetchMcpChatStatus();
-      if (status.configured) {
-        setOpen(true);
-      } else {
-        setUnconfiguredReason(status.reason || "no vendor or credential is configured");
-      }
-    } catch {
-      // The status check itself failed (network/server error) — open anyway and let the chat's
-      // own error handling surface it, rather than blocking the toggle on a second failure mode.
-      setOpen(true);
-    } finally {
-      setCheckingConfig(false);
-    }
-  };
 
   // Resizable width (REQ-1795), persisted per browser so it survives closing/reopening the
   // panel and page reloads. Dragged from a handle on the drawer's left edge.
@@ -359,7 +343,7 @@ export function ChatPanel() {
             data-tour="polly-toggle"
             loading={checkingConfig}
             style={{ position: "fixed", bottom: 16, right: 16, zIndex: 200 }}
-            onClick={() => void openChat()}
+            onClick={() => void openPolly()}
           >
             <MessageCircle size={20} />
           </ActionIcon>
@@ -446,7 +430,7 @@ export function ChatPanel() {
                 <Eraser size={16} />
               </ActionIcon>
             </Tooltip>
-            <CloseButton data-testid="chat-panel-close" onClick={() => setOpen(false)} />
+            <CloseButton data-testid="chat-panel-close" onClick={closePolly} />
           </Group>
         </Group>
 
@@ -506,7 +490,7 @@ export function ChatPanel() {
                 variant="light"
                 mt={6}
                 onClick={() => {
-                  setOpen(false);
+                  closePolly();
                   navigate(error.action!.route);
                 }}
               >

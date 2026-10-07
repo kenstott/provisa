@@ -64,7 +64,7 @@
       },
       "stepPolly": {
         "title": "Maak kennis met Polly, je installatiehulp",
-        "description": "<p>💬 <strong>Polly</strong> richt Provisa in met gewone taal — veel makkelijker dan de documentatie lezen.</p><p><em>“registreer mijn Postgres” · “fake de e-mailkolom in de tabel customers” · “maak een QA-omgeving met synthetische data” · “wie mag salarissen zien?”</em></p><p>Polly werkt via <strong>dezelfde gecontroleerde API's en rechten als de interface</strong>, dus Polly kan alleen doen wat jij kunt. Klik op de chatknop om Polly op elk moment te openen.</p>"
+        "description": "<p>💬 <strong>Polly</strong> richt Provisa in met gewone taal — veel makkelijker dan de documentatie lezen.</p><p><em>“registreer mijn Postgres” · “fake de e-mailkolom in de tabel customers” · “maak een QA-omgeving met synthetische data” · “wie mag salarissen zien?”</em></p><p>Polly werkt via <strong>dezelfde gecontroleerde API's en rechten als de interface</strong>, dus Polly kan alleen doen wat jij kunt. Polly is hier geopend; met de chatknop open je dit paneel op elk moment opnieuw.</p>"
       },
       "step1": {
         "title": "Begin bij Bronnen",

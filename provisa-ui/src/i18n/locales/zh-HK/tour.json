@@ -64,7 +64,7 @@
       },
       "stepPolly": {
         "title": "認識 Polly,你的設定助手",
-        "description": "<p>💬 <strong>Polly</strong> 用自然語言來設定 Provisa——比閱讀文件輕鬆得多。</p><p><em>「註冊我的 Postgres」 · 「把 customers 表的電郵欄位偽造成假資料」 · 「用合成資料建立一個 QA 環境」 · 「誰可以看到薪資?」</em></p><p>Polly 透過<strong>與介面相同的受管 API 及權限</strong>運作,因此只能做你能做的事。按一下聊天按鈕即可隨時開啟 Polly。</p>"
+        "description": "<p>💬 <strong>Polly</strong> 用自然語言來設定 Provisa——比閱讀文件輕鬆得多。</p><p><em>「註冊我的 Postgres」 · 「把 customers 表的電郵欄位偽造成假資料」 · 「用合成資料建立一個 QA 環境」 · 「誰可以看到薪資?」</em></p><p>Polly 透過<strong>與介面相同的受管 API 及權限</strong>運作,因此只能做你能做的事。Polly 已在此開啟；聊天按鈕可隨時重新開啟此面板。</p>"
       },
       "step1": {
         "title": "由「數據來源」開始",

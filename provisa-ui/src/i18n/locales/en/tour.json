@@ -64,7 +64,7 @@
       },
       "stepPolly": {
         "title": "Meet Polly, your setup assistant",
-        "description": "<p>💬 <strong>Polly</strong> sets Provisa up in plain language — much easier than reading the docs.</p><p><em>“register my Postgres” · “fake the email column in the customers table” · “create a QA environment on synthetic data” · “who can see salaries?”</em></p><p>Polly works through the <strong>same governed APIs and rights as the UI</strong>, so it can only do what you can. Click the chat button to open Polly anytime.</p>"
+        "description": "<p>💬 <strong>Polly</strong> sets Provisa up in plain language — much easier than reading the docs.</p><p><em>“register my Postgres” · “fake the email column in the customers table” · “create a QA environment on synthetic data” · “who can see salaries?”</em></p><p>Polly works through the <strong>same governed APIs and rights as the UI</strong>, so it can only do what you can. Polly is open here; the chat button reopens this panel anytime.</p>"
       },
       "step1": {
         "title": "Start with Sources",

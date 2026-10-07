@@ -64,7 +64,7 @@
       },
       "stepPolly": {
         "title": "Lernen Sie Polly kennen, Ihre Einrichtungshilfe",
-        "description": "<p>💬 <strong>Polly</strong> richtet Provisa in einfacher Sprache ein – viel leichter, als die Dokumentation zu lesen.</p><p><em>„Registriere meine Postgres“ · „Fake die E-Mail-Spalte der Tabelle customers“ · „Erstelle eine QA-Umgebung mit synthetischen Daten“ · „Wer darf Gehälter sehen?“</em></p><p>Polly arbeitet über <strong>dieselben kontrollierten APIs und Rechte wie die Oberfläche</strong> und kann daher nur tun, was Sie auch dürfen. Mit der Chat-Schaltfläche öffnen Sie Polly jederzeit.</p>"
+        "description": "<p>💬 <strong>Polly</strong> richtet Provisa in einfacher Sprache ein – viel leichter, als die Dokumentation zu lesen.</p><p><em>„Registriere meine Postgres“ · „Fake die E-Mail-Spalte der Tabelle customers“ · „Erstelle eine QA-Umgebung mit synthetischen Daten“ · „Wer darf Gehälter sehen?“</em></p><p>Polly arbeitet über <strong>dieselben kontrollierten APIs und Rechte wie die Oberfläche</strong> und kann daher nur tun, was Sie auch dürfen. Polly ist hier geöffnet; mit der Chat-Schaltfläche öffnen Sie dieses Fenster jederzeit wieder.</p>"
       },
       "step1": {
         "title": "Beginnen Sie mit Quellen",

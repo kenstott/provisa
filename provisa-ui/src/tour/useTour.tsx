@@ -39,6 +39,7 @@ import { TourMenu } from "./TourMenu";
 import { completedTopics, markTopicCompleted } from "./tourTopics";
 import { EXPANDED_STORAGE_KEY as DATA_PRODUCTS_EXPANDED_KEY } from "../pages/DataProductsPage";
 import { useAuth } from "../context/AuthContext";
+import { usePolly } from "../context/pollyState";
 import { hasCapability } from "../lib/capabilities";
 import { prefetchAllPageChunks } from "../pageChunks";
 import { useTourPrefetch } from "../hooks/useAdminQueries";
@@ -445,6 +446,21 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const prefetchTourData = useTourPrefetch();
   const { capabilities } = useAuth();
+  // REQ-1945: a step that refers to Polly opens the panel through the launcher's own handler. Read through
+  // a ref because the runner's closure predates the render that last changed its state.
+  const polly = usePolly();
+  const pollyRef = useRef(polly);
+  useEffect(() => {
+    pollyRef.current = polly;
+  }, [polly]);
+  // Whether the tour opened the panel, so it closes only what it opened: a Polly the viewer already
+  // had open is theirs to close.
+  const tourOpenedPollyRef = useRef(false);
+  const closeTourPolly = useCallback(() => {
+    if (!tourOpenedPollyRef.current) return;
+    tourOpenedPollyRef.current = false;
+    pollyRef.current.closePolly();
+  }, []);
   // The steps this viewer may actually be shown, in order, as indices into TOUR_STEPS. Everything
   // that used to count against TOUR_STEPS.length — the numbering, what Next/Back move to, which
   // step is last — counts against this instead, so a tour with steps dropped is a shorter whole
@@ -495,13 +511,14 @@ export function TourProvider({ children }: { children: ReactNode }) {
     if (how === "completed" && scope && scope !== "core") markTopicCompleted(scope);
     if (how !== "dismissed" || scope !== "core") setMenuOpen(true);
     cleanupPrep();
+    closeTourPolly();
     // Null the ref before destroy so onDestroyed treats this as an intentional end, not a dismissal.
     const inst = driverRef.current;
     driverRef.current = null;
     inst?.destroy();
     setActiveStep(null);
     setActiveScope(null);
-  }, []);
+  }, [closeTourPolly]);
 
   const clickIfPresent = (selector?: string) => {
     if (!selector) return;
@@ -566,6 +583,18 @@ export function TourProvider({ children }: { children: ReactNode }) {
           } else {
             navigate(route);
           }
+        }
+        // REQ-1945: Polly open for a step that refers to Polly; closed again, if the tour opened it,
+        // on the first step that does not. A panel that fails to open leaves the anchor missing, so
+        // the step fails loudly through the stuck status below -- no fallback anchor.
+        if (step.pollyOpen) {
+          if (!pollyRef.current.open) {
+            tourOpenedPollyRef.current = true;
+            await pollyRef.current.openPolly();
+            if (cancelled) return;
+          }
+        } else {
+          closeTourPolly();
         }
         for (const open of step.ensureOpen ?? []) {
           if (document.querySelector(open.unlessPresent)) continue;
@@ -693,7 +722,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
       clearTimeout(waitingTimer);
     };
     // `attempt` is the Retry trigger: it re-runs this effect on the same step index.
-  }, [activeStep, attempt, navigate, endTour, t]);
+  }, [activeStep, attempt, navigate, endTour, closeTourPolly, t]);
 
   // Start the tour. Resumes from saved progress by default; pass { restart: true } to force step 0.
   //
@@ -735,7 +764,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
               setMenuOpen(true);
             }
             cleanupPrep();
-                    driverRef.current = null;
+            closeTourPolly();
+            driverRef.current = null;
             setStatus(null);
             setActiveStep(null);
             setActiveScope(null);
@@ -758,7 +788,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         setActiveStep(scope === "core" && !fresh ? (tourResumeStep() ?? steps[0]) : steps[0]);
       });
     },
-    [itineraries, prefetchTourData],
+    [itineraries, prefetchTourData, closeTourPolly],
   );
 
   // REQ-1945: the tour button. A core tour left part-way resumes; once the core tour has been seen

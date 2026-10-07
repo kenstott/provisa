@@ -64,7 +64,7 @@
       },
       "stepPolly": {
         "title": "Découvrez Polly, votre aide à la configuration",
-        "description": "<p>💬 <strong>Polly</strong> configure Provisa en langage naturel : bien plus simple que de lire la documentation.</p><p><em>« enregistre mon Postgres » · « simule la colonne e-mail de la table customers » · « crée un environnement QA sur des données synthétiques » · « qui peut voir les salaires ? »</em></p><p>Polly passe par les <strong>mêmes API gouvernées et les mêmes droits que l'interface</strong> : elle ne peut faire que ce que vous pouvez faire. Cliquez sur le bouton de discussion pour ouvrir Polly à tout moment.</p>"
+        "description": "<p>💬 <strong>Polly</strong> configure Provisa en langage naturel : bien plus simple que de lire la documentation.</p><p><em>« enregistre mon Postgres » · « simule la colonne e-mail de la table customers » · « crée un environnement QA sur des données synthétiques » · « qui peut voir les salaires ? »</em></p><p>Polly passe par les <strong>mêmes API gouvernées et les mêmes droits que l'interface</strong> : elle ne peut faire que ce que vous pouvez faire. Le panneau de Polly est ouvert ici ; le bouton de discussion le rouvre à tout moment.</p>"
       },
       "step1": {
         "title": "Commencez par les sources",

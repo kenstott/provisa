@@ -64,7 +64,7 @@
       },
       "stepPolly": {
         "title": "Conosci Polly, il tuo aiuto per la configurazione",
-        "description": "<p>💬 <strong>Polly</strong> configura Provisa in linguaggio naturale: molto più semplice che leggere la documentazione.</p><p><em>«registra il mio Postgres» · «simula la colonna email della tabella customers» · «crea un ambiente QA su dati sintetici» · «chi può vedere gli stipendi?»</em></p><p>Polly lavora tramite le <strong>stesse API governate e gli stessi diritti dell'interfaccia</strong>, quindi può fare solo ciò che puoi fare tu. Clicca il pulsante della chat per aprire Polly quando vuoi.</p>"
+        "description": "<p>💬 <strong>Polly</strong> configura Provisa in linguaggio naturale: molto più semplice che leggere la documentazione.</p><p><em>«registra il mio Postgres» · «simula la colonna email della tabella customers» · «crea un ambiente QA su dati sintetici» · «chi può vedere gli stipendi?»</em></p><p>Polly lavora tramite le <strong>stesse API governate e gli stessi diritti dell'interfaccia</strong>, quindi può fare solo ciò che puoi fare tu. Il pannello di Polly è aperto qui; il pulsante della chat lo riapre quando vuoi.</p>"
       },
       "step1": {
         "title": "Inizia dalle Origini",

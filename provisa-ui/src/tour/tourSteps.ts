@@ -74,6 +74,11 @@ export interface TourStep {
    * dead on a loaded machine.
    */
   prefetch?: string;
+  /**
+   * REQ-1945: the step refers to Polly, so the runner opens the Polly panel (through the launcher's own
+   * handler) before anchoring, and the tour closes it on moving to a step without this flag.
+   */
+  pollyOpen?: boolean;
   /** Key into the `tour.steps` i18n namespace for this step's title/description. */
   key: string;
   /**
@@ -150,13 +155,12 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step0",
   },
   {
-    // Polly's open button sits in the always-mounted shell. Cold entry with the panel open (the
-    // toggle is replaced by the panel) closes it first. Routeless: stays on step0's page.
-    element: '[data-tour="polly-toggle"]',
+    // REQ-1945: the step shows Polly open, never the closed launcher: the runner opens the panel through
+    // the launcher's own handler and the tour closes it again on moving to a step that does not
+    // reference Polly. Routeless: stays on step0's page.
+    element: '[data-testid="chat-panel"]',
+    pollyOpen: true,
     key: "stepPolly",
-    ensureOpen: [
-      { click: '[data-testid="chat-panel-close"]', unlessPresent: '[data-tour="polly-toggle"]' },
-    ],
   },
   {
     route: "/sources",

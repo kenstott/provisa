@@ -20,6 +20,20 @@ import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 vi.mock("../pageChunks", () => ({ prefetchAllPageChunks: () => Promise.resolve() }));
 vi.mock("../hooks/useAdminQueries", () => ({ useTourPrefetch: () => () => Promise.resolve() }));
 
+// The tour reads Polly's state to open it for steps that refer to Polly (REQ-1945); these suites do
+// not exercise that, so the panel is closed with inert handlers.
+vi.mock("../context/pollyState", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../context/pollyState")>()),
+  usePolly: () => ({
+    open: false,
+    checkingConfig: false,
+    unconfiguredReason: null,
+    setUnconfiguredReason: () => {},
+    openPolly: () => Promise.resolve(),
+    closePolly: () => {},
+  }),
+}));
+
 // TourProvider now reads the signed-in rights to decide which steps this viewer is shown. These
 // suites are about the offer and the recovery behaviour, not about gating, so the viewer holds
 // every right the tour's steps name — the whole tour is on the itinerary and nothing is dropped.

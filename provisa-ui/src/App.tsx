@@ -32,6 +32,7 @@ import { MaintenanceBanner } from "./components/MaintenanceBanner"; // REQ-1466
 import { LicenseBadge } from "./components/LicenseBadge";
 import { ChatPanel } from "./components/ChatPanel";
 import { fetchSetupStatus } from "./api/setup";
+import { PollyProvider } from "./context/PollyContext";
 import { TourProvider } from "./tour/useTour";
 import { TourAutoStart } from "./tour/TourAutoStart";
 import { prefetchPageChunksOnIdle } from "./pageChunks";
@@ -251,6 +252,7 @@ function App() {
               <OnboardGate onSessionExpired={handleLoginSuccess}>
                 <DomainFilterProvider>
                   <RequireAuth>
+                    <PollyProvider>
                     <TourProvider>
                       <SubnavExtraProvider>
                         <TourAutoStart demoMode={demoMode} />
@@ -606,6 +608,7 @@ function App() {
                         </div>
                       </SubnavExtraProvider>
                     </TourProvider>
+                    </PollyProvider>
                   </RequireAuth>
                 </DomainFilterProvider>
               </OnboardGate>
