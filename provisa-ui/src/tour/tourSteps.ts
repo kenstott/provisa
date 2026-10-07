@@ -348,8 +348,15 @@ export const TOUR_STEPS: TourStep[] = [
     key: "stepProfilerChecks",
   },
   {
-    // REQ-1494: a column's kind of fake is declared in the column list's Test data mode.
-    element: '[data-tour="table-columns-mode"]',
+    // REQ-1494: a column's kind of fake is declared in the column list's Test data mode, so the
+    // step switches the column list to that mode and points at the test-data columns.
+    ensureOpen: [
+      {
+        click: '[data-tour="table-columns-mode"] input[value="testdata"]',
+        unlessPresent: '[data-testid="testdata-columns"]',
+      },
+    ],
+    element: '[data-testid="testdata-columns"]',
     key: "stepFakes",
   },
   {

@@ -58,4 +58,15 @@ test("tour walks from the quality steps through to the profiler panel", async ({
   await next.click();
   await expect(title).toHaveText("Add it to a profiler", { timeout: 30000 });
   await expect(page.locator('[data-tour="profiler-panel"]')).toBeVisible();
+
+  await next.click();
+  await expect(title).toHaveText("Drift and checks", { timeout: 30000 });
+
+  // "Declare a fake" switches the column list to its Test data mode.
+  await next.click();
+  await expect(title).toHaveText("Declare a fake", { timeout: 30000 });
+  await expect(page.locator('[data-testid="testdata-columns"]')).toBeVisible();
+  await expect(
+    page.locator('[data-tour="table-columns-mode"] input[value="testdata"]'),
+  ).toBeChecked();
 });
