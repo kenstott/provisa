@@ -379,6 +379,7 @@ async def _build_source_pools_and_enums(
     pool, not the engine's ATTACH.
     """
     from provisa.api.app import state
+    from provisa.api.data.pgwire_write import start_write_server
     from provisa.executor.drivers.registry import has_driver
     from provisa.transpiler.router import VIRTUAL_SOURCES
     from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES
@@ -405,6 +406,9 @@ async def _build_source_pools_and_enums(
             # direct, and the engine terminal takes no writes) — they just connect by file
             # ``path``, not host/port, so they need the pool built from that field instead of
             # skipping registration entirely.
+            # REQ-1946: a SharePoint or Salesforce source's pgwire server takes its writes on
+            # every engine; started now (in the background) so it is listening before a write.
+            start_write_server(src)
             _is_flat_file = src.type.value in FLAT_NAMESPACE_SOURCES
             if has_driver(src.type.value) and (
                 src.type.value not in VIRTUAL_SOURCES or _is_flat_file

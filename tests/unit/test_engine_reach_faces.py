@@ -64,7 +64,7 @@ def test_connector_pgwire_types_reachable_on_every_engine():
     # postgres-wire speaker directly: Trino (attach/scan), DuckDB (its postgres extension,
     # REQ-1690), and pg/clickhouse (their own pgwire-bundle attach, "pg/ClickHouse pgwire-bundle
     # attach") all reach these types live, not through a materialized replica.
-    for t in ("files", "sharepoint", "splunk"):
+    for t in ("files", "sharepoint", "splunk", "salesforce"):
         for key in ("trino", "duckdb", "pg", "clickhouse"):
             assert t in reachable_source_types(key), f"{t} on {key}"
             assert t in live_source_types(key), f"{t} on {key}"

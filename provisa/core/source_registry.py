@@ -60,6 +60,10 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     # emits backticks and is what HiveDriver's SQL actually needs to speak.
     "hiveserver2": "hive",
     "druid": "druid",
+    # REQ-1946: written through their own pgwire server, which takes PostgreSQL. Neither has a
+    # direct driver registered for its type, so no read is routed to the server by this entry.
+    "sharepoint": "postgres",
+    "salesforce": "postgres",
     "exasol": "exasol",
 }
 

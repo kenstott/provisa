@@ -32,6 +32,7 @@ import json
 import os
 import signal
 import socket
+import threading
 import subprocess  # noqa: S404 - launches the pinned first-party pgwire bundle launcher
 import time
 from dataclasses import dataclass
@@ -43,7 +44,7 @@ from provisa.runtime_deps import BundleResolver, BundleSpec, bundle_spec_for
 
 # The pgwire-replica source types (mirror of strategy._CONNECTOR_PGWIRE_REPLICA). A type here has a
 # bundled Calcite pgwire server and is landed through this module when no engine connector reaches it.
-PGWIRE_REPLICA_TYPES = frozenset({"files", "sharepoint", "splunk"})
+PGWIRE_REPLICA_TYPES = frozenset({"files", "sharepoint", "splunk", "salesforce"})
 
 # Default ports (REQ-955): the pgwire endpoint (--port) and the Calcite child JVM (--calcite-child).
 # Each source gets a UNIQUE pair allocated up from these bases so servers never collide.
@@ -73,6 +74,7 @@ _SCHEMA_FACTORY: dict[str, str] = {
     "files": "org.apache.calcite.adapter.file.FileSchemaFactory",
     "sharepoint": "org.apache.calcite.adapter.sharepoint.SharePointListSchemaFactory",
     "splunk": "org.apache.calcite.adapter.splunk.SplunkSchemaFactory",
+    "salesforce": "org.apache.calcite.adapter.salesforce.SalesforceSchemaFactory",
 }
 
 
@@ -307,21 +309,94 @@ def _splunk_operand(source: Any) -> dict:
     return operand
 
 
+SALESFORCE_AUTH_TYPES = ("CLIENT_CREDENTIALS", "USERNAME_PASSWORD", "ACCESS_TOKEN")
+DESCRIBE_CACHE_DIR_NAME = "describe-cache"
+
+
+def _salesforce_operand(source: Any) -> dict:
+    """salesforce → loginUrl + one complete credential set (REQ-1946), chosen by
+    ``mapping.auth_type``: the connected app's consumer key and secret (``CLIENT_CREDENTIALS``,
+    the default the form writes); a username and password with the consumer key and secret and an
+    optional security token (``USERNAME_PASSWORD``); or a pre-issued access token with its
+    instance URL (``ACCESS_TOKEN``). An incomplete set is a config error naming what is missing.
+
+    ``lowercaseAliases`` is always false: the adapter otherwise registers each sObject a second
+    time under its lower-case name, and an engine that imports the whole schema would hold every
+    sObject twice."""
+    mapping = {k: _rs(v) if isinstance(v, str) else v for k, v in (source.mapping or {}).items()}
+    who = f"salesforce source {source.id!r}"
+    login_url = _rs(source.base_url) or _rs(source.host)
+    if not login_url:
+        raise MissingConnectorConfig(f"{who}: requires loginUrl (the org's My Domain URL)")
+    operand: dict = {"loginUrl": login_url, "lowercaseAliases": False}
+    auth_type = mapping.get("auth_type", "CLIENT_CREDENTIALS")
+    if auth_type not in SALESFORCE_AUTH_TYPES:
+        raise MissingConnectorConfig(
+            f"{who}: mapping.auth_type {auth_type!r} is not one of {SALESFORCE_AUTH_TYPES}"
+        )
+    if auth_type == "ACCESS_TOKEN":
+        access_token = mapping.get("access_token")
+        instance_url = mapping.get("instance_url")
+        if not access_token:
+            raise MissingConnectorConfig(f"{who}: access-token auth requires the access token")
+        if not instance_url:
+            raise MissingConnectorConfig(f"{who}: access-token auth requires the instance URL")
+        operand["accessToken"] = access_token
+        operand["instanceUrl"] = instance_url
+    else:
+        client_id = _rs(source.username)
+        client_secret = _rs(source.password)
+        if not client_id:
+            raise MissingConnectorConfig(f"{who}: requires the connected app's consumer key")
+        if not client_secret:
+            raise MissingConnectorConfig(f"{who}: requires the connected app's consumer secret")
+        operand["clientId"] = client_id
+        operand["clientSecret"] = client_secret
+        if auth_type == "USERNAME_PASSWORD":
+            username = mapping.get("sf_username")
+            password = mapping.get("sf_password")
+            if not username:
+                raise MissingConnectorConfig(f"{who}: username-password auth requires the username")
+            if not password:
+                raise MissingConnectorConfig(f"{who}: username-password auth requires the password")
+            operand["username"] = username
+            operand["password"] = password
+            if mapping.get("security_token"):
+                operand["securityToken"] = mapping["security_token"]
+    if mapping.get("api_version"):
+        operand["apiVersion"] = mapping["api_version"]
+    return operand
+
+
 _OPERAND_BUILDERS: dict[str, Callable[[Any], dict]] = {
     "files": _files_operand,
     "sharepoint": _sharepoint_operand,
     "splunk": _splunk_operand,
+    "salesforce": _salesforce_operand,
 }
 
 
-def build_model_json(source: Any) -> dict:
+def build_model_json(source: Any, *, state_dir: Path | None = None) -> dict:
     """The Calcite ``model.json`` for a pgwire-replica source (REQ-955): one custom schema whose
-    operand carries the source-specific creds/paths. A non-replica source type is a caller error."""
+    operand carries the source-specific creds/paths. A non-replica source type is a caller error.
+
+    ``state_dir`` is the directory the source's server runs in (:func:`server_state_dir`). A
+    Salesforce model keeps its describe cache there (REQ-1946) — the adapter's own default is a
+    directory under the user's home that every server on the machine would share — so a
+    Salesforce model built without one is refused."""
     stype = _source_type(source)
     builder = _OPERAND_BUILDERS.get(stype)
     if builder is None:
         raise MissingConnectorConfig(f"source type {stype!r} is not a pgwire-replica connector")
     schema = schema_name(source)
+    operand = builder(source)
+    if stype == "salesforce":
+        if state_dir is None:
+            raise MissingConnectorConfig(
+                f"salesforce source {source.id!r}: the model needs the server's state directory "
+                "for its describe cache"
+            )
+        operand["describeCacheDirectory"] = str(Path(state_dir) / DESCRIBE_CACHE_DIR_NAME)
     return {
         "version": "1.0",
         "defaultSchema": schema,
@@ -330,7 +405,7 @@ def build_model_json(source: Any) -> dict:
                 "name": schema,
                 "type": "custom",
                 "factory": _SCHEMA_FACTORY[stype],
-                "operand": builder(source),
+                "operand": operand,
             }
         ],
     }
@@ -725,22 +800,29 @@ class ConnectorReplica:  # REQ-954/955/956
             else bundle_spec_for(_source_type(source))
         )
         self._server: PgwireServer | None = None
+        # A start and the first endpoint request can come from different threads; one server.
+        self._start_lock = threading.Lock()
 
     @property
     def spec(self) -> BundleSpec:
         return self._spec
 
     def _ensure_server(self) -> PgwireServer:
+        with self._start_lock:
+            return self._ensure_server_locked()
+
+    def _ensure_server_locked(self) -> PgwireServer:
         if self._server is not None:
             return self._server
         bundle_dir = self._resolver.resolve(self._spec)  # REQ-956 (resolve + cache)
         ports = self._allocator.allocate(self._source.id)  # REQ-955 (unique ports)
+        # The server runs from its own state directory, the bundle's code linked in: the
+        # shared bundle is never written to (one model and one adapter state per server).
+        state_dir = server_state_dir(bundle_dir, self._spec.version, self._source.id)
         server = PgwireServer(
-            # The server runs from its own state directory, the bundle's code linked in: the
-            # shared bundle is never written to (one model and one adapter state per server).
-            bundle_dir=server_state_dir(bundle_dir, self._spec.version, self._source.id),
+            bundle_dir=state_dir,
             spec=self._spec,
-            model=build_model_json(self._source),  # REQ-955 (config)
+            model=build_model_json(self._source, state_dir=state_dir),  # REQ-955 (config)
             ports=ports,
             spawn=self._spawn,
             health_check=self._health,
@@ -749,6 +831,10 @@ class ConnectorReplica:  # REQ-954/955/956
         server.start()  # REQ-955 (lifecycle)
         self._server = server
         return server
+
+    def start(self) -> None:
+        """Start the server if it is not running; does not wait for it to listen."""
+        self._ensure_server()
 
     def endpoint(self, *, timeout: float | None = None) -> PortPair:
         """The healthy server's endpoint: start it if needed and wait for its listener (the JVM
@@ -811,6 +897,29 @@ class ConnectorReplica:  # REQ-954/955/956
 # shared allocator keeps concurrent sources on distinct ports. Stopped by ``stop_all_servers``.
 _ENDPOINT_ALLOCATOR = PortAllocator()
 _ENDPOINTS: dict[str, ConnectorReplica] = {}
+# One server per source id: an engine attach, a discovery call and a write can each be the first
+# to ask for a source's endpoint, from different threads.
+_ENDPOINTS_LOCK = threading.Lock()
+
+
+def _endpoint_replica(source: Any) -> ConnectorReplica:
+    """The one replica for ``source``."""
+    with _ENDPOINTS_LOCK:
+        replica = _ENDPOINTS.get(source.id)
+        if replica is None:
+            replica = ConnectorReplica(source, allocator=_ENDPOINT_ALLOCATOR)
+            _ENDPOINTS[source.id] = replica
+        _reap_on_exit()
+    return replica
+
+
+def start_endpoint(source: Any) -> None:
+    """Start (once) the source's pgwire server without waiting for it to listen (REQ-1946): a
+    Salesforce server describes every sObject first, which takes minutes on a large org, so it is
+    started when the source is registered or loaded rather than by the first statement that
+    needs it. A bundle or config error is raised here; readiness is asked for by
+    :func:`ensure_endpoint` / :func:`ensure_endpoint_for_discovery`."""
+    _endpoint_replica(source).start()
 
 
 #: Whether :func:`stop_all_servers` has been registered to run when this interpreter exits.
@@ -848,12 +957,7 @@ def ensure_endpoint(source: Any, *, timeout: float | None = None) -> PortPair:
     (REQ-1690). The server must be healthy before the ATTACH, so an unhealthy start is loud here.
 
     ``timeout`` (REQ-1824): see ``ConnectorReplica.endpoint``."""
-    replica = _ENDPOINTS.get(source.id)
-    if replica is None:
-        replica = ConnectorReplica(source, allocator=_ENDPOINT_ALLOCATOR)
-        _ENDPOINTS[source.id] = replica
-    _reap_on_exit()
-    return replica.endpoint(timeout=timeout)
+    return _endpoint_replica(source).endpoint(timeout=timeout)
 
 
 # REQ-1824: how long a DISCOVERY call (schema/table/column introspection) waits for the bundled
@@ -893,7 +997,8 @@ def stop_endpoint(source_id: str) -> None:
     recreated under the same id keeps serving whatever schema the first server was started with,
     however stale (confirmed live: a deleted-and-recreated `files` source, same name/id/path,
     that was never re-scanned for its new format because the old server was still answering)."""
-    replica = _ENDPOINTS.pop(source_id, None)
+    with _ENDPOINTS_LOCK:
+        replica = _ENDPOINTS.pop(source_id, None)
     if replica is not None:
         replica.close()
 

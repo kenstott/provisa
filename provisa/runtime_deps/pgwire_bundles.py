@@ -51,6 +51,7 @@ BUNDLE_VARIANTS: dict[tuple[str, str], str] = {
 BUNDLE_CONNECTOR: dict[str, str] = {
     "files": "file",
     "sharepoint": "sharepoint",
+    "salesforce": "salesforce",
     "splunk": "splunk",
 }
 
@@ -62,7 +63,7 @@ class BundleUnavailable(Exception):  # REQ-956
 
 @dataclass(frozen=True)
 class BundleSpec:  # REQ-956 — a pinned (connector, version) coordinate in the upstream release
-    connector: str  # "file" | "sharepoint" | "splunk"
+    connector: str  # "file" | "sharepoint" | "splunk" | "salesforce"
     version: str = RELEASE_TAG
     repo: str = GITHUB_REPO
     variant: str = ""  # the OS/arch tarball variant; "" ⇒ this host's (see bundle_variant)

@@ -65,6 +65,7 @@ _CRED_PREFIXES = (
     "SYNAPSE_",
     "CLICKHOUSE_",
     "SP_",
+    "SF_",  # the Salesforce connected app (REQ-1946)
     "REDSHIFT_",
     # R2 object staging (Cloudflare S3-compatible). The Databricks bulk COPY-INTO, Databricks
     # external-link, and Fabric OPENROWSET tests gate on AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY /

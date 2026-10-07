@@ -122,6 +122,10 @@ class ClickHouseSharepointConnector(_ClickHousePgwireConnector):  # REQ-1730
     source_type = "sharepoint"
 
 
+class ClickHouseSalesforceConnector(_ClickHousePgwireConnector):  # REQ-1946
+    source_type = "salesforce"
+
+
 class ClickHouseSplunkConnector(_ClickHousePgwireConnector):  # REQ-1730
     source_type = "splunk"
 

@@ -316,6 +316,10 @@ class DuckDBSharepointConnector(_DuckDBPgwireConnector):  # REQ-1690
     source_type = "sharepoint"
 
 
+class DuckDBSalesforceConnector(_DuckDBPgwireConnector):  # REQ-1946
+    source_type = "salesforce"
+
+
 class DuckDBSplunkConnector(_DuckDBPgwireConnector):  # REQ-1690
     source_type = "splunk"
 
@@ -859,6 +863,10 @@ class PgFilesConnector(_PgPgwireConnector):  # REQ-1730
 
 class PgSharepointConnector(_PgPgwireConnector):  # REQ-1730
     source_type = "sharepoint"
+
+
+class PgSalesforceConnector(_PgPgwireConnector):  # REQ-1946
+    source_type = "salesforce"
 
 
 class PgSplunkConnector(_PgPgwireConnector):  # REQ-1730

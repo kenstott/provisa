@@ -23,6 +23,8 @@ only for the operations the table offers; the admin table page shows them.
   dependency refusals, origin and the rights a role may be granted.
 * A remote API's tables (GraphQL, OpenAPI, gRPC) take no table writes: a remote write is one of the
   remote's operations, registered as a command.
+* A SharePoint or Salesforce source takes all three through its own pgwire server, whatever
+  engine serves its reads (REQ-1946).
 * A source with no write route (``executor/writable.resolve_write_path``) takes none.
 * An append-only store takes inserts only: ClickHouse (its UPDATE and DELETE are asynchronous
   mutations), Iceberg and Delta Lake, a Kafka topic (a produce) and an ingest stream.

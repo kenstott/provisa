@@ -341,6 +341,7 @@ def test_download_unnests_the_tarball(tmp_path, monkeypatch):  # REQ-1690
 def test_bundle_spec_maps_each_type():
     assert rd.bundle_spec_for("sharepoint").artifact_name == "pgwire-sharepoint"
     assert rd.bundle_spec_for("splunk").artifact_name == "pgwire-splunk"
+    assert rd.bundle_spec_for("salesforce").artifact_name == "pgwire-salesforce"
 
 
 def test_bundle_spec_unknown_type_is_loud():

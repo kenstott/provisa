@@ -778,6 +778,51 @@ class TrinoSharepointConnector(_TrinoConnector):
         return props
 
 
+class TrinoSalesforceConnector(_TrinoConnector):
+    """REQ-1946: a Salesforce org read through the trino-salesforce plugin, which reads only. The
+    catalog carries the same credential set the source's pgwire server is given
+    (``pgwire_replica._salesforce_operand``, where an incomplete set is refused by name), and the
+    same schema name, so a table registered once is addressed identically on every engine.
+    ``case-insensitive-name-matching`` is always on: sObject names are mixed case and the plugin
+    refuses to start without it."""
+
+    source_type = "salesforce"
+    trino_connector = "salesforce"
+    mechanism = Mechanism.ATTACH_R
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        from provisa.core.secrets import resolve_secrets
+
+        mapping = {
+            k: resolve_secrets(v) if isinstance(v, str) else v for k, v in source.mapping.items()
+        }
+        props: dict = {
+            "login-url": resolve_secrets(source.base_url or source.host or ""),
+            # Same sql-normalization pgwire_replica.schema_name() applies — inlined, as
+            # TrinoSharepointConnector's is (lint-imports' must-not-import-executor contract).
+            "schema": source.id.replace("-", "_"),
+        }
+        auth_type = mapping.get("auth_type", "CLIENT_CREDENTIALS")
+        if auth_type == "ACCESS_TOKEN":
+            props["access-token"] = mapping.get("access_token", "")
+            props["instance-url"] = mapping.get("instance_url", "")
+        else:
+            props["client-id"] = resolve_secrets(source.username or "")
+            props["client-secret"] = resolve_secrets(source.password or "")
+            if auth_type == "USERNAME_PASSWORD":
+                props["username"] = mapping.get("sf_username", "")
+                props["password"] = mapping.get("sf_password", "")
+                if mapping.get("security_token"):
+                    props["security-token"] = mapping["security_token"]
+        if mapping.get("api_version"):
+            props["api-version"] = mapping["api_version"]
+        props["case-insensitive-name-matching"] = "true"
+        return props
+
+
 class TrinoSplunkConnector(_TrinoConnector):
     """REQ-1730: the underlying trino-splunk plugin (a standalone wrapper over Calcite's splunk
     adapter, distinct from the bundled Calcite pgwire bridge DuckDB attaches through) used to
@@ -960,6 +1005,7 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoCsvConnector(),
         TrinoParquetConnector(),
         TrinoSharepointConnector(),
+        TrinoSalesforceConnector(),
         TrinoSplunkConnector(),
         TrinoRedisConnector(),
         TrinoElasticsearchConnector(),

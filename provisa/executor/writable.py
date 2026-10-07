@@ -10,14 +10,20 @@
 
 """The single source of truth for the write path: which source types are writable, and by which route.
 
-A mutation can reach a source three ways, in DESCENDING preference (native → sqlalchemy → engine):
+A mutation can reach a source four ways, in DESCENDING preference (native → sqlalchemy → pgwire
+server → engine):
 
 1. NATIVE     — a bespoke async driver (asyncpg/aiomysql/…) runs the mutation directly. Requires the
                 driver's dependency to import AND a SQLGlot write dialect (the mutation is compiled to
                 PG-canonical SQL then transpiled to the source's dialect before it reaches the driver).
 2. SQLALCHEMY — the generic SQLAlchemy fallback driver, for a type with no native driver. Same two
                 gates (DBAPI installed + SQLGlot dialect); broadens the set to any SQLAlchemy dialect.
-3. ENGINE     — the federation engine writes upstream through a write-capable ATTACH connector
+3. PGWIRE     — the source's own bundled pgwire server (REQ-1946): a SharePoint or Salesforce
+                source is written through the PostgreSQL driver connected to that server's endpoint
+                (``api/data/pgwire_write.py``), on the DIRECT terminal like routes 1 and 2. The
+                route does not depend on the serving engine: where the engine reads the source
+                through a connector of its own (Trino), the server runs for writes alone.
+4. ENGINE     — the federation engine writes upstream through a write-capable ATTACH connector
                 (postgres_fdw, DuckDB/the engine ATTACH — Capability.write). The engine executes the
                 mutation in ITS OWN dialect against the attached/foreign table, so no per-source
                 SQLGlot gate applies; the only gate is the connector declaring write support. This is
@@ -47,7 +53,19 @@ if TYPE_CHECKING:
 class WritePath(str, Enum):  # REQ-229, REQ-842
     NATIVE = "native"  # bespoke async driver, direct
     SQLALCHEMY = "sqlalchemy"  # generic SQLAlchemy fallback, direct
+    PGWIRE = "pgwire"  # the source's own bundled pgwire server, on the PostgreSQL driver
     ENGINE = "engine"  # federation engine writes upstream via a write-capable connector
+
+
+# REQ-1946: the source types written through their own bundled pgwire server. ``files`` and
+# ``splunk`` have such a server too, and it reads only.
+PGWIRE_SERVER_WRITTEN: frozenset[str] = frozenset({"sharepoint", "salesforce"})
+
+
+def is_written_through_pgwire_server(source_type: str) -> bool:
+    """Whether ``source_type``'s write route is its own pgwire server — the ONE predicate that
+    decides it (REQ-1946). The server speaks the PostgreSQL wire, so the route needs that driver."""
+    return source_type in PGWIRE_SERVER_WRITTEN and has_native_driver("postgresql")
 
 
 def sqlglot_write_dialect(source_type: str) -> str | None:
@@ -110,7 +128,7 @@ def resolve_write_path(
 ) -> WritePath | None:
     """The highest-preference write route for ``source_type``, or None if unwritable.
 
-    Preference order is native → sqlalchemy → engine: a bespoke driver is fastest and best-tuned; the
+    Preference order is native → sqlalchemy → pgwire server → engine: a bespoke driver is fastest and best-tuned; the
     SQLAlchemy fallback fills driver gaps; the engine route is last, used when there is no direct
     driver at all (and it alone can reach a source with no SQLGlot dialect). ``engine`` is required to
     consider the ENGINE route.
@@ -120,6 +138,8 @@ def resolve_write_path(
         return WritePath.NATIVE
     if has_sqlalchemy_fallback(source_type) and has_dialect:
         return WritePath.SQLALCHEMY
+    if is_written_through_pgwire_server(source_type):
+        return WritePath.PGWIRE
     if engine is not None and is_writable_via_engine(source_type, engine):
         return WritePath.ENGINE
     return None

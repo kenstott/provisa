@@ -137,6 +137,7 @@ class SourceType(str, Enum):
     govdata = "govdata"
     # Enterprise SaaS via Apache Calcite connectors
     sharepoint = "sharepoint"
+    salesforce = "salesforce"
     splunk = "splunk"
     # File crawler — directory of CSV/Parquet/XLSX/JSON surfaced as tables
     files = "files"

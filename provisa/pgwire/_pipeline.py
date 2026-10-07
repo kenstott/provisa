@@ -2971,6 +2971,13 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         handle = await deliver(state, physical_sql, deliv, plan.exec_params, forced=False)
         return QueryResult(rows=[], column_names=[], redirect=handle)
 
+    if plan.writes_tables and plan.route == Route.DIRECT:
+        # REQ-1946: a source written through its own pgwire server gets its DIRECT pool from the
+        # first write that finds that server listening.
+        from provisa.api.data.pgwire_write import ensure_write_pool
+
+        await ensure_write_pool(state, plan.source_id)
+
     if plan.route == Route.ENGINE:
         assert plan.physical_sql is not None
         # ENGINE terminal (REQ-825): hand the federated SQL to the bound engine.

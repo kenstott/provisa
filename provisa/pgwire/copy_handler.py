@@ -258,6 +258,10 @@ async def _insert_rows(
 
     if not rows:
         return 0
+    # REQ-1946: a source written through its own pgwire server gets its pool from the first write.
+    from provisa.api.data.pgwire_write import ensure_write_pool
+
+    await ensure_write_pool(_state, source_id)
 
     col_list = ", ".join(f'"{c}"' for c in col_names)
     # Positional placeholders in the form every direct driver takes ($1 … $n).

@@ -1026,6 +1026,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             await _synthesize_mapping_dsl_tables(pool, model)
             await _cache_prometheus_label_columns(pool, state, model)
             _register_source_on_engine(state, model, input)
+            # REQ-1946: a SharePoint or Salesforce source's pgwire server takes its writes on
+            # every engine, so it is started here rather than by an engine's attach.
+            from provisa.api.data.pgwire_write import start_write_server
+
+            start_write_server(model)
         await _analyze_source_on_engine(state, pool, model, input)
 
         if input.type == "govdata" and input.database and input.username:
@@ -1325,6 +1330,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 input.id,
                 _pgwire_err,
             )
+        # REQ-1946: the write pool was connected to the server just stopped; the server is
+        # started again from the edited source, and the next write opens its pool on it.
+        from provisa.executor.writable import PGWIRE_SERVER_WRITTEN
+
+        if input.type in PGWIRE_SERVER_WRITTEN:
+            from provisa.api.app import state as _state
+            from provisa.api.data.pgwire_write import start_write_server
+            from provisa.core.secrets_store import bound_to_request_org as _bound
+
+            await _state.source_pools.remove(input.id)
+            async with _bound():
+                start_write_server(model)
 
         if input.type == "govdata" and input.username:
             import os as _os
