@@ -289,6 +289,45 @@ def _three_hundred_timeouts(_timeouts, pool, lock, rng) -> int:
     return timed_out
 
 
+@pytest.mark.parametrize("scope", ["request", "within", "bound"])
+def test_a_deadline_that_passed_before_its_scope_was_entered_ends_in_the_timeout(
+    monkeypatch, _timeouts, scope
+):
+    """A loaded machine can hold the request's thread between creating its deadline and entering
+    its scope for longer than the budget, so the watchdog has already acted on the expiry when
+    the thread enters. The raise that follows at once must land inside the scope — ending in the
+    timeout, with the scope left — never in the door of the scope (entering it, or between
+    entering it and the block), where it would escape as a bare ``DeadlinePassed`` and leave the
+    thread inside the scope, raised into from then on."""
+    enter = request_deadline.Deadline._enter
+
+    def _held_by_load(dl, shield):
+        until = time.monotonic() + 5.0
+        while not dl._cancelled and time.monotonic() < until:  # the watchdog's first step
+            time.sleep(0.001)
+        assert dl._cancelled
+        enter(dl, shield)
+        _spin(0.3)  # the rest of the door: the raise now set would land here
+
+    monkeypatch.setattr(request_deadline.Deadline, "_enter", _held_by_load)
+    _timeouts["s"] = 0.001
+    expected: type[BaseException] = RequestTimedOut if scope == "request" else TimeoutError
+    with pytest.raises(expected) as raised:
+        if scope == "request":
+            with request_deadline.request("graphql"):
+                _spin(10.0)
+        elif scope == "within":
+            with request_deadline.within(0.001):
+                _spin(10.0)
+        else:
+            with request_deadline.bound(request_deadline.Deadline(0.001)):
+                _spin(10.0)
+    assert not isinstance(raised.value, DeadlinePassed)
+    assert not request_deadline.shielded().inside
+    assert request_deadline.current() is None
+    _quiet()
+
+
 # --- the control-plane engine ------------------------------------------------------------------
 
 
