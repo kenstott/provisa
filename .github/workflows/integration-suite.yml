@@ -177,12 +177,6 @@ jobs:
         env:
           # The e2e lane's LLM-evaluation tests reach the live model.
           ANTHROPIC_API_KEY: ${{ matrix.lane == 'e2e' && secrets.ANTHROPIC_API_KEY || '' }}
-          # The isolated lane's interpreter dies during the stack bring-up with nothing shown:
-          # pytest captures output while the session's hooks run, so it is not captured there.
-          PYTEST_ADDOPTS: ${{ matrix.lane == 'isolated' && '--capture=no' || '' }}
-          # The isolated lane's stacks, every 45 s: it dies after collection, before any test runs,
-          # with nothing else shown (tests/conftest.py pytest_configure).
-          PYTEST_DUMP_STACKS_EVERY: ${{ matrix.lane == 'isolated' && '45' || '' }}
           # For the Splunk CIM fetch tests/conftest.py runs before starting splunk.
           SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
           SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
