@@ -1,0 +1,15 @@
+# Test-harness-only overlay (tests/itest_stack.py COMPOSE_ARGS); no other launcher reads it.
+#
+# REQ-1946: the Trino salesforce plugin keeps each source's describe results under
+# /data/trino/cache/salesforce-describe (provisa/federation/trino_connectors.py
+# SALESFORCE_DESCRIBE_CACHE_ROOT). A session's stack is torn down with its volumes, so the
+# trino_cache volume would start empty every run and the live Salesforce test would describe the
+# whole org (about 1,200 calls of its daily API allowance) each time. This directory is the
+# machine's, kept between sessions; tests/itest_stack.py names it.
+services:
+  trino:
+    volumes:
+      - ${PROVISA_ITEST_SALESFORCE_DESCRIBE_HOST:?set by tests/itest_stack.py}:/data/trino/cache/salesforce-describe
+  trino-worker:
+    volumes:
+      - ${PROVISA_ITEST_SALESFORCE_DESCRIBE_HOST:?set by tests/itest_stack.py}:/data/trino/cache/salesforce-describe

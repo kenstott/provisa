@@ -82,9 +82,16 @@ services:
     # One line: a YAML folded scalar keeps the newline before a MORE-indented continuation, so the
     # wrapped form reached busybox sh as two lines and died with `unexpected "&&"`, failing every
     # service that waits on service_completed_successfully.
-    command: sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange && mkdir -p /etc/trino/catalog && chown -R 1000:1000 /etc/trino/catalog"
+    #
+    # The two cache volumes are given to Trino's user here too (REQ-1946): Docker creates a named
+    # volume's root owned by root when the image has no directory at its mount path, and the
+    # Salesforce catalog keeps its describe results under /data/trino/cache (mkdir there was
+    # "Permission denied" for uid 1000 on a fresh volume).
+    command: sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange && mkdir -p /etc/trino/catalog && chown -R 1000:1000 /etc/trino/catalog && chown 1000:1000 /data/trino/cache /data/trino/worker-cache"
     volumes:
       - provisa_exchange:/data/provisa/exchange
+      - trino_cache:/data/trino/cache
+      - trino_worker_cache:/data/trino/worker-cache
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/catalog:/etc/trino/catalog
     restart: "no"
 
@@ -136,6 +143,8 @@ services:
       # this repo's own checkout path.
       - ${PROVISA_E2E_SHAREPOINT_CERT_HOST:-/Volumes/main/Users/kennethstott/PycharmProjects/provisa/sharepoint.pfx}:${PROVISA_E2E_SHAREPOINT_CERT_HOST:-/Volumes/main/Users/kennethstott/PycharmProjects/provisa/sharepoint.pfx}:ro
       - ./trino/plugins/trino-file:/usr/lib/trino/plugin/trino-file:ro
+      - ./trino/plugins/trino-salesforce:/usr/lib/trino/plugin/trino-salesforce:ro
+      - ./trino/plugins/trino-cloudops:/usr/lib/trino/plugin/trino-cloudops:ro
       # REQ-1494: Provisa's fake functions, and the platform fake keys they are keyed by -- each
       # written to this directory as <fingerprint>.key by the Provisa sharing it (its own
       # PROVISA_FAKE_KEY_DIR), read by the plugin.
@@ -186,6 +195,8 @@ services:
       - ./trino/plugins/trino-sharepoint:/usr/lib/trino/plugin/trino-sharepoint:ro
       - ./trino/plugins/trino-splunk:/usr/lib/trino/plugin/trino-splunk:ro
       - ./trino/plugins/trino-file:/usr/lib/trino/plugin/trino-file:ro
+      - ./trino/plugins/trino-salesforce:/usr/lib/trino/plugin/trino-salesforce:ro
+      - ./trino/plugins/trino-cloudops:/usr/lib/trino/plugin/trino-cloudops:ro
       # REQ-1494: Provisa's fake functions, and the platform fake keys they are keyed by -- each
       # written to this directory as <fingerprint>.key by the Provisa sharing it (its own
       # PROVISA_FAKE_KEY_DIR), read by the plugin.

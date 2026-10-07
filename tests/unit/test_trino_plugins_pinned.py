@@ -33,7 +33,7 @@ def plugins(tmp_path, monkeypatch):
 
     def _fetch(target: str, name: str) -> None:
         os.makedirs(target, exist_ok=True)
-        open(os.path.join(target, f"{name}-{harness._TRINO_PLUGIN_VERSION}.jar"), "w").close()
+        open(os.path.join(target, f"{name}-{harness._trino_plugin_version(name)}.jar"), "w").close()
         fetched.append(name)
 
     monkeypatch.setattr(harness, "_download_trino_plugin", _fetch)
@@ -58,9 +58,55 @@ def test_a_directory_holding_the_pinned_jar_is_used_as_is(plugins):
     root, fetched = plugins
     for name in harness._TRINO_PLUGINS:
         (root / name).mkdir()
-        (root / name / f"{name}-{harness._TRINO_PLUGIN_VERSION}.jar").write_text("")
+        (root / name / f"{name}-{harness._trino_plugin_version(name)}.jar").write_text("")
     harness._populate_trino_plugins()
     assert fetched == []
+
+
+def test_each_plugin_is_fetched_at_its_own_version(monkeypatch, tmp_path):
+    # REQ-1946, REQ-1947: the Salesforce and cloud inventory plugins come from the first release
+    # that has what Provisa needs of them; every other plugin stays at the one pinned version.
+    assert harness._TRINO_PLUGIN_VERSIONS == {
+        "trino-salesforce": "0.108.0",
+        "trino-cloudops": "0.108.0",
+    }
+    assert set(harness._TRINO_PLUGIN_VERSIONS) <= set(harness._TRINO_PLUGINS)
+    urls: list[str] = []
+    monkeypatch.setattr(
+        "urllib.request.urlretrieve", lambda url, path: urls.append(f"{url} -> {path}")
+    )
+    for name in ("trino-sharepoint", "trino-salesforce", "trino-cloudops"):
+        harness._download_trino_plugin(str(tmp_path / name), name)
+    base = "https://repo1.maven.org/maven2/io/simpleishard"
+    pinned = harness._TRINO_PLUGIN_VERSION
+    assert urls == [
+        f"{base}/trino-sharepoint/{pinned}/trino-sharepoint-{pinned}.jar"
+        f" -> {tmp_path}/trino-sharepoint/trino-sharepoint-{pinned}.jar",
+        f"{base}/trino-salesforce/0.108.0/trino-salesforce-0.108.0.jar"
+        f" -> {tmp_path}/trino-salesforce/trino-salesforce-0.108.0.jar",
+        f"{base}/trino-cloudops/0.108.0/trino-cloudops-0.108.0.jar"
+        f" -> {tmp_path}/trino-cloudops/trino-cloudops-0.108.0.jar",
+    ]
+
+
+def test_the_workflows_fetch_each_plugin_at_the_harness_version():
+    # CI and the harness must fetch the same build of each plugin.
+    from pathlib import Path
+
+    workflows = Path(__file__).resolve().parents[2] / ".github" / "workflows"
+    wanted = " ".join(
+        f"{name}:{harness._TRINO_PLUGIN_VERSIONS.get(name, '$VERSION')}"
+        for name in harness._TRINO_PLUGINS
+    )
+    for name in ("build-dmg.yml", "ui-e2e-swap-amd64.yml", "ui-e2e-trino.yml"):
+        text = (workflows / name).read_text()
+        assert f'VERSION="{harness._TRINO_PLUGIN_VERSION}"' in text, name
+        loop = " ".join(
+            text[text.index("for spec in") : text.index("; do", text.index("for spec in"))]
+            .replace("\\", " ")
+            .split()
+        )
+        assert loop == f"for spec in {wanted}", name
 
 
 def test_another_build_is_refused_by_name(plugins):

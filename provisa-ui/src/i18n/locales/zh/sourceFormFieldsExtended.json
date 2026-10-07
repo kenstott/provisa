@@ -104,6 +104,7 @@
     "brandNamespaceHint": "此数据源表名的前缀。留空则使用默认值。",
     "sfLoginUrl": "登录 URL",
     "sfLoginUrlHelp": "贵组织的“我的域”URL（设置，然后是“我的域”）",
+    "sfLoginUrlInvalid": "请输入完整的“我的域”URL，以 https:// 开头",
     "sfAccessTokenAuth": "访问令牌",
     "sfConsumerKey": "消费者密钥",
     "sfConsumerSecret": "消费者密码",

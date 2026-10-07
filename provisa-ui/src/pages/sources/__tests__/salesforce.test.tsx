@@ -15,7 +15,11 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "../../../test-utils/render";
 import { SalesforceFields } from "../SalesforceFields";
 import { SOURCE_TYPES } from "../constants";
-import { salesforceFieldsFromMapping, salesforceMappingJson } from "../salesforce";
+import {
+  salesforceFieldsFromMapping,
+  salesforceLoginUrlValid,
+  salesforceMappingJson,
+} from "../salesforce";
 import tour from "../../../i18n/locales/en/tour.json";
 
 const FORM = { host: "https://acme.my.salesforce.com", username: "key", password: "secret" };
@@ -87,9 +91,35 @@ describe("salesforceMappingJson", () => {
   });
 });
 
+describe("salesforceLoginUrlValid", () => {
+  it("takes the full https My Domain URL or a reference to it", () => {
+    expect(salesforceLoginUrlValid("https://acme.my.salesforce.com")).toBe(true);
+    expect(salesforceLoginUrlValid("${secret:sf_login_url}")).toBe(true);
+    expect(salesforceLoginUrlValid("${env:SF_LOGIN_URL}")).toBe(true);
+  });
+
+  it("refuses a bare host and any other scheme", () => {
+    expect(salesforceLoginUrlValid("acme.my.salesforce.com")).toBe(false);
+    expect(salesforceLoginUrlValid("http://acme.my.salesforce.com")).toBe(false);
+    expect(salesforceLoginUrlValid("https://")).toBe(false);
+  });
+});
+
 describe("SalesforceFields", () => {
-  const show = (fields: Record<string, string>) =>
-    render(<SalesforceFields form={FORM} setForm={vi.fn()} fields={fields} setFields={vi.fn()} />);
+  const show = (fields: Record<string, string>, form = FORM) =>
+    render(<SalesforceFields form={form} setForm={vi.fn()} fields={fields} setFields={vi.fn()} />);
+
+  it("says a login URL without https:// is not the full My Domain URL", () => {
+    show({}, { ...FORM, host: "acme.my.salesforce.com" });
+    expect(
+      screen.getByText("Enter the full My Domain URL, starting with https://"),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing about a full login URL or an empty one", () => {
+    show({});
+    expect(screen.queryByText(/starting with https/)).toBeNull();
+  });
 
   it("asks for the login URL, the connected app and an API version by default", () => {
     show({});

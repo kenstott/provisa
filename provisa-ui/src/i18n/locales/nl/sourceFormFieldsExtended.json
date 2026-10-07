@@ -104,6 +104,7 @@
     "brandNamespaceHint": "Voorvoegsel van de tabelnamen van deze bron. Laat leeg voor de standaardwaarde.",
     "sfLoginUrl": "Aanmeldings-URL",
     "sfLoginUrlHelp": "De Mijn domein-URL van uw organisatie (Setup, dan Mijn domein)",
+    "sfLoginUrlInvalid": "Voer de volledige Mijn domein-URL in, beginnend met https://",
     "sfAccessTokenAuth": "Toegangstoken",
     "sfConsumerKey": "Consumentensleutel",
     "sfConsumerSecret": "Consumentengeheim",

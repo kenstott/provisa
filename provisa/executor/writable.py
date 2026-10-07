@@ -63,8 +63,9 @@ PGWIRE_SERVER_WRITTEN: frozenset[str] = frozenset({"sharepoint", "salesforce"})
 
 
 # Whether a write on each route can hand back the rows it wrote (a ``RETURNING`` clause). The
-# pgwire servers of the pinned engine release do not take ``RETURNING`` (REQ-1946); when the pin
-# moves to a release that does, PGWIRE becomes True here and nothing else changes.
+# Salesforce server's release (engine-v0.108.0) is said to take ``RETURNING``, and that has not
+# been run against a live org; the SharePoint server's release does not take it (REQ-1946). PGWIRE
+# becomes True here, and nothing else changes, once both servers are seen to return written rows.
 _ROUTE_RETURNS_WRITTEN_ROWS: dict[WritePath, bool] = {
     WritePath.NATIVE: True,
     WritePath.SQLALCHEMY: True,

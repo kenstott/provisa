@@ -104,6 +104,7 @@
     "brandNamespaceHint": "Prefijo de los nombres de tabla de este origen. Déjelo en blanco para usar el predeterminado.",
     "sfLoginUrl": "URL de inicio de sesión",
     "sfLoginUrlHelp": "La URL de Mi dominio de su organización (Configuración, luego Mi dominio)",
+    "sfLoginUrlInvalid": "Introduzca la URL completa de Mi dominio, que empiece por https://",
     "sfAccessTokenAuth": "Token de acceso",
     "sfConsumerKey": "Clave de consumidor",
     "sfConsumerSecret": "Secreto de consumidor",

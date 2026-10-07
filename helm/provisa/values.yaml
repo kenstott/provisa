@@ -246,6 +246,14 @@ trino:
       failureThreshold: 5
     pdb:
       minAvailable: 1
+    # What connectors keep between coordinator restarts, mounted at /data/trino/cache. A
+    # Salesforce source's describe results live here: without the volume each restart describes
+    # the org again (about one API call per sObject, out of the org's daily allowance).
+    cache:
+      persistence:
+        enabled: true
+        size: 1Gi
+        storageClass: ""   # empty → global.storageClass, else the cluster default
   worker:
     replicaCount: 2
     autoscaling:

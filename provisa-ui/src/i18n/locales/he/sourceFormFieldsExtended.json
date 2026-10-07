@@ -104,6 +104,7 @@
     "brandNamespaceHint": "קידומת לשמות הטבלאות של מקור זה. השאירו ריק לברירת המחדל.",
     "sfLoginUrl": "כתובת URL להתחברות",
     "sfLoginUrlHelp": "כתובת ה-My Domain של הארגון שלך (Setup, ואז My Domain)",
+    "sfLoginUrlInvalid": "הזן את כתובת ה-My Domain המלאה, המתחילה ב-https://",
     "sfAccessTokenAuth": "אסימון גישה",
     "sfConsumerKey": "Consumer Key",
     "sfConsumerSecret": "Consumer Secret",

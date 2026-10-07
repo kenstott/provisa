@@ -51,6 +51,7 @@ import time
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
 TEST_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.test.yml")
+ITEST_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.itest.yml")
 
 
 def _checkout_prefix() -> str:
@@ -77,7 +78,7 @@ _PREFIXES = (_ITEST_PREFIX, _E2E_PREFIX)
 
 ITEST_PROJECT = session_project(_ITEST_PREFIX, "PROVISA_ITEST_PROJECT")
 E2E_PROJECT = session_project(_E2E_PREFIX, "PROVISA_E2E_PROJECT")
-COMPOSE_ARGS = ["-p", ITEST_PROJECT, "-f", CORE_COMPOSE, "-f", TEST_COMPOSE]
+COMPOSE_ARGS = ["-p", ITEST_PROJECT, "-f", CORE_COMPOSE, "-f", TEST_COMPOSE, "-f", ITEST_COMPOSE]
 
 
 def _session_trino_etc() -> str:
@@ -115,6 +116,25 @@ def _session_trino_etc() -> str:
 
 
 TRINO_ETC_DIR = _session_trino_etc()
+
+
+def _salesforce_describe_cache() -> str:
+    """The host directory the session's Trino keeps Salesforce describe results in
+    (docker-compose.itest.yml). The machine's, not the session's: the live Salesforce test's
+    org has a daily API allowance and a describe of the whole org is about 1,200 calls, so what
+    one session described the next one reads. Beside the downloaded bundles, under the
+    runtime-deps cache root; the plugin keeps one subdirectory per source."""
+    from provisa.runtime_deps.pgwire_bundles import default_cache_root
+
+    path = str(default_cache_root() / "itest-trino-salesforce-describe")
+    os.makedirs(path, exist_ok=True)
+    # The Trino container's user is not this one; on a Linux host it writes here by mode alone.
+    os.chmod(path, 0o777)  # noqa: S103
+    os.environ["PROVISA_ITEST_SALESFORCE_DESCRIBE_HOST"] = path
+    return path
+
+
+SALESFORCE_DESCRIBE_CACHE_DIR = _salesforce_describe_cache()
 
 
 def _pid_alive(pid: int) -> bool:

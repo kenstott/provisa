@@ -811,13 +811,26 @@ class TrinoCloudopsConnector(_TrinoConnector):
         return props
 
 
+# REQ-1946: where the Trino salesforce plugin keeps each source's describe results, as a path
+# inside the Trino container. /data/trino/cache is the volume the compose stack mounts on the
+# coordinator and on each worker (docker-compose.core.yml trino_cache / trino_worker_cache), so
+# what is kept there outlives the Trino process.
+SALESFORCE_DESCRIBE_CACHE_ROOT = "/data/trino/cache/salesforce-describe"
+
+
 class TrinoSalesforceConnector(_TrinoConnector):
     """REQ-1946: a Salesforce org read through the trino-salesforce plugin, which reads only. The
     catalog carries the same credential set the source's pgwire server is given
     (``pgwire_replica._salesforce_operand``, where an incomplete set is refused by name), and the
     same schema name, so a table registered once is addressed identically on every engine.
     ``case-insensitive-name-matching`` is always on: sObject names are mixed case and the plugin
-    refuses to start without it."""
+    refuses to start without it.
+
+    ``describe-cache-directory`` is the source's own directory under ``SALESFORCE_DESCRIBE_CACHE_ROOT``. The
+    plugin describes every sObject of the org when its catalog is first used (about 1,200 API
+    calls on an org with as many sObjects) and keeps the results there; its own default is a
+    directory under the Trino user's home, which a restarted container does not keep, so each
+    Trino restart would spend that many calls of the org's daily allowance again."""
 
     source_type = "salesforce"
     trino_connector = "salesforce"
@@ -828,12 +841,13 @@ class TrinoSalesforceConnector(_TrinoConnector):
 
     def details(self, source: Source) -> dict:
         from provisa.core.secrets import resolve_secrets
+        from provisa.federation.salesforce import salesforce_login_url
 
         mapping = {
             k: resolve_secrets(v) if isinstance(v, str) else v for k, v in source.mapping.items()
         }
         props: dict = {
-            "login-url": resolve_secrets(source.base_url or source.host or ""),
+            "login-url": salesforce_login_url(source),
             # Same sql-normalization pgwire_replica.schema_name() applies — inlined, as
             # TrinoSharepointConnector's is (lint-imports' must-not-import-executor contract).
             "schema": source.id.replace("-", "_"),
@@ -853,6 +867,7 @@ class TrinoSalesforceConnector(_TrinoConnector):
         if mapping.get("api_version"):
             props["api-version"] = mapping["api_version"]
         props["case-insensitive-name-matching"] = "true"
+        props["describe-cache-directory"] = f"{SALESFORCE_DESCRIBE_CACHE_ROOT}/{props['schema']}"
         return props
 
 

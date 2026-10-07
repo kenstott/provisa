@@ -104,6 +104,7 @@
     "brandNamespaceHint": "इस स्रोत की टेबल के नामों का उपसर्ग। डिफ़ॉल्ट के लिए खाली छोड़ें।",
     "sfLoginUrl": "लॉगिन URL",
     "sfLoginUrlHelp": "आपके संगठन का My Domain URL (Setup, फिर My Domain)",
+    "sfLoginUrlInvalid": "पूरा My Domain URL दर्ज करें, जो https:// से शुरू हो",
     "sfAccessTokenAuth": "एक्सेस टोकन",
     "sfConsumerKey": "कंज़्यूमर की",
     "sfConsumerSecret": "कंज़्यूमर सीक्रेट",

@@ -215,6 +215,8 @@ if [[ "$_run_warehouse" == "1" ]]; then
       tests/integration/test_synapse_federation_engine_e2e.py \
       tests/integration/test_redshift_source_e2e.py \
       tests/integration/test_sharepoint_source_e2e.py \
+      tests/integration/test_salesforce_source_e2e.py \
+      tests/integration/test_cloudops_source_e2e.py \
       tests/integration/test_google_sheets_source_e2e.py \
       tests/integration/test_cross_vendor_parity_e2e.py \
       tests/integration/test_govdata_source.py \

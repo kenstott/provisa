@@ -104,6 +104,7 @@
     "brandNamespaceHint": "Präfix der Tabellennamen dieser Quelle. Für den Standardwert leer lassen.",
     "sfLoginUrl": "Anmelde-URL",
     "sfLoginUrlHelp": "Die „Meine Domäne“-URL Ihrer Organisation (Setup, dann Meine Domäne)",
+    "sfLoginUrlInvalid": "Geben Sie die vollständige „Meine Domäne“-URL ein, beginnend mit https://",
     "sfAccessTokenAuth": "Zugriffstoken",
     "sfConsumerKey": "Verbraucherschlüssel",
     "sfConsumerSecret": "Verbrauchergeheimnis",
