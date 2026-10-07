@@ -131,6 +131,7 @@ def _governed_sql(schema: str, gql: str, rls: RLSContext) -> tuple[str, list]:
                 "table_name": "items",
                 "write_ops": registry_write_ops("files"),
                 "write_returns_rows": registry_write_returns_rows("files"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "name", "qty")
                 ],

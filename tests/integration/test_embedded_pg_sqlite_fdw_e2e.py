@@ -86,6 +86,7 @@ def _si(orders_schema: str) -> SchemaInput:
                 "table_name": "orders",
                 "write_ops": registry_write_ops("sqlite"),
                 "write_returns_rows": registry_write_returns_rows("sqlite"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "amount", "region")
                 ],

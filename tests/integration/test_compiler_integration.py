@@ -81,6 +81,7 @@ def _make_schema_input(
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
         {
             "id": 2,
@@ -96,6 +97,7 @@ def _make_schema_input(
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
     ]
     if extra_tables:
@@ -426,6 +428,7 @@ class TestAggregates:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             }
         ]
         role_no_agg = {

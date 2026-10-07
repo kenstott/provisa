@@ -233,6 +233,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 read_only=bool(table.get("view_sql")),  # REQ-1157: MV/view → query-only
                 write_ops=frozenset(table["write_ops"]),
                 write_returns_rows=table["write_returns_rows"],
+                write_refused_forms=frozenset(table["write_refused_forms"]),
                 modeling_role=table.get("modeling_role"),  # REQ-1320
                 modeling_history=table.get("modeling_history"),  # REQ-1320
                 metrics=metrics_by_table.get(table["table_name"], []),  # REQ-1319
@@ -750,7 +751,7 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
             GraphQLNonNull(response_type),
             args={"input": GraphQLArgument(GraphQLNonNull(insert_input))},
         )
-    if {"insert", "update"} <= t.write_ops:
+    if {"insert", "update"} <= t.write_ops and "on_conflict" not in t.write_refused_forms:
         result[_mutation_name("upsert", t.field_name, conv)] = GraphQLField(
             GraphQLNonNull(response_type),
             args={

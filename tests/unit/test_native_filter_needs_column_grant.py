@@ -42,6 +42,7 @@ def _table(*, data_visible_to: list[str]) -> dict:
         ],
         "write_ops": ["delete", "insert", "update"],
         "write_returns_rows": True,
+        "write_refused_forms": [],
     }
 
 

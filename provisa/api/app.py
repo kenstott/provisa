@@ -2566,7 +2566,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # The data writes each table's source can take, decided once here and carried on its
         # record (executor/write_capability.py): the write admission, the GraphQL and gRPC write
         # surfaces and the admin table page all read it.
-        from provisa.executor.write_capability import table_write_ops, table_write_returns_rows
+        from provisa.executor.write_capability import (
+            table_write_ops,
+            table_write_refused_forms,
+            table_write_returns_rows,
+        )
 
         for _t in tables:
             # A view has no source of its own to write to; every other table's source is typed.
@@ -2574,6 +2578,9 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             _t["write_ops"] = sorted(table_write_ops(_t, _stype, state.federation_engine.engine))
             _t["write_returns_rows"] = table_write_returns_rows(
                 _t, _stype, state.federation_engine.engine
+            )
+            _t["write_refused_forms"] = sorted(
+                table_write_refused_forms(_t, _stype, state.federation_engine.engine)
             )
 
         _build_and_register_schemas(

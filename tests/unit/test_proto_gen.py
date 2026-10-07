@@ -42,6 +42,7 @@ def _make_si(
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             }
         ]
     if column_types is None:
@@ -201,6 +202,7 @@ class TestGenerateProto:
                     ],
                     "write_ops": ["delete", "insert", "update"],
                     "write_returns_rows": True,
+                    "write_refused_forms": [],
                 }
             ],
             column_types={
@@ -268,6 +270,7 @@ class TestRoleFiltering:
                     ],
                     "write_ops": ["delete", "insert", "update"],
                     "write_returns_rows": True,
+                    "write_refused_forms": [],
                 }
             ],
             column_types={
@@ -307,6 +310,7 @@ class TestRelationships:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -320,6 +324,7 @@ class TestRelationships:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         column_types = {

@@ -43,6 +43,7 @@ def _build_schema_and_ctx():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
     ]
     column_types = {
@@ -389,6 +390,7 @@ def _base_tables():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
     ]
 

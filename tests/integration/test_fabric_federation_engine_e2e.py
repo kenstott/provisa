@@ -69,6 +69,7 @@ def _si(schema=_SCH):
                 "table_name": "orders",
                 "write_ops": registry_write_ops("fabric"),
                 "write_returns_rows": registry_write_returns_rows("fabric"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],

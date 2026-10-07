@@ -60,6 +60,8 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # Whether a write to each table can return the rows it wrote, from the same record: a
     # RETURNING clause on a table that cannot is refused at admission.
     write_returns_rows: dict[int, bool] = field(default_factory=dict)
+    # The statement forms a write to each table does not carry, from the same record.
+    write_refused_forms: dict[int, frozenset[str]] = field(default_factory=dict)
     # REQ-1494: per table, the columns this role reads as fakes (by the name a statement uses),
     # each read through the table's faked projection; and the fingerprint naming the platform key
     # the engine computes them under.
@@ -194,6 +196,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         if "write_ops" in tbl:
             gov.write_ops[table_id] = frozenset(tbl["write_ops"])
             gov.write_returns_rows[table_id] = tbl["write_returns_rows"]
+            gov.write_refused_forms[table_id] = frozenset(tbl["write_refused_forms"])
 
         # visible_columns — None means "all visible" (no V003 filtering for this table)
         if _domain_by_tid.get(table_id) == META_DOMAIN_ID:

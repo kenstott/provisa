@@ -422,6 +422,7 @@ _PGW_TABLES = [
         ],
         "write_ops": ["delete", "insert", "update"],
         "write_returns_rows": True,
+        "write_refused_forms": [],
     }
 ]
 

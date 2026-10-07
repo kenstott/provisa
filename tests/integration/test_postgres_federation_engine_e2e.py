@@ -63,6 +63,7 @@ def _orders_table(schema: str) -> dict:
         "table_name": "orders",
         "write_ops": registry_write_ops("postgresql"),
         "write_returns_rows": registry_write_returns_rows("postgresql"),
+        "write_refused_forms": [],
         "columns": [
             {"column_name": c, "visible_to": ["admin"]} for c in ("id", "customer_id", "amount")
         ],
@@ -78,6 +79,7 @@ def _customers_table(schema: str) -> dict:
         "table_name": "customers",
         "write_ops": registry_write_ops("postgresql"),
         "write_returns_rows": registry_write_returns_rows("postgresql"),
+        "write_refused_forms": [],
         "columns": [{"column_name": c, "visible_to": ["admin"]} for c in ("id", "name", "state")],
     }
 

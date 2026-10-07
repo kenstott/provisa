@@ -90,6 +90,44 @@ class ReturningNotSupported(NotAvailableHere):
         )
 
 
+class WriteFormNotSupported(NotAvailableHere):
+    """A write in a statement form the table's write route does not carry
+    (executor/write_capability.py) — refused whatever the role holds, naming the table and the
+    form."""
+
+    def __init__(self, table: str, form: str) -> None:
+        self.table = table
+        self.form = form
+        super().__init__(
+            f"{table!r} does not take {_FORM_NAMES[form]}: its source is written one plain "
+            "INSERT, UPDATE or DELETE at a time"
+        )
+
+
+_FORM_NAMES = {
+    "on_conflict": "INSERT ... ON CONFLICT",
+    "update_from": "UPDATE ... FROM",
+    "delete_using": "DELETE ... USING",
+    "merge": "MERGE",
+    "truncate": "TRUNCATE",
+}
+
+
+def write_form(tree: exp.Expression) -> str | None:
+    """The form of ``tree`` beyond a plain INSERT, UPDATE or DELETE, or None when it is plain."""
+    if isinstance(tree, exp.Merge):
+        return "merge"
+    if isinstance(tree, exp.TruncateTable):
+        return "truncate"
+    if isinstance(tree, exp.Insert) and tree.args.get("conflict"):
+        return "on_conflict"
+    if isinstance(tree, exp.Update) and tree.args.get("from_"):
+        return "update_from"
+    if isinstance(tree, exp.Delete) and tree.args.get("using"):
+        return "delete_using"
+    return None
+
+
 WRITE_OPS: tuple[str, ...] = ("insert", "update", "delete")
 _OPERATIONS = {
     "INSERT": ("insert",),
@@ -389,6 +427,9 @@ def admit_write(
     table, listed = _target(tree)
     table_id = _resolve(table, gov)
     require_write_op(gov, table_id, table.name, kind)
+    form = write_form(tree)
+    if form is not None and form in gov.write_refused_forms[table_id]:
+        raise WriteFormNotSupported(table.name, form)
     if tree.args.get("returning") is not None and not gov.write_returns_rows[table_id]:
         raise ReturningNotSupported(table.name)
     if not gov.can_write:

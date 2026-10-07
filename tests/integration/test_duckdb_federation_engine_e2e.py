@@ -80,6 +80,7 @@ def test_duckdb_query_applies_rls():
                 "table_name": "customers",
                 "write_ops": registry_write_ops("csv"),
                 "write_returns_rows": registry_write_returns_rows("csv"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "first_name", "state")
@@ -117,6 +118,7 @@ def test_duckdb_federates_csv_and_sqlite():
                 "table_name": "customers",
                 "write_ops": registry_write_ops("csv"),
                 "write_returns_rows": registry_write_returns_rows("csv"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "first_name", "state")
@@ -130,6 +132,7 @@ def test_duckdb_federates_csv_and_sqlite():
                 "table_name": "orders",
                 "write_ops": registry_write_ops("csv"),
                 "write_returns_rows": registry_write_returns_rows("csv"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "customer_id", "amount")

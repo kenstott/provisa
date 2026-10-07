@@ -75,6 +75,17 @@ class SourcePool:  # REQ-052, REQ-053
             self._drivers[source_id] = driver
             self._dialects[source_id] = SOURCE_TO_DIALECT.get(source_type, source_type)
 
+    async def add_driver(self, source_id: str, driver: DirectDriver, dialect: str) -> None:
+        """Hold ``driver``, already connected, as ``source_id``'s — for a source whose driver is
+        not the one its type names (REQ-1946: a source written through its own pgwire server).
+        A driver already held for the source is kept, and ``driver`` is closed."""
+        async with self._add_lock:
+            if source_id in self._drivers:
+                await driver.close()
+                return
+            self._drivers[source_id] = driver
+            self._dialects[source_id] = dialect
+
     def dialect_for(self, source_id: str) -> str | None:  # REQ-550
         """Return the sqlglot dialect string for a source, or None if unknown."""
         return self._dialects.get(source_id)

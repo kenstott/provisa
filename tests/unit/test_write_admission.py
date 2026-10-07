@@ -40,6 +40,8 @@ def _gov(
     gov.writable_columns = {1: frozenset(writable)}
     gov.rls_rules = rls or {}
     gov.write_ops = {1: frozenset({"insert", "update", "delete"})}  # a writable source
+    gov.write_returns_rows = {1: True}  # ... that returns the rows it writes
+    gov.write_refused_forms = {1: frozenset()}  # ... and carries every statement form
     return gov
 
 

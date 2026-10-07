@@ -54,6 +54,7 @@ def write_governance(
     gov.write_ops = {tid: frozenset(ops) for tid, ops in offered.items()}
     # ... and returns the rows it writes wherever it takes any (executor/write_capability.py).
     gov.write_returns_rows = {tid: bool(ops) for tid, ops in offered.items()}
+    gov.write_refused_forms = {tid: frozenset() for tid in offered}
     return gov
 
 

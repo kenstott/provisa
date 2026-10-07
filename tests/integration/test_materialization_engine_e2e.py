@@ -69,6 +69,7 @@ def _si() -> SchemaInput:
         ],
         "write_ops": ["delete", "insert", "update"],
         "write_returns_rows": True,
+        "write_refused_forms": [],
     }
     orders_api = {
         "id": 2,
@@ -81,6 +82,7 @@ def _si() -> SchemaInput:
         ],
         "write_ops": ["delete", "insert", "update"],
         "write_returns_rows": True,
+        "write_refused_forms": [],
     }
     rel = {
         "id": "o2c",

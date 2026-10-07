@@ -73,6 +73,21 @@ _ROUTE_RETURNS_WRITTEN_ROWS: dict[WritePath, bool] = {
 }
 
 
+# The statement forms a write route does not carry, beyond the plain INSERT, UPDATE and DELETE
+# every route takes. A source's pgwire server writes one sObject or list per statement and
+# commits it as it runs: no ON CONFLICT, no UPDATE ... FROM, no DELETE ... USING (it answers
+# each 0A000), and its contract names neither MERGE nor TRUNCATE.
+WRITE_FORMS: frozenset[str] = frozenset(
+    {"on_conflict", "update_from", "delete_using", "merge", "truncate"}
+)
+_ROUTE_REFUSED_FORMS: dict[WritePath, frozenset[str]] = {
+    WritePath.NATIVE: frozenset(),
+    WritePath.SQLALCHEMY: frozenset(),
+    WritePath.PGWIRE: WRITE_FORMS,
+    WritePath.ENGINE: frozenset(),
+}
+
+
 def is_written_through_pgwire_server(source_type: str) -> bool:
     """Whether ``source_type``'s write route is its own pgwire server — the ONE predicate that
     decides it (REQ-1946). The server speaks the PostgreSQL wire, so the route needs that driver."""
@@ -166,3 +181,11 @@ def write_returns_rows(source_type: str, engine: FederationEngine | None = None)
     route (``_ROUTE_RETURNS_WRITTEN_ROWS``). A source with no write route returns none."""
     route = resolve_write_path(source_type, engine)
     return route is not None and _ROUTE_RETURNS_WRITTEN_ROWS[route]
+
+
+def write_refused_forms(source_type: str, engine: FederationEngine | None = None) -> frozenset[str]:
+    """The statement forms (``WRITE_FORMS``) a write to ``source_type`` does not carry — its
+    write route's own (``_ROUTE_REFUSED_FORMS``). A source with no write route refuses none here:
+    it takes no write at all."""
+    route = resolve_write_path(source_type, engine)
+    return frozenset() if route is None else _ROUTE_REFUSED_FORMS[route]

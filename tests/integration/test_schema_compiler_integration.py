@@ -89,6 +89,7 @@ class TestJSONBFieldPromotion:
                 "table_name": "events",
                 "write_ops": registry_write_ops("postgresql"),
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
+                "write_refused_forms": [],
                 "columns": [
                     {
                         "column_name": "id",
@@ -178,6 +179,7 @@ class TestViewRLSEnforcement:
                 "table_name": "orders_view",
                 "write_ops": registry_write_ops("postgresql"),
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     # 'secret_col' only visible to admin
@@ -245,6 +247,7 @@ class TestViewRLSEnforcement:
                 "table_name": "revenue_view",
                 "write_ops": registry_write_ops("postgresql"),
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {"column_name": "revenue", "visible_to": ["analyst"]},
@@ -293,6 +296,7 @@ class TestViewComputedSemantics:
                 "table_name": "order_summary",
                 "write_ops": registry_write_ops("postgresql"),
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {
@@ -351,6 +355,7 @@ class TestJSONPathExpressions:
                 "table_name": "events",
                 "write_ops": registry_write_ops("postgresql"),
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {
@@ -412,6 +417,7 @@ class TestDomainPrefix:
                 "table_name": "orders",
                 "write_ops": registry_write_ops("postgresql"),
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {"column_name": "amount", "visible_to": []},
@@ -475,6 +481,7 @@ class TestTableAlias:
                 "table_name": "legacy_order_data",
                 "write_ops": registry_write_ops("postgresql"),
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
+                "write_refused_forms": [],
                 "alias": alias,
                 "columns": [
                     {"column_name": "id", "visible_to": []},

@@ -39,6 +39,7 @@ def _make_schema_input(
             "columns": [{"column_name": c, "visible_to": [role_id]} for c in table_columns],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         }
     ]
     col_types = col_types_override or {
@@ -98,6 +99,7 @@ class TestREQ525PerRoleProtoGeneration:
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             }
         ]
         col_types = {1: [_col(c, "varchar(100)") for c in all_cols]}
@@ -135,6 +137,7 @@ class TestREQ525PerRoleProtoGeneration:
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             }
         ]
         col_types = {1: [_col("id", "integer")]}
@@ -170,6 +173,7 @@ class TestREQ538ProtoTypeMappings:
                 "columns": [{"column_name": n, "visible_to": ["admin"]} for n in col_names],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             }
         ]
         col_types = {1: [_col(name, dtype) for name, dtype in col_defs]}
@@ -234,6 +238,7 @@ class TestREQ538ProtoTypeMappings:
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
             {
                 "id": 2,
@@ -244,6 +249,7 @@ class TestREQ538ProtoTypeMappings:
                 "columns": [{"column_name": "cust_id", "visible_to": ["admin"]}],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
+                "write_refused_forms": [],
             },
         ]
         col_types = {

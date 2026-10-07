@@ -89,6 +89,9 @@ class _TableInfo:
     # Whether a write to the table can return the rows it wrote (its write route's flag,
     # executor/write_capability.py). A mutation field returns them, so none is offered without it.
     write_returns_rows: bool = False
+    # The statement forms a write to the table does not carry (its write route's,
+    # executor/write_capability.py). An upsert is an INSERT ... ON CONFLICT.
+    write_refused_forms: frozenset[str] = frozenset()
     modeling_role: str | None = None  # REQ-1320: "fact" | "dimension" | None
     modeling_history: str | None = None  # REQ-1320: SCD mode ("scd2" | "snapshot" | None)
     metrics: list[dict] = field(

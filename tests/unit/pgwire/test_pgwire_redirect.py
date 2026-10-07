@@ -117,6 +117,7 @@ async def test_a_write_asked_to_be_delivered_is_refused_by_name(monkeypatch):
             **t,
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
             "columns": [{**c, "writable_by": ["analyst"]} for c in t["columns"]],
         }
         for t in state.tables

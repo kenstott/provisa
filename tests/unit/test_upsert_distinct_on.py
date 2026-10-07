@@ -74,6 +74,7 @@ def _build():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
     ]
     col_types = {
@@ -341,6 +342,7 @@ def schema_and_ctx():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
     ]
     col_types = {

@@ -58,6 +58,7 @@ def _build_schema_and_ctx(enable_aggregates: bool = True, enable_group_by: bool 
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
     ]
     column_types = {
@@ -351,6 +352,7 @@ def _build_schema_with_relationship():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
         {
             "id": 2,
@@ -366,6 +368,7 @@ def _build_schema_with_relationship():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
         {
             "id": 3,
@@ -379,6 +382,7 @@ def _build_schema_with_relationship():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
     ]
     relationships = [

@@ -124,6 +124,7 @@ def _schema_input(
                 "table_name": _TABLE,
                 "write_ops": registry_write_ops(source_type),
                 "write_returns_rows": registry_write_returns_rows(source_type),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],

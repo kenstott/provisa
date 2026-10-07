@@ -39,6 +39,7 @@ def _ctx():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
         {
             "id": 2,
@@ -53,6 +54,7 @@ def _ctx():
             ],
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
+            "write_refused_forms": [],
         },
     ]
     relationships = [

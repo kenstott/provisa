@@ -64,6 +64,7 @@ def _schema_input() -> SchemaInput:
                 "table_name": _TABLE,
                 "write_ops": registry_write_ops("snowflake"),
                 "write_returns_rows": registry_write_returns_rows("snowflake"),
+                "write_refused_forms": [],
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],
