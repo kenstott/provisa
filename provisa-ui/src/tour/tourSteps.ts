@@ -17,8 +17,7 @@
  * the demo walks the *real* UI (add a source, then back out) without mutating
  * anything.
  *
- * Order is a narrative: a SPINE (register a source → expose tables → query it
- * eight ways) that IS the five-minute core, a "that's the core" divider where a
+ * Order is a narrative: a SPINE (register a source → expose tables → query it) that IS the five-minute core, a "that's the core" divider where a
  * user can bail, then the GROW chapters (graph, governance, pipeline, operate)
  * as optional depth, and a closing call to action.
  *
@@ -145,7 +144,7 @@ const QUALITY_ROW = '[data-table-row="dq-checker.pets_scan"]';
 const PROFILER_ROW = '[data-table-row="pet-store-sqlite.pets"]';
 
 export const TOUR_STEPS: TourStep[] = [
-  // ─── SPINE: the five-minute core (register a source → expose tables → query it eight ways) ───
+  // ─── SPINE: the five-minute core (register a source → expose tables → query it) ───
   {
     route: "/sources",
     capability: "source_registration",
@@ -218,6 +217,15 @@ export const TOUR_STEPS: TourStep[] = [
     key: "stepPreview",
     clickBefore: ".data-table tbody tr.clickable",
     clickAfterNext: ".data-table tbody tr.clickable",
+  },
+  {
+    // REQ-1945: the core's one query card, general; every surface's detail is the Query it everywhere topic.
+    route: "/sql",
+    capability: "query_development",
+    openBranch: "sql",
+    element: '.subnav a[href="/sql"]',
+    pollyOpen: true,
+    key: "stepQuery",
   },
   {
     route: "/sql",
@@ -502,12 +510,12 @@ export type TopicId = (typeof TOPIC_IDS)[number];
 export type TourScope = "core" | TopicId;
 
 export const TOUR_SCOPES: Record<TourScope, readonly string[]> = {
-  core: ["step0", "stepPolly", "step1", "step2", "step6", "step13", "step14"],
+  core: ["step0", "stepPolly", "step1", "step2", "stepQuery", "step14"],
   connect: ["step3", "step4", "step5", "stepPreview"],
   relationships: ["step15", "step16", "step17"],
   model: ["step20", "step21", "step22"],
   govern: ["step18", "step19"],
-  query: ["step7", "step8", "step9", "step10", "step11", "step12"],
+  query: ["step6", "step7", "step8", "step9", "step10", "step11", "step12", "step13"],
   testdata: [
     "stepQualityTable",
     "stepQualityPanel",

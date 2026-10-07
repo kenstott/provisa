@@ -10,7 +10,7 @@
     },
     "welcome": {
       "title": "Take the guided tour?",
-      "body": "A five-minute walkthrough: connect a source, then query it seven ways. Leave at any point — the compass in the toolbar reopens the tour whenever you want it.",
+      "body": "A five-minute walkthrough: connect a source, then query it in the language or tool you already use. Leave at any point — the compass in the toolbar reopens the tour whenever you want it.",
       "never": "Don't show this again",
       "later": "Maybe later",
       "start": "Start tour",
@@ -60,7 +60,7 @@
     "steps": {
       "step0": {
         "title": "Welcome, let's take the tour",
-        "description": "🧭 This compass reopens the tour anytime. Leave whenever — click the app or press <kbd>Esc</kbd>.<p><strong>Provisa</strong> is one model that holds your data, its metadata and the processing between them. The same model defines your data estate and operates it — it is all one thing, and it stays out of the data path.</p><p>That is why <strong>everything stays in sync</strong>, and why <strong>reuse is built in</strong>: a relationship, metric, mask or rule defined once serves every surface, environment and role. Duplicate tables and metrics, duplicate commands and rules, even two systems serving the same data sit side by side in the model, so duplication is easy to see and simple to remove.</p><p>It is compact, extensible and composable. It slots in beside what you have, brings order to the sprawl, and lets every data professional apply their expertise without limiting their imagination — it only removes the drudgery.</p><p>🎯 <strong>The core is one short exercise:</strong> connect a database, then query it <strong>seven ways</strong> — or just ask in plain English. About five minutes, <strong>right from your desktop</strong>, with no infrastructure to stand up.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Everything after that is a <strong>Deep Dive</strong> you pick from a menu when you are ready.</p><p>Ready? Let's connect a source. →</p>"
+        "description": "🧭 This compass reopens the tour anytime. Leave whenever — click the app or press <kbd>Esc</kbd>.<p><strong>Provisa</strong> is one model that holds your data, its metadata and the processing between them. The same model defines your data estate and operates it — it is all one thing, and it stays out of the data path.</p><p>That is why <strong>everything stays in sync</strong>, and why <strong>reuse is built in</strong>: a relationship, metric, mask or rule defined once serves every surface, environment and role. Duplicate tables and metrics, duplicate commands and rules, even two systems serving the same data sit side by side in the model, so duplication is easy to see and simple to remove.</p><p>It is compact, extensible and composable. It slots in beside what you have, brings order to the sprawl, and lets every data professional apply their expertise without limiting their imagination — it only removes the drudgery.</p><p>🎯 <strong>The core is one short exercise:</strong> connect a database, then query it in the language or tool you already use — or just ask in plain English. About five minutes, <strong>right from your desktop</strong>, with no infrastructure to stand up.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Everything after that is a <strong>Deep Dive</strong> you pick from a menu when you are ready.</p><p>Ready? Let's connect a source. →</p>"
       },
       "stepPolly": {
         "title": "Meet Polly, your setup assistant",
@@ -85,6 +85,10 @@
       "step5": {
         "title": "Pick columns & policy",
         "description": "Choose a source, schema, and table, then pick columns — each with its own policy:<ul><li>🎭 <strong>Masking</strong> — redact values per role</li><li>👁️ <strong>Visibility</strong> — show or hide the column</li><li>🏷️ <strong>Aliases</strong> — rename for the model</li></ul><p>That's the whole setup — a source and a few tables. 🚀 Now let's query it. →</p>"
+      },
+      "stepQuery": {
+        "title": "Query it your way",
+        "description": "💬 You ask in the language or tool you already use — SQL, GraphQL, Cypher, plain language through Polly, or a BI tool or driver — and every one reads the same governed model, so the answer and the rules are the same whichever you pick."
       },
       "step6": {
         "title": "SQL (1 of 7 surfaces)",
@@ -120,7 +124,7 @@
       },
       "step14": {
         "title": "That's the five-minute core",
-        "description": "✅ You just saw it end to end: <strong>one source, queried seven ways — or just asked in plain English.</strong> That's the whole promise — and you could stop right here.<p>Press <kbd>Esc</kbd> anytime; 🧭 the compass up top replays this tour whenever you want.</p><p>👉 Everything ahead is <strong>how Provisa grows with you</strong> — optional depth, not required steps:</p><ul><li>🔗 Link tables across sources into one <strong>graph</strong></li><li>🔐 <strong>Govern</strong> it — roles, row-level security, column masking</li><li>🏗️ Build a <strong>delivery pipeline</strong> — views, a materialized warehouse, lineage</li><li>⚙️ <strong>Operate</strong> it — pick an engine, ship to production</li></ul><p>Keep going? →</p>"
+        "description": "✅ You just saw it end to end: <strong>one source, queried in the language or tool you already use — or just asked in plain English.</strong> That's the whole promise — and you could stop right here.<p>Press <kbd>Esc</kbd> anytime; 🧭 the compass up top replays this tour whenever you want.</p><p>👉 Everything ahead is <strong>how Provisa grows with you</strong> — optional depth, not required steps:</p><ul><li>🔗 Link tables across sources into one <strong>graph</strong></li><li>🔐 <strong>Govern</strong> it — roles, row-level security, column masking</li><li>🏗️ Build a <strong>delivery pipeline</strong> — views, a materialized warehouse, lineage</li><li>⚙️ <strong>Operate</strong> it — pick an engine, ship to production</li></ul><p>Keep going? →</p>"
       },
       "step15": {
         "title": "Connect the graph",

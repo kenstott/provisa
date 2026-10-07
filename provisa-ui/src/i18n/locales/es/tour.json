@@ -10,7 +10,7 @@
     },
     "welcome": {
       "title": "¿Hacer la visita guiada?",
-      "body": "Un recorrido de cinco minutos: conecta una fuente y consúltala de siete maneras. Sal cuando quieras: la brújula de la barra de herramientas vuelve a abrir la visita en cualquier momento.",
+      "body": "Un recorrido de cinco minutos: conecta una fuente y consúltala en el lenguaje o con la herramienta que ya usas. Sal cuando quieras: la brújula de la barra de herramientas vuelve a abrir la visita en cualquier momento.",
       "never": "No volver a mostrar",
       "later": "Quizá más tarde",
       "start": "Iniciar la visita",
@@ -60,7 +60,7 @@
     "steps": {
       "step0": {
         "title": "Bienvenido, hagamos la visita guiada",
-        "description": "🧭 Esta brújula reabre el recorrido en cualquier momento. Salga cuando quiera: haga clic en la aplicación o pulse <kbd>Esc</kbd>.<p><strong>Provisa</strong> es un único modelo que contiene sus datos, sus metadatos y el procesamiento entre ellos. El mismo modelo define su patrimonio de datos y lo opera: todo es una sola cosa, y se mantiene fuera de la ruta de los datos.</p><p>Por eso <strong>todo se mantiene sincronizado</strong> y <strong>la reutilización viene incorporada</strong>: una relación, métrica, máscara o regla definida una vez sirve a todas las superficies, entornos y roles. Tablas y métricas duplicadas, comandos y reglas duplicados, incluso dos sistemas que sirven los mismos datos conviven en el modelo, así que la duplicación es fácil de ver y sencilla de eliminar.</p><p>Es compacto, extensible y componible. Encaja junto a lo que ya tiene, pone orden en la maraña y permite que cada profesional de datos aplique su experiencia sin limitar su imaginación: solo elimina el trabajo tedioso.</p><p>🎯 <strong>El núcleo es un ejercicio corto:</strong> conecte una base de datos y consúltela de <strong>siete maneras</strong>, o simplemente pregunte en lenguaje natural. Unos cinco minutos, <strong>desde su escritorio</strong>, sin montar infraestructura.</p><div class='tour-tags'><span>Lenguaje natural</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Todo lo demás es una <strong>inmersión</strong> que elige en un menú cuando esté listo.</p><p>¿Listo? Conectemos un origen. →</p>"
+        "description": "🧭 Esta brújula reabre el recorrido en cualquier momento. Salga cuando quiera: haga clic en la aplicación o pulse <kbd>Esc</kbd>.<p><strong>Provisa</strong> es un único modelo que contiene sus datos, sus metadatos y el procesamiento entre ellos. El mismo modelo define su patrimonio de datos y lo opera: todo es una sola cosa, y se mantiene fuera de la ruta de los datos.</p><p>Por eso <strong>todo se mantiene sincronizado</strong> y <strong>la reutilización viene incorporada</strong>: una relación, métrica, máscara o regla definida una vez sirve a todas las superficies, entornos y roles. Tablas y métricas duplicadas, comandos y reglas duplicados, incluso dos sistemas que sirven los mismos datos conviven en el modelo, así que la duplicación es fácil de ver y sencilla de eliminar.</p><p>Es compacto, extensible y componible. Encaja junto a lo que ya tiene, pone orden en la maraña y permite que cada profesional de datos aplique su experiencia sin limitar su imaginación: solo elimina el trabajo tedioso.</p><p>🎯 <strong>El núcleo es un ejercicio corto:</strong> conecte una base de datos y consúltela en el lenguaje o con la herramienta que ya usa, o simplemente pregunte en lenguaje natural. Unos cinco minutos, <strong>desde su escritorio</strong>, sin montar infraestructura.</p><div class='tour-tags'><span>Lenguaje natural</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Todo lo demás es una <strong>inmersión</strong> que elige en un menú cuando esté listo.</p><p>¿Listo? Conectemos un origen. →</p>"
       },
       "stepPolly": {
         "title": "Conozca a Polly, su asistente de configuración",
@@ -85,6 +85,10 @@
       "step5": {
         "title": "Elige columnas y política",
         "description": "Elige un origen, un esquema y una tabla, y luego selecciona columnas — cada una con su propia política:<ul><li>🎭 <strong>Enmascaramiento</strong> — oculta valores según el rol</li><li>👁️ <strong>Visibilidad</strong> — muestra u oculta la columna</li><li>🏷️ <strong>Alias</strong> — renombra para el modelo</li></ul><p>Eso es toda la configuración — un origen y unas pocas tablas. 🚀 Ahora vamos a consultarlo. →</p>"
+      },
+      "stepQuery": {
+        "title": "Consulta a tu manera",
+        "description": "💬 Preguntas en el lenguaje o con la herramienta que ya usas — SQL, GraphQL, Cypher, lenguaje natural a través de Polly, o una herramienta de BI o un controlador — y todas leen el mismo modelo gobernado, así que la respuesta y las reglas son las mismas elijas la que elijas."
       },
       "step6": {
         "title": "SQL (1 de 7 superficies)",
@@ -120,7 +124,7 @@
       },
       "step14": {
         "title": "Ese es el núcleo de cinco minutos",
-        "description": "✅ Acabas de verlo de principio a fin: <strong>un origen, consultado de siete formas — o simplemente preguntado en español llano.</strong> Esa es toda la promesa — y podrías detenerte aquí mismo.<p>Pulsa <kbd>Esc</kbd> en cualquier momento; 🧭 la brújula de arriba repite esta visita guiada cuando quieras.</p><p>👉 Todo lo que sigue es <strong>cómo Provisa crece contigo</strong> — profundidad opcional, no pasos obligatorios:</p><ul><li>🔗 Enlaza tablas de distintos orígenes en un único <strong>grafo</strong></li><li>🔐 <strong>Gobiérnalo</strong> — roles, seguridad de nivel de fila, enmascaramiento de columnas</li><li>🏗️ Construye un <strong>pipeline de entrega</strong> — vistas, un almacén materializado, linaje</li><li>⚙️ <strong>Operarlo</strong> — elige un motor, pasa a producción</li></ul><p>¿Seguimos? →</p>"
+        "description": "✅ Acabas de verlo de principio a fin: <strong>un origen, consultado en el lenguaje o con la herramienta que ya usas — o simplemente preguntado en español llano.</strong> Esa es toda la promesa — y podrías detenerte aquí mismo.<p>Pulsa <kbd>Esc</kbd> en cualquier momento; 🧭 la brújula de arriba repite esta visita guiada cuando quieras.</p><p>👉 Todo lo que sigue es <strong>cómo Provisa crece contigo</strong> — profundidad opcional, no pasos obligatorios:</p><ul><li>🔗 Enlaza tablas de distintos orígenes en un único <strong>grafo</strong></li><li>🔐 <strong>Gobiérnalo</strong> — roles, seguridad de nivel de fila, enmascaramiento de columnas</li><li>🏗️ Construye un <strong>pipeline de entrega</strong> — vistas, un almacén materializado, linaje</li><li>⚙️ <strong>Operarlo</strong> — elige un motor, pasa a producción</li></ul><p>¿Seguimos? →</p>"
       },
       "step15": {
         "title": "Conecta el grafo",

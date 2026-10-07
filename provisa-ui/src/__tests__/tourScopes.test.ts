@@ -38,7 +38,12 @@ describe("tour scopes", () => {
   it("makes the core tour welcome, Polly, connecting a source and querying it", () => {
     expect(TOUR_SCOPES.core.slice(0, 2)).toEqual(["step0", "stepPolly"]);
     expect(TOUR_SCOPES.core).toContain("step2"); // register a source
-    expect(TOUR_SCOPES.core).toContain("step6"); // SQL
+    expect(TOUR_SCOPES.core).toContain("stepQuery");
+    expect(TOUR_SCOPES.core.filter((k) => k.startsWith("step") && TOUR_STEPS.find((s) => s.key === k)?.route?.match(/^\/(sql|query|graph|grpc|jsonapi|openapi|explore|nl)$/))).toEqual(["stepQuery"]);
+  });
+
+  it("puts every query surface's detail in the Query it everywhere topic", () => {
+    expect(TOUR_SCOPES.query).toEqual(["step6", "step7", "step8", "step9", "step10", "step11", "step12", "step13"]);
   });
 
   it("lists the Deep Dives topics in menu order, Relationships right after Connect", () => {

@@ -10,7 +10,7 @@
     },
     "welcome": {
       "title": "Geführte Tour starten?",
-      "body": "Ein fünfminütiger Rundgang: eine Quelle verbinden und sie auf sieben Arten abfragen. Jederzeit verlassen — der Kompass in der Symbolleiste öffnet die Tour wieder, wann immer Sie möchten.",
+      "body": "Ein fünfminütiger Rundgang: eine Quelle verbinden und sie in der Sprache oder mit dem Werkzeug abfragen, die Sie ohnehin nutzen. Jederzeit verlassen — der Kompass in der Symbolleiste öffnet die Tour wieder, wann immer Sie möchten.",
       "never": "Nicht mehr anzeigen",
       "later": "Später",
       "start": "Tour starten",
@@ -60,7 +60,7 @@
     "steps": {
       "step0": {
         "title": "Willkommen, machen wir die Tour",
-        "description": "🧭 Dieser Kompass öffnet die Tour jederzeit erneut. Gehen Sie, wann Sie möchten – klicken Sie auf die App oder drücken Sie <kbd>Esc</kbd>.<p><strong>Provisa</strong> ist ein einziges Modell, das Ihre Daten, deren Metadaten und die Verarbeitung dazwischen enthält. Dasselbe Modell definiert Ihre Datenlandschaft und betreibt sie – alles ist eine Sache, und es hält sich aus dem Datenpfad heraus.</p><p>Deshalb <strong>bleibt alles synchron</strong> und ist <strong>Wiederverwendung eingebaut</strong>: Eine einmal definierte Beziehung, Metrik, Maskierung oder Regel gilt für jede Schnittstelle, jede Umgebung und jede Rolle. Doppelte Tabellen und Metriken, doppelte Befehle und Regeln, sogar zwei Systeme, die dieselben Daten liefern, stehen im Modell nebeneinander – Duplikate sind leicht zu erkennen und einfach zu beseitigen.</p><p>Es ist kompakt, erweiterbar und komponierbar. Es fügt sich neben Ihren Bestand ein, bringt Ordnung ins Durcheinander und lässt alle Datenprofis ihr Fachwissen einbringen, ohne ihre Fantasie zu begrenzen – es nimmt nur die Fleißarbeit ab.</p><p>🎯 <strong>Der Kern ist eine kurze Übung:</strong> Verbinden Sie eine Datenbank und fragen Sie sie dann auf <strong>sieben Arten</strong> ab – oder fragen Sie einfach in normaler Sprache. Etwa fünf Minuten, <strong>direkt von Ihrem Desktop</strong>, ohne Infrastruktur aufzusetzen.</p><div class='tour-tags'><span>Natürliche Sprache</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles Weitere ist ein <strong>Deep Dive</strong>, den Sie aus einem Menü wählen, wenn Sie bereit sind.</p><p>Bereit? Verbinden wir eine Quelle. →</p>"
+        "description": "🧭 Dieser Kompass öffnet die Tour jederzeit erneut. Gehen Sie, wann Sie möchten – klicken Sie auf die App oder drücken Sie <kbd>Esc</kbd>.<p><strong>Provisa</strong> ist ein einziges Modell, das Ihre Daten, deren Metadaten und die Verarbeitung dazwischen enthält. Dasselbe Modell definiert Ihre Datenlandschaft und betreibt sie – alles ist eine Sache, und es hält sich aus dem Datenpfad heraus.</p><p>Deshalb <strong>bleibt alles synchron</strong> und ist <strong>Wiederverwendung eingebaut</strong>: Eine einmal definierte Beziehung, Metrik, Maskierung oder Regel gilt für jede Schnittstelle, jede Umgebung und jede Rolle. Doppelte Tabellen und Metriken, doppelte Befehle und Regeln, sogar zwei Systeme, die dieselben Daten liefern, stehen im Modell nebeneinander – Duplikate sind leicht zu erkennen und einfach zu beseitigen.</p><p>Es ist kompakt, erweiterbar und komponierbar. Es fügt sich neben Ihren Bestand ein, bringt Ordnung ins Durcheinander und lässt alle Datenprofis ihr Fachwissen einbringen, ohne ihre Fantasie zu begrenzen – es nimmt nur die Fleißarbeit ab.</p><p>🎯 <strong>Der Kern ist eine kurze Übung:</strong> Verbinden Sie eine Datenbank und fragen Sie sie dann in der Sprache oder mit dem Werkzeug ab, die Sie ohnehin nutzen – oder fragen Sie einfach in normaler Sprache. Etwa fünf Minuten, <strong>direkt von Ihrem Desktop</strong>, ohne Infrastruktur aufzusetzen.</p><div class='tour-tags'><span>Natürliche Sprache</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles Weitere ist ein <strong>Deep Dive</strong>, den Sie aus einem Menü wählen, wenn Sie bereit sind.</p><p>Bereit? Verbinden wir eine Quelle. →</p>"
       },
       "stepPolly": {
         "title": "Lernen Sie Polly kennen, Ihre Einrichtungshilfe",
@@ -85,6 +85,10 @@
       "step5": {
         "title": "Spalten & Richtlinie wählen",
         "description": "Quelle, Schema und Tabelle wählen, dann Spalten auswählen — jede mit ihrer eigenen Richtlinie:<ul><li>🎭 <strong>Maskierung</strong> — Werte je nach Rolle schwärzen</li><li>👁️ <strong>Sichtbarkeit</strong> — Spalte ein- oder ausblenden</li><li>🏷️ <strong>Aliase</strong> — für das Modell umbenennen</li></ul><p>Das ist die ganze Einrichtung — eine Quelle und ein paar Tabellen. 🚀 Jetzt fragen wir sie ab. →</p>"
+      },
+      "stepQuery": {
+        "title": "Fragen Sie auf Ihre Weise",
+        "description": "💬 Sie fragen in der Sprache oder mit dem Werkzeug, die Sie ohnehin nutzen — SQL, GraphQL, Cypher, normale Sprache über Polly oder ein BI-Werkzeug bzw. ein Treiber — und jedes liest dasselbe governte Modell, sodass Antwort und Regeln dieselben sind, welches Sie auch wählen."
       },
       "step6": {
         "title": "SQL (1 von 7 Oberflächen)",
@@ -120,7 +124,7 @@
       },
       "step14": {
         "title": "Das ist der Fünf-Minuten-Kern",
-        "description": "✅ Sie haben es gerade von Anfang bis Ende gesehen: <strong>eine Quelle, auf sieben Arten abgefragt — oder einfach in normalem Deutsch gefragt.</strong> Das ist das ganze Versprechen — und Sie könnten genau hier aufhören.<p><kbd>Esc</kbd> jederzeit drücken; 🧭 der Kompass oben spielt diese Tour jederzeit erneut ab.</p><p>👉 Alles, was folgt, ist, <strong>wie Provisa mit Ihnen wächst</strong> — optionale Tiefe, keine erforderlichen Schritte:</p><ul><li>🔗 Tabellen über Quellen hinweg zu einem <strong>Graphen</strong> verknüpfen</li><li>🔐 Ihn <strong>governen</strong> — Rollen, Row-Level-Sicherheit, Spaltenmaskierung</li><li>🏗️ Eine <strong>Delivery-Pipeline</strong> bauen — Sichten, ein materialisiertes Warehouse, Lineage</li><li>⚙️ Ihn <strong>betreiben</strong> — eine Engine wählen, in Produktion bringen</li></ul><p>Weitermachen? →</p>"
+        "description": "✅ Sie haben es gerade von Anfang bis Ende gesehen: <strong>eine Quelle, abgefragt in der Sprache oder mit dem Werkzeug, die Sie ohnehin nutzen — oder einfach in normalem Deutsch gefragt.</strong> Das ist das ganze Versprechen — und Sie könnten genau hier aufhören.<p><kbd>Esc</kbd> jederzeit drücken; 🧭 der Kompass oben spielt diese Tour jederzeit erneut ab.</p><p>👉 Alles, was folgt, ist, <strong>wie Provisa mit Ihnen wächst</strong> — optionale Tiefe, keine erforderlichen Schritte:</p><ul><li>🔗 Tabellen über Quellen hinweg zu einem <strong>Graphen</strong> verknüpfen</li><li>🔐 Ihn <strong>governen</strong> — Rollen, Row-Level-Sicherheit, Spaltenmaskierung</li><li>🏗️ Eine <strong>Delivery-Pipeline</strong> bauen — Sichten, ein materialisiertes Warehouse, Lineage</li><li>⚙️ Ihn <strong>betreiben</strong> — eine Engine wählen, in Produktion bringen</li></ul><p>Weitermachen? →</p>"
       },
       "step15": {
         "title": "Den Graphen verbinden",

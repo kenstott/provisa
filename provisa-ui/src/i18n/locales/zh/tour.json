@@ -10,7 +10,7 @@
     },
     "welcome": {
       "title": "开始向导式浏览？",
-      "body": "五分钟的快速浏览：连接一个数据源，然后用七种方式查询它。随时可以退出——工具栏中的指南针可随时重新打开浏览。",
+      "body": "五分钟的快速浏览：连接一个数据源，然后用你已在使用的语言或工具查询它。随时可以退出——工具栏中的指南针可随时重新打开浏览。",
       "never": "不再显示",
       "later": "以后再说",
       "start": "开始浏览",
@@ -60,7 +60,7 @@
     "steps": {
       "step0": {
         "title": "欢迎，来看看导览",
-        "description": "🧭 此指南针可随时重新打开导览。可随时离开——点击应用或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是一个统一的模型,承载你的数据、数据的元数据以及两者之间的处理。同一个模型既定义你的数据资产,也负责运行它——这是同一件事,并且不介入数据路径。</p><p>因此<strong>一切保持同步</strong>,<strong>复用是内置的</strong>:关系、指标、脱敏或规则只需定义一次,就为每个接口、环境和角色所用。重复的表和指标、重复的命令和规则,甚至两个提供相同数据的系统,都并排出现在模型里,所以重复很容易发现,也很容易清除。</p><p>它小巧、可扩展、可组合。它嵌入你现有的体系旁边,为杂乱带来秩序,让每位数据专业人员发挥专长而不限制想象力——它只去掉繁琐的体力活。</p><p>🎯 <strong>核心是一个简短的练习:</strong>连接一个数据库,然后用<strong>七种方式</strong>查询它——或者直接用自然语言提问。大约五分钟,<strong>直接在你的桌面上</strong>完成,无需搭建任何基础设施。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>之后的一切都是<strong>深入探索</strong>,准备好时从菜单中选择。</p><p>准备好了吗？让我们连接一个数据源。→</p>"
+        "description": "🧭 此指南针可随时重新打开导览。可随时离开——点击应用或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是一个统一的模型,承载你的数据、数据的元数据以及两者之间的处理。同一个模型既定义你的数据资产,也负责运行它——这是同一件事,并且不介入数据路径。</p><p>因此<strong>一切保持同步</strong>,<strong>复用是内置的</strong>:关系、指标、脱敏或规则只需定义一次,就为每个接口、环境和角色所用。重复的表和指标、重复的命令和规则,甚至两个提供相同数据的系统,都并排出现在模型里,所以重复很容易发现,也很容易清除。</p><p>它小巧、可扩展、可组合。它嵌入你现有的体系旁边,为杂乱带来秩序,让每位数据专业人员发挥专长而不限制想象力——它只去掉繁琐的体力活。</p><p>🎯 <strong>核心是一个简短的练习:</strong>连接一个数据库,然后用你已在使用的语言或工具查询它——或者直接用自然语言提问。大约五分钟,<strong>直接在你的桌面上</strong>完成,无需搭建任何基础设施。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>之后的一切都是<strong>深入探索</strong>,准备好时从菜单中选择。</p><p>准备好了吗？让我们连接一个数据源。→</p>"
       },
       "stepPolly": {
         "title": "认识 Polly,你的设置助手",
@@ -85,6 +85,10 @@
       "step5": {
         "title": "选择列与策略",
         "description": "选择数据源、架构和表，然后选择列——每一列都有自己的策略：<ul><li>🎭 <strong>脱敏</strong> —— 按角色屏蔽值</li><li>👁️ <strong>可见性</strong> —— 显示或隐藏该列</li><li>🏷️ <strong>别名</strong> —— 为模型重命名</li></ul><p>设置就这么简单——一个数据源加几张表。🚀 现在来查询它。→</p>"
+      },
+      "stepQuery": {
+        "title": "用你的方式查询",
+        "description": "💬 你用已在使用的语言或工具提问——SQL、GraphQL、Cypher、通过 Polly 使用自然语言，或 BI 工具或驱动程序——每一种读取的都是同一个受治理的模型，因此无论选哪一种，答案和规则都相同。"
       },
       "step6": {
         "title": "SQL（七种界面之一）",
@@ -120,7 +124,7 @@
       },
       "step14": {
         "title": "这就是五分钟核心内容",
-        "description": "✅ 你刚刚完整看完了一遍：<strong>一个数据源，七种方式查询——或者干脆用大白话提问。</strong>这就是全部承诺——你完全可以就此打住。<p>随时按 <kbd>Esc</kbd>；🧭 上方的指南针可以随时重播这个导览。</p><p>👉 接下来的一切都是<strong>Provisa 如何与你一起成长</strong>——是可选的深度内容，不是必须的步骤：</p><ul><li>🔗 把跨数据源的表连接成一个<strong>图</strong></li><li>🔐 对它进行<strong>治理</strong>——角色、行级安全、列脱敏</li><li>🏗️ 构建一条<strong>交付管道</strong>——视图、物化数据仓库、血缘</li><li>⚙️ <strong>运维</strong>它——选择一个引擎，上线到生产环境</li></ul><p>继续吗？→</p>"
+        "description": "✅ 你刚刚完整看完了一遍：<strong>一个数据源，用你已在使用的语言或工具查询——或者干脆用大白话提问。</strong>这就是全部承诺——你完全可以就此打住。<p>随时按 <kbd>Esc</kbd>；🧭 上方的指南针可以随时重播这个导览。</p><p>👉 接下来的一切都是<strong>Provisa 如何与你一起成长</strong>——是可选的深度内容，不是必须的步骤：</p><ul><li>🔗 把跨数据源的表连接成一个<strong>图</strong></li><li>🔐 对它进行<strong>治理</strong>——角色、行级安全、列脱敏</li><li>🏗️ 构建一条<strong>交付管道</strong>——视图、物化数据仓库、血缘</li><li>⚙️ <strong>运维</strong>它——选择一个引擎，上线到生产环境</li></ul><p>继续吗？→</p>"
       },
       "step15": {
         "title": "连接图谱",

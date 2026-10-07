@@ -10,7 +10,7 @@
     },
     "welcome": {
       "title": "De rondleiding volgen?",
-      "body": "Een rondleiding van vijf minuten: verbind een bron en bevraag die op zeven manieren. Stop wanneer u wilt — het kompas in de werkbalk opent de rondleiding altijd opnieuw.",
+      "body": "Een rondleiding van vijf minuten: verbind een bron en bevraag die in de taal of met de tool die je al gebruikt. Stop wanneer u wilt — het kompas in de werkbalk opent de rondleiding altijd opnieuw.",
       "never": "Niet meer tonen",
       "later": "Later",
       "start": "Rondleiding starten",
@@ -60,7 +60,7 @@
     "steps": {
       "step0": {
         "title": "Welkom, laten we de rondleiding starten",
-        "description": "🧭 Dit kompas opent de rondleiding op elk moment opnieuw. Vertrek wanneer je wilt — klik op de app of druk op <kbd>Esc</kbd>.<p><strong>Provisa</strong> is één model dat je data, de metadata ervan en de verwerking ertussen bevat. Hetzelfde model definieert je datalandschap en bedient het — het is allemaal één ding, en het blijft buiten het datapad.</p><p>Daarom <strong>blijft alles gesynchroniseerd</strong> en is <strong>hergebruik ingebouwd</strong>: een relatie, metric, masker of regel die je één keer definieert, dient elk oppervlak, elke omgeving en elke rol. Dubbele tabellen en metrics, dubbele commando's en regels, zelfs twee systemen die dezelfde data leveren staan naast elkaar in het model, dus duplicatie is makkelijk te zien en simpel weg te halen.</p><p>Het is compact, uitbreidbaar en samenstelbaar. Het past naast wat je al hebt, brengt orde in de wildgroei en laat elke dataprofessional zijn of haar expertise inzetten zonder de verbeelding te beperken — het haalt alleen het sleurwerk weg.</p><p>🎯 <strong>De kern is één korte oefening:</strong> verbind een database en bevraag die op <strong>zeven manieren</strong> — of stel gewoon een vraag in gewone taal. Ongeveer vijf minuten, <strong>rechtstreeks vanaf je bureaublad</strong>, zonder infrastructuur op te zetten.</p><div class='tour-tags'><span>Natuurlijke taal</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles daarna is een <strong>verdieping</strong> die je uit een menu kiest wanneer je eraan toe bent.</p><p>Klaar? Laten we een bron verbinden. →</p>"
+        "description": "🧭 Dit kompas opent de rondleiding op elk moment opnieuw. Vertrek wanneer je wilt — klik op de app of druk op <kbd>Esc</kbd>.<p><strong>Provisa</strong> is één model dat je data, de metadata ervan en de verwerking ertussen bevat. Hetzelfde model definieert je datalandschap en bedient het — het is allemaal één ding, en het blijft buiten het datapad.</p><p>Daarom <strong>blijft alles gesynchroniseerd</strong> en is <strong>hergebruik ingebouwd</strong>: een relatie, metric, masker of regel die je één keer definieert, dient elk oppervlak, elke omgeving en elke rol. Dubbele tabellen en metrics, dubbele commando's en regels, zelfs twee systemen die dezelfde data leveren staan naast elkaar in het model, dus duplicatie is makkelijk te zien en simpel weg te halen.</p><p>Het is compact, uitbreidbaar en samenstelbaar. Het past naast wat je al hebt, brengt orde in de wildgroei en laat elke dataprofessional zijn of haar expertise inzetten zonder de verbeelding te beperken — het haalt alleen het sleurwerk weg.</p><p>🎯 <strong>De kern is één korte oefening:</strong> verbind een database en bevraag die in de taal of met de tool die je al gebruikt — of stel gewoon een vraag in gewone taal. Ongeveer vijf minuten, <strong>rechtstreeks vanaf je bureaublad</strong>, zonder infrastructuur op te zetten.</p><div class='tour-tags'><span>Natuurlijke taal</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles daarna is een <strong>verdieping</strong> die je uit een menu kiest wanneer je eraan toe bent.</p><p>Klaar? Laten we een bron verbinden. →</p>"
       },
       "stepPolly": {
         "title": "Maak kennis met Polly, je installatiehulp",
@@ -85,6 +85,10 @@
       "step5": {
         "title": "Kies kolommen & beleid",
         "description": "Kies een bron, schema en tabel, en selecteer vervolgens kolommen — elk met eigen beleid:<ul><li>🎭 <strong>Maskering</strong> — waarden per rol verbergen</li><li>👁️ <strong>Zichtbaarheid</strong> — kolom tonen of verbergen</li><li>🏷️ <strong>Aliassen</strong> — hernoemen voor het model</li></ul><p>Dat is de hele setup — een bron en een paar tabellen. 🚀 Nu gaan we hem bevragen. →</p>"
+      },
+      "stepQuery": {
+        "title": "Bevraag het op jouw manier",
+        "description": "💬 Je vraagt in de taal of met de tool die je al gebruikt — SQL, GraphQL, Cypher, gewone taal via Polly, of een BI-tool of driver — en elk daarvan leest hetzelfde beheerde model, dus het antwoord en de regels zijn hetzelfde, welke je ook kiest."
       },
       "step6": {
         "title": "SQL (1 van 7 oppervlakken)",
@@ -120,7 +124,7 @@
       },
       "step14": {
         "title": "Dat was de kern van vijf minuten",
-        "description": "✅ Je hebt het net van begin tot eind gezien: <strong>één bron, op zeven manieren bevraagd — of gewoon in gewoon Nederlands gevraagd.</strong> Dat is de hele belofte — en je zou hier kunnen stoppen.<p>Druk op <kbd>Esc</kbd> wanneer je wilt; 🧭 het kompas bovenaan speelt deze rondleiding altijd opnieuw af.</p><p>👉 Alles wat volgt is <strong>hoe Provisa met je meegroeit</strong> — optionele diepgang, geen verplichte stappen:</p><ul><li>🔗 Koppel tabellen over bronnen heen tot één <strong>graaf</strong></li><li>🔐 <strong>Beheer</strong> het — rollen, beveiliging op rijniveau, kolommaskering</li><li>🏗️ Bouw een <strong>opleveringspipeline</strong> — views, een gematerialiseerd warehouse, lineage</li><li>⚙️ <strong>Beheer</strong> de werking — kies een engine, ga naar productie</li></ul><p>Doorgaan? →</p>"
+        "description": "✅ Je hebt het net van begin tot eind gezien: <strong>één bron, bevraagd in de taal of met de tool die je al gebruikt — of gewoon in gewoon Nederlands gevraagd.</strong> Dat is de hele belofte — en je zou hier kunnen stoppen.<p>Druk op <kbd>Esc</kbd> wanneer je wilt; 🧭 het kompas bovenaan speelt deze rondleiding altijd opnieuw af.</p><p>👉 Alles wat volgt is <strong>hoe Provisa met je meegroeit</strong> — optionele diepgang, geen verplichte stappen:</p><ul><li>🔗 Koppel tabellen over bronnen heen tot één <strong>graaf</strong></li><li>🔐 <strong>Beheer</strong> het — rollen, beveiliging op rijniveau, kolommaskering</li><li>🏗️ Bouw een <strong>opleveringspipeline</strong> — views, een gematerialiseerd warehouse, lineage</li><li>⚙️ <strong>Beheer</strong> de werking — kies een engine, ga naar productie</li></ul><p>Doorgaan? →</p>"
       },
       "step15": {
         "title": "Verbind de graaf",

@@ -10,7 +10,7 @@
     },
     "welcome": {
       "title": "Fazer a visita guiada?",
-      "body": "Um percurso de cinco minutos: conecte uma fonte e consulte-a de sete formas. Saia quando quiser — a bússola na barra de ferramentas reabre a visita a qualquer momento.",
+      "body": "Um percurso de cinco minutos: conecte uma fonte e consulte-a na linguagem ou com a ferramenta que você já usa. Saia quando quiser — a bússola na barra de ferramentas reabre a visita a qualquer momento.",
       "never": "Não mostrar novamente",
       "later": "Mais tarde",
       "start": "Iniciar a visita",
@@ -60,7 +60,7 @@
     "steps": {
       "step0": {
         "title": "Bem-vindo, vamos fazer o tour",
-        "description": "🧭 Esta bússola reabre o tour a qualquer momento. Saia quando quiser — clique no app ou pressione <kbd>Esc</kbd>.<p><strong>Provisa</strong> é um único modelo que reúne seus dados, os metadados deles e o processamento entre eles. O mesmo modelo define seu patrimônio de dados e o opera: é tudo uma coisa só, e fica fora do caminho dos dados.</p><p>Por isso <strong>tudo fica sincronizado</strong> e <strong>o reaproveitamento já vem embutido</strong>: um relacionamento, métrica, máscara ou regra definido uma vez atende a todas as superfícies, ambientes e papéis. Tabelas e métricas duplicadas, comandos e regras duplicados, até dois sistemas que servem os mesmos dados ficam lado a lado no modelo, então a duplicação é fácil de ver e simples de remover.</p><p>Ele é compacto, extensível e componível. Encaixa-se ao lado do que você já tem, põe ordem na bagunça e deixa cada profissional de dados aplicar sua experiência sem limitar a imaginação: só tira o trabalho braçal.</p><p>🎯 <strong>O essencial é um exercício curto:</strong> conecte um banco de dados e consulte-o de <strong>sete maneiras</strong> — ou simplesmente pergunte em linguagem natural. Cerca de cinco minutos, <strong>direto do seu desktop</strong>, sem infraestrutura para montar.</p><div class='tour-tags'><span>Linguagem natural</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Tudo o que vem depois é um <strong>aprofundamento</strong> que você escolhe em um menu quando estiver pronto.</p><p>Pronto? Vamos conectar uma fonte. →</p>"
+        "description": "🧭 Esta bússola reabre o tour a qualquer momento. Saia quando quiser — clique no app ou pressione <kbd>Esc</kbd>.<p><strong>Provisa</strong> é um único modelo que reúne seus dados, os metadados deles e o processamento entre eles. O mesmo modelo define seu patrimônio de dados e o opera: é tudo uma coisa só, e fica fora do caminho dos dados.</p><p>Por isso <strong>tudo fica sincronizado</strong> e <strong>o reaproveitamento já vem embutido</strong>: um relacionamento, métrica, máscara ou regra definido uma vez atende a todas as superfícies, ambientes e papéis. Tabelas e métricas duplicadas, comandos e regras duplicados, até dois sistemas que servem os mesmos dados ficam lado a lado no modelo, então a duplicação é fácil de ver e simples de remover.</p><p>Ele é compacto, extensível e componível. Encaixa-se ao lado do que você já tem, põe ordem na bagunça e deixa cada profissional de dados aplicar sua experiência sem limitar a imaginação: só tira o trabalho braçal.</p><p>🎯 <strong>O essencial é um exercício curto:</strong> conecte um banco de dados e consulte-o na linguagem ou com a ferramenta que você já usa — ou simplesmente pergunte em linguagem natural. Cerca de cinco minutos, <strong>direto do seu desktop</strong>, sem infraestrutura para montar.</p><div class='tour-tags'><span>Linguagem natural</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Tudo o que vem depois é um <strong>aprofundamento</strong> que você escolhe em um menu quando estiver pronto.</p><p>Pronto? Vamos conectar uma fonte. →</p>"
       },
       "stepPolly": {
         "title": "Conheça a Polly, sua ajuda de configuração",
@@ -85,6 +85,10 @@
       "step5": {
         "title": "Escolha colunas e políticas",
         "description": "Escolha uma fonte, um esquema e uma tabela, depois selecione colunas — cada uma com sua própria política:<ul><li>🎭 <strong>Mascaramento</strong> — oculta valores por função</li><li>👁️ <strong>Visibilidade</strong> — exibe ou oculta a coluna</li><li>🏷️ <strong>Aliases</strong> — renomeia para o modelo</li></ul><p>Essa é toda a configuração — uma fonte e algumas tabelas. 🚀 Agora vamos consultá-la. →</p>"
+      },
+      "stepQuery": {
+        "title": "Consulte do seu jeito",
+        "description": "💬 Você pergunta na linguagem ou com a ferramenta que já usa — SQL, GraphQL, Cypher, linguagem natural pelo Polly, ou uma ferramenta de BI ou um driver — e todas leem o mesmo modelo governado, então a resposta e as regras são as mesmas, qualquer que seja a sua escolha."
       },
       "step6": {
         "title": "SQL (1 de 7 interfaces)",
@@ -120,7 +124,7 @@
       },
       "step14": {
         "title": "Esse é o núcleo de cinco minutos",
-        "description": "✅ Você acabou de ver tudo, do início ao fim: <strong>uma fonte, consultada de sete formas — ou simplesmente perguntada em português claro.</strong> Essa é toda a promessa — e você poderia parar por aqui.<p>Pressione <kbd>Esc</kbd> a qualquer momento; 🧭 a bússola no topo reproduz este tour sempre que você quiser.</p><p>👉 Tudo o que vem a seguir é <strong>como o Provisa cresce com você</strong> — profundidade opcional, não etapas obrigatórias:</p><ul><li>🔗 Ligue tabelas entre fontes em um único <strong>grafo</strong></li><li>🔐 <strong>Governe</strong> — funções, segurança em nível de linha, mascaramento de colunas</li><li>🏗️ Construa um <strong>pipeline de entrega</strong> — exibições, um warehouse materializado, linhagem</li><li>⚙️ <strong>Opere</strong> — escolha um mecanismo, envie para produção</li></ul><p>Continuar? →</p>"
+        "description": "✅ Você acabou de ver tudo, do início ao fim: <strong>uma fonte, consultada na linguagem ou com a ferramenta que você já usa — ou simplesmente perguntada em português claro.</strong> Essa é toda a promessa — e você poderia parar por aqui.<p>Pressione <kbd>Esc</kbd> a qualquer momento; 🧭 a bússola no topo reproduz este tour sempre que você quiser.</p><p>👉 Tudo o que vem a seguir é <strong>como o Provisa cresce com você</strong> — profundidade opcional, não etapas obrigatórias:</p><ul><li>🔗 Ligue tabelas entre fontes em um único <strong>grafo</strong></li><li>🔐 <strong>Governe</strong> — funções, segurança em nível de linha, mascaramento de colunas</li><li>🏗️ Construa um <strong>pipeline de entrega</strong> — exibições, um warehouse materializado, linhagem</li><li>⚙️ <strong>Opere</strong> — escolha um mecanismo, envie para produção</li></ul><p>Continuar? →</p>"
       },
       "step15": {
         "title": "Conecte o grafo",
