@@ -552,6 +552,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
         DuckDBAirportConnector,
         DuckDBBigQueryConnector,
         DuckDBClickHouseConnector,
+        DuckDBCloudopsConnector,
         DuckDBCsvConnector,
         DuckDBDeltaConnector,
         DuckDBDuckdbConnector,
@@ -595,6 +596,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
             # REQ-1690: the Calcite pgwire connectors attached live through the postgres extension.
             DuckDBSharepointConnector(),
             DuckDBSalesforceConnector(),  # REQ-1946
+            DuckDBCloudopsConnector(),  # REQ-1947
             DuckDBSplunkConnector(),
             # REQ-1177: operator-declared custom ATTACH/SCAN extensions (config/custom_connectors.yaml).
             *load_custom_connectors("duckdb"),
@@ -682,6 +684,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         PgDuckdbMotherDuckConnector,
         PgDuckdbParquetConnector,
         PgDuckdbSnowflakeIcebergConnector,
+        PgCloudopsConnector,
         PgFilesConnector,
         PgSalesforceConnector,
         PgSharepointConnector,
@@ -700,6 +703,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             PgFilesConnector(),  # files (pgwire bridge, live attach — REQ-1730)
             PgSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
             PgSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)
+            PgCloudopsConnector(),  # cloudops (pgwire bridge, live attach — REQ-1947)
             PgSplunkConnector(),  # splunk (pgwire bridge, live attach — REQ-1730)
             PgDuckdbCsvConnector(),  # csv (preferred over file_fdw)
             FileFdwConnector(),  # csv (fallback)
@@ -759,6 +763,7 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
     source of type ``clickhouse`` is already native. Single-node reach model like DuckDB/Postgres.
     """
     from provisa.federation.clickhouse_connectors import (
+        ClickHouseCloudopsConnector,
         ClickHouseCsvConnector,
         ClickHouseDeltaLakeConnector,
         ClickHouseFilesConnector,
@@ -786,6 +791,7 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
                 ClickHouseFilesConnector(),  # files (pgwire bridge, live attach — REQ-1730)
                 ClickHouseSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
                 ClickHouseSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)
+                ClickHouseCloudopsConnector(),  # cloudops (pgwire bridge, live attach — REQ-1947)
                 ClickHouseSplunkConnector(),  # splunk (pgwire bridge, live attach — REQ-1730)
                 ClickHouseMysqlConnector(),  # mysql — CREATE DATABASE ENGINE=MySQL
                 ClickHouseSqliteConnector(),  # sqlite — CREATE DATABASE ENGINE=SQLite (file, REQ-1178)

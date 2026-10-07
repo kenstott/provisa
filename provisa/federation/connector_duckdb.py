@@ -316,6 +316,10 @@ class DuckDBSharepointConnector(_DuckDBPgwireConnector):  # REQ-1690
     source_type = "sharepoint"
 
 
+class DuckDBCloudopsConnector(_DuckDBPgwireConnector):  # REQ-1947
+    source_type = "cloudops"
+
+
 class DuckDBSalesforceConnector(_DuckDBPgwireConnector):  # REQ-1946
     source_type = "salesforce"
 
@@ -863,6 +867,10 @@ class PgFilesConnector(_PgPgwireConnector):  # REQ-1730
 
 class PgSharepointConnector(_PgPgwireConnector):  # REQ-1730
     source_type = "sharepoint"
+
+
+class PgCloudopsConnector(_PgPgwireConnector):  # REQ-1947
+    source_type = "cloudops"
 
 
 class PgSalesforceConnector(_PgPgwireConnector):  # REQ-1946

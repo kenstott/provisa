@@ -20,6 +20,7 @@ Trino connector classes follow the ``_TrinoConnector`` base: declare ``trino_con
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -778,6 +779,38 @@ class TrinoSharepointConnector(_TrinoConnector):
         return props
 
 
+def _kebab(operand_key: str) -> str:
+    """A model operand key as the catalog property the Trino plugins name it by
+    (``azure.tenantId`` -> ``azure.tenant-id``)."""
+    return re.sub(r"(?<=[a-z])(?=[A-Z])", "-", operand_key).lower()
+
+
+class TrinoCloudopsConnector(_TrinoConnector):
+    """REQ-1947: Azure / AWS / GCP resource inventory read through the trino-cloudops plugin,
+    which reads only. The catalog carries the settings the source's pgwire server is given
+    (``cloudops.cloudops_settings``, where a partly named cloud is refused by name), each under
+    the plugin's property name, and the same schema name, so a table registered once is addressed
+    identically on every engine. ``case-insensitive-name-matching`` is always on: the plugin
+    refuses to start without it."""
+
+    source_type = "cloudops"
+    trino_connector = "cloudops"
+    mechanism = Mechanism.ATTACH_R
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        from provisa.federation.cloudops import cloudops_settings
+
+        props: dict = {_kebab(k): str(v) for k, v in cloudops_settings(source).items()}
+        # Same sql-normalization pgwire_replica.schema_name() applies — inlined, as
+        # TrinoSharepointConnector's is.
+        props["schema"] = source.id.replace("-", "_")
+        props["case-insensitive-name-matching"] = "true"
+        return props
+
+
 class TrinoSalesforceConnector(_TrinoConnector):
     """REQ-1946: a Salesforce org read through the trino-salesforce plugin, which reads only. The
     catalog carries the same credential set the source's pgwire server is given
@@ -1006,6 +1039,7 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoParquetConnector(),
         TrinoSharepointConnector(),
         TrinoSalesforceConnector(),
+        TrinoCloudopsConnector(),
         TrinoSplunkConnector(),
         TrinoRedisConnector(),
         TrinoElasticsearchConnector(),

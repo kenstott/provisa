@@ -757,6 +757,7 @@ def source_password_secret_name(source_id: str, env: str) -> str:  # REQ-1695, R
 SOURCE_MAPPING_SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "sharepoint": ("certificate_password", "sp_password"),
     "salesforce": ("sf_password", "security_token", "access_token"),
+    "cloudops": ("azure_client_secret", "aws_secret_access_key"),  # REQ-1947
 }
 
 

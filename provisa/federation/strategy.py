@@ -80,7 +80,7 @@ class Strategy(str, Enum):  # REQ-826
 # off such engines it federates by this replica path. An engine whose own postgres reach can speak
 # to that server ATTACHes it live instead (DuckDB, REQ-1690) — such an engine has a connector for
 # the type, so it never reaches this gate.
-_CONNECTOR_PGWIRE_REPLICA = frozenset({"files", "sharepoint", "splunk", "salesforce"})
+_CONNECTOR_PGWIRE_REPLICA = frozenset({"files", "sharepoint", "splunk", "salesforce", "cloudops"})
 
 # Sources with no live/scan representation — APIs, NoSQL, and streaming feeds. They
 # federate only by being loaded into the tenant materialization store (MATERIALIZED).
@@ -102,6 +102,7 @@ _MATERIALIZE_ONLY = frozenset(
         "splunk",
         "sharepoint",
         "salesforce",
+        "cloudops",
         "govdata",
         "ingest",
         # REQ-1443: a data-quality checker produces rows by running a contract; there is no remote
