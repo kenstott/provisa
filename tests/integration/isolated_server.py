@@ -108,9 +108,19 @@ async def drop_org_schema(org_id: str) -> None:
         await conn.close()
 
 
-def _first_start(org_id: str, tenant_url: str) -> None:
-    """Empty ``org_id``'s model store (tests.boot_seeds_its_own_deployment.empty_org_model), from
-    sync code that may run inside a test's event loop: on a thread of its own."""
+#: The configuration each (org, control plane) store was last seeded from by a server here.
+_SEEDED_BY_SERVER: dict[tuple[str, str], str] = {}
+
+
+def _first_start(org_id: str, tenant_url: str, config_text: str) -> None:
+    """Make a server's start its deployment's first start unless the org's store was seeded from
+    this same configuration: then the server is another instance, or a restart, of that one
+    deployment. A first start empties the model store
+    (tests.boot_seeds_its_own_deployment.empty_org_model), from sync code that may run inside a
+    test's event loop: on a thread of its own."""
+    if _SEEDED_BY_SERVER.get((org_id, tenant_url)) == config_text:
+        return
+    _SEEDED_BY_SERVER[(org_id, tenant_url)] = config_text
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
 
@@ -168,7 +178,6 @@ class IsolatedServer:
         self.pgwire_port = free_port() if enable_pgwire else 0
         self.grpc_port = free_port()
         self._proc: subprocess.Popen | None = None
-        self._started_once = False
         self._cfg_path: str | None = None
         self._tmpdir: tempfile.TemporaryDirectory | None = None
 
@@ -229,13 +238,17 @@ class IsolatedServer:
     # is booting rather than broken still says why in its stderr when the deadline passes.
     def start(self, *, timeout: float = 300.0) -> None:
         self._cfg_path = self._write_config()
-        if not self._started_once and self._control_plane != "sqlite":
+        if self._control_plane != "sqlite":
             # REQ-1919: a configuration seeds the model store once, at a deployment's first start.
-            # Each server object is its own deployment, so its first start is a first start: the
-            # org's model is emptied and seeded from this server's configuration. A later start of
-            # the same object is a restart and keeps the store as it is.
-            _first_start(self.org_id, {**os.environ, **self._extra_env}["TENANT_DATABASE_URL"])
-        self._started_once = True
+            # A server on a configuration other than the one its org's store was seeded from is a
+            # new deployment, so its start is a first start: the org's model is emptied and seeded
+            # from this server's configuration. One on the same configuration is another instance,
+            # or a restart, of that deployment and keeps the store as it is.
+            _first_start(
+                self.org_id,
+                {**os.environ, **self._extra_env}["TENANT_DATABASE_URL"],
+                Path(self._cfg_path).read_text(),
+            )
         env = {
             **os.environ,
             **self._control_plane_env(),
