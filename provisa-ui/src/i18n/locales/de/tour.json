@@ -19,9 +19,10 @@
     },
     "menu": {
       "title": "Deep Dives",
-      "intro": "Ein Modell für Ihre Daten, Metadaten und Verarbeitung, synchron gehalten und überall wiederverwendet. Wählen Sie ein Thema: Jedes ist eine kurze eigene Tour, und mit „Fertig“ kehren Sie hierher zurück.",
+      "intro": "Ein Modell für Ihre Daten, Metadaten und Verarbeitung, synchron gehalten und überall wiederverwendet. Wählen Sie ein Thema: Jedes ist eine kurze eigene Tour, und mit „Fertig“ kehren Sie hierher zurück. Der Kompass in der Symbolleiste öffnet dieses Menü jederzeit wieder.",
       "completed": "Abgeschlossen",
-      "steps": "Schritte: {{count}}"
+      "steps": "Schritte: {{count}}",
+      "coreTour": "Kerntour starten"
     },
     "topics": {
       "connect": {
@@ -124,7 +125,7 @@
       },
       "step14": {
         "title": "Das ist der Fünf-Minuten-Kern",
-        "description": "✅ Sie haben es gerade von Anfang bis Ende gesehen: <strong>eine Quelle, abgefragt in der Sprache oder mit dem Werkzeug, die Sie ohnehin nutzen — oder einfach in normalem Deutsch gefragt.</strong> Das ist das ganze Versprechen — und Sie könnten genau hier aufhören.<p><kbd>Esc</kbd> jederzeit drücken; 🧭 der Kompass oben spielt diese Tour jederzeit erneut ab.</p><p>👉 Alles, was folgt, ist, <strong>wie Provisa mit Ihnen wächst</strong> — optionale Tiefe, keine erforderlichen Schritte:</p><ul><li>🔗 Tabellen über Quellen hinweg zu einem <strong>Graphen</strong> verknüpfen</li><li>🔐 Ihn <strong>governen</strong> — Rollen, Row-Level-Sicherheit, Spaltenmaskierung</li><li>🏗️ Eine <strong>Delivery-Pipeline</strong> bauen — Sichten, ein materialisiertes Warehouse, Lineage</li><li>⚙️ Ihn <strong>betreiben</strong> — eine Engine wählen, in Produktion bringen</li></ul><p>Weitermachen? →</p>"
+        "description": "✅ Sie haben es gerade von Anfang bis Ende gesehen: <strong>eine Quelle, abgefragt in der Sprache oder mit dem Werkzeug, die Sie ohnehin nutzen — oder einfach in normalem Deutsch gefragt.</strong> Das ist das ganze Versprechen — und Sie könnten genau hier aufhören.<p>Alles Weitere ist ein <strong>Deep Dive</strong>: Daten verbinden, Beziehungen, Modellierung, Governance, Abfragen, Testdaten, Veröffentlichen und Betrieb. „Fertig“ öffnet den Deep-Dives-Katalog.</p>"
       },
       "step15": {
         "title": "Den Graphen verbinden",
@@ -201,10 +202,6 @@
       "step23": {
         "title": "Betreiben",
         "description": "Die Admin-Seiten betreiben die Plattform:<ul><li>⚙️ Ihre <strong>Föderations-Engine</strong> wählen und konfigurieren — austauschbar: DuckDB (eingebettet, ohne Konfiguration), Trino, PostgreSQL, ClickHouse, oder ein Cloud-Warehouse als erstklassige Engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Jederzeit austauschen — das Modell, die Oberflächen und die Governance darüber ändern sich nie.</li><li>🔗 Welche Engine Sie auch wählen, sie bringt ihre eigene Reichweite für <strong>Live-externe Daten</strong> mit — Parquet, Iceberg, Delta werden direkt vor Ort gelesen, ohne Kopieren, Zugangsdaten automatisch bereitgestellt. Alles, was sie nicht live verknüpfen kann, landet als governte Replik.</li><li>🔑 <strong>Verschlüsselungsschlüssel</strong> verwalten und <strong>Auth-Provider</strong> anbinden</li><li>📊 Vollständige <strong>Observability</strong> — zu jedem OpenTelemetry-Collector für erstklassiges Trace-Management umleiten</li><li>📤 <strong>Die Konfiguration des Modells exportieren</strong> – das ganze Modell oder ausgewählte Abschnitte – als Datei zum Prüfen, Vergleichen und Ausliefern per CI/CD</li></ul><p>Dasselbe Modell wandert von der lokalen Entwicklung bis zur Produktion, bei jedem Schritt validiert — kein Neuschreiben:</p><ul><li><strong>Entwickeln</strong> — eingebettetes DuckDB, kein Docker. Lokal bauen &amp; validieren.</li><li><strong>Im großen Maßstab validieren</strong> — Docker, eine Engine + Observability hochfahren. Verhalten gegen Produktions-Engines nachweisen.</li><li><strong>Befördern</strong> — auf Ihre eigene Infrastruktur zeigen, über CI/CD bauen, in Produktion ausliefern.</li></ul>"
-      },
-      "step24": {
-        "title": "Das war die Tour — jetzt machen Sie sie zu Ihrer eigenen",
-        "description": "🎉 Sie sind wieder dort, wo Sie angefangen haben. Jetzt machen Sie es zu Ihrem eigenen:<ul><li>1️⃣ Eine Ihrer echten <strong>Quellen</strong> registrieren</li><li>2️⃣ Ein paar <strong>Tabellen</strong> freigeben, eine oder zwei <strong>Beziehungen</strong> ziehen</li><li>3️⃣ Sie von <strong>Erkunden</strong> aus in jeder Sprache abfragen:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p><kbd>pgwire</kbd>- oder <kbd>Bolt</kbd>-Tools darauf richten — alles funktioniert einfach.</p><p>📚 Der Tab <strong>Doku</strong> enthält die vollständigen Anleitungen. 🧭 Der Kompass oben spielt diese Tour jederzeit erneut ab. Viel Freude mit Provisa.</p>"
       },
       "stepPreview": {
         "title": "Vorschau für jede Tabelle",

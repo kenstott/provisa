@@ -480,14 +480,6 @@ export const TOUR_STEPS: TourStep[] = [
     readySelector: '[data-tour="admin-content"]',
     key: "step23",
   },
-  // ─── CLOSE ───
-  {
-    route: "/sources",
-    capability: "source_registration",
-    prefetch: "settings",
-    element: '[data-tour="sources-add"]',
-    key: "step24",
-  },
 ];
 
 /**
@@ -530,7 +522,7 @@ export const TOUR_SCOPES: Record<TourScope, readonly string[]> = {
   ],
   // The glossary step stays here until its topic is decided (REQ-1945 open question).
   publish: ["stepGlossary", "stepDataProducts", "stepPublish"],
-  operate: ["stepReports", "step23", "step24"],
+  operate: ["stepReports", "step23"],
 };
 
 /**

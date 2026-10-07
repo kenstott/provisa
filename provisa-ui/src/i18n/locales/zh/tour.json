@@ -19,9 +19,10 @@
     },
     "menu": {
       "title": "深入探索",
-      "intro": "一个模型承载你的数据、元数据和处理,保持同步,并在各处复用。选择一个主题:每个主题都是一段独立的简短导览,点击“完成”即可返回此处。",
+      "intro": "一个模型承载你的数据、元数据和处理,保持同步,并在各处复用。选择一个主题:每个主题都是一段独立的简短导览,点击“完成”即可返回此处。工具栏中的指南针可随时重新打开此菜单。",
       "completed": "已完成",
-      "steps": "步骤数:{{count}}"
+      "steps": "步骤数:{{count}}",
+      "coreTour": "开始核心导览"
     },
     "topics": {
       "connect": {
@@ -124,7 +125,7 @@
       },
       "step14": {
         "title": "这就是五分钟核心内容",
-        "description": "✅ 你刚刚完整看完了一遍：<strong>一个数据源，用你已在使用的语言或工具查询——或者干脆用大白话提问。</strong>这就是全部承诺——你完全可以就此打住。<p>随时按 <kbd>Esc</kbd>；🧭 上方的指南针可以随时重播这个导览。</p><p>👉 接下来的一切都是<strong>Provisa 如何与你一起成长</strong>——是可选的深度内容，不是必须的步骤：</p><ul><li>🔗 把跨数据源的表连接成一个<strong>图</strong></li><li>🔐 对它进行<strong>治理</strong>——角色、行级安全、列脱敏</li><li>🏗️ 构建一条<strong>交付管道</strong>——视图、物化数据仓库、血缘</li><li>⚙️ <strong>运维</strong>它——选择一个引擎，上线到生产环境</li></ul><p>继续吗？→</p>"
+        "description": "✅ 你刚刚完整看完了一遍：<strong>一个数据源，用你已在使用的语言或工具查询——或者干脆用大白话提问。</strong>这就是全部承诺——你完全可以就此打住。<p>其余的都是<strong>深入专题</strong>:连接数据、关系、建模、治理、查询、测试数据、发布和运维。点击“完成”将打开深入专题目录。</p>"
       },
       "step15": {
         "title": "连接图谱",
@@ -201,10 +202,6 @@
       "step23": {
         "title": "运维它",
         "description": "管理页面负责运行整个平台：<ul><li>⚙️ 选择并配置你的<strong>联邦引擎</strong>——可插拔：DuckDB（内嵌、零配置）、Trino、PostgreSQL、ClickHouse，或将云数据仓库作为一等引擎（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。随时切换——模型、界面，以及其上的治理都不会改变。</li><li>🔗 无论选择哪个引擎，都自带其自身的<strong>实时外部数据</strong>接入能力——原地读取 Parquet、Iceberg、Delta，零拷贝，凭证自动预配。任何无法实时连接的数据，都会落地为一份受治理的副本。</li><li>🔑 管理<strong>加密密钥</strong>并接入<strong>身份验证提供方</strong></li><li>📊 完整的<strong>可观测性</strong> —— 可重定向到任意 OpenTelemetry 采集器，实现企业级的追踪管理</li><li>📤 <strong>导出模型配置</strong>——整个模型或选定部分——为文件，用于审阅、比对并通过 CI/CD 发布</li></ul><p>同一个模型可以从本地开发一路走到生产环境，每一步都经过验证——无需重写：</p><ul><li><strong>开发</strong> —— 内嵌 DuckDB，无需 Docker。在本地构建与验证。</li><li><strong>规模化验证</strong> —— 使用 Docker，启动一个引擎加可观测性组件。针对生产级引擎验证行为。</li><li><strong>晋级</strong> —— 指向你自己的基础设施，通过 CI/CD 构建，上线到生产环境。</li></ul>"
-      },
-      "step24": {
-        "title": "导览到此结束——现在轮到你了",
-        "description": "🎉 你已经回到起点。现在让它成为你自己的：<ul><li>1️⃣ 注册一个你真实的<strong>数据源</strong></li><li>2️⃣ 暴露几张<strong>表</strong>，画一两条<strong>关系</strong></li><li>3️⃣ 用任意一种语言，从<strong>探索</strong>页面查询它：</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>把 <kbd>pgwire</kbd> 或 <kbd>Bolt</kbd> 工具指向它——一切都可以直接使用。</p><p>📚 <strong>文档</strong>标签页有完整指南。🧭 上方的指南针可随时重播这个导览。祝你使用 Provisa 愉快。</p>"
       },
       "stepPreview": {
         "title": "预览任意表",

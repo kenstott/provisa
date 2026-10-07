@@ -19,9 +19,10 @@
     },
     "menu": {
       "title": "Approfondir",
-      "intro": "Un modèle pour vos données, métadonnées et traitements, synchronisé et réutilisé partout. Choisissez un sujet : chacun est une courte visite à part entière, et « Terminé » vous ramène ici.",
+      "intro": "Un modèle pour vos données, métadonnées et traitements, synchronisé et réutilisé partout. Choisissez un sujet : chacun est une courte visite à part entière, et « Terminé » vous ramène ici. La boussole de la barre d'outils rouvre ce menu à tout moment.",
       "completed": "Terminé",
-      "steps": "Étapes : {{count}}"
+      "steps": "Étapes : {{count}}",
+      "coreTour": "Lancer la visite principale"
     },
     "topics": {
       "connect": {
@@ -124,7 +125,7 @@
       },
       "step14": {
         "title": "Voilà le cœur en cinq minutes",
-        "description": "✅ Vous venez de le voir de bout en bout : <strong>une source, interrogée dans le langage ou avec l'outil que vous utilisez déjà — ou simplement demandée en langage naturel.</strong> C'est toute la promesse — et vous pourriez vous arrêter ici.<p>Appuyez sur <kbd>Échap</kbd> à tout moment ; 🧭 la boussole en haut relance cette visite quand vous le souhaitez.</p><p>👉 Tout ce qui suit montre <strong>comment Provisa grandit avec vous</strong> — une profondeur optionnelle, pas des étapes obligatoires :</p><ul><li>🔗 Relier les tables entre sources en un seul <strong>graphe</strong></li><li>🔐 Le <strong>gouverner</strong> — rôles, sécurité au niveau des lignes, masquage de colonnes</li><li>🏗️ Construire un <strong>pipeline de livraison</strong> — vues, entrepôt matérialisé, traçabilité</li><li>⚙️ L'<strong>exploiter</strong> — choisir un moteur, déployer en production</li></ul><p>On continue ? →</p>"
+        "description": "✅ Vous venez de le voir de bout en bout : <strong>une source, interrogée dans le langage ou avec l'outil que vous utilisez déjà — ou simplement demandée en langage naturel.</strong> C'est toute la promesse — et vous pourriez vous arrêter ici.<p>Tout le reste est un <strong>Deep Dive</strong> : connexion des données, relations, modélisation, gouvernance, interrogation, données de test, publication et exploitation. « Terminé » ouvre le catalogue des Deep Dives.</p>"
       },
       "step15": {
         "title": "Connecter le graphe",
@@ -201,10 +202,6 @@
       "step23": {
         "title": "Exploitez-le",
         "description": "Les pages Admin pilotent la plateforme :<ul><li>⚙️ Choisissez et configurez votre <strong>moteur de fédération</strong> — enfichable : DuckDB (embarqué, sans configuration), Trino, PostgreSQL, ClickHouse, ou un entrepôt cloud comme moteur de premier plan (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Changez-en à tout moment — le modèle, les surfaces et la gouvernance au-dessus ne changent jamais.</li><li>🔗 Quel que soit le moteur choisi, il apporte son propre accès aux <strong>données externes en direct</strong> — Parquet, Iceberg, Delta lus sur place, sans copie, avec des identifiants provisionnés automatiquement. Tout ce qu'il ne peut pas lier en direct atterrit sous forme de réplique gouvernée.</li><li>🔑 Gérez les <strong>clés de chiffrement</strong> et configurez les <strong>fournisseurs d'authentification</strong></li><li>📊 <strong>Observabilité</strong> complète — redirigez vers tout collecteur OpenTelemetry pour une gestion des traces de niveau entreprise</li><li>📤 <strong>Exportez la configuration du modèle</strong> (le modèle entier ou des sections choisies) sous forme de fichier à relire, comparer et livrer par CI/CD</li></ul><p>Le même modèle voyage du poste de développement local jusqu'à la production, validé à chaque étape — sans réécriture :</p><ul><li><strong>Développer</strong> — DuckDB embarqué, sans Docker. Construire et valider en local.</li><li><strong>Valider à l'échelle</strong> — Docker, démarrer un moteur et l'observabilité. Prouver le comportement face à des moteurs de production.</li><li><strong>Promouvoir</strong> — pointer vers votre propre infrastructure, construire via CI/CD, déployer en production.</li></ul>"
-      },
-      "step24": {
-        "title": "Fin de la visite — à vous de jouer",
-        "description": "🎉 Vous voilà de retour au point de départ. Maintenant, faites-en votre propre usage :<ul><li>1️⃣ Enregistrez l'une de vos <strong>sources</strong> réelles</li><li>2️⃣ Exposez quelques <strong>tables</strong>, tracez une <strong>relation</strong> ou deux</li><li>3️⃣ Interrogez-les depuis <strong>Explorer</strong> dans n'importe quel langage :</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Pointez vos outils <kbd>pgwire</kbd> ou <kbd>Bolt</kbd> dessus — tout fonctionne simplement.</p><p>📚 L'onglet <strong>Docs</strong> contient les guides complets. 🧭 La boussole en haut relance cette visite à tout moment. Profitez bien de Provisa.</p>"
       },
       "stepPreview": {
         "title": "Aperçu de n'importe quelle table",

@@ -19,9 +19,10 @@
     },
     "menu": {
       "title": "Deep Dives",
-      "intro": "One model for your data, metadata and processing, kept in sync and reused everywhere. Pick a topic: each is a short tour of its own, and Done brings you back here.",
+      "intro": "One model for your data, metadata and processing, kept in sync and reused everywhere. Pick a topic: each is a short tour of its own, and Done brings you back here. The compass in the toolbar reopens this menu anytime.",
       "completed": "Completed",
-      "steps": "Steps: {{count}}"
+      "steps": "Steps: {{count}}",
+      "coreTour": "Start the core tour"
     },
     "topics": {
       "connect": {
@@ -124,7 +125,7 @@
       },
       "step14": {
         "title": "That's the five-minute core",
-        "description": "✅ You just saw it end to end: <strong>one source, queried in the language or tool you already use — or just asked in plain English.</strong> That's the whole promise — and you could stop right here.<p>Press <kbd>Esc</kbd> anytime; 🧭 the compass up top replays this tour whenever you want.</p><p>👉 Everything ahead is <strong>how Provisa grows with you</strong> — optional depth, not required steps:</p><ul><li>🔗 Link tables across sources into one <strong>graph</strong></li><li>🔐 <strong>Govern</strong> it — roles, row-level security, column masking</li><li>🏗️ Build a <strong>delivery pipeline</strong> — views, a materialized warehouse, lineage</li><li>⚙️ <strong>Operate</strong> it — pick an engine, ship to production</li></ul><p>Keep going? →</p>"
+        "description": "✅ You just saw it end to end: <strong>one source, queried in the language or tool you already use — or just asked in plain English.</strong> That's the whole promise — and you could stop right here.<p>Everything else is a <strong>Deep Dive</strong>: connecting data, relationships, modeling, governance, querying, test data, publishing and operating. Done opens the Deep Dives catalog.</p>"
       },
       "step15": {
         "title": "Connect the graph",
@@ -201,10 +202,6 @@
       "step23": {
         "title": "Operate it",
         "description": "The Admin pages run the platform:<ul><li>⚙️ Choose and configure your <strong>federation engine</strong> — pluggable: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, or a cloud warehouse as a first-class engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Swap it anytime — the model, the surfaces, and the governance above it never change.</li><li>🔗 Whichever engine you pick brings its own <strong>live external data</strong> reach — Parquet, Iceberg, Delta read in place, zero-copy, credentials auto-provisioned. Anything it can't link live lands as a governed replica.</li><li>🔑 Manage <strong>encryption keys</strong> and wire up <strong>auth providers</strong></li><li>📊 Full <strong>observability</strong> — redirect to any OpenTelemetry collector for enterprise-class trace management</li><li>📤 <strong>Export the model's configuration</strong> — the whole model or chosen sections — as a file to review, diff and ship through CI/CD</li></ul><p>The same model travels from local dev to production, validated at every step — no rewrite:</p><ul><li><strong>Develop</strong> — embedded DuckDB, no Docker. Build &amp; validate locally.</li><li><strong>Validate at scale</strong> — Docker, spin up an engine + observability. Prove behavior against production engines.</li><li><strong>Promote</strong> — point at your own infrastructure, build through CI/CD, ship to production.</li></ul>"
-      },
-      "step24": {
-        "title": "That's the tour — now make it yours",
-        "description": "🎉 You're back where you started. Now make it yours:<ul><li>1️⃣ Register one of your real <strong>sources</strong></li><li>2️⃣ Expose a few <strong>tables</strong>, draw a <strong>relationship</strong> or two</li><li>3️⃣ Query it from <strong>Explore</strong> in any language:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Point <kbd>pgwire</kbd> or <kbd>Bolt</kbd> tools at it — everything just works.</p><p>📚 The <strong>Docs</strong> tab has the full guides. 🧭 The compass up top replays this tour anytime. Enjoy Provisa.</p>"
       },
       "stepPreview": {
         "title": "Preview any table",

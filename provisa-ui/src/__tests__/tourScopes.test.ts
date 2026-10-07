@@ -59,6 +59,12 @@ describe("tour scopes", () => {
     ]);
   });
 
+  it("ends no topic, and not the core tour, on a whole-tour sign-off", () => {
+    for (const id of TOPIC_IDS) expect(TOUR_SCOPES[id].at(-1), id).not.toBe("step24");
+    expect(TOUR_STEPS.map((s) => s.key)).not.toContain("step24");
+    expect(TOUR_SCOPES.core.at(-1)).toBe("step14");
+  });
+
   it("ends the Model topic on lineage", () => {
     expect(TOUR_SCOPES.model.at(-1)).toBe("step22");
   });

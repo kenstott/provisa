@@ -19,9 +19,10 @@
     },
     "menu": {
       "title": "Verdiepen",
-      "intro": "Eén model voor je data, metadata en verwerking, gesynchroniseerd en overal hergebruikt. Kies een onderwerp: elk is een korte tour op zich, en met Klaar kom je hier terug.",
+      "intro": "Eén model voor je data, metadata en verwerking, gesynchroniseerd en overal hergebruikt. Kies een onderwerp: elk is een korte tour op zich, en met Klaar kom je hier terug. Het kompas in de werkbalk opent dit menu altijd opnieuw.",
       "completed": "Voltooid",
-      "steps": "Stappen: {{count}}"
+      "steps": "Stappen: {{count}}",
+      "coreTour": "Start de kernrondleiding"
     },
     "topics": {
       "connect": {
@@ -124,7 +125,7 @@
       },
       "step14": {
         "title": "Dat was de kern van vijf minuten",
-        "description": "✅ Je hebt het net van begin tot eind gezien: <strong>één bron, bevraagd in de taal of met de tool die je al gebruikt — of gewoon in gewoon Nederlands gevraagd.</strong> Dat is de hele belofte — en je zou hier kunnen stoppen.<p>Druk op <kbd>Esc</kbd> wanneer je wilt; 🧭 het kompas bovenaan speelt deze rondleiding altijd opnieuw af.</p><p>👉 Alles wat volgt is <strong>hoe Provisa met je meegroeit</strong> — optionele diepgang, geen verplichte stappen:</p><ul><li>🔗 Koppel tabellen over bronnen heen tot één <strong>graaf</strong></li><li>🔐 <strong>Beheer</strong> het — rollen, beveiliging op rijniveau, kolommaskering</li><li>🏗️ Bouw een <strong>opleveringspipeline</strong> — views, een gematerialiseerd warehouse, lineage</li><li>⚙️ <strong>Beheer</strong> de werking — kies een engine, ga naar productie</li></ul><p>Doorgaan? →</p>"
+        "description": "✅ Je hebt het net van begin tot eind gezien: <strong>één bron, bevraagd in de taal of met de tool die je al gebruikt — of gewoon in gewoon Nederlands gevraagd.</strong> Dat is de hele belofte — en je zou hier kunnen stoppen.<p>Al het andere is een <strong>Deep Dive</strong>: gegevens verbinden, relaties, modelleren, governance, bevragen, testgegevens, publiceren en beheren. Met Klaar open je de Deep Dives-catalogus.</p>"
       },
       "step15": {
         "title": "Verbind de graaf",
@@ -201,10 +202,6 @@
       "step23": {
         "title": "Beheer het",
         "description": "De beheerpagina's draaien het platform:<ul><li>⚙️ Kies en configureer je <strong>federatie-engine</strong> — pluggable: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, of een cloud warehouse als volwaardige engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Wissel op elk moment — het model, de oppervlakken en de governance erboven veranderen nooit.</li><li>🔗 Welke engine je ook kiest, hij brengt zijn eigen bereik voor <strong>live externe data</strong> mee — Parquet, Iceberg, Delta ter plekke gelezen, zero-copy, credentials automatisch geprovisioneerd. Alles wat hij niet live kan koppelen, komt terecht als governed replica.</li><li>🔑 Beheer <strong>versleutelingssleutels</strong> en koppel <strong>auth providers</strong></li><li>📊 Volledige <strong>observability</strong> — doorverwijzen naar elke OpenTelemetry-collector voor enterprise-klasse tracebeheer</li><li>📤 <strong>Exporteer de configuratie van het model</strong> — het hele model of gekozen secties — als bestand om te beoordelen, te vergelijken en via CI/CD uit te rollen</li></ul><p>Hetzelfde model reist van lokale ontwikkeling naar productie, gevalideerd bij elke stap — geen herschrijving:</p><ul><li><strong>Ontwikkelen</strong> — embedded DuckDB, geen Docker. Lokaal bouwen &amp; valideren.</li><li><strong>Op schaal valideren</strong> — Docker, start een engine + observability. Bewijs gedrag tegen productie-engines.</li><li><strong>Promoveren</strong> — wijs naar je eigen infrastructuur, bouw via CI/CD, ga naar productie.</li></ul>"
-      },
-      "step24": {
-        "title": "Dat was de rondleiding — maak het nu van jezelf",
-        "description": "🎉 Je bent terug waar je begon. Maak het nu van jezelf:<ul><li>1️⃣ Registreer een van je echte <strong>bronnen</strong></li><li>2️⃣ Stel een paar <strong>tabellen</strong> beschikbaar, teken een of twee <strong>relaties</strong></li><li>3️⃣ Bevraag het vanuit <strong>Verkennen</strong> in elke taal:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Richt <kbd>pgwire</kbd>- of <kbd>Bolt</kbd>-tools erop — alles werkt gewoon.</p><p>📚 Het tabblad <strong>Documentatie</strong> bevat de volledige handleidingen. 🧭 Het kompas bovenaan speelt deze rondleiding altijd opnieuw af. Veel plezier met Provisa.</p>"
       },
       "stepPreview": {
         "title": "Voorbeeld van elke tabel",

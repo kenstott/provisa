@@ -63,3 +63,21 @@ test("Done on the core tour and on a topic both return to the menu", async ({ pa
   await page.locator(".navbar-tour-btn").click();
   await expect(page.locator('[data-testid="tour-topic-done-govern"]')).toBeVisible();
 });
+
+// REQ-1945: a topic's step also carries Deep Dives, which lands on the catalog, and the catalog's
+// control starts the core tour again at its first step.
+test("a topic's Deep Dives button reaches the catalog, which restarts the core tour", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("provisa_tour_seen", "true"));
+  await page.goto("/sources");
+  await page.locator(".navbar-tour-btn").click();
+  await page.locator('[data-testid="tour-topic-govern"]').click();
+
+  const title = page.locator(".driver-popover-title");
+  await expect(title).toHaveText("Access control (RBAC)", { timeout: 60000 });
+  await page.locator(".driver-popover-deepdives-btn").click();
+  const menu = page.locator('[data-testid="tour-menu"]');
+  await expect(menu).toBeVisible();
+
+  await page.locator('[data-testid="tour-menu-core-tour"]').click();
+  await expect(title).toHaveText("Welcome, let's take the tour", { timeout: 60000 });
+});

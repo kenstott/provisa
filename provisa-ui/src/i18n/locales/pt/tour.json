@@ -19,9 +19,10 @@
     },
     "menu": {
       "title": "Aprofundar",
-      "intro": "Um modelo para seus dados, metadados e processamento, sincronizado e reaproveitado em todo lugar. Escolha um tópico: cada um é um tour curto e independente, e Concluir leva você de volta aqui.",
+      "intro": "Um modelo para seus dados, metadados e processamento, sincronizado e reaproveitado em todo lugar. Escolha um tópico: cada um é um tour curto e independente, e Concluir leva você de volta aqui. A bússola na barra de ferramentas reabre este menu a qualquer momento.",
       "completed": "Concluído",
-      "steps": "Passos: {{count}}"
+      "steps": "Passos: {{count}}",
+      "coreTour": "Iniciar o tour principal"
     },
     "topics": {
       "connect": {
@@ -124,7 +125,7 @@
       },
       "step14": {
         "title": "Esse é o núcleo de cinco minutos",
-        "description": "✅ Você acabou de ver tudo, do início ao fim: <strong>uma fonte, consultada na linguagem ou com a ferramenta que você já usa — ou simplesmente perguntada em português claro.</strong> Essa é toda a promessa — e você poderia parar por aqui.<p>Pressione <kbd>Esc</kbd> a qualquer momento; 🧭 a bússola no topo reproduz este tour sempre que você quiser.</p><p>👉 Tudo o que vem a seguir é <strong>como o Provisa cresce com você</strong> — profundidade opcional, não etapas obrigatórias:</p><ul><li>🔗 Ligue tabelas entre fontes em um único <strong>grafo</strong></li><li>🔐 <strong>Governe</strong> — funções, segurança em nível de linha, mascaramento de colunas</li><li>🏗️ Construa um <strong>pipeline de entrega</strong> — exibições, um warehouse materializado, linhagem</li><li>⚙️ <strong>Opere</strong> — escolha um mecanismo, envie para produção</li></ul><p>Continuar? →</p>"
+        "description": "✅ Você acabou de ver tudo, do início ao fim: <strong>uma fonte, consultada na linguagem ou com a ferramenta que você já usa — ou simplesmente perguntada em português claro.</strong> Essa é toda a promessa — e você poderia parar por aqui.<p>Todo o resto é um <strong>Deep Dive</strong>: conectar dados, relacionamentos, modelagem, governança, consultas, dados de teste, publicação e operação. Concluir abre o catálogo de Deep Dives.</p>"
       },
       "step15": {
         "title": "Conecte o grafo",
@@ -201,10 +202,6 @@
       "step23": {
         "title": "Opere",
         "description": "As páginas de Administração operam a plataforma:<ul><li>⚙️ Escolha e configure seu <strong>mecanismo de federação</strong> — plugável: DuckDB (incorporado, sem configuração), Trino, PostgreSQL, ClickHouse, ou um warehouse em nuvem como mecanismo de primeira classe (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Troque a qualquer momento — o modelo, as interfaces e a governança acima dele nunca mudam.</li><li>🔗 Qualquer mecanismo que você escolher traz seu próprio alcance de <strong>dados externos ao vivo</strong> — Parquet, Iceberg, Delta lidos no local, sem cópia, credenciais provisionadas automaticamente. Tudo o que ele não conseguir vincular ao vivo se torna uma réplica governada.</li><li>🔑 Gerencie <strong>chaves de criptografia</strong> e configure <strong>provedores de autenticação</strong></li><li>📊 <strong>Observabilidade</strong> completa — redirecione para qualquer coletor OpenTelemetry para gerenciamento de rastros de nível empresarial</li><li>📤 <strong>Exporte a configuração do modelo</strong> (o modelo inteiro ou seções escolhidas) como arquivo para revisar, comparar e entregar via CI/CD</li></ul><p>O mesmo modelo viaja do desenvolvimento local à produção, validado em cada etapa — sem reescrita:</p><ul><li><strong>Desenvolver</strong> — DuckDB incorporado, sem Docker. Construa e valide localmente.</li><li><strong>Validar em escala</strong> — Docker, inicie um mecanismo e observabilidade. Comprove o comportamento em relação aos mecanismos de produção.</li><li><strong>Promover</strong> — aponte para sua própria infraestrutura, construa via CI/CD, envie para produção.</li></ul>"
-      },
-      "step24": {
-        "title": "Esse foi o tour — agora faça dele o seu",
-        "description": "🎉 Você voltou ao início. Agora faça dele o seu:<ul><li>1️⃣ Registre uma de suas <strong>fontes</strong> reais</li><li>2️⃣ Exponha algumas <strong>tabelas</strong>, desenhe um ou dois <strong>relacionamentos</strong></li><li>3️⃣ Consulte-a a partir de <strong>Explorar</strong> em qualquer linguagem:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Aponte ferramentas <kbd>pgwire</kbd> ou <kbd>Bolt</kbd> para ele — tudo simplesmente funciona.</p><p>📚 A aba <strong>Documentação</strong> tem os guias completos. 🧭 A bússola no topo reproduz este tour a qualquer momento. Aproveite o Provisa.</p>"
       },
       "stepPreview": {
         "title": "Pré-visualize qualquer tabela",
