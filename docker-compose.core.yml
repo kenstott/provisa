@@ -136,6 +136,8 @@ services:
       # this repo's own checkout path.
       - ${PROVISA_E2E_SHAREPOINT_CERT_HOST:-/Volumes/main/Users/kennethstott/PycharmProjects/provisa/sharepoint.pfx}:${PROVISA_E2E_SHAREPOINT_CERT_HOST:-/Volumes/main/Users/kennethstott/PycharmProjects/provisa/sharepoint.pfx}:ro
       - ./trino/plugins/trino-file:/usr/lib/trino/plugin/trino-file:ro
+      - ./trino/plugins/trino-salesforce:/usr/lib/trino/plugin/trino-salesforce:ro
+      - ./trino/plugins/trino-cloudops:/usr/lib/trino/plugin/trino-cloudops:ro
       # REQ-1494: Provisa's fake functions, and the platform fake keys they are keyed by -- each
       # written to this directory as <fingerprint>.key by the Provisa sharing it (its own
       # PROVISA_FAKE_KEY_DIR), read by the plugin.
@@ -186,6 +188,8 @@ services:
       - ./trino/plugins/trino-sharepoint:/usr/lib/trino/plugin/trino-sharepoint:ro
       - ./trino/plugins/trino-splunk:/usr/lib/trino/plugin/trino-splunk:ro
       - ./trino/plugins/trino-file:/usr/lib/trino/plugin/trino-file:ro
+      - ./trino/plugins/trino-salesforce:/usr/lib/trino/plugin/trino-salesforce:ro
+      - ./trino/plugins/trino-cloudops:/usr/lib/trino/plugin/trino-cloudops:ro
       # REQ-1494: Provisa's fake functions, and the platform fake keys they are keyed by -- each
       # written to this directory as <fingerprint>.key by the Provisa sharing it (its own
       # PROVISA_FAKE_KEY_DIR), read by the plugin.

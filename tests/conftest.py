@@ -496,7 +496,26 @@ os.environ.setdefault(
 # into trino/plugins/<name>/ is a complete plugin directory.
 _TRINO_PLUGIN_MAVEN = "https://repo1.maven.org/maven2/io/simpleishard"
 _TRINO_PLUGIN_VERSION = "0.106.3"
-_TRINO_PLUGINS = ("trino-sharepoint", "trino-splunk", "trino-file")
+_TRINO_PLUGINS = (
+    "trino-sharepoint",
+    "trino-splunk",
+    "trino-file",
+    "trino-salesforce",
+    "trino-cloudops",
+)
+# Plugins fetched at a version other than _TRINO_PLUGIN_VERSION; a plugin absent here is at
+# _TRINO_PLUGIN_VERSION. The same table as provisa/runtime_deps/pgwire_bundles.py
+# CONNECTOR_RELEASE, for the same reason, and each entry goes when _TRINO_PLUGIN_VERSION moves.
+#   trino-salesforce: 0.108.0 is the first release that has it (REQ-1946).
+#   trino-cloudops: 0.108.0 is the first whose plugin takes the `schema` property (REQ-1947).
+_TRINO_PLUGIN_VERSIONS: dict[str, str] = {
+    "trino-salesforce": "0.108.0",
+    "trino-cloudops": "0.108.0",
+}
+
+
+def _trino_plugin_version(name: str) -> str:
+    return _TRINO_PLUGIN_VERSIONS.get(name, _TRINO_PLUGIN_VERSION)
 
 
 def _download_trino_plugin(target: str, name: str) -> None:
@@ -509,7 +528,7 @@ def _download_trino_plugin(target: str, name: str) -> None:
     """
     import urllib.request
 
-    version = _TRINO_PLUGIN_VERSION
+    version = _trino_plugin_version(name)
     url = f"{_TRINO_PLUGIN_MAVEN}/{name}/{version}/{name}-{version}.jar"
     os.makedirs(target, exist_ok=True)
     print(f"[conftest] downloading Trino plugin {name} from {url}")
@@ -573,10 +592,9 @@ def _populate_trino_plugins() -> None:
     plugins = os.path.join(_REPO_ROOT, "trino", "plugins")
     if not os.path.isdir(plugins):
         return
-    version = _TRINO_PLUGIN_VERSION
     for name in _TRINO_PLUGINS:
         target = os.path.join(plugins, name)
-        pinned = f"{name}-{version}.jar"
+        pinned = f"{name}-{_trino_plugin_version(name)}.jar"
         if os.path.islink(target):
             os.unlink(target)
         # Docker bind-mounts create an empty root-owned directory for a missing source, so an
