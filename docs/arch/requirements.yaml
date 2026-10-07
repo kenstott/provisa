@@ -71868,6 +71868,20 @@
     with its numbers. GitLab is the second brand, reaching gitlab.com. A brand's credential check
     treats a null answer to its who-am-I query as a refusal, since a remote that also serves
     anonymous callers answers an unrecognized credential that way and not with an error.
+    (Amended 2026-10-07, ROUTE BY QUERY LANGUAGE) Which route a system takes follows from what its
+    API can be asked. A system with a rich query language of its own -- Salesforce, Splunk,
+    SharePoint -- is reached by a Calcite adapter, read in place with filters and projections pushed
+    to it, on every engine that attaches the adapter and through a native connector on Trino, so
+    no engine replicates it. A system whose API is list operations with few filters -- Stripe,
+    Bitbucket, Confluence -- is an API preset as described above and is always a replica. The
+    brand the steward picks is the same either way, and a system may move from one route to the
+    other without the steward seeing a different source type.
+    (Amended 2026-10-07, PER-USER RESOURCES ARE MULTI-ACCOUNT) A source of per-user resources -- a
+    mail system first, and a calendar or a personal file store likewise -- always serves many
+    accounts. It is given either one credential that reaches every account, or one credential per
+    account. The account is a column of each of its tables, so one table holds every account's
+    rows and row-level rules decide which accounts a role reads. A source of this kind that serves
+    one account only is not offered.
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
