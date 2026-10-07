@@ -112,13 +112,22 @@ jobs:
       # requires_sqlserver tests run in the suite shards.
       - &install-mssql-odbc
         name: Install Microsoft ODBC Driver 18 for SQL Server
+        # Bounded: core 2/6 once sat in this step for its whole job (run 37690884511, started
+        # 21:45Z and still here at 23:23Z). Nothing in it had a time limit: a download that
+        # stalls, or a package lock another process holds, waited for ever. Each transfer now
+        # gives up and is retried, apt waits a bounded time for the lock, and the step itself ends.
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          CURL_OPTS: --fail --silent --show-error --location --connect-timeout 20 --max-time 120 --retry 5 --retry-all-errors
+          APT_OPTS: -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=300
         run: |
-          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+          curl $CURL_OPTS https://packages.microsoft.com/keys/microsoft.asc \
             | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
-          curl -fsSL "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
+          curl $CURL_OPTS "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
             | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
-          sudo apt-get update -q
-          sudo ACCEPT_EULA=Y apt-get install -y -q msodbcsql18 unixodbc-dev
+          sudo apt-get $APT_OPTS update -q
+          sudo ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y -q msodbcsql18 unixodbc-dev
           odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
 
       - &install-deps
