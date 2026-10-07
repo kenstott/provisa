@@ -122,7 +122,10 @@ if [ ! -e "$PKGLIB/plpython3.$SUF" ]; then
     "$CACHE/postgresql-$PG_VERSION/configure" --without-icu --without-readline --without-zlib \
       --without-gssapi --with-python PYTHON="$PBS_DIR/python/bin/python3" --prefix="$PREFIX" >/dev/null
     make -C src/backend generated-headers >/dev/null
-    make -C src/pl/plpython >/dev/null && make -C src/pl/plpython install >/dev/null )
+    # On darwin an in-tree module links with -bundle_loader against src/backend/postgres, which this
+    # out-of-tree build never makes; it resolves against the postgres the core build installed.
+    PLPY_MAKE=(); [ "$OS" = darwin ] && PLPY_MAKE=("BE_DLLLIBS=-bundle_loader $PREFIX/bin/postgres")
+    make -C src/pl/plpython "${PLPY_MAKE[@]}" >/dev/null && make -C src/pl/plpython "${PLPY_MAKE[@]}" install >/dev/null )
 fi
 
 echo "== build pg_duckdb (vcpkg: csv/parquet/json + httpfs + iceberg) =="
