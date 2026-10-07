@@ -111,6 +111,10 @@ if [ ! -x "$PBS_DIR/python/bin/python3" ]; then
   curl -fsSL "https://github.com/astral-sh/python-build-standalone/releases/download/$PBS_RELEASE/cpython-$PBS_PYTHON+$PBS_RELEASE-$PBS_TRIPLE-install_only.tar.gz" \
     | tar xz -C "$PBS_DIR"
 fi
+# python-build-standalone records the prefix it was BUILT at ("/install") in its sysconfig data, so
+# PostgreSQL's configure looks for libpython in /install/lib and stops with "could not find shared
+# library for Python". Point the recorded prefix at where this copy actually lives.
+perl -pi -e "s#\"/install#\"$PBS_DIR/python#g" "$PBS_DIR"/python/lib/python3.12/_sysconfigdata_*.py
 PY_BUILD="$CACHE/postgresql-$PG_VERSION-plpython"
 if [ ! -e "$PKGLIB/plpython3.$SUF" ]; then
   rm -rf "$PY_BUILD"; mkdir -p "$PY_BUILD"
