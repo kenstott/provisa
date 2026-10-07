@@ -77083,17 +77083,7 @@
   category: Security
   priority: MUST
   type: behavioral
-  description: 'A standard data_steward role is seeded in every organisation: the owner of a domain''s governance.
-    It holds access_config (the domain''s roles and row rules), column_grant, masking_config, sensitive_data (REQ-1943),
-    glossary_read and glossary_rw, data_product_read and data_product_rw, usage, query_development, full_results
-    and view_governance, and nothing operational -- not write, source_registration, table_registration, user_management,
-    org_settings or environment_data. A steward''s rights apply only within the domains its role reaches: every
-    edit those rights allow -- a role, a row rule, a column grant, a mask, a sensitive tag, a fake or synthetic
-    rule on a sensitive column, a glossary term, a data product -- is checked against the domain of what it changes,
-    and an edit to anything outside the steward''s domains is refused naming the domain. The seeded data_steward
-    role carries no domains; an organisation administrator assigns its domains when granting it, or makes a copy
-    per domain (a sales steward reaching sales). org_admin holds every one of these rights across all domains, and
-    org_glossary_rw stays org_admin''s alone (REQ-1592).'
+  description: 'A standard data_steward role is seeded in every organisation: the owner of a domain''s governance. It holds access_config (the domain''s roles and row rules), column_grant, masking_config, sensitive_data (REQ-1943), glossary_read and glossary_rw, data_product_read and data_product_rw, usage, query_development, full_results and view_governance, and nothing operational -- not write, source_registration, table_registration, user_management, org_settings or environment_data. A steward''s rights apply only within the domains its role reaches: every edit those rights allow -- a role, a row rule, a column grant, a mask, a sensitive tag, a fake or synthetic rule on a sensitive column, a glossary term, a data product -- is checked against the domain of what it changes, and an edit to anything outside the steward''s domains is refused naming the domain. The seeded data_steward role reaches every domain, because a deployment may be a small team with one steward or an enterprise with many; best practice in production is several domains, each with a steward aligned to it, made by copying the role per domain (a sales steward reaching only sales). org_admin holds every one of these rights across all domains, and org_glossary_rw stays org_admin''s alone (REQ-1592).'
   use_case: The sales data steward sets the row rules, masks and sensitive tags on the sales tables, curates the
     sales glossary and data products, and audits sales data with full results, while having no say over marketing's
     governance and no access to sources, environments or users.
@@ -77101,6 +77091,4 @@
   - REQ-1592
   - REQ-1634
   - REQ-1943
-  notes: 'Maintainer 2026-10-07: we should have a standard role - data_steward; it owns anything domain specific:
-    rbac, rls, glossary, data products, and needs full results; org_admin has all those rights as well, across all
-    domains.'
+  notes: 'Maintainer 2026-10-07: we should have a standard role - data_steward; it owns anything domain specific: rbac, rls, glossary, data products, and needs full results; org_admin has all those rights as well, across all domains. Maintainer 2026-10-07 (later): the initial data_steward is mapped to all domains; in production best practice there are multiple domains and data stewards aligned to them; since we don''t know whether we deploy into a small team or a large enterprise, we keep a data steward role for all domains.'
