@@ -229,8 +229,10 @@ class TestDatasetChangeEvents:
 def _pg_conn(execute, base: list[str]) -> MagicMock:
     """A PostgreSQL control-plane connection double: its catalog reports ``base`` as the base
     tables (the up-front base-table probe, REQ-258), and ``execute`` runs each CREATE TRIGGER."""
+    from provisa.core.database import Capabilities
+
     conn = MagicMock()
-    conn.dialect = "postgresql"
+    conn.capabilities = Capabilities.for_dialect("postgresql")
     conn.fetch = AsyncMock(return_value=[{"schema": "public", "name": t} for t in base])
     conn.execute = execute
     return conn

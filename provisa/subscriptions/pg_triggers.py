@@ -15,9 +15,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
 
 from provisa.subscriptions.pg_provider import CHANNEL_PREFIX
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 log = logging.getLogger(__name__)
 
@@ -67,31 +70,32 @@ FOR EACH ROW EXECUTE FUNCTION {fn}();
 """
 
 
-async def _base_tables(conn: Any, pairs: list[tuple[str, str]]) -> set[tuple[str, str]]:
+async def _base_tables(conn: "Connection", pairs: list[tuple[str, str]]) -> set[tuple[str, str]]:
     """The subset of ``(schema, table)`` pairs that are ordinary or partitioned base tables
     (``pg_class.relkind`` in ``r``/``p``) — the only relations a row-level AFTER trigger can be
     installed on. A view, materialized view, or foreign table is excluded, as is a name with no
-    relation yet. One catalog query, so the decision is made up front, not by a failed CREATE."""
+    relation yet. One catalog query, so the decision is made up front, not by a failed CREATE.
+
+    The pairs go over as ONE jsonb array of records: the control-plane Connection binds a list
+    argument as jsonb (``provisa.core.database._translate``) and strips a ``::text[]`` cast on a
+    bind, so ``unnest($1::text[], ...)`` reached the server as ``unnest(jsonb)`` and failed."""
     if not pairs:
         return set()
-    schemas = [s for s, _ in pairs]
-    names = [t for _, t in pairs]
     rows = await conn.fetch(
         """
         SELECT n.nspname AS schema, c.relname AS name
-        FROM unnest($1::text[], $2::text[]) AS want(schema, name)
+        FROM jsonb_to_recordset($1) AS want(schema text, name text)
         JOIN pg_namespace n ON n.nspname = want.schema
         JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = want.name
         WHERE c.relkind IN ('r', 'p')
         """,
-        schemas,
-        names,
+        [{"schema": schema, "name": name} for schema, name in pairs],
     )
     return {(r["schema"], r["name"]) for r in rows}
 
 
 async def ensure_pg_notify_triggers(  # REQ-258
-    conn: Any,
+    conn: "Connection",
     tables: list[dict],
     source_types: dict[str, str],
 ) -> set[str]:
@@ -107,7 +111,9 @@ async def ensure_pg_notify_triggers(  # REQ-258
     # plane (e.g. a SQLite demo/dev plane) there are no notify triggers at all, so every table's
     # subscription is served by polling. Returning early also keeps the PG-only catalog query in
     # _base_tables from running against a non-PG plane (it would otherwise fail the whole walk).
-    if getattr(conn, "dialect", None) != "postgresql":
+    # The control-plane Connection names its dialect on its capabilities; it has no ``dialect``
+    # attribute, so reading one there silently skipped every install on a PostgreSQL plane.
+    if conn.capabilities.dialect != "postgresql":
         return set()
     pg_tables = [
         (tbl.get("schema_name", "public"), tbl["table_name"])
