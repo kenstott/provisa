@@ -43,7 +43,6 @@ from provisa.federation.pg_runtime import PgFederationRuntime  # noqa: E402
 from tests.integration.test_embedded_pg_fdw_engine_e2e import (  # noqa: E402
     _CACHE,
     _build_fdw_artifacts,
-    _have_build_tools,
 )
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -76,24 +75,28 @@ def _build_mongo_fdw() -> None:
 
 
 def _install_mongo_fdw_into_pgserver() -> None:
-    """Install mongo_fdw + colocate its driver dylibs into the pgserver install, with an @loader_path
-    rpath so the @rpath references in mongo_fdw and libmongoc resolve to the colocated libs."""
+    """Install mongo_fdw + colocate its driver libraries into the pgserver install, under the names
+    mongo_fdw and libmongoc load them by. On macOS those are @rpath references, resolved by an
+    @loader_path rpath added here; on Linux scripts/build_mongo_fdw.sh links the module with an
+    $ORIGIN rpath, so colocating is all it takes."""
     pginstall = Path(pgserver.__file__).parent / "pginstall"
     dst_lib = pginstall / "lib" / "postgresql"
     dst_ext = pginstall / "share" / "postgresql" / "extension"
-    suffix = "dylib" if (dst_lib / "plpgsql.dylib").exists() else "so"
+    darwin = sys.platform == "darwin"
+    suffix = "dylib" if darwin else "so"
+    drivers = (
+        ["libmongoc-1.0.0.dylib", "libbson-1.0.0.dylib"]
+        if darwin
+        else ["libmongoc-1.0.so.0", "libbson-1.0.so.0"]
+    )
 
-    # The two driver dylibs, under the versioned names mongo_fdw/libmongoc load via @rpath.
-    for real, name in [
-        (_DEPS / "libmongoc-1.0.0.0.0.dylib", "libmongoc-1.0.0.dylib"),
-        (_DEPS / "libbson-1.0.0.0.0.dylib", "libbson-1.0.0.dylib"),
-    ]:
+    for name in drivers:
         dst = dst_lib / name
-        shutil.copy(real, dst)
+        shutil.copy(_DEPS / name, dst)  # follows the versioned-name symlink to the real library
         os.chmod(dst, 0o755)
 
     fdw_dst = dst_lib / f"mongo_fdw.{suffix}"
-    shutil.copy(_BUILT_LIB / "mongo_fdw.dylib", fdw_dst)
+    shutil.copy(_BUILT_LIB / f"mongo_fdw.{suffix}", fdw_dst)
     os.chmod(fdw_dst, 0o755)
 
     def _add_loader_rpath(p: Path) -> None:
@@ -101,8 +104,9 @@ def _install_mongo_fdw_into_pgserver() -> None:
         if "@loader_path" not in out:
             subprocess.run(["install_name_tool", "-add_rpath", "@loader_path", str(p)], check=True)
 
-    _add_loader_rpath(fdw_dst)  # resolves @rpath/lib{mongoc,bson} to the colocated dylibs
-    _add_loader_rpath(dst_lib / "libmongoc-1.0.0.dylib")  # resolves @rpath/libbson for the driver
+    if darwin:
+        _add_loader_rpath(fdw_dst)  # resolves @rpath/lib{mongoc,bson} to the colocated dylibs
+        _add_loader_rpath(dst_lib / drivers[0])  # resolves @rpath/libbson for the driver
 
     for f in _BUILT_EXT.glob("mongo_fdw*"):
         shutil.copy(f, dst_ext / f.name)
@@ -110,10 +114,6 @@ def _install_mongo_fdw_into_pgserver() -> None:
 
 @pytest.fixture(scope="session")
 def pg_with_mongo_fdw():
-    if sys.platform != "darwin" or not _have_build_tools():
-        pytest.skip(
-            "mongo_fdw build here is wired for macOS (dylib/install_name_tool) + a C toolchain"
-        )
     _build_mongo_fdw()
     _install_mongo_fdw_into_pgserver()
     base = tempfile.mkdtemp(prefix="provisa_mongo_fdw_")

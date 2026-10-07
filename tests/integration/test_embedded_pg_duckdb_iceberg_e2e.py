@@ -6,21 +6,22 @@
 
 """E2E: pg_duckdb reads an Apache Iceberg table IN PLACE inside a stock embedded PG (REQ-908).
 
-No docker. Provisions a pgserver embedded PG 16.2 with a pg_duckdb built (via vcpkg) to include the
-DuckDB iceberg extension — aws-sdk-cpp[sso,sts,identity-management] + avro-c + roaring are static-linked
-into libduckdb, so there is no extra runtime dylib. Generates a real Iceberg table with pyiceberg, then
-drives the REAL PgDuckdbIcebergConnector's iceberg_scan through a named-column view and asserts on rows.
+No docker. Provisions a pgserver embedded PG 16.2 with the pg_duckdb the product ships: the
+provisa-pg-ext wheel's bundle for this platform (darwin-arm64, linux-x64), staged the way the
+embedded tier stages it (stage_bundled_pg_extensions). That pg_duckdb is built (via vcpkg) to include
+the DuckDB iceberg extension — aws-sdk-cpp[sso,sts,identity-management] + avro-c + roaring are
+static-linked into libduckdb, so there is no extra runtime library. Generates a real Iceberg table
+with pyiceberg, then drives the REAL PgDuckdbIcebergConnector's iceberg_scan through a named-column
+view and asserts on rows.
 
-Skips unless a pg_duckdb WITH iceberg is prebuilt (the vcpkg build is a release/CI step) and pyiceberg
-is available.
+A platform the wheel ships no bundle for fails loudly (BundledPgExtensionsMissing), and so does a
+bundle whose pg_duckdb lacks iceberg — never a skip.
 """
 
 from __future__ import annotations
 
 import glob
 import shutil
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,27 +36,7 @@ pytest.importorskip("pyiceberg")
 pytest.importorskip("pyarrow")
 
 from provisa.federation.connector_duckdb import PgDuckdbIcebergConnector  # noqa: E402
-
-_CACHE = Path.home() / ".cache" / "provisa-fdw" / "pg162"
-_PGDUCKDB_SO = _CACHE / "lib" / "postgresql" / "pg_duckdb.dylib"
-
-
-def _install_pg_duckdb() -> None:
-    src_lib = _CACHE / "lib" / "postgresql"
-    src_ext = _CACHE / "share" / "postgresql" / "extension"
-    pg = Path(pgserver.__file__).parent / "pginstall"
-    dl = pg / "lib" / "postgresql"
-    de = pg / "share" / "postgresql" / "extension"
-    suffix = "dylib" if (dl / "plpgsql.dylib").exists() else "so"
-    for lib in ("pg_duckdb", "libduckdb"):
-        shutil.copy(src_lib / f"{lib}.{suffix}", dl / f"{lib}.{suffix}")
-    subprocess.run(
-        ["install_name_tool", "-add_rpath", "@loader_path", str(dl / f"pg_duckdb.{suffix}")],
-        check=True, stderr=subprocess.DEVNULL,
-    )  # fmt: skip
-    shutil.copy(src_ext / "pg_duckdb.control", de / "pg_duckdb.control")
-    for f in src_ext.glob("pg_duckdb--*.sql"):
-        shutil.copy(f, de / f.name)
+from provisa.pg_extensions.staging import stage_bundled_pg_extensions  # noqa: E402
 
 
 def _make_iceberg_table(wh: Path) -> str:
@@ -82,20 +63,17 @@ def _make_iceberg_table(wh: Path) -> str:
 
 @pytest.fixture(scope="session")
 def embedded_pg_duckdb_iceberg():
-    if sys.platform != "darwin" or not _PGDUCKDB_SO.exists():
-        pytest.skip("pg_duckdb not prebuilt in cache")
-    _install_pg_duckdb()
+    stage_bundled_pg_extensions(Path(pgserver.__file__).parent / "pginstall")
     base = tempfile.mkdtemp(prefix="provisa_iceberg_")
     server = pgserver.get_server(base)
     server.psql("ALTER SYSTEM SET shared_preload_libraries = 'pg_duckdb';")
     server.cleanup()
     server = pgserver.get_server(base)
     server.psql("CREATE EXTENSION pg_duckdb;")
-    # skip if this pg_duckdb was built WITHOUT the iceberg extension
-    if "iceberg_scan" not in server.psql(
+    # The shipped pg_duckdb carries the iceberg extension; one without it is a packaging defect.
+    assert "iceberg_scan" in server.psql(
         "SELECT proname FROM pg_proc WHERE proname = 'iceberg_scan'"
-    ):
-        pytest.skip("pg_duckdb prebuilt without the iceberg extension (vcpkg build not run)")
+    ), "the bundled pg_duckdb has no iceberg_scan: it was built without the iceberg extension"
     yield server
 
 

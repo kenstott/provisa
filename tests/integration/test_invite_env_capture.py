@@ -91,7 +91,13 @@ def _prepare_sync():
         conn.execute(insert(orgs).values(id=_ROOT_ORG, name="Root", created_by="bob"))
         conn.execute(insert(user_org_memberships).values(user_id="alice", org_id="acme"))
         # REQ-1487/REQ-1602: the branch alice is looking at when she mints the invite.
-        conn.execute(insert(environments).values(org_id="acme", name="qa", created_by="alice"))
+        # REQ-1942: every environment but prod records the one it was created from.
+        conn.execute(insert(environments).values(org_id="acme", name="prod", created_by="alice"))
+        conn.execute(
+            insert(environments).values(
+                org_id="acme", name="qa", created_by="alice", parent="prod", data_mode="unbound"
+            )
+        )
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
@@ -107,10 +113,8 @@ def _prepare_sync():
 
 @pytest.fixture
 def planes(monkeypatch):
-    try:
-        sync_engine = _prepare_sync()
-    except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
-        pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
+    # The suite provisions this Postgres: a fixture that cannot prepare it has failed, not skipped.
+    sync_engine = _prepare_sync()
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
     tenant_db = Database(
