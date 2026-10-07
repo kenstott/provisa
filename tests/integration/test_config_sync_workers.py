@@ -224,13 +224,20 @@ def test_the_stored_stamp_does_not_move_while_nothing_changes(workers):
     would make every other worker reload, and they would never settle."""
     _until_every_worker(workers, _stamps_agree, "loaded stamp == stored stamp")
     before = _health(workers[0])["config"]
+    # Every worker's stamps and build count as the quiet window opens, so a failure says which
+    # stamp (if any) a worker that rebuilt had loaded, and what it holds afterwards.
+    stamps = [_health(w)["config"] for w in workers]
     versions = [w.schema_version()[1] for w in workers]
     deadline = time.monotonic() + 10 * _INTERVAL_S
     while time.monotonic() < deadline:
         _still_pinned(workers)  # also keeps each keep-alive connection in use
         time.sleep(1)
     assert _health(workers[0])["config"] == before
-    assert [w.schema_version()[1] for w in workers] == versions, "a worker rebuilt with no change"
+    after = [w.schema_version()[1] for w in workers]
+    assert after == versions, (
+        "a worker rebuilt with no change",
+        {"stamps before": stamps, "stamps after": [_health(w)["config"] for w in workers]},
+    )
 
 
 def _evidence(*flags: str) -> list[tuple[str, str, str, str]]:
