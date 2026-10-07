@@ -170,3 +170,44 @@ async def test_a_command_of_a_generated_api_source_is_refused_saying_why():
     with pytest.raises(ApiError) as unknown:
         await invoke_command("nope", {}, state, "dev")
     assert unknown.value.code == "functions.unknown_command"
+
+
+def test_a_generated_table_is_read_as_an_ordinary_table_its_required_parameter_a_column():
+    """REQ-1942: bound to a synthetic store, a generated API table's required parameter is a
+    column of it, typed as it was generated; any other argument of the API is no column of it;
+    a table with no generated copy, and a table of any other source, are read as the model has
+    them."""
+    from provisa.synthetic.datasets import as_generated
+
+    def api_table(name: str) -> dict:
+        return {
+            "source_id": "petstore",
+            "schema_name": "default",
+            "table_name": name,
+            "columns": [
+                {"column_name": "id", "native_filter_type": None, "data_type": "integer"},
+                {"column_name": "petId", "native_filter_type": "path_param", "data_type": None},
+                {"column_name": "limit", "native_filter_type": "query_param", "data_type": None},
+            ],
+        }
+
+    generated, missing = api_table("get_pet_by_id"), api_table("get_owner_by_id")
+    other = {**api_table("orders"), "source_id": "pg"}
+    bound = {
+        "petstore": {
+            "schema": "s",
+            "tables": [["default", "get_pet_by_id"]],
+            "parameters": {"default.get_pet_by_id": {"petId": "bigint"}},
+            "model_type": "openapi",
+        }
+    }
+    read, unread, untouched = as_generated([generated, missing, other], bound)
+    assert [
+        (c["column_name"], c["native_filter_type"], c["data_type"]) for c in read["columns"]
+    ] == [
+        ("id", None, "integer"),
+        ("petId", None, "bigint"),
+    ]
+    assert unread == missing and untouched == other
+    # The model's own rows are not changed by how the environment reads them.
+    assert generated["columns"][1]["native_filter_type"] == "path_param"

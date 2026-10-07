@@ -146,9 +146,10 @@ sources = Table(
     # other connection secret's does — at the use point, inside the bound org.
     Column("password_ref", Text, nullable=False, server_default=""),
     # REQ-1942: set while the row is bound to the environment's synthetic store (binding
-    # ``synthetic``): {schema, tables, model_type} -- the store schema holding its generated
-    # tables, the registered tables generated there as [schema_name, table_name], and the type
-    # the model gives the source, which ``type`` gives up to the store's while it is bound so.
+    # ``synthetic``): {schema, tables, parameters, model_type} -- the store schema holding its
+    # generated tables, the registered tables generated there as [schema_name, table_name], the
+    # required parameters generated as ordinary columns ("schema.table" -> {column: type}), and
+    # the type the model gives the source, which ``type`` gives up to the store's while bound so.
     # The store itself is resolved by the platform: no credential of it is written here.
     Column("synthetic", JSON(none_as_null=True)),
     # REQ-1919: the rest of a source's settings, held here so the store alone owns the model.

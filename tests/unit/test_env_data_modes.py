@@ -91,3 +91,24 @@ def test_a_source_bound_to_a_synthetic_store_keeps_the_models_type_in_its_bindin
     }
     assert model_type(bound) == "openapi"
     assert model_type({"type": "openapi", "binding": "copied", "synthetic": None}) == "openapi"
+
+
+def test_a_restored_source_takes_the_type_the_model_gives_it_now():
+    """REQ-1942: restoring gives back the binding and connection a source had before generating;
+    its type is the model's, so a type a merge changed while it was bound to the store is kept."""
+    from provisa.core.env_data import restored_binding
+
+    before = {"type": "postgresql", "binding": "copied", "host": "db", "synthetic": None}
+    assert restored_binding(before, "postgresql") == before
+    assert restored_binding(before, "mysql") == {**before, "type": "mysql"}
+    # Bound to its parent's synthetic store before: that binding again, the model's type in it.
+    inherited = {
+        "type": "duckdb",
+        "binding": "synthetic",
+        "host": "",
+        "synthetic": {"schema": "s", "tables": [], "model_type": "postgresql"},
+    }
+    assert restored_binding(inherited, "mysql") == {
+        **inherited,
+        "synthetic": {"schema": "s", "tables": [], "model_type": "mysql"},
+    }

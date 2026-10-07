@@ -94,6 +94,26 @@ def required_parameters(table: dict, source_type: str) -> list[str]:
     return [c["column_name"] for c in table["columns"] if c["native_filter_type"] == kind]
 
 
+async def parameter_columns(conn: Any) -> dict[int, dict[str, str]]:
+    """``{table id: {required parameter column: its data type}}`` in the environment ``conn`` is
+    scoped to (REQ-1942): generated, a required parameter is an ordinary column of its table, a
+    filter on it, of the type the model holds for it -- the one its API endpoint gave it when the
+    table was registered (REQ-1426: no column is registered without a type)."""
+    from provisa.api.admin.db_queries import fetch_tables
+
+    types = await _source_types(conn)
+    out: dict[int, dict[str, str]] = {}
+    for t in await fetch_tables(conn):
+        required = set(required_parameters(t, types[t["source_id"]]))
+        if required:
+            out[t["id"]] = {
+                c["column_name"]: c["data_type"]
+                for c in t["columns"]
+                if c["column_name"] in required
+            }
+    return out
+
+
 def unavailable_reason(table_name: str, parameters: list[str]) -> str:
     """Why a required-parameter API table is not available in a Test (synthetic) environment,
     and what generates it (REQ-1942)."""
@@ -248,6 +268,7 @@ async def model_plan(state: Any, conn: Any, parent: str, env: str) -> dict[str, 
                     table=t,
                     run_id=selected["runId"],
                     relationships=relationships,
+                    parameters=frozenset(required),
                 ),
             }
         )
@@ -367,6 +388,7 @@ async def _generate(
     import time
 
     from provisa.api.app import ensure_org_runtime
+    from provisa.api.org_runtime import runtime_key
     from provisa.core.env_store import set_data
     from provisa.core.request_context import (
         reset_current_env,
@@ -396,11 +418,18 @@ async def _generate(
                 tables=rows,
             )
         started = time.monotonic()
-        await generate(state, DATASET_ID)
+
+        async def bind() -> None:
+            # Its sources now point at the synthetic store, type and connection: the runtime
+            # is built again from them, before the report reads what was generated.
+            bound = await bind_generated(state, org_id, env)
+            log.info("whole-model generation of %s/%s bound sources %s", org_id, env, bound)
+            state.org_registry.invalidate(runtime_key(org_id, env))
+            await ensure_org_runtime(org_id, env)
+
+        await generate(state, DATASET_ID, bind=bind)
         async with state.model_db.acquire() as conn:
             await record_generation(conn, generated_rows, time.monotonic() - started)
-        bound = await bind_generated(state, org_id, env)
-        log.info("whole-model generation of %s/%s bound sources %s", org_id, env, bound)
     except Exception as exc:  # noqa: BLE001 -- REQ-1942: the environment shows Failed with the reason
         log.exception("whole-model generation of %s/%s failed", org_id, env)
         await set_data(
@@ -415,11 +444,6 @@ async def _generate(
         reset_current_env(env_token)
         reset_current_org(org_token)
     await set_data(state.admin_db, org_id, env, data_status="ready", data_error=None)
-    # Its sources now point at the synthetic store, type and connection: the runtime is built
-    # again from them on the next request.
-    from provisa.api.org_runtime import runtime_key
-
-    state.org_registry.invalidate(runtime_key(org_id, env))
 
 
 async def bind_generated(state: Any, org_id: str, env: str) -> list[str]:
@@ -443,17 +467,24 @@ async def bind_generated(state: Any, org_id: str, env: str) -> list[str]:
     ):
         row = await get_dataset(conn, DATASET_ID)
         made = {t.table_id for t in row.tables}
+        typed = await parameter_columns(conn)
         generated: dict[str, list[list[str]]] = {}
+        parameters: dict[str, dict[str, dict[str, str]]] = {}
         for t in await fetch_tables(conn):
             if t["source_id"] in BUILT_IN_SOURCE_IDS:
                 continue
             held = generated.setdefault(t["source_id"], [])
             if t["id"] in made:
                 held.append([t["schema_name"], t["table_name"]])
+                if t["id"] in typed:
+                    parameters.setdefault(t["source_id"], {})[
+                        f"{t['schema_name']}.{t['table_name']}"
+                    ] = typed[t["id"]]
         return await env_data.bind_synthetic(
             conn,
             org_schema(org_id, env),
             store_type=state.federation_engine.engine.replica_store_backend(),
             store_schema=row.store_schema,
             generated=generated,
+            parameters=parameters,
         )

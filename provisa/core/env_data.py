@@ -225,12 +225,14 @@ async def bind_synthetic(
     store_type: str,
     store_schema: str,
     generated: dict[str, list[list[str]]],
+    parameters: dict[str, dict[str, dict[str, str]]],
 ) -> list[str]:
     """Bind each source of ``generated`` -- source id -> its generated tables, each as
     [schema_name, table_name] -- in the environment whose schema is ``schema`` to its synthetic
     store (REQ-1942): its type becomes ``store_type``, its connection columns are cleared and its
     ``synthetic`` column names ``store_schema``, the tables generated there and the type the model
-    gives it. What it was bound to before is remembered, once: a regeneration keeps the binding
+    gives it; ``parameters`` -- source id -> "schema.table" -> {column: data type} -- names the
+    required parameters generated as ordinary columns of a table. What it was bound to before is remembered, once: a regeneration keeps the binding
     the first generation replaced. The ids it bound."""
     sources = _table("sources", schema)
     kept = _table("synthetic_source_bindings", schema)
@@ -270,6 +272,7 @@ async def bind_synthetic(
                     "synthetic": {
                         "schema": store_schema,
                         "tables": generated[sid],
+                        "parameters": parameters.get(sid, {}),
                         "model_type": model_type(row),
                     },
                     BINDING_COLUMN: SYNTHETIC,
@@ -277,6 +280,18 @@ async def bind_synthetic(
             )
         )
     return sorted(generated)
+
+
+def restored_binding(previous: dict[str, Any], current_type: str) -> dict[str, Any]:
+    """What a source is restored to: the binding and connection it had before generating
+    (``previous``), with the type the MODEL gives it now (``current_type``) -- a merge or a
+    deploy may have changed that while the source was bound to the store, and a connection is
+    the environment's own while a source's type is the model's. Where it was bound to a
+    synthetic store before as well (copied from the environment it was created from), that
+    binding is restored and the model's type is kept in it."""
+    if previous[BINDING_COLUMN] == SYNTHETIC:
+        return {**previous, "synthetic": {**previous["synthetic"], "model_type": current_type}}
+    return {**previous, "type": current_type}
 
 
 async def restore_synthetic(conn: "Connection", schema: str) -> list[str]:
@@ -287,15 +302,20 @@ async def restore_synthetic(conn: "Connection", schema: str) -> list[str]:
     sources = _table("sources", schema)
     kept = _table("synthetic_source_bindings", schema)
     remembered = (await conn.execute_core(select(kept.c.source_id, kept.c.previous))).fetchall()
+    bound = await conn.execute_core(
+        select(sources.c.id, sources.c.synthetic).where(sources.c[BINDING_COLUMN] == SYNTHETIC)
+    )
+    types = {sid: held["model_type"] for sid, held in bound.fetchall()}
     restored = []
     for sid, previous in remembered:
-        done = await conn.execute_core(
+        if sid not in types:
+            continue  # edited since: the environment's own choice
+        await conn.execute_core(
             update(sources)
-            .where(sources.c.id == sid, sources.c[BINDING_COLUMN] == SYNTHETIC)
-            .values(previous)
+            .where(sources.c.id == sid)
+            .values(restored_binding(previous, types[sid]))
         )
-        if done.rowcount:
-            restored.append(sid)
+        restored.append(sid)
     await conn.execute_core(delete(kept))
     return sorted(restored)
 

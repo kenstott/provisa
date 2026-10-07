@@ -156,6 +156,32 @@ async def synthetic_sources(conn: Any) -> dict[str, dict]:
     return {sid: where for sid, where in bound.fetchall()}
 
 
+def as_generated(tables: list[dict], bound: dict[str, dict]) -> list[dict]:
+    """``tables`` (fetch_tables rows) as an environment reads them where ``bound`` -- source id ->
+    its synthetic binding -- binds their source to a synthetic store (REQ-1942). A generated
+    table is an ordinary table there: a required parameter generated with it is a column of it,
+    a filter like any other, of the type it was generated as; any other argument of the API it
+    was read from is no column of it. The model's own rows are untouched: this is how the
+    environment reads them, never what it stores."""
+    out = []
+    for t in tables:
+        held = bound.get(t["source_id"])
+        if held is None or [t["schema_name"], t["table_name"]] not in held["tables"]:
+            out.append(t)
+            continue
+        typed = held["parameters"].get(f"{t['schema_name']}.{t['table_name']}", {})
+        columns = []
+        for c in t["columns"]:
+            if c["native_filter_type"] is None:
+                columns.append(c)
+            elif c["column_name"] in typed:
+                columns.append(
+                    {**c, "native_filter_type": None, "data_type": typed[c["column_name"]]}
+                )
+        out.append({**t, "columns": columns})
+    return out
+
+
 class TableNotAvailable(ValueError):
     """A read of a table a Test (synthetic) environment holds no generated copy of (REQ-1942)."""
 

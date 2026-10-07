@@ -2213,6 +2213,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     async with state.model_db.acquire() as conn:
         _pg = cast("Connection", conn)
         tables = await _fetch_tables(_pg)
+        # REQ-1942: a table generated into a synthetic store is read as an ordinary table.
+        from provisa.synthetic.datasets import as_generated, synthetic_sources
+
+        tables = as_generated(tables, await synthetic_sources(_pg))
         _assert_domain_table_unique(tables)
         relationships = await _fetch_relationships(_pg)
 

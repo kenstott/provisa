@@ -727,6 +727,8 @@ def test_generate_answers_the_warning_and_generates_only_once_it_is_confirmed(pr
     assert status == 200, body
 
     choices = {"seed": 5, "scale": 0.5}
+    status, before = _call(boot, "GET", f"{base}/twostep/detail")
+    real = {s["id"]: (s["type"], s["binding"]) for s in before["sources"]}
     # contacts.phone is sensitive and declares neither a fake nor a rule: nothing generates it,
     # so Generate is not ready, and says which column holds it back.
     status, plan = _call(boot, "GET", f"{base}/twostep/synthetic/plan")
@@ -794,8 +796,6 @@ def test_generate_answers_the_warning_and_generates_only_once_it_is_confirmed(pr
     assert _one(boot, "SELECT COUNT(*) AS n FROM sales.customers", env="twostep") == _CUSTOMERS // 2
 
     # Generating bound every source to the synthetic store, type and connection.
-    status, before = _call(boot, "GET", f"{base}/whole/detail")
-    real = {s["id"]: (s["type"], s["binding"]) for s in before["sources"]}
     status, detail = _call(boot, "GET", f"{base}/twostep/detail")
     becomes = {s["id"]: s["becomes"] for s in shown["sources"]}
     bound = {s["id"]: (s["type"], s["binding"]) for s in detail["sources"]}
@@ -816,7 +816,7 @@ def test_generate_answers_the_warning_and_generates_only_once_it_is_confirmed(pr
     status, plan = _call(
         boot,
         "POST",
-        f"{base}/whole/merge",
+        f"{base}/prod/merge",
         {"from_env": "twostep", "dry_run": True, "message": "what a merge would carry"},
     )
     assert status == 200, plan
@@ -832,6 +832,104 @@ def test_generate_answers_the_warning_and_generates_only_once_it_is_confirmed(pr
         sid: kind for sid, (kind, _) in real.items()
     }, detail
     assert {s["binding"] for s in detail["sources"]} == {"unbound"}, detail
+
+
+def _generate_whole_model(boot, env: str, choices: dict) -> dict:
+    """Generate, confirm the warning, and wait for ``env``'s model to be Ready; its warning."""
+    import time
+
+    base = f"/admin/orgs/{boot.org_id}/environments"
+    status, body = _call(boot, "POST", f"{base}/{env}/synthetic", choices)
+    assert status == 200 and body["status"] == "awaiting_confirmation", body
+    shown = body["warning"]
+    status, body = _call(
+        boot, "POST", f"{base}/{env}/synthetic/confirm", {**choices, "digest": shown["digest"]}
+    )
+    assert status == 200 and body["status"] == "generating", body
+    deadline = time.monotonic() + 300
+    while True:
+        status, detail = _call(boot, "GET", f"{base}/{env}/detail")
+        synthetic = detail["test_data"]["synthetic"]
+        if synthetic["status"] != "generating":
+            break
+        assert time.monotonic() < deadline, ("generation did not finish", boot.log_text()[-8000:])
+        time.sleep(1)
+    assert synthetic["status"] == "ready", (synthetic, boot.log_text()[-6000:])
+    return shown
+
+
+def test_generating_again_measures_the_parents_rows_never_the_generated_ones(profiled):
+    """REQ-1942: what generation measures from a table is measured from its real rows. Once the
+    environment's sources are bound to its synthetic store, a regeneration reads them where they
+    are still real -- its parent -- never the rows the previous generation wrote."""
+    boot = profiled
+    base = f"/admin/orgs/{boot.org_id}/environments"
+    status, body = _call(boot, "POST", base, {"name": "regen", "data_mode": "test_synthetic"})
+    assert status == 200, body
+    engine = sa.create_engine(boot.url, isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        conn.execute(
+            sa.text(
+                f'UPDATE "org_{boot.org_id}_env_regen".table_columns '
+                "SET fake = 'phone_number()' WHERE column_name = 'phone'"
+            )
+        )
+    status, plan = _call(boot, "GET", f"{base}/regen/synthetic/plan")
+    ids = {t["tableName"]: t["tableId"] for t in plan["tables"]}
+    whole = {"nullShare": 0, "distinctCount": 12, "range": {"min": 1, "max": 12}}
+    orders = {
+        "rowCount": 12,
+        "columns": {
+            "id": whole,
+            "region": {"nullShare": 0, "values": [{"value": "mars", "weight": 1}]},
+        },
+    }
+    # accounts.status declares categories((open, closed)) and this profile records nothing of
+    # it, so its shares are measured from the table.
+    accounts = {
+        "rowCount": 300,
+        "columns": {
+            "id": {"nullShare": 0, "distinctCount": 300, "range": {"min": 1, "max": 300}},
+            "balance": {"nullShare": 0, "distinctCount": 300, "range": {"min": 1, "max": 9}},
+            "opened": {
+                "nullShare": 0,
+                "distinctCount": 300,
+                "range": {"min": "2024-01-01", "max": "2024-12-01"},
+            },
+        },
+    }
+    declared = {}
+    for name, profile in (("orders", orders), ("accounts", accounts)):
+        status, body = _call(
+            boot,
+            "POST",
+            f"/admin/tables/{ids[name]}/declared-profiles",
+            {"profile": profile},
+            env="regen",
+        )
+        assert status == 200, body
+        declared[name] = body["runId"]
+    choices = {"seed": 9, "scale": 1, "runs": {str(ids["accounts"]): declared["accounts"]}}
+    open_rows = "SELECT COUNT(*) AS n FROM sales.accounts WHERE status = 'open'"
+    try:
+        _generate_whole_model(boot, "regen", choices)
+        # The real accounts: open on two rows in three.
+        assert 150 < _one(boot, open_rows, env="regen") < 250
+        with engine.connect() as conn:
+            conn.execute(sa.text("UPDATE public.accounts SET status = 'closed'"))
+        _generate_whole_model(boot, "regen", choices)
+        # Measured from the parent's rows as they are now; the generated rows were two in three
+        # open, and a regeneration that measured them would generate that again.
+        assert _one(boot, open_rows, env="regen") == 0
+    finally:
+        with engine.connect() as conn:
+            conn.execute(
+                sa.text(
+                    "UPDATE public.accounts SET status = "
+                    "CASE WHEN id % 3 = 0 THEN 'closed' ELSE 'open' END"
+                )
+            )
+        engine.dispose()
 
 
 def test_a_declared_profile_generates_a_table_with_no_data_to_profile(profiled):
@@ -1025,3 +1123,215 @@ def test_fill_from_profile_proposes_fakes_for_identifying_columns_and_rules_for_
     assert body["columns"]["region"] == {"fake": "state()"}
     assert body["columns"]["active"] == {"syntheticRule": "bool()"}
     assert "tier" not in body["columns"] and "segment" not in body["columns"]
+
+
+# -- a synthetic environment calls no source API (REQ-1942) -------------------------------------
+
+_PET_SCHEMA = {
+    "type": "object",
+    "properties": {"id": {"type": "integer"}, "name": {"type": "string"}},
+}
+_PET_SPEC = {
+    "openapi": "3.0.0",
+    "info": {"title": "Pets", "version": "1.0.0"},
+    "paths": {
+        "/pets": {
+            "get": {
+                "operationId": "listPets",
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {"schema": {"type": "array", "items": _PET_SCHEMA}}
+                        },
+                    }
+                },
+            }
+        },
+        "/pets/{petId}": {
+            "get": {
+                "operationId": "getPetById",
+                "parameters": [
+                    {"name": "petId", "in": "path", "required": True, "schema": {"type": "integer"}}
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {"application/json": {"schema": _PET_SCHEMA}},
+                    }
+                },
+            }
+        },
+    },
+}
+
+
+@pytest.fixture(scope="module")
+def pets():
+    """A server whose model is one OpenAPI source the test serves: ``list_pets``, read in full,
+    and ``get_pet_by_id``, a function of its required path parameter. ``asked``: every path the
+    API was asked."""
+    import tempfile
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from pathlib import Path
+
+    asked: list[str] = []
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server's handler name
+            asked.append(self.path)
+            if self.path == "/pets":
+                body = json.dumps([{"id": i, "name": f"pet {i}"} for i in range(5)]).encode()
+            elif self.path.startswith("/pets/") and self.path[6:].isdigit():
+                body = json.dumps({"id": int(self.path[6:]), "name": "pet"}).encode()
+            else:
+                self.send_response(400)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):  # noqa: A002 - http.server's name
+            pass
+
+    api = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    threading.Thread(target=api.serve_forever, daemon=True).start()
+    workdir = tempfile.TemporaryDirectory()
+    spec = Path(workdir.name) / "spec.json"
+    spec.write_text(json.dumps(_PET_SPEC))
+    pg_host = os.environ.get("PG_HOST", "localhost")
+    pg_port = int(os.environ.get("PG_PORT", "5432"))
+    boot = WorkerBoot(
+        1, pg_host=pg_host, pg_port=pg_port, env={"PROVISA_REDIRECT_ENABLED": "false"}
+    )
+    visible = {"visible_to": _ROLES}
+
+    def table(name: str, *extra: dict) -> dict:
+        return {
+            "source_id": "petstore",
+            "domain_id": "sales",
+            "schema": "default",
+            "table": name,
+            "columns": [
+                {"name": "id", "data_type": "integer", **visible},
+                {"name": "name", "data_type": "varchar", **visible},
+                *extra,
+            ],
+        }
+
+    boot._extra_config = {
+        "sources": [
+            {
+                "id": "petstore",
+                "type": "openapi",
+                "path": str(spec),
+                "base_url": f"http://127.0.0.1:{api.server_address[1]}",
+                "cache_ttl": 3600,
+            }
+        ],
+        "tables": [
+            table("list_pets"),
+            table(
+                "get_pet_by_id",
+                {
+                    "name": "petId",
+                    "data_type": "integer",
+                    "native_filter_type": "path_param",
+                    **visible,
+                },
+            ),
+        ],
+    }
+    boot.create_database()
+    try:
+        boot.start()
+        boot.wait_all_ready(timeout=300)
+        yield {"boot": boot, "asked": asked}
+    finally:
+        boot.cleanup()
+        api.shutdown()
+        workdir.cleanup()
+
+
+def test_a_synthetic_environment_generates_api_tables_and_calls_no_api(pets):
+    """REQ-1942: an API table read in full is generated like any table; one that needs a required
+    parameter is not available, a read of it refused saying why, until a declared profile
+    generates it -- its parameter then a column of it, a filter like any other; and nothing in
+    the environment calls the API."""
+    boot, asked = pets["boot"], pets["asked"]
+    base = f"/admin/orgs/{boot.org_id}/environments"
+    status, body = _call(boot, "POST", base, {"name": "apisyn", "data_mode": "test_synthetic"})
+    assert status == 200, body
+    status, plan = _call(boot, "GET", f"{base}/apisyn/synthetic/plan")
+    assert status == 200, plan
+    (listed,) = plan["tables"]
+    assert listed["tableName"] == "list_pets" and listed["api"] is True, plan
+    assert listed["requiredParameters"] == [] and plan["ready"] is False, plan
+    (by_id,) = plan["unavailable"]
+    assert by_id["tableName"] == "get_pet_by_id" and by_id["requiredParameters"] == ["petId"]
+    assert "Declare a profile of it" in by_id["reason"], by_id
+    assert plan["sources"][0]["id"] == "petstore" and plan["sources"][0]["type"] == "openapi"
+
+    def declare(table_id: int, rows: int, **columns: dict) -> None:
+        facts = {
+            "id": {"nullShare": 0, "distinctCount": rows, "range": {"min": 1, "max": rows}},
+            "name": {
+                "nullShare": 0,
+                "distinctCount": rows,
+                "shapes": [{"shape": "aaa 9", "weight": 1}],
+            },
+            **columns,
+        }
+        status, body = _call(
+            boot,
+            "POST",
+            f"/admin/tables/{table_id}/declared-profiles",
+            {"profile": {"rowCount": rows, "columns": facts}},
+            env="apisyn",
+        )
+        assert status == 200, body
+
+    declare(listed["tableId"], 10)
+    shown = _generate_whole_model(boot, "apisyn", {"seed": 2, "scale": 1})
+    assert [t["tableName"] for t in shown["unavailable"]] == ["get_pet_by_id"], shown
+    assert shown["sources"] == plan["sources"], shown
+    status, detail = _call(boot, "GET", f"{base}/apisyn/detail")
+    (source,) = [s for s in detail["sources"] if s["id"] == "petstore"]
+    assert (source["type"], source["binding"]) == (plan["sources"][0]["becomes"], "synthetic")
+
+    called = len(asked)
+    assert _one(boot, "SELECT COUNT(*) AS n FROM sales.list_pets", env="apisyn") == 10
+    status, body = _sql(boot, 'SELECT * FROM sales.get_pet_by_id WHERE "petId" = 3', env="apisyn")
+    assert status != 200, body
+    assert "is not available in a Test (synthetic) environment" in str(body), body
+    assert "Declare a profile of it" in str(body), body
+    assert len(asked) == called, asked[called:]
+
+    # Declared, its parameter among its columns, it is generated: an ordinary table.
+    declare(
+        by_id["tableId"],
+        20,
+        petId={"nullShare": 0, "distinctCount": 5, "range": {"min": 1, "max": 5}},
+    )
+    status, plan = _call(boot, "GET", f"{base}/apisyn/synthetic/plan")
+    assert plan["unavailable"] == [] and plan["ready"] is True, plan
+    assert {t["tableName"]: t["requiredParameters"] for t in plan["tables"]} == {
+        "list_pets": [],
+        "get_pet_by_id": ["petId"],
+    }, plan
+    _generate_whole_model(boot, "apisyn", {"seed": 2, "scale": 1})
+    called = len(asked)
+    assert _one(boot, "SELECT COUNT(*) AS n FROM sales.get_pet_by_id", env="apisyn") == 20
+    status, rows = _sql(
+        boot,
+        'SELECT COUNT(*) AS n, MIN("petId") AS lo, MAX("petId") AS hi FROM sales.get_pet_by_id '
+        'WHERE "petId" BETWEEN 2 AND 4',
+        env="apisyn",
+    )
+    assert status == 200 and 0 < rows[0]["n"] < 20, rows
+    assert rows[0]["lo"] >= 2 and rows[0]["hi"] <= 4, rows
+    assert len(asked) == called, asked[called:]

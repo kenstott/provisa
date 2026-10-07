@@ -542,10 +542,12 @@ async def confirm_generation(request: Request, org_id: str, name: str, body: Con
 async def _uncovered(conn: Any, org_id: str, runs: dict[int, tuple[str, str]]) -> list[str]:
     """The columns each chosen profile leaves with nothing to generate from (REQ-1942)."""
     from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
+    from provisa.synthetic.env_model import parameter_columns
     from provisa.synthetic.run import uncovered_columns
 
     tables = {t["id"]: t for t in await fetch_tables(conn)}
     relationships = await fetch_relationships(conn)
+    typed = await parameter_columns(conn)
     out: list[str] = []
     for tid, (held_in, run_id) in sorted(runs.items()):
         out += await uncovered_columns(
@@ -555,6 +557,7 @@ async def _uncovered(conn: Any, org_id: str, runs: dict[int, tuple[str, str]]) -
             table=tables[tid],
             run_id=run_id,
             relationships=relationships,
+            parameters=frozenset(typed.get(tid, {})),
         )
     return out
 
