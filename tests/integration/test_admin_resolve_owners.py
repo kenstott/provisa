@@ -56,8 +56,10 @@ async def org_plane(monkeypatch):
     await init_schema(tenant_db, sql, org_id=_ORG_ID)
 
     async with tenant_db.acquire() as conn:
+        # A role of this test's own: data_steward is a standard role every org is seeded with
+        # (REQ-1944), so it is not this fixture's to insert.
         await conn.execute_core(
-            insert(roles_t).values(id="data_steward", capabilities=[], domain_access=["*"])
+            insert(roles_t).values(id="req609_steward", capabilities=[], domain_access=["*"])
         )
         await conn.execute_core(
             insert(user_directory_t).values(
@@ -71,12 +73,12 @@ async def org_plane(monkeypatch):
         )
         await conn.execute_core(
             insert(user_role_assignments_t).values(
-                user_id="user-alice", role_id="data_steward", domain_id="*"
+                user_id="user-alice", role_id="req609_steward", domain_id="*"
             )
         )
         await conn.execute_core(
             insert(user_role_assignments_t).values(
-                user_id="user-bob", role_id="data_steward", domain_id="*"
+                user_id="user-bob", role_id="req609_steward", domain_id="*"
             )
         )
 
@@ -125,7 +127,7 @@ async def _run(refs: list[str]) -> dict:
 
 
 async def test_role_ref_resolves_to_its_members(org_plane):
-    data = await _run(["data_steward"])
+    data = await _run(["req609_steward"])
     by_id = {u["userId"]: u for u in data["resolveOwners"]}
     assert set(by_id) == {"user-alice", "user-bob"}
     assert by_id["user-alice"]["displayName"] == "Alice Nguyen"
@@ -153,7 +155,7 @@ async def test_refs_are_deduped_across_multiple_roles(org_plane):
                 user_id="user-alice", role_id="req609_analyst", domain_id="*"
             )
         )
-    data = await _run(["data_steward", "req609_analyst"])
+    data = await _run(["req609_steward", "req609_analyst"])
     ids = [u["userId"] for u in data["resolveOwners"]]
     assert ids.count("user-alice") == 1
     assert set(ids) == {"user-alice", "user-bob"}
