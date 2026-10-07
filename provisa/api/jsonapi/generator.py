@@ -836,6 +836,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                     exec_params=agg_compiled.params or None,
                     state=state,
                     cache_hint=NO_CACHE_HINT,
+                    sdl_joins=True,
                 )
                 agg_result = await _execute_plan(agg_plan, state)
 
@@ -847,6 +848,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                         exec_params=agg_compiled.nodes_params or None,
                         state=state,
                         cache_hint=NO_CACHE_HINT,
+                        sdl_joins=True,
                     )
                     nodes_result = await _execute_plan(nodes_plan, state)
             except PermissionError as e:
@@ -999,6 +1001,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 deliver=delivery,
                 buffered=True,  # REQ-1224: buffered transport — terminal auto-thresholds inline vs CTAS
                 cache_hint=NO_CACHE_HINT,
+                sdl_joins=True,
             )
             result = await _execute_plan(plan, state)
         except PermissionError as e:
@@ -1046,6 +1049,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                     exec_params=count_compiled[0].params or None,
                     state=state,
                     cache_hint=NO_CACHE_HINT,
+                    sdl_joins=True,
                 )
                 count_result = await _execute_plan(count_plan, state)
             except PermissionError as e:

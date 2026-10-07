@@ -211,6 +211,7 @@ async def test_a_compiled_hit_does_no_route_work(pipe):
             state=pipe.state,
             cache_hint=_OPT_IN,
             serve_cached=True,
+            sdl_joins=True,
         )
         return plan, await pipe.mod._execute_plan(plan, pipe.state)
 
@@ -231,6 +232,7 @@ async def test_a_compiled_hit_does_no_route_work(pipe):
         state=SimpleNamespace(**{**vars(pipe.state), "model_db": None, "tenant_db": None}),
         cache_hint=NO_CACHE_HINT,
         serve_cached=True,
+        sdl_joins=True,
     )
     assert plan.route == Route.DIRECT
 

@@ -632,6 +632,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 # buffering was forcing them onto the CTAS/engine path unnecessarily.
                 buffered=not (is_group_by or is_aggregate),
                 cache_hint=NO_CACHE_HINT,
+                sdl_joins=True,
             )
             result = await _execute_plan(plan, state)
 
@@ -643,6 +644,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                     exec_params=compiled.nodes_params or None,
                     state=state,
                     cache_hint=NO_CACHE_HINT,
+                    sdl_joins=True,
                 )
                 nodes_result = await _execute_plan(nodes_plan, state)
         except ComplexityLimitExceeded:

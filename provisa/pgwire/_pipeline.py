@@ -1200,18 +1200,7 @@ async def govern_statement(
     )
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
-    from provisa.security.rights import Capability, has_capability
-
-    _role_guard = role.get("relationship_guard", True)
-    _bypass_guard = has_capability(role, Capability.IGNORE_RELATIONSHIPS) or (
-        (not _role_guard) and sql_opts_out
-    )
-    # REQ-693: high-security mode is belts and suspenders — the relationship guard is not
-    # bypassable there at all. A deployment that improperly granted ignore_relationships (or
-    # cleared relationship_guard) to a production role does not get a break-out; the grant is
-    # ignored and every join must exist in the approved relationship catalog.
-    if getattr(state, "security_high", False):
-        _bypass_guard = False
+    _bypass_guard = relationship_guard_bypassed(role, state, statement_opts_out=sql_opts_out)
 
     # REQ-1877: in-memory, TTL-evicted cache of the validate_sql + domain-access outcome — see
     # provisa/compiler/compiled_query_cache.py for the read-verified scope decision (routing/
@@ -3086,8 +3075,15 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     buffered: bool = False,
     cache_hint: CacheHint,
     serve_cached: bool = False,
+    sdl_joins: bool,
 ) -> _Plan:
     """Governance + routing for already-physical SQL, with the org's tier ceilings bound.
+
+    ``sdl_joins``: the statement was compiled from a GraphQL document (HTTP GraphQL, REST, JSON:API,
+    gRPC, GraphQL over Flight), whose joins the SDL defines — the one case the relationship guard
+    is skipped. Every other compiled statement (Cypher over Bolt, HTTP and Flight, the native gRPC
+    table read) has what it relates checked against the approved relationships like a raw
+    statement (REQ-603).
 
     ``cache_hint`` is the request's response-cache opt-in (REQ-544), required so every caller
     states it: ``compiler.directives.cache_hint_for(language, request_text)``, gRPC's
@@ -3110,6 +3106,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
             buffered=buffered,
             cache_hint=cache_hint,
             serve_cached=serve_cached,
+            sdl_joins=sdl_joins,
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
@@ -3126,12 +3123,17 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     buffered: bool = False,
     cache_hint: CacheHint,
     serve_cached: bool = False,
+    sdl_joins: bool,
 ) -> _Plan:
-    """Governance + routing for already-physical SQL.
+    """Governance + routing for already-physical SQL. ``sdl_joins``: see
+    :func:`_govern_and_route_compiled`.
 
-    Used by GQL and Cypher transport paths after language-specific compilation.
-    No SQL validation: the compiler produced this SQL from a governed AST, so there is no
-    caller-authored text to validate.
+    Used by GQL and Cypher transport paths after language-specific compilation. The statement's
+    text is the compiler's, not a caller's, so it is not validated as raw SQL is -- except for
+    what it relates: the tables a compiled statement relates are held to the registered
+    relationships (REQ-603) exactly as a raw statement's are, unless the GraphQL SDL defined its
+    joins (``sdl_joins``). A Cypher relationship pattern passes because the join it lowers to IS
+    a registered relationship, not because anything exempts it.
     """
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
@@ -3151,10 +3153,12 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     # travel separately in ``exec_params`` — so it is kept like the raw-SQL stage's and the GraphQL
     # endpoint's (pgwire.governed_plan) and a repeat is not parsed or governed again.
     _session_vars = session_vars_for(state.roles.get(role_id))
-    _slot = PlanSlot(state, "compiled", role_id, sql, sorted(_session_vars.items()))
+    _slot = PlanSlot(state, "compiled", role_id, sql, sorted(_session_vars.items()), sdl_joins)
     _governed = _slot.cached()
     if _governed is None:
-        _governed = await _govern_compiled(sql, role_id, state, _session_vars, exec_params)
+        _governed = await _govern_compiled(
+            sql, role_id, state, _session_vars, exec_params, sdl_joins=sdl_joins
+        )
         # A write is not kept: its admission checks (view writes, unbound branch writes) run per call.
         if not isinstance(
             _governed.parsed,
@@ -3227,6 +3231,24 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     )
 
 
+def relationship_guard_bypassed(role: dict, state: Any, *, statement_opts_out: bool) -> bool:
+    """Whether ``role`` may relate tables outside the registered relationships (REQ-264): it
+    holds ``ignore_relationships``, or its relationship guard is cleared and the statement opts
+    out. Decided here for every statement, raw or compiled, so no surface decides it for itself.
+
+    REQ-693: high-security mode is belts and suspenders — the relationship guard is not
+    bypassable there at all. A deployment that improperly granted ignore_relationships (or
+    cleared relationship_guard) to a production role does not get a break-out; the grant is
+    ignored and every join must exist in the approved relationship catalog."""
+    from provisa.security.rights import Capability, has_capability
+
+    if getattr(state, "security_high", False):
+        return False
+    return has_capability(role, Capability.IGNORE_RELATIONSHIPS) or (
+        (not role.get("relationship_guard", True)) and statement_opts_out
+    )
+
+
 @dataclass
 class _GovernedCompiled:
     """A compiled statement the pipeline has governed but not yet routed — the compiled stage's
@@ -3248,6 +3270,8 @@ async def _govern_compiled(
     state: Any,
     session_vars: dict[str, str],
     exec_params: list | None = None,
+    *,
+    sdl_joins: bool,
 ) -> _GovernedCompiled:
     """The value-independent half of the compiled stage: parse, metric expansion, write admission,
     governance."""
@@ -3317,6 +3341,32 @@ async def _govern_compiled(
         engine=getattr(state, "federation_engine", None),
     )
     await _guard_complexity(sql, role_id, _compiled_tree, gov_ctx, ctx, state)
+
+    # REQ-603: the tables this statement relates are held to the approved relationships as a raw
+    # SQL statement's are, by the same check. Skipped only where the GraphQL SDL defined the
+    # joins, or for a role that may ignore relationships (never in high-security mode, REQ-693).
+    # Decided once here: the governed statement is kept, so a repeat is not checked again.
+    if not sdl_joins:
+        _role = require_role(state.roles, role_id)
+        if not relationship_guard_bypassed(_role, state, statement_opts_out=False):
+            from provisa.audit.pipeline import write_denial
+            from provisa.compiler.sql_validator import (
+                approved_joins,
+                tables_outside_relationships,
+            )
+
+            _outside = await _off_loop(
+                tables_outside_relationships,
+                _compiled_tree,
+                gov_ctx,
+                approved_joins(ctx),
+                {meta.table_id: meta for meta in ctx.tables.values()},
+                # A remote source's own model relates its tables, as on the raw-SQL path.
+                bypass_uncovered=True,
+            )
+            if _outside:
+                await write_denial(sql, role_id, _compiled_tree, gov_ctx, state)
+                raise PermissionError("; ".join(f"[{v.code}] {v.message}" for v in _outside))
 
     _table_ids = tuple(resolve_table_ids(_compiled_tree, gov_ctx))  # REQ-1897
 

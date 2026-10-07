@@ -131,6 +131,7 @@ async def test_bolt_refuses_an_unfiltered_read_instead_of_replicating_the_node_s
             state=planning,
             buffered=True,
             cache_hint=NO_CACHE_HINT,
+            sdl_joins=True,
         )
     _assert_names_table_and_key(refused.value)
 
@@ -150,6 +151,7 @@ async def test_a_cached_answer_does_not_stand_in_for_the_refusal(planning, monke
             state=planning,
             cache_hint=cache_hint_for("sql", sql),
             serve_cached=True,
+            sdl_joins=True,
         )
     read.assert_not_awaited()
 
@@ -167,7 +169,12 @@ async def test_a_cached_answer_does_not_stand_in_for_the_refusal(planning, monke
 async def test_a_read_that_binds_the_key_is_planned_on_both_stages(planning, sql, params):
     raw = await _pipeline._govern_and_route(sql, "analyst", params=params)
     compiled = await _pipeline._govern_and_route_compiled(
-        sql, "analyst", exec_params=params, state=planning, cache_hint=NO_CACHE_HINT
+        sql,
+        "analyst",
+        exec_params=params,
+        state=planning,
+        cache_hint=NO_CACHE_HINT,
+        sdl_joins=True,
     )
     assert raw.pk_bounds and compiled.pk_bounds
 

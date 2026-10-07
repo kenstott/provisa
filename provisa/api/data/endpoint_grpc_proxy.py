@@ -331,6 +331,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                 state=state,
                 cache_hint=cache_hint,
                 serve_cached=True,  # REQ-1897: _execute_plan serves the pre-route HIT
+                sdl_joins=True,
             )
             result = await _execute_plan(plan, state)
         except ComplexityLimitExceeded:
@@ -361,6 +362,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                         state=state,
                         cache_hint=cache_hint,
                         serve_cached=True,  # REQ-1897
+                        sdl_joins=True,
                     )
                     nodes_result = await _execute_plan(nodes_plan, state)
                 except ComplexityLimitExceeded:
@@ -438,6 +440,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             # REQ-1897: an opted-in request whose entry exists is answered before routing; the
             # chokepoint below (_execute_plan) serves that Route.CACHE plan.
             serve_cached=True,
+            sdl_joins=True,
         )
         result = await _execute_plan(plan, state)
     except ComplexityLimitExceeded:

@@ -28,6 +28,16 @@ class CypherTranslateError(Exception):
     pass
 
 
+class UnregisteredRelationshipType(CypherTranslateError):
+    """A Cypher statement names a relationship type the model does not register (REQ-603): a
+    traversal exists only along a registered relationship, so the statement is refused -- on
+    every surface that carries Cypher, since every one of them translates it here."""
+
+    def __init__(self, types: list[str]) -> None:
+        self.types = types
+        super().__init__(f"Unregistered relationship type(s): {', '.join(types)}")
+
+
 class CypherCrossSourceError(CypherTranslateError):
     """Raised when a Cypher query spans multiple incompatible data sources."""
 

@@ -91,7 +91,7 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     # same entrypoint the real Bolt/Cypher session uses (provisa/bolt/session.py) — so governance,
     # API-table hydration/materialization, and cache rewrites all apply exactly as they do there.
     plan = await _govern_and_route_compiled(
-        semantic_sql, role, state=app_state, cache_hint=NO_CACHE_HINT
+        semantic_sql, role, state=app_state, cache_hint=NO_CACHE_HINT, sdl_joins=False
     )
     result = await _execute_plan(plan, app_state)
     rows = [dict(zip(result.column_names, row)) for row in result.rows]

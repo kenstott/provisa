@@ -79,7 +79,9 @@ def _r818_when_execute(r818: dict, monkeypatch) -> None:
 
     sent: dict = {}
 
-    async def _govern(sql, role_id, *, exec_params=None, state=None, cache_hint=None):
+    async def _govern(sql, role_id, *, exec_params=None, state=None, cache_hint=None, sdl_joins):
+        # A Cypher statement is never the SDL's: what it relates is checked (REQ-603).
+        assert sdl_joins is False
         # The one pipeline's governance stage, as it receives the route's write.
         sent.update(sql=sql, role_id=role_id, params=exec_params)
         return types.SimpleNamespace(sql=sql)

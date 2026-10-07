@@ -90,46 +90,16 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
         tree, gov_ctx, table_id_to_meta, domain_access, cte_names_set
     )
     if not bypass_relationship_guard:
-        # Build (src_table_id, tgt_table_id, src_col, tgt_col) approved join set — only
-        # consumed by _check_join_relationships below, so skipped entirely (not just its
-        # result discarded) when the relationship guard itself is bypassed for this role.
-        type_to_meta: dict[str, TableMeta] = {}
-        for meta in ctx.tables.values():
-            type_to_meta[meta.type_name] = meta
+        valid_joins = approved_joins(ctx)
 
-        valid_joins: set[tuple[int, int, str, str]] = set()
-        for (type_name, _), jm in ctx.joins.items():
-            src = type_to_meta.get(type_name)
-            if not src:
-                continue
-            valid_joins.add((src.table_id, jm.target.table_id, jm.source_column, jm.target_column))
-            valid_joins.add((jm.target.table_id, src.table_id, jm.target_column, jm.source_column))
-            # REQ-1586: a junction-backed (via_table) relationship's approved SQL join shape is
-            # node -> junction -> node on the junction's own via_source_column/via_target_column
-            # — not a direct node-to-node pair on the relationship's nominal source/target
-            # columns (that pair names the relationship, it is never a literal equality in real
-            # data). Without this, raw SQL joining the junction table directly (the only way to
-            # express a junction-backed relationship in SQL — there is no other join shape for
-            # it) was rejected by V002 even though the identical relationship compiles to an
-            # approved Cypher type. Single-column via_source_column/via_target_column only (this
-            # schema's shape); a composite junction key is not covered here — same as the rest of
-            # V002, an unrecognized shape stays a loud rejection rather than a silent pass.
-            via = jm.via
-            if via is not None and len(via.source_columns) == 1 and len(via.target_columns) == 1:
-                via_id = via.table.table_id
-                v_src_col = via.source_columns[0]
-                v_tgt_col = via.target_columns[0]
-                valid_joins.add((src.table_id, via_id, jm.source_column, v_src_col))
-                valid_joins.add((via_id, src.table_id, v_src_col, jm.source_column))
-                valid_joins.add((via_id, jm.target.table_id, v_tgt_col, jm.target_column))
-                valid_joins.add((jm.target.table_id, via_id, jm.target_column, v_tgt_col))
-
-        violations += _check_join_relationships(
+        # REQ-603: however the statement relates its tables -- a join of any spelling, a CTE, a
+        # derived table, a subquery -- every pairing of their columns is a registered
+        # relationship.
+        violations += tables_outside_relationships(
             tree,
             gov_ctx,
             valid_joins,
             table_id_to_meta,
-            cte_names_set,
             bypass_uncovered=bypass_uncovered_relationships,
         )
     violations += _check_column_visibility(tree, gov_ctx, cte_names_set)
@@ -201,19 +171,6 @@ def _from_tables(
     for tbl in from_clause.find_all(exp.Table):
         if not _inside_subquery(tbl, select) and tbl.name not in cte_names_set:
             results.append(tbl)
-    return results
-
-
-def _join_tables(
-    select: exp.Select, cte_names_set: frozenset[str] = frozenset()
-) -> list[tuple[exp.Table, exp.Expr | None]]:
-    """Return (table, ON-condition) for each JOIN in a SELECT, skipping CTE aliases."""
-    results = []
-    for join in select.args.get("joins") or []:
-        on = join.args.get("on")
-        for tbl in join.find_all(exp.Table):
-            if not _inside_subquery(tbl, select) and tbl.name not in cte_names_set:
-                results.append((tbl, on))
     return results
 
 
@@ -321,88 +278,96 @@ def _alias_map(
     return result
 
 
-def _alias_to_table_name(
-    alias: str, am: dict[str, int], table_id_to_meta: dict[int, TableMeta]
-) -> str:
-    """Return 'alias(table_name)' or just 'alias' if no meta found."""
-    tid = am.get(alias)
-    if tid is None:
-        return alias
-    meta = table_id_to_meta.get(tid)
-    if meta is None or meta.table_name == alias:
-        return alias
-    return f"{alias}({meta.table_name})"
-
-
 _REMOTE_SOURCE_TYPES: frozenset[str] = frozenset({"graphql_remote", "grpc_remote"})
 
 
-def _check_join_relationships(  # REQ-264
+def approved_joins(ctx: CompilationContext) -> set[tuple[int, int, str, str]]:
+    """The joins the registered relationships approve: (table, table, column, column), each in
+    both directions, a junction-backed relationship as its two hops (REQ-1586)."""
+    type_to_meta = {meta.type_name: meta for meta in ctx.tables.values()}
+    approved: set[tuple[int, int, str, str]] = set()
+    for (type_name, _), jm in ctx.joins.items():
+        src = type_to_meta.get(type_name)
+        if not src:
+            continue
+        approved.add((src.table_id, jm.target.table_id, jm.source_column, jm.target_column))
+        approved.add((jm.target.table_id, src.table_id, jm.target_column, jm.source_column))
+        via = jm.via
+        if via is not None and len(via.source_columns) == 1 and len(via.target_columns) == 1:
+            via_id = via.table.table_id
+            v_src_col = via.source_columns[0]
+            v_tgt_col = via.target_columns[0]
+            approved.add((src.table_id, via_id, jm.source_column, v_src_col))
+            approved.add((via_id, src.table_id, v_src_col, jm.source_column))
+            approved.add((via_id, jm.target.table_id, v_tgt_col, jm.target_column))
+            approved.add((jm.target.table_id, via_id, jm.target_column, v_tgt_col))
+    return approved
+
+
+def tables_outside_relationships(  # REQ-264
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
     valid_joins: set[tuple[int, int, str, str]],
     table_id_to_meta: dict[int, TableMeta],
-    cte_names_set: frozenset[str] = frozenset(),
+    *,
     bypass_uncovered: bool = False,
 ) -> list[ValidationViolation]:
-    covered_pairs: set[tuple[int, int]] = {(s, t) for s, t, _, _ in valid_joins}
+    """V002 for each pair of registered tables ``tree`` combines outside the registered
+    relationships, however the statement is written (provisa.compiler.join_guard)."""
+    from provisa.compiler.join_guard import NOT_EQUALITY, UNREGISTERED, unrelated_tables
+
+    covered_pairs = {(s, t) for s, t, _, _ in valid_joins}
+
+    def exempt(table_id: int) -> bool:
+        # meta/ops tables are implicitly traversable — no registered relationship required
+        meta = table_id_to_meta.get(table_id)
+        return meta is not None and meta.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
+
+    def same_remote_source(a: int, b: int) -> bool:
+        # Remote schemas own their relationship model: two tables of one remote source with no
+        # relationship registered between them here (see _check_join_relationships).
+        if not bypass_uncovered or (a, b) in covered_pairs:
+            return False
+        left, right = table_id_to_meta.get(a), table_id_to_meta.get(b)
+        return (
+            left is not None
+            and right is not None
+            and left.source_type in _REMOTE_SOURCE_TYPES
+            and right.source_type in _REMOTE_SOURCE_TYPES
+            and left.source_id == right.source_id
+        )
+
+    def name(table_id: int) -> str:
+        meta = table_id_to_meta.get(table_id)
+        return meta.table_name if meta is not None else str(table_id)
+
     violations = []
-    for select in tree.find_all(exp.Select):
-        am = _alias_map(select, gov_ctx, cte_names_set)
-        for tbl, on_expr in _join_tables(select, cte_names_set):
-            if on_expr is None:
-                tbl_ref = f"{tbl.db}.{tbl.name}" if tbl.db else tbl.name
-                violations.append(
-                    ValidationViolation(
-                        "V002",
-                        f"JOIN on {tbl_ref!r} has no ON condition — cross joins are not permitted",
-                    )
-                )
-                continue
-            pairs = _extract_eq_pairs(on_expr)
-            if not pairs:
-                continue
-            tgt_tid = _resolve_table_id(tbl, gov_ctx)
-            if tgt_tid is None:
-                continue
-            # meta/ops tables are implicitly traversable — no registered relationship required
-            tgt_meta = table_id_to_meta.get(tgt_tid)
-            if tgt_meta and tgt_meta.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS:
-                continue
-            on_sql = on_expr.sql(dialect="postgres")
-            for lt, lc, rt, rc in pairs:
-                lt_id = am.get(lt)
-                rt_id = am.get(rt)
-                if lt_id is None or rt_id is None:
-                    continue
-                src_id = lt_id if rt_id == tgt_tid else rt_id
-                src_col = lc if rt_id == tgt_tid else rc
-                tgt_col = rc if rt_id == tgt_tid else lc
-                src_alias = lt if rt_id == tgt_tid else rt
-                tgt_alias = tbl.alias or tbl.name
-                if (src_id, tgt_tid, src_col, tgt_col) not in valid_joins:
-                    if bypass_uncovered and (src_id, tgt_tid) not in covered_pairs:
-                        src_meta = table_id_to_meta.get(src_id)
-                        # Remote schemas own their relationship model — bypass V002 only when
-                        # both tables belong to the same remote source_id. Cross-source joins
-                        # (local↔remote or remote↔different-remote) require a covered_pair.
-                        if (
-                            src_meta
-                            and src_meta.source_type in _REMOTE_SOURCE_TYPES
-                            and tgt_meta
-                            and tgt_meta.source_type in _REMOTE_SOURCE_TYPES
-                            and src_meta.source_id == tgt_meta.source_id
-                        ):
-                            continue
-                    src_label = _alias_to_table_name(src_alias, am, table_id_to_meta)
-                    tgt_label = _alias_to_table_name(tgt_alias, am, table_id_to_meta)
-                    violations.append(
-                        ValidationViolation(
-                            "V002",
-                            f"Invalid JOIN: {src_label}.{src_col} = {tgt_label}.{tgt_col} "
-                            f"(full ON: {on_sql}) — no approved relationship exists between these tables on these columns",
-                        )
-                    )
+    for pair in unrelated_tables(
+        tree,
+        resolve_table_id=lambda tbl: _resolve_table_id(tbl, gov_ctx),
+        columns_of=lambda table_id: {c for c, _ in gov_ctx.all_columns.get(table_id, [])},
+        registered=valid_joins,
+        exempt_table=exempt,
+        same_remote_source=same_remote_source,
+    ):
+        left, right = name(pair.left_table), name(pair.right_table)
+        if pair.reason == UNREGISTERED:
+            said = (
+                f"Invalid JOIN: {left}.{pair.left_column} = {right}.{pair.right_column} — no "
+                f"approved relationship exists between these tables on these columns"
+            )
+        elif pair.reason == NOT_EQUALITY:
+            said = (
+                f"Invalid JOIN: {left} and {right} are matched by something other than an "
+                f"equality of their columns — tables are related only along an approved "
+                f"relationship, on its columns"
+            )
+        else:
+            said = (
+                f"Invalid JOIN: {left} and {right} are combined with no condition relating them "
+                f"— cross joins are not permitted"
+            )
+        violations.append(ValidationViolation("V002", said))
     return violations
 
 

@@ -52,6 +52,7 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
             "schema_name": "public",
             "table_name": "orders",
             "enable_aggregates": True,
+            "write_ops": [],  # as a registered table's row carries it: no write is declared
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -67,6 +68,7 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "customers",
+            "write_ops": [],
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},

@@ -81,6 +81,7 @@ async def test_a_role_without_meta_reading_a_source_with_no_connection_never_rea
         "analyst",
         state=state,
         cache_hint=NO_CACHE_HINT,
+        sdl_joins=False,
     )
     assert plan.route != Route.ENGINE and plan.source_id == "pg", plan
 

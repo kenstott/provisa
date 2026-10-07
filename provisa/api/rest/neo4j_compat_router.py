@@ -148,6 +148,7 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
             exec_params=resolved_params or None,
             # REQ-544: the Cypher statement's own `// @provisa cache` opt-in.
             cache_hint=cache_hint_for("cypher", body.statement),
+            sdl_joins=False,
         )
     except ComplexityLimitExceeded:
         raise  # REQ-1174: answered as 413 by the app's handler

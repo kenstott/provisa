@@ -1204,7 +1204,9 @@ def rest_same_governance_as_graphql(shared_data):
     )
 
     def _governed(sql: str, role_id: str) -> str:
-        return asyncio.run(_pipeline._govern_compiled(sql, role_id, state, {})).governed_sql
+        return asyncio.run(
+            _pipeline._govern_compiled(sql, role_id, state, {}, sdl_joins=True)
+        ).governed_sql
 
     for name, compiled in (("REST", rest_compiled), ("GraphQL", direct_compiled)):
         filtered = _governed(compiled.sql, "filtered")

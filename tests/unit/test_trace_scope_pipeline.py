@@ -107,7 +107,7 @@ async def _raw(sql: str = _SQL) -> None:
 
 async def _compiled(hint: CacheHint = NO_CACHE_HINT) -> None:
     with _request_of_the_served_org():
-        await _pipeline._govern_and_route_compiled(_SQL, "analyst", cache_hint=hint)
+        await _pipeline._govern_and_route_compiled(_SQL, "analyst", cache_hint=hint, sdl_joins=True)
 
 
 async def _window(db, scope: str, org_id: str, target: str | None = None, **kw) -> None:

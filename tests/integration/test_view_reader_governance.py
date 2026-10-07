@@ -149,9 +149,20 @@ def test_a_nested_select_carries_the_row_filter(server):  # noqa: F811
     exists = "SELECT a.id FROM sales.orders a WHERE EXISTS (SELECT 1 FROM sales.orders b WHERE b.id = 2) ORDER BY a.id"
     assert [r["id"] for r in _sql(server, "org_admin", exists)] == [1, 2, 3]
     assert _sql(server, "east_reader", exists) == []
+    # The table read through a CTE, beside another read of it that the CTE's rows are not
+    # matched against (one value of it, compared): three rows unfiltered, the two east ones for
+    # the east reader -- so an unfiltered CTE would answer [1, 3] there.
     cte = (
+        "WITH o AS (SELECT id, region FROM sales.orders) "
+        "SELECT a.id FROM sales.orders a WHERE a.id <= (SELECT COUNT(*) FROM o) ORDER BY a.id"
+    )
+    assert [r["id"] for r in _sql(server, "org_admin", cte)] == [1, 2, 3]
+    assert [r["id"] for r in _sql(server, "east_reader", cte)] == [1]
+    # REQ-603: matching the CTE's rows against the table's own by an expression is a join
+    # outside any registered relationship, refused whatever the spelling.
+    matched = (
         "WITH o AS (SELECT id, region FROM sales.orders) "
         "SELECT o.id FROM sales.orders a JOIN o ON o.id = a.id + 1 ORDER BY o.id"
     )
-    assert [r["id"] for r in _sql(server, "org_admin", cte)] == [2, 3]
-    assert _sql(server, "east_reader", cte) == []  # a.id + 1 is 2 or 4: neither is an east row
+    status, body = _post(server, "org_admin", "/data/sql", {"sql": matched})
+    assert status == 403 and "V002" in str(body), body

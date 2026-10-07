@@ -690,6 +690,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 state=state,
                 cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),
                 serve_cached=True,
+                sdl_joins=False,
             )
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
@@ -1053,6 +1054,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 exec_params=compiled.params or None,
                 state=state,
                 cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),  # REQ-544
+                sdl_joins=True,
             )
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
@@ -1153,6 +1155,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 exec_params=compiled.params or None,
                 state=state,
                 cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),  # REQ-544
+                sdl_joins=True,
             )
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
@@ -1185,6 +1188,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 exec_params=compiled.nodes_params or None,
                 state=state,
                 cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),  # REQ-544
+                sdl_joins=True,
             )
             nodes_result = await _execute_plan(nodes_plan, state)
             join_key_idx = [i for i, c in enumerate(nodes_columns) if c.nested_in == "__join_key__"]

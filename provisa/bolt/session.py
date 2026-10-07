@@ -1358,7 +1358,9 @@ async def _maybe_invoke_metric_call(
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
     sql = metric_semantic_sql(name, dims)
-    plan = await _govern_and_route_compiled(sql, role_id, buffered=True, cache_hint=NO_CACHE_HINT)
+    plan = await _govern_and_route_compiled(
+        sql, role_id, buffered=True, cache_hint=NO_CACHE_HINT, sdl_joins=False
+    )
     result = await _execute_plan(plan)
     return list(result.column_names), [list(row) for row in result.rows]
 
@@ -1527,6 +1529,7 @@ async def _execute_cypher(
         cache_hint=cache_hint,
         # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
         serve_cached=True,
+        sdl_joins=False,
     )
     if plan.route == Route.CACHE:
         # Answered before routing: the plan names no source and holds the entry. The pipeline
@@ -1569,6 +1572,7 @@ async def _execute_cypher(
             deliver=deliver,
             buffered=True,  # REQ-1224: buffered transport — terminal auto-thresholds inline vs CTAS
             cache_hint=cache_hint,
+            sdl_joins=False,
         )
         result = await _execute_plan(plan)
         if result.redirect is not None:
@@ -1614,7 +1618,7 @@ async def _execute_write_cypher(
         raise ValueError(str(exc)) from exc
 
     plan = await _govern_and_route_compiled(
-        sql, role_id, exec_params=bound or None, cache_hint=NO_CACHE_HINT
+        sql, role_id, exec_params=bound or None, cache_hint=NO_CACHE_HINT, sdl_joins=False
     )
     result = await _execute_plan(plan)
     rows = [list(row) for row in result.rows]
