@@ -131,6 +131,10 @@
         "title": "連接圖譜",
         "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>關係有兩個作用。它塑造你的<strong>資料模型</strong>：跨數據來源和網域的表格如何連結，而每一種查詢入口——GraphQL 嵌套、Cypher 路徑或 SQL 連接（join）——都沿著它走。</p><p>它同時也是一條<strong>規則</strong>。連接受治理管控：沒有 <code>ignore_relationships</code> 權限的角色只能沿已註冊的關係做連接，所以存在哪些關係，決定了哪些查詢是合法的。你可以有意把這項權限授予你信任的角色，該角色就可以自由連接（高安全模式下不適用）。</p><p>關係將表格跨數據來源連結起來——即使是跨不同數據庫——把扁平的表格變成一個可遍歷的<strong>圖譜</strong>。</p>"
       },
+      "stepRelsAgents": {
+        "title": "關係與 AI 智能體",
+        "description": "🤖 模型及其關係對 AI 智能體開放——包括 Polly 和透過 MCP 連接的智能體——並決定這些智能體撰寫的查詢。<p>智能體在某個角色下運行，因此適用與人相同的規則：在已註冊關係之外做連接的查詢會<strong>失敗</strong>。這是強制執行的，而不只是建議。</p><p>這也由你決定。想讓智能體發現關係，就把 <code>ignore_relationships</code> 權限授予它的角色；想把它限制在防護欄之內，就不要授予。這與授予可信身份的有意授權相同（高安全模式下永不生效）。</p>"
+      },
       "step16": {
         "title": "定義關係",
         "description": "🔗 將來源欄位對應到目標欄位，並設定<strong>基數</strong>：<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ 也可以讓 Provisa 用 AI 為你<strong>推斷</strong>關係。</p><p>🛡️ 因為關係是一條規則，新增、修改或刪除關係都可能讓某個查詢變得合法或非法。來自來源表所在網域之外、或來自無權建立關係的人所提出的關係，需要等待核准。</p>"
