@@ -43,6 +43,7 @@ def _build(extra_tables=None):
                 {"column_name": "status", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
         {
             "id": 2,
@@ -56,6 +57,7 @@ def _build(extra_tables=None):
                 {"column_name": "email", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
     if extra_tables:

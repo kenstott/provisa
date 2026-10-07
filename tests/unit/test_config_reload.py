@@ -131,6 +131,7 @@ def _make_schema_input(convention: str = "snake", domain_prefix: bool = False) -
                     },
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             }
         ],
         relationships=[],
@@ -419,6 +420,7 @@ class TestDomainPrefixEmptyDomain:
                         },
                     ],
                     "write_ops": ["delete", "insert", "update"],
+                    "write_returns_rows": True,
                 }
             ],
             relationships=[],

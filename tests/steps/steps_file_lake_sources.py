@@ -78,6 +78,7 @@ def _build_lake_ctx(source_type: str):
             # The registry row carries the write operations the schema build reads; these
             # scenarios read only.
             "write_ops": [],
+            "write_returns_rows": False,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "ts", "visible_to": ["admin"]},
@@ -486,6 +487,7 @@ def then_graphql_fields_reflect_snake_case(shared_data):
             # The registry row carries the write operations the schema build reads; these
             # scenarios read only.
             "write_ops": [],
+            "write_returns_rows": False,
             "columns": columns_for_schema,
             # REQ-789: request snake_case GraphQL field naming so the SDL field
             # names mirror the snake_case column names produced by the connector.
@@ -826,6 +828,7 @@ def when_graphql_query_issued_for_customers(shared_data):
             # The registry row carries the write operations the schema build reads; these
             # scenarios read only.
             "write_ops": [],
+            "write_returns_rows": False,
             "columns": columns_for_schema,
             "gql_naming_convention": "snake",
         }

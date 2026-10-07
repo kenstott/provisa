@@ -62,6 +62,17 @@ class WritePath(str, Enum):  # REQ-229, REQ-842
 PGWIRE_SERVER_WRITTEN: frozenset[str] = frozenset({"sharepoint", "salesforce"})
 
 
+# Whether a write on each route can hand back the rows it wrote (a ``RETURNING`` clause). The
+# pgwire servers of the pinned engine release do not take ``RETURNING`` (REQ-1946); when the pin
+# moves to a release that does, PGWIRE becomes True here and nothing else changes.
+_ROUTE_RETURNS_WRITTEN_ROWS: dict[WritePath, bool] = {
+    WritePath.NATIVE: True,
+    WritePath.SQLALCHEMY: True,
+    WritePath.PGWIRE: False,
+    WritePath.ENGINE: True,
+}
+
+
 def is_written_through_pgwire_server(source_type: str) -> bool:
     """Whether ``source_type``'s write route is its own pgwire server — the ONE predicate that
     decides it (REQ-1946). The server speaks the PostgreSQL wire, so the route needs that driver."""
@@ -148,3 +159,10 @@ def resolve_write_path(
 def is_writable_on(source_type: str, engine: FederationEngine | None = None) -> bool:
     """Whether ``source_type`` is writable by ANY route (direct driver, or engine when supplied)."""
     return resolve_write_path(source_type, engine) is not None
+
+
+def write_returns_rows(source_type: str, engine: FederationEngine | None = None) -> bool:
+    """Whether a write to ``source_type`` can return the rows it wrote — the flag of its write
+    route (``_ROUTE_RETURNS_WRITTEN_ROWS``). A source with no write route returns none."""
+    route = resolve_write_path(source_type, engine)
+    return route is not None and _ROUTE_RETURNS_WRITTEN_ROWS[route]

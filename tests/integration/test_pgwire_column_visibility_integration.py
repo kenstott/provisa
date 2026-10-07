@@ -131,6 +131,7 @@ _TABLES = [
             {"column_name": "region_code", "visible_to": ["analyst"]},
         ],
         "write_ops": ["delete", "insert", "update"],
+        "write_returns_rows": True,
     }
 ]
 

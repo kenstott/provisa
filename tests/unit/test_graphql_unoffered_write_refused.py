@@ -46,6 +46,7 @@ def _table(table_id: int, name: str, write_ops: list[str]) -> dict:
             {"column_name": "region", "visible_to": ["admin"], "writable_by": ["admin"]},
         ],
         "write_ops": write_ops,
+        "write_returns_rows": bool(write_ops),
     }
 
 

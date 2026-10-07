@@ -289,6 +289,14 @@ def registry_write_ops(source_type: str, *, view: bool = False) -> list[str]:
     return sorted(table_write_ops({"view_sql": "SELECT 1"} if view else {}, source_type, None))
 
 
+def registry_write_returns_rows(source_type: str, *, view: bool = False) -> bool:
+    """The ``write_returns_rows`` a registered table's record carries beside ``write_ops`` (see
+    :func:`registry_write_ops`), by the product's own rule."""
+    from provisa.executor.write_capability import table_write_returns_rows
+
+    return table_write_returns_rows({"view_sql": "SELECT 1"} if view else {}, source_type, None)
+
+
 def attaching(source, catalog: str):
     """``source`` as an engine attaches it: its fields, plus the catalog name the engine names
     what it keeps for the source after (REQ-1266/1529 — the org-scoped catalog the compiler

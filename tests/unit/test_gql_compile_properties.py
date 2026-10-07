@@ -159,6 +159,7 @@ def _o2m_ctx() -> CompilationContext:
                 {"column_name": "name", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
         {
             "id": 2,
@@ -172,6 +173,7 @@ def _o2m_ctx() -> CompilationContext:
                 {"column_name": "amount", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
     rels = [

@@ -82,6 +82,7 @@ def _tables() -> list[dict]:
                 }
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         }
         for tid in (SALES, FINANCE, META, OPS)
     ]

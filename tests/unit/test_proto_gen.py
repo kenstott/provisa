@@ -41,6 +41,7 @@ def _make_si(
                     {"column_name": "created_at", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             }
         ]
     if column_types is None:
@@ -199,6 +200,7 @@ class TestGenerateProto:
                         {"column_name": "name", "visible_to": ["admin"]},
                     ],
                     "write_ops": ["delete", "insert", "update"],
+                    "write_returns_rows": True,
                 }
             ],
             column_types={
@@ -265,6 +267,7 @@ class TestRoleFiltering:
                         {"column_name": "secret", "visible_to": ["admin"]},
                     ],
                     "write_ops": ["delete", "insert", "update"],
+                    "write_returns_rows": True,
                 }
             ],
             column_types={
@@ -303,6 +306,7 @@ class TestRelationships:
                     {"column_name": "customer_id", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
             {
                 "id": 2,
@@ -315,6 +319,7 @@ class TestRelationships:
                     {"column_name": "name", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
         ]
         column_types = {

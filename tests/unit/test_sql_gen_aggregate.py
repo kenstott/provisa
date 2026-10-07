@@ -52,6 +52,7 @@ def _build_schema_and_ctx(
                     {"column_name": "created_at", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
             {
                 "id": 2,
@@ -65,6 +66,7 @@ def _build_schema_and_ctx(
                     {"column_name": "email", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
         ]
     if relationships is None:
@@ -246,6 +248,7 @@ class TestAggregate:
                     {"column_name": "status", "visible_to": ["admin", "limited"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
         ]
         col_types = {
@@ -300,6 +303,7 @@ class TestAggregate:
                     {"column_name": "category", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
         ]
         col_types = {
@@ -383,6 +387,7 @@ class TestAggregate:
                     {"column_name": "amount", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
             {
                 "id": 2,
@@ -395,6 +400,7 @@ class TestAggregate:
                     {"column_name": "name", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
         ]
         rels = [
@@ -499,6 +505,7 @@ class TestAggregate:
                     {"column_name": "region", "visible_to": ["admin", "analyst"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
         ]
         col_types = {
@@ -722,6 +729,7 @@ _FACT_TABLES = [
             {"column_name": "region", "visible_to": ["admin", "analyst"]},
         ],
         "write_ops": ["delete", "insert", "update"],
+        "write_returns_rows": True,
     },
     {
         "id": 2,
@@ -737,6 +745,7 @@ _FACT_TABLES = [
             {"column_name": "name", "visible_to": ["admin"]},
         ],
         "write_ops": ["delete", "insert", "update"],
+        "write_returns_rows": True,
     },
 ]
 

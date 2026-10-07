@@ -41,6 +41,7 @@ def _table(*, data_visible_to: list[str]) -> dict:
             {"column_name": "pet_id", "visible_to": [], "native_filter_type": "path"},
         ],
         "write_ops": ["delete", "insert", "update"],
+        "write_returns_rows": True,
     }
 
 

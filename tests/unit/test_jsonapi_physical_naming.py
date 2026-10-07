@@ -66,6 +66,7 @@ def _schema_input() -> SchemaInput:
                     {"column_name": "pet_id", "visible_to": []},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
             {
                 "id": 2,
@@ -81,6 +82,7 @@ def _schema_input() -> SchemaInput:
                     {"column_name": "breed_name", "visible_to": []},
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
         ],
         relationships=[
@@ -133,6 +135,7 @@ def client(monkeypatch):
                 "domain_id": "pet-store",
                 "table_name": "inquiries",
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             }
         }
     }

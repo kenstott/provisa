@@ -58,6 +58,7 @@ def _build_schema_and_ctx(enable_aggregates: bool = True, enable_group_by: bool 
                 {"column_name": "created_at", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
     column_types = {
@@ -103,6 +104,7 @@ def _build_schema_and_ctx_with_relationship(enable_group_by: bool = True):
                 {"column_name": "region", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
         {
             "id": 2,
@@ -117,6 +119,7 @@ def _build_schema_and_ctx_with_relationship(enable_group_by: bool = True):
                 {"column_name": "home_region_id", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
         {
             "id": 3,
@@ -129,6 +132,7 @@ def _build_schema_and_ctx_with_relationship(enable_group_by: bool = True):
                 {"column_name": "name", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
     relationships = [
@@ -463,6 +467,7 @@ def _make_state(enable_aggregates: bool = True, enable_group_by: bool = True):
             "domain_id": "sales",
             "table_name": "orders",
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         }
     }
     # The router keeps a request's compiled form in the org's plan store (REQ-1877), so the state

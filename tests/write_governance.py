@@ -52,6 +52,8 @@ def write_governance(
     every = {"insert", "update", "delete"}
     offered = write_ops if write_ops is not None else {tid: every for tid, _ in tables.values()}
     gov.write_ops = {tid: frozenset(ops) for tid, ops in offered.items()}
+    # ... and returns the rows it writes wherever it takes any (executor/write_capability.py).
+    gov.write_returns_rows = {tid: bool(ops) for tid, ops in offered.items()}
     return gov
 
 

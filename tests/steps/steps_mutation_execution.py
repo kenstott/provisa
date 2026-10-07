@@ -63,6 +63,7 @@ def _build_schema_and_ctx():
             # The registry row carries the writes its source takes: a PostgreSQL table takes
             # every one (executor/write_capability.table_write_ops).
             "write_ops": list(WRITE_OPS),
+            "write_returns_rows": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},
@@ -168,6 +169,7 @@ def _build_restricted_schema():
             # The registry row carries the writes its source takes: a PostgreSQL table takes
             # every one (executor/write_capability.table_write_ops).
             "write_ops": list(WRITE_OPS),
+            "write_returns_rows": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["analyst"]},
                 {"column_name": "amount", "visible_to": ["analyst"]},
@@ -347,6 +349,7 @@ def _build_rls_schema_and_ctx():
             # The registry row carries the writes its source takes: a PostgreSQL table takes
             # every one (executor/write_capability.table_write_ops).
             "write_ops": list(WRITE_OPS),
+            "write_returns_rows": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},

@@ -46,6 +46,7 @@ def _build_lake_ctx(source_type: str):
                 {"column_name": "payload", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         }
     ]
     column_types = {

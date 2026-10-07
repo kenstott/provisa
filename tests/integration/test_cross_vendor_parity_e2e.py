@@ -56,7 +56,7 @@ from provisa.compiler.sql_rewrite import (
 from provisa.compiler.stage2 import apply_governance, build_governance_context
 from provisa.federation.conformance import compare_governed_results
 from provisa.transpiler.transpile import transpile
-from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows
 
 pytestmark = [pytest.mark.integration]
 
@@ -123,6 +123,7 @@ def _schema_input(
                 "schema_name": schema,
                 "table_name": _TABLE,
                 "write_ops": registry_write_ops(source_type),
+                "write_returns_rows": registry_write_returns_rows(source_type),
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],

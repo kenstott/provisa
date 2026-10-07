@@ -232,6 +232,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 enable_group_by=bool(table.get("enable_group_by", False)),
                 read_only=bool(table.get("view_sql")),  # REQ-1157: MV/view → query-only
                 write_ops=frozenset(table["write_ops"]),
+                write_returns_rows=table["write_returns_rows"],
                 modeling_role=table.get("modeling_role"),  # REQ-1320
                 modeling_history=table.get("modeling_history"),  # REQ-1320
                 metrics=metrics_by_table.get(table["table_name"], []),  # REQ-1319
@@ -974,6 +975,10 @@ def generate_schema(
         # at the source (non-updatable view) or land in the mv_cache snapshot the next refresh
         # overwrites — silent data loss. Expose it query-only; never generate insert/update/delete.
         if t.read_only or not t.write_ops:
+            continue
+        # A mutation field returns the rows it wrote; a table whose write route cannot return
+        # them (executor/write_capability.py) is written through SQL and COPY, and offers none.
+        if not t.write_returns_rows:
             continue
         mutation_fields.update(_build_mutation_fields_for_table(t, si.enum_types))
 

@@ -45,6 +45,7 @@ def _build(role_id="admin"):
                 {"column_name": "mixedCase", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
     col_types = {

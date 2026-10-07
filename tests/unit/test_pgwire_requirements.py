@@ -993,6 +993,7 @@ class TestReq586CopyFromAdmitted:
                     "schema_name": "public",
                     "table_name": "orders",
                     "write_ops": write_ops,
+                    "write_returns_rows": bool(write_ops),
                     "columns": [
                         {"column_name": "id", "visible_to": ["dev"], "writable_by": ["dev"]}
                     ],

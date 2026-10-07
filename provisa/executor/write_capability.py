@@ -29,13 +29,16 @@ only for the operations the table offers; the admin table page shows them.
 * An append-only store takes inserts only: ClickHouse (its UPDATE and DELETE are asynchronous
   mutations), Iceberg and Delta Lake, a Kafka topic (a produce) and an ingest stream.
 * Every other writable source takes all three.
+
+Whether a write can return the rows it wrote is its route's flag, decided here beside the
+operations (:func:`table_write_returns_rows`) and carried the same way (``write_returns_rows``).
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from provisa.executor.writable import resolve_write_path
+from provisa.executor.writable import resolve_write_path, write_returns_rows
 
 if TYPE_CHECKING:
     from provisa.federation.engine import FederationEngine
@@ -61,3 +64,17 @@ def table_write_ops(
     if source_type in _INSERT_ONLY:
         return frozenset({"insert"})
     return frozenset(WRITE_OPS)
+
+
+def table_write_returns_rows(
+    table: dict[str, Any], source_type: str | None, engine: "FederationEngine | None"
+) -> bool:
+    """Whether a write to ``table`` can return the rows it wrote — its write route's flag
+    (``executor/writable.write_returns_rows``), carried on the table's record beside
+    ``write_ops`` (``write_returns_rows``). A GraphQL mutation field returns the written rows, so
+    one is offered only where this holds; a SQL write with a ``RETURNING`` clause is refused at
+    admission where it does not. A table that takes no writes returns none."""
+    if not table_write_ops(table, source_type, engine):
+        return False
+    assert source_type is not None  # a table that takes a write has a source
+    return write_returns_rows(source_type, engine)

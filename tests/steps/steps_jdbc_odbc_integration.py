@@ -51,7 +51,7 @@ import httpx
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
-from tests.helpers import registry_write_ops
+from tests.helpers import registry_write_ops, registry_write_returns_rows
 from provisa.executor.drivers.registry import available_drivers, has_driver
 
 FEATURE_DIR = Path(__file__).resolve().parent.parent / "features"
@@ -320,6 +320,7 @@ def jdbc_client_get_columns(shared_data):
             "schema_name": "public",
             "table_name": table_name,
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "governance": "pre-app",
             "columns": [
                 {"column_name": name, "visible_to": [], "native_filter_type": None}

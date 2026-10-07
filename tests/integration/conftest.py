@@ -421,6 +421,7 @@ _PGW_TABLES = [
             {"column_name": "region", "visible_to": []},
         ],
         "write_ops": ["delete", "insert", "update"],
+        "write_returns_rows": True,
     }
 ]
 

@@ -308,6 +308,7 @@ class TestRestEndpointsHTTP:
                     # The table's write operations: this suite reads, and the registry row carries
                     # the column the schema build reads (no writes declared).
                     "write_ops": [],
+                    "write_returns_rows": False,
                     "columns": [
                         {"column_name": "id", "visible_to": ["org_admin"]},
                         {"column_name": "region", "visible_to": ["org_admin"]},

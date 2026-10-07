@@ -67,6 +67,7 @@ def petstore():
                 {"column_name": "pet_id", "visible_to": []},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
         {
             "id": 2,
@@ -82,6 +83,7 @@ def petstore():
                 {"column_name": "breed_name", "visible_to": []},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
     si = SchemaInput(
@@ -113,6 +115,7 @@ def petstore():
                 "enable_aggregates": True,
                 "enable_group_by": True,
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             }
             for t in tables
         ]

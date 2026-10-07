@@ -68,6 +68,7 @@ def _si() -> SchemaInput:
             {"column_name": c, "visible_to": ["admin"]} for c in ("id", "first_name", "state")
         ],
         "write_ops": ["delete", "insert", "update"],
+        "write_returns_rows": True,
     }
     orders_api = {
         "id": 2,
@@ -79,6 +80,7 @@ def _si() -> SchemaInput:
             {"column_name": c, "visible_to": ["admin"]} for c in ("id", "customer_id", "amount")
         ],
         "write_ops": ["delete", "insert", "update"],
+        "write_returns_rows": True,
     }
     rel = {
         "id": "o2c",

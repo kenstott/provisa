@@ -36,7 +36,7 @@ from provisa.compiler.context import build_context  # noqa: E402
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical  # noqa: E402
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
-from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows  # noqa: E402
 
 _ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
 
@@ -62,6 +62,7 @@ def _orders_table(schema: str) -> dict:
         "schema_name": schema,
         "table_name": "orders",
         "write_ops": registry_write_ops("postgresql"),
+        "write_returns_rows": registry_write_returns_rows("postgresql"),
         "columns": [
             {"column_name": c, "visible_to": ["admin"]} for c in ("id", "customer_id", "amount")
         ],
@@ -76,6 +77,7 @@ def _customers_table(schema: str) -> dict:
         "schema_name": schema,
         "table_name": "customers",
         "write_ops": registry_write_ops("postgresql"),
+        "write_returns_rows": registry_write_returns_rows("postgresql"),
         "columns": [{"column_name": c, "visible_to": ["admin"]} for c in ("id", "name", "state")],
     }
 

@@ -42,6 +42,7 @@ def _build():
                 {"column_name": "region", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
     col_types = {

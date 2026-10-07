@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from tests.helpers import registry_write_ops
+from tests.helpers import registry_write_ops, registry_write_returns_rows
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 
@@ -47,6 +47,7 @@ def _make_default_schema_input(role_id: str = "admin") -> SchemaInput:
             "schema_name": "public",
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin", "analyst"]},
                 {"column_name": "customer_id", "visible_to": ["admin", "analyst"]},
@@ -63,6 +64,7 @@ def _make_default_schema_input(role_id: str = "admin") -> SchemaInput:
             "schema_name": "public",
             "table_name": "customers",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin", "analyst"]},
                 {"column_name": "name", "visible_to": ["admin", "analyst"]},
@@ -125,6 +127,7 @@ def _make_federation_schema_input(role_id: str = "admin") -> SchemaInput:
             "schema_name": "public",
             "table_name": "products",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "pk_columns": ["id"],
             "columns": [
                 {"column_name": "id", "visible_to": ["admin", "analyst"]},
@@ -140,6 +143,7 @@ def _make_federation_schema_input(role_id: str = "admin") -> SchemaInput:
             "schema_name": "public",
             "table_name": "reviews",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "pk_columns": ["id"],
             "columns": [
                 {"column_name": "id", "visible_to": ["admin", "analyst"]},
@@ -203,6 +207,7 @@ def _make_sampling_schema_input() -> SchemaInput:
             "schema_name": "public",
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -256,6 +261,7 @@ def _make_group_by_schema_input() -> SchemaInput:
             "schema_name": "public",
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "enable_group_by": True,
             "enable_aggregates": False,
             "columns": [
@@ -305,6 +311,7 @@ def _make_req009_schema_input() -> SchemaInput:
             "schema_name": "public",
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -319,6 +326,7 @@ def _make_req009_schema_input() -> SchemaInput:
             "schema_name": "public",
             "table_name": "customers",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},
@@ -449,6 +457,7 @@ def _make_mongo_discover_schema_input(
         "schema_name": "events_db",
         "table_name": "user_events",
         "write_ops": registry_write_ops("mongodb"),
+        "write_returns_rows": registry_write_returns_rows("mongodb"),
         "source_type": "mongodb",
         "columns": merged_columns,
     }
@@ -501,6 +510,7 @@ def _make_naming_convention_schema_input(
             "schema_name": "public",
             "table_name": "order_items",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin", "analyst"]},
                 {"column_name": "order_id", "visible_to": ["admin", "analyst"]},
@@ -516,6 +526,7 @@ def _make_naming_convention_schema_input(
             "schema_name": "public",
             "table_name": "customers",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin", "analyst"]},
                 {"column_name": "full_name", "visible_to": ["admin", "analyst"]},
@@ -719,6 +730,7 @@ def _make_hasura_default_schema_input() -> SchemaInput:
             "schema_name": "public",
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -787,6 +799,7 @@ def _make_graphql_default_schema_input() -> SchemaInput:
             "schema_name": "public",
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -802,6 +815,7 @@ def _make_graphql_default_schema_input() -> SchemaInput:
             "schema_name": "public",
             "table_name": "order_items",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "order_id", "visible_to": ["admin"]},

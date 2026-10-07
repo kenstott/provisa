@@ -63,6 +63,7 @@ def _tables(**orders_extra):
             ],
             **orders_extra,
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
         {
             "id": 2,
@@ -72,6 +73,7 @@ def _tables(**orders_extra):
             "table_name": "customers",
             "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
 

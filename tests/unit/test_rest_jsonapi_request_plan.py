@@ -143,11 +143,13 @@ def surface(monkeypatch):
                     "domain_id": "sales",
                     "table_name": "orders",
                     "write_ops": ["delete", "insert", "update"],
+                    "write_returns_rows": True,
                 },
                 "customers": {
                     "domain_id": "sales",
                     "table_name": "customers",
                     "write_ops": ["delete", "insert", "update"],
+                    "write_returns_rows": True,
                 },
             }
         },

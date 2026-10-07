@@ -86,6 +86,9 @@ class _TableInfo:
     # The data writes the table's source can take (executor/write_capability.py): a mutation
     # field is offered for exactly these.
     write_ops: frozenset[str] = frozenset()
+    # Whether a write to the table can return the rows it wrote (its write route's flag,
+    # executor/write_capability.py). A mutation field returns them, so none is offered without it.
+    write_returns_rows: bool = False
     modeling_role: str | None = None  # REQ-1320: "fact" | "dimension" | None
     modeling_history: str | None = None  # REQ-1320: SCD mode ("scd2" | "snapshot" | None)
     metrics: list[dict] = field(

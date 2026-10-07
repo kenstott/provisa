@@ -43,6 +43,7 @@ def _build_schema_and_ctx(enable_group_by: bool = True, enable_aggregates: bool 
                 {"column_name": "created_at", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
     column_types = {
@@ -88,6 +89,7 @@ def _build_schema_and_ctx_with_rel():
                 {"column_name": "status", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
         {
             "id": 2,
@@ -100,6 +102,7 @@ def _build_schema_and_ctx_with_rel():
                 {"column_name": "name", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
     column_types = {
@@ -166,6 +169,7 @@ class TestGroupBySchema:
                 "table_name": "orders",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
         ]
         column_types = {1: [_col("id", "integer")]}

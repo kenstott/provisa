@@ -158,6 +158,7 @@ def _si(customers_schema: str, orders_schema: str) -> SchemaInput:
                     for c in ("id", "first_name", "state")
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
             {
                 "id": 2,
@@ -170,6 +171,7 @@ def _si(customers_schema: str, orders_schema: str) -> SchemaInput:
                     for c in ("id", "customer_id", "amount")
                 ],
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
             },
         ],  # fmt: skip
         relationships=[

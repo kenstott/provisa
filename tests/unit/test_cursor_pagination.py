@@ -42,6 +42,7 @@ def _build_schema_and_ctx():
                 {"column_name": "created_at", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
     column_types = {
@@ -387,6 +388,7 @@ def _base_tables():
                 {"column_name": "amount", "visible_to": ["admin"]},
             ],
             "write_ops": ["delete", "insert", "update"],
+            "write_returns_rows": True,
         },
     ]
 

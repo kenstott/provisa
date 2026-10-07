@@ -320,3 +320,131 @@ async def test_the_direct_terminal_opens_the_pool_for_a_write(monkeypatch):
     assert opened == []  # a read asks for no write pool
     await _pipeline._run_plan_terminal(_plan(True), state)  # pyright: ignore[reportArgumentType]
     assert opened == ["sf-sales"]
+
+
+# -- a write route that does not return the rows it wrote -------------------------------------------
+
+
+@pytest.mark.parametrize("source_type", ["sharepoint", "salesforce"])
+def test_the_pgwire_route_does_not_return_written_rows(source_type):
+    from provisa.executor.writable import write_returns_rows
+    from provisa.executor.write_capability import table_write_returns_rows
+
+    assert write_returns_rows(source_type, None) is False
+    assert table_write_returns_rows({"table_name": "Account"}, source_type, None) is False
+
+
+def test_the_flag_belongs_to_the_route_not_the_source_type(monkeypatch):
+    from provisa.executor import writable
+
+    monkeypatch.setitem(writable._ROUTE_RETURNS_WRITTEN_ROWS, WritePath.PGWIRE, True)
+    assert writable.write_returns_rows("salesforce", None) is True
+
+
+def test_every_route_declares_whether_it_returns_rows():
+    from provisa.executor.writable import _ROUTE_RETURNS_WRITTEN_ROWS
+
+    assert set(_ROUTE_RETURNS_WRITTEN_ROWS) == set(WritePath)
+
+
+@pytest.mark.parametrize(
+    "source_type, returns", [("postgresql", True), ("mongodb", False), ("files", False)]
+)
+def test_other_sources_return_rows_exactly_when_they_take_writes(source_type, returns):
+    from provisa.executor.write_capability import table_write_returns_rows
+
+    assert table_write_returns_rows({"table_name": "t"}, source_type, None) is returns
+
+
+def test_a_view_returns_no_written_rows():
+    from provisa.executor.write_capability import table_write_returns_rows
+
+    assert table_write_returns_rows({"view_sql": "SELECT 1"}, "postgresql", None) is False
+
+
+def _write_gov(returns_rows: bool):
+    from provisa.compiler.stage2 import GovernanceContext
+
+    gov = GovernanceContext()
+    gov.role_id = "writer"
+    gov.can_write = True
+    gov.table_map = {"account": 1, "sf.account": 1}
+    gov.all_columns = {1: [("id", "varchar"), ("name", "varchar")]}
+    gov.writable_columns = {1: frozenset({"id", "name"})}
+    gov.write_ops = {1: frozenset({"insert", "update", "delete"})}
+    gov.write_returns_rows = {1: returns_rows}
+    return gov
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "INSERT INTO sf.account (id, name) VALUES ('1', 'Acme') RETURNING id",
+        "UPDATE sf.account SET name = 'Acme' WHERE id = '1' RETURNING *",
+        "DELETE FROM sf.account WHERE id = '1' RETURNING id",
+    ],
+)
+def test_a_returning_clause_is_refused_at_admission_naming_the_reason(sql):
+    import sqlglot
+
+    from provisa.compiler.write_admission import ReturningNotSupported, admit_write
+
+    with pytest.raises(ReturningNotSupported, match="'account' does not take RETURNING"):
+        admit_write(sqlglot.parse_one(sql, read="postgres"), _write_gov(False))
+    admit_write(sqlglot.parse_one(sql, read="postgres"), _write_gov(True))
+
+
+def test_the_same_write_without_returning_is_admitted():
+    import sqlglot
+
+    from provisa.compiler.write_admission import admit_write
+
+    admit_write(
+        sqlglot.parse_one("UPDATE sf.account SET name = 'Acme' WHERE id = '1'", read="postgres"),
+        _write_gov(False),
+    )
+
+
+def _schema(returns_rows: bool):
+    from provisa.compiler.introspect import ColumnMetadata
+    from provisa.compiler.schema_gen import SchemaInput, generate_schema
+
+    table = {
+        "id": 1,
+        "source_id": "sf-sales",
+        "domain_id": "sales",
+        "schema_name": "sf_sales",
+        "table_name": "account",
+        "columns": [
+            {"column_name": "id", "visible_to": ["admin"]},
+            {"column_name": "name", "visible_to": ["admin"]},
+        ],
+        "write_ops": ["delete", "insert", "update"],
+        "write_returns_rows": returns_rows,
+    }
+    cols = [
+        ColumnMetadata(column_name="id", data_type="varchar(18)", is_nullable=False),
+        ColumnMetadata(column_name="name", data_type="varchar(255)", is_nullable=False),
+    ]
+    return generate_schema(
+        SchemaInput(
+            tables=[table],
+            relationships=[],
+            column_types={1: cols},
+            naming_rules=[],
+            role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
+            domains=[{"id": "sales", "description": ""}],
+            source_types={"sf-sales": "salesforce"},
+        )
+    )
+
+
+def test_graphql_offers_no_mutation_field_where_written_rows_are_not_returned():
+    # Decided by the record's flag: the same table, same source type, with and without it.
+    without = _schema(False)
+    assert without.mutation_type is None or not [
+        name for name in without.mutation_type.fields if "account" in name.lower()
+    ]
+    offered = _schema(True)
+    assert offered.mutation_type is not None
+    assert [name for name in offered.mutation_type.fields if "account" in name.lower()]

@@ -159,12 +159,13 @@ async def schema_input(tenant_db, trino_conn, _load_config) -> dict:
         column_types[table["id"]] = cols
 
     # What each table's source can take, as the model load stamps it (executor/write_capability.py).
-    from provisa.executor.write_capability import table_write_ops
+    from provisa.executor.write_capability import table_write_ops, table_write_returns_rows
 
     source_types = {s["id"]: s["type"] for s in sources}
     for table in tables:
         stype = None if table.get("view_sql") else source_types[table["source_id"]]
         table["write_ops"] = sorted(table_write_ops(table, stype, None))
+        table["write_returns_rows"] = table_write_returns_rows(table, stype, None)
 
     return {
         "tables": tables,

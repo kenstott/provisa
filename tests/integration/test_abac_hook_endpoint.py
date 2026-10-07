@@ -29,7 +29,7 @@ import asyncpg
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
@@ -71,6 +71,7 @@ def _build_schema():
             "schema_name": "public",
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "region", "visible_to": ["admin"]},

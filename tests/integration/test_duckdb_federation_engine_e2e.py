@@ -35,7 +35,7 @@ from provisa.compiler.context import build_context  # noqa: E402
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical  # noqa: E402
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
-from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
 _CSV = str(_FILES / "customers.csv")
@@ -79,6 +79,7 @@ def test_duckdb_query_applies_rls():
                 "schema_name": "main",
                 "table_name": "customers",
                 "write_ops": registry_write_ops("csv"),
+                "write_returns_rows": registry_write_returns_rows("csv"),
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "first_name", "state")
@@ -115,6 +116,7 @@ def test_duckdb_federates_csv_and_sqlite():
                 "schema_name": "main",
                 "table_name": "customers",
                 "write_ops": registry_write_ops("csv"),
+                "write_returns_rows": registry_write_returns_rows("csv"),
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "first_name", "state")
@@ -127,6 +129,7 @@ def test_duckdb_federates_csv_and_sqlite():
                 "schema_name": "main",
                 "table_name": "orders",
                 "write_ops": registry_write_ops("csv"),
+                "write_returns_rows": registry_write_returns_rows("csv"),
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "customer_id", "amount")

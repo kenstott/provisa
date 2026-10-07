@@ -78,6 +78,18 @@ class WriteNotSupported(NotAvailableHere):
         super().__init__(f"{table!r} does not take {operation.upper()}: its source cannot carry it")
 
 
+class ReturningNotSupported(NotAvailableHere):
+    """A write with a ``RETURNING`` clause on a table whose write route cannot return the rows it
+    wrote (executor/write_capability.py) — refused whatever the role holds, naming the table."""
+
+    def __init__(self, table: str) -> None:
+        self.table = table
+        super().__init__(
+            f"{table!r} does not take RETURNING: its source is written through a server that "
+            "does not return the rows it writes"
+        )
+
+
 WRITE_OPS: tuple[str, ...] = ("insert", "update", "delete")
 _OPERATIONS = {
     "INSERT": ("insert",),
@@ -377,6 +389,8 @@ def admit_write(
     table, listed = _target(tree)
     table_id = _resolve(table, gov)
     require_write_op(gov, table_id, table.name, kind)
+    if tree.args.get("returning") is not None and not gov.write_returns_rows[table_id]:
+        raise ReturningNotSupported(table.name)
     if not gov.can_write:
         raise WriteNotAdmitted(
             f"{kind} on {table.name!r}: role {gov.role_id!r} does not hold the 'write' right"

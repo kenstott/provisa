@@ -46,7 +46,7 @@ from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical  #
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
-from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows  # noqa: E402
 
 _DB = os.environ.get("FABRIC_DATABASE", "")
 _ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
@@ -68,6 +68,7 @@ def _si(schema=_SCH):
                 "schema_name": schema,
                 "table_name": "orders",
                 "write_ops": registry_write_ops("fabric"),
+                "write_returns_rows": registry_write_returns_rows("fabric"),
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],

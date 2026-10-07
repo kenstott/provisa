@@ -36,7 +36,7 @@ from provisa.core.models import Source, SourceType
 from provisa.federation import pgwire_replica as pr
 from provisa.federation.connector_duckdb import _DuckDBPgwireConnector
 from provisa.transpiler.transpile import transpile
-from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows
 
 _ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
 
@@ -130,6 +130,7 @@ def _governed_sql(schema: str, gql: str, rls: RLSContext) -> tuple[str, list]:
                 "schema_name": schema,
                 "table_name": "items",
                 "write_ops": registry_write_ops("files"),
+                "write_returns_rows": registry_write_returns_rows("files"),
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "name", "qty")
                 ],

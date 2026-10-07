@@ -38,7 +38,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
-from tests.helpers import registry_write_ops
+from tests.helpers import registry_write_ops, registry_write_returns_rows
 from pytest_bdd import given, when, then, scenarios
 
 scenarios("../features/REQ-257.feature")
@@ -854,6 +854,7 @@ def _build_orders_schema_ctx():
             "schema_name": "public",
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -869,6 +870,7 @@ def _build_orders_schema_ctx():
             "schema_name": "public",
             "table_name": "customers",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},

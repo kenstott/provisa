@@ -46,7 +46,7 @@ from provisa.core.catalog import _to_catalog_name  # noqa: E402
 from provisa.federation.databricks_runtime import DatabricksFederationRuntime  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
 from tests.integration.databricks_warehouse import ensure_warehouse_running  # noqa: E402
-from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -75,6 +75,7 @@ def _schema_input() -> SchemaInput:
                 "schema_name": _SCHEMA,
                 "table_name": _TABLE,
                 "write_ops": registry_write_ops("databricks"),
+                "write_returns_rows": registry_write_returns_rows("databricks"),
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],

@@ -1029,6 +1029,7 @@ class TestPgwireCopyFrom:
                 "schema_name": "public",
                 "table_name": "orders",
                 "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
                 "columns": [
                     {
                         "column_name": name,

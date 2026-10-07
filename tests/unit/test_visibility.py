@@ -33,6 +33,7 @@ def _table(name="orders", domain="sales", columns=None):
             {"column_name": "secret", "visible_to": ["admin"]},
         ],
         "write_ops": ["delete", "insert", "update"],
+        "write_returns_rows": True,
     }
 
 
@@ -107,6 +108,7 @@ def _mutable_table(tid, name, domain, source="pg1"):
         "table_name": name,
         "columns": [{"column_name": "id", "visible_to": ["admin"]}],
         "write_ops": ["delete", "insert", "update"],
+        "write_returns_rows": True,
     }
 
 

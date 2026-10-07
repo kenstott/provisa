@@ -44,7 +44,7 @@ pytestmark = [pytest.mark.integration]
 
 duckdb = pytest.importorskip("duckdb", reason="duckdb required for ATTACH e2e")
 
-from tests.helpers import registry_write_ops  # noqa: E402
+from tests.helpers import registry_write_ops, registry_write_returns_rows  # noqa: E402
 from provisa.compiler.introspect import ColumnMetadata  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.compiler import naming as _naming  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.compiler.schema_gen import SchemaInput  # noqa: E402  # imports follow the duckdb importorskip guard
@@ -64,6 +64,7 @@ _TABLES = [
         "schema_name": "public",
         "table_name": "orders",
         "write_ops": registry_write_ops("postgresql"),
+        "write_returns_rows": registry_write_returns_rows("postgresql"),
         "columns": [
             {"column_name": "id", "visible_to": []},
             {"column_name": "amount", "visible_to": []},

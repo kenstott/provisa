@@ -30,7 +30,7 @@ from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.context import build_context
 from provisa.executor.direct import execute_direct
 from provisa.executor.pool import SourcePool
-from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops
+from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -58,6 +58,7 @@ def _build_schema_and_ctx():
             "schema_name": "public",
             "table_name": "orders",
             "write_ops": registry_write_ops("postgresql"),
+            "write_returns_rows": registry_write_returns_rows("postgresql"),
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
