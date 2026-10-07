@@ -123,15 +123,24 @@ def run_after_write(table_id: int, table_name: str, source_id: str) -> dict[str,
     async def _no_replica(_state, _table_id, _source_id, _reason):
         return False  # no replica store here: the build request has its own tests
 
+    from provisa.api.data import table_written
+    from provisa.core.connection_loop import spawn_background
+
+    spawned: list = []
+
+    def _spawn(coro, **kwargs):
+        # The sink run is spawned onto a background worker; the step is done once it has run.
+        future = spawn_background(coro, **kwargs)
+        spawned.append(future)
+        return future
+
     with (
         patch.object(_change_mod, "emit_change_event", lambda *a: calls["events"].append(a)),
         patch.object(_sink_mod, "trigger_sinks_for_table", _sinks),
         patch("provisa.federation.replica_builds.request_if_replicated", _no_replica),
+        patch.object(table_written, "spawn_background", _spawn),
     ):
-
-        async def _finalize():
-            await finalize_audit(plan, 200, state)
-            await asyncio.sleep(0)  # the sink run is spawned in the background
-
-        asyncio.run(_finalize())
+        asyncio.run(finalize_audit(plan, 200, state))
+        for future in spawned:
+            future.result(timeout=60)
     return calls
