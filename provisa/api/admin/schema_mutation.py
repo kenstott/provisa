@@ -2349,9 +2349,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, input: TableInput
     ) -> MutationResult:  # REQ-016, REQ-020, REQ-155, REQ-156
         """Update an existing table's alias, description, and column metadata."""
-        from provisa.api.admin.capabilities import require_capability
+        from provisa.api.admin._hiding_guard import require_table_save
 
-        require_capability(info, "table_registration", domain_id=input.domain_id)
+        _editor = await require_table_save(info, input)  # REQ-1944
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()
@@ -2472,16 +2472,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _delta_refusal = table_delta_refusal(model)  # REQ-874
             if _delta_refusal is not None:
                 return _delta_refusal
-            from provisa.api.admin.capabilities import has_capability
-            from provisa.security.sensitive import refuse_unpermitted_change
+            from provisa.api.admin._hiding_guard import table_hiding_refusal
 
-            _sensitive_refusal = await refuse_unpermitted_change(  # REQ-1943
-                _conn, model, holds=has_capability(info, SENSITIVE_DATA)
+            _hiding_refusal = await table_hiding_refusal(  # REQ-1943, REQ-1944
+                info, _conn, model, editor=_editor
             )
-            if _sensitive_refusal is not None:
-                return MutationResult(
-                    success=False, message=_sensitive_refusal, code="schema.sensitive_data_required"
-                )
+            if _hiding_refusal is not None:
+                return _hiding_refusal
             try:
                 model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
                 table_id = await table_repo.upsert(_conn, model)

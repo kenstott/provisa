@@ -333,3 +333,69 @@ async def test_the_sensitive_option_on_a_tag_needs_every_domain(plane):
     with pytest.raises(PermissionError, match="every domain"):
         await M().upsert_tag(_info(plane.steward), _tag(False))
     assert (await M().upsert_tag(_info("steward_everywhere"), _tag(False))).success
+
+
+# --- column hiding on a table save ---------------------------------------------------------------
+
+
+async def _input(table_id: int) -> Any:
+    from provisa.api.mcp.table_edit import read_table, table_input
+
+    return table_input(await read_table(table_id))
+
+
+def _column(table_input: Any, name: str) -> Any:
+    return next(c for c in table_input.columns if c.name == name)
+
+
+async def _stored(db: Database, table_id: int, column: str) -> dict:
+    from provisa.core.repositories.table import load_columns
+
+    async with db.acquire() as conn:
+        return next(c for c in await load_columns(conn, table_id) if c["column_name"] == column)
+
+
+async def test_a_steward_masks_and_grants_a_column_of_its_domain_without_table_registration(plane):
+    edited = await _input(plane.ids["orders"])
+    _column(edited, "amount").mask_type = "constant"
+    _column(edited, "amount").mask_value = "0"
+    _column(edited, "id").visible_to = ["sales_role"]
+    _column(edited, "email").fake = "email()"  # sensitive: sensitive_data
+    result = await M().update_table(_info(plane.steward), edited)
+    assert result.success is True, result.message
+    assert (await _stored(plane.db, plane.ids["orders"], "amount"))["mask_type"] == "constant"
+    assert (await _stored(plane.db, plane.ids["orders"], "id"))["visible_to"] == ["sales_role"]
+
+
+async def test_a_steward_may_not_mask_another_domains_column(plane):
+    edited = await _input(plane.ids["invoices"])
+    _column(edited, "amount").mask_type = "constant"
+    _column(edited, "amount").mask_value = "0"
+    result = await M().update_table(_info(plane.steward, "finance_reader"), edited)
+    assert result.success is False
+    assert "amount (mask_type)" in result.message and "'finance'" in result.message
+    assert (await _stored(plane.db, plane.ids["invoices"], "amount"))["mask_type"] is None
+
+
+async def test_a_steward_may_not_change_anything_but_hiding(plane):
+    edited = await _input(plane.ids["orders"])
+    edited.description = "renamed"
+    with pytest.raises(PermissionError, match="table_registration.*description"):
+        await M().update_table(_info(plane.steward), edited)
+
+
+async def test_a_table_editor_without_the_governance_rights_may_not_mask_or_grant(plane):
+    edited = await _input(plane.ids["orders"])
+    _column(edited, "amount").mask_type = "constant"
+    _column(edited, "amount").mask_value = "0"
+    _column(edited, "id").visible_to = ["sales_role"]
+    result = await M().update_table(_info("editor"), edited)
+    assert result.success is False
+    assert "masking_config" in result.message and "column_grant" in result.message
+
+
+async def test_a_table_editor_still_sets_a_fake_on_a_column_that_is_not_sensitive(plane):
+    edited = await _input(plane.ids["orders"])
+    _column(edited, "amount").fake = "uniform(min=1, max=9)"
+    result = await M().update_table(_info("editor"), edited)
+    assert result.success is True, result.message

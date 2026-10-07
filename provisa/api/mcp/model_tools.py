@@ -382,7 +382,10 @@ async def set_column_fake(
     current value; an empty string clears a fake or a synthetic rule. Checked by the editor's own
     check before the save."""
     require_role(role, state)
-    _require_table_editor(request)
+    from provisa.api.admin._hiding_guard import require_hiding_editor_request
+
+    # REQ-1944: a fake is a hiding field -- a steward sets it too; the save checks the domain.
+    require_hiding_editor_request(request)
     from provisa.api.admin.fakes_router import ColumnFakeIn, check_column_fake
 
     table = await table_edit.read_table(table_id)
