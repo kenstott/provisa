@@ -62,7 +62,10 @@ async def planes(docker_postgres):
     # creator, which is what makes prod's rights the org's own rather than one member's.
     async with admin_db.acquire() as conn:
         await conn.execute_core(
-            environments.insert().values(org_id=org_id, name=DEV, created_by=DEVELOPER)
+            # REQ-1942: every environment but prod records the one it was created from.
+            environments.insert().values(
+                org_id=org_id, name=DEV, created_by=DEVELOPER, parent="prod", data_mode="unbound"
+            )
         )
 
     async def add_domain(domain_id, env=DEV):
