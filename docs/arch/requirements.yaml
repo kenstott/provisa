@@ -49014,7 +49014,9 @@
     - 2026-10-06 UNIFIED ENVIRONMENT MODEL (maintainer ruling): R surface (source, faked on read, synthetic)
     plus RW change-log surface; restated as the current description.
 
-    - 2026-10-06: scenarios aligned with the consolidated description.'
+    - 2026-10-06: scenarios aligned with the consolidated description.
+
+    2026-10-07: environment data modes, the always-recorded parent, per-source bindings and the environment detail panel and edit are REQ-1942.'
 - id: REQ-1494
   status: accepted
   group: 1. Access Governance & Security
@@ -51945,6 +51947,7 @@
   - REQ-1504
   - REQ-1528
   - REQ-1529
+  notes: 'Maintainer 2026-10-07: a stored role with no domain_access loads and reads nothing on every surface; one such stored row never refuses the organisation''s model rebuild. The save paths and config loading still refuse an empty domain_access.'
 - id: REQ-1531
   status: proposed
   target: 2026-Q4
@@ -54183,6 +54186,7 @@
   - REQ-1487
   - REQ-1488
   - REQ-1528
+  notes: '2026-10-07: a third environment right, environment_data, governs an environment''s data choices (REQ-1942); the pii right is REQ-1943.'
 - id: REQ-1574
   status: complete
   since: 2026-08
@@ -76981,7 +76985,9 @@
     report states ε, mechanism, drops, closest-row distance, NN distance ratio and membership-inference
     result; faked reads unaffected; non-private datasets carry no guarantee.
 
-    - 2026-10-06: scenarios aligned with the consolidated description.'
+    - 2026-10-06: scenarios aligned with the consolidated description.
+
+    Maintainer 2026-10-06 (P9c): closeness settings are optional -- absent means not checked, and the report says not checked; a row still too near after its redraws is dropped and its children are dropped with it, the report counting both. 2026-10-07: environments start on synthetic data through REQ-1942''s Test (synthetic) mode, which generates the whole model.'
 - id: REQ-1940
   status: proposed
   since: 2026-10
@@ -76999,7 +77005,9 @@
   - REQ-1937
   - REQ-1938
   notes: 'Maintainer 2026-10-05: all pages with lists have inconsistent styles; the standard is the Register Tables
-    page, not, e.g., the Sources and Security pages as they are.'
+    page, not, e.g., the Sources and Security pages as they are.
+
+    Maintainer 2026-10-06/07: every list stripes its rows (an expanded row keeps its parent row''s colour; hover and selection still win); every list page loads with the REQ-1430 page spinner; sort and group are standard on every list of this type, as on Register Tables; a source''s tag chips follow its id with the edit-tags control after them, as a table''s do.'
 - id: REQ-1941
   status: proposed
   since: 2026-10
@@ -77029,3 +77037,85 @@
   - REQ-1493
   notes: 'Maintainer 2026-10-06: Move is Copy with a follow-on repoint of the table to the new location; data between
     sources.'
+- id: REQ-1942
+  status: proposed
+  since: 2026-10
+  group: 13. Multi-Tenancy & Organizations
+  category: Environments
+  priority: MUST
+  type: behavioral
+  description: 'Every environment other than production has one data mode, chosen when it is created and changeable
+    afterwards: Inherit, Unbound, Test (fake) or Test (synthetic). Inherit: its sources read the parent environment''s
+    connections by reference, so the tables show the parent''s real rows. Unbound: the whole model with no connections;
+    each source reads nothing until the operator binds it to a database of their own. Test (fake): the parent''s
+    real rows, with every column that declares a fake read through its fake. Test (synthetic): rows generated from
+    the parent''s profile runs into the environment''s own store. Read-only or read-write is chosen alongside the
+    mode and applies to any of them. The parent an environment was created from is always recorded, whatever its
+    mode, so any environment can be switched back to Inherit at any time; inheriting is a property of each source
+    -- inherited, bound to a connection of the environment''s own, or unbound -- and Inherit and Unbound set every
+    source at once. Test (synthetic) generates the whole model: every table that is not backed by an API, each from
+    a profile run the operator picks in one modal that lists every table with its profile status, preselected to
+    its latest successful run in the parent, with Generate enabled once every such table has one; API-backed tables
+    are never generated, are listed in their own section showing their key columns, the key rule on the synthetic
+    side and the address this environment calls, and state in a sentence what a lookup will return -- real records
+    for keys drawn from real values, nothing for keys generated fresh. Generation runs in the background: the environment
+    shows Generating, then Ready or Failed with the reason, and the report when it finishes; until it finishes the
+    tables read what they read before. The environment list opens a detail panel for each environment, as every
+    list does, showing its parent, data mode, read-only or read-write, each source''s binding, its test data (faked
+    column count and pii columns without a fake, or the synthetic dataset''s status, settings and report) and its
+    change log, with an Edit that changes the data mode, the sources'' bindings, read-only or read-write, the synthetic
+    settings and the expiry; the name is not editable. A change of data mode that changes row keys -- to or from
+    Test (synthetic), or regenerating it -- discards the change log, which the edit form states and asks to confirm;
+    a change between Inherit and Test (fake) keeps it. Changing an environment''s data choices, including creating
+    it as Inherit, needs the environment_data right; creating or switching an environment to Inherit also needs
+    the right to read the parent''s data, and is audited with the real data it makes visible and to how many members.
+    environment_data is held by org_admin by default and by no developer. Test (fake) never shows a column tagged
+    pii unless that column declares a fake: creating or switching to Test (fake), and every request into a Test
+    (fake) environment, is refused while any pii column has no fake, naming the columns and that a holder of the
+    pii right can fix them. Prod has the detail panel but no data mode; it is always real.'
+  use_case: An org admin creates a QA environment as Test (fake) over production, a developer works in it without
+    seeing a single real email or name, and the admin later switches it back to Inherit for a release rehearsal
+    with that change audited.
+  related_reqs:
+  - REQ-1487
+  - REQ-1491
+  - REQ-1493
+  - REQ-1494
+  - REQ-1529
+  - REQ-1538
+  - REQ-1573
+  - REQ-1939
+  - REQ-1943
+  notes: 'Maintainer 2026-10-07: four data modes -- Inherit, Unbound, Test (fake), Test (synthetic); the branch
+    list opens a detail panel with an edit of its choices; switching back to inherited is possible because the parent
+    is known; changing a branch''s data choices is a specific right devs do not hold (a dev switching to Test (fake)
+    with no fake definitions would expose data); the pii check runs whenever an environment is entered; synthetic
+    generates the whole model (implicit relationships make partial generation unsafe); API-backed tables are a realistic
+    choice not to generate, and Provisa cannot repoint an API it does not own.'
+- id: REQ-1943
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Security
+  priority: MUST
+  type: behavioral
+  description: The pii right governs every way a pii value is revealed or hidden, in every environment, production
+    included. Adding or removing the pii tag on a column needs it; so does changing any hiding definition on a column
+    tagged pii -- its role masks, its fake and its synthetic rule -- and changing the column grants on a column
+    tagged pii. masking_config governs role masks on columns that are not pii; fakes and synthetic rules on columns
+    that are not pii are open to anyone who may edit the table, developers included. In a Test (synthetic) environment
+    a pii column may not take a synthetic rule that copies real values (a categories() drawn from the profile, keys
+    drawn from real values). The pii right is held by org_admin by default and is meant to be granted to a data
+    steward role; no developer holds it by default. A column derived from a pii column -- a view's column, a calculated
+    column -- is pii only if it is tagged; pii is never propagated, and tagging a derived column is the operator's
+    concern.
+  use_case: A data steward holding the pii right sets the fakes on the customer table's email and name; a developer
+    tunes the fakes and synthetic rules on order amounts and dates but cannot remove the pii tag or the mask on
+    email.
+  related_reqs:
+  - REQ-1494
+  - REQ-1573
+  - REQ-1939
+  - REQ-1942
+  notes: 'Maintainer 2026-10-07: pii is really the key to everything -- the right comes down to a pii right; masks
+    on pii are included in the edit rule; column grants added; derived columns are the operator''s concern.'
