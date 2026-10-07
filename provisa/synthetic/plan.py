@@ -108,6 +108,9 @@ class ProfiledTable:
     # What the run measured of the columns' dependence (provisa.synthetic.dependence.Dependence),
     # by registered column name; None where it measured none (REQ-1939, DEPENDENCE KEPT).
     dependence: Any = None
+    # REQ-1942: a declared profile -- its facts written by hand, so a category's values are the
+    # operator's own and are generated as written.
+    declared: bool = False
 
 
 @dataclass(frozen=True)
@@ -341,6 +344,8 @@ def plan_tables(
                 col = ColumnPlan(name, sql_type(ir_type, t.name, name), "other", null_share=1.0)
             else:
                 col = _value_column(t, name, ir_type, p, prof.profiled_rows)
+                if prof.declared and p.frequencies:
+                    col = _declared_category(col, p, prof.profiled_rows)
             if _constrained(t, "not_null", name):
                 col = _never_null(col)  # REQ-1939: a column constrained never null has none
             cols.append(col)
@@ -555,6 +560,20 @@ def _value_column(
         shapes=_shares(p.shapes, sum(n for _, n in p.shapes)),  # type: ignore[arg-type]
         integer_only=bool(p.integer_only),
         pool=None if grows else max(p.distinct_count, 1),
+    )
+
+
+def _declared_category(col: ColumnPlan, p: ProfiledColumn, rows: int) -> ColumnPlan:
+    """A category of a declared profile with no fake: the values the operator wrote, at their
+    declared weights (REQ-1942) -- never stand-ins generated for them, as a measured run's real
+    values get."""
+    held = [(v, n) for v, n in p.frequencies if v is not None]
+    total = sum(n for _, n in held)
+    if not total:
+        # Every row null: the declared weights round to no row at this row count.
+        return ColumnPlan(col.name, col.sql_type, col.family, null_share=1.0)
+    return _drawn(
+        col.name, col.sql_type, col.family, [(v, n / total) for v, n in held], _null_share(p, rows)
     )
 
 

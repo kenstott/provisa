@@ -69,6 +69,16 @@ def register(
         return await mt.run_table_profile(*ctx(role), table_id)
 
     @described
+    async def declare_table_profile(table_id: int, profile: dict, role: str | None = None) -> dict:
+        return await mt.declare_table_profile(*ctx(role), table_id, profile)
+
+    @described
+    async def get_profile_run_as_declared(
+        table_id: int, run_id: str, role: str | None = None
+    ) -> dict:
+        return await mt.get_profile_run_as_declared(*ctx(role), table_id, run_id)
+
+    @described
     async def list_profile_runs(table_id: int, role: str | None = None) -> list[dict]:
         return await mt.list_profile_runs(*ctx(role), table_id)
 

@@ -18,6 +18,9 @@
 * ``POST /admin/tables/{table_id}/profile-runs`` — Run Profile Now for one member.
 * ``GET  /admin/tables/{table_id}/profile-runs`` — its run history (View Profile Runs).
 * ``GET  /admin/tables/{table_id}/profile-runs/{run_id}`` — one run's results, safe for its viewer.
+* ``POST /admin/tables/{table_id}/declared-profiles`` — store a declared profile (REQ-1942).
+* ``GET  /admin/tables/{table_id}/profile-runs/{run_id}/declared`` — a run as a declared profile,
+  safe for its viewer, to change and store as one.
 * ``GET  /admin/tables/{table_id}/profile-runs/{run_id}/history`` — one measure across the run's
   drift window, with the run's drift row (REQ-1934 DRIFT ACROSS RUNS), safe for its viewer.
 
@@ -31,6 +34,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Header, Request
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from provisa.api.admin.capabilities import require_capability_request
@@ -293,3 +297,59 @@ async def get_measure_history(
             }
         )
     return {"drift": _jsonable(row), "points": points}
+
+
+async def _registered(conn: Any, table_id: int) -> str:
+    """The registered table's name; a declared profile needs no profiler membership."""
+    row = (
+        await conn.execute_core(
+            select(registered_tables.c.table_name).where(registered_tables.c.id == table_id)
+        )
+    ).fetchone()
+    if row is None:
+        raise ApiError(
+            404, "profile.table_not_found", f"Table {table_id} not found", table_id=table_id
+        )
+    return row[0]
+
+
+class DeclaredProfileBody(BaseModel):
+    """A declared profile (REQ-1942): the facts a profile run measures, written by hand --
+    provisa.profiler.declared says their shape."""
+
+    profile: dict[str, Any]
+
+
+@router.post("/tables/{table_id}/declared-profiles")
+async def declare_profile(request: Request, table_id: int, body: DeclaredProfileBody) -> dict:
+    """Store a declared profile of the table in the active environment (REQ-1942): stored as a
+    profile run is, so generation reads it as it reads a measured one."""
+    require_capability_request(request, "table_registration")
+    from provisa.profiler.declared import DeclaredProfileRefused, declare
+    from provisa.profiler.run import ProfileError
+
+    async with _db().acquire() as conn:
+        table_name = await _registered(conn, table_id)
+    try:
+        run_id = await declare(state, table_id, table_name, body.profile)
+    except (DeclaredProfileRefused, ProfileError) as exc:
+        raise ApiError(422, "profile.declared_refused", str(exc), table=table_name) from exc
+    return {"runId": run_id}
+
+
+@router.get("/tables/{table_id}/profile-runs/{run_id}/declared")
+async def run_as_declared(
+    request: Request,
+    table_id: int,
+    run_id: str,
+    x_provisa_role: str | None = Header(None),
+) -> dict:
+    """A run -- measured or declared -- as a declared profile document, as its viewer may see it
+    (REQ-1942): to change and store as a declared profile of its own."""
+    from provisa.profiler.declared import DeclaredProfileRefused, as_declared
+
+    run = await get_profile_run(request, table_id, run_id, x_provisa_role)
+    try:
+        return {"profile": as_declared(run)}
+    except DeclaredProfileRefused as exc:
+        raise ApiError(422, "profile.declared_refused", str(exc), run_id=run_id) from exc

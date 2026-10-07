@@ -132,11 +132,13 @@ async def _latest_run(conn: Any, schema: str, table_name: str, tid: int) -> str 
     from provisa.profiler.schema import result_sa_table
     from provisa.synthetic.run import _qualified
 
+    from provisa.profiler.declared import measured
+
     runs = _qualified(result_sa_table(table_name, tid, "runs"), schema)
     row = (
         await conn.execute_core(
             select(runs.c.run_id)
-            .where(runs.c.status == "succeeded")
+            .where(runs.c.status == "succeeded", measured(runs))  # REQ-1942: what the data holds
             .order_by(runs.c.run_time.desc())
             .limit(1)
         )

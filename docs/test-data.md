@@ -86,7 +86,7 @@ An API source's mutations are opaque: Provisa cannot know what they change. Unde
 
 ### Test (synthetic): generating the whole model
 
-A Test (synthetic) environment generates its whole model, because implicit relationships make generating part of it unsafe. Every table that is not backed by an API is generated, each from a profile run in the parent. The environment's synthetic plan lists every table with its profile runs, the latest successful one selected, and Generate is refused until every such table has one.
+A Test (synthetic) environment generates its whole model, because implicit relationships make generating part of it unsafe. Every table that is not backed by an API is generated, each from a profile run in the parent or from a declared profile. The environment's synthetic plan lists every table with its profiles: the parent's runs, measured or declared, and the profiles declared in the environment itself. The parent's latest measured run is selected, or the latest declared profile where the table has no measured run. Generate is refused until every such table has one, and while any column has no profile fact, fake or synthetic rule, naming each such column.
 
 An API-backed table is never generated: Provisa cannot repoint an API it does not own. The plan lists each with its key columns, the rule its keys take on the synthetic side and the address the environment calls, and says what a lookup returns: the real record for a key drawn from real values, nothing for a key generated fresh.
 
@@ -198,6 +198,42 @@ In **View Profile Runs**, **Create drift check** adds "the latest run has no dri
 A profile proposes constraints its evidence supports: a column never null, a column unique, a column holding only its recorded values, a number within its observed range, one date never before another. Each shows its evidence and the share of rows it held for. Nothing is applied by proposing it. In the table editor you accept, edit or dismiss each one.
 
 An accepted constraint becomes a check on the table's data quality, flagged when a later run or load breaks it, and it binds synthetic generation. Every run records, for each accepted constraint, the share of rows that met it and the number that broke it. You can export an accepted constraint as a check of a data-quality checker source that scans the table, so it runs on that source's schedule. Export is refused by name where no such source exists.
+
+### Declared profiles
+
+A declared profile holds the facts a profile run measures, written by hand. Use one to generate a table that has no data to profile, or to generate a what-if (ten times the orders, a new region's mix) without touching the source. It is stored as a profile run is, labeled declared, and generation reads it the same way. Drift, fakes measured from a profile and **Fill fakes from a profile** read measured runs only.
+
+Declare a profile with `POST /admin/tables/{id}/declared-profiles` in the environment it belongs to:
+
+```json
+{
+  "profile": {
+    "rowCount": 5000,
+    "columns": {
+      "amount": {"nullShare": 0.02, "distinctCount": 900, "range": {"min": 1, "max": 900}},
+      "placed": {"nullShare": 0, "distinctCount": 365, "range": {"min": "2026-01-01", "max": "2027-01-01"}},
+      "region": {"nullShare": 0, "values": [{"value": "east", "weight": 3}, {"value": "west", "weight": 1}]}
+    },
+    "fanouts": {"lines": {"range": {"min": 0, "max": 6}}}
+  }
+}
+```
+
+| Fact | Meaning |
+| --- | --- |
+| `rowCount` | The table's rows |
+| `nullShare` | The share of a column's rows that are null; required for every declared column |
+| `distinctCount` | Distinct non-null values; taken from `values` for a category |
+| `range` or `quantiles` | A number's or date's distribution: uniform between `min` and `max`, or 101 quantiles from 0 to 1 by 0.01 |
+| `values` | A category's values and their weights |
+| `shapes` | A text column's shapes (`A` upper, `a` lower, `9` digit) and their weights |
+| `integerOnly` | Whether a number is whole; an integer column is |
+| `fanouts` | Children per parent of each one-to-many relationship, as a range or 101 quantiles |
+| `dependence` | Optional: a run's own correlation, dependency and joint-count rows |
+
+A column the profile leaves out takes its fake or its synthetic rule. A key, or a column a relationship generates, takes its relationship's values. A column with none of these is refused by name.
+
+To start from a run, read it with `GET /admin/tables/{id}/profile-runs/{run}/declared`, change what you need, and declare the result. The copy holds only what the run shows you: a column you see by its shape only is left out, so it generates by its fake or rule.
 
 ### External expectations
 

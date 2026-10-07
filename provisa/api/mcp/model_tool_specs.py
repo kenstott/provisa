@@ -98,6 +98,33 @@ SPECS: list[dict] = [
         "input_schema": _obj({"table_id": _TABLE_ID}, ["table_id"]),
     },
     {
+        "name": "declare_table_profile",
+        "description": (
+            "REQ-1942: store a declared profile of a table in the active environment -- the facts "
+            "a profile run measures, written by hand, so a table with no data to profile can be "
+            "generated, or a what-if: {rowCount, columns: {<column>: {nullShare, distinctCount, "
+            "range {min, max} | quantiles [101] | values [{value, weight}] | shapes [{shape, "
+            "weight}], integerOnly}}, fanouts: {<relationship>: {range | quantiles}}, dependence}. "
+            "A column left out takes its fake or synthetic rule; one with none is refused by "
+            "name. Start from get_profile_run_as_declared to copy a run. Returns runId. "
+            + _RIGHT_TABLE
+        ),
+        "input_schema": _obj(
+            {"table_id": _TABLE_ID, "profile": {"type": "object"}}, ["table_id", "profile"]
+        ),
+    },
+    {
+        "name": "get_profile_run_as_declared",
+        "description": (
+            "REQ-1942: a table's profile run (measured or declared) as a declared profile "
+            "document, as the caller may see it -- to change and store with "
+            "declare_table_profile. Read only. " + _RIGHT_TABLE
+        ),
+        "input_schema": _obj(
+            {"table_id": _TABLE_ID, "run_id": {"type": "string"}}, ["table_id", "run_id"]
+        ),
+    },
+    {
         "name": "list_profile_runs",
         "description": (
             "REQ-1934: a table's profile run history, newest first (run_id, run_time, status, "
@@ -505,11 +532,12 @@ async def dispatch(state: Any, role: str, name: str, args: dict, request: Any) -
 SYSTEM_SECTION = (
     "REQ-1934/1494/1939/1919: the Data Profiler, fakes, synthetic datasets and the config export. "
     "Read tools act directly: find_table_id, list_profilers, list_profile_runs, get_table_profile, "
+    "get_profile_run_as_declared, "
     "list_profile_constraints, list_profile_checks, list_fake_kinds, get_table_fakes, "
     "propose_fakes, list_synthetic_datasets, list_synthetic_profile_runs, get_synthetic_report, "
     "export_model_config. The write tools carry their own capability check and act directly once "
     "the user has asked for that change — no propose/confirm_required flow: set_table_profiler, "
-    "run_profiler, run_table_profile, decide_profile_constraint, forget_profile_constraint, "
+    "run_profiler, run_table_profile, declare_table_profile, decide_profile_constraint, forget_profile_constraint, "
     "export_profile_constraint, create_drift_check, create_expectation_check, set_column_fake, "
     "define_synthetic_dataset, generate_synthetic_dataset, drop_synthetic_dataset, "
     "set_environment_data, set_source_binding, recopy_environment_sources, "

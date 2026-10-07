@@ -117,6 +117,24 @@ async def run_table_profile(state: Any, role: str, request: Any, table_id: int) 
     return await run_profile_now(request, table_id)
 
 
+async def declare_table_profile(
+    state: Any, role: str, request: Any, table_id: int, profile: dict
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin.profiler_router import DeclaredProfileBody, declare_profile
+
+    return await declare_profile(request, table_id, DeclaredProfileBody(profile=profile))
+
+
+async def get_profile_run_as_declared(
+    state: Any, role: str, request: Any, table_id: int, run_id: str
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin.profiler_router import run_as_declared
+
+    return await run_as_declared(request, table_id, run_id, x_provisa_role=role)
+
+
 async def list_profile_runs(state: Any, role: str, request: Any, table_id: int) -> list[dict]:
     require_role(role, state)
     from provisa.api.admin.profiler_router import list_profile_runs as route
@@ -128,7 +146,12 @@ async def _latest_succeeded_run(request: Any, table_id: int) -> str:
     from provisa.api.admin.profiler_router import list_profile_runs as route
 
     runs = await route(request, table_id)  # newest first
-    latest = next((r for r in runs if r["status"] == "succeeded"), None)
+    from provisa.profiler.declared import DECLARED
+
+    # REQ-1942: the latest MEASURED run; a declared profile measured nothing.
+    latest = next(
+        (r for r in runs if r["status"] == "succeeded" and r["sample_method"] != DECLARED), None
+    )
     if latest is None:
         raise ValueError(
             f"table {table_id} has no succeeded profile run; run run_table_profile first"

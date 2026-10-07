@@ -350,8 +350,9 @@ async def recopy_sources(request: Request, org_id: str, name: str, body: RecopyB
 
 
 class GenerateBody(BaseModel):
-    """A whole-model generation: each generated table's profile run in the parent, by table id
-    (a table left out takes its latest successful run), the seed and the scale."""
+    """A whole-model generation: each generated table's profile, by table id -- a run in the
+    parent, measured or declared, or a profile declared in the environment (a table left out takes
+    the one the plan preselects) -- the seed and the scale."""
 
     runs: dict[int, str] = {}
     seed: int = 0
@@ -385,7 +386,7 @@ async def synthetic_plan(request: Request, org_id: str, name: str) -> dict:
     db = (await _env_runtime(org_id, name)).model_db
     assert db is not None, "an environment's runtime holds its model store"
     async with db.acquire() as conn:
-        return await model_plan(_state(), conn, row["parent"])
+        return await model_plan(_state(), conn, row["parent"], name)
 
 
 @router.post("/{name}/synthetic")
@@ -420,30 +421,42 @@ async def generate_model(request: Request, org_id: str, name: str, body: Generat
     db = (await _env_runtime(org_id, name)).model_db
     assert db is not None, "an environment's runtime holds its model store"
     async with db.acquire() as conn:
-        plan = await model_plan(_state(), conn, row["parent"])
-    runs: dict[int, str] = {}
+        plan = await model_plan(_state(), conn, row["parent"], name)
+    runs: dict[int, tuple[str, str]] = {}
     missing = []
     for t in plan["tables"]:
         chosen = body.runs.get(t["tableId"], t["selected"])
+        held = {r["runId"]: r["env"] for r in t["runs"]}
         if chosen is None:
             missing.append(t["tableName"])
-        elif chosen not in {r["runId"] for r in t["runs"]}:
+        elif chosen not in held:
             raise ApiError(
                 422,
                 "environments.unknown_run",
                 f"{t['tableName']!r} has no successful profile run {chosen!r} in "
-                f"{row['parent']!r}.",
+                f"{row['parent']!r}, nor a declared profile {chosen!r} in {name!r}.",
                 org=org_id,
                 env=name,
             )
         else:
-            runs[t["tableId"]] = chosen
+            runs[t["tableId"]] = (held[chosen], chosen)
     if missing:
         raise ApiError(
             422,
             "environments.unprofiled",
-            f"These tables have no successful profile run in {row['parent']!r} to generate them "
-            f"from: {', '.join(missing)}.",
+            f"These tables have no successful profile run in {row['parent']!r}, nor a declared "
+            f"profile, to generate them from: {', '.join(missing)}.",
+            org=org_id,
+            env=name,
+        )
+    async with db.acquire() as conn:
+        uncovered = await _uncovered(conn, org_id, runs)
+    if uncovered:
+        raise ApiError(
+            422,
+            "environments.uncovered",
+            "These columns have no profile fact, fake or synthetic rule to generate them from: "
+            f"{', '.join(uncovered)}.",
             org=org_id,
             env=name,
         )
@@ -461,18 +474,42 @@ async def generate_model(request: Request, org_id: str, name: str, body: Generat
         actor,
         "environment.generate",
         name,
-        {"runs": runs, "seed": body.seed, "scale": body.scale, "change_log_discarded": discarded},
+        {
+            "runs": {tid: {"env": e, "run": rid} for tid, (e, rid) in runs.items()},
+            "seed": body.seed,
+            "scale": body.scale,
+            "change_log_discarded": discarded,
+        },
     )
     start(
         _state(),
         org_id=org_id,
         env=name,
-        parent=row["parent"],
         runs=runs,
         seed=body.seed,
         scale=body.scale,
     )
     return {"status": "generating", "tables": len(runs), "apiTables": len(plan["apiTables"])}
+
+
+async def _uncovered(conn: Any, org_id: str, runs: dict[int, tuple[str, str]]) -> list[str]:
+    """The columns each chosen profile leaves with nothing to generate from (REQ-1942)."""
+    from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
+    from provisa.synthetic.run import uncovered_columns
+
+    tables = {t["id"]: t for t in await fetch_tables(conn)}
+    relationships = await fetch_relationships(conn)
+    out: list[str] = []
+    for tid, (held_in, run_id) in sorted(runs.items()):
+        out += await uncovered_columns(
+            conn,
+            org_id=org_id,
+            env=held_in,
+            table=tables[tid],
+            run_id=run_id,
+            relationships=relationships,
+        )
+    return out
 
 
 async def _env_runtime(org_id: str, name: str) -> Any:

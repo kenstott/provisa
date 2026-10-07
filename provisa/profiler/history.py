@@ -25,6 +25,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.schema import CreateTable
 
+from provisa.profiler.declared import measured
 from provisa.profiler.schema import result_sa_table
 
 # The kinds a run's measures are read from (``compare.measures_of``).
@@ -58,7 +59,8 @@ async def previous_runs(
     runs = await relation(conn, table_name, table_id, "runs")
     query = (
         select(runs.c.run_id, runs.c.run_time)
-        .where(runs.c.status == "succeeded", runs.c.run_time < before)
+        # REQ-1942: a declared profile measured nothing, so no run is compared with it.
+        .where(runs.c.status == "succeeded", measured(runs), runs.c.run_time < before)
         .order_by(runs.c.run_time.desc())
     )
     result = await conn.execute_core(query if limit is None else query.limit(limit))

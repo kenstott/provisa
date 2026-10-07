@@ -80,11 +80,12 @@ def _api_entry(table: dict, source: dict) -> dict[str, Any]:
     }
 
 
-async def model_plan(state: Any, conn: Any, parent: str) -> dict[str, Any]:
-    """The tables a whole-model generation in the environment ``conn`` is scoped to would
-    generate -- each with the parent's successful profile runs, newest first, and the one
-    preselected -- and the API-backed tables it would not; ``ready`` when every generated table
-    has a run."""
+async def model_plan(state: Any, conn: Any, parent: str, env: str) -> dict[str, Any]:
+    """The tables a whole-model generation in ``env`` (the environment ``conn`` is scoped to)
+    would generate -- each with the profiles it may be generated from, newest first: the parent's
+    successful profile runs, measured or declared, and ``env``'s own declared profiles (REQ-1942)
+    -- the one preselected: the parent's latest measured run, else the latest declared profile;
+    and the API-backed tables it would not; ``ready`` when every generated table has one."""
     from provisa.api.admin.db_queries import fetch_tables
     from provisa.core.schema_org import sources
     from provisa.synthetic.run import profile_runs_in
@@ -104,21 +105,45 @@ async def model_plan(state: Any, conn: Any, parent: str) -> dict[str, Any]:
     api_types = api_source_types()
     api = [t for t in tables if source_rows[t["source_id"]]["type"] in api_types]
     generated = [t for t in tables if source_rows[t["source_id"]]["type"] not in api_types]
-    runs = {r["tableId"]: r["runs"] for r in await profile_runs_in(conn, parent, generated)}
-    entries = [
-        {
-            "tableId": t["id"],
-            "tableName": t["table_name"],
-            "runs": runs.get(t["id"], []),
-            "selected": runs[t["id"]][0]["runId"] if t["id"] in runs else None,
-        }
-        for t in generated
-    ]
+    runs: dict[int, list[dict]] = {}
+    for r in await profile_runs_in(conn, parent, generated):
+        runs.setdefault(r["tableId"], []).extend(r["runs"])
+    for r in await profile_runs_in(conn, env, generated):
+        runs.setdefault(r["tableId"], []).extend(x for x in r["runs"] if x["origin"] == "declared")
+    from provisa.api.admin.db_queries import fetch_relationships
+    from provisa.core.request_context import require_current_org
+    from provisa.synthetic.run import uncovered_columns
+
+    relationships = await fetch_relationships(conn)
+    entries = []
+    for t in generated:
+        held = sorted(runs.get(t["id"], []), key=lambda x: x["runTime"], reverse=True)
+        preferred = [x for x in held if x["origin"] == "measured"] or held
+        selected = preferred[0] if preferred else None
+        entries.append(
+            {
+                "tableId": t["id"],
+                "tableName": t["table_name"],
+                "runs": held,
+                "selected": None if selected is None else selected["runId"],
+                # REQ-1942: what the preselected profile leaves with nothing to generate from.
+                "uncovered": []
+                if selected is None
+                else await uncovered_columns(
+                    conn,
+                    org_id=require_current_org(),
+                    env=selected["env"],
+                    table=t,
+                    run_id=selected["runId"],
+                    relationships=relationships,
+                ),
+            }
+        )
     return {
         "parent": parent,
         "tables": entries,
         "apiTables": [_api_entry(t, source_rows[t["source_id"]]) for t in api],
-        "ready": all(e["selected"] is not None for e in entries),
+        "ready": all(e["selected"] is not None and not e["uncovered"] for e in entries),
     }
 
 
@@ -127,15 +152,15 @@ def start(
     *,
     org_id: str,
     env: str,
-    parent: str,
-    runs: dict[int, str],
+    runs: dict[int, tuple[str, str]],
     seed: int,
     scale: float,
 ) -> None:
     """Generate ``env``'s whole model in the background from ``runs`` -- each generated table's
-    profile run in ``parent`` -- recording Generating, then Ready or Failed with the reason."""
+    profile, as (the environment holding it, its run id) -- recording Generating, then Ready or
+    Failed with the reason."""
     task = asyncio.create_task(
-        _generate(state, org_id=org_id, env=env, parent=parent, runs=runs, seed=seed, scale=scale)
+        _generate(state, org_id=org_id, env=env, runs=runs, seed=seed, scale=scale)
     )
     _RUNNING.add(task)
     task.add_done_callback(_RUNNING.discard)
@@ -146,8 +171,7 @@ async def _generate(
     *,
     org_id: str,
     env: str,
-    parent: str,
-    runs: dict[int, str],
+    runs: dict[int, tuple[str, str]],
     seed: int,
     scale: float,
 ) -> None:
@@ -166,7 +190,10 @@ async def _generate(
     org_token = set_current_org(org_id)
     env_token = set_current_env(env)
     try:
-        rows = [DatasetTableRow(tid, parent, run_id, None) for tid, run_id in sorted(runs.items())]
+        rows = [
+            DatasetTableRow(tid, held_in, run_id, None)
+            for tid, (held_in, run_id) in sorted(runs.items())
+        ]
         async with state.model_db.acquire() as conn:
             await check_closure_of(conn, [r.table_id for r in rows])
             await define(

@@ -138,6 +138,8 @@ _REFUSALS = [
     ("run_profiler", {"source_id": "prof"}, "Missing capability: 'source_registration'"),
     ("run_table_profile", {"table_id": 1}, _TABLE_RIGHT),
     ("list_profile_runs", {"table_id": 1}, _TABLE_RIGHT),
+    ("declare_table_profile", {"table_id": 1, "profile": {"rowCount": 1}}, _TABLE_RIGHT),
+    ("get_profile_run_as_declared", {"table_id": 1, "run_id": "r1"}, _TABLE_RIGHT),
     ("get_table_profile", {"table_id": 1}, _TABLE_RIGHT),
     ("list_profile_constraints", {"table_id": 1}, _TABLE_RIGHT),
     (
@@ -316,8 +318,13 @@ def _profile_db(monkeypatch, app_state, runs: list[dict], **kinds: list[dict]) -
     _use_db(monkeypatch, app_state, by_table)
 
 
-def _run(run_id: str, status: str = "succeeded") -> dict:
-    return {"run_id": run_id, "run_time": "2026-10-06T00:00:00", "status": status}
+def _run(run_id: str, status: str = "succeeded", sample_method: str = "whole") -> dict:
+    return {
+        "run_id": run_id,
+        "run_time": "2026-10-06T00:00:00",
+        "status": status,
+        "sample_method": sample_method,
+    }
 
 
 def _rules() -> list[ColumnRule]:
@@ -363,6 +370,23 @@ async def test_get_table_profile_is_the_viewers_safe_view_of_the_latest_run(monk
         "runId": "r2",
         "columns": [{"run_id": "r2", "column_name": "id", "null_count": 0}],
     }
+
+
+async def test_get_table_profile_reads_the_latest_measured_run_never_a_declared_one(
+    monkeypatch, app_state
+):
+    """REQ-1942: a declared profile measured nothing; the table's profile is what was measured."""
+    _profile_db(
+        monkeypatch,
+        app_state,
+        [_run("declared-9", sample_method="declared"), _run("r2")],
+        columns=[{"run_id": "r2", "column_name": "id", "null_count": 0}],
+    )
+    with patch("provisa.profiler.governance.column_rules", new=AsyncMock(return_value=_rules())):
+        out = await model_tools.get_table_profile(
+            app_state, "steward", _request("steward"), 7, kinds=["columns"]
+        )
+    assert out["runId"] == "r2"
 
 
 async def test_get_table_profile_without_a_succeeded_run_says_so(monkeypatch, app_state):
