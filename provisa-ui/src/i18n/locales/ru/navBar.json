@@ -58,6 +58,7 @@
     "domainsToggle": "Домены ({{checked}}/{{total}})",
     "domainsLabel": "Домены",
     "tourResume": "Продолжить обзорный тур",
+    "tourMenu": "Открыть «Подробнее»",
     "tourStart": "Пройти обзорный тур",
     "userMenu": "Меню пользователя",
     "profile": "Профиль",

@@ -5,10 +5,6 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect } from "./coverage";
-import { TOUR_STEPS } from "../src/tour/tourSteps";
-
-// Derived so inserting a step re-points the test instead of walking it onto the wrong surface.
-const QUALITY_TABLE_STEP = TOUR_STEPS.findIndex((s) => s.key === "stepQualityTable");
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -21,20 +17,18 @@ test.describe.configure({ timeout: 180_000 });
 //  - resuming from another page, the first row on screen was a row of the page being left
 //    (/sources), so the tour clicked that one instead of a table row.
 test("tour walks from the quality steps through to the profiler panel", async ({ page }) => {
-  // Resume at the first quality step from /sources (see tour-page-preload.spec.ts): "seen" keeps
-  // TourAutoStart from restarting at step 0; the navbar tour button resumes at the saved index.
-  await page.addInitScript((step: number) => {
-    localStorage.setItem("provisa_tour_seen", "true");
-    localStorage.setItem("provisa_tour_progress", String(step));
-  }, QUALITY_TABLE_STEP);
+  // REQ-1945: these steps are the "Test data and environments" topic. The core tour has been seen
+  // ("seen"), so the navbar tour button opens the Deep Dives menu and the card runs the topic.
+  await page.addInitScript(() => localStorage.setItem("provisa_tour_seen", "true"));
   await page.goto("/sources");
   await page.locator(".navbar-tour-btn").click();
+  await page.locator('[data-testid="tour-topic-testdata"]').click();
 
   const title = page.locator(".driver-popover-title");
   const next = page.locator(".driver-popover-next-btn");
   const editButton = page.locator('[data-testid="table-read-view-edit"]');
 
-  // Resuming navigates to /tables and pays that route's first-visit chunk fetch and data load.
+  // Starting the topic navigates to /tables and pays that route's first-visit chunk fetch and data load.
   await expect(title).toHaveText("A quality checker is just a source", { timeout: 60000 });
   await expect(page).toHaveURL(/\/tables\?source=dq-checker$/);
   await expect(

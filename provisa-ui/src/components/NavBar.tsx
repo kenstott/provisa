@@ -47,7 +47,20 @@ export function NavBar() {
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
   const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrgId } =
     useAuth();
-  const { startTour, canResume, status: tourStatus, available: tourAvailable } = useTour();
+  const {
+    startTour,
+    canResume,
+    coreSeen,
+    status: tourStatus,
+    available: tourAvailable,
+  } = useTour();
+  // REQ-1945: a part-way core tour resumes; once the core tour has been seen the button opens the
+  // Deep Dives menu.
+  const tourLabel = canResume
+    ? t("navBar.tourResume")
+    : coreSeen
+      ? t("navBar.tourMenu")
+      : t("navBar.tourStart");
   const { setNode: setSubnavExtraNode } = useSubnavExtraSlot();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -268,11 +281,11 @@ export function NavBar() {
           {/* No launcher where the viewer's rights open none of the tour's pages — a button
               whose tour would be empty is worse than no button. */}
           {tourAvailable && (
-            <Tooltip label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}>
+            <Tooltip label={tourLabel}>
               <ActionIcon
                 variant="default"
                 size="lg"
-                aria-label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}
+                aria-label={tourLabel}
                 className="navbar-tour-btn"
                 // The launch prefetch can run for seconds on a loaded machine; the button itself has
                 // to show that the click landed, or it gets clicked again while the tour is starting.

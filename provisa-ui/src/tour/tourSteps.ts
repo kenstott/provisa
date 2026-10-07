@@ -419,6 +419,14 @@ export const TOUR_STEPS: TourStep[] = [
     key: "stepDataProducts",
   },
   {
+    // REQ-1945: publishing the model, its data products and lineage out to a catalog. The anchor is
+    // the Metadata Export page root, which paints in both the entitled and not-entitled states.
+    route: "/admin/metadata-export",
+    capability: "org_settings",
+    element: '[data-tour="metadata-export"]',
+    key: "stepPublish",
+  },
+  {
     route: "/views",
     capability: "table_registration",
     prefetch: "settings",
@@ -471,6 +479,49 @@ export const TOUR_STEPS: TourStep[] = [
 ];
 
 /**
+ * REQ-1945: the tour is a short CORE tour plus a menu of Deep Dives, each its own tour. Every step
+ * belongs to exactly one scope (asserted by tourScopes.test.ts), named by its `key`. Order inside a
+ * scope is TOUR_STEPS order, so the narrative of the flat list is kept and a routeless step still
+ * inherits the nearest preceding routed step, wherever that step's own scope lies.
+ */
+export const TOPIC_IDS = [
+  "connect",
+  "relationships",
+  "model",
+  "govern",
+  "query",
+  "testdata",
+  "publish",
+  "operate",
+] as const;
+export type TopicId = (typeof TOPIC_IDS)[number];
+export type TourScope = "core" | TopicId;
+
+export const TOUR_SCOPES: Record<TourScope, readonly string[]> = {
+  core: ["step0", "stepPolly", "step1", "step2", "step6", "step13", "step14"],
+  connect: ["step3", "step4", "step5", "stepPreview"],
+  relationships: ["step15", "step16", "step17"],
+  model: ["step20", "step21", "step22"],
+  govern: ["step18", "step19"],
+  query: ["step7", "step8", "step9", "step10", "step11", "step12"],
+  testdata: [
+    "stepQualityTable",
+    "stepQualityPanel",
+    "stepProfilerTable",
+    "stepProfilerPanel",
+    "stepProfilerChecks",
+    "stepFakes",
+    "stepFakesFill",
+    "stepEnvKinds",
+    "stepSynthetic",
+    "stepSyntheticPrivacy",
+  ],
+  // The glossary step stays here until its topic is decided (REQ-1945 open question).
+  publish: ["stepGlossary", "stepDataProducts", "stepPublish"],
+  operate: ["stepReports", "step23", "step24"],
+};
+
+/**
  * The route step `index` must be on, walking back to the nearest preceding step that declares one.
  *
  * A step omits `route` when it continues on the page its predecessor navigated to (e.g. the
@@ -504,7 +555,10 @@ export function stepRoute(index: number): string | undefined {
  * `meets` is passed in rather than imported so this stays pure data logic; the runner supplies
  * `meetsRequirement` bound to the signed-in capabilities.
  */
-export function tourItinerary(meets: (capability: Capability) => boolean): number[] {
+export function tourItinerary(
+  meets: (capability: Capability) => boolean,
+  scope?: TourScope,
+): number[] {
   const out: number[] = [];
   // Whether the route currently in force is one this viewer may open. Steps before the first
   // routed step (there are none today) would inherit `true` — no gate to fail.
@@ -516,7 +570,9 @@ export function tourItinerary(meets: (capability: Capability) => boolean): numbe
       }
       ownerAllowed = meets(step.capability);
     }
-    if (ownerAllowed) out.push(i);
+    // The owner walk covers every step, so a scoped run whose first step is routeless still
+    // resolves its owner's rights; the scope only filters what is kept.
+    if (ownerAllowed && (scope === undefined || TOUR_SCOPES[scope].includes(step.key))) out.push(i);
   });
   return out;
 }

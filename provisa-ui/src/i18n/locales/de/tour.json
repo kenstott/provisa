@@ -5,7 +5,8 @@
       "next": "Weiter ({{current}}/{{total}})",
       "back": "Zurück",
       "start": "Start",
-      "docs": "Doku"
+      "docs": "Doku",
+      "deepDives": "Deep Dives"
     },
     "welcome": {
       "title": "Geführte Tour starten?",
@@ -16,10 +17,50 @@
       "resume": "Tour fortsetzen",
       "restart": "Neu beginnen"
     },
+    "menu": {
+      "title": "Deep Dives",
+      "intro": "Ein Modell für Ihre Daten, Metadaten und Verarbeitung, synchron gehalten und überall wiederverwendet. Wählen Sie ein Thema: Jedes ist eine kurze eigene Tour, und mit „Fertig“ kehren Sie hierher zurück.",
+      "completed": "Abgeschlossen",
+      "steps": "Schritte: {{count}}"
+    },
+    "topics": {
+      "connect": {
+        "title": "Daten verbinden",
+        "summary": "Quelltypen, Tabellen registrieren, Replikate und Live-Lesezugriffe."
+      },
+      "relationships": {
+        "title": "Beziehungen",
+        "summary": "Legen Sie fest, wie Tabellen zusammenhängen – innerhalb einer Quelle und quellenübergreifend, ob eine Quelle sie deklariert oder nicht. Einmal deklariert, folgt jede Schnittstelle."
+      },
+      "model": {
+        "title": "Modellieren",
+        "summary": "Ergänzen Sie, was Ihre Quellen nicht haben: Views, berechnete Spalten, Metriken und Befehle, jeweils einmal definiert und von jeder Schnittstelle, Umgebung und Rolle genutzt."
+      },
+      "govern": {
+        "title": "Governance",
+        "summary": "Rollen und Domänen, Zeilenregeln, Maskierung, sensible Daten und der Data Steward."
+      },
+      "query": {
+        "title": "Überall abfragen",
+        "summary": "SQL, GraphQL, Cypher, REST und MCP über eine einzige kontrollierte Pipeline."
+      },
+      "testdata": {
+        "title": "Testdaten und Umgebungen",
+        "summary": "Der Profiler, Fakes, synthetische Daten, Umgebungen und Datenmodi."
+      },
+      "publish": {
+        "title": "Veröffentlichen",
+        "summary": "Datenprodukte, Katalogeinträge und Lineage, veröffentlicht in den externen Werkzeugen Ihrer Organisation."
+      },
+      "operate": {
+        "title": "Betrieb",
+        "summary": "Management-Berichte, Observability und die Admin-Seiten, die die Plattform betreiben."
+      }
+    },
     "steps": {
       "step0": {
         "title": "Willkommen, machen wir die Tour",
-        "description": "🧭 Dieser Kompass öffnet die Tour jederzeit erneut. Gehen Sie, wann Sie möchten – klicken Sie auf die App oder drücken Sie <kbd>Esc</kbd>.<p><strong>Provisa</strong> ist ein aktiver Semantic Layer für Ihre Daten, der sich aus dem Datenpfad heraushält.</p><p>🎯 <strong>Der gesamte Kern ist eine kurze Übung:</strong> Verbinden Sie ein paar Datenbanken und fragen Sie sie dann auf <strong>sieben Arten</strong> ab – oder verzichten Sie auf die Syntax und fragen Sie einfach auf Deutsch. Etwa fünf Minuten, <strong>direkt von Ihrem Desktop</strong>: keine Server, keine Infrastruktur aufzusetzen (das kommt später, wenn Sie bereit sind).</p><div class='tour-tags'><span>Natürliche Sprache</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles <em>danach</em> – weitere Quellen, Föderation, Dateien, Beziehungen, Sichten, geplante Pipelines – ist, wie Sie mit der Plattform <strong>wachsen</strong>, nicht, was Sie am ersten Tag brauchen. Wir markieren, wo der Kern endet.</p><p>Bereit? Verbinden wir eine Quelle. →</p>"
+        "description": "🧭 Dieser Kompass öffnet die Tour jederzeit erneut. Gehen Sie, wann Sie möchten – klicken Sie auf die App oder drücken Sie <kbd>Esc</kbd>.<p><strong>Provisa</strong> ist ein einziges Modell, das Ihre Daten, deren Metadaten und die Verarbeitung dazwischen enthält. Dasselbe Modell definiert Ihre Datenlandschaft und betreibt sie – alles ist eine Sache, und es hält sich aus dem Datenpfad heraus.</p><p>Deshalb <strong>bleibt alles synchron</strong> und ist <strong>Wiederverwendung eingebaut</strong>: Eine einmal definierte Beziehung, Metrik, Maskierung oder Regel gilt für jede Schnittstelle, jede Umgebung und jede Rolle. Doppelte Tabellen und Metriken, doppelte Befehle und Regeln, sogar zwei Systeme, die dieselben Daten liefern, stehen im Modell nebeneinander – Duplikate sind leicht zu erkennen und einfach zu beseitigen.</p><p>Es ist kompakt, erweiterbar und komponierbar. Es fügt sich neben Ihren Bestand ein, bringt Ordnung ins Durcheinander und lässt alle Datenprofis ihr Fachwissen einbringen, ohne ihre Fantasie zu begrenzen – es nimmt nur die Fleißarbeit ab.</p><p>🎯 <strong>Der Kern ist eine kurze Übung:</strong> Verbinden Sie eine Datenbank und fragen Sie sie dann auf <strong>sieben Arten</strong> ab – oder fragen Sie einfach in normaler Sprache. Etwa fünf Minuten, <strong>direkt von Ihrem Desktop</strong>, ohne Infrastruktur aufzusetzen.</p><div class='tour-tags'><span>Natürliche Sprache</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles Weitere ist ein <strong>Deep Dive</strong>, den Sie aus einem Menü wählen, wenn Sie bereit sind.</p><p>Bereit? Verbinden wir eine Quelle. →</p>"
       },
       "stepPolly": {
         "title": "Lernen Sie Polly kennen, Ihre Einrichtungshilfe",
@@ -119,7 +160,7 @@
       },
       "stepProfilerChecks": {
         "title": "Drift und Prüfungen",
-        "description": "Jeder Lauf wird mit den letzten Läufen der Tabelle verglichen, und eine driftende Messgröße wird markiert. Eine Datenqualitätsprüfung löst die Ausnahme aus. Sie können auch vom Profil vorgeschlagene Constraints annehmen und Läufe gegen Erwartungen von außerhalb von Provisa prüfen."
+        "description": "Jeder Lauf wird mit den letzten Läufen der Tabelle verglichen, und eine driftende Messgröße wird markiert. Eine Datenqualitätsprüfung löst die Ausnahme aus. Sie können auch vom Profil vorgeschlagene Constraints annehmen und Läufe gegen Erwartungen von außerhalb von Provisa prüfen. Ein Constraint lässt sich außerdem als Prüfung in den Vertrag eines <strong>Soda</strong>- oder <strong>Great-Expectations</strong>-Checkers exportieren."
       },
       "stepFakes": {
         "title": "Einen Fake-Wert deklarieren",
@@ -151,11 +192,11 @@
       },
       "step22": {
         "title": "Lineage, durchgehend",
-        "description": "🧬 <strong>Lineage ist nicht undurchsichtig.</strong> Dies ist eine echte, analysierte Abfrage. Jede Ergebnisspalte wird durch ihre Transformationen zurückverfolgt — <code>name_upper</code> folgen — und Joins bis zu den genauen <strong>Quellspalten</strong>, die sie speisen.<p>Befehle sind deklarativ definiert, sodass jeder Schritt erfasst wird; materialisierte Sichten behalten per Definition vollständige Lineage. Nichts wird ausgeführt — die Abfrage wird nur analysiert.</p><p>→ Letzte Station: der Betrieb in Produktion.</p>"
+        "description": "🧬 <strong>Lineage ist die Abhängigkeitsspur, die Ihre Ableitungen hinterlassen:</strong> woraus jede View, berechnete Spalte oder Metrik besteht und was von ihr abhängt. Das ist eine echte, analysierte Abfrage – verfolgen Sie <code>name_upper</code> durch seine Transformationen zurück zu den genauen <strong>Quellspalten</strong>, die es speisen.<p>Es wird nichts ausgeführt – die Abfrage wird nur analysiert.</p>"
       },
       "step23": {
         "title": "Betreiben",
-        "description": "Die Admin-Seiten betreiben die Plattform:<ul><li>⚙️ Ihre <strong>Föderations-Engine</strong> wählen und konfigurieren — austauschbar: DuckDB (eingebettet, ohne Konfiguration), Trino, PostgreSQL, ClickHouse, oder ein Cloud-Warehouse als erstklassige Engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Jederzeit austauschen — das Modell, die Oberflächen und die Governance darüber ändern sich nie.</li><li>🔗 Welche Engine Sie auch wählen, sie bringt ihre eigene Reichweite für <strong>Live-externe Daten</strong> mit — Parquet, Iceberg, Delta werden direkt vor Ort gelesen, ohne Kopieren, Zugangsdaten automatisch bereitgestellt. Alles, was sie nicht live verknüpfen kann, landet als governte Replik.</li><li>🔑 <strong>Verschlüsselungsschlüssel</strong> verwalten und <strong>Auth-Provider</strong> anbinden</li><li>📊 Vollständige <strong>Observability</strong> — zu jedem OpenTelemetry-Collector für erstklassiges Trace-Management umleiten</li></ul><p>Dasselbe Modell wandert von der lokalen Entwicklung bis zur Produktion, bei jedem Schritt validiert — kein Neuschreiben:</p><ul><li><strong>Entwickeln</strong> — eingebettetes DuckDB, kein Docker. Lokal bauen &amp; validieren.</li><li><strong>Im großen Maßstab validieren</strong> — Docker, eine Engine + Observability hochfahren. Verhalten gegen Produktions-Engines nachweisen.</li><li><strong>Befördern</strong> — auf Ihre eigene Infrastruktur zeigen, über CI/CD bauen, in Produktion ausliefern.</li></ul>"
+        "description": "Die Admin-Seiten betreiben die Plattform:<ul><li>⚙️ Ihre <strong>Föderations-Engine</strong> wählen und konfigurieren — austauschbar: DuckDB (eingebettet, ohne Konfiguration), Trino, PostgreSQL, ClickHouse, oder ein Cloud-Warehouse als erstklassige Engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Jederzeit austauschen — das Modell, die Oberflächen und die Governance darüber ändern sich nie.</li><li>🔗 Welche Engine Sie auch wählen, sie bringt ihre eigene Reichweite für <strong>Live-externe Daten</strong> mit — Parquet, Iceberg, Delta werden direkt vor Ort gelesen, ohne Kopieren, Zugangsdaten automatisch bereitgestellt. Alles, was sie nicht live verknüpfen kann, landet als governte Replik.</li><li>🔑 <strong>Verschlüsselungsschlüssel</strong> verwalten und <strong>Auth-Provider</strong> anbinden</li><li>📊 Vollständige <strong>Observability</strong> — zu jedem OpenTelemetry-Collector für erstklassiges Trace-Management umleiten</li><li>📤 <strong>Die Konfiguration des Modells exportieren</strong> – das ganze Modell oder ausgewählte Abschnitte – als Datei zum Prüfen, Vergleichen und Ausliefern per CI/CD</li></ul><p>Dasselbe Modell wandert von der lokalen Entwicklung bis zur Produktion, bei jedem Schritt validiert — kein Neuschreiben:</p><ul><li><strong>Entwickeln</strong> — eingebettetes DuckDB, kein Docker. Lokal bauen &amp; validieren.</li><li><strong>Im großen Maßstab validieren</strong> — Docker, eine Engine + Observability hochfahren. Verhalten gegen Produktions-Engines nachweisen.</li><li><strong>Befördern</strong> — auf Ihre eigene Infrastruktur zeigen, über CI/CD bauen, in Produktion ausliefern.</li></ul>"
       },
       "step24": {
         "title": "Das war die Tour — jetzt machen Sie sie zu Ihrer eigenen",
@@ -175,7 +216,11 @@
       },
       "stepDataProducts": {
         "title": "Datenprodukte, veröffentlicht dort, wo Konsumenten bereits suchen",
-        "description": "📦 Jedes Produkt hier spricht <strong>ODPS</strong> (den Open Data Product Standard) – Eigentümer, Team, Zweck, Einschränkungen, Nutzung, SLA, Support, benutzerdefinierte Eigenschaften – und Provisa veröffentlicht es automatisch direkt in <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong>, sodass es als natives Produkt in dem Katalog erscheint, den Ihre Konsumenten ohnehin nutzen.<p>🔁 Es gibt keinen separaten Exportschritt, den man vergessen könnte: Die Spezifikation wird jedes Mal <strong>aus dem Live-Modell abgeleitet</strong> – Tabellen, Lineage, Tags, Glossarbegriffe –, sodass das Veröffentlichte nicht veralten kann wie eine von Hand gepflegte ODPS-Datei.</p>"
+        "description": "📦 Jedes Produkt hier spricht <strong>ODPS</strong> (den Open Data Product Standard) – Eigentümer, Team, Zweck, Einschränkungen, Nutzung, SLA, Support, benutzerdefinierte Eigenschaften – und Provisa veröffentlicht es automatisch direkt in <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong>, sodass es als natives Produkt in dem Katalog erscheint, den Ihre Konsumenten ohnehin nutzen.<p>🔁 Es gibt keinen separaten Exportschritt, den man vergessen könnte: Die Spezifikation wird jedes Mal <strong>aus dem Live-Modell abgeleitet</strong> – Tabellen, Lineage, Tags, Glossarbegriffe –, sodass das Veröffentlichte nicht veralten kann wie eine von Hand gepflegte ODPS-Datei.</p><p>✅ Jedes Produkt trägt außerdem die <strong>Glossarbegriffe</strong>, die seine Spalten definieren, und die <strong>Datenqualitätsergebnisse</strong> der Checker, die es prüfen.</p>"
+      },
+      "stepPublish": {
+        "title": "In den Werkzeugen Ihrer Organisation veröffentlichen",
+        "description": "📤 <strong>Veröffentlichen Sie dort, wo Ihre Organisation ohnehin hinschaut.</strong> Katalogeinträge (Tabellen, Spalten, Domänen, Data Stewards, freigegebene Beziehungen), Datenprodukte und spaltengenaue Lineage gehen hinaus, und jedes Ziel erhält, was es unterstützt: <strong>DataHub, OpenMetadata, Collibra, Atlan und Apache Atlas</strong> als Kataloge, <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong> als Listings für Datenprodukte und die Lineage über <strong>OpenLineage</strong>.<p>Die Veröffentlichung geht nur nach außen: Provisa liest ein Ziel nie als Wahrheitsquelle zurück.</p>"
       }
     },
     "status": {

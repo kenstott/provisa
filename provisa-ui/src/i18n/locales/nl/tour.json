@@ -5,7 +5,8 @@
       "next": "Volgende ({{current}}/{{total}})",
       "back": "Terug",
       "start": "Start",
-      "docs": "Documentatie"
+      "docs": "Documentatie",
+      "deepDives": "Verdiepen"
     },
     "welcome": {
       "title": "De rondleiding volgen?",
@@ -16,10 +17,50 @@
       "resume": "Rondleiding hervatten",
       "restart": "Opnieuw beginnen"
     },
+    "menu": {
+      "title": "Verdiepen",
+      "intro": "Eén model voor je data, metadata en verwerking, gesynchroniseerd en overal hergebruikt. Kies een onderwerp: elk is een korte tour op zich, en met Klaar kom je hier terug.",
+      "completed": "Voltooid",
+      "steps": "Stappen: {{count}}"
+    },
+    "topics": {
+      "connect": {
+        "title": "Verbind je data",
+        "summary": "Brontypen, tabellen registreren, replica's en live lezen."
+      },
+      "relationships": {
+        "title": "Relaties",
+        "summary": "Leg vast hoe tabellen samenhangen, binnen een bron en tussen bronnen, of de bron ze nu declareert of niet. Eén keer vastgelegd volgt elk oppervlak ze."
+      },
+      "model": {
+        "title": "Modelleer het",
+        "summary": "Voeg toe wat je bronnen niet hebben: views, berekende kolommen, metrics en commando's, elk één keer gedefinieerd en gebruikt door elk oppervlak, elke omgeving en elke rol."
+      },
+      "govern": {
+        "title": "Beheer het",
+        "summary": "Rollen en domeinen, rijregels, maskers, gevoelige data en de data steward."
+      },
+      "query": {
+        "title": "Overal bevragen",
+        "summary": "SQL, GraphQL, Cypher, REST en MCP via één gecontroleerde pijplijn."
+      },
+      "testdata": {
+        "title": "Testdata en omgevingen",
+        "summary": "De profiler, nepwaarden, synthetische data, omgevingen en datamodi."
+      },
+      "publish": {
+        "title": "Publiceer het",
+        "summary": "Dataproducten, catalogusitems en lineage, gepubliceerd naar de externe tools die je organisatie gebruikt."
+      },
+      "operate": {
+        "title": "Beheer en bedrijf",
+        "summary": "Managementrapporten, observability en de beheerpagina's die het platform draaiende houden."
+      }
+    },
     "steps": {
       "step0": {
         "title": "Welkom, laten we de rondleiding starten",
-        "description": "🧭 Dit kompas opent de rondleiding op elk moment opnieuw. Vertrek wanneer je wilt — klik op de app of druk op <kbd>Esc</kbd>.<p><strong>Provisa</strong> is een actieve semantische laag voor je data die buiten het datapad blijft.</p><p>🎯 <strong>De hele kern is één korte oefening:</strong> verbind enkele databases en bevraag ze vervolgens op <strong>zeven manieren</strong> — of sla de syntaxis over en vraag het gewoon in gewone taal. Ongeveer vijf minuten, <strong>rechtstreeks vanaf je desktop</strong>: geen servers, geen infrastructuur om op te zetten (dat komt later, wanneer je eraan toe bent).</p><div class='tour-tags'><span>Natuurlijke taal</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles <em>daarna</em> — meer bronnen, federatie, bestanden, relaties, views, geplande pipelines — is hoe je met het platform <strong>meegroeit</strong>, niet wat je op dag één nodig hebt. We geven aan waar de kern ophoudt.</p><p>Klaar? Laten we een bron verbinden. →</p>"
+        "description": "🧭 Dit kompas opent de rondleiding op elk moment opnieuw. Vertrek wanneer je wilt — klik op de app of druk op <kbd>Esc</kbd>.<p><strong>Provisa</strong> is één model dat je data, de metadata ervan en de verwerking ertussen bevat. Hetzelfde model definieert je datalandschap en bedient het — het is allemaal één ding, en het blijft buiten het datapad.</p><p>Daarom <strong>blijft alles gesynchroniseerd</strong> en is <strong>hergebruik ingebouwd</strong>: een relatie, metric, masker of regel die je één keer definieert, dient elk oppervlak, elke omgeving en elke rol. Dubbele tabellen en metrics, dubbele commando's en regels, zelfs twee systemen die dezelfde data leveren staan naast elkaar in het model, dus duplicatie is makkelijk te zien en simpel weg te halen.</p><p>Het is compact, uitbreidbaar en samenstelbaar. Het past naast wat je al hebt, brengt orde in de wildgroei en laat elke dataprofessional zijn of haar expertise inzetten zonder de verbeelding te beperken — het haalt alleen het sleurwerk weg.</p><p>🎯 <strong>De kern is één korte oefening:</strong> verbind een database en bevraag die op <strong>zeven manieren</strong> — of stel gewoon een vraag in gewone taal. Ongeveer vijf minuten, <strong>rechtstreeks vanaf je bureaublad</strong>, zonder infrastructuur op te zetten.</p><div class='tour-tags'><span>Natuurlijke taal</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles daarna is een <strong>verdieping</strong> die je uit een menu kiest wanneer je eraan toe bent.</p><p>Klaar? Laten we een bron verbinden. →</p>"
       },
       "stepPolly": {
         "title": "Maak kennis met Polly, je installatiehulp",
@@ -119,7 +160,7 @@
       },
       "stepProfilerChecks": {
         "title": "Drift en controles",
-        "description": "Elke run wordt vergeleken met de recente runs van de tabel, en een maat die afdrijft wordt gemarkeerd. Een datakwaliteitscontroleur meldt de uitzondering. U kunt ook door het profiel voorgestelde beperkingen accepteren en runs toetsen aan verwachtingen van buiten Provisa."
+        "description": "Elke run wordt vergeleken met de recente runs van de tabel, en een maat die afdrijft wordt gemarkeerd. Een datakwaliteitscontroleur meldt de uitzondering. U kunt ook door het profiel voorgestelde beperkingen accepteren en runs toetsen aan verwachtingen van buiten Provisa. Een beperking kan ook worden geëxporteerd als controle in het contract van een <strong>Soda</strong>- of <strong>Great Expectations</strong>-checker."
       },
       "stepFakes": {
         "title": "Een nepwaarde declareren",
@@ -151,11 +192,11 @@
       },
       "step22": {
         "title": "Lineage, van begin tot eind",
-        "description": "🧬 <strong>Lineage is niet ondoorzichtig.</strong> Dit is een echte, geanalyseerde query. Elke resultaatkolom wordt teruggevolgd door zijn transformaties — volg <code>name_upper</code> — en joins naar de exacte <strong>bronkolommen</strong> die haar voeden.<p>Opdrachten zijn declaratief gedefinieerd, dus elke stap wordt vastgelegd; gematerialiseerde views behouden per definitie volledige lineage. Er wordt niets uitgevoerd — de query wordt alleen geanalyseerd.</p><p>→ Laatste halte: het in productie beheren.</p>"
+        "description": "🧬 <strong>Lineage is het afhankelijkheidsspoor dat je afgeleiden achterlaten:</strong> waaruit elke view, berekende kolom of metric is opgebouwd en wat ervan afhangt. Dit is een echte query, geanalyseerd — volg <code>name_upper</code> via zijn transformaties terug naar de exacte <strong>bronkolommen</strong> die hem voeden.<p>Er wordt niets uitgevoerd — de query wordt alleen geanalyseerd.</p>"
       },
       "step23": {
         "title": "Beheer het",
-        "description": "De beheerpagina's draaien het platform:<ul><li>⚙️ Kies en configureer je <strong>federatie-engine</strong> — pluggable: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, of een cloud warehouse als volwaardige engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Wissel op elk moment — het model, de oppervlakken en de governance erboven veranderen nooit.</li><li>🔗 Welke engine je ook kiest, hij brengt zijn eigen bereik voor <strong>live externe data</strong> mee — Parquet, Iceberg, Delta ter plekke gelezen, zero-copy, credentials automatisch geprovisioneerd. Alles wat hij niet live kan koppelen, komt terecht als governed replica.</li><li>🔑 Beheer <strong>versleutelingssleutels</strong> en koppel <strong>auth providers</strong></li><li>📊 Volledige <strong>observability</strong> — doorverwijzen naar elke OpenTelemetry-collector voor enterprise-klasse tracebeheer</li></ul><p>Hetzelfde model reist van lokale ontwikkeling naar productie, gevalideerd bij elke stap — geen herschrijving:</p><ul><li><strong>Ontwikkelen</strong> — embedded DuckDB, geen Docker. Lokaal bouwen &amp; valideren.</li><li><strong>Op schaal valideren</strong> — Docker, start een engine + observability. Bewijs gedrag tegen productie-engines.</li><li><strong>Promoveren</strong> — wijs naar je eigen infrastructuur, bouw via CI/CD, ga naar productie.</li></ul>"
+        "description": "De beheerpagina's draaien het platform:<ul><li>⚙️ Kies en configureer je <strong>federatie-engine</strong> — pluggable: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, of een cloud warehouse als volwaardige engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Wissel op elk moment — het model, de oppervlakken en de governance erboven veranderen nooit.</li><li>🔗 Welke engine je ook kiest, hij brengt zijn eigen bereik voor <strong>live externe data</strong> mee — Parquet, Iceberg, Delta ter plekke gelezen, zero-copy, credentials automatisch geprovisioneerd. Alles wat hij niet live kan koppelen, komt terecht als governed replica.</li><li>🔑 Beheer <strong>versleutelingssleutels</strong> en koppel <strong>auth providers</strong></li><li>📊 Volledige <strong>observability</strong> — doorverwijzen naar elke OpenTelemetry-collector voor enterprise-klasse tracebeheer</li><li>📤 <strong>Exporteer de configuratie van het model</strong> — het hele model of gekozen secties — als bestand om te beoordelen, te vergelijken en via CI/CD uit te rollen</li></ul><p>Hetzelfde model reist van lokale ontwikkeling naar productie, gevalideerd bij elke stap — geen herschrijving:</p><ul><li><strong>Ontwikkelen</strong> — embedded DuckDB, geen Docker. Lokaal bouwen &amp; valideren.</li><li><strong>Op schaal valideren</strong> — Docker, start een engine + observability. Bewijs gedrag tegen productie-engines.</li><li><strong>Promoveren</strong> — wijs naar je eigen infrastructuur, bouw via CI/CD, ga naar productie.</li></ul>"
       },
       "step24": {
         "title": "Dat was de rondleiding — maak het nu van jezelf",
@@ -175,7 +216,11 @@
       },
       "stepDataProducts": {
         "title": "Dataproducten, gepubliceerd waar afnemers al kijken",
-        "description": "📦 Elk product hier spreekt <strong>ODPS</strong> (de Open Data Product Standard) — eigenaar, team, doel, beperkingen, gebruik, SLA, ondersteuning, aangepaste eigenschappen — en Provisa publiceert het automatisch rechtstreeks in <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong>, zodat het verschijnt als native product in de catalogus die je afnemers al gebruiken.<p>🔁 Er is geen aparte exportstap die je kunt vergeten: de specificatie wordt telkens <strong>afgeleid uit het live model</strong> — tabellen, lineage, tags, glossariumtermen — dus wat is gepubliceerd kan niet verouderen zoals een met de hand onderhouden ODPS-bestand."
+        "description": "📦 Elk product hier spreekt <strong>ODPS</strong> (de Open Data Product Standard) — eigenaar, team, doel, beperkingen, gebruik, SLA, ondersteuning, aangepaste eigenschappen — en Provisa publiceert het automatisch rechtstreeks in <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong>, zodat het verschijnt als native product in de catalogus die je afnemers al gebruiken.<p>🔁 Er is geen aparte exportstap die je kunt vergeten: de specificatie wordt telkens <strong>afgeleid uit het live model</strong> — tabellen, lineage, tags, glossariumtermen — dus wat is gepubliceerd kan niet verouderen zoals een met de hand onderhouden ODPS-bestand.<p>✅ Elk product draagt ook de <strong>glossariumtermen</strong> die de kolommen definiëren en de <strong>datakwaliteitsresultaten</strong> van de checkers die het scannen.</p>"
+      },
+      "stepPublish": {
+        "title": "Publiceren naar de tools van je organisatie",
+        "description": "📤 <strong>Publiceer het waar je organisatie al kijkt.</strong> Catalogusitems (tabellen, kolommen, domeinen, stewards, goedgekeurde relaties), dataproducten en lineage op kolomniveau gaan naar buiten, en elk doel ontvangt wat het ondersteunt: <strong>DataHub, OpenMetadata, Collibra, Atlan en Apache Atlas</strong> als catalogi, <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong> als dataproductlistings, en lineage via <strong>OpenLineage</strong>.<p>Publicatie gaat alleen naar buiten: Provisa leest een doel nooit terug als bron van waarheid.</p>"
       }
     },
     "status": {

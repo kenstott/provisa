@@ -58,6 +58,7 @@
     "domainsToggle": "Domini ({{checked}}/{{total}})",
     "domainsLabel": "Domini",
     "tourResume": "Riprendi il tour guidato",
+    "tourMenu": "Apri Approfondimenti",
     "tourStart": "Inizia un tour guidato",
     "userMenu": "Menu utente",
     "profile": "Profilo",
