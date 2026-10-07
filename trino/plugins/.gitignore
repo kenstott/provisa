@@ -4,6 +4,10 @@ trino-splunk/
 trino-splunk
 trino-file/
 trino-file
+trino-salesforce/
+trino-salesforce
+trino-cloudops/
+trino-cloudops
 trino-calcite/
 trino-calcite
 *.zip

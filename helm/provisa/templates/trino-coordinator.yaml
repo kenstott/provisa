@@ -64,6 +64,14 @@ spec:
             - name: fake-key
               mountPath: /etc/provisa/fake-key
               readOnly: true
+            {{- if .Values.trino.coordinator.cache.persistence.enabled }}
+            # REQ-1946: what a connector keeps between Trino restarts. A Salesforce catalog keeps
+            # its describe results under salesforce-describe/ here; without the volume a restarted
+            # coordinator describes the org again, out of its daily API allowance. The pod's
+            # fsGroup makes the volume writable by Trino's user.
+            - name: cache
+              mountPath: /data/trino/cache
+            {{- end }}
             - name: config
               mountPath: /etc/trino/config.properties
               subPath: coordinator-config.properties
@@ -104,6 +112,19 @@ spec:
         - name: exchange
           secret:
             secretName: {{ .Release.Name }}-trino-exchange
+  {{- if .Values.trino.coordinator.cache.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: cache
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if or .Values.trino.coordinator.cache.persistence.storageClass .Values.global.storageClass }}
+        storageClassName: {{ coalesce .Values.trino.coordinator.cache.persistence.storageClass .Values.global.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.trino.coordinator.cache.persistence.size }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: Service

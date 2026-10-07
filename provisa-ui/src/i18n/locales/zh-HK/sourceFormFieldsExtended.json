@@ -104,6 +104,7 @@
     "brandNamespaceHint": "此來源資料表名稱的前綴。留空則使用預設值。",
     "sfLoginUrl": "登入 URL",
     "sfLoginUrlHelp": "貴機構的「我的網域」URL（設定，然後是「我的網域」）",
+    "sfLoginUrlInvalid": "請輸入完整的「我的網域」URL，以 https:// 開頭",
     "sfAccessTokenAuth": "存取權杖",
     "sfConsumerKey": "用戶金鑰",
     "sfConsumerSecret": "用戶密碼",

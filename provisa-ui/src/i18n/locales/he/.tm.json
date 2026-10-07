@@ -3985,6 +3985,7 @@
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.sfInstanceUrl": "Instance URL",
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.sfLoginUrl": "Login URL",
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.sfLoginUrlHelp": "Your org's My Domain URL (Setup, then My Domain)",
+  "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.sfLoginUrlInvalid": "Enter the full My Domain URL, starting with https://",
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.sfPassword": "Salesforce Password",
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.sfSecurityToken": "Security Token",
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.sfSecurityTokenHelp": "Only when your org requires one",

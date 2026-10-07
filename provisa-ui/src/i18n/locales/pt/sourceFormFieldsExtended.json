@@ -104,6 +104,7 @@
     "brandNamespaceHint": "Prefixo dos nomes de tabela desta fonte. Deixe em branco para usar o padrão.",
     "sfLoginUrl": "URL de login",
     "sfLoginUrlHelp": "A URL Meu domínio da sua organização (Configuração, depois Meu domínio)",
+    "sfLoginUrlInvalid": "Informe a URL Meu domínio completa, começando com https://",
     "sfAccessTokenAuth": "Token de acesso",
     "sfConsumerKey": "Chave do consumidor",
     "sfConsumerSecret": "Segredo do consumidor",

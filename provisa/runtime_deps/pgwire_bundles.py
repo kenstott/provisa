@@ -35,6 +35,16 @@ from typing import IO, Callable, cast
 # The pinned upstream release the whole bundle set is fetched from (REQ-956). One version knob — a
 # bundle path is always namespaced by this tag, so a version bump caches side by side, never in place.
 RELEASE_TAG = "engine-v0.106.3"
+# Connectors whose bundle comes from a release other than RELEASE_TAG. The one table of such
+# overrides; a connector absent here is at RELEASE_TAG. Each entry is removed when RELEASE_TAG
+# moves to (or past) its release.
+#   salesforce: engine-v0.108.0 is the first release with a pgwire-salesforce bundle (REQ-1946).
+#     RELEASE_TAG stays behind it because that release's pgwire server ends the connection on a
+#     null string value and plans an untyped text parameter as a number (seen on its cloudops
+#     bundle), which the connectors served from RELEASE_TAG today do not do.
+CONNECTOR_RELEASE: dict[str, str] = {
+    "salesforce": "engine-v0.108.0",
+}
 GITHUB_REPO = "kenstott/calcite"
 
 # The release ships one tarball per OS/arch (REQ-1690): ``pgwire-<connector>-<ver>-<variant>.tar.gz``
@@ -106,16 +116,23 @@ def bundle_variant() -> str:
     return variant
 
 
-def bundle_spec_for(source_type: str, *, version: str = RELEASE_TAG) -> BundleSpec:
-    """The ``BundleSpec`` for a Provisa source type, pinned to ``version`` (default the release tag).
-    A source type with no pgwire bundle fails loud (REQ-956) — never a guessed connector name."""
+def connector_release(connector: str) -> str:
+    """The release ``connector``'s bundle is fetched from: its entry in ``CONNECTOR_RELEASE``,
+    else ``RELEASE_TAG``."""
+    return CONNECTOR_RELEASE.get(connector, RELEASE_TAG)
+
+
+def bundle_spec_for(source_type: str, *, version: str | None = None) -> BundleSpec:
+    """The ``BundleSpec`` for a Provisa source type, pinned to ``version`` (default the connector's
+    own release, ``connector_release``). A source type with no pgwire bundle fails loud (REQ-956)
+    — never a guessed connector name."""
     connector = BUNDLE_CONNECTOR.get(source_type)
     if connector is None:
         raise BundleUnavailable(
             f"source type {source_type!r} has no pgwire connector bundle "
             f"(known: {sorted(BUNDLE_CONNECTOR)})"
         )
-    return BundleSpec(connector, version)
+    return BundleSpec(connector, version if version is not None else connector_release(connector))
 
 
 def default_cache_root() -> Path:

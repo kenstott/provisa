@@ -77074,3 +77074,18 @@
   - REQ-1730
   - REQ-1946
   notes: 'Maintainer 2026-10-07: review same for cloudops -- it lays out all your cloud resources in a normalized way across azure/gcp/aws; (later) queue cloudops behind salesforce. Lead assessment given to the maintainer: cheap to wire (pgwire-cloudops and trino-cloudops are already in the engine release workflows); a quick-start and estate-inventory source rather than a headline -- Steampipe and CloudQuery are far broader but do not normalize across clouds; no cost data in the adapter today.'
+- id: REQ-1948
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Approvals
+  priority: SHOULD
+  type: behavioral
+  description: 'A relationship request is decided by the domains it touches. The domains involved in a request are the domain of its source table and the domain of its target table. An approval of the request counts only from a user whose right to create relationships reaches at least one of those domains, as a governance right reaches only the domains of the roles carrying it (REQ-1944); an approval from anyone else is refused, naming the reason. The request is executable when it has two approvals from two different users, neither of them the requester, and every domain involved is reached by at least one of the approvers: a relationship across two domains needs a yes from each side, and a relationship inside one domain needs two approvers of that domain. A rejection may come from any user who could approve. The requests list shows a user only the requests they can decide and the ones they made, and shows for each request which domains it still waits on. No check tests a role name.'
+  use_case: A sales modeler asks to relate sales orders to finance invoices. A sales steward and a finance steward
+    each approve; two sales stewards alone cannot put a join into finance's tables.
+  related_reqs:
+  - REQ-1531
+  - REQ-1944
+  - REQ-1945
+  notes: 'Maintainer 2026-10-07: scope relationship approvals to the domains involved. Maintainer (same day, choice): every domain involved must be covered -- two approvals from different people, every domain reached by at least one. Found while writing the tour: any holder of create_relationship could approve any request (creation_requests_router.py), with no routing by domain; a cross-domain target was only flagged for review.'

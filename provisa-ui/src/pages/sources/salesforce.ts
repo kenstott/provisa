@@ -35,6 +35,13 @@ export function salesforceUsesConnectedApp(type: SalesforceAuthType): boolean {
   return type !== "ACCESS_TOKEN";
 }
 
+/** Whether a login URL is one the server takes: the full https:// My Domain URL, or a
+ * ${secret:…} / ${env:…} reference to it (checked when the source is used). */
+export function salesforceLoginUrlValid(loginUrl: string): boolean {
+  const url = loginUrl.trim();
+  return url.startsWith("${") || /^https:\/\/\S+$/.test(url);
+}
+
 export function salesforceMappingJson(fields: Record<string, string>): string {
   const type = salesforceAuthType(fields);
   const mapping: Record<string, string> = { auth_type: type };

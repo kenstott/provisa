@@ -273,6 +273,27 @@ def test_port_allocation_exhaustion_is_loud():
 # -- REQ-956: runtime_deps bundle resolution / caching / version pin -----------
 
 
+def test_a_connector_with_its_own_release_is_fetched_from_it_and_the_rest_from_the_pin():
+    # REQ-1946: pgwire-salesforce first exists in engine-v0.108.0; the pin itself has not moved.
+    assert rd.CONNECTOR_RELEASE == {"salesforce": "engine-v0.108.0"}
+    salesforce = rd.bundle_spec_for("salesforce")
+    assert salesforce.version == "engine-v0.108.0"
+    assert rd.BundleSpec("salesforce", salesforce.version, variant="linux-x86_64").download_url == (
+        "https://github.com/kenstott/calcite/releases/download/engine-v0.108.0/"
+        "pgwire-salesforce-0.108.0-linux-x86_64.tar.gz"
+    )
+    pinned = rd.RELEASE_TAG.removeprefix("engine-v")
+    for source_type, connector in (("sharepoint", "sharepoint"), ("cloudops", "cloudops")):
+        spec = rd.bundle_spec_for(source_type)
+        assert spec.version == rd.RELEASE_TAG
+        assert rd.BundleSpec(connector, spec.version, variant="linux-x86_64").download_url == (
+            f"https://github.com/kenstott/calcite/releases/download/{rd.RELEASE_TAG}/"
+            f"pgwire-{connector}-{pinned}-linux-x86_64.tar.gz"
+        )
+    # An explicit version still wins for any connector.
+    assert rd.bundle_spec_for("salesforce", version="engine-v0.109.0").version == "engine-v0.109.0"
+
+
 def test_bundle_spec_version_pin():
     spec = rd.bundle_spec_for("files")
     assert spec.version == rd.RELEASE_TAG

@@ -104,6 +104,7 @@
     "brandNamespaceHint": "このソースのテーブル名の接頭辞。既定値を使う場合は空欄のままにします。",
     "sfLoginUrl": "ログインURL",
     "sfLoginUrlHelp": "組織の「私のドメイン」のURL（[設定] から [私のドメイン]）",
+    "sfLoginUrlInvalid": "https:// で始まる「私のドメイン」の完全なURLを入力してください",
     "sfAccessTokenAuth": "アクセストークン",
     "sfConsumerKey": "コンシューマー鍵",
     "sfConsumerSecret": "コンシューマーの秘密",

@@ -104,6 +104,7 @@
     "brandNamespaceHint": "Prefix of this source's table names. Leave blank for the default.",
     "sfLoginUrl": "Login URL",
     "sfLoginUrlHelp": "Your org's My Domain URL (Setup, then My Domain)",
+    "sfLoginUrlInvalid": "Enter the full My Domain URL, starting with https://",
     "sfAccessTokenAuth": "Access Token",
     "sfConsumerKey": "Consumer Key",
     "sfConsumerSecret": "Consumer Secret",

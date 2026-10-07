@@ -153,10 +153,15 @@ jobs:
         run: |
           MAVEN="https://repo1.maven.org/maven2/io/simpleishard"
           VERSION="0.106.3"
-          for plugin in trino-sharepoint trino-splunk trino-file; do
+          # name:version. trino-salesforce (REQ-1946) and trino-cloudops (REQ-1947) are at 0.108.0, the
+          # first release with what Provisa needs of them; see tests/conftest.py _TRINO_PLUGIN_VERSIONS.
+          for spec in trino-sharepoint:$VERSION trino-splunk:$VERSION trino-file:$VERSION \
+              trino-salesforce:0.108.0 trino-cloudops:0.108.0; do
+            plugin="${spec%%:*}"
+            version="${spec##*:}"
             mkdir -p "trino/plugins/$plugin"
-            curl -fsSL "$MAVEN/$plugin/$VERSION/$plugin-$VERSION.jar" \
-              -o "trino/plugins/$plugin/$plugin-$VERSION.jar"
+            curl -fsSL "$MAVEN/$plugin/$version/$plugin-$version.jar" \
+              -o "trino/plugins/$plugin/$plugin-$version.jar"
             ls "trino/plugins/$plugin"/*.jar >/dev/null
           done
 

@@ -504,6 +504,7 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
    - **Redis** — in-cluster or external (`redis.host`)? Change the default password (`redis.password`)
    - **MinIO / S3** — in-cluster MinIO or native S3? For AWS, use S3 with an IAM role
    - **Secrets** — pass via `--set` for evaluation; use External Secrets or Vault Agent for production
+   - **Trino coordinator cache** — a 1Gi volume claimed by default and mounted at `/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). A Salesforce source's describe results are kept there, so a restarted coordinator does not spend the org's API allowance describing it again. Turn it off only when no source needs it (REQ-1946)
 
 4. Install the chart:
    ```bash
