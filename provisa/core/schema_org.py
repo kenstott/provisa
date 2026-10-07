@@ -145,6 +145,13 @@ sources = Table(
     # stored verbatim. Empty means the source needs no password. Resolution happens where every
     # other connection secret's does — at the use point, inside the bound org.
     Column("password_ref", Text, nullable=False, server_default=""),
+    # REQ-1942: set while the row is bound to the environment's synthetic store (binding
+    # ``synthetic``): {schema, tables, parameters, model_type} -- the store schema holding its
+    # generated tables, the registered tables generated there as [schema_name, table_name], the
+    # required parameters generated as ordinary columns ("schema.table" -> {column: type}), and
+    # the type the model gives the source, which ``type`` gives up to the store's while bound so.
+    # The store itself is resolved by the platform: no credential of it is written here.
+    Column("synthetic", JSON(none_as_null=True)),
     # REQ-1919: the rest of a source's settings, held here so the store alone owns the model.
     Column("base_url", Text),
     Column("pool_min", Integer, nullable=False, server_default="1"),
@@ -1031,6 +1038,26 @@ synthetic_datasets = Table(
     Column("closeness_threshold", Float),
     Column("closeness_draws", Integer),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# REQ-1942: what each source of a Test (synthetic) environment was bound to before generating
+# bound it to the synthetic store -- its type, binding and connection columns -- so dropping the
+# dataset or leaving the mode restores exactly that. Environment-local: never copied or promoted.
+# REQ-1942: each finished whole-model generation of the environment -- the rows it generated and
+# the seconds it took -- which the next generation's time is estimated from. Environment-local.
+synthetic_generations = Table(
+    "synthetic_generations",
+    metadata,
+    Column("finished_at", DateTime(timezone=True), primary_key=True),
+    Column("generated_rows", BigInteger, nullable=False),
+    Column("seconds", Float, nullable=False),
+)
+
+synthetic_source_bindings = Table(
+    "synthetic_source_bindings",
+    metadata,
+    Column("source_id", Text, ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True),
+    Column("previous", JSON, nullable=False),
 )
 
 synthetic_dataset_tables = Table(

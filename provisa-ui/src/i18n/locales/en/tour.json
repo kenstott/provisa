@@ -10,7 +10,7 @@
     },
     "welcome": {
       "title": "Take the guided tour?",
-      "body": "A five-minute walkthrough: connect a source, then query it seven ways. Leave at any point — the compass in the toolbar reopens the tour whenever you want it.",
+      "body": "A five-minute walkthrough: connect a source, then query it in the language or tool you already use. Leave at any point — the compass in the toolbar reopens the tour whenever you want it.",
       "never": "Don't show this again",
       "later": "Maybe later",
       "start": "Start tour",
@@ -19,9 +19,10 @@
     },
     "menu": {
       "title": "Deep Dives",
-      "intro": "One model for your data, metadata and processing, kept in sync and reused everywhere. Pick a topic: each is a short tour of its own, and Done brings you back here.",
+      "intro": "One model for your data, metadata and processing, kept in sync and reused everywhere. Pick a topic: each is a short tour of its own, and Done brings you back here. The compass in the toolbar reopens this menu anytime.",
       "completed": "Completed",
-      "steps": "Steps: {{count}}"
+      "steps": "Steps: {{count}}",
+      "coreTour": "Start the core tour"
     },
     "topics": {
       "connect": {
@@ -60,7 +61,7 @@
     "steps": {
       "step0": {
         "title": "Welcome, let's take the tour",
-        "description": "🧭 This compass reopens the tour anytime. Leave whenever — click the app or press <kbd>Esc</kbd>.<p><strong>Provisa</strong> is one model that holds your data, its metadata and the processing between them. The same model defines your data estate and operates it — it is all one thing, and it stays out of the data path.</p><p>That is why <strong>everything stays in sync</strong>, and why <strong>reuse is built in</strong>: a relationship, metric, mask or rule defined once serves every surface, environment and role. Duplicate tables and metrics, duplicate commands and rules, even two systems serving the same data sit side by side in the model, so duplication is easy to see and simple to remove.</p><p>It is compact, extensible and composable. It slots in beside what you have, brings order to the sprawl, and lets every data professional apply their expertise without limiting their imagination — it only removes the drudgery.</p><p>🎯 <strong>The core is one short exercise:</strong> connect a database, then query it <strong>seven ways</strong> — or just ask in plain English. About five minutes, <strong>right from your desktop</strong>, with no infrastructure to stand up.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Everything after that is a <strong>Deep Dive</strong> you pick from a menu when you are ready.</p><p>Ready? Let's connect a source. →</p>"
+        "description": "🧭 This compass reopens the tour anytime. Leave whenever — click the app or press <kbd>Esc</kbd>.<p><strong>Provisa</strong> is one model that holds your data, its metadata and the processing between them. The same model defines your data estate and operates it — it is all one thing, and it stays out of the data path.</p><p>That is why <strong>everything stays in sync</strong>, and why <strong>reuse is built in</strong>: a relationship, metric, mask or rule defined once serves every surface, environment and role. Duplicate tables and metrics, duplicate commands and rules, even two systems serving the same data sit side by side in the model, so duplication is easy to see and simple to remove.</p><p>It is compact, extensible and composable. It slots in beside what you have, brings order to the sprawl, and lets every data professional apply their expertise without limiting their imagination — it only removes the drudgery.</p><p>🎯 <strong>The core is one short exercise:</strong> connect a database, then query it in the language or tool you already use — or just ask in plain English. About five minutes, <strong>right from your desktop</strong>, with no infrastructure to stand up.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Everything after that is a <strong>Deep Dive</strong> you pick from a menu when you are ready.</p><p>Ready? Let's connect a source. →</p>"
       },
       "stepPolly": {
         "title": "Meet Polly, your setup assistant",
@@ -85,6 +86,10 @@
       "step5": {
         "title": "Pick columns & policy",
         "description": "Choose a source, schema, and table, then pick columns — each with its own policy:<ul><li>🎭 <strong>Masking</strong> — redact values per role</li><li>👁️ <strong>Visibility</strong> — show or hide the column</li><li>🏷️ <strong>Aliases</strong> — rename for the model</li></ul><p>That's the whole setup — a source and a few tables. 🚀 Now let's query it. →</p>"
+      },
+      "stepQuery": {
+        "title": "Query it your way",
+        "description": "💬 You ask in the language or tool you already use — SQL, GraphQL, Cypher, plain language through Polly, or a BI tool or driver — and every one reads the same governed model, so the answer and the rules are the same whichever you pick."
       },
       "step6": {
         "title": "SQL (1 of 7 surfaces)",
@@ -120,7 +125,7 @@
       },
       "step14": {
         "title": "That's the five-minute core",
-        "description": "✅ You just saw it end to end: <strong>one source, queried seven ways — or just asked in plain English.</strong> That's the whole promise — and you could stop right here.<p>Press <kbd>Esc</kbd> anytime; 🧭 the compass up top replays this tour whenever you want.</p><p>👉 Everything ahead is <strong>how Provisa grows with you</strong> — optional depth, not required steps:</p><ul><li>🔗 Link tables across sources into one <strong>graph</strong></li><li>🔐 <strong>Govern</strong> it — roles, row-level security, column masking</li><li>🏗️ Build a <strong>delivery pipeline</strong> — views, a materialized warehouse, lineage</li><li>⚙️ <strong>Operate</strong> it — pick an engine, ship to production</li></ul><p>Keep going? →</p>"
+        "description": "✅ You just saw it end to end: <strong>one source, queried in the language or tool you already use — or just asked in plain English.</strong> That's the whole promise — and you could stop right here.<p>Everything else is a <strong>Deep Dive</strong>: connecting data, relationships, modeling, governance, querying, test data, publishing and operating. Done opens the Deep Dives catalog.</p>"
       },
       "step15": {
         "title": "Connect the graph",
@@ -130,6 +135,14 @@
         "title": "Define a relationship",
         "description": "🔗 Map a source column to a target column and set <strong>cardinality</strong>:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Or let Provisa <strong>infer</strong> relationships for you with AI.</p>"
       },
+      "stepRelsSuggest": {
+        "title": "Suggest relationships",
+        "description": "✨ The sparkle button looks for likely joins: it reads the foreign keys your sources declare and, when an AI model key is configured, asks the model to infer more. Nothing is declared until you accept a candidate, and a rejected one stays out until you clear the rejections."
+      },
+      "stepRelsList": {
+        "title": "Every relationship in one list",
+        "description": "📋 The model's relationships, whether or not a source declares them, filterable and sortable. Expand a row to edit it or add its reverse. A role traverses only the relationships it holds rights to."
+      },
       "step17": {
         "title": "See the ERD",
         "description": "The entity-relationship diagram renders your whole federated model — every registered table and the relationships between them."
@@ -138,9 +151,25 @@
         "title": "Access control (RBAC)",
         "description": "🔐 Registering a table sets per-column access, wired straight into roles:<div class='tour-tags'><span>👁️ Read</span><span>✏️ Write</span></div><p>That's <strong>role-based access control</strong> — and the roles themselves are defined here on the Security page.</p>"
       },
+      "stepRoleInherit": {
+        "title": "Roles inherit",
+        "description": "👪 A role can inherit from a parent: it receives the parent's grants, column visibility and row rules, and its own row rule for a table replaces the parent's. The role also carries its capabilities and its rate and complexity limits."
+      },
       "step19": {
         "title": "Row-level security",
         "description": "🔎 Once roles exist, go finer — restrict which <strong>rows</strong> each role sees with attribute-based predicates:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Data-driven and enforced per row — across every source and protocol.</p>"
+      },
+      "stepDomains": {
+        "title": "Domains and their stewards",
+        "description": "🗂️ A domain groups tables, and its data steward governs that part of the model: who sees what, masks and row rules, sensitive data, and its glossary and data products."
+      },
+      "stepTags": {
+        "title": "Tags carry meaning",
+        "description": "🏷️ A tag is one org-wide label with a fixed meaning, applied to sources, tables, columns, relationships or commands. Tags carry behavior, not only documentation, and a tag can require a reason, an expiry date or a parameter when it is applied."
+      },
+      "stepRequests": {
+        "title": "Relationship requests",
+        "description": "✋ A relationship request needs two approvals before it can be executed. Approve it, execute it, or reject it with a reason from a fixed list; resolved requests move to the Resolved tab."
       },
       "stepQualityTable": {
         "title": "A quality checker is just a source",
@@ -190,17 +219,33 @@
         "title": "Materialize into a live warehouse",
         "description": "🏗️ Materialize a view and you get a full ETL engine, declared not scripted:<ul><li>📅 <strong>Scheduled snapshots</strong> on real <strong>business calendars</strong> — recurrence rules, holidays, business-day gating, and a close grace period, so it fires on <em>your</em> reporting calendar, not just a clock.</li><li>🗄️ <strong>Store As…</strong> — <strong>replace</strong>, <strong>upsert</strong>, or keep history with <strong>snapshot</strong> / <strong>delta</strong>, plus incremental compute.</li><li>🕰️ <strong>Time travel</strong> — bitemporal history; query the model as of any point in time.</li><li>⚡ <strong>Near-real-time</strong> refresh with debounce, or freshness-driven republish as inputs change.</li></ul>"
       },
+      "stepMetrics": {
+        "title": "Metrics, defined once",
+        "description": "📏 A metric is the business definition of a measure, an aggregate over one fact table. Define it once and SQL, GraphQL, the explore canvas and every view built from it compute the same number; a view regenerates when its metric changes."
+      },
+      "stepCommands": {
+        "title": "Commands",
+        "description": "⚡ A command is a governed, typed operation, such as an HTTP service, a Python model or a stored procedure. Register it once and call it from every surface, with the same rights and tracing as a query."
+      },
       "step22": {
         "title": "Lineage, end to end",
         "description": "🧬 <strong>Lineage is the dependency trail your derivations leave:</strong> what each view, calculated column or metric is built from, and what depends on it. This is a real query, analyzed — follow <code>name_upper</code> back through its transforms to the exact <strong>source columns</strong> that feed it.<p>Nothing runs — the query is only analyzed.</p>"
       },
+      "stepObservability": {
+        "title": "Traces and debug tracing",
+        "description": "🔭 Tracing records one span per request. The Debug tracing tab adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one org, role or source for a set time; it turns itself off when the time is up."
+      },
+      "stepCache": {
+        "title": "Caches and replicas",
+        "description": "🗄️ These layers are separate. The response cache holds query results, and a request opts in with @cached or a SQL comment. Small lookup tables are mirrored to speed joins. A replica of a source table that cannot be attached lives in the durable store, beside materialized views."
+      },
+      "stepScheduled": {
+        "title": "Scheduled tasks",
+        "description": "⏱️ Run a webhook or a SQL statement on a cron schedule. A SQL task runs as a role you choose, so governance applies, and each task shows its last and next run."
+      },
       "step23": {
         "title": "Operate it",
         "description": "The Admin pages run the platform:<ul><li>⚙️ Choose and configure your <strong>federation engine</strong> — pluggable: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, or a cloud warehouse as a first-class engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Swap it anytime — the model, the surfaces, and the governance above it never change.</li><li>🔗 Whichever engine you pick brings its own <strong>live external data</strong> reach — Parquet, Iceberg, Delta read in place, zero-copy, credentials auto-provisioned. Anything it can't link live lands as a governed replica.</li><li>🔑 Manage <strong>encryption keys</strong> and wire up <strong>auth providers</strong></li><li>📊 Full <strong>observability</strong> — redirect to any OpenTelemetry collector for enterprise-class trace management</li><li>📤 <strong>Export the model's configuration</strong> — the whole model or chosen sections — as a file to review, diff and ship through CI/CD</li></ul><p>The same model travels from local dev to production, validated at every step — no rewrite:</p><ul><li><strong>Develop</strong> — embedded DuckDB, no Docker. Build &amp; validate locally.</li><li><strong>Validate at scale</strong> — Docker, spin up an engine + observability. Prove behavior against production engines.</li><li><strong>Promote</strong> — point at your own infrastructure, build through CI/CD, ship to production.</li></ul>"
-      },
-      "step24": {
-        "title": "That's the tour — now make it yours",
-        "description": "🎉 You're back where you started. Now make it yours:<ul><li>1️⃣ Register one of your real <strong>sources</strong></li><li>2️⃣ Expose a few <strong>tables</strong>, draw a <strong>relationship</strong> or two</li><li>3️⃣ Query it from <strong>Explore</strong> in any language:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Point <kbd>pgwire</kbd> or <kbd>Bolt</kbd> tools at it — everything just works.</p><p>📚 The <strong>Docs</strong> tab has the full guides. 🧭 The compass up top replays this tour anytime. Enjoy Provisa.</p>"
       },
       "stepPreview": {
         "title": "Preview any table",
@@ -210,6 +255,10 @@
         "title": "Management reports, built in",
         "description": "📊 The audit log you queried earlier also feeds <strong>ready-made reports</strong> — usage ranking, PII access, policy denials, query health — each a governed view in the <code>ops</code> domain. Adding your own takes one SQL statement, and it becomes a cataloged, exportable data product like any other table."
       },
+      "stepProductForm": {
+        "title": "Define a data product",
+        "description": "📦 Name the owner and team, the purpose, usage, SLA and support, then pick the tables and commands it contains. These are the fields that get published. A table joins a product only when both share the same domain."
+      },
       "stepGlossary": {
         "title": "A living business glossary",
         "description": "📖 Every term links back to the columns that carry it — curate names, definitions, and typed relationships (kind-of, part-of, synonym-of) by hand, or let AI fill in the gaps: <strong>✨ Definitions</strong> drafts only the terms still missing one, and <strong>✨ Relationships</strong> proposes links across the whole glossary. Flag a term <strong>excluded from export</strong> to keep it out of published metadata."
@@ -217,6 +266,10 @@
       "stepDataProducts": {
         "title": "Data products, published where consumers already look",
         "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard) — owner, team, purpose, limitations, usage, SLA, support, custom properties — and Provisa auto-publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There's no separate export step to forget: the spec is <strong>derived from the live model</strong> — tables, lineage, tags, glossary terms — every time, so what's published can't drift out of date the way a hand-maintained ODPS file would.</p><p>✅ Each product also carries the <strong>glossary terms</strong> that define its columns and the <strong>data-quality results</strong> of the checkers that scan it.</p>"
+      },
+      "stepGlossaryTerm": {
+        "title": "Add a term",
+        "description": "📖 A term names one business concept, lists the columns that carry it and says what it means. Terms for real columns are derived for you; add one by hand for a concept no single column carries."
       },
       "stepPublish": {
         "title": "Publish to the tools your org uses",

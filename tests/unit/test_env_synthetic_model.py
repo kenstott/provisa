@@ -67,8 +67,10 @@ def _plan() -> dict:
                 "runs": [run],
             }
         ],
+        "sources": [{"id": "petstore", "type": "openapi", "becomes": "postgresql"}],
         "unavailable": [{"tableId": 2, "tableName": "pet_by_id", "reason": "why"}],
         "commandsNotDefined": [{"source": "petstore", "commands": ["add_pet"]}],
+        "lastGeneration": None,
     }
 
 
@@ -80,16 +82,21 @@ def test_the_warning_names_what_is_generated_lost_and_discarded():
     assert {item["key"] for item in shown["limitations"]} == {
         "no_source_api",
         "required_parameter_tables",
-        "api_commands",
+        "source_commands",
         "manual_fix_up",
     }
     (table,) = shown["tables"]
     assert table["profile"] == {"runId": "r1", "env": "prod", "origin": "measured"}
     assert table["estimatedRows"] == 100 and table["scale"] == 2.5
-    assert shown["sources"] == ["petstore"]
+    assert shown["sources"] == [{"id": "petstore", "type": "openapi", "becomes": "postgresql"}]
     assert shown["unavailable"][0]["tableName"] == "pet_by_id"
     assert shown["commandsNotDefined"] == [{"source": "petstore", "commands": ["add_pet"]}]
     assert shown["keptMutationsDiscarded"] == {"1": 4}
+    # No generation has finished in the environment yet: rows are estimated, time is not.
+    assert shown["estimatedRows"] == 100 and shown["estimatedSeconds"] is None
+    timed = {**_plan(), "lastGeneration": (50, 4.0)}
+    again = env_model.warning(timed, {1: ("prod", "r1")}, seed=3, scale=2.5, kept_mutations={})
+    assert again["estimatedSeconds"] == pytest.approx(8.0)
 
 
 def test_the_digest_names_exactly_what_was_shown():
@@ -107,7 +114,7 @@ def test_the_digest_names_exactly_what_was_shown():
         assert other["digest"] != first["digest"]
 
 
-def _registry(synthetic: dict) -> replica_routing._Registry:
+def _registry(synthetic: dict, bound: frozenset[str]) -> replica_routing._Registry:
     return replica_routing._Registry(
         [
             _table(1, "breeds", "petstore"),
@@ -115,19 +122,21 @@ def _registry(synthetic: dict) -> replica_routing._Registry:
             _table(3, "orders", "pg"),
         ],
         {
-            "petstore": SimpleNamespace(id="petstore", type="openapi"),
+            # Bound to the synthetic store, each source's type is the store's.
+            "petstore": SimpleNamespace(id="petstore", type="postgresql"),
             "pg": SimpleNamespace(id="pg", type="postgresql"),
         },
         serving=frozenset(),
         promoted=frozenset(),
         synthetic=synthetic,
+        bound=bound,
     )
 
 
-def test_an_api_table_with_no_generated_copy_is_unavailable_once_the_model_is_generated():
+def test_a_table_of_a_synthetic_bound_source_with_no_generated_copy_is_unavailable():
     schema = "org_a_env_dev_syn__model"
     generated = {1: (env_model.DATASET_ID, schema), 3: (env_model.DATASET_ID, schema)}
-    unavailable = replica_routing._unavailable(_registry(generated))
+    unavailable = replica_routing._unavailable(_registry(generated, frozenset({"petstore", "pg"})))
     assert set(unavailable) == {2}
     assert "required parameter(s) _nf_0" in unavailable[2]
     assert "Declare a profile of it" in unavailable[2]
@@ -137,10 +146,10 @@ def test_an_api_table_with_no_generated_copy_is_unavailable_once_the_model_is_ge
         refuse_unavailable(routes, [3, 2])
 
 
-def test_nothing_is_unavailable_before_the_whole_model_is_generated():
-    assert replica_routing._unavailable(_registry({})) == {}
-    # A dataset of the operator's own (REQ-1939) is not the environment's whole model.
-    assert replica_routing._unavailable(_registry({3: ("mine", "s")})) == {}
+def test_nothing_is_unavailable_where_no_source_is_bound_to_a_synthetic_store():
+    assert replica_routing._unavailable(_registry({}, frozenset())) == {}
+    # A dataset of the operator's own (REQ-1939) binds no source.
+    assert replica_routing._unavailable(_registry({3: ("mine", "s")}, frozenset())) == {}
 
 
 async def test_a_command_of_a_generated_api_source_is_refused_saying_why():
@@ -154,7 +163,51 @@ async def test_a_command_of_a_generated_api_source_is_refused_saying_why():
         await invoke_command("add_pet", {}, state, "dev")
     assert refused.value.status_code == 409
     assert refused.value.code == "functions.not_defined_synthetic"
-    assert "calls no source API" in refused.value.detail and "'petstore'" in refused.value.detail
+    assert (
+        "bound to a synthetic store" in refused.value.detail
+        and "'petstore'" in refused.value.detail
+    )
     with pytest.raises(ApiError) as unknown:
         await invoke_command("nope", {}, state, "dev")
     assert unknown.value.code == "functions.unknown_command"
+
+
+def test_a_generated_table_is_read_as_an_ordinary_table_its_required_parameter_a_column():
+    """REQ-1942: bound to a synthetic store, a generated API table's required parameter is a
+    column of it, typed as it was generated; any other argument of the API is no column of it;
+    a table with no generated copy, and a table of any other source, are read as the model has
+    them."""
+    from provisa.synthetic.datasets import as_generated
+
+    def api_table(name: str) -> dict:
+        return {
+            "source_id": "petstore",
+            "schema_name": "default",
+            "table_name": name,
+            "columns": [
+                {"column_name": "id", "native_filter_type": None, "data_type": "integer"},
+                {"column_name": "petId", "native_filter_type": "path_param", "data_type": None},
+                {"column_name": "limit", "native_filter_type": "query_param", "data_type": None},
+            ],
+        }
+
+    generated, missing = api_table("get_pet_by_id"), api_table("get_owner_by_id")
+    other = {**api_table("orders"), "source_id": "pg"}
+    bound = {
+        "petstore": {
+            "schema": "s",
+            "tables": [["default", "get_pet_by_id"]],
+            "parameters": {"default.get_pet_by_id": {"petId": "bigint"}},
+            "model_type": "openapi",
+        }
+    }
+    read, unread, untouched = as_generated([generated, missing, other], bound)
+    assert [
+        (c["column_name"], c["native_filter_type"], c["data_type"]) for c in read["columns"]
+    ] == [
+        ("id", None, "integer"),
+        ("petId", None, "bigint"),
+    ]
+    assert unread == missing and untouched == other
+    # The model's own rows are not changed by how the environment reads them.
+    assert generated["columns"][1]["native_filter_type"] == "path_param"

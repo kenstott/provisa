@@ -49,12 +49,16 @@ test("Done on the core tour and on a topic both return to the menu", async ({ pa
   await expect(menu).toBeVisible();
   await expect(page.locator('[data-testid^="tour-topic-done-"]')).toHaveCount(0);
 
-  // Govern it: two steps, then Done.
+  // Govern it: step through every card the viewer may open, then Done on the last.
   await page.locator('[data-testid="tour-topic-govern"]').click();
   await expect(title).toHaveText("Access control (RBAC)", { timeout: 60000 });
-  await page.locator(".driver-popover-next-btn").click();
-  await expect(title).toHaveText("Row-level security", { timeout: 30000 });
-  await page.locator(".driver-popover-next-btn").click(); // Done
+  const next = page.locator(".driver-popover-next-btn");
+  while (!/^Done/.test((await next.textContent()) ?? "")) {
+    const before = await title.textContent();
+    await next.click();
+    await expect(title).not.toHaveText(before ?? "", { timeout: 30000 });
+  }
+  await next.click(); // Done
   await expect(menu).toBeVisible();
   await expect(page.locator('[data-testid="tour-topic-done-govern"]')).toBeVisible();
 
@@ -62,4 +66,22 @@ test("Done on the core tour and on a topic both return to the menu", async ({ pa
   await page.reload();
   await page.locator(".navbar-tour-btn").click();
   await expect(page.locator('[data-testid="tour-topic-done-govern"]')).toBeVisible();
+});
+
+// REQ-1945: a topic's step also carries Deep Dives, which lands on the catalog, and the catalog's
+// control starts the core tour again at its first step.
+test("a topic's Deep Dives button reaches the catalog, which restarts the core tour", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("provisa_tour_seen", "true"));
+  await page.goto("/sources");
+  await page.locator(".navbar-tour-btn").click();
+  await page.locator('[data-testid="tour-topic-govern"]').click();
+
+  const title = page.locator(".driver-popover-title");
+  await expect(title).toHaveText("Access control (RBAC)", { timeout: 60000 });
+  await page.locator(".driver-popover-deepdives-btn").click();
+  const menu = page.locator('[data-testid="tour-menu"]');
+  await expect(menu).toBeVisible();
+
+  await page.locator('[data-testid="tour-menu-core-tour"]').click();
+  await expect(title).toHaveText("Welcome, let's take the tour", { timeout: 60000 });
 });

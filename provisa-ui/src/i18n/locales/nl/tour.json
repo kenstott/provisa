@@ -10,7 +10,7 @@
     },
     "welcome": {
       "title": "De rondleiding volgen?",
-      "body": "Een rondleiding van vijf minuten: verbind een bron en bevraag die op zeven manieren. Stop wanneer u wilt — het kompas in de werkbalk opent de rondleiding altijd opnieuw.",
+      "body": "Een rondleiding van vijf minuten: verbind een bron en bevraag die in de taal of met de tool die je al gebruikt. Stop wanneer u wilt — het kompas in de werkbalk opent de rondleiding altijd opnieuw.",
       "never": "Niet meer tonen",
       "later": "Later",
       "start": "Rondleiding starten",
@@ -19,9 +19,10 @@
     },
     "menu": {
       "title": "Verdiepen",
-      "intro": "Eén model voor je data, metadata en verwerking, gesynchroniseerd en overal hergebruikt. Kies een onderwerp: elk is een korte tour op zich, en met Klaar kom je hier terug.",
+      "intro": "Eén model voor je data, metadata en verwerking, gesynchroniseerd en overal hergebruikt. Kies een onderwerp: elk is een korte tour op zich, en met Klaar kom je hier terug. Het kompas in de werkbalk opent dit menu altijd opnieuw.",
       "completed": "Voltooid",
-      "steps": "Stappen: {{count}}"
+      "steps": "Stappen: {{count}}",
+      "coreTour": "Start de kernrondleiding"
     },
     "topics": {
       "connect": {
@@ -60,7 +61,7 @@
     "steps": {
       "step0": {
         "title": "Welkom, laten we de rondleiding starten",
-        "description": "🧭 Dit kompas opent de rondleiding op elk moment opnieuw. Vertrek wanneer je wilt — klik op de app of druk op <kbd>Esc</kbd>.<p><strong>Provisa</strong> is één model dat je data, de metadata ervan en de verwerking ertussen bevat. Hetzelfde model definieert je datalandschap en bedient het — het is allemaal één ding, en het blijft buiten het datapad.</p><p>Daarom <strong>blijft alles gesynchroniseerd</strong> en is <strong>hergebruik ingebouwd</strong>: een relatie, metric, masker of regel die je één keer definieert, dient elk oppervlak, elke omgeving en elke rol. Dubbele tabellen en metrics, dubbele commando's en regels, zelfs twee systemen die dezelfde data leveren staan naast elkaar in het model, dus duplicatie is makkelijk te zien en simpel weg te halen.</p><p>Het is compact, uitbreidbaar en samenstelbaar. Het past naast wat je al hebt, brengt orde in de wildgroei en laat elke dataprofessional zijn of haar expertise inzetten zonder de verbeelding te beperken — het haalt alleen het sleurwerk weg.</p><p>🎯 <strong>De kern is één korte oefening:</strong> verbind een database en bevraag die op <strong>zeven manieren</strong> — of stel gewoon een vraag in gewone taal. Ongeveer vijf minuten, <strong>rechtstreeks vanaf je bureaublad</strong>, zonder infrastructuur op te zetten.</p><div class='tour-tags'><span>Natuurlijke taal</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles daarna is een <strong>verdieping</strong> die je uit een menu kiest wanneer je eraan toe bent.</p><p>Klaar? Laten we een bron verbinden. →</p>"
+        "description": "🧭 Dit kompas opent de rondleiding op elk moment opnieuw. Vertrek wanneer je wilt — klik op de app of druk op <kbd>Esc</kbd>.<p><strong>Provisa</strong> is één model dat je data, de metadata ervan en de verwerking ertussen bevat. Hetzelfde model definieert je datalandschap en bedient het — het is allemaal één ding, en het blijft buiten het datapad.</p><p>Daarom <strong>blijft alles gesynchroniseerd</strong> en is <strong>hergebruik ingebouwd</strong>: een relatie, metric, masker of regel die je één keer definieert, dient elk oppervlak, elke omgeving en elke rol. Dubbele tabellen en metrics, dubbele commando's en regels, zelfs twee systemen die dezelfde data leveren staan naast elkaar in het model, dus duplicatie is makkelijk te zien en simpel weg te halen.</p><p>Het is compact, uitbreidbaar en samenstelbaar. Het past naast wat je al hebt, brengt orde in de wildgroei en laat elke dataprofessional zijn of haar expertise inzetten zonder de verbeelding te beperken — het haalt alleen het sleurwerk weg.</p><p>🎯 <strong>De kern is één korte oefening:</strong> verbind een database en bevraag die in de taal of met de tool die je al gebruikt — of stel gewoon een vraag in gewone taal. Ongeveer vijf minuten, <strong>rechtstreeks vanaf je bureaublad</strong>, zonder infrastructuur op te zetten.</p><div class='tour-tags'><span>Natuurlijke taal</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles daarna is een <strong>verdieping</strong> die je uit een menu kiest wanneer je eraan toe bent.</p><p>Klaar? Laten we een bron verbinden. →</p>"
       },
       "stepPolly": {
         "title": "Maak kennis met Polly, je installatiehulp",
@@ -85,6 +86,10 @@
       "step5": {
         "title": "Kies kolommen & beleid",
         "description": "Kies een bron, schema en tabel, en selecteer vervolgens kolommen — elk met eigen beleid:<ul><li>🎭 <strong>Maskering</strong> — waarden per rol verbergen</li><li>👁️ <strong>Zichtbaarheid</strong> — kolom tonen of verbergen</li><li>🏷️ <strong>Aliassen</strong> — hernoemen voor het model</li></ul><p>Dat is de hele setup — een bron en een paar tabellen. 🚀 Nu gaan we hem bevragen. →</p>"
+      },
+      "stepQuery": {
+        "title": "Bevraag het op jouw manier",
+        "description": "💬 Je vraagt in de taal of met de tool die je al gebruikt — SQL, GraphQL, Cypher, gewone taal via Polly, of een BI-tool of driver — en elk daarvan leest hetzelfde beheerde model, dus het antwoord en de regels zijn hetzelfde, welke je ook kiest."
       },
       "step6": {
         "title": "SQL (1 van 7 oppervlakken)",
@@ -120,7 +125,7 @@
       },
       "step14": {
         "title": "Dat was de kern van vijf minuten",
-        "description": "✅ Je hebt het net van begin tot eind gezien: <strong>één bron, op zeven manieren bevraagd — of gewoon in gewoon Nederlands gevraagd.</strong> Dat is de hele belofte — en je zou hier kunnen stoppen.<p>Druk op <kbd>Esc</kbd> wanneer je wilt; 🧭 het kompas bovenaan speelt deze rondleiding altijd opnieuw af.</p><p>👉 Alles wat volgt is <strong>hoe Provisa met je meegroeit</strong> — optionele diepgang, geen verplichte stappen:</p><ul><li>🔗 Koppel tabellen over bronnen heen tot één <strong>graaf</strong></li><li>🔐 <strong>Beheer</strong> het — rollen, beveiliging op rijniveau, kolommaskering</li><li>🏗️ Bouw een <strong>opleveringspipeline</strong> — views, een gematerialiseerd warehouse, lineage</li><li>⚙️ <strong>Beheer</strong> de werking — kies een engine, ga naar productie</li></ul><p>Doorgaan? →</p>"
+        "description": "✅ Je hebt het net van begin tot eind gezien: <strong>één bron, bevraagd in de taal of met de tool die je al gebruikt — of gewoon in gewoon Nederlands gevraagd.</strong> Dat is de hele belofte — en je zou hier kunnen stoppen.<p>Al het andere is een <strong>Deep Dive</strong>: gegevens verbinden, relaties, modelleren, governance, bevragen, testgegevens, publiceren en beheren. Met Klaar open je de Deep Dives-catalogus.</p>"
       },
       "step15": {
         "title": "Verbind de graaf",
@@ -130,6 +135,14 @@
         "title": "Definieer een relatie",
         "description": "🔗 Koppel een bronkolom aan een doelkolom en stel de <strong>cardinaliteit</strong> in:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Of laat Provisa relaties voor je <strong>afleiden</strong> met AI.</p>"
       },
+      "stepRelsSuggest": {
+        "title": "Relaties voorstellen",
+        "description": "✨ De glinsterknop zoekt waarschijnlijke joins: hij leest de foreign keys die je bronnen declareren en laat, als een sleutel voor een AI-model is ingesteld, het model er meer afleiden. Er wordt niets gedeclareerd totdat je een kandidaat accepteert, en een afgewezen kandidaat blijft weg tot je de afwijzingen wist."
+      },
+      "stepRelsList": {
+        "title": "Alle relaties in één lijst",
+        "description": "📋 De relaties van het model, of een bron ze nu declareert of niet, filterbaar en sorteerbaar. Klap een rij uit om haar te bewerken of de omgekeerde toe te voegen. Een rol doorloopt alleen de relaties waarop hij rechten heeft."
+      },
       "step17": {
         "title": "Bekijk het ERD",
         "description": "Het entity-relationship diagram brengt je hele gefedereerde model in beeld — elke geregistreerde tabel en de relaties ertussen."
@@ -138,9 +151,25 @@
         "title": "Toegangscontrole (RBAC)",
         "description": "🔐 Het registreren van een tabel stelt toegang per kolom in, rechtstreeks gekoppeld aan rollen:<div class='tour-tags'><span>👁️ Lezen</span><span>✏️ Schrijven</span></div><p>Dat is <strong>role-based access control</strong> — en de rollen zelf worden hier op de Beveiliging-pagina gedefinieerd.</p>"
       },
+      "stepRoleInherit": {
+        "title": "Rollen erven",
+        "description": "👪 Een rol kan erven van een bovenliggende rol: hij krijgt de rechten, kolomzichtbaarheid en rijregels van de ouder, en zijn eigen rijregel voor een tabel vervangt die van de ouder. De rol draagt ook zijn bevoegdheden en zijn snelheids- en complexiteitslimieten."
+      },
       "step19": {
         "title": "Beveiliging op rijniveau",
         "description": "🔎 Zodra rollen bestaan, ga je fijnmaziger — beperk welke <strong>rijen</strong> elke rol ziet met attribuutgebaseerde predicaten:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Datagedreven en per rij afgedwongen — over elke bron en elk protocol.</p>"
+      },
+      "stepDomains": {
+        "title": "Domeinen en hun stewards",
+        "description": "🗂️ Een domein groepeert tabellen, en zijn data steward beheert dat deel van het model: wie wat ziet, maskers en rijregels, gevoelige gegevens, en zijn glossarium en dataproducten."
+      },
+      "stepTags": {
+        "title": "Tags dragen betekenis",
+        "description": "🏷️ Een tag is één organisatiebreed label met een vaste betekenis, toegepast op bronnen, tabellen, kolommen, relaties of commando's. Tags dragen gedrag, niet alleen documentatie, en een tag kan bij het toepassen een reden, een vervaldatum of een parameter vereisen."
+      },
+      "stepRequests": {
+        "title": "Relatieverzoeken",
+        "description": "✋ Een relatieverzoek heeft twee goedkeuringen nodig voordat het kan worden uitgevoerd. Keur het goed, voer het uit of wijs het af met een reden uit een vaste lijst; afgehandelde verzoeken gaan naar het tabblad Afgehandeld."
       },
       "stepQualityTable": {
         "title": "Een kwaliteitschecker is gewoon een bron",
@@ -190,17 +219,33 @@
         "title": "Materialiseer naar een live warehouse",
         "description": "🏗️ Materialiseer een view en je krijgt een volledige ETL-engine, gedeclareerd in plaats van gescript:<ul><li>📅 <strong>Geplande snapshots</strong> op echte <strong>bedrijfskalenders</strong> — herhalingsregels, feestdagen, gating op werkdagen, en een afsluitmarge, zodat het draait op <em>jouw</em> rapportagekalender, niet enkel op de klok.</li><li>🗄️ <strong>Opslaan als…</strong> — <strong>vervangen</strong>, <strong>upserten</strong>, of geschiedenis bijhouden met <strong>snapshot</strong> / <strong>delta</strong>, plus incrementele berekening.</li><li>🕰️ <strong>Time travel</strong> — bitemporele geschiedenis; bevraag het model zoals het was op elk gewenst moment.</li><li>⚡ <strong>Bijna-realtime</strong> verversing met debounce, of freshness-gestuurde herpublicatie naarmate invoer verandert.</li></ul>"
       },
+      "stepMetrics": {
+        "title": "Metrics, één keer gedefinieerd",
+        "description": "📏 Een metric is de zakelijke definitie van een maat, een aggregatie over één feitentabel. Definieer haar één keer en SQL, GraphQL, het verkenningsdoek en elke view die erop is gebouwd berekenen hetzelfde getal; een view wordt opnieuw gegenereerd als zijn metric verandert."
+      },
+      "stepCommands": {
+        "title": "Commando's",
+        "description": "⚡ Een commando is een beheerde, getypeerde bewerking, zoals een HTTP-service, een Python-model of een stored procedure. Registreer het één keer en roep het aan vanaf elk oppervlak, met dezelfde rechten en tracing als een query."
+      },
       "step22": {
         "title": "Lineage, van begin tot eind",
         "description": "🧬 <strong>Lineage is het afhankelijkheidsspoor dat je afgeleiden achterlaten:</strong> waaruit elke view, berekende kolom of metric is opgebouwd en wat ervan afhangt. Dit is een echte query, geanalyseerd — volg <code>name_upper</code> via zijn transformaties terug naar de exacte <strong>bronkolommen</strong> die hem voeden.<p>Er wordt niets uitgevoerd — de query wordt alleen geanalyseerd.</p>"
       },
+      "stepObservability": {
+        "title": "Traces en debug-tracing",
+        "description": "🔭 Tracing legt één span per verzoek vast. Het tabblad Debug-tracing voegt een span toe per pijplijnfase en per bronaanroep, met SQL-tekst. Het kost belasting, dus zet het voor een bepaalde tijd aan voor één organisatie, rol of bron; het gaat vanzelf uit als de tijd om is."
+      },
+      "stepCache": {
+        "title": "Caches en replica's",
+        "description": "🗄️ Deze lagen staan los van elkaar. De responscache bewaart queryresultaten, en een verzoek doet mee via @cached of een SQL-commentaar. Kleine opzoektabellen worden gespiegeld om joins te versnellen. Een replica van een brontabel die niet kan worden gekoppeld, staat in de duurzame opslag, naast gematerialiseerde views."
+      },
+      "stepScheduled": {
+        "title": "Geplande taken",
+        "description": "⏱️ Voer een webhook of een SQL-instructie uit volgens een cron-schema. Een SQL-taak draait als een rol naar keuze, dus governance geldt, en elke taak toont zijn laatste en volgende uitvoering."
+      },
       "step23": {
         "title": "Beheer het",
         "description": "De beheerpagina's draaien het platform:<ul><li>⚙️ Kies en configureer je <strong>federatie-engine</strong> — pluggable: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, of een cloud warehouse als volwaardige engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Wissel op elk moment — het model, de oppervlakken en de governance erboven veranderen nooit.</li><li>🔗 Welke engine je ook kiest, hij brengt zijn eigen bereik voor <strong>live externe data</strong> mee — Parquet, Iceberg, Delta ter plekke gelezen, zero-copy, credentials automatisch geprovisioneerd. Alles wat hij niet live kan koppelen, komt terecht als governed replica.</li><li>🔑 Beheer <strong>versleutelingssleutels</strong> en koppel <strong>auth providers</strong></li><li>📊 Volledige <strong>observability</strong> — doorverwijzen naar elke OpenTelemetry-collector voor enterprise-klasse tracebeheer</li><li>📤 <strong>Exporteer de configuratie van het model</strong> — het hele model of gekozen secties — als bestand om te beoordelen, te vergelijken en via CI/CD uit te rollen</li></ul><p>Hetzelfde model reist van lokale ontwikkeling naar productie, gevalideerd bij elke stap — geen herschrijving:</p><ul><li><strong>Ontwikkelen</strong> — embedded DuckDB, geen Docker. Lokaal bouwen &amp; valideren.</li><li><strong>Op schaal valideren</strong> — Docker, start een engine + observability. Bewijs gedrag tegen productie-engines.</li><li><strong>Promoveren</strong> — wijs naar je eigen infrastructuur, bouw via CI/CD, ga naar productie.</li></ul>"
-      },
-      "step24": {
-        "title": "Dat was de rondleiding — maak het nu van jezelf",
-        "description": "🎉 Je bent terug waar je begon. Maak het nu van jezelf:<ul><li>1️⃣ Registreer een van je echte <strong>bronnen</strong></li><li>2️⃣ Stel een paar <strong>tabellen</strong> beschikbaar, teken een of twee <strong>relaties</strong></li><li>3️⃣ Bevraag het vanuit <strong>Verkennen</strong> in elke taal:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Richt <kbd>pgwire</kbd>- of <kbd>Bolt</kbd>-tools erop — alles werkt gewoon.</p><p>📚 Het tabblad <strong>Documentatie</strong> bevat de volledige handleidingen. 🧭 Het kompas bovenaan speelt deze rondleiding altijd opnieuw af. Veel plezier met Provisa.</p>"
       },
       "stepPreview": {
         "title": "Voorbeeld van elke tabel",
@@ -210,6 +255,10 @@
         "title": "Ingebouwde managementrapporten",
         "description": "📊 Het auditlog dat u eerder bevroeg voedt ook <strong>kant-en-klare rapporten</strong> — gebruiksranking, PII-toegang, beleidsweigeringen, querygezondheid — elk een governed view in het <code>ops</code>-domein. Een eigen rapport toevoegen is één SQL-statement, en het wordt een gecatalogiseerd, exporteerbaar dataproduct als elke andere tabel."
       },
+      "stepProductForm": {
+        "title": "Een dataproduct definiëren",
+        "description": "📦 Geef de eigenaar en het team, het doel, het gebruik, de SLA en de ondersteuning op en kies dan de tabellen en commando's die het bevat. Dit zijn de velden die worden gepubliceerd. Een tabel hoort alleen bij een product als beide hetzelfde domein delen."
+      },
       "stepGlossary": {
         "title": "Een levend bedrijfsglossarium",
         "description": "📖 Elke term verwijst terug naar de kolommen die hem dragen — beheer namen, definities en getypeerde relaties (soort van, onderdeel van, synoniem van) handmatig, of laat AI de leemtes opvullen: <strong>✨ Definities</strong> stelt alleen concepten op voor termen die er nog geen hebben, en <strong>✨ Relaties</strong> stelt koppelingen voor in het hele glossarium. Markeer een term als <strong>uitgesloten van export</strong> om hem buiten de gepubliceerde metadata te houden."
@@ -217,6 +266,10 @@
       "stepDataProducts": {
         "title": "Dataproducten, gepubliceerd waar afnemers al kijken",
         "description": "📦 Elk product hier spreekt <strong>ODPS</strong> (de Open Data Product Standard) — eigenaar, team, doel, beperkingen, gebruik, SLA, ondersteuning, aangepaste eigenschappen — en Provisa publiceert het automatisch rechtstreeks in <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong>, zodat het verschijnt als native product in de catalogus die je afnemers al gebruiken.<p>🔁 Er is geen aparte exportstap die je kunt vergeten: de specificatie wordt telkens <strong>afgeleid uit het live model</strong> — tabellen, lineage, tags, glossariumtermen — dus wat is gepubliceerd kan niet verouderen zoals een met de hand onderhouden ODPS-bestand.<p>✅ Elk product draagt ook de <strong>glossariumtermen</strong> die de kolommen definiëren en de <strong>datakwaliteitsresultaten</strong> van de checkers die het scannen.</p>"
+      },
+      "stepGlossaryTerm": {
+        "title": "Een term toevoegen",
+        "description": "📖 Een term benoemt één zakelijk concept, noemt de kolommen die het dragen en zegt wat het betekent. Termen voor echte kolommen worden voor je afgeleid; voeg er alleen met de hand een toe voor een concept dat geen enkele kolom alleen draagt."
       },
       "stepPublish": {
         "title": "Publiceren naar de tools van je organisatie",

@@ -588,3 +588,47 @@ def test_graphql_offers_no_upsert_where_on_conflict_is_refused():
     names = [n.lower() for n in offered.mutation_type.fields if "account" in n.lower()]
     assert names and not [n for n in names if "upsert" in n]
     assert [n for n in _schema(True).mutation_type.fields if "upsert" in n.lower()]
+
+
+# -- a source bound to a synthetic store (REQ-1942) ---------------------------------------------------
+
+
+@_aio
+async def test_a_synthetic_bound_salesforce_source_has_no_pgwire_write_server_or_route(monkeypatch):
+    """Bound to a synthetic store, the source's row takes the store's type and keeps the model's
+    in its binding. The pgwire write route is decided by the row's type, so it does not apply:
+    no server is started for the source and no write pool is opened on one."""
+    from provisa.core import connection_loop
+    from provisa.core.env_classes import BINDING_COLUMN, SYNTHETIC, model_type
+    from provisa.core.repositories.source import _source_values, source_from_row
+
+    row = {
+        **_source_values(_salesforce()),
+        "type": "postgresql",  # the store's
+        BINDING_COLUMN: SYNTHETIC,
+        "synthetic": {"model_type": "salesforce", "tables": [], "parameters": {}},
+    }
+    assert model_type(row) == "salesforce"
+    source = source_from_row(row)
+    assert source.type.value == "postgresql"
+
+    spawned: list[str] = []
+
+    def _spawn(coro, *, name=None):
+        coro.close()
+        spawned.append(name)
+
+    monkeypatch.setattr(connection_loop, "spawn_background", _spawn)
+    pgwire_write.start_write_server(source)
+    assert spawned == []
+
+    assert resolve_write_path(source.type.value, None) is not WritePath.PGWIRE
+    assert not is_written_through_pgwire_server(source.type.value)
+
+    def _never(source):
+        raise AssertionError("no pgwire server is asked for")
+
+    monkeypatch.setattr(pr, "ensure_endpoint_for_discovery", _never)
+    state = _state(source.type.value)
+    await pgwire_write.ensure_write_pool(state, "sf-sales")
+    assert state.source_pools.added == []

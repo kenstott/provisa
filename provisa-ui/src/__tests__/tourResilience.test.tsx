@@ -32,6 +32,8 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t }),
 }));
 
+const polly = vi.hoisted(() => ({ openPolly: (): Promise<void> => Promise.resolve() }));
+
 let chunksResolve: () => void;
 vi.mock("../pageChunks", () => ({
   prefetchAllPageChunks: () =>
@@ -53,7 +55,7 @@ vi.mock("../context/pollyState", async (importOriginal) => ({
     checkingConfig: false,
     unconfiguredReason: null,
     setUnconfiguredReason: () => {},
-    openPolly: () => Promise.resolve(),
+    openPolly: () => polly.openPolly(),
     closePolly: () => {},
   }),
 }));
@@ -147,23 +149,14 @@ describe("tour resilience under load", () => {
   });
 
   it("stays stuck when the step fails before the waiting hint, instead of spinning forever", async () => {
-    // The step's prep writes the visitor's NL state to localStorage, and an origin whose quota is
-    // exhausted refuses it — a failure raised in the first few milliseconds of the step, long
-    // before WAITING_HINT_MS. The waiting timer used to fire afterwards and overwrite "stuck" with
-    // "waiting", stranding the visitor on a spinner whose only button is Cancel: the anchor
+    // Polly's panel refusing to open raises a failure in the first few milliseconds of the step,
+    // long before WAITING_HINT_MS. The waiting timer used to fire afterwards and overwrite "stuck"
+    // with "waiting", stranding the visitor on a spinner whose only button is Cancel: the anchor
     // timeout that offers Retry / Skip / Exit had already come and gone.
-    const nlStep = TOUR_STEPS.findIndex((s) => s.prep === "seedNl");
-    expect(nlStep).toBeGreaterThan(-1);
-    localStorage.setItem("provisa_tour_progress", String(nlStep));
-    const realSetItem = Storage.prototype.setItem;
-    const setItem = vi
-      .spyOn(Storage.prototype, "setItem")
-      .mockImplementation(function (this: Storage, key: string, value: string) {
-        if (key.startsWith("nl-") || key === "provisa_tour_nl_backup") {
-          throw new DOMException("quota", "QuotaExceededError");
-        }
-        realSetItem.call(this, key, value);
-      });
+    const pollyStep = TOUR_STEPS.findIndex((s) => s.key === "stepPolly");
+    expect(pollyStep).toBeGreaterThan(-1);
+    localStorage.setItem("provisa_tour_progress", String(pollyStep));
+    polly.openPolly = () => Promise.reject(new Error("panel refused to open"));
 
     renderTour();
     fireEvent.click(screen.getByText("launch"));
@@ -184,7 +177,7 @@ describe("tour resilience under load", () => {
     expect(screen.queryByText("tour.status.waiting")).not.toBeInTheDocument();
     expect(screen.getByText("tour.status.retry")).toBeInTheDocument();
 
-    setItem.mockRestore();
+    polly.openPolly = () => Promise.resolve();
   });
 
   it("exits a stuck step with the position saved", async () => {

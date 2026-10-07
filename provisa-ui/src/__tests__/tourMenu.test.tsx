@@ -32,12 +32,14 @@ const { TOPIC_IDS, TOUR_SCOPES } = await import("../tour/tourSteps");
 describe("TourMenu", () => {
   it("renders a card per topic with title, sentence and step count, and marks completed ones", () => {
     const onPick = vi.fn();
+    const onCore = vi.fn();
     render(
       <TourMenu
         opened
         topics={TOPIC_IDS.map((id) => ({ id, steps: TOUR_SCOPES[id].length }))}
         completed={["govern"]}
         onPick={onPick}
+        onCore={onCore}
         onClose={() => {}}
       />,
     );
@@ -53,6 +55,9 @@ describe("TourMenu", () => {
 
     fireEvent.click(screen.getByTestId("tour-topic-query"));
     expect(onPick).toHaveBeenCalledWith("query");
+
+    fireEvent.click(screen.getByTestId("tour-menu-core-tour"));
+    expect(onCore).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -118,6 +123,41 @@ describe("tour button routing", () => {
       fireEvent.click(deep);
       expect(await screen.findByTestId("tour-menu")).toBeInTheDocument();
       expect(localStorage.getItem("provisa_tour_seen")).toBe("true");
+    } finally {
+      root.remove();
+    }
+  });
+
+  it("reaches the catalog from a topic step's Deep Dives button, and the core tour's first step from the catalog", async () => {
+    localStorage.setItem("provisa_tour_seen", "true");
+    const root = document.createElement("div");
+    root.innerHTML =
+      '<button class="navbar-tour-btn"></button><button data-tour="sources-add"></button><button data-tour="rels-add"></button>';
+    document.body.appendChild(root);
+    try {
+      render(
+        <TourProvider>
+          <Compass />
+        </TourProvider>,
+      );
+      fireEvent.click(screen.getByText("launch"));
+      fireEvent.click(await screen.findByTestId("tour-topic-relationships"));
+      const deep = await waitFor(
+        () => {
+          const el = document.querySelector<HTMLButtonElement>(".driver-popover-deepdives-btn");
+          expect(el).not.toBeNull();
+          return el!;
+        },
+        { timeout: 5000 },
+      );
+      expect(document.querySelector(".driver-popover-start-btn")).toBeNull();
+      fireEvent.click(deep);
+      fireEvent.click(await screen.findByTestId("tour-menu-core-tour"));
+      await waitFor(
+        () => expect(document.querySelector(".driver-popover-title")?.textContent).toBe("Welcome, let's take the tour"),
+        { timeout: 5000 },
+      );
+      expect(screen.queryByTestId("tour-topic-connect")).not.toBeInTheDocument();
     } finally {
       root.remove();
     }

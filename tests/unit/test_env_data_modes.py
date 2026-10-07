@@ -76,3 +76,39 @@ def test_the_sensitive_refusal_names_every_uncovered_column():
     assert "customers.email, customers.name" in message
     assert "'qa' is Test (fake)" in message
     assert "sensitive_data" in message
+
+
+def test_a_source_bound_to_a_synthetic_store_keeps_the_models_type_in_its_binding():
+    """REQ-1942: its ``type`` is the store's while it is bound there; what a merge, a deploy and
+    a tree carry is the type the model gives it."""
+    from provisa.core.env_classes import BINDINGS, SYNTHETIC, model_type
+
+    assert SYNTHETIC in BINDINGS
+    bound = {
+        "type": "postgresql",
+        "binding": SYNTHETIC,
+        "synthetic": {"schema": "s", "tables": [], "model_type": "openapi"},
+    }
+    assert model_type(bound) == "openapi"
+    assert model_type({"type": "openapi", "binding": "copied", "synthetic": None}) == "openapi"
+
+
+def test_a_restored_source_takes_the_type_the_model_gives_it_now():
+    """REQ-1942: restoring gives back the binding and connection a source had before generating;
+    its type is the model's, so a type a merge changed while it was bound to the store is kept."""
+    from provisa.core.env_data import restored_binding
+
+    before = {"type": "postgresql", "binding": "copied", "host": "db", "synthetic": None}
+    assert restored_binding(before, "postgresql") == before
+    assert restored_binding(before, "mysql") == {**before, "type": "mysql"}
+    # Bound to its parent's synthetic store before: that binding again, the model's type in it.
+    inherited = {
+        "type": "duckdb",
+        "binding": "synthetic",
+        "host": "",
+        "synthetic": {"schema": "s", "tables": [], "model_type": "postgresql"},
+    }
+    assert restored_binding(inherited, "mysql") == {
+        **inherited,
+        "synthetic": {"schema": "s", "tables": [], "model_type": "mysql"},
+    }

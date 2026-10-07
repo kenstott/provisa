@@ -16,7 +16,8 @@ one unless the operator picks another, or from a declared profile. Nothing in a 
 environment calls a source API: an API table that can be read in full is generated like any
 table; one that needs a required parameter has no full set of rows to measure, so it is generated
 only from a declared profile and is otherwise not available there, a read of it refused; and the
-commands backed by a generated API source are not defined there, a call to one refused.
+commands backed by a source bound to the synthetic store -- an API's operations, a database's
+procedures -- are not defined there, a call to one refused.
 
 Generation is two steps. Generate answers the Limitations of Synthetic Data warning -- what the
 environment loses and, for this generation, what will be generated, what will not be available
@@ -54,9 +55,9 @@ LIMITATIONS: tuple[dict[str, str], ...] = (
         "otherwise not available in the environment.",
     },
     {
-        "key": "api_commands",
-        "text": "The commands backed by a generated API source are not defined in the "
-        "environment: a call to one is refused.",
+        "key": "source_commands",
+        "text": "The commands backed by a generated source -- an API's operations, a database's "
+        "procedures -- are not defined in the environment: a call to one is refused.",
     },
     {
         "key": "manual_fix_up",
@@ -93,6 +94,26 @@ def required_parameters(table: dict, source_type: str) -> list[str]:
     return [c["column_name"] for c in table["columns"] if c["native_filter_type"] == kind]
 
 
+async def parameter_columns(conn: Any) -> dict[int, dict[str, str]]:
+    """``{table id: {required parameter column: its data type}}`` in the environment ``conn`` is
+    scoped to (REQ-1942): generated, a required parameter is an ordinary column of its table, a
+    filter on it, of the type the model holds for it -- the one its API endpoint gave it when the
+    table was registered (REQ-1426: no column is registered without a type)."""
+    from provisa.api.admin.db_queries import fetch_tables
+
+    types = await _source_types(conn)
+    out: dict[int, dict[str, str]] = {}
+    for t in await fetch_tables(conn):
+        required = set(required_parameters(t, types[t["source_id"]]))
+        if required:
+            out[t["id"]] = {
+                c["column_name"]: c["data_type"]
+                for c in t["columns"]
+                if c["column_name"] in required
+            }
+    return out
+
+
 def unavailable_reason(table_name: str, parameters: list[str]) -> str:
     """Why a required-parameter API table is not available in a Test (synthetic) environment,
     and what generates it (REQ-1942)."""
@@ -104,51 +125,82 @@ def unavailable_reason(table_name: str, parameters: list[str]) -> str:
 
 
 def undefined_reason(command: str, source_id: str) -> str:
-    """Why a command of a generated API source is not defined in a Test (synthetic) environment
-    (REQ-1942)."""
+    """Why a command of a source bound to a synthetic store is not defined there (REQ-1942)."""
     return (
-        f"Command {command!r} is not defined in a Test (synthetic) environment: it is backed by "
-        f"the API source {source_id!r}, whose tables are generated there, and a synthetic "
-        f"environment calls no source API."
+        f"Command {command!r} is not defined in this environment: it is backed by the source "
+        f"{source_id!r}, which is bound to a synthetic store here, and nothing in a synthetic "
+        f"environment calls a source API or a procedure of a source."
     )
 
 
 async def _source_types(conn: Any) -> dict[str, str]:
+    """Each source's type as the model gives it: a source already bound to a synthetic store is
+    still the API, or the database, it was generated from."""
+    from provisa.core.env_classes import BINDING_COLUMN, model_type
     from provisa.core.schema_org import sources
     from sqlalchemy import select
 
-    rows = await conn.execute_core(select(sources.c.id, sources.c.type))
-    return {r[0]: r[1] for r in rows.fetchall()}
+    rows = await conn.execute_core(
+        select(sources.c.id, sources.c.type, sources.c[BINDING_COLUMN], sources.c.synthetic)
+    )
+    return {r._mapping["id"]: model_type(dict(r._mapping)) for r in rows.fetchall()}
 
 
-async def api_commands(conn: Any) -> dict[str, list[str]]:
-    """The commands backed by an API source, by source id (REQ-1942): what generating the model
+async def source_commands(conn: Any, source_ids: set[str]) -> dict[str, list[str]]:
+    """The commands backed by each of ``source_ids``, by source id (REQ-1942): an API's
+    operations and a database's procedures alike -- what binding the source to a synthetic store
     leaves not defined."""
     from provisa.core.schema_org import tracked_functions as tf
     from sqlalchemy import select
 
-    api = api_source_types()
-    types = await _source_types(conn)
     out: dict[str, list[str]] = {}
     rows = await conn.execute_core(select(tf.c.name, tf.c.source_id).order_by(tf.c.name))
     for name, source_id in rows.fetchall():
-        if types.get(source_id) in api:
+        if source_id in source_ids:
             out.setdefault(source_id, []).append(name)
     return out
 
 
 async def undefined_commands(conn: Any) -> dict[str, str]:
     """``{command: why it is not defined}`` in the environment ``conn`` is scoped to: the
-    commands of its API sources once its whole model is generated (REQ-1942); none before."""
-    from provisa.synthetic.datasets import generated_tables
+    commands of each source bound to a synthetic store (REQ-1942) -- by generating the
+    environment's model, or copied from the environment it was created from."""
+    from provisa.synthetic.datasets import synthetic_sources
 
-    if DATASET_ID not in {ds for ds, _ in (await generated_tables(conn)).values()}:
+    bound = set(await synthetic_sources(conn))
+    if not bound:
         return {}
     return {
         name: undefined_reason(name, source_id)
-        for source_id, names in (await api_commands(conn)).items()
+        for source_id, names in (await source_commands(conn, bound)).items()
         for name in names
     }
+
+
+async def record_generation(conn: Any, rows: int, seconds: float) -> None:
+    """Record a finished whole-model generation of the environment ``conn`` is scoped to."""
+    from datetime import UTC, datetime
+
+    from provisa.core.schema_org import synthetic_generations as sg
+    from sqlalchemy import insert
+
+    await conn.execute_core(
+        insert(sg).values(finished_at=datetime.now(UTC), generated_rows=rows, seconds=seconds)
+    )
+
+
+async def last_generation(conn: Any) -> tuple[int, float] | None:
+    """The rows and seconds of the environment's last finished whole-model generation, or None
+    before its first."""
+    from provisa.core.schema_org import synthetic_generations as sg
+    from sqlalchemy import select
+
+    row = (
+        await conn.execute_core(
+            select(sg.c.generated_rows, sg.c.seconds).order_by(sg.c.finished_at.desc()).limit(1)
+        )
+    ).fetchone()
+    return None if row is None else (int(row[0]), float(row[1]))
 
 
 async def model_plan(state: Any, conn: Any, parent: str, env: str) -> dict[str, Any]:
@@ -166,7 +218,6 @@ async def model_plan(state: Any, conn: Any, parent: str, env: str) -> dict[str, 
     from provisa.core.request_context import require_current_org
     from provisa.synthetic.run import profile_runs_in, uncovered_columns
 
-    del state
     # The model's own tables: the built-in sources' (the catalog, the observability store) are the
     # platform's, not the operator's data.
     tables = [t for t in await fetch_tables(conn) if t["source_id"] not in BUILT_IN_SOURCE_IDS]
@@ -217,17 +268,28 @@ async def model_plan(state: Any, conn: Any, parent: str, env: str) -> dict[str, 
                     table=t,
                     run_id=selected["runId"],
                     relationships=relationships,
+                    parameters=frozenset(required),
                 ),
             }
         )
+    store_type = state.federation_engine.engine.replica_store_backend()
     return {
         "parent": parent,
         "tables": entries,
+        # REQ-1942: each source whose type and connection generating changes to the store's.
+        "sources": [
+            {"id": sid, "type": types[sid], "becomes": store_type}
+            for sid in sorted({t["source_id"] for t in tables})
+        ],
         "unavailable": unavailable,
         "commandsNotDefined": [
             {"source": sid, "commands": names}
-            for sid, names in sorted((await api_commands(conn)).items())
+            for sid, names in sorted(
+                (await source_commands(conn, {t["source_id"] for t in tables})).items()
+            )
         ],
+        # REQ-1942: (rows, seconds) of the environment's last finished generation, or None.
+        "lastGeneration": await last_generation(conn),
         "ready": all(e["selected"] is not None and not e["uncovered"] for e in entries),
     }
 
@@ -243,8 +305,8 @@ def warning(
     """The Limitations of Synthetic Data warning of one generation (REQ-1942): what a synthetic
     environment loses in general, and for this generation -- ``plan``'s tables from ``runs``
     (each as the environment holding its profile and the run id) at ``scale`` -- each table to
-    be generated with its profile and its estimated rows, each source whose tables are
-    generated, each table that will not be available and why, each command that will not be
+    be generated with its profile and its estimated rows, each source whose type
+    and connection change to the synthetic store's, each table that will not be available and why, each command that will not be
     defined, by its source, and the kept mutations generating discards, by table id. Its
     ``digest`` names exactly this content: what the operator confirms."""
     tables = []
@@ -262,13 +324,18 @@ def warning(
                 "estimatedRows": round(run["rowCount"] * scale),
             }
         )
+    total = sum(t["estimatedRows"] for t in tables)
+    last = plan["lastGeneration"]
     body: dict[str, Any] = {
         "title": "Limitations of Synthetic Data",
+        "estimatedRows": total,
+        # From the environment's last finished generation; None: no estimate before the first.
+        "estimatedSeconds": None if last is None or not last[0] else total * last[1] / last[0],
         "limitations": list(LIMITATIONS),
         "seed": seed,
         "scale": scale,
         "tables": tables,
-        "sources": sorted({t["source"] for t in tables}),
+        "sources": plan["sources"],
         "unavailable": plan["unavailable"],
         "commandsNotDefined": plan["commandsNotDefined"],
         "keptMutationsDiscarded": {str(tid): n for tid, n in sorted(kept_mutations.items())},
@@ -285,6 +352,7 @@ def start(
     runs: dict[int, tuple[str, str]],
     seed: int,
     scale: float,
+    rows: int,
 ) -> None:
     """Generate ``env``'s whole model in the background from ``runs`` -- each generated table's
     profile, as (the environment holding it, its run id) -- recording Generating, then Ready or
@@ -294,7 +362,15 @@ def start(
     from provisa.core.connection_loop import spawn_background
 
     spawn_background(
-        _generate(state, org_id=org_id, env=env, runs=runs, seed=seed, scale=scale),
+        _generate(
+            state,
+            org_id=org_id,
+            env=env,
+            runs=runs,
+            seed=seed,
+            scale=scale,
+            generated_rows=rows,
+        ),
         name=f"synthetic-model:{org_id}/{env}",
     )
 
@@ -307,8 +383,12 @@ async def _generate(
     runs: dict[int, tuple[str, str]],
     seed: int,
     scale: float,
+    generated_rows: int,
 ) -> None:
+    import time
+
     from provisa.api.app import ensure_org_runtime
+    from provisa.api.org_runtime import runtime_key
     from provisa.core.env_store import set_data
     from provisa.core.request_context import (
         reset_current_env,
@@ -337,7 +417,19 @@ async def _generate(
                 store_schema=store_schema(DATASET_ID),
                 tables=rows,
             )
-        await generate(state, DATASET_ID)
+        started = time.monotonic()
+
+        async def bind() -> None:
+            # Its sources now point at the synthetic store, type and connection: the runtime
+            # is built again from them, before the report reads what was generated.
+            bound = await bind_generated(state, org_id, env)
+            log.info("whole-model generation of %s/%s bound sources %s", org_id, env, bound)
+            state.org_registry.invalidate(runtime_key(org_id, env))
+            await ensure_org_runtime(org_id, env)
+
+        await generate(state, DATASET_ID, bind=bind)
+        async with state.model_db.acquire() as conn:
+            await record_generation(conn, generated_rows, time.monotonic() - started)
     except Exception as exc:  # noqa: BLE001 -- REQ-1942: the environment shows Failed with the reason
         log.exception("whole-model generation of %s/%s failed", org_id, env)
         await set_data(
@@ -352,3 +444,47 @@ async def _generate(
         reset_current_env(env_token)
         reset_current_org(org_token)
     await set_data(state.admin_db, org_id, env, data_status="ready", data_error=None)
+
+
+async def bind_generated(state: Any, org_id: str, env: str) -> list[str]:
+    """Bind every source of ``env``'s model to its synthetic store once its whole model is
+    generated there (REQ-1942): type and connection, each naming the tables generated for it. A
+    source none of whose tables was generated -- an API read only by a required parameter -- is
+    bound too: nothing in the environment calls it. The ids bound."""
+    from provisa.api.admin.db_queries import fetch_tables
+    from provisa.core import env_data
+    from provisa.core.environments import org_schema
+    from provisa.core.models import BUILT_IN_SOURCE_IDS
+    from provisa.core import model_change
+    from provisa.synthetic.datasets import get_dataset
+
+    # A binding is the environment's own and no part of the model a change commits (REQ-1524):
+    # the type the model gives each source is kept, and is what a tree of it still carries.
+    async with (
+        model_change.committed_by_caller(),
+        state.model_db.acquire() as conn,
+        conn.transaction(),
+    ):
+        row = await get_dataset(conn, DATASET_ID)
+        made = {t.table_id for t in row.tables}
+        typed = await parameter_columns(conn)
+        generated: dict[str, list[list[str]]] = {}
+        parameters: dict[str, dict[str, dict[str, str]]] = {}
+        for t in await fetch_tables(conn):
+            if t["source_id"] in BUILT_IN_SOURCE_IDS:
+                continue
+            held = generated.setdefault(t["source_id"], [])
+            if t["id"] in made:
+                held.append([t["schema_name"], t["table_name"]])
+                if t["id"] in typed:
+                    parameters.setdefault(t["source_id"], {})[
+                        f"{t['schema_name']}.{t['table_name']}"
+                    ] = typed[t["id"]]
+        return await env_data.bind_synthetic(
+            conn,
+            org_schema(org_id, env),
+            store_type=state.federation_engine.engine.replica_store_backend(),
+            store_schema=row.store_schema,
+            generated=generated,
+            parameters=parameters,
+        )

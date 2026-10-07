@@ -1760,12 +1760,13 @@ async def _unbound_sources(conn: Any) -> set[str]:
     """The ids of the environment's sources with no connection (REQ-1491, REQ-1942): they get no
     pool, because an empty host is not an absent one. Every other source's connection is the
     environment's own row -- given in it or copied from its parent -- and nothing is resolved
-    through the parent."""
-    from provisa.core.env_classes import BINDING_COLUMN, UNBOUND
+    through the parent. A source bound to a synthetic store is among them: its tables are read
+    from the store by the engine, never through a connection of the source's own."""
+    from provisa.core.env_classes import BINDING_COLUMN, SYNTHETIC, UNBOUND
     from provisa.core.schema_org import sources as sources_t
 
     result = await conn.execute_core(
-        select(sources_t.c.id).where(sources_t.c[BINDING_COLUMN] == UNBOUND)
+        select(sources_t.c.id).where(sources_t.c[BINDING_COLUMN].in_((UNBOUND, SYNTHETIC)))
     )
     return {r[0] for r in result.fetchall()}
 
@@ -2234,6 +2235,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     async with state.model_db.acquire() as conn:
         _pg = cast("Connection", conn)
         tables = await _fetch_tables(_pg)
+        # REQ-1942: a table generated into a synthetic store is read as an ordinary table.
+        from provisa.synthetic.datasets import as_generated, synthetic_sources
+
+        tables = as_generated(tables, await synthetic_sources(_pg))
         # REQ-1921: out of service — offered in no schema, refused by name when named.
         draft_tables = await _fetch_tables(_pg, draft=True)
         _assert_domain_table_unique(tables)
