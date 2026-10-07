@@ -25,6 +25,7 @@ from pydantic import (
     Field,
     PrivateAttr,
     SecretStr,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -2215,6 +2216,10 @@ class SecurityConfig(BaseModel):  # REQ-693
         return self.mode.lower() == "high"
 
 
+#: Validation-context key: the configuration parsed is the model the store holds (REQ-1919).
+STORED_MODEL = "stored_model"
+
+
 class ProvisaConfig(BaseModel):
     # The config as its file wrote it (config_loader.parse_config_dict): the same model with each
     # text value that the file gave as a reference (``${env:...}``, ``${secret:...}``) still that
@@ -2367,13 +2372,22 @@ class ProvisaConfig(BaseModel):
         return data
 
     @model_validator(mode="after")
-    def _roles_list_a_domain(self) -> "ProvisaConfig":
+    def _roles_list_a_domain(self, info: ValidationInfo) -> "ProvisaConfig":
         """A role is always one or more domains, or all (``rights.role_domain_problem``).
 
         Judged on the role's effective list — its own plus what a parent IN THIS CONFIG hands
         down. An empty list reads no data, so it fails the load naming the role rather than
         loading a role that silently reaches nothing.
+
+        A configuration a file or an apply gives is judged here. The model the store already holds
+        (``STORED_MODEL`` in the validation context, ``config_loader.parse_store_raw``) is not: the
+        save paths refuse an empty list, and a stored role that nevertheless has none reaches
+        nothing on every surface (REQ-1530: a role's domain_access is the limit of what it reaches;
+        REQ-039: what a role may not see does not appear) -- one such row must not refuse the whole
+        org's model.
         """
+        if (info.context or {}).get(STORED_MODEL):
+            return self
         from provisa.security.rights import role_domain_problem
 
         by_id = {r.id: r for r in self.roles}
