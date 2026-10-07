@@ -254,11 +254,15 @@ def test_an_api_tables_collection_is_replicated_with_no_read_and_a_function_is_n
 
     def built():
         (pets,) = [b for b in _builds(srv)["builds"] if b["tableName"] == "list_pets"] or [None]
-        return pets if pets and pets["completedAt"] else None
+        return pets if pets and pets["completedAt"] and pets["state"] == "idle" else None
 
-    pets = _wait(built, seconds=60, what="the build of the collection")
+    # Settled, not merely built once: the launch's boot seed asks for one more build when the
+    # model's build started before the seed was posted (events/handlers._answered_by_a_later_build
+    # exempts only a build that started after it), and a look taken during that one saw
+    # ("building", "refresh"). Either way nothing READ the table to have it built.
+    pets = _wait(built, seconds=120, what="the build of the collection to settle")
     assert pets["lastError"] is None, pets
-    assert (pets["state"], pets["requestedReason"]) == ("idle", "model")
+    assert pets["requestedReason"] in ("model", "refresh"), pets
     assert (pets["method"], pets["loadKind"]) == ("stream_batches", "bulk_stream")
     assert pets["rowsCopied"] == _N
 
