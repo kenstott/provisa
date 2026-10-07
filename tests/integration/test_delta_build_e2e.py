@@ -23,6 +23,7 @@ import httpx
 import pytest
 import yaml
 
+from tests.helpers import registered_id, release_field
 from tests.integration.test_pg_engine_landing_never_writes_source_e2e import _ROLE, _SourceAndEngine
 
 pytestmark = [pytest.mark.integration]
@@ -152,10 +153,12 @@ def _wait(srv, store, want: dict[int, int], *, seconds: float = 120) -> dict:
     import duckdb
 
     deadline = time.monotonic() + seconds
+    seen = (_last_build(srv) or {}).get("completedAt")
     while True:
-        # The store is read BEFORE the next poke: a poke after the build that produced ``want``
-        # would start another (an empty delta once the cursor has caught up), and the record read
-        # below is the table's latest build, so it would report that one's 0 rows instead.
+        # The store is read BEFORE the next poke, and a poke is made only once the build the last
+        # one requested has completed: a poke while a build is running, or after the build that
+        # produced ``want``, starts another (an empty delta once the cursor has caught up), and the
+        # record read below is the table's latest build, so it would report that one's 0 rows.
         try:
             got = _store_ids(store)
         except duckdb.IOException:
@@ -166,7 +169,16 @@ def _wait(srv, store, want: dict[int, int], *, seconds: float = 120) -> dict:
             f"timed out: replica holds {got}, want {want}; last build: {_last_build(srv)}"
         )
         _poke(srv)
-        time.sleep(2)
+        while True:
+            build = _last_build(srv) or {}
+            if build.get("completedAt") != seen:
+                seen = build.get("completedAt")
+                break
+            assert time.monotonic() < deadline, (
+                f"timed out waiting for a build: replica holds {got}, want {want}; "
+                f"last build: {build}"
+            )
+            time.sleep(1)
 
 
 def test_a_delta_table_applies_insert_update_and_tombstone_incrementally(databases):
@@ -181,7 +193,7 @@ def test_a_delta_table_applies_insert_update_and_tombstone_incrementally(databas
                 f'port: {pg.source_port}, database: "shop", username: "provisa", '
                 'password: "provisa"})',
             )
-            _admin(
+            registered = _admin(
                 srv,
                 'registerTable(input: {sourceId: "src", domainId: "shop", schemaName: "public", '
                 'tableName: "inc_orders", watermarkColumn: "updated_at", '
@@ -192,6 +204,9 @@ def test_a_delta_table_applies_insert_update_and_tombstone_incrementally(databas
                 '{name: "updated_at", visibleTo: ["org_admin"], dataType: "integer"}, '
                 '{name: "is_deleted", visibleTo: ["org_admin"], dataType: "boolean"}]})',
             )
+            # REQ-1921: a table registered through the admin starts as a draft; it is released into
+            # service before it is read.
+            _admin(srv, release_field(registered_id(registered["message"])))
             # Floor the table so every read is served from its replica, with a short landing TTL so
             # the build runner re-refreshes quickly (REQ-1907).
             _admin(srv, 'updateSourceCache(sourceId: "src", cacheEnabled: true, cacheTtl: 1)')
