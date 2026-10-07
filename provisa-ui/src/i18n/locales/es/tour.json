@@ -31,7 +31,7 @@
       },
       "step3": {
         "title": "58 tipos de fuente, 13 categorías",
-        "description": "Un selector enumera cada tipo, agrupado por categoría: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Busque por nombre o alias, o acote con los chips de categoría. Cada tipo muestra su logotipo y un icono de alcance: ⚡ lectura en vivo en el origen, o un icono de copia donde Provisa lee una réplica actualizada.<p>Elija uno, rellene la conexión y guarde. La lista no es fija: los motores de federación nativos son <strong>extensibles</strong>. Declare en la configuración un FDW de Postgres propio o una extensión de DuckDB y Provisa alcanzará un nuevo tipo de fuente, sin código.</p>"
+        "description": "Un selector enumera cada tipo, agrupado por categoría: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Busque por nombre o alias, o acote con los chips de categoría. Cada tipo muestra su logotipo y un icono de alcance: ⚡ lectura en vivo en el origen, o un icono de copia donde Provisa lee una réplica actualizada.<p>Elija uno, rellene la conexión y guarde.</p>"
       },
       "step4": {
         "title": "Todo se convierte en una tabla",
