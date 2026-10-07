@@ -114,6 +114,22 @@
     "sfAccessToken": "एक्सेस टोकन",
     "sfInstanceUrl": "इंस्टेंस URL",
     "sfApiVersion": "API संस्करण",
-    "sfApiVersionHelp": "वैकल्पिक, उदाहरण के लिए v61.0"
+    "sfApiVersionHelp": "वैकल्पिक, उदाहरण के लिए v61.0",
+    "coNameACloud": "Azure, AWS या GCP में से कम से कम एक भरें।",
+    "coCloudsNamed": "यह स्रोत पढ़ता है: {{clouds}}",
+    "coRequiredWithCloud": "इस क्लाउड के नाम दिए जाने पर आवश्यक",
+    "coAzureTenantId": "टेनेंट ID",
+    "coAzureClientId": "क्लाइंट ID",
+    "coAzureClientSecret": "क्लाइंट सीक्रेट",
+    "coAzureSubscriptionIds": "सब्सक्रिप्शन ID",
+    "coAwsAccessKeyId": "एक्सेस की ID",
+    "coAwsSecretAccessKey": "सीक्रेट एक्सेस की",
+    "coAwsRegion": "रीजन",
+    "coAwsAccountIds": "अकाउंट ID",
+    "coAwsRoleArn": "धारण की जाने वाली भूमिका (ARN)",
+    "coGcpCredentialsPath": "सर्विस अकाउंट की फ़ाइल",
+    "coGcpProjectIds": "प्रोजेक्ट ID",
+    "coCacheTtlMinutes": "कैश (मिनट)",
+    "coCacheTtlMinutesHelp": "क्लाउड से दोबारा पूछने से पहले कोई परिणाम कितनी देर तक फिर से उपयोग होता है"
   }
 }

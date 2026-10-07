@@ -76,7 +76,7 @@
         "description": "➕ 新規接続はこのボタンから始まります — PostgreSQL、Snowflake、MongoDB、REST API、CSV、その他50種類以上。"
       },
       "step3": {
-        "title": "59種類のソース、13カテゴリ",
+        "title": "60種類のソース、13カテゴリ",
         "description": "ひとつのピッカーに、カテゴリ別にすべての種類が並びます：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。名前や別名で検索するか、カテゴリのチップで絞り込めます。各種類にはロゴと到達方法のアイコンが付きます。⚡ はその場でライブ読み取り、コピーのアイコンは Provisa が更新済みのレプリカを読む場合です。<p>ひとつ選び、接続を入力して保存します。</p>"
       },
       "step4": {

@@ -145,6 +145,13 @@ export const SOURCE_TYPES = [
   // Enterprise SaaS
   { value: "sharepoint", label: "SharePoint", category: "Enterprise", defaultPort: 0 },
   { value: "salesforce", label: "Salesforce", category: "Enterprise", defaultPort: 0 }, // REQ-1946
+  // REQ-1947
+  {
+    value: "cloudops",
+    label: "Cloud Inventory (Azure / AWS / GCP)",
+    category: "Enterprise",
+    defaultPort: 0,
+  },
   // REQ-1923: a branded source — the remote GraphQL source with the system's endpoint, schema
   // and credential handling already supplied. The user sees the brand as an ordinary type.
   { value: "github", label: "GitHub", category: "Enterprise", defaultPort: 443 },

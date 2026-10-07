@@ -114,6 +114,22 @@
     "sfAccessToken": "אסימון גישה",
     "sfInstanceUrl": "כתובת URL של המופע",
     "sfApiVersion": "גרסת API",
-    "sfApiVersionHelp": "אופציונלי, לדוגמה v61.0"
+    "sfApiVersionHelp": "אופציונלי, לדוגמה v61.0",
+    "coNameACloud": "מלא לפחות אחד מהעננים Azure,‏ AWS או GCP.",
+    "coCloudsNamed": "מקור זה קורא: {{clouds}}",
+    "coRequiredWithCloud": "נדרש לאחר שהענן הזה צוין",
+    "coAzureTenantId": "מזהה דייר (Tenant ID)",
+    "coAzureClientId": "Client ID",
+    "coAzureClientSecret": "Client Secret",
+    "coAzureSubscriptionIds": "מזהי מנויים",
+    "coAwsAccessKeyId": "מזהה מפתח גישה",
+    "coAwsSecretAccessKey": "מפתח גישה סודי",
+    "coAwsRegion": "אזור",
+    "coAwsAccountIds": "מזהי חשבונות",
+    "coAwsRoleArn": "תפקיד לקבלה (ARN)",
+    "coGcpCredentialsPath": "קובץ מפתח של חשבון השירות",
+    "coGcpProjectIds": "מזהי פרויקטים",
+    "coCacheTtlMinutes": "מטמון (דקות)",
+    "coCacheTtlMinutesHelp": "כמה זמן תוצאה משמשת שוב לפני שפונים שוב לעננים"
   }
 }
