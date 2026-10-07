@@ -48,7 +48,13 @@ from provisa.core.models import Source, SourceType
 from provisa.federation import pgwire_replica as pr
 from provisa.federation.connector_duckdb import DuckDBSharepointConnector
 
-pytestmark = [pytest.mark.integration]
+# A live SharePoint site, like test_sharepoint_source_e2e: the warehouse lane is the one given its
+# credentials, and there a test that cannot run for want of one fails (tests/skip_is_failure.py).
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.requires_sharepoint,
+    pytest.mark.requires_warehouse,
+]
 
 _REQUIRED = (
     "SHAREPOINT_SITE_URL",
