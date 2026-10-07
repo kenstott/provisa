@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// REQ-1824: a files/sharepoint/splunk source's bundled Calcite server can take longer to boot
+// REQ-1824: a files/sharepoint/salesforce/splunk source's bundled Calcite server can take longer to boot
 // than the backend is willing to block a discovery request for (a large `files` directory's eager
 // schema scan especially) — the resolver fails fast with this fixed, machine-parseable prefix
 // instead of hanging the whole request, so a discovery hook can poll instead of showing a hard
@@ -20,6 +20,8 @@ export const STILL_STARTING_POLL_MS = 3000;
 // A source whose bundled server never comes up (genuinely broken, not just slow) would otherwise
 // poll forever — 10 minutes covers even an 8k-file dataset's Calcite boot with room to spare, per
 // the size case this fix was built for, without polling indefinitely on a truly dead source.
+// A Salesforce server's first start describes every sObject (about 4 minutes for 1,200 of them,
+// REQ-1946), which this also covers.
 export const STILL_STARTING_MAX_MS = 10 * 60 * 1000;
 
 export function isStillStarting(error: { message?: string } | undefined): boolean {

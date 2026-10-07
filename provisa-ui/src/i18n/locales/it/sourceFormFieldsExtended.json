@@ -101,6 +101,19 @@
     "cacheTtlRequiredForSignal": "Il segnale di modifica {{signal}} valuta l'aggiornamento in base al TTL della cache, quindi imposta un TTL della cache.",
     "accessToken": "Token di accesso",
     "accessTokenHint": "Conservato nel vault dei segreti. È accettato anche un riferimento ${secret:NAME} o ${env:NAME}.",
-    "brandNamespaceHint": "Prefisso dei nomi delle tabelle di questa origine. Lasciare vuoto per il valore predefinito."
+    "brandNamespaceHint": "Prefisso dei nomi delle tabelle di questa origine. Lasciare vuoto per il valore predefinito.",
+    "sfLoginUrl": "URL di accesso",
+    "sfLoginUrlHelp": "L'URL Dominio personale della tua organizzazione (Imposta, poi Dominio personale)",
+    "sfAccessTokenAuth": "Token di accesso",
+    "sfConsumerKey": "Chiave consumatore",
+    "sfConsumerSecret": "Segreto consumatore",
+    "sfUsername": "Nome utente Salesforce",
+    "sfPassword": "Password Salesforce",
+    "sfSecurityToken": "Token di sicurezza",
+    "sfSecurityTokenHelp": "Solo se la tua organizzazione lo richiede",
+    "sfAccessToken": "Token di accesso",
+    "sfInstanceUrl": "URL istanza",
+    "sfApiVersion": "Versione API",
+    "sfApiVersionHelp": "Facoltativo, ad esempio v61.0"
   }
 }

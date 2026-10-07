@@ -101,6 +101,19 @@
     "cacheTtlRequiredForSignal": "Het wijzigingssignaal {{signal}} beoordeelt de actualiteit op basis van de Cache-TTL; stel dus een Cache-TTL in.",
     "accessToken": "Toegangstoken",
     "accessTokenHint": "Opgeslagen in de geheimenkluis. Een verwijzing ${secret:NAME} of ${env:NAME} wordt ook geaccepteerd.",
-    "brandNamespaceHint": "Voorvoegsel van de tabelnamen van deze bron. Laat leeg voor de standaardwaarde."
+    "brandNamespaceHint": "Voorvoegsel van de tabelnamen van deze bron. Laat leeg voor de standaardwaarde.",
+    "sfLoginUrl": "Aanmeldings-URL",
+    "sfLoginUrlHelp": "De Mijn domein-URL van uw organisatie (Setup, dan Mijn domein)",
+    "sfAccessTokenAuth": "Toegangstoken",
+    "sfConsumerKey": "Consumentensleutel",
+    "sfConsumerSecret": "Consumentengeheim",
+    "sfUsername": "Salesforce-gebruikersnaam",
+    "sfPassword": "Salesforce-wachtwoord",
+    "sfSecurityToken": "Beveiligingstoken",
+    "sfSecurityTokenHelp": "Alleen als uw organisatie er een vereist",
+    "sfAccessToken": "Toegangstoken",
+    "sfInstanceUrl": "Instantie-URL",
+    "sfApiVersion": "API-versie",
+    "sfApiVersionHelp": "Optioneel, bijvoorbeeld v61.0"
   }
 }

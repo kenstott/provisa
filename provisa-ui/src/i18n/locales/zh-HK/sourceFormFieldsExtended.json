@@ -101,6 +101,19 @@
     "cacheTtlRequiredForSignal": "變更訊號 {{signal}} 根據快取 TTL 判斷數據是否過期，因此請設定快取 TTL。",
     "accessToken": "存取權杖",
     "accessTokenHint": "儲存於密鑰保管庫。亦接受 ${secret:NAME} 或 ${env:NAME} 參照。",
-    "brandNamespaceHint": "此來源資料表名稱的前綴。留空則使用預設值。"
+    "brandNamespaceHint": "此來源資料表名稱的前綴。留空則使用預設值。",
+    "sfLoginUrl": "登入 URL",
+    "sfLoginUrlHelp": "貴機構的「我的網域」URL（設定，然後是「我的網域」）",
+    "sfAccessTokenAuth": "存取權杖",
+    "sfConsumerKey": "用戶金鑰",
+    "sfConsumerSecret": "用戶密碼",
+    "sfUsername": "Salesforce 使用者名稱",
+    "sfPassword": "Salesforce 密碼",
+    "sfSecurityToken": "安全性權杖",
+    "sfSecurityTokenHelp": "僅在貴機構要求時填寫",
+    "sfAccessToken": "存取權杖",
+    "sfInstanceUrl": "執行個體 URL",
+    "sfApiVersion": "API 版本",
+    "sfApiVersionHelp": "選填，例如 v61.0"
   }
 }

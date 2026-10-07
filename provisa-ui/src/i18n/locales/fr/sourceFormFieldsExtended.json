@@ -101,6 +101,19 @@
     "cacheTtlRequiredForSignal": "Le signal de changement {{signal}} évalue la fraîcheur selon le TTL du cache ; définissez donc un TTL du cache.",
     "accessToken": "Jeton d'accès",
     "accessTokenHint": "Stocké dans le coffre de secrets. Une référence ${secret:NAME} ou ${env:NAME} est également acceptée.",
-    "brandNamespaceHint": "Préfixe des noms de table de cette source. Laissez vide pour la valeur par défaut."
+    "brandNamespaceHint": "Préfixe des noms de table de cette source. Laissez vide pour la valeur par défaut.",
+    "sfLoginUrl": "URL de connexion",
+    "sfLoginUrlHelp": "L'URL Mon domaine de votre organisation (Configuration, puis Mon domaine)",
+    "sfAccessTokenAuth": "Jeton d'accès",
+    "sfConsumerKey": "Clé client",
+    "sfConsumerSecret": "Secret client",
+    "sfUsername": "Nom d'utilisateur Salesforce",
+    "sfPassword": "Mot de passe Salesforce",
+    "sfSecurityToken": "Jeton de sécurité",
+    "sfSecurityTokenHelp": "Uniquement si votre organisation en exige un",
+    "sfAccessToken": "Jeton d'accès",
+    "sfInstanceUrl": "URL de l'instance",
+    "sfApiVersion": "Version de l'API",
+    "sfApiVersionHelp": "Facultatif, par exemple v61.0"
   }
 }

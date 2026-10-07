@@ -101,6 +101,19 @@
     "cacheTtlRequiredForSignal": "La señal de cambio {{signal}} evalúa la actualidad según el TTL de caché, así que defina un TTL de caché.",
     "accessToken": "Token de acceso",
     "accessTokenHint": "Se guarda en el almacén de secretos. También se acepta una referencia ${secret:NAME} o ${env:NAME}.",
-    "brandNamespaceHint": "Prefijo de los nombres de tabla de este origen. Déjelo en blanco para usar el predeterminado."
+    "brandNamespaceHint": "Prefijo de los nombres de tabla de este origen. Déjelo en blanco para usar el predeterminado.",
+    "sfLoginUrl": "URL de inicio de sesión",
+    "sfLoginUrlHelp": "La URL de Mi dominio de su organización (Configuración, luego Mi dominio)",
+    "sfAccessTokenAuth": "Token de acceso",
+    "sfConsumerKey": "Clave de consumidor",
+    "sfConsumerSecret": "Secreto de consumidor",
+    "sfUsername": "Nombre de usuario de Salesforce",
+    "sfPassword": "Contraseña de Salesforce",
+    "sfSecurityToken": "Token de seguridad",
+    "sfSecurityTokenHelp": "Solo si su organización lo exige",
+    "sfAccessToken": "Token de acceso",
+    "sfInstanceUrl": "URL de la instancia",
+    "sfApiVersion": "Versión de la API",
+    "sfApiVersionHelp": "Opcional, por ejemplo v61.0"
   }
 }

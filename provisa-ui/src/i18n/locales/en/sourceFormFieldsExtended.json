@@ -101,6 +101,19 @@
     "cacheTtlRequiredForSignal": "The {{signal}} change signal judges staleness by the Cache TTL, so set a Cache TTL.",
     "accessToken": "Access token",
     "accessTokenHint": "Stored in the secrets vault. A ${secret:NAME} or ${env:NAME} reference is also accepted.",
-    "brandNamespaceHint": "Prefix of this source's table names. Leave blank for the default."
+    "brandNamespaceHint": "Prefix of this source's table names. Leave blank for the default.",
+    "sfLoginUrl": "Login URL",
+    "sfLoginUrlHelp": "Your org's My Domain URL (Setup, then My Domain)",
+    "sfAccessTokenAuth": "Access Token",
+    "sfConsumerKey": "Consumer Key",
+    "sfConsumerSecret": "Consumer Secret",
+    "sfUsername": "Salesforce Username",
+    "sfPassword": "Salesforce Password",
+    "sfSecurityToken": "Security Token",
+    "sfSecurityTokenHelp": "Only when your org requires one",
+    "sfAccessToken": "Access Token",
+    "sfInstanceUrl": "Instance URL",
+    "sfApiVersion": "API Version",
+    "sfApiVersionHelp": "Optional, for example v61.0"
   }
 }

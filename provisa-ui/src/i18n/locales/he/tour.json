@@ -75,7 +75,7 @@
         "description": "➕ חיבורים חדשים מתחילים בכפתור הזה — PostgreSQL, Snowflake, MongoDB, REST API, קובץ CSV, ועוד 50+."
       },
       "step3": {
-        "title": "58 סוגי מקורות, 13 קטגוריות",
+        "title": "59 סוגי מקורות, 13 קטגוריות",
         "description": "בורר אחד מפרט כל סוג, מקובץ לפי קטגוריה: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. חפשו לפי שם או כינוי, או צמצמו בעזרת תוויות הקטגוריה. כל סוג מציג את הלוגו שלו וסמל טווח: ⚡ קריאה חיה במקום, או סמל העתק במקום ש-Provisa קורא רפליקה מרועננת.<p>בחרו סוג, מלאו את החיבור ושמרו.</p>"
       },
       "step4": {
