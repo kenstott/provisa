@@ -100,12 +100,46 @@ def test_a_delete_is_kept_as_the_keys_it_reaches():
     assert read == "SELECT \"id\" FROM sales.orders WHERE region = 'west'"
 
 
-def test_a_merge_is_not_kept():
-    with pytest.raises(PermissionError, match="not kept"):
-        _reads(
+def test_a_merge_is_kept_as_what_each_of_its_clauses_writes():
+    """A matched row takes the first matched clause whose condition holds; an unmatched source
+    row the first unmatched clause."""
+    from provisa.pgwire.kept_mutations import _merge_steps
+
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE orders AS SELECT * FROM (VALUES (1, 'east'), (2, 'west'), (3, 'north')) "
+        "t(id, region)"
+    )
+    con.execute(
+        "CREATE TABLE incoming AS SELECT * FROM (VALUES (1, NULL), (2, 'south'), (7, 'new')) "
+        "t(id, region)"
+    )
+    steps = _merge_steps(
+        _parsed(
+            "MERGE INTO orders AS t USING incoming AS s ON t.id = s.id "
+            "WHEN MATCHED AND s.region IS NULL THEN DELETE "
+            "WHEN MATCHED THEN UPDATE SET region = s.region "
+            "WHEN NOT MATCHED THEN INSERT (id, region) VALUES (s.id, s.region)"
+        ),
+        ["id", "region"],
+        ["id"],
+    )
+    got = [(op, sorted(con.execute(read).fetchall())) for read, op, _given in steps]
+    assert got == [
+        ("delete", [(1,)]),
+        ("upsert", [(2, "south")]),  # 1 took the earlier clause
+        ("upsert", [(7, "new")]),
+    ]
+
+
+def test_a_merge_inserting_no_key_is_refused():
+    from provisa.pgwire.kept_mutations import _merge_steps
+
+    with pytest.raises(PermissionError, match="every key column"):
+        _merge_steps(
             _parsed(
-                "MERGE INTO sales.orders t USING src s ON t.id = s.id "
-                "WHEN MATCHED THEN UPDATE SET region = s.region"
+                "MERGE INTO orders AS t USING incoming AS s ON t.id = s.id "
+                "WHEN NOT MATCHED THEN INSERT (region) VALUES (s.region)"
             ),
             ["id", "region"],
             ["id"],

@@ -292,3 +292,30 @@ def test_a_kept_truncate_hides_the_rows_before_it_and_reset_restores_them(boot):
     )
     assert status == 200, body
     assert _rows(boot, "emptied") == prod
+
+
+def test_a_kept_merge_writes_what_each_clause_would(boot):
+    """REQ-1942: under Reversible a MERGE is kept as the versions its clauses would write."""
+    prod = _rows(boot, None)
+    _environment(boot, "merged", "inherit")
+    status, body = _call(
+        boot,
+        "PATCH",
+        f"/admin/orgs/{boot.org_id}/environments/merged/data",
+        {"mutation_handling": "reversible"},
+    )
+    assert status == 200, body
+    _sql(
+        boot,
+        "merged",
+        "MERGE INTO sales.orders AS t USING (VALUES (1, 'south'), (5, 'new')) AS s(id, region) "
+        "ON t.id = s.id "
+        "WHEN MATCHED THEN UPDATE SET region = s.region "
+        "WHEN NOT MATCHED THEN INSERT (id, region) VALUES (s.id, s.region)",
+    )
+    assert _rows(boot, "merged") == [
+        {"id": 1, "region": "south"},
+        {"id": 2, "region": "west"},
+        {"id": 5, "region": "new"},
+    ]
+    assert _rows(boot, None) == prod
