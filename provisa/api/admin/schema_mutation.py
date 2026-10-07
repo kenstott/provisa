@@ -112,7 +112,9 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _synthesize_mapping_dsl_tables,
     _upsert_source_with_domains,
     _validate_govdata_api_key,
+    forget_source_mapping_secrets,
     forget_source_password,
+    persist_source_mapping_secrets,
     persist_source_password,
 )
 
@@ -891,7 +893,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # into the org vault and the row keeps the reference that names it; the row never holds a
         # credential. Done after the validation so a rejected source leaves no vault entry behind.
         password_ref = await persist_source_password(info, input.id, input.password)
-        _mapping = _parse_mapping_json(input.mapping_json)
+        # A credential the type keeps in its mapping is kept the same way.
+        _mapping = await persist_source_mapping_secrets(
+            info, input.id, input.type, _parse_mapping_json(input.mapping_json)
+        )
         _profiler_refusal = _refuse_invalid_profiler(input.id, input.type, _mapping)  # REQ-1934
         if _profiler_refusal is not None:
             return _profiler_refusal
@@ -1224,8 +1229,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             # REQ-1695: the literal a person retyped into the form replaces the vault entry under
             # the same name -- a rotation, not a second secret -- and the row keeps the reference.
             password_ref = await persist_source_password(info, input.id, input.password)
+            # A credential the type keeps in its mapping is kept the same way.
+            _stored_mapping = await persist_source_mapping_secrets(
+                info, input.id, input.type, _parse_mapping_json(input.mapping_json)
+            )
             _profiler_refusal = _refuse_invalid_profiler(  # REQ-1934
-                input.id, input.type, _parse_mapping_json(input.mapping_json)
+                input.id, input.type, _stored_mapping
             )
             if _profiler_refusal is not None:
                 return _profiler_refusal
@@ -1239,7 +1248,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 password=password_ref,
                 path=input.path,
                 description=input.description,
-                mapping=_parse_mapping_json(input.mapping_json),
+                mapping=_stored_mapping,
                 federation_hints=_federation_hints_from_input(input),
                 change_signal=input.change_signal,
                 load_protected=input.load_protected,  # REQ-1141
@@ -1438,6 +1447,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if deleted:
             assert _existing is not None  # delete reported a row, so get found one
             await forget_source_password(id, _existing["password_ref"])
+            await forget_source_mapping_secrets(id, _existing["type"], _existing["mapping"] or {})
             state.graphql_remote_sources.pop(id, None)
             # REQ-1730: was never called here at all — see _drop_source_on_engine's own comment for
             # the exact orphaned-catalog accumulation this closes.

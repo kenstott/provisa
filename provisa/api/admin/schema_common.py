@@ -731,6 +731,25 @@ def source_password_secret_name(source_id: str, env: str) -> str:  # REQ-1695, R
     return validate_name(f"{_SOURCE_SECRET_PREFIX}{normalized}{_SOURCE_SECRET_SUFFIX}")
 
 
+#: The mapping keys that carry a credential, by source type. A source has one password column;
+#: a type that needs a second credential keeps it in its mapping, and it is kept there exactly
+#: as the password is (REQ-1695): a literal goes into the org vault and the mapping holds the
+#: reference. A type whose mapping carries a credential is listed here; nothing else decides it.
+SOURCE_MAPPING_SECRET_KEYS: dict[str, tuple[str, ...]] = {
+    "sharepoint": ("certificate_password", "sp_password"),
+}
+
+
+def source_mapping_secret_name(source_id: str, key: str, env: str) -> str:
+    """The org-vault name holding the credential in ``source_id``'s mapping under ``key``, as
+    typed in environment ``env``: the source's password name (:func:`source_password_secret_name`)
+    with the key appended, so the two are told apart on the Secrets screen and one never
+    overwrites the other."""
+    from provisa.core.secrets_store import validate_name
+
+    return validate_name(f"{source_password_secret_name(source_id, env)}__{key}")
+
+
 async def persist_source_password(info: StrawberryInfo, source_id: str, password: str) -> str:
     """Store ``password`` where a credential belongs and return what ``sources.password_ref`` holds.
 
@@ -765,26 +784,85 @@ async def store_source_password(
     """:func:`persist_source_password` for a caller that is not a GraphQL resolver -- a REST
     admin router names the acting user and the environment the password was typed in itself.
     The same three cases."""
-    if not password:
+    return await _store_source_secret(
+        actor,
+        source_password_secret_name(source_id, env),
+        password,
+        f"password for source {source_id}",
+    )
+
+
+async def _store_source_secret(actor: str | None, name: str, value: str, description: str) -> str:
+    """What the row holds for a credential typed for a source: empty stays empty, a reference
+    is kept verbatim, and a literal goes into the org vault under ``name`` and is replaced by
+    the reference that names it."""
+    if not value:
         return ""
-    if "${" in password:
-        return password
+    if "${" in value:
+        return value
     from provisa.api.app import state
     from provisa.core import secrets_store
     from provisa.core.request_context import require_current_org
 
     assert state.admin_db is not None, "the platform control plane holds every org's vault"
-    name = source_password_secret_name(source_id, env)
     await secrets_store.put(
         state.admin_db,
         require_current_org(),
         name,
-        password,
+        value,
         owner_id=secrets_store.ORG_OWNER,
         actor=actor,
-        description=f"password for source {source_id}",
+        description=description,
     )
     return f"${{secret:{name}}}"
+
+
+async def persist_source_mapping_secrets(
+    info: StrawberryInfo, source_id: str, source_type: str, mapping: dict
+) -> dict:
+    """:func:`store_source_mapping_secrets` for a GraphQL resolver: the acting user and the
+    environment come from the request, as :func:`persist_source_password`'s do."""
+    from provisa.api.admin.capabilities import _identity_from_info
+    from provisa.core.request_context import active_env
+
+    identity = _identity_from_info(info)
+    return await store_source_mapping_secrets(
+        getattr(identity, "user_id", None) if identity is not None else None,
+        source_id,
+        source_type,
+        mapping,
+        env=active_env(),
+    )
+
+
+async def store_source_mapping_secrets(
+    actor: str | None, source_id: str, source_type: str, mapping: dict, *, env: str
+) -> dict:
+    """``mapping`` as the row holds it: each credential its type keeps there
+    (``SOURCE_MAPPING_SECRET_KEYS``) stored as the password is — a literal in the org vault, its
+    reference in the mapping. Every other key, and a value that is not text, is as given."""
+    stored = dict(mapping)
+    for key in SOURCE_MAPPING_SECRET_KEYS.get(source_type, ()):
+        value = stored.get(key)
+        if isinstance(value, str):
+            stored[key] = await _store_source_secret(
+                actor,
+                source_mapping_secret_name(source_id, key, env),
+                value,
+                f"{key} for source {source_id}",
+            )
+    return stored
+
+
+async def forget_source_mapping_secrets(source_id: str, source_type: str, mapping: dict) -> None:
+    """Remove the vault entries a deleted source's mapping names — only the ones this module
+    minted, as :func:`forget_source_password` does for the password."""
+    from provisa.core.request_context import active_env
+
+    for key in SOURCE_MAPPING_SECRET_KEYS.get(source_type, ()):
+        name = source_mapping_secret_name(source_id, key, active_env())
+        if mapping.get(key) == f"${{secret:{name}}}":
+            await _forget_source_secret(name)
 
 
 async def forget_source_password(source_id: str, password_ref: str) -> None:
@@ -800,6 +878,11 @@ async def forget_source_password(source_id: str, password_ref: str) -> None:
     name = source_password_secret_name(source_id, active_env())
     if password_ref != f"${{secret:{name}}}":
         return
+    await _forget_source_secret(name)
+
+
+async def _forget_source_secret(name: str) -> None:
+    """Remove one vault entry this module minted for a source."""
     from provisa.api.app import state
     from provisa.core import secrets_store
     from provisa.core.request_context import require_current_org
