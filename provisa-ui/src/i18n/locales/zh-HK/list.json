@@ -1,0 +1,9 @@
+{
+  "list": {
+    "sortAscending": "已遞增排序",
+    "sortDescending": "已遞減排序",
+    "sortNone": "未排序",
+    "groupBy": "按 {{label}} 分組",
+    "ungroupLevel": "取消分組（第 {{level}} 層）"
+  }
+}

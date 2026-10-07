@@ -12,7 +12,8 @@ import { useEffect, useState } from "react";
 import { useTranslation, Trans } from "react-i18next";
 import { Alert, Badge, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { fetchMcpServer, type McpServerStatus } from "../../api/admin";
-import { ListTable, ListRow } from "../list/ListTable";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
 
 // REQ-1008: read-only status of the in-process MCP server. It is enabled purely via the
 // PROVISA_MCP_PORT env var at boot, so this tab reports current state + how to enable it rather
@@ -92,22 +93,27 @@ export function McpServerTab() {
       </Stack>
 
       <Title order={4}>{t("mcpServerTab.toolsHeading")}</Title>
-      <ListTable minWidth={480} testId="mcp-tools">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("mcpServerTab.colTool")}</Table.Th>
-              <Table.Th>{t("mcpServerTab.colDescription")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {status.tools.map((tool) => (
+      <SortGroupTable
+          testPrefix="mcp-tools"
+          minWidth={480} testId="mcp-tools"
+          rows={status.tools}
+          columns={[
+            { key: "tool", label: t("mcpServerTab.colTool"), sortValue: (x) => x.name },
+            { key: "description", label: t("mcpServerTab.colDescription"), sortValue: (x) => x.description },
+          ]}
+          headers={[
+            { col: "tool" },
+            { col: "description" },
+          ]}
+          colSpan={2}
+          rowKey={(tool) => tool.name}
+          render={(tool) => (
               <ListRow key={tool.name}>
                 <Table.Td ff="monospace">{tool.name}</Table.Td>
                 <Table.Td>{tool.description}</Table.Td>
               </ListRow>
-            ))}
-          </Table.Tbody>
-        </ListTable>
+            )}
+        />
     </Stack>
   );
 }

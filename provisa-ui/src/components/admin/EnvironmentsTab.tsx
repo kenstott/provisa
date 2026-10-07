@@ -59,7 +59,8 @@ import { RepoIntegrationPanel } from "./RepoIntegrationPanel";
 import { SyntheticDatasetsPanel } from "./SyntheticDatasetsPanel";
 import { SyntheticSeedFields } from "./SyntheticSeedFields";
 import type { SyntheticSeed } from "./syntheticSeed";
-import { ListTable, ListRow } from "../list/ListTable";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
 
 const PROD = "prod";
 
@@ -511,33 +512,40 @@ export function EnvironmentsTab() {
             </Group>
             <SyntheticSeedFields envs={names} seed={synthetic} setSeed={setSynthetic} />
 
-            <ListTable>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>{t("environmentsTab.colName")}</Table.Th>
-                  <Table.Th>{t("environmentsTab.colKind")}</Table.Th>
-                  <Table.Th>{t("environmentsTab.colRepo")}</Table.Th>
-                  <Table.Th>{t("environmentsTab.colCreatedBy")}</Table.Th>
-                  <Table.Th>{t("environmentsTab.colExpires")}</Table.Th>
-                  <Table.Th>
-                    <Group gap={4} align="center" wrap="nowrap">
-                      {t("environmentsTab.colProtected")}
-                      <HelpBubble
-                        title={t("environmentsTab.protectedTitle")}
-                        paragraphs={[
-                          t("environmentsTab.protectedHelp"),
-                          t("environmentsTab.protectedHelp2"),
-                        ]}
-                        ariaLabel={t("environmentsTab.protectedTitle")}
-                        testId="env-protected-help"
-                      />
-                    </Group>
-                  </Table.Th>
-                  <Table.Th>{t("environmentsTab.colActions")}</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {envs.map((e) => (
+            <SortGroupTable
+          testPrefix="environments"
+          rows={envs}
+          columns={[
+            { key: "name", label: t("environmentsTab.colName"), sortValue: (e) => e.name },
+            { key: "kind", label: t("environmentsTab.colKind"), sortValue: (e) => e.branched_from ?? "", groupValue: (e) => e.branched_from ?? "" },
+            { key: "createdBy", label: t("environmentsTab.colCreatedBy"), sortValue: (e) => e.created_by ?? "", groupValue: (e) => e.created_by ?? "" },
+            { key: "expires", label: t("environmentsTab.colExpires"), sortValue: (e) => e.expires_at ?? "" },
+          ]}
+          headers={[
+            { col: "name" },
+            { col: "kind" },
+            t("environmentsTab.colRepo"),
+            { col: "createdBy" },
+            { col: "expires" },
+            (
+              <Group gap={4} align="center" wrap="nowrap">
+                {t("environmentsTab.colProtected")}
+                <HelpBubble
+                  title={t("environmentsTab.protectedTitle")}
+                  paragraphs={[
+                    t("environmentsTab.protectedHelp"),
+                    t("environmentsTab.protectedHelp2"),
+                  ]}
+                  ariaLabel={t("environmentsTab.protectedTitle")}
+                  testId="env-protected-help"
+                />
+              </Group>
+            ),
+            t("environmentsTab.colActions"),
+          ]}
+          colSpan={7}
+          rowKey={(e) => e.name}
+          render={(e) => (
                   <ListRow key={e.name} testId={`env-row-${e.name}`}>
                     <Table.Td>
                       <Group gap="xs">
@@ -679,9 +687,8 @@ export function EnvironmentsTab() {
                       </Group>
                     </Table.Td>
                   </ListRow>
-                ))}
-              </Table.Tbody>
-            </ListTable>
+                )}
+        />
           </Stack>
         </Tabs.Panel>
 

@@ -14,7 +14,8 @@ import { notifications } from "@mantine/notifications";
 import { useTranslation } from "react-i18next";
 import { decideMergeRequest, fetchMergeRequests } from "../../api/environments";
 import type { MergeRequest } from "../../api/environments";
-import { ListTable, ListRow } from "../list/ListTable";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
 
 const STATE_COLOR: Record<string, string> = {
   open: "blue",
@@ -89,18 +90,24 @@ export function MergeRequestsPanel({ orgId, canDecide }: { orgId: string; canDec
           {t("environmentsTab.noRequests")}
         </Text>
       ) : (
-        <ListTable>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("environmentsTab.colMerge")}</Table.Th>
-              <Table.Th>{t("environmentsTab.colState")}</Table.Th>
-              <Table.Th>{t("environmentsTab.colRequestedBy")}</Table.Th>
-              <Table.Th>{t("environmentsTab.colReport")}</Table.Th>
-              <Table.Th>{t("environmentsTab.colActions")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {requests.map((r) => (
+        <SortGroupTable
+          testPrefix="merge-requests"
+          rows={requests}
+          columns={[
+            { key: "merge", label: t("environmentsTab.colMerge"), sortValue: (r) => r.id },
+            { key: "state", label: t("environmentsTab.colState"), sortValue: (r) => r.state, groupValue: (r) => r.state },
+            { key: "requestedBy", label: t("environmentsTab.colRequestedBy"), sortValue: (r) => r.requested_by ?? "", groupValue: (r) => r.requested_by ?? "" },
+          ]}
+          headers={[
+            { col: "merge" },
+            { col: "state" },
+            { col: "requestedBy" },
+            t("environmentsTab.colReport"),
+            t("environmentsTab.colActions"),
+          ]}
+          colSpan={5}
+          rowKey={(r) => r.id}
+          render={(r) => (
               <ListRow key={r.id} testId={`merge-request-${r.id}`}>
                 <Table.Td>
                   <Text size="sm">
@@ -174,9 +181,8 @@ export function MergeRequestsPanel({ orgId, canDecide }: { orgId: string; canDec
                   )}
                 </Table.Td>
               </ListRow>
-            ))}
-          </Table.Tbody>
-        </ListTable>
+            )}
+        />
       )}
     </Stack>
   );

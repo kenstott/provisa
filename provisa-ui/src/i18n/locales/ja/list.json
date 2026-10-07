@@ -1,0 +1,9 @@
+{
+  "list": {
+    "sortAscending": "昇順にソート済み",
+    "sortDescending": "降順にソート済み",
+    "sortNone": "ソートなし",
+    "groupBy": "{{label}}でグループ化",
+    "ungroupLevel": "グループ解除（レベル {{level}}）"
+  }
+}

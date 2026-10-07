@@ -51,7 +51,8 @@ import {
   type SecretsServiceState,
   type Vault,
 } from "../../api/secrets";
-import { ListTable, ListRow } from "../list/ListTable";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
 
 /**
  * REQ-1557, REQ-1558: the org's secrets — NAMES GO IN, VALUES NEVER COME BACK OUT.
@@ -338,18 +339,26 @@ function SecretsVault({ vault, header }: VaultProps) {
       {state.secrets.length === 0 ? (
         <Text c="dimmed">{t("secretsTab.empty")}</Text>
       ) : (
-        <ListTable testId="secrets-table">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("secretsTab.columnName")}</Table.Th>
-              <Table.Th>{t("secretsTab.columnDescription")}</Table.Th>
-              <Table.Th>{t("secretsTab.columnUpdated")}</Table.Th>
-              <Table.Th>{t("secretsTab.columnReference")}</Table.Th>
-              <Table.Th />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {state.secrets.map((s) => (
+        <SortGroupTable
+          testPrefix="secrets"
+          testId="secrets-table"
+          rows={state.secrets}
+          columns={[
+            { key: "name", label: t("secretsTab.columnName"), sortValue: (s) => s.name },
+            { key: "description", label: t("secretsTab.columnDescription"), sortValue: (s) => s.description ?? "" },
+            { key: "updated", label: t("secretsTab.columnUpdated"), sortValue: (s) => s.updated_at ?? "" },
+            { key: "reference", label: t("secretsTab.columnReference"), sortValue: (s) => s.reference },
+          ]}
+          headers={[
+            { col: "name" },
+            { col: "description" },
+            { col: "updated" },
+            { col: "reference" },
+            "",
+          ]}
+          colSpan={5}
+          rowKey={(s) => s.name}
+          render={(s) => (
               <ListRow key={s.name} testId={`secret-row-${s.name}`}>
                 <Table.Td>
                   <Code>{s.name}</Code>
@@ -417,9 +426,8 @@ function SecretsVault({ vault, header }: VaultProps) {
                   )}
                 </Table.Td>
               </ListRow>
-            ))}
-          </Table.Tbody>
-        </ListTable>
+            )}
+        />
       )}
 
       {writable && (

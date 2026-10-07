@@ -67,7 +67,9 @@ import {
   ListExpandRow,
   ListEmpty,
   ListDetail,
+  ListItems,
 } from "../components/list/ListTable";
+import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 
 export function CommandsPage() {
   const { t } = useTranslation();
@@ -306,8 +308,6 @@ export function CommandsPage() {
     dataProducts,
   };
 
-  if (loading) return <PageLoading message={t("commandsPage.loading")} />;
-
   // Hide rows whose domain is unchecked in the NavBar domain filter (an empty set = show all),
   // matching the TablesPage/SqlPage convention. Rows with no domain are always shown.
   const inCheckedDomain = (domainId: string | null | undefined) =>
@@ -319,7 +319,6 @@ export function CommandsPage() {
       (!cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase())),
   );
   const fnTotalPages = Math.max(1, Math.ceil(filteredFunctions.length / PAGE_SIZE));
-  const pagedFunctions = filteredFunctions.slice((fnPage - 1) * PAGE_SIZE, fnPage * PAGE_SIZE);
 
   const filteredWebhooks = webhooks.filter(
     (wh) =>
@@ -327,7 +326,85 @@ export function CommandsPage() {
       (!cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase())),
   );
   const whTotalPages = Math.max(1, Math.ceil(filteredWebhooks.length / PAGE_SIZE));
-  const pagedWebhooks = filteredWebhooks.slice((whPage - 1) * PAGE_SIZE, whPage * PAGE_SIZE);
+
+  // REQ-1940: sort and group are the shared list mechanism.
+  const fnColumns: ListColumn<TrackedFunction>[] = [
+    { key: "name", label: t("commandsPage.colName"), sortValue: (f) => f.name },
+    {
+      key: "source",
+      label: t("commandsPage.colSource"),
+      sortValue: (f) => f.sourceId,
+      groupValue: (f) => f.sourceId,
+    },
+    {
+      key: "domain",
+      label: t("commandsPage.colDomain"),
+      sortValue: (f) => f.domainId || t("commandsPage.dash"),
+      groupValue: (f) => f.domainId || t("commandsPage.dash"),
+    },
+    {
+      key: "function",
+      label: t("commandsPage.colFunction"),
+      sortValue: (f) => `${f.schemaName}.${f.functionName}`,
+    },
+    {
+      key: "returns",
+      label: t("commandsPage.colReturns"),
+      sortValue: (f) =>
+        f.returns || (f.returnSchema ? t("commandsPage.customSchema") : t("commandsPage.dash")),
+      groupValue: (f) =>
+        f.returns || (f.returnSchema ? t("commandsPage.customSchema") : t("commandsPage.dash")),
+    },
+    { key: "args", label: t("commandsPage.colArgs"), sortValue: (f) => f.arguments.length },
+    {
+      key: "visibleTo",
+      label: t("commandsPage.colVisibleTo"),
+      sortValue: (f) => f.visibleTo.join(", ") || t("commandsPage.all"),
+    },
+  ];
+  const whColumns: ListColumn<TrackedWebhook>[] = [
+    { key: "name", label: t("commandsPage.colName"), sortValue: (w) => w.name },
+    {
+      key: "status",
+      label: t("commandsPage.colStatus"),
+      sortValue: (w) =>
+        w.approved === false ? t("commandsPage.statusPending") : t("commandsPage.statusApproved"),
+      groupValue: (w) =>
+        w.approved === false ? t("commandsPage.statusPending") : t("commandsPage.statusApproved"),
+    },
+    {
+      key: "domain",
+      label: t("commandsPage.colDomain"),
+      sortValue: (w) => w.domainId || t("commandsPage.dash"),
+      groupValue: (w) => w.domainId || t("commandsPage.dash"),
+    },
+    { key: "url", label: t("commandsPage.colUrl"), sortValue: (w) => w.url },
+    {
+      key: "method",
+      label: t("commandsPage.colMethod"),
+      sortValue: (w) => w.method,
+      groupValue: (w) => w.method,
+    },
+    { key: "timeout", label: t("commandsPage.colTimeout"), sortValue: (w) => w.timeoutMs },
+    {
+      key: "returns",
+      label: t("commandsPage.colReturns"),
+      sortValue: (w) =>
+        w.returns || t("commandsPage.inlineReturns", { count: w.inlineReturnType.length }),
+      groupValue: (w) =>
+        w.returns || t("commandsPage.inlineReturns", { count: w.inlineReturnType.length }),
+    },
+    { key: "args", label: t("commandsPage.colArgs"), sortValue: (w) => w.arguments.length },
+    {
+      key: "visibleTo",
+      label: t("commandsPage.colVisibleTo"),
+      sortValue: (w) => w.visibleTo.join(", ") || t("commandsPage.all"),
+    },
+  ];
+  const fnSortGroup = useListSortGroup(filteredFunctions, fnColumns, "commands-fn");
+  const whSortGroup = useListSortGroup(filteredWebhooks, whColumns, "commands-wh");
+
+  if (loading) return <PageLoading message={t("commandsPage.loading")} />;
 
   return (
     <Stack gap="md" p="md">
@@ -406,21 +483,27 @@ export function CommandsPage() {
       <Title order={3}>{t("commandsPage.dbFunctionsHeading")}</Title>
       <ListTable minWidth={720}>
           <ListHead
+            sortGroup={fnSortGroup}
             columns={[
-              t("commandsPage.colName"),
-              t("commandsPage.colSource"),
-              t("commandsPage.colDomain"),
-              t("commandsPage.colFunction"),
-              t("commandsPage.colReturns"),
-              t("commandsPage.colArgs"),
-              t("commandsPage.colVisibleTo"),
+              { col: "name" },
+              { col: "source" },
+              { col: "domain" },
+              { col: "function" },
+              { col: "returns" },
+              { col: "args" },
+              { col: "visibleTo" },
             ]}
           />
           <Table.Tbody>
             {filteredFunctions.length === 0 && (
               <ListEmpty colSpan={7}>{t("commandsPage.noFunctions")}</ListEmpty>
             )}
-            {pagedFunctions.map((fn) => {
+            <ListItems
+              state={fnSortGroup}
+              items={pageItems(fnSortGroup, fnPage - 1, PAGE_SIZE)}
+              colSpan={7}
+              rowKey={(fn) => fn.name}
+              render={(fn) => {
               const isExpanded = expandedFn === fn.name;
               const isEditing = editingName === fn.name;
               return (
@@ -609,10 +692,11 @@ export function CommandsPage() {
                   )}
                 </React.Fragment>
               );
-            })}
+              }}
+            />
           </Table.Tbody>
       </ListTable>
-      {fnTotalPages > 1 && (
+      {fnTotalPages > 1 && fnSortGroup.groupBy.length === 0 && (
         <Group justify="flex-end">
           <Pagination total={fnTotalPages} value={fnPage} onChange={setFnPage} size="sm" />
         </Group>
@@ -621,23 +705,29 @@ export function CommandsPage() {
       <Title order={3}>{t("commandsPage.webhooksHeading")}</Title>
       <ListTable minWidth={720}>
           <ListHead
+            sortGroup={whSortGroup}
             columns={[
-              t("commandsPage.colName"),
-              t("commandsPage.colStatus"),
-              t("commandsPage.colDomain"),
-              t("commandsPage.colUrl"),
-              t("commandsPage.colMethod"),
-              t("commandsPage.colTimeout"),
-              t("commandsPage.colReturns"),
-              t("commandsPage.colArgs"),
-              t("commandsPage.colVisibleTo"),
+              { col: "name" },
+              { col: "status" },
+              { col: "domain" },
+              { col: "url" },
+              { col: "method" },
+              { col: "timeout" },
+              { col: "returns" },
+              { col: "args" },
+              { col: "visibleTo" },
             ]}
           />
           <Table.Tbody>
             {filteredWebhooks.length === 0 && (
               <ListEmpty colSpan={9}>{t("commandsPage.noWebhooks")}</ListEmpty>
             )}
-            {pagedWebhooks.map((wh) => {
+            <ListItems
+              state={whSortGroup}
+              items={pageItems(whSortGroup, whPage - 1, PAGE_SIZE)}
+              colSpan={9}
+              rowKey={(wh) => wh.name}
+              render={(wh) => {
               const isExpanded = expandedWh === wh.name;
               const isEditing = editingName === wh.name;
               return (
@@ -868,10 +958,11 @@ export function CommandsPage() {
                   )}
                 </React.Fragment>
               );
-            })}
+              }}
+            />
           </Table.Tbody>
       </ListTable>
-      {whTotalPages > 1 && (
+      {whTotalPages > 1 && whSortGroup.groupBy.length === 0 && (
         <Group justify="flex-end">
           <Pagination total={whTotalPages} value={whPage} onChange={setWhPage} size="sm" />
         </Group>

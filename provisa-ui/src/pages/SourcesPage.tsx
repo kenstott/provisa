@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Check, X } from "lucide-react";
@@ -83,7 +83,9 @@ import {
   ListExpandRow,
   ListEmpty,
   ListDetail,
+  ListItems,
 } from "../components/list/ListTable";
+import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { KeptTablesNotice } from "../components/KeptTablesNotice";
 import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
@@ -128,6 +130,49 @@ export function SourcesPage() {
   const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+  // REQ-1940: sort and group are the shared list mechanism.
+  const filteredSources = useMemo(
+    () =>
+      sources.filter((s) => {
+        if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
+        if (!sourceSearch.trim()) return true;
+        const q = sourceSearch.toLowerCase();
+        return (
+          s.id.toLowerCase().includes(q) ||
+          s.type.toLowerCase().includes(q) ||
+          (s.description ?? "").toLowerCase().includes(q)
+        );
+      }),
+    [sources, sourceSearch],
+  );
+  const listColumns = useMemo<ListColumn<Source>[]>(
+    () => [
+      { key: "id", label: t("sourcesPage.colId"), sortValue: (s) => s.id },
+      {
+        key: "type",
+        label: t("sourcesPage.colType"),
+        sortValue: (s) => sourceTypeLabel(s.type, s.federationHintsJson),
+        groupValue: (s) => sourceTypeLabel(s.type, s.federationHintsJson),
+      },
+      { key: "host", label: t("sourcesPage.colHost"), sortValue: (s) => s.host ?? "" },
+      { key: "port", label: t("sourcesPage.colPort"), sortValue: (s) => s.port ?? 0 },
+      { key: "database", label: t("sourcesPage.colDatabase"), sortValue: (s) => s.database ?? "" },
+      {
+        key: "naming",
+        label: t("sourcesPage.colNaming"),
+        sortValue: (s) => s.gqlNamingConvention || t("sourcesPage.naOrInherit"),
+        groupValue: (s) => s.gqlNamingConvention || t("sourcesPage.naOrInherit"),
+      },
+      {
+        key: "cache",
+        label: t("sourcesPage.colCache"),
+        sortValue: (s) => (s.cacheEnabled ? 1 : 0),
+        groupValue: (s) => (s.cacheEnabled ? t("sourcesPage.cacheOn") : t("sourcesPage.cacheOff")),
+      },
+    ],
+    [t],
+  );
+  const sortGroup = useListSortGroup(filteredSources, listColumns, "sources");
   const [form, setForm] = useState<SourceFormState>({
     id: "",
     type: "postgresql",
@@ -1451,36 +1496,31 @@ export function SourcesPage() {
           and, growing to its content, would never scroll vertically. */}
       <ListTable minWidth={860} testId="sources-list">
           <ListHead
+            sortGroup={sortGroup}
             columns={[
-              t("sourcesPage.colId"),
-              t("sourcesPage.colType"),
-              t("sourcesPage.colHost"),
-              t("sourcesPage.colPort"),
-              t("sourcesPage.colDatabase"),
-              t("sourcesPage.colNaming"),
-              t("sourcesPage.colCache"),
+              { col: "id" },
+              { col: "type" },
+              { col: "host" },
+              { col: "port" },
+              { col: "database" },
+              { col: "naming" },
+              { col: "cache" },
               t("sourcesPage.colEffectiveTtl"),
               t("sourcesPage.colActions"),
             ]}
           />
           <Table.Tbody>
             {(() => {
-              const filtered = sources.filter((s) => {
-                if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id))
-                  return false;
-                if (!sourceSearch.trim()) return true;
-                const q = sourceSearch.toLowerCase();
-                return (
-                  s.id.toLowerCase().includes(q) ||
-                  s.type.toLowerCase().includes(q) ||
-                  (s.description ?? "").toLowerCase().includes(q)
-                );
-              });
-              if (filtered.length === 0) {
+              if (filteredSources.length === 0) {
                 return <ListEmpty colSpan={9}>{t("sourcesPage.empty")}</ListEmpty>;
               }
-              const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-              return paged.map((s) => {
+              return (
+                <ListItems
+                  state={sortGroup}
+                  items={pageItems(sortGroup, page, PAGE_SIZE)}
+                  colSpan={9}
+                  rowKey={(s) => s.id}
+                  render={(s) => {
                 const isExpanded = expanded === s.id;
                 const isEditing = editingSourceId === s.id;
                 return (
@@ -1637,24 +1677,17 @@ export function SourcesPage() {
                     )}
                   </React.Fragment>
                 );
-              });
+                  }}
+                />
+              );
             })()}
           </Table.Tbody>
       </ListTable>
 
       {(() => {
-        const filtered = sources.filter((s) => {
-          if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
-          if (!sourceSearch.trim()) return true;
-          const q = sourceSearch.toLowerCase();
-          return (
-            s.id.toLowerCase().includes(q) ||
-            s.type.toLowerCase().includes(q) ||
-            (s.description ?? "").toLowerCase().includes(q)
-          );
-        });
+        const filtered = filteredSources;
         const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-        if (totalPages === 1) return null;
+        if (totalPages === 1 || sortGroup.groupBy.length > 0) return null;
         return (
           <Group justify="flex-end" gap="xs" align="center" py="xs">
             <ActionIcon

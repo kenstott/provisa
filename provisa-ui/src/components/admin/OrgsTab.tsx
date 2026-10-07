@@ -41,7 +41,8 @@ import {
 import type { Org, OrgMember, OrgInvite } from "../../api/admin";
 import { FilterInput } from "./FilterInput";
 import { inviteUrl } from "../../lib/authHost";
-import { ListTable, ListRow } from "../list/ListTable";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
 
 const PAGE_SIZE = 50;
 
@@ -172,7 +173,7 @@ export function OrgsTab() {
   );
   const orgTotalPages = Math.max(1, Math.ceil(filteredOrgs.length / PAGE_SIZE));
   const orgSafePage = Math.min(orgPage, orgTotalPages);
-  const pagedOrgs = filteredOrgs.slice((orgSafePage - 1) * PAGE_SIZE, orgSafePage * PAGE_SIZE);
+  const [orgsGrouped, setOrgsGrouped] = useState(false);
 
   const iq = inviteSearch.toLowerCase();
   const filteredInvites = orgInvites.filter(
@@ -183,10 +184,7 @@ export function OrgsTab() {
   );
   const invTotalPages = Math.max(1, Math.ceil(filteredInvites.length / PAGE_SIZE));
   const invSafePage = Math.min(invitePage, invTotalPages);
-  const pagedInvites = filteredInvites.slice(
-    (invSafePage - 1) * PAGE_SIZE,
-    invSafePage * PAGE_SIZE,
-  );
+  const [invitesGrouped, setInvitesGrouped] = useState(false);
 
   const orgSelectData = orgs.map((o) => ({ value: o.id, label: `${o.name} (${o.id})` }));
 
@@ -236,24 +234,26 @@ export function OrgsTab() {
         </Stack>
       )}
 
-      <ListTable minWidth={640}>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("orgsTab.colId")}</Table.Th>
-              <Table.Th>{t("orgsTab.colName")}</Table.Th>
-              <Table.Th>{t("orgsTab.colMembers")}</Table.Th>
-              <Table.Th>{t("orgsTab.colActions")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {filteredOrgs.length === 0 && (
-              <Table.Tr>
-                <Table.Td colSpan={4} ta="center" c="dimmed">
-                  {t("orgsTab.empty")}
-                </Table.Td>
-              </Table.Tr>
-            )}
-            {pagedOrgs.map((org) => {
+      <SortGroupTable
+          testPrefix="orgs"
+          minWidth={640}
+          rows={filteredOrgs}
+          columns={[
+            { key: "id", label: t("orgsTab.colId"), sortValue: (o) => o.id },
+            { key: "name", label: t("orgsTab.colName"), sortValue: (o) => o.name },
+          ]}
+          headers={[
+            { col: "id" },
+            { col: "name" },
+            t("orgsTab.colMembers"),
+            t("orgsTab.colActions"),
+          ]}
+          colSpan={4}
+          rowKey={(org) => org.id}
+          empty={t("orgsTab.empty")}
+          page={{ index: orgSafePage - 1, size: PAGE_SIZE }}
+          onGroupedChange={setOrgsGrouped}
+          render={(org) => {
               const expanded = expandedOrgId === org.id;
               return (
                 <ListRow key={org.id}>
@@ -339,10 +339,9 @@ export function OrgsTab() {
                   </Table.Td>
                 </ListRow>
               );
-            })}
-          </Table.Tbody>
-        </ListTable>
-      {orgTotalPages > 1 && (
+            }}
+        />
+      {orgTotalPages > 1 && !orgsGrouped && (
         <Group justify="flex-end">
           <Pagination
             total={orgTotalPages}
@@ -404,27 +403,33 @@ export function OrgsTab() {
         </Stack>
       )}
 
-      <ListTable minWidth={640}>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("orgsTab.colOrg")}</Table.Th>
-              <Table.Th>{t("orgsTab.colRole")}</Table.Th>
-              <Table.Th>{t("orgsTab.colToken")}</Table.Th>
-              <Table.Th>{t("orgsTab.colCreatedBy")}</Table.Th>
-              <Table.Th>{t("orgsTab.colExpires")}</Table.Th>
-              <Table.Th>{t("orgsTab.colStatus")}</Table.Th>
-              <Table.Th>{t("orgsTab.colActions")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {filteredInvites.length === 0 && (
-              <Table.Tr>
-                <Table.Td colSpan={7} ta="center" c="dimmed">
-                  {t("orgsTab.noInvites")}
-                </Table.Td>
-              </Table.Tr>
-            )}
-            {pagedInvites.map((inv) => (
+      <SortGroupTable
+          testPrefix="org-invites"
+          minWidth={640}
+          rows={filteredInvites}
+          columns={[
+            { key: "org", label: t("orgsTab.colOrg"), sortValue: (i) => i.org_name ?? "", groupValue: (i) => i.org_name ?? "" },
+            { key: "role", label: t("orgsTab.colRole"), sortValue: (i) => i.role_id ?? "", groupValue: (i) => i.role_id ?? "" },
+            { key: "token", label: t("orgsTab.colToken"), sortValue: (i) => i.token },
+            { key: "createdBy", label: t("orgsTab.colCreatedBy"), sortValue: (i) => i.created_by ?? "", groupValue: (i) => i.created_by ?? "" },
+            { key: "expires", label: t("orgsTab.colExpires"), sortValue: (i) => new Date(i.expires_at).getTime() },
+            { key: "status", label: t("orgsTab.colStatus"), sortValue: (i) => (i.used_at ? 1 : 0), groupValue: (i) => (i.used_at ? "used" : "unused") },
+          ]}
+          headers={[
+            { col: "org" },
+            { col: "role" },
+            { col: "token" },
+            { col: "createdBy" },
+            { col: "expires" },
+            { col: "status" },
+            t("orgsTab.colActions"),
+          ]}
+          colSpan={7}
+          rowKey={(inv) => inv.token}
+          empty={t("orgsTab.noInvites")}
+          page={{ index: invSafePage - 1, size: PAGE_SIZE }}
+          onGroupedChange={setInvitesGrouped}
+          render={(inv) => (
               <ListRow key={inv.token}>
                 <Table.Td>{inv.org_name}</Table.Td>
                 <Table.Td>
@@ -473,10 +478,9 @@ export function OrgsTab() {
                   </Group>
                 </Table.Td>
               </ListRow>
-            ))}
-          </Table.Tbody>
-        </ListTable>
-      {invTotalPages > 1 && (
+            )}
+        />
+      {invTotalPages > 1 && !invitesGrouped && (
         <Group justify="flex-end">
           <Pagination
             total={invTotalPages}

@@ -59,7 +59,9 @@ import {
   ListExpandRow,
   ListEmpty,
   ListDetail,
+  ListItems,
 } from "../components/list/ListTable";
+import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PageLoading } from "../components/PageLoading";
 
 interface DataProductForm {
@@ -741,6 +743,49 @@ export function DataProductsPage() {
     />
   );
 
+
+  // REQ-1940: sort and group are the shared list mechanism.
+  const filteredProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q
+      ? dataProducts.filter(
+          (p) =>
+            p.id.toLowerCase().includes(q) ||
+            p.name.toLowerCase().includes(q) ||
+            p.domainId.toLowerCase().includes(q) ||
+            (p.ownerRole ?? "").toLowerCase().includes(q) ||
+            p.purpose.toLowerCase().includes(q),
+        )
+      : dataProducts;
+  }, [dataProducts, search]);
+  const productColumns = useMemo<ListColumn<DataProduct>[]>(
+    () => [
+      { key: "id", label: t("dataProductsTab.colId"), sortValue: (p) => p.id },
+      {
+        key: "domain",
+        label: t("dataProductsTab.colDomain"),
+        sortValue: (p) => p.domainId,
+        groupValue: (p) => p.domainId,
+      },
+      { key: "name", label: t("dataProductsTab.colName"), sortValue: (p) => p.name },
+      {
+        key: "owner",
+        label: t("dataProductsTab.colOwner"),
+        sortValue: (p) => p.ownerRole ?? "",
+        groupValue: (p) => p.ownerRole ?? "",
+      },
+      {
+        key: "status",
+        label: t("dataProductsTab.colStatus"),
+        sortValue: (p) => p.status ?? "",
+        groupValue: (p) => p.status ?? "",
+      },
+      { key: "purpose", label: t("dataProductsTab.colPurpose"), sortValue: (p) => p.purpose },
+    ],
+    [t],
+  );
+  const sortGroup = useListSortGroup(filteredProducts, productColumns, "data-products");
+
   return (
     <div
       style={{ flex: 1, overflow: "auto", padding: "1rem 1.25rem" }}
@@ -794,39 +839,33 @@ export function DataProductsPage() {
       )}
 
       {(() => {
-        const q = search.trim().toLowerCase();
-        const filtered = q
-          ? dataProducts.filter(
-              (p) =>
-                p.id.toLowerCase().includes(q) ||
-                p.name.toLowerCase().includes(q) ||
-                p.domainId.toLowerCase().includes(q) ||
-                (p.ownerRole ?? "").toLowerCase().includes(q) ||
-                p.purpose.toLowerCase().includes(q),
-            )
-          : dataProducts;
         if (loading && dataProducts.length === 0) {
           return <PageLoading message={t("dataProductsTab.loading")} />;
         }
         return (
           <ListTable testId="data-products-table">
             <ListHead
+              sortGroup={sortGroup}
               columns={[
-                t("dataProductsTab.colId"),
-                t("dataProductsTab.colDomain"),
-                t("dataProductsTab.colName"),
-                t("dataProductsTab.colOwner"),
-                t("dataProductsTab.colStatus"),
-                t("dataProductsTab.colPurpose"),
+                { col: "id" },
+                { col: "domain" },
+                { col: "name" },
+                { col: "owner" },
+                { col: "status" },
+                { col: "purpose" },
               ]}
             />
             <Table.Tbody>
-              {filtered.length === 0 && (
+              {filteredProducts.length === 0 && (
                 <ListEmpty colSpan={6} testId="data-products-empty">
                   {t("dataProductsTab.empty")}
                 </ListEmpty>
               )}
-              {filtered.map((p) => {
+              <ListItems
+                state={sortGroup}
+                colSpan={6}
+                rowKey={(p) => p.id}
+                render={(p) => {
                 const isExpanded = expanded === p.id;
                 const isEditing = editingId === p.id;
                 return (
@@ -902,7 +941,8 @@ export function DataProductsPage() {
                     )}
                   </React.Fragment>
                 );
-              })}
+                }}
+              />
             </Table.Tbody>
           </ListTable>
         );

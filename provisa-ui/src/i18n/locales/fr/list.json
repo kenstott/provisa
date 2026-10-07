@@ -1,0 +1,9 @@
+{
+  "list": {
+    "sortAscending": "tri croissant",
+    "sortDescending": "tri décroissant",
+    "sortNone": "non trié",
+    "groupBy": "Grouper par {{label}}",
+    "ungroupLevel": "Dégrouper (niveau {{level}})"
+  }
+}

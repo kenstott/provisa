@@ -54,7 +54,9 @@ import {
   ListExpandRow,
   ListEmpty,
   ListDetail,
+  ListItems,
 } from "../components/list/ListTable";
+import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 
 const ALL_CAPABILITIES: Capability[] = [
   "source_registration",
@@ -281,6 +283,27 @@ export function SecurityRolesPage() {
     ...domains.map((d) => ({ id: d.id, label: d.id })),
   ];
 
+  // REQ-1940: sort and group are the shared list mechanism.
+  const filteredRoles = roles.filter(
+    (r) => !roleSearch.trim() || r.id.toLowerCase().includes(roleSearch.toLowerCase()),
+  );
+  const roleColumns: ListColumn<Role>[] = [
+    { key: "id", label: t("securityPage.colId"), sortValue: (r) => r.id },
+    {
+      key: "capabilities",
+      label: t("securityPage.colCapabilities"),
+      sortValue: (r) => r.capabilities.join(", "),
+      groupValue: (r) => r.capabilities.join(", "),
+    },
+    {
+      key: "domains",
+      label: t("securityPage.colDomainAccess"),
+      sortValue: (r) => r.domain_access.join(", "),
+      groupValue: (r) => r.domain_access.join(", ") || t("securityPage.noDomains"),
+    },
+  ];
+  const roleSortGroup = useListSortGroup(filteredRoles, roleColumns, "roles");
+
   if (loading) return <PageLoading message={t("securityPage.loadingRoles")} />;
 
   return (
@@ -422,19 +445,16 @@ export function SecurityRolesPage() {
 
       <ListTable minWidth={480} testId="roles-list">
           <ListHead
-            columns={[
-              t("securityPage.colId"),
-              t("securityPage.colCapabilities"),
-              t("securityPage.colDomainAccess"),
-            ]}
+            sortGroup={roleSortGroup}
+            columns={[{ col: "id" }, { col: "capabilities" }, { col: "domains" }]}
           />
           <Table.Tbody>
-            {roles
-              .filter(
-                (r) => !roleSearch.trim() || r.id.toLowerCase().includes(roleSearch.toLowerCase()),
-              )
-              .map((r) => (
-                <React.Fragment key={r.id}>
+            <ListItems
+              state={roleSortGroup}
+              colSpan={3}
+              rowKey={(r) => r.id}
+              render={(r) => (
+                <React.Fragment>
                   <ListRow
                     onClick={() => {
                       setExpandedRole(expandedRole === r.id ? null : r.id);
@@ -559,7 +579,8 @@ export function SecurityRolesPage() {
                     </ListExpandRow>
                   )}
                 </React.Fragment>
-              ))}
+              )}
+            />
           </Table.Tbody>
       </ListTable>
       {refusal.dialog}
@@ -718,6 +739,46 @@ export function SecurityRlsPage() {
     setError("");
   };
 
+  const filtered = rules.filter((r) => {
+    if (selectedDomain !== "all") {
+      const ruleDomain = r.actionName
+        ? actions.find((a) => a.name === r.actionName)?.domainId
+        : r.domainId
+          ? r.domainId
+          : tables.find((t) => t.id === r.tableId)?.domainId;
+      if (ruleDomain !== selectedDomain) return false;
+    }
+    if (!ruleSearch.trim()) return true;
+    const q = ruleSearch.toLowerCase();
+    const scope = r.actionName
+      ? `action:${r.actionName}`
+      : r.domainId
+        ? `domain:${r.domainId}`
+        : (tableLabelById[r.tableId!] ?? String(r.tableId));
+    return r.roleId.toLowerCase().includes(q) || scope.toLowerCase().includes(q);
+  });
+
+  // REQ-1940: sort and group are the shared list mechanism.
+  const ruleScope = (r: RLSRule) =>
+    r.actionName ? r.actionName : r.domainId ? r.domainId : (tableLabelById[r.tableId!] ?? String(r.tableId));
+  const ruleColumns: ListColumn<RLSRule>[] = [
+    { key: "id", label: t("securityPage.colId"), sortValue: (r) => r.id },
+    {
+      key: "scope",
+      label: t("securityPage.colTableOrDomain"),
+      sortValue: ruleScope,
+      groupValue: ruleScope,
+    },
+    {
+      key: "role",
+      label: t("securityPage.colRole"),
+      sortValue: (r) => r.roleId,
+      groupValue: (r) => r.roleId,
+    },
+    { key: "filter", label: t("securityPage.colFilter"), sortValue: (r) => r.filterExpr },
+  ];
+  const ruleSortGroup = useListSortGroup(filtered, ruleColumns, "rules");
+
   if (loading) return <PageLoading message={t("securityPage.loadingRules")} />;
 
   // A plain element, not a nested component: a component declared during render gets a new identity
@@ -796,25 +857,6 @@ export function SecurityRlsPage() {
     </>
   );
 
-  const filtered = rules.filter((r) => {
-    if (selectedDomain !== "all") {
-      const ruleDomain = r.actionName
-        ? actions.find((a) => a.name === r.actionName)?.domainId
-        : r.domainId
-          ? r.domainId
-          : tables.find((t) => t.id === r.tableId)?.domainId;
-      if (ruleDomain !== selectedDomain) return false;
-    }
-    if (!ruleSearch.trim()) return true;
-    const q = ruleSearch.toLowerCase();
-    const scope = r.actionName
-      ? `action:${r.actionName}`
-      : r.domainId
-        ? `domain:${r.domainId}`
-        : (tableLabelById[r.tableId!] ?? String(r.tableId));
-    return r.roleId.toLowerCase().includes(q) || scope.toLowerCase().includes(q);
-  });
-
   return (
     <Stack gap="md" p="md">
       {error && (
@@ -879,12 +921,8 @@ export function SecurityRlsPage() {
 
       <ListTable minWidth={640} testId="rules-list">
           <ListHead
-            columns={[
-              t("securityPage.colId"),
-              t("securityPage.colTableOrDomain"),
-              t("securityPage.colRole"),
-              t("securityPage.colFilter"),
-            ]}
+            sortGroup={ruleSortGroup}
+            columns={[{ col: "id" }, { col: "scope" }, { col: "role" }, { col: "filter" }]}
           />
           <Table.Tbody>
             {filtered.length === 0 && (
@@ -894,8 +932,12 @@ export function SecurityRlsPage() {
                   : t("securityPage.noRulesMatchFilter")}
               </ListEmpty>
             )}
-            {filtered.map((r) => (
-              <React.Fragment key={r.id}>
+            <ListItems
+              state={ruleSortGroup}
+              colSpan={4}
+              rowKey={(r) => r.id}
+              render={(r) => (
+              <React.Fragment>
                 <ListRow
                   onClick={() => {
                     setExpandedRule(expandedRule === r.id ? null : r.id);
@@ -1013,7 +1055,8 @@ export function SecurityRlsPage() {
                   </ListExpandRow>
                 )}
               </React.Fragment>
-            ))}
+              )}
+            />
           </Table.Tbody>
       </ListTable>
     </Stack>
