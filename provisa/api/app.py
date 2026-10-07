@@ -250,8 +250,6 @@ class AppState:
     security_high: bool = (
         False  # REQ-693: high-security mode (pgwire off, data endpoints KMS-gated)
     )
-    tracked_functions: dict[str, dict] = {}  # gql field name → fn dict
-    tracked_webhooks: dict[str, dict] = {}  # gql field name → wh dict
     # REQ-885: deny-by-default egress allow-list for hosted http/grpc UDFs. host or host:port
     # entries; empty ⇒ all external egress denied (loopback/Provisa pgwire is always allowed).
     udf_egress_allowlist: list[str] = []
@@ -559,6 +557,33 @@ class AppState:
     @source_binding_env.setter
     def source_binding_env(self, value: dict[str, str]) -> None:
         self._active_runtime().source_binding_env = value
+
+    @property
+    def tracked_functions(self) -> dict[str, dict]:
+        """The active environment's commands, by the names every surface calls them by."""
+        return self._active_runtime().tracked_functions
+
+    @tracked_functions.setter
+    def tracked_functions(self, value: dict[str, dict]) -> None:
+        self._active_runtime().tracked_functions = value
+
+    @property
+    def tracked_webhooks(self) -> dict[str, dict]:
+        """The active environment's webhooks, by the names every surface calls them by."""
+        return self._active_runtime().tracked_webhooks
+
+    @tracked_webhooks.setter
+    def tracked_webhooks(self, value: dict[str, dict]) -> None:
+        self._active_runtime().tracked_webhooks = value
+
+    @property
+    def undefined_commands(self) -> dict[str, str]:
+        """Command name -> why it is not defined in the active environment (REQ-1942)."""
+        return self._active_runtime().undefined_commands
+
+    @undefined_commands.setter
+    def undefined_commands(self, value: dict[str, str]) -> None:
+        self._active_runtime().undefined_commands = value
 
     @property
     def source_types(self) -> dict[str, str]:

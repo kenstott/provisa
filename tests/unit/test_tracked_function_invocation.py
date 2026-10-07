@@ -66,6 +66,7 @@ def _state(*, role_caps=(), visible_to=("ops",), connected=True, pools=None):
             "reader": {"id": "reader", "capabilities": [], "domain_access": ["sales"]},
         },
         tracked_functions={"createOrder": _fn(visible_to=list(visible_to))},
+        undefined_commands={},
         source_pools=pools,
         ephemeral=False,
     )

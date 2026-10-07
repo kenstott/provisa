@@ -357,7 +357,13 @@ class GenerateBody(BaseModel):
     runs: dict[int, str] = {}
     seed: int = 0
     scale: float = 1.0
-    confirm_discard: bool = False
+
+
+class ConfirmBody(GenerateBody):
+    """The generation the operator confirms: the same choices, and the digest of the Limitations
+    of Synthetic Data warning they were shown for it."""
+
+    digest: str
 
 
 def _not_synthetic(org_id: str, name: str, mode: str | None) -> ApiError:
@@ -372,10 +378,10 @@ def _not_synthetic(org_id: str, name: str, mode: str | None) -> ApiError:
 
 @router.get("/{name}/synthetic/plan")
 async def synthetic_plan(request: Request, org_id: str, name: str) -> dict:
-    """What a whole-model generation in a Test (synthetic) environment would generate (REQ-1942):
-    every table not backed by an API with its parent's successful profile runs, the latest
-    preselected; the API-backed tables, with their keys, key rules, address and what a lookup
-    returns; and whether every generated table has a run."""
+    """What a whole-model generation in a Test (synthetic) environment would do (REQ-1942): every
+    table with the profiles it may be generated from, the one preselected; the tables that will
+    not be available, and why; the commands that will not be defined; and whether Generate is
+    ready."""
     from provisa.synthetic.env_model import model_plan
 
     await _member(request, org_id, MANAGE_CAPABILITY)
@@ -389,12 +395,14 @@ async def synthetic_plan(request: Request, org_id: str, name: str) -> dict:
         return await model_plan(_state(), conn, row["parent"], name)
 
 
-@router.post("/{name}/synthetic")
-async def generate_model(request: Request, org_id: str, name: str, body: GenerateBody) -> dict:
-    """Generate a Test (synthetic) environment's whole model in the background (REQ-1942). Every
-    table not backed by an API needs a profile run in the parent; regenerating discards the kept
-    mutations and needs ``confirm_discard``."""
-    from provisa.synthetic.env_model import DATASET_ID, model_plan, start
+async def _generation(
+    request: Request, org_id: str, name: str, body: GenerateBody
+) -> tuple[str | None, dict[int, tuple[str, str]], dict]:
+    """The generation ``body`` asks for in ``name``, checked: its actor, each generated table's
+    profile as (the environment holding it, its run id), and its Limitations of Synthetic Data
+    warning. Refused, naming why, while the environment is not Test (synthetic) or is generating,
+    a table has no profile, or a column has nothing to generate it from."""
+    from provisa.synthetic.env_model import model_plan, warning
 
     await _confined(request, org_id, name)
     actor = await _member(request, org_id, DATA_CAPABILITY)
@@ -406,15 +414,6 @@ async def generate_model(request: Request, org_id: str, name: str, body: Generat
             409,
             "environments.generating",
             f"{name!r} is already generating its model.",
-            org=org_id,
-            env=name,
-        )
-    if row["synthetic_dataset"] is not None and not body.confirm_discard:
-        raise ApiError(
-            409,
-            "environments.confirm_discard",
-            f"Regenerating {name!r} changes its row keys and discards its kept mutations. "
-            "Confirm to go ahead.",
             org=org_id,
             env=name,
         )
@@ -460,6 +459,43 @@ async def generate_model(request: Request, org_id: str, name: str, body: Generat
             org=org_id,
             env=name,
         )
+    async with _pool().acquire() as conn:
+        kept = await kept_counts(conn, org_schema(org_id, name))
+    return (
+        actor,
+        runs,
+        warning(plan, runs, seed=body.seed, scale=body.scale, kept_mutations=kept),
+    )
+
+
+@router.post("/{name}/synthetic")
+async def generate_model(request: Request, org_id: str, name: str, body: GenerateBody) -> dict:
+    """Generate, the first of two steps (REQ-1942): answers the Limitations of Synthetic Data
+    warning of this generation and generates nothing. Confirming it -- its digest, with the same
+    choices, to ``/synthetic/confirm`` -- starts the generation."""
+    _, _, shown = await _generation(request, org_id, name, body)
+    return {"status": "awaiting_confirmation", "warning": shown}
+
+
+@router.post("/{name}/synthetic/confirm")
+async def confirm_generation(request: Request, org_id: str, name: str, body: ConfirmBody) -> dict:
+    """Confirm the warning and generate the environment's whole model in the background
+    (REQ-1942). ``digest`` names the warning the operator was shown; where the model or its
+    profiles have changed since, what would be generated is no longer what was confirmed, so the
+    confirmation is refused with the warning as it now stands."""
+    from provisa.synthetic.env_model import DATASET_ID, start
+
+    actor, runs, shown = await _generation(request, org_id, name, body)
+    if body.digest != shown["digest"]:
+        raise ApiError(
+            409,
+            "environments.warning_changed",
+            f"What generating {name!r} would do has changed since its warning was shown. Read "
+            "the warning again and confirm it.",
+            org=org_id,
+            env=name,
+            warning=shown,
+        )
     discarded = await _discard_kept(org_id, name)  # regenerating changes the row keys
     await set_data(
         _admin_pool(),
@@ -478,6 +514,9 @@ async def generate_model(request: Request, org_id: str, name: str, body: Generat
             "runs": {tid: {"env": e, "run": rid} for tid, (e, rid) in runs.items()},
             "seed": body.seed,
             "scale": body.scale,
+            "warning": shown["digest"],
+            "unavailable": [t["tableName"] for t in shown["unavailable"]],
+            "commands_not_defined": shown["commandsNotDefined"],
             "change_log_discarded": discarded,
         },
     )
@@ -489,7 +528,7 @@ async def generate_model(request: Request, org_id: str, name: str, body: Generat
         seed=body.seed,
         scale=body.scale,
     )
-    return {"status": "generating", "tables": len(runs), "apiTables": len(plan["apiTables"])}
+    return {"status": "generating", "tables": len(runs), "warning": shown["digest"]}
 
 
 async def _uncovered(conn: Any, org_id: str, runs: dict[int, tuple[str, str]]) -> list[str]:

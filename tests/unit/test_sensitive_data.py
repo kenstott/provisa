@@ -172,3 +172,5 @@ def test_in_test_synthetic_a_sensitive_columns_rule_may_not_copy_real_values():
         refuse_copied_sensitive([table("profile()")])
     refuse_copied_sensitive([table("categories((a, b))")])  # named values: none of them real
     refuse_copied_sensitive([table("email()")])
+    # One declaring neither a fake nor a rule copies nothing: check_pii is what names it.
+    refuse_copied_sensitive([SimpleNamespace(name="people", pii=frozenset({"email"}), fakes={})])

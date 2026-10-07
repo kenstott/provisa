@@ -618,18 +618,27 @@ async def generate_environment_model(
     runs: dict | None = None,
     seed: int = 0,
     scale: float = 1.0,
-    confirmDiscard: bool = False,  # noqa: N803 -- the tool's own argument names
+    digest: str | None = None,
 ) -> dict:
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id
     from provisa.api.admin.capabilities import require_capability_request
-    from provisa.api.admin.environment_data_router import GenerateBody
-    from provisa.api.admin.environment_data_router import generate_model as _generate
+    from provisa.api.admin.environment_data_router import (
+        ConfirmBody,
+        GenerateBody,
+        confirm_generation,
+        generate_model,
+    )
 
     require_capability_request(request, "environment_data")
     given = {"runs": {int(k): v for k, v in runs.items()}} if runs is not None else {}
-    body = GenerateBody(seed=seed, scale=scale, confirm_discard=confirmDiscard, **given)
-    return await _generate(request, require_active_org_id(request), env, body)
+    org_id = require_active_org_id(request)
+    if digest is None:  # REQ-1942: the first step answers the warning and generates nothing
+        return await generate_model(
+            request, org_id, env, GenerateBody(seed=seed, scale=scale, **given)
+        )
+    body = ConfirmBody(seed=seed, scale=scale, digest=digest, **given)
+    return await confirm_generation(request, org_id, env, body)
 
 
 async def reset_environment_mutations(state: Any, role: str, request: Any, env: str) -> dict:

@@ -1480,6 +1480,14 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
         }
         for r in fn_rows
     ]
+    # REQ-1942: the commands backed by a generated API source are not defined in a Test
+    # (synthetic) environment -- omitted here, the one place every surface's commands come from,
+    # and kept by name so a call to one is refused saying why (action_exec.invoke_command).
+    from provisa.synthetic.env_model import undefined_commands
+
+    undefined = await undefined_commands(conn)
+    not_defined = [f for f in tracked_functions if f["name"] in undefined]
+    tracked_functions = [f for f in tracked_functions if f["name"] not in undefined]
     tracked_webhooks = [
         {
             **dict(r),
@@ -1524,6 +1532,10 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     state.tracked_functions = {}
     for f in tracked_functions:
         _register(state.tracked_functions, f)
+    refused: dict[str, dict] = {}
+    for f in not_defined:
+        _register(refused, f)
+    state.undefined_commands = {key: undefined[f["name"]] for key, f in refused.items()}
     state.tracked_webhooks = {}
     for w in tracked_webhooks:
         _register(state.tracked_webhooks, w)

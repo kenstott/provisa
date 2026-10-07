@@ -282,6 +282,31 @@ def _served_from_replica(
     return out
 
 
+def _unavailable(registry: _Registry) -> dict[int, str]:
+    """REQ-1942: once an environment's whole model is generated, the API tables it holds no
+    generated copy of -- those needing a required parameter, with no declared profile -- and why
+    a read of each is refused."""
+    from provisa.synthetic.env_model import (
+        DATASET_ID,
+        api_source_types,
+        required_parameters,
+        unavailable_reason,
+    )
+
+    if DATASET_ID not in {dataset for dataset, _ in registry.synthetic.values()}:
+        return {}
+    api = api_source_types()
+    out: dict[int, str] = {}
+    for reg in registry.registered:
+        src = registry.sources.get(reg["source_id"])
+        if src is None or reg["id"] in registry.synthetic or _source_type(src) not in api:
+            continue
+        out[reg["id"]] = unavailable_reason(
+            reg["table_name"], required_parameters(reg, _source_type(src))
+        )
+    return out
+
+
 def _floored(registry: _Registry) -> dict[int, tuple[str, str]]:
     registered, sources, serving, _promoted, synthetic = registry
     floored: dict[int, tuple[str, str]] = {}
@@ -492,6 +517,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         promoted=registry.promoted,
         serving=registry.serving,
         synthetic={tid: found[0] for tid, found in registry.synthetic.items()},
+        unavailable=_unavailable(registry),
         # The backend's own record, by reference: a later reconcile is seen without republishing.
         unreconciled=backend.unreconciled,
     )
