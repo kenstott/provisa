@@ -42,21 +42,31 @@ async def prepare_first_start(config_path: str, owner: str) -> None:
     """Make a boot with ``config_path`` its deployment's first start, unless the org's store was
     seeded from that same configuration for the same ``owner`` (the test module, or the session's
     live server) in this session."""
-    from sqlalchemy import delete, text
-
-    from provisa.core import model_change
-    from provisa.core.config_loader import load_control_plane, reset_model
-    from provisa.core.database import Database, create_engine_from_url
-    from provisa.core.schema_org import model_seed
+    from provisa.core.config_loader import load_control_plane
 
     path = str(Path(config_path).resolve())
     org_id = load_control_plane(path).resolved_org_id()
     if _SEEDED_FROM.get(org_id) == (path, owner):
         return
     _SEEDED_FROM[org_id] = (path, owner)
+    await empty_org_model(org_id, os.environ["TENANT_DATABASE_URL"])
+
+
+async def empty_org_model(org_id: str, tenant_url: str) -> None:
+    """Empty ``org_id``'s model store and mark it unseeded, so its next boot is a first start that
+    seeds the store from that boot's own configuration. A store not created yet is left alone:
+    the boot creates and seeds it."""
+    from sqlalchemy import delete, text
+
+    from provisa.core import model_change
+    from provisa.core.config_loader import reset_model
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_org import model_seed
+
+    _SEEDED_FROM.pop(org_id, None)
     schema = f"org_{org_id}"
     plane = Database(
-        create_engine_from_url(os.environ["TENANT_DATABASE_URL"]),
+        create_engine_from_url(tenant_url),
         name="first-start",
         search_path=schema,
     )

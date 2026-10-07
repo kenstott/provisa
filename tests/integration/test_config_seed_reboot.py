@@ -128,6 +128,9 @@ async def _boot(config: Path, monkeypatch, then=None):
     monkeypatch.setenv("PROVISA_CONFIG", str(config))
     monkeypatch.setenv("ORG_ID", _ORG_ID)
     monkeypatch.setenv("PG_PASSWORD", os.environ.get("PG_PASSWORD", "provisa"))
+    # The boot re-points the process's own org to ORG_ID (AppState.org_id moves its runtime);
+    # the session's later modules serve the deployment org they started with, so it is put back.
+    monkeypatch.setattr(state, "org_id", state.org_id)
     app = create_app()
     async with app.router.lifespan_context(app):
         assert state.org_id == _ORG_ID
