@@ -292,6 +292,45 @@ Salesforce 数据源需要指定组织的“我的域”登录 URL 和一套完�
     security_token: ${env:SF_SECURITY_TOKEN}
 ```
 
+#### `cloudops`
+
+云资源清单把 Azure、AWS 和 GCP 的资源呈现为同一组表：`compute_resources`, `storage_resources`, `kubernetes_clusters`, `database_resources`, `network_resources`, `iam_resources`, `container_registries`, `compute_security_groups`。每张表在三个云上使用同一组列，其 `cloud_provider` 列指明每一行来自哪个云。该数据源只读，其表与其他表一样由数据管理员注册 (REQ-1947)。 [tool-verified: `provisa/federation/cloudops.py` `cloudops_settings`; `provisa/federation/trino_connectors.py` `TrinoCloudopsConnector`]
+
+一个数据源指定一个或多个云。每个云要么完整要么不填：只填了部分必填值的云会被拒绝，并指出缺少的值；没有指定任何云的数据源同样会被拒绝。数据源只读取它指定的云。所有值都放在 `mapping` 中；每个密钥都可以是 `${secret:…}` 或 `${env:…}` 引用，直接输入的密钥会存入组织的保管库。
+
+| 云 | `mapping` 键 | 连接器属性 | 说明 |
+| --- | --- | --- | --- |
+| Azure | `azure_tenant_id` | `azure.tenant-id` | 必填 |
+| Azure | `azure_client_id` | `azure.client-id` | 必填 |
+| Azure | `azure_client_secret` | `azure.client-secret` | 必填；密钥 |
+| Azure | `azure_subscription_ids` | `azure.subscription-ids` | 必填; 以逗号分隔 |
+| AWS | `aws_access_key_id` | `aws.access-key-id` | 必填 |
+| AWS | `aws_secret_access_key` | `aws.secret-access-key` | 必填；密钥 |
+| AWS | `aws_region` | `aws.region` | 必填 |
+| AWS | `aws_account_ids` | `aws.account-ids` | 必填; 以逗号分隔 |
+| AWS | `aws_role_arn` | `aws.role-arn` | 可选 |
+| GCP | `gcp_credentials_path` | `gcp.credentials-path` | 必填 |
+| GCP | `gcp_project_ids` | `gcp.project-ids` | 必填; 以逗号分隔 |
+| — | `cache_ttl_minutes` | `cache.ttl-minutes` | 可选 |
+
+GCP 密钥文件由读取数据源的一方打开：在 Trino 上是 Trino 服务器，在其他引擎上是 Provisa 主机上该数据源的 pgwire 服务器。路径必须是绝对路径。
+
+在 Trino 上，数据源通过 `cloudops` 目录读取。在其他任何引擎上，引擎挂载数据源的 pgwire 服务器并就地读取，与 SharePoint 数据源相同。
+
+```yaml
+- id: cloud-estate
+  type: cloudops
+  mapping:
+    aws_access_key_id: ${env:CLOUDOPS_AWS_ACCESS_KEY_ID}
+    aws_secret_access_key: ${env:CLOUDOPS_AWS_SECRET_ACCESS_KEY}
+    aws_region: us-east-1
+    aws_account_ids: "111111111111,222222222222"
+    azure_tenant_id: ${env:CLOUDOPS_AZURE_TENANT_ID}
+    azure_client_id: ${env:CLOUDOPS_AZURE_CLIENT_ID}
+    azure_client_secret: ${env:CLOUDOPS_AZURE_CLIENT_SECRET}
+    azure_subscription_ids: "sub-1,sub-2"
+```
+
 #### `splunk`
 
 Splunk 的搜索结果可作为表查询（例如 `internal_server`）（REQ-721）。连接器 URL 来自 `base_url`，否则构造为 `https://{host}:{port}`，默认端口为 `8089`（REQ-722）。身份验证：当 `mapping.use_token` 为 `true`（默认值）时，`password` 作为 API 令牌传递；为 `false` 时，`username` 和 `password` 作为独立凭据传递（REQ-723）。[tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]

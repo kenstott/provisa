@@ -292,6 +292,45 @@ SharePoint и Splunk регистрируются через коннектор�
     security_token: ${env:SF_SECURITY_TOKEN}
 ```
 
+#### `cloudops`
+
+Облачный инвентарь представляет ресурсы Azure, AWS и GCP как один набор таблиц: `compute_resources`, `storage_resources`, `kubernetes_clusters`, `database_resources`, `network_resources`, `iam_resources`, `container_registries`, `compute_security_groups`. У каждой таблицы один набор столбцов для всех трёх облаков, а её столбец `cloud_provider` называет облако, из которого пришла строка. Источник только читает, а его таблицы регистрирует стюард, как и любые другие (REQ-1947). [tool-verified: `provisa/federation/cloudops.py` `cloudops_settings`; `provisa/federation/trino_connectors.py` `TrinoCloudopsConnector`]
+
+Источник называет одно или несколько облаков. Для каждого облака действует правило «всё или ничего»: облако, у которого заполнена лишь часть обязательных значений, отклоняется с указанием недостающего, как и источник, не называющий ни одного облака. Источник читает ровно те облака, которые называет. Все значения находятся в `mapping`; каждый секрет может быть ссылкой `${secret:…}` или `${env:…}`, а секрет, введённый напрямую, помещается в хранилище секретов организации.
+
+| Облако | Ключ `mapping` | Свойство коннектора | Примечания |
+| --- | --- | --- | --- |
+| Azure | `azure_tenant_id` | `azure.tenant-id` | Обязательно |
+| Azure | `azure_client_id` | `azure.client-id` | Обязательно |
+| Azure | `azure_client_secret` | `azure.client-secret` | Обязательно; секрет |
+| Azure | `azure_subscription_ids` | `azure.subscription-ids` | Обязательно; через запятую |
+| AWS | `aws_access_key_id` | `aws.access-key-id` | Обязательно |
+| AWS | `aws_secret_access_key` | `aws.secret-access-key` | Обязательно; секрет |
+| AWS | `aws_region` | `aws.region` | Обязательно |
+| AWS | `aws_account_ids` | `aws.account-ids` | Обязательно; через запятую |
+| AWS | `aws_role_arn` | `aws.role-arn` | Необязательно |
+| GCP | `gcp_credentials_path` | `gcp.credentials-path` | Обязательно |
+| GCP | `gcp_project_ids` | `gcp.project-ids` | Обязательно; через запятую |
+| — | `cache_ttl_minutes` | `cache.ttl-minutes` | Необязательно |
+
+Файл ключа GCP открывает тот, кто читает источник: в Trino это сервер Trino, в любом другом движке — pgwire-сервер источника на хосте Provisa. Путь должен быть абсолютным.
+
+В Trino источник читается через каталог `cloudops`. В любом другом движке движок подключает pgwire-сервер источника и читает его на месте, как источник SharePoint.
+
+```yaml
+- id: cloud-estate
+  type: cloudops
+  mapping:
+    aws_access_key_id: ${env:CLOUDOPS_AWS_ACCESS_KEY_ID}
+    aws_secret_access_key: ${env:CLOUDOPS_AWS_SECRET_ACCESS_KEY}
+    aws_region: us-east-1
+    aws_account_ids: "111111111111,222222222222"
+    azure_tenant_id: ${env:CLOUDOPS_AZURE_TENANT_ID}
+    azure_client_id: ${env:CLOUDOPS_AZURE_CLIENT_ID}
+    azure_client_secret: ${env:CLOUDOPS_AZURE_CLIENT_SECRET}
+    azure_subscription_ids: "sub-1,sub-2"
+```
+
 #### `splunk`
 
 Результаты поиска Splunk доступны для запросов как таблицы (например, `internal_server`) (REQ-721). URL коннектора берётся из `base_url` либо формируется как `https://{host}:{port}` со значением порта по умолчанию `8089` (REQ-722). Аутентификация: когда `mapping.use_token` равно `true` (по умолчанию), `password` передаётся как API-токен; когда `false`, `username` и `password` передаются как отдельные учётные данные (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]

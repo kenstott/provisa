@@ -280,6 +280,45 @@ Flujo de usuario y contraseña:
     security_token: ${env:SF_SECURITY_TOKEN}
 ```
 
+#### `cloudops`
+
+El inventario de nube presenta los recursos de Azure, AWS y GCP como un único conjunto de tablas: `compute_resources`, `storage_resources`, `kubernetes_clusters`, `database_resources`, `network_resources`, `iam_resources`, `container_registries`, `compute_security_groups`. Cada tabla tiene las mismas columnas en las tres nubes, y su columna `cloud_provider` indica la nube de la que procede cada fila. La fuente solo lee, y sus tablas las registra un steward como cualquier otra (REQ-1947). [tool-verified: `provisa/federation/cloudops.py` `cloudops_settings`; `provisa/federation/trino_connectors.py` `TrinoCloudopsConnector`]
+
+Una fuente indica una o varias nubes. Cada nube es todo o nada: una nube con solo parte de sus valores obligatorios se rechaza, indicando lo que falta, igual que una fuente que no indica ninguna nube. La fuente lee exactamente las nubes que indica. Todos los valores están en `mapping`; cada secreto puede ser una referencia `${secret:…}` o `${env:…}`, y un secreto escrito directamente se guarda en el almacén de secretos de la organización.
+
+| Nube | Clave de `mapping` | Propiedad del conector | Notas |
+| --- | --- | --- | --- |
+| Azure | `azure_tenant_id` | `azure.tenant-id` | Obligatorio |
+| Azure | `azure_client_id` | `azure.client-id` | Obligatorio |
+| Azure | `azure_client_secret` | `azure.client-secret` | Obligatorio; secreto |
+| Azure | `azure_subscription_ids` | `azure.subscription-ids` | Obligatorio; separados por comas |
+| AWS | `aws_access_key_id` | `aws.access-key-id` | Obligatorio |
+| AWS | `aws_secret_access_key` | `aws.secret-access-key` | Obligatorio; secreto |
+| AWS | `aws_region` | `aws.region` | Obligatorio |
+| AWS | `aws_account_ids` | `aws.account-ids` | Obligatorio; separados por comas |
+| AWS | `aws_role_arn` | `aws.role-arn` | Opcional |
+| GCP | `gcp_credentials_path` | `gcp.credentials-path` | Obligatorio |
+| GCP | `gcp_project_ids` | `gcp.project-ids` | Obligatorio; separados por comas |
+| — | `cache_ttl_minutes` | `cache.ttl-minutes` | Opcional |
+
+El archivo de clave de GCP lo abre quien lee la fuente: en Trino, el servidor Trino; en cualquier otro motor, el servidor pgwire de la fuente en el host de Provisa. La ruta debe ser absoluta.
+
+En Trino la fuente se lee a través del catálogo `cloudops`. En cualquier otro motor, el motor adjunta el servidor pgwire de la fuente y la lee en su lugar, como una fuente SharePoint.
+
+```yaml
+- id: cloud-estate
+  type: cloudops
+  mapping:
+    aws_access_key_id: ${env:CLOUDOPS_AWS_ACCESS_KEY_ID}
+    aws_secret_access_key: ${env:CLOUDOPS_AWS_SECRET_ACCESS_KEY}
+    aws_region: us-east-1
+    aws_account_ids: "111111111111,222222222222"
+    azure_tenant_id: ${env:CLOUDOPS_AZURE_TENANT_ID}
+    azure_client_id: ${env:CLOUDOPS_AZURE_CLIENT_ID}
+    azure_client_secret: ${env:CLOUDOPS_AZURE_CLIENT_SECRET}
+    azure_subscription_ids: "sub-1,sub-2"
+```
+
 #### `splunk`
 
 Los resultados de búsqueda de Splunk son consultables como tablas (por ejemplo, `internal_server`) (REQ-721). La URL del conector proviene de `base_url`, o se construye como `https://{host}:{port}` con un puerto predeterminado de `8089` (REQ-722). Autenticación: cuando `mapping.use_token` es `true` (el predeterminado), `password` se pasa como el token de la API; cuando es `false`, `username` y `password` se pasan como credenciales separadas (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]
