@@ -115,6 +115,19 @@ def test_every_lane_bounds_each_test(lane):
     assert cmd[cmd.index("--timeout-method") + 1] == "signal"
 
 
+@pytest.mark.parametrize("lane", ["core", "app", "e2e", "warehouse"])
+def test_every_lane_writes_a_long_tests_stacks_to_the_log_before_its_bound(lane):
+    """The bound's stacks come in pytest's final report. A lane cancelled by its job limit never
+    prints one: the e2e lane hung in seven module teardowns, 15 minutes each, and its log named
+    no frame. faulthandler writes the stacks when the phase is still running, ahead of the bound."""
+    run_lane = _runner()
+    cmd = run_lane.command(lane, None, [])
+    setting = cmd[cmd.index("-o", cmd.index("--timeout")) + 1]
+    name, _, seconds = setting.partition("=")
+    assert name == "faulthandler_timeout"
+    assert 0 < int(seconds) < run_lane.TEST_TIMEOUT_S
+
+
 def _suite_steps() -> list[dict]:
     import yaml
 

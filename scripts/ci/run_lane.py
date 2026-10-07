@@ -75,6 +75,8 @@ LANES: dict[str, Lane] = {
 # The longest one test may run in a lane. Generous: a heavy engine's provisioning happens inside its
 # first test's setup.
 TEST_TIMEOUT_S = 900
+# How long before that bound a still-running test's stacks are written to the log.
+STACKS_BEFORE_BOUND_S = 60
 
 # The suite job's matrix: lane -> (file shards, timeout minutes). cluster and warehouse are their
 # own jobs, not matrix entries.
@@ -153,7 +155,12 @@ def command(lane_name: str, shard_spec: str | None, extra: list[str]) -> list[st
     # Every test is bounded: one that waits past this fails by name with every thread's stack,
     # instead of holding the shard until the job's own timeout cancels it and its log is lost.
     bound = ["--timeout", str(TEST_TIMEOUT_S), "--timeout-method", "signal"]
-    return cmd + ["-ra", "-p", "no:cacheprovider", "--durations=50", *bound, *extra]
+    # The bound's own stacks are printed in pytest's final report, which a lane cancelled by its
+    # job limit never reaches: the e2e lane spent seven 15-minute bounds in module teardowns and
+    # was cancelled with no stack in its log. A test phase still running a minute before its
+    # bound has every thread's stack written to the log at that moment.
+    stacks = ["-o", f"faulthandler_timeout={TEST_TIMEOUT_S - STACKS_BEFORE_BOUND_S}"]
+    return cmd + ["-ra", "-p", "no:cacheprovider", "--durations=50", *bound, *stacks, *extra]
 
 
 def main(argv: list[str]) -> int:
