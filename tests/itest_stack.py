@@ -172,8 +172,10 @@ _HARNESS_LAUNCH = re.compile(r"PROVISA_DATA_DIR=\S*/provisa-wboot-")
 
 def _orphaned_harness_processes() -> list[int]:
     """PIDs of harness-launched server processes whose parent is gone (reparented to init)."""
+    # ww: the whole command line. Not on a terminal, Linux's ps cuts each line at 80 columns, and
+    # a worker's "uvicorn" (after an interpreter path that long) was cut off the listing.
     listed = subprocess.run(
-        ["ps", "-axo", "pid=,ppid=,command="], capture_output=True, text=True, check=False
+        ["ps", "-axww", "-o", "pid=,ppid=,command="], capture_output=True, text=True, check=False
     )
     orphans = []
     for line in listed.stdout.splitlines():
