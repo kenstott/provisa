@@ -170,3 +170,16 @@ def test_a_connection_whose_server_is_gone_is_closed_not_left_open():
             assert client.recv(1) == b""  # closed by the relay
     finally:
         relay.close()
+
+
+def test_closing_the_relay_ends_its_accept_thread_before_its_listener_is_closed(started):
+    """A descriptor closed under a thread still blocked in accept() is reused by the next socket
+    the process opens, and that accept then takes the new socket's connections: another server's
+    clients were refused or reset. close() returns only once the accept thread has ended."""
+    server = started(_Echo("w1"))
+    port = lease_port()
+    relay = FlightRelay("127.0.0.1", port, server.port)
+    assert _get(port)["server"] == "w1"
+    relay.close()
+    assert not relay._acceptor.is_alive()  # noqa: SLF001 - the property under test
+    assert relay._listener.fileno() == -1  # noqa: SLF001 - closed only after the thread ended
