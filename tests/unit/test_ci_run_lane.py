@@ -99,7 +99,7 @@ def test_an_unknown_lane_is_refused():
 
 
 def test_the_workflow_takes_its_matrix_from_the_runner():
-    workflow = (REPO / ".github" / "workflows" / "integration-suite.yml").read_text()
+    workflow = (REPO / ".github" / "workflows" / "integration-suite-lanes.yml").read_text()
     assert "run_lane.py --matrix" in workflow
     assert "fromJSON(needs.plan.outputs.matrix)" in workflow
 
@@ -108,7 +108,7 @@ def _job_steps(job: str) -> list[dict]:
     import yaml
 
     workflow = yaml.safe_load(
-        (REPO / ".github" / "workflows" / "integration-suite.yml").read_text()
+        (REPO / ".github" / "workflows" / "integration-suite-lanes.yml").read_text()
     )
     return workflow["jobs"][job]["steps"]
 
