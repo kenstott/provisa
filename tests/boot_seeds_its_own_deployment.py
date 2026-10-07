@@ -63,7 +63,6 @@ async def empty_org_model(org_id: str, tenant_url: str) -> None:
     from provisa.core.database import Database, create_engine_from_url
     from provisa.core.schema_org import model_seed
 
-    _SEEDED_FROM.pop(org_id, None)
     schema = f"org_{org_id}"
     plane = Database(
         create_engine_from_url(tenant_url),
@@ -83,10 +82,52 @@ async def empty_org_model(org_id: str, tenant_url: str) -> None:
             if found is None:
                 return  # no store yet: the boot is its first start already
             async with model_change.committed_by_caller(), conn.transaction():
+                await _discard_demo_graphql_tables(conn)
                 await reset_model(conn)
                 await conn.execute_core(delete(model_seed))
     finally:
         await plane.close()
+
+
+async def _discard_demo_graphql_tables(conn) -> None:
+    """The tables a configuration declared on the graphql-demo source, and the relationships
+    naming them. ``reset_model`` keeps that source and its tables as the deployment's own seed,
+    but a first start registers them only when GRAPHQL_DEMO_ENABLED is set (app_startup), so an
+    earlier module's configuration must not leave them in this one's store."""
+    from sqlalchemy import or_, select
+
+    from provisa.core.repositories import table as table_repo
+    from provisa.core.repositories.integrity import ObjectRef, discard
+    from provisa.core.schema_org import registered_tables, relationships
+
+    ids = [
+        r[0]
+        for r in (
+            await conn.execute_core(
+                select(registered_tables.c.id).where(
+                    registered_tables.c.source_id == "graphql-demo"
+                )
+            )
+        ).fetchall()
+    ]
+    if not ids:
+        return
+    for rel_id in [
+        r[0]
+        for r in (
+            await conn.execute_core(
+                select(relationships.c.id).where(
+                    or_(
+                        relationships.c.source_table_id.in_(ids),
+                        relationships.c.target_table_id.in_(ids),
+                    )
+                )
+            )
+        ).fetchall()
+    ]:
+        await discard(conn, ObjectRef("relationship", rel_id))
+    for table_id in ids:
+        await table_repo.discard(conn, table_id)
 
 
 def each_boot_seeds_its_own_deployment(request: pytest.FixtureRequest) -> Iterator[None]:
