@@ -4700,7 +4700,7 @@
     rationale: Manual YAML/JSON spec authoring as a fallback is standard in Hasura Actions and custom
       REST connectors in Denodo. This is an expected fallback path for all platforms.
 - id: REQ-316
-  status: complete
+  status: in-progress
   group: 4. Source Connectors
   category: OpenAPI Auto-Registration Connector
   priority: SHOULD
@@ -4725,6 +4725,12 @@
     beside a success response is the error the remote answers with and is never read as the rows.
     The JSON schema is the one under the response's JSON media type, whatever parameters the
     media type carries (application/json;charset=UTF-8 is JSON).
+    (Amended 2026-10-07, ROW LOCATION PROPOSED FROM THE SPEC) A list operation often answers a page
+    wrapper -- an object holding the rows under one property beside its paging fields. When the
+    success response is an object with exactly one property that is an array of objects, that
+    property is proposed as the table's row location when the table is offered, the way its paging
+    is proposed (REQ-318). The steward accepts or edits it at registration. The table's columns are
+    those of the objects at the row location, and each read takes its rows from there.
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/
@@ -71887,6 +71893,11 @@
     account. The account is a column of each of its tables, so one table holds every account's
     rows and row-level rules decide which accounts a role reads. A source of this kind that serves
     one account only is not offered.
+    (Amended 2026-10-07, ONE BRAND, CLOUD OR DATA CENTER) A system offered both as a cloud service
+    and as a self-hosted product is one brand. Jira, Confluence and Bitbucket are each picked once,
+    and the steward says which deployment the source is -- Cloud or Data Center, and for Data Center
+    its version. That choice selects the pinned spec, since the two are different APIs, and the
+    tables and commands on offer follow from it.
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
