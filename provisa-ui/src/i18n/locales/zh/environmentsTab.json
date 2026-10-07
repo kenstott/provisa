@@ -116,7 +116,6 @@
     "remoteHelp": "此组织模型的镜像位置。清空该字段即可停止镜像。",
     "webhookLabel": "状态 Webhook",
     "webhookHelp": "报告每次推送结果的位置。",
-    "integrationProjection": "仓库是模型的投影，绝不是其权威来源。",
     "integrationSaved": "已保存。",
     "probe": "检查",
     "probeChecking": "正在检查远程仓库…",

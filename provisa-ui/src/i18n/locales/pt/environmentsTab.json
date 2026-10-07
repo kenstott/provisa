@@ -116,7 +116,6 @@
     "remoteHelp": "Onde o modelo desta organização é espelhado. Limpe o campo para parar o espelhamento.",
     "webhookLabel": "Webhook de status",
     "webhookHelp": "Onde o resultado de cada push é informado.",
-    "integrationProjection": "O repositório é uma projeção do modelo, nunca sua autoridade.",
     "integrationSaved": "Salvo.",
     "probe": "Verificar",
     "probeChecking": "Verificando o remote…",

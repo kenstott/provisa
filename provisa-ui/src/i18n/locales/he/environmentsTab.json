@@ -116,7 +116,6 @@
     "remoteHelp": "המקום שאליו משתקף המודל של הארגון. נקו את השדה כדי להפסיק את השיקוף.",
     "webhookLabel": "Webhook סטטוס",
     "webhookHelp": "המקום שאליו מדווחת תוצאת כל דחיפה.",
-    "integrationProjection": "המאגר הוא היטל של המודל, ולעולם לא הסמכות שלו.",
     "integrationSaved": "נשמר.",
     "probe": "בדיקה",
     "probeChecking": "בודק את ה-remote…",

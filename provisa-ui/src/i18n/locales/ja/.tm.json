@@ -983,7 +983,6 @@
   "ja/environmentsTab.json::environmentsTab.inheritHelp": "On, this environment reads its source connections — host, port, database, username — from the environment it was created from, by reference. Nothing is copied, so a rotation there is picked up here with nothing to do, and a revocation revokes here too.",
   "ja/environmentsTab.json::environmentsTab.inheritHelp2": "Leave it off — the default — to get the whole model with none of the connections: the new environment starts unbound and you point each source at your own database. That is what you want making a dev environment from prod, and it is why turning this on has to be a deliberate act.",
   "ja/environmentsTab.json::environmentsTab.inheritTitle": "Inherit connections",
-  "ja/environmentsTab.json::environmentsTab.integrationProjection": "The repository is a projection of the model, never its authority.",
   "ja/environmentsTab.json::environmentsTab.integrationSaved": "Saved.",
   "ja/environmentsTab.json::environmentsTab.integrationSecretHint": "The remote is stored exactly as typed and resolved only when a push happens. Write a secret reference such as ${env:GIT_TOKEN} rather than a token.",
   "ja/environmentsTab.json::environmentsTab.integrationTitle": "Repository integration",

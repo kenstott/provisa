@@ -76,9 +76,8 @@ To create a branch, set **Inherit connections** in the Environments panel. The d
 
 ## The git projection
 
-Every write to the model commits the result to the environment's git branch. The repository is a
-projection of the model, never its authority: Provisa reads and writes the control plane; the
-repository is the record, not the source. Deploying a tree requires an explicit call — a merged
+Every write to the model commits the result to the environment's git branch. Deploying a tree
+requires an explicit call — a merged
 pull request on the git host does not deploy itself (REQ-1524, REQ-1526). [tool-verified:
 deploy endpoint docstring at environments_router.py lines 777-791]
 
