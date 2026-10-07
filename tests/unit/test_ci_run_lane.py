@@ -102,3 +102,47 @@ def test_the_workflow_takes_its_matrix_from_the_runner():
     workflow = (REPO / ".github" / "workflows" / "integration-suite.yml").read_text()
     assert "run_lane.py --matrix" in workflow
     assert "fromJSON(needs.plan.outputs.matrix)" in workflow
+
+
+def _job_steps(job: str) -> list[dict]:
+    import yaml
+
+    workflow = yaml.safe_load(
+        (REPO / ".github" / "workflows" / "integration-suite.yml").read_text()
+    )
+    return workflow["jobs"][job]["steps"]
+
+
+@pytest.mark.parametrize("job", ["suite", "cluster", "warehouse"])
+def test_every_collecting_job_caches_the_pinned_trino_plugins_around_its_lane(job):
+    """tests/conftest.py fetches the pinned Trino plugin jars from Maven Central at collection, and
+    a refused fetch ended the lane before any test ran (run 37573213103: neo4j 403, kafka 404).
+    Each job that collects tests restores them by pin before its lane and saves them after."""
+    steps = _job_steps(job)
+    names = [step.get("name") for step in steps]
+    lane = names.index("Run lane")
+    assert names.index("Trino plugin pin") < names.index("Restore Trino plugins") < lane
+    assert lane < names.index("Trino plugins fetched") < names.index("Cache Trino plugins")
+    by_name = {step.get("name"): step for step in steps}
+    restored = by_name["Restore Trino plugins"]["with"]
+    assert by_name["Cache Trino plugins"]["with"] == restored
+    assert restored["key"] == "trino-plugins-${{ steps.trino-pin.outputs.version }}"
+    assert "always()" in by_name["Cache Trino plugins"]["if"]
+
+
+def test_the_trino_plugin_pin_step_names_the_harness_pin():
+    import subprocess
+
+    pin = next(s for s in _job_steps("suite") if s.get("name") == "Trino plugin pin")
+    script = pin["run"].replace('>> "$GITHUB_OUTPUT" ', "")
+    out = subprocess.run(  # noqa: S603 — the workflow's own step, run at the repo root
+        ["bash", "-c", script], cwd=REPO, capture_output=True, text=True, check=True
+    ).stdout
+    conftest = (REPO / "tests" / "conftest.py").read_text()
+    version = re.search(r'^_TRINO_PLUGIN_VERSION = "([^"]+)"$', conftest, re.M)
+    assert version is not None
+    lines = out.splitlines()
+    assert lines[0] == f"version={version.group(1)}"
+    jars = lines[1].removeprefix("jars=").split()
+    assert len(jars) == 3
+    assert all(j.endswith(f"-{version.group(1)}.jar") for j in jars)
