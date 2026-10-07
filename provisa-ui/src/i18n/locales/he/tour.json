@@ -129,11 +129,11 @@
       },
       "step15": {
         "title": "חיבור הגרף",
-        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>קשרים מקשרים טבלאות בין מקורות — אפילו בין מסדי נתונים שונים — והופכים טבלאות שטוחות ל<strong>גרף</strong> שניתן לעבור בו.</p><p>🛡️ ניתן גם <strong>לאכוף</strong> אותם: מעניקים לאנשים חופש לחקור, עם גדרות הגנה הגיוניות.</p>"
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>לקשר יש שני תפקידים. הוא מעצב את <strong>מודל הנתונים</strong> שלכם: איך טבלאות מתחברות בין מקורות ודומיינים – וזה מה שכל משטח שאילתות עוקב אחריו, בין אם מדובר בקינון GraphQL, במסלולי Cypher או ב-join של SQL.</p><p>הוא גם <strong>כלל</strong>. ה-join כפופים לממשל: תפקיד בלי ההרשאה <code>ignore_relationships</code> יכול לבצע join רק לאורך קשרים רשומים, ולכן הקשרים שקיימים קובעים אילו שאילתות חוקיות. אם תעניקו הרשאה זו במכוון לתפקיד שאתם סומכים עליו, הוא יבצע join בחופשיות (אף פעם לא במצב אבטחה גבוהה).</p><p>קשרים מקשרים טבלאות בין מקורות — אפילו בין מסדי נתונים שונים — והופכים טבלאות שטוחות ל<strong>גרף</strong> שניתן לעבור בו.</p>"
       },
       "step16": {
         "title": "הגדרת קשר",
-        "description": "🔗 ממפים עמודת מקור לעמודת יעד וקובעים <strong>עוצמתיות (Cardinality)</strong>:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ או נותנים ל-Provisa <strong>להסיק</strong> קשרים עבורכם באמצעות AI.</p>"
+        "description": "🔗 ממפים עמודת מקור לעמודת יעד וקובעים <strong>עוצמתיות (Cardinality)</strong>:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ או נותנים ל-Provisa <strong>להסיק</strong> קשרים עבורכם באמצעות AI.</p><p>🛡️ מכיוון שקשר הוא כלל, הוספה, שינוי או הסרה של קשר יכולים להפוך שאילתה לחוקית או ללא חוקית. קשר שמבקשים מחוץ לדומיין של טבלת המקור, או מי שאינו רשאי ליצור קשרים, ממתין לאישור.</p>"
       },
       "stepRelsSuggest": {
         "title": "הציעו קשרים",
@@ -141,7 +141,7 @@
       },
       "stepRelsList": {
         "title": "כל הקשרים ברשימה אחת",
-        "description": "📋 הקשרים של המודל, בין אם מקור מצהיר עליהם ובין אם לא, עם סינון ומיון. פתחו שורה כדי לערוך אותה או להוסיף את ההפוך שלה. תפקיד חוצה רק קשרים שיש לו הרשאות עליהם."
+        "description": "📋 הקשרים של המודל, בין אם מקור מצהיר עליהם ובין אם לא, עם סינון ומיון. פתחו שורה כדי לערוך אותה או להוסיף את ההפוך שלה. תפקיד מבצע join רק לאורך הקשרים האלה, אלא אם יש לו את ההרשאה ignore_relationships."
       },
       "step17": {
         "title": "צפייה ב-ERD",

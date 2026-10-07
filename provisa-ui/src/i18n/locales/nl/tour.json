@@ -129,11 +129,11 @@
       },
       "step15": {
         "title": "Verbind de graaf",
-        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Relaties koppelen tabellen over bronnen heen — zelfs over verschillende databases — en veranderen platte tabellen in een doorloopbare <strong>graaf</strong>.</p><p>🛡️ Ze kunnen ook worden <strong>afgedwongen</strong>: geef mensen vrijheid om te verkennen, met verstandige grenzen.</p>"
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Een relatie heeft twee taken. Ze vormt uw <strong>datamodel</strong>: hoe tabellen over bronnen en domeinen heen met elkaar verbonden zijn, en dat volgt elk querykanaal, of het nu gaat om GraphQL-nesting, Cypher-paden of SQL-joins.</p><p>Ze is ook een <strong>regel</strong>. Joins worden bestuurd: een rol zonder het recht <code>ignore_relationships</code> mag alleen joinen langs geregistreerde relaties, dus welke relaties bestaan bepaalt welke query's geldig zijn. Geef dat recht bewust aan een rol die u vertrouwt en die rol joint vrij (nooit in de modus voor hoge beveiliging).</p><p>Relaties koppelen tabellen over bronnen heen — zelfs over verschillende databases — en veranderen platte tabellen in een doorloopbare <strong>graaf</strong>.</p>"
       },
       "step16": {
         "title": "Definieer een relatie",
-        "description": "🔗 Koppel een bronkolom aan een doelkolom en stel de <strong>cardinaliteit</strong> in:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Of laat Provisa relaties voor je <strong>afleiden</strong> met AI.</p>"
+        "description": "🔗 Koppel een bronkolom aan een doelkolom en stel de <strong>cardinaliteit</strong> in:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Of laat Provisa relaties voor je <strong>afleiden</strong> met AI.</p><p>🛡️ Omdat een relatie een regel is, kan het toevoegen, wijzigen of verwijderen ervan een query geldig of ongeldig maken. Een relatie die van buiten het domein van de brontabel wordt aangevraagd, of door iemand die geen relaties mag aanmaken, wacht op goedkeuring.</p>"
       },
       "stepRelsSuggest": {
         "title": "Relaties voorstellen",
@@ -141,7 +141,7 @@
       },
       "stepRelsList": {
         "title": "Alle relaties in één lijst",
-        "description": "📋 De relaties van het model, of een bron ze nu declareert of niet, filterbaar en sorteerbaar. Klap een rij uit om haar te bewerken of de omgekeerde toe te voegen. Een rol doorloopt alleen de relaties waarop hij rechten heeft."
+        "description": "📋 De relaties van het model, of een bron ze nu declareert of niet, filterbaar en sorteerbaar. Klap een rij uit om haar te bewerken of de omgekeerde toe te voegen. Een rol joint alleen langs deze relaties, tenzij ze het recht ignore_relationships heeft."
       },
       "step17": {
         "title": "Bekijk het ERD",

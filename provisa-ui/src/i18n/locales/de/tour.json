@@ -129,11 +129,11 @@
       },
       "step15": {
         "title": "Den Graphen verbinden",
-        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Beziehungen verknüpfen Tabellen über Quellen hinweg — sogar über verschiedene Datenbanken hinweg — und verwandeln flache Tabellen in einen durchquerbaren <strong>Graphen</strong>.</p><p>🛡️ Sie können auch <strong>erzwungen</strong> werden: Menschen die Freiheit zum Erkunden geben, mit sinnvollen Leitplanken.</p>"
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Eine Beziehung hat zwei Aufgaben. Sie formt Ihr <strong>Datenmodell</strong>: wie Tabellen über Quellen und Domänen hinweg zusammenhängen – und genau dem folgt jede Abfrageoberfläche, ob GraphQL-Verschachtelung, Cypher-Pfade oder SQL-Joins.</p><p>Sie ist auch eine <strong>Regel</strong>. Joins unterliegen der Governance: Eine Rolle ohne das Recht <code>ignore_relationships</code> darf nur entlang registrierter Beziehungen joinen, also entscheidet die Menge der Beziehungen, welche Abfragen zulässig sind. Vergeben Sie dieses Recht bewusst an eine Rolle, der Sie vertrauen, dann joint sie frei (nie im Hochsicherheitsmodus).</p><p>Beziehungen verknüpfen Tabellen über Quellen hinweg — sogar über verschiedene Datenbanken hinweg — und verwandeln flache Tabellen in einen durchquerbaren <strong>Graphen</strong>.</p>"
       },
       "step16": {
         "title": "Eine Beziehung definieren",
-        "description": "🔗 Eine Quellspalte einer Zielspalte zuordnen und die <strong>Kardinalität</strong> festlegen:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Oder Provisa Beziehungen mit KI für Sie <strong>ableiten</strong> lassen.</p>"
+        "description": "🔗 Eine Quellspalte einer Zielspalte zuordnen und die <strong>Kardinalität</strong> festlegen:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Oder Provisa Beziehungen mit KI für Sie <strong>ableiten</strong> lassen.</p><p>🛡️ Weil eine Beziehung eine Regel ist, kann das Hinzufügen, Ändern oder Entfernen einer Beziehung eine Abfrage zulässig oder unzulässig machen. Eine Beziehung, die von außerhalb der Domäne der Quelltabelle oder von jemandem ohne Recht zum Anlegen von Beziehungen beantragt wird, wartet auf Genehmigung.</p>"
       },
       "stepRelsSuggest": {
         "title": "Beziehungen vorschlagen",
@@ -141,7 +141,7 @@
       },
       "stepRelsList": {
         "title": "Alle Beziehungen in einer Liste",
-        "description": "📋 Die Beziehungen des Modells, ob eine Quelle sie deklariert oder nicht, filter- und sortierbar. Klappen Sie eine Zeile auf, um sie zu bearbeiten oder ihre Umkehrung hinzuzufügen. Eine Rolle durchläuft nur die Beziehungen, für die sie Rechte hat."
+        "description": "📋 Die Beziehungen des Modells, ob eine Quelle sie deklariert oder nicht, filter- und sortierbar. Klappen Sie eine Zeile auf, um sie zu bearbeiten oder ihre Umkehrung hinzuzufügen. Eine Rolle joint nur entlang dieser Beziehungen, es sei denn, sie hat das Recht ignore_relationships."
       },
       "step17": {
         "title": "Das ERD ansehen",

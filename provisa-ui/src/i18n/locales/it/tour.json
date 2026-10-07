@@ -129,11 +129,11 @@
       },
       "step15": {
         "title": "Collega il grafo",
-        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Le relazioni collegano tabelle tra sorgenti — anche tra database diversi — trasformando tabelle piatte in un <strong>grafo</strong> percorribile.</p><p>🛡️ Possono anche essere <strong>imposte</strong>: concedi alle persone libertà di esplorare, con guardrail sensati.</p>"
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Una relazione ha due compiti. Dà forma al tuo <strong>modello di dati</strong>: come si collegano le tabelle tra sorgenti e domini, ed è ciò che segue ogni superficie di query, che si tratti di annidamento GraphQL, percorsi Cypher o join SQL.</p><p>È anche una <strong>regola</strong>. I join sono governati: un ruolo senza il diritto <code>ignore_relationships</code> può fare join solo lungo relazioni registrate, quindi le relazioni esistenti decidono quali query sono lecite. Concedi quel diritto in modo deliberato a un ruolo di cui ti fidi e potrà fare join liberamente (mai in modalità ad alta sicurezza).</p><p>Le relazioni collegano tabelle tra sorgenti — anche tra database diversi — trasformando tabelle piatte in un <strong>grafo</strong> percorribile.</p>"
       },
       "step16": {
         "title": "Definisci una relazione",
-        "description": "🔗 Mappa una colonna sorgente su una colonna di destinazione e imposta la <strong>cardinalità</strong>:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Oppure lascia che Provisa <strong>inferisca</strong> le relazioni per te con l'IA.</p>"
+        "description": "🔗 Mappa una colonna sorgente su una colonna di destinazione e imposta la <strong>cardinalità</strong>:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Oppure lascia che Provisa <strong>inferisca</strong> le relazioni per te con l'IA.</p><p>🛡️ Poiché una relazione è una regola, aggiungerne, modificarne o rimuoverne una può rendere una query lecita o illecita. Una relazione richiesta da fuori del dominio della tabella di origine, o da chi non può creare relazioni, resta in attesa di approvazione.</p>"
       },
       "stepRelsSuggest": {
         "title": "Suggerisci relazioni",
@@ -141,7 +141,7 @@
       },
       "stepRelsList": {
         "title": "Tutte le relazioni in un elenco",
-        "description": "📋 Le relazioni del modello, che una sorgente le dichiari o no, filtrabili e ordinabili. Espandi una riga per modificarla o aggiungerne l'inversa. Un ruolo attraversa solo le relazioni su cui ha diritti."
+        "description": "📋 Le relazioni del modello, che una sorgente le dichiari o no, filtrabili e ordinabili. Espandi una riga per modificarla o aggiungerne l'inversa. Un ruolo fa join solo lungo queste relazioni, a meno che abbia il diritto ignore_relationships."
       },
       "step17": {
         "title": "Guarda l'ERD",

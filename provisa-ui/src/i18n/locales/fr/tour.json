@@ -129,11 +129,11 @@
       },
       "step15": {
         "title": "Connecter le graphe",
-        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Les relations lient les tables entre les sources — même entre des bases de données différentes — transformant des tables plates en un <strong>graphe</strong> parcourable.</p><p>🛡️ Elles peuvent aussi être <strong>appliquées</strong> : donnez aux utilisateurs la liberté d'explorer, avec des garde-fous raisonnables.</p>"
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Une relation remplit deux rôles. Elle façonne votre <strong>modèle de données</strong> : la façon dont les tables se relient entre sources et domaines, et c'est ce que suit toute surface de requête, qu'il s'agisse de l'imbrication GraphQL, des chemins Cypher ou des jointures SQL.</p><p>C'est aussi une <strong>règle</strong>. Les jointures sont gouvernées : un rôle sans le droit <code>ignore_relationships</code> ne peut joindre que le long de relations enregistrées, donc les relations qui existent décident des requêtes autorisées. Accordez ce droit délibérément à un rôle de confiance et il joint librement (jamais en mode haute sécurité).</p><p>Les relations lient les tables entre les sources — même entre des bases de données différentes — transformant des tables plates en un <strong>graphe</strong> parcourable.</p>"
       },
       "step16": {
         "title": "Définir une relation",
-        "description": "🔗 Associez une colonne source à une colonne cible et définissez la <strong>cardinalité</strong> :<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Ou laissez Provisa <strong>déduire</strong> les relations pour vous grâce à l'IA.</p>"
+        "description": "🔗 Associez une colonne source à une colonne cible et définissez la <strong>cardinalité</strong> :<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Ou laissez Provisa <strong>déduire</strong> les relations pour vous grâce à l'IA.</p><p>🛡️ Une relation étant une règle, en ajouter, en modifier ou en supprimer une peut rendre une requête autorisée ou interdite. Une relation demandée depuis l'extérieur du domaine de la table source, ou par quelqu'un qui ne peut pas créer de relations, attend une approbation.</p>"
       },
       "stepRelsSuggest": {
         "title": "Suggérer des relations",
@@ -141,7 +141,7 @@
       },
       "stepRelsList": {
         "title": "Toutes les relations dans une liste",
-        "description": "📋 Les relations du modèle, qu'une source les déclare ou non, filtrables et triables. Développez une ligne pour la modifier ou ajouter sa réciproque. Un rôle ne parcourt que les relations sur lesquelles il a des droits."
+        "description": "📋 Les relations du modèle, qu'une source les déclare ou non, filtrables et triables. Développez une ligne pour la modifier ou ajouter sa réciproque. Un rôle ne joint que le long de ces relations, sauf s'il a le droit ignore_relationships."
       },
       "step17": {
         "title": "Consulter le diagramme entité-relation",
