@@ -230,8 +230,14 @@ class _PgDirectStream(DirectResultStream):  # REQ-1190
         with shield.lock:
             shield.settle()
             try:
-                conn.execute(_q(f"CLOSE {_CURSOR}"))
-                conn.execute(_q("COMMIT"))
+                if conn.info.transaction_status == psycopg.pq.TransactionStatus.INERROR:
+                    # A FETCH the request deadline cancelled (REQ-1905) aborted the transaction:
+                    # the server refuses CLOSE and COMMIT in it, and ROLLBACK ends it with its
+                    # cursor. The request ends with the deadline's error, not a refused CLOSE.
+                    conn.execute(_q("ROLLBACK"))
+                else:
+                    conn.execute(_q(f"CLOSE {_CURSOR}"))
+                    conn.execute(_q("COMMIT"))
             finally:
                 # A failed close leaves the transaction open or the connection broken: putconn
                 # rolls it back or discards it; the close error still propagates.
