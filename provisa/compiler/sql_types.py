@@ -127,6 +127,10 @@ class JoinMeta:
 class CompilationContext:
     """Maps GraphQL names to physical table/join metadata."""
 
+    # REQ-1942: why every statement compiled for this environment is refused (a Test (fake)
+    # environment showing a sensitive column with no fake); None when it serves.
+    refusal: str | None = None
+
     # Root query field_name → TableMeta
     tables: dict[str, TableMeta] = field(default_factory=dict)
     # (source_type_name, relationship_field_name) → JoinMeta

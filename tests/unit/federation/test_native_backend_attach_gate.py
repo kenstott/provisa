@@ -92,4 +92,6 @@ def test_the_walk_skips_fetch_sources_and_attaches_live_ones():
     assert backend._runtime.attached == ["postgresql"]  # noqa: SLF001
     assert complete is True
     # The skipped FETCH tables are not recorded as refused — they are simply not attached here.
-    assert ("petstore-api", "api", "list_pets") not in backend._refused  # noqa: SLF001
+    assert not any(  # noqa: SLF001
+        key[1:] == ("petstore-api", "api", "list_pets") for key in backend._refused
+    )

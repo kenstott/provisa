@@ -97,6 +97,11 @@ _ORG_ADMIN_CAPABILITIES: list[str] = [
     # modeler hold neither.
     "environment_management",
     "environment_switch",
+    # REQ-1942: changing an environment's data choices -- its data mode, its sources' bindings,
+    # read-only or read-write, its synthetic settings -- including creating it reading real data.
+    # org_admin ALONE: a developer switching an environment to Test (fake) with no fakes declared
+    # would expose real data.
+    "environment_data",
     # REQ-1590: the glossary's two rights. Reading a term is not administering the org, so
     # every seeded role reads; curation stays with the roles that own the model.
     "glossary_read",
@@ -127,6 +132,7 @@ _SANDBOX_DENIED: frozenset[str] = frozenset(
     {
         "environment_switch",
         "environment_management",
+        "environment_data",  # REQ-1942: a visitor's environment's data is the invitation's choice
         "user_management",
         "org_glossary_rw",
     }
@@ -183,7 +189,8 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     # make every new capability invisible to them until someone remembered to add it here; taking
     # away is the direction that stays correct.
     #
-    # Four rights are withheld, each because it reaches something the environment does not contain:
+    # Five rights are withheld, each because it reaches something the environment does not contain
+    # (environment_data, REQ-1942: a visitor's environment's data is the invitation's choice):
     # environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin
     # would be pointless against a role that could name another); environment_management would spend
     # the org's plan ceiling and can drop another environment's schemas; user_management would let a
@@ -455,6 +462,10 @@ async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy:
                 if "glossary_rw" not in caps:
                     caps.add("glossary_rw")
                     changed = True
+            # REQ-1942: org_admin alone changes an environment's data choices.
+            if role_id == "org_admin" and "environment_data" not in caps:
+                caps.add("environment_data")
+                changed = True
             # REQ-1592: org_admin alone owns the org's glossary — see the seed table above.
             if role_id == "org_admin" and "org_glossary_rw" not in caps:
                 caps.add("org_glossary_rw")
@@ -582,6 +593,11 @@ async def apply_tenancy_role_grants(  # REQ-1337
                 f"'[\"{right}\"]'::jsonb"
                 f" WHERE id IN ('org_admin', 'developer') AND NOT capabilities ? '{right}'"
             )
+        # REQ-1942: changing an environment's data choices is org_admin's alone.
+        await conn.execute(
+            "UPDATE roles SET capabilities = capabilities || '[\"environment_data\"]'::jsonb"
+            " WHERE id = 'org_admin' AND NOT capabilities ? 'environment_data'"
+        )
         # REQ-1590: the glossary's two rights, on the same terms as the seed — every system role
         # reads, and curation stays with the roles that own the model. Re-asserted for the same
         # reason as the rights above: an org whose role rows predate REQ-1590 keeps them otherwise,

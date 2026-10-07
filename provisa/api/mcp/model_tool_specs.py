@@ -373,6 +373,89 @@ SPECS: list[dict] = [
         "input_schema": _obj({"dataset_id": {"type": "string"}}, ["dataset_id"]),
     },
     {
+        "name": "get_environment_detail",
+        "description": (
+            "REQ-1942: an environment's detail -- its parent, data mode (inherit, unbound, "
+            "test_fake, test_synthetic; none for prod), mutation handling (refused, reversible, "
+            "direct), each source's binding (own, inherited, unbound), and its test data: the "
+            "faked column count, the sensitive columns with no fake, the synthetic dataset's "
+            "status. Read only. " + _RIGHT_ENV
+        ),
+        "input_schema": _obj({"env": {"type": "string"}}, ["env"]),
+    },
+    {
+        "name": "set_environment_data",
+        "description": (
+            "REQ-1942: change an environment's data mode and/or mutation handling. Inherit and "
+            "unbound set every source's binding; the test modes leave them. A change to or from "
+            "test_synthetic discards the kept mutations: refused unless confirmDiscard is true "
+            "-- ask the user first with present_choice (mode='yes_no'). Test (fake) is refused "
+            "while a sensitive column has no fake. Needs environment_data; a caller without it "
+            "is refused 'Missing capability'."
+        ),
+        "input_schema": _obj(
+            {
+                "env": {"type": "string"},
+                "dataMode": {
+                    "type": "string",
+                    "enum": ["inherit", "unbound", "test_fake", "test_synthetic"],
+                },
+                "mutationHandling": {"type": "string", "enum": ["refused", "reversible", "direct"]},
+                "confirmDiscard": {"type": "boolean"},
+            },
+            ["env"],
+        ),
+    },
+    {
+        "name": "set_source_binding",
+        "description": (
+            "REQ-1942: set one source's binding in an environment: inherited (the parent's "
+            "connection, by reference) or unbound. A source becomes the environment's own by "
+            "being given a connection. Needs environment_data; a caller without it is refused "
+            "'Missing capability'."
+        ),
+        "input_schema": _obj(
+            {
+                "env": {"type": "string"},
+                "sourceId": {"type": "string"},
+                "binding": {"type": "string", "enum": ["inherited", "unbound"]},
+            },
+            ["env", "sourceId", "binding"],
+        ),
+    },
+    {
+        "name": "get_environment_synthetic_plan",
+        "description": (
+            "REQ-1942: for a Test (synthetic) environment, what generating its whole model "
+            "would generate: every table not backed by an API with its parent's successful "
+            "profile runs (selected: the latest), the API-backed tables that are never generated "
+            "with their keys, key rules, address and what a lookup returns, and ready (every "
+            "table has a run). Read only. " + _RIGHT_ENV
+        ),
+        "input_schema": _obj({"env": {"type": "string"}}, ["env"]),
+    },
+    {
+        "name": "generate_environment_model",
+        "description": (
+            "REQ-1942: generate a Test (synthetic) environment's whole model in the background; "
+            "its detail then shows generating, then ready or failed with the reason. runs maps "
+            "a table id to a profile run id (a table left out takes its latest). Regenerating "
+            "discards the kept mutations: refused unless confirmDiscard is true -- ask first "
+            "with present_choice (mode='yes_no'). Needs environment_data; a caller without it "
+            "is refused 'Missing capability'."
+        ),
+        "input_schema": _obj(
+            {
+                "env": {"type": "string"},
+                "runs": {"type": "object", "additionalProperties": {"type": "string"}},
+                "seed": {"type": "integer"},
+                "scale": {"type": "number"},
+                "confirmDiscard": {"type": "boolean"},
+            },
+            ["env"],
+        ),
+    },
+    {
         "name": "export_model_config",
         "description": (
             "REQ-1919/REQ-1304: export the acting org's governed model as a config file (YAML): "
@@ -403,7 +486,9 @@ SYSTEM_SECTION = (
     "the user has asked for that change — no propose/confirm_required flow: set_table_profiler, "
     "run_profiler, run_table_profile, decide_profile_constraint, forget_profile_constraint, "
     "export_profile_constraint, create_drift_check, create_expectation_check, set_column_fake, "
-    "define_synthetic_dataset, generate_synthetic_dataset, drop_synthetic_dataset. Confirm with "
+    "define_synthetic_dataset, generate_synthetic_dataset, drop_synthetic_dataset, "
+    "set_environment_data, set_source_binding, generate_environment_model "
+    "(get_environment_detail and get_environment_synthetic_plan read). Confirm with "
     "present_choice (mode='yes_no') before drop_synthetic_dataset and before set_table_profiler "
     "removes a table from its profiler. propose_fakes saves nothing: show its proposals, ask which "
     "to save (present_choice, mode='multi'), then call set_column_fake once per chosen column. A "

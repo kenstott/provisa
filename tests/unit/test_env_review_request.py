@@ -47,9 +47,9 @@ def wired(monkeypatch):
     calls: list[tuple] = []
     rows = {
         # A feature environment that knows where it came from, and a root that does not.
-        "feature": {"name": "feature", "branched_from": "staging"},
-        "staging": {"name": "staging", "branched_from": "prod"},
-        "prod": {"name": "prod", "branched_from": None},
+        "feature": {"name": "feature", "parent": "staging"},
+        "staging": {"name": "staging", "parent": "prod"},
+        "prod": {"name": "prod", "parent": None},
     }
 
     async def _guard_within(request, org_id, name):

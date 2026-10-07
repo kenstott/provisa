@@ -27,7 +27,7 @@ vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("../api/environments", () => ({
   // isBase is a pure derivation over a row, not a call — the component reads it the way it reads
   // any other field, so the mock keeps the real one.
-  isBase: (e: { branched_from: string | null }) => e.branched_from === null,
+  isBase: (e: { data_mode: string | null }) => e.data_mode !== "inherit",
   // The refusal's error class, as the tab tells it apart by `instanceof` (REQ-1918).
   EnvironmentInUse: class EnvironmentInUse extends Error {
     dependents: unknown[];
@@ -126,7 +126,9 @@ function env(name: string, overrides: Partial<Environment> = {}): Environment {
     protected: false,
     drifted: false,
 
-    branched_from: name === "prod" ? null : "prod",
+    parent: name === "prod" ? null : "prod",
+    data_mode: name === "prod" ? null : "inherit",
+    mutation_handling: "refused",
     can_undo: true,
     can_redo: false,
     deployed_sha: "aaaaaaa",
@@ -191,7 +193,7 @@ describe("EnvironmentsTab", () => {
           kind: "environment",
           id: "feature-x",
           name: "feature-x",
-          via: ["environments.branched_from"],
+          via: ["environments.parent"],
         },
       ]),
     );
@@ -375,7 +377,7 @@ describe("EnvironmentsTab", () => {
         from_env: "prod",
         // REQ-1538: nobody touched the box, so the new environment does NOT resolve prod's
         // connections. The safe answer is the default.
-        inherit_connections: false,
+        data_mode: "unbound",
       }),
     );
   });
@@ -383,7 +385,7 @@ describe("EnvironmentsTab", () => {
   it("badges the environment an inheriting environment took its connections from", async () => {
     // REQ-1538: the fact worth marking is the inheritance, and the badge names WHICH environment
     // supplies the connections — "dev" alone would not say where a query in it actually lands.
-    mockList.mockResolvedValue([env("prod"), env("dev", { branched_from: "prod" })]);
+    mockList.mockResolvedValue([env("prod"), env("dev", { parent: "prod", data_mode: "inherit" })]);
     render(<EnvironmentsTab />);
     expect(await screen.findByTestId("env-inherits-dev")).toHaveTextContent("Inherited from prod");
     expect(screen.queryByTestId("env-inherits-prod")).toBeNull();
@@ -590,7 +592,7 @@ describe("EnvironmentsTab", () => {
     expect(inherit.disabled).toBe(true);
   });
 
-  it("sends inherit_connections when a member without org_settings creates one", async () => {
+  it("creates an inheriting environment when a member without org_settings creates one", async () => {
     auth.capabilities = [];
     mockCreate.mockResolvedValue({
       environment: env("feature"),
@@ -603,7 +605,7 @@ describe("EnvironmentsTab", () => {
       expect(mockCreate).toHaveBeenCalledWith("acme", {
         name: "feature",
         from_env: "prod",
-        inherit_connections: true,
+        data_mode: "inherit",
       }),
     );
   });

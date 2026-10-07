@@ -161,7 +161,7 @@ class TestTheRoundTrip:
     async def test_a_tree_loaded_into_another_schema_projects_back_identically(self, org):
         await _seed(org)
         prod = await org.tree()
-        await deploy_tree(org.db, org.id, ENV, prod, ref="deadbeef")
+        await deploy_tree(org.db, org.id, ENV, prod, ref="deadbeef", landing="unbound")
         assert await org.tree(ENV) == prod
 
     async def test_the_target_mints_its_own_surrogates(self, org):
@@ -169,7 +169,7 @@ class TestTheRoundTrip:
         # paths rather than serials — a deploy that wrote prod's integers would collide here.
         await _seed(org)
         await _seed(org, ENV, burn_serials=3)
-        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef")
+        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef", landing="unbound")
         loaded = {r["table_name"]: r["id"] for r in await org.rows(registered_tables, ENV)}
         original = {r["table_name"]: r["id"] for r in await org.rows(registered_tables)}
         assert set(loaded) == set(original)
@@ -177,7 +177,7 @@ class TestTheRoundTrip:
 
     async def test_a_relationship_arrives_pointing_at_the_right_table(self, org):
         await _seed(org)
-        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef")
+        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef", landing="unbound")
         (edge,) = await org.rows(relationships, ENV)
         customers = next(
             r["id"]
@@ -191,7 +191,7 @@ class TestTheRoundTrip:
         # renumber the thing a file describes.
         await _seed(org)
         before = {r["table_name"]: r["id"] for r in await org.rows(registered_tables)}
-        await deploy_tree(org.db, org.id, None, await org.tree(), ref="deadbeef")
+        await deploy_tree(org.db, org.id, None, await org.tree(), ref="deadbeef", landing="unbound")
         after = {r["table_name"]: r["id"] for r in await org.rows(registered_tables)}
         assert after == before
 
@@ -204,7 +204,7 @@ class TestTheTreeIsRefusedWhole:
         tree = await org.tree()
         del tree["sales/tables/Customer.yaml"]
         with pytest.raises(DeployError, match="sales/tables/Customer.yaml"):
-            await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef")
+            await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef", landing="unbound")
 
     async def test_a_refused_tree_leaves_the_environment_exactly_as_it_was(self, org):
         await _seed(org)
@@ -213,7 +213,7 @@ class TestTheTreeIsRefusedWhole:
         tree = await org.tree()
         del tree["sales/tables/Customer.yaml"]
         with pytest.raises(DeployError):
-            await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef")
+            await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef", landing="unbound")
         assert await org.tree(ENV) == before
 
 
@@ -225,7 +225,7 @@ class TestWhatALoadDoesNotCarry:
         await _seed(org)
         await org.update(roles, "developer", capabilities=["write", "read"])
         await org.update(roles, "developer", env=ENV, capabilities=[])
-        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef")
+        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef", landing="unbound")
         loaded = {r["id"]: r["capabilities"] for r in await org.rows(roles, ENV)}
         assert loaded["developer"] == []
 
@@ -235,7 +235,9 @@ class TestWhatALoadDoesNotCarry:
         await _seed(org)
         await org.update(roles, "developer", capabilities=["write", "read"])
         await org.update(roles, "developer", env=ENV, capabilities=[])
-        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef", seed=True)
+        await deploy_tree(
+            org.db, org.id, ENV, await org.tree(), ref="deadbeef", seed=True, landing="unbound"
+        )
         loaded = {r["id"]: r["capabilities"] for r in await org.rows(roles, ENV)}
         assert loaded["developer"] == ["write", "read"]
 
@@ -251,7 +253,7 @@ class TestWhatALoadDoesNotCarry:
         hand_written = "capabilities:\n- write\n- org_settings\ndomain_access:\n- '*'\n"
         assert files["roles/developer.yaml"] != hand_written  # the edit really is an edit
         edited = {**files, "roles/developer.yaml": hand_written}
-        await deploy_tree(org.db, org.id, ENV, load(edited), ref="deadbeef")
+        await deploy_tree(org.db, org.id, ENV, load(edited), ref="deadbeef", landing="unbound")
         loaded = {r["id"]: r["capabilities"] for r in await org.rows(roles, ENV)}
         assert loaded["developer"] == []
 
@@ -260,18 +262,18 @@ class TestWhatALoadDoesNotCarry:
         # say about it — a deploy must not blank a credential somebody established deliberately.
         await _seed(org)
         await _seed(org, ENV)
-        await org.update(sources, "warehouse", env=ENV, host="dev-db.internal", bound=True)
-        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef")
+        await org.update(sources, "warehouse", env=ENV, host="dev-db.internal", binding="own")
+        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef", landing="unbound")
         (source,) = await org.rows(sources, ENV)
         assert source["host"] == "dev-db.internal"
-        assert source["bound"] is True
+        assert source["binding"] == "own"
 
     async def test_a_source_the_tree_introduces_arrives_unbound(self, org):
         await _seed(org)
-        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef")
+        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef", landing="unbound")
         (source,) = await org.rows(sources, ENV)
         assert source["host"] == ""
-        assert source["bound"] is False
+        assert source["binding"] == "unbound"
 
     async def test_a_source_the_tree_stopped_naming_is_left_where_it_is(self, org):
         # Dropping it would destroy the binding, and a model that no longer names the source is not
@@ -282,7 +284,7 @@ class TestWhatALoadDoesNotCarry:
         del tree["sources/warehouse.yaml"]
         for path in [p for p in tree if p.startswith("sales/tables/")]:
             del tree[path]
-        await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef")
+        await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef", landing="unbound")
         assert [s["id"] for s in await org.rows(sources, ENV)] == ["warehouse"]
 
 
@@ -341,7 +343,9 @@ class TestWhatAPullOverwrites:
         incoming["sales/domain.yaml"]["description"] = "revenue, from the remote"
         await org.update(domains, "sales", ENV, description="revenue, edited here")
 
-        report = await deploy_tree(org.db, org.id, ENV, incoming, ref="deadbeef", base_sha=base)
+        report = await deploy_tree(
+            org.db, org.id, ENV, incoming, ref="deadbeef", base_sha=base, landing="unbound"
+        )
         assert [(c.path, c.source, c.target) for c in report.conflicts] == [
             ("sales/domain.yaml", "changed", "changed")
         ]
@@ -357,7 +361,9 @@ class TestWhatAPullOverwrites:
         base = await self._committed(org)
         incoming = await org.tree(ENV)
         incoming["sales/domain.yaml"]["description"] = "revenue, from the remote"
-        report = await deploy_tree(org.db, org.id, ENV, incoming, ref="deadbeef", base_sha=base)
+        report = await deploy_tree(
+            org.db, org.id, ENV, incoming, ref="deadbeef", base_sha=base, landing="unbound"
+        )
         assert report.conflicts == []
         assert report.compared
 
@@ -367,14 +373,18 @@ class TestWhatAPullOverwrites:
         incoming = await org.tree(ENV)
         incoming["sales/domain.yaml"]["description"] = "revenue, restated"
         await org.update(domains, "sales", ENV, description="revenue, restated")
-        report = await deploy_tree(org.db, org.id, ENV, incoming, ref="deadbeef", base_sha=base)
+        report = await deploy_tree(
+            org.db, org.id, ENV, incoming, ref="deadbeef", base_sha=base, landing="unbound"
+        )
         assert report.conflicts == []
 
     async def test_a_deploy_that_asked_no_such_question_says_it_compared_nothing(self, org):
         # A checkout of a ref is the operator stating which model the environment runs, so its
         # divergence from what stood there is the point of the act rather than a collision in it.
         await _seed(org, ENV)
-        report = await deploy_tree(org.db, org.id, ENV, await org.tree(ENV), ref="deadbeef")
+        report = await deploy_tree(
+            org.db, org.id, ENV, await org.tree(ENV), ref="deadbeef", landing="unbound"
+        )
         assert not report.compared
         assert report.as_dict()["base"] is None
         assert report.as_dict()["conflicts"] == []
@@ -401,7 +411,7 @@ class TestATagOnACommandSurvivesTheTrip:
 
     async def test_the_tag_arrives_against_the_command_it_names(self, org):
         await self._seed_tagged_command(org)
-        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef")
+        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef", landing="unbound")
         (row,) = await org.rows(tag_assignments, ENV)
         assert row["object_type"] == "command"
         assert row["command_name"] == "refund_order"
@@ -411,7 +421,7 @@ class TestATagOnACommandSurvivesTheTrip:
     async def test_the_round_trip_is_identical(self, org):
         await self._seed_tagged_command(org)
         prod = await org.tree()
-        await deploy_tree(org.db, org.id, ENV, prod, ref="deadbeef")
+        await deploy_tree(org.db, org.id, ENV, prod, ref="deadbeef", landing="unbound")
         assert await org.tree(ENV) == prod
 
     async def test_a_tag_carries_no_origin_and_deploys(self, org):
@@ -421,5 +431,5 @@ class TestATagOnACommandSurvivesTheTrip:
         tree = await org.tree()
         (tag,) = tree["commands/refund_order.yaml"]["tags"]
         assert "origin" not in tag
-        await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef")
+        await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef", landing="unbound")
         assert await org.tree(ENV) == tree

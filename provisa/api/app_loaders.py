@@ -1249,11 +1249,29 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     meanwhile; a set cleared first and refilled here would answer those requests unmasked.
     """
     from provisa.api.app import state
+    from provisa.core.env_classes import TEST_FAKE
     from provisa.security.inheritance import holds_grant
     from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
 
     chains = role_chains if role_chains is not None else {r["id"]: [r["id"]] for r in roles}
     rules: dict[Any, dict[str, Any]] = {}
+    # REQ-1942: a fake is the column's own declaration, never a role mask, and it is read only in
+    # a Test (fake) environment -- there by every role, whatever the column's masks; prod and
+    # every other mode never fake.
+    runtime = state._active_runtime()
+    faking = runtime.data_mode == TEST_FAKE
+    runtime.data_refusal = None
+    if faking:
+        from provisa.core.env_data import pii_refusal, uncovered_pii
+        from provisa.core.environments import org_schema
+        from provisa.core.request_context import require_current_org
+
+        uncovered = await uncovered_pii(conn, org_schema(require_current_org(), runtime.env))
+        if uncovered:
+            runtime.data_refusal = pii_refusal(runtime.env, uncovered)
+    condition = _table_columns_t.c.mask_type.is_not(None)
+    if faking:
+        condition = condition | _table_columns_t.c.fake.is_not(None)
 
     masking_rows = [
         dict(_r._mapping)
@@ -1271,11 +1289,45 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
                     _table_columns_t.c.fake,  # REQ-1494
                     _table_columns_t.c.fake_stable,
                     _table_columns_t.c.fake_stable_version,
-                ).where(_table_columns_t.c.mask_type.is_not(None))
+                ).where(condition)
             )
         ).fetchall()
     ]
     for mrow in masking_rows:
+        if mrow["mask_type"] == MaskType.fake.value:
+            raise RuntimeError(
+                f"table {mrow['table_id']} column {mrow['column_name']!r} is masked with a fake; "
+                "a fake is the column's own declaration, read in a Test (fake) environment "
+                "(REQ-1942), never a role mask"
+            )
+        if faking and mrow["fake"] is not None:
+            fake_rule = MaskingRule(
+                mask_type=MaskType.fake,
+                fake=mrow["fake"],
+                fake_stable=bool(mrow["fake_stable"]),
+                fake_stable_version=mrow["fake_stable_version"],
+            )
+            data_type = next(
+                (
+                    cm.data_type
+                    for cm in col_types_converted.get(mrow["table_id"], [])
+                    if cm.column_name == mrow["column_name"]
+                ),
+                None,
+            )
+            if data_type is None:
+                raise RuntimeError(
+                    f"table {mrow['table_id']} column {mrow['column_name']!r} declares a fake "
+                    "but is not among the table's columns"
+                )
+            for role in roles:
+                rules.setdefault((mrow["table_id"], role["id"]), {})[mrow["column_name"]] = (
+                    fake_rule,
+                    data_type,
+                )
+            continue
+        if mrow["mask_type"] is None:
+            continue
         mask_rule = MaskingRule(
             mask_type=MaskType(mrow["mask_type"]),
             pattern=mrow["mask_pattern"],
@@ -1500,7 +1552,9 @@ def register_role_surface(state: Any, role: dict, rls: Any) -> None:
     # gets fixed at the source, matching generate_proto below.
     state.schemas[role["id"]] = generate_schema(si)
     state.table_path_maps[role["id"]] = build_table_path_map(si)
-    state.contexts[role["id"]] = build_context(si)
+    ctx = build_context(si)
+    ctx.refusal = state._active_runtime().data_refusal  # REQ-1942
+    state.contexts[role["id"]] = ctx
     state.rls_contexts[role["id"]] = rls
     # No swallow: an unmapped column type is a real gap in the proto type map, not a reason to
     # silently disable gRPC for the role. Let generate_proto raise so it surfaces at startup and

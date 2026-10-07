@@ -111,7 +111,10 @@ async def reserve_env(
     created_by: str | None = None,
     expires_at: datetime | None = None,
     idle_ttl_seconds: int | None = None,
-    branched_from: str | None = None,
+    *,
+    parent: str,
+    data_mode: str,
+    mutation_handling: str,
 ) -> None:
     """Validate ``name``, check the plan ceiling, and write the row — before anything is provisioned.
 
@@ -120,11 +123,19 @@ async def reserve_env(
     where the environment is created, so no schema is built for an environment that was never
     admissible. The caller provisions after this returns and loads the model into it.
 
-    ``branched_from`` names the base this environment resolves its bindings through (REQ-1529), and
-    is None for a base. It is recorded here rather than after provisioning because a branch that
-    exists without it would, for the length of that window, be an environment holding a model and
-    reaching nothing.
+    ``parent`` is the environment this one is created from, and ``data_mode`` and
+    ``mutation_handling`` its data choices (REQ-1942). They are recorded here rather than after provisioning because an
+    environment that exists without them would, for the length of that window, hold a model with
+    no say in how its sources are reached.
     """
+    from provisa.core.env_classes import DATA_MODES, MUTATION_HANDLINGS
+
+    if data_mode not in DATA_MODES:
+        raise ValueError(f"unknown data mode {data_mode!r}; one of {DATA_MODES}")
+    if mutation_handling not in MUTATION_HANDLINGS:
+        raise ValueError(
+            f"unknown mutation handling {mutation_handling!r}; one of {MUTATION_HANDLINGS}"
+        )
     from provisa.core.commerce import environment_limit_for_org
 
     validate_env_name(org_id, name)  # raises EnvironmentNameError; refuses prod
@@ -144,7 +155,9 @@ async def reserve_env(
                 created_by=created_by,
                 expires_at=expires_at,
                 idle_ttl_seconds=idle_ttl_seconds,
-                branched_from=branched_from,
+                parent=parent,
+                data_mode=data_mode,
+                mutation_handling=mutation_handling,
             )
         )
 
@@ -266,3 +279,28 @@ async def _set(db: "Database", org_id: str, name: str, **values: Any) -> None:
             .where(environments.c.org_id == org_id, environments.c.name == name)
             .values(**values)
         )
+
+
+async def landing_of(db: "Database", org_id: str, name: str | None) -> str:
+    """How a source row new to environment ``name`` is reached (REQ-1942): as its data mode says
+    (:func:`provisa.core.env_classes.landing_binding`); prod (``None`` or ``prod``) has none."""
+    from provisa.core.env_classes import landing_binding
+
+    if name is None or name == PROD:
+        return landing_binding(None)
+    row = await get_env(db, org_id, name)
+    if row is None:
+        raise KeyError(f"organization {org_id!r} has no environment {name!r}")
+    return landing_binding(row["data_mode"])
+
+
+async def set_data(db: "Database", org_id: str, name: str, **values: Any) -> None:
+    """Write an environment's data choices or its generation state (REQ-1942): ``data_mode``,
+    ``mutation_handling``, ``data_status``, ``data_error``, ``synthetic_dataset``. prod has none."""
+    allowed = {"data_mode", "mutation_handling", "data_status", "data_error", "synthetic_dataset"}
+    unknown = set(values) - allowed
+    if unknown:
+        raise ValueError(f"not an environment data choice: {sorted(unknown)}")
+    if name == PROD:
+        raise EnvironmentNameError(f"{PROD!r} has no data mode; it is always real")
+    await _set(db, org_id, name, **values)

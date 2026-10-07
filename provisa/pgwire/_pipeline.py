@@ -664,6 +664,10 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
     established target to write to, which is REQ-1491's guarantee that a new environment reaches
     nothing until somebody says what it reaches.
 
+    REQ-1942 puts the environment's mutation handling first: Refused refuses every mutation, naming
+    the environment; Direct changes only data the environment owns, so the target's source must be
+    bound to a connection of its own -- never inherited from its parent.
+
     Checked on the ONE pipeline every raw-SQL surface funnels through, for the same reason
     REQ-1157's view guard is: a check on one surface is a check the next surface does not have.
     prod returns immediately — it inherits from nothing, so every binding it has is its own.
@@ -678,6 +682,21 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
         return
     if not isinstance(parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge)):
         return
+    # REQ-1942: what a mutation in this environment does, chosen with its data mode.
+    from provisa.core.env_classes import DIRECT, REFUSED
+
+    handling = state._active_runtime().mutation_handling
+    kind = type(parsed).__name__.upper()
+    if handling == REFUSED:
+        raise PermissionError(
+            f"{kind} is refused in environment {env!r}: its mutation handling is Refused "
+            "(REQ-1942). An environment_data holder can make it Reversible or Direct."
+        )
+    if handling != DIRECT:
+        raise PermissionError(
+            f"{kind} is refused in environment {env!r}: its mutation handling is {handling!r}, "
+            "and mutations kept in an environment's change log are not available yet (REQ-1942)."
+        )
     target = parsed.this
     tbl = (
         target if isinstance(target, _exp.Table) else (target.find(_exp.Table) if target else None)
@@ -694,10 +713,13 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
             f"cannot be established, and a write with no established target is what REQ-1491 refuses."
         )
     if getattr(state, "source_binding_env", {}).get(source_id) is None:
+        # REQ-1942: a Direct mutation changes only data the environment owns -- never a source it
+        # inherits, whose data is its parent's, nor one it leaves unbound.
         raise PermissionError(
-            f"{type(parsed).__name__.upper()} into {tbl.name!r} is not allowed in environment "
-            f"{env!r}: source {source_id!r} is unbound in {env!r} and in every environment it "
-            f"inherited from (REQ-1491). Bind it to write to it."
+            f"{kind} into {tbl.name!r} is not allowed in environment {env!r}: its mutation "
+            f"handling is Direct, which changes only data the environment owns, and source "
+            f"{source_id!r} is not bound to a connection of {env!r}'s own (REQ-1491, REQ-1942). "
+            f"Bind it to a database of the environment's own to write to it."
         )
 
 

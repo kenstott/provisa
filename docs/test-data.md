@@ -23,46 +23,58 @@ Choose faked on read when production's rows may be read but its people must not 
 
 ## How an environment gets its data
 
-In any environment other than `prod`, each table reads from one of three places:
+Every environment other than `prod` has one **data mode**, chosen when you create it and changeable afterwards. `prod` has no data mode: it is always real.
 
-1. **Its source.** The table reads through the environment's bindings, under the environment's governance, as it does anywhere.
-2. **Its source, faked on read.** The same rows, with every column that declares a fake showing a generated value in place of the real one. Nothing is stored. The engine computes the fakes as it serves the read, so ordering, filtering, grouping and joining work on the fakes the reader sees. This applies in a test-data environment.
-3. **Its synthetic dataset.** Generated rows held in the environment's warehouse store. In that environment the table reads them instead of its source.
+| Data mode | What its tables show |
+| --- | --- |
+| Inherit | The parent environment's real rows. Its sources read the parent's connections by reference, so nothing about where they point is copied. |
+| Unbound | Nothing until you bind a source to a database of the environment's own. The whole model is there, with no connections. |
+| Test (fake) | The parent's real rows, with every column that declares a fake read through its fake, by every role. |
+| Test (synthetic) | Rows generated from the parent's profile runs into the environment's own store. |
 
-The Environments page shows each table's kind of data in the environment. Provisa generates each table's bindings when the environment is created and whenever its model changes, so the semantic SQL is the same in every environment and every feature works on it unchanged.
+The environment an environment was created from is always recorded as its parent, whatever its mode, so you can switch any environment back to Inherit at any time.
 
-A table named by a synthetic dataset reads synthetic data whatever else is set. Fakes apply only to tables still reading their source, so synthetic data is never faked twice. A statement that joins a synthetic table to a table reading real data is refused, with both tables named: their keys share nothing, and the result would look plausible and mean nothing. The `prod` environment cannot hold a synthetic dataset.
+Inheriting is a property of each source. A source is **inherited** (it reads the parent's connection), **bound** to a connection of the environment's own, or **unbound**. Choosing Inherit or Unbound sets every source at once; the Test modes leave each source as it is. You can change one source's binding from the environment's detail panel.
 
-An environment has two stores of its own. Its warehouse store holds all data that no source holds: every synthetic dataset, whatever its size, and any extract landed whole. Its relational store holds only the environment's own changes. A dataset is landed through the governed read path, so masking and row-level security apply before any row is written. The dev stores hold only what governance permitted out of prod and what the environment generated or wrote itself. A structure the environment's model declares and no source carries is created in its warehouse store. The relational store's size limit applies to change logs alone.
+A fake applies only in a Test (fake) environment. `prod` never fakes, and neither do Inherit and Unbound. The engine computes the fakes as it serves the read, so ordering, filtering, grouping and joining work on the fakes the reader sees.
 
-### Read and read-write environments
+A synthetic table and a table reading real data are never read together. A statement joining them is refused, with both tables named: their keys share nothing, and the result would look plausible and mean nothing.
 
-You create a non-production environment as **read** or **read-write**; the choice is on its form.
+### Who may change an environment's data
 
-- **Read.** Takes no writes. Every write and every API mutation is refused by name.
-- **Read-write.** Takes writes. The environment keeps its own changes, and a write never reaches a source. A table the environment has written reads as its original rows with those changes applied, the latest version of each row winning, and a deleted row left out. The cost follows the rows written, not the table's size, so a synthetic table of any size is writable.
+Changing an environment's data choices (its data mode, its sources' bindings, its mutation handling, its synthetic settings) needs the `environment_data` right. `org_admin` holds it by default; no developer does. Creating an environment as anything other than Unbound with mutations refused needs it too.
 
-You can switch an environment between read and read-write only while it holds no synthetic dataset, or as an explicit regeneration of its datasets under the new choice.
+Creating an environment as Inherit, or switching one to Inherit, also needs the right to read the parent's data. The change is audited with the real data it makes visible and how many members can see it.
 
-A table is writable in a read-write environment exactly where its source can take the write and the model enables it. A writable table needs a primary key; one without it is refused by name when the environment is created. A key you supply that the environment already shows is refused, because the environment owns a range of keys of its own for the rows it inserts.
+### Test (fake) and sensitive columns
 
-For a table faked on read, the changes are applied over the faked rows, and written rows are never faked again, so a value a client reads and writes back reads back unchanged.
+A Test (fake) environment never shows a sensitive column unless that column declares a fake. While any such column has no fake, creating or switching to Test (fake) is refused, and so is every request into a Test (fake) environment. The refusal names the columns. A holder of the sensitive data right can declare their fakes.
+
+### Mutation handling
+
+Mutation handling is chosen alongside the data mode and applies to any of them. A new environment's mutation handling is **Refused**.
+
+- **Refused.** Every mutation is refused, naming the environment.
+- **Direct.** Mutations change the data, but only data the environment owns: a source bound to a database of its own. A mutation through an inherited source is refused, so an environment never writes into its parent's real data.
+- **Reversible.** Mutations are kept in the environment's own change log and the data underneath is never changed.
+
+A change of data mode that changes row keys (to or from Test (synthetic), or regenerating it) discards the kept mutations. The edit asks you to confirm first. A change between Inherit and Test (fake) keeps them.
 
 ### API mutations
 
-An API source's mutations are opaque: Provisa cannot know what they change. Outside production, a mutation runs only if the environment binds its own connection for that API, and then it runs against that API as in production. With no binding of its own, the mutation is refused by name. It is never sent to production's API. An environment backed by synthetic data treats API mutations no differently: it assumes they work and leaves their effect to whatever API it binds.
+An API source's mutations are opaque: Provisa cannot know what they change. Under Refused and Reversible, an API mutation is refused. Under Direct, it is allowed only to an API bound to an address the environment owns, and it is never sent to production's API.
 
-### Test-data mode
+### Test (synthetic): generating the whole model
 
-An org_admin with `environment_management` marks an environment as test data with the **Test data** switch on the Environments page.
+A Test (synthetic) environment generates its whole model, because implicit relationships make generating part of it unsafe. Every table that is not backed by an API is generated, each from a profile run in the parent. The environment's synthetic plan lists every table with its profile runs, the latest successful one selected, and Generate is refused until every such table has one.
 
-In a test-data environment:
+An API-backed table is never generated: Provisa cannot repoint an API it does not own. The plan lists each with its key columns, the rule its keys take on the synthetic side and the address the environment calls, and says what a lookup returns: the real record for a key drawn from real values, nothing for a key generated fresh.
 
-- Every column with a declared fake shows the fake to every role, including roles the column is otherwise unmasked to.
-- Every column tagged `pii` with no declared fake shows `NULL`.
-- A fake is stable unless declared otherwise.
+Generation runs in the background. The environment shows Generating, then Ready, or Failed with the reason. Until it finishes, its tables read what they read before. Switching the environment out of Test (synthetic) drops the generated rows, and its tables read their sources again.
 
-No role setting changes this. Personal data never reaches a reader, whatever the environment's stores hold.
+### Stores
+
+An environment has two stores of its own. Its warehouse store holds all data that no source holds: every synthetic dataset, whatever its size, and any extract landed whole. Its relational store holds only the environment's own changes. A dataset is landed through the governed read path, so masking and row-level security apply before any row is written.
 
 ## Profile a table
 
@@ -213,7 +225,7 @@ The save is checked. A declaration is refused, with the column named, when:
 
 A synthetic dataset draws a faked column's generated values from the same declaration, so a column fakes alike whether it is shown as test data or generated.
 
-**Columns your row rules read.** If a row-level security rule reads a column, either leave that column unfaked or give it a fake whose values still match the rule, such as `categories()`, which keeps the column's real values. Otherwise users in a test-data environment, or on synthetic data, may see no rows, or rows that contradict the rule. The choice is the operator's. Provisa does not enforce it.
+**Columns your row rules read.** If a row-level security rule reads a column, either leave that column unfaked or give it a fake whose values still match the rule, such as `categories()`, which keeps the column's real values. Otherwise users in a Test (fake) environment, or on synthetic data, may see no rows, or rows that contradict the rule. The choice is the operator's. Provisa does not enforce it.
 
 **Comparisons, ranges and sorts on faked columns.** They run over the faked values, which define their own order. A faked `customers.name` sorts as the fakes sort, not as the real names did. Where results must be the same on every engine and in every region, declare the fake stable. Where a column must compare or sort like production, leave it unfaked. The choice is the operator's.
 
@@ -347,7 +359,7 @@ When you create an environment, the form offers **Start on synthetic data**. Nam
 
 The goal: a `dev` environment where developers see production's real order data, with no customer identified. A second pass then adds a ten-times synthetic dataset for load tests.
 
-1. **Create the environment.** On **Environments**, create `dev` as read-write, so tests can write. Turn on **Test data**.
+1. **Create the environment.** On **Environments**, create `dev` with the data mode **Test (fake)** and mutation handling **Reversible**, so tests can write without changing the parent's data.
 2. **Fake the identifying columns.** Edit `customers`, switch the column list to **Test data** mode, and choose **Fill from profile** (profile `customers` first if it has no run). Review the proposals: `name()` on `name`, `email()` on `email`, `phone_number()` on `phone`. Tick **Stable** on each if results must match across engines and regions. Save.
 3. **Leave the rest real.** `orders.total`, `orders.status`, `orders.placed_at` and `orders.shipped_at` carry no fake. If a row rule reads a column you faked, leave that column unfaked or give it `categories()`.
 4. **Use it.** Switch to `dev`. Customers show fake names, emails and phones. Joins from orders to customers still match, order totals and delays are production's own, and the data is as fresh as production. Writes land in the environment's own changes and never reach the source.

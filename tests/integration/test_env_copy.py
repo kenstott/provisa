@@ -138,7 +138,7 @@ class TestCreationCopy:
     """REPLACE — what a new environment is born holding."""
 
     async def test_the_governed_model_travels_whole(self, seeded):
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound")
         assert await seeded.added_domains() == ["sales"]
         registered = await seeded.rows(registered_tables, ENV)
         assert [(r["source_id"], r["table_name"]) for r in registered] == [("warehouse", "orders")]
@@ -155,7 +155,7 @@ class TestCreationCopy:
             schema_name=org_schema(seeded.org_id),
             table_name="org_registry",
         )
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound")
         copied = {
             r["table_name"]: r["schema_name"] for r in await seeded.rows(registered_tables, ENV)
         }
@@ -166,7 +166,7 @@ class TestCreationCopy:
     async def test_the_source_row_arrives_without_the_connection_it_pointed_at(self, seeded):
         # REQ-1491: the row must exist — registered_tables references it — but where prod points is
         # prod's, and a copied environment inheriting it would write to production.
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound")
         (copied,) = await seeded.rows(sources, ENV)
         assert copied["id"] == "warehouse"
         assert copied["type"] == "postgres"
@@ -177,14 +177,22 @@ class TestCreationCopy:
     async def test_an_unbound_row_is_marked_rather_than_left_blank(self, seeded):
         # An empty host is not an absent one — the connection builder reads it as localhost:5432 —
         # so boundness is a column, not something inferred from the emptiness of another column.
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound")
         (copied,) = await seeded.rows(sources, ENV)
-        assert copied["bound"] is False
+        assert copied["binding"] == "unbound"
         (original,) = await seeded.rows(sources)
-        assert original["bound"] is True
+        assert original["binding"] == "own"
+
+    async def test_a_row_lands_inherited_where_the_environment_reads_its_parent(self, seeded):
+        # REQ-1942: an environment created reading its parent's data reaches each source through
+        # the parent's binding, by reference; nothing of the parent's connection is copied.
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="inherited")
+        (copied,) = await seeded.rows(sources, ENV)
+        assert copied["binding"] == "inherited"
+        assert (copied["host"], copied["port"]) == ("", 0)
 
     async def test_settings_naming_a_runtime_stay_with_the_environment_that_set_them(self, seeded):
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound")
         keys = [s["key"] for s in await seeded.rows(org_settings, ENV, order_by="key")]
         assert keys == ["naming.style"]
 
@@ -193,13 +201,13 @@ class TestCreationCopy:
         from provisa.core.schema_org import org_secrets
 
         await seeded.insert(org_secrets, key="anthropic", value_enc=b"ciphertext")
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound")
         assert await seeded.rows(org_secrets, ENV, order_by="key") == []
 
     async def test_the_target_sequence_is_advanced_past_the_ids_the_copy_carried(self, seeded):
         # Keys travel verbatim because the model references them; a target sequence still sitting
         # at 1 would hand the next insert an id the copy already used.
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound")
         await seeded.insert(
             registered_tables,
             ENV,
@@ -213,7 +221,7 @@ class TestCreationCopy:
 
     async def test_a_replace_drops_what_the_target_holds_and_the_source_does_not(self, seeded):
         await seeded.insert(domains, ENV, id="stale", description="from an older load")
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound")
         assert await seeded.added_domains() == ["sales"]
 
 
@@ -222,32 +230,40 @@ class TestMerge:
 
     @pytest.fixture(autouse=True)
     async def _created(self, seeded):
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound")
 
     async def test_a_binding_the_environment_established_survives_the_merge(self, seeded):
         # A checkout carries no bindings, so it has nothing to overwrite this with (REQ-1491).
         await seeded.update(
-            sources, "warehouse", ENV, host="dev-db.internal", database="scratch", bound=True
+            sources, "warehouse", ENV, host="dev-db.internal", database="scratch", binding="own"
         )
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=MERGE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=MERGE, landing="unbound")
         (row,) = await seeded.rows(sources, ENV)
-        assert (row["host"], row["database"], row["bound"]) == ("dev-db.internal", "scratch", True)
+        assert (row["host"], row["database"], row["binding"]) == (
+            "dev-db.internal",
+            "scratch",
+            "own",
+        )
 
     async def test_governance_on_a_source_row_still_arrives(self, seeded):
         await seeded.update(sources, "warehouse", description="renamed upstream")
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=MERGE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=MERGE, landing="unbound")
         (row,) = await seeded.rows(sources, ENV)
         assert row["description"] == "renamed upstream"
 
     async def test_an_object_the_target_added_is_left_alone(self, seeded):
         await seeded.insert(domains, ENV, id="experiment", description="only in dev")
-        report = await copy_model(seeded.db, seeded.org_id, None, ENV, mode=MERGE)
+        report = await copy_model(
+            seeded.db, seeded.org_id, None, ENV, mode=MERGE, landing="unbound"
+        )
         assert await seeded.added_domains() == ["experiment", "sales"]
         assert report.as_dict()["removed"] == 0
 
     async def test_removals_are_a_separate_decision(self, seeded):
         await seeded.insert(domains, ENV, id="experiment", description="only in dev")
-        report = await copy_model(seeded.db, seeded.org_id, None, ENV, mode=MERGE, removals=True)
+        report = await copy_model(
+            seeded.db, seeded.org_id, None, ENV, mode=MERGE, removals=True, landing="unbound"
+        )
         assert await seeded.added_domains() == ["sales"]
         removed = [k for t in report.tables if t.table == "domains" for k in t.removed]
         assert removed == ["experiment"]
@@ -255,13 +271,17 @@ class TestMerge:
     async def test_a_source_row_is_never_removed_by_a_merge(self, seeded):
         # REQ-1491: a binding is the environment's own deliberate fact, and nothing arriving from
         # another environment is evidence that it should go.
-        await seeded.insert(sources, ENV, id="local_files", type="file", bound=True)
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=MERGE, removals=True)
+        await seeded.insert(sources, ENV, id="local_files", type="file", binding="own")
+        await copy_model(
+            seeded.db, seeded.org_id, None, ENV, mode=MERGE, removals=True, landing="unbound"
+        )
         assert [s["id"] for s in await seeded.rows(sources, ENV)] == ["local_files", "warehouse"]
 
     async def test_a_changed_object_is_updated_in_place(self, seeded):
         await seeded.update(domains, "sales", description="revenue and refunds")
-        report = await copy_model(seeded.db, seeded.org_id, None, ENV, mode=MERGE)
+        report = await copy_model(
+            seeded.db, seeded.org_id, None, ENV, mode=MERGE, landing="unbound"
+        )
         (row,) = [d for d in await seeded.rows(domains, ENV) if d["id"] == "sales"]
         assert row["description"] == "revenue and refunds"
         assert report.as_dict()["changed"] == 1
@@ -278,7 +298,9 @@ class TestSeededClasses:
         await seeded.insert(
             user_role_assignments, user_id="ana", role_id="lab_reviewer", domain_id="sales"
         )
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, seed=True)
+        await copy_model(
+            seeded.db, seeded.org_id, None, ENV, mode=REPLACE, seed=True, landing="unbound"
+        )
         assert "lab_reviewer" in {r["id"] for r in await seeded.rows(roles, ENV)}
         assert [
             (a["user_id"], a["role_id"])
@@ -290,7 +312,7 @@ class TestSeededClasses:
         await seeded.insert(
             roles, id="lab_reviewer", capabilities=["write"], domain_access=["sales"]
         )
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound")
         assert "lab_reviewer" not in {r["id"] for r in await seeded.rows(roles, ENV)}
 
     async def test_a_merge_cannot_carry_a_branch_role_into_the_base(self, seeded):
@@ -298,7 +320,9 @@ class TestSeededClasses:
         # prod's holds nothing, and a merge is a statement about the MODEL, not about who may act.
         await seeded.update(roles, "developer", capabilities=[])
         await seeded.update(roles, "developer", env=ENV, capabilities=["write"])
-        await copy_model(seeded.db, seeded.org_id, ENV, None, mode=MERGE, removals=True)
+        await copy_model(
+            seeded.db, seeded.org_id, ENV, None, mode=MERGE, removals=True, landing="unbound"
+        )
         prod = {r["id"]: r["capabilities"] for r in await seeded.rows(roles)}
         assert prod["developer"] == []
 
@@ -306,7 +330,9 @@ class TestSeededClasses:
         await seeded.insert(
             user_role_assignments, env=ENV, user_id="ana", role_id="developer", domain_id="sales"
         )
-        await copy_model(seeded.db, seeded.org_id, ENV, None, mode=MERGE, removals=True)
+        await copy_model(
+            seeded.db, seeded.org_id, ENV, None, mode=MERGE, removals=True, landing="unbound"
+        )
         assert await seeded.rows(user_role_assignments) == []
 
 
@@ -318,25 +344,29 @@ class TestPlan:
 
     async def test_the_plan_and_the_copy_agree(self, seeded):
         planned = await plan_copy(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
-        applied = await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        applied = await copy_model(
+            seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound"
+        )
         assert planned.as_dict() == applied.as_dict()
 
 
 class TestRefusals:
     async def test_an_environment_cannot_be_copied_onto_itself(self, envs):
         with pytest.raises(ValueError, match="onto itself"):
-            await copy_model(envs.db, envs.org_id, None, None, mode=REPLACE)
+            await copy_model(envs.db, envs.org_id, None, None, mode=REPLACE, landing="unbound")
 
     async def test_an_unknown_mode_is_refused_rather_than_defaulted(self, envs):
         with pytest.raises(ValueError, match="unknown copy mode"):
-            await copy_model(envs.db, envs.org_id, None, ENV, mode="sync")
+            await copy_model(envs.db, envs.org_id, None, ENV, mode="sync", landing="unbound")
 
     async def test_no_table_outside_the_carried_classes_is_touched(self, seeded):
         # The copy walks org_metadata; this asserts the walk is filtered by the allow-list rather
         # than by a list of exclusions somebody has to keep complete.
         from provisa.core.env_classes import CARRIED, IDENTITY_ONLY
 
-        report = await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
+        report = await copy_model(
+            seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound"
+        )
         touched = {t.table for t in report.tables}
         assert touched <= CARRIED | IDENTITY_ONLY | {"org_settings"}
         assert touched <= set(org_metadata.tables)
@@ -367,7 +397,9 @@ class TestConflicts:
         """prod and dev holding the same model, each with the commit both lines share."""
         from provisa.core.env_repo import ensure_repo, start_branch
 
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, seed=True)
+        await copy_model(
+            seeded.db, seeded.org_id, None, ENV, mode=REPLACE, seed=True, landing="unbound"
+        )
         await self._commit(seeded, None, "provisioned")
         # REQ-1543: a branch is SEEDED at its source's tip rather than rooted beside it, which is
         # what makes a commit both lines held exist at all.
@@ -404,7 +436,9 @@ class TestConflicts:
         await parted.update(domains, "sales", description="prod revenue")
         await self._commit(parted, None, "prod edits sales")
 
-        report = await copy_model(parted.db, parted.org_id, ENV, None, mode=MERGE)
+        report = await copy_model(
+            parted.db, parted.org_id, ENV, None, mode=MERGE, landing="unbound"
+        )
         assert [c["path"] for c in report.as_dict()["conflicts"]] == ["sales/domain.yaml"]
         prod = {d["id"]: d["description"] for d in await parted.rows(domains)}
         assert prod["sales"] == "branch revenue"
@@ -421,7 +455,9 @@ class TestConflicts:
         # commit both held, so the question cannot be asked -- which is not the same answer as a
         # clean merge, and the report distinguishes them.
         await self._commit(seeded, None, "provisioned")
-        await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE, seed=True)
+        await copy_model(
+            seeded.db, seeded.org_id, None, ENV, mode=REPLACE, seed=True, landing="unbound"
+        )
         await seeded.update(domains, "sales", env=ENV, description="branch revenue")
         await self._commit(seeded, ENV, "dev's own root")
 

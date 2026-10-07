@@ -504,6 +504,93 @@ async def drop_synthetic_dataset(state: Any, role: str, request: Any, dataset_id
     return await drop_dataset(request, dataset_id)
 
 
+# -- environment data choices (REQ-1942) -------------------------------------------------------
+
+
+async def get_environment_detail(state: Any, role: str, request: Any, env: str) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import environment_detail
+
+    require_capability_request(request, "environment_management")
+    return await environment_detail(request, require_active_org_id(request), env)
+
+
+async def set_environment_data(
+    state: Any,
+    role: str,
+    request: Any,
+    env: str,
+    dataMode: str | None = None,  # noqa: N803 -- the tool's own argument names
+    mutationHandling: str | None = None,  # noqa: N803
+    confirmDiscard: bool = False,  # noqa: N803
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import DataChoicesBody, edit_data_choices
+
+    require_capability_request(request, "environment_data")
+    body = DataChoicesBody(
+        data_mode=dataMode,  # pyright: ignore[reportArgumentType]
+        mutation_handling=mutationHandling,  # pyright: ignore[reportArgumentType]
+        confirm_discard=confirmDiscard,
+    )
+    return await edit_data_choices(request, require_active_org_id(request), env, body)
+
+
+async def set_source_binding(
+    state: Any,
+    role: str,
+    request: Any,
+    env: str,
+    sourceId: str,  # noqa: N803 -- the tool's own argument names
+    binding: str,
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import BindingBody
+    from provisa.api.admin.environment_data_router import set_source_binding as _set
+
+    require_capability_request(request, "environment_data")
+    body = BindingBody(binding=binding)  # pyright: ignore[reportArgumentType]
+    return await _set(request, require_active_org_id(request), env, sourceId, body)
+
+
+async def get_environment_synthetic_plan(state: Any, role: str, request: Any, env: str) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import synthetic_plan
+
+    require_capability_request(request, "environment_management")
+    return await synthetic_plan(request, require_active_org_id(request), env)
+
+
+async def generate_environment_model(
+    state: Any,
+    role: str,
+    request: Any,
+    env: str,
+    runs: dict | None = None,
+    seed: int = 0,
+    scale: float = 1.0,
+    confirmDiscard: bool = False,  # noqa: N803 -- the tool's own argument names
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.environment_data_router import GenerateBody
+    from provisa.api.admin.environment_data_router import generate_model as _generate
+
+    require_capability_request(request, "environment_data")
+    given = {"runs": {int(k): v for k, v in runs.items()}} if runs is not None else {}
+    body = GenerateBody(seed=seed, scale=scale, confirm_discard=confirmDiscard, **given)
+    return await _generate(request, require_active_org_id(request), env, body)
+
+
 # -- config ------------------------------------------------------------------------------------
 
 

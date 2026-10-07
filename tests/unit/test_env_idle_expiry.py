@@ -53,6 +53,9 @@ async def _write(db, name, *, expires_at, idle_ttl_seconds):
                 name=name,
                 expires_at=expires_at,
                 idle_ttl_seconds=idle_ttl_seconds,
+                # REQ-1942: every environment but prod records its parent and data mode.
+                parent="prod",
+                data_mode="unbound",
             )
         )
 

@@ -54,23 +54,28 @@ async def planes(docker_postgres):
         await conn.execute_core(
             environments.insert().values(
                 [
+                    # REQ-1942: every environment but prod (the registry's own row) records the
+                    # one it was created from.
                     {
                         "org_id": org_id,
                         "name": BASE,
                         "created_by": OWNER,
-                        "branched_from": None,
+                        "parent": "prod",
+                        "data_mode": "unbound",
                     },
                     {
                         "org_id": org_id,
                         "name": BRANCH,
                         "created_by": DEVELOPER,
-                        "branched_from": BASE,
+                        "parent": BASE,
+                        "data_mode": "inherit",
                     },
                     {
                         "org_id": org_id,
                         "name": DEEPER,
                         "created_by": DEVELOPER,
-                        "branched_from": BRANCH,
+                        "parent": BRANCH,
+                        "data_mode": "inherit",
                     },
                 ]
             )
@@ -82,7 +87,9 @@ async def planes(docker_postgres):
 
 
 class TestRegistry:
-    async def test_a_base_cannot_be_deleted_while_a_branch_still_resolves_through_it(self, planes):
+    async def test_a_parent_cannot_be_deleted_while_an_environment_still_resolves_through_it(
+        self, planes
+    ):
         from sqlalchemy.exc import IntegrityError
 
         from provisa.core.schema_admin import environments as env_table
@@ -95,7 +102,7 @@ class TestRegistry:
                     )
                 )
 
-    async def test_a_branch_cannot_name_an_environment_of_another_org(self, planes):
+    async def test_a_parent_cannot_be_an_environment_of_another_org(self, planes):
         from sqlalchemy.exc import IntegrityError
 
         from provisa.core.schema_admin import environments
@@ -105,5 +112,5 @@ class TestRegistry:
                 await conn.execute_core(
                     environments.update()
                     .where(environments.c.org_id == planes.org_id, environments.c.name == BASE)
-                    .values(branched_from="does-not-exist")
+                    .values(parent="does-not-exist")
                 )

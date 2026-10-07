@@ -265,7 +265,7 @@ def _environment(boot, name: str) -> dict:
         boot,
         "POST",
         f"/admin/orgs/{boot.org_id}/environments",
-        {"name": name, "inherit_connections": True},
+        {"name": name, "data_mode": "inherit"},
     )
     assert status == 200, body
     status, runs = _call(boot, "GET", "/admin/synthetic-datasets/-/profile-runs?env=prod", env=name)
@@ -657,6 +657,35 @@ def test_a_private_dataset_is_not_compared_with_real_rows(profiled):
     assert "declare ε or closeness" in body["error"], body
 
 
+def test_a_test_synthetic_environment_plans_its_whole_model(profiled):
+    """REQ-1942: every table not backed by an API is planned from its parent's latest successful
+    profile run; one with none (orders, which no profiler covers) keeps Generate refused, by
+    name."""
+    boot = profiled
+    status, body = _call(
+        boot,
+        "POST",
+        f"/admin/orgs/{boot.org_id}/environments",
+        {"name": "whole", "data_mode": "test_synthetic"},
+    )
+    assert status == 200, body
+    status, plan = _call(
+        boot, "GET", f"/admin/orgs/{boot.org_id}/environments/whole/synthetic/plan"
+    )
+    assert status == 200, plan
+    by = {t["tableName"]: t for t in plan["tables"]}
+    assert set(by) == {"customers", "purchases", "contacts", "accounts", "orders"}, by
+    assert by["customers"]["selected"] == by["customers"]["runs"][0]["runId"]
+    assert by["orders"]["selected"] is None and plan["ready"] is False
+    assert plan["apiTables"] == []
+    status, body = _call(
+        boot, "POST", f"/admin/orgs/{boot.org_id}/environments/whole/synthetic", {}
+    )
+    assert status == 422 and "orders" in body["error"], body
+    status, detail = _call(boot, "GET", f"/admin/orgs/{boot.org_id}/environments/whole/detail")
+    assert status == 200 and detail["test_data"]["synthetic"]["status"] is None, detail
+
+
 def test_a_private_dataset_refuses_text_columns_that_declare_nothing(profiled):
     env = _environment(profiled, "private_refused")
     status, body = _define(env, ["customers"], dataset="private_no", epsilon=1.0)
@@ -695,7 +724,7 @@ def test_an_environment_can_start_on_synthetic_data(profiled):
         f"/admin/orgs/{boot.org_id}/environments",
         {
             "name": "seeded",
-            "inherit_connections": True,
+            "data_mode": "inherit",
             "synthetic": {
                 "dataset": "boot",
                 "tables": ["customers", "purchases"],

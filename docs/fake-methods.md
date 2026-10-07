@@ -1,10 +1,10 @@
 # Fake methods
 
-A fake is a rule that says what a column's values look like in place of its real ones. Fake as little as you can: the identifying columns (names, emails, phones, addresses, identifiers). Every column you leave unfaked keeps its real values, so every real relationship, edge case and distribution survives. A column has a **fake** and, optionally, a **synthetic rule** laid over it. The fake is what a read shows in a test-data environment; a column with none shows its real value. The synthetic rule applies only when a synthetic dataset is generated, and where declared it takes the place of the fake there. Every kind below may be either, except `sql_group` and `sequence`, which make sense only over a generated table: they are synthetic rules, and declaring one as a fake is refused by name.
+A fake is a rule that says what a column's values look like in place of its real ones. Fake as little as you can: the identifying columns (names, emails, phones, addresses, identifiers). Every column you leave unfaked keeps its real values, so every real relationship, edge case and distribution survives. A column has a **fake** and, optionally, a **synthetic rule** laid over it. The fake is what a read shows in a Test (fake) environment; a column with none shows its real value. The synthetic rule applies only when a synthetic dataset is generated, and where declared it takes the place of the fake there. Every kind below may be either, except `sql_group` and `sequence`, which make sense only over a generated table: they are synthetic rules, and declaring one as a fake is refused by name.
 
 A column declares one fake in the table editor's **Fake** field, as one call: `email()`, `categories((new, paid, shipped))`, `after(placed_at, 1 to 10 days)`. The [test-data guide](test-data.md) shows where fakes fit; this page defines each one.
 
-A declaration is checked when saved and when loaded. It is refused, naming the column and the cause, if it cannot describe values: an unknown name, arguments the kind does not take, shares that do not sum to 1, a distribution whose points are out of order, or a kind that cannot fill the column's type. Where this page says a fake "shows" a value, it means a read of a table in a test-data environment. A synthetic dataset draws the same values into generated rows.
+A declaration is checked when saved and when loaded. It is refused, naming the column and the cause, if it cannot describe values: an unknown name, arguments the kind does not take, shares that do not sum to 1, a distribution whose points are out of order, or a kind that cannot fill the column's type. Where this page says a fake "shows" a value, it means a read of a table in a Test (fake) environment. A synthetic dataset draws the same values into generated rows.
 
 ## Writing a declaration
 
@@ -25,7 +25,7 @@ Any name that is not one of Provisa's own kinds below names a [general fake meth
 
 **Where it is computed.** The engine of the region serving the read computes every fake at the read. Ordering, filtering, grouping, joining and aggregating through a faked column work on the fakes the reader sees, never on the real values.
 
-**Stable fakes.** Tick **Stable** and a column's fake is computed from Provisa's portable definition, so it is the same on every engine, in every region and after an engine is replaced. A fake that is not stable is computed by the serving engine's own method and is consistent within its region only. In a test-data environment a fake is stable unless declared otherwise, since test data is extracted, kept and compared over time. A stable fake must declare a fake. These methods can be stable, and no others:
+**Stable fakes.** Tick **Stable** and a column's fake is computed from Provisa's portable definition, so it is the same on every engine, in every region and after an engine is replaced. A fake that is not stable is computed by the serving engine's own method and is consistent within its region only. In a Test (fake) environment a fake is stable unless declared otherwise, since test data is extracted, kept and compared over time. A stable fake must declare a fake. These methods can be stable, and no others:
 
 `city`, `company`, `country`, `email`, `first_name`, `job`, `last_name`, `name`, `phone_number`, `postcode`, `sentence`, `state`, `street_address`, `user_name`, `uuid4`, `word`
 

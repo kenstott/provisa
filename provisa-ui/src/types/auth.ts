@@ -8,7 +8,6 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-
 /** Capabilities matching provisa/security/rights.py */
 export type Capability =
   | "source_registration"
@@ -43,6 +42,8 @@ export type Capability =
   // prod. org_admin and developer carry both; analyst and modeler carry neither.
   | "environment_management"
   | "environment_switch"
+  // REQ-1942: changing an environment's data choices; org_admin alone.
+  | "environment_data"
   // REQ-1590: the glossary's two rights. `glossary_read` opens the surface — reading a term is not
   // administering the org, so an analyst holds it; `glossary_rw` is curation on top of it, and the
   // page renders read-only without it. A curator is granted both.

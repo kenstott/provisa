@@ -1522,12 +1522,17 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
         from provisa.core.env_store import get_env
 
         _ephemeral = False
+        # REQ-1942: the environment's data choices, read off the runtime by the query path. PROD
+        # has none: it is always real, and its mutations change its own data.
+        _data_mode: str | None = None
+        _mutation_handling: str | None = None
         if env is not None and env != PROD:
             assert state.admin_db is not None, "the admin plane holds the environment registry"
             _row = await get_env(state.admin_db, org_id, env)
             if _row is None:
                 raise KeyError(f"organization {org_id!r} has no environment {env!r}")
             _ephemeral = _row["expires_at"] is not None
+            _data_mode, _mutation_handling = _row["data_mode"], _row["mutation_handling"]
         external_engine, engine_kind, engine_url, storage_url = (
             lane.external_engine,
             lane.engine_kind,
@@ -1560,6 +1565,8 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
             engine_url=engine_url,
             shard=lane.shard,
             storage_url=storage_url,
+            data_mode=_data_mode,
+            mutation_handling=_mutation_handling,
         )
 
     return await state.org_registry.get_or_build(runtime_key(org_id, env), _builder)
@@ -1710,12 +1717,16 @@ async def _require_org_serves_here(org_id: str) -> None:
         await require_serves_here(conn, org_id, process_region.region())
 
 
-async def _with_inherited_sources(conn: Any, org_id: str, env: str, config: Any) -> Any:
-    """``config`` -- an environment's store configuration -- with each source its rows leave
-    unbound given the connection the environment inherits for it (REQ-1529,
-    provisa.core.env_bindings): the pools and engine catalogs a branch builds point where its
-    base's bindings do."""
+async def _with_inherited_sources(
+    conn: Any, org_id: str, env: str, config: Any
+) -> tuple[Any, set[str]]:
+    """``config`` -- an environment's store configuration -- with each inherited source given the
+    connection the environment reaches it through (REQ-1529, REQ-1942,
+    provisa.core.env_bindings), so the pools and engine catalogs it builds point where its
+    parent's bindings do; and the ids of the sources it reaches through no connection, which get
+    no pool: an empty host is not an absent one (REQ-1491)."""
     from provisa.core.env_bindings import inherited_sources
+    from provisa.core.env_classes import BINDING_COLUMN, UNBOUND
     from provisa.core.repositories.source import source_from_row
     from provisa.core.schema_org import sources as sources_t
 
@@ -1726,13 +1737,15 @@ async def _with_inherited_sources(conn: Any, org_id: str, env: str, config: Any)
     }
     resolved = await inherited_sources(conn, state.admin_db, org_id, env, rows)
     inherited = {sid for sid, row in resolved.items() if row is not rows[sid]}
-    return config.model_copy(
+    unbound = {sid for sid, row in resolved.items() if row[BINDING_COLUMN] == UNBOUND}
+    config = config.model_copy(
         update={
             "sources": [
                 source_from_row(resolved[s.id]) if s.id in inherited else s for s in config.sources
             ]
         }
     )
+    return config, unbound
 
 
 async def build_org_runtime(
@@ -1740,6 +1753,8 @@ async def build_org_runtime(
     *,
     env: str = PROD,
     ephemeral: bool = False,
+    data_mode: str | None = None,
+    mutation_handling: str | None = None,
     include_demo: bool = False,
     isolated_engine: bool = False,
     external_engine: tuple[str, int] | None = None,
@@ -1759,6 +1774,8 @@ async def build_org_runtime(
             org_id,
             env=env,
             ephemeral=ephemeral,
+            data_mode=data_mode,
+            mutation_handling=mutation_handling,
             include_demo=include_demo,
             isolated_engine=isolated_engine,
             external_engine=external_engine,
@@ -1774,6 +1791,8 @@ async def _build_org_runtime(
     *,
     env: str = PROD,
     ephemeral: bool = False,
+    data_mode: str | None = None,
+    mutation_handling: str | None = None,
     include_demo: bool = False,
     isolated_engine: bool = False,
     external_engine: tuple[str, int] | None = None,
@@ -1804,7 +1823,13 @@ async def _build_org_runtime(
     from provisa.core.db import apply_tenancy_role_grants, init_schema
     from provisa.audit.query_log import init_audit_schema
 
-    rt = OrgRuntime(org_id=org_id, env=env, ephemeral=ephemeral)
+    rt = OrgRuntime(
+        org_id=org_id,
+        env=env,
+        ephemeral=ephemeral,
+        data_mode=data_mode,
+        mutation_handling=mutation_handling,
+    )
     key = runtime_key(org_id, env)
     # REQ-1448: sampled BEFORE the CREATE CATALOG statements below are issued, not after. A shard
     # that restarts part-way through this build must leave the runtime stamped with the OLD
@@ -1993,9 +2018,13 @@ async def _build_org_runtime(
                         await rebuild_from_config(seed, conn, state.federation_engine)
                 async with bound_to_request_org():
                     org_config = await store_config(state.raw_config, conn)
+                unbound: set[str] = set()
                 if env != PROD:
-                    # REQ-1529: a branch's unbound sources point where its base's bindings do.
-                    org_config = await _with_inherited_sources(conn, org_id, env, org_config)
+                    # REQ-1529, REQ-1942: an inherited source points where its parent's binding
+                    # does; an unbound one is reached through no connection.
+                    org_config, unbound = await _with_inherited_sources(
+                        conn, org_id, env, org_config
+                    )
             # Populate the org-prefixed catalog-name map FIRST so the physical registration
             # attaches each source under the org's own catalog name (not the bare, default-org
             # name) — the cross-org collision guard (REQ-1266).
@@ -2014,7 +2043,12 @@ async def _build_org_runtime(
                     f"org {org_id!r}: {len(failed_catalogs)} source catalog(s) could not be issued "
                     f"on its engine: {', '.join(sorted(failed_catalogs))}"
                 )
-            await _build_source_pools_and_enums(org_config)
+            # REQ-1491: a source reached through no connection gets no pool.
+            await _build_source_pools_and_enums(
+                org_config.model_copy(
+                    update={"sources": [s for s in org_config.sources if s.id not in unbound]}
+                )
+            )
             await _resolve_pk_from_sources()
 
         await _require_org_serves_here(org_id)  # REQ-1922
@@ -2342,8 +2376,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                     for k, v in _src_dict.items()
                 }
         if _env != PROD:
+            from provisa.core.env_classes import BINDING_COLUMN, OWN
+
             state.source_binding_env = {
-                sid: _env for sid, row in sources.items() if row.get("bound")
+                sid: _env for sid, row in sources.items() if row[BINDING_COLUMN] == OWN
             }
         # Publish the full DB source map so NativeEngineBackend._attach_registered can attach
         # dynamically registered sources that are not in state.config (YAML-loaded only).
@@ -3576,6 +3612,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.environments_router import router as environments_router  # REQ-1487
 
     app.include_router(environments_router)
+    from provisa.api.admin.environment_data_router import router as environment_data_router
+
+    app.include_router(environment_data_router)  # REQ-1942
     from provisa.api.admin.secrets_router import router as secrets_router  # REQ-1558
 
     app.include_router(secrets_router)

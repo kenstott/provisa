@@ -129,6 +129,7 @@ def _request(role: str, org: str = "acme"):
 
 _TABLE_RIGHT = "Missing capability: 'table_registration'"
 _ENV_RIGHT = "Missing capability: 'environment_management'"
+_DATA_RIGHT = "Missing capability: 'environment_data'"
 
 _REFUSALS = [
     ("find_table_id", {"domain": "sales", "table": "orders"}, _TABLE_RIGHT),
@@ -163,6 +164,15 @@ _REFUSALS = [
     ("generate_synthetic_dataset", {"dataset_id": "d"}, _ENV_RIGHT),
     ("get_synthetic_report", {"dataset_id": "d"}, _ENV_RIGHT),
     ("drop_synthetic_dataset", {"dataset_id": "d"}, _ENV_RIGHT),
+    ("get_environment_detail", {"env": "dev"}, _ENV_RIGHT),
+    ("set_environment_data", {"env": "dev", "dataMode": "inherit"}, _DATA_RIGHT),
+    (
+        "set_source_binding",
+        {"env": "dev", "sourceId": "pg", "binding": "inherited"},
+        _DATA_RIGHT,
+    ),
+    ("get_environment_synthetic_plan", {"env": "dev"}, _ENV_RIGHT),
+    ("generate_environment_model", {"env": "dev"}, _DATA_RIGHT),
     ("export_model_config", {}, "user_management in acme required"),
 ]
 

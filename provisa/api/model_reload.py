@@ -59,7 +59,7 @@ _CONNECTION_COLUMNS = (
     "password_ref",
     "path",
     "federation_hints",
-    "bound",
+    "binding",
     # REQ-1919: the pool's own settings, the store's to hold.
     "pool_min",
     "pool_max",
@@ -107,6 +107,7 @@ async def _reconcile_sources(rows: dict[str, dict]) -> None:
     from provisa.api.admin.schema_common import _drop_source_on_engine
     from provisa.api.app import state
     from provisa.api.app_loaders import _build_source_pools_and_enums
+    from provisa.core.env_classes import BINDING_COLUMN, UNBOUND
     from provisa.core.models import BUILT_IN_SOURCE_IDS
     from provisa.core.repositories.source import source_from_row
 
@@ -134,7 +135,10 @@ async def _reconcile_sources(rows: dict[str, dict]) -> None:
     if added or changed:
         # REQ-1919: each source as the store holds it — an admin's edit governs, and the file's
         # declaration of the same id is never read.
-        models = [source_from_row(rows[sid]) for sid in seen]
+        # REQ-1491, REQ-1942: a source reached through no connection gets no pool.
+        models = [
+            source_from_row(rows[sid]) for sid in seen if rows[sid][BINDING_COLUMN] != UNBOUND
+        ]
         # Every registered source is passed, not only the new ones: the builder also derives the
         # process's enum-type registry from the sources it is given. Pools that exist are kept
         # (SourcePool.add returns for a source it already holds).

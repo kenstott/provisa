@@ -785,7 +785,7 @@ class Column(
     visible_to: list[str]
     writable_by: list[str] = []  # roles allowed to mutate this column
     unmasked_to: list[str] = []  # roles that see unmasked data
-    mask_type: str | None = None  # regex, constant, truncate, fake (REQ-1494)
+    mask_type: str | None = None  # regex, constant, truncate (REQ-1942: a fake is not a mask)
     mask_pattern: str | None = None  # regex pattern
     mask_replace: str | None = None  # regex replacement
     mask_value: str | None = None  # constant value
@@ -830,8 +830,13 @@ class Column(
 
     @model_validator(mode="after")
     def _fake_is_a_kind(self) -> "Column":
-        if self.fake is None and self.mask_type == "fake":
-            raise ValueError(f"column {self.name}: masked with a fake but declares no fake")
+        if self.mask_type == "fake":
+            # REQ-1942: a fake is the column's own declaration (``fake``), read in place of the
+            # column's values in a Test (fake) environment, by every role -- never a role mask.
+            raise ValueError(
+                f"column {self.name}: a fake is not a role mask. Declare it as the column's fake, "
+                "and read it in a Test (fake) environment"
+            )
         from provisa.fakes.kinds import FakeRefused, parse
 
         try:

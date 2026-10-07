@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -54,9 +55,11 @@ from provisa.core.env_retire import (
     kinds_and_counts,
     retire_environment,
 )
+from provisa.core.env_classes import INHERIT, REFUSED, TEST_FAKE, UNBOUND_MODE
 from provisa.core.env_store import (
     EnvironmentLimitError,
     get_env,
+    landing_of,
     list_envs,
     set_expiry,
     set_protected,
@@ -112,6 +115,34 @@ async def _guard(request: Request, org_id: str) -> str | None:
 
 #: The right to create an environment and to reach the environments surface at all (REQ-1573).
 MANAGE_CAPABILITY = "environment_management"
+#: The right to change an environment's data choices (REQ-1942).
+DATA_CAPABILITY = "environment_data"
+
+
+async def _reads_parent(request: Request, org_id: str, parent: str) -> None:
+    """REQ-1942: making an environment show its parent's real rows needs the right to read them
+    there -- the usage right, and, for a parent other than prod, being served by it."""
+    from provisa.api.admin.capabilities import _resolved_capabilities
+    from provisa.api.app import state as _app_state
+    from provisa.security.rights import can_act_cross_org
+
+    if _caller_user_id(request) is None:
+        return  # dev mode — no auth configured, matching _require_org_admin
+    capabilities = _resolved_capabilities(request.state.identity, _app_state)
+    if can_act_cross_org(capabilities):
+        return
+    needed = {"usage"} | ({"environment_switch"} if parent != PROD else set())
+    missing = sorted(needed - capabilities)
+    if missing:
+        raise ApiError(
+            403,
+            "environments.parent_unreadable",
+            f"Showing {parent!r}'s real rows needs the right to read them there: "
+            + ", ".join(repr(m) for m in missing)
+            + ".",
+            org=org_id,
+            env=parent,
+        )
 
 
 async def _member(request: Request, org_id: str, *rights: str) -> str | None:
@@ -287,18 +318,13 @@ class CreateEnvBody(BaseModel):
     # every org is guaranteed to have (REQ-1487).
     from_env: str = PROD
     expires_at: datetime | None = None
-    # REQ-1538: whether the new environment INHERITS ``from_env``'s connections — the host, port,
-    # database, username and the rest of the coordinates that say where a source actually points.
-    # OFF BY DEFAULT, and deliberately so: the whole reason to make a dev environment from prod is
-    # to get prod's model without pointing at prod's databases, so resolving production's
-    # connections has to be asked for rather than arrived at by leaving a box alone.
-    #
-    # REQ-1529 calls the off case a BASE and the on case a BRANCH; that is the same distinction
-    # named from the user's side. A base carries its own connections and is what others inherit
-    # from; a branch resolves them from ``from_env`` by reference, which is why creating one asks
-    # its creator for no credentials. Either way the model is copied whole and no credential is:
-    # credentials live on binding columns, which REQ-1491 keeps out of every copy.
-    inherit_connections: bool = False
+    # REQ-1942: where the new environment's data comes from, chosen when it is created -- inherit
+    # (``from_env``'s connections by reference), unbound (none, until it binds its own),
+    # test_fake or test_synthetic -- and what a mutation in it does (refused by default). Every
+    # data choice but unbound and refused needs the environment_data right; the model is copied
+    # whole and no credential is, whatever the mode (REQ-1491).
+    data_mode: Literal["inherit", "unbound", "test_fake", "test_synthetic"]
+    mutation_handling: Literal["refused", "reversible", "direct"] = "refused"
 
 
 class PatchEnvBody(BaseModel):
@@ -455,14 +481,31 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
     from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.env_create import create_environment as _create_env
 
-    # REQ-1529: binding a base is an org_admin's act, so creating one is too. A branch is open to
-    # any member, because branching is REQ-1528's only path to model-editing rights.
-    actor = await (
-        _member(request, org_id, MANAGE_CAPABILITY)
-        if body.inherit_connections
-        else _guard(request, org_id)
-    )
+    # REQ-1528/REQ-1573: creating an environment is a member's act under environment_management;
+    # REQ-1942: choosing data for it that reads real data is environment_data's, and reading the
+    # parent's real rows needs the right to read them there.
+    actor = await _member(request, org_id, MANAGE_CAPABILITY)
     await _known(org_id, body.from_env)  # the source has to exist before anything is reserved
+    if body.data_mode != UNBOUND_MODE or body.mutation_handling != REFUSED:
+        await _member(request, org_id, DATA_CAPABILITY)
+    if body.data_mode == INHERIT:
+        await _reads_parent(request, org_id, body.from_env)
+    if body.data_mode == TEST_FAKE:
+        # REQ-1942: the new environment holds the parent's model, so its sensitive columns are
+        # the parent's; one with no fake would show real values.
+        from provisa.core.env_data import pii_refusal, uncovered_pii
+        from provisa.core.environments import org_schema
+
+        async with _pool().acquire() as conn:
+            uncovered = await uncovered_pii(conn, org_schema(org_id, body.from_env))
+        if uncovered:
+            raise ApiError(
+                422,
+                "environments.data_refused",
+                pii_refusal(body.name, uncovered),
+                org=org_id,
+                env=body.name,
+            )
     # REQ-1488: an environment is a schema, so a plane without schemas cannot hold one. Refused
     # here, before the name is reserved — provisioning would otherwise report success and write
     # the new environment's model into the org's only namespace.
@@ -487,7 +530,8 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
             from_env=body.from_env,
             created_by=actor,
             expires_at=body.expires_at,
-            branched_from=body.from_env if body.inherit_connections else None,
+            data_mode=body.data_mode,
+            mutation_handling=body.mutation_handling,
             note=f"created from {body.from_env}",
         )
     except EnvironmentNameError as exc:
@@ -533,7 +577,8 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
         body.name,
         {
             "from": body.from_env,
-            "inherit_connections": body.inherit_connections,
+            "data_mode": body.data_mode,
+            "mutation_handling": body.mutation_handling,
             **report.as_dict(),
         },
     )
@@ -723,8 +768,20 @@ async def merge_into_environment(request: Request, org_id: str, name: str, body:
         )
         return {"request": _rendered(merge_request), "applied": False, "requires_approval": True}
 
-    run = plan_copy if body.dry_run else copy_model
-    report = await run(db, org_id, body.from_env, name, mode=MERGE, removals=body.removals)
+    if body.dry_run:
+        report = await plan_copy(
+            db, org_id, body.from_env, name, mode=MERGE, removals=body.removals
+        )
+    else:
+        report = await copy_model(
+            db,
+            org_id,
+            body.from_env,
+            name,
+            mode=MERGE,
+            removals=body.removals,
+            landing=await landing_of(_admin_pool(), org_id, name),
+        )
     retired = None
     refreshed = None
     squashed = None
@@ -918,8 +975,18 @@ async def deploy_into_environment(
                 "requires_approval": True,
             }
 
-        run = plan_deploy if body.dry_run else deploy_tree
-        report = await run(db, org_id, name, tree, ref=sha, seed=body.seed)
+        if body.dry_run:
+            report = await plan_deploy(db, org_id, name, tree, ref=sha, seed=body.seed)
+        else:
+            report = await deploy_tree(
+                db,
+                org_id,
+                name,
+                tree,
+                ref=sha,
+                seed=body.seed,
+                landing=await landing_of(_admin_pool(), org_id, name),
+            )
     except DeployError as exc:
         # REQ-1496: a tree that does not hold is refused WHOLE. Nothing partial has landed -- the
         # decomposition raises before a statement is issued -- so the environment is untouched.
@@ -1026,7 +1093,14 @@ async def _move(request: Request, org_id: str, name: str, forward: bool) -> dict
     tree = load_files(_readable(org_id, target, lambda: files_at(org_id, target)))
     db = await _org_model_db(org_id)
     try:
-        report = await deploy_tree(db, org_id, name, tree, ref=target)
+        report = await deploy_tree(
+            db,
+            org_id,
+            name,
+            tree,
+            ref=target,
+            landing=await landing_of(_admin_pool(), org_id, name),
+        )
     except DeployError as exc:
         raise ApiError(
             422, "environments.tree_does_not_hold", str(exc), org=org_id, env=name, ref=target
@@ -1513,7 +1587,7 @@ async def request_review(request: Request, org_id: str, name: str, body: ReviewB
     # REQ-1549: the branch it came from is the default target, and an environment that was created
     # without one has no answer here. That is refused rather than guessed -- proposing a merge into
     # prod because nothing else was recorded is not a default, it is an accident.
-    target = body.into or row["branched_from"]
+    target = body.into or row["parent"]
     if target is None:
         raise ApiError(
             400,
@@ -1626,7 +1700,15 @@ async def pull_environment(request: Request, org_id: str, name: str) -> dict:
     tree = load_files(_readable(org_id, sha, lambda: files_at(org_id, sha)))
     db = await _org_model_db(org_id)
     try:
-        report = await deploy_tree(db, org_id, name, tree, ref=sha, base_sha=base_sha)
+        report = await deploy_tree(
+            db,
+            org_id,
+            name,
+            tree,
+            ref=sha,
+            base_sha=base_sha,
+            landing=await landing_of(_admin_pool(), org_id, name),
+        )
     except DeployError as exc:
         raise ApiError(
             422, "environments.tree_does_not_hold", str(exc), org=org_id, env=name, ref=sha

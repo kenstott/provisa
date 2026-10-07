@@ -100,10 +100,9 @@ ENVIRONMENT_REFERENCES: tuple[EnvReference, ...] = (
     # An invitation that names the environment seats its redeemers in it (shared) or deploys
     # each visitor's environment from it (per visitor): while it can still be redeemed, it blocks.
     EnvReference("org_invites", "env_name", "invitation", visitor=DEPENDENT, otherwise=DEPENDENT),
-    # An environment branched from this one resolves its bindings through it (REQ-1529).
-    EnvReference(
-        "environments", "branched_from", "environment", visitor=DEPENDENT, otherwise=DEPENDENT
-    ),
+    # An environment created from this one resolves its inherited bindings through it (REQ-1529,
+    # REQ-1942).
+    EnvReference("environments", "parent", "environment", visitor=DEPENDENT, otherwise=DEPENDENT),
 )
 
 
@@ -191,7 +190,7 @@ async def env_dependents(admin_db: "Database", org_id: str, name: str) -> list[E
             else:
                 rows = await conn.execute_core(
                     select(environments.c.name).where(
-                        environments.c.org_id == org_id, environments.c.branched_from == name
+                        environments.c.org_id == org_id, environments.c.parent == name
                     )
                 )
                 found.extend(EnvDependent(reference.kind, r[0], r[0], via) for r in rows.fetchall())

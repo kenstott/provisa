@@ -114,8 +114,8 @@ class TestBindingColumns:
     def test_boundness_is_marked_rather_than_inferred(self, table):
         # REQ-1491: an empty host is not an absent one — the connection builder reads it as
         # localhost:5432 — so the copy marks the row instead of blanking it.
-        assert ec.BOUND_COLUMN in ec.binding_columns(table)
-        assert ec.BOUND_COLUMN in org_metadata.tables[table].columns
+        assert ec.BINDING_COLUMN in ec.binding_columns(table)
+        assert ec.BINDING_COLUMN in org_metadata.tables[table].columns
 
     @pytest.mark.parametrize("table", sorted(ec.CARRIED | ec.NEVER_RUNTIME))
     def test_asking_a_non_identity_table_for_its_bindings_is_refused(self, table):

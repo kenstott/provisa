@@ -46,7 +46,7 @@ from sqlalchemy import Table, delete, select
 
 from provisa.core import schema_org as org
 from provisa.core.env_classes import (
-    BOUND_COLUMN,
+    BINDING_COLUMN,
     CARRIED,
     IDENTITY_ONLY,
     SEEDED_AT_CREATION,
@@ -190,7 +190,7 @@ async def plan_deploy(
     person approves and the deploy they approved are computed from the same check.
     """
     async with db.acquire() as conn:
-        return await _load(conn, org_id, env, tree, ref, seed, base_sha, apply=False)
+        return await _load(conn, org_id, env, tree, ref, seed, base_sha, None, apply=False)
 
 
 async def deploy_tree(
@@ -202,6 +202,7 @@ async def deploy_tree(
     ref: str,
     seed: bool = False,
     base_sha: str | None = None,
+    landing: str,
 ) -> DeployReport:
     """Make ``tree`` the model of ``env``. One transaction: it holds whole or not at all.
 
@@ -211,7 +212,7 @@ async def deploy_tree(
     holds the incoming model and there is nothing left to notice.
     """
     async with db.acquire() as conn, conn.transaction():
-        return await _load(conn, org_id, env, tree, ref, seed, base_sha, apply=True)
+        return await _load(conn, org_id, env, tree, ref, seed, base_sha, landing, apply=True)
 
 
 async def _load(
@@ -222,6 +223,7 @@ async def _load(
     ref: str,
     seed: bool,
     base_sha: str | None,
+    landing: str | None,
     *,
     apply: bool,
 ) -> DeployReport:
@@ -244,7 +246,8 @@ async def _load(
         return DeployReport(env or "prod", ref, seed, delta, base_sha, conflicts)
 
     ordered = [t for t in org_metadata.sorted_tables if t.name in scope]
-    await _apply(conn, ordered, schema, rows, delta)
+    assert landing is not None, "a deploy that writes says how its new rows land"
+    await _apply(conn, ordered, schema, rows, delta, landing)
     await _resync_sequences(conn, ordered, schema)
     return DeployReport(env or "prod", ref, seed, delta, base_sha, conflicts)
 
@@ -622,6 +625,7 @@ async def _apply(
     schema: str,
     rows: dict[str, list[dict[str, Any]]],
     delta: DeployDelta,
+    landing: str,
 ) -> None:
     """Delete what the tree no longer holds, then write what it does, parents before children.
 
@@ -641,7 +645,7 @@ async def _apply(
             {k: v for k, v in row.items() if k in writable} for row in rows.get(table.name, [])
         ]
         if table.name in IDENTITY_ONLY:
-            await _upsert_identity(conn, scoped, payload)
+            await _upsert_identity(conn, scoped, payload, landing)
             continue
         # Grouped by which columns each row actually sets: a multi-row INSERT takes its column
         # list from the first row, so one file that omits an optional key would blank that column
@@ -650,11 +654,14 @@ async def _apply(
             await _insert_rows(conn, scoped, [r for r in payload if frozenset(r) == shape])
 
 
-async def _upsert_identity(conn: "Connection", table: Table, rows: list[dict[str, Any]]) -> None:
+async def _upsert_identity(
+    conn: "Connection", table: Table, rows: list[dict[str, Any]], landing: str
+) -> None:
     """An identity-only kind: update what is here, insert what is not, delete nothing.
 
-    A row this deploy introduces is marked unbound (REQ-1491) -- an empty host is not an absent one,
-    and the connection builder would read the column defaults as localhost.
+    A row this deploy introduces is reached as ``landing`` says (REQ-1491, REQ-1942): through the
+    environment's parent, or marked unbound -- an empty host is not an absent one, and the
+    connection builder would read the column defaults as localhost.
     """
     key = next(iter(table.primary_key.columns)).name
     present = {
@@ -669,5 +676,5 @@ async def _upsert_identity(conn: "Connection", table: Table, rows: list[dict[str
                     table.update().where(table.c[key] == row[key]).values(**values)
                 )
         else:
-            inserts.append({**row, BOUND_COLUMN: False})
+            inserts.append({**row, BINDING_COLUMN: landing})
     await _insert_rows(conn, table, inserts)

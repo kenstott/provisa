@@ -92,7 +92,8 @@ def wired(monkeypatch):
         calls["plan"].append((org_id, env, ref, seed))
         return _report(env, ref, seed)
 
-    async def deploy_tree(db, org_id, env, tree, *, ref, seed=False):
+    async def deploy_tree(db, org_id, env, tree, *, ref, seed=False, landing):
+        assert landing == "inherited"  # the target's data mode decides how new rows land
         calls["deploy"].append((org_id, env, ref, seed))
         return _report(env, ref, seed)
 
@@ -105,6 +106,11 @@ def wired(monkeypatch):
     monkeypatch.setattr(er, "_audit", _audit)
     monkeypatch.setattr(er, "_member_count", _member_count)
     monkeypatch.setattr(er, "_admin_pool", lambda: "admin-db")
+
+    async def landing_of(admin_db, org_id, name):
+        return "inherited"
+
+    monkeypatch.setattr(er, "landing_of", landing_of)
     monkeypatch.setattr(er, "plan_deploy", plan_deploy)
     monkeypatch.setattr(er, "deploy_tree", deploy_tree)
     monkeypatch.setattr(env_approvals, "is_protected", is_protected)
@@ -234,7 +240,7 @@ class TestSeeding:
 
 class TestATreeThatDoesNotHold:
     async def test_it_is_refused_as_a_status_a_caller_can_render(self, wired, monkeypatch):
-        async def deploy_tree(db, org_id, env, tree, *, ref, seed=False):
+        async def deploy_tree(db, org_id, env, tree, *, ref, seed=False, landing):
             raise DeployError("'x.yaml' names 'gone.yaml' as its target")
 
         monkeypatch.setattr(er, "deploy_tree", deploy_tree)
@@ -256,7 +262,7 @@ class TestATreeThatDoesNotHold:
         assert exc.value.status_code == 422
 
     async def test_a_refused_load_is_not_audited(self, wired, monkeypatch):
-        async def deploy_tree(db, org_id, env, tree, *, ref, seed=False):
+        async def deploy_tree(db, org_id, env, tree, *, ref, seed=False, landing):
             raise DeployError("nope")
 
         monkeypatch.setattr(er, "deploy_tree", deploy_tree)

@@ -284,7 +284,6 @@ async def difference_quantiles(
 async def measure_model(state: Any) -> None:
     """Measure every faked column whose fake computes from measurement, and publish the masking
     rules with the measurements bound, in one assignment (REQ-1914)."""
-    from provisa.api.admin.db_queries import fetch_tables
     from provisa.fakes.checks import family
     from provisa.fakes.kinds import parse
     from provisa.security.masking import MaskType
@@ -299,18 +298,15 @@ async def measure_model(state: Any) -> None:
                 wanted.setdefault(table_id, {})[column] = (kind, family(dtype))
     if not wanted:
         return
+    from provisa.fakes.measurement import MEASURING
+
     org_id = state.org_id  # the deployment's org, whose model this is
     measured: dict[tuple[int, str], Measured] = {}
-    async with state.model_db.acquire() as conn:
-        regs = {t["id"]: t for t in await fetch_tables(conn)}
-        for table_id, faked in wanted.items():
-            try:
-                taken = await _measure_table(state, conn, org_id, regs[table_id], faked)
-            except Exception as e:  # noqa: BLE001 -- held as each column's named refusal
-                log.warning("fake measurement of table %s failed: %s", table_id, e)
-                taken = {c: Measured(refused=f"{c}: could not be measured: {e}") for c in faked}
-            for column, m in taken.items():
-                measured[(table_id, column)] = m
+    token = MEASURING.set(True)
+    try:
+        await _measure_wanted(state, org_id, wanted, measured)
+    finally:
+        MEASURING.reset(token)
     state.masking_rules = {
         key: {
             column: (
@@ -322,3 +318,23 @@ async def measure_model(state: Any) -> None:
         }
         for key, col_map in state.masking_rules.items()
     }
+
+
+async def _measure_wanted(
+    state: Any,
+    org_id: str,
+    wanted: dict[int, dict[str, tuple[FakeKind, str]]],
+    measured: dict[tuple[int, str], Measured],
+) -> None:
+    from provisa.api.admin.db_queries import fetch_tables
+
+    async with state.model_db.acquire() as conn:
+        regs = {t["id"]: t for t in await fetch_tables(conn)}
+        for table_id, faked in wanted.items():
+            try:
+                taken = await _measure_table(state, conn, org_id, regs[table_id], faked)
+            except Exception as e:  # noqa: BLE001 -- held as each column's named refusal
+                log.warning("fake measurement of table %s failed: %s", table_id, e)
+                taken = {c: Measured(refused=f"{c}: could not be measured: {e}") for c in faked}
+            for column, m in taken.items():
+                measured[(table_id, column)] = m

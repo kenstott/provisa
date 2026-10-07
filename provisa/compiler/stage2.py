@@ -129,6 +129,10 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             f"build_governance_context needs the acting role's dict for {role_id!r}: governance "
             "is decided from the role, and a missing role is an error, never a default"
         )
+    if ctx.refusal is not None:
+        # REQ-1942: a Test (fake) environment holding a sensitive column with no fake serves no
+        # statement until each has one.
+        raise PermissionError(ctx.refusal)
     gov = GovernanceContext()
     gov.role_id = role_id
 
@@ -303,6 +307,12 @@ def _bind_fakes(gov: GovernanceContext) -> None:  # REQ-1494
     from provisa.fakes.read_sql import Column
     from provisa.security.masking import MaskType
 
+    from provisa.fakes.measurement import MEASURING
+
+    if MEASURING.get():
+        # REQ-1942: the model build's measurement of what fakes compute from reads the real values;
+        # its faked columns are read as they are, never substituted (see _is_fake).
+        return
     for (tid, col_name), (rule, dtype) in gov.masking_rules.items():
         if rule.mask_type != MaskType.fake:
             continue

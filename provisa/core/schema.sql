@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS stores (
     id      TEXT PRIMARY KEY,
     url     TEXT NOT NULL,
     kind    TEXT,                           -- REQ-1922: the engine kind, on a region's engine store
-    bound   BOOLEAN NOT NULL DEFAULT TRUE  -- REQ-1491
+    binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'inherited', 'unbound'))  -- REQ-1491, REQ-1942
 );
 
 CREATE TABLE IF NOT EXISTS org_regions (
@@ -69,10 +69,11 @@ CREATE TABLE IF NOT EXISTS sources (
 -- operator wrote themselves is stored verbatim. Empty means the source needs no password.
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS password_ref TEXT NOT NULL DEFAULT '';
 
--- REQ-1491: whether this environment has supplied this source's connection values. A copy between environments carries the
+-- REQ-1491, REQ-1942: how this environment reaches -- its own binding, its parent's by reference
+-- (inherited), or nothing (unbound) -- the source's connection values. A copy between environments carries the
 -- row and never the binding, and an empty value is not an absent one, so an unbound source is
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS bound BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'inherited', 'unbound'));
 
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
@@ -210,7 +211,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     data_type   TEXT,
     writable_by  JSONB NOT NULL DEFAULT '[]',
     unmasked_to  JSONB NOT NULL DEFAULT '[]',
-    mask_type    TEXT CHECK (mask_type IN ('regex', 'constant', 'truncate', 'fake')),
+    mask_type    TEXT CHECK (mask_type IN ('regex', 'constant', 'truncate')),
     mask_pattern TEXT,
     mask_replace TEXT,
     mask_value   TEXT,
@@ -817,10 +818,11 @@ CREATE TABLE IF NOT EXISTS kafka_sources (
 );
 ALTER TABLE kafka_sources ALTER COLUMN bootstrap_servers SET DEFAULT '';
 
--- REQ-1491: whether this environment has supplied this cluster's bootstrap servers. A copy between environments carries the
+-- REQ-1491, REQ-1942: how this environment reaches -- its own binding, its parent's by reference
+-- (inherited), or nothing (unbound) -- the cluster's bootstrap servers. A copy between environments carries the
 -- row and never the binding, and an empty value is not an absent one, so an unbound kafka source is
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
-ALTER TABLE kafka_sources ADD COLUMN IF NOT EXISTS bound BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE kafka_sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'inherited', 'unbound'));
 
 CREATE TABLE IF NOT EXISTS kafka_topics (
     id              SERIAL PRIMARY KEY,
@@ -847,10 +849,11 @@ CREATE TABLE IF NOT EXISTS kafka_sinks (
 );
 ALTER TABLE kafka_sinks ALTER COLUMN topic SET DEFAULT '';
 
--- REQ-1491: whether this environment has supplied this sink's target topic. A copy between environments carries the
+-- REQ-1491, REQ-1942: how this environment reaches -- its own binding, its parent's by reference
+-- (inherited), or nothing (unbound) -- the sink's target topic. A copy between environments carries the
 -- row and never the binding, and an empty value is not an absent one, so an unbound kafka sink is
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
-ALTER TABLE kafka_sinks ADD COLUMN IF NOT EXISTS bound BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE kafka_sinks ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'inherited', 'unbound'));
 
 -- API Sources (Phase U)
 CREATE TABLE IF NOT EXISTS api_sources (
@@ -863,10 +866,11 @@ CREATE TABLE IF NOT EXISTS api_sources (
 );
 ALTER TABLE api_sources ALTER COLUMN base_url SET DEFAULT '';
 
--- REQ-1491: whether this environment has supplied this API's base URL and auth. A copy between environments carries the
+-- REQ-1491, REQ-1942: how this environment reaches -- its own binding, its parent's by reference
+-- (inherited), or nothing (unbound) -- the API's base URL and auth. A copy between environments carries the
 -- row and never the binding, and an empty value is not an absent one, so an unbound API source is
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
-ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS bound BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'inherited', 'unbound'));
 
 CREATE TABLE IF NOT EXISTS api_endpoints (
     id              SERIAL PRIMARY KEY,
@@ -1246,7 +1250,7 @@ VALUES (
       "approve_view","approve_relationship","access_config","user_management",
       "masking_config","column_grant","view_governance","query_development",
       "full_results","write","usage","org_settings","observability",
-      "environment_management","environment_switch",
+      "environment_management","environment_switch","environment_data",
       "glossary_read","glossary_rw","org_glossary_rw",
       "data_product_read","data_product_rw"]'::jsonb,
     '["*"]'::jsonb,
@@ -1298,7 +1302,8 @@ ON CONFLICT (id) DO NOTHING;
 -- make every capability added later invisible to them until someone remembered this row; taking
 -- away is the direction that stays correct.
 --
--- Four rights are withheld, each because it reaches something the environment does not contain:
+-- Five rights are withheld, each because it reaches something the environment does not contain
+-- (environment_data, REQ-1942: a visitor's environment's data is the invitation's choice):
 -- environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin is
 -- pointless against a role that can name another); environment_management spends the org's plan
 -- ceiling and drops other environments' schemas; user_management would let a visitor confer roles
@@ -1311,7 +1316,7 @@ ON CONFLICT (id) DO NOTHING;
 -- can do everything the product does except reach past the environment it was minted in and write
 -- back to the shared sample sources it points at -- viewing settings and telemetry is not that.
 --
--- REQ-1602/REQ-1608: three of the four are DEMONSTRATED rather than merely absent. A visitor is
+-- REQ-1602/REQ-1608: four of the five are DEMONSTRATED rather than merely absent. A visitor is
 -- being shown the product, so the surfaces those rights open stay on the page -- disabled, and
 -- badged as belonging to the production system. Withholding them by hiding them would make the
 -- sandbox look like a smaller product instead of the same one with the org's own controls held
@@ -1325,7 +1330,7 @@ VALUES (
       "create_view","data_product_read","data_product_rw","full_results","glossary_read",
       "glossary_rw","masking_config","observability","org_settings","query_development",
       "source_registration","table_registration","usage","view_governance","write"]'::jsonb,
-    '["environment_management","environment_switch","org_glossary_rw"]'::jsonb,
+    '["environment_data","environment_management","environment_switch","org_glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
@@ -1336,9 +1341,9 @@ ON CONFLICT (id) DO NOTHING;
 -- release of this same reconcile left with `user_management`, `org_settings` or `observability`
 -- still in it.
 UPDATE roles
-SET demonstrated = '["environment_management","environment_switch","org_glossary_rw"]'::jsonb
+SET demonstrated = '["environment_data","environment_management","environment_switch","org_glossary_rw"]'::jsonb
 WHERE id = 'sandbox'
-  AND demonstrated <> '["environment_management","environment_switch","org_glossary_rw"]'::jsonb;
+  AND demonstrated <> '["environment_data","environment_management","environment_switch","org_glossary_rw"]'::jsonb;
 
 UPDATE roles
 SET capabilities = (SELECT jsonb_agg(DISTINCT v ORDER BY v)
@@ -1385,6 +1390,13 @@ UPDATE roles SET capabilities = capabilities || '["environment_management","envi
 WHERE id IN ('org_admin', 'developer')
   AND org_id IS NULL
   AND NOT capabilities @> '["environment_switch"]'::jsonb;
+
+-- REQ-1942: environment_data -- changing an environment's data choices -- arrived after org_admin
+-- was seeded; asserted on the same terms as the environment rights above. org_admin alone.
+UPDATE roles SET capabilities = capabilities || '["environment_data"]'::jsonb
+WHERE id = 'org_admin'
+  AND org_id IS NULL
+  AND NOT capabilities @> '["environment_data"]'::jsonb;
 
 -- REQ-1297: the role ids 'admin' and 'superadmin' are retired. Rewrite existing assignments naming
 -- them to platform_admin, then drop the rows, so nothing resolves them afterward. The rewrite runs

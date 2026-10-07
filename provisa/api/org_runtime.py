@@ -97,6 +97,16 @@ class OrgRuntime:
     # business (REQ-1620 covers the file-backed ones by forking them, not by refusing them).
     ephemeral: bool = False
 
+    # REQ-1942: this environment's data mode (inherit | unbound | test_fake | test_synthetic) and
+    # what a mutation in it does (refused | reversible | direct). None for prod, which is always
+    # real. Read once when the runtime is built; a change of either rebuilds it.
+    data_mode: str | None = None
+    mutation_handling: str | None = None
+    # REQ-1942: why every request into this environment is refused, while it stands -- a Test
+    # (fake) environment whose model holds a sensitive column with no fake. Set by each schema
+    # build; None when the environment serves.
+    data_refusal: str | None = None
+
     # REQ-1043/REQ-1067/REQ-1244: per-org federation engine. ``None`` means this org runs on the
     # SHARED engine (the pooled lane, REQ-1243 lane a — every org starts here); an isolated-engine
     # org (orgs.isolated_engine) carries its OWN EngineRuntime plus its own terminal-connection

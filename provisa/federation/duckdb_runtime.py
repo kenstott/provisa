@@ -216,6 +216,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # it; readers take a snapshot under the lock.
         self._ch_lock = threading.Lock()
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
+        # REQ-1529: the ATTACH each raw alias was made with, so an environment reaching the same
+        # source id through a different connection is refused rather than handed this one.
+        self._raw_attach_ddl: dict[str, str] = {}
         self._ext_loaded: set[str] = (
             set()
         )  # community/extension connectors LOADed on this connection
@@ -245,12 +248,22 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
     # -- source exposure -------------------------------------------------------
 
-    def _phys_name(self, source: Any) -> str:
-        """The catalog-qualified physical name the compiler emits: ``"catalog"."schema"."table"``.
-        The engine's catalog for a source is its id with hyphens normalized (see core.catalog)."""
+    @staticmethod
+    def _catalog_of(source: Any) -> str:
+        """The catalog the compiler names ``source``'s tables under. The attach walk hands each
+        source over with the catalog of the org environment being served (REQ-1266, REQ-1529:
+        each environment its own); an introspection attach hands none and is prod's, whose catalog
+        is the source id with hyphens normalized (see core.catalog)."""
+        from provisa.compiler.naming import attach_catalog
         from provisa.core.catalog import _to_catalog_name
 
-        catalog = _to_catalog_name(source.id)
+        if "catalog" in vars(source):
+            return attach_catalog(source)
+        return _to_catalog_name(source.id)
+
+    def _phys_name(self, source: Any) -> str:
+        """The catalog-qualified physical name the compiler emits: ``"catalog"."schema"."table"``."""
+        catalog = self._catalog_of(source)
         if catalog not in self._phys_catalogs:
             # A writable in-memory catalog so the 3-part physical name resolves (an ATTACHed remote
             # DB is read-only and cannot host the schema/view the compiler references).
@@ -304,9 +317,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         catalog-physical name (checked against the catalog, so nothing else is dropped) and any
         ClickHouse HTTP relation registered for it. Called when the table's reads move to its
         replica (REQ-1912): nothing on the engine may then read the source."""
-        from provisa.core.catalog import _to_catalog_name
-
-        parts = [_to_catalog_name(source.id), source.schema_name, source.table_name]
+        parts = [self._catalog_of(source), source.schema_name, source.table_name]
         with self._ch_lock:
             self._ch_relations.pop((parts[0].lower(), parts[1].lower(), parts[2].lower()), None)
         if parts[0] not in self._phys_catalogs:
@@ -436,6 +447,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if raw_alias not in self._raw_attached:
             self._con.execute(details["attach"])
             self._raw_attached.add(raw_alias)
+            self._raw_attach_ddl[raw_alias] = details["attach"]
+        elif self._raw_attach_ddl[raw_alias] != details["attach"]:
+            # REQ-1529: this engine reaches one connection per source id. An environment that
+            # binds the source to another one would read through this one, so it is refused.
+            raise RuntimeError(
+                f"source {source.id!r} is attached on the native engine through another "
+                f"connection; an environment that binds it to a database of its own needs an "
+                f"engine that keeps one per environment (the Trino tier)"
+            )
         return raw_alias
 
     # -- source introspection without a registered table (REQ-1673) -------------------------------

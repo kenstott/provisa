@@ -66,7 +66,7 @@ def test_row_round_trip_preserves_the_reference(password):
     )
     # A row as the control plane hands it back: the write projection plus the columns the table
     # defaults, which the mapper ignores because they are not model fields.
-    row = {**_source_values(original), "bound": True, "cache_enabled": True}
+    row = {**_source_values(original), "binding": "own", "cache_enabled": True}
     assert source_from_row(row).password == password
 
 

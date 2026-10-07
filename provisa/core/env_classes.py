@@ -167,9 +167,43 @@ def carries_setting(key: str) -> bool:
     return head not in NEVER_SETTING_PREFIXES
 
 
-#: The column an IDENTITY_ONLY row carries its boundness in (REQ-1491). Never copied: a copy
-#: produces an unbound row in the target whatever the source row said.
-BOUND_COLUMN = "bound"
+#: The column an IDENTITY_ONLY row carries how the environment reaches it in (REQ-1491,
+#: REQ-1942): its OWN binding, its parent environment's binding by reference (INHERITED), or
+#: nothing (UNBOUND). Never copied: a row a copy creates lands as the target environment's data
+#: mode says (:func:`landing_binding`), whatever the source row said.
+BINDING_COLUMN = "binding"
+OWN = "own"
+INHERITED = "inherited"
+UNBOUND = "unbound"
+BINDINGS = (OWN, INHERITED, UNBOUND)
+
+#: An environment's data modes (REQ-1942); prod has none -- it is always real.
+INHERIT = "inherit"
+UNBOUND_MODE = "unbound"
+TEST_FAKE = "test_fake"
+TEST_SYNTHETIC = "test_synthetic"
+DATA_MODES = (INHERIT, UNBOUND_MODE, TEST_FAKE, TEST_SYNTHETIC)
+
+#: What a mutation in an environment does (REQ-1942): refused, naming the environment (the
+#: default); kept in the environment's own change log, the data underneath never changed
+#: (reversible); or applied to data the environment owns, never through an inherited source
+#: (direct).
+REFUSED = "refused"
+REVERSIBLE = "reversible"
+DIRECT = "direct"
+MUTATION_HANDLINGS = (REFUSED, REVERSIBLE, DIRECT)
+
+
+def landing_binding(data_mode: str | None) -> str:
+    """How a row new to an environment is reached (REQ-1942): through the parent in every mode
+    that reads the parent's data -- Inherit, and both Test modes, whose real or API reads are the
+    parent's -- and not at all in Unbound, or in prod (``None``), which has no parent."""
+    if data_mode is None or data_mode == UNBOUND_MODE:
+        return UNBOUND
+    if data_mode not in DATA_MODES:
+        raise ValueError(f"unknown data mode {data_mode!r}; one of {DATA_MODES}")
+    return INHERITED
+
 
 #: The columns of an IDENTITY_ONLY table that say WHERE the environment points, per REQ-1491.
 #: These stay behind. Everything else on those tables is identity or governance and travels.
@@ -214,4 +248,4 @@ def binding_columns(table: str) -> frozenset[str]:
     """
     if table not in IDENTITY_ONLY:
         raise KeyError(f"{table!r} is not an IDENTITY_ONLY table; it has no binding columns")
-    return BINDING_COLUMNS[table] | {BOUND_COLUMN}
+    return BINDING_COLUMNS[table] | {BINDING_COLUMN}

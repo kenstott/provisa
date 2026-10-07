@@ -72,7 +72,14 @@ async def seed(plane: Database) -> None:
         for org_id in (ORG, OTHER):
             await conn.execute_core(insert(orgs).values(id=org_id, name=org_id))
             for name in ("prod", "staging", "portal", "sandbox_abc123def456", "ephemeral_1a2b3c4d"):
-                await conn.execute_core(insert(environments).values(org_id=org_id, name=name))
+                # REQ-1942: every environment but prod records its parent and its data mode.
+                await conn.execute_core(
+                    insert(environments).values(
+                        org_id=org_id,
+                        name=name,
+                        **({} if name == "prod" else {"parent": "prod", "data_mode": "unbound"}),
+                    )
+                )
 
 
 @pytest.fixture(autouse=True)
@@ -160,7 +167,7 @@ def test_the_inventory_says_what_blocks_and_what_goes_with_a_visitors_environmen
     assert standing == {
         ("user_org_memberships", "env_name"): (PART, DEPENDENT),
         ("org_invites", "env_name"): (DEPENDENT, DEPENDENT),
-        ("environments", "branched_from"): (DEPENDENT, DEPENDENT),
+        ("environments", "parent"): (DEPENDENT, DEPENDENT),
     }
 
 
@@ -170,7 +177,7 @@ def test_the_inventory_covers_every_column_that_names_an_environment():
         (table.name, column.name)
         for table in schema_admin.metadata.tables.values()
         for column in table.columns
-        if column.name in ("env_name", "branched_from")
+        if column.name in ("env_name", "parent")
     }
     assert naming == {(r.table, r.column) for r in ENVIRONMENT_REFERENCES}
 
@@ -214,14 +221,16 @@ async def test_an_invitation_that_can_still_be_redeemed_blocks_and_a_spent_one_d
     assert "tok-" not in str([d.as_dict() for d in err.value.dependents]) + str(err.value)
 
 
-async def test_an_environment_branched_from_it_blocks(admin):
+async def test_an_environment_created_from_it_blocks(admin):
     async with admin.acquire() as conn:
         await conn.execute_core(
-            insert(environments).values(org_id=ORG, name="feature-x", branched_from="staging")
+            insert(environments).values(
+                org_id=ORG, name="feature-x", parent="staging", data_mode="inherit"
+            )
         )
     with pytest.raises(EnvironmentInUse) as err:
         await _retire(admin, "staging")
-    assert _named(err.value) == [("environment", "feature-x", ("environments.branched_from",))]
+    assert _named(err.value) == [("environment", "feature-x", ("environments.parent",))]
 
 
 async def test_every_dependent_is_named_in_the_one_refusal(admin):
@@ -229,7 +238,9 @@ async def test_every_dependent_is_named_in_the_one_refusal(admin):
     await _invite(admin, "tok", "staging", email="guest@example.com")
     async with admin.acquire() as conn:
         await conn.execute_core(
-            insert(environments).values(org_id=ORG, name="feature-x", branched_from="staging")
+            insert(environments).values(
+                org_id=ORG, name="feature-x", parent="staging", data_mode="inherit"
+            )
         )
     with pytest.raises(EnvironmentInUse) as err:
         await _retire(admin, "staging")
@@ -283,15 +294,17 @@ async def test_a_visitors_environment_takes_its_pinned_memberships_with_it(admin
     assert name not in await _envs(admin)
 
 
-async def test_a_visitors_environment_is_still_blocked_by_what_is_branched_from_it(admin):
+async def test_a_visitors_environment_is_still_blocked_by_what_is_created_from_it(admin):
     async with admin.acquire() as conn:
         await conn.execute_core(
-            insert(environments).values(org_id=ORG, name="kept", branched_from="ephemeral_1a2b3c4d")
+            insert(environments).values(
+                org_id=ORG, name="kept", parent="ephemeral_1a2b3c4d", data_mode="inherit"
+            )
         )
     await _pin(admin, "visitor", "ephemeral_1a2b3c4d")
     with pytest.raises(EnvironmentInUse) as err:
         await _retire(admin, "ephemeral_1a2b3c4d")
-    assert _named(err.value) == [("environment", "kept", ("environments.branched_from",))]
+    assert _named(err.value) == [("environment", "kept", ("environments.parent",))]
     # Nothing was removed: the visitor is still pinned.
     async with admin.acquire() as conn:
         pinned = (await conn.execute_core(select(user_org_memberships.c.user_id))).fetchall()
