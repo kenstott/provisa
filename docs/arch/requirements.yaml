@@ -77023,3 +77023,30 @@
   - REQ-1634
   - REQ-1943
   notes: 'Maintainer 2026-10-07: we should have a standard role - data_steward; it owns anything domain specific: rbac, rls, glossary, data products, and needs full results; org_admin has all those rights as well, across all domains. Maintainer 2026-10-07 (later): the initial data_steward is mapped to all domains; in production best practice there are multiple domains and data stewards aligned to them; since we don''t know whether we deploy into a small team or a large enterprise, we keep a data steward role for all domains. Maintainer 2026-10-07 (later): rbac means masking, fakes, synth and visibility for the tables of that domain. Maintainer 2026-10-07 (later): the steward is just a composite of rights and domains; nothing specifically concerns itself with role names -- a role is just a collection of rights within a domain.'
+- id: REQ-1945
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  priority: SHOULD
+  type: ui
+  description: 'The product tour is a short core tour followed by a menu of topics. The core tour -- welcome, Polly,
+    connecting a source, querying it -- starts on its own for a new user and ends on the topic menu. The menu shows
+    one card per topic, each with its title, one sentence on what it covers, its number of steps and a mark once
+    the viewer has completed it; the tour button opens the menu once the core tour has been seen. Each topic is
+    a tour of its own, and Done, or leaving it, returns to the menu rather than continuing into another topic. The
+    topics are: Connect your data (source types, registering tables, replicas and live reads); Model it (relationships,
+    views, metrics, the semantic model); Govern it (roles and domains, row rules, masks, sensitive data, the data
+    steward); Query it everywhere (SQL, GraphQL, Cypher, REST and MCP through one governed pipeline); Test data
+    and environments (the profiler, fakes, synthetic data, environments, data modes, mutation handling); Data products
+    and glossary; and Operate it (caching, observability, settings, releases). Which topics a viewer has completed
+    is remembered for that viewer. Each topic is written to the product as it stands, so a feature that changes
+    rewrites one topic.'
+  use_case: A new analyst takes the five-minute core tour, then opens only Query it everywhere and Data products
+    and glossary from the menu.
+  related_reqs:
+  - REQ-1938
+  - REQ-1942
+  - REQ-1944
+  notes: 'Maintainer 2026-10-07: rethinking the product tour -- the deeper dives should be menu driven, 5-7 topics
+    the user can select from with cards, and Done returns you to the menu.'
