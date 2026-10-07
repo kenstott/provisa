@@ -64399,7 +64399,9 @@
   category: Encryption
   priority: MUST
   type: behavioral
-  description: Generating or rotating the local-keychain master encryption key via the admin UI (POST
+  description: (Amended 2026-10-07, maintainer -- provision only; the text below that speaks of rotating
+    a key is superseded -- a master key is generated only while none exists and is never replaced, see REQ-918.)
+    Generating or rotating the local-keychain master encryption key via the admin UI (POST
     /admin/encryption/generate-key) takes effect immediately in the running process. No restart is required.
     After the key is successfully stored in the OS keychain, the generate-key endpoint calls configure_encryption()
     directly to rebuild the process-wide EncryptionService, replacing the stale cached instance. This
@@ -75342,7 +75344,10 @@
     on restart. A fresh AES-256 master key can be provisioned into the OS keychain, or the host file keystore,
     under a key id; provisioning takes effect immediately, without a restart, by rebuilding the live encryption
     service on the same provider. The key is never returned: when no keystore can hold it, provisioning
-    refuses and the operator supplies the key out of band through PROVISA_ENCRYPTION_KEY.'
+    refuses and the operator supplies the key out of band through PROVISA_ENCRYPTION_KEY. (Amended 2026-10-07, maintainer:
+    provision only.) A key is provisioned only while none exists: once a key is present for the key id, or the deployment
+    has recorded the key its secrets are written under, provisioning is refused and the key is shown by its fingerprint.
+    No surface offers to replace a master key, because replacing it loses every secret written under it.'
   use_case: A platform administrator selects an encryption provider and provisions its master key, and
     sees whether a key is present, without the key ever being shown.
   code:
