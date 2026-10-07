@@ -25,6 +25,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { BrandMark } from "./BrandMark";
 import { CapabilityGate } from "./CapabilityGate";
+import { HIDING_RIGHTS } from "../lib/capabilities";
 import { useTour } from "../tour/useTour";
 import { RoleSelector } from "./RoleSelector";
 import { OrgSwitcher } from "./OrgSwitcher";
@@ -44,7 +45,8 @@ export function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
-  const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrgId } = useAuth();
+  const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrgId } =
+    useAuth();
   const { startTour, canResume, status: tourStatus, available: tourAvailable } = useTour();
   const { setNode: setSubnavExtraNode } = useSubnavExtraSlot();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
@@ -91,7 +93,12 @@ export function NavBar() {
   async function handleLogout() {
     // Only show upgrade modal for sandbox trial users, not for control-plane roles (platform_admin)
     const isControlPlane = capabilities?.some((cap) => cap === "cross_org");
-    console.log("[logout] activeOrgId=%s isControlPlane=%s capabilities=%o", activeOrgId, isControlPlane, capabilities);
+    console.log(
+      "[logout] activeOrgId=%s isControlPlane=%s capabilities=%o",
+      activeOrgId,
+      isControlPlane,
+      capabilities,
+    );
     if (activeOrgId === "sandbox" && !isControlPlane) {
       setShowUpgradeModal(true);
     } else {
@@ -165,7 +172,7 @@ export function NavBar() {
               {t("navBar.sources")}
             </NavLink>
           </CapabilityGate>
-          <CapabilityGate capability="table_registration">
+          <CapabilityGate capability="table_registration" anyOf={HIDING_RIGHTS}>
             <NavLink to="/tables" data-tour="nav-tables">
               {t("navBar.tables")}
             </NavLink>

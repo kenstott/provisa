@@ -23,6 +23,7 @@ export function MultiSelect({
   label,
   ariaLabel,
   placeholder,
+  disabled,
 }: {
   options: { id: string; label: string }[];
   value: string[];
@@ -31,6 +32,7 @@ export function MultiSelect({
   label?: string;
   ariaLabel?: string;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -45,7 +47,8 @@ export function MultiSelect({
       aria-label={ariaLabel ?? label ?? placeholder ?? t("multiSelect.defaultLabel")}
       placeholder={value.length === 0 ? (placeholder ?? t("multiSelect.all")) : undefined}
       searchable
-      clearable
+      clearable={!disabled}
+      disabled={disabled}
       size="sm"
       comboboxProps={{ withinPortal: true }}
       // A selection with many values (e.g. every role, in a table cell like

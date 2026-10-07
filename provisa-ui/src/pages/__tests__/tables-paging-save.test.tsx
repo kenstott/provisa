@@ -37,7 +37,8 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
   useAuth: () => ({
     role: "admin",
     selectedRoles: ["admin"],
-    capabilities: ["admin"],
+    // REQ-1944: the table editor's right -- without it the page is the governance-only view.
+    capabilities: ["admin", "table_registration"],
     domainAccess: ["*"],
   }),
 }));
@@ -277,7 +278,9 @@ describe("TablesPage — Paging (REQ-318)", () => {
     await openEditor("issues");
     await userEvent.type(await screen.findByRole("textbox", { name: "Max rows per read" }), "5000");
     expect(
-      await screen.findByText("At most 1000: a table may lower the operator's bound, never raise it."),
+      await screen.findByText(
+        "At most 1000: a table may lower the operator's bound, never raise it.",
+      ),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("table-edit-save"));
     expect(await screen.findByText("Fix the paging errors before saving.")).toBeInTheDocument();
@@ -303,7 +306,6 @@ describe("TablesPage — Paging (REQ-318)", () => {
   });
 });
 
-
 describe("TablesPage — the writes a table takes", () => {
   async function openTable(name: string): Promise<void> {
     render(<TablesPage />);
@@ -320,7 +322,9 @@ describe("TablesPage — the writes a table takes", () => {
 
   it("names only inserts for an append-only source", async () => {
     await openTable("events");
-    const label = (await screen.findByTestId("table-read-view-writable")).getAttribute("aria-label");
+    const label = (await screen.findByTestId("table-read-view-writable")).getAttribute(
+      "aria-label",
+    );
     expect(label).toContain("INSERT");
     expect(label).not.toContain("UPDATE");
   });
@@ -331,7 +335,6 @@ describe("TablesPage — the writes a table takes", () => {
     expect(screen.queryByTestId("table-read-view-writable")).toBeNull();
   });
 });
-
 
 describe("TablesPage — a table that needs a required filter", () => {
   async function openTable(name: string): Promise<void> {

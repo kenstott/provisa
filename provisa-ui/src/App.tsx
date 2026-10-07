@@ -19,6 +19,7 @@ import { NavBar } from "./components/NavBar";
 import { AdminRail } from "./components/AdminRail";
 import { NAV_GROUPS, entryItem } from "./components/navGroups";
 import { CapabilityGate } from "./components/CapabilityGate";
+import { HIDING_RIGHTS } from "./lib/capabilities";
 import { CredentialCheck } from "./components/CredentialCheck";
 import { PageLoading } from "./components/PageLoading";
 import { OnboardGate } from "./components/OnboardGate";
@@ -289,8 +290,10 @@ function App() {
                                 <Route
                                   path="/tables"
                                   element={
+                                    // REQ-1944: a holder of a hiding right reaches it too.
                                     <CapabilityGate
                                       capability="table_registration"
+                                      anyOf={HIDING_RIGHTS}
                                       fallback={<NotAuthorized />}
                                     >
                                       <TablesPage />

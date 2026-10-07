@@ -91,6 +91,8 @@ import {
 } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PageLoading } from "../components/PageLoading";
+import { useCapability } from "../hooks/useCapability";
+import { hidingDomains } from "../lib/capabilities";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -160,19 +162,29 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
   const { checkedDomains, domainsEnabled } = useDomainFilter();
+  // REQ-1944: without table_registration the page is a governance surface -- the tables of the
+  // domains the caller's hiding rights reach, editable only in how their columns are hidden.
+  const tableEditor = useCapability("table_registration");
+  const hidingOnly = !tableEditor;
+  const { selectedRoles } = useAuth();
+  const governedDomains = useMemo(
+    () => (hidingOnly ? hidingDomains(selectedRoles) : null),
+    [hidingOnly, selectedRoles],
+  );
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredTables = useMemo(
     () =>
       tables.filter((t) => {
         if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
         if (viewsOnly && !t.viewSql) return false;
+        if (governedDomains !== null && !governedDomains.has(t.domainId ?? "")) return false;
         if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
         const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
         if (terms.length === 0) return true;
         const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
         return terms.every((term) => haystack.includes(term));
       }),
-    [tables, viewsOnly, checkedDomains, tableSearch],
+    [tables, viewsOnly, checkedDomains, tableSearch, governedDomains],
   );
   const listColumns = useMemo<ListColumn<RegisteredTable>[]>(
     () => [
@@ -559,6 +571,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         setError(result.message);
         return;
       }
+      if (hidingOnly) {
+        // REQ-1944: a governance-only editor changed how columns are hidden and nothing else; the
+        // table's naming, TTLs, paging, replication and load protection are the table editor's.
+        await reload();
+        setEditingTable(null);
+        return;
+      }
       // Apply naming convention directly — skip handleNamingChange to avoid its intermediate
       // reload() call which fires refetchTables() and races with updateTable's refetchQueries.
       const _namingVal = editingTable.gqlNamingConvention ?? "";
@@ -655,7 +674,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           }
         />
         <div className="page-actions">
-          {!viewsOnly && (
+          {!viewsOnly && !hidingOnly && (
             <Button
               data-tour="tables-add"
               data-testid="tables-add-toggle"
@@ -666,17 +685,19 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               {showForm ? <X size={14} /> : translate("tablesPage.addTable")}
             </Button>
           )}
-          <Button
-            variant="default"
-            data-testid="views-add-toggle"
-            // REQ-1318: on the Views page, Add View opens the definition-mode form
-            // (SQL | Metrics toggle); elsewhere it keeps routing to the SQL editor.
-            onClick={() => (viewsOnly ? setShowViewForm(!showViewForm) : navigate("/sql"))}
-            title={translate("tablesPage.addViewTitle")}
-          >
-            {viewsOnly && showViewForm ? <X size={14} /> : translate("tablesPage.addView")}
-          </Button>
-          {!viewsOnly && (
+          {!hidingOnly && (
+            <Button
+              variant="default"
+              data-testid="views-add-toggle"
+              // REQ-1318: on the Views page, Add View opens the definition-mode form
+              // (SQL | Metrics toggle); elsewhere it keeps routing to the SQL editor.
+              onClick={() => (viewsOnly ? setShowViewForm(!showViewForm) : navigate("/sql"))}
+              title={translate("tablesPage.addViewTitle")}
+            >
+              {viewsOnly && showViewForm ? <X size={14} /> : translate("tablesPage.addView")}
+            </Button>
+          )}
+          {!viewsOnly && !hidingOnly && (
             <Button
               variant="default"
               data-testid="tables-model-toggle"
@@ -809,170 +830,171 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       )}
 
       <ListTable testId="tables-list">
-          <ListHead
-            sortGroup={sortGroup}
-            columns={[
-              { col: "source" },
-              ...(domainsEnabled ? [{ col: "domain" }] : []),
-              { col: "table" },
-              translate("tablesPage.colNaming"),
-              translate("tablesPage.colCacheTtl"),
-              translate("tablesPage.colEffectiveTtl"),
-              { col: "cols" },
-              "",
-            ]}
-          />
-          <Table.Tbody>
-            {(() => {
-              const items =
-                groupBy.length === 0
-                  ? sortGroup.items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-                  : sortGroup.items;
+        <ListHead
+          sortGroup={sortGroup}
+          columns={[
+            { col: "source" },
+            ...(domainsEnabled ? [{ col: "domain" }] : []),
+            { col: "table" },
+            translate("tablesPage.colNaming"),
+            translate("tablesPage.colCacheTtl"),
+            translate("tablesPage.colEffectiveTtl"),
+            { col: "cols" },
+            "",
+          ]}
+        />
+        <Table.Tbody>
+          {(() => {
+            const items =
+              groupBy.length === 0
+                ? sortGroup.items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+                : sortGroup.items;
 
-              if (items.length === 0) {
+            if (items.length === 0) {
+              return (
+                <ListEmpty colSpan={domainsEnabled ? 12 : 11} testId="tables-empty">
+                  {translate("tablesPage.empty")}
+                </ListEmpty>
+              );
+            }
+
+            return items.map((item) => {
+              if (item.type === "header") {
                 return (
-                  <ListEmpty colSpan={domainsEnabled ? 12 : 11} testId="tables-empty">
-                    {translate("tablesPage.empty")}
-                  </ListEmpty>
+                  <ListGroupRow
+                    key={`grp-${item.key}`}
+                    colSpan={domainsEnabled ? 9 : 8}
+                    level={item.level}
+                    label={item.label}
+                    count={item.count}
+                    collapsed={sortGroup.collapsed.has(item.key)}
+                    onToggle={() => sortGroup.toggleCollapsed(item.key)}
+                  />
                 );
               }
-
-              return items.map((item) => {
-                if (item.type === "header") {
-                  return (
-                    <ListGroupRow
-                      key={`grp-${item.key}`}
-                      colSpan={domainsEnabled ? 9 : 8}
-                      level={item.level}
-                      label={item.label}
-                      count={item.count}
-                      collapsed={sortGroup.collapsed.has(item.key)}
-                      onToggle={() => sortGroup.toggleCollapsed(item.key)}
-                    />
-                  );
-                }
-                const t = item.row;
-                const isEditing = editingTable?.id === t.id;
-                const row = (
-                  <Fragment key={t.id}>
-                    <ListRow
-                      // A stable per-table anchor (source.table) for tour steps that open one row.
-                      data-table-row={`${t.sourceId}.${t.tableName}`}
-                      onClick={() => {
-                        setExpanded(expanded === t.id ? null : t.id);
-                        if (expanded === t.id) cancelEditing();
-                      }}
+              const t = item.row;
+              const isEditing = editingTable?.id === t.id;
+              const row = (
+                <Fragment key={t.id}>
+                  <ListRow
+                    // A stable per-table anchor (source.table) for tour steps that open one row.
+                    data-table-row={`${t.sourceId}.${t.tableName}`}
+                    onClick={() => {
+                      setExpanded(expanded === t.id ? null : t.id);
+                      if (expanded === t.id) cancelEditing();
+                    }}
+                  >
+                    <Table.Td>
+                      {t.sourceId === DERIVED_SOURCE_ID ? (
+                        // A derived relation has no external source — its provenance is the
+                        // lineage of its definition, so never print the storage sentinel.
+                        <Badge
+                          size="xs"
+                          variant="light"
+                          color="gray"
+                          data-testid={`tables-derived-${t.tableName}`}
+                        >
+                          {translate("tablesPage.derived")}
+                        </Badge>
+                      ) : (
+                        t.sourceId
+                      )}
+                    </Table.Td>
+                    {domainsEnabled && (
+                      <Table.Td>{t.domainId ? normalizeDomain(t.domainId) : ""}</Table.Td>
+                    )}
+                    <Table.Td
+                      style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
+                      title={t.description || undefined}
                     >
-                      <Table.Td>
-                        {t.sourceId === DERIVED_SOURCE_ID ? (
-                          // A derived relation has no external source — its provenance is the
-                          // lineage of its definition, so never print the storage sentinel.
+                      <Group gap="0.35rem">
+                        {t.alias || t.tableName}
+                        {/* REQ-1320: star-schema role is metadata on the registration itself —
+                            the badge derives live from it, so it can never drift from the def. */}
+                        {t.modelingRole ? (
                           <Badge
                             size="xs"
                             variant="light"
-                            color="gray"
-                            data-testid={`tables-derived-${t.tableName}`}
+                            color={t.modelingRole === "fact" ? "grape" : "teal"}
+                            data-testid={`tables-modeling-role-${t.tableName}`}
                           >
-                            {translate("tablesPage.derived")}
+                            {translate(`tablesPage.modelingRole.${t.modelingRole}`)}
                           </Badge>
                         ) : (
-                          t.sourceId
-                        )}
-                      </Table.Td>
-                      {domainsEnabled && (
-                        <Table.Td>{t.domainId ? normalizeDomain(t.domainId) : ""}</Table.Td>
-                      )}
-                      <Table.Td
-                        style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
-                        title={t.description || undefined}
-                      >
-                        <Group gap="0.35rem">
-                          {t.alias || t.tableName}
-                          {/* REQ-1320: star-schema role is metadata on the registration itself —
-                            the badge derives live from it, so it can never drift from the def. */}
-                          {t.modelingRole ? (
-                            <Badge
-                              size="xs"
-                              variant="light"
-                              color={t.modelingRole === "fact" ? "grape" : "teal"}
-                              data-testid={`tables-modeling-role-${t.tableName}`}
-                            >
-                              {translate(`tablesPage.modelingRole.${t.modelingRole}`)}
-                            </Badge>
-                          ) : (
-                            <>
-                              {/* REQ-1361: no explicit star-schema role — Enable Aggregates / Enable
+                          <>
+                            {/* REQ-1361: no explicit star-schema role — Enable Aggregates / Enable
                                 Group By directly imply fact/dimension usage, so badge from those. */}
-                              {t.enableAggregates && (
-                                <Badge
-                                  size="xs"
-                                  variant="outline"
-                                  color="grape"
-                                  title={translate("tablesPage.modelingRole.impliedFactTitle")}
-                                  data-testid={`tables-implied-fact-${t.tableName}`}
-                                >
-                                  {translate("tablesPage.modelingRole.fact")}
-                                </Badge>
-                              )}
-                              {t.enableGroupBy && (
-                                <Badge
-                                  size="xs"
-                                  variant="outline"
-                                  color="teal"
-                                  title={translate("tablesPage.modelingRole.impliedDimensionTitle")}
-                                  data-testid={`tables-implied-dimension-${t.tableName}`}
-                                >
-                                  {translate("tablesPage.modelingRole.dimension")}
-                                </Badge>
-                              )}
-                            </>
-                          )}
-                          {/* REQ-1443: a checker table names the checker its contract runs under —
-                            the source's type is the one authority for that, never a table field. */}
-                          {(() => {
-                            const checker = sources.find((s) => s.id === t.sourceId)?.type;
-                            return checker === "soda" || checker === "great_expectations" ? (
+                            {t.enableAggregates && (
                               <Badge
                                 size="xs"
-                                variant="light"
-                                color="cyan"
-                                title={translate("tablesPage.checker.title")}
-                                data-testid={`tables-checker-${t.tableName}`}
+                                variant="outline"
+                                color="grape"
+                                title={translate("tablesPage.modelingRole.impliedFactTitle")}
+                                data-testid={`tables-implied-fact-${t.tableName}`}
                               >
-                                {translate(`tablesPage.checker.${checker}`)}
+                                {translate("tablesPage.modelingRole.fact")}
                               </Badge>
-                            ) : null;
-                          })()}
-                          {t.productId != null && (
+                            )}
+                            {t.enableGroupBy && (
+                              <Badge
+                                size="xs"
+                                variant="outline"
+                                color="teal"
+                                title={translate("tablesPage.modelingRole.impliedDimensionTitle")}
+                                data-testid={`tables-implied-dimension-${t.tableName}`}
+                              >
+                                {translate("tablesPage.modelingRole.dimension")}
+                              </Badge>
+                            )}
+                          </>
+                        )}
+                        {/* REQ-1443: a checker table names the checker its contract runs under —
+                            the source's type is the one authority for that, never a table field. */}
+                        {(() => {
+                          const checker = sources.find((s) => s.id === t.sourceId)?.type;
+                          return checker === "soda" || checker === "great_expectations" ? (
                             <Badge
                               size="xs"
                               variant="light"
-                              color="indigo"
-                              title={translate("tablesPage.dataProductTitle")}
-                              data-testid={`tables-data-product-${t.tableName}`}
+                              color="cyan"
+                              title={translate("tablesPage.checker.title")}
+                              data-testid={`tables-checker-${t.tableName}`}
                             >
-                              {dataProducts.find((p) => p.id === t.productId)?.name ?? t.productId}
+                              {translate(`tablesPage.checker.${checker}`)}
                             </Badge>
-                          )}
-                          <TagControl objectType="table" tableId={t.id} />
-                        </Group>
-                      </Table.Td>
-                      <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                        {NAMING_CONVENTIONS.find((nc) => nc.value === (t.gqlNamingConvention ?? ""))
-                          ?.label ??
-                          t.gqlNamingConvention ??
-                          translate("tablesPage.inheritSource")}
-                      </Table.Td>
-                      <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                        {t.cacheTtl != null ? `${t.cacheTtl}s` : translate("tablesPage.inherit")}
-                      </Table.Td>
-                      <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                        {getEffectiveTableTtl(t)}
-                      </Table.Td>
-                      <Table.Td>{t.columns.length}</Table.Td>
-                      <Table.Td onClick={(e) => e.stopPropagation()}>
-                        <Group gap="xs" wrap="nowrap">
-                          {(() => {
+                          ) : null;
+                        })()}
+                        {t.productId != null && (
+                          <Badge
+                            size="xs"
+                            variant="light"
+                            color="indigo"
+                            title={translate("tablesPage.dataProductTitle")}
+                            data-testid={`tables-data-product-${t.tableName}`}
+                          >
+                            {dataProducts.find((p) => p.id === t.productId)?.name ?? t.productId}
+                          </Badge>
+                        )}
+                        <TagControl objectType="table" tableId={t.id} />
+                      </Group>
+                    </Table.Td>
+                    <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                      {NAMING_CONVENTIONS.find((nc) => nc.value === (t.gqlNamingConvention ?? ""))
+                        ?.label ??
+                        t.gqlNamingConvention ??
+                        translate("tablesPage.inheritSource")}
+                    </Table.Td>
+                    <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                      {t.cacheTtl != null ? `${t.cacheTtl}s` : translate("tablesPage.inherit")}
+                    </Table.Td>
+                    <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                      {getEffectiveTableTtl(t)}
+                    </Table.Td>
+                    <Table.Td>{t.columns.length}</Table.Td>
+                    <Table.Td onClick={(e) => e.stopPropagation()}>
+                      <Group gap="xs" wrap="nowrap">
+                        {!hidingOnly &&
+                          (() => {
                             const srcType = sources.find((s) => s.id === t.sourceId)?.type;
                             const hasCacheable =
                               srcType === "graphql_remote" ||
@@ -1014,76 +1036,77 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               </>
                             );
                           })()}
-                        </Group>
-                      </Table.Td>
-                    </ListRow>
-                    {expanded === t.id && (
-                      <ListExpandRow colSpan={domainsEnabled ? 12 : 11}>
-                          {!isEditing ? (
-                            <TableReadView
-                              t={t}
-                              dataProducts={dataProducts}
-                              navigate={navigate}
-                              viewsOnly={viewsOnly}
-                              onEditDefinition={viewsOnly ? setEditingViewDef : undefined}
-                              deploying={deploying}
-                              setDeploying={setDeploying}
-                              deployMsg={deployMsg}
-                              setDeployMsg={setDeployMsg}
-                              tableProfiles={tableProfiles}
-                              deployViewToDb={deployViewToDb}
-                              reload={reload}
-                              startEditing={startEditing}
-                              handleDelete={handleDelete}
-                              handleProfile={handleProfile}
-                              onPreview={setPreviewTable}
-                              profileColumnsTable={
-                                // REQ-1934: this table's profile, if its columns table is registered.
-                                tables.find(
-                                  (tb) =>
-                                    tb.tableName === `${t.tableName}_profile_columns` &&
-                                    sources.find((s) => s.id === tb.sourceId)?.type ===
-                                      "data_profiler",
-                                ) ?? null
-                              }
-                            />
-                          ) : (
-                            editingTable && (
-                              <TableEditForm
-                                editingTable={editingTable}
-                                setEditingTable={setEditingTable}
-                                savedProfilerId={
-                                  tables.find((tb) => tb.id === editingTable.id)
-                                    ?.profilerSourceId ?? null
-                                }
-                                editingColumnTypes={editingColumnTypes}
-                                cacheTtlEdits={cacheTtlEdits}
-                                setCacheTtlEdits={setCacheTtlEdits}
-                                sources={sources}
-                                roles={roles}
-                                dataProducts={dataProducts}
-                                settings={settings}
-                                saving={saving}
-                                generatingDesc={generatingDesc}
-                                setGeneratingDesc={setGeneratingDesc}
-                                generatingColDesc={generatingColDesc}
-                                setGeneratingColDesc={setGeneratingColDesc}
-                                generateTableDescription={generateTableDescription}
-                                generateColumnDescription={generateColumnDescription}
-                                cancelEditing={cancelEditing}
-                                handleSaveEdit={handleSaveEdit}
-                                updateEditCol={updateEditCol}
-                              />
-                            )
-                          )}
-                      </ListExpandRow>
-                    )}
-                  </Fragment>
-                );
-                return row;
-              });
-            })()}
-          </Table.Tbody>
+                      </Group>
+                    </Table.Td>
+                  </ListRow>
+                  {expanded === t.id && (
+                    <ListExpandRow colSpan={domainsEnabled ? 12 : 11}>
+                      {!isEditing ? (
+                        <TableReadView
+                          t={t}
+                          hidingOnly={hidingOnly}
+                          dataProducts={dataProducts}
+                          navigate={navigate}
+                          viewsOnly={viewsOnly}
+                          onEditDefinition={viewsOnly ? setEditingViewDef : undefined}
+                          deploying={deploying}
+                          setDeploying={setDeploying}
+                          deployMsg={deployMsg}
+                          setDeployMsg={setDeployMsg}
+                          tableProfiles={tableProfiles}
+                          deployViewToDb={deployViewToDb}
+                          reload={reload}
+                          startEditing={startEditing}
+                          handleDelete={handleDelete}
+                          handleProfile={handleProfile}
+                          onPreview={setPreviewTable}
+                          profileColumnsTable={
+                            // REQ-1934: this table's profile, if its columns table is registered.
+                            tables.find(
+                              (tb) =>
+                                tb.tableName === `${t.tableName}_profile_columns` &&
+                                sources.find((s) => s.id === tb.sourceId)?.type === "data_profiler",
+                            ) ?? null
+                          }
+                        />
+                      ) : (
+                        editingTable && (
+                          <TableEditForm
+                            hidingOnly={hidingOnly}
+                            editingTable={editingTable}
+                            setEditingTable={setEditingTable}
+                            savedProfilerId={
+                              tables.find((tb) => tb.id === editingTable.id)?.profilerSourceId ??
+                              null
+                            }
+                            editingColumnTypes={editingColumnTypes}
+                            cacheTtlEdits={cacheTtlEdits}
+                            setCacheTtlEdits={setCacheTtlEdits}
+                            sources={sources}
+                            roles={roles}
+                            dataProducts={dataProducts}
+                            settings={settings}
+                            saving={saving}
+                            generatingDesc={generatingDesc}
+                            setGeneratingDesc={setGeneratingDesc}
+                            generatingColDesc={generatingColDesc}
+                            setGeneratingColDesc={setGeneratingColDesc}
+                            generateTableDescription={generateTableDescription}
+                            generateColumnDescription={generateColumnDescription}
+                            cancelEditing={cancelEditing}
+                            handleSaveEdit={handleSaveEdit}
+                            updateEditCol={updateEditCol}
+                          />
+                        )
+                      )}
+                    </ListExpandRow>
+                  )}
+                </Fragment>
+              );
+              return row;
+            });
+          })()}
+        </Table.Tbody>
       </ListTable>
 
       {(() => {

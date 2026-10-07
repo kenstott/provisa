@@ -11,16 +11,7 @@
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { Trash2, Pencil } from "lucide-react";
-import {
-  ActionIcon,
-  Badge,
-  Box,
-  Button,
-  Group,
-  Table,
-  Text,
-  Tooltip,
-} from "@mantine/core";
+import { ActionIcon, Badge, Box, Button, Group, Table, Text, Tooltip } from "@mantine/core";
 import type { NavigateFunction } from "react-router-dom";
 import { requiredParamColumns } from "../../components/nativeParams";
 import type { RegisteredTable, DataProduct } from "../../types/admin";
@@ -53,6 +44,8 @@ interface TableReadViewProps {
   startEditing: (t: RegisteredTable) => void;
   handleDelete: (id: number) => void;
   handleProfile: (id: number) => void;
+  /** REQ-1944: a governance-only viewer: no registration, deploy, profiling or delete. */
+  hidingOnly?: boolean;
   // REQ-1386: opens the governed SELECT * preview modal.
   onPreview: (t: RegisteredTable) => void;
   // REQ-1318: opens the Views-page definition-mode editor (SQL | Metrics toggle).
@@ -76,6 +69,7 @@ export function TableReadView({
   startEditing,
   handleDelete,
   handleProfile,
+  hidingOnly = false,
   onPreview,
   onEditDefinition,
   profileColumnsTable,
@@ -295,7 +289,7 @@ export function TableReadView({
             {viewsOnly ? t("tableReadView.editSqlButton") : t("tableReadView.openInExplorerButton")}
           </Button>
         )}
-        {table.viewSql && onEditDefinition && (
+        {table.viewSql && onEditDefinition && !hidingOnly && (
           <Button
             size="compact-sm"
             variant="default"
@@ -309,7 +303,7 @@ export function TableReadView({
             {t("tableReadView.editDefinitionButton")}
           </Button>
         )}
-        {table.canDeployToDb && (
+        {table.canDeployToDb && !hidingOnly && (
           <Button
             size="compact-sm"
             variant="default"
@@ -349,7 +343,7 @@ export function TableReadView({
             {t("tableReadView.previewButton")}
           </Button>
         )}
-        {!needsFilter && (
+        {!needsFilter && !hidingOnly && (
           <Button
             size="compact-sm"
             variant="default"
@@ -391,18 +385,20 @@ export function TableReadView({
         >
           <Pencil size={14} />
         </ActionIcon>
-        <ActionIcon
-          variant="subtle"
-          color="red"
-          aria-label={t("tableReadView.deleteButtonLabel", { name: table.tableName })}
-          data-testid="table-read-view-delete"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleDelete(table.id);
-          }}
-        >
-          <Trash2 size={14} />
-        </ActionIcon>
+        {!hidingOnly && (
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            aria-label={t("tableReadView.deleteButtonLabel", { name: table.tableName })}
+            data-testid="table-read-view-delete"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDelete(table.id);
+            }}
+          >
+            <Trash2 size={14} />
+          </ActionIcon>
+        )}
       </Group>
       {deployMsg[table.id] && (
         <Box

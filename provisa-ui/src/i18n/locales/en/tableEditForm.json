@@ -1,5 +1,6 @@
 {
   "tableEditForm": {
+    "hidingOnlyNote": "You can change how this table's columns are hidden: who sees each column, its masks, and the fakes and synthetic rules of its sensitive columns. Registering, renaming and the table's other settings need the Table registration right.",
     "sqlAliasLabel": "SQL Alias",
     "sqlAliasHelp": "The GraphQL/Cypher field name exposed in the API. Defaults to the table name. Changing this renames the entity across all queries and SDL docs.",
     "sqlAliasPlaceholder": "Semantic name override",
