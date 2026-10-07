@@ -4718,6 +4718,8 @@
     composed with allOf is read as one set of properties, so its columns are those of every member.
     A schema that refers to itself is read as far as a table's columns and an object column's
     fields need.
+    (Amended 2026-10-07, A GET THAT ANSWERS NO ROWS) A GET whose response declares no schema, or
+    whose declared answer is a file, is offered as a command and not as a table (REQ-1924).
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/
@@ -71963,6 +71965,15 @@
     asked for after the call, with the reason "write" (REQ-1915); readers keep the old replica
     until the new one swaps in. A table replicated row by row, or one with a parameter column,
     has no whole replica to rebuild. The same follows any write to a table made through Provisa.
+    (Amended 2026-10-07, A GET THAT ANSWERS NO ROWS) An OpenAPI source also offers as a command each
+    GET whose response declares no schema -- a diff, a log, an untyped document. Such an operation
+    is not offered as a table, since a table's columns are read from the response schema (REQ-316).
+    It reads, so it is registered as a query and none of what holds for a write holds for it -- it
+    needs no write right and may be composed in a statement or a view. Its answer is passed back as
+    the remote gave it. An operation whose declared answer is a file (application/octet-stream) is
+    offered the same way and answers one row with one bytea column named result; every surface
+    carries that value as it carries any bytea. The steward registers the ones wanted, as for any
+    command.
   use_case: GitHub offers 267 mutations and a team wants three of them. Registering all of them as
     commands when the source is added would put 264 unwanted commands in the model, each needing a
     domain and a grant; registering them one at a time keeps the model to what the team chose.

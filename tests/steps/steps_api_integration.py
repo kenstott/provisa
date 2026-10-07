@@ -1318,6 +1318,15 @@ def registration_request_with_spec_content(shared_data):
         "      responses:\n"
         "        '200':\n"
         "          description: ok\n"
+        "          content:\n"
+        "            application/json:\n"
+        "              schema:\n"
+        "                type: array\n"
+        "                items:\n"
+        "                  type: object\n"
+        "                  properties:\n"
+        "                    id:\n"
+        "                      type: integer\n"
     )
     req = OpenAPIRegisterRequest(source_id="inline-src", spec_content=yaml_spec)
     shared_data["register_request"] = req

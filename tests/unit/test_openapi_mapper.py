@@ -13,6 +13,19 @@
 from provisa.openapi.mapper import parse_spec, OpenAPIQuery, OpenAPIMutation
 
 
+# A response that declares the rows it answers with.
+_ROWS = {
+    "200": {
+        "description": "ok",
+        "content": {
+            "application/json": {
+                "schema": {"type": "object", "properties": {"id": {"type": "integer"}}}
+            }
+        },
+    }
+}
+
+
 def _spec(paths: dict) -> dict:
     return {
         "openapi": "3.0.0",
@@ -29,7 +42,7 @@ def test_get_operation_produces_query():
                     "operationId": "listUsers",
                     "summary": "List users",
                     "parameters": [],
-                    "responses": {"200": {"description": "ok"}},
+                    "responses": _ROWS,
                 }
             }
         }
@@ -51,7 +64,7 @@ def test_post_operation_produces_mutation():
             "/users": {
                 "post": {
                     "operationId": "createUser",
-                    "responses": {"200": {"description": "ok"}},
+                    "responses": _ROWS,
                 }
             }
         }
@@ -79,7 +92,7 @@ def test_path_params_extracted():
                             "schema": {"type": "string"},
                         },
                     ],
-                    "responses": {"200": {"description": "ok"}},
+                    "responses": _ROWS,
                 }
             }
         }
@@ -101,7 +114,7 @@ def test_query_params_extracted():
                         {"name": "limit", "in": "query", "schema": {"type": "integer"}},
                         {"name": "offset", "in": "query", "schema": {"type": "integer"}},
                     ],
-                    "responses": {"200": {"description": "ok"}},
+                    "responses": _ROWS,
                 }
             }
         }
@@ -186,7 +199,7 @@ def test_operation_id_absent_slugified():
         {
             "/my-resource/{id}/details": {
                 "get": {
-                    "responses": {"200": {"description": "ok"}},
+                    "responses": _ROWS,
                 }
             }
         }
@@ -202,7 +215,7 @@ def test_operation_id_present_used():
             "/foo": {
                 "get": {
                     "operationId": "myOp",
-                    "responses": {"200": {"description": "ok"}},
+                    "responses": _ROWS,
                 }
             }
         }
@@ -276,7 +289,7 @@ def test_mutation_with_request_body_schema():
                             }
                         }
                     },
-                    "responses": {"200": {"description": "ok"}},
+                    "responses": _ROWS,
                 }
             }
         },
@@ -359,3 +372,65 @@ def test_a_schema_that_refers_to_itself_is_read():
 def test_a_referenced_parameter_is_read():
     (query,), _ = parse_spec(_COMPOSED)
     assert query.path_params == [{"name": "slug", "type": "string"}]
+
+
+# -- a GET that declares no rows, and an operation that answers with a file (REQ-1924) ------------
+
+
+def _get(operation: dict) -> dict:
+    return _spec({"/repo/diff": {"get": {"operationId": "getDiff", **operation}}})
+
+
+def test_a_get_that_declares_no_response_schema_is_a_command_that_reads():
+    queries, (command,) = parse_spec(_get({"responses": {"200": {"description": "the diff"}}}))
+    assert queries == []
+    assert (command.operation_id, command.method, command.reads) == ("getDiff", "GET", True)
+    assert command.binary is False
+
+
+def test_a_get_the_spec_marks_a_mutation_does_not_read():
+    _, (command,) = parse_spec(
+        _get({"x-provisa-kind": "mutation", "responses": {"200": {"description": "ok"}}})
+    )
+    assert command.reads is False
+
+
+def test_a_get_marked_a_query_is_a_table_whatever_it_declares():
+    (query,), commands = parse_spec(
+        _get({"x-provisa-kind": "query", "responses": {"200": {"description": "ok"}}})
+    )
+    assert (query.operation_id, commands) == ("getDiff", [])
+
+
+def test_an_operation_that_answers_with_a_file_is_a_command_that_answers_binary():
+    declared = {
+        "200": {
+            "description": "the file",
+            "content": {"application/octet-stream": {"schema": {"type": "string"}}},
+        }
+    }
+    queries, (command,) = parse_spec(_get({"responses": declared}))
+    assert queries == []
+    assert (command.reads, command.binary) == (True, True)
+
+
+def test_swagger_2_declares_a_file_by_what_the_operation_produces():
+    spec = {
+        "swagger": "2.0",
+        "info": {"title": "Test", "version": "1.0.0"},
+        "produces": ["application/json"],
+        "paths": {
+            "/downloads": {
+                "get": {
+                    "operationId": "getDownload",
+                    "produces": ["application/octet-stream"],
+                    "responses": {"200": {"description": "the file"}},
+                }
+            },
+            "/log": {
+                "get": {"operationId": "getLog", "responses": {"200": {"description": "text"}}}
+            },
+        },
+    }
+    _, commands = parse_spec(spec)
+    assert {c.operation_id: c.binary for c in commands} == {"getDownload": True, "getLog": False}

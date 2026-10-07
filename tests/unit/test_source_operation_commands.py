@@ -713,3 +713,91 @@ def test_a_view_or_mv_definition_that_calls_a_write_operation_is_refused():
 
 def test_with_no_write_operation_registered_a_definition_is_not_this_checks_to_read():
     ops.refuse_writes_in_definition("SELECT FROM WHERE (", {"enrich": {"impl_kind": "http"}}, "v")
+
+
+# --- an OpenAPI GET that answers no rows: a command that reads (REQ-1924) -------------------------
+
+READS_SPEC = {
+    "swagger": "2.0",
+    "info": {"title": "shop", "version": "1"},
+    "paths": {
+        "/orders/{order_id}/diff": {
+            "get": {"operationId": "getDiff", "responses": {"200": {"description": "text"}}}
+        },
+        "/orders/{order_id}/invoice": {
+            "get": {
+                "operationId": "getInvoice",
+                "produces": ["application/octet-stream"],
+                "responses": {"200": {"description": "the file"}},
+            }
+        },
+    },
+}
+
+
+@pytest.fixture
+def reads(state) -> SimpleNamespace:
+    state.openapi_specs["shop"]["spec"] = READS_SPEC
+    return state
+
+
+async def test_an_openapi_source_offers_its_gets_that_answer_no_rows(reads):
+    offered = {op.name: op for op in await ops.offered_operations(reads, "shop") or []}
+    assert {n: (op.reads, op.binary) for n, op in offered.items()} == {
+        "getDiff": (True, False),
+        "getInvoice": (True, True),
+    }
+    assert offered["getDiff"].arguments == ("order_id",)
+
+
+async def test_registering_a_get_makes_a_query_and_a_file_answers_bytea(reads):
+    from provisa.api.admin.actions_router import _as_source_operation
+
+    diff = _form(sourceId="shop", functionName="getDiff", kind="mutation")
+    await _as_source_operation(diff)
+    assert (diff.implKind, diff.kind, diff.outputColumns) == ("source_operation", "query", None)
+
+    invoice = _form(sourceId="shop", functionName="getInvoice")
+    await _as_source_operation(invoice)
+    assert invoice.kind == "query"
+    assert invoice.outputColumns == [{"name": "result", "type": "bytea"}]
+
+
+@respx.mock
+async def test_a_get_that_answers_text_is_one_row_holding_it(reads):
+    respx.get(f"{SHOP}/orders/42/diff").mock(return_value=httpx.Response(200, text="- a\n+ b\n"))
+    rows = await ops.call_operation(reads, "shop", "getDiff", {"order_id": 42})
+    assert rows == [{"result": "- a\n+ b\n"}]
+
+
+@respx.mock
+async def test_a_file_is_one_row_holding_it_as_a_bytea(reads):
+    from provisa.api.json_response import dumps
+    from provisa.executor.function_dispatch import _schema_from_columns, _validate_against
+
+    blob = bytes(range(256))  # not text in any encoding
+    respx.get(f"{SHOP}/orders/42/invoice").mock(return_value=httpx.Response(200, content=blob))
+    rows = await ops.call_operation(reads, "shop", "getInvoice", {"order_id": 42})
+    assert bytes.fromhex(rows[0]["result"].removeprefix("\\x")) == blob
+    # It meets the command's declared output and is carried in a JSON answer.
+    assert _validate_against(rows, _schema_from_columns(ops.BINARY_ANSWER), where="t") == rows
+    assert json.loads(dumps(rows)) == rows
+
+
+def test_a_file_is_a_bytea_column_in_sql():
+    from provisa.executor.command_localize import _output_spec, _values_source
+
+    command = {"name": "get_invoice", "output_columns": list(ops.BINARY_ANSWER)}
+    rows = [{"result": "\\x0001ff"}]
+    columns, types = _output_spec(command, rows)
+    relation = _values_source(rows, "c", columns, types, "postgres").sql(dialect="postgres")
+    assert "AS BYTEA" in relation.upper()
+
+
+def test_a_command_that_reads_is_composed_like_any_query():
+    from provisa.pgwire._pipeline import _refuse_composed_mutators
+
+    commands = {"get_diff": _command(name="get_diff", function_name="getDiff", kind="query")}
+    sql = "SELECT o.id FROM orders o JOIN get_diff('{}') d ON true"
+    _refuse_composed_mutators(sqlglot.parse_one(sql, dialect="postgres"), commands)
+    ops.refuse_writes_in_definition(sql, commands, "view 'v'")

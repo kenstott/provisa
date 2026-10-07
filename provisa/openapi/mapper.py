@@ -49,6 +49,11 @@ class OpenAPIMutation:  # REQ-317
     summary: str | None = None
     input_schema: dict | None = None  # JSON Schema of requestBody
     response_schema: dict | None = None
+    # REQ-1924: a GET whose response declares no row schema. It changes nothing in the remote
+    # system; it is a command because what it answers is not rows a table could hold.
+    reads: bool = False
+    # Its answer is a file (``application/octet-stream``): one binary value, not rows or text.
+    binary: bool = False
 
 
 # What an undeclared section of a spec reads as.
@@ -98,6 +103,26 @@ def _success_response(operation: SchemaPath) -> SchemaPath | None:
     if responses is None:
         return None
     return next((responses / code for code in ("200", "2xx", "default") if code in responses), None)
+
+
+# A response of this media type is a file: one binary value, not rows or text.
+_BINARY_MEDIA = "application/octet-stream"
+
+
+def _answers_binary(root: SchemaPath, operation: SchemaPath) -> bool:
+    """Whether every media type the operation declares for its answer is binary: the keys of
+    the success response's ``content`` (OpenAPI 3.x), or the operation's ``produces``, else the
+    spec's (Swagger 2.0)."""
+    response = _success_response(operation)
+    content = None if response is None else _at(response, "content")
+    if content is not None:
+        media = list(content.str_keys())
+    else:
+        produces = _at(operation, "produces")
+        if produces is None:
+            produces = _at(root, "produces")
+        media = [] if produces is None else list(produces.read_value())
+    return bool(media) and all(m == _BINARY_MEDIA for m in media)
 
 
 def _extract_response_schema(operation: SchemaPath) -> tuple[dict | None, bool]:
@@ -240,20 +265,22 @@ def _map_operations(
             if operation is None:
                 continue
             raw = operation.read_value()
+            binary = _answers_binary(root, operation)
             path_params, query_params = _extract_params(_parameters(path_item, operation))
             op_id = _operation_id(raw, method, path)
             summary = raw.get("summary") or raw.get("description")
             response_schema, is_list = _extract_response_schema(operation)
 
-            # Payload override > x-provisa-kind > GET heuristic
+            # Payload override > x-provisa-kind > a GET that declares the rows it answers with
             explicit_kind = (
                 overrides.get(op_id, "").lower() or (raw.get("x-provisa-kind") or "").lower()
             )
             response_is_scalar = (
                 isinstance(response_schema, dict) and response_schema.get("type") in _SCALAR_TYPES
             )
-            is_query = not response_is_scalar and (
-                explicit_kind == "query" or (method == "get" and explicit_kind != "mutation")
+            reads = method == "get" and explicit_kind != "mutation"
+            is_query = not (response_is_scalar or binary) and (
+                explicit_kind == "query" or (reads and response_schema is not None)
             )
 
             if is_query:
@@ -279,6 +306,8 @@ def _map_operations(
                         summary=summary,
                         input_schema=_extract_request_schema(operation),
                         response_schema=response_schema,
+                        reads=reads,
+                        binary=binary,
                     )
                 )
 

@@ -8,13 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A source's write operation, registered as a command and called through it (REQ-1924).
+"""A source's operation, registered as a command and called through it (REQ-1924).
 
 A remote source -- OpenAPI, remote GraphQL, gRPC -- offers write operations: an OpenAPI
 operation that is not a GET, a field of a GraphQL schema's mutation root, a gRPC method
 classified as a mutation. One the steward registers is a command of kind ``source_operation``,
 named by the source and the operation. It is a mutator: it creates, changes or deletes something
 in the remote system.
+
+An OpenAPI source also offers each GET whose response declares no row schema -- a diff, a log,
+an untyped document, a file. It is a command because what it answers is not rows a table could
+hold; it reads, so it is registered as a query and none of what holds for a write holds for it.
+An operation that answers with a file (``application/octet-stream``) answers one binary value.
 
 A call is passed through as is. Provisa does not shape, type or check the input: each argument
 the caller gives goes to the remote unchanged, with the source's credential, and the remote's
@@ -37,6 +42,7 @@ from typing import Any
 import httpx
 
 from provisa.api.errors import ApiError
+from provisa.core.ir_types import bytea_hex
 
 # The schema name a source's operations are registered under, per source type.
 OPERATION_SCHEMA = {"openapi": "openapi", "graphql_remote": "graphql", "grpc_remote": "grpc_remote"}
@@ -54,12 +60,19 @@ _HTTP_SERVER_ERROR = 500
 
 @dataclass(frozen=True)
 class Operation:
-    """One write operation a source offers: its name, a line saying what it is, and the
-    arguments a call passes through to it."""
+    """One operation a source offers as a command: its name, a line saying what it is, the
+    arguments a call passes through to it, whether it only reads, and whether it answers with a
+    file."""
 
     name: str
     comment: str | None
     arguments: tuple[str, ...]
+    reads: bool = False
+    binary: bool = False
+
+
+# What a command that answers with a file returns: one row holding the file, a bytea.
+BINARY_ANSWER = ({"name": "result", "type": "bytea"},)
 
 
 def _source_type(state, source_id: str) -> str:
@@ -84,6 +97,8 @@ def _openapi_operations(state, source_id: str) -> list[Operation] | None:
                 *_PATH_PARAM.findall(m.path),
                 *((BODY_ARGUMENT,) if m.input_schema is not None else ()),
             ),
+            reads=m.reads,
+            binary=m.binary,
         )
         for m in mutations
     ]
@@ -229,10 +244,13 @@ async def _call_openapi(state, source_id: str, operation: str, args: dict) -> li
             json=body,
             headers=headers,
         )
-    answer = _answer(resp)
     if resp.is_error:
-        raise _refused(source_id, operation, resp.status_code, answer)
-    return _rows(answer)
+        raise _refused(source_id, operation, resp.status_code, _answer(resp))
+    if mutation.binary:
+        # A command's rows hold a bytea in its canonical text form, as a source procedure's do
+        # (function_dispatch); each surface carries it from there as it carries any bytea.
+        return [{BINARY_ANSWER[0]["name"]: bytea_hex(resp.content)}]
+    return _rows(_answer(resp))
 
 
 def _type_ref(type_ref: dict) -> str:
@@ -348,6 +366,16 @@ def written_table(state, source_id: str, schema_table: str) -> dict | None:
     )
 
 
+def _writes(command: dict) -> bool:
+    """Whether ``command`` is a source's write operation (one registered as a query reads)."""
+    from provisa.security.mutation_authz import MutationKind, classify_kind
+
+    return (
+        command.get("impl_kind") == "source_operation"
+        and classify_kind(command.get("kind")) is MutationKind.WRITE
+    )
+
+
 def writes_called_in(tree, commands: dict) -> list[str]:
     """The source write operations a parsed statement calls, in any position -- a relation in
     FROM, a value in a projection, an argument -- by command name (REQ-1924)."""
@@ -357,7 +385,7 @@ def writes_called_in(tree, commands: dict) -> list[str]:
         {
             node.name
             for node in tree.find_all(exp.Anonymous)
-            if (commands.get(node.name) or {}).get("impl_kind") == "source_operation"
+            if _writes(commands.get(node.name) or {})
         }
     )
 
@@ -368,7 +396,7 @@ def refuse_writes_in_definition(sql: str, commands: dict, what: str) -> None:
     import sqlglot
     import sqlglot.errors
 
-    if not any(c.get("impl_kind") == "source_operation" for c in commands.values()):
+    if not any(_writes(c) for c in commands.values()):
         return  # no write operation is registered, so there is none a definition could call
     try:
         tree = sqlglot.parse_one(sql, read="postgres")
