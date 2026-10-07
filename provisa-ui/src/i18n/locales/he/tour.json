@@ -22,8 +22,8 @@
         "description": "🧭 המצפן הזה פותח את הסיור מחדש בכל עת. אפשר לעזוב מתי שרוצים — לחצו על האפליקציה או הקישו <kbd>Esc</kbd>.<p><strong>Provisa</strong> היא שכבה סמנטית פעילה לנתונים שלכם, שנשארת מחוץ לנתיב הנתונים.</p><p>🎯 <strong>כל הליבה היא תרגיל קצר אחד:</strong> חברו כמה מסדי נתונים, ואז שאלו אותם ב<strong>שבע דרכים</strong> — או דלגו על התחביר ופשוט שאלו בשפה חופשית. כחמש דקות, <strong>ישר משולחן העבודה</strong>: בלי שרתים, בלי תשתית להקים (זה יגיע אחר כך, כשתהיו מוכנים).</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>כל מה <em>שאחרי</em> זה — עוד מקורות, פדרציה, קבצים, קשרים, תצוגות, Pipelines מתוזמנים — הוא הדרך שבה אתם <strong>גדלים</strong> עם הפלטפורמה, לא מה שצריך ביום הראשון. נסמן היכן הליבה מסתיימת.</p><p>מוכנים? בואו נחבר מקור. →</p>"
       },
       "stepPolly": {
-        "title": "הכירו את Polly, עוזרת ההגדרה שלכם",
-        "description": "<p>💬 <strong>Polly</strong> מגדירה את Provisa בשפה פשוטה — הרבה יותר קל מלקרוא את התיעוד.</p><p><em>„רשום את ה-Postgres שלי“ · „הדמה את עמודת האימייל בטבלה customers“ · „צור סביבת QA על נתונים סינתטיים“ · „מי יכול לראות משכורות?“</em></p><p>Polly פועלת דרך <strong>אותם ממשקי API מבוקרים ואותן הרשאות של הממשק</strong>, ולכן היא יכולה לעשות רק את מה שאתם יכולים. לחצו על כפתור הצ'אט כדי לפתוח אותה בכל עת.</p>"
+        "title": "הכירו את Polly, עזר ההגדרה שלכם",
+        "description": "<p>💬 <strong>Polly</strong> מגדיר את Provisa בשפה פשוטה — הרבה יותר קל מלקרוא את התיעוד.</p><p><em>„רשום את ה-Postgres שלי“ · „הדמה את עמודת האימייל בטבלה customers“ · „צור סביבת QA על נתונים סינתטיים“ · „מי יכול לראות משכורות?“</em></p><p>Polly פועל דרך <strong>אותם ממשקי API מבוקרים ואותן הרשאות של הממשק</strong>, ולכן הוא יכול לעשות רק את מה שאתם יכולים. לחצו על כפתור הצ'אט כדי לפתוח את Polly בכל עת.</p>"
       },
       "step1": {
         "title": "מתחילים ממקורות",

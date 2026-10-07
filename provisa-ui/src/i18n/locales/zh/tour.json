@@ -23,7 +23,7 @@
       },
       "stepPolly": {
         "title": "认识 Polly,你的设置助手",
-        "description": "<p>💬 <strong>Polly</strong> 用自然语言来设置 Provisa——比阅读文档轻松得多。</p><p><em>“注册我的 Postgres” · “把 customers 表的邮箱列伪造成假数据” · “用合成数据创建一个 QA 环境” · “谁能看到薪资?”</em></p><p>Polly 通过<strong>与界面相同的受管 API 和权限</strong>工作,因此只能做你能做的事。点击聊天按钮即可随时打开她。</p>"
+        "description": "<p>💬 <strong>Polly</strong> 用自然语言来设置 Provisa——比阅读文档轻松得多。</p><p><em>“注册我的 Postgres” · “把 customers 表的邮箱列伪造成假数据” · “用合成数据创建一个 QA 环境” · “谁能看到薪资?”</em></p><p>Polly 通过<strong>与界面相同的受管 API 和权限</strong>工作,因此只能做你能做的事。点击聊天按钮即可随时打开 Polly。</p>"
       },
       "step1": {
         "title": "从数据源开始",

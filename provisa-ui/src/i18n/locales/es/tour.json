@@ -23,7 +23,7 @@
       },
       "stepPolly": {
         "title": "Conozca a Polly, su asistente de configuración",
-        "description": "<p>💬 <strong>Polly</strong> configura Provisa en lenguaje natural: mucho más fácil que leer la documentación.</p><p><em>«registra mi Postgres» · «simula la columna de correo de la tabla customers» · «crea un entorno de QA con datos sintéticos» · «¿quién puede ver los salarios?»</em></p><p>Polly trabaja con las <strong>mismas API gobernadas y los mismos permisos que la interfaz</strong>, así que solo puede hacer lo que usted puede. Pulse el botón de chat para abrirla cuando quiera.</p>"
+        "description": "<p>💬 <strong>Polly</strong> configura Provisa en lenguaje natural: mucho más fácil que leer la documentación.</p><p><em>«registra mi Postgres» · «simula la columna de correo de la tabla customers» · «crea un entorno de QA con datos sintéticos» · «¿quién puede ver los salarios?»</em></p><p>Polly trabaja con las <strong>mismas API gobernadas y los mismos permisos que la interfaz</strong>, así que solo puede hacer lo que usted puede. Pulse el botón de chat para abrir a Polly cuando quiera.</p>"
       },
       "step1": {
         "title": "Empieza por Orígenes",
