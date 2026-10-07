@@ -86,9 +86,17 @@ An API source's mutations are opaque: Provisa cannot know what they change. Unde
 
 ### Test (synthetic): generating the whole model
 
-A Test (synthetic) environment generates its whole model, because implicit relationships make generating part of it unsafe. Every table that is not backed by an API is generated, each from a profile run in the parent or from a declared profile. The environment's synthetic plan lists every table with its profiles: the parent's runs, measured or declared, and the profiles declared in the environment itself. The parent's latest measured run is selected, or the latest declared profile where the table has no measured run. Generate is refused until every such table has one, and while any column has no profile fact, fake or synthetic rule, naming each such column.
+A Test (synthetic) environment generates its whole model, because implicit relationships make generating part of it unsafe. Every table is generated, each from a profile run in the parent or from a declared profile. The environment's synthetic plan lists every table with its profiles: the parent's runs, measured or declared, and the profiles declared in the environment itself. The parent's latest measured run is selected, or the latest declared profile where the table has no measured run. Generate is refused until every such table has one, and while any column has no profile fact, fake or synthetic rule, naming each such column.
 
-An API-backed table is never generated: Provisa cannot repoint an API it does not own. The plan lists each with its key columns, the rule its keys take on the synthetic side and the address the environment calls, and says what a lookup returns: the real record for a key drawn from real values, nothing for a key generated fresh.
+A synthetic environment calls no source API:
+
+- An API table that can be read in full is generated like any table.
+- An API table that needs a required parameter (an OpenAPI path parameter, a remote GraphQL field's required argument, a remote gRPC method's input) has no full set of rows to measure. It is generated only from a declared profile. Without one it is not available in the environment: a read of it is refused, saying why and that declaring a profile generates it. Such a table does not hold Generate back.
+- The commands backed by a generated API source are not defined in the environment. A call to one is refused, saying why.
+
+A developer can restore them by hand, for example by standing up their own instance of the API that reads the synthetic tables and editing the source on the Sources page to point at it.
+
+Generating takes two steps. **Generate** (`POST /admin/orgs/{org}/environments/{env}/synthetic`) generates nothing. It answers the Limitations of Synthetic Data warning: the limitations above, each table to be generated with its profile, scale and estimated rows, each source whose tables are generated, each table that will not be available and why, each command that will not be defined, grouped by its source, and the kept mutations that generating discards. The warning carries a digest. **Confirm** (`POST .../synthetic/confirm`) takes the same choices and that digest, and starts the generation. If the model or its profiles changed after the warning was shown, the confirmation is refused with the warning as it now stands.
 
 Generation runs in the background. The environment shows Generating, then Ready, or Failed with the reason. Until it finishes, its tables read what they read before. Switching the environment out of Test (synthetic) drops the generated rows, and its tables read their sources again.
 

@@ -221,6 +221,15 @@ class OrgRuntime:
     # path, which must not walk it again per statement.
     source_binding_env: dict[str, str] = field(default_factory=dict)
 
+    # The commands of this environment's model, by the names every surface calls them by
+    # (app_loaders._load_tracked_functions_and_webhooks). Each environment holds its own model,
+    # so its own commands: a Test (synthetic) environment defines fewer than its parent.
+    tracked_functions: dict[str, dict] = field(default_factory=dict)
+    tracked_webhooks: dict[str, dict] = field(default_factory=dict)
+    # REQ-1942: command name -> why it is not defined here: a command of a generated API source
+    # in a Test (synthetic) environment. A call to one is refused saying so.
+    undefined_commands: dict[str, str] = field(default_factory=dict)
+
     # Raw-SQL governance inputs (published once per org at schema-load time).
     tables: list[dict] = field(default_factory=list)
     # REQ-1912: the tables served from a replica on the bound engine, by the name a lowered

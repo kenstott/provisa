@@ -253,7 +253,11 @@ def refuse_copied_sensitive(tables: list[DatasetTable]) -> None:
     """In a Test (synthetic) environment, refuse a sensitive column whose rule copies real values
     into the generated rows, naming every one (REQ-1943)."""
     copying = sorted(
-        f"{t.name}.{c}" for t in tables for c in t.pii if copies_real_values(t.fakes[c])
+        f"{t.name}.{c}"
+        for t in tables
+        for c in t.pii
+        # One declaring neither is refused by name where the tables are planned (check_pii).
+        if c in t.fakes and copies_real_values(t.fakes[c])
     )
     if copying:
         raise DatasetRefused(

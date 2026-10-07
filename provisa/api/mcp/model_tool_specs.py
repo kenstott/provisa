@@ -469,22 +469,29 @@ SPECS: list[dict] = [
         "name": "get_environment_synthetic_plan",
         "description": (
             "REQ-1942: for a Test (synthetic) environment, what generating its whole model "
-            "would generate: every table not backed by an API with its parent's successful "
-            "profile runs (selected: the latest), the API-backed tables that are never generated "
-            "with their keys, key rules, address and what a lookup returns, and ready (every "
-            "table has a run). Read only. " + _RIGHT_ENV
+            "would do: every table with the profiles it may be generated from, measured or "
+            "declared (selected: the parent's latest measured run, else the latest declared "
+            "profile); unavailable -- the API tables that need a required parameter and have no "
+            "declared profile, each with why; commandsNotDefined -- the commands of each API "
+            "source, which a synthetic environment does not define; and ready. Read only. "
+            + _RIGHT_ENV
         ),
         "input_schema": _obj({"env": {"type": "string"}}, ["env"]),
     },
     {
         "name": "generate_environment_model",
         "description": (
-            "REQ-1942: generate a Test (synthetic) environment's whole model in the background; "
-            "its detail then shows generating, then ready or failed with the reason. runs maps "
-            "a table id to a profile run id (a table left out takes its latest). Regenerating "
-            "discards the kept mutations: refused unless confirmDiscard is true -- ask first "
-            "with present_choice (mode='yes_no'). Needs environment_data; a caller without it "
-            "is refused 'Missing capability'."
+            "REQ-1942: generate a Test (synthetic) environment's whole model, in two steps. "
+            "Without digest it generates nothing and returns the Limitations of Synthetic Data "
+            "warning: what the environment loses, each table to be generated with its profile "
+            "and estimated rows, each table that will not be available, each command that will "
+            "not be defined, and the kept mutations it discards. Show the user that warning and "
+            "ask with present_choice (mode='yes_no'); once they confirm, call again with the "
+            "same runs, seed and scale and the warning's digest to start generating in the "
+            "background -- the environment's detail then shows generating, then ready or failed "
+            "with the reason. runs maps a table id to a profile run id (a table left out takes "
+            "the preselected one). Needs environment_data; a caller without it is refused "
+            "'Missing capability'."
         ),
         "input_schema": _obj(
             {
@@ -492,7 +499,7 @@ SPECS: list[dict] = [
                 "runs": {"type": "object", "additionalProperties": {"type": "string"}},
                 "seed": {"type": "integer"},
                 "scale": {"type": "number"},
-                "confirmDiscard": {"type": "boolean"},
+                "digest": {"type": "string"},
             },
             ["env"],
         ),

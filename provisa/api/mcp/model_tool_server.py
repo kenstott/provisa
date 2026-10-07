@@ -260,12 +260,10 @@ def register(
         runs: dict | None = None,
         seed: int = 0,
         scale: float = 1.0,
-        confirmDiscard: bool = False,  # noqa: N803 -- the tool's argument names
+        digest: str | None = None,
         role: str | None = None,
     ) -> dict:
-        return await mt.generate_environment_model(
-            *ctx(role), env, runs, seed, scale, confirmDiscard
-        )
+        return await mt.generate_environment_model(*ctx(role), env, runs, seed, scale, digest)
 
     @described
     async def reset_environment_mutations(env: str, role: str | None = None) -> dict:

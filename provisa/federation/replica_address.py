@@ -224,6 +224,10 @@ class ReplicaRoutes:
     #: environment reads in its place. Such a table is routed to its copy and floored (never read
     #: live), is never built or landed, and is never joined to a table reading real data.
     synthetic: Mapping[int, str] = field(default_factory=dict)
+    #: REQ-1942: registered table id -> why a read of it is refused in this environment: an API
+    #: table that needs a required parameter, in a Test (synthetic) environment whose generated
+    #: model holds no copy of it. A synthetic environment calls no source API.
+    unavailable: Mapping[int, str] = field(default_factory=dict)
     #: How many times this runtime's routes have CHANGED since it was built (REQ-826). Not part
     #: of what the routes say (two publications that say the same are equal whatever their
     #: generation): it is part of the routing-cache key, so a cached route never outlives the
