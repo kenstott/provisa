@@ -243,6 +243,8 @@ A column the profile leaves out takes its fake or its synthetic rule. A key, or 
 
 To start from a run, read it with `GET /admin/tables/{id}/profile-runs/{run}/declared`, change what you need, and declare the result. The copy holds only what the run shows you: a column you see by its shape only is left out, so it generates by its fake or rule.
 
+A category's `values` are generated as written. A measured run generates stand-ins for a category's real values, but a copy of that run lists the real values, and declaring it generates them: remove or replace any you do not want in the environment. A sensitive column is never generated from profile facts. It takes its fake or its synthetic rule.
+
 ### External expectations
 
 A run's measures can be checked against expectations produced outside Provisa: by a person, a spreadsheet or a forecasting model. Hold them in any registered table with these columns:
