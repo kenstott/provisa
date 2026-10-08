@@ -83,7 +83,12 @@ def make_background(scale: int = SCALE) -> Image.Image:
     draw.text((brand_x, brand_y), "Provisa", font=logo_font, fill=TEXT_MAIN)
 
     tag_y = brand_y + int(66 * scale)
-    draw.text((brand_x, tag_y), "Active Semantic Layer", font=tag_font, fill=TEXT_DIM)
+    draw.text(
+        (brand_x, tag_y),
+        "Federation, metrics, ontology and governance. One model.",
+        font=tag_font,
+        fill=TEXT_DIM,
+    )
 
     # ── icon-label plates ─────────────────────────────────────────────────
     # Finder renders the "Provisa" / "Applications" icon labels in black, which is

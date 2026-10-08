@@ -1,6 +1,6 @@
 # Provisa
 
-Provisa is an **active semantic layer**: a single definition of your data estate — every domain, relationship, and policy across your sources, excluding only the systems of origin themselves — that both operates the estate and governs it. The definition is not documentation an engine may consult; it *is* the engine. Registered domains and relationships are the only legal join paths, and access policies are compiled into every query plan. One model, three jobs:
+Provisa holds **federation, metrics, ontology and governance in a single model, with nothing to keep in sync**. The model is a single definition of your data estate — every domain, relationship, and policy across your sources, excluding only the systems of origin themselves — that both operates the estate and governs it. The definition is not documentation an engine may consult; it *is* the engine. Registered domains and relationships are the only legal join paths, and access policies are compiled into every query plan. One model, three jobs:
 
 - **Define** — Domains, columns, and relationships are declared once. That declaration is the schema every consumer sees and the only set of join paths any query may take.
 - **Enforce** — Row-level security, column masking, column visibility, and query approval are applied inline on the execution path. No query reaches data without passing through them, so coverage is total by construction rather than by diligence.

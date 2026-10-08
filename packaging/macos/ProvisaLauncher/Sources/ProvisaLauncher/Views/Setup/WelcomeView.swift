@@ -19,7 +19,7 @@ struct WelcomeView: View {
                     .font(.system(size: 44, weight: .bold, design: .default))
                     .foregroundStyle(.white)
 
-                Text("Active Semantic Layer")
+                Text("Federation, metrics, ontology and governance. One model.")
                     .font(.title3)
                     .foregroundStyle(.white.opacity(0.7))
             }

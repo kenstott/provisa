@@ -1486,7 +1486,7 @@
   "nl/keptTables.json::keptTables.intro": "The source was registered. These tables are no longer on the remote, or would have lost columns, and were kept as they are because something still refers to them. Remove what refers to each one, then register the source again.",
   "nl/keptTables.json::keptTables.item": "{{table}}: referred to by {{referrers}}",
   "nl/keptTables.json::keptTables.title": "Tables kept: {{count}}",
-  "nl/landingPage.json::landingPage.tagline": "The Active Semantic Layer",
+  "nl/landingPage.json::landingPage.tagline": "Federation, metrics, ontology and governance from a single model. Nothing to keep in sync.",
   "nl/latestProfilePanel.json::latestProfilePanel.heading": "Latest profile, run {{time}}",
   "nl/latestProfilePanel.json::latestProfilePanel.none": "No profile run yet.",
   "nl/liveDeliveryFieldset.json::liveDeliveryFieldset.debeziumNote": "Debezium transport is configured on the source. No extra per-table config.",
