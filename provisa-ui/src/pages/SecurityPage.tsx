@@ -545,7 +545,15 @@ export function SecurityRolesPage() {
 
 export function SecurityRlsPage() {
   const { t } = useTranslation();
-  const { selectedDomain, setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
+  const {
+    domains: filterDomains,
+    checkedDomains,
+    setDomains: setContextDomains,
+    setSelectedDomain,
+  } = useDomainFilter();
+  // The navbar's multi-select; none or every domain checked is no narrowing (as on Tables).
+  const narrowTo =
+    checkedDomains.size > 0 && checkedDomains.size < filterDomains.length ? checkedDomains : null;
   const { roles, loading: rolesLoading } = useRoles();
   const { rlsRules: rules, loading: rulesLoading, refetch: refetchRules } = useRLSRules();
   const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
@@ -605,7 +613,10 @@ export function SecurityRlsPage() {
   );
 
   const handleNewRule = () => {
-    setRuleForm({ ...EMPTY_RULE, domainFilter: selectedDomain !== "all" ? selectedDomain : "" });
+    setRuleForm({
+      ...EMPTY_RULE,
+      domainFilter: narrowTo && narrowTo.size === 1 ? [...narrowTo][0] : "",
+    });
     setShowRuleForm(true);
     setError("");
   };
@@ -695,13 +706,13 @@ export function SecurityRlsPage() {
   };
 
   const filtered = rules.filter((r) => {
-    if (selectedDomain !== "all") {
+    if (narrowTo) {
       const ruleDomain = r.actionName
         ? actions.find((a) => a.name === r.actionName)?.domainId
         : r.domainId
           ? r.domainId
           : tables.find((t) => t.id === r.tableId)?.domainId;
-      if (ruleDomain !== selectedDomain) return false;
+      if (ruleDomain && !narrowTo.has(ruleDomain)) return false;
     }
     if (!ruleSearch.trim()) return true;
     const q = ruleSearch.toLowerCase();

@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { relationshipInCheckedDomains } from "./relationshipDomainFilter";
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -86,7 +87,6 @@ export function RelationshipsPage() {
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
 
   const {
-    selectedDomain,
     domainsEnabled,
     domains: filterDomains,
     checkedDomains,
@@ -371,19 +371,13 @@ export function RelationshipsPage() {
     setReverseForm(null);
   }, [reverseForm, upsertRelationship]);
 
+  const narrowTo = erdCheckedDomains ? new Set([...erdCheckedDomains].map(normalizeDomain)) : null;
   const matchesFilter = (r: Relationship) => {
     if (remoteTableIds.has(r.sourceTableId)) return false;
-    if (selectedDomain !== "all") {
-      const srcDomain = r.sourceDomainId ? normalizeDomain(r.sourceDomainId) : undefined;
-      const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
-      const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
-      if (
-        srcDomain !== selectedDomain &&
-        tgtDomain !== selectedDomain &&
-        ownerDomain !== selectedDomain
-      )
-        return false;
-    }
+    const srcDomain = r.sourceDomainId ? normalizeDomain(r.sourceDomainId) : undefined;
+    const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
+    const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
+    if (!relationshipInCheckedDomains(narrowTo, [srcDomain, tgtDomain, ownerDomain])) return false;
     if (!relSearch.trim()) return true;
     const q = relSearch.toLowerCase();
     return (
