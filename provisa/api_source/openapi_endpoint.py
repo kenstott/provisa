@@ -74,7 +74,10 @@ def openapi_operation(
 
 
 def default_params_from_spec(spec: dict, path: str) -> dict:
-    """Extract enum/default values for GET query params at path for pre-population."""
+    """The query parameters a read of the whole collection at ``path`` is called with: every
+    value of a list parameter whose items are an enum (one call then covers each of them), else
+    the parameter's declared default. A single-valued enum parameter takes one value a call, so
+    it is sent only where it declares a default; without one the read is not filtered by it."""
     from provisa.openapi.mapper import operation_parameters
 
     defaults: dict = {}
@@ -84,9 +87,10 @@ def default_params_from_spec(spec: dict, path: str) -> dict:
         name = p.get("name", "")
         if not name:
             continue
-        schema = p.get("schema") or {}
-        if "enum" in schema:
-            defaults[name] = schema["enum"]
+        schema = p.get("schema") or p  # Swagger 2.0 declares the type on the parameter itself
+        items = schema.get("items") or {}
+        if schema.get("type") == "array" and "enum" in items:
+            defaults[name] = items["enum"]
         elif "default" in schema:
             defaults[name] = schema["default"]
     return defaults

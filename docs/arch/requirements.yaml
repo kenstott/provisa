@@ -4750,6 +4750,13 @@
     the spec names it -- a parameter x beside a next_x property of the answer -- which replaces
     the statement above that a cursor is never proposed; any other cursor is still declared by
     the steward. A page whose last row lacks the declared field fails the read by name.
+    (Amended 2026-10-07, ENUM PARAMETERS, maintainer ruling) The parameters a read of a table's
+    whole collection is called with are taken from the spec as follows. A list parameter whose
+    items are an enum is sent every value, so one call covers each of them. A single-valued
+    parameter is sent its declared default where it has one. A single-valued enum parameter with
+    no default is not sent, so the read is not filtered by it; before this ruling it was sent
+    every value it allows, which a remote that takes one value reads as the last of them or
+    refuses.
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/

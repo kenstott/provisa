@@ -166,12 +166,13 @@ async def _cleanup_mock_source(pg_conn):
     await pg_conn.execute('DROP TABLE IF EXISTS "default"."find_pets_by_status"')
 
 
-async def test_default_params_from_spec_extracts_enum_values():
-    """default_params_from_spec returns enum list for status param."""
+async def test_default_params_from_spec_sends_a_single_valued_enums_default():
+    """A single-valued enum parameter takes one value a call: its declared default is sent,
+    not every value it allows."""
     from provisa.api_source.openapi_endpoint import default_params_from_spec
 
     result = default_params_from_spec(MOCK_SPEC, "/pet/findByStatus")
-    assert result == {"status": ["available", "pending", "sold"]}
+    assert result == {"status": "available"}
 
 
 async def test_default_params_from_spec_uses_default_when_no_enum():
@@ -219,12 +220,12 @@ async def test_default_params_from_spec_ignores_path_params():
     }
     result = default_params_from_spec(spec, "/items/{id}")
     assert "id" not in result
-    assert result == {"format": ["json", "xml"]}
+    assert result == {}  # a single-valued enum with no default is not sent
 
 
 async def test_openapi_config_load_registers_the_enum_defaults_and_fetches_nothing(pg_conn):
     """REQ-1915: a config load registers the endpoint with the default parameters its spec
-    names (the enum values of a query parameter) — what a build of its replica calls with —
+    names (the declared default of a query parameter) — what a build of its replica calls with —
     and calls nothing: rows fetched from a remote are never written into the control plane."""
     from provisa.core.config_loader import apply_config, parse_config_dict
 
@@ -250,7 +251,7 @@ async def test_openapi_config_load_registers_the_enum_defaults_and_fetches_nothi
     )
     if isinstance(default_params, str):
         default_params = json.loads(default_params)
-    assert default_params == {"status": ["available", "pending", "sold"]}
+    assert default_params == {"status": "available"}
     in_control_plane = await pg_conn.fetchval(
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'find_pets_by_status'"
     )

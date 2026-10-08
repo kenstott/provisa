@@ -412,3 +412,36 @@ async def test_a_row_location_the_response_does_not_have_is_refused_by_name(cont
         refused = await persist_openapi_endpoint(_wrapped_state(), conn, table)
     assert (refused.success, refused.code) == (False, "schema.openapi_no_rows_field")
     assert refused.params == {"table": "listPets", "rows_field": "items"}
+
+
+# -- the parameters a read of the whole collection is called with ---------------------------------
+
+
+def _params_spec(*parameters: dict) -> dict:
+    return {"paths": {"/pets": {"get": {"parameters": list(parameters)}}}}
+
+
+def test_a_list_parameter_is_sent_every_value_its_items_allow():
+    from provisa.api_source.openapi_endpoint import default_params_from_spec
+
+    listed = {"type": "array", "items": {"type": "string", "enum": ["available", "sold"]}}
+    spec = _params_spec(
+        {"name": "status", "in": "query", "schema": listed},
+        {"name": "kind", "in": "query", **listed},  # Swagger 2.0: declared on the parameter
+    )
+    assert default_params_from_spec(spec, "/pets") == {
+        "status": ["available", "sold"],
+        "kind": ["available", "sold"],
+    }
+
+
+def test_a_single_valued_enum_is_sent_its_default_or_not_at_all():
+    from provisa.api_source.openapi_endpoint import default_params_from_spec
+
+    one_of = {"type": "string", "enum": ["draft", "open", "paid"]}
+    spec = _params_spec(
+        {"name": "status", "in": "query", "schema": one_of},
+        {"name": "sort", "in": "query", "schema": {**one_of, "default": "open"}},
+        {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 100}},
+    )
+    assert default_params_from_spec(spec, "/pets") == {"sort": "open", "limit": 100}
