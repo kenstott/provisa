@@ -648,3 +648,46 @@ def test_flights_cypher_read_settles_the_cut_itself_before_its_audit_row():
     settle, audit = "_stream_answer_whole(plan, len(raw_rows))", "self._finalize_audit(plan, 200)"
     assert settle in source and source.index(settle) < source.index(audit)
     assert source.index(audit) < source.index("self._cypher_stream(raw_rows, graph_vars, plan.w")
+
+
+def test_grpc_carries_what_the_nodes_statement_of_a_group_by_says():
+    """A group-by with its nodes is two governed statements; the trailing metadata is set after
+    the first, so what the second says is added when it has run."""
+    import inspect
+
+    from provisa.grpc.server import ProvisaServicer
+
+    source = inspect.getsource(ProvisaServicer._handle_query_group_by_bound)
+    ran = source.index("nodes_result = await _execute_plan(nodes_plan, state)")
+    assert "_said = self._emit_trailing_metadata(" in source[:ran]
+    assert "self._say_late_warnings(" in source[ran:] and "nodes_plan.warnings" in source[ran:]
+
+
+def test_what_is_landed_is_the_governed_statement_bounded_at_the_role_limit():
+    """A landed result (redirect, materialize, export) is limited like any read: governance
+    bounds the statement with no knowledge of how its answer is delivered, and the terminal
+    lands the plan's own governed SQL -- there is no second, unbounded form for a delivery."""
+    import inspect
+
+    # Governance takes the statement, the role's context and its values: no delivery.
+    assert list(inspect.signature(apply_governance).parameters) == [
+        "sql",
+        "gov_ctx",
+        "session_vars",
+        "params",
+    ]
+    governed, limit = _governed("SELECT id FROM t", 10)
+    assert governed.endswith("LIMIT 10") and limit == RowLimit(10, ROLE)
+    # The delivery terminals land plan.physical_sql -- the lowering of that governed statement.
+    terminal = inspect.getsource(_pipeline._run_plan_terminal)
+    landing = terminal[terminal.index("if plan.materialize is not None") :]
+    landing = landing[: landing.index("if plan.auto_deliver is not None")]
+    assert "plan.physical_sql" in landing and "deliver(" in landing
+    # ... and no route raises or drops the governed LIMIT on the way to it: the only rewrites of
+    # a statement's LIMIT in the pipeline go through apply_row_cap, which can only lower one.
+    source = inspect.getsource(_pipeline)
+    assert "_apply_limit_ceiling(" not in source
+    from provisa.compiler.stage2 import apply_row_cap
+
+    assert apply_row_cap("SELECT id FROM t LIMIT 10", 500) == "SELECT id FROM t LIMIT 10"
+    assert apply_row_cap("SELECT id FROM t LIMIT 10", 4).endswith("LIMIT 4")

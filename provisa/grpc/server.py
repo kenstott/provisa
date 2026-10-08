@@ -23,6 +23,7 @@ parallel.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 import importlib.util
 import json
 import logging
@@ -1249,7 +1250,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return
         result = await _execute_plan(plan, state)
         # REQ-1137; REQ-1194: a delivered result streams no group and names its handle instead.
-        self._emit_trailing_metadata(context, plan.warnings, redirect=result.redirect)
+        _said = self._emit_trailing_metadata(context, plan.warnings, redirect=result.redirect)
         if result.redirect is not None:
             return
 
@@ -1281,6 +1282,19 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 sdl_joins=True,
             )
             nodes_result = await _execute_plan(nodes_plan, state)
+            # REQ-1350, REQ-1949: the nodes are a second governed statement of this answer; what
+            # it says about itself (a row limit cut the nodes) is the answer's to carry too, and
+            # the trailing metadata was set before it ran.
+            self._say_late_warnings(
+                context,
+                _said,
+                SimpleNamespace(
+                    warnings=[
+                        *plan.warnings,
+                        *(w for w in nodes_plan.warnings if w not in plan.warnings),
+                    ]
+                ),
+            )
             join_key_idx = [i for i, c in enumerate(nodes_columns) if c.nested_in == "__join_key__"]
             output_cols = [(i, c) for i, c in enumerate(nodes_columns) if c.nested_in is None]
             for node_row in nodes_result.rows:
