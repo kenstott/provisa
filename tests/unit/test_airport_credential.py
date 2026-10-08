@@ -149,3 +149,73 @@ def test_with_no_auth_provider_the_bearer_names_the_role(monkeypatch):
         srv._role(_Call())
     monkeypatch.setenv("PROVISA_AIRPORT_DEFAULT_ROLE", "seller")
     assert srv._role(_Call()) == "seller"
+
+
+# --- every RPC goes through the rule: reads, catalog, writes --------------------------------------
+
+
+def _rpcs(srv):
+    """Each RPC the service answers, called as a client naming a role would call it."""
+    descriptor = flight.FlightDescriptor.for_path("sales", "orders")
+    ticket = flight.Ticket(b'{"schema": "sales", "table": "orders"}')
+
+    def _exchange(call):
+        # DoExchange carries the DML: INSERT, UPDATE and DELETE all arrive here.
+        return srv.do_exchange(call, descriptor, reader=None, writer=None)
+
+    return {
+        "do_get (scan)": lambda call: srv.do_get(call, ticket),
+        "get_flight_info": lambda call: srv.get_flight_info(call, descriptor),
+        "do_action list_schemas (catalog)": lambda call: list(
+            srv.do_action(call, flight.Action("list_schemas", b""))
+        ),
+        "do_action endpoints": lambda call: list(
+            srv.do_action(call, flight.Action("endpoints", b""))
+        ),
+        "do_exchange (insert/update/delete)": _exchange,
+    }
+
+
+@pytest.fixture
+def secured(monkeypatch):
+    srv = _server(monkeypatch, auth=True)
+    srv._state.multitenancy = False
+    srv._state.org_id = "default"
+    reached: list[str] = []
+    # Anything past the credential rule would resolve the role's catalog first.
+    monkeypatch.setattr(
+        srv, "_catalog_for_role", lambda role_id: reached.append(role_id) or [], raising=False
+    )
+    srv._reached = reached  # type: ignore[attr-defined]
+    return srv
+
+
+@pytest.mark.parametrize(
+    "rpc",
+    [
+        "do_get (scan)",
+        "get_flight_info",
+        "do_action list_schemas (catalog)",
+        "do_action endpoints",
+        "do_exchange (insert/update/delete)",
+    ],
+)
+@pytest.mark.parametrize(
+    "call",
+    [_Call(bearer="org_admin"), _Call(), _Call(role="org_admin"), _Call(bearer="forged")],
+    ids=["a role name as the bearer", "no header", "a role header alone", "a forged credential"],
+)
+def test_no_rpc_serves_a_call_that_presents_no_valid_credential(secured, rpc, call):
+    with pytest.raises(flight.FlightUnauthenticatedError):
+        _rpcs(secured)[rpc](call)
+    assert secured._reached == [], "nothing was resolved for the caller"
+
+
+@pytest.mark.parametrize(
+    "rpc",
+    ["do_get (scan)", "get_flight_info", "do_exchange (insert/update/delete)"],
+)
+def test_a_valid_credential_cannot_read_or_write_as_a_role_it_does_not_hold(secured, rpc):
+    with pytest.raises(flight.FlightUnauthenticatedError, match="org_admin"):
+        _rpcs(secured)[rpc](_Call(bearer="sam-token", role="org_admin"))
+    assert secured._reached == []

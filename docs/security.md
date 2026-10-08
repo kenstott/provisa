@@ -267,6 +267,8 @@ Every surface authenticates through the same provider contract, so a credential 
 | Airport (DuckDB `airport` extension, opt-in) | — | `authorization: Bearer` (the secret's `auth_token`) | same | — |
 | MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | via terminating proxy |
 
+The DuckDB `airport` extension's only authentication option is the bearer `auth_token` of its secret, so a DuckDB client presents a provider token or a personal access token there and acts as the role its identity resolves to. A client that can set call headers may request one held role, or a comma-separated set of them, in `x-provisa-role`. (REQ-1120, REQ-1263)
+
 Where a cell reads `—` the protocol carries no username field to pair a password with; the token forms cover it. pgwire is the mirror case: the startup packet has one secret field and no scheme, so what the secret *is* picks the method — a PAT is recognized by its prefix, the secret is read as a bearer token when the configured provider is a token provider, and anything else is a password. The choice is made once — a credential the selected validator refuses is not retried against another.
 
 The matrix is enforced by `tests/unit/test_auth_surface_conformance.py`, which drives each surface's real validation entry point and fails when a new surface is added without a row.

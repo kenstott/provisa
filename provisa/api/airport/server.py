@@ -45,7 +45,9 @@ DELETE are refused ONLY per-table, when a table genuinely has no primary key.
 
 Role: with authentication on, the gRPC ``authorization: Bearer <credential>`` header (DuckDB
 airport secret ``auth_token``) carries a provider token or a personal access token; it is
-validated and the role is derived from the identity (``x-provisa-role`` may request a held one).
+validated and the role is derived from the identity (``x-provisa-role`` may request a held one —
+the DuckDB extension's only authentication option is the bearer ``auth_token``, so a DuckDB
+client acts as the role its identity resolves to).
 On a deployment with no auth provider the bearer names the role; absent →
 PROVISA_AIRPORT_DEFAULT_ROLE (documented dev default); absent too → the call is refused.
 """
