@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import { SOURCE_TYPES } from "../pages/sources/constants";
 import {
   backendType,
+  carrierOf,
   reachInfoFor,
   sourceBrand,
   sourceTypeLabel,
@@ -32,6 +33,16 @@ describe("branded source types", () => {
     expect(backendType("github")).toBe("graphql_remote");
     expect(backendType("graphql")).toBe("graphql_remote");
     expect(backendType("postgresql")).toBe("postgresql");
+  });
+
+  it("offers Stripe, carried by the OpenAPI source", () => {
+    expect(SOURCE_TYPES.find((s) => s.value === "stripe")?.label).toBe("Stripe");
+    expect(backendType("stripe")).toBe("openapi");
+    expect(carrierOf("stripe")).toBe("openapi");
+    expect(carrierOf("github")).toBe("graphql");
+    expect(carrierOf("openapi")).toBe("openapi");
+    expect(sourceTypeLabel("openapi", '{"brand":"stripe"}')).toBe("Stripe");
+    expect(sourceTypeLabel("openapi", "{}")).toBe("REST API (OpenAPI)");
   });
 
   it("still maps the plain remote GraphQL backend type to its own picker entry", () => {

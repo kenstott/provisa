@@ -49,6 +49,10 @@ class OpenAPIRegisterRequest(BaseModel):
     cache_ttl: int = 300
     operation_overrides: dict[str, str] = {}  # {operationId: "query" | "mutation"}
     relationships: list[dict] = []
+    # REQ-1923: a branded source names its brand and supplies only a credential; the spec and
+    # the address are the brand's.
+    brand: str | None = None
+    token: str = ""
 
     @model_validator(mode="after")
     def _set_inline_sentinel(self) -> "OpenAPIRegisterRequest":  # REQ-407
@@ -73,11 +77,13 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
     operation_overrides: dict[str, str] | None = None,
     relationships: list[dict] | None = None,
     store_auth: bool = False,
+    brand: str | None = None,
 ) -> tuple[dict, int, int]:
     """Load spec, upsert source record, store in state. Returns (spec, n_queries, n_mutations).
 
     ``store_auth``: this call is the registration that supplies the source's auth, which is
     stored for the caller; a refresh re-reads the spec and leaves the stored auth as it is.
+    ``brand``: the brand a new source's row records (REQ-1923).
 
     Tables and functions are NOT auto-registered here. Users register them
     individually via the Register Table / Register Action UI.
@@ -108,6 +114,7 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
     async with pool.acquire() as _conn:
         from provisa.core.models import Source, SourceType
         from provisa.core.repositories import source as source_repo
+        from provisa.graphql_remote.brands import BRAND_HINT
 
         _existing = await source_repo.get(cast("Connection", _conn), source_id)
         _spec_source = Source(
@@ -118,6 +125,7 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
             database="",
             username="",
             path=spec_path if spec_path else ":inline:",
+            federation_hints={BRAND_HINT: brand} if brand else {},
         )
         if _existing is not None:
             # REQ-1909: re-importing a spec replaces the spec, not the operator's Load Management
@@ -184,6 +192,60 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
     return spec, len(queries), len(mutations)
 
 
+async def _verify_live_auth(url: str, auth: dict) -> None:
+    """Confirm the credential works with one call. A branded source's spec ships with Provisa,
+    so this is the only thing its registration asks of the remote."""
+    import httpx
+
+    from provisa.openapi.executor import _build_auth_headers
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(url, headers=_build_auth_headers(auth))
+        resp.raise_for_status()
+
+
+async def _branded(body: OpenAPIRegisterRequest) -> OpenAPIRegisterRequest:
+    """``body`` as the registration of its brand (REQ-1923): the brand's spec and address, and
+    the credential as the brand presents it, checked against the remote."""
+    from provisa.api.admin.graphql_remote_router import _resolved_credential
+    from provisa.openapi.brands import BRANDS
+
+    brand = BRANDS.get(body.brand or "")
+    if brand is None:
+        raise ApiError(
+            422, "openapi.unknown_brand", f"Unknown branded source {body.brand!r}", brand=body.brand
+        )
+    if not body.token:
+        raise ApiError(
+            422,
+            "openapi.credential_required",
+            f"{brand.label} needs an access token",
+            brand=brand.id,
+        )
+    base_url = brand.spec()["servers"][0]["url"]
+    try:
+        await _verify_live_auth(
+            base_url.rstrip("/") + brand.verify_path,
+            brand.auth(await _resolved_credential(body.token)),
+        )
+    except Exception as exc:
+        raise ApiError(
+            422,
+            "openapi.credential_rejected",
+            f"{brand.label} did not accept the access token: {exc}",
+            brand=brand.id,
+            error=str(exc),
+        ) from exc
+    return body.model_copy(
+        update={
+            "spec_path": brand.spec_path,
+            "spec_content": "",
+            "base_url": base_url,
+            "auth_config": brand.auth(body.token),
+        }
+    )
+
+
 @router.post("/register")
 async def register_openapi_source(
     request: Request,
@@ -192,6 +254,8 @@ async def register_openapi_source(
     """Load an OpenAPI spec and add the source. Its GET operations are tables on offer and its
     other operations commands on offer; none is registered here (REQ-316)."""
     require_capability_request(request, "source_registration")
+    if body.brand:
+        body = await _branded(body)
     try:
         _, n_offered, n_commands = await _load_and_register(
             body.source_id,
@@ -204,6 +268,7 @@ async def register_openapi_source(
             operation_overrides=body.operation_overrides or None,
             relationships=body.relationships or None,
             store_auth=True,
+            brand=body.brand,
         )
     except HTTPException:
         raise

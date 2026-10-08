@@ -76,7 +76,7 @@
         "description": "➕ नए कनेक्शन इस बटन से शुरू होते हैं — PostgreSQL, Snowflake, MongoDB, एक REST API, एक CSV, और 50+ और।"
       },
       "step3": {
-        "title": "60 स्रोत प्रकार, 13 श्रेणियाँ",
+        "title": "61 स्रोत प्रकार, 13 श्रेणियाँ",
         "description": "एक चयनकर्ता हर प्रकार को श्रेणी के अनुसार सूचीबद्ध करता है: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>। नाम या उपनाम से खोजें, या श्रेणी चिप्स से सीमित करें। हर प्रकार अपना लोगो और पहुँच का आइकन दिखाता है: ⚡ यानी मौके पर सीधे पढ़ना, या कॉपी आइकन जहाँ Provisa ताज़ा की गई रेप्लिका पढ़ता है।<p>एक चुनें, कनेक्शन भरें, सहेजें।</p>"
       },
       "step4": {

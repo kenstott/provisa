@@ -15,10 +15,10 @@ export function getCategory(type: string) {
   return SOURCE_TYPES.find((s) => s.value === type)?.category ?? "RDBMS";
 }
 
-export const backendType = (uiValue: string) => {
-  const carrier = BRAND_CARRIER[uiValue] ?? uiValue;
-  return TYPE_ALIAS[carrier] ?? carrier;
-};
+/** The picker type a type is registered through: a brand's carrier (REQ-1923), else itself. */
+export const carrierOf = (uiValue: string) => BRAND_CARRIER[uiValue] ?? uiValue;
+
+export const backendType = (uiValue: string) => TYPE_ALIAS[carrierOf(uiValue)] ?? carrierOf(uiValue);
 
 /** The brand a source row records (federation_hints.brand, REQ-1923), or null for a plain source. */
 export function sourceBrand(federationHintsJson: string | null | undefined): string | null {

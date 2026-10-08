@@ -71923,6 +71923,16 @@
     and the steward says which deployment the source is -- Cloud or Data Center, and for Data Center
     its version. That choice selects the pinned spec, since the two are different APIs, and the
     tables and commands on offer follow from it.
+    (Amended 2026-10-07, STRIPE AS BUILT) Stripe is the first brand carried by the OpenAPI source.
+    It is picked as Stripe in the datasource picker, asks for a secret key and nothing else, and is
+    shown as Stripe afterwards; the source row is an OpenAPI source that records its brand and
+    names the brand's shipped spec. The spec is Stripe's published one, pinned and shipped with
+    Provisa under its MIT notice, and moved to a newer API version by baking it again. Adding the
+    source checks the key with one call to Stripe, stores it as every OpenAPI source's credential
+    is stored, and registers nothing. Each list is offered with the paging the spec declares
+    (REQ-316) -- after the last row's id for a list, the answered cursor for a search. Two lists
+    whose rows are one of several object kinds are offered as their page wrapper and not as rows.
+    Not yet read against a live Stripe account.
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
@@ -71934,8 +71944,12 @@
   - provisa/api/admin/graphql_remote_router.py
   - provisa/api/app_loaders.py
   - provisa-ui/src/pages/sources/sourceHelpers.ts
+  - provisa/openapi/brands.py
+  - provisa/api/admin/openapi_router.py
+  - scripts/bake_openapi_brand_spec.py
   tests:
   - tests/unit/test_graphql_brand_source.py
+  - tests/unit/test_openapi_brand_source.py
   - tests/unit/test_graphql_remote_relay.py
   - tests/integration/test_graphql_remote_source.py
   - provisa-ui/src/__tests__/sourceBrand.test.ts

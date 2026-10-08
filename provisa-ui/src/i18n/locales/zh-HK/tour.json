@@ -76,7 +76,7 @@
         "description": "➕ 新連接由這個按鈕開始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及 50 多種其他類型。"
       },
       "step3": {
-        "title": "60 種數據來源類型，13 個類別",
+        "title": "61 種數據來源類型，13 個類別",
         "description": "一個選擇器按類別列出所有類型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名稱或別名搜尋，也可以用類別標籤收窄範圍。每種類型都有標誌和可達性圖示：⚡ 表示就地即時讀取，複製圖示表示 Provisa 讀取已更新的副本。<p>揀選一個，填寫連線，儲存。</p>"
       },
       "step4": {
