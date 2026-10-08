@@ -77395,7 +77395,7 @@
   related_reqs:
   - REQ-603
   - REQ-1825
-  notes: 'Maintainer 2026-10-08: new MCP requirement -- for any 2 tables, return a list of valid paths to connect them. (Later the same day:) we just need a single endpoint that returns valid paths between 2 tables, wired into the MCP and the error response. Lead''s additions, open to correction: scoped to the caller''s role, shortest first, bounded with a stated cut, each step carries condition and cardinality. The MCP server already lists the relationships a role may traverse (provisa/api/mcp/tools.py); this tool walks them.'
+  notes: 'Maintainer 2026-10-08: new MCP requirement -- for any 2 tables, return a list of valid paths to connect them. (Later the same day:) we just need a single endpoint that returns valid paths between 2 tables, wired into the MCP and the error response. Maintainer confirmed the same day: the paths returned depend on the caller''s roles. Lead''s additions, open to correction: scoped to the caller''s role, shortest first, bounded with a stated cut, each step carries condition and cardinality. The MCP server already lists the relationships a role may traverse (provisa/api/mcp/tools.py); this tool walks them.'
 - id: REQ-1956
   status: proposed
   since: 2026-10
