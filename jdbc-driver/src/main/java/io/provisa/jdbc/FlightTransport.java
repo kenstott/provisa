@@ -14,7 +14,10 @@ import org.apache.arrow.memory.RootAllocator;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
@@ -38,6 +41,9 @@ class FlightTransport implements AutoCloseable {
 
     private final FlightClient client;
     private final BufferAllocator allocator;
+    // The result sets read through this transport and not yet closed.
+    private final Set<FlightStreamResultSet> open = ConcurrentHashMap.newKeySet();
+    private volatile long leakedAtClose;
 
     private FlightTransport(FlightClient client, BufferAllocator allocator) {
         this.client = client;
@@ -89,7 +95,10 @@ class FlightTransport implements AutoCloseable {
             stream = client.getStream(new Ticket(ticket));
             // The server's answer to the ticket arrives with the schema: read it here so a
             // refusal is raised by executeQuery, not by the first next().
-            return new FlightStreamResultSet(stream, decryptor);
+            FlightStreamResultSet[] opened = new FlightStreamResultSet[1];
+            opened[0] = new FlightStreamResultSet(stream, decryptor, () -> open.remove(opened[0]));
+            open.add(opened[0]);
+            return opened[0];
         } catch (FlightRuntimeException e) {
             closeStream(stream);
             throw refusal("Query failed", e);
@@ -134,9 +143,42 @@ class FlightTransport implements AutoCloseable {
         return ticket.toString().getBytes(StandardCharsets.UTF_8);
     }
 
+    /** Bytes of Arrow memory this transport's streams hold now. */
+    long allocatedMemory() {
+        return allocator.getAllocatedMemory();
+    }
+
+    /** Bytes still held when the transport was closed, after its streams were; 0 when clean. */
+    long leakedAtClose() {
+        return leakedAtClose;
+    }
+
+    /**
+     * Close the transport and everything read through it: a result set the caller left open — a
+     * tool that reads a statement's metadata and drops it — holds a stream and its buffers, and
+     * closing the connection releases them.
+     */
     @Override
     public void close() {
-        closeQuietly(client, allocator);
+        for (FlightStreamResultSet resultSet : List.copyOf(open)) {
+            try {
+                resultSet.close();
+            } catch (SQLException closing) {
+                log.warning("closing a result set left open on the connection: " + closing.getMessage());
+            }
+        }
+        try {
+            client.close();
+        } catch (Exception closing) {
+            log.warning("closing the Flight client: " + closing);
+        }
+        leakedAtClose = allocator.getAllocatedMemory();
+        try {
+            allocator.close();
+        } catch (RuntimeException closing) {
+            log.warning("the Flight connection closed with " + leakedAtClose
+                + " bytes of Arrow memory still held: " + closing.getMessage());
+        }
     }
 
     private static void closeStream(FlightStream stream) {

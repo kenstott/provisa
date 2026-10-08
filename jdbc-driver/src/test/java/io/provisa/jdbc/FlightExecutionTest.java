@@ -49,6 +49,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -75,6 +76,8 @@ class FlightExecutionTest {
     /** What the Flight producer answers the next ticket with; null streams the typed rows. */
     private CallStatus flightError;
     private boolean emptyResult;
+    /** Held (shared) by each producer call that is streaming; taken whole before the stub closes. */
+    private final ReentrantReadWriteLock streaming = new ReentrantReadWriteLock();
     /** What the Flight producer answers the connect probe with; null answers it. */
     private CallStatus probeError;
 
@@ -100,6 +103,9 @@ class FlightExecutionTest {
                     listener.error(flightError.toRuntimeException());
                     return;
                 }
+                // Flight runs this on its own executor, which the server's close does not wait
+                // for: a client that reads the schema and hangs up leaves it mid-stream.
+                streaming.readLock().lock();
                 try (VectorSchemaRoot root = VectorSchemaRoot.create(SCHEMA, allocator)) {
                     listener.start(root);
                     if (!emptyResult) {
@@ -107,6 +113,8 @@ class FlightExecutionTest {
                         listener.putNext();
                     }
                     listener.completed();
+                } finally {
+                    streaming.readLock().unlock();
                 }
             }
         }).build();
@@ -131,7 +139,13 @@ class FlightExecutionTest {
     void stop() throws Exception {
         http.stop(0);
         flight.close();
-        allocator.close();
+        // The stub's allocator closes once no producer call still holds a root from it.
+        streaming.writeLock().lock();
+        try {
+            allocator.close();
+        } finally {
+            streaming.writeLock().unlock();
+        }
     }
 
     // ── the rows the Flight stub streams: one of every type, then a row of NULLs ──
@@ -355,6 +369,34 @@ class FlightExecutionTest {
             assertEquals("java.sql.Date", meta.getColumnClassName(7));
             assertEquals("java.sql.Timestamp", meta.getColumnClassName(8));
         }
+    }
+
+    @Test
+    void readingOnlyTheMetadataAndClosingTheStatementHoldsNoArrowMemory() throws SQLException {
+        // What a BI tool does to learn a statement's columns: no row is ever read.
+        FlightTransport transport;
+        try (Connection conn = connect(null, true)) {
+            transport = ((ProvisaConnection) conn).flightTransport;
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT * FROM t")) {
+                assertEquals(10, rs.getMetaData().getColumnCount());
+            }
+            assertEquals(0, transport.allocatedMemory(), "the closed statement's stream is released");
+        }
+        assertEquals(0, transport.leakedAtClose());
+    }
+
+    @Test
+    void closingTheConnectionReleasesAResultSetLeftOpen() throws SQLException {
+        Connection conn = connect(null, true);
+        FlightTransport transport = ((ProvisaConnection) conn).flightTransport;
+        ResultSet rs = conn.createStatement().executeQuery("SELECT * FROM t");
+        assertEquals(10, rs.getMetaData().getColumnCount());
+        ResultSet read = conn.createStatement().executeQuery("SELECT * FROM t");
+        assertTrue(read.next());
+        conn.close();
+        assertTrue(rs.isClosed() && read.isClosed());
+        assertEquals(0, transport.leakedAtClose(), "nothing outlives the connection");
     }
 
     @Test

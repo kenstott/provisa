@@ -55,6 +55,8 @@ public class FlightStreamResultSet extends AbstractResultSet {
     // decrypted client-side by the connection's decryptor.
     private final Set<String> encryptedColumns = new HashSet<>();
     private final EnvelopeDecryptor decryptor;
+    // Tells the transport this result set no longer holds a stream.
+    private final Runnable onClose;
 
     private VectorSchemaRoot currentBatch;
     private int rowInBatch = -1;
@@ -67,9 +69,10 @@ public class FlightStreamResultSet extends AbstractResultSet {
      * @throws FlightRuntimeException when the server answered the ticket with an error: the
      *         schema is the first thing a stream delivers, so a refusal surfaces here
      */
-    FlightStreamResultSet(FlightStream stream, EnvelopeDecryptor decryptor) {
+    FlightStreamResultSet(FlightStream stream, EnvelopeDecryptor decryptor, Runnable onClose) {
         this.stream = stream;
         this.decryptor = decryptor;
+        this.onClose = onClose;
         this.schema = stream.getSchema();
         this.columnNames = new ArrayList<>();
         for (Field field : schema.getFields()) {
@@ -372,6 +375,7 @@ public class FlightStreamResultSet extends AbstractResultSet {
     public void close() throws SQLException {
         if (closed) return;
         closed = true;
+        onClose.run();
         try {
             stream.close();
         } catch (FlightRuntimeException e) {

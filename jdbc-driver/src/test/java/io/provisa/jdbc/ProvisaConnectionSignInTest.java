@@ -67,11 +67,17 @@ class ProvisaConnectionSignInTest {
         exchange.close();
     }
 
+    // These cases are about sign-in over HTTP. The Flight port is named, and is one nothing
+    // listens on: left to the convention (the HTTP port + 814) it would follow whatever port the
+    // OS handed the stub, which near the top of the range is not a port at all.
+    private static final String NO_FLIGHT = "1";
+
     private Connection connect(String user, String password, String role) throws SQLException {
         Properties props = new Properties();
         props.setProperty("user", user);
         props.setProperty("password", password);
         if (role != null) props.setProperty("role", role);
+        props.setProperty("flight_port", NO_FLIGHT);
         return new ProvisaDriver().connect(
             "jdbc:provisa://127.0.0.1:" + server.getAddress().getPort(), props);
     }
@@ -123,6 +129,7 @@ class ProvisaConnectionSignInTest {
         Properties props = new Properties();
         props.setProperty("user", "alice");
         props.setProperty("password", "secret");
+        props.setProperty("flight_port", NO_FLIGHT);
         try (Connection conn = new ProvisaDriver().connect(
                 "jdbc:provisa://127.0.0.1:" + server.getAddress().getPort() + "?role=analyst%2Cauditor",
                 props)) {
