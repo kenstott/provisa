@@ -1318,7 +1318,21 @@
     REST, JSON:API, gRPC, NL''s GraphQL-shaped targets, GraphQL over Arrow Flight) has its joins from the
     SDL and is exempt; a compiled Cypher statement (Bolt, Cypher over HTTP, Cypher over Arrow Flight) and
     the native gRPC table read are checked. ignore_relationships lifts the check on the compiled stage
-    as on the raw one, except in high-security mode (REQ-693).'
+    as on the raw one, except in high-security mode (REQ-693).
+
+
+    (Amended 2026-10-07, maintainer -- ANY ROW MATCHING; this replaces "every JOIN ON condition" above as the
+    statement of what is checked:) Two registered tables are related whenever rows of one are matched or filtered
+    against rows of the other by comparing their columns, however that is written: a join of any spelling (ON, USING,
+    NATURAL, a comma or CROSS JOIN with the condition in WHERE), through a CTE or a derived table, IN and NOT IN with
+    a subquery, EXISTS and NOT EXISTS, a correlated scalar subquery, LATERAL. Every such pairing must be a registered
+    relationship between those two tables on those columns; a pairing that is anything other than an equality of
+    their plain columns, and two tables combined with no pairing, are refused, naming the tables and columns. A
+    column is the base column it comes from through CTE and derived-table boundaries; an expression over it is not.
+    A registered view is its own table. Not relating, and so allowed without a relationship: the branches of UNION,
+    INTERSECT and EXCEPT, and a subquery that refers to nothing outside itself. A relationship type that is not
+    registered is refused on every Cypher surface alike. Found 2026-10-07: the check read only ON equalities between
+    directly named tables, and the Cypher surfaces did not run it.'
   use_case: V002 enforces approved navigation paths so joins between sensitive tables require explicit
     steward registration and approval, providing an audit surface for cross-table data access.
   code:
