@@ -166,6 +166,8 @@ export const SOURCE_TYPES = [
   { value: "gitlab", label: "GitLab", category: "Enterprise", defaultPort: 443 },
   // REQ-1923: carried by the OpenAPI source, with the system's pinned spec supplied.
   { value: "stripe", label: "Stripe", category: "Enterprise", defaultPort: 443 },
+  // REQ-1960: carried by the File Crawler's HTML crawl, with the site's page layout supplied.
+  { value: "wikipedia", label: "Wikipedia", category: "File", defaultPort: 0 },
   { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
   // Data Quality (REQ-1443) — a checker scans a governed table through Provisa's own pgwire
   // endpoint; the source itself needs no connection fields (dq/contract.py). soda is Elastic
@@ -285,6 +287,7 @@ export const BRAND_CARRIER: Record<string, string> = {
   github: "graphql",
   gitlab: "graphql",
   stripe: "openapi",
+  wikipedia: "files", // REQ-1960
 };
 
 // UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).

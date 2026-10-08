@@ -448,6 +448,12 @@
     "statement": {
       "rows_cut": "Die Antwort wurde bei {{limit}} Zeilen abgeschnitten, dem für diese Abfrage geltenden Zeilenlimit ({{kind}}): Es passen mehr Zeilen, als zurückgegeben wurden.",
       "rows_cut_unchecked": "Die Antwort hat {{limit}} Zeilen, das für diese Abfrage geltende Zeilenlimit ({{kind}}). Ob mehr Zeilen passen, konnte nicht geprüft werden: {{reason}}"
+    },
+    "wikipedia": {
+      "no_pages": "Mindestens eine Startseite angeben",
+      "unknown_language": "„{{language}}“ ist keine Sprachausgabe",
+      "page_not_of_edition": "{{page}} ist keine Seite von {{host}}",
+      "see_also_heading_needed": "Provisa kennt die Überschrift „Siehe auch“ der Ausgabe {{language}} nicht: ID angeben oder diesen Links folgen"
     }
   }
 }

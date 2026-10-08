@@ -448,6 +448,12 @@
     "statement": {
       "rows_cut": "回答は {{limit}} 行で打ち切られました。これはこの読み取りに適用される行数制限です ({{kind}})。返された行より多くの行が一致します。",
       "rows_cut_unchecked": "回答は {{limit}} 行で、この読み取りに適用される行数制限と同じです ({{kind}})。さらに一致する行があるかどうかは確認できませんでした: {{reason}}"
+    },
+    "wikipedia": {
+      "no_pages": "開始ページを1つ以上指定してください",
+      "unknown_language": "「{{language}}」は言語版ではありません",
+      "page_not_of_edition": "{{page}}は{{host}}のページではありません",
+      "see_also_heading_needed": "Provisaは{{language}}版の「関連項目」の見出しを把握していません。IDを指定するか、それらのリンクをたどってください"
     }
   }
 }

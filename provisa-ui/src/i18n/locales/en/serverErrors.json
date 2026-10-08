@@ -448,6 +448,12 @@
     "statement": {
       "rows_cut": "The answer was cut at {{limit}} rows, the row limit that applies to this read ({{kind}}): more rows match than were returned.",
       "rows_cut_unchecked": "The answer has {{limit}} rows, the row limit that applies to this read ({{kind}}). Whether more rows match could not be checked: {{reason}}"
+    },
+    "wikipedia": {
+      "no_pages": "Name at least one page to start from",
+      "unknown_language": "'{{language}}' is not a language edition",
+      "page_not_of_edition": "{{page}} is not a page of {{host}}",
+      "see_also_heading_needed": "Provisa does not know the \"See also\" heading of the {{language}} edition: give its id, or follow those links"
     }
   }
 }

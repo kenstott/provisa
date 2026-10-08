@@ -64,18 +64,20 @@ def test_a_directory_holding_the_pinned_jar_is_used_as_is(plugins):
 
 
 def test_each_plugin_is_fetched_at_its_own_version(monkeypatch, tmp_path):
-    # REQ-1946, REQ-1947: the Salesforce and cloud inventory plugins come from the first release
-    # that has what Provisa needs of them; every other plugin stays at the one pinned version.
+    # REQ-1946, REQ-1947, REQ-1960: the Salesforce, cloud inventory and file plugins come from the
+    # first release that has what Provisa needs of them; every other plugin stays at the one pinned
+    # version.
     assert harness._TRINO_PLUGIN_VERSIONS == {
         "trino-salesforce": "0.108.0",
         "trino-cloudops": "0.108.0",
+        "trino-file": "0.109.0",
     }
     assert set(harness._TRINO_PLUGIN_VERSIONS) <= set(harness._TRINO_PLUGINS)
     urls: list[str] = []
     monkeypatch.setattr(
         "urllib.request.urlretrieve", lambda url, path: urls.append(f"{url} -> {path}")
     )
-    for name in ("trino-sharepoint", "trino-salesforce", "trino-cloudops"):
+    for name in ("trino-sharepoint", "trino-salesforce", "trino-cloudops", "trino-file"):
         harness._download_trino_plugin(str(tmp_path / name), name)
     base = "https://repo1.maven.org/maven2/io/simpleishard"
     pinned = harness._TRINO_PLUGIN_VERSION
@@ -86,6 +88,8 @@ def test_each_plugin_is_fetched_at_its_own_version(monkeypatch, tmp_path):
         f" -> {tmp_path}/trino-salesforce/trino-salesforce-0.108.0.jar",
         f"{base}/trino-cloudops/0.108.0/trino-cloudops-0.108.0.jar"
         f" -> {tmp_path}/trino-cloudops/trino-cloudops-0.108.0.jar",
+        f"{base}/trino-file/0.109.0/trino-file-0.109.0.jar"
+        f" -> {tmp_path}/trino-file/trino-file-0.109.0.jar",
     ]
 
 

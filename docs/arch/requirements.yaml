@@ -77481,3 +77481,55 @@
   - REQ-1059
   - REQ-603
   notes: 'Maintainer 2026-10-08: public items are available to all domains; told that nothing enforced it (a column has a stored scope of domain, public or restricted that no code reads; REQ-1059''s public role is unbuilt), ruled: build public across domains first, before the admin catalog narrowing relies on it. The stored column scope is the starting point; how a table, relationship or metric is marked public, and what restricted means beyond the visibility list, are to be settled from the model as it is and reported before building.'
+- id: REQ-1960
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: File Sources
+  priority: MAY
+  type: behavioral
+  description: 'A files source may declare an HTML crawl, and Wikipedia is a source type carried by it. (1) THE CRAWL. A files
+    source whose mapping carries a crawl reads web pages before it looks for files: the file adapter follows links from the
+    start pages, and each HTML table and each linked data file (CSV, TSV, Excel, JSON, Parquet) lands in the source''s
+    directory as an ordinary file, which is then a table of the source like any other. Adding the source registers nothing;
+    a steward registers the tables wanted (REQ-316). The crawl''s settings are the adapter''s own and every one can be
+    stated: start pages, link depth, page limit, delay between requests, how long a crawl is kept, the name the crawl gives
+    itself, the part of a page that is read, parts left out of it, which links are followed, link patterns left out, which
+    tables are read with the fewest and most rows, data file types and size limits. A setting the adapter does not read is
+    refused by name. Every engine''s files connector is given the same crawl (REQ-1730). (2) LINKS ARE CHOSEN BY WHAT THE
+    PAGE SAYS THEY ARE. A link is followed for what the link element itself carries -- its classes and attributes, which
+    the site''s markup states -- and for where it sits in the page, never for a name in its address: such a name differs in
+    every language edition and also occurs in ordinary titles (maintainer ruling 2026-10-08). A pattern over addresses
+    remains a setting for other sites and is empty by default. (3) WIKIPEDIA. Wikipedia is in the source pick list. Its
+    setup names the pages to start from (titles or addresses of the chosen language edition), the language edition, link
+    depth (default 1), page limit (default 25) and a contact sent with each request. Only links in the article''s own text,
+    lists and data tables are followed: navigation, information and navigation boxes, notes, citations, categories, file
+    pages, other wikis, external sites and pages not yet written are not. Only tables marked as data tables become tables.
+    (4) SEE ALSO IS A CHOICE. Links in an article''s See also section are looser than links in its text, so following them
+    is an option of the setup, off by default (maintainer ruling 2026-10-08). The section is identified by its heading,
+    which is the one name the brand uses: an edition has no other mark for it. Provisa knows the heading of the common
+    editions; for any other the operator gives it, or follows those links. (5) THE SOURCE SAYS WHAT IT CRAWLS. The crawl is
+    written into the source in full when it is created or edited, and its files land in a directory of the source''s own
+    under the data directory unless the operator names one.'
+  use_case: An analyst adds Wikipedia with the page List of tallest buildings, registers its table of buildings, and
+    joins it to the company''s property table by city without copying anything by hand.
+  code:
+  - provisa/file_source/crawl.py
+  - provisa/file_source/wikipedia.py
+  - provisa/api/admin/schema_common.py
+  - provisa/federation/pgwire_replica.py
+  - provisa/federation/trino_connectors.py
+  - provisa-ui/src/pages/sources/wikipedia.ts
+  - provisa-ui/src/pages/sources/WikipediaFields.tsx
+  tests:
+  - tests/unit/test_wikipedia_source.py
+  - provisa-ui/src/pages/sources/__tests__/wikipedia.test.tsx
+  related_reqs:
+  - REQ-1923
+  - REQ-1730
+  - REQ-316
+  - REQ-955
+  notes: 'Maintainer 2026-10-08: add Wikipedia as a datasource over the file adapter''s HTML crawler, with parameters for the
+    crawler''s features, reasonable defaults, and only links within content followed; surfacing tables and links to
+    csv/parquet/xlsx that become tables is the goal. The crawl itself is in the file adapter (engine 0.109.0), which also
+    reads a spanned table cell into every position it covers.'

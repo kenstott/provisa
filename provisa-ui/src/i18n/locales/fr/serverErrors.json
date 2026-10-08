@@ -448,6 +448,12 @@
     "statement": {
       "rows_cut": "La réponse a été coupée à {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}) : plus de lignes correspondent que celles renvoyées.",
       "rows_cut_unchecked": "La réponse compte {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}). Impossible de vérifier si d'autres lignes correspondent : {{reason}}"
+    },
+    "wikipedia": {
+      "no_pages": "Indiquez au moins une page de départ",
+      "unknown_language": "« {{language}} » n’est pas une édition linguistique",
+      "page_not_of_edition": "{{page}} n’est pas une page de {{host}}",
+      "see_also_heading_needed": "Provisa ne connaît pas le titre « Voir aussi » de l’édition {{language}} : indiquez son identifiant ou suivez ces liens"
     }
   }
 }

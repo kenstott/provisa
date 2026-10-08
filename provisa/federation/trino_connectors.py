@@ -532,13 +532,23 @@ class TrinoFilesConnector(_TrinoConnector):
             raise ValueError(
                 f"Source {source.id!r}: 'path' (glob pattern) is required for files connector"
             )
-        return {
+        details = {
             "glob": resolve_secrets(source.path),
             "recursive": "true",
             "schema-name": source.id.replace("-", "_"),
             "execution-engine": "DUCKDB",
             "case-insensitive-name-matching": "true",
         }
+        # REQ-1960/REQ-1730: the same crawl operand the pgwire bundle is given, as the catalog's
+        # one JSON-valued ``crawl`` property; the glob is then the directory its files land in.
+        import json
+
+        from provisa.file_source.crawl import crawl_operand
+
+        crawl = crawl_operand(source.id, source.mapping)
+        if crawl is not None:
+            details["crawl"] = json.dumps(crawl, sort_keys=True)
+        return details
 
 
 class _TrinoSingleFileConnector(_TrinoConnector):

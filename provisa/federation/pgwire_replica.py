@@ -166,6 +166,14 @@ def _files_operand(source: Any) -> dict:
     refresh_interval = mapping.get("refresh_interval")
     if refresh_interval:
         operand["refreshInterval"] = refresh_interval
+    # REQ-1960: a declared crawl lands web pages' tables and data files in the directory before
+    # the adapter looks for files. A crawl writes to a local directory, which the adapter
+    # refuses otherwise by name.
+    from provisa.file_source.crawl import crawl_operand
+
+    crawl = crawl_operand(source.id, mapping)
+    if crawl is not None:
+        operand["crawl"] = crawl
     storage_type = mapping.get("storage_type")
     if storage_type:
         operand["storageType"] = storage_type

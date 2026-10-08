@@ -2,7 +2,7 @@
 
 ## Product Philosophy
 
-Positioning line: **Federation, metrics, ontology and governance from a single model. Nothing to keep in sync.** Four properties, kept separate: federation (62 connectors reaching 75+ kinds of source, SaaS systems such as Salesforce, ServiceNow and Stripe among them), metrics (defined once), ontology (the glossary as a graph of concepts, separate from the metrics), and governance (six layers compiled into every query plan). Complementary to data catalogs that provide a context layer: they tell an agent what it should do; Provisa enforces what it can do. No invalid join ever runs on your data.
+Positioning line: **Federation, metrics, ontology and governance from a single model. Nothing to keep in sync.** Four properties, kept separate: federation (63 connectors reaching 75+ kinds of source, SaaS systems such as Salesforce, ServiceNow and Stripe among them), metrics (defined once), ontology (the glossary as a graph of concepts, separate from the metrics), and governance (six layers compiled into every query plan). Complementary to data catalogs that provide a context layer: they tell an agent what it should do; Provisa enforces what it can do. No invalid join ever runs on your data.
 
 Provisa follows the Hasura V2 PLG model: **connect a source, register tables, suggest relationships, query with GraphQL** — zero required governance config. Domains, security policies, and steward workflows are progressive disclosures, not prerequisites. Governance is the upgrade path, not the entry tax.
 
@@ -37,7 +37,7 @@ BSL 1.1 license: source-available, converts to Apache 2 after time window, preve
 - SEO: "Hasura V2 alternative", "Hasura DDN migration", "self-hosted GraphQL" — low competition, high intent
 - Show up in Hasura GitHub Discussions, /r/graphql, Hacker News — genuine participation, not ads
 - Honest comparison page: V2 vs DDN vs Provisa. The community respects directness and shares it
-- Broader GraphQL community angle: "GraphQL over anything" — 62 connectors reaching 75+ kinds of source, including Kafka, Iceberg, MotherDuck, Stripe, HubSpot, Airtable, Notion, Auth0, things Hasura never touched
+- Broader GraphQL community angle: "GraphQL over anything" — 63 connectors reaching 75+ kinds of source, including Kafka, Iceberg, MotherDuck, Stripe, HubSpot, Airtable, Notion, Auth0, things Hasura never touched
 - Zero-copy warehouse angle: Snowflake, Databricks, and BigQuery tables reachable live via their own Iceberg catalogs, not just materialize-and-copy — a warehouse team keeps its data in place
 - ClickHouse and MongoDB also reach live, not just materialize-and-copy — full predicate/aggregate pushdown to ClickHouse confirmed against a real 60M-row table; not every competitor gets analytics warehouses and document stores both live
 - SaaS-API sources (Stripe, HubSpot, Airtable, Notion, Auth0, AWS Cognito, Cloudflare D1, Logflare, Calendly) reach through the same captive-Postgres pattern already proven for files/SharePoint/Splunk — no bespoke connector per SaaS app

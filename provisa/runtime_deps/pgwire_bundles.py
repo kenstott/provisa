@@ -42,8 +42,11 @@ RELEASE_TAG = "engine-v0.106.3"
 #     RELEASE_TAG stays behind it because that release's pgwire server ends the connection on a
 #     null string value and plans an untyped text parameter as a number (seen on its cloudops
 #     bundle), which the connectors served from RELEASE_TAG today do not do.
+#   file: engine-v0.109.0 is the first release whose file adapter runs a declared HTML crawl
+#     (REQ-1960).
 CONNECTOR_RELEASE: dict[str, str] = {
     "salesforce": "engine-v0.108.0",
+    "file": "engine-v0.109.0",
 }
 GITHUB_REPO = "kenstott/calcite"
 

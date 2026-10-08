@@ -448,6 +448,12 @@
     "statement": {
       "rows_cut": "La risposta è stata troncata a {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}): corrispondono più righe di quelle restituite.",
       "rows_cut_unchecked": "La risposta ha {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}). Non è stato possibile verificare se corrispondono altre righe: {{reason}}"
+    },
+    "wikipedia": {
+      "no_pages": "Indicare almeno una pagina di partenza",
+      "unknown_language": "«{{language}}» non è un’edizione linguistica",
+      "page_not_of_edition": "{{page}} non è una pagina di {{host}}",
+      "see_also_heading_needed": "Provisa non conosce l’intestazione «Voci correlate» dell’edizione {{language}}: indicarne l’id o seguire quei link"
     }
   }
 }

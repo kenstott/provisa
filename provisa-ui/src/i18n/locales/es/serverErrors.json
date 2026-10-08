@@ -448,6 +448,12 @@
     "statement": {
       "rows_cut": "La respuesta se cortó en {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}): coinciden más filas de las devueltas.",
       "rows_cut_unchecked": "La respuesta tiene {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}). No se pudo comprobar si coinciden más filas: {{reason}}"
+    },
+    "wikipedia": {
+      "no_pages": "Indique al menos una página de inicio",
+      "unknown_language": "«{{language}}» no es una edición de idioma",
+      "page_not_of_edition": "{{page}} no es una página de {{host}}",
+      "see_also_heading_needed": "Provisa no conoce el encabezado «Véase también» de la edición {{language}}: indique su id o siga esos enlaces"
     }
   }
 }

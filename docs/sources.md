@@ -23,7 +23,7 @@ Every query ultimately executes through the federation engine, which provides fe
 
 ## All Sources
 
-Provisa registers **60** source types, the ones the Sources form offers. The tables below cover all 60; the index is the count. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`; Kaggle, GitHub and GitLab are counted as distinct sources even though they register through the `files` and `graphql_remote` connectors internally]
+Provisa registers **61** source types, the ones the Sources form offers. The tables below cover all 61; the index is the count. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`; Kaggle, Wikipedia, GitHub and GitLab are counted as distinct sources even though they register through the `files` and `graphql_remote` connectors internally]
 
 | # | Group | Source types |
 | --- | --- | --- |
@@ -43,6 +43,7 @@ Provisa registers **60** source types, the ones the Sources form offers. The tab
 | 57–58 | [Data quality checkers](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
 | 59 | [Data profiler](#data-profiler) | `data_profiler` |
 | 60 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source — see [Kaggle datasets](#kaggle-datasets)) |
+| 61 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages — see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms) (REQ-027). "Connector Name" is the federated connector used when the source participates in multi-source JOINs (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
@@ -173,6 +174,8 @@ Private buckets need credentials (AWS region and keys from the environment). For
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
 
+Any `files` source can also declare a `crawl` in its mapping, with the same settings listed under [Wikipedia](#wikipedia): the source then reads web pages first and lands each HTML data table and each linked data file in its directory as a table. [tool-verified: `provisa/file_source/crawl.py` `crawl_operand`]
+
 On the DuckDB engine, `files` is read natively — a `read_csv_auto` scanner view per `<table>.csv` under the resolved directory (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. On an engine with no `files` connector of its own, rows land through the same connector-bundled Calcite pgwire server (`pgwire-file`) that sharepoint/splunk use (REQ-954) — see [Enterprise SaaS Connectors](#enterprise-saas-connectors) below. End-to-end UI coverage (Sources form → Register Table → SQL query) and the pgwire landing path are proven in REQ-1694.
 
 #### Kaggle datasets (REQ-1780, REQ-1781, REQ-1782, REQ-1783) {: #kaggle-datasets }
@@ -190,11 +193,70 @@ After adding the source, register its tables through the normal Register Table s
 
 **v1 limitation.** A bundle containing a `.sqlite` or `.db` file is rejected outright with a clear error. Only CSV and Parquet files are staged. [tool-verified: `provisa/kaggle/downloader.py` `UnsupportedKaggleDataset`, `_UNSUPPORTED_EXTENSIONS`]
 
-**Table naming.** Each file lands in its own `<file-stem>/` subdirectory under the dataset root. The pgwire-file connector names the resulting table `<subdir>__<stem>` after SMART_CASING normalization. For example: `StatewiseTestingDetails.csv` lands at `statewise_testing_details/StatewiseTestingDetails.csv` and becomes the table `statewise_testing_details__statewise_testing_details`. The doubled stem is expected for single-file datasets. A multi-file dataset produces one pair per file: `orders__orders`, `customers__customers`. (REQ-471)
+**Table naming.** A crawled table is named `<page>__<name>`: the page's title, then the table's caption, or the last heading above the table when it has no caption, both in the source's column-name spelling. For example, the table under the heading "Tallest buildings in the world" on the page `List_of_tallest_buildings` is `list_of_tallest_buildings__tallest_buildings_in_the_world`. A linked data file keeps its own name. [tool-verified: a live crawl of that page through the 0.109.0 file bundle]
 
 **Refreshing.** To re-fetch a dataset after Kaggle publishes a new version, call the `refreshKaggleSource` GraphQL mutation with the source ID and a valid token. This re-stages the files in place and evicts the pgwire-file endpoint cache so the connector picks up any schema changes on its next query. The `kaggle_owner` and `kaggle_ref` stored in `federation_hints` at creation time identify which dataset to re-fetch. [tool-verified: `provisa/api/admin/schema_mutation.py` `refresh_kaggle_source`] (REQ-1780)
 
 **No static YAML config path.** Kaggle sources are created through the Sources form only. A Kaggle source exported to YAML appears as `type: files` with `kaggle_owner` and `kaggle_ref` in `federation_hints`. Re-downloading from Kaggle requires the UI refresh flow or the `refreshKaggleSource` mutation — pointing the YAML `path` at a pre-staged directory is the alternative for air-gapped environments.
+
+
+#### Wikipedia (REQ-1960) {: #wikipedia }
+
+Wikipedia crawls the pages you name. Each data table on a page, and each linked CSV, TSV, Excel, JSON or Parquet file, becomes a table of the source. Like Kaggle, it registers as a `files` source with a `crawl` in its mapping. Adding it registers nothing: a steward registers the tables wanted through the normal Register Table screen. [tool-verified: `provisa/file_source/wikipedia.py` `crawl_settings`, `DATA_FILE_EXTENSIONS`; `provisa-ui/src/pages/sources/constants.ts` `wikipedia: "files"`] (REQ-316)
+
+**Setup fields.**
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| Pages to start from | none (required) | One per line: a page title, or the address of a page in the chosen edition |
+| Language edition | `en` | The edition's code, for example `en`, `de` or `ja` |
+| Link depth | `1` | How many links away from a starting page to read; `0` reads only the starting pages |
+| Page limit | `25` | The most pages one crawl reads |
+| Contact | empty | Sent with each request so Wikipedia can reach you, as its policy asks |
+| Follow "See also" links | off | Off leaves that section out of the article |
+| "See also" heading | empty | The id of that section's heading. Needed only when the box above is off and Provisa does not know the edition |
+| Directory for the crawl's files | empty | Where tables and data files are written. Empty: `<PROVISA_DATA_DIR>/crawl/<source id>` |
+
+[tool-verified: `provisa-ui/src/pages/sources/WikipediaFields.tsx`; `provisa-ui/src/i18n/locales/en/sourceFormFieldsExtended.json` `wp*`; `provisa/file_source/wikipedia.py` `DEFAULTS`; `provisa/file_source/crawl.py` `crawl_landing_directory`]
+
+Provisa knows the "See also" heading of these editions: `en`, `de`, `es`, `it`, `pt`, `nl`, `pl`, `sv`, `ja`, `zh`, `ru`. For any other edition with "See also" off, the source is refused (`wikipedia.see_also_heading_needed`) until you give the heading id (for example `Articles_connexes`) or turn the option on. [tool-verified: `provisa/file_source/wikipedia.py` `SEE_ALSO_HEADING`, `crawl_settings`]
+
+**Which links are followed.** A link is chosen by what the page's own markup says it is, never by a name in its address: such names differ in every language edition and also occur in ordinary titles. [tool-verified: `provisa/file_source/wikipedia.py` module docstring]
+
+- Followed: links to other articles that sit in the article's own text, lists and data tables. The markup mark is `a[rel='mw:WikiLink']`.
+- Not followed: pages not yet written, the page itself, book-source lookups, file pages, other wikis and external sites.
+- Not read at all (removed before links and tables are collected): navigation boxes, information boxes, notes and citations, categories, the table of contents, images and maintenance messages.
+- Not read unless you turn the option on: the "See also" section.
+
+Only tables that editors mark as data tables (`table.wikitable`) become tables, and a table with fewer than 2 rows is not offered. [tool-verified: `provisa/file_source/wikipedia.py` `LINK_SELECTOR`, `REMOVE_SELECTORS`, `TABLE_SELECTOR`, `DEFAULTS`]
+
+**Advanced crawl settings.** The form shows each with its default; leave a field empty to keep it. In a `files` mapping the same names go under `crawl:`, and a name outside this list is refused. [tool-verified: `provisa/file_source/crawl.py` `CRAWL_SETTINGS`, `crawl_operand`; `provisa/file_source/wikipedia.py` `crawl_settings`]
+
+| Setting | Wikipedia default | Meaning |
+| --- | --- | --- |
+| `start_urls` | the pages you named | Pages the crawl starts from |
+| `max_depth` | `1` | Link depth |
+| `max_pages` | `25` | Page limit |
+| `request_delay` | `1 seconds` | Delay between requests |
+| `user_agent` | `Provisa/<version> (+https://provisa.dev) file-crawler`, with your contact appended | The name the crawl gives itself |
+| `content_selector` | `#mw-content-text .mw-parser-output` | CSS selector: links and tables are read only inside it |
+| `remove_selectors` | the list of parts described above | CSS selectors for parts left out. Stating it replaces the whole list, including the "See also" rule |
+| `link_selector` | `a[rel='mw:WikiLink']` with exclusions | CSS selector a link must match to be followed |
+| `link_exclude_patterns` | empty | Regular expressions; a link whose address one finds is not followed |
+| `follow_external_links` | `false` | Follow links to other sites |
+| `allowed_domains` | not set | Domains the crawl may visit |
+| `table_selector` | `table.wikitable` | CSS selector a table must match |
+| `generate_tables_from_html` | not set | Whether HTML tables become tables |
+| `html_table_min_rows` | `2` | Fewest rows in a table |
+| `html_table_max_rows` | not set | Most rows in a table |
+| `allowed_file_extensions` | `csv`, `tsv`, `xlsx`, `xls`, `json`, `parquet` | Linked file types that become tables |
+| `html_cache_ttl` | `1 days` | How long a crawl is kept |
+| `max_html_size` | not set | Largest page read, for example `10MB` |
+| `max_data_file_size` | not set | Largest data file read, for example `100MB` |
+
+**Table naming.** A crawled table is named `<page>__<name>`. The name is the table's own `id` when it has one, otherwise its caption, otherwise the nearest heading above it. For example, a table under the heading "Tallest buildings" on the page `List_of_tallest_buildings` becomes `list_of_tallest_buildings__tallest_buildings` after name normalization. [tool-verified: calcite `file` adapter `HtmlToJsonConverter.java` (`baseFileName + "__" + tableName`), `HtmlTableScanner.java` `getTableName`] [inferred: the exact normalized spelling in the example]
+
+**Refreshing.** A crawl is kept for the cache period, `1 days` by default (`html_cache_ttl`). Pages are fetched again only after that time has passed. [tool-verified: `provisa/file_source/wikipedia.py` `DEFAULTS`]
 
 
 ### Observability & Other

@@ -448,6 +448,12 @@
     "statement": {
       "rows_cut": "Het antwoord is afgekapt op {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}): er komen meer rijen overeen dan er zijn teruggegeven.",
       "rows_cut_unchecked": "Het antwoord heeft {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}). Of er meer rijen overeenkomen, kon niet worden gecontroleerd: {{reason}}"
+    },
+    "wikipedia": {
+      "no_pages": "Geef minstens één startpagina op",
+      "unknown_language": "‘{{language}}’ is geen taalversie",
+      "page_not_of_edition": "{{page}} is geen pagina van {{host}}",
+      "see_also_heading_needed": "Provisa kent de kop ‘Zie ook’ van de versie {{language}} niet: geef de id op of volg die links"
     }
   }
 }

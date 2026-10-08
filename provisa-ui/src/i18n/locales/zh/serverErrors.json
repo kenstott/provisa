@@ -448,6 +448,12 @@
     "statement": {
       "rows_cut": "结果在 {{limit}} 行处被截断，这是适用于此次读取的行数限制（{{kind}}）：匹配的行多于返回的行。",
       "rows_cut_unchecked": "结果有 {{limit}} 行，即适用于此次读取的行数限制（{{kind}}）。无法检查是否还有更多匹配的行：{{reason}}"
+    },
+    "wikipedia": {
+      "no_pages": "至少指定一个起始页面",
+      "unknown_language": "“{{language}}”不是语言版本",
+      "page_not_of_edition": "{{page}} 不是 {{host}} 的页面",
+      "see_also_heading_needed": "Provisa 不知道 {{language}} 版本的“参见”标题：请提供其 id，或跟随这些链接"
     }
   }
 }

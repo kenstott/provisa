@@ -280,6 +280,43 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
     return None
 
 
+def _expand_wikipedia_if_needed(input: SourceInput) -> Optional[MutationResult]:  # REQ-1960
+    """The ONE place a Wikipedia source becomes the ``files`` source that carries it -- called
+    from inside create_source, as Kaggle staging is, so every creation path gets the same crawl.
+
+    Detected by federation_hints_json carrying ``brand: wikipedia`` (set by the Sources form,
+    or the same way by any other caller), with what the operator chose under ``wikipedia``. The
+    crawl is written into the source's mapping in full, so the row says exactly what is crawled;
+    its files land in the source's own directory under the data directory unless the operator
+    named one (a directory the engine's file connector can write)."""
+    import json as _json
+    from importlib.metadata import version
+
+    from provisa.file_source import wikipedia
+    from provisa.file_source.crawl import crawl_landing_directory
+
+    hints = _json.loads(input.federation_hints_json or "{}")
+    if hints.get("brand") != wikipedia.BRAND:
+        return None
+    try:
+        crawl = wikipedia.crawl_settings(hints.get(wikipedia.BRAND) or {}, version("provisa"))
+    except wikipedia.InvalidWikipediaSource as exc:
+        return MutationResult(
+            success=False,
+            message=f"Wikipedia source {input.id!r}: {exc}",
+            code=exc.code,
+            params=exc.params,
+        )
+    mapping = _json.loads(input.mapping_json or "{}")
+    mapping["crawl"] = crawl
+    input.mapping_json = _json.dumps(mapping)
+    if not input.path:
+        directory = crawl_landing_directory(input.id)
+        directory.mkdir(parents=True, exist_ok=True)
+        input.path = str(directory)
+    return None
+
+
 async def _upsert_source_with_domains(pool, model, input: SourceInput) -> None:
     """Upsert the source model and update allowed_domains in the DB."""
     from provisa.core.repositories import source as source_repo

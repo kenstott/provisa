@@ -99,9 +99,10 @@ jobs:
           MAVEN="https://repo1.maven.org/maven2/io/simpleishard"
           VERSION="0.106.3"
           PLUGINS_DIR="trino/plugins"
-          # name:version. trino-salesforce (REQ-1946) and trino-cloudops (REQ-1947) are at 0.108.0, the
+          # name:version. trino-file (REQ-1960) is at 0.109.0; trino-salesforce (REQ-1946) and
+          # trino-cloudops (REQ-1947) are at 0.108.0, the
           # first release with what Provisa needs of them; see tests/conftest.py _TRINO_PLUGIN_VERSIONS.
-          for spec in trino-sharepoint:$VERSION trino-splunk:$VERSION trino-file:$VERSION \
+          for spec in trino-sharepoint:$VERSION trino-splunk:$VERSION trino-file:0.109.0 \
               trino-salesforce:0.108.0 trino-cloudops:0.108.0; do
             plugin="${spec%%:*}"
             version="${spec##*:}"

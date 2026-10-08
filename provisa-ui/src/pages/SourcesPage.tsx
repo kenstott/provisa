@@ -80,6 +80,7 @@ import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources
 import { profilerFieldsFromMapping, profilerMappingJson } from "./sources/profilerMapping";
 import { salesforceFieldsFromMapping, salesforceMappingJson } from "./sources/salesforce";
 import { cloudopsFieldsFromMapping, cloudopsMappingJson } from "./sources/cloudops";
+import { WIKIPEDIA, wikipediaFieldsFromHints, wikipediaHints } from "./sources/wikipedia";
 import { sourceLoadFieldsValid } from "./sources/loadManagement";
 import { SourceFormFields } from "./sources/SourceFormFields";
 import { icebergCatalogHints } from "./sources/icebergCatalog";
@@ -665,6 +666,13 @@ export function SourcesPage() {
     if (s.type === "cloudops" && s.mappingJson) {
       setAuthFields(cloudopsFieldsFromMapping(s.mappingJson)); // REQ-1947
     }
+    if (sourceBrand(s.federationHintsJson) === WIKIPEDIA && s.federationHintsJson) {
+      // REQ-1960: the directory is the source's own path, shown as where its files land.
+      setAuthFields({
+        ...wikipediaFieldsFromHints(s.federationHintsJson),
+        ...(s.path ? { wp_directory: s.path } : {}),
+      });
+    }
     if (s.type === "salesforce" && s.mappingJson) {
       setAuthFields(salesforceFieldsFromMapping(s.mappingJson)); // REQ-1946
     }
@@ -858,8 +866,10 @@ export function SourcesPage() {
       // Warehouse-specific extras that host/port/database/username/password can't carry
       // (Source.federation_hints, provisa/core/models.py:232-235). authFields is per-type/per-auth-
       // mode scratch state that must be explicitly routed here — it is never in `coreForm`.
-      const federationHints: Record<string, string> =
-        form.type === "snowflake"
+      const federationHints: Record<string, unknown> =
+        form.type === WIKIPEDIA
+          ? wikipediaHints(authFields) // REQ-1960: the server makes these the files source's crawl
+          : form.type === "snowflake"
           ? Object.fromEntries(
               (["warehouse", "schema", "role"] as const)
                 .filter((k) => authFields[k])
@@ -1023,7 +1033,11 @@ export function SourcesPage() {
           // same routing here or the engine ATTACHes `None` at query time.
           form.type === "firebird" || form.type === "duckdb"
             ? form.database || null
-            : FILE_SOURCES.has(form.type) ||
+            : form.type === WIKIPEDIA
+              ? // REQ-1960: where the crawl's files land; empty lets the server give the source a
+                // directory of its own under the data directory.
+                authFields.wp_directory?.trim() || null
+              : FILE_SOURCES.has(form.type) ||
                 form.type === "files" ||
                 form.type === "delta_lake" ||
                 form.type === "iceberg" ||

@@ -80,7 +80,7 @@
         "description": "➕ Новые подключения начинаются с этой кнопки — PostgreSQL, Snowflake, MongoDB, REST API, CSV и ещё 50+."
       },
       "step3": {
-        "title": "61 типов источников, 13 категорий",
+        "title": "62 типов источников, 13 категорий",
         "description": "Один выбор перечисляет все типы по категориям: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Ищите по названию или псевдониму либо сузьте список чипами категорий. У каждого типа есть логотип и значок охвата: ⚡ — чтение вживую на месте, значок копии — там, где Provisa читает обновлённую реплику.<p>Выберите тип, заполните подключение, сохраните.</p>"
       },
       "step4": {

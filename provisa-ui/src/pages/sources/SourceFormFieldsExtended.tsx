@@ -40,6 +40,7 @@ import { PushFeedFormSection } from "./PushFeedFormSection";
 import { ProfilerFormSection } from "./ProfilerFormSection";
 import { SalesforceFields } from "./SalesforceFields";
 import { CloudopsFields } from "./CloudopsFields";
+import { WikipediaFields } from "./WikipediaFields";
 import { SparqlFormSection } from "./SparqlFormSection";
 import { SourceLoadManagementPanel } from "./SourceLoadManagementPanel";
 import { RegionSelect } from "../../components/admin/RegionSelect";
@@ -578,6 +579,9 @@ export function SourceFormFieldsExtended({
           rssUseSsl={rssUseSsl}
           setRssUseSsl={setRssUseSsl}
         />
+      )}
+      {form.type === "wikipedia" && (
+        <WikipediaFields fields={authFields} setFields={setAuthFields} /> // REQ-1960
       )}
       {form.type === "cloudops" && (
         <CloudopsFields fields={authFields} setFields={setAuthFields} />

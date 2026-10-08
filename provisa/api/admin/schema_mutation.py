@@ -110,6 +110,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _resolve_admin_context,
     _register_source_on_engine,
     _remove_view_mv,
+    _expand_wikipedia_if_needed,
     _stage_kaggle_if_needed,
     _sync_view_mv,
     _cache_prometheus_label_columns,
@@ -1082,6 +1083,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 _kaggle_refusal = await _stage_kaggle_if_needed(input)
                 if _kaggle_refusal is not None:
                     return _kaggle_refusal
+                # REQ-1960: a Wikipedia source is the files source that crawls it, from here on.
+                _wikipedia_refusal = _expand_wikipedia_if_needed(input)
+                if _wikipedia_refusal is not None:
+                    return _wikipedia_refusal
                 await _add_source_pool(state, input)
         except Exception as _conn_err:
             logging.getLogger(__name__).exception(
@@ -1450,6 +1455,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _registry_refusal = refuse_registry_settings(input)  # REQ-1951
             if _registry_refusal is not None:
                 return _registry_refusal
+            # REQ-1960: an edited Wikipedia source's crawl is made again from what was chosen.
+            _wikipedia_refusal = _expand_wikipedia_if_needed(input)
+            if _wikipedia_refusal is not None:
+                return _wikipedia_refusal
             # REQ-1695: the literal a person retyped into the form replaces the vault entry under
             # the same name -- a rotation, not a second secret -- and the row keeps the reference.
             password_ref = await persist_source_password(info, input.id, input.password)

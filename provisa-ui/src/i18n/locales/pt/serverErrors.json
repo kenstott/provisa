@@ -448,6 +448,12 @@
     "statement": {
       "rows_cut": "A resposta foi cortada em {{limit}} linhas, o limite de linhas que se aplica a esta leitura ({{kind}}): há mais linhas correspondentes do que as devolvidas.",
       "rows_cut_unchecked": "A resposta tem {{limit}} linhas, o limite de linhas que se aplica a esta leitura ({{kind}}). Não foi possível verificar se há mais linhas correspondentes: {{reason}}"
+    },
+    "wikipedia": {
+      "no_pages": "Informe pelo menos uma página inicial",
+      "unknown_language": "“{{language}}” não é uma edição de idioma",
+      "page_not_of_edition": "{{page}} não é uma página de {{host}}",
+      "see_also_heading_needed": "O Provisa não conhece o título “Ver também” da edição {{language}}: informe o id ou siga esses links"
     }
   }
 }

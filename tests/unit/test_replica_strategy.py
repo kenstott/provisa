@@ -275,7 +275,10 @@ def test_port_allocation_exhaustion_is_loud():
 
 def test_a_connector_with_its_own_release_is_fetched_from_it_and_the_rest_from_the_pin():
     # REQ-1946: pgwire-salesforce first exists in engine-v0.108.0; the pin itself has not moved.
-    assert rd.CONNECTOR_RELEASE == {"salesforce": "engine-v0.108.0"}
+    assert rd.CONNECTOR_RELEASE == {
+        "salesforce": "engine-v0.108.0",
+        "file": "engine-v0.109.0",
+    }
     salesforce = rd.bundle_spec_for("salesforce")
     assert salesforce.version == "engine-v0.108.0"
     assert rd.BundleSpec("salesforce", salesforce.version, variant="linux-x86_64").download_url == (
@@ -295,10 +298,10 @@ def test_a_connector_with_its_own_release_is_fetched_from_it_and_the_rest_from_t
 
 
 def test_bundle_spec_version_pin():
-    spec = rd.bundle_spec_for("files")
+    spec = rd.bundle_spec_for("splunk")
     assert spec.version == rd.RELEASE_TAG
-    assert spec.connector == "file"
-    assert spec.artifact_name == "pgwire-file"
+    assert spec.connector == "splunk"
+    assert spec.artifact_name == "pgwire-splunk"
     assert rd.RELEASE_TAG in spec.download_url
     assert spec.download_url.startswith("https://github.com/kenstott/calcite/releases/download/")
 
@@ -381,7 +384,7 @@ def test_bundle_resolve_downloads_then_caches(tmp_path):
     spec = rd.bundle_spec_for("files")
     assert not resolver.is_cached(spec)
     path = resolver.resolve(spec)
-    assert path == tmp_path / rd.RELEASE_TAG / "pgwire-file"
+    assert path == tmp_path / spec.version / "pgwire-file"
     assert resolver.is_cached(spec)
     # second resolve is a cache HIT — downloader not called again
     resolver.resolve(spec)
