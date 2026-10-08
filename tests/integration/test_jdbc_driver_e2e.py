@@ -85,6 +85,14 @@ def server():
         boot.cleanup()
 
 
+def _cached_repository() -> list[str]:
+    """Maven's read-only tail (3.9): what the machine's ~/.m2 already holds resolves from there
+    and is never written, so a cached lane does not download everything again. Absent on a
+    machine that has no ~/.m2, where Maven fetches what it needs."""
+    cached = Path.home() / ".m2" / "repository"
+    return [f"-Dmaven.repo.local.tail={cached}"] if cached.is_dir() else []
+
+
 def test_the_drivers_integration_tests_pass_against_an_authenticated_server(
     server, tmp_path_factory
 ):
@@ -93,9 +101,9 @@ def test_the_drivers_integration_tests_pass_against_an_authenticated_server(
         [
             "mvn",
             "-B",
-            # Its own local repository: the runner's ~/.m2 is written by earlier steps as another
-            # user, and a test must not depend on a directory it does not own.
+            # Its own local repository: a test must not write to a directory it does not own.
             f"-Dmaven.repo.local={tmp_path_factory.mktemp('m2')}",
+            *_cached_repository(),
             "-f",
             str(_DRIVER / "pom.xml"),
             "verify",
