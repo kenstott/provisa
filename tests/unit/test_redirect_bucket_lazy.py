@@ -100,7 +100,10 @@ async def test_an_unreachable_store_fails_the_redirect_naming_the_endpoint():
     started = time.monotonic()
     with pytest.raises(RedirectStoreError) as raised:
         await upload_and_presign(_result(), _config())  # nothing listens on port 9
-    assert time.monotonic() - started < 3
+    # One attempt, not botocore's default retries, which spent 9-21s here. The bound is the
+    # floor of that old behaviour, not the connect timeout: the elapsed time includes building
+    # the client, which alone took over 3s on a machine short of memory.
+    assert time.monotonic() - started < 9
     assert "http://127.0.0.1:9" in str(raised.value)
     assert "results" in str(raised.value)
 
