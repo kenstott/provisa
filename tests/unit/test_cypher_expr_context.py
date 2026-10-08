@@ -139,7 +139,10 @@ class TestSubqueryRecursion:
     def test_exists_becomes_correlated_subquery(self):
         out = _sql("EXISTS { MATCH (n)-[:KNOWS]->(m) }").upper()
         assert out.startswith("EXISTS(SELECT 1 FROM")
-        assert "INNER JOIN" in out and 'ON N."PERSON_ID" = M."ID"' in out
+        # The inner statement goes on from the outer row n: it reads m and is tied to n by the
+        # relationship's condition, never reads n's table again (#160).
+        assert "INNER JOIN" not in out and out.count("PERSONS") == 1, out
+        assert 'WHERE N."PERSON_ID" = M."ID"' in out, out
 
     def test_count_becomes_scalar_subquery(self):
         out = _sql("COUNT { MATCH (n)-[:KNOWS]->(m) }").upper()

@@ -489,6 +489,10 @@ class TranslatorExprContext:
         inner_ast = parse_cypher(b)
         inner_tr = _Translator(inner_ast, self._t._lm, self._t._params)
         inner_tr._var_table.update(self._t._var_table)
+        # The outer statement's nodes are its row, which the inner statement goes on from (#160).
+        inner_tr._lateral_bound = {
+            v for v, (_, nm) in self._t._var_table.items() if nm is not None
+        } - set(self._t._cte_sources)
         inner_select, inner_params, _ = inner_tr.translate()
 
         for p in inner_params:

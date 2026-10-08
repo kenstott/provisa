@@ -17,7 +17,7 @@ instantiated alone.
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
 
@@ -531,7 +531,10 @@ class _RelJoinMixin:  # mixin for _Translator
             src_node, tgt_node, rel_mapping, from_expr
         )
 
-        if from_expr is None and src_nm is not None:
+        # A node the outer statement holds is the outer row (#160): this statement reads its hop's
+        # first table and is tied to that row by the hop's condition, never reads the node again.
+        outer_row = bool(src_var and src_var in self._lateral_bound)
+        if from_expr is None and src_nm is not None and not outer_row:
             from_expr = _node_table_expr(src_nm, self._node_alias(src_node, src_nm, as_source=True))
 
         if src_nm is None or tgt_nm is None:
@@ -724,6 +727,16 @@ class _RelJoinMixin:  # mixin for _Translator
                     if _step_nodes or _step_edges:
                         self._path_steps[clause.variable] = (_step_nodes, _step_edges)
 
+        if from_expr is None and self._lateral_bound and not joins:
+            # Every node matched is the outer statement's row (#160): this statement reads that
+            # one row and no table of its own.
+            from_expr = cast(
+                "exp.Expression",
+                exp.alias_(
+                    exp.Subquery(this=exp.select(exp.alias_(exp.Literal.number(1), "one"))),
+                    alias="_outer_row",
+                ),
+            )
         if from_expr is None:
             raise CypherTranslateError("No MATCH clause produced a FROM table")
 
