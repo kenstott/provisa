@@ -63,6 +63,7 @@ def server():
                 _table("orders", ("id", "integer"), ("region", "varchar")),
                 _table("customers", ("id", "integer"), ("name", "varchar"), ("region", "varchar")),
                 _table("visits", ("id", "integer"), ("customer_id", "integer")),
+                _table("staff", ("id", "integer"), ("name", "varchar"), ("boss_id", "integer")),
             ],
             # The one registered relationship: a customer's visits. Nothing relates orders.
             "relationships": [
@@ -74,7 +75,17 @@ def server():
                     "target_column": "customer_id",
                     "cardinality": "one-to-many",
                     "graphql_alias": "visits",
-                }
+                },
+                # A relationship of a table to itself: each member of staff and their boss.
+                {
+                    "id": "staff-boss",
+                    "source_table_id": "staff",
+                    "source_column": "boss_id",
+                    "target_table_id": "staff",
+                    "target_column": "id",
+                    "cardinality": "many-to-one",
+                    "graphql_alias": "boss",
+                },
             ],
             "roles": [
                 {"id": "bound", "capabilities": reads, "domain_access": ["*"]},
@@ -104,6 +115,16 @@ def server():
                 sa.text("INSERT INTO public.customers VALUES (1, 'ann', 'east'), (2, 'bo', 'west')")
             )
             conn.execute(sa.text("INSERT INTO public.visits VALUES (10, 1), (11, 1), (12, 2)"))
+            conn.execute(
+                sa.text(
+                    "CREATE TABLE public.staff (id integer PRIMARY KEY, name text, boss_id integer)"
+                )
+            )
+            conn.execute(
+                sa.text(
+                    "INSERT INTO public.staff VALUES (1, 'top', NULL), (2, 'mid', 1), (3, 'low', 2)"
+                )
+            )
         engine.dispose()
         boot.start()
         boot.wait_all_ready(timeout=300)
@@ -282,6 +303,22 @@ def test_a_variable_length_pattern_reads_the_same_rows_pointing_either_way(serve
     assert all(said in rows for said in ("ann", "bo", "10", "11", "12")), rows
 
 
+@pytest.mark.parametrize("surface", list(_CYPHER_SURFACES))
+def test_a_walk_along_a_relationship_of_a_table_to_itself_passes_for_every_role(server, surface):
+    """#159, REQ-603: the walk goes along the registered relationship and re-reads each row it
+    reaches by its primary key -- the same row, no pairing of its own -- so a role the
+    relationships bind walks it as an exempt one does, and gets the same rows: each member of
+    staff with their boss and their boss's boss."""
+    run = _CYPHER_SURFACES[surface]
+    walk = "MATCH (a:Staff)-[*1..2]->(b:Staff) RETURN a.name AS who, b.name AS above ORDER BY who, above"
+    bound, rows = run(server, "bound", walk)
+    assert bound, rows
+    free, same = run(server, "free", walk)
+    assert free, same
+    assert rows == same, (rows, same)
+    assert rows.count("low") == 2 and rows.count("mid") >= 2 and "top" in rows, rows
+
+
 _UNREGISTERED_TYPE = {
     "match": "MATCH (o:Orders)-[:NO_SUCH_REL]->(c:Customers) RETURN o.id",
     "exists": (
@@ -316,6 +353,65 @@ def test_sql_relating_two_tables_outside_a_relationship_is_refused(server, shape
     assert "V002" in said, said
     accepted, said = _sql_http(server, "free", _SQL_OUTSIDE[shape])
     assert accepted, said
+
+
+# A table paired with itself (REQ-603): free where it is a filter only or the same row.
+_SQL_SAME_TABLE_FREE = {
+    "in": "SELECT COUNT(*) AS n FROM sales.customers WHERE region IN "
+    "(SELECT region FROM sales.customers WHERE id > 1)",
+    "in_on_the_key": "SELECT id, region FROM sales.orders WHERE id IN (SELECT id FROM sales.orders)",
+    "not_in": "SELECT id FROM sales.customers WHERE region NOT IN "
+    "(SELECT region FROM sales.customers WHERE id > 1)",
+    "exists": (
+        "SELECT a.id FROM sales.customers a WHERE EXISTS "
+        "(SELECT 1 FROM sales.customers b WHERE b.region = a.region AND b.id <> a.id)"
+    ),
+    "same_row": "SELECT a.name FROM sales.customers a JOIN sales.customers b ON a.id = b.id",
+}
+# A second copy brought out on other columns: a pairing like any other, and none is registered.
+_SQL_SECOND_COPY = {
+    "join_on_another_column": (
+        "SELECT a.id FROM sales.customers a JOIN sales.customers b ON a.region = b.region"
+    ),
+    "range": (
+        "SELECT a.id FROM sales.customers a JOIN sales.customers b "
+        "ON a.id >= b.id AND a.id < b.id + 10"
+    ),
+    "derived_table": (
+        "SELECT a.id FROM sales.customers a JOIN "
+        "(SELECT region FROM sales.customers) d ON d.region = a.region"
+    ),
+    "correlated_scalar": (
+        "SELECT a.id, (SELECT MAX(b.id) FROM sales.customers b WHERE b.region = a.region) AS m "
+        "FROM sales.customers a"
+    ),
+}
+
+
+@pytest.mark.parametrize("shape", list(_SQL_SAME_TABLE_FREE))
+def test_sql_filtering_a_table_by_its_own_rows_or_rereading_a_row_passes(server, shape):
+    for role in ("bound", "free"):
+        accepted, said = _sql_http(server, role, _SQL_SAME_TABLE_FREE[shape])
+        assert accepted, (role, said)
+
+
+@pytest.mark.parametrize("shape", list(_SQL_SECOND_COPY))
+def test_sql_bringing_out_a_second_copy_of_a_table_is_refused(server, shape):
+    accepted, said = _sql_http(server, "bound", _SQL_SECOND_COPY[shape])
+    assert not accepted and "V002" in said, said
+    accepted, said = _sql_http(server, "free", _SQL_SECOND_COPY[shape])
+    assert accepted, said
+
+
+def test_sql_walking_a_registered_relationship_of_a_table_to_itself_passes(server):
+    """staff.boss_id = staff.id is registered: the self-join along it passes for every role."""
+    along = (
+        "SELECT s.name, b.name AS boss FROM sales.staff s JOIN sales.staff b ON s.boss_id = b.id"
+    )
+    for role in ("bound", "free"):
+        accepted, said = _sql_http(server, role, along)
+        assert accepted, (role, said)
+        assert "top" in said and "mid" in said, said
 
 
 @pytest.mark.parametrize("shape", list(_SQL_ALONG))
