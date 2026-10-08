@@ -142,10 +142,6 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
     route = respx.get(f"{BASE}/pets").mock(
         side_effect=lambda request: httpx.Response(200, json=_pets(2))
     )
-    landed: list[str] = []
-
-    async def land(engine, loc, tbl, rows, columns):
-        landed.append(tbl)
 
     @contextmanager
     def isolated_sync():
@@ -156,11 +152,7 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
     source = SimpleNamespace(base_url=BASE, auth=None, headers={})
     endpoint = _endpoint(_offset(max_pages=1))
     with (
-        patch.object(
-            router_integration, "table_exists", lambda conn, loc, t, ttl=None: t in landed
-        ),
-        patch.object(router_integration, "land_api_cache", land),
-        patch.object(router_integration, "schedule_drop", lambda *a, **k: None),
+        patch.object(router_integration, "table_exists", lambda conn, loc, t, ttl=None: False),
         patch.object(router_integration, "cache_table_name", cache_table_name),
         patch("provisa.api_source.engine_cache._scope", lambda: "scope"),
     ):
@@ -177,7 +169,10 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
                 endpoint, {}, engine, source=source, loc=loc
             )
     assert second.from_cache is False and route.call_count == 2  # called again, not a hit
-    assert len(set(landed)) == 2
+    # The handler fetched and wrote nothing: the statement that asked stores the rows, once.
+    assert not hasattr(router_integration, "land_api_cache")
+    # Each cut answer is named for itself, so neither is later taken for the call's answer.
+    assert len({first.cache_table, second.cache_table}) == 2
 
 
 # -- a cut fill is fetched again ------------------------------------------------------------------

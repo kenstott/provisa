@@ -154,6 +154,7 @@ def _openapi_state() -> SimpleNamespace:
         table_name="get_pet_by_id",
         path="/pet/{petId}",
         ttl=60,
+        promotions=[],
         columns=[
             ApiColumn(name="id", type=ApiColumnType.string),
             ApiColumn(name="petId", type=ApiColumnType.string, param_type=ParamType.path),

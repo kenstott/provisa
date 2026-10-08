@@ -708,6 +708,7 @@ async def _mat_api_ep_table(
 
     # Priority 3: cache miss — the fills in the store, then REST
     rows = await _mat_fetch_rows_from_fills(ep, col_names, _META_COLS, state)
+    fetched = not rows  # the rows are a live fetch's, not the fills'
 
     if not rows:
         path_cols = [c for c in ep.columns if c.param_type == "path"]
@@ -769,6 +770,21 @@ async def _mat_api_ep_table(
         # A cut answer (REQ-1350) is the rows this statement asked for, never the table's.
         whole=whole and not cut,
     )
+    if fetched and ep.promotions and _cache_loc.backend != "iceberg":
+        # REQ-119: JSON fields promoted to generated columns of the (PG-backed) cache table a
+        # live fetch was stored in, as the fetch itself did when it wrote the table. The table
+        # holds its columns under their SQL names. Iceberg has no generated columns.
+        from provisa.api_source.router_integration import _apply_cache_promotions
+
+        promoted = ep.model_copy(
+            update={
+                "promotions": [
+                    p.model_copy(update={"jsonb_column": apply_sql_name(p.jsonb_column)})
+                    for p in ep.promotions
+                ]
+            }
+        )
+        await _apply_cache_promotions(_cache_loc, cache_tbl, promoted)
 
 
 def _cut_in_statement(table_name: str) -> bool:

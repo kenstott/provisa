@@ -538,7 +538,9 @@ class TestPromoteJoinedFromFills:
 
 
 def _ep(columns):
-    return SimpleNamespace(source_id="src", table_name="pets", ttl=60, columns=columns)
+    return SimpleNamespace(
+        source_id="src", table_name="pets", ttl=60, columns=columns, promotions=[]
+    )
 
 
 def _col(name, param_type=None, param_only=False):
@@ -1451,3 +1453,78 @@ class TestMatApiEpTableCut:
         assert any("__cut__" in args for args in named), named  # a name of this statement's own
         assert values_cte_entries["pets"].rows == [{"id": 1}]  # the statement reads its rows
         assert hot_mgr._hot_tables == {}  # never held as the table's rows
+
+
+# --- a live fetch is stored once, under the columns the statement reads --------------------------
+
+
+async def test_a_first_read_of_a_table_with_a_parameter_column_is_stored_once_and_read_back():
+    """An endpoint with a parameter that is no response field (a list's ``limit``) and no default
+    parameters. Its first read wrote the rows twice into one cache table -- once by the fetch
+    with the parameter column, once by the statement without it -- and the second write failed
+    on the column count (every Stripe list). The rows are stored once, and the next read is
+    served from the table without calling the remote again."""
+    import duckdb
+    import httpx
+    import respx
+
+    from provisa.api_source import engine_cache
+    from provisa.api_source.models import ApiEndpoint, ApiSource
+    from provisa.executor.session import EngineSession
+
+    engine_cache._SCHEMA_EXISTS_CACHE.clear()
+    engine_cache._TABLE_EXISTS_CACHE.clear()
+    con = duckdb.connect()
+
+    @contextmanager
+    def isolated_sync():
+        yield EngineSession(con, dialect="duckdb", placeholder="?")
+
+    engine = SimpleNamespace(isolated_sync=isolated_sync)
+    state = SimpleNamespace(
+        api_sources={"src": ApiSource(id="src", type="openapi", base_url="https://pay.test")},
+        org_id="default",
+        federation_engine=engine,
+        source_cache={},
+        response_cache_default_ttl=300,
+    )
+    ep = ApiEndpoint(
+        source_id="src",
+        path="/customers",
+        table_name="customers",
+        ttl=60,
+        columns=[
+            ApiColumn(name="id", type=ApiColumnType.string),
+            ApiColumn(name="name", type=ApiColumnType.string),
+            ApiColumn(
+                name="limit",
+                type=ApiColumnType.integer,
+                param_type=ParamType.query,
+                param_only=True,
+            ),
+        ],
+    )
+    customers = [{"id": f"cus_{n}", "name": f"n{n}"} for n in range(3)]
+    loc = CacheLocation("memory", "api_cache", "relational")
+    with (
+        respx.mock,
+        patch(_FILLS, new=AsyncMock(return_value=[])),
+        patch("provisa.api_source.engine_cache.cache_location", return_value=loc),
+        patch("provisa.api_source.engine_cache._scope", lambda: "scope"),
+        patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
+    ):
+        route = respx.get("https://pay.test/customers").mock(
+            return_value=httpx.Response(200, json=customers)
+        )
+        first: dict = {}
+        await _mat_api_ep_table("customers", ep, state, _statement_hot(), 1, set(), first, {})
+        (_loc, table) = first["customers"]  # above the hot threshold: read from the cache table
+        stored = con.execute(f'SELECT id, name FROM memory.api_cache."{table}" ORDER BY id')
+        assert stored.fetchall() == [(c["id"], c["name"]) for c in customers]  # once, not twice
+        assert [d[0] for d in stored.description] == ["id", "name"]
+
+        again: dict = {}
+        await _mat_api_ep_table("customers", ep, state, _statement_hot(), 1, set(), again, {})
+        assert again == first and route.call_count == 1  # a hit: the remote is not called again
+    engine_cache._SCHEMA_EXISTS_CACHE.clear()
+    engine_cache._TABLE_EXISTS_CACHE.clear()

@@ -115,7 +115,10 @@ def test_statement_text_is_rendered_by_the_dialect(dialect, column, column_sql, 
             f"({q}id{q} BIGINT, {column_sql} VARCHAR, {q}doc{q} VARCHAR)",
             None,
         ),
-        (f"INSERT INTO {ref} VALUES (1, {value_sql}, NULL)", None),
+        (
+            f"INSERT INTO {ref} ({q}id{q}, {column_sql}, {q}doc{q}) VALUES (1, {value_sql}, NULL)",
+            None,
+        ),
     ]
 
 
@@ -178,3 +181,22 @@ async def test_hydration_parent_lookup_quotes_its_names():
     )
 
     assert fetched == ['SELECT DISTINCT "jo""in" FROM "s;x"."pa""rent" WHERE "jo""in" IS NOT NULL']
+
+
+@pytest.mark.parametrize("make_session", [_duckdb_engine_session, _duckdb_broker_session])
+def test_rows_go_under_their_own_columns_into_a_table_that_holds_more(tmp_path, make_session):
+    """A cache table that already holds a column these rows do not carry -- a parameter column,
+    a generated column a promotion added -- takes the rows under their names. Positional values
+    failed there with a count that did not match the table's."""
+    session, catalog = make_session(tmp_path)
+    loc = CacheLocation(catalog=catalog, schema="api_cache", backend="relational")
+    ensure_cache_schema(session, loc)
+    session.execute(
+        f'CREATE TABLE {catalog}.api_cache."r_0456" ("limit" BIGINT, id BIGINT, name VARCHAR)'
+    ).fetchall()
+
+    columns = [_col("id", "integer"), _col("name", "string")]
+    create_and_insert(session, loc, "r_0456", [{"id": 1, "name": "a"}], columns)
+
+    got = session.execute(f'SELECT "limit", id, name FROM {catalog}.api_cache."r_0456"').fetchall()
+    assert got == [(None, 1, "a")]

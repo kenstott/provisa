@@ -12,7 +12,7 @@ does; the query path sent none, and a remote that requires the parameter answere
 from __future__ import annotations
 
 from contextlib import contextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -51,8 +51,6 @@ async def _read(params: dict) -> httpx.Request:
     )
     with (
         patch("provisa.api_source.router_integration.table_exists", return_value=False),
-        patch("provisa.api_source.router_integration.land_api_cache", new=AsyncMock()),
-        patch("provisa.api_source.router_integration.schedule_drop"),
     ):
         result = await handle_api_query(
             _endpoint(),

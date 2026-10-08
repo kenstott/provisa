@@ -34,8 +34,6 @@ from provisa.api_source import engine_cache as _engine_cache
 from provisa.api_source.engine_cache import (
     CacheLocation,
     cache_table_name,
-    land_api_cache,
-    schedule_drop,
     table_exists,
 )
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -89,7 +87,7 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
 
     1. Derive stable table name from source + path + native params
     2. If table exists in the engine: return cache reference (phase 2 SQL applied by caller)
-    3. On miss: call API → flatten → materialize → schedule DROP after TTL
+    3. On miss: call API → flatten → return the rows; the caller stores them
     """
     # REQ-318: the endpoint's default parameters (the values that make its whole collection,
     # from the spec at registration) under what the statement binds — as every other
@@ -150,17 +148,8 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
                 {**params, "__cut__": secrets.token_hex(8)},
             )
 
-        # LAND through the ONE write face (store_writer, via land_api_cache) — the engine NEVER
-        # writes the store; it only reads the landed table back through its attach (loc.catalog).
-        await land_api_cache(engine, loc, tbl, all_rows, endpoint.columns)
-        span.set_attribute("api_source.rows_materialized", len(all_rows))
-
-        # REQ-119: promote JSONB fields to generated columns on the (PG-backed) cache table.
-        # The cache stores JSON as varchar, so cast the source column to jsonb. Iceberg
-        # tables have no PG generated columns and are skipped.
-        if endpoint.promotions and loc.backend != "iceberg":
-            await _apply_cache_promotions(loc, tbl, endpoint)
-
-        schedule_drop(engine, loc, tbl, ttl)
-
+        # The rows are returned and not written here: the statement that asked stores them once,
+        # under the columns it reads (api.data.materialization). Writing them here as well put
+        # the same rows in the same table twice, and under this endpoint's parameter columns
+        # too, which the statement's own write does not carry.
         return QueryResult(rows=all_rows, from_cache=False, cache_table=tbl, cut=cut)

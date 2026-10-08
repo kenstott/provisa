@@ -468,6 +468,11 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
         return
 
     col_names = [c.name for c in columns]
+    # The columns are named: a table that holds more than these (a generated column a promotion
+    # added) takes the rows under their own names, and a count that differs is never a guess.
+    col_list = ", ".join(
+        exp.to_identifier(name, quoted=True).sql(dialect=dialect) for name in col_names
+    )
 
     # A response value is data. Where the connection's driver binds values it is bound;
     # where the backend declares no bind marker it is a literal the dialect itself escapes.
@@ -483,11 +488,11 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
                     "(" + ", ".join(_literal(_cell(r.get(c)), dialect) for c in col_names) + ")"
                     for r in batch
                 )
-                conn.execute(f"INSERT INTO {ref} VALUES {vals}")
+                conn.execute(f"INSERT INTO {ref} ({col_list}) VALUES {vals}")
             else:
                 row_marks = "(" + ", ".join([placeholder] * len(col_names)) + ")"
                 conn.execute(
-                    f"INSERT INTO {ref} VALUES " + ", ".join([row_marks] * len(batch)),
+                    f"INSERT INTO {ref} ({col_list}) VALUES " + ", ".join([row_marks] * len(batch)),
                     [_cell(r.get(c)) for r in batch for c in col_names],
                 )
             conn.fetchall()
