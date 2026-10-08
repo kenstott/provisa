@@ -27,6 +27,7 @@ import os
 import urllib.request
 
 import bcrypt
+import pyarrow as pa
 import pyarrow.flight as flight
 import pytest
 import sqlalchemy as sa
@@ -197,12 +198,16 @@ def test_every_catalog_call_without_a_credential_is_refused(client):
     for call in (
         lambda: list(client.list_flights(b"", _options())),
         lambda: client.get_flight_info(descriptor, _options()),
-        lambda: client.get_schema(descriptor, _options()),
         lambda: client.do_get(_ticket()).read_all(),
         lambda: list(client.list_flights(b"", _options(token="not-a-credential"))),
     ):
         with pytest.raises(flight.FlightUnauthenticatedError):
             call()
+    # GetSchema is refused on the same terms; pyarrow's server binding reports any exception
+    # from this one RPC as "Unknown error" (24.0, `_get_schema`), so the client sees an
+    # ArrowException carrying the server's reason rather than a typed Flight error.
+    with pytest.raises(pa.ArrowException, match="a bearer credential is required"):
+        client.get_schema(descriptor, _options())
 
 
 def test_a_role_is_listed_only_its_own_tables_columns_and_commands(client, tokens):
@@ -214,7 +219,7 @@ def test_a_role_is_listed_only_its_own_tables_columns_and_commands(client, token
     for path in (_STAFF, _STAFF_COUNT):
         with pytest.raises(flight.FlightServerError, match="not found"):
             client.get_flight_info(flight.FlightDescriptor.for_path(*path), sam)
-    with pytest.raises(flight.FlightServerError, match="not found"):
+    with pytest.raises(pa.ArrowException, match="Table not found: hr.staff"):
         client.get_schema(flight.FlightDescriptor.for_path(*_STAFF), sam)
 
     hana = _options(tokens["hana"], role="hr_reader")
@@ -250,8 +255,10 @@ def test_a_role_the_credential_does_not_hold_is_refused(client, tokens, role):
     for call in (
         lambda: list(client.list_flights(b"", options)),
         lambda: client.get_flight_info(descriptor, options),
-        lambda: client.get_schema(descriptor, options),
         lambda: client.do_get(_ticket(token=tokens["sam"], role=role)).read_all(),
     ):
+        # Authenticated, and refused what it asked to act as: permission denied.
         with pytest.raises(flight.FlightUnauthorizedError):
             call()
+    with pytest.raises(pa.ArrowException, match="is not assigned|is not a role"):
+        client.get_schema(descriptor, options)

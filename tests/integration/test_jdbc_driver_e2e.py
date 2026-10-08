@@ -85,12 +85,17 @@ def server():
         boot.cleanup()
 
 
-def test_the_drivers_integration_tests_pass_against_an_authenticated_server(server):
+def test_the_drivers_integration_tests_pass_against_an_authenticated_server(
+    server, tmp_path_factory
+):
     url = f"jdbc:provisa://127.0.0.1:{server.ports['http']}?flight_port={server.ports['flight']}"
     run = subprocess.run(
         [
             "mvn",
             "-B",
+            # Its own local repository: the runner's ~/.m2 is written by earlier steps as another
+            # user, and a test must not depend on a directory it does not own.
+            f"-Dmaven.repo.local={tmp_path_factory.mktemp('m2')}",
             "-f",
             str(_DRIVER / "pom.xml"),
             "verify",

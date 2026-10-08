@@ -333,3 +333,113 @@ def test_a_role_with_no_data_surface_is_listed_nothing(monkeypatch):
     srv = _server(monkeypatch)
     assert flight_catalog.role_visibility(srv._state, "platform_admin") == {}
     assert flight_catalog.build_catalog_tables(srv._state, "platform_admin") == []
+
+
+# --- over the wire: a real Flight server and client -----------------------------------------------
+#
+# The cases above call the server's methods; these go through pyarrow's own RPC layer, which is
+# where a refusal becomes (or fails to become) a typed error for the client, and where the
+# handler thread's bindings are whatever the server set up — nothing a direct call shares.
+
+
+@pytest.fixture
+def wire(monkeypatch):
+    """A ProvisaFlightServer bound to a loopback port over the model above, auth on."""
+    monkeypatch.undo()  # the autouse stream capture: the wire needs real record-batch streams
+    probe = _server(monkeypatch)  # installs the credential validator and the command list
+    bound: list[str | None] = []
+
+    def _ensure(state, members):
+        from provisa.core.request_context import current_org
+
+        bound.append(current_org.get(None))
+        return "meta:" + "+".join(sorted(set(members)))
+
+    monkeypatch.setattr("provisa.security.meta_role.ensure_meta_role", _ensure)
+    server = ProvisaFlightServer(probe._state, location="grpc://127.0.0.1:0")
+    client = flight.connect(f"grpc://127.0.0.1:{server.port}")
+    try:
+        yield types.SimpleNamespace(client=client, org_at_meta_role=bound)
+    finally:
+        client.close()
+        server.shutdown()
+
+
+def _options(token: str | None = None, role: str | None = None) -> flight.FlightCallOptions:
+    headers: list[tuple[bytes, bytes]] = []
+    if token is not None:
+        headers.append((b"authorization", f"Bearer {token}".encode()))
+    if role is not None:
+        headers.append((b"x-provisa-role", role.encode()))
+    return flight.FlightCallOptions(headers=headers)
+
+
+def _wire_listed(client, options) -> set[tuple[str, ...]]:
+    return {
+        tuple(p.decode() if isinstance(p, bytes) else p for p in info.descriptor.path)
+        for info in client.list_flights(b"", options)
+    }
+
+
+def test_over_the_wire_a_role_is_listed_its_catalog_and_reads_its_schema(wire):
+    sam = _options("sam")
+    assert _wire_listed(wire.client, sam) == {_ORDERS, _ORDER_COUNT}
+    descriptor = flight.FlightDescriptor.for_path(*_ORDERS)
+    assert wire.client.get_schema(descriptor, sam).schema.names == ["id", "region"]
+    assert wire.client.get_flight_info(descriptor, sam).schema.names == ["id", "region"]
+
+
+def test_over_the_wire_the_org_is_bound_when_a_set_becomes_its_meta_role(wire):
+    """Acting as a set makes its meta-role in the org's runtime — a tenant-data path. It ran
+    before the org was bound, so every catalog call naming a set failed 'No active org bound'."""
+    both = _options("both", role="seller,hr_reader")
+    assert _wire_listed(wire.client, both) == {_ORDERS, _STAFF, _ORDER_COUNT, _STAFF_COUNT}
+    wire.client.get_flight_info(flight.FlightDescriptor.for_path(*_STAFF), both)
+    wire.client.get_schema(flight.FlightDescriptor.for_path(*_STAFF), both)
+    rows = wire.client.do_get(
+        flight.Ticket(json.dumps({"token": "both", "role": "seller,hr_reader"}).encode())
+    ).read_all()
+    assert set(rows.column("table_name").to_pylist()) == {"orders", "staff"}
+    assert wire.org_at_meta_role == ["default"] * 4, wire.org_at_meta_role
+
+
+def test_over_the_wire_a_refusal_reaches_the_client_as_what_it_is(wire):
+    descriptor = flight.FlightDescriptor.for_path(*_STAFF)
+    # No credential, or a rejected one: unauthenticated.
+    for options in (_options(), _options("forged")):
+        with pytest.raises(flight.FlightUnauthenticatedError):
+            list(wire.client.list_flights(b"", options))
+        with pytest.raises(flight.FlightUnauthenticatedError):
+            wire.client.get_flight_info(descriptor, options)
+    with pytest.raises(flight.FlightUnauthenticatedError):
+        wire.client.do_get(flight.Ticket(b"{}")).read_all()
+    # A valid credential asking for a role it does not hold: permission denied, by name.
+    unheld = _options("sam", role="hr_reader")
+    with pytest.raises(flight.FlightUnauthorizedError, match="hr_reader"):
+        list(wire.client.list_flights(b"", unheld))
+    with pytest.raises(flight.FlightUnauthorizedError, match="hr_reader"):
+        wire.client.get_flight_info(descriptor, unheld)
+    with pytest.raises(flight.FlightUnauthorizedError, match="hr_reader"):
+        wire.client.do_get(
+            flight.Ticket(json.dumps({"token": "sam", "role": "hr_reader"}).encode())
+        ).read_all()
+    # What the role is not served is not found.
+    with pytest.raises(flight.FlightServerError, match="not found"):
+        wire.client.get_flight_info(descriptor, _options("sam"))
+
+
+def test_over_the_wire_get_schema_refuses_with_the_reason(wire):
+    """GetSchema is refused on the same terms. pyarrow's server binding does not carry a Flight
+    error's kind for this one RPC (24.0: `_get_schema` reports any exception as 'Unknown
+    error'), so the client sees an ArrowException — with the server's reason in it."""
+    import pyarrow as pa
+
+    descriptor = flight.FlightDescriptor.for_path(*_STAFF)
+    for options, reason in (
+        (_options(), "a bearer credential is required"),
+        (_options("forged"), "credential rejected"),
+        (_options("sam", role="hr_reader"), "'hr_reader' is not assigned"),
+        (_options("sam"), "Table not found: hr.staff"),
+    ):
+        with pytest.raises(pa.ArrowException, match=reason):
+            wire.client.get_schema(descriptor, options)

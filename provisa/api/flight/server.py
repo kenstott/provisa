@@ -458,6 +458,17 @@ class ProvisaFlightServer(
                 bearer.credential_refusal(e)
             ) from e
 
+    def _as_catalog_role(
+        self, context: flight.ServerCallContext, body: Callable[[str | None], Any]
+    ) -> Any:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Run a ticketless metadata RPC's ``body(role)`` in the catalog's org, as the role the
+        call is authorized for.
+
+        The org is bound BEFORE the role is authorized: acting as a set of held roles makes their
+        meta-role in the org's runtime on first use, and that — like the catalog read itself —
+        is a tenant-data path."""
+        return self._in_catalog_org(lambda: body(self._catalog_role(context)))
+
     def _catalog_role(self, context: flight.ServerCallContext) -> str | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """The role a ticketless metadata RPC lists the catalog as (REQ-1263), or None when this
         deployment authenticates nobody.
@@ -520,9 +531,18 @@ class ProvisaFlightServer(
         def _body() -> tuple[bytes, list[object]]:
             credential = data.get("token")
             identity = self._authenticate(credential if isinstance(credential, str) else None)
-            role_id = (
-                data.get("role", "") if identity is None else self._authorize_role(identity, data)
-            )
+            if identity is None:
+                return json.dumps({"role": data.get("role", "")}).encode("utf-8"), []
+            # Authorized with the session's org bound, as a ticket is (_do_get_on_loop): a set
+            # of held roles is made into its meta-role in the org's runtime.
+            from provisa.core.request_context import reset_current_org
+
+            org_token = self._resolve_and_bind_org(data, identity)
+            try:
+                role_id = self._authorize_role(identity, data)
+            finally:
+                if org_token is not None:
+                    reset_current_org(org_token)
             return json.dumps({"role": role_id}).encode("utf-8"), []
 
         return _run_rpc(_body)
@@ -544,19 +564,13 @@ class ProvisaFlightServer(
         (:meth:`_catalog_role`); with none the listing is the whole catalog."""
         from provisa.api.data.action_exec import list_visible_commands
 
-        def _infos() -> list[flight.FlightInfo]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            role = self._catalog_role(context)
-            return self._in_catalog_org(
-                lambda: [
-                    *(
-                        catalog_table_to_flight_info(t)
-                        for t in build_catalog_tables(self._state, role)
-                    ),
-                    *(command_to_flight_info(c) for c in list_visible_commands(self._state, role)),
-                ]
-            )
+        def _infos(role: str | None) -> list[flight.FlightInfo]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return [
+                *(catalog_table_to_flight_info(t) for t in build_catalog_tables(self._state, role)),
+                *(command_to_flight_info(c) for c in list_visible_commands(self._state, role)),
+            ]
 
-        yield from _run_rpc(_infos)
+        yield from _run_rpc(lambda: self._as_catalog_role(context, _infos))
 
     # ------------------------------------------------------------------
     # get_flight_info — metadata for a specific flight
@@ -573,11 +587,9 @@ class ProvisaFlightServer(
         found (:meth:`_catalog_role`).
         """
 
-        def _info() -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            role = self._catalog_role(context)
-            return self._in_catalog_org(lambda: self._flight_info(descriptor, role))
-
-        return _run_rpc(_info)
+        return _run_rpc(
+            lambda: self._as_catalog_role(context, lambda role: self._flight_info(descriptor, role))
+        )
 
     def _flight_info(
         self,
@@ -640,11 +652,11 @@ class ProvisaFlightServer(
         domain_id = path[0].decode("utf-8") if isinstance(path[0], bytes) else path[0]
         table_name = path[1].decode("utf-8") if isinstance(path[1], bytes) else path[1]
 
-        def _tables() -> list:
-            role = self._catalog_role(context)
-            return self._in_catalog_org(lambda: build_catalog_tables(self._state, role))
-
-        tables = _run_rpc(_tables)
+        tables = _run_rpc(
+            lambda: self._as_catalog_role(
+                context, lambda role: build_catalog_tables(self._state, role)
+            )
+        )
         for t in tables:
             if t.domain_id == domain_id and t.table_name == table_name:
                 schema = catalog_table_to_arrow_schema(t)
@@ -686,8 +698,6 @@ class ProvisaFlightServer(
         # downstream reader sees the authorized value.
         credential = request.get("token")
         identity = self._authenticate(credential if isinstance(credential, str) else None)
-        if identity is not None:
-            request["role"] = self._authorize_role(identity, request)
 
         # REQ-1266: bind the ticket's org on this worker thread so every self._state.X read (here and
         # in the nested helpers) resolves the org's runtime; _run_on_loop re-binds it inside each
@@ -696,6 +706,11 @@ class ProvisaFlightServer(
         _shield = request_deadline.shielded()
         try:
             from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
+
+            # The role is authorized with the org bound: a set of held roles is made into its
+            # meta-role in the org's runtime, which is a tenant-data path like any other.
+            if identity is not None:
+                request["role"] = self._authorize_role(identity, request)
 
             # REQ-074/REQ-1386: the validated principal, or — on a deployment that authenticates
             # nobody — the anonymous one: the request is audited either way.
