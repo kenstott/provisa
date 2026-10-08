@@ -1211,7 +1211,7 @@ gRPC-сервер запускается только тогда, когда д�
 
 ## Драйвер JDBC
 
-Драйвер JDBC Provisa (`provisa-jdbc-0.1.0.jar`) предоставляет семантический каталог инструментам BI (Tableau, PowerBI, DBeaver). (REQ-126)
+Драйвер JDBC Provisa (`provisa-jdbc-<release>.jar`) предоставляет семантический каталог инструментам BI (Tableau, PowerBI, DBeaver). (REQ-126)
 
 **URL подключения:** `jdbc:provisa://host:port` (REQ-131)
 

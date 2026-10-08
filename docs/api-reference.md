@@ -1220,7 +1220,7 @@ Both route through the same compiler aggregate pipeline as GraphQL's `{field}_ag
 
 ## JDBC Driver
 
-The Provisa JDBC driver (`provisa-jdbc-0.1.0.jar`) exposes the semantic catalog to BI tools (Tableau, PowerBI, DBeaver). (REQ-126)
+The Provisa JDBC driver (`provisa-jdbc-<release>.jar`) exposes the semantic catalog to BI tools (Tableau, PowerBI, DBeaver). (REQ-126)
 
 **Connection URL:** `jdbc:provisa://host:port` (REQ-131)
 

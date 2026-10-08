@@ -1211,7 +1211,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 
 ## מנהל התקן JDBC
 
-מנהל התקן ה-JDBC של Provisa (`provisa-jdbc-0.1.0.jar`) חושף את הקטלוג הסמנטי לכלי BI (Tableau, PowerBI, DBeaver). (REQ-126)
+מנהל התקן ה-JDBC של Provisa (`provisa-jdbc-<release>.jar`) חושף את הקטלוג הסמנטי לכלי BI (Tableau, PowerBI, DBeaver). (REQ-126)
 
 **כתובת חיבור (Connection URL):** `jdbc:provisa://host:port` (REQ-131)
 

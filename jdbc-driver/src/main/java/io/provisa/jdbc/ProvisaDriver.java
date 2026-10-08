@@ -106,7 +106,7 @@ public class ProvisaDriver implements Driver {
     }
 
     @Override public int getMajorVersion() { return 0; }
-    @Override public int getMinorVersion() { return 1; }
+    @Override public int getMinorVersion() { return 2; }
     @Override public boolean jdbcCompliant() { return false; }
     @Override public Logger getParentLogger() { return Logger.getLogger("io.provisa.jdbc"); }
 }

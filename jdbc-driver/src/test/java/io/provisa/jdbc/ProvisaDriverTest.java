@@ -44,7 +44,7 @@ class ProvisaDriverTest {
     @Test
     void versionNumbers() {
         assertEquals(0, driver.getMajorVersion());
-        assertEquals(1, driver.getMinorVersion());
+        assertEquals(2, driver.getMinorVersion());
         assertFalse(driver.jdbcCompliant());
     }
 }

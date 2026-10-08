@@ -1,177 +1,110 @@
 package io.provisa.jdbc;
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Test;
 
-import java.sql.*;
-import java.util.*;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Integration tests against a live Provisa backend.
+ * Catalog metadata and a query through the driver against a live Provisa server with auth
+ * enforced (REQ-126, REQ-128, REQ-131).
  *
- * Requires: docker-compose up (Postgres + Trino + Provisa on localhost:8001)
- * Run via: mvn verify
+ * <p>System properties: {@code provisa.url}; {@code provisa.adminUser} /
+ * {@code provisa.adminPassword} / {@code provisa.adminRole} — a user who may read the registered
+ * catalog, and the role it acts as; {@code provisa.table} (a registered table) and
+ * {@code provisa.columns} (its columns, comma-separated); {@code provisa.sql}. Run via
+ * {@code mvn verify}; tests/integration/test_jdbc_driver_e2e.py starts the server and passes
+ * these.
  */
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ProvisaDriverIT {
 
     static final String BASE_URL = System.getProperty("provisa.url", "jdbc:provisa://localhost:8001");
-    static final String USER = System.getProperty("provisa.user", "admin");
+    static final String TABLE = System.getProperty("provisa.table", "orders");
+    static final List<String> COLUMNS = List.of(System.getProperty("provisa.columns", "id,region").split(","));
+    static final String SQL = System.getProperty("provisa.sql", "SELECT id, region FROM sales.orders");
 
-    // ── mode=catalog (default) ──
-
-    @Test
-    @Order(1)
-    void connectsSuccessfully() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (Connection conn = DriverManager.getConnection(BASE_URL, props)) {
-            assertFalse(conn.isClosed());
-            assertEquals("Provisa", conn.getMetaData().getDatabaseProductName());
-        }
+    private static Connection connect() throws SQLException {
+        Properties props = new Properties();
+        props.setProperty("user", System.getProperty("provisa.adminUser", "admin"));
+        props.setProperty("password", System.getProperty("provisa.adminPassword", ""));
+        String role = System.getProperty("provisa.adminRole");
+        if (role != null) props.setProperty("role", role);
+        return DriverManager.getConnection(BASE_URL, props);
     }
 
     @Test
-    @Order(10)
-    void catalogMode_connectsSuccessfully() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (Connection conn = DriverManager.getConnection(BASE_URL + "?mode=catalog", props)) {
+    void theConnectionReportsTheProductAndTheSignedInUser() throws SQLException {
+        try (Connection conn = connect()) {
             assertFalse(conn.isClosed());
+            DatabaseMetaData meta = conn.getMetaData();
+            assertEquals("Provisa", meta.getDatabaseProductName());
+            assertEquals(System.getProperty("provisa.adminUser", "admin"), meta.getUserName());
             assertEquals("catalog", conn.getSchema());
         }
     }
 
     @Test
-    @Order(11)
-    void catalogMode_getTablesReturnsRegisteredTables() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (Connection conn = DriverManager.getConnection(BASE_URL + "?mode=catalog", props)) {
-            ResultSet rs = conn.getMetaData().getTables(null, null, "%", null);
+    void getTablesListsTheRegisteredTable() throws SQLException {
+        try (Connection conn = connect();
+             ResultSet rs = conn.getMetaData().getTables(null, null, "%", null)) {
             List<String> names = new ArrayList<>();
-            List<String> schemas = new ArrayList<>();
             while (rs.next()) {
                 assertEquals("TABLE", rs.getString("TABLE_TYPE"));
+                assertNotNull(rs.getString("TABLE_SCHEM"));
                 names.add(rs.getString("TABLE_NAME"));
-                schemas.add(rs.getString("TABLE_SCHEM"));
             }
-            assertFalse(names.isEmpty(), "Should have registered tables");
-            // Schemas should be domain IDs
-            for (String schema : schemas) {
-                assertNotNull(schema);
-            }
+            assertTrue(names.contains(TABLE), "registered tables: " + names);
         }
     }
 
     @Test
-    @Order(12)
-    void catalogMode_getColumnsReturnsAliasesAndDescriptions() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (Connection conn = DriverManager.getConnection(BASE_URL + "?mode=catalog", props)) {
-            ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
-            if (!tables.next()) {
-                fail("No registered tables");
-            }
-            String tableName = tables.getString("TABLE_NAME");
-
-            ResultSet cols = conn.getMetaData().getColumns(null, null, tableName, null);
-            boolean hasColumns = false;
-            while (cols.next()) {
-                hasColumns = true;
-                assertNotNull(cols.getString("COLUMN_NAME"));
-                // REMARKS should be present (may be empty)
-                assertNotNull(cols.getString("REMARKS"));
-            }
-            assertTrue(hasColumns, "Table should have columns");
-        }
-    }
-
-    @Test
-    @Order(13)
-    void catalogMode_executesSqlThroughGovernanceEndpoint() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (Connection conn = DriverManager.getConnection(BASE_URL + "?mode=catalog", props)) {
-            ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
-            if (!tables.next()) {
-                fail("No registered tables");
-            }
-            String tableName = tables.getString("TABLE_NAME");
-
-            Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM " + tableName);
-            ResultSetMetaData meta = rs.getMetaData();
-            assertTrue(meta.getColumnCount() >= 0);
-
-            int rowCount = 0;
+    void getColumnsListsTheTablesColumns() throws SQLException {
+        try (Connection conn = connect();
+             ResultSet rs = conn.getMetaData().getColumns(null, null, TABLE, null)) {
+            List<String> names = new ArrayList<>();
             while (rs.next()) {
-                rowCount++;
+                names.add(rs.getString("COLUMN_NAME"));
             }
-            assertTrue(rowCount >= 0, "Query should execute successfully");
+            assertTrue(names.containsAll(COLUMNS), TABLE + " columns: " + names);
         }
     }
 
-    // ── PK/FK relationships ──
-
     @Test
-    @Order(20)
-    void relationships_getImportedKeys() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (Connection conn = DriverManager.getConnection(BASE_URL + "?mode=catalog", props)) {
-            // Try to find FK relationships for any table
-            ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
-            boolean foundRelationship = false;
-            while (tables.next()) {
-                String table = tables.getString("TABLE_NAME");
-                ResultSet fks = conn.getMetaData().getImportedKeys(null, null, table);
-                if (fks.next()) {
-                    foundRelationship = true;
-                    assertNotNull(fks.getString("PKTABLE_NAME"));
-                    assertNotNull(fks.getString("PKCOLUMN_NAME"));
-                    assertNotNull(fks.getString("FKTABLE_NAME"));
-                    assertNotNull(fks.getString("FKCOLUMN_NAME"));
-                    break;
-                }
+    void keyMetadataAnswersForATableWithNoRelationships() throws SQLException {
+        try (Connection conn = connect()) {
+            try (ResultSet fks = conn.getMetaData().getImportedKeys(null, null, TABLE)) {
+                assertFalse(fks.next(), "the test model declares no relationship");
             }
-            // Don't fail if no relationships configured — just log
-            if (!foundRelationship) {
-                System.out.println("No relationships configured — FK test skipped");
+            try (ResultSet pks = conn.getMetaData().getPrimaryKeys(null, null, TABLE)) {
+                assertFalse(pks.next());
             }
         }
     }
 
     @Test
-    @Order(21)
-    void relationships_getPrimaryKeys() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (Connection conn = DriverManager.getConnection(BASE_URL + "?mode=catalog", props)) {
-            ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
-            boolean foundPk = false;
-            while (tables.next()) {
-                String table = tables.getString("TABLE_NAME");
-                ResultSet pks = conn.getMetaData().getPrimaryKeys(null, null, table);
-                if (pks.next()) {
-                    foundPk = true;
-                    assertEquals(table, pks.getString("TABLE_NAME"));
-                    assertNotNull(pks.getString("COLUMN_NAME"));
-                    break;
-                }
+    void aQueryReturnsTheTablesRowsWithTheirColumns() throws SQLException {
+        try (Connection conn = connect();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(SQL)) {
+            assertEquals(COLUMNS.size(), rs.getMetaData().getColumnCount());
+            for (int i = 0; i < COLUMNS.size(); i++) {
+                assertEquals(COLUMNS.get(i), rs.getMetaData().getColumnName(i + 1));
             }
-            if (!foundPk) {
-                System.out.println("No PK relationships derived — PK test skipped");
+            int rows = 0;
+            while (rs.next()) {
+                assertNotNull(rs.getObject(COLUMNS.get(0)));
+                rows++;
             }
+            assertTrue(rows > 0, "the table has rows");
         }
     }
 }

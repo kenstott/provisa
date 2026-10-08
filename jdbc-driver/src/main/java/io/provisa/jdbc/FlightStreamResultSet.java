@@ -11,6 +11,9 @@ import org.apache.arrow.vector.TimeNanoVector;
 import org.apache.arrow.vector.TimeSecVector;
 import org.apache.arrow.vector.TimeStampVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.complex.BaseListVector;
+import org.apache.arrow.vector.complex.MapVector;
+import org.apache.arrow.vector.complex.StructVector;
 import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
@@ -168,8 +171,20 @@ public class FlightStreamResultSet extends AbstractResultSet {
         if (vector instanceof TimeNanoVector nanos) {
             return Time.valueOf(LocalTime.ofNanoOfDay(nanos.get(row)));
         }
+        if (vector instanceof MapVector || vector instanceof StructVector) {
+            // A struct or a map is its JSON text, as the HTTP transport returns it.
+            return vector.getObject(row).toString();
+        }
+        if (vector instanceof BaseListVector) {
+            return new ArrowArray((List<?>) vector.getObject(row), elementType(vector));
+        }
         Object value = vector.getObject(row);
         return value instanceof Text ? value.toString() : value;
+    }
+
+    /** The Arrow type of a list vector's elements. */
+    private static ArrowType elementType(FieldVector list) {
+        return list.getField().getChildren().get(0).getType();
     }
 
     private static Instant instant(long epoch, TimeUnit unit) {
@@ -321,6 +336,21 @@ public class FlightStreamResultSet extends AbstractResultSet {
     @Override
     public byte[] getBytes(String columnLabel) throws SQLException {
         return getBytes(index(columnLabel));
+    }
+
+    @Override
+    public java.sql.Array getArray(int columnIndex) throws SQLException {
+        Object v = value(columnIndex);
+        if (v == null) return null;
+        if (v instanceof java.sql.Array array) return array;
+        throw new SQLException(
+            "Column " + columnNames.get(columnIndex - 1) + " is not an array (it is "
+            + getMetaData().getColumnTypeName(columnIndex) + ")");
+    }
+
+    @Override
+    public java.sql.Array getArray(String columnLabel) throws SQLException {
+        return getArray(index(columnLabel));
     }
 
     @Override

@@ -57,6 +57,9 @@ public class ArrowResultSetMetaData implements ResultSetMetaData {
             return ts.getTimezone() == null ? Types.TIMESTAMP : Types.TIMESTAMP_WITH_TIMEZONE;
         }
         if (type instanceof ArrowType.LargeUtf8) return Types.VARCHAR;
+        if (type instanceof ArrowType.Map || type instanceof ArrowType.Struct) return Types.VARCHAR;
+        if (type instanceof ArrowType.List || type instanceof ArrowType.LargeList
+                || type instanceof ArrowType.FixedSizeList) return Types.ARRAY;
         if (type instanceof ArrowType.Binary || type instanceof ArrowType.LargeBinary) return Types.BINARY;
 
         return Types.VARCHAR;
@@ -78,6 +81,7 @@ public class ArrowResultSetMetaData implements ResultSetMetaData {
             case Types.TIMESTAMP -> "TIMESTAMP";
             case Types.TIMESTAMP_WITH_TIMEZONE -> "TIMESTAMP WITH TIME ZONE";
             case Types.BINARY -> "BINARY";
+            case Types.ARRAY -> "ARRAY";
             default -> "VARCHAR";
         };
     }
@@ -116,7 +120,10 @@ public class ArrowResultSetMetaData implements ResultSetMetaData {
         return switch (getColumnType(column)) {
             case Types.VARCHAR -> field.getType() instanceof ArrowType.Utf8
                     || field.getType() instanceof ArrowType.LargeUtf8
+                    || field.getType() instanceof ArrowType.Struct
+                    || field.getType() instanceof ArrowType.Map
                 ? String.class.getName() : Object.class.getName();
+            case Types.ARRAY -> java.sql.Array.class.getName();
             case Types.INTEGER -> switch (((ArrowType.Int) field.getType()).getBitWidth()) {
                 case 8 -> Byte.class.getName();
                 case 16 -> Short.class.getName();

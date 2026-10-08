@@ -166,9 +166,10 @@ public class ProvisaConnection extends AbstractConnection {
      */
     List<RegisteredTable> fetchRegisteredTables() throws SQLException {
         try {
-            String gql = "{ tables { id sourceId domainId schemaName tableName governance " +
-                    "alias description columns { id columnName visibleTo writableBy " +
-                    "unmaskedTo maskType alias description } } }";
+            // Only fields the admin schema has and this driver reads
+            // (tests/unit/test_jdbc_driver_admin_queries.py validates the text against it).
+            String gql = "{ tables { id domainId tableName alias description " +
+                    "columns { columnName alias description } } }";
             JsonObject result = executeGraphQL(baseUrl + "/admin/graphql", gql);
             JsonArray tablesArr = result.getAsJsonObject("data").getAsJsonArray("tables");
 
@@ -212,6 +213,11 @@ public class ProvisaConnection extends AbstractConnection {
             List<Relationship> rels = new ArrayList<>();
             for (JsonElement el : relsArr) {
                 JsonObject r = el.getAsJsonObject();
+                // A relationship with no target table or column (one defined by a condition,
+                // not a key pair) is not a foreign key and has no place in key metadata.
+                if (r.get("targetTableId").isJsonNull() || r.get("targetColumn").isJsonNull()) {
+                    continue;
+                }
                 rels.add(new Relationship(
                     r.get("id").getAsString(),
                     r.get("sourceTableId").getAsInt(),

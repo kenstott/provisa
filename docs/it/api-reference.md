@@ -1211,7 +1211,7 @@ Entrambi passano attraverso la stessa pipeline di aggregazione del compilatore u
 
 ## Driver JDBC
 
-Il driver JDBC Provisa (`provisa-jdbc-0.1.0.jar`) espone il catalogo semantico agli strumenti BI (Tableau, PowerBI, DBeaver). (REQ-126)
+Il driver JDBC Provisa (`provisa-jdbc-<release>.jar`) espone il catalogo semantico agli strumenti BI (Tableau, PowerBI, DBeaver). (REQ-126)
 
 **URL di connessione:** `jdbc:provisa://host:port` (REQ-131)
 
