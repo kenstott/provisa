@@ -423,10 +423,12 @@ def _allocate_itest_ports() -> None:
     # Redirect/result-spill S3 path (test_redirect_encryption_minio) reads this; wire it to the
     # isolated stack's minio so the encryption round-trip runs instead of skipping on :9000.
     os.environ["PROVISA_REDIRECT_ENDPOINT"] = f"http://{_minio}"
-    # Host-side kafka clients read these; point them at the isolated broker's port.
-    _kafka = f"localhost:{os.environ['KAFKA_HOST_PORT']}"
-    os.environ["KAFKA_BOOTSTRAP"] = _kafka
-    os.environ["KAFKA_BOOTSTRAP_SERVERS"] = _kafka
+    # Host-side kafka clients (the tests' own) read this; point them at the isolated broker's port.
+    os.environ["KAFKA_BOOTSTRAP"] = f"localhost:{os.environ['KAFKA_HOST_PORT']}"
+    # KAFKA_BOOTSTRAP_SERVERS is the PRODUCT's setting: a server that sees it starts a producer
+    # for change events. It is named only in a run that starts a broker (_name_the_broker); in
+    # any other run a server names none, whatever the shell that launched pytest carried.
+    os.environ.pop("KAFKA_BOOTSTRAP_SERVERS", None)
     # The requires_provisa_server fixture reads PROVISA_URL and REUSES any server already
     # listening there. Defaulting to :8000 means a developer's running dev instance (config/
     # provisa-install.yaml on dev PG:5432) gets reused, and its governance/routing return 403s
@@ -657,6 +659,12 @@ def _marker_batches(items) -> list[list[str]]:
     return batches
 
 
+def _name_the_broker(batches: list[list[str]]) -> None:
+    """Tell this run's servers where the broker is — only when this run starts one."""
+    if any("kafka" in batch for batch in batches):
+        os.environ["KAFKA_BOOTSTRAP_SERVERS"] = os.environ["KAFKA_BOOTSTRAP"]
+
+
 class _DockerServiceManager:
     def pytest_collection_finish(self, session):
         if os.environ.get("PYTEST_NO_DOCKER"):
@@ -665,6 +673,7 @@ class _DockerServiceManager:
             return
 
         batches = _marker_batches(session.items)
+        _name_the_broker(batches)
 
         # Trino's custom plugin jars (trino/plugins/*) are gitignored build artifacts:
         # present only where they were built (the primary checkout). A fresh worktree

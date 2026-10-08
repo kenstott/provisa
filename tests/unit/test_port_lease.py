@@ -232,3 +232,23 @@ def test_ports_are_reissued_only_once_no_further_block_can_be_leased(tmp_path):
     first_pass = [lease.transient() for _ in range(_BLOCK)]
     assert first_pass == list(range(_FIRST, _FIRST + _BLOCK))
     assert lease.transient() == _FIRST  # every block taken: start over at the first free port
+
+
+def test_a_run_with_no_broker_names_none_to_its_servers(monkeypatch):
+    """KAFKA_BOOTSTRAP_SERVERS is the product's setting: a server that sees it starts a producer
+    for change events. Every lane used to name one, so servers in lanes with no broker started a
+    producer that could reach nothing. Only a run that starts a broker names it — and a value the
+    launching shell carried is dropped."""
+    from tests.conftest import _allocate_itest_ports, _name_the_broker
+
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "from-the-shell:9092")
+    _allocate_itest_ports()
+    assert "KAFKA_BOOTSTRAP_SERVERS" not in os.environ
+
+    _name_the_broker([["postgres", "trino"], ["mongodb"]])
+    assert "KAFKA_BOOTSTRAP_SERVERS" not in os.environ
+
+    _name_the_broker([["postgres", "trino"], ["kafka", "schema-registry"]])
+    assert os.environ["KAFKA_BOOTSTRAP_SERVERS"] == os.environ["KAFKA_BOOTSTRAP"]
+    assert os.environ["KAFKA_BOOTSTRAP"] == f"localhost:{os.environ['KAFKA_HOST_PORT']}"
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS")
