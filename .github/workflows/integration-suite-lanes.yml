@@ -209,6 +209,9 @@ jobs:
             ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} \
             --junitxml "results/${{ steps.key.outputs.lane }}/junit.xml"
         env:
+          # Where a test's launched servers leave their logs (tests/integration/
+          # worker_boot_harness.py): under results/, so they are uploaded with the lane's report.
+          PROVISA_TEST_SERVER_LOG_DIR: ${{ github.workspace }}/results/${{ steps.key.outputs.lane }}/server-logs
           # The e2e lane's LLM-evaluation tests reach the live model.
           ANTHROPIC_API_KEY: ${{ matrix.lane == 'e2e' && secrets.ANTHROPIC_API_KEY || '' }}
           # For the Splunk CIM fetch tests/conftest.py runs before starting splunk.
