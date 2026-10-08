@@ -72576,6 +72576,7 @@
     dispute, order and source, a payment intent's source and shared_payment_granted_token, a payment
     method's shared_payment_granted_token, a product's attributes and type, and a subscription's plan
     and quantity.
+    Amended 2026-10-08 -- the Stripe brand offers the Payment Intents, Payment Methods and Setup Intents family and does not offer Stripe's deprecated token and inline-source payment inputs (the Charges-create, Tokens and Sources operations, and the source, card, bank_account and default_card arguments of customer and invoice-payment writes), which it removes through its exclusion list (REQ-1957). Reading and removing a customer's existing legacy sources stays, since that is how one migrates off them.
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
