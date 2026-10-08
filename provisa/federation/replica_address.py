@@ -49,6 +49,9 @@ MVS_SUFFIX = "_mv_cache"
 EXPORT_SUFFIX = "_export"
 #: REQ-1939: what separates an environment's schema name from one of its synthetic datasets'.
 SYNTHETIC_INFIX = "_syn__"
+#: REQ-615, REQ-1942: what separates an environment's schema name from the schema of one
+#: session's temporary tables.
+TEMP_INFIX = "_tmp__"
 
 #: PostgreSQL's identifier limit; over it PostgreSQL truncates a name silently, which would point
 #: two replicas at one table. The one naming rule keeps every replica name within it.
@@ -118,6 +121,20 @@ def synthetic_schema(org_id: str, env: str | None, dataset: str) -> str:
         raise ValueError(
             f"synthetic dataset {dataset!r}: its store schema {name!r} is longer than "
             f"{_MAX_NAME_BYTES} bytes; choose a shorter name"
+        )
+    return name
+
+
+def temp_schema(org_id: str, env: str | None, session: str) -> str:
+    """The store schema holding the temporary tables of session ``session`` of ``org_id``'s
+    environment ``env`` (REQ-615)."""
+    from provisa.core.environments import org_schema
+
+    name = f"{org_schema(org_id, env)}{TEMP_INFIX}{session}"
+    if len(name.encode()) > _MAX_NAME_BYTES:
+        raise ValueError(
+            f"the store schema {name!r} of a session's temporary tables is longer than "
+            f"{_MAX_NAME_BYTES} bytes; the environment's name is too long to hold them"
         )
     return name
 
@@ -348,8 +365,10 @@ _SURFACE_OWNER = r"org_(?:(?!__).)+?"
 # holds no double underscore and a live attach's folded schema has one right after the org id, so
 # neither is read as the other.
 _SYNTHETIC = re.escape(SYNTHETIC_INFIX) + r"[a-z][a-z0-9_]*"
+# REQ-615: one session's temporary tables, ``org_<id>[_env_<env>]_tmp__<session>``.
+_TEMP = re.escape(TEMP_INFIX) + r"[0-9a-f]+"
 _REPLICAS_SCHEMA = re.compile(
-    _SURFACE_OWNER + "(?:" + re.escape(REPLICAS_SUFFIX) + "|" + _SYNTHETIC + ")"
+    _SURFACE_OWNER + "(?:" + re.escape(REPLICAS_SUFFIX) + "|" + _SYNTHETIC + "|" + _TEMP + ")"
 )
 _WRITE_SURFACE = re.compile(
     _SURFACE_OWNER
@@ -357,6 +376,8 @@ _WRITE_SURFACE = re.compile(
     + "|".join(re.escape(s) for s in (REPLICAS_SUFFIX, MVS_SUFFIX, EXPORT_SUFFIX))
     + "|"
     + _SYNTHETIC
+    + "|"
+    + _TEMP
     + ")"
 )
 

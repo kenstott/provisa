@@ -58,6 +58,10 @@ async def drop_env_store(dsn: str, org_id: str, env: str) -> str | None:
     export = org_schema(org_id, env, EXPORT_SUFFIX, region=region)
     # REQ-1939: and every synthetic dataset's schema the environment held.
     synthetic_prefix = org_schema(org_id, env) + SYNTHETIC_INFIX
+    from provisa.federation.replica_address import TEMP_INFIX
+
+    # REQ-615: and the schema of any session's temporary tables a stopped process left behind.
+    temp_prefix = org_schema(org_id, env) + TEMP_INFIX
     async with store_connection(dsn) as conn:
         await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{export}" CASCADE'))
         await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
@@ -65,7 +69,7 @@ async def drop_env_store(dsn: str, org_id: str, env: str) -> str | None:
             await conn.execute_core(text("SELECT schema_name FROM information_schema.schemata"))
         ).fetchall()
         for (name,) in names:
-            if name.startswith(synthetic_prefix):
+            if name.startswith((synthetic_prefix, temp_prefix)):
                 await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{name}" CASCADE'))
     log.info("Environment %r dropped its replicas schema %s", env, schema)
     return schema
@@ -99,3 +103,30 @@ async def drop_synthetic_table(dsn: str, schema: str, table: str) -> None:
     async with store_connection(dsn) as conn:
         await conn.execute_core(text(f'DROP TABLE IF EXISTS "{schema}".{quoted}'))
     log.info("Dropped %s from synthetic dataset schema %s", table, schema)
+
+
+async def drop_temp_schema(dsn: str, schema: str) -> None:
+    """Remove the schema of one session's temporary tables from the store at ``dsn`` (REQ-615)."""
+    from sqlalchemy import text
+
+    from provisa.federation.replica_address import TEMP_INFIX, is_replicas_schema
+    from provisa.federation.store_writer import store_connection
+
+    if TEMP_INFIX not in schema or not is_replicas_schema(schema):
+        raise ValueError(f"{schema!r} is not the schema of a session's temporary tables")
+    async with store_connection(dsn) as conn:
+        await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+
+
+async def drop_temp_table(dsn: str, schema: str, table: str) -> None:
+    """Remove one temporary table from its session's schema in the store at ``dsn`` (REQ-615)."""
+    from sqlalchemy import text
+
+    from provisa.federation.replica_address import TEMP_INFIX, is_replicas_schema
+    from provisa.federation.store_writer import store_connection
+
+    if TEMP_INFIX not in schema or not is_replicas_schema(schema):
+        raise ValueError(f"{schema!r} is not the schema of a session's temporary tables")
+    quoted = '"' + table.replace('"', '""') + '"'
+    async with store_connection(dsn) as conn:
+        await conn.execute_core(text(f'DROP TABLE IF EXISTS "{schema}".{quoted}'))

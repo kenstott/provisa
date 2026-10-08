@@ -46,6 +46,7 @@ from dataclasses import dataclass
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.compiler import temp_tables
 from provisa.compiler.cte_utils import cte_names
 from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
@@ -147,6 +148,8 @@ def _check_registered_relations(  # REQ-001, REQ-266
             continue
         if not tbl.db and tbl.name in cte_names_set:
             continue
+        if not tbl.db and tbl.name in temp_tables.names():
+            continue  # REQ-615: the session's own temporary table, no model object
         # A registered table is named by its semantic/physical name (table_map) or, unqualified, by
         # its field name — the domain-prefixed ``sa__orders`` form a domain_prefix schema exposes.
         field_named = not tbl.db and tbl.name in ctx.tables

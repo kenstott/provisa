@@ -870,6 +870,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         self.org_id: str | None = None
         # REQ-1862: named SQL cursors DECLAREd on this connection, keyed by normalized name.
         self.cursors: dict[str, _CursorState] = {}
+        # REQ-615: the connection's own temporary tables. One session for the whole connection:
+        # bound around each of its statements (_with_org) and ended with it (close_owned).
+        from provisa.compiler.temp_tables import TempSession
+
+        self.temp_tables = TempSession()
         # REQ-1882: the connection thread that created this session and runs its loop.
         self._owner_thread: int | None = threading.get_ident()
         self._close_requested = False
@@ -930,6 +935,17 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             except Exception:
                 log.debug("[PGWIRE] cursor cleanup failed for %r", cs.name, exc_info=True)
         self.cursors.clear()
+        if self.temp_tables.stored:
+            # REQ-615: the connection's temporary tables end with it; their schema is dropped
+            # from the engine's store on the connection's own loop, in its org.
+            from provisa.api.app import state
+            from provisa.core.connection_loop import current_connection_loop
+            from provisa.pgwire.temp_exec import end
+
+            current_connection_loop().run(
+                _run_with_org(self.org_id, end(self.temp_tables, state)),
+                timeout=request_timeout_for("pgwire"),
+            )
 
     def in_transaction(self) -> bool:
         return False
@@ -1005,17 +1021,24 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # below (answer/INTERCEPT, execute_engine_sync, source_pools) route to its runtime; the
         # governance/execute coroutines run on this thread's loop and are bound again explicitly via
         # _run_with_org. None (not yet admitted) runs unbound, where per-org reads are refused.
-        if self.org_id is None:
-            self._ensure_acting_role()
-            return fn()
-        from provisa.core.request_context import reset_current_org, set_current_org
+        from provisa.compiler import temp_tables
 
-        token = set_current_org(self.org_id)
+        # REQ-615: every statement of the connection belongs to its one temporary-table session.
+        temp_token = temp_tables.bind(self.temp_tables)
         try:
-            self._ensure_acting_role()
-            return fn()
+            if self.org_id is None:
+                self._ensure_acting_role()
+                return fn()
+            from provisa.core.request_context import reset_current_org, set_current_org
+
+            token = set_current_org(self.org_id)
+            try:
+                self._ensure_acting_role()
+                return fn()
+            finally:
+                reset_current_org(token)
         finally:
-            reset_current_org(token)
+            temp_tables.unbind(temp_token)
 
     def act_as(self, role_id: str, members: tuple[str, ...]) -> None:
         """Act as ``role_id``; ``members`` are the held roles it stands for (one: itself)."""
@@ -1161,10 +1184,13 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                         timeout=request_timeout_for("pgwire"),
                     )
                     result = _redirect_row(delivered.redirect, governed.materialize)
-                elif isinstance(governed, _Plan) and governed.writes_tables:
+                elif isinstance(governed, _Plan) and (
+                    governed.writes_tables or governed.temp is not None
+                ):
                     # A data write executes once, through the one terminal every surface's write
                     # passes (its after-write step and audit), and answers its count. It never
-                    # streams: a server-side cursor cannot be declared over a write.
+                    # streams: a server-side cursor cannot be declared over a write. A statement
+                    # that writes a temporary table of the session (REQ-615) is done there too.
                     result = cl.run(
                         _run_with_org(self.org_id, _execute_plan(governed)),
                         timeout=request_timeout_for("pgwire"),

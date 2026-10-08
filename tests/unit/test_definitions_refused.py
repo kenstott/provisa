@@ -34,7 +34,6 @@ from provisa.compiler.definitions import (
 _SQL_DEFINITIONS = [
     ("CREATE TABLE t AS SELECT 1", "CREATE TABLE"),
     ("CREATE TABLE t (id INT)", "CREATE TABLE"),
-    ("CREATE TEMP TABLE t (id INT)", "CREATE TABLE"),
     ("CREATE VIEW v AS SELECT 1", "CREATE VIEW"),
     ("CREATE OR REPLACE VIEW v AS SELECT 1", "CREATE VIEW"),
     ("CREATE MATERIALIZED VIEW m AS SELECT 1", "CREATE VIEW"),
@@ -71,6 +70,41 @@ def test_a_parsed_definition_is_refused_with_the_one_message(sql, kind):
         refuse_definition(tree)
     assert str(raised.value) == f"{kind} {_HOW}"
     assert raised.value.kind == kind
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TEMP TABLE t (id INT)",
+        "CREATE TEMPORARY TABLE t (id INT)",
+        "create temp table t as select 1",
+    ],
+)
+def test_a_sessions_own_temporary_table_is_the_one_exception(sql):
+    """REQ-615, REQ-1926: a session may create a temporary table of its own. Its text is left to
+    the pipeline, which knows the session and reads what the statement does to the table; every
+    other definition -- the same statement without TEMP among them -- stays refused."""
+    from provisa.compiler import temp_tables
+    from provisa.compiler.definitions import NotAvailableHere
+
+    refuse_definition_text(f"-- scratch\n  {sql}")  # does not raise
+    token = temp_tables.bind(temp_tables.TempSession())
+    try:
+        action = temp_tables.action_of(sql)
+    finally:
+        temp_tables.unbind(token)
+    assert action is not None and (action.kind, action.name) == ("create", "t")
+    # With no session to belong to it is refused, saying so.
+    with pytest.raises(NotAvailableHere, match="needs a session"):
+        temp_tables.action_of(sql)
+    import re
+
+    plain = re.sub(r"(?i)\s+temp(orary)?\b", "", sql, count=1)
+    assert temp_tables.action_of(plain) is None
+    with pytest.raises(DefinitionNotAvailable):
+        refuse_definition(sqlglot.parse_one(plain, read="postgres"))
+    with pytest.raises(DefinitionNotAvailable):
+        refuse_definition_text(plain)
 
 
 @pytest.mark.parametrize("sql", _SQL_DATA)

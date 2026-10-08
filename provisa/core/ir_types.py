@@ -22,6 +22,7 @@ resolved at registration — never lazily backfilled, and never silently default
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -278,6 +279,9 @@ def indexed_string_length() -> int:
     return int(os.environ.get("PROVISA_INDEXED_STRING_LENGTH", "255"))
 
 
+_NUMERIC_SIZE = re.compile(r"\(\s*(\d+)\s*,\s*(\d+)\s*\)\s*\Z")
+
+
 def to_sqlalchemy(type_name: str, *, indexed: bool = False) -> Any:
     """The SQLAlchemy generic type for an IR name (or a native spelling, normalized via ``to_ir``).
     This is the write face's IR → SQLAlchemy mapping; it renders per-dialect at DDL time.
@@ -288,6 +292,12 @@ def to_sqlalchemy(type_name: str, *, indexed: bool = False) -> Any:
     ``materialize_exec.build_table`` gets it uniformly, not just the one dialect that happened to
     surface the gap. Every other IR type is already bounded/fixed-width and needs no substitution."""
     sa_type = _IR_TO_SA[to_ir(type_name)]
+    if sa_type is Numeric:
+        # A decimal named with its precision and scale lands with them: an unqualified NUMERIC is
+        # the store's own default, which on some stores holds fewer digits than the value.
+        sized = _NUMERIC_SIZE.search(type_name)
+        if sized is not None:
+            return Numeric(int(sized[1]), int(sized[2]))
     if indexed and sa_type is Text:
         from sqlalchemy import String
 
@@ -305,4 +315,6 @@ def to_physical(type_name: str, dialect_name: str) -> str:
     from sqlalchemy.dialects import registry
 
     dialect = registry.load(dialect_name)()
-    return to_sqlalchemy(type_name)().compile(dialect=dialect)
+    generic = to_sqlalchemy(type_name)
+    # A sized decimal is already an instance; every other is a generic type to instantiate.
+    return (generic() if isinstance(generic, type) else generic).compile(dialect=dialect)

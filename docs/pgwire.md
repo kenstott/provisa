@@ -123,9 +123,32 @@ CLOSE ALL;   -- release every open cursor on this connection
 
 ### Definitions (CREATE, ALTER, DROP, TRUNCATE)
 
-Nothing is defined through pgwire. A statement that creates, alters or drops an object (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, an index, a sequence or a schema) is refused with SQLSTATE 0A000, whatever the role holds; a session's own temporary table is the exception. A table or view is a model object: create it in the model (admin pages, admin API or config), or create it in the data source and admit it into the model. `TRUNCATE` is refused the same way; `DELETE` is the governed way to remove rows. [tool-verified: `provisa/compiler/definitions.py`]
+Nothing is defined through pgwire. A statement that creates, alters or drops an object (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, an index, a sequence or a schema) is refused with SQLSTATE 0A000, whatever the role holds; a session's own temporary table is the exception (see [Temporary tables](#temporary-tables)). A table or view is a model object: create it in the model (admin pages, admin API or config), or create it in the data source and admit it into the model. `TRUNCATE` is refused the same way; `DELETE` is the governed way to remove rows. [tool-verified: `provisa/compiler/definitions.py`]
 
 The refusal is made once, in the pipeline every SQL surface passes through, so SQL over HTTP, Flight and MCP refuse the same statements with the same message.
+
+### Temporary tables
+
+A session may create, write, read and drop temporary tables of its own:
+
+```sql
+CREATE TEMP TABLE busy AS SELECT customer_id, COUNT(*) AS n FROM sales.orders GROUP BY customer_id;
+INSERT INTO busy VALUES (0, 0);
+UPDATE busy SET n = n + 1 WHERE customer_id = 0;
+DELETE FROM busy WHERE n < 5;
+SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
+DROP TABLE busy;
+```
+
+- **Create** with `CREATE TEMP TABLE name (column type, ...)` or `CREATE TEMP TABLE name AS SELECT ...`. The name takes no schema. A `SELECT` it is created from is a read like any other: the role's row rules, masks, fakes and row limit apply to the rows it takes.
+- **Column types** are `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` and `DECIMAL(precision, scale)`. A decimal keeps its precision and scale. Any other type is refused, naming the column and the type: a value is never stored as another type than its own. A column created from a `SELECT` takes the type of its values; one with no value to tell a type by is refused, so `CAST` it in the `SELECT`.
+- **Row limit.** The rows a `CREATE ... AS SELECT` or an `INSERT ... SELECT` takes are read as the role reads anything, so the role's row limit applies. A temporary table that took exactly that many rows carries a statement warning (`temp_table.rows_capped`): the read was cut there and may hold more.
+- **Write** with `INSERT ... VALUES`, `INSERT ... SELECT`, `UPDATE` and `DELETE`, without `RETURNING` and without `FROM`. A write into a temporary table is not a mutation: it reaches no source and none of the environment's data, so it works whatever the environment's mutation handling and needs no write right.
+- **Read** it by its name, alone or joined to tables of the model. The engine computes the read.
+- **Lifetime.** A temporary table is not a model object, no other session sees it, and it ends with the session. On pgwire a session is the connection. On a surface with no connection of its own (SQL over HTTP, Flight, MCP) a session is one request, so a temporary table lives for the statements sent together in that request.
+- **Storage.** The rows are held in a schema of the session's own in the engine's store and dropped when the session ends. An `INSERT`, `UPDATE` or `DELETE` rewrites the whole table through the engine, so a temporary table suits scratch data, not large tables written row by row. A process that stops without ending its sessions leaves their schemas in the store; they are removed when the environment is retired.
+
+The same statements work on every SQL surface: they are handled in the pipeline all of them share. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; the pgwire connection-long session is not yet covered by a test]
 
 ### Data writes (INSERT, UPDATE, DELETE, MERGE, COPY FROM STDIN)
 
@@ -241,7 +264,7 @@ Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` q
 
 **SQL only.** The pgwire listener parses and executes SQL only — GraphQL and Cypher strings are not accepted. (REQ-614) Data writes to existing tables are admitted by the role's rights, its column grants and its row filter; see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
-**No definitions.** `CREATE`, `ALTER`, `DROP` and `TRUNCATE` are refused with SQLSTATE 0A000 whatever the role holds, except a session's own temporary table; see [Definitions](#definitions-create-alter-drop-truncate). (REQ-616)
+**No definitions.** `CREATE`, `ALTER`, `DROP` and `TRUNCATE` are refused with SQLSTATE 0A000 whatever the role holds, except a session's own temporary table; see [Temporary tables](#temporary-tables). (REQ-615, REQ-616)
 
 **No real transaction support.** BEGIN/COMMIT/ROLLBACK are accepted and silently ignored. Each statement runs independently. (REQ-587) [tool-verified: `server.py:146-158` — `in_transaction()` always returns `False`]
 

@@ -109,13 +109,22 @@ _OPENS_AS_DEFINITION_RE = re.compile(
 )
 
 
+_OPENS_TEMPORARY_TABLE_RE = re.compile(r"CREATE\s+(?:TEMP|TEMPORARY)\s+TABLE\b", re.IGNORECASE)
+
+
 def refuse_definition_text(text: str) -> None:
     """Raise :class:`DefinitionNotAvailable` when ``text`` opens as a definition statement.
 
     For the places a statement is recognised BEFORE it is lowered to SQL or parsed as SQL — the
     Cypher front end, whose index and constraint statements lower to nothing, and Flight's
     language detection. Everything else is refused from its parsed tree (:func:`refuse_definition`)."""
-    m = _OPENS_AS_DEFINITION_RE.match(_LEADING_COMMENTS_RE.sub("", text, count=1))
+    opening = _LEADING_COMMENTS_RE.sub("", text, count=1)
+    if _OPENS_TEMPORARY_TABLE_RE.match(opening):
+        # A session's own temporary table is the one exception (REQ-615, REQ-1926): what the
+        # statement does is decided in the pipeline, which knows its session
+        # (provisa.compiler.temp_tables).
+        return
+    m = _OPENS_AS_DEFINITION_RE.match(opening)
     if m:
         raise DefinitionNotAvailable(f"{m.group('verb').upper()} {m.group('object').upper()}")
 

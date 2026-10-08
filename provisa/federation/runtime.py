@@ -122,6 +122,10 @@ class EngineRuntime:  # REQ-825, REQ-840
         from provisa.fakes.read_sql import require_fake_engine
 
         require_fake_engine(pg_sql, self.engine.name, self._backend.computes_fakes)  # REQ-1494
+        from provisa.federation.temp_address import address as address_temp_tables
+
+        # REQ-615: a session's temporary table is read at its address in the engine's store.
+        pg_sql = address_temp_tables(pg_sql, self._state)
         return self._backend.transpile_physical(self.address_replicas(pg_sql))
 
     def _replica_routes(self) -> Any:

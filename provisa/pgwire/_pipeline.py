@@ -204,6 +204,9 @@ class _Plan:
     # REQ-1942: a mutation in a Reversible environment, kept in its change log rather than run on
     # the source (provisa.pgwire.kept_mutations). None for every other plan.
     kept: Any = field(default=None)
+    # REQ-615: what the statement does to a temporary table of its session with the rows this
+    # plan's governed SELECT gives (provisa.compiler.temp_tables.Action). None for every other.
+    temp: Any = field(default=None)
     # REQ-544 (amended 2026-09-30): the request's response-cache OPT-IN (`-- @provisa cache=true`
     # / `cache_ttl=N`; GraphQL @cached on its own endpoint). False — the default — means the plan
     # neither reads nor writes the response cache. cache_ttl is the request's chosen entry
@@ -1077,6 +1080,24 @@ async def _govern_and_route_planned(
         # A write is never explained — EXPLAIN ANALYZE would perform it — whatever the role may
         # write: said before the statement is admitted, so the answer does not depend on rights.
         raise ValueError("EXPLAIN is only supported for read statements")
+    from provisa.compiler import temp_tables
+
+    # REQ-615, REQ-1926: a session's own temporary tables are the one exception to "nothing is
+    # defined through a query protocol". What the statement does to one is planned as the governed
+    # SELECT giving the rows it takes -- governed, routed and run as any read of the role's --
+    # and done with them at the terminal (provisa.pgwire.temp_exec). It is no mutation: it
+    # reaches no source and none of the environment's data.
+    _temp = temp_tables.action_of(sql)
+    if _temp is not None:
+        if explain is not None or deliver is not None:
+            raise ValueError(
+                "a statement that writes a temporary table is neither explained nor delivered"
+            )
+        plan = await _govern_and_route_planned(
+            _temp.select, role_id, session_vars=session_vars, as_of=as_of, params=params
+        )
+        plan.temp = _temp
+        return plan
     governed = await govern_statement(sql, role_id, session_vars=session_vars)
     return await route_governed(
         governed,
@@ -1207,7 +1228,14 @@ async def govern_statement(
     from provisa.core.request_context import session_vars_for
 
     _session_vars = session_vars if session_vars is not None else session_vars_for(role)
-    _slot = PlanSlot(state, "sql", role_id, sql, sorted(_session_vars.items()))
+    from provisa.compiler import temp_tables
+
+    # REQ-615: a statement governed in a session that holds temporary tables is kept for that
+    # session alone, as its tables stand: the same words name another session's table, at
+    # another address, or the same session's after it dropped and created one of that name.
+    _slot = PlanSlot(
+        state, "sql", role_id, sql, [*sorted(_session_vars.items()), *temp_tables.slot_key()]
+    )
     _kept = _slot.cached()
     if _kept is not None:
         # A fresh provenance stamp per use: the stamp ring is bounded and a kept statement outlives it.
@@ -1589,6 +1617,19 @@ async def route_governed(
     # view is inline-expanded. A view's virtual source has no native driver/catalog, so extract_sources
     # cannot bind it and routing would otherwise pick DIRECT against a real source, handing the
     # un-expanded view ref to a native pool. Force ENGINE so the ENGINE branch expands it.
+    from provisa.compiler import temp_tables
+
+    if decision.route != Route.ENGINE and temp_tables.reads(_parsed_input):
+        # REQ-615: a session's temporary table is held in the engine's store, so a statement
+        # reading one is computed by the engine, whatever else it reads.
+        from provisa.transpiler.router import RouteDecision
+
+        decision = RouteDecision(
+            route=Route.ENGINE,
+            source_id=None,
+            dialect=None,
+            reason="query reads a temporary table of its session",
+        )
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map and decision.route != Route.ENGINE:
         if _kept_refs_view(governed.memo, governed_semantic, _view_map):
@@ -2294,7 +2335,17 @@ def statement_budget(surface: str) -> float:
 
 
 async def _execute_plan_bound(plan: _Plan, state: Any) -> QueryResult:
-    """``_execute_plan`` once the request deadline is settled: the org's secrets, then the terminal."""
+    """``_execute_plan`` once the request deadline is settled: the org's secrets, the terminal,
+    then what the statement does to a temporary table of its session with the rows (REQ-615)."""
+    result = await _execute_plan_with_secrets(plan, state)
+    if plan.temp is not None:
+        from provisa.pgwire.temp_exec import apply
+
+        return await apply(plan.temp, result, state, plan.role_id)
+    return result
+
+
+async def _execute_plan_with_secrets(plan: _Plan, state: Any) -> QueryResult:
     if _reads_an_org_secret(plan, state):
         from provisa.core.secrets_store import bound_to_request_org
 
@@ -3072,6 +3123,28 @@ async def execute_sql_batch(
     statements = split_sql_statements(sql)
     if not statements:
         return QueryResult(rows=[], column_names=[])
+    from provisa.compiler import temp_tables
+
+    if temp_tables.current() is None:
+        # REQ-615: a request that arrives in no session of its surface's own is one: its
+        # temporary tables live for its statements and end with it.
+        from provisa.pgwire.temp_exec import end
+
+        session = temp_tables.TempSession()
+        token = temp_tables.bind(session)
+        try:
+            return await execute_sql_batch(
+                sql,
+                role_id,
+                state,
+                session_vars=session_vars,
+                as_of=as_of,
+                deliver=deliver,
+                buffered=buffered,
+            )
+        finally:
+            temp_tables.unbind(token)
+            await end(session, state)
     result: QueryResult | None = None
     for _i, stmt in enumerate(statements):
         cmd = await maybe_invoke_registered_function(stmt, role_id, state)
@@ -4083,6 +4156,12 @@ async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # RE
     call = detect_sql_function_call(sql, state, role_id)
     if call is not None:
         return _Described(_function_call_shape(call[0], state), None)
+    from provisa.compiler import temp_tables
+
+    if temp_tables.action_of(sql) is not None:
+        # REQ-615: a statement that writes a temporary table of the session answers no rows;
+        # its Execute governs the rows it takes (govern_pgwire_plan).
+        return _Described([], None)
 
     await _wake_before_governing(state)
     governed = await govern_statement(sql, role_id)
