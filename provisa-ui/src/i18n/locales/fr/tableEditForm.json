@@ -287,6 +287,7 @@
       "queryHelp": "Une requête native de la source avec les espaces réservés $wm (curseur) et {{fields}}. Laissez vide pour une source SQL : Provisa génère SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
     },
     "pagingRowsFieldHelp": "La propriété de la réponse qui contient les lignes, comme values ou data dans une enveloppe de page. Laissez vide quand la réponse est elle-même les lignes. Les colonnes de la table sont celles des objets qui s'y trouvent.",
-    "pagingRowsFieldFixed": "Défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs."
+    "pagingRowsFieldFixed": "Défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs.",
+    "scopeHelp": "domain : servi aux rôles qui atteignent le domaine de cette table. public : aussi aux rôles en dehors. restricted : uniquement aux rôles nommés dans Visible par."
   }
 }

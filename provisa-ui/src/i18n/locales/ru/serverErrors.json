@@ -368,7 +368,8 @@
       "registry_auth_unknown": "Источник '{{source}}': аутентификация в реестре схем '{{method}}' не входит в {{methods}}",
       "registry_url_required": "Источник '{{source}}': заданы настройки реестра схем, но не указан URL реестра схем",
       "registry_field_required": "Источник '{{source}}': для аутентификации в реестре схем '{{method}}' требуется {{field}}",
-      "registry_path_not_absolute": "Источник '{{source}}': {{field}} должен быть абсолютным путём, получено '{{path}}'"
+      "registry_path_not_absolute": "Источник '{{source}}': {{field}} должен быть абсолютным путём, получено '{{path}}'",
+      "column_scope_invalid": "У столбца '{{column}}' область '{{scope}}'; область столбца — одна из {{scopes}}"
     },
     "secrets": {
       "still_referenced": "{{secret}} всё ещё называют сохранённые значения в этой организации: {{count}}. Измените или удалите каждое и повторите удаление."

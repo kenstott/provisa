@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "כללי שורות לפי תפקיד",
     "profilerRowRulesNone": "כל קורא רואה כל עמודה מתוארת.",
-    "profilerRowRuleFailed": "הטבלה נרשמה, אך כלל השורות עבור {{role}} לא נשמר: {{message}}"
+    "profilerRowRuleFailed": "הטבלה נרשמה, אך כלל השורות עבור {{role}} לא נשמר: {{message}}",
+    "scopeHelp": "domain: מוגש לתפקידים שמגיעים לתחום של טבלה זו. public: גם לתפקידים מחוצה לו. restricted: רק לתפקידים שצוינו ב״גלוי ל״."
   }
 }

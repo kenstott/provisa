@@ -892,6 +892,7 @@ export function TableEditForm({
                       <Table.Td>
                         <Select
                           aria-label={t("tableEditForm.scopeHeader")}
+                          title={t("tableEditForm.scopeHelp")}
                           data={[
                             { value: "domain", label: t("tableEditForm.scopeDomain") },
                             { value: "public", label: t("tableEditForm.scopePublic") },

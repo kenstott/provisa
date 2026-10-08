@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "Правила строк по ролям",
     "profilerRowRulesNone": "Каждый читатель видит все описанные столбцы.",
-    "profilerRowRuleFailed": "Таблица зарегистрирована, но правило строк для {{role}} не сохранено: {{message}}"
+    "profilerRowRuleFailed": "Таблица зарегистрирована, но правило строк для {{role}} не сохранено: {{message}}",
+    "scopeHelp": "domain: выдаётся ролям, которым доступен домен этой таблицы. public: также ролям вне его. restricted: только ролям, указанным в «Видно для»."
   }
 }

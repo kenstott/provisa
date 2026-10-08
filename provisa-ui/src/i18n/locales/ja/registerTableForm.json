@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "ロールごとの行ルール",
     "profilerRowRulesNone": "すべての閲覧者が記述されたすべての列を参照できます。",
-    "profilerRowRuleFailed": "テーブルは登録されましたが、{{role}} の行ルールは保存されませんでした: {{message}}"
+    "profilerRowRuleFailed": "テーブルは登録されましたが、{{role}} の行ルールは保存されませんでした: {{message}}",
+    "scopeHelp": "domain: このテーブルのドメインに到達できるロールに提供。public: ドメイン外のロールにも提供。restricted: 「表示対象」で指定したロールのみに提供。"
   }
 }

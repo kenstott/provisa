@@ -287,6 +287,7 @@
       "queryHelp": "Eine quellnative Abfrage mit den Platzhaltern $wm (Cursor) und {{fields}}. Für eine SQL-Quelle leer lassen: Provisa erzeugt SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
     },
     "pagingRowsFieldHelp": "Die Eigenschaft der Antwort, die die Zeilen enthält, etwa values oder data eines Seiten-Wrappers. Leer lassen, wenn die Antwort selbst die Zeilen ist. Die Spalten der Tabelle sind die der Objekte dort.",
-    "pagingRowsFieldFixed": "Bei der Registrierung der Tabelle festgelegt. Registrieren Sie die Tabelle erneut, um ihre Zeilen von anderer Stelle zu lesen."
+    "pagingRowsFieldFixed": "Bei der Registrierung der Tabelle festgelegt. Registrieren Sie die Tabelle erneut, um ihre Zeilen von anderer Stelle zu lesen.",
+    "scopeHelp": "domain: für Rollen, die die Domäne dieser Tabelle erreichen. public: auch für Rollen außerhalb davon. restricted: nur für die unter „Sichtbar für“ genannten Rollen."
   }
 }

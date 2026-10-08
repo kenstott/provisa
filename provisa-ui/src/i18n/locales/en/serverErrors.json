@@ -368,7 +368,8 @@
       "registry_auth_unknown": "Source '{{source}}': schema registry authentication '{{method}}' is not one of {{methods}}",
       "registry_url_required": "Source '{{source}}': schema registry settings are given but no schema registry URL",
       "registry_field_required": "Source '{{source}}': schema registry authentication '{{method}}' requires {{field}}",
-      "registry_path_not_absolute": "Source '{{source}}': {{field}} must be an absolute path, got '{{path}}'"
+      "registry_path_not_absolute": "Source '{{source}}': {{field}} must be an absolute path, got '{{path}}'",
+      "column_scope_invalid": "Column '{{column}}' has scope '{{scope}}'; a column's scope is one of {{scopes}}"
     },
     "secrets": {
       "still_referenced": "{{secret}} is still named by {{count}} stored value(s) in this organization. Change or remove each one, then delete it again."

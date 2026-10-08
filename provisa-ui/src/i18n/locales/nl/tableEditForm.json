@@ -287,6 +287,7 @@
       "queryHelp": "Een bronnatieve query met de placeholders $wm (cursor) en {{fields}}. Laat leeg voor een SQL-bron: Provisa genereert SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
     },
     "pagingRowsFieldHelp": "De eigenschap van het antwoord die de rijen bevat, zoals values of data in een pagina-wrapper. Laat leeg als het antwoord zelf de rijen is. De kolommen van de tabel zijn die van de objecten daar.",
-    "pagingRowsFieldFixed": "Ingesteld bij het registreren van de tabel. Registreer de tabel opnieuw om de rijen ergens anders te lezen."
+    "pagingRowsFieldFixed": "Ingesteld bij het registreren van de tabel. Registreer de tabel opnieuw om de rijen ergens anders te lezen.",
+    "scopeHelp": "domain: geleverd aan rollen die het domein van deze tabel bereiken. public: ook aan rollen daarbuiten. restricted: alleen aan de rollen genoemd bij Zichtbaar voor."
   }
 }

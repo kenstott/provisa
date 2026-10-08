@@ -12,6 +12,7 @@
 
 # Requirements: REQ-013, REQ-014, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
 
+from provisa.core.column_scope import SCOPE_DOMAIN, require_column_scope
 from provisa.core import model_change
 from typing import TYPE_CHECKING, Any
 
@@ -510,7 +511,8 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 is_alternate_key=getattr(col, "is_alternate_key", False)
                 or _derived_keys.get(col.name, (False, False))[1],
                 object_fields=object_fields,
-                scope=getattr(col, "scope", "domain"),
+                # REQ-1959: stored only when it is a scope; the last gate on every write path.
+                scope=require_column_scope(col.name, getattr(col, "scope", SCOPE_DOMAIN)),
                 gql_selection=getattr(col, "gql_selection", None),
                 epoch_unit=getattr(col, "epoch_unit", None),
                 fake=getattr(col, "fake", None),  # REQ-1494

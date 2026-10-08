@@ -14,7 +14,7 @@ See [Schema Visibility](#schema-visibility).
 
 ### Layer 1 — Public access
 
-Tables in domains with no `domain_access` restriction are visible to all authenticated identities with no additional configuration. Zero friction for genuinely public data.
+A column published with scope `public` is served to every role of the org, including roles whose `domain_access` does not reach the table's domain; such a role sees the table with its public columns only. Nothing is public unless a table's registrar says so. (REQ-1959) See [Public columns](#public-columns).
 
 ### Layer 2 — Domain access
 
@@ -107,6 +107,27 @@ Each column has a four-field permission model controlling read, write, and maski
 | **Hidden** | Role not in `visible_to` | Column absent from GraphQL SDL |
 | **Masked** | Role in `visible_to`, has masking rule, role not in `unmasked_to` | Column visible but data masked in SQL |
 | **Unmasked** | Role in `visible_to` AND role in `unmasked_to` (or no masking rule) | Full read access |
+
+### Public columns
+
+Every column has a `scope`, set by a holder of `table_registration` in the table's domain (in the model file, the admin API or the Tables page). (REQ-1959)
+
+| Scope | Served to |
+| ------- | ----------- |
+| `domain` (the default) | Roles that reach the table's domain, as `visible_to` says. An empty `visible_to` is every such role. |
+| `public` | The same roles, and also roles that do not reach the table's domain. |
+| `restricted` | Only the roles `visible_to` names. An empty `visible_to` is nobody. |
+
+Publishing a column removes the domain condition for that column and nothing else:
+
+- A role outside the domain is served the table with its public columns only. The table's other columns, and tables that publish nothing, stay out of its schema, its catalog and its SQL.
+- The column's own `visible_to` still decides who: a public column granted to one role is public to that role alone.
+- Masks, row filters, row limits and the relationship guard apply as they do inside the domain. With no row filter for the role, the published columns are read unfiltered; a row filter on the table or its domain still applies.
+- A relationship is served when both of its ends' columns are.
+- A parameter column of an API table (a path or query argument) is not data and publishes nothing.
+- The `ops` domain needs an explicit grant for every column (REQ-1133); nothing in it is served across domains, whatever its scope.
+
+The rule is the same on every surface, because each one reads the role's compiled schema: GraphQL, SQL (HTTP, pgwire, Flight, JDBC), Cypher and Bolt, gRPC, REST and JSON:API, the Flight and MCP catalogs and the admin listings. A scope that is not one of the three values is refused when a column is saved.
 
 ### Write Permissions
 

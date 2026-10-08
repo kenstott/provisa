@@ -55,10 +55,13 @@ from provisa.compiler.type_map import JSONScalar, column_type_to_graphql
 from provisa.compiler.schema_types import SchemaInput, _TableInfo
 from provisa.security.rights import (
     GOVERNANCE_META_COLUMNS,
+    LOCKDOWN_DOMAINS,
     META_DOMAIN_ID,
     Capability,
+    column_served,
     has_capability,
     reaches_all_domains,
+    served_across_domains,
 )
 from provisa.compiler.actions_schema import _build_action_fields, _mutation_name
 
@@ -91,7 +94,7 @@ _IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = frozenset({"meta"})
 # matching stage2.py::build_governance_context's interpretation for the same seeded
 # data. Ops columns are seeded with visible_to=[] (REQ-884/_seed_ops_domain) and
 # require an explicit per-role grant (REQ-1133) rather than defaulting open.
-_LOCKDOWN_DOMAINS: frozenset[str] = frozenset({"ops"})
+_LOCKDOWN_DOMAINS: frozenset[str] = LOCKDOWN_DOMAINS
 
 
 def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-039, REQ-363
@@ -118,11 +121,15 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
 
     result: list[_TableInfo] = []
     for table in si.tables:
-        if (
-            not all_access
-            and table["domain_id"] not in accessible
-            and table["domain_id"] not in _IMPLICIT_TRAVERSAL_DOMAINS
-        ):
+        # The role reaches the table's domain: one it lists, "*", or the catalog every role may
+        # traverse. A table outside reach is still served when it publishes a column to the role
+        # (REQ-1959) — with its PUBLIC columns only, which column_served decides below.
+        reaches = (
+            all_access
+            or table["domain_id"] in accessible
+            or table["domain_id"] in _IMPLICIT_TRAVERSAL_DOMAINS
+        )
+        if not reaches and not served_across_domains(role, table):
             continue
 
         table_id = table["id"]
@@ -145,19 +152,14 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         )
         # REQ-1133: lockdown domains (e.g. ops) require an explicit visible_to grant; no
         # capability stands in for one (REQ-1327).
+        # Which columns the role is served is ONE rule (security.rights.column_served): the
+        # column's grant (empty = everyone, "*", or the role; an explicit grant only in a
+        # lockdown domain and on a restricted column), and outside the role's reach only a
+        # public column (REQ-1959).
         visible_cols = [
             c
             for c in table["columns"]
-            if (
-                (not c["visible_to"] and table["domain_id"] not in _LOCKDOWN_DOMAINS)
-                # REQ-1742 gap: "*" is the codebase's "everyone" sentinel (the metrics branch
-                # just above already special-cases it, line 109) but this column-visibility
-                # check never did — a literal `role["id"] in c["visible_to"]` treats ["*"] as
-                # "visible only to a role named '*'", silently hiding every real role's columns
-                # even after a successful visible_to=["*"] grant.
-                or "*" in c["visible_to"]
-                or role["id"] in c["visible_to"]
-            )
+            if column_served(role, table["domain_id"], c, reaches=reaches)
             and not c.get("native_filter_type")
             and not (_hide_meta_gov and c["column_name"] in GOVERNANCE_META_COLUMNS)
         ]
@@ -184,7 +186,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
             native_filter_cols = []
 
         if not visible_cols and not native_filter_cols:
-            if table.get("columns") or not col_meta:
+            if table.get("columns") or not col_meta or not reaches:
                 # Columns were defined but none visible to this role, or no metadata available
                 continue
             # No registered columns but synthesized metadata exists (e.g., govdata JAR YAML)

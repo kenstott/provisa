@@ -368,7 +368,8 @@
       "registry_auth_unknown": "מקור '{{source}}': שיטת האימות '{{method}}' של רישום הסכמות אינה אחת מ-{{methods}}",
       "registry_url_required": "מקור '{{source}}': הוגדרו הגדרות של רישום סכמות אך לא כתובת URL של רישום סכמות",
       "registry_field_required": "מקור '{{source}}': שיטת האימות '{{method}}' של רישום הסכמות דורשת {{field}}",
-      "registry_path_not_absolute": "מקור '{{source}}': {{field}} חייב להיות נתיב מוחלט, התקבל '{{path}}'"
+      "registry_path_not_absolute": "מקור '{{source}}': {{field}} חייב להיות נתיב מוחלט, התקבל '{{path}}'",
+      "column_scope_invalid": "לעמודה '{{column}}' יש היקף '{{scope}}'; היקף של עמודה הוא אחד מ-{{scopes}}"
     },
     "secrets": {
       "still_referenced": "{{secret}} עדיין מצוין על ידי {{count}} ערכים שמורים בארגון זה. יש לשנות או להסיר כל אחד מהם ואז למחוק שוב."

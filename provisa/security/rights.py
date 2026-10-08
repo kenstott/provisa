@@ -306,6 +306,63 @@ def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
     return reaches_all_domains(domain_access) or domain_id in (domain_access or ())
 
 
+# --- which columns a role is served (REQ-039, REQ-1133, REQ-1959) --------------------------------
+
+from provisa.core.column_scope import SCOPE_DOMAIN, SCOPE_PUBLIC, SCOPE_RESTRICTED  # noqa: E402
+
+# Domains where an empty ``visible_to`` means NO role rather than every role: their columns need
+# an explicit grant (REQ-1133), and nothing in them is served across domains.
+LOCKDOWN_DOMAINS: frozenset[str] = frozenset({"ops"})
+
+# A column's ``scope`` (core/column_scope.py): ``domain`` is served within the domains a role
+# reaches, ``public`` also outside them, ``restricted`` only to whom ``visible_to`` names.
+
+
+def column_served(role: dict, domain_id: str | None, column: dict, *, reaches: bool) -> bool:
+    """Whether ``role`` is served ``column`` of a table in ``domain_id`` — THE rule, read by the
+    schema build, SQL governance, the direct-read (V001) check and the catalog's row scope.
+
+    ``reaches``: whether the role reaches the table's domain, as the caller decides it (a domain
+    it lists, ``*``, or the catalog domain every role may traverse).
+
+    The column's own grant comes first: ``visible_to`` names the role, or ``*``, or is empty —
+    which is everyone, except in a lockdown domain and on a ``restricted`` column, where an empty
+    list is nobody. Within reach that is all. Outside reach a column is served only when it is
+    ``public``: publishing removes the domain condition for that column and nothing else — its
+    grant, masks, row rules and limits apply as they do within the domain. A parameter column of
+    an API table (``native_filter_type``) is an argument, not data, and publishes nothing; a
+    lockdown domain's columns are never served across domains.
+    """
+    granted_to = column.get("visible_to") or []
+    # A column dict synthesized for a table registered without columns carries no scope: the
+    # model's default for a column, ``domain`` (core/models.py Column.scope).
+    scope = column.get("scope") or SCOPE_DOMAIN
+    named = ALL_DOMAINS in granted_to or role["id"] in granted_to
+    if scope == SCOPE_RESTRICTED or domain_id in LOCKDOWN_DOMAINS:
+        granted = named
+    else:
+        granted = named or not granted_to
+    if not granted:
+        return False
+    if reaches:
+        return True
+    return (
+        scope == SCOPE_PUBLIC
+        and domain_id not in LOCKDOWN_DOMAINS
+        and not column.get("native_filter_type")
+    )
+
+
+def served_across_domains(role: dict, table: dict) -> bool:
+    """Whether ``role``, which does not reach ``table``'s domain, is served the table anyway: at
+    least one of its data columns is public and granted to it (REQ-1959)."""
+    domain_id = table.get("domain_id")
+    return any(
+        column_served(role, domain_id, column, reaches=False)
+        for column in table.get("columns") or []
+    )
+
+
 def is_control_plane_definition(capabilities: Iterable[str] | None) -> bool:  # REQ-1337
     """True when a role's capabilities are platform rights and nothing else.
 
@@ -537,7 +594,13 @@ def compute_meta_row_scope(
         return None  # meta domain grant / "*" → the whole catalog
     # An EMPTY list falls through: no domain is directly reachable, so no meta row is either.
 
-    directly = {t["id"] for t in tables if t.get("domain_id") in accessible}
+    # Its own tables: those in a domain it reaches, and those outside its domains that publish
+    # a column to it (REQ-1959) — the catalog describes what a role is served.
+    directly = {
+        t["id"]
+        for t in tables
+        if t.get("domain_id") in accessible or served_across_domains(role, t)
+    }
     visible = set(directly)
     for rel in relationships or []:
         sid = rel.get("source_table_id")

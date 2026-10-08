@@ -168,6 +168,7 @@ export function ColumnsTable({
               <Table.Td>
                 <Select
                   aria-label={t("registerTableForm.colHeaderScope")}
+                  title={t("registerTableForm.scopeHelp")}
                   data={[
                     { value: "domain", label: t("registerTableForm.scopeDomain") },
                     { value: "public", label: t("registerTableForm.scopePublic") },

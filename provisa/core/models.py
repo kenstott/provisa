@@ -843,7 +843,15 @@ class Column(
         False  # derived from relationships (target_column when PK already exists)
     )
     object_fields: list[ObjectField] = []  # sub-fields for object/jsonb columns
-    scope: str = "domain"  # "domain" | "public" | "restricted"
+    scope: str = "domain"  # "domain" | "public" | "restricted" (core/column_scope.py, REQ-1959)
+
+    @model_validator(mode="after")
+    def _scope_is_a_column_scope(self) -> "Column":
+        from provisa.core.column_scope import require_column_scope
+
+        require_column_scope(self.name, self.scope)
+        return self
+
     # REQ-421: declare a column as an embedding vector. embedding_model references a
     # registered vector model (REQ-419); embedding_source_column is the text column it
     # is generated from (for the generation tier). dimensions come from the model.

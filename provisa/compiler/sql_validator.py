@@ -230,6 +230,11 @@ def _check_domain_access(  # REQ-039, REQ-263
             meta = table_id_to_meta.get(tid)
             if meta is None:
                 continue
+            # REQ-1959: a table outside the role's domains that publishes a column to it is one
+            # the role is served; reading it directly is not a domain violation. Which of its
+            # columns the role may read is the column check's (V003).
+            if tid in gov_ctx.public_tables:
+                continue
             if meta.domain_id and meta.domain_id not in domain_access:
                 ref = f"{tbl.db}.{tbl.name}" if tbl.db else tbl.name
                 violations.append(

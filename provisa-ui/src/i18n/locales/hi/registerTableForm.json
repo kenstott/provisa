@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "भूमिका के अनुसार पंक्ति नियम",
     "profilerRowRulesNone": "हर पाठक हर वर्णित कॉलम देखता है।",
-    "profilerRowRuleFailed": "टेबल पंजीकृत हो गई, लेकिन {{role}} का पंक्ति नियम सहेजा नहीं गया: {{message}}"
+    "profilerRowRuleFailed": "टेबल पंजीकृत हो गई, लेकिन {{role}} का पंक्ति नियम सहेजा नहीं गया: {{message}}",
+    "scopeHelp": "domain: उन भूमिकाओं को दिया जाता है जो इस तालिका के डोमेन तक पहुँचती हैं। public: उसके बाहर की भूमिकाओं को भी। restricted: केवल «दृश्य» में नामित भूमिकाओं को।"
   }
 }

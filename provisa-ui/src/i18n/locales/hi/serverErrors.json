@@ -368,7 +368,8 @@
       "registry_auth_unknown": "स्रोत '{{source}}': स्कीमा रजिस्ट्री प्रमाणीकरण '{{method}}' {{methods}} में से कोई नहीं है",
       "registry_url_required": "स्रोत '{{source}}': स्कीमा रजिस्ट्री की सेटिंग दी गई हैं लेकिन स्कीमा रजिस्ट्री URL नहीं है",
       "registry_field_required": "स्रोत '{{source}}': स्कीमा रजिस्ट्री प्रमाणीकरण '{{method}}' के लिए {{field}} आवश्यक है",
-      "registry_path_not_absolute": "स्रोत '{{source}}': {{field}} निरपेक्ष पथ होना चाहिए, मिला '{{path}}'"
+      "registry_path_not_absolute": "स्रोत '{{source}}': {{field}} निरपेक्ष पथ होना चाहिए, मिला '{{path}}'",
+      "column_scope_invalid": "कॉलम '{{column}}' का स्कोप '{{scope}}' है; कॉलम का स्कोप इनमें से एक होता है: {{scopes}}"
     },
     "secrets": {
       "still_referenced": "{{secret}} का नाम इस संगठन में अब भी {{count}} संग्रहीत मान ले रहे हैं। हर एक को बदलें या हटाएँ, फिर दोबारा हटाएँ।"

@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "Regras de linha por função",
     "profilerRowRulesNone": "Todo leitor vê todas as colunas descritas.",
-    "profilerRowRuleFailed": "A tabela foi registrada, mas a regra de linha de {{role}} não foi salva: {{message}}"
+    "profilerRowRuleFailed": "A tabela foi registrada, mas a regra de linha de {{role}} não foi salva: {{message}}",
+    "scopeHelp": "domain: servida às funções que alcançam o domínio desta tabela. public: também às funções fora dele. restricted: apenas às funções indicadas em Visível para."
   }
 }

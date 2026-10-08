@@ -368,7 +368,8 @@
       "registry_auth_unknown": "数据源“{{source}}”：模式注册表认证“{{method}}”不属于 {{methods}}",
       "registry_url_required": "数据源“{{source}}”：已给出模式注册表设置，但没有模式注册表 URL",
       "registry_field_required": "数据源“{{source}}”：模式注册表认证“{{method}}”需要 {{field}}",
-      "registry_path_not_absolute": "数据源“{{source}}”：{{field}} 必须是绝对路径，实际为“{{path}}”"
+      "registry_path_not_absolute": "数据源“{{source}}”：{{field}} 必须是绝对路径，实际为“{{path}}”",
+      "column_scope_invalid": "列 '{{column}}' 的范围为 '{{scope}}'；列的范围必须是 {{scopes}} 之一"
     },
     "secrets": {
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"

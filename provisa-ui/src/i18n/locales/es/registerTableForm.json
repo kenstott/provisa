@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "Reglas de filas por rol",
     "profilerRowRulesNone": "Cada lector ve todas las columnas descritas.",
-    "profilerRowRuleFailed": "La tabla se registró, pero la regla de filas de {{role}} no se guardó: {{message}}"
+    "profilerRowRuleFailed": "La tabla se registró, pero la regla de filas de {{role}} no se guardó: {{message}}",
+    "scopeHelp": "domain: se sirve a los roles que alcanzan el dominio de esta tabla. public: también a los roles fuera de él. restricted: solo a los roles indicados en Visible para."
   }
 }

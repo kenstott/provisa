@@ -368,7 +368,8 @@
       "registry_auth_unknown": "Quelle '{{source}}': Die Schema-Registry-Authentifizierung '{{method}}' ist keine von {{methods}}",
       "registry_url_required": "Quelle '{{source}}': Schema-Registry-Einstellungen sind angegeben, aber keine Schema-Registry-URL",
       "registry_field_required": "Quelle '{{source}}': Die Schema-Registry-Authentifizierung '{{method}}' erfordert {{field}}",
-      "registry_path_not_absolute": "Quelle '{{source}}': {{field}} muss ein absoluter Pfad sein, erhalten: '{{path}}'"
+      "registry_path_not_absolute": "Quelle '{{source}}': {{field}} muss ein absoluter Pfad sein, erhalten: '{{path}}'",
+      "column_scope_invalid": "Spalte '{{column}}' hat den Geltungsbereich '{{scope}}'; zulässig ist einer von {{scopes}}"
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."

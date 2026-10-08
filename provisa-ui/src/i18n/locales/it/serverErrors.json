@@ -368,7 +368,8 @@
       "registry_auth_unknown": "Origine '{{source}}': l'autenticazione del registro degli schemi '{{method}}' non è una di {{methods}}",
       "registry_url_required": "Origine '{{source}}': sono indicate impostazioni del registro degli schemi ma nessun URL del registro",
       "registry_field_required": "Origine '{{source}}': l'autenticazione del registro degli schemi '{{method}}' richiede {{field}}",
-      "registry_path_not_absolute": "Origine '{{source}}': {{field}} deve essere un percorso assoluto, ricevuto '{{path}}'"
+      "registry_path_not_absolute": "Origine '{{source}}': {{field}} deve essere un percorso assoluto, ricevuto '{{path}}'",
+      "column_scope_invalid": "La colonna '{{column}}' ha ambito '{{scope}}'; l'ambito di una colonna è uno tra {{scopes}}"
     },
     "secrets": {
       "still_referenced": "{{secret}} è ancora nominato da {{count}} valore/i memorizzato/i in questa organizzazione. Modifica o rimuovi ciascuno, poi eliminalo di nuovo."

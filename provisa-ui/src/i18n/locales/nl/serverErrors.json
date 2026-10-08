@@ -368,7 +368,8 @@
       "registry_auth_unknown": "Bron '{{source}}': schema-registryauthenticatie '{{method}}' is geen van {{methods}}",
       "registry_url_required": "Bron '{{source}}': er zijn schema-registryinstellingen opgegeven maar geen schema-registry-URL",
       "registry_field_required": "Bron '{{source}}': schema-registryauthenticatie '{{method}}' vereist {{field}}",
-      "registry_path_not_absolute": "Bron '{{source}}': {{field}} moet een absoluut pad zijn, ontvangen '{{path}}'"
+      "registry_path_not_absolute": "Bron '{{source}}': {{field}} moet een absoluut pad zijn, ontvangen '{{path}}'",
+      "column_scope_invalid": "Kolom '{{column}}' heeft bereik '{{scope}}'; het bereik van een kolom is een van {{scopes}}"
     },
     "secrets": {
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."

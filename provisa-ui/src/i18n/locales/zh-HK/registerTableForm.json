@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "按角色的列規則",
     "profilerRowRulesNone": "每位讀者都能看到所有被描述的欄。",
-    "profilerRowRuleFailed": "資料表已註冊，但 {{role}} 的列規則未儲存：{{message}}"
+    "profilerRowRuleFailed": "資料表已註冊，但 {{role}} 的列規則未儲存：{{message}}",
+    "scopeHelp": "domain：提供予可存取此資料表所屬網域的角色。public：亦提供予該網域以外的角色。restricted：只提供予「可見對象」中指明的角色。"
   }
 }

@@ -368,7 +368,8 @@
       "registry_auth_unknown": "資料來源「{{source}}」：綱要註冊表驗證「{{method}}」不屬於 {{methods}}",
       "registry_url_required": "資料來源「{{source}}」：已提供綱要註冊表設定，但沒有綱要註冊表 URL",
       "registry_field_required": "資料來源「{{source}}」：綱要註冊表驗證「{{method}}」需要 {{field}}",
-      "registry_path_not_absolute": "資料來源「{{source}}」：{{field}} 必須是絕對路徑，實際為「{{path}}」"
+      "registry_path_not_absolute": "資料來源「{{source}}」：{{field}} 必須是絕對路徑，實際為「{{path}}」",
+      "column_scope_invalid": "欄位「{{column}}」的範圍為「{{scope}}」；欄位的範圍須為 {{scopes}} 其中之一"
     },
     "secrets": {
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"

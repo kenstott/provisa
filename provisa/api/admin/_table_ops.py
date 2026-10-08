@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import or_, select
 
+from provisa.core.column_scope import COLUMN_SCOPES, SCOPE_DOMAIN, ColumnScopeInvalid
 from provisa.core.schema_org import registered_tables, roles, sources, table_columns
 
 if TYPE_CHECKING:
@@ -412,6 +413,22 @@ async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult |
     """
     from provisa.api.admin.types import MutationResult
 
+    # REQ-1959: a column's scope decides who is served it, so a value that is not a scope is
+    # refused by name before anything is built from it.
+    for _column in input.columns:
+        _scope = getattr(_column, "scope", SCOPE_DOMAIN)
+        if _scope not in COLUMN_SCOPES:
+            refusal = ColumnScopeInvalid(_column.name, _scope)
+            return [], MutationResult(
+                success=False,
+                message=str(refusal),
+                code="schema.column_scope_invalid",
+                params={
+                    "column": _column.name,
+                    "scope": str(_scope),
+                    "scopes": ", ".join(COLUMN_SCOPES),
+                },
+            )
     columns = _build_column_models(input.columns)
     if not input.view_sql:
         from_schema = await _graphql_columns_for_input(input, columns)

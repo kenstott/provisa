@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "Rijregels per rol",
     "profilerRowRulesNone": "Elke lezer ziet elke beschreven kolom.",
-    "profilerRowRuleFailed": "De tabel is geregistreerd, maar de rijregel voor {{role}} is niet opgeslagen: {{message}}"
+    "profilerRowRuleFailed": "De tabel is geregistreerd, maar de rijregel voor {{role}} is niet opgeslagen: {{message}}",
+    "scopeHelp": "domain: geleverd aan rollen die het domein van deze tabel bereiken. public: ook aan rollen daarbuiten. restricted: alleen aan de rollen genoemd bij Zichtbaar voor."
   }
 }

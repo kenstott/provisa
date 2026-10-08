@@ -368,7 +368,8 @@
       "registry_auth_unknown": "Origen '{{source}}': la autenticación del registro de esquemas '{{method}}' no es una de {{methods}}",
       "registry_url_required": "Origen '{{source}}': se indican ajustes del registro de esquemas pero no su URL",
       "registry_field_required": "Origen '{{source}}': la autenticación del registro de esquemas '{{method}}' requiere {{field}}",
-      "registry_path_not_absolute": "Origen '{{source}}': {{field}} debe ser una ruta absoluta, se recibió '{{path}}'"
+      "registry_path_not_absolute": "Origen '{{source}}': {{field}} debe ser una ruta absoluta, se recibió '{{path}}'",
+      "column_scope_invalid": "La columna '{{column}}' tiene el ámbito '{{scope}}'; el ámbito de una columna es uno de {{scopes}}"
     },
     "secrets": {
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."

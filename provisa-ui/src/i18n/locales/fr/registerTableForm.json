@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "Règles de lignes par rôle",
     "profilerRowRulesNone": "Chaque lecteur voit toutes les colonnes décrites.",
-    "profilerRowRuleFailed": "La table a été enregistrée, mais la règle de lignes de {{role}} n'a pas été enregistrée : {{message}}"
+    "profilerRowRuleFailed": "La table a été enregistrée, mais la règle de lignes de {{role}} n'a pas été enregistrée : {{message}}",
+    "scopeHelp": "domain : servi aux rôles qui atteignent le domaine de cette table. public : aussi aux rôles en dehors. restricted : uniquement aux rôles nommés dans Visible par."
   }
 }

@@ -5278,5 +5278,8 @@
   "fr/serverErrors.json::serverErrors.statement.rows_cut": "The answer was cut at {{limit}} rows, the row limit that applies to this read ({{kind}}): more rows match than were returned.",
   "fr/serverErrors.json::serverErrors.statement.rows_cut_unchecked": "The answer has {{limit}} rows, the row limit that applies to this read ({{kind}}). Whether more rows match could not be checked: {{reason}}",
   "fr/tableReadView.json::tableReadView.notShown": "not shown",
-  "fr/tableReadView.json::tableReadView.editNeedsGovernance": "Editing a table replaces its columns' grant lists and masks, which you are not shown. It needs the view_governance right."
+  "fr/tableReadView.json::tableReadView.editNeedsGovernance": "Editing a table replaces its columns' grant lists and masks, which you are not shown. It needs the view_governance right.",
+  "fr/registerTableForm.json::registerTableForm.scopeHelp": "domain: served to roles that reach this table's domain. public: also to roles outside it. restricted: only to the roles named in Visible to.",
+  "fr/tableEditForm.json::tableEditForm.scopeHelp": "domain: served to roles that reach this table's domain. public: also to roles outside it. restricted: only to the roles named in Visible to.",
+  "fr/serverErrors.json::serverErrors.schema.column_scope_invalid": "Column '{{column}}' has scope '{{scope}}'; a column's scope is one of {{scopes}}"
 }

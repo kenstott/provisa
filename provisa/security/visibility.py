@@ -16,24 +16,22 @@ This module formalizes what schema_gen already does and adds validation.
 
 from __future__ import annotations
 
-from provisa.security.rights import reaches_all_domains
+from provisa.security.rights import column_served, reaches_domain
 
 # Requirements: REQ-001, REQ-038, REQ-039, REQ-042, REQ-263, REQ-363
 
 
 def visible_tables(tables: list[dict], role: dict) -> list[dict]:  # REQ-039, REQ-042, REQ-363
-    """Filter tables to those visible to the role based on domain access."""
-    accessible = set(role["domain_access"])
-    # The ROLE's domain list: the domains it names, "*" for all, empty for none; single-domain
-    # mode is decided inside reaches_all_domains. (The column check below is a different list.)
-    all_access = reaches_all_domains(role["domain_access"])
-
+    """The tables ``role`` is served, each with the columns it is served — by the one rule the
+    schema build and SQL governance read (:func:`provisa.security.rights.column_served`)."""
     result = []
     for table in tables:
-        if not all_access and table["domain_id"] not in accessible:
-            continue
-        # Filter columns by visibility
-        visible_cols = [c for c in table["columns"] if role["id"] in c["visible_to"]]
+        reaches = reaches_domain(role["domain_access"], table["domain_id"])
+        visible_cols = [
+            c
+            for c in table["columns"]
+            if column_served(role, table["domain_id"], c, reaches=reaches)
+        ]
         if not visible_cols:
             continue
         result.append({**table, "columns": visible_cols})
@@ -45,7 +43,7 @@ def is_column_visible(  # REQ-039, REQ-263
     column_name: str,
     role_id: str,
 ) -> bool:
-    """Check if a specific column is visible to a role."""
+    """Whether a column's own grant names ``role_id`` (its ``visible_to``, literally)."""
     for col in table.get("columns", []):
         if col["column_name"] == column_name:
             return role_id in col["visible_to"]
@@ -53,5 +51,5 @@ def is_column_visible(  # REQ-039, REQ-263
 
 
 def visible_column_names(table: dict, role_id: str) -> set[str]:  # REQ-039, REQ-263
-    """Get the set of column names visible to a role for a table."""
+    """The columns whose own grant names ``role_id`` (their ``visible_to``, literally)."""
     return {col["column_name"] for col in table.get("columns", []) if role_id in col["visible_to"]}

@@ -335,7 +335,9 @@ export function RegisterTableForm({
             nativeFilterType: c.nativeFilterType ?? null,
             dataType: c.dataType,
             isPrimaryKey: c.isPrimaryKey ?? false,
-            scope: c.nativeFilterType ? "public" : "domain",
+            // REQ-1959: nothing is public by default. A parameter column is an argument, not
+            // data, and its scope publishes nothing whatever it says.
+            scope: "domain",
             path: null, // REQ-1739: set below only for ingest sources
           };
         });

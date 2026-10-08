@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "Regole di riga per ruolo",
     "profilerRowRulesNone": "Ogni lettore vede tutte le colonne descritte.",
-    "profilerRowRuleFailed": "La tabella è stata registrata, ma la regola di riga per {{role}} non è stata salvata: {{message}}"
+    "profilerRowRuleFailed": "La tabella è stata registrata, ma la regola di riga per {{role}} non è stata salvata: {{message}}",
+    "scopeHelp": "domain: servita ai ruoli che raggiungono il dominio di questa tabella. public: anche ai ruoli al di fuori. restricted: solo ai ruoli indicati in Visibile a."
   }
 }

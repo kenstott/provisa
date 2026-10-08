@@ -39,6 +39,10 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     masking_rules: dict[tuple[int, str], tuple] = field(default_factory=dict)
     # table_id → visible column names (None = all visible)
     visible_columns: dict[int, frozenset[str] | None] = field(default_factory=dict)
+    # REQ-1959: tables outside the role's domains that it is served anyway, because they publish
+    # a column to it. A direct read of one is not a domain violation (V001); the columns it may
+    # read there are the published ones (visible_columns).
+    public_tables: frozenset[int] = frozenset()
     # "schema.table" or "table" → table_id
     table_map: dict[str, int] = field(default_factory=dict)
     # table_id → [(col_name, data_type)]
@@ -171,8 +175,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         META_DOMAIN_ID,
         META_ROW_SCOPED_VIEWS,
         Capability,
+        column_served,
         compute_meta_row_scope,
         has_capability,
+        reaches_domain,
+        served_across_domains,
     )
 
     _has_view_gov = has_capability(role, Capability.VIEW_GOVERNANCE)
@@ -184,6 +191,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         for tm in getattr(ctx, "tables", {}).values()
     }
 
+    _public: set[int] = set()
     # Build table_map, visible_columns, all_columns from raw tables
     for tbl in tables:
         table_id = tbl["id"]
@@ -213,38 +221,31 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 if _has_view_gov or c["column_name"] not in GOVERNANCE_META_COLUMNS
             )
         else:
-            from provisa.compiler.schema_gen import _LOCKDOWN_DOMAINS
-
+            # ONE rule with the schema build (security.rights.column_served): the column's grant
+            # — empty is everyone, "*", or the role; an explicit grant only in a lockdown domain
+            # and on a restricted column — and, in a domain the role does not reach, only a
+            # published column (REQ-1959).
             _tbl_domain = tbl.get("domain_id")
-            visible: set[str] = set()
-            all_visible = True
-            for c in cols:
-                visible_to = c.get("visible_to")
-                # REQ-1730 gap: the DB's visible_to column is JSON NOT NULL (schema_org.py), so a
-                # freshly-registered, ungranted column is an EMPTY LIST, never a true SQL NULL —
-                # `visible_to is None` never actually fires against real data, silently rejecting
-                # every such column instead of applying schema_gen.py's own documented contract
-                # ("visible_to=[] means unrestricted (visible to all roles)", _build_visible_tables
-                # above) — the two governance checks disagreed on the exact same input, verified
-                # live: schema_gen.py's precomputed schema correctly listed a grpc_remote table's
-                # columns as visible, while this function's V003 check rejected every one of them.
-                if not visible_to and _tbl_domain not in _LOCKDOWN_DOMAINS:
-                    visible.add(c["column_name"])
-                # REQ-1742 gap: "*" is the codebase's "everyone" sentinel (Metric.visible_to,
-                # core/models.py, defaults to it; schema_gen.py's metrics branch already
-                # special-cases it) but this column-visibility check never did — a literal
-                # `role_id in visible_to` treats ["*"] as "visible only to a role named '*'",
-                # silently rejecting every real role even after a successful grant.
-                elif visible_to and ("*" in visible_to or role_id in visible_to):
-                    visible.add(c["column_name"])
-                else:
-                    all_visible = False
+            # A table registered with no domain is gated by none, as the direct-read check
+            # (V001) treats it.
+            _reaches = not _tbl_domain or reaches_domain(role["domain_access"], _tbl_domain)
+            _subject = {"id": role_id}
+            visible = {
+                c["column_name"]
+                for c in cols
+                if column_served(_subject, _tbl_domain, c, reaches=_reaches)
+            }
+            all_visible = len(visible) == len(cols)
+            if not _reaches and served_across_domains(_subject, tbl):
+                _public.add(table_id)
             gov.visible_columns[table_id] = None if all_visible else frozenset(visible)
 
         # per-table ceiling (REQ-005)
         tbl_max = tbl.get("max_rows")
         if tbl_max is not None:
             gov.table_ceilings[table_id] = int(tbl_max)
+
+    gov.public_tables = frozenset(_public)
 
     # table_map from compilation context — semantic refs only
     from provisa.compiler.naming import domain_to_sql_name

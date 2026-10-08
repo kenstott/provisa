@@ -287,6 +287,7 @@
       "queryHelp": "Una consulta nativa del origen con los marcadores $wm (cursor) y {{fields}}. Déjela en blanco para un origen SQL: Provisa genera SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
     },
     "pagingRowsFieldHelp": "La propiedad de la respuesta que contiene las filas, como values o data en un envoltorio de página. Déjelo vacío cuando la respuesta son las filas. Las columnas de la tabla son las de los objetos que hay allí.",
-    "pagingRowsFieldFixed": "Se establece al registrar la tabla. Registre la tabla de nuevo para leer sus filas de otro lugar."
+    "pagingRowsFieldFixed": "Se establece al registrar la tabla. Registre la tabla de nuevo para leer sus filas de otro lugar.",
+    "scopeHelp": "domain: se sirve a los roles que alcanzan el dominio de esta tabla. public: también a los roles fuera de él. restricted: solo a los roles indicados en Visible para."
   }
 }

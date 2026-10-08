@@ -368,7 +368,8 @@
       "registry_auth_unknown": "Source '{{source}}' : l'authentification du registre de schémas '{{method}}' ne fait pas partie de {{methods}}",
       "registry_url_required": "Source '{{source}}' : des paramètres du registre de schémas sont fournis mais aucune URL de registre de schémas",
       "registry_field_required": "Source '{{source}}' : l'authentification du registre de schémas '{{method}}' exige {{field}}",
-      "registry_path_not_absolute": "Source '{{source}}' : {{field}} doit être un chemin absolu, reçu '{{path}}'"
+      "registry_path_not_absolute": "Source '{{source}}' : {{field}} doit être un chemin absolu, reçu '{{path}}'",
+      "column_scope_invalid": "La colonne '{{column}}' a la portée '{{scope}}' ; la portée d'une colonne est l'une de {{scopes}}"
     },
     "secrets": {
       "still_referenced": "{{secret}} est encore nommé par {{count}} valeur(s) stockée(s) dans cette organisation. Modifiez ou retirez chacune, puis supprimez-le de nouveau."

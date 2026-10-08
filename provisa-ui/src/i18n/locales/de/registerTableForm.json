@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "Zeilenregeln je Rolle",
     "profilerRowRulesNone": "Jeder Leser sieht jede beschriebene Spalte.",
-    "profilerRowRuleFailed": "Die Tabelle wurde registriert, aber die Zeilenregel für {{role}} wurde nicht gespeichert: {{message}}"
+    "profilerRowRuleFailed": "Die Tabelle wurde registriert, aber die Zeilenregel für {{role}} wurde nicht gespeichert: {{message}}",
+    "scopeHelp": "domain: für Rollen, die die Domäne dieser Tabelle erreichen. public: auch für Rollen außerhalb davon. restricted: nur für die unter „Sichtbar für“ genannten Rollen."
   }
 }

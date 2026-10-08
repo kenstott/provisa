@@ -287,6 +287,7 @@
       "queryHelp": "$wm (カーソル) と {{fields}} のプレースホルダーを含むソースネイティブのクエリ。SQL ソースの場合は空欄のままにします: Provisa が SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark> を生成します。"
     },
     "pagingRowsFieldHelp": "応答のうち行を保持するプロパティです（ページラッパーの values や data など）。応答そのものが行である場合は空のままにします。テーブルの列は、そこにあるオブジェクトの列になります。",
-    "pagingRowsFieldFixed": "テーブルの登録時に設定されます。別の場所から行を読み取るには、テーブルを登録し直してください。"
+    "pagingRowsFieldFixed": "テーブルの登録時に設定されます。別の場所から行を読み取るには、テーブルを登録し直してください。",
+    "scopeHelp": "domain: このテーブルのドメインに到達できるロールに提供。public: ドメイン外のロールにも提供。restricted: 「表示対象」で指定したロールのみに提供。"
   }
 }

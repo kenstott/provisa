@@ -287,6 +287,7 @@
     "draftLabel": "Draft",
     "draftHelp": "Out of service while checked: read and written nowhere, offered in no schema, and copied nowhere — existing copies in every region are removed. A table or view registered here starts as draft; clear it to release it.",
     "pagingRowsFieldHelp": "The property of the answer that holds the rows, such as a page wrapper's values or data. Leave empty when the answer is the rows. The table's columns are those of the objects there.",
-    "pagingRowsFieldFixed": "Set when the table was registered. Register the table again to read its rows from elsewhere."
+    "pagingRowsFieldFixed": "Set when the table was registered. Register the table again to read its rows from elsewhere.",
+    "scopeHelp": "domain: served to roles that reach this table's domain. public: also to roles outside it. restricted: only to the roles named in Visible to."
   }
 }

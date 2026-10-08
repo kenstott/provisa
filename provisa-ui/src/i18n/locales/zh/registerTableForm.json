@@ -106,6 +106,7 @@
     "profilerResultOption": "{{member}} · {{kind}}",
     "profilerRowRulesLabel": "按角色的行规则",
     "profilerRowRulesNone": "每个读者都能看到所有被描述的列。",
-    "profilerRowRuleFailed": "表已注册，但 {{role}} 的行规则未保存：{{message}}"
+    "profilerRowRuleFailed": "表已注册，但 {{role}} 的行规则未保存：{{message}}",
+    "scopeHelp": "domain：提供给可访问此表所在域的角色。public：也提供给该域之外的角色。restricted：仅提供给“可见对象”中指定的角色。"
   }
 }

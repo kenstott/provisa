@@ -287,6 +287,7 @@
       "queryHelp": "Una query nativa dell'origine con i segnaposto $wm (cursore) e {{fields}}. Lascia vuoto per un'origine SQL: Provisa genera SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
     },
     "pagingRowsFieldHelp": "La proprietà della risposta che contiene le righe, come values o data in un involucro di pagina. Lascia vuoto quando la risposta è costituita dalle righe stesse. Le colonne della tabella sono quelle degli oggetti che si trovano lì.",
-    "pagingRowsFieldFixed": "Impostato alla registrazione della tabella. Registra di nuovo la tabella per leggere le sue righe da un'altra posizione."
+    "pagingRowsFieldFixed": "Impostato alla registrazione della tabella. Registra di nuovo la tabella per leggere le sue righe da un'altra posizione.",
+    "scopeHelp": "domain: servita ai ruoli che raggiungono il dominio di questa tabella. public: anche ai ruoli al di fuori. restricted: solo ai ruoli indicati in Visibile a."
   }
 }
