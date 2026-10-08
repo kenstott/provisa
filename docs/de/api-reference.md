@@ -423,6 +423,8 @@ Gibt die automatisch generierte `.proto`-Datei für eine Rolle zurück. [tool-ve
 
 **Antwort:** `text/plain`-Protobuf-Schema.
 
+`{role_id}` ist eine Rolle, die der Aufrufer innehat, oder eine kommagetrennte Menge solcher Rollen (`analyst,org_admin`), die als Meta-Rolle der Menge bedient wird: die Vereinigung dessen, was ihren Mitgliedern gewährt ist. Eine Rolle, die der Aufrufer nicht innehat, wird mit `403 auth.role_not_assigned` abgelehnt, eine direkt genannte Meta-Rollen-ID mit `403 auth.meta_role_named`. `?domains=a,b` beschränkt das Proto auf diese Domänen; eine Domäne, die die Rolle nicht erreicht, wird mit `403 data.domain_not_accessible` abgelehnt. Eine Rolle ohne Datenoberfläche antwortet mit `404 data.no_proto_for_role`, eine unbekannte Rolle mit `404 data.no_role` und ein noch nicht aufgebautes Modell mit `503 data.schema_cache_not_ready`. (REQ-1620, REQ-273) [tool-verified: `provisa/api/data/endpoint_dev.py`, `provisa/api/acting_role.py`]
+
 Jede registrierte Tabelle erzeugt eine Proto-`message`. Beziehungen erzeugen verschachtelte Message-Felder. Typabbildung: `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`. (REQ-538)
 
 ---

@@ -423,6 +423,8 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 **响应：** `text/plain` protobuf 架构。
 
+`{role_id}` 是调用方持有的一个角色，或以逗号分隔的一组已持有角色（`analyst,org_admin`），该组以其元角色的身份提供服务：即其成员所获授权的并集。调用方未持有的角色以 `403 auth.role_not_assigned` 拒绝，直接指定的元角色 id 以 `403 auth.meta_role_named` 拒绝。`?domains=a,b` 将 proto 限定到这些域；角色无法访问的域以 `403 data.domain_not_accessible` 拒绝。没有数据面的角色返回 `404 data.no_proto_for_role`，未知角色返回 `404 data.no_role`，模型尚未构建时返回 `503 data.schema_cache_not_ready`。(REQ-1620, REQ-273) [tool-verified: `provisa/api/data/endpoint_dev.py`, `provisa/api/acting_role.py`]
+
 每个已注册表生成一个 proto `message`。关系生成嵌套的消息字段。类型映射：`integer → int32`、`bigint → int64`、`varchar → string`、`decimal → double`、`boolean → bool`、`timestamp → google.protobuf.Timestamp`。(REQ-538)
 
 ---

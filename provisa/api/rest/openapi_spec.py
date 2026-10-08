@@ -685,8 +685,49 @@ SWAGGER_UI_HTML = """\
       const dlParams = new URLSearchParams(specParams);
       dlParams.set("download", "1");
       const dlUrl = "/data/rest/openapi.json?" + dlParams.toString();
+      // The headers every request from this page carries: the role the page was opened for and the
+      // signed-in credential. REQ-1472: a break-glass operator session is stored under its own key,
+      // because the Firebase token sync deletes `provisa_token` whenever it sees no signed-in user.
+      // This page runs in its own srcdoc document with no access to the app's fetch interceptor, so
+      // it repeats the same preference order the app's storedToken() uses.
+      const withIdentity = (headers) => {
+        const role = urlRole || localStorage.getItem("provisa_role");
+        if (role) headers["x-provisa-role"] = role;
+        const token = localStorage.getItem("provisa_su_token") || localStorage.getItem("provisa_token");
+        if (token && !headers["Authorization"]) headers["Authorization"] = "Bearer " + token;
+        const orgId = localStorage.getItem("provisa_org");
+        if (orgId && !headers["X-Org-Provisa"]) headers["X-Org-Provisa"] = orgId;
+        return headers;
+      };
+
+      // The download is fetched as the page's own requests are — a bare link carries neither the
+      // role header nor the credential, so it was answered as some other role or not at all.
       const bar = document.getElementById("download-bar");
-      bar.innerHTML = '<a href="' + dlUrl + '" download="openapi.json">⬇ Download openapi.json</a>';
+      const link = document.createElement("a");
+      link.href = "#";
+      link.id = "download-spec";
+      link.textContent = "⬇ Download openapi.json";
+      const status = document.createElement("span");
+      status.id = "download-status";
+      link.addEventListener("click", async (event) => {
+        event.preventDefault();
+        status.textContent = "";
+        const res = await fetch(dlUrl, { headers: withIdentity({}) });
+        if (!res.ok) {
+          const body = await res.text();
+          let detail = body;
+          try { detail = JSON.parse(body).detail || body; } catch (e) { /* not JSON: show the text */ }
+          status.textContent = "Download failed (" + res.status + "): " + detail;
+          return;
+        }
+        const objectUrl = URL.createObjectURL(await res.blob());
+        const save = document.createElement("a");
+        save.href = objectUrl;
+        save.download = "openapi.json";
+        save.click();
+        URL.revokeObjectURL(objectUrl);
+      });
+      bar.append(link, status);
 
       SwaggerUIBundle({
         url: specUrl,
@@ -696,16 +737,7 @@ SWAGGER_UI_HTML = """\
         deepLinking: true,
         tryItOutEnabled: true,
         requestInterceptor: (req) => {
-          const role = urlRole || localStorage.getItem("provisa_role");
-          if (role) req.headers["x-provisa-role"] = role;
-          // REQ-1472: a break-glass operator session is stored under its own key, because the
-          // Firebase token sync deletes `provisa_token` whenever it sees no signed-in user. This
-          // page runs in its own srcdoc document with no access to the app's fetch interceptor, so
-          // it repeats the same preference order the app's storedToken() uses.
-          const token = localStorage.getItem("provisa_su_token") || localStorage.getItem("provisa_token");
-          if (token && !req.headers["Authorization"]) req.headers["Authorization"] = "Bearer " + token;
-          const orgId = localStorage.getItem("provisa_org");
-          if (orgId && !req.headers["X-Org-Provisa"]) req.headers["X-Org-Provisa"] = orgId;
+          withIdentity(req.headers);
           return req;
         },
       });

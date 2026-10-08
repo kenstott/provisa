@@ -573,8 +573,10 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
     ):
         from provisa.api.jsonapi.spec import generate_jsonapi_openapi_spec
 
-        auth_role = getattr(request.state, "role", None)
-        role_id = auth_role or role
+        from provisa.api.acting_role import document_role
+
+        # A named role is THAT role's spec or a refusal, never the acting role's (REQ-273).
+        role_id = document_role(request, role)
         if not role_id:
             return _jsonapi_error_response(401, "Unauthorized", "role required")
         domain_list = [d for d in domains.split(",") if d] if domains else None

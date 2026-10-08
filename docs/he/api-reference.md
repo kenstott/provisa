@@ -423,6 +423,8 @@ X-Provisa-Redirect-Threshold: 1000
 
 **תגובה:** Schema פרוטובאף מסוג `text/plain`.
 
+`{role_id}` הוא תפקיד שהקורא מחזיק בו, או קבוצה מופרדת בפסיקים של תפקידים מוחזקים (`analyst,org_admin`), המוגשת כמטא-תפקיד של הקבוצה: איחוד ההרשאות של חבריה. תפקיד שהקורא אינו מחזיק בו נדחה עם `403 auth.role_not_assigned`, ומזהה מטא-תפקיד שצוין ישירות נדחה עם `403 auth.meta_role_named`. `?domains=a,b` מצמצם את ה-proto לתחומים אלה; תחום שהתפקיד אינו מגיע אליו נדחה עם `403 data.domain_not_accessible`. תפקיד ללא משטח נתונים מחזיר `404 data.no_proto_for_role`, תפקיד לא מוכר `404 data.no_role`, ומודל שטרם נבנה `503 data.schema_cache_not_ready`. (REQ-1620, REQ-273) [tool-verified: `provisa/api/data/endpoint_dev.py`, `provisa/api/acting_role.py`]
+
 כל טבלה רשומה מפיקה `message` פרוטו. קשרים מפיקים שדות הודעה מקוננים. מיפוי סוגים: `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`. (REQ-538)
 
 ---

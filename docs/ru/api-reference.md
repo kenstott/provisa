@@ -423,6 +423,8 @@ UI опрашивает этот эндпоинт, чтобы показать �
 
 **Ответ:** схема protobuf в формате `text/plain`.
 
+`{role_id}` — это одна роль, которой обладает вызывающий, или набор таких ролей через запятую (`analyst,org_admin`), который обслуживается как мета-роль набора: объединение того, что предоставлено его участникам. Роль, которой вызывающий не обладает, отклоняется с `403 auth.role_not_assigned`, а идентификатор мета-роли, указанный напрямую, — с `403 auth.meta_role_named`. `?domains=a,b` сужает proto до этих доменов; домен, которого роль не достигает, отклоняется с `403 data.domain_not_accessible`. Роль без поверхности данных получает `404 data.no_proto_for_role`, неизвестная роль — `404 data.no_role`, а ещё не построенная модель — `503 data.schema_cache_not_ready`. (REQ-1620, REQ-273) [tool-verified: `provisa/api/data/endpoint_dev.py`, `provisa/api/acting_role.py`]
+
 Каждая зарегистрированная таблица порождает `message` proto. Связи порождают вложенные поля сообщений. Сопоставление типов: `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`. (REQ-538)
 
 ---

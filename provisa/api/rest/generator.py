@@ -478,8 +478,10 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
     ):
         from provisa.api.rest.openapi_spec import generate_rest_openapi_spec
 
-        auth_role = getattr(request.state, "role", None)
-        role_id = auth_role or role
+        from provisa.api.acting_role import document_role
+
+        # A named role is THAT role's spec or a refusal, never the acting role's (REQ-273).
+        role_id = document_role(request, role)
         if not role_id:
             raise HTTPException(status_code=401, detail="role required")
         domain_list = [d for d in domains.split(",") if d] if domains else None

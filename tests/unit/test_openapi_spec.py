@@ -413,3 +413,26 @@ class TestSwaggerUiTheme:
         html = swagger_ui_html("light")
         assert "__PROVISA_THEME_CLASS__" not in html
         assert 'get("theme")' not in html
+
+
+class TestSwaggerSpecDownload:
+    """The docs page downloads the spec as it fetches it: with the role and the credential."""
+
+    def test_the_download_is_not_a_bare_link(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light")
+        # A bare link carried no role header and no credential.
+        assert "<a href=\"' + dlUrl" not in html
+        assert 'download="openapi.json">' not in html
+
+    def test_the_download_carries_the_identity_every_other_request_carries(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light")
+        assert "fetch(dlUrl, { headers: withIdentity({}) })" in html
+        assert "withIdentity(req.headers);" in html  # the spec and try-it-out requests
+        identity = html[html.index("const withIdentity") : html.index("const bar =")]
+        assert 'headers["x-provisa-role"] = role' in identity
+        assert '"Bearer " + token' in identity
+        assert 'headers["X-Org-Provisa"] = orgId' in identity

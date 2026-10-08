@@ -122,6 +122,19 @@ def named_role(request: Request, named: str) -> str:  # REQ-273, REQ-1620
         raise ApiError(403, "auth.meta_role_named", str(exc), role_id=named) from exc
 
 
+def document_role(request: Request, named: str | None) -> str | None:  # REQ-273, REQ-1620
+    """The role a role-scoped document (an OpenAPI spec) is produced for.
+
+    A ``?role=`` on such a link NAMES the role — one held role, or a comma-separated set served
+    as its meta-role — and is resolved as a role named in a path is (:func:`named_role`): the
+    document is that role's, or the request is refused. It is never answered with some other
+    role's document. With no role named, the document is the acting role's.
+    """
+    if named:
+        return named_role(request, named)
+    return getattr(request.state, "role", None)
+
+
 def header_role(request: Request, x_provisa_role: str | None, x_role: str | None) -> str | None:
     """The role a header-addressed data route runs as, or None when the request has none.
 

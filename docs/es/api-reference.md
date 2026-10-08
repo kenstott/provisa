@@ -423,6 +423,8 @@ Devuelve el archivo `.proto` generado automáticamente para un rol. [tool-verifi
 
 **Respuesta:** esquema protobuf en `text/plain`.
 
+`{role_id}` es un rol que el solicitante posee, o un conjunto de roles poseídos separados por comas (`analyst,org_admin`), que se sirve como el metarrol del conjunto: la unión de lo concedido a sus miembros. Un rol que el solicitante no posee se rechaza con `403 auth.role_not_assigned`, y un id de metarrol nombrado directamente con `403 auth.meta_role_named`. `?domains=a,b` limita el proto a esos dominios; un dominio que el rol no alcanza se rechaza con `403 data.domain_not_accessible`. Un rol sin superficie de datos responde `404 data.no_proto_for_role`, un rol desconocido `404 data.no_role` y un modelo aún no construido `503 data.schema_cache_not_ready`. (REQ-1620, REQ-273) [tool-verified: `provisa/api/data/endpoint_dev.py`, `provisa/api/acting_role.py`]
+
 Cada tabla registrada produce un `message` proto. Las relaciones producen campos de mensaje anidados. Asignación de tipos: `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`. (REQ-538)
 
 ---

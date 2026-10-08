@@ -47,7 +47,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAllRelationships, useDomains, useTables } from "../hooks/useAdminQueries";
-import { serverMessage } from "../i18n/serverMessage";
+import { requestFailed, serverMessage } from "../i18n/serverMessage";
 import { IncludeTree } from "./jsonapi/IncludeTree";
 import {
   toApiName,
@@ -656,6 +656,39 @@ export function JsonApiPage() {
     [roleId],
   );
 
+  // The spec is fetched as the page's other requests are — with the active roles in
+  // X-Provisa-Role and, through the app's fetch, the signed-in credential — and handed over as a
+  // file. A bare link carried neither, so it was answered as some other role or not at all.
+  const downloadSpec = useCallback(async () => {
+    setError("");
+    try {
+      const res = await fetch(specUrl, {
+        headers: roleId ? { "x-provisa-role": roleId } : {},
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let body: { detail?: string; code?: string; errors?: { detail?: string }[] } | null;
+        try {
+          body = JSON.parse(text);
+        } catch {
+          body = null; // not a JSON error body: the status is what is known
+        }
+        setError(
+          serverMessage(body?.errors?.[0] ?? body, requestFailed("Spec download", res.status)),
+        );
+        return;
+      }
+      const objectUrl = URL.createObjectURL(await res.blob());
+      const save = document.createElement("a");
+      save.href = objectUrl;
+      save.download = "jsonapi-openapi.json";
+      save.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [specUrl, roleId]);
+
   const navAutoRunSeqRef = useRef<number | null>(null);
   useEffect(() => {
     if (!navAutoRun || !parsedNav || !nav || navInitSeq !== nav.seq) return;
@@ -723,9 +756,11 @@ export function JsonApiPage() {
               {t("jsonApiPage.title")}
             </Title>
             <Anchor
+              component="button"
+              type="button"
               className="jsonapi-spec-link"
-              href={specUrl}
-              download="jsonapi-openapi.json"
+              data-testid="jsonapi-spec-download"
+              onClick={() => void downloadSpec()}
               aria-label={t("jsonApiPage.downloadSpecAria")}
             >
               <Group gap={4} wrap="nowrap">

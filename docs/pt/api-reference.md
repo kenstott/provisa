@@ -423,6 +423,8 @@ Retorna o arquivo `.proto` auto-gerado para uma função. [tool-verified: `provi
 
 **Resposta:** esquema protobuf em `text/plain`.
 
+`{role_id}` é uma função que o chamador possui, ou um conjunto de funções possuídas separadas por vírgulas (`analyst,org_admin`), servido como a metafunção do conjunto: a união do que é concedido aos seus membros. Uma função que o chamador não possui é recusada com `403 auth.role_not_assigned`, e um id de metafunção nomeado diretamente com `403 auth.meta_role_named`. `?domains=a,b` restringe o proto a esses domínios; um domínio que a função não alcança é recusado com `403 data.domain_not_accessible`. Uma função sem superfície de dados responde `404 data.no_proto_for_role`, uma função desconhecida `404 data.no_role` e um modelo ainda não construído `503 data.schema_cache_not_ready`. (REQ-1620, REQ-273) [tool-verified: `provisa/api/data/endpoint_dev.py`, `provisa/api/acting_role.py`]
+
 Cada tabela registrada produz uma `message` proto. Relacionamentos produzem campos de mensagem aninhados. Mapeamento de tipos: `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`. (REQ-538)
 
 ---
