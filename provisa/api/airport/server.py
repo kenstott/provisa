@@ -66,6 +66,7 @@ import pyarrow.flight as flight
 from provisa.api.flight.compression import generator_stream
 from provisa.api.airport import pushdown, wire
 from provisa.api.airport.query import (
+    bind_call_principal,
     governed_mutation,
     governed_table_scan_schema,
     governed_table_scan_stream,
@@ -245,6 +246,7 @@ class ProvisaAirportServer(
             )
         if token not in self._state.contexts:
             raise _err(f"airport: unknown role {token!r}")
+        bind_call_principal(token)  # no auth provider: no user, the named role is the principal
         return token
 
     def _authenticated_role(self, credential: str, requested: str | None) -> str:
@@ -282,6 +284,7 @@ class ProvisaAirportServer(
             raise flight.FlightUnauthorizedError(f"airport: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]
         if role_id not in self._state.contexts:
             raise _err(f"airport: role {role_id!r} has no data surface")
+        bind_call_principal(identity.user_id)  # REQ-074: the audit row names the user
         return role_id
 
     # ------------------------------------------------------------- catalog

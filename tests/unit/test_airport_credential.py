@@ -230,3 +230,54 @@ def test_a_provider_that_takes_no_bearer_credential_is_unauthenticated_with_the_
     monkeypatch.setattr("provisa.auth.bearer.validate_bearer_credential", _validate)
     with pytest.raises(flight.FlightUnauthenticatedError, match="accepts no bearer credential"):
         srv._role(_Call(bearer="anything"))
+
+
+# --- who the audit row names (REQ-074) -------------------------------------------------------------
+
+
+def _audited_as(monkeypatch, srv, call) -> tuple[str, str]:
+    """(role the statement is governed as, user its audit identity names) for one scan."""
+    from provisa.api.airport import query
+    from provisa.audit.context import current_audit_identity
+
+    seen: dict[str, str] = {}
+
+    async def _govern(sql, role_id, state, *, session_vars, deliver):  # noqa: ARG001
+        identity = current_audit_identity()
+        assert identity is not None and identity.surface == "airport"
+        seen.update(role=role_id, user=identity.user_id)
+        return "plan"
+
+    monkeypatch.setattr("provisa.pgwire._pipeline.govern_batch_final_plan", _govern)
+    monkeypatch.setattr("provisa.pgwire._pipeline.require_governed_plan", lambda plan: None)
+    monkeypatch.setattr(
+        query, "run_on_connection_loop", lambda coro, **kwargs: __import__("asyncio").run(coro)
+    )
+    role = srv._role(call)
+    assert query._plan_for_scan(srv._state, "SELECT 1", role) == "plan"
+    return seen["role"], seen["user"]
+
+
+def test_the_audit_row_names_the_signed_in_user_not_the_role(monkeypatch):
+    """The role was recorded as the user: an audit trail could not tell two users of one role
+    apart."""
+    srv = _server(monkeypatch, auth=True)
+    assert _audited_as(monkeypatch, srv, _Call(bearer="sam-token")) == ("seller", "u-1")
+    assert _audited_as(monkeypatch, srv, _Call(bearer="both-token", role="hr_reader")) == (
+        "hr_reader",
+        "u-1",
+    )
+
+
+def test_with_no_auth_provider_the_named_role_is_the_principal(monkeypatch):
+    srv = _server(monkeypatch, auth=False)
+    assert _audited_as(monkeypatch, srv, _Call(bearer="seller")) == ("seller", "seller")
+
+
+def test_a_statement_run_before_the_caller_is_decided_is_a_defect():
+    import contextvars
+
+    from provisa.api.airport import query
+
+    with pytest.raises(RuntimeError, match="before the call's principal was bound"):
+        contextvars.Context().run(query._principal)

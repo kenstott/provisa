@@ -19,6 +19,8 @@ Trino-specific path.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
+
 from decimal import Decimal
 from itertools import islice
 from typing import TYPE_CHECKING, Any, Iterator, NamedTuple
@@ -31,6 +33,27 @@ if TYPE_CHECKING:
     from provisa.executor.result import ResultStream
 
     from provisa.api.app import AppState
+
+
+# The principal of the airport call this thread is serving (REQ-074): bound by the server when
+# it has decided who the call is (AirportServer._role), read where a governed statement's audit
+# identity is bound. With an auth provider it is the signed-in user; without one there is no
+# user and the role the call named is the principal.
+_call_principal: ContextVar[str | None] = ContextVar("airport_call_principal", default=None)
+
+
+def bind_call_principal(user_id: str) -> None:
+    """Record who the airport call being served on this thread is."""
+    _call_principal.set(user_id)
+
+
+def _principal() -> str:
+    """The user the audit row of this call's statement names. Every airport RPC decides its
+    caller before it runs a statement, so none bound is a defect, not a case to answer for."""
+    user_id = _call_principal.get()
+    if user_id is None:
+        raise RuntimeError("airport: a statement was run before the call's principal was bound")
+    return user_id
 
 
 def _plan_for_scan(
@@ -49,11 +72,10 @@ def _plan_for_scan(
     from provisa.audit.context import with_audit_identity
     from provisa.pgwire._pipeline import govern_batch_final_plan, require_governed_plan
 
-    # REQ-074/REQ-1386: the airport transport authenticates with a role token and carries no
-    # separate principal — the role IS the acting identity here, bound inside the coroutine.
+    # REQ-074/REQ-1386: the audit row names the call's principal, bound inside the coroutine.
     plan = run_on_connection_loop(
         with_audit_identity(
-            role_id,
+            _principal(),
             "airport",
             govern_batch_final_plan(sql, role_id, state, session_vars={}, deliver=None),
         )
@@ -391,7 +413,7 @@ def governed_mutation(
         _plan = await _govern_and_route(sql, role_id)
         return await _execute_plan(_plan, _app_state)
 
-    # REQ-074/REQ-1386: same role-as-principal binding the scan seam uses; _execute_plan writes
-    # the audit row itself, so the mutation needs only the identity bound inside the coroutine.
-    result = run_on_connection_loop(with_audit_identity(role_id, "airport", _run()))
+    # REQ-074/REQ-1386: the same principal the scan seam binds; _execute_plan writes the audit
+    # row itself, so the mutation needs only the identity bound inside the coroutine.
+    result = run_on_connection_loop(with_audit_identity(_principal(), "airport", _run()))
     return len(result.rows)
