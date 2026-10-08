@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -133,6 +134,7 @@ def test_an_inheriting_environment_reads_the_real_table_through_its_copied_conne
 def test_recopy_from_parent_restores_a_cleared_connection(boot):
     """REQ-1942: after creation the copy is the environment's own: clearing it leaves the source
     unreadable there, and Re-copy from parent copies prod's connection again."""
+    before = len(boot.log_text())
     _environment(boot, "recopied", "inherit")
     path = f"/admin/orgs/{boot.org_id}/environments/recopied/sources"
     status, body = _call(boot, "PUT", f"{path}/sales-pg/binding", {"binding": "unbound"})
@@ -143,6 +145,19 @@ def test_recopy_from_parent_restores_a_cleared_connection(boot):
     assert status == 200 and "sales-pg" in body["sources"], body
     status, body = _orders(boot, "recopied")
     assert status == 200 and body["data"]["sql"] == [{"n": 2}], body
+    # Each change of the environment's data drops its runtime and builds another, while passes
+    # detached from the first build (job wiring, replica convergence) are still running for it.
+    # Those are left to the next runtime: none of them is an error (the server once logged three
+    # tracebacks here, "no runtime built for environment 'recopied'").
+    time.sleep(5)  # the detached passes of the builds above have run by now
+    since = boot.log_text()[before:]
+    for failure in (
+        "no runtime built",
+        "did not converge",
+        "poll-job wiring failed",
+        "background task org-lifecycle",
+    ):
+        assert failure not in since, since[-4000:]
 
 
 def test_an_unbound_environment_reads_through_no_binding_of_prods(boot):

@@ -31,6 +31,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from provisa.core.runtime_gone import RuntimeNotBuilt
 from provisa.federation.execution_auth import system_auth
 
 from provisa.events import supervisor
@@ -704,7 +705,8 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
 
     Returns the number of NEW poll jobs registered (0 when the event loop hasn't wired yet for this
     runtime, or there is no new poll-only node to wire). Best-effort — never raises into the caller's
-    schema-rebuild path."""
+    schema-rebuild path, with one exception: ``RuntimeNotBuilt``, when the runtime this wiring is
+    for was dropped while it ran. That is the caller's to state (``left_to_the_next_runtime``)."""
     try:
         db = getattr(state, "tenant_db", None)
         engine = getattr(state, "federation_engine", None)
@@ -835,6 +837,8 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
             registered_count += 1
             log.info("poll job wired for new node %s (source=%r)", node, src.id)
         return registered_count
+    except RuntimeNotBuilt:
+        raise  # the runtime this wiring is for is gone: its caller leaves it to the next one
     except Exception:
         log.exception("poll-job wiring failed — a new poll-only node may be missing its cadence")
         return 0

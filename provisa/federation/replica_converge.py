@@ -53,6 +53,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
+from provisa.core.runtime_gone import RuntimeNotBuilt, left_to_the_next_runtime
 from provisa.federation import replica_state
 from provisa.federation.replica_state import ReplicaKey
 
@@ -246,6 +247,10 @@ async def converge_logged(state: Any) -> None:
         return  # no engine or no tenant plane yet: there are no replicas to converge
     try:
         done = await converge_replicas(state)
+    except RuntimeNotBuilt as gone:
+        # Detached from the build it follows, the pass can outlive that build's runtime.
+        left_to_the_next_runtime(gone, "replica convergence")
+        return
     except Exception as exc:  # allow-ble: recorded for the operator and logged; the model build this runs after must not depend on a replica store (the rule model_reload.reconcile_sources follows)
         last_error[org_id] = {
             "at": datetime.now(UTC),

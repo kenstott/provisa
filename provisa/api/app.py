@@ -111,6 +111,7 @@ from provisa.api.org_runtime import (
     OrgRuntime,
     runtime_key,
 )
+from provisa.core.runtime_gone import RuntimeNotBuilt, left_to_the_next_runtime
 from provisa.core.request_context import (
     active_env,
     current_env,
@@ -388,13 +389,17 @@ class AppState:
         rt = self.org_registry.get(runtime_key(org_id, env))
         if rt is None:
             if env is not None and env != PROD:
-                raise RuntimeError(
+                raise RuntimeNotBuilt(
+                    org_id,
+                    env,
                     f"no runtime built for environment {env!r} of org {org_id!r}; "
-                    "ensure_org_runtime must build it before the environment is bound"
+                    "ensure_org_runtime must build it before the environment is bound",
                 )
-            raise RuntimeError(
+            raise RuntimeNotBuilt(
+                org_id,
+                None,
                 f"no runtime built for org {org_id!r}; ensure_org_runtime must build it "
-                "before work is bound to the org"
+                "before work is bound to the org",
             )
         return rt
 
@@ -2107,6 +2112,18 @@ async def _build_org_runtime(
         # on first pgwire/Bolt/Flight access) it is started on the process loop, which outlives the
         # request — the connection loop stops running when the request ends.
         async def _wire_org_lifecycle() -> None:
+            try:
+                await _wire_held_runtime()
+            except RuntimeNotBuilt as gone:
+                # Detached from the build (run_lifecycle_work), it can outlive the runtime it
+                # wires: a change of the environment's data drops that runtime and builds another.
+                left_to_the_next_runtime(gone, f"lifecycle wiring of {key}")
+
+        async def _wire_held_runtime() -> None:
+            if state.org_registry.get(key) is not rt:
+                raise RuntimeNotBuilt(
+                    org_id, env, f"the runtime {key} was replaced before its wiring ran"
+                )
             # REQ-1266: wire this org's MV event loop onto the shared scheduler so its materialized
             # views refresh on their own cadence. Job ids are org-suffixed and each fire binds
             # current_org (register_runtime reads the bound org), so a second org never clobbers the
@@ -2721,6 +2738,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
         try:
             await wire_new_poll_jobs(state=state, log=logging.getLogger(__name__))
+        except RuntimeNotBuilt as gone:
+            # The runtime this rebuild is for was dropped while it ran (a change of the
+            # environment's data, an engine wake): the one built in its place wires its own.
+            left_to_the_next_runtime(gone, "poll-job wiring after a schema rebuild")
         except Exception:
             logging.getLogger(__name__).exception("wire_new_poll_jobs failed during schema rebuild")
 
