@@ -1,0 +1,47 @@
+name: UI Unit Tests
+
+# provisa-ui's type check and its vitest suite: no server, no containers, no secrets. Until this
+# workflow they ran only on a maintainer's machine, so a type error or a failing component test
+# reached main unseen by CI (the Playwright workflows are release-branch and on demand).
+
+on:
+  push:
+    branches: [main, integration]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same ref supersedes the run before it.
+concurrency:
+  group: ui-unit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui:
+    name: tsc + vitest
+    runs-on: ubuntu-latest
+    # One job: the type check and the tests share one install and one runner.
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: provisa-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node and the install, as the Playwright workflows do them.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: provisa-ui/package-lock.json
+
+      - name: Install UI deps
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc -b --noEmit
+
+      - name: Unit tests
+        run: npx vitest run
