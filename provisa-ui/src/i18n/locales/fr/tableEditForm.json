@@ -246,6 +246,7 @@
       "offset": "Décalage et limite",
       "page_number": "Numéro de page",
       "cursor": "Curseur",
+      "last_row": "Après la dernière ligne",
       "link_header": "En-tête Link"
     },
     "pagingFields": {
@@ -254,6 +255,8 @@
       "pageSize": "Taille de page",
       "cursorParam": "Paramètre de curseur",
       "cursorField": "Champ du curseur suivant",
+      "afterParam": "Paramètre « commence après »",
+      "lastRowField": "Champ de la dernière ligne",
       "maxPages": "Pages max",
       "rowsField": "Les lignes sont sous"
     },

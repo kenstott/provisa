@@ -34,6 +34,29 @@ describe("PagingField (REQ-318)", () => {
     expect(screen.queryByRole("textbox", { name: "Max rows per read" })).not.toBeInTheDocument();
   });
 
+  it("names what paging after the last row reads, with the names sent when left empty", () => {
+    render(
+      <PagingField
+        kind="endpoint"
+        paging={{ ...NO_PAGING, type: "last_row", cursorParam: "starting_after" }}
+        onChange={vi.fn()}
+        ceilingRows={1000}
+      />,
+    );
+    expect(screen.getByRole("textbox", { name: "Starts-after parameter" })).toHaveValue(
+      "starting_after",
+    );
+    expect(screen.getByRole("textbox", { name: "Last row's field" })).toHaveAttribute(
+      "placeholder",
+      "id",
+    );
+    expect(screen.getByRole("textbox", { name: "Page size parameter" })).toHaveAttribute(
+      "placeholder",
+      "limit",
+    );
+    expect(screen.queryByRole("textbox", { name: "Next-cursor field" })).not.toBeInTheDocument();
+  });
+
   it("lets the steward say where the rows are when registering (REQ-316)", () => {
     const onChange = vi.fn();
     render(

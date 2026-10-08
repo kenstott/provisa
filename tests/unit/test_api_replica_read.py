@@ -198,6 +198,29 @@ async def test_cursor_and_link_paging_know_from_the_answer_whether_there_is_more
     assert len(await _rows(_reader(_endpoint(pagination=link)))) == 4  # no next link: the end
 
 
+@respx.mock
+async def test_paging_by_the_last_row_reads_to_the_short_page_and_fails_at_the_cap():
+    route = respx.get(f"{BASE}/pets").mock(
+        side_effect=[
+            httpx.Response(200, json={"data": _pets(2)}),
+            httpx.Response(200, json={"data": _pets(1, 2)}),
+        ]
+    )
+    paged = PaginationConfig(type="last_row", page_size=2, max_pages=5, rows_field="data")
+    assert len(await _rows(_reader(_endpoint(response_root="data", pagination=paged)))) == 3
+    assert [dict(call.request.url.params) for call in route.calls] == [
+        {"limit": "2"},
+        {"limit": "2", "starting_after": "1"},
+    ]
+
+    respx.get(f"{BASE}/pets").mock(
+        side_effect=[httpx.Response(200, json={"data": _pets(2, 2 * i)}) for i in range(2)]
+    )
+    capped = paged.model_copy(update={"max_pages": 2})
+    with pytest.raises(replica_read.PageLimitReached, match="max_pages=2"):
+        await _rows(_reader(_endpoint(response_root="data", pagination=capped)))
+
+
 # -- a one-document endpoint ---------------------------------------------------------------------
 
 

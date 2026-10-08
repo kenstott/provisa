@@ -140,6 +140,20 @@ def _short_page(endpoint: ApiEndpoint, page: Any, page_size: int) -> bool:
     return isinstance(rows, list) and len(rows) < page_size
 
 
+def _last_row_value(endpoint: ApiEndpoint, page: Any, row_field: str) -> Any:
+    """``row_field`` of the last row of a full ``page``: what the next page starts after."""
+    from provisa.api_source.flattener import _navigate_path
+
+    rows = _navigate_path(page, endpoint.response_root)
+    last = rows[-1] if isinstance(rows, list) and rows else None
+    if not isinstance(last, dict) or last.get(row_field) is None:
+        raise ApiCallError(
+            f"{endpoint.table_name}: its paging starts each page after the last row's "
+            f"{row_field!r}, and the last row of a page has none"
+        )
+    return last[row_field]
+
+
 async def _pages(
     client: httpx.AsyncClient,
     endpoint: ApiEndpoint,
@@ -252,6 +266,30 @@ async def _pages(
             if _short_page(endpoint, data, page_size):
                 break
             offset += page_size
+
+    elif pagination.type == PaginationType.last_row:
+        page_size = pagination.page_size
+        page_size_param = pagination.page_size_param or "limit"
+        after_param = pagination.cursor_param or "starting_after"
+        row_field = pagination.cursor_field or "id"
+        p = dict(params or {})
+        p[page_size_param] = page_size
+        for _ in range(max_pages):
+            resp = await _request_with_retry(
+                client,
+                endpoint.method,
+                url,
+                p,
+                headers,
+                json_body=body,
+                form_body=form_body,
+                timeout=timeout,
+            )
+            data = await loop.run_in_executor(None, resp.json)
+            yield data
+            if _short_page(endpoint, data, page_size):
+                break
+            p = {**p, after_param: _last_row_value(endpoint, data, row_field)}
 
     elif pagination.type == PaginationType.page_number:
         page_param = pagination.page_param or "page"

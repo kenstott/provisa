@@ -544,6 +544,41 @@ def test_the_paging_offered_for_a_wrapped_list_names_its_rows_and_its_parameters
     }
 
 
+_CHARGE = {"type": "object", "properties": {"id": {"type": "string"}, "paid": {"type": "boolean"}}}
+
+
+def _list_of(row: dict, extra: dict | None = None) -> dict:
+    properties = {"data": {"type": "array", "items": row}, "has_more": {"type": "boolean"}}
+    return {"type": "object", "properties": properties | (extra or {})}
+
+
+def test_a_list_that_starts_after_the_last_rows_id_is_offered_that_paging():
+    (query,), _ = parse_spec(_wrapper_spec(_list_of(_CHARGE), ["limit", "starting_after"]))
+    assert query.pagination.model_dump(mode="json", exclude_unset=True) == {
+        "rows_field": "data",
+        "type": "last_row",
+        "cursor_param": "starting_after",
+        "cursor_field": "id",
+        "page_size_param": "limit",
+    }
+
+
+def test_rows_without_an_id_are_not_offered_paging_by_the_last_row():
+    (query,), _ = parse_spec(_wrapper_spec(_list_of(_REPO), ["limit", "starting_after"]))
+    assert query.pagination.model_dump(exclude_unset=True) == {"rows_field": "data"}
+
+
+def test_a_parameter_the_answer_carries_the_next_value_of_is_offered_as_a_cursor():
+    answer = _list_of(_CHARGE, {"next_page": {"type": "string"}})
+    (query,), _ = parse_spec(_wrapper_spec(answer, ["limit", "page"]))
+    assert query.pagination.model_dump(mode="json", exclude_unset=True) == {
+        "rows_field": "data",
+        "type": "cursor",
+        "cursor_param": "page",
+        "cursor_field": "next_page",
+    }
+
+
 def test_a_thing_with_one_list_of_its_own_is_not_a_page():
     commit = {
         "type": "object",

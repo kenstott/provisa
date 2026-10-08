@@ -246,6 +246,7 @@
       "offset": "Offset und Limit",
       "page_number": "Seitennummer",
       "cursor": "Cursor",
+      "last_row": "Nach der letzten Zeile",
       "link_header": "Link-Header"
     },
     "pagingFields": {
@@ -254,6 +255,8 @@
       "pageSize": "Seitengröße",
       "cursorParam": "Cursor-Parameter",
       "cursorField": "Feld für nächsten Cursor",
+      "afterParam": "Parameter „Beginnt nach“",
+      "lastRowField": "Feld der letzten Zeile",
       "maxPages": "Max. Seiten",
       "rowsField": "Zeilen liegen unter"
     },

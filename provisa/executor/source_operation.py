@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -220,29 +221,49 @@ def _rows(answer: Any) -> list[dict]:
     return [{"result": answer}]
 
 
+def _form_fields(value: Any, key: str) -> Iterator[tuple[str, str]]:
+    """``value`` as the fields of a form-encoded body under ``key``: a nested object or list is
+    written with bracketed keys (``items[0][price]``), the one form encoding that carries them."""
+    if isinstance(value, dict):
+        for name, inner in value.items():
+            yield from _form_fields(inner, f"{key}[{name}]")
+    elif isinstance(value, list):
+        for index, inner in enumerate(value):
+            yield from _form_fields(inner, f"{key}[{index}]")
+    elif isinstance(value, bool):
+        yield key, "true" if value else "false"
+    else:
+        yield key, "" if value is None else str(value)
+
+
 async def _call_openapi(state, source_id: str, operation: str, args: dict) -> list[dict]:
+    from provisa.api_source.caller import _apply_auth
     from provisa.core.secrets import resolve_secrets
-    from provisa.openapi.executor import _build_auth_headers
     from provisa.openapi.mapper import parse_spec
 
-    entry = state.openapi_specs[source_id]
-    _, mutations = parse_spec(entry["spec"])
+    # The address and the credential are the source's stored ones, which its tables are read
+    # with too (api_source.loader): a restarted process calls with them as the first did.
+    source = state.api_sources[source_id]
+    _, mutations = parse_spec(state.openapi_specs[source_id]["spec"])
     mutation = next(m for m in mutations if m.operation_id == operation)
     given = dict(args)
     path = _PATH_PARAM.sub(lambda m: str(given.pop(m.group(1))), mutation.path)
     body = given.pop(BODY_ARGUMENT, None)
-    auth = {
-        k: resolve_secrets(v) if isinstance(v, str) else v
-        for k, v in (entry.get("auth_config") or {}).items()
-    }
-    headers = {"Content-Type": "application/json", **_build_auth_headers(auth or None)}
+    headers: dict[str, str] = {}
+    _apply_auth(source.auth, headers, given)
+    if mutation.form:
+        fields = [f for name, value in (body or {}).items() for f in _form_fields(value, name)]
+        sent: dict[str, Any] = {"data": dict(fields)}
+    else:
+        headers["Content-Type"] = "application/json"
+        sent = {"json": body}
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.request(
             mutation.method.upper(),
-            entry["base_url"].rstrip("/") + path,
+            resolve_secrets(source.base_url).rstrip("/") + path,
             params=given or None,
-            json=body,
             headers=headers,
+            **sent,
         )
     if resp.is_error:
         raise _refused(source_id, operation, resp.status_code, _answer(resp))

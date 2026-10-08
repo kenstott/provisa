@@ -37,6 +37,9 @@ class PaginationType(str, Enum):  # REQ-318
     cursor = "cursor"
     offset = "offset"
     page_number = "page_number"
+    # The next page starts after the last row of this one: a parameter carries a field of that
+    # row (its id), and a page shorter than the page size is the last.
+    last_row = "last_row"
 
 
 #: What only a paged REST endpoint declares.

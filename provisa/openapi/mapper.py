@@ -51,6 +51,9 @@ class OpenAPIMutation:  # REQ-317
     method: str
     summary: str | None = None
     input_schema: dict | None = None  # JSON Schema of requestBody
+    # Its body is sent form-encoded (``application/x-www-form-urlencoded``), the only encoding the
+    # operation declares; else as JSON.
+    form: bool = False
     response_schema: dict | None = None
     # REQ-1924: a GET whose response declares no row schema. It changes nothing in the remote
     # system; it is a command because what it answers is not rows a table could hold.
@@ -234,16 +237,25 @@ def _extract_response_schema(
     return (*_row_schema(rows), field)
 
 
-def _extract_request_schema(operation: SchemaPath) -> dict | None:
-    """The request body's schema: ``requestBody`` (OpenAPI 3.x) or the body parameter (Swagger 2.0)."""
+_FORM = "application/x-www-form-urlencoded"
+
+
+def _extract_request(operation: SchemaPath) -> tuple[dict | None, bool]:
+    """(schema, form) of the request body: ``requestBody`` (OpenAPI 3.x) or the body parameter
+    (Swagger 2.0). ``form``: the body is declared form-encoded and not as JSON."""
     body = _at(operation, "requestBody")
     schema = None if body is None else _json_schema(body)
     if schema is not None:
-        return _row_schema(schema)[0]
+        return _row_schema(schema)[0], False
+    content = (None if body is None else _at(body, "content")) or _NOTHING
+    for name in content.str_keys():
+        declared = _at(content, name, "schema")
+        if _media(name) == _FORM and declared is not None:
+            return _row_schema(declared)[0], True
     for param in _at(operation, "parameters") or ():
         if param.read_value().get("in") == "body" and "schema" in param:
-            return _row_schema(param / "schema")[0]
-    return None
+            return _row_schema(param / "schema")[0], False
+    return None, False
 
 
 def _slugify(text: str) -> str:
@@ -294,6 +306,9 @@ def operation_parameters(spec: dict, path: str, method: str = "get") -> list[dic
 # Query parameter names that say how an operation pages (REQ-318). First match wins.
 _PAGE_NAMES = ("page", "page_number", "pageNumber", "page_no")
 _OFFSET_NAMES = ("offset", "skip", "start", "startAt")
+# A parameter that carries the last row's id, and the row property it carries.
+_AFTER_NAMES = ("starting_after",)
+_ROW_ID = "id"
 _SIZE_NAMES = (
     "limit",
     "per_page",
@@ -315,16 +330,29 @@ def _declares_link_header(operation: SchemaPath) -> bool:
     return headers is not None and any(name.lower() == "link" for name in headers.str_keys())
 
 
+def _answered_cursor(operation: SchemaPath, names: list[str]) -> str | None:
+    """The query parameter the answer carries the next value of: ``x`` where the success
+    response declares a ``next_x`` property."""
+    response = _success_response(operation)
+    answer = None if response is None else _json_schema(response)
+    if answer is None:
+        return None
+    return next((n for n in names if _property(answer, f"next_{n}") is not None), None)
+
+
 def propose_paging(
     operation: SchemaPath,
     query_params: list[dict],
     is_list: bool,
     rows_field: str | None = None,
+    row_properties: frozenset[str] = frozenset(),
 ) -> PaginationConfig | None:
     """The paging a GET operation suggests, from what it declares: where its rows are
-    (``rows_field``, a page wrapper's property), and how it pages -- a page-number parameter, an
-    offset with a size parameter, or a ``Link`` response header. Only a list is paged. A cursor
-    is not proposed: nothing in a spec says which field or parameter carries it."""
+    (``rows_field``, a page wrapper's property), and how it pages -- a parameter that starts a
+    page after the last row's id (the rows, ``row_properties``, having one), a page-number
+    parameter, an offset with a size parameter, or a ``Link`` response header. Only a list is
+    paged. A cursor the answer carries is proposed where the spec names it: a parameter ``x``
+    beside a ``next_x`` property of the answer."""
     if not is_list:
         return None
     declared: dict = {} if rows_field is None else {"rows_field": rows_field}
@@ -332,7 +360,21 @@ def propose_paging(
     size = next((n for n in _SIZE_NAMES if n in names), None)
     page = next((n for n in _PAGE_NAMES if n in names), None)
     offset = next((n for n in _OFFSET_NAMES if n in names), None)
-    if page is not None:
+    after = next((n for n in _AFTER_NAMES if n in names), None)
+    if after is not None and size is not None and _ROW_ID in row_properties:
+        declared |= {
+            "type": PaginationType.last_row,
+            "cursor_param": after,
+            "cursor_field": _ROW_ID,
+            "page_size_param": size,
+        }
+    elif (cursor := _answered_cursor(operation, names)) is not None:
+        declared |= {
+            "type": PaginationType.cursor,
+            "cursor_param": cursor,
+            "cursor_field": f"next_{cursor}",
+        }
+    elif page is not None:
         declared |= {"type": PaginationType.page_number, "page_param": page}
         if size is not None:
             declared["page_size_param"] = size
@@ -414,17 +456,25 @@ def _map_operations(
                         response_schema=response_schema,
                         is_list=is_list,
                         rows_field=rows_field,
-                        pagination=propose_paging(operation, query_params, is_list, rows_field),
+                        pagination=propose_paging(
+                            operation,
+                            query_params,
+                            is_list,
+                            rows_field,
+                            frozenset((response_schema or {}).get("properties") or ()),
+                        ),
                     )
                 )
             else:
+                request_schema, form = _extract_request(operation)
                 mutations.append(
                     OpenAPIMutation(
                         operation_id=op_id,
                         path=path,
                         method=method.upper(),
                         summary=summary,
-                        input_schema=_extract_request_schema(operation),
+                        input_schema=request_schema,
+                        form=form,
                         response_schema=response_schema,
                         reads=reads,
                         binary=binary,

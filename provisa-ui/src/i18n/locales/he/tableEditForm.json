@@ -246,6 +246,7 @@
       "offset": "היסט ומגבלה",
       "page_number": "מספר עמוד",
       "cursor": "סמן",
+      "last_row": "אחרי השורה האחרונה",
       "link_header": "כותרת Link"
     },
     "pagingFields": {
@@ -254,6 +255,8 @@
       "pageSize": "גודל עמוד",
       "cursorParam": "פרמטר סמן",
       "cursorField": "שדה הסמן הבא",
+      "afterParam": "פרמטר התחלה אחרי",
+      "lastRowField": "שדה השורה האחרונה",
       "maxPages": "מספר עמודים מרבי",
       "rowsField": "השורות נמצאות תחת"
     },

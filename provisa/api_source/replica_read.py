@@ -57,7 +57,9 @@ _SERVER_ERROR = 500
 
 #: Paging whose answer does not say whether there is more: a page shorter than the page size
 #: is the last.
-_SIZED_PAGING = frozenset({PaginationType.offset, PaginationType.page_number})
+_SIZED_PAGING = frozenset(
+    {PaginationType.offset, PaginationType.page_number, PaginationType.last_row}
+)
 
 
 class PageLimitReached(BuildFailure, ApiCallError):

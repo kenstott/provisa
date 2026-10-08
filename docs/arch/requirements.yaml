@@ -4741,6 +4741,15 @@
     there; the table is registered again to read its rows from elsewhere. A cursor is not proposed
     for a wrapped list, since nothing in a spec says which field or parameter carries it; the
     steward declares it.
+    (Amended 2026-10-07, PAGING AFTER THE LAST ROW) A fifth paging type reads a list whose next
+    page starts after the last row of the page before -- a parameter carries a field of that row,
+    its id, and a page shorter than the page size is the last. It declares the parameter, the
+    row's field, the page-size parameter and the page size, and is bounded by max pages like the
+    others. It is proposed from the spec when a list declares a starting_after parameter beside a
+    size parameter and its rows declare an id. A cursor the answer carries is now proposed where
+    the spec names it -- a parameter x beside a next_x property of the answer -- which replaces
+    the statement above that a cursor is never proposed; any other cursor is still declared by
+    the steward. A page whose last row lacks the declared field fails the read by name.
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/
@@ -4782,6 +4791,12 @@
     PATCH, DELETE) are auto-registered as tracked functions (mutations). [END SUPERSEDED BLOCK]
     Request body schema properties become GraphQL mutation input arguments. The `responses.200`/`2xx`
     schema becomes the mutation's `return_schema`.
+    (Amended 2026-10-07, FORM BODIES AND THE STORED CREDENTIAL) A command whose operation declares
+    its request body as form-encoded and not as JSON is sent form-encoded, with a nested object or
+    list written under bracketed keys such as items[0][price]. A multipart body is not sent, and
+    such an operation is offered with no body argument. A command is called at the source's
+    stored address with its stored credential, the ones its tables are read with, so a restarted
+    process calls it as the process that took the registration did.
   use_case: Non-GET operations auto-registered as mutations expose REST write endpoints as governed GraphQL
     mutations.
   code:

@@ -246,6 +246,7 @@
       "offset": "偏移量和限制",
       "page_number": "页码",
       "cursor": "游标",
+      "last_row": "最后一行之后",
       "link_header": "Link 标头"
     },
     "pagingFields": {
@@ -254,6 +255,8 @@
       "pageSize": "页大小",
       "cursorParam": "游标参数",
       "cursorField": "下一个游标字段",
+      "afterParam": "起始位置参数",
+      "lastRowField": "最后一行的字段",
       "maxPages": "最大页数",
       "rowsField": "行所在的属性"
     },

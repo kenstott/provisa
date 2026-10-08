@@ -246,6 +246,7 @@
       "offset": "ऑफ़सेट और सीमा",
       "page_number": "पृष्ठ संख्या",
       "cursor": "कर्सर",
+      "last_row": "अंतिम पंक्ति के बाद",
       "link_header": "Link हेडर"
     },
     "pagingFields": {
@@ -254,6 +255,8 @@
       "pageSize": "पृष्ठ आकार",
       "cursorParam": "कर्सर पैरामीटर",
       "cursorField": "अगला-कर्सर फ़ील्ड",
+      "afterParam": "इसके-बाद-से-शुरू पैरामीटर",
+      "lastRowField": "अंतिम पंक्ति का फ़ील्ड",
       "maxPages": "अधिकतम पृष्ठ",
       "rowsField": "पंक्तियाँ इसके अंतर्गत हैं"
     },

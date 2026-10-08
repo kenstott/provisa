@@ -29,6 +29,8 @@ import sqlglot
 from graphql import build_schema
 
 from provisa.api.errors import ApiError
+from provisa.api_source.models import ApiSource
+from provisa.core.auth_models import ApiAuthBearer
 from provisa.core.models import GraphQLRemoteConfig
 from provisa.executor import source_operation as ops
 
@@ -182,12 +184,12 @@ def state(monkeypatch) -> SimpleNamespace:
             "orders": "grpc_remote",
             "pg": "postgresql",
         },
-        openapi_specs={
-            "shop": {
-                "spec": SPEC,
-                "base_url": SHOP,
-                "auth_config": {"type": "bearer", "token": "s3cret"},
-            }
+        openapi_specs={"shop": {"spec": SPEC, "base_url": SHOP}},
+        # The address and credential a command is called with: the source's stored ones.
+        api_sources={
+            "shop": ApiSource(
+                id="shop", type="openapi", base_url=SHOP, auth=ApiAuthBearer(token="s3cret")
+            )
         },
         graphql_remote_sources={
             "gh": {
@@ -264,6 +266,40 @@ async def test_an_openapi_operation_gets_its_body_as_given_and_the_sources_crede
     assert json.loads(sent.content) == body
     assert sent.headers["authorization"] == "Bearer s3cret"
     assert rows == [{"id": 7, "extra": [1, 2]}]
+
+
+@respx.mock
+async def test_a_body_the_operation_declares_as_a_form_is_sent_as_one(state):
+    form = {
+        "requestBody": {
+            "content": {
+                "application/x-www-form-urlencoded": {
+                    "schema": {"type": "object", "properties": {"email": {"type": "string"}}}
+                }
+            }
+        },
+        "responses": {"200": {"description": "ok"}},
+    }
+    spec = {**SPEC, "paths": {"/customers": {"post": {"operationId": "createCustomer", **form}}}}
+    state.openapi_specs["shop"]["spec"] = spec
+    route = respx.post(f"{SHOP}/customers").mock(return_value=httpx.Response(200, json={"id": 1}))
+    body = {
+        "email": "a@b.co",
+        "metadata": {"tier": "gold"},
+        "items": [{"price": "p_1", "quantity": 2}],
+        "livemode": False,
+    }
+    await ops.call_operation(state, "shop", "createCustomer", {"body": body})
+    sent = route.calls.last.request
+    assert sent.headers["content-type"] == "application/x-www-form-urlencoded"
+    assert dict(httpx.QueryParams(sent.content.decode())) == {
+        "email": "a@b.co",
+        "metadata[tier]": "gold",
+        "items[0][price]": "p_1",
+        "items[0][quantity]": "2",
+        "livemode": "false",
+    }
+    assert sent.headers["authorization"] == "Bearer s3cret"
 
 
 @respx.mock

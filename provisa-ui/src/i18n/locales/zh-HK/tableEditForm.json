@@ -246,6 +246,7 @@
       "offset": "位移與限制",
       "page_number": "頁碼",
       "cursor": "游標",
+      "last_row": "最後一列之後",
       "link_header": "Link 標頭"
     },
     "pagingFields": {
@@ -254,6 +255,8 @@
       "pageSize": "頁面大小",
       "cursorParam": "游標參數",
       "cursorField": "下一個游標欄位",
+      "afterParam": "起始位置參數",
+      "lastRowField": "最後一列的欄位",
       "maxPages": "頁數上限",
       "rowsField": "資料列所在的屬性"
     },

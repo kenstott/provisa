@@ -246,6 +246,7 @@
       "offset": "オフセットとリミット",
       "page_number": "ページ番号",
       "cursor": "カーソル",
+      "last_row": "最後の行の後",
       "link_header": "Link ヘッダー"
     },
     "pagingFields": {
@@ -254,6 +255,8 @@
       "pageSize": "ページサイズ",
       "cursorParam": "カーソルパラメーター",
       "cursorField": "次カーソルのフィールド",
+      "afterParam": "開始位置パラメーター",
+      "lastRowField": "最後の行のフィールド",
       "maxPages": "最大ページ数",
       "rowsField": "行の場所"
     },

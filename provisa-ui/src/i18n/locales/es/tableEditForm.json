@@ -246,6 +246,7 @@
       "offset": "Desplazamiento y límite",
       "page_number": "Número de página",
       "cursor": "Cursor",
+      "last_row": "Después de la última fila",
       "link_header": "Encabezado Link"
     },
     "pagingFields": {
@@ -254,6 +255,8 @@
       "pageSize": "Tamaño de página",
       "cursorParam": "Parámetro de cursor",
       "cursorField": "Campo del siguiente cursor",
+      "afterParam": "Parámetro de inicio posterior",
+      "lastRowField": "Campo de la última fila",
       "maxPages": "Máximo de páginas",
       "rowsField": "Las filas están en"
     },

@@ -246,6 +246,7 @@
       "offset": "Offset en limiet",
       "page_number": "Paginanummer",
       "cursor": "Cursor",
+      "last_row": "Na de laatste rij",
       "link_header": "Link-header"
     },
     "pagingFields": {
@@ -254,6 +255,8 @@
       "pageSize": "Paginagrootte",
       "cursorParam": "Cursorparameter",
       "cursorField": "Veld voor volgende cursor",
+      "afterParam": "Parameter voor begin na",
+      "lastRowField": "Veld van de laatste rij",
       "maxPages": "Max. pagina's",
       "rowsField": "Rijen staan onder"
     },
