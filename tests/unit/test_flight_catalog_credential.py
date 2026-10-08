@@ -1,0 +1,335 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4e1d8b37-9a25-4c6f-b0e2-7f3c5a9d1e64
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""Arrow Flight's catalog is listed to a credential, as its role (REQ-1263, REQ-127).
+
+``list_flights``, ``get_flight_info`` and ``get_schema`` carry no ticket. With authentication on
+they used to answer the whole catalog — every table, column and command — to a caller presenting
+no credential, and a catalog ticket answered it whatever role its credential held. Now each needs
+a credential (the call's ``authorization`` header; the ticket's token) and lists what the
+authorized role is served: one role its own tables, columns and commands, a set of held roles
+their union. A deployment that authenticates nobody lists the whole catalog, as before.
+"""
+
+# Requirements: REQ-1263, REQ-127, REQ-128, REQ-1156, REQ-1620
+
+from __future__ import annotations
+
+import json
+import types
+
+import pyarrow.flight as flight
+import pytest
+
+from provisa.api.flight import catalog as flight_catalog
+from provisa.api.flight import server as flight_server
+from provisa.api.flight.server import ProvisaFlightServer
+from provisa.auth.models import AuthIdentity
+
+_AUTH_CONFIG = {"provider": "oidc", "default_role": "seller", "role_mapping": []}
+_META = "meta:hr_reader+seller"
+
+# table id → (domain, table, columns)
+_TABLES = {
+    1: ("sales", "orders", ["id", "region", "margin"]),
+    2: ("hr", "staff", ["id", "salary"]),
+}
+# role → table id → the columns it is served
+_SERVED = {
+    "seller": {1: ["id", "region"]},
+    "hr_reader": {2: ["id", "salary"]},
+    _META: {1: ["id", "region"], 2: ["id", "salary"]},
+}
+_COMMANDS = {
+    "seller": ["order_count"],
+    "hr_reader": ["staff_count"],
+    _META: ["order_count", "staff_count"],
+    None: ["order_count", "staff_count"],
+}
+
+
+class _Conn:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def fetch(self, sql: str):
+        if "FROM registered_tables" in sql:
+            return [
+                {
+                    "id": table_id,
+                    "domain_id": domain,
+                    "table_name": name,
+                    "description": "",
+                    "modeling_role": None,
+                    "modeling_history": None,
+                }
+                for table_id, (domain, name, _) in _TABLES.items()
+            ]
+        return [
+            {"table_id": table_id, "column_name": column, "description": ""}
+            for table_id, (_, _, columns) in _TABLES.items()
+            for column in columns
+        ]
+
+
+def _context(served: dict[int, list[str]]):
+    return types.SimpleNamespace(
+        tables={f"t{table_id}": types.SimpleNamespace(table_id=table_id) for table_id in served},
+        physical_to_sql={(tid, col): col for tid, cols in served.items() for col in cols},
+    )
+
+
+class _State:
+    def __init__(self, *, auth: bool, multitenancy: bool = False):
+        self.auth_config = _AUTH_CONFIG if auth else None
+        self.auth_middleware_active = auth
+        self.multitenancy = multitenancy
+        self.org_id = "default"
+        self.admin_db = None
+        self.model_db = types.SimpleNamespace(acquire=lambda: _Conn())
+        self.engine_conn = None
+        self.roles = {r: {"id": r} for r in _SERVED}
+        self.contexts = {role: _context(served) for role, served in _SERVED.items()}
+        self.meta_roles = {_META: ("hr_reader", "seller")}
+        self.metrics = {
+            "net": types.SimpleNamespace(description="net", ai_context=None, visible_to=["*"]),
+            "pay": types.SimpleNamespace(
+                description="pay", ai_context=None, visible_to=["hr_reader"]
+            ),
+        }
+
+
+class _Call:
+    """A call's context: the headers it arrived with, as the server's middleware keeps them."""
+
+    def __init__(self, token: str | None = None, role: str | None = None):
+        headers: dict[str, list[str]] = {}
+        if token is not None:
+            headers["authorization"] = [f"Bearer {token}"]
+        if role is not None:
+            headers["x-provisa-role"] = [role]
+        self._headers = headers
+
+    def get_middleware(self, key: str):
+        assert key == "headers"
+        return types.SimpleNamespace(headers=self._headers)
+
+
+def _server(monkeypatch, *, auth: bool = True, multitenancy: bool = False) -> ProvisaFlightServer:
+    srv = ProvisaFlightServer.__new__(ProvisaFlightServer)
+    srv._state = _State(auth=auth, multitenancy=multitenancy)
+
+    async def _validate(state, token):  # noqa: ARG001  # signature mirrors the real validator
+        if token == "sam":
+            return _identity(["seller"])
+        if token == "both":
+            return _identity(["seller", "hr_reader"])
+        raise ValueError("no such credential")
+
+    monkeypatch.setattr(flight_server, "_validate_flight_credential", _validate)
+    monkeypatch.setattr(
+        "provisa.security.meta_role.ensure_meta_role",
+        lambda state, members: "meta:" + "+".join(sorted(set(members))),
+    )
+    monkeypatch.setattr(
+        "provisa.api.data.action_exec.list_visible_commands",
+        lambda state, role: [
+            {
+                "name": n,
+                "domain": "sales",
+                "description": "",
+                "kind": "query",
+                "set_returning": True,
+                "arguments": [],
+            }
+            for n in _COMMANDS[role]
+        ],
+    )
+    return srv
+
+
+def _identity(roles: list[str]) -> AuthIdentity:
+    return AuthIdentity(
+        user_id="u-1",
+        email=None,
+        display_name=None,
+        roles=roles,
+        raw_claims={},
+        active_org_id=None,
+    )
+
+
+def _listed(srv, call) -> set[tuple[str, ...]]:
+    return {
+        tuple(p.decode() if isinstance(p, bytes) else p for p in info.descriptor.path)
+        for info in srv.list_flights(call, b"")
+    }
+
+
+def _columns(srv, call, domain: str, table: str) -> list[str]:
+    return srv.get_schema(call, flight.FlightDescriptor.for_path(domain, table)).schema.names
+
+
+def _catalog_ticket(srv, **body) -> list[dict]:
+    stream = srv.do_get(None, flight.Ticket(json.dumps(body).encode()))
+    return _rows(stream)
+
+
+def _rows(stream) -> list[dict]:
+    """The rows a RecordBatchStream was built from (the catalog stream wraps one table)."""
+    return _CAPTURED.pop()
+
+
+_CAPTURED: list[list[dict]] = []
+
+
+@pytest.fixture(autouse=True)
+def _capture_streams(monkeypatch):
+    """The catalog ticket's answer, as rows: the stream is built from one Arrow table."""
+    _CAPTURED.clear()
+
+    def _stream(table, *args, **kwargs):  # noqa: ARG001
+        _CAPTURED.append(table.to_pylist())
+        return "stream"
+
+    monkeypatch.setattr(flight_server, "record_batch_stream", _stream)
+    monkeypatch.setattr(flight_server, "_report_table", lambda table: None)
+
+
+_ORDERS, _STAFF = ("sales", "orders"), ("hr", "staff")
+_ORDER_COUNT, _STAFF_COUNT = (
+    ("commands", "sales", "order_count"),
+    ("commands", "sales", "staff_count"),
+)
+
+
+# --- no credential ---------------------------------------------------------------------------------
+
+
+def test_every_catalog_call_without_a_credential_is_refused(monkeypatch):
+    srv = _server(monkeypatch)
+    descriptor = flight.FlightDescriptor.for_path(*_ORDERS)
+    for call in (
+        lambda: list(srv.list_flights(_Call(), b"")),
+        lambda: srv.get_flight_info(_Call(), descriptor),
+        lambda: srv.get_schema(_Call(), descriptor),
+        lambda: srv.do_get(None, flight.Ticket(b"{}")),
+        lambda: list(srv.list_flights(_Call(token="forged"), b"")),
+    ):
+        with pytest.raises(flight.FlightUnauthenticatedError):
+            call()
+    assert _CAPTURED == []
+
+
+# --- a role is listed what it is served -----------------------------------------------------------
+
+
+def test_a_role_is_listed_only_its_own_tables_columns_and_commands(monkeypatch):
+    srv = _server(monkeypatch)
+    sam = _Call(token="sam")
+    assert _listed(srv, sam) == {_ORDERS, _ORDER_COUNT}
+    assert _columns(srv, sam, *_ORDERS) == ["id", "region"]  # not `margin`
+    assert srv.get_flight_info(sam, flight.FlightDescriptor.for_path(*_ORDERS)).schema.names == [
+        "id",
+        "region",
+    ]
+    for call in (
+        lambda: srv.get_schema(sam, flight.FlightDescriptor.for_path(*_STAFF)),
+        lambda: srv.get_flight_info(sam, flight.FlightDescriptor.for_path(*_STAFF)),
+        lambda: srv.get_flight_info(sam, flight.FlightDescriptor.for_path(*_STAFF_COUNT)),
+        lambda: srv.get_flight_info(sam, flight.FlightDescriptor.for_path("metrics", "pay")),
+    ):
+        with pytest.raises(flight.FlightServerError, match="not found"):
+            call()
+    # A metric granted to every role is found.
+    srv.get_flight_info(sam, flight.FlightDescriptor.for_path("metrics", "net"))
+
+
+def test_a_catalog_ticket_lists_its_credentials_role(monkeypatch):
+    srv = _server(monkeypatch)
+    rows = _catalog_ticket(srv, token="sam")
+    assert {(r["schema_name"], r["table_name"]) for r in rows} == {_ORDERS}
+    columns = _catalog_ticket(srv, token="sam", domain="sales", table="orders")
+    assert [c["column_name"] for c in columns] == ["id", "region"]
+    with pytest.raises(flight.FlightServerError, match="not found"):
+        _catalog_ticket(srv, token="sam", domain="hr", table="staff")
+
+
+def test_a_held_set_is_listed_the_union(monkeypatch):
+    srv = _server(monkeypatch)
+    both = _Call(token="both", role="seller,hr_reader")
+    assert _listed(srv, both) == {_ORDERS, _STAFF, _ORDER_COUNT, _STAFF_COUNT}
+    assert _columns(srv, both, *_STAFF) == ["id", "salary"]
+    srv.get_flight_info(both, flight.FlightDescriptor.for_path("metrics", "pay"))
+    rows = _catalog_ticket(srv, token="both", role="hr_reader,seller")
+    assert {(r["schema_name"], r["table_name"]) for r in rows} == {_ORDERS, _STAFF}
+    # One of the held roles, named alone, is that role.
+    assert _listed(srv, _Call(token="both", role="hr_reader")) == {_STAFF, _STAFF_COUNT}
+
+
+def test_a_role_the_credential_does_not_hold_is_refused(monkeypatch):
+    srv = _server(monkeypatch)
+    descriptor = flight.FlightDescriptor.for_path(*_STAFF)
+    for role in ("hr_reader", "seller,hr_reader", _META):
+        call = _Call(token="sam", role=role)
+        for rpc in (
+            lambda: list(srv.list_flights(call, b"")),
+            lambda: srv.get_flight_info(call, descriptor),
+            lambda: srv.get_schema(call, descriptor),
+            lambda: srv.do_get(
+                None, flight.Ticket(json.dumps({"token": "sam", "role": role}).encode())
+            ),
+        ):
+            with pytest.raises(flight.FlightUnauthenticatedError):
+                rpc()
+    assert _CAPTURED == []
+
+
+# --- a deployment that authenticates nobody: as before -------------------------------------------
+
+
+def test_with_authentication_off_the_whole_catalog_is_listed_without_a_credential(monkeypatch):
+    srv = _server(monkeypatch, auth=False)
+    assert _listed(srv, _Call()) == {_ORDERS, _STAFF, _ORDER_COUNT, _STAFF_COUNT}
+    assert _columns(srv, _Call(), *_ORDERS) == ["id", "region", "margin"]
+    # A role named by an unauthenticated call narrows nothing: there is no identity to hold it.
+    assert _listed(srv, _Call(role="seller")) == {_ORDERS, _STAFF, _ORDER_COUNT, _STAFF_COUNT}
+    rows = _catalog_ticket(srv, role="seller")
+    assert {(r["schema_name"], r["table_name"]) for r in rows} == {_ORDERS, _STAFF}
+    srv.get_flight_info(_Call(), flight.FlightDescriptor.for_path("metrics", "pay"))
+
+
+# --- multitenancy: the ticketless calls name no org -----------------------------------------------
+
+
+@pytest.mark.parametrize("auth", [True, False])
+def test_under_multitenancy_the_ticketless_calls_are_refused_as_before(monkeypatch, auth):
+    srv = _server(monkeypatch, auth=auth, multitenancy=True)
+    call = _Call(token="sam") if auth else _Call()
+    descriptor = flight.FlightDescriptor.for_path(*_ORDERS)
+    for rpc in (
+        lambda: list(srv.list_flights(call, b"")),
+        lambda: srv.get_flight_info(call, descriptor),
+        lambda: srv.get_schema(call, descriptor),
+    ):
+        with pytest.raises(flight.FlightServerError, match="names no org under multitenancy"):
+            rpc()
+
+
+# --- the visibility the catalog is narrowed by ----------------------------------------------------
+
+
+def test_a_role_with_no_data_surface_is_listed_nothing(monkeypatch):
+    srv = _server(monkeypatch)
+    assert flight_catalog.role_visibility(srv._state, "platform_admin") == {}
+    assert flight_catalog.build_catalog_tables(srv._state, "platform_admin") == []

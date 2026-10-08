@@ -124,6 +124,16 @@ class ProvisaClient:
         host = urlparse(self._base).hostname or "localhost"
         return fl.connect(f"grpc://{host}:{self._flight_port}")  # pyright: ignore[reportPrivateImportUsage]
 
+    def _flight_call_options(self) -> fl.FlightCallOptions:  # pyright: ignore[reportPrivateImportUsage]
+        """The credential and role for a Flight call that carries no ticket (``list_flights``):
+        the server reads them from the call's headers and lists the catalog as that role."""
+        headers: list[tuple[bytes, bytes]] = []
+        if self._token:
+            headers.append((b"authorization", f"Bearer {self._token}".encode()))
+        if self._role:
+            headers.append((b"x-provisa-role", self._role.encode()))
+        return fl.FlightCallOptions(headers=headers)  # pyright: ignore[reportPrivateImportUsage]
+
     def _flight_ticket(self, query: str, variables: dict[str, Any] | None) -> fl.Ticket:  # pyright: ignore[reportPrivateImportUsage]
         data: dict[str, Any] = {"query": query}
         if self._role:
@@ -162,7 +172,7 @@ class ProvisaClient:
         import pandas as pd
 
         criteria = json.dumps({"mode": "catalog"}).encode()
-        infos = list(self._flight_client().list_flights(criteria))
+        infos = list(self._flight_client().list_flights(criteria, self._flight_call_options()))
         rows = []
         for info in infos:
             path = [p.decode() if isinstance(p, bytes) else p for p in info.descriptor.path]

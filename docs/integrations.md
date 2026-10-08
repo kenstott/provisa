@@ -154,6 +154,17 @@ ticket = flight.Ticket(json.dumps({
 }).encode())
 ```
 
+Browsing needs the credential too. `list_flights`, `get_flight_info` and `get_schema` carry no ticket, so they read the credential from the call's `authorization: Bearer <token>` header and the requested role from `x-provisa-role` (one role, or a comma-separated set of held roles). With authentication on, a browsing call without a credential is refused, and the catalog it returns is the authorized role's: the tables, columns and commands that role is granted, and nothing else. A catalog ticket (a ticket with no `query`) is answered the same way from its own `token` and `role`. A client must therefore send its credential before it browses; `provisa-client` does this in `list_tables()`. On a deployment with no auth provider these calls list the whole catalog and take no credential. (REQ-1263, REQ-127)
+
+```python
+options = flight.FlightCallOptions(headers=[
+    (b"authorization", b"Bearer provisa_pat_..."),
+    (b"x-provisa-role", b"analyst"),
+])
+for info in client.list_flights(b"", options):
+    print(info.descriptor.path)
+```
+
 ### ADBC
 
 ```python

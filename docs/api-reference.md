@@ -1148,6 +1148,8 @@ Port `8815`. Native Arrow columnar transport over gRPC. (REQ-143, REQ-045) [tool
 
 Queries and catalog discovery are both available on the same connection. The full governance pipeline (RLS, masking, sampling) is applied to every query. (REQ-130, REQ-143)
 
+Catalog discovery (`list_flights`, `get_flight_info`, `get_schema`, and a ticket with no `query`) lists what the caller's role is granted. With authentication on, the three ticketless calls take the credential from the `authorization: Bearer` call header and the role from `x-provisa-role`, and are refused without a credential; see [Integrations](integrations.md). (REQ-1263, REQ-127) [tool-verified: `provisa/api/flight/server.py`]
+
 **Ticket format** (JSON):
 
 ```json

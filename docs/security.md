@@ -262,7 +262,7 @@ Every surface authenticates through the same provider contract, so a credential 
 | HTTP (REST, JSON:API, GraphQL) | `Authorization: Basic` | `Authorization: Bearer` | `Authorization: Bearer` | via terminating proxy |
 | pgwire | password field (cleartext or SCRAM) | password field, OIDC deployments | password field | yes |
 | Bolt | `basic` scheme | `bearer` scheme | `bearer` scheme | yes |
-| Arrow Flight | — | `token` in the handshake or ticket payload | same | yes |
+| Arrow Flight | — | `token` in the handshake or ticket payload; `authorization: Bearer` call header on `list_flights`, `get_flight_info` and `get_schema` | same | yes |
 | gRPC | — | `authorization` metadata | `authorization` metadata | yes |
 | MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | via terminating proxy |
 

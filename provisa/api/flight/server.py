@@ -37,6 +37,7 @@ from provisa.api.flight.compression import generator_stream, record_batch_stream
 from provisa.api.flight.catalog import (
     CatalogTable,
     build_catalog_tables,
+    role_sees_metric,
     catalog_table_to_arrow_schema,
     catalog_table_to_flight_info,
     command_to_flight_info,
@@ -313,6 +314,37 @@ def _parse_limit_value(value: int | bool | None) -> int | None:
 _HEALTHCHECK_ACTION = "healthcheck"
 
 
+# The middleware key the call's headers are kept under.
+_HEADERS = "headers"
+
+
+class _CallHeaders(flight.ServerMiddleware):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The headers a call arrived with."""
+
+    def __init__(self, headers: dict[str, list[str]]) -> None:
+        self.headers = headers
+
+
+class _CallHeadersFactory(flight.ServerMiddlewareFactory):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def start_call(self, info: object, headers: dict[str, list[str]]) -> _CallHeaders:  # noqa: ARG002  # required by the override signature
+        return _CallHeaders(headers)
+
+
+def _header(headers: dict[str, list[str]], name: str) -> str | None:
+    """The first value of call header ``name`` (gRPC lowercases header names), if it was sent."""
+    values = headers.get(name)
+    return values[0] if values else None
+
+
+def _bearer(headers: dict[str, list[str]]) -> str | None:
+    """The bearer credential in the call's ``authorization`` header, if it carries one."""
+    raw = _header(headers, "authorization")
+    if raw is None:
+        return None
+    scheme, _, token = raw.partition(" ")
+    return token if scheme.lower() == "bearer" and token else None
+
+
 class ProvisaFlightServer(
     flight.FlightServerBase
 ):  # REQ-045, REQ-051, REQ-143, REQ-369  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -324,7 +356,9 @@ class ProvisaFlightServer(
         location: str = "grpc://0.0.0.0:8815",
         **kwargs: object,  # object-ok: forwarded verbatim to FlightServerBase.__init__ which accepts arbitrary keyword args  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> None:
-        super().__init__(location, **kwargs)
+        # The call's headers, for the RPCs that carry no ticket (list_flights, get_flight_info,
+        # get_schema): their credential and requested role arrive there (_catalog_role).
+        super().__init__(location, middleware={_HEADERS: _CallHeadersFactory()}, **kwargs)  # type: ignore[arg-type]
         self._state = state
 
     # ------------------------------------------------------------------
@@ -362,10 +396,11 @@ class ProvisaFlightServer(
     def _in_catalog_org(self, fn: Callable[[], Any]) -> Any:
         """Run a metadata RPC's ``fn`` in the org whose catalog it describes (REQ-1266).
 
-        list_flights, get_flight_info and get_schema carry no ticket and no credential, so they
-        name no org. A single-org deployment answers them from its one org; under multitenancy
-        they are refused by name -- the catalog is an org's, and no org's catalog is everyone's.
-        A do_get catalog ticket names its org and answers the same question."""
+        list_flights, get_flight_info and get_schema carry no ticket, so they name no org. A
+        single-org deployment answers them from its one org; under multitenancy they are refused
+        by name -- the catalog is an org's, and no org's catalog is everyone's. A do_get catalog
+        ticket names its org and answers the same question. Who may ask, and what they are shown,
+        is :meth:`_catalog_role`'s."""
         from provisa.core.request_context import reset_current_org, set_current_org
 
         if getattr(self._state, "multitenancy", False):
@@ -440,6 +475,25 @@ class ProvisaFlightServer(
                 "credential rejected"
             ) from e
 
+    def _catalog_role(self, context: flight.ServerCallContext) -> str | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The role a ticketless metadata RPC lists the catalog as (REQ-1263), or None when this
+        deployment authenticates nobody.
+
+        list_flights, get_flight_info and get_schema carry no ticket, so their credential is the
+        call's ``authorization: Bearer <token>`` header and the role they ask for its
+        ``x-provisa-role`` header (one held role, or a comma-separated set acting as its
+        meta-role) — the headers the native gRPC transport reads. With authentication on a call
+        without a valid credential is refused, as a ticket without one is, and the catalog it is
+        answered with is the authorized role's own: the tables, columns and commands that role is
+        served on every other surface."""
+        if not self._auth_active():
+            return None
+        middleware = context.get_middleware(_HEADERS)
+        headers = middleware.headers if middleware is not None else {}
+        identity = self._authenticate(_bearer(headers))
+        assert identity is not None  # auth is active: _authenticate returned or raised
+        return self._authorize_role(identity, {"role": _header(headers, "x-provisa-role")})
+
     def _authorize_role(self, identity, request: dict[str, object]) -> str:
         """The role this ticket executes as — derived from the validated identity, never asserted.
 
@@ -510,23 +564,30 @@ class ProvisaFlightServer(
 
     def list_flights(  # REQ-126, REQ-127
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         criteria: bytes,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportUnusedParameter]
     ) -> Iterator[flight.FlightInfo]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """List available flights: catalog tables, then registered commands (REQ-1156).
 
         Commands are listed alongside tables (descriptor path ``["commands", domain, name]``) so a
-        Flight client discovers a registered command instead of it being invocable-but-invisible;
-        the listing is role-agnostic, matching the table catalog's broadest view."""
+        Flight client discovers a registered command instead of it being invocable-but-invisible.
+        With authentication on the call carries a credential and lists what its role is served
+        (:meth:`_catalog_role`); with none the listing is the whole catalog."""
         from provisa.api.data.action_exec import list_visible_commands
 
         def _infos() -> list[flight.FlightInfo]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            return [
-                *(catalog_table_to_flight_info(t) for t in build_catalog_tables(self._state)),
-                *(command_to_flight_info(c) for c in list_visible_commands(self._state, None)),
-            ]
+            role = self._catalog_role(context)
+            return self._in_catalog_org(
+                lambda: [
+                    *(
+                        catalog_table_to_flight_info(t)
+                        for t in build_catalog_tables(self._state, role)
+                    ),
+                    *(command_to_flight_info(c) for c in list_visible_commands(self._state, role)),
+                ]
+            )
 
-        yield from self._in_catalog_org(_infos)
+        yield from _run_rpc(_infos)
 
     # ------------------------------------------------------------------
     # get_flight_info — metadata for a specific flight
@@ -534,16 +595,26 @@ class ProvisaFlightServer(
 
     def get_flight_info(  # REQ-608
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Return FlightInfo for a catalog table descriptor.  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        Descriptor path: [domain_id, table_name].
+        Descriptor path: [domain_id, table_name]. What the caller's role is not served is not
+        found (:meth:`_catalog_role`).
         """
-        return self._in_catalog_org(lambda: self._flight_info(descriptor))
 
-    def _flight_info(self, descriptor: flight.FlightDescriptor) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        def _info() -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            role = self._catalog_role(context)
+            return self._in_catalog_org(lambda: self._flight_info(descriptor, role))
+
+        return _run_rpc(_info)
+
+    def _flight_info(
+        self,
+        descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        role: str | None,
+    ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         path = [p.decode("utf-8") if isinstance(p, bytes) else p for p in descriptor.path]
 
         # REQ-1156: a command descriptor is ["commands", domain, name] — resolve it to the command
@@ -551,7 +622,7 @@ class ProvisaFlightServer(
         if len(path) == 3 and path[0] == "commands":
             from provisa.api.data.action_exec import list_visible_commands
 
-            for cmd in list_visible_commands(self._state, None):
+            for cmd in list_visible_commands(self._state, role):
                 if cmd["domain"] == path[1] and cmd["name"] == path[2]:
                     return command_to_flight_info(cmd)
             raise _flight_error(f"Command not found: {path[1]}.{path[2]}")
@@ -565,13 +636,13 @@ class ProvisaFlightServer(
             name, dims = path[1], list(path[2:])
             registry = getattr(self._state, "metrics", {})
             m = registry.get(name)
-            if m is None:
+            if m is None or (role is not None and not role_sees_metric(self._state, role, m)):
                 raise _flight_error(f"Metric not found: {name}")
             return metric_to_flight_info(name, dims, description=m.description or m.ai_context)
 
         if len(path) == 2:
             domain_id, table_name = path[0], path[1]
-            tables = build_catalog_tables(self._state)
+            tables = build_catalog_tables(self._state, role)
             for t in tables:
                 if t.domain_id == domain_id and t.table_name == table_name:
                     return catalog_table_to_flight_info(t)
@@ -585,10 +656,11 @@ class ProvisaFlightServer(
 
     def get_schema(  # REQ-608
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> flight.SchemaResult:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Return the Arrow schema for a catalog table.
+        """Return the Arrow schema for a catalog table: the columns the caller's role is served
+        (:meth:`_catalog_role`).
 
         Descriptor path: [domain_id, table_name].
         """
@@ -599,7 +671,11 @@ class ProvisaFlightServer(
         domain_id = path[0].decode("utf-8") if isinstance(path[0], bytes) else path[0]
         table_name = path[1].decode("utf-8") if isinstance(path[1], bytes) else path[1]
 
-        tables = self._in_catalog_org(lambda: build_catalog_tables(self._state))
+        def _tables() -> list:
+            role = self._catalog_role(context)
+            return self._in_catalog_org(lambda: build_catalog_tables(self._state, role))
+
+        tables = _run_rpc(_tables)
         for t in tables:
             if t.domain_id == domain_id and t.table_name == table_name:
                 schema = catalog_table_to_arrow_schema(t)
@@ -726,7 +802,9 @@ class ProvisaFlightServer(
             annotate_request(**{text_attr: str(query_text)[:200]})
             return result
 
-        return self._do_get_catalog(ticket)
+        # With authentication on, request["role"] is the authorized role (_do_get_on_loop) and the
+        # catalog is that role's; with none there is no role to narrow it by.
+        return self._do_get_catalog(ticket, str(request["role"]) if self._auth_active() else None)
 
     def _acquire_stream_slot(self) -> Callable[[], None]:  # REQ-1905
         """Take one of this worker's Flight stream slots, waiting for it within the request's
@@ -804,13 +882,18 @@ class ProvisaFlightServer(
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _do_get_catalog(self, ticket: flight.Ticket) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Return catalog metadata as Arrow record batches."""
+    def _do_get_catalog(
+        self,
+        ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        role: str | None,
+    ) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Return catalog metadata as Arrow record batches: ``role``'s catalog, or the whole one
+        when the deployment authenticates nobody (None)."""
         request = json.loads(ticket.ticket.decode("utf-8"))
         domain = request.get("domain")
         table_name = request.get("table")
 
-        tables = build_catalog_tables(self._state)
+        tables = build_catalog_tables(self._state, role)
 
         if domain and table_name:
             # Return schema info for a specific table as rows

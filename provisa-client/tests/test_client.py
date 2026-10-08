@@ -164,3 +164,28 @@ def test_flight_ticket_carries_the_credential(client):
 def test_flight_ticket_omits_token_when_unauthenticated():
     ticket = ProvisaClient(BASE, role="analyst")._flight_ticket("{ orders { id } }", None)
     assert "token" not in json.loads(ticket.ticket.decode())
+
+
+def test_list_tables_sends_the_credential_and_role_with_the_call(client, monkeypatch):
+    """REQ-1263: list_flights carries no ticket, so the credential rides the call's headers."""
+    seen: dict = {}
+
+    class _Flight:
+        def list_flights(self, criteria, options):
+            seen["criteria"], seen["options"] = criteria, options
+            return []
+
+    sent: dict = {}
+
+    def _options(headers):
+        sent["headers"] = headers
+        return "options"
+
+    monkeypatch.setattr(client, "_flight_client", lambda: _Flight())
+    monkeypatch.setattr("provisa_client.client.fl.FlightCallOptions", _options)
+    assert list(client.list_tables().columns) == ["schema_name", "table_name"]
+    assert seen["options"] == "options"
+    assert sent["headers"] == [
+        (b"authorization", b"Bearer tok"),
+        (b"x-provisa-role", b"analyst"),
+    ]

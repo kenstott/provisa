@@ -87,11 +87,37 @@ class CatalogColumn:
     description: str
 
 
-def build_catalog_tables(state) -> list[CatalogTable]:  # REQ-127, REQ-128
+def role_visibility(state, role_id: str) -> dict[int, set[str]]:
+    """table id → the physical columns ``role_id`` is served, from its compiled context: the
+    same tables and columns its schema has on every other surface. A role with no data surface
+    (a control-plane role, one reaching no domain) has no context and sees nothing."""
+    ctx = state.contexts.get(role_id)
+    if ctx is None:
+        return {}
+    visible: dict[int, set[str]] = {meta.table_id: set() for meta in ctx.tables.values()}
+    for table_id, column in ctx.physical_to_sql:
+        if table_id in visible:
+            visible[table_id].add(column)
+    return visible
+
+
+def role_sees_metric(state, role_id: str, metric) -> bool:
+    """Whether ``role_id`` may see ``metric`` (its ``visible_to``; ``*`` is every role). A
+    meta-role sees what any of its members sees."""
+    from provisa.security.meta_role import acting_roles
+
+    granted = metric.visible_to
+    return "*" in granted or any(r in granted for r in acting_roles(state, role_id))
+
+
+def build_catalog_tables(
+    state, role_id: str | None = None
+) -> list[CatalogTable]:  # REQ-127, REQ-128
     """Build the virtual catalog from AppState.
 
-    Reads registered tables and introspected column metadata from the
-    compilation contexts. Uses whichever role context has the broadest view.
+    With ``role_id`` the catalog is that role's: only the tables and columns it is served
+    (:func:`role_visibility`). None is the whole registered catalog — a deployment that
+    authenticates nobody has no role to narrow it by.
     """
     import asyncio
 
@@ -100,13 +126,14 @@ def build_catalog_tables(state) -> list[CatalogTable]:  # REQ-127, REQ-128
 
     loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(_build_catalog_tables_async(state))
+        return loop.run_until_complete(_build_catalog_tables_async(state, role_id))
     finally:
         loop.close()
 
 
-async def _build_catalog_tables_async(state) -> list[CatalogTable]:
+async def _build_catalog_tables_async(state, role_id: str | None = None) -> list[CatalogTable]:
     """Async implementation of build_catalog_tables."""
+    visible = None if role_id is None else role_visibility(state, role_id)
     async with state.model_db.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, domain_id, table_name, description, modeling_role, modeling_history "
@@ -142,6 +169,8 @@ async def _build_catalog_tables_async(state) -> list[CatalogTable]:
     tables: list[CatalogTable] = []
     for row in rows:
         table_id = row["id"]
+        if visible is not None and table_id not in visible:
+            continue
         domain_id = row["domain_id"]
         table_name = row["table_name"]
         # REQ-1320: same "[fact]"/"[dimension, scd2]" suffix as GraphQL docs and
@@ -156,6 +185,8 @@ async def _build_catalog_tables_async(state) -> list[CatalogTable]:
             if cr["table_id"] != table_id:
                 continue
             col_name = cr["column_name"]
+            if visible is not None and col_name not in visible[table_id]:
+                continue
             col_description = cr["description"] or ""
             # Default type — will be overridden if introspection data exists
             columns.append(
