@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -172,11 +173,46 @@ def _flight(boot, role: str, table: str) -> tuple[int, list[str]]:
         client.close()
 
 
+def _grpc(boot, role: str, table: str) -> tuple[int, list[str]]:
+    """A streamed Query RPC. gRPC sets its trailing metadata before the rows are sent; a warning
+    the rows showed is there because the metadata was set once more when the stream ended."""
+    import grpc
+    from google.protobuf.message_factory import GetMessageClass
+
+    from tests.grpc_proto_client import role_descriptor_pool
+
+    _pool, svc = role_descriptor_pool(f"http://127.0.0.1:{boot.ports['http']}", role)
+    method = next(
+        m
+        for m in svc.methods
+        if m.name.startswith("Query")
+        and table in m.name.lower()
+        and not m.name.endswith(("Aggregate", "GroupBy", "Batch"))
+    )
+    req_cls = GetMessageClass(method.input_type)
+    resp_cls = GetMessageClass(method.output_type)
+    channel = grpc.insecure_channel(f"127.0.0.1:{boot.ports['grpc']}")
+    try:
+        rpc = channel.unary_stream(
+            f"/{svc.full_name}/{method.name}",
+            request_serializer=req_cls.SerializeToString,
+            response_deserializer=resp_cls.FromString,
+        )
+        call = rpc(req_cls(), metadata=(("x-provisa-role", role),), timeout=120)
+        rows = len(list(call))
+        trailers = dict(call.trailing_metadata())
+        said = json.loads(trailers.get("x-provisa-warnings", "[]"))
+        return rows, [w["code"] for w in said]
+    finally:
+        channel.close()
+
+
 _SURFACES = {
     "sql_http": _sql_http,
     "cypher_http": _cypher_http,
     "pgwire": _pgwire,
     "flight": _flight,
+    "grpc": _grpc,
 }
 
 
@@ -234,3 +270,71 @@ def test_a_cut_read_says_so_again_each_time_it_is_asked(server):
     for _ in range(2):
         rows, codes = _sql_http(server, "limited", "four")
         assert rows == _LIMIT and codes.count(_CUT) == 1, (rows, codes)
+
+
+def _newest_audit_row(boot, role: str) -> dict:
+    """``role``'s newest audit row, waiting for the writer (it inserts in batches)."""
+    engine = sa.create_engine(boot.url)
+    try:
+        with engine.connect() as conn:
+            schema = conn.execute(
+                sa.text(
+                    "SELECT table_schema FROM information_schema.tables "
+                    "WHERE table_name = 'query_audit_log' AND table_schema LIKE 'org%' LIMIT 1"
+                )
+            ).scalar_one()
+        return _last_row(engine, schema, role)
+    finally:
+        engine.dispose()
+
+
+def _last_row(engine, schema: str, role: str) -> dict:
+    with engine.connect() as conn:
+        row = conn.execute(
+            sa.text(
+                f"SELECT id, route, row_count, enforced FROM {schema}.query_audit_log "
+                "WHERE role_id = :role ORDER BY id DESC LIMIT 1"
+            ),
+            {"role": role},
+        ).first()
+    return dict(row._mapping) if row is not None else {"id": 0}
+
+
+def _audited(boot, role: str, read) -> dict:
+    """The audit row ``read()`` wrote for ``role``: the first one newer than the newest before."""
+    before = _newest_audit_row(boot, role)["id"]
+    read()
+    deadline = time.monotonic() + 60
+    while True:
+        row = _newest_audit_row(boot, role)
+        if row["id"] != before:
+            return row
+        assert time.monotonic() < deadline, "no audit row was written for the read"
+        time.sleep(0.5)
+
+
+def test_the_audit_row_says_what_the_limit_did_to_the_answer(server):
+    """REQ-1949: the warning is a fact about what the caller was given, so the statement's own
+    audit row holds it, beside the limit itself; a whole answer's row says nothing of a cut."""
+    cut = _audited(server, "limited", lambda: _sql_http(server, "limited", "four"))
+    assert cut["row_count"] == _LIMIT, cut
+    assert cut["enforced"]["row_limit"] == {"limit": _LIMIT, "kind": "role", "outcome": "cut"}
+    whole = _audited(server, "limited", lambda: _sql_http(server, "limited", "three"))
+    assert whole["row_count"] == _LIMIT and "row_limit" not in whole["enforced"], whole
+    free = _audited(server, "whole", lambda: _sql_http(server, "whole", "four"))
+    assert free["row_count"] == 4 and "row_limit" not in free["enforced"], free
+
+
+def test_a_stream_read_from_the_source_is_checked_when_it_ends(server):
+    """pgwire streams a single-source read from the source's own cursor (route ``direct``); the
+    row after the limit is then asked for on a second connection while that cursor is still
+    open. The route is asserted, not assumed: this case proves nothing on any other route."""
+    seen: dict = {}
+
+    def read() -> None:
+        seen["rows"], seen["codes"] = _pgwire(server, "limited", "four")
+
+    row = _audited(server, "limited", read)
+    assert row["route"] == "direct", row  # served from the source, not through the engine
+    assert seen["rows"] == _LIMIT and seen["codes"].count(_CUT) == 1, seen
+    assert row["enforced"]["row_limit"]["outcome"] == "cut", row
