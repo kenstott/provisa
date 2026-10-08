@@ -13,8 +13,8 @@
 The driver's own integration tests are run by Maven against one real server.
 ``FlightTransportIT`` signs in with a user name and password, runs a query over Arrow Flight with
 the session token in its ticket, and is refused by name for a role the user does not hold.
-``ProvisaDriverIT`` reads the catalog metadata (tables, columns, keys) and a table's rows as a
-user who may read the registered catalog. This file starts the server and hands Maven its
+``ProvisaDriverIT`` reads the catalog metadata (tables, columns, keys) and a table's rows, and
+checks that a user whose role is not served a table sees it in neither getTables nor getColumns. This file starts the server and hands Maven its
 address; the assertions are the ITs'.
 
 Needs ``mvn`` and a JDK 21 on the PATH (the core lane's job sets them up). Lands on the TEST
@@ -30,6 +30,7 @@ from pathlib import Path
 
 import bcrypt
 import pytest
+import sqlalchemy as sa
 
 from tests.integration.worker_boot_harness import WorkerBoot, _config
 
@@ -47,6 +48,14 @@ def server():
     orders = base["tables"][0]
     for column in orders["columns"]:
         column["visible_to"] = ["seller", "org_admin"]
+    # Served to org_admin only: the seller's catalog must not list it.
+    payroll = {
+        "source_id": "sales-pg",
+        "domain_id": "sales",
+        "schema": "public",
+        "table": "payroll",
+        "columns": [{"name": "id", "data_type": "integer", "visible_to": ["org_admin"]}],
+    }
     hashed = bcrypt.hashpw(_PASSWORD.encode(), bcrypt.gensalt()).decode()
     reads = ["query_development", "full_results"]
     boot = WorkerBoot(
@@ -67,7 +76,7 @@ def server():
                     ]
                 },
             },
-            "tables": [orders],
+            "tables": [orders, payroll],
             # org_admin is the reserved administrative role (REQ-1349): not declared.
             "roles": [
                 {"id": "seller", "capabilities": reads, "domain_access": ["*"]},
@@ -77,6 +86,10 @@ def server():
         env={"PROVISA_REDIRECT_ENABLED": "false"},
     )
     boot.create_database()
+    own = sa.create_engine(boot.url, isolation_level="AUTOCOMMIT")
+    with own.connect() as conn:
+        conn.execute(sa.text("CREATE TABLE public.payroll (id integer PRIMARY KEY)"))
+    own.dispose()
     try:
         boot.start()
         boot.wait_all_ready(timeout=300)
@@ -120,6 +133,7 @@ def test_the_drivers_integration_tests_pass_against_an_authenticated_server(
             "-Dprovisa.adminRole=org_admin",
             "-Dprovisa.table=orders",
             "-Dprovisa.columns=id,region",
+            "-Dprovisa.hiddenTable=payroll",
         ],
         capture_output=True,
         text=True,
@@ -128,5 +142,5 @@ def test_the_drivers_integration_tests_pass_against_an_authenticated_server(
     )
     output = run.stdout[-6000:] + run.stderr[-2000:]
     assert run.returncode == 0, output
-    # Every test of both ITs ran (3 + 5) — none was skipped for want of a property.
-    assert "Tests run: 8, Failures: 0, Errors: 0, Skipped: 0" in run.stdout, output
+    # Every test of both ITs ran (3 + 6) — none was skipped for want of a property.
+    assert "Tests run: 9, Failures: 0, Errors: 0, Skipped: 0" in run.stdout, output

@@ -78,10 +78,14 @@ class ProvisaDatabaseMetaDataTest {
     // ── PK/FK from relationships (#4) ──
 
     @Test
-    void getPrimaryKeys_derivesFromRelationships() throws SQLException {
-        when(conn.fetchRelationships()).thenReturn(List.of(
-            new ProvisaConnection.Relationship("r1", 1, 2, "orders", "customers",
-                "customer_id", "id", "many-to-one")
+    void getPrimaryKeys_isTheTablesDeclaredKey() throws SQLException {
+        // The key the catalog flags on the table's columns — not one inferred from which
+        // columns other tables happen to refer to.
+        when(conn.fetchRegisteredTables()).thenReturn(List.of(
+            new ProvisaConnection.RegisteredTable(2, "sales", "customers", null, null, List.of(
+                new ProvisaConnection.RegisteredColumn("id", null, null, true, null, null),
+                new ProvisaConnection.RegisteredColumn("name", null, null)
+            ))
         ));
 
         var meta = new ProvisaDatabaseMetaData(conn);

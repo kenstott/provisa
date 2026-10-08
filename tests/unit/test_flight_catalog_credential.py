@@ -75,8 +75,15 @@ class _Conn:
                 }
                 for table_id, (domain, name, _) in _TABLES.items()
             ]
+        if "FROM relationships" in sql:
+            return []
         return [
-            {"table_id": table_id, "column_name": column, "description": ""}
+            {
+                "table_id": table_id,
+                "column_name": column,
+                "description": "",
+                "is_primary_key": False,
+            }
             for table_id, (_, _, columns) in _TABLES.items()
             for column in columns
         ]

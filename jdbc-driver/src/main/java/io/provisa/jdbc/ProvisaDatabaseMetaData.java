@@ -77,8 +77,8 @@ public class ProvisaDatabaseMetaData extends AbstractDatabaseMetaData {
                 row.put("TABLE_SCHEM", t.domainId);
                 row.put("TABLE_NAME", displayName);
                 row.put("COLUMN_NAME", c.displayName());
-                row.put("DATA_TYPE", Types.VARCHAR);
-                row.put("TYPE_NAME", "VARCHAR");
+                row.put("DATA_TYPE", c.sqlType);
+                row.put("TYPE_NAME", java.sql.JDBCType.valueOf(c.sqlType).getName());
                 row.put("ORDINAL_POSITION", ordinal++);
                 row.put("REMARKS", c.description != null ? c.description : "");
                 rows.add(row);
@@ -91,27 +91,24 @@ public class ProvisaDatabaseMetaData extends AbstractDatabaseMetaData {
 
     @Override
     public ResultSet getPrimaryKeys(String catalog, String schema, String table) throws SQLException {
-        // Derive PKs: if a table is the target of a many-to-one, targetColumn is the PK
-        List<ProvisaConnection.Relationship> rels = conn.fetchRelationships();
+        // The table's declared primary key, as the catalog flags it on its columns.
         List<String> columns = Arrays.asList(
             "TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "COLUMN_NAME", "KEY_SEQ", "PK_NAME"
         );
         List<Map<String, Object>> rows = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-
-        for (ProvisaConnection.Relationship r : rels) {
-            if ("many-to-one".equals(r.cardinality) && r.targetTableName.equals(table)) {
-                String key = r.targetColumn;
-                if (seen.add(key)) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("TABLE_CAT", "provisa");
-                    row.put("TABLE_SCHEM", schema);
-                    row.put("TABLE_NAME", table);
-                    row.put("COLUMN_NAME", r.targetColumn);
-                    row.put("KEY_SEQ", seen.size());
-                    row.put("PK_NAME", "pk_" + table + "_" + r.targetColumn);
-                    rows.add(row);
-                }
+        for (ProvisaConnection.RegisteredTable t : conn.fetchRegisteredTables()) {
+            if (!t.displayName().equals(table)) continue;
+            int seq = 1;
+            for (ProvisaConnection.RegisteredColumn col : t.columns) {
+                if (!col.primaryKey) continue;
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("TABLE_CAT", "provisa");
+                row.put("TABLE_SCHEM", t.domainId);
+                row.put("TABLE_NAME", table);
+                row.put("COLUMN_NAME", col.displayName());
+                row.put("KEY_SEQ", seq++);
+                row.put("PK_NAME", "pk_" + table);
+                rows.add(row);
             }
         }
         return new ProvisaResultSet(columns, rows);

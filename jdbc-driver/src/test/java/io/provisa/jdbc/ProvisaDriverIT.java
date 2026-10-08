@@ -18,7 +18,12 @@ import static org.junit.jupiter.api.Assertions.*;
  * Catalog metadata and a query through the driver against a live Provisa server with auth
  * enforced (REQ-126, REQ-128, REQ-131).
  *
- * <p>System properties: {@code provisa.url}; {@code provisa.adminUser} /
+ * <p>The metadata is the signed-in role's own catalog (REQ-128): a second user whose role is not
+ * served a table does not see it.
+ *
+ * <p>System properties: {@code provisa.url}; {@code provisa.user} / {@code provisa.password} — a
+ * plain user; {@code provisa.hiddenTable} — a table that user's role is not served;
+ * {@code provisa.adminUser} /
  * {@code provisa.adminPassword} / {@code provisa.adminRole} — a user who may read the registered
  * catalog, and the role it acts as; {@code provisa.table} (a registered table) and
  * {@code provisa.columns} (its columns, comma-separated); {@code provisa.sql}. Run via
@@ -32,6 +37,9 @@ class ProvisaDriverIT {
     static final List<String> COLUMNS = List.of(System.getProperty("provisa.columns", "id,region").split(","));
     static final String SQL = System.getProperty("provisa.sql", "SELECT id, region FROM sales.orders");
 
+    /** A table the plain user's role is NOT served (the admin user's role is). */
+    static final String HIDDEN_TABLE = System.getProperty("provisa.hiddenTable");
+
     private static Connection connect() throws SQLException {
         Properties props = new Properties();
         props.setProperty("user", System.getProperty("provisa.adminUser", "admin"));
@@ -39,6 +47,39 @@ class ProvisaDriverIT {
         String role = System.getProperty("provisa.adminRole");
         if (role != null) props.setProperty("role", role);
         return DriverManager.getConnection(BASE_URL, props);
+    }
+
+    /** The plain user ({@code provisa.user}), whose role is served {@code provisa.table} only. */
+    private static Connection connectAsPlainUser() throws SQLException {
+        Properties props = new Properties();
+        props.setProperty("user", System.getProperty("provisa.user", "admin"));
+        props.setProperty("password", System.getProperty("provisa.password", ""));
+        return DriverManager.getConnection(BASE_URL, props);
+    }
+
+    private static List<String> tableNames(Connection conn) throws SQLException {
+        List<String> names = new ArrayList<>();
+        try (ResultSet rs = conn.getMetaData().getTables(null, null, "%", null)) {
+            while (rs.next()) names.add(rs.getString("TABLE_NAME"));
+        }
+        return names;
+    }
+
+    @Test
+    void aTableTheRoleIsNotServedIsInNeitherGetTablesNorGetColumns() throws SQLException {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            HIDDEN_TABLE != null, "provisa.hiddenTable names a table the plain user's role is not served");
+        try (Connection admin = connect()) {
+            assertTrue(tableNames(admin).contains(HIDDEN_TABLE), "the role that is served it lists it");
+        }
+        try (Connection plain = connectAsPlainUser()) {
+            List<String> names = tableNames(plain);
+            assertTrue(names.contains(TABLE), "its own table: " + names);
+            assertFalse(names.contains(HIDDEN_TABLE), "listed to a role that is not served it: " + names);
+            try (ResultSet cols = plain.getMetaData().getColumns(null, null, HIDDEN_TABLE, null)) {
+                assertFalse(cols.next());
+            }
+        }
     }
 
     @Test

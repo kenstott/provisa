@@ -2,8 +2,13 @@ package io.provisa.jdbc;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.apache.arrow.flight.CallStatus;
+import org.apache.arrow.flight.Criteria;
+import org.apache.arrow.flight.FlightCallHeaders;
 import org.apache.arrow.flight.FlightClient;
+import org.apache.arrow.flight.FlightInfo;
+import org.apache.arrow.flight.HeaderCallOption;
 import org.apache.arrow.flight.FlightRuntimeException;
 import org.apache.arrow.flight.FlightStatusCode;
 import org.apache.arrow.flight.FlightStream;
@@ -11,9 +16,12 @@ import org.apache.arrow.flight.Location;
 import org.apache.arrow.flight.Ticket;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
+import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.arrow.vector.types.pojo.Schema;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -103,6 +111,61 @@ class FlightTransport implements AutoCloseable {
             closeStream(stream);
             throw refusal("Query failed", e);
         }
+    }
+
+    /** A table of the server's catalog, as the signed-in role is served it. */
+    record CatalogTable(String domain, String table, String description, List<CatalogColumn> columns) {}
+
+    /** A column of a catalog table: its key flag and the column it refers to, when it has one. */
+    record CatalogColumn(
+        String name, String description, boolean primaryKey, String referencesTable, String referencesColumn) {}
+
+    /**
+     * The tables the server's catalog lists for this credential and role (REQ-128).
+     *
+     * <p>{@code listFlights} carries no ticket, so the session token rides the call's
+     * {@code authorization} header and a requested role its {@code x-provisa-role} header; the
+     * server lists what that role is served. Entries that are not tables (commands, at a
+     * three-part path) are not catalog tables.
+     */
+    List<CatalogTable> catalog(String token, String role) throws SQLException {
+        FlightCallHeaders headers = new FlightCallHeaders();
+        if (token != null) {
+            headers.insert("authorization", "Bearer " + token);
+        }
+        if (role != null) {
+            headers.insert("x-provisa-role", role);
+        }
+        List<CatalogTable> tables = new ArrayList<>();
+        try {
+            for (FlightInfo info : client.listFlights(Criteria.ALL, new HeaderCallOption(headers))) {
+                List<String> path = info.getDescriptor().getPath();
+                if (path.size() != 2) continue;
+                Schema schema = info.getSchemaOptional().orElseThrow(() -> new SQLException(
+                    "The catalog entry " + path + " carries no schema"));
+                List<CatalogColumn> columns = new ArrayList<>();
+                for (Field field : schema.getFields()) {
+                    Map<String, String> meta = field.getMetadata();
+                    String referencesTable = null;
+                    String referencesColumn = null;
+                    String references = meta.get("references");
+                    if (references != null) {
+                        JsonObject target = JsonParser.parseString(references).getAsJsonObject();
+                        referencesTable = target.get("table").getAsString();
+                        referencesColumn = target.get("column").getAsString();
+                    }
+                    columns.add(new CatalogColumn(
+                        field.getName(), meta.get("description"),
+                        "true".equals(meta.get("primary_key")), referencesTable, referencesColumn));
+                }
+                Map<String, String> tableMeta = schema.getCustomMetadata();
+                tables.add(new CatalogTable(
+                    path.get(0), path.get(1), tableMeta == null ? null : tableMeta.get("description"), columns));
+            }
+        } catch (FlightRuntimeException e) {
+            throw refusal("Reading the catalog failed", e);
+        }
+        return tables;
     }
 
     /**

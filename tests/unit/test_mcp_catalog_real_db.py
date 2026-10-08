@@ -31,6 +31,7 @@ from provisa.core.schema_org import (
     glossary_term_refs,
     glossary_terms,
     registered_tables,
+    relationships,
     roles,
     table_columns,
     naming_rules,
@@ -43,6 +44,8 @@ pytestmark = pytest.mark.asyncio
 _TABLES = [
     registered_tables,
     table_columns,
+    # The catalog reads a table's references from the declared relationships.
+    relationships,
     # naming_rules: the table upsert refuses a taken SQL address under them (REQ-1933).
     naming_rules,
     roles,

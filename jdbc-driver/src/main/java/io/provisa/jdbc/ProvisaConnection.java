@@ -159,105 +159,128 @@ public class ProvisaConnection extends AbstractConnection {
         }
     }
 
-    // ── Registered tables (mode=catalog) ──
+    // ── The catalog (mode=catalog) ──
 
     /**
-     * Fetch registered tables with columns, aliases, and descriptions.
+     * The tables this connection's role is served, with their columns and keys (REQ-128).
+     *
+     * <p>Read from the server's Arrow Flight catalog, which lists what the signed-in role may
+     * see and nothing else. On a connection whose Flight port was unreachable when it was opened
+     * the source is the role's own REST OpenAPI document ({@link #httpCatalog()}), which is
+     * narrowed to the role the same way. Never a source that is not narrowed to the role.
      */
     List<RegisteredTable> fetchRegisteredTables() throws SQLException {
-        try {
-            // Only fields the admin schema has and this driver reads
-            // (tests/unit/test_jdbc_driver_admin_queries.py validates the text against it).
-            String gql = "{ tables { id domainId tableName alias description " +
-                    "columns { columnName alias description } } }";
-            JsonObject result = executeGraphQL(baseUrl + "/admin/graphql", gql);
-            JsonArray tablesArr = result.getAsJsonObject("data").getAsJsonArray("tables");
-
-            List<RegisteredTable> tables = new ArrayList<>();
-            for (JsonElement el : tablesArr) {
-                JsonObject t = el.getAsJsonObject();
-                List<RegisteredColumn> cols = new ArrayList<>();
-                for (JsonElement colEl : t.getAsJsonArray("columns")) {
-                    JsonObject c = colEl.getAsJsonObject();
-                    cols.add(new RegisteredColumn(
-                        c.get("columnName").getAsString(),
-                        c.has("alias") && !c.get("alias").isJsonNull() ? c.get("alias").getAsString() : null,
-                        c.has("description") && !c.get("description").isJsonNull() ? c.get("description").getAsString() : null
-                    ));
-                }
-                tables.add(new RegisteredTable(
-                    t.get("id").getAsInt(),
-                    t.get("domainId").getAsString(),
-                    t.get("tableName").getAsString(),
-                    t.has("alias") && !t.get("alias").isJsonNull() ? t.get("alias").getAsString() : null,
-                    t.has("description") && !t.get("description").isJsonNull() ? t.get("description").getAsString() : null,
-                    cols
-                ));
-            }
-            return tables;
-        } catch (Exception e) {
-            throw new SQLException("Failed to fetch registered tables: " + e.getMessage(), e);
+        if (flightTransport == null) {
+            return httpCatalog();
         }
+        List<RegisteredTable> tables = new ArrayList<>();
+        int id = 1;
+        for (FlightTransport.CatalogTable t : flightTransport.catalog(authToken, role)) {
+            List<RegisteredColumn> cols = new ArrayList<>();
+            for (FlightTransport.CatalogColumn col : t.columns()) {
+                cols.add(new RegisteredColumn(
+                    col.name(), null, col.description(), col.primaryKey(),
+                    col.referencesTable(), col.referencesColumn()));
+            }
+            tables.add(new RegisteredTable(id++, t.domain(), t.table(), null, t.description(), cols));
+        }
+        return tables;
     }
 
     /**
-     * Fetch semantic relationships for PK/FK metadata.
+     * The role's catalog over HTTP: the tables and columns of its REST OpenAPI document
+     * ({@code /data/rest/openapi.json}), which the server builds from the role's own schema —
+     * one path {@code /{domain}/{table}} per table it is served, and that table's row schema.
+     *
+     * <p>Columns carry the names and types that document gives them. It declares no keys, so a
+     * connection on this source has no primary-key or foreign-key metadata.
+     */
+    private List<RegisteredTable> httpCatalog() throws SQLException {
+        JsonObject spec;
+        try {
+            HttpURLConnection conn =
+                (HttpURLConnection) URI.create(baseUrl + "/data/rest/openapi.json").toURL().openConnection();
+            conn.setRequestMethod("GET");
+            identify(conn);
+            int status = conn.getResponseCode();
+            java.io.InputStream stream = status < 400 ? conn.getInputStream() : conn.getErrorStream();
+            String body = stream == null ? "" : new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            if (status != 200) {
+                throw new SQLException(
+                    "Reading the catalog failed (HTTP " + status + "): " + serverReason(body),
+                    status == 401 || status == 403 ? "28000" : null);
+            }
+            spec = JsonParser.parseString(body).getAsJsonObject();
+        } catch (java.io.IOException e) {
+            throw new SQLException("Reading the catalog failed: " + e.getMessage(), e);
+        }
+
+        JsonObject schemas = spec.getAsJsonObject("components").getAsJsonObject("schemas");
+        List<RegisteredTable> tables = new ArrayList<>();
+        int id = 1;
+        for (Map.Entry<String, JsonElement> path : spec.getAsJsonObject("paths").entrySet()) {
+            String[] parts = path.getKey().split("/");
+            JsonObject get = path.getValue().getAsJsonObject().getAsJsonObject("get");
+            if (parts.length != 3 || get == null) continue; // "/{domain}/{table}" reads only
+            JsonObject row = schemas.getAsJsonObject(rowSchemaName(get));
+            List<RegisteredColumn> cols = new ArrayList<>();
+            for (Map.Entry<String, JsonElement> col : row.getAsJsonObject("properties").entrySet()) {
+                JsonObject type = col.getValue().getAsJsonObject();
+                cols.add(new RegisteredColumn(
+                    col.getKey(), null, text(type, "description"), false, null, null, sqlType(type)));
+            }
+            tables.add(new RegisteredTable(id++, parts[1], parts[2], null, text(row, "description"), cols));
+        }
+        return tables;
+    }
+
+    /** The row schema a table's GET names: its {@code fields} parameter lists {@code <Row>Field}. */
+    private static String rowSchemaName(JsonObject get) throws SQLException {
+        for (JsonElement p : get.getAsJsonArray("parameters")) {
+            JsonObject param = p.getAsJsonObject();
+            if (!"fields".equals(text(param, "name"))) continue;
+            String ref = param.getAsJsonObject("schema").getAsJsonObject("items").get("$ref").getAsString();
+            String name = ref.substring(ref.lastIndexOf('/') + 1);
+            return name.substring(0, name.length() - "Field".length());
+        }
+        throw new SQLException("The catalog document names no row schema for a table");
+    }
+
+    private static String text(JsonObject object, String key) {
+        JsonElement value = object.get(key);
+        return value == null || value.isJsonNull() ? null : value.getAsString();
+    }
+
+    /** The JDBC type of an OpenAPI column schema. */
+    private static int sqlType(JsonObject type) {
+        String name = text(type, "type");
+        if ("integer".equals(name)) return Types.INTEGER;
+        if ("number".equals(name)) return Types.DOUBLE;
+        if ("boolean".equals(name)) return Types.BOOLEAN;
+        if ("array".equals(name)) return Types.ARRAY;
+        return Types.VARCHAR;
+    }
+
+    /**
+     * The to-one relationships between the tables this role is served, read off the catalog's
+     * key metadata: a column that refers to another table's column.
      */
     List<Relationship> fetchRelationships() throws SQLException {
-        try {
-            String gql = "{ relationships { id sourceTableId targetTableId " +
-                    "sourceTableName targetTableName sourceColumn targetColumn cardinality } }";
-            JsonObject result = executeGraphQL(baseUrl + "/admin/graphql", gql);
-            JsonArray relsArr = result.getAsJsonObject("data").getAsJsonArray("relationships");
-
-            List<Relationship> rels = new ArrayList<>();
-            for (JsonElement el : relsArr) {
-                JsonObject r = el.getAsJsonObject();
-                // A relationship with no target table or column (one defined by a condition,
-                // not a key pair) is not a foreign key and has no place in key metadata.
-                if (r.get("targetTableId").isJsonNull() || r.get("targetColumn").isJsonNull()) {
-                    continue;
-                }
+        List<RegisteredTable> tables = fetchRegisteredTables();
+        Map<String, Integer> ids = new HashMap<>();
+        for (RegisteredTable t : tables) ids.put(t.tableName, t.id);
+        List<Relationship> rels = new ArrayList<>();
+        for (RegisteredTable t : tables) {
+            for (RegisteredColumn col : t.columns) {
+                if (col.referencesTable == null) continue;
+                Integer target = ids.get(col.referencesTable);
+                if (target == null) continue; // the catalog lists a reference only with its target
                 rels.add(new Relationship(
-                    r.get("id").getAsString(),
-                    r.get("sourceTableId").getAsInt(),
-                    r.get("targetTableId").getAsInt(),
-                    r.get("sourceTableName").getAsString(),
-                    r.get("targetTableName").getAsString(),
-                    r.get("sourceColumn").getAsString(),
-                    r.get("targetColumn").getAsString(),
-                    r.get("cardinality").getAsString()
-                ));
+                    t.tableName + "." + col.columnName, t.id, target, t.tableName,
+                    col.referencesTable, col.columnName, col.referencesColumn, "many-to-one"));
             }
-            return rels;
-        } catch (Exception e) {
-            throw new SQLException("Failed to fetch relationships: " + e.getMessage(), e);
         }
-    }
-
-    // ── HTTP helpers ──
-
-    private JsonObject executeGraphQL(String endpoint, String query) throws Exception {
-        JsonObject body = new JsonObject();
-        body.addProperty("query", query);
-        return executeGraphQL(endpoint, body);
-    }
-
-    private JsonObject executeGraphQL(String endpoint, JsonObject body) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        identify(conn);
-        conn.setDoOutput(true);
-        conn.getOutputStream().write(body.toString().getBytes(StandardCharsets.UTF_8));
-
-        if (conn.getResponseCode() != 200) {
-            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-            throw new SQLException("HTTP " + conn.getResponseCode() + ": " + error);
-        }
-
-        String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        return JsonParser.parseString(response).getAsJsonObject();
+        return rels;
     }
 
     // ── Connection methods ──
@@ -373,11 +396,29 @@ public class ProvisaConnection extends AbstractConnection {
         final String columnName;
         final String alias;
         final String description;
+        final boolean primaryKey;
+        final String referencesTable; // null unless the column refers to another table's column
+        final String referencesColumn;
+        final int sqlType; // java.sql.Types
 
         RegisteredColumn(String columnName, String alias, String description) {
+            this(columnName, alias, description, false, null, null);
+        }
+
+        RegisteredColumn(String columnName, String alias, String description, boolean primaryKey,
+                         String referencesTable, String referencesColumn) {
+            this(columnName, alias, description, primaryKey, referencesTable, referencesColumn, Types.VARCHAR);
+        }
+
+        RegisteredColumn(String columnName, String alias, String description, boolean primaryKey,
+                         String referencesTable, String referencesColumn, int sqlType) {
+            this.sqlType = sqlType;
             this.columnName = columnName;
             this.alias = alias;
             this.description = description;
+            this.primaryKey = primaryKey;
+            this.referencesTable = referencesTable;
+            this.referencesColumn = referencesColumn;
         }
 
         /** Display name: alias if set, otherwise raw column name. */

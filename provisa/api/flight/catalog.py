@@ -85,6 +85,11 @@ class CatalogColumn:
     data_type: str  # the engine type string
     is_nullable: bool
     description: str
+    # Key metadata, for clients that draw a model from the catalog (the JDBC driver's
+    # getPrimaryKeys / getImportedKeys): the column is part of the table's declared primary key,
+    # and the (domain, table, column) it refers to through a declared to-one relationship.
+    is_primary_key: bool = False
+    references: tuple[str, str, str] | None = None
 
 
 def role_visibility(state, role_id: str) -> dict[int, set[str]]:
@@ -141,8 +146,28 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
             "FROM registered_tables WHERE NOT draft ORDER BY domain_id, table_name"
         )
         col_rows = await conn.fetch(
-            "SELECT tc.table_id, tc.column_name, tc.description "
+            "SELECT tc.table_id, tc.column_name, tc.description, tc.is_primary_key "
             "FROM table_columns tc ORDER BY tc.id"
+        )
+        rel_rows = await conn.fetch(
+            "SELECT source_table_id, source_column, target_table_id, target_column "
+            "FROM relationships "
+            "WHERE target_table_id IS NOT NULL AND target_column IS NOT NULL "
+            "AND cardinality IN ('many-to-one', 'one-to-one') ORDER BY id"
+        )
+
+    named = {row["id"]: (row["domain_id"], row["table_name"]) for row in rows}
+    # (table id, column) → what it refers to. A reference is listed only where its target is
+    # listed too: a role is not told of a table or column it is not served by way of a key.
+    references: dict[tuple[int, str], tuple[str, str, str]] = {}
+    for rel in rel_rows:
+        target_id, target_column = rel["target_table_id"], rel["target_column"]
+        if target_id not in named:
+            continue
+        if visible is not None and target_column not in visible.get(target_id, ()):
+            continue
+        references.setdefault(
+            (rel["source_table_id"], rel["source_column"]), (*named[target_id], target_column)
         )
 
     # Index column descriptions by (table_id, column_name)
@@ -195,6 +220,8 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
                     data_type="varchar",
                     is_nullable=True,
                     description=col_description,
+                    is_primary_key=bool(cr["is_primary_key"]),
+                    references=references.get((table_id, col_name)),
                 )
             )
 
@@ -322,6 +349,13 @@ def catalog_table_to_arrow_schema(table: CatalogTable) -> pa.Schema:  # REQ-143
         metadata = {}
         if col.description:
             metadata[b"description"] = col.description.encode("utf-8")
+        if col.is_primary_key:
+            metadata[b"primary_key"] = b"true"
+        if col.references is not None:
+            domain, name, column = col.references
+            metadata[b"references"] = json.dumps(
+                {"domain": domain, "table": name, "column": column}
+            ).encode("utf-8")
         fields.append(
             pa.field(
                 col.name,
