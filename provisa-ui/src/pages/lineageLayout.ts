@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 3fafa280-216a-44c3-96fc-1a2c03ecda1e
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 import type { CSSProperties } from "react";
 
 // The query panel and the button panel share the row in a fixed proportion (3 : 1) with a floor
