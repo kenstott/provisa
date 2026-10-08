@@ -264,6 +264,7 @@ Every surface authenticates through the same provider contract, so a credential 
 | Bolt | `basic` scheme | `bearer` scheme | `bearer` scheme | yes |
 | Arrow Flight | — | `token` in the handshake or ticket payload; `authorization: Bearer` call header on `list_flights`, `get_flight_info` and `get_schema` | same | yes |
 | gRPC | — | `authorization` metadata | `authorization` metadata | yes |
+| Airport (DuckDB `airport` extension, opt-in) | — | `authorization: Bearer` (the secret's `auth_token`) | same | — |
 | MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | via terminating proxy |
 
 Where a cell reads `—` the protocol carries no username field to pair a password with; the token forms cover it. pgwire is the mirror case: the startup packet has one secret field and no scheme, so what the secret *is* picks the method — a PAT is recognized by its prefix, the secret is read as a bearer token when the configured provider is a token provider, and anything else is a password. The choice is made once — a credential the selected validator refuses is not retried against another.

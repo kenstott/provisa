@@ -43,9 +43,11 @@ defined through a query protocol (provisa/compiler/definitions.py): a table or a
 created in the model, or in the data source and admitted into the model. UPDATE/
 DELETE are refused ONLY per-table, when a table genuinely has no primary key.
 
-Role: taken from the gRPC ``authorization: Bearer <role>`` header (DuckDB airport
-secret ``auth_token``). Absent → PROVISA_AIRPORT_DEFAULT_ROLE (documented dev
-default for unauthenticated access); absent too → the call is refused.
+Role: with authentication on, the gRPC ``authorization: Bearer <credential>`` header (DuckDB
+airport secret ``auth_token``) carries a provider token or a personal access token; it is
+validated and the role is derived from the identity (``x-provisa-role`` may request a held one).
+On a deployment with no auth provider the bearer names the role; absent →
+PROVISA_AIRPORT_DEFAULT_ROLE (documented dev default); absent too → the call is refused.
 """
 
 from __future__ import annotations
@@ -206,11 +208,30 @@ class ProvisaAirportServer(
             reset_current_org(token)
 
     def _role(self, context: flight.ServerCallContext) -> str:  # pyright: ignore[reportPrivateImportUsage]
+        """The role this call runs as.
+
+        With authentication on, the ``authorization: Bearer`` header is a CREDENTIAL — a provider
+        token or a personal access token, validated as every other transport validates it — and
+        the role is derived from the validated identity (:meth:`_authenticated_role`). A role is
+        never taken from the caller's say-so.
+
+        On a deployment with no auth provider there is no identity: the bearer names the role
+        at face value (the DuckDB airport secret's ``auth_token``), as ``X-Provisa-Role`` does
+        over HTTP there, and PROVISA_AIRPORT_DEFAULT_ROLE serves a call that names none.
+        """
+        from provisa.grpc.auth import auth_active
+
         headers = self._headers(context)
         token = ""
         raw = self._header(headers, "authorization")
         if raw:
             token = raw[7:].strip() if raw.lower().startswith("bearer ") else raw.strip()
+        try:
+            secured = auth_active(self._state)
+        except RuntimeError as exc:
+            raise _err(f"airport: {exc}") from exc
+        if secured:
+            return self._authenticated_role(token, self._header(headers, "x-provisa-role"))
         if not token:
             # Documented dev default for unauthenticated access (REQ-1120). No token AND
             # no configured default → refuse, rather than silently assume a privileged role.
@@ -223,6 +244,39 @@ class ProvisaAirportServer(
         if token not in self._state.contexts:
             raise _err(f"airport: unknown role {token!r}")
         return token
+
+    def _authenticated_role(self, credential: str, requested: str | None) -> str:
+        """The role a validated credential acts as (REQ-1263, REQ-273).
+
+        The identity's own role, or the one ``x-provisa-role`` requests when the identity holds
+        it (one role, or a comma-separated set acting as its meta-role) — the gRPC transport's
+        rule, from its functions. No credential, a rejected one, or a role the identity does not
+        hold is refused; PROVISA_AIRPORT_DEFAULT_ROLE is not consulted.
+        """
+        import jwt
+
+        from provisa.core.connection_loop import run_on_connection_loop
+        from provisa.grpc.auth import authorize_role, validate_grpc_credential
+
+        if not credential:
+            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]
+                "airport: a bearer credential is required (the airport secret's auth_token)"
+            )
+        try:
+            identity = run_on_connection_loop(validate_grpc_credential(self._state, credential))
+        except (ValueError, jwt.PyJWTError) as exc:
+            # Every rejection reads the same on the wire: a caller must not learn from the
+            # response whether the credential was unknown, expired or revoked.
+            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]
+                "airport: credential rejected"
+            ) from exc
+        try:
+            role_id = authorize_role(self._state, identity, requested)
+        except PermissionError as exc:
+            raise flight.FlightUnauthenticatedError(f"airport: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]
+        if role_id not in self._state.contexts:
+            raise _err(f"airport: role {role_id!r} has no data surface")
+        return role_id
 
     # ------------------------------------------------------------- catalog
     def _catalog_for_role(self, role_id: str) -> list[tuple[str, str, str]]:
