@@ -77432,3 +77432,17 @@
   - REQ-603
   - REQ-1955
   notes: 'Maintainer 2026-10-08: new rejected-join requirement -- in the error message provide valid paths to connect the 2 tables. Lead''s additions, open to correction: the paths are role-scoped as in REQ-1955, bounded, and carried in the error parameters as well as the text. Maintainer, later the same day: the error might also point out the no-valid-path case, suggesting creating or asking to create a relationship within Provisa.'
+- id: REQ-1957
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Branded API Sources
+  priority: SHOULD
+  type: behavioral
+  description: 'A source built from a published API specification carries exclusions: operations and request arguments of the specification that the source does not offer. An excluded operation is not listed for registration as a table or a command; an excluded argument is not part of an operation''s arguments, is not shown, and is never sent. An exclusion names an operation by its path and method, or an argument by its name on one operation or on every operation that has it. A branded source ships the exclusions that are part of its curation -- the Stripe brand excludes the deprecated token and inline-source payment inputs and the operations that exist only for them, and offers the Payment Intents, Payment Methods and Setup Intents operations -- and an operator adds exclusions of their own on any specification-built source, in its configuration and in the source form. Something already registered that an exclusion later covers is reported by name, not silently dropped.'
+  use_case: A vendor deprecates part of its API and refuses calls that use it; the source stops offering that part without
+    waiting for the vendor to remove it from the published specification.
+  related_reqs:
+  - REQ-1923
+  - REQ-316
+  notes: 'Maintainer 2026-10-08, after Stripe flagged the sandbox for Charges/Customers calls carrying a token or inline source: convert to the new API; just curate the spec; if a feature is needed on consuming a spec, add some sort of exclusion override. Lead''s additions, open to correction: exclusions name operations or arguments; brands ship theirs and operators add their own; a setting has a UI surface; an already-registered item covered by a new exclusion is reported by name.'
