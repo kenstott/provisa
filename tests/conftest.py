@@ -768,6 +768,12 @@ class _DockerServiceManager:
 
 
 def pytest_configure(config):
+    if not hasattr(config, "workerinput"):
+        # The run's controller, not an xdist worker: whichever worker starts the run's Postgres,
+        # this process's exit removes it (tests/unit_postgres.py).
+        from tests import unit_postgres
+
+        unit_postgres.remove_when_this_process_exits()
     # REQ-1916/REQ-1922: the session is a launched node before anything is collected — a test
     # module may name a replica at import, and a replica's name carries the node's region.
     from provisa.core import process_region
@@ -1292,24 +1298,18 @@ def docker_postgres():
     safe on this machine (single named service — never `compose up` with no
     service name, which crashes Docker Engine).
 
-    The compose project is private to this session's PG_PORT: under the default project every
-    session (each xdist worker, each concurrent run) shared ONE `provisa-postgres-1` container and
-    re-published it on its own ephemeral PG_PORT, so a peer's `up` recreated it out from under a
-    running test ("Connection refused" on the port that had just been published). A container this
-    fixture started is removed with its volume at session end.
+    The compose project is this run's own (tests/unit_postgres.py): named for the run, shared
+    by its xdist workers, and taken down with its volume when the run's controller exits, however
+    it exits. Under the default project every session shared ONE `provisa-postgres-1` container
+    and re-published it on its own ephemeral PG_PORT, so a peer's `up` recreated it out from under
+    a running test.
     """
+    from tests import unit_postgres
+
     pg_host = os.environ.get("PG_HOST", "localhost")
     pg_port = int(os.environ.get("PG_PORT", "5432"))
 
-    compose_file = os.path.join(os.path.dirname(__file__), "..", "docker-compose.core.yml")
-    project = f"provisa-unitpg-{pg_port}"
-    started = False
-    if not _tcp_reachable(pg_host, pg_port):
-        subprocess.run(
-            ["docker", "compose", "-p", project, "-f", compose_file, "up", "postgres", "-d"],
-            check=True,
-        )
-        started = True
+    if unit_postgres.start(lambda: _tcp_reachable(pg_host, pg_port)):
         # Wait up to 30 s for postgres to be ready
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
@@ -1322,12 +1322,6 @@ def docker_postgres():
             )
 
     yield {"host": pg_host, "port": pg_port}
-
-    if started:
-        subprocess.run(
-            ["docker", "compose", "-p", project, "-f", compose_file, "down", "-v"],
-            check=True,
-        )
 
 
 @contextlib.contextmanager
