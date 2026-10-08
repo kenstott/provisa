@@ -1006,7 +1006,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         except PermissionError as exc:
             raise PermissionError(str(exc)) from exc
         except Exception as exc:
-            log.warning("[PGWIRE] DESCRIBE EXCEPTION sql=%r", stripped[:300], exc_info=True)
+            _log_statement_failure("DESCRIBE", stripped, exc)
             raise RuntimeError(str(exc)) from exc
         if self.redirect:
             # REQ-1194: a redirected statement answers where its result was delivered, not its
@@ -1147,7 +1147,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             except PermissionError as exc:
                 raise PermissionError(str(exc)) from exc
             except Exception as exc:
-                log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
+                _log_statement_failure("statement", stripped, exc)
                 raise RuntimeError(str(exc)) from exc
         # Parse/govern/route timing, isolated from physical execution below, so the pure-Python
         # compile-path cost (parse → govern_pgwire_plan → routing decision) can be measured
@@ -1359,7 +1359,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 raise PermissionError(str(exc)) from exc
             except Exception as exc:
                 self._finalize_audit(governed, 500)
-                log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
+                _log_statement_failure("statement", stripped, exc)
                 raise RuntimeError(str(exc)) from exc
         _t_execute1 = time.perf_counter()
         log.debug(
@@ -2417,6 +2417,19 @@ class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
     def verify_request(self, request, client_address) -> bool:
         del request, client_address
         return True
+
+
+def _log_statement_failure(what: str, sql: str, exc: Exception) -> None:
+    """Log a statement that did not complete. A REFUSAL is the answer the statement gets, not a
+    fault of the server: a 4xx ``ApiError`` (a role without the right, a draft table, an unbound
+    source) is one line at INFO, without a traceback, as a ``PermissionError`` refusal already
+    was (not logged at all). Anything else is unexpected and keeps its traceback."""
+    from provisa.api.errors import ApiError
+
+    if isinstance(exc, ApiError) and exc.status_code < 500:
+        log.info("[PGWIRE] %s refused sql=%r: %s", what, sql[:300], exc.detail)
+        return
+    log.warning("[PGWIRE] %s EXCEPTION sql=%r", what, sql[:300], exc_info=exc)
 
 
 def stop_pgwire_server(server: ProvisaServer) -> None:
