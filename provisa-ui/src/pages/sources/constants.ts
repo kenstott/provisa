@@ -160,6 +160,10 @@ export const SOURCE_TYPES = [
     category: "Enterprise",
     defaultPort: 0,
   },
+  // REQ-1923: a branded source — the remote GraphQL source with the system's endpoint, schema
+  // and credential handling already supplied. The user sees the brand as an ordinary type.
+  { value: "github", label: "GitHub", category: "Enterprise", defaultPort: 443 },
+  { value: "gitlab", label: "GitLab", category: "Enterprise", defaultPort: 443 },
   // REQ-1923: carried by the OpenAPI source, with the system's pinned spec supplied.
   { value: "stripe", label: "Stripe", category: "Enterprise", defaultPort: 443 },
   { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
