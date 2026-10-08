@@ -2542,13 +2542,16 @@ async def rows_were_cut(plan: _Plan, state: Any) -> bool:
 
 async def _warn_if_cut(plan: _Plan, result: QueryResult, state: Any) -> None:
     """REQ-1949: an answer that fills the row limit bounding it, where more rows match, says so
-    in the statement's warnings. An answer within the limit is whole and says nothing; a landed
-    result reports its row count and is checked by its terminal."""
-    if plan.row_limit is None or result.redirect is not None:
+    in the statement's warnings. An answer within the limit is whole and says nothing. A landed
+    result (redirect, materialize, export) is counted by the rows its handle says were landed:
+    the engine landed them, bounded at the same limit, and is asked for the row after it the
+    same way."""
+    if plan.row_limit is None:
         return
     if result.cache_entry is not None:
         return  # served from the response cache: only a whole answer is ever kept there
-    if len(result.rows) != plan.row_limit.limit:
+    rows = result.redirect["row_count"] if result.redirect is not None else len(result.rows)
+    if rows != plan.row_limit.limit:
         return
     await _settle_cut(plan, state)
 

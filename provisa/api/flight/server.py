@@ -1210,6 +1210,13 @@ class ProvisaFlightServer(
                     _permits.release()
                 _release_slot()
             plan.row_count = len(raw_rows)
+            if plan.row_limit is not None:
+                # REQ-1949: this read reaches neither the buffered chokepoint nor a stream's
+                # drain, so whether its row limit cut it is settled here -- before its audit
+                # row, and asked once (the cache's capture asked already where there is one).
+                from provisa.pgwire._pipeline import _stream_answer_whole
+
+                _stream_answer_whole(plan, len(raw_rows))
             self._finalize_audit(plan, 200)  # REQ-074/REQ-1386
 
         return self._cypher_stream(raw_rows, graph_vars, plan.warnings)

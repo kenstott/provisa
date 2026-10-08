@@ -165,14 +165,41 @@ def test_an_answer_says_it_was_cut_only_when_rows_were_left_out(monkeypatch, row
     assert len(asked) == (1 if rows == 3 else 0)
 
 
-def test_a_read_no_limit_bounds_and_a_landed_result_are_not_checked_here(monkeypatch):
+def test_a_read_no_limit_bounds_is_not_checked(monkeypatch):
     async def never(plan, state):
         raise AssertionError("not asked")
 
     monkeypatch.setattr(_pipeline, "rows_were_cut", never)
     asyncio.run(_pipeline._warn_if_cut(_plan(limit=None), _answer(3), _STATE))
-    landed = QueryResult(rows=[], column_names=[], redirect={"row_count": 3})
-    asyncio.run(_pipeline._warn_if_cut(_plan(), landed, _STATE))
+
+
+@pytest.mark.parametrize(
+    ("landed", "more", "codes"),
+    [(3, True, ["statement.rows_cut"]), (3, False, []), (2, True, [])],
+    ids=["filled_and_more", "filled_exactly", "within_the_limit"],
+)
+def test_a_landed_result_is_counted_by_the_rows_its_handle_says_were_landed(
+    monkeypatch, landed, more, codes
+):
+    """Redirect, materialize, export: the engine lands the rows, bounded at the same limit;
+    a result that landed exactly the limit is asked for the row after it like any answer."""
+    ran = []
+
+    async def terminal(plan, state):
+        ran.append(plan)
+        return _answer(1 if more else 0)
+
+    monkeypatch.setattr(_pipeline, "_run_plan_terminal", terminal)
+    plan = _plan()
+    plan.materialize = SimpleNamespace(sink="s3")
+    result = QueryResult(rows=[], column_names=[], redirect={"row_count": landed})
+    asyncio.run(_pipeline._warn_if_cut(plan, result, _STATE))
+    assert [w.code for w in plan.warnings] == codes
+    assert len(ran) == (1 if landed == 3 else 0)
+    if ran:
+        # The row after the limit is read, not landed anywhere.
+        assert ran[0].materialize is None and "OFFSET 3" in ran[0].physical_sql
+    assert plan.materialize is not None
 
 
 def test_a_warning_found_with_no_collector_open_is_kept_on_the_plan(monkeypatch):
@@ -608,3 +635,16 @@ def test_every_grpc_stream_settles_the_cut_before_its_audit_row():
     assert source.count("_say_late_warnings(context, _said, plan)") == 2
     assert "_stream_answer_whole(plan, _delivered)" in source
     assert source.count("settle_cut_at_stream_end(plan, ") == 2
+
+
+def test_flights_cypher_read_settles_the_cut_itself_before_its_audit_row():
+    """Flight's Cypher read drains the engine directly: neither the buffered chokepoint nor a
+    stream's drain sees it."""
+    import inspect
+
+    from provisa.api.flight.server import ProvisaFlightServer
+
+    source = inspect.getsource(ProvisaFlightServer._do_get_cypher)
+    settle, audit = "_stream_answer_whole(plan, len(raw_rows))", "self._finalize_audit(plan, 200)"
+    assert settle in source and source.index(settle) < source.index(audit)
+    assert source.index(audit) < source.index("self._cypher_stream(raw_rows, graph_vars, plan.w")
