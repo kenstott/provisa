@@ -1,0 +1,236 @@
+name: NixOS
+
+# What NixOS does differently from the Ubuntu runners every other workflow tests on. Linux itself
+# is covered there; this covers the host side that depends on the distro: the uv environment and
+# its prebuilt wheels, the embedded PostgreSQL, the native tier run as a systemd service,
+# Playwright's Chromium, the ODBC driver and the JDK. The container-backed lanes' images are the
+# same on any distro, so only the core lane is repeated here, for the host processes it starts.
+#
+# A hosted runner is Ubuntu, so NixOS is a QEMU guest on it (.github/actions/nixos-vm, the system
+# in packaging/nixos). Every step after the boot runs in the guest through packaging/nixos/vm-run.
+
+on:
+  # Not on every push: a run is seven jobs, six of them a core shard in a guest, and what it tests changes with the
+  # NixOS configuration, not with the product. Product drift is caught weekly.
+  push:
+    branches: [integration, main]
+    paths:
+      - "packaging/nixos/**"
+      - ".github/actions/nixos-vm/**"
+      - ".github/workflows/nixos.yml"
+  schedule:
+    - cron: "0 9 * * 0"
+  workflow_dispatch:
+    inputs:
+      lanes:
+        description: "Container lanes to run in the guest: comma-separated (core, app, kafka, ...), or none"
+        required: false
+        default: "core"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nixos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: deploy + unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/nixos-vm
+
+      # packaging/nixos has no flake.lock until one is committed, so this run resolved nixos-25.11
+      # itself. Committing this file pins every later run to the same nixpkgs.
+      - name: Upload the lock this run resolved
+        uses: actions/upload-artifact@v4
+        with:
+          name: nixos-flake-lock
+          path: packaging/nixos/flake.lock
+          if-no-files-found: ignore
+
+      - name: Install dependencies
+        id: deps
+        run: |
+          packaging/nixos/vm-run '
+            uv sync --frozen --extra dev --extra embedded
+            uv pip install -e "provisa-client/[dev]" -q
+            cd provisa-ui && npm ci
+          '
+
+      # The UI server serves the repo-root static/ from a source checkout.
+      - name: Build the UI
+        id: ui
+        run: |
+          packaging/nixos/vm-run '
+            cd provisa-ui && npm run build
+            cp -r dist/. ../static/
+          '
+
+      # /ready, not /health: 200 only once the store is attached and the engine is warm.
+      - name: Start the provisa service
+        id: service
+        run: |
+          packaging/nixos/vm-run '
+            sudo systemctl start provisa
+            for _ in $(seq 1 120); do
+              if curl -sf -o /dev/null http://127.0.0.1:8000/ready; then
+                curl -sf http://127.0.0.1:8000/health
+                curl -sf -o /dev/null http://127.0.0.1:3000/
+                exit 0
+              fi
+              systemctl is-active -q provisa || break
+              sleep 5
+            done
+            exit 1
+          '
+
+      - name: Chromium opens the deployed UI
+        if: ${{ !cancelled() && steps.service.outcome == 'success' }}
+        run: |
+          packaging/nixos/vm-run '
+            cd provisa-ui
+            npx playwright install chromium
+            node -e "
+              const { chromium } = require(\"@playwright/test\");
+              (async () => {
+                const browser = await chromium.launch();
+                const page = await browser.newPage();
+                const response = await page.goto(\"http://127.0.0.1:3000/\");
+                if (!response.ok()) throw new Error(\"UI answered \" + response.status());
+                console.log(\"title:\", await page.title());
+                await browser.close();
+              })().catch((e) => { console.error(e); process.exit(1); });
+            "
+          '
+
+      - name: Service log
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: packaging/nixos/vm-run 'systemctl status provisa --no-pager -l || true; journalctl -u provisa --no-pager -n 300'
+
+      # Stopped before the suites: they bind ports of their own.
+      - name: Stop the provisa service
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: packaging/nixos/vm-run 'sudo systemctl stop provisa'
+
+      # Each suite runs whatever the one before it did: the job's purpose is the list of
+      # differences, not the first one.
+      - name: Python unit tests
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: packaging/nixos/vm-run 'uv run pytest tests/unit/ --no-cov -q -n auto -o faulthandler_timeout=300'
+
+      - name: UI unit tests
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: packaging/nixos/vm-run 'cd provisa-ui && npx vitest run'
+
+      - name: JDBC driver unit tests
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: packaging/nixos/vm-run 'mvn -f jdbc-driver/pom.xml -B test'
+
+      - name: ODBC driver is registered
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: packaging/nixos/vm-run 'odbcinst -q -d -n "ODBC Driver 18 for SQL Server"'
+
+      - &console
+        name: Upload the guest's console
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nixos-console-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/vm-console.log
+          if-no-files-found: ignore
+
+  # The same matrix integration-suite-lanes.yml builds, for the lanes asked for.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      any: ${{ steps.plan.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        env:
+          LANES: ${{ inputs.lanes || 'core' }}
+        run: |
+          if [ "$LANES" = "none" ]; then
+            matrix='{"include":[]}'
+          else
+            # Each lane's own bound, plus the guest: its build, its boot, and installs with no cache.
+            matrix=$(python3 scripts/ci/run_lane.py --matrix "$LANES" | jq -c '.include[].timeout += 45')
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          any=$(python3 -c "import json,sys; print('true' if json.loads(sys.argv[1])['include'] else 'false')" "$matrix")
+          echo "any=$any" >> "$GITHUB_OUTPUT"
+
+  lane:
+    name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lane name
+        id: key
+        run: |
+          name="${{ matrix.lane }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}"
+          echo "lane=${name//\//of}" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/nixos-vm
+
+      - name: Install dependencies
+        run: |
+          packaging/nixos/vm-run '
+            uv sync --frozen --extra dev
+            uv pip install -e "provisa-client/[dev]" -q
+          '
+
+      - name: Stack slots in the guest
+        run: |
+          packaging/nixos/vm-run '
+            uv run python -c "from tests.itest_stack import concurrent_session_limit as n; print(\"docker stack slots in the guest:\", n()); assert n() >= 1"
+          '
+
+      - name: Run lane
+        env:
+          # For the Splunk CIM fetch tests/conftest.py runs before starting splunk; ssh forwards
+          # them to the guest (SendEnv / AcceptEnv).
+          SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
+          SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
+        run: |
+          packaging/nixos/vm-run '
+            export PROVISA_TEST_SERVER_LOG_DIR="$HOME/provisa/results/server-logs"
+            uv run python scripts/ci/run_lane.py ${{ matrix.lane }} ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} --junitxml results/junit.xml
+          '
+
+      - name: Containers that were not healthy
+        if: failure()
+        run: |
+          packaging/nixos/vm-run '
+            docker ps -a --format "{{.Names}}\t{{.Status}}"
+            for c in $(docker ps -a --filter health=unhealthy --filter status=exited --format "{{.Names}}"); do
+              echo "=== $c"; docker logs --tail 200 "$c" 2>&1
+            done
+          '
+
+      - name: Results off the guest
+        if: always()
+        run: scp -F "$PROVISA_VM_SSH_CONFIG" -r vm:provisa/results "results-${{ steps.key.outputs.lane }}"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nixos-lane-${{ steps.key.outputs.lane }}
+          path: results-${{ steps.key.outputs.lane }}/
+          if-no-files-found: error
+
+      - *console

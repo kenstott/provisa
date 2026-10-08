@@ -1,0 +1,83 @@
+name: Boot the NixOS guest
+description: >-
+  Build packaging/nixos's `ci` system as a QEMU VM, boot it on this runner under KVM, and copy the
+  checkout onto its disk at ~/provisa. Afterwards `packaging/nixos/vm-run '<script>'` runs a script
+  in the guest, and PROVISA_VM_SSH_CONFIG names the ssh config (host `vm`) for scp.
+runs:
+  using: composite
+  steps:
+    # The guest's disk (Docker images, two dependency trees) and the system closure need more than
+    # the runner image leaves free. None of these toolchains is used by this job.
+    - name: Free runner disk
+      shell: bash
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        df -h /
+
+    # /dev/kvm is root-only on the runner image. Without it QEMU emulates the CPU in software and a
+    # lane takes hours, so its absence ends the job here.
+    - name: Enable KVM
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+          | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+        test -w /dev/kvm
+
+    - name: Install Nix
+      uses: cachix/install-nix-action@v31
+      with:
+        extra_nix_config: |
+          experimental-features = nix-command flakes
+
+    - name: Key for this run
+      shell: bash
+      run: |
+        ssh-keygen -q -t ed25519 -N "" -f "$RUNNER_TEMP/vm_key"
+        cp "$RUNNER_TEMP/vm_key.pub" packaging/nixos/ci_authorized_key.pub
+        cat > "$RUNNER_TEMP/vm_ssh_config" <<EOF
+        Host vm
+          HostName 127.0.0.1
+          Port 2222
+          User provisa
+          IdentityFile $RUNNER_TEMP/vm_key
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+          LogLevel ERROR
+          ServerAliveInterval 30
+          SendEnv SPLUNKBASE_USERNAME SPLUNKBASE_PASSWORD
+        EOF
+        echo "PROVISA_VM_SSH_CONFIG=$RUNNER_TEMP/vm_ssh_config" >> "$GITHUB_ENV"
+
+    # path: takes the directory as it is on disk, the run's key included; a git flake would see
+    # only tracked files.
+    - name: Build the VM
+      shell: bash
+      run: |
+        nix build "path:$GITHUB_WORKSPACE/packaging/nixos#nixosConfigurations.ci.config.system.build.vm" \
+          --out-link "$RUNNER_TEMP/vm" --print-build-logs
+
+    - name: Boot
+      shell: bash
+      env:
+        PROVISA_SRC: ${{ github.workspace }}
+        NIX_DISK_IMAGE: ${{ runner.temp }}/nixos.qcow2
+      run: |
+        nohup "$RUNNER_TEMP/vm/bin/run-provisa-nixos-vm" > "$RUNNER_TEMP/vm-console.log" 2>&1 < /dev/null &
+        qemu=$!
+        for _ in $(seq 1 60); do
+          if ssh -F "$PROVISA_VM_SSH_CONFIG" -o ConnectTimeout=5 vm true 2>/dev/null; then
+            ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'nixos-version; nproc; free -g; df -h /'
+            exit 0
+          fi
+          if ! kill -0 "$qemu" 2>/dev/null; then break; fi
+          sleep 5
+        done
+        echo "the guest did not accept ssh"
+        tail -n 200 "$RUNNER_TEMP/vm-console.log"
+        exit 1
+
+    - name: Checkout onto the guest's disk
+      shell: bash
+      run: ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'cp -r /mnt/src ~/provisa'
