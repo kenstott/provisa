@@ -363,6 +363,19 @@ def served_across_domains(role: dict, table: dict) -> bool:
     )
 
 
+def serves_table(role: dict, table: dict) -> bool:
+    """Whether ``role`` is served ``table``: at least one of its data columns, by the one column
+    rule (:func:`column_served`) — within a domain the role reaches, or published across domains
+    (REQ-1959). A parameter column is an argument, not data."""
+    domain_id = cast("str", table.get("domain_id"))
+    reaches = reaches_domain(role["domain_access"], domain_id)
+    return any(
+        not column.get("native_filter_type")
+        and column_served(role, domain_id, column, reaches=reaches)
+        for column in table.get("columns") or []
+    )
+
+
 def is_control_plane_definition(capabilities: Iterable[str] | None) -> bool:  # REQ-1337
     """True when a role's capabilities are platform rights and nothing else.
 
@@ -581,8 +594,8 @@ def compute_meta_row_scope(
     ``None`` (unfiltered) is returned for the tier that sees the whole catalog: a role holding
     the meta DOMAIN GRANT or ``*``. An empty ``domain_access`` is no domains, so such a role sees
     no meta rows at all; the role itself is required — a missing role is not a tier. Every other
-    (DEFAULT-tier) role is confined to its directly-accessible tables — those in a domain the role
-    can access — PLUS 1-hop neighbours over user-defined/semantic relationships (the ``relationships``
+    (DEFAULT-tier) role is confined to its own tables — those it is served at least one column of
+    (:func:`serves_table`) — PLUS 1-hop neighbours over user-defined/semantic relationships (the ``relationships``
     registry holds only user relationships; auto-derived FK/catalog edges are never stored there, so
     they are excluded by construction). Discovery is bidirectional, EXCEPT a relationship flagged
     ``hide_target_meta`` suppresses the TARGET from discovery via that edge (the source stays
@@ -594,13 +607,11 @@ def compute_meta_row_scope(
         return None  # meta domain grant / "*" → the whole catalog
     # An EMPTY list falls through: no domain is directly reachable, so no meta row is either.
 
-    # Its own tables: those in a domain it reaches, and those outside its domains that publish
-    # a column to it (REQ-1959) — the catalog describes what a role is served.
-    directly = {
-        t["id"]
-        for t in tables
-        if t.get("domain_id") in accessible or served_across_domains(role, t)
-    }
+    # Its own tables: exactly those it is served a column of, by the one column rule — in a
+    # domain it reaches or published to it across domains (REQ-1959). Reaching a table's domain
+    # is not enough: a table every column of which is granted to other roles is not described
+    # to this one.
+    directly = {t["id"] for t in tables if serves_table(role, t)}
     visible = set(directly)
     for rel in relationships or []:
         sid = rel.get("source_table_id")

@@ -147,12 +147,17 @@ def _row_scope_ctx() -> CompilationContext:
 
 def _data_tables() -> list[dict]:
     return [
-        {"id": _SALES_A, "domain_id": "sales", "columns": []},
-        {"id": _SALES_B, "domain_id": "sales", "columns": []},
-        {"id": _HR, "domain_id": "hr", "columns": []},
-        {"id": _FIN_OPEN, "domain_id": "finance", "columns": []},
-        {"id": _FIN_HIDDEN, "domain_id": "finance", "columns": []},
+        {"id": _SALES_A, "domain_id": "sales", "columns": _OPEN},
+        {"id": _SALES_B, "domain_id": "sales", "columns": _OPEN},
+        {"id": _HR, "domain_id": "hr", "columns": _OPEN},
+        {"id": _FIN_OPEN, "domain_id": "finance", "columns": _OPEN},
+        {"id": _FIN_HIDDEN, "domain_id": "finance", "columns": _OPEN},
     ]
+
+
+# One column open to its domain: a role's own tables are those it is served a column of
+# (REQ-1132 as narrowed with REQ-1959), so a described table needs one to be anyone's.
+_OPEN = [{"column_name": "id", "visible_to": []}]
 
 
 def _relationships() -> list[dict]:

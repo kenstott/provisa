@@ -17,6 +17,9 @@ where no column is public or restricted": each old copy is kept here as a refere
 and compared, for every role, table and column of the product's demo model and of a
 multi-domain model with the lockdown and catalog domains, against what the code computes today.
 
+One answer changes by intent: the catalog's row scope, which went by domain reach alone, is now
+the tables a role is served a column of (see the row-scope cases below).
+
 Where the old copies disagreed WITH EACH OTHER, the test says which answer the one rule takes:
 
 - ``security/visibility.py`` read ``visible_to`` literally (an empty list was nobody, ``*`` was
@@ -201,6 +204,10 @@ def _multi_domain_model() -> tuple[list[dict], list[dict]]:
 
 
 _MODELS = {"demo config": _demo_model(), "multi-domain": _multi_domain_model()}
+# In the demo config every column carries an explicit grant, so the two roles this file adds
+# that reach one domain and are named in no grant lose that domain's tables (18 + 9). No role
+# the demo config itself declares loses a table.
+_REMOVED_PAIRS = {"demo config": 27, "multi-domain": 0}
 _CASES = [
     pytest.param(tables, role, id=f"{model}/{role['id']}")
     for model, (tables, roles) in _MODELS.items()
@@ -278,9 +285,38 @@ def test_sql_governance_serves_what_it_served_within_reach(tables, role):
             assert got == set(), table["table_name"]
 
 
+def _narrowed_meta_scope(role: dict, tables: list[dict]) -> set[int] | None:
+    """The catalog row scope as intended: of the tables in a domain the role reaches, those it is
+    served at least one column of — the schema build's answer, not domain reach alone."""
+    old = _old_meta_scope(role, tables)
+    if old is None:
+        return None
+    return old & set(_old_schema_served(role, tables))
+
+
 @pytest.mark.parametrize("tables, role", _CASES)
-def test_the_catalog_row_scope_is_what_it_was(tables, role):
-    assert compute_meta_row_scope(role, tables, []) == _old_meta_scope(role, tables)
+def test_the_catalog_row_scope_is_the_tables_the_role_is_served(tables, role):
+    """The ONE intended change of the consolidation. The row scope went by domain reach alone:
+    a role that reached a domain was shown the catalog rows of a table every column of which was
+    granted to other roles. It is now the tables the role is served a column of."""
+    scope = compute_meta_row_scope(role, tables, [])
+    assert scope == _narrowed_meta_scope(role, tables)
+    old = _old_meta_scope(role, tables)
+    assert scope is None if old is None else scope <= old, "never wider than it was"
+
+
+def test_how_many_role_table_pairs_the_narrowing_removes():
+    """Stated, so a change to the fixture models or the rule shows up here: the (role, table)
+    pairs that were in the row scope by domain reach and are served no column."""
+    removed = {}
+    for model, (tables, roles) in _MODELS.items():
+        removed[model] = sorted(
+            (role["id"], table_id)
+            for role in roles
+            if (old := _old_meta_scope(role, tables)) is not None
+            for table_id in old - set(_old_schema_served(role, tables))
+        )
+    assert {model: len(pairs) for model, pairs in removed.items()} == _REMOVED_PAIRS, removed
 
 
 @pytest.mark.parametrize("tables, role", _CASES)
@@ -314,3 +350,21 @@ def test_the_visibility_helper_now_answers_as_the_schema_build(tables, role):
         if by_table[table_id]["domain_id"] in _LOCKDOWN:
             continue
         assert set(columns) <= listed.get(table_id, set()), by_table[table_id]["table_name"]
+
+
+def test_a_table_granted_wholly_to_other_roles_is_not_in_a_reaching_roles_catalog():
+    """The narrowing, directly: both roles reach hr; only the one granted a column of
+    ``payroll`` has its catalog rows. A 1-hop neighbour is still discovered through a
+    relationship from a table the role is served."""
+    tables = [
+        _table(1, "hr", "staff", [_column("id")]),
+        _table(2, "hr", "payroll", [_column("amount", ["payroll_clerk"])]),
+    ]
+    reader = {"id": "hr_reader", "domain_access": ["hr"], "capabilities": []}
+    clerk = {"id": "payroll_clerk", "domain_access": ["hr"], "capabilities": []}
+    assert compute_meta_row_scope(reader, tables, []) == {1}
+    assert compute_meta_row_scope(clerk, tables, []) == {1, 2}
+    edge = [{"source_table_id": 1, "target_table_id": 2}]
+    assert compute_meta_row_scope(reader, tables, edge) == {1, 2}
+    hidden = [{"source_table_id": 1, "target_table_id": 2, "hide_target_meta": True}]
+    assert compute_meta_row_scope(reader, tables, hidden) == {1}
