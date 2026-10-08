@@ -21,6 +21,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from provisa.core.config_loader import _validate_table_live_delivery
+from provisa.core.models import SourceCdcConfig
+
+# The validator reads the block's registry settings (REQ-1951), so the stand-in is the real model.
+_CDC = SourceCdcConfig(bootstrap_servers="kafka:9092", topic_prefix="dbz")
 
 
 def _cfg(
@@ -56,7 +60,7 @@ class TestValidateLiveDelivery:
 
     def test_debezium_on_postgres_with_cdc_ok(self):
         _validate_table_live_delivery(
-            _cfg(strategy="debezium", source_type="postgresql", source_cdc=object())
+            _cfg(strategy="debezium", source_type="postgresql", source_cdc=_CDC)
         )
 
     def test_debezium_on_postgres_without_cdc_raises(self):
@@ -68,7 +72,7 @@ class TestValidateLiveDelivery:
     def test_kafka_without_params_raises(self):
         with pytest.raises(ValueError, match="requires a kafka params block"):
             _validate_table_live_delivery(
-                _cfg(strategy="kafka", source_type="postgresql", kafka=None, source_cdc=object())
+                _cfg(strategy="kafka", source_type="postgresql", kafka=None, source_cdc=_CDC)
             )
 
     @pytest.mark.parametrize("stype", ["snowflake", "sqlite", "mongodb"])
