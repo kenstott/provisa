@@ -73,7 +73,7 @@ class TestDatasetChangeEvents:
         assert result is None
 
     async def test_emit_change_event_with_mock_producer(self):
-        # REQ-172: emit_change_event calls producer.produce with table, source, timestamp
+        # REQ-172: emit_change_event hands the producer the table, source and timestamp
         import json
 
         from provisa.kafka.change_events import emit_change_event
@@ -81,13 +81,12 @@ class TestDatasetChangeEvents:
         mock_producer = MagicMock()
         produced_calls: list[dict] = []
 
-        def _capture_produce(topic, key, value):
+        def _capture_produce(topic, value, key=None):
             produced_calls.append(
                 {"topic": topic, "key": key.decode(), "value": json.loads(value.decode())}
             )
 
-        mock_producer.produce.side_effect = _capture_produce
-        mock_producer.poll.return_value = 0
+        mock_producer.send.side_effect = _capture_produce
 
         with patch("provisa.kafka.change_events._producer", mock_producer):
             emit_change_event("orders", "sales-pg", "insert")
@@ -109,11 +108,10 @@ class TestDatasetChangeEvents:
         mock_producer = MagicMock()
         produced: list[dict] = []
 
-        def _capture(topic, key, value):
+        def _capture(topic, value, key=None):
             produced.append(json.loads(value.decode()))
 
-        mock_producer.produce.side_effect = _capture
-        mock_producer.poll.return_value = 0
+        mock_producer.send.side_effect = _capture
 
         with patch("provisa.kafka.change_events._producer", mock_producer):
             emit_change_event("customers", "crm-pg")
@@ -129,11 +127,10 @@ class TestDatasetChangeEvents:
         mock_producer = MagicMock()
         produced: list[dict] = []
 
-        def _capture(topic, key, value):
+        def _capture(topic, value, key=None):
             produced.append(json.loads(value.decode()))
 
-        mock_producer.produce.side_effect = _capture
-        mock_producer.poll.return_value = 0
+        mock_producer.send.side_effect = _capture
 
         with patch("provisa.kafka.change_events._producer", mock_producer):
             emit_change_event("orders", "sales-pg", "delete")
@@ -157,10 +154,9 @@ class TestDatasetChangeEvents:
         calls: list[str] = []
 
         mock_producer = MagicMock()
-        mock_producer.produce.side_effect = lambda topic, key, value: calls.append(
+        mock_producer.send.side_effect = lambda topic, value, key=None: calls.append(
             json.loads(value.decode())["table"]
         )
-        mock_producer.poll.return_value = 0
 
         with patch("provisa.kafka.change_events._producer", mock_producer):
             emit_change_event("orders", "sales-pg", "update")
@@ -176,11 +172,10 @@ class TestDatasetChangeEvents:
         mock_producer = MagicMock()
         produced: list[dict] = []
 
-        def _capture(topic, key, value):
+        def _capture(topic, value, key=None):
             produced.append(json.loads(value.decode()))
 
-        mock_producer.produce.side_effect = _capture
-        mock_producer.poll.return_value = 0
+        mock_producer.send.side_effect = _capture
 
         with patch("provisa.kafka.change_events._producer", mock_producer):
             emit_change_event("etl_table", "warehouse-pg", "touch")
@@ -207,18 +202,20 @@ class TestDatasetChangeEvents:
             topic = _get_topic()
         assert topic == "provisa.change-events"
 
-    async def test_emit_change_event_producer_failure_does_not_raise(self):
-        # REQ-172: producer failure is swallowed — mutation pipeline must not abort
-        from provisa.kafka.change_events import emit_change_event
+    async def test_an_unreachable_broker_does_not_fail_the_write_that_emitted(self):
+        # REQ-172: the write that causes a change event does not wait on the broker and is not
+        # failed by it. A real producer, pointed at a port nothing listens on.
+        from provisa.kafka import change_events
+        from provisa.kafka.producer import Producer
+        from tests.port_lease import lease_port
 
-        mock_producer = MagicMock()
-        mock_producer.produce.side_effect = RuntimeError("Kafka down")
-
-        with patch("provisa.kafka.change_events._producer", mock_producer):
-            # Must not propagate the RuntimeError
-            result = emit_change_event("orders", "sales-pg", "insert")
-        assert result is None
-        assert mock_producer.produce.called
+        producer = Producer(f"127.0.0.1:{lease_port()}", client_id="unreachable-broker-test")
+        try:
+            with patch("provisa.kafka.change_events._producer", producer):
+                assert change_events.emit_change_event("orders", "sales-pg", "insert") is None
+        finally:
+            await producer.stop()
+        assert producer._task.done()  # noqa: SLF001 - its thread ended, the event undelivered
 
 
 # ---------------------------------------------------------------------------

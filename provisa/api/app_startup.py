@@ -555,6 +555,12 @@ async def _start_servers(_log: logging.Logger) -> None:
         # unexpected and propagates loudly.
         _log.exception("MCP server startup failed")
 
+    # REQ-172: change events are on when the deployment names a broker for them; the producer is
+    # this process's, started here and stopped by the lifespan.
+    from provisa.kafka import change_events
+
+    change_events.start()
+
     # REQ-1120: airport Flight service (opt-in via PROVISA_AIRPORT_PORT). Serves the DuckDB
     # `airport` community-extension protocol over the governed query pipeline. Isolated hook.
     try:

@@ -90,271 +90,132 @@ class TestChangeEventTopic:
 
 
 # ---------------------------------------------------------------------------
-# TestGetProducer
+# The change-event producer: started for a named broker, by the lifespan
 # ---------------------------------------------------------------------------
 
 
-class TestGetProducer:
-    @pytest.fixture(autouse=True)
-    def reset_producer(self):
-        ce._producer = None
-        yield
-        ce._producer = None
+class _RecordingProducer:
+    """Stands in for provisa.kafka.producer.Producer: what it was built with and handed."""
 
-    def test_returns_none_when_no_bootstrap_env(self, monkeypatch):
-        monkeypatch.delenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", raising=False)
-        monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
-        assert ce._get_producer() is None
+    built: list["_RecordingProducer"] = []
 
-    def test_uses_provisa_change_event_bootstrap(self, monkeypatch):
+    def __init__(self, bootstrap_servers: str, *, client_id: str) -> None:
+        self.bootstrap, self.client_id = bootstrap_servers, client_id
+        self.sent: list[tuple[str, bytes, bytes | None]] = []
+        self.stopped = False
+        _RecordingProducer.built.append(self)
+
+    def send(self, topic: str, value: bytes, key: bytes | None = None) -> None:
+        self.sent.append((topic, value, key))
+
+    async def stop(self) -> None:
+        self.stopped = True
+
+
+@pytest.fixture
+def producers(monkeypatch):
+    """Change events with a recording producer, and none started."""
+    _RecordingProducer.built = []
+    monkeypatch.setattr(ce, "Producer", _RecordingProducer)
+    monkeypatch.setattr(ce, "_producer", None)
+    monkeypatch.delenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", raising=False)
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.delenv("PROVISA_CHANGE_EVENT_TOPIC", raising=False)
+    return _RecordingProducer.built
+
+
+class TestStart:
+    def test_no_broker_named_means_no_producer_and_no_log(self, producers, caplog):
+        """Not naming a broker is configuration: nothing is started, nothing is said."""
+        with caplog.at_level("DEBUG"):
+            ce.start()
+            ce.emit_change_event("orders", "pg-main", "insert")
+        assert producers == [] and ce.bootstrap_servers() is None
+        assert not caplog.records
+
+    def test_the_change_event_broker_is_used(self, producers, monkeypatch):
         monkeypatch.setenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", "broker1:9092")
-        monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+        ce.start()
+        (producer,) = producers
+        assert (producer.bootstrap, producer.client_id) == ("broker1:9092", "provisa-change-events")
 
-        mock_producer = MagicMock()
-        mock_confluent = MagicMock()
-        mock_confluent.Producer.return_value = mock_producer
+    def test_the_deployments_kafka_broker_is_used_when_no_other_is_named(
+        self, producers, monkeypatch
+    ):
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "fallback:9092")
+        ce.start()
+        assert [p.bootstrap for p in producers] == ["fallback:9092"]
 
-        with patch.dict("sys.modules", {"confluent_kafka": mock_confluent}):
-            result = ce._get_producer()
-
-        assert result is mock_producer
-        mock_confluent.Producer.assert_called_once_with({"bootstrap.servers": "broker1:9092"})
-
-    def test_uses_kafka_bootstrap_servers_fallback(self, monkeypatch):
-        monkeypatch.delenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", raising=False)
-        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "fallback-broker:9092")
-
-        mock_producer = MagicMock()
-        mock_confluent = MagicMock()
-        mock_confluent.Producer.return_value = mock_producer
-
-        with patch.dict("sys.modules", {"confluent_kafka": mock_confluent}):
-            result = ce._get_producer()
-
-        assert result is mock_producer
-        mock_confluent.Producer.assert_called_once_with(
-            {"bootstrap.servers": "fallback-broker:9092"}
-        )
-
-    def test_provisa_bootstrap_takes_priority_over_fallback(self, monkeypatch):
+    def test_the_change_event_broker_wins_over_the_deployments(self, producers, monkeypatch):
         monkeypatch.setenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", "primary:9092")
-        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "secondary:9092")
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "fallback:9092")
+        ce.start()
+        assert [p.bootstrap for p in producers] == ["primary:9092"]
 
-        mock_confluent = MagicMock()
-        mock_confluent.Producer.return_value = MagicMock()
+    def test_one_producer_per_process(self, producers, monkeypatch):
+        monkeypatch.setenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", "broker1:9092")
+        ce.start()
+        ce.start()
+        assert len(producers) == 1
 
-        with patch.dict("sys.modules", {"confluent_kafka": mock_confluent}):
-            ce._get_producer()
+    async def test_stop_stops_the_producer_and_emits_nothing_after(self, producers, monkeypatch):
+        monkeypatch.setenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", "broker1:9092")
+        ce.start()
+        await ce.stop()
+        (producer,) = producers
+        assert producer.stopped
+        ce.emit_change_event("orders", "pg-main", "insert")
+        assert producer.sent == []
 
-        mock_confluent.Producer.assert_called_once_with({"bootstrap.servers": "primary:9092"})
-        assert mock_confluent.Producer.call_args == (
-            ({"bootstrap.servers": "primary:9092"},),
-            {},
-        )
-
-    def test_returns_none_when_confluent_kafka_raises(self, monkeypatch):
-        monkeypatch.setenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", "broker:9092")
-
-        mock_confluent = MagicMock()
-        mock_confluent.Producer.side_effect = RuntimeError("connection refused")
-
-        with patch.dict("sys.modules", {"confluent_kafka": mock_confluent}):
-            result = ce._get_producer()
-
-        assert result is None
-
-    def test_returns_cached_producer_on_second_call(self, monkeypatch):
-        monkeypatch.setenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", "broker:9092")
-
-        mock_producer = MagicMock()
-        mock_confluent = MagicMock()
-        mock_confluent.Producer.return_value = mock_producer
-
-        with patch.dict("sys.modules", {"confluent_kafka": mock_confluent}):
-            first = ce._get_producer()
-            second = ce._get_producer()
-
-        assert first is second
-        # Producer() constructor called only once despite two _get_producer() calls
-        assert mock_confluent.Producer.call_count == 1
-
-    def test_reset_global_produces_fresh_producer(self, monkeypatch):
-        monkeypatch.setenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", "broker:9092")
-
-        mock_confluent = MagicMock()
-        mock_confluent.Producer.side_effect = [MagicMock(), MagicMock()]
-
-        with patch.dict("sys.modules", {"confluent_kafka": mock_confluent}):
-            first = ce._get_producer()
-            ce._producer = None
-            second = ce._get_producer()
-
-        assert first is not second
-        assert mock_confluent.Producer.call_count == 2
+    async def test_stop_with_no_producer_does_nothing(self, producers):
+        await ce.stop()
+        assert producers == []
 
 
 # ---------------------------------------------------------------------------
-# TestEmitChangeEvent
+# emit_change_event (REQ-172..175)
 # ---------------------------------------------------------------------------
 
 
 class TestEmitChangeEvent:
-    @pytest.fixture(autouse=True)
-    def reset_producer(self):
-        ce._producer = None
-        yield
-        ce._producer = None
+    @pytest.fixture
+    def producer(self, producers, monkeypatch):
+        monkeypatch.setenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", "broker1:9092")
+        ce.start()
+        return producers[0]
 
-    def test_does_nothing_when_no_producer(self, monkeypatch):
-        monkeypatch.delenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", raising=False)
-        monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    def test_the_event_goes_to_the_default_topic(self, producer):
+        ce.emit_change_event("orders", "pg-main", "insert")
+        assert [topic for topic, _value, _key in producer.sent] == ["provisa.change-events"]
 
-        mock_confluent = MagicMock()
-        with patch.dict("sys.modules", {"confluent_kafka": mock_confluent}):
-            ce.emit_change_event("orders", "pg-main", "insert")
+    def test_the_event_goes_to_the_named_topic(self, producer, monkeypatch):
+        monkeypatch.setenv("PROVISA_CHANGE_EVENT_TOPIC", "custom.events")
+        ce.emit_change_event("orders", "pg-main", "insert")
+        assert [topic for topic, _value, _key in producer.sent] == ["custom.events"]
 
-        # No producer was created, so produce() must never be called
-        mock_confluent.Producer.assert_not_called()
-        assert mock_confluent.Producer.call_count == 0
+    def test_the_event_names_the_table_its_source_and_what_changed(self, producer):
+        ce.emit_change_event("orders", "pg-main", "update")
+        (_topic, value, _key) = producer.sent[0]
+        payload = json.loads(value.decode())
+        assert (payload["table"], payload["source"], payload["type"]) == (
+            "orders",
+            "pg-main",
+            "update",
+        )
+        assert set(payload) == {"table", "source", "type", "timestamp"}  # no row-level detail
 
-    def test_calls_produce_with_correct_topic(self, monkeypatch):
-        monkeypatch.delenv("PROVISA_CHANGE_EVENT_TOPIC", raising=False)
-        mock_producer = MagicMock()
+    def test_the_event_carries_when_in_iso_format(self, producer):
+        ce.emit_change_event("orders", "pg-main", "delete")
+        payload = json.loads(producer.sent[0][1].decode())
+        assert datetime.fromisoformat(payload["timestamp"]).tzinfo is not None
 
-        with patch("provisa.kafka.change_events._get_producer", return_value=mock_producer):
-            ce.emit_change_event("orders", "pg-main", "insert")
+    def test_the_message_key_is_source_dot_table(self, producer):
+        ce.emit_change_event("orders", "pg-main", "insert")
+        assert producer.sent[0][2] == b"pg-main.orders"
 
-        topic_arg = mock_producer.produce.call_args[0][0]
-        assert topic_arg == "provisa.change-events"
-
-    def test_calls_produce_with_custom_topic(self, monkeypatch):
-        monkeypatch.setenv("PROVISA_CHANGE_EVENT_TOPIC", "custom.topic")
-        mock_producer = MagicMock()
-
-        with patch("provisa.kafka.change_events._get_producer", return_value=mock_producer):
-            ce.emit_change_event("orders", "pg-main", "insert")
-
-        topic_arg = mock_producer.produce.call_args[0][0]
-        assert topic_arg == "custom.topic"
-
-    def test_event_payload_contains_required_fields(self, monkeypatch):
-        monkeypatch.delenv("PROVISA_CHANGE_EVENT_TOPIC", raising=False)
-        mock_producer = MagicMock()
-
-        with patch("provisa.kafka.change_events._get_producer", return_value=mock_producer):
-            ce.emit_change_event("orders", "pg-main", "update")
-
-        call_kwargs = mock_producer.produce.call_args[1]
-        payload = json.loads(call_kwargs["value"].decode())
-
-        assert payload["table"] == "orders"
-        assert payload["source"] == "pg-main"
-        assert payload["type"] == "update"
-        assert "timestamp" in payload
-
-    def test_event_timestamp_is_iso_format(self):
-        mock_producer = MagicMock()
-
-        with patch("provisa.kafka.change_events._get_producer", return_value=mock_producer):
-            ce.emit_change_event("orders", "pg-main", "delete")
-
-        call_kwargs = mock_producer.produce.call_args[1]
-        payload = json.loads(call_kwargs["value"].decode())
-        # Should parse without raising
-        dt = datetime.fromisoformat(payload["timestamp"])
-        assert dt.tzinfo is not None  # Must be timezone-aware
-
-    def test_message_key_is_source_dot_table_encoded(self):
-        mock_producer = MagicMock()
-
-        with patch("provisa.kafka.change_events._get_producer", return_value=mock_producer):
-            ce.emit_change_event("orders", "pg-main", "insert")
-
-        call_kwargs = mock_producer.produce.call_args[1]
-        assert call_kwargs["key"] == b"pg-main.orders"
-
-    def test_handles_produce_exception_gracefully(self):
-        mock_producer = MagicMock()
-        mock_producer.produce.side_effect = RuntimeError("broker unavailable")
-
-        with patch("provisa.kafka.change_events._get_producer", return_value=mock_producer):
-            # Must not raise
-            ce.emit_change_event("orders", "pg-main", "insert")
-
-        # produce() was called despite the exception being swallowed
-        mock_producer.produce.assert_called_once()
-        assert mock_producer.produce.call_count == 1
-
-    def test_calls_poll_zero_after_produce(self):
-        mock_producer = MagicMock()
-
-        with patch("provisa.kafka.change_events._get_producer", return_value=mock_producer):
-            ce.emit_change_event("orders", "pg-main", "insert")
-
-        mock_producer.poll.assert_called_once_with(0)
-        assert mock_producer.poll.call_args == ((0,), {})
-
-    def test_poll_not_called_when_produce_raises(self):
-        """poll() should not be called if produce() throws."""
-        mock_producer = MagicMock()
-        mock_producer.produce.side_effect = RuntimeError("broker down")
-
-        with patch("provisa.kafka.change_events._get_producer", return_value=mock_producer):
-            ce.emit_change_event("orders", "pg-main", "insert")
-
-        mock_producer.poll.assert_not_called()
-        assert mock_producer.poll.call_count == 0
-
-    def test_default_mutation_type(self):
-        mock_producer = MagicMock()
-
-        with patch("provisa.kafka.change_events._get_producer", return_value=mock_producer):
-            ce.emit_change_event("orders", "pg-main")
-
-        call_kwargs = mock_producer.produce.call_args[1]
-        payload = json.loads(call_kwargs["value"].decode())
-        assert payload["type"] == "mutation"
-
-
-# ---------------------------------------------------------------------------
-# TestFlush
-# ---------------------------------------------------------------------------
-
-
-class TestFlush:
-    @pytest.fixture(autouse=True)
-    def reset_producer(self):
-        ce._producer = None
-        yield
-        ce._producer = None
-
-    def test_flush_calls_producer_flush_with_timeout_5(self):
-        mock_producer = MagicMock()
-        ce._producer = mock_producer
-
-        ce.flush()
-
-        mock_producer.flush.assert_called_once_with(timeout=5)
-        assert mock_producer.flush.call_count == 1
-
-    def test_flush_does_nothing_when_producer_is_none(self):
-        ce._producer = None
-        # Must complete without raising
-        ce.flush()
-        # Global producer must still be None — flush() must not create one
-        assert ce._producer is None
-
-    def test_flush_only_flushes_existing_producer(self):
-        mock_producer = MagicMock()
-        ce._producer = mock_producer
-
-        ce.flush()
-        ce._producer = None
-        ce.flush()
-
-        # Only one flush call despite two ce.flush() invocations
-        mock_producer.flush.assert_called_once()
-        assert mock_producer.flush.call_count == 1
+    def test_the_default_kind_of_change_is_mutation(self, producer):
+        ce.emit_change_event("orders", "pg-main")
+        assert json.loads(producer.sent[0][1].decode())["type"] == "mutation"
 
 
 # ---------------------------------------------------------------------------

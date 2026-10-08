@@ -3120,6 +3120,14 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         state._scheduler_holder.close()
         state._scheduler_holder = None
 
+    # REQ-172: the change events already emitted are sent, and their producer stopped, while its
+    # thread is still its own to end -- before the long-lived threads are stopped below, and
+    # after everything that writes (the listeners, the scheduler) has stopped.
+    with tolerate_shutdown_failure("change event producer stop"):
+        from provisa.kafka import change_events
+
+        await change_events.stop()
+
     # REQ-1882: stop the background worker pool, its timer and long-lived threads before the
     # databases and engines they use close below. Blocking (bounded) — run off the process loop.
     from provisa.audit.writer import shutdown_audit_writer

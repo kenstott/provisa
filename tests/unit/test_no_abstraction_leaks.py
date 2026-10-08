@@ -152,7 +152,6 @@ OWNERS: dict[str, set[str]] = {
     "confluent_kafka": {
         "provisa/kafka/sink.py",  # delivery, not federated querying — see Context
         "provisa/kafka/sink_executor.py",  # re-executes + delivers to a sink, same role
-        "provisa/kafka/change_events.py",  # change-event publisher, same delivery role
     },
     "aiokafka": {
         "provisa/kafka/source.py",  # kafka as federated source, per owner map
@@ -160,6 +159,9 @@ OWNERS: dict[str, set[str]] = {
         # an adapter loader for materializing a kafka source under an engine with no live
         # connector for it (draining a topic from earliest offset, not delivery/sink work).
         "provisa/kafka/fetch.py",
+        # The product's producer (change events): delivery through the one Kafka client the
+        # product ships, not federated querying.
+        "provisa/kafka/producer.py",
     },
     "kafka": set(),
     "aiomysql": {

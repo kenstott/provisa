@@ -12,6 +12,11 @@
 
 Emits lightweight change events to Kafka when mutations modify data.
 Events contain no row-level detail — just which dataset changed and when.
+
+Change events are on when the deployment names a broker for them
+(``PROVISA_CHANGE_EVENT_BOOTSTRAP``, else ``KAFKA_BOOTSTRAP_SERVERS``): the lifespan then starts
+the producer (:func:`start`) and stops it (:func:`stop`). With no broker named there is no
+producer and nothing is emitted; that is configuration, and nothing is logged about it.
 """
 
 from __future__ import annotations
@@ -21,40 +26,45 @@ import logging
 import os
 from datetime import datetime, timezone
 
+from provisa.kafka.producer import Producer
+
 # Requirements: REQ-172, REQ-173, REQ-174, REQ-175
 
 log = logging.getLogger(__name__)
 
-_producer = None
-_topic = None
+_producer: Producer | None = None
 
 
 def _get_topic() -> str:  # REQ-175
     return os.environ.get("PROVISA_CHANGE_EVENT_TOPIC", "provisa.change-events")
 
 
-def _get_producer():
-    """Lazy-init Kafka producer. Returns None if Kafka unavailable."""
+def bootstrap_servers() -> str | None:
+    """The broker change events go to, or None when the deployment names none."""
+    return (
+        os.environ.get("PROVISA_CHANGE_EVENT_BOOTSTRAP")
+        or os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
+        or None
+    )
+
+
+def start() -> None:
+    """Start the change-event producer when a broker is named for it. Called once per process,
+    by the lifespan."""
     global _producer
-    if _producer is not None:
-        return _producer
+    bootstrap = bootstrap_servers()
+    if bootstrap is None or _producer is not None:
+        return
+    _producer = Producer(bootstrap, client_id="provisa-change-events")
+    log.info("change events are sent to %s on %s", _get_topic(), bootstrap)
 
-    bootstrap = os.environ.get("PROVISA_CHANGE_EVENT_BOOTSTRAP")
-    if not bootstrap:
-        # Try the first kafka_source bootstrap from config
-        bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
-    if not bootstrap:
-        return None
 
-    try:
-        from confluent_kafka import Producer  # pyright: ignore[reportMissingImports]
-
-        _producer = Producer({"bootstrap.servers": bootstrap})
-        log.info("Change event producer connected to %s", bootstrap)
-        return _producer
-    except Exception:
-        log.warning("Failed to create change event producer", exc_info=True)
-        return None
+async def stop() -> None:
+    """Send the change events already emitted and stop the producer. Called by the lifespan."""
+    global _producer
+    producer, _producer = _producer, None
+    if producer is not None:
+        await producer.stop()
 
 
 def emit_change_event(  # REQ-172, REQ-173, REQ-174
@@ -64,36 +74,25 @@ def emit_change_event(  # REQ-172, REQ-173, REQ-174
 ) -> None:
     """Emit a dataset change event to Kafka.
 
+    Returns at once: the event is handed to the producer's own thread, so the write that caused
+    it neither waits on the broker nor fails with it (an event that cannot be delivered is
+    dropped, and the producer logs why).
+
     Args:
         table_name: The table that was modified.
         source_id: The source containing the table.
         mutation_type: Type of change (e.g., "insert", "update", "delete", "mutation").
     """
-    producer = _get_producer()
-    if producer is None:
+    if _producer is None:
         return
-
-    topic = _get_topic()
     event = {
         "table": table_name,
         "source": source_id,
         "type": mutation_type,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-
-    try:
-        producer.produce(
-            topic,
-            key=f"{source_id}.{table_name}".encode(),
-            value=json.dumps(event).encode(),
-        )
-        producer.poll(0)  # Trigger delivery callbacks without blocking
-        log.debug("Change event emitted: %s.%s", source_id, table_name)
-    except Exception:
-        log.warning("Failed to emit change event for %s.%s", source_id, table_name, exc_info=True)
-
-
-def flush() -> None:  # REQ-172
-    """Flush any buffered change events. Call on shutdown."""
-    if _producer is not None:
-        _producer.flush(timeout=5)
+    _producer.send(
+        _get_topic(),
+        json.dumps(event).encode(),
+        key=f"{source_id}.{table_name}".encode(),
+    )
