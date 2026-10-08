@@ -43,6 +43,10 @@ import type { CatalogSetting, SettingsCatalog } from "../../api/admin";
 import { SaveRow } from "./settingsCards";
 import { CARD_GROUPS } from "./settingGroups";
 
+const SETTING_COLS = { base: 1, "30rem": 2, "46rem": 3 };
+const FULL_ROW = { gridColumn: "1 / -1" } as const;
+const isFullRow = (s: CatalogSetting) => s.type === "list" || s.type === "map";
+
 const present = (v: unknown) => v !== null && v !== undefined;
 
 function toDraft(v: unknown, type: CatalogSetting["type"]): string {
@@ -481,6 +485,21 @@ export function CatalogCard({
   // A setting has an error when its own field has one or, for a map, when one of its rows has.
   const hasError = (s: CatalogSetting) =>
     Boolean(errors[s.key]) || (rowKeys(s) ?? []).some((mk) => Boolean(errors[rowId(s, mk)]));
+  // Fields flow into columns by the card's own width (a container query), the way the data product
+  // form's panels do; long-valued settings (lists, maps) take the whole row.
+  const fieldGrid = (list: CatalogSetting[], testId: string) => (
+    <SimpleGrid type="container" cols={SETTING_COLS} spacing="md" data-testid={testId}>
+      {list.map((s) => (
+        <Box
+          key={s.key}
+          style={isFullRow(s) ? FULL_ROW : undefined}
+          data-testid={isFullRow(s) ? `${testId}-full-${s.key}` : undefined}
+        >
+          {field(s)}
+        </Box>
+      ))}
+    </SimpleGrid>
+  );
   const groups: { id: string; settings: CatalogSetting[] }[] = [];
   if (groupBy) {
     for (const s of settings) {
@@ -513,26 +532,13 @@ export function CatalogCard({
                 </Text>
               </Accordion.Control>
               <Accordion.Panel>
-                {/* A flow layout: fields sit side by side and wrap to the next line as needed. */}
-                <Group
-                  wrap="wrap"
-                  align="flex-start"
-                  gap="md"
-                  style={{ flexWrap: "wrap" }}
-                  data-testid={`settings-group-${g.id}-flow`}
-                >
-                  {g.settings.map((s) => (
-                    <Box key={s.key} style={{ flex: "1 1 260px", minWidth: 260 }}>
-                      {field(s)}
-                    </Box>
-                  ))}
-                </Group>
+                {fieldGrid(g.settings, `settings-group-${g.id}-flow`)}
               </Accordion.Panel>
             </Accordion.Item>
           ))}
         </Accordion>
       ) : (
-        <Stack gap="sm">{settings.map(field)}</Stack>
+        fieldGrid(settings, "settings-card-grid")
       )}
       <SaveRow save={save} saving={saving} msg={msg} />
       <Modal

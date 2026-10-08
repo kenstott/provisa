@@ -258,6 +258,19 @@ describe("SettingField", () => {
 });
 
 describe("CatalogCard", () => {
+  it("lays an ungrouped card out as a container-query grid; lists and maps take the full row", () => {
+    // jsdom does no layout: this proves the structure, not the column count at a given width.
+    const list = mk({ key: "limits.allowed_hosts", type: "list", value: ["a"], stored: ["a"] });
+    wrap(<CatalogCard title="Limits" settings={[num, list]} onSave={vi.fn()} />);
+    const grid = screen.getByTestId("settings-card-grid");
+    expect(grid.className).toMatch(/SimpleGrid/);
+    expect(grid).toContainElement(screen.getByTestId(id(num.key)));
+    expect(screen.getByTestId(`settings-card-grid-full-${list.key}`).style.gridColumn).toBe(
+      "1 / -1",
+    );
+    expect(screen.queryByTestId(`settings-card-grid-full-${num.key}`)).toBeNull();
+  });
+
   it("refuses bad numbers before calling save", async () => {
     const onSave = vi.fn();
     wrap(<CatalogCard title="Limits" settings={[num]} onSave={onSave} />);
@@ -654,7 +667,8 @@ describe("network settings grouped by transport", () => {
     expect(flow("general")).toContainElement(screen.getByTestId("setting-server.hostname"));
     expect(flow("general")).toContainElement(screen.getByTestId("setting-tls.cert"));
     expect(flow("grpc")).not.toContainElement(screen.getByTestId("setting-server.flight_port"));
-    expect(flow("grpc").style.flexWrap).toBe("wrap");
+    // The panel is a container-query grid, so its columns follow the panel's own width.
+    expect(flow("grpc").className).toMatch(/SimpleGrid/);
   });
 
   it("opens the panel of the transport whose setting has an error", async () => {
