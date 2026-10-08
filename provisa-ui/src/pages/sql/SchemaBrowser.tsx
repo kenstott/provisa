@@ -12,7 +12,8 @@ import React, { useMemo, useState } from "react";
 import { ActionIcon, ScrollArea, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { ChevronRight, ChevronDown, Table2, Columns3, Info, Sigma } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { normalizeDomain, groupModelingTables } from "./sqlHelpers";
+import { groupModelingTables } from "./sqlHelpers";
+import { columnSqlRef, tableSqlRef } from "../../naming";
 import { DOMAIN_PAGE_SIZE } from "./types";
 import type { TopTab } from "./types";
 import type { Domain, Metric } from "../../types/admin";
@@ -51,7 +52,7 @@ function ModelingTableRow({
   group: string;
 }) {
   const { t } = useTranslation();
-  const ref = `"${normalizeDomain(tbl.domainId)}"."${tbl.alias || tbl.tableName}"`;
+  const ref = tableSqlRef(tbl);
   return (
     <UnstyledButton
       onClick={() => insertAtCursor(ref)}
@@ -397,10 +398,7 @@ export function SchemaBrowser({
                                     }
                                     onDoubleClick={
                                       topTab === "sql"
-                                        ? () =>
-                                            insertAtCursor(
-                                              `"${normalizeDomain(tbl.domainId)}"."${tbl.alias || tbl.tableName}"`,
-                                            )
+                                        ? () => insertAtCursor(tableSqlRef(tbl))
                                         : undefined
                                     }
                                   >
@@ -421,11 +419,7 @@ export function SchemaBrowser({
                                     </span>
                                   </UnstyledButton>
                                   <ActionIcon
-                                    onClick={() =>
-                                      insertAtCursor(
-                                        `"${normalizeDomain(tbl.domainId)}"."${tbl.alias || tbl.tableName}"`,
-                                      )
-                                    }
+                                    onClick={() => insertAtCursor(tableSqlRef(tbl))}
                                     aria-label={t("schemaBrowser.insertTableReference")}
                                     title={t("schemaBrowser.insertTableReference")}
                                     variant="subtle"
@@ -482,9 +476,7 @@ export function SchemaBrowser({
                                       <UnstyledButton
                                         onClick={() =>
                                           topTab === "sql"
-                                            ? insertAtCursor(
-                                                `"${tbl.alias || tbl.tableName}"."${col.columnName}"`,
-                                              )
+                                            ? insertAtCursor(columnSqlRef(tbl, col.columnName))
                                             : undefined
                                         }
                                         data-testid={`schema-column-${tbl.tableName}-${col.columnName}`}

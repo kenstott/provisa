@@ -32,6 +32,7 @@ import {
   requiredParamColumns,
   requiredParamsSatisfied,
 } from "./nativeParams";
+import { tableSqlRef } from "../naming";
 
 // REQ-1444: rows per statement while reading the whole relation for an export. Larger than any
 // on-screen page size (the reader is a file, not a viewport) and still bounded, so one export is a
@@ -136,7 +137,7 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
     const entries: ProvenanceEntry[] = [
       {
         label: t("tablePreview.provRelation"),
-        value: `${table.domainId}.${table.alias || table.tableName}`,
+        value: tableSqlRef(table),
       },
       { label: t("tablePreview.provRegistered"), value: `${table.schemaName}.${table.tableName}` },
       { label: t("tablePreview.provSource"), value: table.sourceId },

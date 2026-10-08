@@ -10,10 +10,6 @@
 
 import type { RegisteredTable } from "../../types/admin";
 
-export function normalizeDomain(domain: string): string {
-  return domain.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
-}
-
 /** Map a RegisteredTable to the full TableInput payload for updateTable. Shared by the
  * table edit form and the REQ-1318 view definition-mode editor so both send the same
  * complete input (updateTable takes the whole TableInput). */

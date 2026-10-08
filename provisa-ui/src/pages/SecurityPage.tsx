@@ -59,6 +59,7 @@ import {
   ListItems,
 } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
+import { relationName } from "../naming";
 
 /** A role may be saved once it lists a domain — its own, or one a parent role hands down. */
 function listsADomain(form: { domainAccess: string[]; parentRoleId: string }): boolean {
@@ -606,11 +607,8 @@ export function SecurityRlsPage() {
       );
   }, [t]);
 
-  const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
   const tableNameById = Object.fromEntries(tables.map((t) => [t.id, t.tableName]));
-  const tableLabelById = Object.fromEntries(
-    tables.map((t) => [t.id, `${normalizeDomain(t.domainId)}.${t.tableName}`]),
-  );
+  const tableLabelById = Object.fromEntries(tables.map((t) => [t.id, relationName(t)]));
 
   const handleNewRule = () => {
     setRuleForm({

@@ -42,7 +42,7 @@ import type {
   ModelingCandidate,
   ColumnProfile,
 } from "./sql-modeling/types";
-import { normalizeDomain } from "./sql-modeling/types";
+import { domainToSqlName } from "../naming";
 import { wrapSampledSql } from "../pages/sql/sqlHelpers";
 import { loadHistory, saveHistory } from "./sql-modeling/history";
 import { JoinCanvas } from "./sql-modeling/JoinCanvas";
@@ -69,7 +69,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
     return ids.length ? ids : ["org_admin"];
   }, [roleObjs]);
   const domainMap = useMemo(
-    () => Object.fromEntries(domains.map((d: Domain) => [normalizeDomain(d.id), d])),
+    () => Object.fromEntries(domains.map((d: Domain) => [domainToSqlName(d.id), d])),
     [domains],
   );
   const [running, setRunning] = useState(false);
@@ -132,7 +132,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   const domainGroups = useMemo(() => {
     const groups: Record<string, import("../types/admin").RegisteredTable[]> = {};
     for (const t of tables) {
-      const d = t.domainId ? normalizeDomain(t.domainId) : "(no domain)";
+      const d = t.domainId ? domainToSqlName(t.domainId) : "(no domain)";
       (groups[d] = groups[d] || []).push(t);
     }
     return groups;

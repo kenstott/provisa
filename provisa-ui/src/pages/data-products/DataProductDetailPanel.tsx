@@ -43,8 +43,7 @@ import type { LineageGraphData } from "../../api/lineage";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
 import type { TrackedFunction } from "../../api/actions";
 import type { RelatedGlossaryTerm } from "../../api/glossary";
-import { cypherRelType } from "../../naming";
-import { normalizeDomain } from "../sql/sqlHelpers";
+import { cypherRelType, tableSqlRef } from "../../naming";
 
 interface RelatedTable {
   table: RegisteredTable;
@@ -67,9 +66,8 @@ function buildGraphqlExampleQuery(table: RegisteredTable): string {
   return `{ ${table.graphqlFieldName} { ${fields} } }`;
 }
 
-// REQ-1634: mirrors nativeParams.ts's tableRef convention (normalizeDomain + quoted identifiers).
 function buildSelectAllSql(table: RegisteredTable): string {
-  return `select * from "${normalizeDomain(table.domainId)}"."${table.alias || table.tableName}"`;
+  return `select * from ${tableSqlRef(table)}`;
 }
 
 // ODPS: the JSON:API, REST/OpenAPI and gRPC surfaces are just other expressions of the same

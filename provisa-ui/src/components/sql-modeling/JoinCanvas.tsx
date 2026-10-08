@@ -14,6 +14,7 @@ import type { RegisteredTable } from "../../types/admin";
 import type { CanvasTable, CanvasJoin, JoinCanvasProps } from "./types";
 import { CARD_W, CARD_HEADER_H, COL_ROW_H } from "./types";
 import { CanvasTableCard } from "./CanvasTableCard";
+import { tableSqlRef } from "../../naming";
 
 export function JoinCanvas({ tables, onGenerateSql }: JoinCanvasProps) {
   const [canvasTables, setCanvasTables] = useState<CanvasTable[]>([]);
@@ -117,10 +118,9 @@ export function JoinCanvas({ tables, onGenerateSql }: JoinCanvasProps) {
   const handleGenerateSql = () => {
     if (canvasTables.length === 0) return;
     const aliasOf = (name: string) => name.replace(/\W/g, "_").toLowerCase();
-    const schemaOf = (tbl: RegisteredTable | undefined) => tbl?.schemaName ?? "public";
     const tbl0 = canvasTables[0];
     const tblObj0 = tableMap[tbl0.tableName];
-    let s = `SELECT *\nFROM "${schemaOf(tblObj0)}"."${tbl0.tableName}" ${aliasOf(tbl0.tableName)}`;
+    let s = `SELECT *\nFROM ${tableSqlRef(tblObj0)} ${aliasOf(tbl0.tableName)}`;
     const inQuery = new Set([tbl0.tableName]);
     for (const join of canvasJoins) {
       const fromInQuery = inQuery.has(join.fromTable);
@@ -143,7 +143,7 @@ export function JoinCanvas({ tables, onGenerateSql }: JoinCanvasProps) {
         continue;
       }
       const newTbl = tableMap[newTable];
-      s += `\nJOIN "${schemaOf(newTbl)}"."${newTable}" ${aliasOf(newTable)} ON ${aliasOf(existingTable)}."${existingCol}" = ${aliasOf(newTable)}."${newCol}"`;
+      s += `\nJOIN ${tableSqlRef(newTbl)} ${aliasOf(newTable)} ON ${aliasOf(existingTable)}."${existingCol}" = ${aliasOf(newTable)}."${newCol}"`;
       inQuery.add(newTable);
     }
     onGenerateSql(s);

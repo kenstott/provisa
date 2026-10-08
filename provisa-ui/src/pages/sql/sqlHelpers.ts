@@ -87,10 +87,6 @@ export function autoAliasConflicts(sql: string): string {
   return sql.replace(selectRe, `SELECT ${newItems.join(", ")} FROM`);
 }
 
-export function normalizeDomain(id: string): string {
-  return id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
-}
-
 // ── REQ-1322: semantic metric helpers ────────────────────────────────────────
 
 /** Split registered tables into star-schema modeling groups for the schema browser. */

@@ -17,6 +17,7 @@ import { autoAliasConflicts, buildSemanticMetricSql, metricDimensionTables } fro
 import { CARD_W, CARD_HEADER_H, COL_ROW_H } from "./types";
 import type { CanvasTable, CanvasJoin, CanvasMetric, JoinCanvasProps } from "./types";
 import type { Metric, RegisteredTable, Relationship } from "../../types/admin";
+import { tableSqlRef } from "../../naming";
 
 // REQ-1322: metric card on the canvas. Distinct accent styling; checkboxes pick
 // the dimensions the semantic query groups by. The UI never generates joins or
@@ -322,8 +323,6 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
     }
     if (canvasTables.length === 0) return;
     const aliasOf = (name: string) => name.replace(/\W/g, "_").toLowerCase();
-    const normDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
-    const schemaOf = (tbl: RegisteredTable | undefined) => normDomain(tbl?.schemaName ?? "public");
     const tbl0 = canvasTables[0];
     const tblObj0 = tableMap[tbl0.tableName];
     // Build SELECT clause: use checked columns if any, otherwise SELECT *.
@@ -345,7 +344,7 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
     } else {
       selectClause = "*";
     }
-    let s = `SELECT ${selectClause}\nFROM "${schemaOf(tblObj0)}"."${tbl0.tableName}" ${aliasOf(tbl0.tableName)}`;
+    let s = `SELECT ${selectClause}\nFROM ${tableSqlRef(tblObj0)} ${aliasOf(tbl0.tableName)}`;
     const inQuery = new Set([tbl0.tableName]);
     // Track emitted ON/AND conditions as canonical "tA.cA=tB.cB" keys (both directions) to skip duplicates.
     const emittedConds = new Set<string>();
@@ -379,7 +378,7 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
       const key = condKey(existingTable, existingCol, newTable, newCol);
       if (emittedConds.has(key)) continue; // duplicate join entry — skip
       const newTbl = tableMap[newTable];
-      s += `\nJOIN "${schemaOf(newTbl)}"."${newTable}" ${aliasOf(newTable)} ON ${aliasOf(existingTable)}."${existingCol}" = ${aliasOf(newTable)}."${newCol}"`;
+      s += `\nJOIN ${tableSqlRef(newTbl)} ${aliasOf(newTable)} ON ${aliasOf(existingTable)}."${existingCol}" = ${aliasOf(newTable)}."${newCol}"`;
       emittedConds.add(key);
       inQuery.add(newTable);
     }

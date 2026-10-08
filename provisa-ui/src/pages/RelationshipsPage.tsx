@@ -55,6 +55,7 @@ import {
 import { CandidatesTable } from "../components/relationships/CandidatesTable";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
+import { domainToSqlName } from "../naming";
 
 export function RelationshipsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -86,11 +87,7 @@ export function RelationshipsPage() {
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
 
-  const {
-    domainsEnabled,
-    domains: filterDomains,
-    checkedDomains,
-  } = useDomainFilter();
+  const { domainsEnabled, domains: filterDomains, checkedDomains } = useDomainFilter();
   const erdCheckedDomains =
     checkedDomains.size > 0 && checkedDomains.size < filterDomains.length ? checkedDomains : null;
   const { capabilities } = useAuth();
@@ -135,9 +132,8 @@ export function RelationshipsPage() {
   const loading = relsLoading || tablesLoading;
 
   const tableNameById = Object.fromEntries(tables.map((t) => [t.id, t.tableName]));
-  const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
   const tableDomainById = Object.fromEntries(
-    tables.map((t) => [t.id, normalizeDomain(t.domainId)]),
+    tables.map((t) => [t.id, domainToSqlName(t.domainId)]),
   );
   const tableSourceById = Object.fromEntries(tables.map((t) => [t.id, t.sourceId]));
   const remoteTableIds = new Set(
@@ -272,7 +268,7 @@ export function RelationshipsPage() {
       setEditingRel({
         id: String(rel.id),
         originalId: String(rel.id),
-        sourceDomain: rel.sourceDomainId ? normalizeDomain(rel.sourceDomainId) : "",
+        sourceDomain: rel.sourceDomainId ? domainToSqlName(rel.sourceDomainId) : "",
         sourceTableId: rel.sourceTableName,
         sourceColumn: rel.sourceColumn,
         targetType: isComputed ? "function" : "table",
@@ -371,12 +367,12 @@ export function RelationshipsPage() {
     setReverseForm(null);
   }, [reverseForm, upsertRelationship]);
 
-  const narrowTo = erdCheckedDomains ? new Set([...erdCheckedDomains].map(normalizeDomain)) : null;
+  const narrowTo = erdCheckedDomains ? new Set([...erdCheckedDomains].map(domainToSqlName)) : null;
   const matchesFilter = (r: Relationship) => {
     if (remoteTableIds.has(r.sourceTableId)) return false;
-    const srcDomain = r.sourceDomainId ? normalizeDomain(r.sourceDomainId) : undefined;
+    const srcDomain = r.sourceDomainId ? domainToSqlName(r.sourceDomainId) : undefined;
     const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
-    const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
+    const ownerDomain = r.ownerDomainId ? domainToSqlName(r.ownerDomainId) : null;
     if (!relationshipInCheckedDomains(narrowTo, [srcDomain, tgtDomain, ownerDomain])) return false;
     if (!relSearch.trim()) return true;
     const q = relSearch.toLowerCase();
@@ -390,7 +386,7 @@ export function RelationshipsPage() {
     (r) => tableSourceById[r.sourceTableId] !== "provisa-admin" && matchesFilter(r),
   );
   const relDomain = (r: Relationship) =>
-    r.sourceDomainId ? normalizeDomain(r.sourceDomainId) : t("relationshipsPage.none");
+    r.sourceDomainId ? domainToSqlName(r.sourceDomainId) : t("relationshipsPage.none");
   const relColumns: ListColumn<Relationship>[] = [
     {
       key: "domain",
@@ -415,7 +411,9 @@ export function RelationshipsPage() {
       label: t("relationshipsPage.materialize"),
       sortValue: (r) => (r.materialize ? 1 : 0),
       groupValue: (r) =>
-        r.materialize ? t("relationshipsPage.materialized") : t("relationshipsPage.notMaterialized"),
+        r.materialize
+          ? t("relationshipsPage.materialized")
+          : t("relationshipsPage.notMaterialized"),
     },
   ];
   const sortGroup = useListSortGroup(filteredRels, relColumns, "relationships", "source");
@@ -545,73 +543,72 @@ export function RelationshipsPage() {
       )}
 
       <ListTable testId="relationships-list" style={{ tableLayout: "fixed" }}>
-          <ListHead
-            sortGroup={sortGroup}
-            columns={[
-              ...(domainsEnabled ? [{ col: "domain", width: "7%" }] : []),
-              { col: "source", width: "22%" },
-              { col: "target", width: "22%" },
-              { label: t("relationshipsPage.gqlCqlAlias"), width: "20%" },
-              { col: "cardinality", width: "11%" },
-              { col: "materialize", width: "10%" },
-              { label: t("relationshipsPage.refreshSeconds"), width: "8%" },
-            ]}
-          />
-          <Table.Tbody>
-            {(() => {
-              const filtered = filteredRels;
+        <ListHead
+          sortGroup={sortGroup}
+          columns={[
+            ...(domainsEnabled ? [{ col: "domain", width: "7%" }] : []),
+            { col: "source", width: "22%" },
+            { col: "target", width: "22%" },
+            { label: t("relationshipsPage.gqlCqlAlias"), width: "20%" },
+            { col: "cardinality", width: "11%" },
+            { col: "materialize", width: "10%" },
+            { label: t("relationshipsPage.refreshSeconds"), width: "8%" },
+          ]}
+        />
+        <Table.Tbody>
+          {(() => {
+            const filtered = filteredRels;
 
-              if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
-                return (
-                  <ListEmpty colSpan={domainsEnabled ? 7 : 6}>
-                    {t("relationshipsPage.tooManyRelationships", { count: filtered.length })}
-                  </ListEmpty>
-                );
-              }
-              if (filtered.length === 0) {
-                return (
-                  <ListEmpty colSpan={domainsEnabled ? 7 : 6} testId="relationships-empty">
-                    {t("relationshipsPage.empty")}
-                  </ListEmpty>
-                );
-              }
-
+            if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
               return (
-                <ListItems
-                  state={sortGroup}
-                  items={pageItems(sortGroup, relPage, PAGE_SIZE)}
-                  colSpan={domainsEnabled ? 7 : 6}
-                  rowKey={(r) => r.id}
-                  render={(r) => {
-                    const id = String(r.id);
-                return (
-                  <RelationshipRow
-                    rel={r}
-                    isExpanded={expanded === id}
-                    onToggle={() => {
-                      setExpanded(expanded === id ? null : id);
-                      setEditingRel(null);
-                    }}
-                    editingRel={editingRel}
-                    setEditingRel={setEditingRel}
-                    canManage={canManage}
-                    onStartEdit={() => startEditing(r)}
-                    onReverse={() => setReverseForm(buildReverse(r))}
-                    onDelete={() => handleDelete(id)}
-                    onEditSave={handleEditSave}
-                    saving={saving}
-                    tables={tables}
-                    functions={functions}
-                    tableDomainById={tableDomainById}
-                    normalizeDomain={normalizeDomain}
-                    domainsEnabled={domainsEnabled}
-                  />
-                );
-                  }}
-                />
+                <ListEmpty colSpan={domainsEnabled ? 7 : 6}>
+                  {t("relationshipsPage.tooManyRelationships", { count: filtered.length })}
+                </ListEmpty>
               );
-            })()}
-          </Table.Tbody>
+            }
+            if (filtered.length === 0) {
+              return (
+                <ListEmpty colSpan={domainsEnabled ? 7 : 6} testId="relationships-empty">
+                  {t("relationshipsPage.empty")}
+                </ListEmpty>
+              );
+            }
+
+            return (
+              <ListItems
+                state={sortGroup}
+                items={pageItems(sortGroup, relPage, PAGE_SIZE)}
+                colSpan={domainsEnabled ? 7 : 6}
+                rowKey={(r) => r.id}
+                render={(r) => {
+                  const id = String(r.id);
+                  return (
+                    <RelationshipRow
+                      rel={r}
+                      isExpanded={expanded === id}
+                      onToggle={() => {
+                        setExpanded(expanded === id ? null : id);
+                        setEditingRel(null);
+                      }}
+                      editingRel={editingRel}
+                      setEditingRel={setEditingRel}
+                      canManage={canManage}
+                      onStartEdit={() => startEditing(r)}
+                      onReverse={() => setReverseForm(buildReverse(r))}
+                      onDelete={() => handleDelete(id)}
+                      onEditSave={handleEditSave}
+                      saving={saving}
+                      tables={tables}
+                      functions={functions}
+                      tableDomainById={tableDomainById}
+                      domainsEnabled={domainsEnabled}
+                    />
+                  );
+                }}
+              />
+            );
+          })()}
+        </Table.Tbody>
       </ListTable>
       {totalPages > 1 && groupBy.length === 0 && (
         <Group gap="sm" align="center" justify="flex-end" py="sm">

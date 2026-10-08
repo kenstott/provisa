@@ -11,16 +11,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  Button,
-  Group,
-  Modal,
-  Paper,
-  Table,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Alert, Button, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
 import { Plus } from "lucide-react";
 import {
   useDataProducts,
@@ -43,7 +34,7 @@ import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
 import { fetchFederationGraph, type LineageGraphData } from "../api/lineage";
 import { fetchRelatedGlossaryTerms, type RelatedGlossaryTerm } from "../api/glossary";
-import { domainToSqlName } from "../naming";
+import { relationName } from "../naming";
 import { columnDescriber } from "../components/lineage/column-descriptions";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
 import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
@@ -224,8 +215,7 @@ export function DataProductsPage() {
   // would pull the checker's own plumbing into the graph. Left out here, as in the member picker.
   const lineageFor = (id: string): LineageGraphData | null => {
     if (!lineageGraph) return null;
-    const relationOf = (tb: { domainId: string; tableName: string }) =>
-      `${domainToSqlName(tb.domainId)}.${tb.tableName}`;
+    const relationOf = (tb: { domainId: string; tableName: string }) => relationName(tb);
     const members = memberTables(id).filter((tb) => tb.dqContract == null);
     const checkerRelations = new Set(
       tables.filter((tb) => tb.dqContract != null).map((tb) => relationOf(tb)),
@@ -286,7 +276,7 @@ export function DataProductsPage() {
     new Set(
       memberTables(id)
         .filter((tb) => tb.dqContract == null)
-        .map((tb) => `${domainToSqlName(tb.domainId)}.${tb.tableName}`),
+        .map((tb) => relationName(tb)),
     );
 
   // REQ-1660 (ODPS inputPorts): the 1-hop input(s) -> transform -> output edges landing on this
@@ -295,9 +285,7 @@ export function DataProductsPage() {
   // full provenance.
   const inputPortsFor = (id: string): InputPortRow[] => {
     if (!lineageGraph) return [];
-    const memberRelations = new Set(
-      memberTables(id).map((tb) => `${domainToSqlName(tb.domainId)}.${tb.tableName}`),
-    );
+    const memberRelations = new Set(memberTables(id).map((tb) => relationName(tb)));
     const nodesById = new Map(lineageGraph.nodes.map((n) => [n.id, n]));
     const byTarget = new Map<string, { transform: string; inputs: Set<string> }>();
     for (const edge of lineageGraph.edges) {
@@ -494,7 +482,6 @@ export function DataProductsPage() {
     />
   );
 
-
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -617,81 +604,81 @@ export function DataProductsPage() {
                 colSpan={6}
                 rowKey={(p) => p.id}
                 render={(p) => {
-                const isExpanded = expanded === p.id;
-                const isEditing = editingId === p.id;
-                return (
-                  <React.Fragment key={p.id}>
-                    <ListRow
-                      testId={`data-products-row-${p.id}`}
-                      aria-expanded={isExpanded}
-                      onClick={() => {
-                        setExpanded(isExpanded ? null : p.id);
-                        if (isEditing && isExpanded) closeForm();
-                      }}
-                    >
-                      <Table.Td>
-                        <Text size="sm" fw={600} ff="monospace">
-                          {p.id}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs">{p.domainId}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs">{p.name}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap={4} wrap="nowrap">
-                          <Text size="xs">{p.ownerRole ?? ""}</Text>
-                          {p.ownerRole && (
-                            <OwnerResolutionIcon
-                              refs={[p.ownerRole]}
-                              ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
-                            />
-                          )}
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs">{p.status ?? ""}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs" c="var(--text-muted)">
-                          {p.purpose}
-                        </Text>
-                      </Table.Td>
-                    </ListRow>
-                    {isExpanded && (
-                      <ListExpandRow colSpan={6} testId="data-product-detail" contained>
-                        <ListDetail>
-                          {isEditing ? (
-                            formCard
-                          ) : (
-                            <DataProductDetailPanel
-                              p={p}
-                              tables={memberTables(p.id)}
-                              sources={sources}
-                              functions={memberFunctions(p.id)}
-                              relatedTerms={relatedTerms}
-                              relatedTermsLoading={relatedTermsLoading}
-                              relatedTables={relatedTables(p.id)}
-                              internalRelationships={internalRelationships(p.id)}
-                              canEdit={canEdit}
-                              canSeeLineage={canSeeLineage}
-                              lineageLoading={lineageLoading}
-                              lineageError={lineageError}
-                              lineageGraph={lineageFor(p.id)}
-                              lineageMembers={lineageMembersFor(p.id)}
-                              describeColumn={describeColumn}
-                              inputPorts={inputPortsFor(p.id)}
-                              onEdit={() => openEdit(p)}
-                              onDelete={() => setDeleteTarget(p.id)}
-                            />
-                          )}
-                        </ListDetail>
-                      </ListExpandRow>
-                    )}
-                  </React.Fragment>
-                );
+                  const isExpanded = expanded === p.id;
+                  const isEditing = editingId === p.id;
+                  return (
+                    <React.Fragment key={p.id}>
+                      <ListRow
+                        testId={`data-products-row-${p.id}`}
+                        aria-expanded={isExpanded}
+                        onClick={() => {
+                          setExpanded(isExpanded ? null : p.id);
+                          if (isEditing && isExpanded) closeForm();
+                        }}
+                      >
+                        <Table.Td>
+                          <Text size="sm" fw={600} ff="monospace">
+                            {p.id}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs">{p.domainId}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs">{p.name}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Group gap={4} wrap="nowrap">
+                            <Text size="xs">{p.ownerRole ?? ""}</Text>
+                            {p.ownerRole && (
+                              <OwnerResolutionIcon
+                                refs={[p.ownerRole]}
+                                ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
+                              />
+                            )}
+                          </Group>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs">{p.status ?? ""}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs" c="var(--text-muted)">
+                            {p.purpose}
+                          </Text>
+                        </Table.Td>
+                      </ListRow>
+                      {isExpanded && (
+                        <ListExpandRow colSpan={6} testId="data-product-detail" contained>
+                          <ListDetail>
+                            {isEditing ? (
+                              formCard
+                            ) : (
+                              <DataProductDetailPanel
+                                p={p}
+                                tables={memberTables(p.id)}
+                                sources={sources}
+                                functions={memberFunctions(p.id)}
+                                relatedTerms={relatedTerms}
+                                relatedTermsLoading={relatedTermsLoading}
+                                relatedTables={relatedTables(p.id)}
+                                internalRelationships={internalRelationships(p.id)}
+                                canEdit={canEdit}
+                                canSeeLineage={canSeeLineage}
+                                lineageLoading={lineageLoading}
+                                lineageError={lineageError}
+                                lineageGraph={lineageFor(p.id)}
+                                lineageMembers={lineageMembersFor(p.id)}
+                                describeColumn={describeColumn}
+                                inputPorts={inputPortsFor(p.id)}
+                                onEdit={() => openEdit(p)}
+                                onDelete={() => setDeleteTarget(p.id)}
+                              />
+                            )}
+                          </ListDetail>
+                        </ListExpandRow>
+                      )}
+                    </React.Fragment>
+                  );
                 }}
               />
             </Table.Tbody>

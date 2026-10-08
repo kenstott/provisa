@@ -29,6 +29,7 @@ import type { RegisteredTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import { CustomPropertiesEditor } from "./CustomPropertiesEditor";
 import type { DataProductForm } from "./types";
+import { relationName } from "../../naming";
 
 export interface DataProductFormCardProps {
   editingId: string | null;
@@ -123,7 +124,9 @@ export function DataProductFormCard({
   };
   const err = (isMissing: boolean) =>
     submitted && isMissing ? t("dataProductsTab.fieldRequired") : undefined;
-  const identityErrors = submitted ? Number(missing.id) + Number(missing.domainId) + Number(missing.name) : 0;
+  const identityErrors = submitted
+    ? Number(missing.id) + Number(missing.domainId) + Number(missing.name)
+    : 0;
   const handleSave = () => {
     setSubmitted(true);
     if (missing.id || missing.domainId || missing.name) return;
@@ -270,7 +273,7 @@ export function DataProductFormCard({
               .filter((tb) => tb.domainId === form.domainId)
               .map((tb) => ({
                 value: String(tb.id),
-                label: `${tb.domainId}.${tb.tableName}`,
+                label: relationName(tb),
                 disabled: tb.dqContract != null,
               }))}
             searchable

@@ -14,7 +14,7 @@ import { ChevronRight, ChevronDown, Table2, Columns3 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Domain, RegisteredTable } from "../../types/admin";
 import type { TopTab } from "./types";
-import { normalizeDomain } from "./types";
+import { columnSqlRef, tableSqlRef } from "../../naming";
 
 interface SchemaSidebarProps {
   domainGroups: Record<string, RegisteredTable[]>;
@@ -185,12 +185,7 @@ export function SchemaSidebar({
                           fontSize: "0.75rem",
                         }}
                         onDoubleClick={
-                          topTab === "sql"
-                            ? () =>
-                                insertAtCursor(
-                                  `"${normalizeDomain(tbl.schemaName)}"."${tbl.tableName}"`,
-                                )
-                            : undefined
+                          topTab === "sql" ? () => insertAtCursor(tableSqlRef(tbl)) : undefined
                         }
                       >
                         {tOpen ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
@@ -222,11 +217,7 @@ export function SchemaSidebar({
                           {/* → insert button */}
                           <Tooltip label={t("schemaSidebar.insertTableReference")}>
                             <ActionIcon
-                              onClick={() =>
-                                insertAtCursor(
-                                  `"${normalizeDomain(tbl.schemaName)}"."${tbl.tableName}"`,
-                                )
-                              }
+                              onClick={() => insertAtCursor(tableSqlRef(tbl))}
                               aria-label={t("schemaSidebar.insertTableReference")}
                               data-testid={`schema-table-insert-${tbl.tableName}`}
                               variant="subtle"
@@ -266,7 +257,7 @@ export function SchemaSidebar({
                               <UnstyledButton
                                 onClick={() =>
                                   topTab === "sql"
-                                    ? insertAtCursor(`"${tbl.tableName}"."${col.columnName}"`)
+                                    ? insertAtCursor(columnSqlRef(tbl, col.columnName))
                                     : undefined
                                 }
                                 data-testid={`schema-column-${tbl.tableName}-${col.columnName}`}

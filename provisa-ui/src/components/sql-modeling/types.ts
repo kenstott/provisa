@@ -90,6 +90,3 @@ export const PAGE_SIZE = 100;
 export const COL_MAX = 280;
 export const COL_MIN = 60;
 export const CHAR_PX = 7.5; // approximate px per character at 0.78rem
-
-export const normalizeDomain = (id: string) =>
-  id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");

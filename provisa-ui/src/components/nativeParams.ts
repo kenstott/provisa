@@ -14,13 +14,9 @@
 // and Profile must collect these values first.
 
 import type { RegisteredTable, TableColumn } from "../types/admin";
-import { normalizeDomain } from "../pages/sql/sqlHelpers";
+import { tableSqlRef } from "../naming";
 
 export const PREVIEW_ROW_LIMIT = 1000;
-
-export function tableRef(table: RegisteredTable): string {
-  return `"${normalizeDomain(table.domainId)}"."${table.alias || table.tableName}"`;
-}
 
 /** Governed row-limited SELECT * for the Profile sample, params as WHERE predicates. */
 export function previewSql(
@@ -28,7 +24,7 @@ export function previewSql(
   params: Record<string, string>,
   limit: number = PREVIEW_ROW_LIMIT,
 ): string {
-  return `SELECT * FROM ${tableRef(table)}${buildParamWhere(table, params)} LIMIT ${limit}`;
+  return `SELECT * FROM ${tableSqlRef(table)}${buildParamWhere(table, params)} LIMIT ${limit}`;
 }
 
 /** One PAGE of a governed SELECT * — the viewer never loads the whole dataset.
@@ -79,7 +75,7 @@ export function pagedViewerSql(
   }
   const orderBy = orderCols.length > 0 ? ` ORDER BY ${orderCols.join(", ")}` : "";
 
-  return `SELECT * FROM ${tableRef(table)}${where}${orderBy} LIMIT ${pageSize + 1} OFFSET ${page * pageSize}`;
+  return `SELECT * FROM ${tableSqlRef(table)}${where}${orderBy} LIMIT ${pageSize + 1} OFFSET ${page * pageSize}`;
 }
 
 export function requiredParamColumns(table: RegisteredTable): TableColumn[] {

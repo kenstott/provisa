@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Box, Table, Text } from "@mantine/core";
 import { runSql } from "../../api/admin";
-import { tableRef } from "../../components/nativeParams";
+import { tableSqlRef } from "../../naming";
 import { useAuth } from "../../context/AuthContext";
 import type { RegisteredTable } from "../../types/admin";
 
@@ -39,7 +39,7 @@ export function LatestProfilePanel({ profileTable }: { profileTable: RegisteredT
 
   useEffect(() => {
     if (!role) return;
-    const ref = tableRef(profileTable);
+    const ref = tableSqlRef(profileTable);
     runSql(
       `SELECT * FROM ${ref} WHERE "run_time" = (SELECT MAX("run_time") FROM ${ref})`,
       role.id,

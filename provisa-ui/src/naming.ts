@@ -126,3 +126,49 @@ export function keyList(stored: string | null | undefined): string[] {
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
 }
+
+/** The parts of a registered table that its SQL name is built from. */
+export interface SqlNamedTable {
+  domainId: string;
+  tableName: string;
+  alias?: string | null;
+}
+
+/**
+ * REQ-471: the quoted, domain-qualified name a statement uses for a registered table -- the
+ * domain's SQL name, then the table's alias where it has one. This is the ONE place that name is
+ * built: the governed pipeline resolves it (stage2's table map) and it does not resolve a table
+ * named by its physical schema. No caller writes the name out by hand
+ * (src/__tests__/oneTableSqlName.test.ts).
+ */
+export function tableSqlRef(table: SqlNamedTable): string {
+  return `"${domainToSqlName(table.domainId)}"."${table.alias || table.tableName}"`;
+}
+
+/** A column of a registered table as a statement names it: the table's SQL name, then the column. */
+export function columnSqlRef(table: SqlNamedTable, columnName: string): string {
+  return `"${table.alias || table.tableName}"."${columnName}"`;
+}
+
+/** The unquoted `domain.table_name` relation name the server reports a registered table under. */
+export function relationName(table: { domainId: string; tableName: string }): string {
+  return `${domainToSqlName(table.domainId)}.${table.tableName}`;
+}
+
+/** Mirror of Python source_to_catalog (REQ-471): a source id as the engine catalog name. */
+export function sourceToCatalog(sourceId: string): string {
+  return sourceId.replace(/-/g, "_");
+}
+
+/**
+ * The `catalog.schema.table` name of a registered table's physical relation. The server reads the
+ * schema and table parts as they are stored (compiler/actions_schema.py looks a returned table up
+ * by its stored schema and table name), so neither is rewritten here.
+ */
+export function physicalRelationName(table: {
+  sourceId: string;
+  schemaName: string;
+  tableName: string;
+}): string {
+  return `${sourceToCatalog(table.sourceId)}.${table.schemaName}.${table.tableName}`;
+}

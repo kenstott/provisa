@@ -13,7 +13,7 @@ import { ColumnsTable } from "./ColumnsTable";
 import { FilesGlobFieldset } from "./FilesGlobFieldset";
 import { useTranslation } from "react-i18next";
 import { Button, Checkbox, Select, Stack, Table, Text, TextInput, Textarea } from "@mantine/core";
-import { toSnakeCase } from "../../naming";
+import { domainToSqlName, toSnakeCase } from "../../naming";
 import { NlTableSearch } from "./NlTableSearch";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
@@ -34,7 +34,7 @@ import type { Role } from "../../types/auth";
 import type { ColumnForm } from "./types";
 import { CDC_TYPES } from "./constants";
 import { IR_TYPES_FALLBACK } from "../../irTypes";
-import { isWatermarkEligible, normalizeDomain } from "./helpers";
+import { isWatermarkEligible } from "./helpers";
 import { DataQualityPanel } from "./DataQualityPanel";
 import { useDomainFilter } from "../../context/DomainFilterContext";
 import { PagingField } from "./PagingField";
@@ -576,7 +576,7 @@ export function RegisterTableForm({
         sourceId,
         domainId,
         ...regionInput,
-        schemaName: domainId ? normalizeDomain(domainId) : schemaName,
+        schemaName: domainId ? domainToSqlName(domainId) : schemaName,
         tableName,
         alias: tableAlias || undefined,
         description: tableDescription || undefined,

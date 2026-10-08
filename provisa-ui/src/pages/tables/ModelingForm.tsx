@@ -27,7 +27,7 @@ import { useRegisterEntity, useRegisterFact, useTables } from "../../hooks/useAd
 import type { Domain, RegisteredTable, TableColumn } from "../../types/admin";
 import { DERIVED_SOURCE_ID } from "../../types/admin";
 import { FieldLabel } from "./FieldLabel";
-import { normalizeDomain } from "./helpers";
+import { relationName } from "../../naming";
 
 // REQ-1164: declarative entity/fact modeling. The form collects the spec and the backend lowers it
 // to the underlying MV (+ relationships) — the star dimension/fact or Data Vault hub/satellite/link.
@@ -94,13 +94,12 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
   // Source relations and their columns come from the user-defined registered tables, referenced as
   // {domain}.{table_name} — the domain-namespaced query-surface name the view lowers to.
   const userTables = useMemo(() => tables.filter(_isUserTable), [tables]);
-  const _ref = (tbl: RegisteredTable) => `${normalizeDomain(tbl.domainId)}.${tbl.tableName}`;
   const sourceOptions = useMemo(
-    () => userTables.map((tbl) => ({ value: _ref(tbl), label: _ref(tbl) })),
+    () => userTables.map((tbl) => ({ value: relationName(tbl), label: relationName(tbl) })),
     [userTables],
   );
   const selectedTable = useMemo(
-    () => userTables.find((tbl) => _ref(tbl) === source) ?? null,
+    () => userTables.find((tbl) => relationName(tbl) === source) ?? null,
     [userTables, source],
   );
   const columns = selectedTable?.columns ?? [];

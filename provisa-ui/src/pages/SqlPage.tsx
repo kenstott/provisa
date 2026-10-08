@@ -39,18 +39,14 @@ import { tabResultsKey, tabSqlKey, tabNlKey } from "./sql/types";
 import type { ResultTab, TopTab, SqlTab, SqlResults, ViewColumnConfig } from "./sql/types";
 import { useResultsGrid } from "./sql/useResultsGrid";
 import { loadHistory, saveHistory } from "./sql/historyHelpers";
-import {
-  autoAliasConflicts,
-  normalizeDomain,
-  parseSemanticMetricQuery,
-  wrapSampledSql,
-} from "./sql/sqlHelpers";
+import { autoAliasConflicts, parseSemanticMetricQuery, wrapSampledSql } from "./sql/sqlHelpers";
 import { newTabId, emptyTab, loadTabsMeta, persistTabsMeta, nextTabTitle } from "./sql/tabHelpers";
 import { SchemaBrowser } from "./sql/SchemaBrowser";
 import { JoinCanvas } from "./sql/JoinCanvas";
 import { SqlEditorPanel } from "./sql/SqlEditorPanel";
 import { ResultsPanel } from "./sql/ResultsPanel";
 import { ViewModal } from "./sql/ViewModal";
+import { domainToSqlName } from "../naming";
 
 // ── SqlPage ──────────────────────────────────────────────────────────────────
 
@@ -229,7 +225,7 @@ export function SqlPage() {
   }, [tabs, activeTabId, sqlText, nlText]);
 
   const domainMap = useMemo(
-    () => Object.fromEntries(domainsData.map((d) => [normalizeDomain(d.id), d])),
+    () => Object.fromEntries(domainsData.map((d) => [domainToSqlName(d.id), d])),
     [domainsData],
   );
 
@@ -343,7 +339,7 @@ export function SqlPage() {
     const groups: Record<string, RegisteredTable[]> = {};
     for (const t of tables) {
       if (t.domainId && !isDomainVisible(t.domainId)) continue;
-      const d = t.domainId ? normalizeDomain(t.domainId) : "(no domain)";
+      const d = t.domainId ? domainToSqlName(t.domainId) : "(no domain)";
       (groups[d] = groups[d] || []).push(t);
     }
     return groups;

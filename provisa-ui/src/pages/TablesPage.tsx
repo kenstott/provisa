@@ -67,7 +67,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { diffEditedColumns } from "./tables/columnDiff";
 import { NAMING_CONVENTIONS } from "./tables/constants";
-import { buildTableUpdateInput, normalizeDomain } from "./tables/helpers";
+import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { ModelingForm } from "./tables/ModelingForm";
@@ -97,6 +97,7 @@ import { useListSortGroup, type ListColumn } from "../components/list/useListSor
 import { PageLoading } from "../components/PageLoading";
 import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
+import { domainToSqlName } from "../naming";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -204,7 +205,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         key: "domain",
         label: translate("tablesPage.colDomain"),
         sortValue: (t) => t.domainId ?? "",
-        groupValue: (t) => (t.domainId ? normalizeDomain(t.domainId) : "(none)"),
+        groupValue: (t) => (t.domainId ? domainToSqlName(t.domainId) : "(none)"),
       },
       {
         key: "table",
@@ -949,7 +950,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       )}
                     </Table.Td>
                     {domainsEnabled && (
-                      <Table.Td>{t.domainId ? normalizeDomain(t.domainId) : ""}</Table.Td>
+                      <Table.Td>{t.domainId ? domainToSqlName(t.domainId) : ""}</Table.Td>
                     )}
                     <Table.Td
                       style={{ fontFamily: "monospace", fontSize: "0.9rem" }}

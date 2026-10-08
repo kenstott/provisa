@@ -38,6 +38,7 @@ import {
 } from "./types";
 import type { FormState } from "./types";
 import { ColumnGovernanceFields } from "./ColumnGovernanceFields";
+import { physicalRelationName } from "../../naming";
 
 interface CommandFormFieldsProps {
   form: FormState;
@@ -71,10 +72,9 @@ export function CommandFormFields({
         label: `${tbl.schemaName}.${tbl.tableName}${tbl.alias ? ` (${tbl.alias})` : ""}`,
       }));
 
-  const normalizePart = (s: string) => s.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
   const virtualTableOptions = tables.map((tbl) => ({
-    value: `${normalizePart(tbl.sourceId)}.${normalizePart(tbl.schemaName)}.${tbl.tableName}`,
-    label: `${normalizePart(tbl.sourceId)}.${normalizePart(tbl.schemaName)}.${tbl.tableName}${tbl.alias ? ` (${tbl.alias})` : ""}`,
+    value: physicalRelationName(tbl),
+    label: `${physicalRelationName(tbl)}${tbl.alias ? ` (${tbl.alias})` : ""}`,
   }));
 
   const handleAddArg = () => setForm({ ...form, arguments: [...form.arguments, { ...EMPTY_ARG }] });

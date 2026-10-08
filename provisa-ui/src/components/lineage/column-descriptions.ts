@@ -11,7 +11,7 @@
 // The description behind a lineage field, looked up in the registered tables by the graph's own
 // relation name (domain.table) and the column's physical name.
 
-import { domainToSqlName } from "../../naming";
+import { relationName } from "../../naming";
 import type { RegisteredTable } from "../../types/admin";
 
 export type DescribeColumn = (relation: string, column: string) => string | null;
@@ -19,7 +19,7 @@ export type DescribeColumn = (relation: string, column: string) => string | null
 export function columnDescriber(tables: readonly RegisteredTable[]): DescribeColumn {
   const byKey = new Map<string, string>();
   for (const tb of tables) {
-    const relation = `${domainToSqlName(tb.domainId)}.${tb.tableName}`;
+    const relation = relationName(tb);
     for (const c of tb.columns) {
       if (c.description) byKey.set(`${relation} ${c.columnName}`, c.description);
     }

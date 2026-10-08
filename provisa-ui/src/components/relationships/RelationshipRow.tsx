@@ -26,7 +26,7 @@ import { Trash2, Pencil, Check, X, ArrowLeftRight } from "lucide-react";
 import type { Relationship, RegisteredTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import type { RelForm } from "./relationship-types";
-import { cypherRelType } from "../../naming";
+import { cypherRelType, domainToSqlName } from "../../naming";
 import { JunctionPanel } from "./JunctionPanel";
 import { TagControl } from "../TagControl";
 import { ListRow, ListExpandRow, ListDetail } from "../list/ListTable";
@@ -46,7 +46,6 @@ interface RelationshipRowProps {
   tables: RegisteredTable[];
   functions: TrackedFunction[];
   tableDomainById: Record<string, string>;
-  normalizeDomain: (id: string) => string;
   domainsEnabled: boolean;
 }
 
@@ -65,7 +64,6 @@ export function RelationshipRow({
   tables,
   functions,
   tableDomainById,
-  normalizeDomain,
   domainsEnabled,
 }: RelationshipRowProps) {
   const { t } = useTranslation();
@@ -73,7 +71,7 @@ export function RelationshipRow({
   const targetLabel = (() => {
     if (r.targetFunctionName) return `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`;
     const tDomain = domainsEnabled ? tableDomainById[r.targetTableId!] : undefined;
-    const sDomain = domainsEnabled ? normalizeDomain(r.sourceDomainId ?? "") : undefined;
+    const sDomain = domainsEnabled ? domainToSqlName(r.sourceDomainId ?? "") : undefined;
     return tDomain && tDomain !== sDomain
       ? `${tDomain}.${r.targetTableName}.${r.targetColumn}`
       : `${r.targetTableName}.${r.targetColumn}`;
@@ -141,15 +139,13 @@ export function RelationshipRow({
               <code>
                 {/* REQ-1586: a junction-backed edge is exposed under its nomination, not its
                     alias, so the row shows the type a Cypher pattern actually matches. */}
-                {r.viaTableName ? (
-                  (cypherRelType(r) ?? t("relationshipRow.none"))
-                ) : (
-                  (r.alias ?? (
-                    <Text span c="dimmed" fs="italic">
-                      {r.computedCypherAlias ?? t("relationshipRow.none")}
-                    </Text>
-                  ))
-                )}
+                {r.viaTableName
+                  ? (cypherRelType(r) ?? t("relationshipRow.none"))
+                  : (r.alias ?? (
+                      <Text span c="dimmed" fs="italic">
+                        {r.computedCypherAlias ?? t("relationshipRow.none")}
+                      </Text>
+                    ))}
               </code>
             </div>
           </div>
@@ -292,11 +288,11 @@ export function RelationshipRow({
                   {/* Source panel */}
                   {(() => {
                     const uniqueDomains = [
-                      ...new Set(tables.map((t2) => normalizeDomain(t2.domainId)).filter(Boolean)),
+                      ...new Set(tables.map((t2) => domainToSqlName(t2.domainId)).filter(Boolean)),
                     ].sort();
                     const filteredSrcTables = editingRel.sourceDomain
                       ? tables.filter(
-                          (t2) => normalizeDomain(t2.domainId) === editingRel.sourceDomain,
+                          (t2) => domainToSqlName(t2.domainId) === editingRel.sourceDomain,
                         )
                       : tables;
                     return (
@@ -393,12 +389,12 @@ export function RelationshipRow({
                       (() => {
                         const uniqueDomains = [
                           ...new Set(
-                            tables.map((t2) => normalizeDomain(t2.domainId)).filter(Boolean),
+                            tables.map((t2) => domainToSqlName(t2.domainId)).filter(Boolean),
                           ),
                         ].sort();
                         const filteredTgtTables = editingRel.targetDomain
                           ? tables.filter(
-                              (t2) => normalizeDomain(t2.domainId) === editingRel.targetDomain,
+                              (t2) => domainToSqlName(t2.domainId) === editingRel.targetDomain,
                             )
                           : tables;
                         return (
