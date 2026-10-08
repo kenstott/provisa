@@ -57,6 +57,18 @@ def _federation_hints_from_input(input: SourceInput) -> dict[str, str]:
     return {str(k): str(v) for k, v in hints.items()}
 
 
+# REQ-1951: how a source's schema registry is reached (SourceCdcConfig).
+_REGISTRY_FIELDS = (
+    "schema_registry_auth",
+    "schema_registry_username",
+    "schema_registry_password",
+    "schema_registry_token",
+    "schema_registry_client_cert",
+    "schema_registry_client_key",
+    "schema_registry_ca",
+)
+
+
 def _cdc_from_row(row):  # REQ-824
     """Deserialize the sources.cdc JSONB column into a SourceCdcConfigType."""
     import json as _json
@@ -69,6 +81,7 @@ def _cdc_from_row(row):  # REQ-824
         bootstrap_servers=data["bootstrap_servers"],
         topic_prefix=data["topic_prefix"],
         schema_registry_url=data.get("schema_registry_url"),
+        **{name: data[name] for name in _REGISTRY_FIELDS if data.get(name) is not None},
         consumer_group_id=data.get("consumer_group_id", "provisa-debezium"),
     )
 
@@ -83,6 +96,7 @@ def _cdc_model_from_input(input: SourceInput):  # REQ-824
         bootstrap_servers=input.cdc.bootstrap_servers,
         topic_prefix=input.cdc.topic_prefix,
         schema_registry_url=input.cdc.schema_registry_url,
+        **{name: getattr(input.cdc, name) for name in _REGISTRY_FIELDS},
         consumer_group_id=input.cdc.consumer_group_id,
     )
 

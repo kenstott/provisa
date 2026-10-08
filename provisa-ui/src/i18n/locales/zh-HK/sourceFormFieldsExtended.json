@@ -131,6 +131,18 @@
     "coGcpCredentialsPath": "服務帳戶金鑰檔案",
     "coGcpProjectIds": "專案 ID",
     "coCacheTtlMinutes": "快取（分鐘）",
-    "coCacheTtlMinutesHelp": "再次查詢各雲端之前，結果重複使用的時間"
+    "coCacheTtlMinutesHelp": "再次查詢各雲端之前，結果重複使用的時間",
+    "registryAuth": "註冊表驗證",
+    "registryAuthNone": "無",
+    "registryAuthBasic": "Basic（使用者名稱和密碼）",
+    "registryAuthBearer": "Bearer 權杖",
+    "registryAuthMtls": "雙向 TLS（用戶端憑證）",
+    "registryUsername": "註冊表使用者名稱",
+    "registryPassword": "註冊表密碼",
+    "registryToken": "註冊表權杖",
+    "registryClientCert": "用戶端憑證路徑",
+    "registryClientKey": "用戶端金鑰路徑",
+    "registryCa": "CA 憑證包路徑（選填）",
+    "registryPathPlaceholder": "伺服器上的絕對路徑"
   }
 }

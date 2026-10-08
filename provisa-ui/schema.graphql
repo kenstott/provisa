@@ -708,6 +708,13 @@ input SourceCdcConfigInput {
   bootstrapServers: String!
   topicPrefix: String!
   schemaRegistryUrl: String = null
+  schemaRegistryAuth: String! = "none"
+  schemaRegistryUsername: String = null
+  schemaRegistryPassword: String = null
+  schemaRegistryToken: String = null
+  schemaRegistryClientCert: String = null
+  schemaRegistryClientKey: String = null
+  schemaRegistryCa: String = null
   consumerGroupId: String = null
 }
 
@@ -715,6 +722,13 @@ type SourceCdcConfigType {
   bootstrapServers: String!
   topicPrefix: String!
   schemaRegistryUrl: String
+  schemaRegistryAuth: String!
+  schemaRegistryUsername: String
+  schemaRegistryPassword: String
+  schemaRegistryToken: String
+  schemaRegistryClientCert: String
+  schemaRegistryClientKey: String
+  schemaRegistryCa: String
   consumerGroupId: String
 }
 

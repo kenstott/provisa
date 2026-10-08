@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "הטבלה {{table}}: בתשובה אין מאפיין {{rows_field}} שממנו ניתן לקרוא שורות.",
       "paging_rows_field_fixed": "הטבלה {{table}}: מיקום שורותיה ({{rows_field}}) נקבע בעת רישום הטבלה. רשמו את הטבלה מחדש כדי לקרוא את שורותיה ממקום אחר.",
       "relationship_request_queued": "נכנס לתור כבקשה מס' {{id}}. היא דורשת אישורים מ-{{required}} משתמשים שונים שרשאים ליצור קשרים, כשלפחות אחד מהם מגיע לכל דומיין שהיא נוגעת בו.",
-      "request_approved": "בקשת יצירה מס' {{id}} אושרה"
+      "request_approved": "בקשת יצירה מס' {{id}} אושרה",
+      "registry_auth_unknown": "מקור '{{source}}': שיטת האימות '{{method}}' של רישום הסכמות אינה אחת מ-{{methods}}",
+      "registry_url_required": "מקור '{{source}}': הוגדרו הגדרות של רישום סכמות אך לא כתובת URL של רישום סכמות",
+      "registry_field_required": "מקור '{{source}}': שיטת האימות '{{method}}' של רישום הסכמות דורשת {{field}}",
+      "registry_path_not_absolute": "מקור '{{source}}': {{field}} חייב להיות נתיב מוחלט, התקבל '{{path}}'"
     },
     "secrets": {
       "still_referenced": "{{secret}} עדיין מצוין על ידי {{count}} ערכים שמורים בארגון זה. יש לשנות או להסיר כל אחד מהם ואז למחוק שוב."
@@ -406,9 +410,15 @@
       "source_not_found": "מקור SPARQL '{{source_id}}' לא נמצא"
     },
     "subscribe": {
+      "avro_topic_without_registry": "הנושא '{{topic}}' נושא הודעות Avro, והמקור שלו אינו מציין רישום סכמות לקריאתן: הגדירו את כתובת ה-URL של רישום הסכמות של המקור",
       "db_pool_unavailable": "מאגר מסד הנתונים אינו זמין",
       "govdata_not_subscribed": "הדייר אינו מנוי על נושא GovData '{{subject}}'. הירשמו כמנוי דרך פורטל החיוב כדי לגשת לערכת נתונים זו.",
       "live_query_not_registered": "השאילתה החיה '{{query_id}}' אינה רשומה",
+      "schema_id_unknown": "רישום הסכמות {{registry}} אינו מכיל סכמה עם המזהה {{schema_id}}: ההודעה נכתבה מול רישום אחר",
+      "schema_not_avro": "סכמה {{schema_id}} ברישום {{registry}} היא {{kind}}, לא Avro",
+      "schema_registry_error": "רישום הסכמות {{registry}} השיב HTTP {{http_status}}: {{error}}",
+      "schema_registry_refused_credentials": "רישום הסכמות {{registry}} דחה את פרטי הגישה של המקור (HTTP {{http_status}}, אימות '{{method}}')",
+      "schema_registry_unreachable": "לא ניתן להגיע לרישום הסכמות {{registry}}: {{error}}",
       "sse_limit_reached": "הגעת למספר המרבי של מנויי SSE במקביל",
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
       "unknown_role": "תפקיד לא מוכר '{{role}}'"

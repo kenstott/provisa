@@ -307,3 +307,153 @@ class TestRegistry:
         assert provider._topic_prefix == "cdc"
         assert provider._database == "salesdb"
         assert provider._consumer_group_id == "my-group"
+
+
+# ---------------------------------------------------------------------------
+# Avro topics (REQ-1951)
+# ---------------------------------------------------------------------------
+
+_ENVELOPE = {
+    "type": "record",
+    "name": "Envelope",
+    "fields": [
+        {
+            "name": "before",
+            "type": [
+                "null",
+                {
+                    "type": "record",
+                    "name": "Value",
+                    "fields": [{"name": "id", "type": "int"}, {"name": "name", "type": "string"}],
+                },
+            ],
+            "default": None,
+        },
+        {"name": "after", "type": ["null", "Value"], "default": None},
+        {"name": "op", "type": "string"},
+        {"name": "ts_ms", "type": ["null", "long"], "default": None},
+    ],
+}
+
+
+def _avro_msg(schema_id: int, envelope: dict) -> MagicMock:
+    import io
+    import struct
+
+    import fastavro
+
+    out = io.BytesIO()
+    out.write(struct.pack(">bI", 0, schema_id))
+    fastavro.schemaless_writer(out, fastavro.parse_schema(_ENVELOPE), envelope)
+    msg = MagicMock()
+    msg.value = out.getvalue()
+    return msg
+
+
+class _FakeRegistry:
+    """Stands in for the source's registry: the schema by id, as the registry would parse it."""
+
+    def __init__(self, _settings=None) -> None:
+        self.reached = self.closed = False
+
+    async def reach(self) -> None:
+        self.reached = True
+
+    async def decode(self, raw: bytes):
+        import io
+
+        import fastavro
+
+        return fastavro.schemaless_reader(io.BytesIO(raw[5:]), fastavro.parse_schema(_ENVELOPE))
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class TestAvroTopics:
+    async def test_avro_inserts_updates_and_deletes_arrive_as_the_right_rows(self, monkeypatch):
+        from provisa.kafka.avro_registry import RegistrySettings
+        from provisa.subscriptions import debezium_provider
+
+        made: list[_FakeRegistry] = []
+
+        def _registry(settings):
+            made.append(_FakeRegistry(settings))
+            return made[-1]
+
+        monkeypatch.setattr(debezium_provider, "SchemaRegistry", _registry)
+        row, changed = {"id": 1, "name": "a"}, {"id": 1, "name": "b"}
+        messages = [
+            _avro_msg(4, {"before": None, "after": row, "op": "c", "ts_ms": 1700000000000}),
+            _avro_msg(4, {"before": row, "after": changed, "op": "u", "ts_ms": 1700000001000}),
+            _avro_msg(4, {"before": changed, "after": None, "op": "d", "ts_ms": 1700000002000}),
+        ]
+        fake_module, _ = _make_aiokafka_module(messages)
+        provider = _provider(registry=RegistrySettings(url="http://registry:8081"))
+        with patch.dict("sys.modules", {"aiokafka": fake_module}):
+            events = [event async for event in provider.watch("orders")]
+
+        assert [(e.operation, e.row) for e in events] == [
+            ("insert", row),
+            ("update", changed),
+            ("delete", changed),
+        ]
+        (registry,) = made
+        assert registry.reached  # asked before the first message, so a dead registry is named
+        assert registry.closed
+
+    async def test_avro_on_a_source_that_names_no_registry_is_refused_by_name(self):
+        """It was once read as JSON and died on the first message with "'utf-32-be' codec can't
+        decode bytes". It is refused, naming the topic and what to set."""
+        from provisa.kafka.avro_registry import SchemaRegistryRefusal
+
+        row = {"id": 1, "name": "a"}
+        fake_module, _ = _make_aiokafka_module(
+            [_avro_msg(4, {"before": None, "after": row, "op": "c", "ts_ms": None})]
+        )
+        provider = _provider(source_type="mysql")
+        with patch.dict("sys.modules", {"aiokafka": fake_module}):
+            with pytest.raises(SchemaRegistryRefusal) as refused:
+                _ = [event async for event in provider.watch("orders")]
+        assert refused.value.code == "subscribe.avro_topic_without_registry"
+        assert refused.value.params == {"topic": "dbserver1.mydb.orders"}
+
+    async def test_json_on_a_source_that_names_a_registry_is_still_read_as_json(self, monkeypatch):
+        """The message says which it is: a registry on the source does not make a JSON topic
+        Avro."""
+        from provisa.kafka.avro_registry import RegistrySettings
+        from provisa.subscriptions import debezium_provider
+
+        monkeypatch.setattr(debezium_provider, "SchemaRegistry", _FakeRegistry)
+        fake_module, _ = _make_aiokafka_module(
+            [_make_msg({"op": "c", "before": None, "after": {"id": 9}, "ts_ms": 1700000000000})]
+        )
+        provider = _provider(registry=RegistrySettings(url="http://registry:8081"))
+        with patch.dict("sys.modules", {"aiokafka": fake_module}):
+            events = [event async for event in provider.watch("orders")]
+        assert [(e.operation, e.row) for e in events] == [("insert", {"id": 9})]
+
+    async def test_a_registry_that_refuses_at_the_start_ends_the_subscription_by_name(
+        self, monkeypatch
+    ):
+        from provisa.kafka.avro_registry import RegistrySettings, SchemaRegistryRefusal
+        from provisa.subscriptions import debezium_provider
+
+        class _Down(_FakeRegistry):
+            async def reach(self) -> None:
+                raise SchemaRegistryRefusal(503, "subscribe.schema_registry_unreachable", "down")
+
+        made: list[_Down] = []
+
+        def _registry(settings):
+            made.append(_Down(settings))
+            return made[-1]
+
+        monkeypatch.setattr(debezium_provider, "SchemaRegistry", _registry)
+        fake_module, consumer = _make_aiokafka_module([])
+        provider = _provider(registry=RegistrySettings(url="http://registry:8081"))
+        with patch.dict("sys.modules", {"aiokafka": fake_module}):
+            with pytest.raises(SchemaRegistryRefusal):
+                _ = [event async for event in provider.watch("orders")]
+        assert made[0].closed
+        assert not consumer._started  # no message was read

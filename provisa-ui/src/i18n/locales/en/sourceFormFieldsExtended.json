@@ -131,6 +131,18 @@
     "coGcpCredentialsPath": "Service Account Key File",
     "coGcpProjectIds": "Project IDs",
     "coCacheTtlMinutes": "Cache (minutes)",
-    "coCacheTtlMinutesHelp": "How long a result is reused before the clouds are asked again"
+    "coCacheTtlMinutesHelp": "How long a result is reused before the clouds are asked again",
+    "registryAuth": "Registry authentication",
+    "registryAuthNone": "None",
+    "registryAuthBasic": "Basic (username and password)",
+    "registryAuthBearer": "Bearer token",
+    "registryAuthMtls": "Mutual TLS (client certificate)",
+    "registryUsername": "Registry username",
+    "registryPassword": "Registry password",
+    "registryToken": "Registry token",
+    "registryClientCert": "Client certificate path",
+    "registryClientKey": "Client key path",
+    "registryCa": "CA bundle path (optional)",
+    "registryPathPlaceholder": "absolute path on the server"
   }
 }

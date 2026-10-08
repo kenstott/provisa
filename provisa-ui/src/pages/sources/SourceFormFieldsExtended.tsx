@@ -24,6 +24,7 @@ import {
 } from "@mantine/core";
 import { MultiSelect } from "../../components/MultiSelect";
 import { cdcTransportApplicable } from "../../liveCapability";
+import { SchemaRegistryAuthFields } from "./SchemaRegistryAuthFields";
 import {
   API_AUTH_TYPES,
   BRAND_CARRIER,
@@ -947,6 +948,9 @@ export function SourceFormFieldsExtended({
                       placeholder={t("sourceFormFieldsExtended.schemaRegistryUrlCdcPlaceholder")}
                       data-testid="cdc-schema-registry-input"
                     />
+                    {cdc.schemaRegistryUrl && (
+                      <SchemaRegistryAuthFields cdc={cdc} setCdc={setCdc} />
+                    )}
                     <TextInput
                       label={t("sourceFormFieldsExtended.consumerGroupId")}
                       value={cdc.consumerGroupId}

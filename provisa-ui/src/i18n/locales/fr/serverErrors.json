@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "Table {{table}} : la réponse n'a aucune propriété {{rows_field}} où lire des lignes.",
       "paging_rows_field_fixed": "Table {{table}} : l'endroit où se trouvent ses lignes ({{rows_field}}) est défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs.",
       "relationship_request_queued": "Mis en file comme demande n° {{id}}. Elle requiert les approbations de {{required}} utilisateurs différents autorisés à créer des relations, dont au moins un atteint chaque domaine concerné.",
-      "request_approved": "Demande de création n° {{id}} approuvée"
+      "request_approved": "Demande de création n° {{id}} approuvée",
+      "registry_auth_unknown": "Source '{{source}}' : l'authentification du registre de schémas '{{method}}' ne fait pas partie de {{methods}}",
+      "registry_url_required": "Source '{{source}}' : des paramètres du registre de schémas sont fournis mais aucune URL de registre de schémas",
+      "registry_field_required": "Source '{{source}}' : l'authentification du registre de schémas '{{method}}' exige {{field}}",
+      "registry_path_not_absolute": "Source '{{source}}' : {{field}} doit être un chemin absolu, reçu '{{path}}'"
     },
     "secrets": {
       "still_referenced": "{{secret}} est encore nommé par {{count}} valeur(s) stockée(s) dans cette organisation. Modifiez ou retirez chacune, puis supprimez-le de nouveau."
@@ -406,9 +410,15 @@
       "source_not_found": "Source SPARQL « {{source_id}} » introuvable"
     },
     "subscribe": {
+      "avro_topic_without_registry": "Le topic '{{topic}}' transporte des messages Avro et sa source ne désigne aucun registre de schémas pour les lire : renseignez l'URL du registre de schémas de la source",
       "db_pool_unavailable": "Pool de base de données indisponible",
       "govdata_not_subscribed": "Le locataire n'est pas abonné au sujet GovData « {{subject}} ». Abonnez-vous via le portail de facturation pour accéder à ce jeu de données.",
       "live_query_not_registered": "Requête en direct « {{query_id}} » non enregistrée",
+      "schema_id_unknown": "Le registre de schémas {{registry}} ne contient aucun schéma d'id {{schema_id}} : le message a été écrit avec un autre registre",
+      "schema_not_avro": "Le schéma {{schema_id}} du registre {{registry}} est {{kind}}, pas Avro",
+      "schema_registry_error": "Le registre de schémas {{registry}} a répondu HTTP {{http_status}} : {{error}}",
+      "schema_registry_refused_credentials": "Le registre de schémas {{registry}} a refusé les identifiants de la source (HTTP {{http_status}}, authentification '{{method}}')",
+      "schema_registry_unreachable": "Le registre de schémas {{registry}} est injoignable : {{error}}",
       "sse_limit_reached": "nombre maximal d'abonnements SSE simultanés atteint",
       "table_not_found": "Table « {{table}} » introuvable",
       "unknown_role": "Rôle « {{role}} » inconnu"

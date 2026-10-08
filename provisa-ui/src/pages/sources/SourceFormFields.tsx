@@ -47,6 +47,14 @@ export interface CdcState {
   bootstrapServers: string;
   topicPrefix: string;
   schemaRegistryUrl: string;
+  // REQ-1951: "none" | "basic" | "bearer" | "mtls"
+  schemaRegistryAuth: string;
+  schemaRegistryUsername: string;
+  schemaRegistryPassword: string;
+  schemaRegistryToken: string;
+  schemaRegistryClientCert: string;
+  schemaRegistryClientKey: string;
+  schemaRegistryCa: string;
   consumerGroupId: string;
 }
 

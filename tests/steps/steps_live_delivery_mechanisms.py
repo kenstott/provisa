@@ -232,7 +232,7 @@ def test_build_cdc_config_reads_source_transport():
     cfg = _build_cdc_config(state, src.id)
     assert cfg["bootstrap_servers"] == "kafka:9092"
     assert cfg["topic_prefix"] == "myprefix"
-    assert cfg["schema_registry_url"] == "http://registry:8081"
+    assert cfg["schema_registry"].url == "http://registry:8081"  # REQ-1951
 
 
 def test_source_cdc_config_full_round_trip():

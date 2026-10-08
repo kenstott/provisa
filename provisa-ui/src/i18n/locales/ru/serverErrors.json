@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "Таблица {{table}}: в ответе нет свойства {{rows_field}}, из которого можно читать строки.",
       "paging_rows_field_fixed": "Таблица {{table}}: место, где находятся её строки ({{rows_field}}), задаётся при регистрации таблицы. Зарегистрируйте таблицу заново, чтобы читать её строки из другого места.",
       "relationship_request_queued": "Поставлено в очередь как запрос #{{id}}. Ему нужны одобрения от {{required}} разных пользователей с правом создавать связи, причём хотя бы один должен охватывать каждый затронутый домен.",
-      "request_approved": "Запрос на создание #{{id}} одобрен"
+      "request_approved": "Запрос на создание #{{id}} одобрен",
+      "registry_auth_unknown": "Источник '{{source}}': аутентификация в реестре схем '{{method}}' не входит в {{methods}}",
+      "registry_url_required": "Источник '{{source}}': заданы настройки реестра схем, но не указан URL реестра схем",
+      "registry_field_required": "Источник '{{source}}': для аутентификации в реестре схем '{{method}}' требуется {{field}}",
+      "registry_path_not_absolute": "Источник '{{source}}': {{field}} должен быть абсолютным путём, получено '{{path}}'"
     },
     "secrets": {
       "still_referenced": "{{secret}} всё ещё называют сохранённые значения в этой организации: {{count}}. Измените или удалите каждое и повторите удаление."
@@ -406,9 +410,15 @@
       "source_not_found": "Источник SPARQL '{{source_id}}' не найден"
     },
     "subscribe": {
+      "avro_topic_without_registry": "Топик '{{topic}}' содержит сообщения Avro, а его источник не указывает реестр схем для их чтения: задайте URL реестра схем источника",
       "db_pool_unavailable": "Пул базы данных недоступен",
       "govdata_not_subscribed": "Тенант не подписан на субъект GovData '{{subject}}'. Оформите подписку через биллинговый портал, чтобы получить доступ к этому набору данных.",
       "live_query_not_registered": "Живой запрос '{{query_id}}' не зарегистрирован",
+      "schema_id_unknown": "В реестре схем {{registry}} нет схемы с id {{schema_id}}: сообщение записано с использованием другого реестра",
+      "schema_not_avro": "Схема {{schema_id}} в реестре {{registry}} имеет тип {{kind}}, а не Avro",
+      "schema_registry_error": "Реестр схем {{registry}} ответил HTTP {{http_status}}: {{error}}",
+      "schema_registry_refused_credentials": "Реестр схем {{registry}} отклонил учётные данные источника (HTTP {{http_status}}, аутентификация '{{method}}')",
+      "schema_registry_unreachable": "Реестр схем {{registry}} недоступен: {{error}}",
       "sse_limit_reached": "достигнуто максимальное число одновременных подписок SSE",
       "table_not_found": "Таблица '{{table}}' не найдена",
       "unknown_role": "Неизвестная роль '{{role}}'"

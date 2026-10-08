@@ -131,6 +131,18 @@
     "coGcpCredentialsPath": "सर्विस अकाउंट की फ़ाइल",
     "coGcpProjectIds": "प्रोजेक्ट ID",
     "coCacheTtlMinutes": "कैश (मिनट)",
-    "coCacheTtlMinutesHelp": "क्लाउड से दोबारा पूछने से पहले कोई परिणाम कितनी देर तक फिर से उपयोग होता है"
+    "coCacheTtlMinutesHelp": "क्लाउड से दोबारा पूछने से पहले कोई परिणाम कितनी देर तक फिर से उपयोग होता है",
+    "registryAuth": "रजिस्ट्री प्रमाणीकरण",
+    "registryAuthNone": "कोई नहीं",
+    "registryAuthBasic": "Basic (उपयोगकर्ता नाम और पासवर्ड)",
+    "registryAuthBearer": "Bearer टोकन",
+    "registryAuthMtls": "पारस्परिक TLS (क्लाइंट प्रमाणपत्र)",
+    "registryUsername": "रजिस्ट्री उपयोगकर्ता नाम",
+    "registryPassword": "रजिस्ट्री पासवर्ड",
+    "registryToken": "रजिस्ट्री टोकन",
+    "registryClientCert": "क्लाइंट प्रमाणपत्र का पथ",
+    "registryClientKey": "क्लाइंट कुंजी का पथ",
+    "registryCa": "CA बंडल का पथ (वैकल्पिक)",
+    "registryPathPlaceholder": "सर्वर पर निरपेक्ष पथ"
   }
 }

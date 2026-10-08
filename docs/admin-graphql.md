@@ -64,7 +64,11 @@ query {
     gqlNamingConvention path allowedDomains
     description mappingJson federationHintsJson
     changeSignal passwordRef
-    cdc { bootstrapServers topicPrefix schemaRegistryUrl consumerGroupId }
+    cdc {
+      bootstrapServers topicPrefix consumerGroupId
+      schemaRegistryUrl schemaRegistryAuth schemaRegistryUsername schemaRegistryPassword
+      schemaRegistryToken schemaRegistryClientCert schemaRegistryClientKey schemaRegistryCa
+    }
   }
 }
 ```
@@ -694,7 +698,7 @@ mutation {
 | `loadProtected` | `Boolean` | Scheduled-refresh-only (REQ-1141) |
 | `offPeakWindow` | `String` | `HH:MM-HH:MM` maintenance window |
 | `offPeakTz` | `String` | IANA time zone |
-| `cdc` | `SourceCdcConfigInput` | Kafka CDC transport config (REQ-824) |
+| `cdc` | `SourceCdcConfigInput` | Kafka CDC transport config (REQ-824), including how its schema registry is reached (REQ-1951; see [Schema registry authentication](subscriptions.md#schema-registry-authentication)). `schemaRegistryPassword` and `schemaRegistryToken` are returned as vault references, never as credentials. |
 
 ### `TableInput`
 

@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "Table {{table}}: the response has no property {{rows_field}} to read rows from.",
       "paging_rows_field_fixed": "Table {{table}}: where its rows are ({{rows_field}}) is set when the table is registered. Register the table again to read its rows from elsewhere.",
       "relationship_request_queued": "Queued as request #{{id}}. It needs approvals from {{required}} different users who may create relationships, at least one reaching each domain it touches.",
-      "request_approved": "Approved creation request #{{id}}"
+      "request_approved": "Approved creation request #{{id}}",
+      "registry_auth_unknown": "Source '{{source}}': schema registry authentication '{{method}}' is not one of {{methods}}",
+      "registry_url_required": "Source '{{source}}': schema registry settings are given but no schema registry URL",
+      "registry_field_required": "Source '{{source}}': schema registry authentication '{{method}}' requires {{field}}",
+      "registry_path_not_absolute": "Source '{{source}}': {{field}} must be an absolute path, got '{{path}}'"
     },
     "secrets": {
       "still_referenced": "{{secret}} is still named by {{count}} stored value(s) in this organization. Change or remove each one, then delete it again."
@@ -406,9 +410,15 @@
       "source_not_found": "SPARQL source '{{source_id}}' not found"
     },
     "subscribe": {
+      "avro_topic_without_registry": "Topic '{{topic}}' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL",
       "db_pool_unavailable": "Database pool not available",
       "govdata_not_subscribed": "Tenant not subscribed to GovData subject '{{subject}}'. Subscribe via the billing portal to access this dataset.",
       "live_query_not_registered": "Live query '{{query_id}}' not registered",
+      "schema_id_unknown": "Schema registry {{registry}} holds no schema with id {{schema_id}}: the message was written against another registry",
+      "schema_not_avro": "Schema {{schema_id}} in registry {{registry}} is {{kind}}, not Avro",
+      "schema_registry_error": "Schema registry {{registry}} answered HTTP {{http_status}}: {{error}}",
+      "schema_registry_refused_credentials": "Schema registry {{registry}} refused the source's credentials (HTTP {{http_status}}, authentication '{{method}}')",
+      "schema_registry_unreachable": "Schema registry {{registry}} cannot be reached: {{error}}",
       "sse_limit_reached": "max concurrent SSE subscriptions reached",
       "table_not_found": "Table '{{table}}' not found",
       "unknown_role": "Unknown role '{{role}}'"

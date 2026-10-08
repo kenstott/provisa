@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "Tabelle {{table}}: Die Antwort hat keine Eigenschaft {{rows_field}}, aus der Zeilen gelesen werden könnten.",
       "paging_rows_field_fixed": "Tabelle {{table}}: Wo ihre Zeilen liegen ({{rows_field}}), wird bei der Registrierung der Tabelle festgelegt. Registrieren Sie die Tabelle erneut, um ihre Zeilen von anderer Stelle zu lesen.",
       "relationship_request_queued": "Als Antrag #{{id}} eingereiht. Er braucht Genehmigungen von {{required}} verschiedenen Benutzern, die Beziehungen anlegen dürfen, wobei mindestens einer jede berührte Domäne erreicht.",
-      "request_approved": "Erstellungsanfrage #{{id}} genehmigt"
+      "request_approved": "Erstellungsanfrage #{{id}} genehmigt",
+      "registry_auth_unknown": "Quelle '{{source}}': Die Schema-Registry-Authentifizierung '{{method}}' ist keine von {{methods}}",
+      "registry_url_required": "Quelle '{{source}}': Schema-Registry-Einstellungen sind angegeben, aber keine Schema-Registry-URL",
+      "registry_field_required": "Quelle '{{source}}': Die Schema-Registry-Authentifizierung '{{method}}' erfordert {{field}}",
+      "registry_path_not_absolute": "Quelle '{{source}}': {{field}} muss ein absoluter Pfad sein, erhalten: '{{path}}'"
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."
@@ -406,9 +410,15 @@
       "source_not_found": "SPARQL-Quelle '{{source_id}}' nicht gefunden"
     },
     "subscribe": {
+      "avro_topic_without_registry": "Topic '{{topic}}' enthält Avro-Nachrichten, und seine Quelle nennt keine Schema-Registry zum Lesen: Setzen Sie die Schema-Registry-URL der Quelle",
       "db_pool_unavailable": "Datenbank-Pool nicht verfügbar",
       "govdata_not_subscribed": "Mandant hat das GovData-Subjekt '{{subject}}' nicht abonniert. Abonnieren Sie es über das Abrechnungsportal, um auf dieses Dataset zuzugreifen.",
       "live_query_not_registered": "Live-Abfrage '{{query_id}}' nicht registriert",
+      "schema_id_unknown": "Die Schema-Registry {{registry}} enthält kein Schema mit der ID {{schema_id}}: Die Nachricht wurde für eine andere Registry geschrieben",
+      "schema_not_avro": "Schema {{schema_id}} in der Registry {{registry}} ist {{kind}}, nicht Avro",
+      "schema_registry_error": "Die Schema-Registry {{registry}} antwortete mit HTTP {{http_status}}: {{error}}",
+      "schema_registry_refused_credentials": "Die Schema-Registry {{registry}} hat die Zugangsdaten der Quelle abgelehnt (HTTP {{http_status}}, Authentifizierung '{{method}}')",
+      "schema_registry_unreachable": "Die Schema-Registry {{registry}} ist nicht erreichbar: {{error}}",
       "sse_limit_reached": "Maximale Anzahl gleichzeitiger SSE-Abonnements erreicht",
       "table_not_found": "Tabelle '{{table}}' nicht gefunden",
       "unknown_role": "Unbekannte Rolle '{{role}}'"

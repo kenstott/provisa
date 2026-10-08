@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "資料表 {{table}}：回應中沒有可用於讀取資料列的屬性 {{rows_field}}。",
       "paging_rows_field_fixed": "資料表 {{table}}：資料列所在的位置（{{rows_field}}）在註冊資料表時設定。如要從其他位置讀取資料列，請重新註冊該資料表。",
       "relationship_request_queued": "已排入佇列為請求 #{{id}}。它需要 {{required}} 位有權建立關係的不同使用者核准，且每個涉及的網域至少有一位核准者的權限涵蓋。",
-      "request_approved": "已核准建立請求 #{{id}}"
+      "request_approved": "已核准建立請求 #{{id}}",
+      "registry_auth_unknown": "資料來源「{{source}}」：綱要註冊表驗證「{{method}}」不屬於 {{methods}}",
+      "registry_url_required": "資料來源「{{source}}」：已提供綱要註冊表設定，但沒有綱要註冊表 URL",
+      "registry_field_required": "資料來源「{{source}}」：綱要註冊表驗證「{{method}}」需要 {{field}}",
+      "registry_path_not_absolute": "資料來源「{{source}}」：{{field}} 必須是絕對路徑，實際為「{{path}}」"
     },
     "secrets": {
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"
@@ -406,9 +410,15 @@
       "source_not_found": "找不到 SPARQL 數據來源「{{source_id}}」"
     },
     "subscribe": {
+      "avro_topic_without_registry": "主題「{{topic}}」包含 Avro 訊息，但其資料來源未指定用於讀取的綱要註冊表：請設定資料來源的綱要註冊表 URL",
       "db_pool_unavailable": "數據庫集區不可用",
       "govdata_not_subscribed": "租用戶未訂閱 GovData 主題「{{subject}}」。請透過帳務入口網站訂閱以存取此數據集。",
       "live_query_not_registered": "即時查詢「{{query_id}}」未註冊",
+      "schema_id_unknown": "綱要註冊表 {{registry}} 中沒有 id 為 {{schema_id}} 的綱要：該訊息是針對另一個註冊表寫入的",
+      "schema_not_avro": "註冊表 {{registry}} 中的綱要 {{schema_id}} 是 {{kind}}，不是 Avro",
+      "schema_registry_error": "綱要註冊表 {{registry}} 回應 HTTP {{http_status}}：{{error}}",
+      "schema_registry_refused_credentials": "綱要註冊表 {{registry}} 拒絕了資料來源的憑證（HTTP {{http_status}}，驗證「{{method}}」）",
+      "schema_registry_unreachable": "無法連線綱要註冊表 {{registry}}：{{error}}",
       "sse_limit_reached": "已達同時 SSE 訂閱上限",
       "table_not_found": "找不到資料表「{{table}}」",
       "unknown_role": "未知角色「{{role}}」"

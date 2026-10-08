@@ -131,6 +131,18 @@
     "coGcpCredentialsPath": "Sleutelbestand van het serviceaccount",
     "coGcpProjectIds": "Project-ID's",
     "coCacheTtlMinutes": "Cache (minuten)",
-    "coCacheTtlMinutesHelp": "Hoe lang een resultaat wordt hergebruikt voordat de clouds opnieuw worden bevraagd"
+    "coCacheTtlMinutesHelp": "Hoe lang een resultaat wordt hergebruikt voordat de clouds opnieuw worden bevraagd",
+    "registryAuth": "Registry-authenticatie",
+    "registryAuthNone": "Geen",
+    "registryAuthBasic": "Basic (gebruikersnaam en wachtwoord)",
+    "registryAuthBearer": "Bearer-token",
+    "registryAuthMtls": "Wederzijdse TLS (clientcertificaat)",
+    "registryUsername": "Registry-gebruikersnaam",
+    "registryPassword": "Registry-wachtwoord",
+    "registryToken": "Registry-token",
+    "registryClientCert": "Pad van het clientcertificaat",
+    "registryClientKey": "Pad van de clientsleutel",
+    "registryCa": "Pad van de CA-bundel (optioneel)",
+    "registryPathPlaceholder": "absoluut pad op de server"
   }
 }

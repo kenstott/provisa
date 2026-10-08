@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "表 {{table}}：响应中没有可用于读取行的属性 {{rows_field}}。",
       "paging_rows_field_fixed": "表 {{table}}：行所在的位置（{{rows_field}}）在注册表时设置。要从其他位置读取行，请重新注册该表。",
       "relationship_request_queued": "已排入请求 #{{id}}。它需要 {{required}} 位有权创建关系的不同用户批准，且每个涉及的域至少有一位批准者的权限覆盖。",
-      "request_approved": "已批准创建请求 #{{id}}"
+      "request_approved": "已批准创建请求 #{{id}}",
+      "registry_auth_unknown": "数据源“{{source}}”：模式注册表认证“{{method}}”不属于 {{methods}}",
+      "registry_url_required": "数据源“{{source}}”：已给出模式注册表设置，但没有模式注册表 URL",
+      "registry_field_required": "数据源“{{source}}”：模式注册表认证“{{method}}”需要 {{field}}",
+      "registry_path_not_absolute": "数据源“{{source}}”：{{field}} 必须是绝对路径，实际为“{{path}}”"
     },
     "secrets": {
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"
@@ -406,9 +410,15 @@
       "source_not_found": "未找到 SPARQL 数据源 '{{source_id}}'"
     },
     "subscribe": {
+      "avro_topic_without_registry": "主题“{{topic}}”包含 Avro 消息，但其数据源未指定用于读取的模式注册表：请设置数据源的模式注册表 URL",
       "db_pool_unavailable": "数据库连接池不可用",
       "govdata_not_subscribed": "租户未订阅 GovData 主题 '{{subject}}'。请通过账单门户订阅以访问此数据集。",
       "live_query_not_registered": "实时查询 '{{query_id}}' 未注册",
+      "schema_id_unknown": "模式注册表 {{registry}} 中没有 id 为 {{schema_id}} 的模式：该消息是针对另一个注册表写入的",
+      "schema_not_avro": "注册表 {{registry}} 中的模式 {{schema_id}} 是 {{kind}}，不是 Avro",
+      "schema_registry_error": "模式注册表 {{registry}} 返回 HTTP {{http_status}}：{{error}}",
+      "schema_registry_refused_credentials": "模式注册表 {{registry}} 拒绝了数据源的凭据（HTTP {{http_status}}，认证“{{method}}”）",
+      "schema_registry_unreachable": "无法连接模式注册表 {{registry}}：{{error}}",
       "sse_limit_reached": "已达到并发 SSE 订阅上限",
       "table_not_found": "未找到表 '{{table}}'",
       "unknown_role": "未知角色 '{{role}}'"

@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "Tabel {{table}}: het antwoord heeft geen eigenschap {{rows_field}} om rijen uit te lezen.",
       "paging_rows_field_fixed": "Tabel {{table}}: waar de rijen staan ({{rows_field}}) wordt ingesteld bij het registreren van de tabel. Registreer de tabel opnieuw om de rijen ergens anders te lezen.",
       "relationship_request_queued": "In wachtrij geplaatst als verzoek #{{id}}. Het heeft goedkeuringen nodig van {{required}} verschillende gebruikers die relaties mogen aanmaken, van wie er minstens één tot elk geraakt domein reikt.",
-      "request_approved": "Aanmaakverzoek #{{id}} goedgekeurd"
+      "request_approved": "Aanmaakverzoek #{{id}} goedgekeurd",
+      "registry_auth_unknown": "Bron '{{source}}': schema-registryauthenticatie '{{method}}' is geen van {{methods}}",
+      "registry_url_required": "Bron '{{source}}': er zijn schema-registryinstellingen opgegeven maar geen schema-registry-URL",
+      "registry_field_required": "Bron '{{source}}': schema-registryauthenticatie '{{method}}' vereist {{field}}",
+      "registry_path_not_absolute": "Bron '{{source}}': {{field}} moet een absoluut pad zijn, ontvangen '{{path}}'"
     },
     "secrets": {
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."
@@ -406,9 +410,15 @@
       "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden"
     },
     "subscribe": {
+      "avro_topic_without_registry": "Topic '{{topic}}' bevat Avro-berichten en de bron noemt geen schema-registry om ze mee te lezen: stel de schema-registry-URL van de bron in",
       "db_pool_unavailable": "Databasepool niet beschikbaar",
       "govdata_not_subscribed": "Tenant is niet geabonneerd op GovData-onderwerp '{{subject}}'. Abonneer via het facturatieportaal voor toegang tot deze dataset.",
       "live_query_not_registered": "Live query '{{query_id}}' niet geregistreerd",
+      "schema_id_unknown": "Schema-registry {{registry}} bevat geen schema met id {{schema_id}}: het bericht is tegen een andere registry geschreven",
+      "schema_not_avro": "Schema {{schema_id}} in registry {{registry}} is {{kind}}, geen Avro",
+      "schema_registry_error": "Schema-registry {{registry}} antwoordde met HTTP {{http_status}}: {{error}}",
+      "schema_registry_refused_credentials": "Schema-registry {{registry}} weigerde de inloggegevens van de bron (HTTP {{http_status}}, authenticatie '{{method}}')",
+      "schema_registry_unreachable": "Schema-registry {{registry}} is niet bereikbaar: {{error}}",
       "sse_limit_reached": "maximum aantal gelijktijdige SSE-abonnementen bereikt",
       "table_not_found": "Tabel '{{table}}' niet gevonden",
       "unknown_role": "Onbekende rol '{{role}}'"

@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "Tabla {{table}}: la respuesta no tiene ninguna propiedad {{rows_field}} de la que leer filas.",
       "paging_rows_field_fixed": "Tabla {{table}}: dónde están sus filas ({{rows_field}}) se establece al registrar la tabla. Registre la tabla de nuevo para leer sus filas de otro lugar.",
       "relationship_request_queued": "En cola como solicitud #{{id}}. Necesita aprobaciones de {{required}} usuarios distintos que puedan crear relaciones, y al menos uno debe alcanzar cada dominio que toca.",
-      "request_approved": "Solicitud de creación #{{id}} aprobada"
+      "request_approved": "Solicitud de creación #{{id}} aprobada",
+      "registry_auth_unknown": "Origen '{{source}}': la autenticación del registro de esquemas '{{method}}' no es una de {{methods}}",
+      "registry_url_required": "Origen '{{source}}': se indican ajustes del registro de esquemas pero no su URL",
+      "registry_field_required": "Origen '{{source}}': la autenticación del registro de esquemas '{{method}}' requiere {{field}}",
+      "registry_path_not_absolute": "Origen '{{source}}': {{field}} debe ser una ruta absoluta, se recibió '{{path}}'"
     },
     "secrets": {
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."
@@ -406,9 +410,15 @@
       "source_not_found": "No se encontró el origen SPARQL '{{source_id}}'"
     },
     "subscribe": {
+      "avro_topic_without_registry": "El topic '{{topic}}' transporta mensajes Avro y su origen no indica ningún registro de esquemas para leerlos: defina la URL del registro de esquemas del origen",
       "db_pool_unavailable": "Pool de base de datos no disponible",
       "govdata_not_subscribed": "El inquilino no está suscrito al tema de GovData '{{subject}}'. Suscríbase a través del portal de facturación para acceder a este conjunto de datos.",
       "live_query_not_registered": "La consulta en vivo '{{query_id}}' no está registrada",
+      "schema_id_unknown": "El registro de esquemas {{registry}} no contiene ningún esquema con el id {{schema_id}}: el mensaje se escribió con otro registro",
+      "schema_not_avro": "El esquema {{schema_id}} del registro {{registry}} es {{kind}}, no Avro",
+      "schema_registry_error": "El registro de esquemas {{registry}} respondió HTTP {{http_status}}: {{error}}",
+      "schema_registry_refused_credentials": "El registro de esquemas {{registry}} rechazó las credenciales del origen (HTTP {{http_status}}, autenticación '{{method}}')",
+      "schema_registry_unreachable": "No se puede acceder al registro de esquemas {{registry}}: {{error}}",
       "sse_limit_reached": "se alcanzó el máximo de suscripciones SSE simultáneas",
       "table_not_found": "No se encontró la tabla '{{table}}'",
       "unknown_role": "Rol desconocido: '{{role}}'"

@@ -131,6 +131,18 @@
     "coGcpCredentialsPath": "サービスアカウントのキーファイル",
     "coGcpProjectIds": "プロジェクトID",
     "coCacheTtlMinutes": "キャッシュ（分）",
-    "coCacheTtlMinutesHelp": "クラウドに再度問い合わせるまで結果を再利用する時間"
+    "coCacheTtlMinutesHelp": "クラウドに再度問い合わせるまで結果を再利用する時間",
+    "registryAuth": "レジストリ認証",
+    "registryAuthNone": "なし",
+    "registryAuthBasic": "Basic（ユーザー名とパスワード）",
+    "registryAuthBearer": "Bearer トークン",
+    "registryAuthMtls": "相互 TLS（クライアント証明書）",
+    "registryUsername": "レジストリのユーザー名",
+    "registryPassword": "レジストリのパスワード",
+    "registryToken": "レジストリのトークン",
+    "registryClientCert": "クライアント証明書のパス",
+    "registryClientKey": "クライアント秘密鍵のパス",
+    "registryCa": "CA バンドルのパス（任意）",
+    "registryPathPlaceholder": "サーバー上の絶対パス"
   }
 }

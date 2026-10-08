@@ -131,6 +131,18 @@
     "coGcpCredentialsPath": "Schlüsseldatei des Dienstkontos",
     "coGcpProjectIds": "Projekt-IDs",
     "coCacheTtlMinutes": "Cache (Minuten)",
-    "coCacheTtlMinutesHelp": "Wie lange ein Ergebnis wiederverwendet wird, bevor die Clouds erneut abgefragt werden"
+    "coCacheTtlMinutesHelp": "Wie lange ein Ergebnis wiederverwendet wird, bevor die Clouds erneut abgefragt werden",
+    "registryAuth": "Registry-Authentifizierung",
+    "registryAuthNone": "Keine",
+    "registryAuthBasic": "Basic (Benutzername und Passwort)",
+    "registryAuthBearer": "Bearer-Token",
+    "registryAuthMtls": "Mutual TLS (Clientzertifikat)",
+    "registryUsername": "Registry-Benutzername",
+    "registryPassword": "Registry-Passwort",
+    "registryToken": "Registry-Token",
+    "registryClientCert": "Pfad des Clientzertifikats",
+    "registryClientKey": "Pfad des Client-Schlüssels",
+    "registryCa": "Pfad des CA-Bundles (optional)",
+    "registryPathPlaceholder": "absoluter Pfad auf dem Server"
   }
 }

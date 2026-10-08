@@ -88,10 +88,13 @@ from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
 from provisa.api.admin import schema_mutation_ops as _ops
 
 
+from provisa.api.admin._cdc_registry import (  # noqa: E402
+    refuse_registry_settings,
+    stored_cdc,
+)
 from provisa.api.admin._row_mappers import (  # noqa: E402
     _federation_hints_from_input,
     _parse_mapping_json,
-    _cdc_model_from_input,
 )
 from provisa.api.admin.schema_common import (  # noqa: E402
     _add_source_pool,
@@ -1101,6 +1104,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # REQ-1695: the connection answered, so this credential is worth keeping. A literal goes
         # into the org vault and the row keeps the reference that names it; the row never holds a
         # credential. Done after the validation so a rejected source leaves no vault entry behind.
+        _registry_refusal = refuse_registry_settings(input)  # REQ-1951
+        if _registry_refusal is not None:
+            return _registry_refusal
         password_ref = await persist_source_password(info, input.id, input.password)
         # A credential the type keeps in its mapping is kept the same way.
         _mapping = await persist_source_mapping_secrets(
@@ -1152,7 +1158,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             max_live_concurrency=input.max_live_concurrency,  # REQ-1909
             sentinel_path=input.sentinel_path,  # REQ-1148
             freshness_gate=input.freshness_gate,  # REQ-860
-            cdc=_cdc_model_from_input(input),
+            cdc=await stored_cdc(info, input),  # REQ-1951
         )
 
         # REQ-1531: a source with no allowed list is open to every domain, so opening it to a
@@ -1441,6 +1447,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _feed_refusal = await source_change_feed_refusal(_conn, input)  # REQ-1861
             if _feed_refusal is not None:
                 return _feed_refusal
+            _registry_refusal = refuse_registry_settings(input)  # REQ-1951
+            if _registry_refusal is not None:
+                return _registry_refusal
             # REQ-1695: the literal a person retyped into the form replaces the vault entry under
             # the same name -- a rotation, not a second secret -- and the row keeps the reference.
             password_ref = await persist_source_password(info, input.id, input.password)
@@ -1477,7 +1486,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 max_live_concurrency=input.max_live_concurrency,  # REQ-1909
                 sentinel_path=input.sentinel_path,  # REQ-1148
                 freshness_gate=input.freshness_gate,  # REQ-860
-                cdc=_cdc_model_from_input(input),
+                cdc=await stored_cdc(info, input),  # REQ-1951
                 # REQ-1919: the settings the form does not carry are kept as the store holds them;
                 # writing a default over one would change it without anyone choosing to.
                 **{name: existing[name] for name in source_repo.KEPT_ON_FORM_EDIT},

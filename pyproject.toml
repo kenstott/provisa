@@ -76,6 +76,9 @@ dependencies = [
     "motor",
     "elasticsearch>=8,<9",
     "aiokafka",
+    # REQ-1951: the Avro codec for Debezium topics written against a schema registry (the
+    # registry itself is asked over httpx). MIT; self-contained wheels, no native library.
+    "fastavro>=1,<2",
     "websockets>=11.0",
     "boto3",
     "cryptography",

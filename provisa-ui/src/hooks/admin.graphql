@@ -96,6 +96,13 @@ query SourcesQuery {
       bootstrapServers
       topicPrefix
       schemaRegistryUrl
+      schemaRegistryAuth
+      schemaRegistryUsername
+      schemaRegistryPassword
+      schemaRegistryToken
+      schemaRegistryClientCert
+      schemaRegistryClientKey
+      schemaRegistryCa
       consumerGroupId
     }
   }

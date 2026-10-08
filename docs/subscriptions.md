@@ -106,6 +106,57 @@ sources:
           strategy: debezium
 ```
 
+#### Message encodings
+
+A Debezium topic is read in one of two encodings, and each message says which it is. (REQ-1951)
+
+| Encoding | What the topic carries | What the source needs |
+|---|---|---|
+| JSON | The Debezium JSON converter's envelope, with or without the `schema`/`payload` wrapper | Nothing beyond the `cdc` block |
+| Avro | The Confluent schema-registry wire format: a zero byte, a four-byte schema id, one Avro datum | `schema_registry_url`, and how to authenticate to it |
+
+Avro messages are decoded with the schema their id names, fetched from the registry once and kept. A topic whose schema has evolved is read correctly, because every message names the schema that wrote it. Protobuf and JSON Schema topics are not read.
+
+An Avro message is never read as JSON. Each way of failing to read one is refused by name:
+
+| Situation | Refusal |
+|---|---|
+| Avro message, source names no registry | `subscribe.avro_topic_without_registry`, naming the topic |
+| Registry down or not answering in time | `subscribe.schema_registry_unreachable` |
+| Registry rejects the source's credentials | `subscribe.schema_registry_refused_credentials` |
+| Schema id the registry does not hold | `subscribe.schema_id_unknown`, carrying the id |
+| The id names a Protobuf or JSON schema | `subscribe.schema_not_avro` |
+
+A registry that is down or rejects the credentials is refused when the subscription starts, before the stream opens. A registry lookup waits at most 5 seconds to connect and 10 seconds for an answer, and less when the request has less time left.
+
+#### Schema registry authentication
+
+`schema_registry_auth` names one method; the fields that method needs are checked when the source is saved.
+
+| `schema_registry_auth` | Required fields | Sent to the registry |
+|---|---|---|
+| `none` (default) | — | No credentials |
+| `basic` | `schema_registry_username`, `schema_registry_password` | HTTP basic authentication |
+| `bearer` | `schema_registry_token` | `Authorization: Bearer <token>` (a static token) |
+| `mtls` | `schema_registry_client_cert`, `schema_registry_client_key` | The client certificate, in the TLS handshake |
+
+`schema_registry_ca` is optional with every method: a CA bundle to trust when the registry's certificate is not signed by a public authority.
+
+The password and the token follow the secrets contract. A value typed in the source form is stored in the org vault and the source keeps a `${secret:NAME}` reference; a reference written in a config file (`${env:...}`, `${secret:...}`) is kept as written. The certificate, key and CA bundle are files the Provisa server process opens, named by absolute path.
+
+```yaml
+sources:
+  - id: sales-mysql
+    cdc:
+      bootstrap_servers: kafka:9092
+      topic_prefix: debezium
+      schema_registry_url: https://schema-registry:8081
+      schema_registry_auth: basic
+      schema_registry_username: provisa
+      schema_registry_password: ${secret:registry_password}
+      schema_registry_ca: /etc/provisa/registry-ca.pem
+```
+
 ## Kafka Sink Redirect
 
 Any GraphQL subscription can be redirected to a Kafka topic instead of streaming back to the client. (REQ-812) Add the `X-Provisa-Sink` header to the subscription request:

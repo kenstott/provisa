@@ -131,6 +131,18 @@
     "coGcpCredentialsPath": "Arquivo de chave da conta de serviço",
     "coGcpProjectIds": "IDs de projeto",
     "coCacheTtlMinutes": "Cache (minutos)",
-    "coCacheTtlMinutesHelp": "Por quanto tempo um resultado é reutilizado antes de consultar as nuvens novamente"
+    "coCacheTtlMinutesHelp": "Por quanto tempo um resultado é reutilizado antes de consultar as nuvens novamente",
+    "registryAuth": "Autenticação do registro",
+    "registryAuthNone": "Nenhuma",
+    "registryAuthBasic": "Basic (usuário e senha)",
+    "registryAuthBearer": "Token Bearer",
+    "registryAuthMtls": "TLS mútuo (certificado de cliente)",
+    "registryUsername": "Usuário do registro",
+    "registryPassword": "Senha do registro",
+    "registryToken": "Token do registro",
+    "registryClientCert": "Caminho do certificado de cliente",
+    "registryClientKey": "Caminho da chave de cliente",
+    "registryCa": "Caminho do pacote de CA (opcional)",
+    "registryPathPlaceholder": "caminho absoluto no servidor"
   }
 }

@@ -142,7 +142,7 @@ def get_provider(
             topic_prefix=config["topic_prefix"],
             database=config["database"],
             consumer_group_id=config.get("consumer_group_id", "provisa-debezium"),
-            schema_registry_url=config.get("schema_registry_url"),
+            registry=config.get("schema_registry"),  # REQ-1951
             source_type=config.get("source_type", "postgresql"),
         )
 

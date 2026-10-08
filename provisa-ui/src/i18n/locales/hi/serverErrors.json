@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "तालिका {{table}}: उत्तर में {{rows_field}} नाम की कोई प्रॉपर्टी नहीं है जिससे पंक्तियाँ पढ़ी जा सकें।",
       "paging_rows_field_fixed": "तालिका {{table}}: इसकी पंक्तियाँ कहाँ हैं ({{rows_field}}) यह तालिका पंजीकृत करते समय तय होता है। इसकी पंक्तियाँ कहीं और से पढ़ने के लिए तालिका को फिर से पंजीकृत करें।",
       "relationship_request_queued": "अनुरोध #{{id}} के रूप में कतारबद्ध। इसे संबंध बना सकने वाले {{required}} अलग-अलग उपयोगकर्ताओं की स्वीकृतियाँ चाहिए, जिनमें से कम से कम एक इससे जुड़े हर डोमेन तक पहुँचता हो।",
-      "request_approved": "निर्माण अनुरोध #{{id}} स्वीकृत"
+      "request_approved": "निर्माण अनुरोध #{{id}} स्वीकृत",
+      "registry_auth_unknown": "स्रोत '{{source}}': स्कीमा रजिस्ट्री प्रमाणीकरण '{{method}}' {{methods}} में से कोई नहीं है",
+      "registry_url_required": "स्रोत '{{source}}': स्कीमा रजिस्ट्री की सेटिंग दी गई हैं लेकिन स्कीमा रजिस्ट्री URL नहीं है",
+      "registry_field_required": "स्रोत '{{source}}': स्कीमा रजिस्ट्री प्रमाणीकरण '{{method}}' के लिए {{field}} आवश्यक है",
+      "registry_path_not_absolute": "स्रोत '{{source}}': {{field}} निरपेक्ष पथ होना चाहिए, मिला '{{path}}'"
     },
     "secrets": {
       "still_referenced": "{{secret}} का नाम इस संगठन में अब भी {{count}} संग्रहीत मान ले रहे हैं। हर एक को बदलें या हटाएँ, फिर दोबारा हटाएँ।"
@@ -406,9 +410,15 @@
       "source_not_found": "SPARQL स्रोत '{{source_id}}' नहीं मिला"
     },
     "subscribe": {
+      "avro_topic_without_registry": "टॉपिक '{{topic}}' में Avro संदेश हैं, और उसका स्रोत उन्हें पढ़ने के लिए कोई स्कीमा रजिस्ट्री नहीं बताता: स्रोत का स्कीमा रजिस्ट्री URL सेट करें",
       "db_pool_unavailable": "डेटाबेस पूल उपलब्ध नहीं है",
       "govdata_not_subscribed": "टेनेंट ने GovData विषय '{{subject}}' की सदस्यता नहीं ली है। इस डेटासेट तक पहुँचने के लिए बिलिंग पोर्टल के माध्यम से सदस्यता लें।",
       "live_query_not_registered": "लाइव क्वेरी '{{query_id}}' पंजीकृत नहीं है",
+      "schema_id_unknown": "स्कीमा रजिस्ट्री {{registry}} में id {{schema_id}} वाली कोई स्कीमा नहीं है: संदेश किसी अन्य रजिस्ट्री के विरुद्ध लिखा गया था",
+      "schema_not_avro": "रजिस्ट्री {{registry}} में स्कीमा {{schema_id}} {{kind}} है, Avro नहीं",
+      "schema_registry_error": "स्कीमा रजिस्ट्री {{registry}} ने HTTP {{http_status}} लौटाया: {{error}}",
+      "schema_registry_refused_credentials": "स्कीमा रजिस्ट्री {{registry}} ने स्रोत के क्रेडेंशियल अस्वीकार कर दिए (HTTP {{http_status}}, प्रमाणीकरण '{{method}}')",
+      "schema_registry_unreachable": "स्कीमा रजिस्ट्री {{registry}} तक पहुँचा नहीं जा सकता: {{error}}",
       "sse_limit_reached": "अधिकतम समवर्ती SSE सब्सक्रिप्शन सीमा पूरी हो गई",
       "table_not_found": "टेबल '{{table}}' नहीं मिली",
       "unknown_role": "अज्ञात भूमिका '{{role}}'"

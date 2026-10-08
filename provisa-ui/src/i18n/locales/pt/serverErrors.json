@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "Tabela {{table}}: a resposta não tem nenhuma propriedade {{rows_field}} de onde ler linhas.",
       "paging_rows_field_fixed": "Tabela {{table}}: onde estão suas linhas ({{rows_field}}) é definido quando a tabela é registrada. Registre a tabela novamente para ler suas linhas de outro lugar.",
       "relationship_request_queued": "Enfileirado como solicitação nº {{id}}. Ela precisa de aprovações de {{required}} usuários diferentes que possam criar relacionamentos, com pelo menos um alcançando cada domínio tocado.",
-      "request_approved": "Solicitação de criação nº {{id}} aprovada"
+      "request_approved": "Solicitação de criação nº {{id}} aprovada",
+      "registry_auth_unknown": "Origem '{{source}}': a autenticação do registro de esquemas '{{method}}' não é uma de {{methods}}",
+      "registry_url_required": "Origem '{{source}}': há configurações do registro de esquemas, mas nenhuma URL de registro de esquemas",
+      "registry_field_required": "Origem '{{source}}': a autenticação do registro de esquemas '{{method}}' exige {{field}}",
+      "registry_path_not_absolute": "Origem '{{source}}': {{field}} deve ser um caminho absoluto, recebido '{{path}}'"
     },
     "secrets": {
       "still_referenced": "{{secret}} ainda é nomeado por {{count}} valor(es) armazenado(s) nesta organização. Altere ou remova cada um e exclua novamente."
@@ -406,9 +410,15 @@
       "source_not_found": "Fonte SPARQL '{{source_id}}' não encontrada"
     },
     "subscribe": {
+      "avro_topic_without_registry": "O tópico '{{topic}}' contém mensagens Avro e sua origem não indica nenhum registro de esquemas para lê-las: defina a URL do registro de esquemas da origem",
       "db_pool_unavailable": "Pool de banco de dados não disponível",
       "govdata_not_subscribed": "O locatário não está inscrito no assunto GovData '{{subject}}'. Inscreva-se pelo portal de cobrança para acessar este conjunto de dados.",
       "live_query_not_registered": "Consulta ao vivo '{{query_id}}' não registrada",
+      "schema_id_unknown": "O registro de esquemas {{registry}} não contém nenhum esquema com id {{schema_id}}: a mensagem foi escrita com outro registro",
+      "schema_not_avro": "O esquema {{schema_id}} no registro {{registry}} é {{kind}}, não Avro",
+      "schema_registry_error": "O registro de esquemas {{registry}} respondeu HTTP {{http_status}}: {{error}}",
+      "schema_registry_refused_credentials": "O registro de esquemas {{registry}} recusou as credenciais da origem (HTTP {{http_status}}, autenticação '{{method}}')",
+      "schema_registry_unreachable": "Não é possível acessar o registro de esquemas {{registry}}: {{error}}",
       "sse_limit_reached": "máximo de assinaturas SSE simultâneas atingido",
       "table_not_found": "Tabela '{{table}}' não encontrada",
       "unknown_role": "Função desconhecida '{{role}}'"

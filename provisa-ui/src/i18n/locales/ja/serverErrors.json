@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "テーブル {{table}}: 応答には、行を読み取るためのプロパティ {{rows_field}} がありません。",
       "paging_rows_field_fixed": "テーブル {{table}}: 行の場所（{{rows_field}}）はテーブルの登録時に設定されます。別の場所から行を読み取るには、テーブルを登録し直してください。",
       "relationship_request_queued": "リクエスト #{{id}} としてキューに登録しました。リレーションシップを作成できる {{required}} 人の異なるユーザーの承認が必要で、関わる各ドメインに少なくとも 1 人の権限が及んでいる必要があります。",
-      "request_approved": "作成リクエスト #{{id}} を承認しました"
+      "request_approved": "作成リクエスト #{{id}} を承認しました",
+      "registry_auth_unknown": "ソース '{{source}}': スキーマレジストリ認証 '{{method}}' は {{methods}} のいずれでもありません",
+      "registry_url_required": "ソース '{{source}}': スキーマレジストリの設定がありますが、スキーマレジストリ URL がありません",
+      "registry_field_required": "ソース '{{source}}': スキーマレジストリ認証 '{{method}}' には {{field}} が必要です",
+      "registry_path_not_absolute": "ソース '{{source}}': {{field}} は絶対パスである必要があります（指定値: '{{path}}'）"
     },
     "secrets": {
       "still_referenced": "{{secret}} は、この組織に保存されている {{count}} 件の値からまだ参照されています。それぞれを変更または削除してから、もう一度削除してください。"
@@ -406,9 +410,15 @@
       "source_not_found": "SPARQL ソース「{{source_id}}」が見つかりません"
     },
     "subscribe": {
+      "avro_topic_without_registry": "トピック '{{topic}}' は Avro メッセージを含みますが、そのソースには読み取り用のスキーマレジストリが指定されていません。ソースのスキーマレジストリ URL を設定してください",
       "db_pool_unavailable": "データベースプールが利用できません",
       "govdata_not_subscribed": "テナントは GovData サブジェクト「{{subject}}」を購読していません。このデータセットにアクセスするには、課金ポータルから購読してください。",
       "live_query_not_registered": "ライブクエリ「{{query_id}}」が登録されていません",
+      "schema_id_unknown": "スキーマレジストリ {{registry}} に ID {{schema_id}} のスキーマがありません。メッセージは別のレジストリを基に書き込まれています",
+      "schema_not_avro": "レジストリ {{registry}} のスキーマ {{schema_id}} は {{kind}} で、Avro ではありません",
+      "schema_registry_error": "スキーマレジストリ {{registry}} が HTTP {{http_status}} を返しました: {{error}}",
+      "schema_registry_refused_credentials": "スキーマレジストリ {{registry}} がソースの資格情報を拒否しました（HTTP {{http_status}}、認証 '{{method}}'）",
+      "schema_registry_unreachable": "スキーマレジストリ {{registry}} に接続できません: {{error}}",
       "sse_limit_reached": "同時 SSE サブスクリプションの上限に達しました",
       "table_not_found": "テーブル「{{table}}」が見つかりません",
       "unknown_role": "不明なロール「{{role}}」です"

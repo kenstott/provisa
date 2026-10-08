@@ -65,6 +65,15 @@ class SourceCdcConfigType:  # REQ-824
     bootstrap_servers: str
     topic_prefix: str
     schema_registry_url: str | None = None
+    # REQ-1951: how the registry is reached. The password and the token are returned as the
+    # vault references the row holds, never as credentials.
+    schema_registry_auth: str = "none"
+    schema_registry_username: str | None = None
+    schema_registry_password: str | None = None
+    schema_registry_token: str | None = None
+    schema_registry_client_cert: str | None = None
+    schema_registry_client_key: str | None = None
+    schema_registry_ca: str | None = None
     consumer_group_id: str | None = (
         None  # REQ-931: None = inherit Provisa-level cdc_consumer_group_id
     )
@@ -683,6 +692,15 @@ class SourceCdcConfigInput:  # REQ-824
     bootstrap_servers: str
     topic_prefix: str
     schema_registry_url: str | None = None
+    # REQ-1951: how the registry is reached. The password and the token are returned as the
+    # vault references the row holds, never as credentials.
+    schema_registry_auth: str = "none"
+    schema_registry_username: str | None = None
+    schema_registry_password: str | None = None
+    schema_registry_token: str | None = None
+    schema_registry_client_cert: str | None = None
+    schema_registry_client_key: str | None = None
+    schema_registry_ca: str | None = None
     consumer_group_id: str | None = (
         None  # REQ-931: None = inherit Provisa-level cdc_consumer_group_id
     )

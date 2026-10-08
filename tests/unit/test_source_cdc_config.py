@@ -17,6 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from provisa.kafka.avro_registry import RegistrySettings
 from provisa.api.data.subscribe import (
     _build_cdc_config,
     _resolve_provider_type,
@@ -140,7 +141,8 @@ class TestProviderRouting:
         assert cfg == {
             "bootstrap_servers": "broker:9092",
             "topic_prefix": "dbserver1",
-            "schema_registry_url": "http://sr:8081",
+            # REQ-1951: how the registry is reached, not just where it is.
+            "schema_registry": RegistrySettings(url="http://sr:8081"),
             "consumer_group_id": "provisa-debezium",
             "database": "app",
             "source_type": "mysql",

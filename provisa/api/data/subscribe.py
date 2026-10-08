@@ -30,6 +30,7 @@ from fastapi import APIRouter, Header, Request
 from fastapi.responses import StreamingResponse
 
 from provisa.api.errors import ApiError
+from provisa.kafka.avro_registry import RegistrySettings, SchemaRegistry, SchemaRegistryRefusal
 
 
 log = logging.getLogger(__name__)
@@ -168,11 +169,32 @@ def _build_cdc_config(state, source_id: str) -> dict:  # REQ-824
     return {
         "bootstrap_servers": cdc.bootstrap_servers,
         "topic_prefix": cdc.topic_prefix,
-        "schema_registry_url": cdc.schema_registry_url,
+        "schema_registry": RegistrySettings.of(cdc),  # REQ-1951
         "consumer_group_id": cdc.consumer_group_id or state.config.cdc_consumer_group_id,
         "database": src.database,
         "source_type": src.type.value,
     }
+
+
+async def _refuse_unreachable_registry(source_type: str, source_id: str, tbl_meta, state) -> None:
+    """Before the stream opens: a Debezium source that names a schema registry is refused by name
+    when that registry is down, does not answer in time, or refuses the source's credentials
+    (REQ-1951). Bounded by the registry client's own timeouts and this request's deadline."""
+    if source_type == "postgresql":
+        return
+    if _resolve_provider_type(source_type, source_id, tbl_meta, state) != "debezium":
+        return
+    src = state.cdc_sources.get(source_id) if state.cdc_sources else None
+    settings = RegistrySettings.of(src.cdc) if src is not None and src.cdc is not None else None
+    if settings is None:
+        return
+    registry = SchemaRegistry(settings)
+    try:
+        await registry.reach()
+    except SchemaRegistryRefusal as refused:
+        raise ApiError(refused.status, refused.code, str(refused), **refused.params) from refused
+    finally:
+        await registry.close()
 
 
 def _resolve_provider_type(source_type: str, source_id: str, tbl_meta, state) -> str:  # REQ-932
@@ -507,6 +529,8 @@ async def subscribe(
         raise ApiError(503, "subscribe.db_pool_unavailable", "Database pool not available")
     source_id = tbl_meta.source_id
     source_type = state.source_types[source_id]
+
+    await _refuse_unreachable_registry(source_type, source_id, tbl_meta, state)  # REQ-1951
 
     # REQ-369: enforce the per-role concurrent SSE subscription cap (released when the
     # stream ends, in the return path below).

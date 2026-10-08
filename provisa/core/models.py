@@ -212,7 +212,20 @@ class SourceCdcConfig(BaseModel):  # REQ-824
 
     bootstrap_servers: str  # Kafka bootstrap servers for the Debezium/Kafka delta stream
     topic_prefix: str  # Debezium connector topic prefix; topics derived {prefix}.{schema}.{table}
-    schema_registry_url: str | None = None  # Confluent Schema Registry URL (Avro); None = JSON
+    # Confluent-compatible schema registry URL, for Avro topics. None = the topics are JSON; an
+    # Avro message on a source that names no registry is refused by name, never read as JSON.
+    schema_registry_url: str | None = None
+    # REQ-1951: how the registry is reached. One method -- none, basic, bearer or mtls -- and the
+    # fields it needs (provisa.kafka.avro_registry validates them when the source is saved).
+    # The password and the token are references into the org vault, never the credential; the
+    # certificate, key and CA bundle are absolute paths the server process opens.
+    schema_registry_auth: str = "none"
+    schema_registry_username: str | None = None
+    schema_registry_password: str | None = None
+    schema_registry_token: str | None = None
+    schema_registry_client_cert: str | None = None
+    schema_registry_client_key: str | None = None
+    schema_registry_ca: str | None = None
     # REQ-931: consumer group is a RECEIVER-side setting (Provisa's consumer identity), not sender-
     # dictated like the transport fields above. None = inherit the Provisa-level default
     # (ProvisaConfig.cdc_consumer_group_id); set only for deliberate per-source offset isolation.

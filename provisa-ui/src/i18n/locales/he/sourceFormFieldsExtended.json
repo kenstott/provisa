@@ -131,6 +131,18 @@
     "coGcpCredentialsPath": "קובץ מפתח של חשבון השירות",
     "coGcpProjectIds": "מזהי פרויקטים",
     "coCacheTtlMinutes": "מטמון (דקות)",
-    "coCacheTtlMinutesHelp": "כמה זמן תוצאה משמשת שוב לפני שפונים שוב לעננים"
+    "coCacheTtlMinutesHelp": "כמה זמן תוצאה משמשת שוב לפני שפונים שוב לעננים",
+    "registryAuth": "אימות מול הרישום",
+    "registryAuthNone": "ללא",
+    "registryAuthBasic": "Basic (שם משתמש וסיסמה)",
+    "registryAuthBearer": "אסימון Bearer",
+    "registryAuthMtls": "‏TLS הדדי (אישור לקוח)",
+    "registryUsername": "שם משתמש ברישום",
+    "registryPassword": "סיסמה ברישום",
+    "registryToken": "אסימון הרישום",
+    "registryClientCert": "נתיב אישור הלקוח",
+    "registryClientKey": "נתיב מפתח הלקוח",
+    "registryCa": "נתיב חבילת CA (אופציונלי)",
+    "registryPathPlaceholder": "נתיב מוחלט בשרת"
   }
 }

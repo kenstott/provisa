@@ -131,6 +131,18 @@
     "coGcpCredentialsPath": "服务账号密钥文件",
     "coGcpProjectIds": "项目 ID",
     "coCacheTtlMinutes": "缓存（分钟）",
-    "coCacheTtlMinutesHelp": "再次查询各云之前，结果被重复使用的时长"
+    "coCacheTtlMinutesHelp": "再次查询各云之前，结果被重复使用的时长",
+    "registryAuth": "注册表认证",
+    "registryAuthNone": "无",
+    "registryAuthBasic": "Basic（用户名和密码）",
+    "registryAuthBearer": "Bearer 令牌",
+    "registryAuthMtls": "双向 TLS（客户端证书）",
+    "registryUsername": "注册表用户名",
+    "registryPassword": "注册表密码",
+    "registryToken": "注册表令牌",
+    "registryClientCert": "客户端证书路径",
+    "registryClientKey": "客户端密钥路径",
+    "registryCa": "CA 证书包路径（可选）",
+    "registryPathPlaceholder": "服务器上的绝对路径"
   }
 }

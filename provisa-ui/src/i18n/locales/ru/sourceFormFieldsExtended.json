@@ -131,6 +131,18 @@
     "coGcpCredentialsPath": "Файл ключа сервисного аккаунта",
     "coGcpProjectIds": "ID проектов",
     "coCacheTtlMinutes": "Кэш (минуты)",
-    "coCacheTtlMinutesHelp": "Как долго результат используется повторно, прежде чем облака опрашиваются снова"
+    "coCacheTtlMinutesHelp": "Как долго результат используется повторно, прежде чем облака опрашиваются снова",
+    "registryAuth": "Аутентификация в реестре",
+    "registryAuthNone": "Нет",
+    "registryAuthBasic": "Basic (имя пользователя и пароль)",
+    "registryAuthBearer": "Bearer-токен",
+    "registryAuthMtls": "Взаимный TLS (клиентский сертификат)",
+    "registryUsername": "Имя пользователя реестра",
+    "registryPassword": "Пароль реестра",
+    "registryToken": "Токен реестра",
+    "registryClientCert": "Путь к клиентскому сертификату",
+    "registryClientKey": "Путь к клиентскому ключу",
+    "registryCa": "Путь к пакету CA (необязательно)",
+    "registryPathPlaceholder": "абсолютный путь на сервере"
   }
 }

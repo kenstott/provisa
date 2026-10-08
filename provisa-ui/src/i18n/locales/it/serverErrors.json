@@ -364,7 +364,11 @@
       "openapi_no_rows_field": "Tabella {{table}}: la risposta non ha alcuna proprietà {{rows_field}} da cui leggere le righe.",
       "paging_rows_field_fixed": "Tabella {{table}}: la posizione delle sue righe ({{rows_field}}) è impostata alla registrazione della tabella. Registra di nuovo la tabella per leggere le sue righe da un'altra posizione.",
       "relationship_request_queued": "Accodata come richiesta n. {{id}}. Richiede le approvazioni di {{required}} utenti diversi che possono creare relazioni, di cui almeno uno raggiunge ciascun dominio toccato.",
-      "request_approved": "Richiesta di creazione n. {{id}} approvata"
+      "request_approved": "Richiesta di creazione n. {{id}} approvata",
+      "registry_auth_unknown": "Origine '{{source}}': l'autenticazione del registro degli schemi '{{method}}' non è una di {{methods}}",
+      "registry_url_required": "Origine '{{source}}': sono indicate impostazioni del registro degli schemi ma nessun URL del registro",
+      "registry_field_required": "Origine '{{source}}': l'autenticazione del registro degli schemi '{{method}}' richiede {{field}}",
+      "registry_path_not_absolute": "Origine '{{source}}': {{field}} deve essere un percorso assoluto, ricevuto '{{path}}'"
     },
     "secrets": {
       "still_referenced": "{{secret}} è ancora nominato da {{count}} valore/i memorizzato/i in questa organizzazione. Modifica o rimuovi ciascuno, poi eliminalo di nuovo."
@@ -406,9 +410,15 @@
       "source_not_found": "Origine SPARQL '{{source_id}}' non trovata"
     },
     "subscribe": {
+      "avro_topic_without_registry": "Il topic '{{topic}}' contiene messaggi Avro e la sua origine non indica alcun registro degli schemi per leggerli: imposta l'URL del registro degli schemi dell'origine",
       "db_pool_unavailable": "Pool del database non disponibile",
       "govdata_not_subscribed": "Tenant non abbonato al soggetto GovData '{{subject}}'. Effettuare l'abbonamento tramite il portale di fatturazione per accedere a questo set di dati.",
       "live_query_not_registered": "Query live '{{query_id}}' non registrata",
+      "schema_id_unknown": "Il registro degli schemi {{registry}} non contiene alcuno schema con id {{schema_id}}: il messaggio è stato scritto con un altro registro",
+      "schema_not_avro": "Lo schema {{schema_id}} nel registro {{registry}} è {{kind}}, non Avro",
+      "schema_registry_error": "Il registro degli schemi {{registry}} ha risposto HTTP {{http_status}}: {{error}}",
+      "schema_registry_refused_credentials": "Il registro degli schemi {{registry}} ha rifiutato le credenziali dell'origine (HTTP {{http_status}}, autenticazione '{{method}}')",
+      "schema_registry_unreachable": "Il registro degli schemi {{registry}} non è raggiungibile: {{error}}",
       "sse_limit_reached": "numero massimo di sottoscrizioni SSE simultanee raggiunto",
       "table_not_found": "Tabella '{{table}}' non trovata",
       "unknown_role": "Ruolo '{{role}}' sconosciuto"

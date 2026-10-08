@@ -26,8 +26,14 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import AsyncGenerator, AsyncIterator, Callable, Protocol, runtime_checkable
+from typing import AsyncGenerator, AsyncIterator, Protocol, runtime_checkable
 
+from provisa.kafka.avro_registry import (
+    RegistrySettings,
+    SchemaRegistry,
+    is_registry_framed,
+    refuse_avro_without_registry,
+)
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
 # REQ-922: missing/unparseable ts_ms sorts oldest via a stable sentinel (mirrors
@@ -56,15 +62,15 @@ _OP_MAP = {
 class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
     """Consumes Debezium CDC events from Kafka and emits ChangeEvents.
 
-    Supports JSON deserialization by default. When schema_registry_url is
-    provided, uses confluent-kafka Avro deserializer instead.
+    A message is JSON, or Avro in a Confluent-compatible schema registry's wire format; each
+    message says which. Avro needs the source's registry (REQ-1951).
 
     Args:
         bootstrap_servers: Kafka bootstrap servers string.
         topic_prefix: Debezium connector topic prefix (e.g. "dbserver1").
         database: Source database name, used to build topic name.
         consumer_group_id: Kafka consumer group ID.
-        schema_registry_url: Optional Confluent Schema Registry URL for Avro.
+        registry: How the source's schema registry is reached, for Avro topics (REQ-1951).
         source_type: Source DB type: "mysql", "sqlserver", "oracle", "postgresql".
     """
 
@@ -74,7 +80,7 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
         topic_prefix: str,
         database: str,
         consumer_group_id: str = "provisa-debezium",
-        schema_registry_url: str | None = None,
+        registry: RegistrySettings | None = None,
         source_type: str = "postgresql",
         pg_schema: str = "public",
     ) -> None:
@@ -82,7 +88,8 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
         self._topic_prefix = topic_prefix
         self._database = database
         self._consumer_group_id = consumer_group_id
-        self._schema_registry_url = schema_registry_url
+        self._registry_settings = registry
+        self._registry: SchemaRegistry | None = None
         self._source_type = source_type
         self._pg_schema = pg_schema
         self._consumer: _KafkaConsumer | None = None
@@ -101,18 +108,19 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
         """Parse a JSON-encoded Debezium envelope."""
         try:
             return json.loads(raw)
-        except (json.JSONDecodeError, TypeError) as exc:
+        except (ValueError, TypeError) as exc:  # not JSON, or not text at all
             log.warning("DebeziumProvider: invalid JSON message: %s", exc)
             return None
 
-    def _parse_avro_message(
-        self, raw: bytes, deserializer: Callable[[bytes, None], dict | None]
-    ) -> dict | None:
-        """Deserialize an Avro-encoded Debezium message using Schema Registry."""
+    async def _parse_avro_message(self, raw: bytes, topic: str) -> dict | None:
+        """The envelope of a message in the schema registry's wire format (REQ-1951). It is
+        never read as JSON: with no registry named, the topic is refused by name."""
+        if self._registry is None:
+            raise refuse_avro_without_registry(topic)
         try:
-            return deserializer(raw, None)
-        except Exception as exc:
-            log.warning("DebeziumProvider: Avro deserialization error: %s", exc)
+            return await self._registry.decode(raw)
+        except (EOFError, ValueError) as exc:  # the datum does not match the schema its id names
+            log.warning("DebeziumProvider: undecodable Avro message on %s: %s", topic, exc)
             return None
 
     def _extract_event(self, envelope: dict, table: str) -> ChangeEvent | None:
@@ -176,24 +184,16 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
 
         topic = self._build_topic(table)
 
-        # Set up Avro deserializer if schema registry is configured
-        avro_deserializer = None
-        if self._schema_registry_url:
+        # REQ-1951: a source that names a registry is asked now, so a registry that is down,
+        # hangs or refuses the source's credentials is refused by name before any message is
+        # read. A message in the registry's wire format is decoded with the schema its id names.
+        if self._registry_settings is not None:
+            self._registry = SchemaRegistry(self._registry_settings)
             try:
-                from confluent_kafka.schema_registry import SchemaRegistryClient  # type: ignore[import-untyped]
-                from confluent_kafka.schema_registry.avro import AvroDeserializer  # type: ignore[import-untyped]
-
-                registry_client = SchemaRegistryClient({"url": self._schema_registry_url})
-                avro_deserializer = AvroDeserializer(registry_client)
-                log.info(
-                    "DebeziumProvider: using Avro deserializer (schema registry: %s)",
-                    self._schema_registry_url,
-                )
-            except ImportError:
-                log.warning(
-                    "DebeziumProvider: confluent-kafka not installed; "
-                    "falling back to JSON deserialization"
-                )
+                await self._registry.reach()
+            except BaseException:
+                await self._close_registry()
+                raise
 
         self._consumer = AIOKafkaConsumer(
             topic,
@@ -222,9 +222,10 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
                     )
                     continue
 
-                # Deserialize
-                if avro_deserializer is not None:
-                    envelope = self._parse_avro_message(raw, avro_deserializer)
+                # A JSON document never begins with a zero byte; the registry's wire format
+                # always does. The message says which it is.
+                if is_registry_framed(raw):
+                    envelope = await self._parse_avro_message(raw, topic)
                 else:
                     envelope = self._parse_json_message(raw)
 
@@ -249,9 +250,16 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
         finally:
             await self._consumer.stop()
             self._consumer = None
+            await self._close_registry()
+
+    async def _close_registry(self) -> None:
+        registry, self._registry = self._registry, None
+        if registry is not None:
+            await registry.close()
 
     async def close(self) -> None:
         """Stop the Kafka consumer."""
         if self._consumer is not None:
             await self._consumer.stop()
             self._consumer = None
+        await self._close_registry()

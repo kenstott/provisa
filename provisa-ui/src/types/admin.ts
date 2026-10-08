@@ -15,6 +15,14 @@ export interface SourceCdcConfig {
   bootstrapServers: string;
   topicPrefix: string;
   schemaRegistryUrl?: string | null;
+  // REQ-1951: how the schema registry is reached; password and token are vault references.
+  schemaRegistryAuth?: string | null;
+  schemaRegistryUsername?: string | null;
+  schemaRegistryPassword?: string | null;
+  schemaRegistryToken?: string | null;
+  schemaRegistryClientCert?: string | null;
+  schemaRegistryClientKey?: string | null;
+  schemaRegistryCa?: string | null;
   consumerGroupId?: string | null; // REQ-931: null/omitted = inherit Provisa-level default
 }
 

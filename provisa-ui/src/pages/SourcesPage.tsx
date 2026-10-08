@@ -75,6 +75,7 @@ import {
   sourceTypeLabel,
   uiType,
 } from "./sources/sourceHelpers";
+import { schemaRegistryAuthPayload } from "./sources/schemaRegistryAuth";
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
 import { profilerFieldsFromMapping, profilerMappingJson } from "./sources/profilerMapping";
 import { salesforceFieldsFromMapping, salesforceMappingJson } from "./sources/salesforce";
@@ -237,6 +238,13 @@ export function SourcesPage() {
     bootstrapServers: "",
     topicPrefix: "",
     schemaRegistryUrl: "",
+    schemaRegistryAuth: "none",
+    schemaRegistryUsername: "",
+    schemaRegistryPassword: "",
+    schemaRegistryToken: "",
+    schemaRegistryClientCert: "",
+    schemaRegistryClientKey: "",
+    schemaRegistryCa: "",
     consumerGroupId: "",
   };
   const [cdc, setCdc] = useState<CdcState>({ ...emptyCdc });
@@ -556,6 +564,13 @@ export function SourcesPage() {
             bootstrapServers: s.cdc.bootstrapServers ?? "",
             topicPrefix: s.cdc.topicPrefix ?? "",
             schemaRegistryUrl: s.cdc.schemaRegistryUrl ?? "",
+            schemaRegistryAuth: s.cdc.schemaRegistryAuth ?? "none",
+            schemaRegistryUsername: s.cdc.schemaRegistryUsername ?? "",
+            schemaRegistryPassword: s.cdc.schemaRegistryPassword ?? "",
+            schemaRegistryToken: s.cdc.schemaRegistryToken ?? "",
+            schemaRegistryClientCert: s.cdc.schemaRegistryClientCert ?? "",
+            schemaRegistryClientKey: s.cdc.schemaRegistryClientKey ?? "",
+            schemaRegistryCa: s.cdc.schemaRegistryCa ?? "",
             consumerGroupId: s.cdc.consumerGroupId ?? "",
           }
         : { ...emptyCdc },
@@ -1043,6 +1058,7 @@ export function SourcesPage() {
                 bootstrapServers: cdc.bootstrapServers,
                 topicPrefix: cdc.topicPrefix,
                 schemaRegistryUrl: cdc.schemaRegistryUrl || null,
+                ...schemaRegistryAuthPayload(cdc),
                 consumerGroupId: cdc.consumerGroupId.trim() || null,
               }
             : null,

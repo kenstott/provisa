@@ -1003,6 +1003,11 @@ def _validate_table_live_delivery(config) -> None:
                     f"Source {source.id!r}: cdc transport config not supported for source type "
                     f"{stype!r} (only PostgreSQL and Debezium-captured RDBMS)"
                 )
+            # REQ-1951: how its schema registry is reached is refused by name here as it is when
+            # the source is saved through the admin API (RegistrySettingRefused is a ValueError).
+            from provisa.kafka.avro_registry import validate_settings  # noqa: PLC0415
+
+            validate_settings(source.id, source.cdc.model_dump())
 
     sources_by_id = {s.id: s for s in config.sources}
     for table in config.tables:
