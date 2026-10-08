@@ -117,20 +117,29 @@ class _Registry:
             ["docker", "cp", str(conf), f"{self.name}:/etc/sr"], check=True, capture_output=True
         )
         subprocess.run(["docker", "start", self.name], check=True, capture_output=True)
-        deadline = time.monotonic() + 180
+        # The registry answers once its JVM is up and its schemas topic exists in the session's
+        # broker; on a busy host that took more than three minutes. It is waited for while its
+        # container runs, and a container that has exited fails at once with its log.
+        deadline = time.monotonic() + 600
         while True:
             try:
                 httpx.get(f"{self.url}/subjects", timeout=5, **client).raise_for_status()
                 return
             except httpx.HTTPError as exc:
-                if time.monotonic() > deadline:
+                running = subprocess.run(
+                    ["docker", "inspect", "-f", "{{.State.Running}}", self.name],
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                if running != "true" or time.monotonic() > deadline:
                     logs = subprocess.run(
                         ["docker", "logs", "--tail", "60", self.name],
                         capture_output=True,
                         text=True,
                     )
                     raise AssertionError(
-                        f"registry {self.name} never answered: {exc}\n{logs.stdout}{logs.stderr}"
+                        f"registry {self.name} (running={running}) never answered: {exc}\n"
+                        f"{logs.stdout}{logs.stderr}"
                     ) from exc
                 time.sleep(2)
 
