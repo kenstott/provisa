@@ -369,9 +369,37 @@ def test_a_stream_whose_check_fails_says_so_and_still_ends(monkeypatch):
     out = _drain(monkeypatch, plan, [[(1,), (2,), (3,)]], _SyncEngine(ConnectionError("gone")))
     assert len(out) == 1
     assert [w.code for w in plan.warnings] == ["statement.rows_cut_unchecked"]
+
+
+@pytest.mark.parametrize(("next_rows", "codes"), [(1, ["statement.rows_cut"]), (0, [])])
+def test_a_stream_read_from_a_source_is_checked_through_the_surfaces_own_loop(
+    monkeypatch, next_rows, codes
+):
+    """pgwire's and Flight's source streams (and the raw DataRow passthrough) are fetched by
+    running coroutines on the connection's loop from the stream's thread; the row after the
+    limit is asked for the same way, through the plan's own terminal. A stream that fills its
+    limit says it was cut or says nothing -- 'unchecked' is for a check that failed."""
+    ran = []
+
+    async def terminal(plan, state):
+        ran.append(plan.sql)
+        return _answer(next_rows)
+
+    monkeypatch.setattr(_pipeline, "_run_plan_terminal", terminal)
     direct = _plan(Route.DIRECT)
+    direct.loop_run = asyncio.run  # the surface's runner: a coroutine to completion
     _drain(monkeypatch, direct, [[(1,), (2,), (3,)]], _SyncEngine([]))
-    assert "not read through the engine" in direct.warnings[0].params["reason"]
+    assert [w.code for w in direct.warnings] == codes
+    assert len(ran) == 1 and "LIMIT 1" in ran[0] and "OFFSET 3" in ran[0]
+
+
+def test_every_surface_that_streams_from_a_source_gives_its_runner():
+    import inspect
+
+    from provisa.api.airport import query as airport
+
+    assert "plan.loop_run = run" in inspect.getsource(_pipeline.serve_stream_through_cache)
+    assert inspect.getsource(airport).count("plan.loop_run = run_on_connection_loop") == 2
 
 
 def test_a_stream_no_limit_bounds_is_passed_through_untouched(monkeypatch):

@@ -29,7 +29,7 @@ import re
 import secrets as _secrets
 import threading
 import time as _time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
@@ -156,6 +156,10 @@ class _Plan:
     limit_outcome: str | None = None
     # Whether a stream's end already asked for the row after the limit (once per read).
     limit_checked: bool = False
+    # REQ-1949: how the surface streaming this plan from a source runs a coroutine from its
+    # stream's thread (the ``run`` it gave the source stream itself) -- what the check at the
+    # end of that stream is run with. None for a plan not streamed from a source.
+    loop_run: Callable[[Coroutine[Any, Any, Any]], Any] | None = field(default=None, repr=False)
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
@@ -2259,7 +2263,12 @@ def _stream_was_cut(plan: _Plan, state: Any) -> bool:
     from provisa.transpiler.router import Route
 
     if plan.route != Route.ENGINE or plan.physical_sql is None:
-        raise NextRowNotAskable("the stream was not read through the engine")
+        # A stream read from a source: the row after the limit is asked for through the plan's
+        # own terminal, as a buffered answer's is, run the way the stream's own fetches are --
+        # on the surface's loop, from this thread.
+        if plan.loop_run is None:
+            raise NextRowNotAskable("the surface gave its source stream no way to read again")
+        return bool(plan.loop_run(rows_were_cut(plan, state)))
     limit = plan.row_limit.limit
     after = next_row_sql(plan.physical_sql, limit, state.federation_engine.dialect)
     if after is None:
@@ -3066,6 +3075,7 @@ def serve_stream_through_cache(  # REQ-1897
     disabled (a store that keeps nothing) no read is dispatched and nothing is wrapped."""
     from provisa.federation.live_concurrency import acquire_plan_permits
 
+    plan.loop_run = run  # REQ-1949: what the check at the end of a source stream is run with
     caching = state.response_cache_store.stores_results
     permits = None  # REQ-1909: taken on the first live open, held until the stream ends
     if passthrough is not None:

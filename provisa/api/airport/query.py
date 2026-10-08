@@ -139,6 +139,7 @@ def governed_table_scan_stream(
                 plan.source_id
             ):
                 # REQ-1190: single-reachable-source scan streams via the source's server-side cursor.
+                plan.loop_run = run_on_connection_loop  # REQ-1949: the stream-end check's too
                 stream = state.federation_engine.execute_native_stream(
                     state.source_pools,
                     plan.source_id,
@@ -261,6 +262,7 @@ def governed_table_scan_schema(
             if state.source_pools.has(plan.source_id) and state.source_pools.supports_stream(
                 plan.source_id
             ):
+                plan.loop_run = run_on_connection_loop  # REQ-1949: the stream-end check's too
                 stream = state.federation_engine.execute_native_stream(
                     state.source_pools,
                     plan.source_id,
