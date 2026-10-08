@@ -370,6 +370,7 @@ class TestREQ617RoleSelectionViaMetadata:
         state.source_pools.supports_stream.return_value = False
         fake_plan = SimpleNamespace(
             warnings=[],  # REQ-1350: nothing to say
+            row_limit=None,  # as _Plan: no row limit bounds this read
             materialize=None,  # no delivery forced
             route=Route.DIRECT,
             source_id="test-pg",

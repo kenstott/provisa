@@ -2266,8 +2266,14 @@ def _stream_was_cut(plan: _Plan, state: Any) -> bool:
         raise NextRowNotAskable(
             f"the statement as run is no longer bounded by an outermost LIMIT {limit}"
         )
+    from provisa.federation.execution_auth import plan_authorization
+
+    # Authorized as the read itself was: by the governed plan's own stamp (REQ-1760).
     stream = state.federation_engine.execute_engine_sync(
-        after, plan.exec_params, session_hints=plan.session_hints
+        after,
+        plan.exec_params,
+        session_hints=plan.session_hints,
+        authorization=plan_authorization(plan),
     )
     return bool(stream.rows())
 
@@ -2281,6 +2287,16 @@ def _stream_answer_whole(plan: _Plan, rows: int) -> bool:
         plan.limit_checked = True
         _settle_stream_cut(plan)
     return plan.limit_outcome is None
+
+
+async def settle_cut_at_stream_end(plan: _Plan, rows: int, state: Any) -> None:
+    """:func:`_stream_answer_whole` for a surface that streams on its event loop (gRPC's
+    source streams): the row after the limit is asked for through the plan's own terminal, as a
+    buffered answer's is. Once per read."""
+    if plan.row_limit is None or rows != plan.row_limit.limit or plan.limit_checked:
+        return
+    plan.limit_checked = True
+    await _settle_cut(plan, state)
 
 
 def _settle_stream_cut(plan: _Plan) -> None:
@@ -2525,6 +2541,12 @@ async def _warn_if_cut(plan: _Plan, result: QueryResult, state: Any) -> None:
         return  # served from the response cache: only a whole answer is ever kept there
     if len(result.rows) != plan.row_limit.limit:
         return
+    await _settle_cut(plan, state)
+
+
+async def _settle_cut(plan: _Plan, state: Any) -> None:
+    """Ask for the row after the limit and say what was found: in the statement's warnings and,
+    for its audit row, on the plan."""
     from provisa.compiler.row_limit import cut_warning, unchecked_warning
     from provisa.core.statement_warnings import tell
 

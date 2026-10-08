@@ -131,6 +131,7 @@ def _plan(route=Route.ENGINE, limit: RowLimit | None = RowLimit(3, ROLE)) -> _pi
         physical_sql='SELECT id FROM "pg"."public"."t" LIMIT 3',
     )
     plan.row_limit = limit
+    plan.stamp = "governed"  # as a plan the one pipeline minted
     return plan
 
 
@@ -326,7 +327,7 @@ class _SyncEngine:
         self._rows = rows
         self.asked: list[str] = []
 
-    def execute_engine_sync(self, sql, params=None, *, session_hints=None):
+    def execute_engine_sync(self, sql, params=None, *, session_hints=None, authorization=None):
         self.asked.append(sql)
         if isinstance(self._rows, Exception):
             raise self._rows
@@ -507,3 +508,75 @@ def test_the_cache_capture_of_a_limited_read_asks_before_it_keeps(monkeypatch):
     assert "tee.whole = functools.partial(_stream_answer_whole, plan)" in inspect.getsource(
         _pipeline._cache_tee
     )
+
+
+def test_a_stream_on_its_event_loop_asks_through_the_plans_own_terminal(monkeypatch):
+    """gRPC's source streams run on the RPC's loop: the row after the limit is asked for as a
+    buffered answer's is, once, and only for a stream that filled the limit."""
+    asked = []
+
+    async def terminal(plan, state):
+        asked.append(plan.sql)
+        return _answer(1)
+
+    monkeypatch.setattr(_pipeline, "_run_plan_terminal", terminal)
+    plan = _plan(Route.DIRECT)
+    asyncio.run(_pipeline.settle_cut_at_stream_end(plan, 2, _STATE))
+    assert asked == [] and plan.warnings == []
+    asyncio.run(_pipeline.settle_cut_at_stream_end(plan, 3, _STATE))
+    asyncio.run(_pipeline.settle_cut_at_stream_end(plan, 3, _STATE))
+    assert len(asked) == 1 and "OFFSET 3" in asked[0]
+    assert [w.code for w in plan.warnings] == ["statement.rows_cut"]
+    assert plan.limit_outcome == "cut"
+    asyncio.run(_pipeline.settle_cut_at_stream_end(_plan(limit=None), 3, _STATE))
+
+
+def test_the_streams_second_read_is_authorized_by_the_plans_own_stamp(monkeypatch):
+    seen = {}
+
+    class Engine(_SyncEngine):
+        def execute_engine_sync(self, sql, params=None, *, session_hints=None, authorization=None):
+            seen["authorization"] = authorization
+            return SimpleNamespace(rows=lambda: [])
+
+    plan = _plan()
+    plan.stamp = "governed-stamp"
+    state = SimpleNamespace(federation_engine=Engine([]))
+    assert _pipeline._stream_was_cut(plan, state) is False
+    assert seen["authorization"].stamp == "governed-stamp"
+
+
+def test_grpc_sets_its_trailing_metadata_again_only_for_a_late_warning():
+    from provisa.core.statement_warnings import header_value
+    from provisa.grpc.server import ProvisaServicer
+
+    class Context:
+        def __init__(self):
+            self.set = []
+
+        def set_trailing_metadata(self, metadata):
+            self.set.append(metadata)
+
+    plan = _plan()
+    nag = ("x-provisa-license-notice", "trial")
+    ctx = Context()
+    ProvisaServicer._say_late_warnings(ctx, [nag], plan)
+    assert ctx.set == []  # nothing new to say: what was set stands
+    plan.warnings.append(cut_warning(RowLimit(3, ROLE)))
+    ProvisaServicer._say_late_warnings(ctx, [nag], plan)
+    # Set once more as it was -- the notice kept -- with the warnings as they now stand.
+    assert ctx.set == [(nag, ("x-provisa-warnings", header_value(plan.warnings)))]
+    said = [nag, ("x-provisa-warnings", header_value(plan.warnings))]
+    ProvisaServicer._say_late_warnings(ctx, said, plan)
+    assert len(ctx.set) == 1
+
+
+def test_every_grpc_stream_settles_the_cut_before_its_audit_row():
+    import inspect
+
+    from provisa.grpc.server import ProvisaServicer
+
+    source = inspect.getsource(ProvisaServicer._handle_query_bound)
+    assert source.count("_say_late_warnings(context, _said, plan)") == 2
+    assert "_stream_answer_whole(plan, _delivered)" in source
+    assert source.count("settle_cut_at_stream_end(plan, ") == 2

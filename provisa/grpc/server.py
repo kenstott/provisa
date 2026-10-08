@@ -396,7 +396,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
         report(current_org.get(), msg.ByteSize())
         return msg
 
-    def _emit_trailing_metadata(self, context, warnings=(), redirect: dict | None = None) -> None:
+    def _emit_trailing_metadata(
+        self, context, warnings=(), redirect: dict | None = None
+    ) -> list[tuple[str, str]]:
         """Attach the RPC's out-of-band notices to its trailing metadata, in ONE call (a second
         ``set_trailing_metadata`` replaces the first): the REQ-1137 license nag, once per peer,
         what the statement's answer says about itself (REQ-1350) as ``x-provisa-warnings``, and a
@@ -419,6 +421,22 @@ class ProvisaServicer:  # REQ-045, REQ-143
             metadata.append(("x-provisa-redirect", json.dumps(redirect, default=str)))
         if metadata:
             context.set_trailing_metadata(tuple(metadata))
+        return metadata
+
+    @staticmethod
+    def _say_late_warnings(context, said: list, plan) -> None:
+        """REQ-1949: a stream's trailing metadata is set before its rows are sent; what the rows
+        showed -- the answer was cut at a row limit -- is known when they end. The metadata is
+        set once more, as it was (a second set replaces the first), with the plan's warnings
+        as they now stand."""
+        from provisa.core.statement_warnings import header_value
+
+        was = [value for name, value in said if name == "x-provisa-warnings"]
+        now = header_value(list(plan.warnings)) if plan.warnings else None
+        if now is None or was == [now]:
+            return
+        kept = [(name, value) for name, value in said if name != "x-provisa-warnings"]
+        context.set_trailing_metadata((*kept, ("x-provisa-warnings", now)))
 
     @staticmethod
     def _forced_delivery(metadata: dict, role_id: str):  # REQ-1194
@@ -837,7 +855,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             if tee is not None:
                 stream = tee.rows(stream)
             stream = permits.wrap_stream(stream)
-            self._emit_trailing_metadata(
+            _said = self._emit_trailing_metadata(
                 context, plan.warnings
             )  # REQ-1137: trailing-metadata nag before the row stream
             _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
@@ -864,6 +882,13 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 await context.abort(_status_for_exception(exc), str(exc))
                 return
             plan.row_count = _delivered
+            # REQ-1949: a stream that filled its row limit says whether it was cut (the cache's
+            # capture asked already where there is one), before its audit row is written.
+            from provisa.pgwire._pipeline import _stream_answer_whole
+
+            if plan.row_limit is not None:
+                _stream_answer_whole(plan, _delivered)
+            self._say_late_warnings(context, _said, plan)
             await finalize_audit(plan, 200, state)
             if tee is not None:
                 await tee.commit()
@@ -882,6 +907,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             from provisa.executor.result import QueryResult
             from provisa.pgwire._pipeline import (
                 finalize_audit,
+                settle_cut_at_stream_end,
                 response_cache_tee,
                 store_executed_result,
             )
@@ -917,7 +943,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     ds = await state.source_pools.open_stream(
                         plan.source_id, plan.sql, plan.exec_params or []
                     )
-                    self._emit_trailing_metadata(context, plan.warnings)
+                    _said = self._emit_trailing_metadata(context, plan.warnings)
                     _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
                     out_cols = [_proto_by_norm.get(_norm(c), c) for c in ds.column_names]
                     col_fields = _col_fields_for(out_cols)
@@ -945,6 +971,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     finally:
                         await ds.close()
                     plan.row_count = _delivered
+                    # REQ-1949: before the audit row, and before the answer is kept (a warned
+                    # answer is not stored).
+                    await settle_cut_at_stream_end(plan, _delivered, state)
+                    self._say_late_warnings(context, _said, plan)
                     await finalize_audit(plan, 200, state)
                     if _kept is not None:
                         await store_executed_result(
@@ -961,6 +991,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 result = await state.federation_engine.execute_native(
                     state.source_pools, plan.source_id, plan.sql, plan.exec_params or []
                 )
+                # REQ-1949: the rows are all read here, so the cut is settled before anything
+                # is said or sent.
+                await settle_cut_at_stream_end(plan, len(result.rows), state)
                 # REQ-1137/REQ-1350: trailing metadata (notice, warnings) before the row stream.
                 self._emit_trailing_metadata(context, plan.warnings)
                 _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
