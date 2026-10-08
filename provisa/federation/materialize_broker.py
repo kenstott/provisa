@@ -485,6 +485,21 @@ class _SyncedStore:
         """The store table's column names in ordinal order, or ``None`` when it does not exist."""
         return _with_store(self._db_path, lambda con: _table_columns(con, schema, table))
 
+    def tables(self, schema: str) -> list[str]:
+        """The tables the store holds in ``schema``; none when the store has no such schema yet
+        (a schema is created by the first write into it)."""
+        return [
+            row[0]
+            for row in _with_store(
+                self._db_path,
+                lambda con: con.execute(
+                    "SELECT table_name FROM duckdb_tables() "
+                    "WHERE database_name = ? AND schema_name = ?",
+                    [_MAT_STORE_ALIAS, schema],
+                ).fetchall(),
+            )
+        ]
+
     def execute(self, sql: str, params: list | None = None) -> list[tuple]:
         """Run one statement against the store (``mat_store.*`` names resolve) and return its rows.
         For the MV-maintenance statements that act on the store alone (reclaim/orphan DROP, SHOW

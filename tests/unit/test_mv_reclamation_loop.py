@@ -99,3 +99,58 @@ async def test_a_copy_of_a_view_another_region_keeps_is_an_orphan_here():
     finally:
         process_region._region = was
     assert orphans == ["mv_theirs"]
+
+
+class _BrokerBackedEngine:
+    """An engine whose views live in an embedded DuckDB-file store, reached through its broker."""
+
+    dialect = "duckdb"
+
+    def __init__(self, db_path: str) -> None:
+        from provisa.federation.materialize_broker import get_broker
+
+        self._broker = get_broker(db_path)
+
+    def mv_store_broker(self):
+        return self._broker
+
+    async def execute_engine(self, sql, *, authorization=None):
+        raise AssertionError(f"the store is the broker's to read, not the engine's: {sql}")
+
+
+async def test_a_view_schema_the_embedded_store_does_not_hold_yet_has_no_orphans(tmp_path):
+    """An embedded store creates a view schema with the first view built into it. A sweep before
+    that listed a schema that was not there and logged "Error in MV reclamation loop" (a catalog
+    error from SHOW TABLES) on every pass; a schema the store does not hold has no tables."""
+    engine = _BrokerBackedEngine(str(tmp_path / "materialize.duckdb"))
+    reg = MVRegistry()
+    reg.register(
+        MVDefinition(
+            id="orders",
+            source_tables=["t"],
+            target_catalog="mat_store",
+            target_schema="org_a_mv_cache",
+        )
+    )
+    assert await refresh.detect_orphans(engine, reg, "org_a_mv_cache", "mat_store") == []
+
+
+async def test_orphans_in_an_embedded_store_are_found_through_its_broker(tmp_path):
+    engine = _BrokerBackedEngine(str(tmp_path / "materialize.duckdb"))
+    broker = engine.mv_store_broker()
+    broker.execute('CREATE SCHEMA mat_store."org_a_mv_cache"')
+    for table in ("mv_orders", "mv_removed"):
+        broker.execute(f'CREATE TABLE mat_store."org_a_mv_cache"."{table}" (id INTEGER)')
+    reg = MVRegistry()
+    reg.register(
+        MVDefinition(
+            id="orders",
+            source_tables=["t"],
+            target_catalog="mat_store",
+            target_schema="org_a_mv_cache",
+        )
+    )
+    assert reg.get("orders").target_table == "mv_orders"
+    assert await refresh.detect_orphans(engine, reg, "org_a_mv_cache", "mat_store") == [
+        "mv_removed"
+    ]

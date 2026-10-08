@@ -920,14 +920,22 @@ async def detect_orphans(  # REQ-234
 
     Returns list of orphan table names.
     """
-    # Snowflake spells the schema-scoped listing ``SHOW TABLES IN SCHEMA``; DuckDB/Trino ``FROM``.
-    scope = "IN SCHEMA" if getattr(engine, "dialect", "") == "snowflake" else "FROM"
-    rows = await _store_statement(
-        engine,
-        f'SHOW TABLES {scope} "{catalog}"."{schema_name}"',
-        SystemAuth(mint_system_token(), reason=f"mv_detect_orphans:{catalog}.{schema_name}"),
-    )
-    actual_tables = {row[0] for row in rows}
+    broker = _mv_store_broker(engine)
+    if broker is not None:
+        # An embedded DuckDB-file store creates a view schema with the first view built into it
+        # (write_mv). Until then the schema is not there, and ``SHOW TABLES FROM`` it is a
+        # catalog error -- every sweep of a deployment whose views had not yet been built logged
+        # "Error in MV reclamation loop". The store is asked what it holds: nothing, there.
+        actual_tables = set(await _in_executor(lambda: broker.tables(schema_name)))
+    else:
+        # Snowflake spells the schema-scoped listing ``SHOW TABLES IN SCHEMA``; Trino ``FROM``.
+        scope = "IN SCHEMA" if getattr(engine, "dialect", "") == "snowflake" else "FROM"
+        rows = await _store_statement(
+            engine,
+            f'SHOW TABLES {scope} "{catalog}"."{schema_name}"',
+            SystemAuth(mint_system_token(), reason=f"mv_detect_orphans:{catalog}.{schema_name}"),
+        )
+        actual_tables = {row[0] for row in rows}
 
     # REQ-1921: a view naming another region is kept only there — a copy of it here (left when
     # its region changed) is an orphan of this region's store like a removed view's.
