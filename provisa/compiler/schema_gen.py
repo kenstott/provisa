@@ -189,7 +189,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
             if table.get("columns") or not col_meta or not reaches:
                 # Columns were defined but none visible to this role, or no metadata available
                 continue
-            # No registered columns but synthesized metadata exists (e.g., govdata JAR YAML)
+            # No registered columns but synthesized metadata exists (e.g. a remote schema's types)
             visible_cols = [
                 {"column_name": name, "visible_to": [], "native_filter_type": None}
                 for name in col_meta

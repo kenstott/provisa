@@ -99,10 +99,8 @@ from provisa.api.admin._row_mappers import (  # noqa: E402
 from provisa.api.admin.schema_common import (  # noqa: E402
     _add_source_pool,
     _analyze_source_on_engine,
-    _configure_govdata_env,
     _fire_catalog_indexing,
     _drop_source_on_engine,
-    _prime_govdata_cache,
     _queue_creation_request,
     _rebuild_relationship_input,
     _rebuild_source_input,
@@ -1180,9 +1178,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         require_reach_of_added_domains(info, _was, _named or _was or [], empty_is_all=True)
         await _upsert_source_with_domains(pool, model, input)
 
-        if input.type == "govdata" and input.username:
-            _configure_govdata_env(input)
-
         _domains = [d for d in (input.allowed_domains or []) if d.strip()]
         if _domains:
             state.source_allowed_domains[input.id] = _domains
@@ -1225,10 +1220,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             from provisa.api.data.pgwire_write import start_write_server
 
             start_write_server(model)
-        await _analyze_source_on_engine(state, pool, model, input)
+            # An AskAmerica server takes minutes to mount its schemas: started at save too.
+            from provisa.federation.pgwire_replica import start_when_saved
 
-        if input.type == "govdata" and input.database and input.username:
-            _prime_govdata_cache(input)
+            start_when_saved(model)
+        await _analyze_source_on_engine(state, pool, model, input)
 
         _fire_catalog_indexing(state, pool, input)
 
@@ -1547,16 +1543,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             await _state.source_pools.remove(input.id)
             async with _bound():
                 start_write_server(model)
+        from provisa.federation.pgwire_replica import STARTED_WHEN_SAVED, start_when_saved
 
-        if input.type == "govdata" and input.username:
-            import os as _os
-            from provisa.core.secrets import resolve_secrets as _rs
+        if input.type in STARTED_WHEN_SAVED:
+            # The edited source's server was stopped above; it is started again from the edit.
+            from provisa.core.secrets_store import bound_to_request_org as _bound_for_start
 
-            _os.environ["AWS_ACCESS_KEY_ID"] = _rs(input.username)
-            if input.password:
-                _os.environ["AWS_SECRET_ACCESS_KEY"] = _rs(input.password)
-            if input.host:
-                _os.environ["AWS_ENDPOINT_OVERRIDE"] = _rs(input.host)
+            async with _bound_for_start():
+                start_when_saved(model)
 
         from provisa.api.app import state
         from provisa.executor.drivers.registry import has_driver

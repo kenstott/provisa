@@ -11,11 +11,11 @@
 """Shared leaf helpers for the admin GraphQL schema.
 
 Strawberry types, admin-context resolution, creation-request queueing, and the
-source-management operations (pool/engine registration, govdata, view MV sync)
+source-management operations (pool/engine registration, view MV sync)
 used by both the Query and Mutation resolvers. No dependency on those classes.
 """
 
-# complexity-gate: allow-ble=2 reason="two genuine boundaries, not grandfathering: (1) _validate_govdata_api_key TESTS an external credential — any failure to connect means the key is invalid, which it REPORTS to the user as MutationResult(success=False); narrowing would let an unexpected JVM/JDBC failure crash the mutation instead of reporting an invalid key. (2) _register_source_on_engine is best-effort engine provisioning; register_source logs its own warnings and provisioning is non-fatal (the source stays usable direct-routed), matching the established convention at config_loader.py:248."
+# complexity-gate: allow-ble=1 reason="one genuine boundary, not grandfathering: _register_source_on_engine is best-effort engine provisioning; register_source logs its own warnings and provisioning is non-fatal (the source stays usable direct-routed), matching the established convention at config_loader.py:248."
 
 import logging
 from typing import TYPE_CHECKING, Optional, cast
@@ -54,11 +54,9 @@ __all__ = [
     "_add_source_pool",
     "_analyze_source_on_engine",
     "_build_column_models",
-    "_configure_govdata_env",
     "_ensure_view_column_types",
     "_drop_source_on_engine",
     "_fire_catalog_indexing",
-    "_prime_govdata_cache",
     "_queue_creation_request",
     "_rebuild_relationship_input",
     "_rebuild_table_input",
@@ -184,40 +182,38 @@ def _resolve_admin_context(info: StrawberryInfo) -> str:
 
 
 async def _validate_govdata_api_key(input: SourceInput) -> Optional[MutationResult]:
-    """Return a failure MutationResult if the govdata API key is invalid, else None."""
-    if not input.username:
+    """Return a failure MutationResult if AskAmerica refuses the source's API key, else None.
+
+    The key is presented where it is turned into the credentials its data is read with
+    (``federation.askamerica.resolve_storage_credentials``); what comes back is discarded here —
+    the source's server resolves its own when it starts. An API that answers neither with
+    credentials nor a refusal (``AskAmericaUnavailable``) is raised as itself: it says nothing
+    about the key."""
+    import asyncio as _asyncio
+
+    from provisa.federation.askamerica import (
+        AskAmericaKeyMissing,
+        AskAmericaKeyRefused,
+        api_key,
+        resolve_storage_credentials,
+    )
+
+    try:
+        key = api_key(input)
+    except AskAmericaKeyMissing:
         return MutationResult(
             success=False,
             message="AskAmerica API Key is required",
             code="schema.askamerica_key_required",
         )
-    import asyncio as _asyncio
-    import logging as _vlog
-    from provisa.core.models import GovDataSource as _GDS, GovDataSubject as _GDSubj
-    from provisa.core.secrets import resolve_secrets as _rs_v
-    from provisa.govdata.source import connect as _gd_v
-
-    def _validate() -> None:
-        gds = _GDS(
-            id=input.id,
-            subject=_GDSubj.all,
-            govdata_schemas=["fec"],
-            domain_id="default",
-            api_key=_rs_v(input.username),
-        )
-        conn = _gd_v(gds)
-        conn.getMetaData().getDatabaseProductName()
-
     try:
-        loop = _asyncio.get_running_loop()
-        await loop.run_in_executor(None, _validate)
-    except Exception as _ve:
-        _vlog.getLogger(__name__).warning("govdata API key validation failed: %s", _ve)
+        await _asyncio.to_thread(resolve_storage_credentials, key)
+    except AskAmericaKeyRefused as refused:
         return MutationResult(
             success=False,
-            message=f"Invalid AskAmerica API Key: {_ve}",
+            message=f"Invalid AskAmerica API Key: {refused.detail}",
             code="schema.invalid_askamerica_key",
-            params={"error": str(_ve)},
+            params={"error": refused.detail},
         )
     return None
 
@@ -328,22 +324,6 @@ async def _upsert_source_with_domains(pool, model, input: SourceInput) -> None:
             await conn.execute_core(
                 update(sources).where(sources.c.id == input.id).values(allowed_domains=_domains)
             )
-
-
-def _configure_govdata_env(input: SourceInput) -> None:
-    """Set AWS environment variables required for govdata access."""
-    import os as _os
-    from provisa.core.secrets import resolve_secrets as _rs
-
-    # Overwrite, never setdefault: the credential the caller registered the source with is the
-    # authoritative one. Deferring to an ambient AWS_ACCESS_KEY_ID silently authenticates govdata
-    # with whatever unrelated key happens to be in the environment, and is inconsistent with the
-    # endpoint below, which already overwrites.
-    _os.environ["AWS_ACCESS_KEY_ID"] = _rs(input.username)
-    if input.password:
-        _os.environ["AWS_SECRET_ACCESS_KEY"] = _rs(input.password)
-    if input.host:
-        _os.environ["AWS_ENDPOINT_OVERRIDE"] = _rs(input.host)
 
 
 async def _add_source_pool(state, input: SourceInput) -> None:
@@ -559,31 +539,6 @@ async def _analyze_source_on_engine(state, pool, model, input: SourceInput) -> N
         state.federation_engine.analyze(
             model, table_refs, catalog_name=state.source_catalogs[input.id]
         )
-
-
-def _prime_govdata_cache(input: SourceInput) -> None:
-    """Schedule a background task to prime the govdata metadata cache."""
-    from provisa.core.models import GovDataSource as _GDS, GovDataSubject as _GDSubj
-    from provisa.core.secrets import resolve_secrets as _rs2
-    from provisa.govdata.source import prime_source as _prime
-
-    _gds = _GDS(
-        id=input.id,
-        subject=_GDSubj.all,
-        govdata_schemas=[s.strip().lower() for s in input.database.split(",") if s.strip()],
-        domain_id="default",
-        api_key=_rs2(input.username),
-    )
-    _schemas = [s.strip().lower() for s in input.database.split(",") if s.strip()]
-
-    async def _prime_task() -> None:
-        _prime(_gds, _schemas)
-
-    # REQ-1882: detached work runs on a background worker, never on the request's own loop (which
-    # stops, cancelling leftover tasks, when the request ends).
-    from provisa.core.connection_loop import spawn_background
-
-    spawn_background(_prime_task(), name=f"govdata-prime:{input.id}")
 
 
 def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:

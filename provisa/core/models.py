@@ -133,7 +133,7 @@ class SourceType(str, Enum):
     airport = "airport"  # Arrow Flight server — DuckDB airport community extension (REQ-899)
     # Push receiver — external services POST JSON events (Phase AS)
     ingest = "ingest"
-    # U.S. government open data via Apache Calcite / GovData JDBC adapter
+    # AskAmerica: U.S. government open data, served by its bundled pgwire adapter (REQ-540)
     govdata = "govdata"
     # Enterprise SaaS via Apache Calcite connectors
     sharepoint = "sharepoint"
@@ -2137,11 +2137,8 @@ GOVDATA_SUBJECT_SCHEMAS: dict[str, list[str]] = {
 
 
 class GovDataSource(BaseModel):  # REQ-540
-    """A GovData dataset group exposed via the askamerica JDBC adapter.
-
-    Each entry corresponds to one set of GovData schemas sharing a subject tag.
-    At query time Provisa connects via askamerica.engine.get_connection(api_key).
-    """
+    """A GovData dataset group: one set of GovData schemas sharing a subject tag, the unit a
+    tenant's subscription is checked against (``govdata.subscription.check_source_access``)."""
 
     id: str
     subject: GovDataSubject

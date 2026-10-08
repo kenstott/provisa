@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Admin GraphQL schema helpers — pool, openapi/govdata columns, conflict checks.
+"""Admin GraphQL schema helpers — pool, openapi columns, conflict checks.
 
 Module-level helpers extracted from schema.py; called by the Query/Mutation
 resolvers. state / _rebuild_schemas are imported lazily inside functions.
@@ -36,7 +36,6 @@ if TYPE_CHECKING:
 from provisa.api_source.openapi_endpoint import normalize_op_id
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.api.admin.types import (
-    AvailableColumnType,
     ColumnPresetType,
     ImplicitMeasureType,
     RegisteredTableType,
@@ -151,61 +150,6 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         return True
     except Exception:
         return False
-
-
-async def _govdata_columns(  # pyright: ignore[reportUnusedParameter]
-    source_id: str,
-    schema_name: str,
-    table_name: str,
-    _config_conn,  # noqa: ARG001
-) -> list["AvailableColumnType"]:
-    import asyncio as _asyncio
-    import logging as _logging
-
-    from provisa.core.models import GovDataSource, GovDataSubject
-    from provisa.core.secrets import resolve_secrets as _resolve_secrets
-    from provisa.govdata.source import (
-        fetch_columns as _fetch_columns,
-        fetch_primary_keys as _fetch_pks,
-    )
-
-    schema_lower = schema_name.lower()
-    table_lower = table_name.lower()
-
-    pool = await _get_pool()
-    async with pool.acquire() as _conn:
-        _res = await _conn.execute_core(select(sources.c.username).where(sources.c.id == source_id))
-        row = _res.fetchone()
-    api_key = _resolve_secrets((row.username or "") if row else "")
-
-    gds = GovDataSource(
-        id=source_id,
-        subject=GovDataSubject.all,
-        govdata_schemas=[schema_lower],
-        domain_id="default",
-        api_key=api_key,
-    )
-
-    try:
-        loop = _asyncio.get_running_loop()
-        cols_fut = loop.run_in_executor(None, _fetch_columns, gds, schema_lower, table_lower)
-        pks_fut = loop.run_in_executor(None, _fetch_pks, gds, schema_lower, table_lower)
-        rows, pk_cols = await _asyncio.gather(cols_fut, pks_fut)
-        return [
-            AvailableColumnType(
-                name=col, data_type=typ, comment=rem or None, is_primary_key=col in pk_cols
-            )
-            for col, typ, rem in rows
-        ]
-    except Exception as _e:
-        _logging.getLogger(__name__).error(
-            "govdata _govdata_columns failed for %s.%s: %s",
-            schema_name,
-            table_name,
-            _e,
-            exc_info=True,
-        )
-        return []
 
 
 async def _rebuild_schemas():

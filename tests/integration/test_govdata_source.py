@@ -8,198 +8,194 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration test for the GovData fat JAR via jpype.
+"""Live AskAmerica source (REQ-540): a Postgres-wire source, read through its bundled server.
 
-Connects using GovDataDriver (jdbc:govdata:source=fec) which handles
-schema initialization, bulk-download caching, and Iceberg materialization.
-FEC data is pre-cached in .aperio/fec — no live download required for
-the candidates/committees tables.
+A ``Source`` row (type=govdata) carries the API key in ``username`` and the schemas it serves in
+``database``. ``provisa.federation.askamerica`` exchanges the key for the credentials the data is
+read with; ``provisa.federation.pgwire_replica`` starts the bundled ``pgwire-govdata`` server
+with them, from the source's own state directory; DuckDB attaches that server through its
+postgres extension and reads each table from the adapter schema the table names.
 
-Skip conditions:
-  - jpype1 not installed
-  - calcite-govdata-all.jar not present in lib/
-  - AWS credentials not available (needed by the JAR's credential chain)
+Credentials
+-----------
+There is no emulator behind the adapter: a real key is required (``ASKAMERICA_API_KEY``, a
+secret of the warehouse lane), so this runs there. A missing key fails the module by name.
 
-Run:
-    pytest tests/integration/test_govdata_source.py -v
+What this proves that the unit tests cannot
+-------------------------------------------
+- the key AskAmerica issues is exchanged for credentials, and a made-up key is refused;
+- the pinned bundle starts with the environment Provisa gives it and nothing else;
+- DuckDB's postgres extension attaches the server (its pg_catalog introspection answers);
+- a table is read in place from its own schema, and joined with a table of another source in
+  one statement — the read the in-process engine this replaces could never serve.
+
+The server mounts its schemas from object storage before it accepts a connection, which takes
+minutes on a cold cache; the fixture waits for it rather than for the 90 seconds a statement
+does.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
-import glob
+
 import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
-# The GovData driver reports its schemas in lower case (JDBC metadata patterns are case-sensitive).
-_FEC = "fec"
-
-# ---------------------------------------------------------------------------
-# Fixtures / skip guards
-# ---------------------------------------------------------------------------
-
-
-def _jar_path() -> str | None:
-    here = os.path.dirname(os.path.abspath(__file__))
-    project = os.path.dirname(os.path.dirname(here))
-    matches = glob.glob(os.path.join(project, "lib", "calcite-govdata-*.jar"))
-    return sorted(matches)[-1] if matches else None
+_SOURCE_ID = "askamerica-itest"
+#: One small schema plus the two linker schemas the Sources form always adds.
+_SCHEMAS = "fec,ref,geo"
+_SCHEMA = "fec"
+#: How long the fixture waits for a cold server to mount its schemas.
+_COLD_START_SECONDS = 600
 
 
-def _aws_creds_available() -> bool:
-    if os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"):
-        return True
-    env_file = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+def _api_key() -> str:
+    key = os.environ.get("ASKAMERICA_API_KEY")
+    if not key:
+        raise RuntimeError(
+            "ASKAMERICA_API_KEY is not set: the AskAmerica source test needs a real key "
+            "(a secret of the warehouse lane)"
+        )
+    return key
+
+
+def _source():
+    from provisa.core.models import Source, SourceType
+
+    return Source(id=_SOURCE_ID, type=SourceType.govdata, username=_api_key(), database=_SCHEMAS)
+
+
+@contextlib.contextmanager
+def _serving(source, data_dir):
+    """The source's pgwire server, started from a state directory of this run's own."""
+    from provisa.federation import pgwire_replica as pr
+
+    previous = os.environ.get("PROVISA_DATA_DIR")
+    os.environ["PROVISA_DATA_DIR"] = str(data_dir)
     try:
-        with open(env_file) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, _, v = line.partition("=")
-                k = k.strip()
-                if k in (
-                    "AWS_ACCESS_KEY_ID",
-                    "AWS_SECRET_ACCESS_KEY",
-                    "AWS_ENDPOINT_OVERRIDE",
-                    "AWS_REGION",
-                ):
-                    os.environ.setdefault(k, v.strip())
-    except OSError:
-        pass
-    return bool(os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"))
+        yield pr.ensure_endpoint(source, timeout=_COLD_START_SECONDS)
+    finally:
+        pr.stop_endpoint(source.id)
+        if previous is None:
+            del os.environ["PROVISA_DATA_DIR"]
+        else:
+            os.environ["PROVISA_DATA_DIR"] = previous
 
 
 @pytest.fixture(scope="module")
-def govdata_conn():
-    """Open a single GovDataDriver connection for all tests in this module."""
-    try:
-        import jpype
-    except ImportError:
-        pytest.skip("jpype1 not installed")
-
-    jar = _jar_path()
-    if jar is None:
-        pytest.skip("calcite-govdata-all.jar not found in lib/")
-
-    if not _aws_creds_available():
-        pytest.skip("AWS credentials not available (needed by GovData JAR)")
-
-    if not jpype.isJVMStarted():
-        jpype.startJVM(classpath=[jar])
-
-    # Suppress INFO noise
-    try:
-        factory = jpype.JClass("org.slf4j.LoggerFactory").getILoggerFactory()
-        level = jpype.JClass("ch.qos.logback.classic.Level")
-        factory.getLogger("ROOT").setLevel(level.ERROR)
-    except Exception:
-        pass
-
-    GovDataDriver = jpype.JClass("org.apache.calcite.adapter.govdata.GovDataDriver")
-    driver = GovDataDriver()
-    props = jpype.JClass("java.util.Properties")()
-    try:
-        conn = driver.connect("jdbc:govdata:source=fec", props)
-    except Exception as exc:
-        pytest.skip(f"GovData FEC data unavailable or incompatible: {exc}")
-    if conn is None:
-        pytest.skip("GovDataDriver.connect() returned null")
-
-    # connect() succeeds even against an empty parquet bucket — the Iceberg tables are loaded
-    # lazily and missing tables are logged, not raised. The driver reports the schema in lower case
-    # ("fec"); a missing schema is a real failure of this environment's data, not a skip.
-    rs = conn.getMetaData().getSchemas()
-    schemas = []
-    while rs.next():
-        schemas.append(str(rs.getString("TABLE_SCHEM")))
-    rs.close()
-    if _FEC not in schemas:
-        conn.close()
-        pytest.fail(f"GovData {_FEC!r} schema not materialized; schemas present: {schemas}")
-
-    yield conn
-    conn.close()
+def endpoint(tmp_path_factory):
+    with _serving(_source(), tmp_path_factory.mktemp("askamerica-state")) as served:
+        yield served
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+@pytest.fixture(scope="module")
+def attached(endpoint):
+    """A DuckDB connection with the server attached exactly as the engine connector attaches it."""
+    import duckdb
 
+    from provisa.federation.engine import build_duckdb_engine
+    from types import SimpleNamespace
 
-def test_schemas_present(govdata_conn):
-    """FEC schema must appear in JDBC metadata."""
-    meta = govdata_conn.getMetaData()
-    rs = meta.getSchemas()
-    schemas = []
-    while rs.next():
-        schemas.append(str(rs.getString("TABLE_SCHEM")))
-    rs.close()
-    assert _FEC in schemas, f"Expected {_FEC} in schemas, got: {schemas}"
-
-
-def test_tables_in_fec(govdata_conn):
-    """FEC schema must expose at least candidates and committees tables."""
-    meta = govdata_conn.getMetaData()
-    rs = meta.getTables(None, _FEC, "%", None)
-    tables = []
-    while rs.next():
-        tables.append(str(rs.getString("TABLE_NAME")))
-    rs.close()
-    assert len(tables) > 0, "Expected at least one table in FEC"
-    assert "candidates" in tables, f"Expected candidates in FEC tables, got: {tables}"
-    assert "committees" in tables, f"Expected committees in FEC tables, got: {tables}"
-
-
-def test_columns_for_candidates(govdata_conn):
-    """candidates table must have at least candidate_id and candidate_name columns (the pinned
-    engine release's FEC schema, engine-v0.106.3)."""
-    meta = govdata_conn.getMetaData()
-    rs = meta.getColumns(None, _FEC, "candidates", "%")
-    cols = []
-    while rs.next():
-        cols.append(str(rs.getString("COLUMN_NAME")))
-    rs.close()
-    assert len(cols) > 0, "Expected columns for candidates"
-    assert {"candidate_id", "candidate_name"} <= set(cols), f"got first 10: {cols[:10]}"
-
-
-def test_query_candidates(govdata_conn):
-    """SQL query against fec.candidates must return rows."""
-    stmt = govdata_conn.createStatement()
-    rs = stmt.executeQuery(
-        "SELECT candidate_id, candidate_name, office, state "
-        "FROM fec.candidates "
-        "ORDER BY candidate_name "
-        "FETCH FIRST 5 ROWS ONLY"
-    )
-    rows = []
-    while rs.next():
-        rows.append(
-            (
-                str(rs.getString("candidate_id")),
-                str(rs.getString("candidate_name")),
+    source = _source()
+    details = (
+        build_duckdb_engine()
+        .connectors["govdata"]
+        .details(
+            SimpleNamespace(  # pyright: ignore[reportArgumentType] - the runtime's attach view
+                id=source.id,
+                type=source.type,
+                username=source.username,
+                database=source.database,
+                catalog=_SOURCE_ID.replace("-", "_"),
+                schema_name=_SCHEMA,
+                table_name="candidates",
             )
         )
-    rs.close()
-    stmt.close()
-    assert len(rows) > 0, "Expected rows from fec.candidates"
-
-
-def test_metadata_tables_query(govdata_conn):
-    """SQL query via metadata.TABLES must return FEC tables."""
-    stmt = govdata_conn.createStatement()
-    rs = stmt.executeQuery(
-        'SELECT "tableSchem", "tableName" '
-        'FROM metadata."TABLES" '
-        f"WHERE \"tableSchem\" = '{_FEC}' "
-        'ORDER BY "tableName" '
-        "FETCH FIRST 10 ROWS ONLY"
     )
-    count = 0
-    while rs.next():
-        count += 1
-    rs.close()
-    stmt.close()
-    assert count > 0, "Expected rows from metadata.TABLES for FEC schema"
+    con = duckdb.connect()
+    con.execute("INSTALL postgres")
+    con.execute("LOAD postgres")
+    con.execute(details["attach"])
+    try:
+        yield con, details
+    finally:
+        con.close()
+
+
+def test_the_key_is_exchanged_for_storage_credentials():
+    from provisa.federation.askamerica import resolve_storage_credentials
+
+    creds = resolve_storage_credentials(_api_key())
+    assert creds.access_key_id and creds.secret_access_key and creds.session_token
+    assert creds.bucket and creds.endpoint.startswith("https://")
+
+
+def test_a_made_up_key_is_refused():
+    from provisa.federation.askamerica import AskAmericaKeyRefused, resolve_storage_credentials
+
+    with pytest.raises(AskAmericaKeyRefused):
+        resolve_storage_credentials("not-a-real-key")
+
+
+def test_the_connector_names_no_schema_of_its_own(attached):
+    _, details = attached
+    assert "remote_schema" not in details
+
+
+def test_duckdb_lists_the_schemas_the_source_serves_and_no_other(attached):
+    con, details = attached
+    listed = {
+        row[0]
+        for row in con.execute(
+            "SELECT DISTINCT schema_name FROM duckdb_tables() WHERE database_name = ?",
+            [details["raw_alias"]],
+        ).fetchall()
+    }
+    assert _SCHEMA in listed
+    assert listed <= set(_SCHEMAS.split(",")), listed
+
+
+def test_a_table_is_read_in_place_from_its_own_schema(attached):
+    con, details = attached
+    alias = details["raw_alias"]
+    tables = [
+        row[0]
+        for row in con.execute(
+            "SELECT table_name FROM duckdb_tables() WHERE database_name = ? AND schema_name = ?",
+            [alias, _SCHEMA],
+        ).fetchall()
+    ]
+    assert "candidates" in tables, tables
+    rows = con.execute(f'SELECT * FROM "{alias}"."{_SCHEMA}"."candidates" LIMIT 5').fetchall()
+    assert rows, "the attached table returned no rows"
+
+
+def test_a_table_joins_a_table_of_another_source_in_one_statement(attached):
+    """The read the in-process engine could not serve: the AskAmerica table beside any other
+    relation the engine holds, in one statement the engine computes."""
+    con, details = attached
+    alias = details["raw_alias"]
+    con.execute("CREATE OR REPLACE TEMP TABLE picks AS SELECT 1 AS n")
+    joined = con.execute(
+        f'SELECT count(*) FROM (SELECT * FROM "{alias}"."{_SCHEMA}"."candidates" LIMIT 5) c '
+        "CROSS JOIN picks p"
+    ).fetchone()
+    assert joined is not None and joined[0] == 5
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_replica_is_landed_from_the_tables_own_schema(endpoint):
+    """What an engine with no connector of its own for the type (Trino) reads: the rows landed
+    through the server, selected from the schema the table names."""
+    from provisa.federation import pgwire_replica as pr
+
+    conn = await pr._pg_connect(endpoint.calcite_child_host, endpoint.pgwire_port)
+    try:
+        schema = pr.remote_schema(_source(), _SCHEMA)
+        rows = await conn.fetch(f'SELECT * FROM "{schema}"."candidates" LIMIT 5')
+    finally:
+        await conn.close()
+    assert schema == _SCHEMA
+    assert len(rows) == 5

@@ -42,9 +42,6 @@ _WEBSOCKET_TYPES = {"websocket"}
 # RSS/Atom feed sources — poll HTTP feed, watermark by pubDate/updated
 _RSS_TYPES = {"rss"}
 
-# GovData — Calcite JDBC adapter over US government datasets (JPype, polling)
-_GOVDATA_TYPES = {"govdata"}
-
 
 def supports_polling_fallback(source_type: str) -> bool:
     """Whether *source_type* falls back to watermark polling when native CDC/push is unavailable."""
@@ -153,18 +150,6 @@ def get_provider(
             row_source=config["row_source"],
             poll_interval=config.get("poll_interval", 5.0),
             watermark_column=config.get("watermark_column", "updated_at"),
-        )
-
-    if source_type in _GOVDATA_TYPES:
-        from provisa.subscriptions.govdata_provider import GovDataPollingProvider
-
-        return GovDataPollingProvider(
-            sources=config["sources"],
-            table=config["table"],
-            watermark_column=config["watermark_column"],
-            api_key=config["api_key"],
-            schema=config.get("schema", ""),
-            poll_interval=config.get("poll_interval", 30.0),
         )
 
     raise ValueError(f"No subscription provider for source_type={source_type!r}")

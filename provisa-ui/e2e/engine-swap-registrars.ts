@@ -1268,14 +1268,12 @@ export async function registerOpenapi(page: Page, specUrlOverride?: string): Pro
   };
 }
 
-// govdata (REQ-1730): no Trino connector (strategy.py's _MATERIALIZE_ONLY) — same landing path as
-// grpc_remote/graphql_remote/openapi above (rows written into the Postgres-backed materialize
-// store Trino reads via its provisa_admin catalog). A REAL external API (AskAmerica/US government
-// open data), no offline mock — same credential gate source-to-query-special-cases.spec.ts's own
-// govdata case uses (FREE_ASKAMERICA_KEY in .env). Unlike ingest, govdata's registered columns
-// come from live introspection (fetch_columns against the real API) so they already match its
-// landed shape — none of REQ-1730's ingest-specific landing_worklist/reconcile_table conflict
-// applies here.
+// govdata (REQ-540): AskAmerica, read through its bundled pgwire server like the SharePoint and
+// Salesforce sources — DuckDB attaches the server, and Trino, which has no connector for it,
+// reads a replica landed through it. A REAL external API (US government open data), no offline
+// mock — same credential gate source-to-query-special-cases.spec.ts's own govdata case uses
+// (FREE_ASKAMERICA_KEY in .env). The server mounts its schemas before it listens, so the
+// Register Table form reports the source as still starting until it does.
 export async function registerGovdata(page: Page): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_govdata_${stamp}`;

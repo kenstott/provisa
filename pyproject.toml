@@ -217,7 +217,6 @@ gx = ["great-expectations[postgresql]"]
 # demo the installers already build (their apply_demo_checker_default picks gx for the same reason);
 # add `soda` to run the second scan locally.
 demo = ["great-expectations[postgresql]"]
-govdata = ["askamerica[engine]"]
 firebase = ["firebase-admin"]
 # Local embedding provider for catalog search (REQ-1008, provisa/vector/providers.py
 # HuggingFaceLocalProvider). No network at query time once the model is cached.

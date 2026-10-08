@@ -421,7 +421,14 @@ class TestSqlEndpointRoleResolution:
 
 
 class TestProtoEndpoint:
-    async def test_no_proto_file_404(self, sql_client):
+    async def test_no_proto_file_404(self, sql_client, monkeypatch):
+        """The model is built and the role holds no proto: 404, not the 503 an unbuilt model
+        answers. The built model is arranged here; the test read it from whatever an earlier
+        test in the process had left on the shared state, and answered 503 run on its own."""
+        import provisa.api.app as app_mod
+
+        monkeypatch.setattr(app_mod.state, "role_build_inputs", {"tables": []}, raising=False)
+        monkeypatch.setattr(app_mod.state, "proto_files", {}, raising=False)
         resp = await sql_client.get("/data/proto/org_admin")
         assert resp.status_code == 404
 
@@ -698,78 +705,3 @@ class _FakeAcquireCtx:
 
     async def __aexit__(self, *exc):
         return False
-
-
-class TestExecuteGovdata:
-    async def test_no_matching_source_row_404(self):
-        from fastapi import HTTPException
-
-        from provisa.api.data.endpoint_dev import _execute_govdata
-
-        fake_result = MagicMock()
-        fake_result.fetchone.return_value = None
-        conn = SimpleNamespace(execute_core=AsyncMock(return_value=fake_result))
-        state = SimpleNamespace(
-            model_db=(_one_db := SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))),
-            record_db=_one_db,
-            tenant_db=_one_db,
-        )
-        with pytest.raises(HTTPException) as exc_info:
-            await _execute_govdata("gd1", "SELECT id FROM fec.candidates", state)
-        assert exc_info.value.status_code == 404
-
-    async def test_executes_and_maps_rows(self):
-        from provisa.api.data.endpoint_dev import _execute_govdata
-
-        row_mapping = {"username": "user_secret", "database": "fec,ref"}
-        fake_row = SimpleNamespace(_mapping=row_mapping)
-        fake_result = MagicMock()
-        fake_result.fetchone.return_value = fake_row
-        conn = SimpleNamespace(execute_core=AsyncMock(return_value=fake_result))
-        state = SimpleNamespace(
-            model_db=(_one_db := SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))),
-            record_db=_one_db,
-            tenant_db=_one_db,
-        )
-
-        with (
-            patch("provisa.core.secrets.resolve_secrets", return_value="resolved_key"),
-            patch(
-                "provisa.govdata.source.execute_query",
-                return_value=[{"id": 1, "name": "Alpha"}, {"id": 2, "name": "Beta"}],
-            ) as mock_exec,
-        ):
-            result = await _execute_govdata(
-                "gd1", 'SELECT * FROM (SELECT * FROM "fec"."candidates") x LIMIT 10', state
-            )
-
-        assert result.column_names == ["id", "name"]
-        assert result.rows == [(1, "Alpha"), (2, "Beta")]
-        mock_exec.assert_called_once()
-        _gds_arg, _sql_arg = mock_exec.call_args[0]
-        assert _gds_arg.api_key == "resolved_key"
-        assert "fec" in _gds_arg.govdata_schemas
-        assert "FETCH FIRST 10 ROWS ONLY" in _sql_arg
-
-    async def test_empty_result_returns_empty_query_result(self):
-        from provisa.api.data.endpoint_dev import _execute_govdata
-
-        row_mapping = {"username": "user_secret", "database": "fec"}
-        fake_row = SimpleNamespace(_mapping=row_mapping)
-        fake_result = MagicMock()
-        fake_result.fetchone.return_value = fake_row
-        conn = SimpleNamespace(execute_core=AsyncMock(return_value=fake_result))
-        state = SimpleNamespace(
-            model_db=(_one_db := SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))),
-            record_db=_one_db,
-            tenant_db=_one_db,
-        )
-
-        with (
-            patch("provisa.core.secrets.resolve_secrets", return_value="resolved_key"),
-            patch("provisa.govdata.source.execute_query", return_value=[]),
-        ):
-            result = await _execute_govdata("gd1", "SELECT * FROM fec.candidates", state)
-
-        assert result.rows == []
-        assert result.column_names == []

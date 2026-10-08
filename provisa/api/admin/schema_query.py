@@ -104,7 +104,6 @@ from provisa.api.admin.schema_helpers import (
     _ensure_openapi_spec,
     _fetch_table_with_columns,
     _get_pool,
-    _govdata_columns,
 )
 
 _tracer = _get_tracer(__name__)
@@ -2147,15 +2146,13 @@ async def resolve_available_columns_metadata(
     Source-of-truth type resolution used both by the admin ``availableColumnsMetadata`` query and by
     registration (``_build_columns_for_input``) to guarantee every persisted column carries a
     non-null data_type. OpenAPI sources derive columns from the operation schema + params; relational
-    sources read the engine information_schema; govdata via its adapter.
+    sources read the engine information_schema.
     """
     from provisa.api.app import state
 
     source_type = state.source_types.get(source_id, "")
     if source_type in ("graphql_remote", "grpc_remote"):
         return await _remote_source_columns(source_id, schema_name, table_name)
-    if source_type == "govdata":
-        return await _govdata_columns(source_id, schema_name, table_name, None)
     # REQ-1672 (and the same engine-independent readers for the types below): the app's own native
     # reader types a table only when the bound engine has NO live connector for the type. An engine
     # that reaches the source live (Trino's elasticsearch/cassandra/... connectors) types it through

@@ -281,25 +281,6 @@ wheels = [
 ]
 
 [[package]]
-name = "askamerica"
-version = "0.21.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b1/41/67113cb7b40c59e76ea54c5432e781af27cb92ed284b0de08024298c6003/askamerica-0.21.4.tar.gz", hash = "sha256:2cfdfab2f6bfe1cb13ee3e7ae36173d884bf72b9f5f265bc218349aa850be919", size = 13372, upload-time = "2026-06-01T19:12:28.765Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/38/fc3bb70232edd32fc4ead6e4d483aba5d1d6efc448633f885c1026f7a2db/askamerica-0.21.4-py3-none-any.whl", hash = "sha256:44943bd18be1502a99b057dea86f3878b930a65fce81b70f4de749edfb37147d", size = 19560, upload-time = "2026-06-01T19:12:27.557Z" },
-]
-
-[package.optional-dependencies]
-engine = [
-    { name = "jdk4py" },
-    { name = "jpype1" },
-    { name = "pandas" },
-]
-
-[[package]]
 name = "asn1crypto"
 version = "1.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2006,18 +1987,6 @@ wheels = [
 ]
 
 [[package]]
-name = "jdk4py"
-version = "25.0.2.1"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/97/c3/3883815de1ecb3dca14f6ada6b38c6e9bb7fc7c3585b2b1924970d4d33fc/jdk4py-25.0.2.1-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:5df67e2f6a5277f39fb97584eb64ee8d7265770fd42425ec2f11fc4e72c82c6c", size = 31516775, upload-time = "2026-04-23T18:35:28.427Z" },
-    { url = "https://files.pythonhosted.org/packages/95/b8/398b8cff51b1109cdaa424dc4e62ef60acb89e5eb8041fb16a40bc005b49/jdk4py-25.0.2.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:eda21f14d7d56c7e1ee0f2beb55bfc19f311a8653bdb00217f0cc013c2f2c587", size = 30141372, upload-time = "2026-04-23T18:35:37.948Z" },
-    { url = "https://files.pythonhosted.org/packages/52/fe/e382f79e1fc1f7dfa04c4a7df765203f780590221c26ddff79a1e56aec76/jdk4py-25.0.2.1-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:b7246170d605dd7b65340994fedea2615737e63955f0b95389202e0ab4a166ac", size = 34514613, upload-time = "2026-04-23T18:35:31.382Z" },
-    { url = "https://files.pythonhosted.org/packages/02/5a/b572f441714a420d65805cbf8806d9b78a8ab70060ed251310661c0b934c/jdk4py-25.0.2.1-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:383d71d8639d072752d2eaafc84944e0d8de7f1c45d30c28f6dfef8a4a65543c", size = 35411575, upload-time = "2026-04-23T18:35:34.772Z" },
-    { url = "https://files.pythonhosted.org/packages/74/42/4517e3d5b75f52d330acb5816c387d28d58f1689e3ab91c48639fcde3483/jdk4py-25.0.2.1-py3-none-win_amd64.whl", hash = "sha256:5f0ad2e8f7ad3b40eef8af75062d830afd3feccca62fc03db611b2e9a5fa9824", size = 30982993, upload-time = "2026-04-23T18:35:40.652Z" },
-]
-
-[[package]]
 name = "jeepney"
 version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3532,9 +3501,6 @@ firebase = [
 gcp = [
     { name = "google-cloud-kms" },
 ]
-govdata = [
-    { name = "askamerica", extra = ["engine"] },
-]
 gx = [
     { name = "great-expectations", extra = ["postgresql"] },
 ]
@@ -3583,7 +3549,6 @@ requires-dist = [
     { name = "anthropic" },
     { name = "anyio", specifier = ">=4.14.2" },
     { name = "apscheduler", specifier = ">=3.10" },
-    { name = "askamerica", extras = ["engine"], marker = "extra == 'govdata'" },
     { name = "asyncpg" },
     { name = "azure-identity" },
     { name = "azure-keyvault-keys", marker = "extra == 'azure'" },
@@ -3720,7 +3685,7 @@ requires-dist = [
     { name = "uvloop", marker = "sys_platform != 'win32'" },
     { name = "websockets", specifier = ">=11.0" },
 ]
-provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle", "saphana", "cassandra", "all-drivers", "soda", "gx", "demo", "govdata", "firebase", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
+provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle", "saphana", "cassandra", "all-drivers", "soda", "gx", "demo", "firebase", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
 
 [[package]]
 name = "provisa-duckdb-ext"

@@ -188,36 +188,6 @@ for _other in $(pgrep -f "start-ui-install.sh" 2>/dev/null); do
   kill -9 "$_other" 2>/dev/null || true         # and the leader directly, if not a group leader
 done
 
-# Download GovData JAR from GitHub Packages if not present
-GOVDATA_JAR="$SCRIPT_DIR/lib/calcite-govdata-all.jar"
-if [ ! -f "$GOVDATA_JAR" ]; then
-  mkdir -p "$SCRIPT_DIR/lib"
-  _GOVDATA_TOKEN="${GITHUB_TOKEN:-$(gh auth token 2>/dev/null || true)}"
-  if [ -n "$_GOVDATA_TOKEN" ]; then
-    echo -n "Downloading GovData JAR..."
-    _GOVDATA_BASE="https://maven.pkg.github.com/kenstott/calcite/ai/askamerica/askamerica-engine"
-    _GOVDATA_META=$(curl -fsSL -H "Authorization: Bearer $_GOVDATA_TOKEN" "$_GOVDATA_BASE/maven-metadata.xml" 2>/dev/null || true)
-    # grep exits 1 when the metadata is empty/inaccessible (token without package access). Under
-    # `set -euo pipefail` that unguarded pipeline killed the whole installer right after printing
-    # "Downloading GovData JAR..." — GovData is an OPTIONAL subscription, so guard the probe and let
-    # the ${:-} default + the graceful curl-FAILED path below handle an unavailable package.
-    _GOVDATA_VER=$(echo "$_GOVDATA_META" | grep -oE '<version>0\.[0-9]+\.[0-9]+</version>' | tail -1 | sed 's/<\/*version>//g' || true)
-    _GOVDATA_VER="${_GOVDATA_VER:-0.9.15}"
-    _GOVDATA_URL="$_GOVDATA_BASE/$_GOVDATA_VER/askamerica-engine-${_GOVDATA_VER}.jar"
-    if curl -fsSL \
-        -H "Authorization: Bearer $_GOVDATA_TOKEN" \
-        -o "$GOVDATA_JAR" \
-        "$_GOVDATA_URL"; then
-      echo " OK"
-    else
-      echo " FAILED (GovData subscriptions unavailable)"
-      rm -f "$GOVDATA_JAR"
-    fi
-  else
-    echo "Warning: no GitHub token — set GITHUB_TOKEN or run 'gh auth login'. GovData subscriptions unavailable."
-  fi
-fi
-
 # Load .env if present
 if [ -f "$SCRIPT_DIR/.env" ]; then
   set -a

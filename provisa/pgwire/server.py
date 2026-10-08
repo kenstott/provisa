@@ -1139,7 +1139,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # Govern on this connection's loop, then — for the ENGINE route — drain the engine's SYNC
         # streaming terminal on this same thread (REQ-028). Mirrors Flight SQL's govern-then-stream
         # split: the private engine cursor is created and drained here, and rows flow lazily as
-        # buenavista emits DataRow. DIRECT/admin/govdata routes are async-native and materialize
+        # buenavista emits DataRow. DIRECT/admin routes are async-native and materialize
         # via the connection loop — all on this one thread (REQ-1882).
         _t_govern0 = time.perf_counter()
         with _stage(_tracer, "pgwire.govern", name="govern"):  # REQ-1910

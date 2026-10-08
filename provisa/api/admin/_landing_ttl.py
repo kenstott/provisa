@@ -206,7 +206,7 @@ async def landing_ttl_refusal(
     from provisa.federation.replica_routing import NO_REPLICA_TYPES
 
     source_type = await _stored_type(conn, source_id)
-    # A type that owns no replica (ingest, govdata, a profiler's results: REQ-1771, REQ-1730,
+    # A type that owns no replica (ingest, a profiler's results: REQ-1771,
     # REQ-1934) is read where it is written and never landed, so it has no landing clock to judge.
     if source_type in NO_REPLICA_TYPES:
         return None

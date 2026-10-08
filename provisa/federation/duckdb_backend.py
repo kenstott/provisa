@@ -19,7 +19,6 @@ from typing import Any
 import duckdb
 
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
-from provisa.federation.engine import UnreachableSource
 from provisa.federation.native_backend import NativeEngineBackend
 
 
@@ -36,7 +35,7 @@ class DuckDBBackend(NativeEngineBackend):
     # Trino-bound test rebinds the engine back to DuckDB) must be skipped here, not raised uncaught into
     # an unrelated later query's attach pass (observed: UnreachableSource("duckdb", "pinot") propagating
     # out of _attach_registered() into a 400 on an unrelated /data/sql request).
-    _attach_errors = (duckdb.Error, KeyError, UnreachableSource)
+    _attach_errors = (duckdb.Error, KeyError, *NativeEngineBackend._attach_errors)
 
     # The runtime connection is a duckdb connection: values bind at ``?``.
     _cache_bind_placeholder = "?"

@@ -416,12 +416,11 @@ async def _optimize_and_route(
         and not is_mutation
         and decision.source_id is not None
         and decision.source_id != "provisa-admin"
-        and state.source_types.get(decision.source_id) != "govdata"
         and not state.source_pools.has(decision.source_id)
     ):
         # A read of one source this node holds no connection for is the engine's: the engine
         # reaches the source through its own catalog, and the DIRECT terminal would refuse it
-        # (data.no_direct_route). The provisa-admin and GovData terminals need no pool.
+        # (data.no_direct_route). The provisa-admin terminal needs no pool.
         from provisa.transpiler.router import RouteDecision
 
         decision = RouteDecision(
@@ -545,17 +544,13 @@ def _kept_probe_bounds(memo: dict[str, Any], governed_sql: str) -> bool:
 def _direct_terminal_serves(decision: Any, default_source: str, state: Any) -> bool:
     """Whether the router's decision lands on the DIRECT terminal proper — one source on its own
     pooled driver (``_run_plan_terminal``'s last branch), which is the read the threshold probe
-    bounds. The admin store and the GovData bridge are not that terminal."""
+    bounds. The admin store is not that terminal."""
     from provisa.transpiler.router import Route
 
     if decision.route != Route.DIRECT:
         return False
     source_id = decision.source_id or default_source
-    return (
-        source_id != "provisa-admin"
-        and state.source_types.get(source_id) != "govdata"
-        and state.source_pools.has(source_id)
-    )
+    return source_id != "provisa-admin" and state.source_pools.has(source_id)
 
 
 async def _optimize_and_route_cached(
@@ -3311,11 +3306,6 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
             span_attrs=plan.span_attrs,
             authorization=plan_authorization(plan),
         )
-    elif getattr(state, "source_types", {}).get(plan.source_id) == "govdata":
-        # GovData sources execute via the GovData/Calcite bridge, not a native pool or the engine.
-        from provisa.api.data.endpoint_dev import _execute_govdata
-
-        result = await _execute_govdata(plan.source_id, plan.sql, state)
     elif plan.source_id == "provisa-admin":
         # Admin-owned tables (meta.*) are views over the org's model (REQ-1919): its model store.
         # That store serves this source and no other: a statement for any other source reaching

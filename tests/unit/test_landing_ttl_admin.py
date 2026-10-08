@@ -607,12 +607,12 @@ async def test_a_table_the_engine_lands_needs_a_cache_ttl_at_save(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("source_type", ["ingest", "govdata", "data_profiler"])
+@pytest.mark.parametrize("source_type", ["ingest", "data_profiler"])
 @pytest.mark.parametrize("signal", ["ttl", "ttl_probe"])
 async def test_a_type_that_owns_no_replica_needs_no_cache_ttl_at_save(
     tmp_path, monkeypatch, source_type, signal
 ):
-    """A type that owns no replica (ingest REQ-1771, govdata REQ-1730, a profiler's results
+    """A type that owns no replica (ingest REQ-1771, a profiler's results
     REQ-1934) is read where it is written and never landed, so its ttl tables are saved without a
     landing clock, whatever the bound engine reads in place."""
     import provisa.api.app as appmod

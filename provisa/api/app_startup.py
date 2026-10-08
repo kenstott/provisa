@@ -103,33 +103,6 @@ async def _warmup_readiness(_log: logging.Logger) -> None:
     _log.warning("startup phase %-20s ready", "warmup")
 
 
-def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
-    """Start GovData JVM pre-warm in a background thread if govdata sources are active."""
-    from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
-
-    _govdata_active = any(v == "govdata" for v in state.source_types.values()) or bool(
-        os.environ.get("ASKAMERICA_API_KEY")
-    )
-    if not _govdata_active:
-        return
-    import threading as _threading
-
-    def _prewarm_jvm():
-        try:
-            from provisa.govdata.source import _jvm_lock as _lock
-            from askamerica.engine import DEFAULT_SCHEMAS as _DS, start_jvm as _start_jvm  # type: ignore[import-untyped]
-
-            with _lock:
-                if "ASKAMERICA_SCHEMAS" not in os.environ:
-                    os.environ["ASKAMERICA_SCHEMAS"] = _DS
-                api_key = os.environ.get("ASKAMERICA_API_KEY", "")
-                _start_jvm(api_key)
-        except Exception:
-            _log.exception("GovData JVM pre-warm failed")
-
-    _threading.Thread(target=_prewarm_jvm, daemon=True, name="govdata-jvm-prewarm").start()
-
-
 def _scheduler_holders(state: Any) -> "Holders":  # REQ-1900, REQ-1922
     """This process's claims on the scheduled and shared background work — the deployment's and
     its region's (``provisa.scheduler.holder.Holders``) — created on first use and closed at

@@ -326,7 +326,13 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             # (replica_target.pg_statement_copy), so importing the whole schema again fails on the first table already
             # there. The others import the source's schema once.
             per_table = "server_ddl_for_copy" in details
-            attach_key = f"{source.id}\x00{source.table_name}" if per_table else source.id
+            # Keyed by the foreign schema too: a source whose server has several schemas
+            # (AskAmerica) imports each into its own, and two of them may hold one table name.
+            attach_key = (
+                f"{source.id}\x00{details['local_schema']}\x00{source.table_name}"
+                if per_table
+                else source.id
+            )
             if attach_key not in self._raw_attached:
                 if per_table:
                     self._ensure_foreign_table(cur, details, source.table_name)

@@ -18,7 +18,6 @@ from typing import Any
 
 import psycopg2
 
-from provisa.federation.engine import UnreachableSource
 from provisa.federation.native_backend import NativeEngineBackend
 from provisa.federation.pg_runtime import PgFederationRuntime
 
@@ -35,7 +34,7 @@ class PgBackend(NativeEngineBackend):
     # UnreachableSource must stay in this tuple (base default in NativeEngineBackend) — REQ-841/REQ-947:
     # a leftover source of an unreachable type must be skipped here, not raised uncaught into an
     # unrelated later query's attach pass (see duckdb_backend.py for the observed failure mode).
-    _attach_errors = (psycopg2.Error, KeyError, UnreachableSource)
+    _attach_errors = (psycopg2.Error, KeyError, *NativeEngineBackend._attach_errors)
 
     def replica_engine(
         self, state: Any, source: Any, table: Any, *, address: Any, args: Any

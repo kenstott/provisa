@@ -71,7 +71,6 @@ from provisa.api.app_schema_build import (
 from provisa.api.app_startup import (
     _auto_register_graphql_demo,
     _capture_config_boot_snapshot,
-    _prewarm_govdata_jvm,
     _seed_sandbox_org,
     _start_background_tasks,
     _start_scheduler,
@@ -2524,7 +2523,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # Build gql_object_columns: {table_name: {col_name: [sub_field_names]}} for JSON extraction
         _gql_object_cols = _build_gql_object_columns(_gql_remote_srcs)
 
-        # Synthesize ColumnMetadata for ops, provisa-admin, graphql_remote, and govdata tables
+        # Synthesize ColumnMetadata for ops, provisa-admin and graphql_remote tables
         _synthesize_column_metadata(tables, col_types_converted, _gql_remote_srcs)
 
         # Load API sources and endpoints (Phase U)
@@ -2915,8 +2914,6 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         bind_org_selector(current_org.get)
         note_org_rings(await ring_owner_org_ids(state.admin_db))
-
-    _prewarm_govdata_jvm(_log)
 
     # REQ-1913: the live operator settings this worker holds as state (its request-thread bounds)
     # are applied now, from the stored values. REQ-1914: this worker's config watcher applies

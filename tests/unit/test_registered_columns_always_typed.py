@@ -180,19 +180,6 @@ def test_ddn_columns_carry_the_object_type_field_type():
     assert all(cols.values()), "no registered column may persist untyped"
 
 
-# ---- GovData import: JDBC type codes (REQ-1426) ------------------------------
-
-
-def test_govdata_columns_carry_the_jdbc_resolved_type():
-    from provisa.govdata.schema_import import _jdbc_sql_type
-
-    assert _jdbc_sql_type(4) == "integer"
-    assert _jdbc_sql_type(12) == "varchar"
-    assert _jdbc_sql_type(93) == "timestamp"
-    with pytest.raises(ValueError, match="unmapped JDBC type code"):
-        _jdbc_sql_type(9999)
-
-
 # ---- config load: types come from the design, never from the source (REQ-1426) ----
 
 

@@ -298,18 +298,26 @@ class _DuckDBPgwireConnector(_DuckDBExtensionConnector):  # REQ-1690
         return ProbeResult(True, f"{asset} is fetched on first use from {spec.download_url}")
 
     def details(self, source: Source) -> dict:
-        from provisa.federation.pgwire_replica import ensure_endpoint, schema_name
+        from provisa.federation.pgwire_replica import (
+            ensure_endpoint,
+            schema_name,
+            serves_table_schemas,
+        )
 
         ports = ensure_endpoint(source)
         dsn = (
             f"host={ports.calcite_child_host} port={ports.pgwire_port} user=provisa dbname=provisa"
         )
         alias = f"_src_{source.id}"
-        return {
+        attached = {
             "attach": f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres, READ_ONLY)",
             "raw_alias": alias,
-            "remote_schema": schema_name(source),
         }
+        if serves_table_schemas(source):
+            # A server of several schemas (AskAmerica): each table is read from its own, which
+            # is where the runtime looks when a connector names none — as for a Postgres source.
+            return attached
+        return {**attached, "remote_schema": schema_name(source)}
 
 
 class DuckDBSharepointConnector(_DuckDBPgwireConnector):  # REQ-1690
@@ -322,6 +330,12 @@ class DuckDBCloudopsConnector(_DuckDBPgwireConnector):  # REQ-1947
 
 class DuckDBSalesforceConnector(_DuckDBPgwireConnector):  # REQ-1946
     source_type = "salesforce"
+
+
+class DuckDBGovdataConnector(_DuckDBPgwireConnector):  # REQ-540
+    """AskAmerica: its bundled pgwire-govdata server, attached like its sibling adapters."""
+
+    source_type = "govdata"
 
 
 class DuckDBSplunkConnector(_DuckDBPgwireConnector):  # REQ-1690
@@ -840,19 +854,46 @@ class _PgPgwireConnector(Connector):  # REQ-1730
         return Capability(predicate_pushdown=True)
 
     def details(self, source: Source) -> dict:
-        from provisa.federation.pgwire_replica import ensure_endpoint, schema_name
+        from provisa.federation.pgwire_replica import (
+            ensure_endpoint,
+            schema_name,
+            serves_table_schemas,
+        )
 
         ports = ensure_endpoint(source)  # starts (once) the source's bundled Calcite pgwire server
         server = engine_attach_name("fdw_pgwire", attach_catalog(source))
         local_schema = engine_attach_name("fdw_pgwire", attach_catalog(source))
+        server_ddl = [
+            "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
+            f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
+            f"OPTIONS (host '{ports.calcite_child_host}', port '{ports.pgwire_port}', "
+            f"dbname 'provisa')",
+            f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
+            f"OPTIONS (user 'provisa')",
+        ]
+        if serves_table_schemas(source):
+            # A server of several schemas (AskAmerica): one foreign schema per server schema,
+            # each table imported on its own from the schema it names — the per-table attach a
+            # Postgres source takes (``PgFederationRuntime._ensure_foreign_table``).
+            from provisa.federation.pgwire_replica import remote_schema
+
+            schema = remote_schema(source, getattr(source, "schema_name", None))
+            local_schema = f"{local_schema}_{schema}"
+            server_ddl.append(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"')
+            return {
+                "attach_ddl": [
+                    *server_ddl,
+                    f'IMPORT FOREIGN SCHEMA "{schema}" FROM SERVER "{server}" '
+                    f'INTO "{local_schema}"',
+                ],
+                "local_schema": local_schema,
+                "server_ddl_for_copy": server_ddl,
+                "server": server,
+                "remote_schema": schema,
+            }
         return {
             "attach_ddl": [
-                "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
-                f"OPTIONS (host '{ports.calcite_child_host}', port '{ports.pgwire_port}', "
-                f"dbname 'provisa')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (user 'provisa')",
+                *server_ddl,
                 f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
                 f'IMPORT FOREIGN SCHEMA {schema_name(source)} FROM SERVER "{server}" '
                 f'INTO "{local_schema}"',
@@ -875,6 +916,10 @@ class PgCloudopsConnector(_PgPgwireConnector):  # REQ-1947
 
 class PgSalesforceConnector(_PgPgwireConnector):  # REQ-1946
     source_type = "salesforce"
+
+
+class PgGovdataConnector(_PgPgwireConnector):  # REQ-540
+    source_type = "govdata"
 
 
 class PgSplunkConnector(_PgPgwireConnector):  # REQ-1730

@@ -14,7 +14,7 @@ Returns None when no native path exists — caller falls back to the engine.
 """
 
 # Requirements: REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314, REQ-322, REQ-147, REQ-887
-# complexity-gate: allow-ble=5 reason="best-effort source-schema introspection: GraphQL SDL parse, protobuf descriptor parse, govdata native-table probe, and pg_proc routine-catalog read each return empty/None on any failure over an external/pluggable source, so a source that cannot be introspected yields no discovered schema rather than aborting source registration"
+# complexity-gate: allow-ble=5 reason="best-effort source-schema introspection: GraphQL SDL parse, protobuf descriptor parse, and pg_proc routine-catalog read each return empty/None on any failure over an external/pluggable source, so a source that cannot be introspected yields no discovered schema rather than aborting source registration"
 
 from __future__ import annotations
 
@@ -319,6 +319,8 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         return [source_id.replace("-", "_")]
 
     if t == "govdata":
+        # AskAmerica: the schemas the source lists (``federation.askamerica.schemas``), each a
+        # schema of its adapter's one database.
         result = await config_conn.execute_core(
             select(sources.c.database).where(sources.c.id == source_id)
         )
@@ -670,44 +672,6 @@ async def _native_tables_sqlite(
         return None
     names = connector_sqlite.table_names(row[0])
     return [AvailableTableType(name=n, comment=None) for n in names]
-
-
-async def _native_tables_govdata(
-    source_id: str,
-    schema_name: str,
-    config_conn: "Connection",
-) -> "list[AvailableTableType] | None":
-    import asyncio as _asyncio
-    import logging as _logging
-
-    from provisa.api.admin.types import AvailableTableType
-    from provisa.core.models import GovDataSource, GovDataSubject
-    from provisa.core.secrets import resolve_secrets as _resolve_secrets
-    from provisa.govdata.source import fetch_tables as _fetch_tables
-
-    schema_lower = schema_name.lower()
-
-    result = await config_conn.execute_core(
-        select(sources.c.username).where(sources.c.id == source_id)
-    )
-    cred_row = result.fetchone()
-    api_key = _resolve_secrets((cred_row[0] or "") if cred_row else "")
-
-    gds = GovDataSource(
-        id=source_id,
-        subject=GovDataSubject.all,
-        govdata_schemas=[schema_lower],
-        domain_id="default",
-        api_key=api_key,
-    )
-
-    try:
-        loop = _asyncio.get_running_loop()
-        names = await loop.run_in_executor(None, _fetch_tables, gds, schema_lower)
-        return [AvailableTableType(name=n, comment=None) for n in names]
-    except Exception as _e:
-        _logging.getLogger(__name__).warning("govdata native_tables FAILED: %s", _e, exc_info=True)
-        return None
 
 
 def _es_connection_for(row: dict, state) -> "ESConnection":  # REQ-1672
@@ -1487,9 +1451,6 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
         if schema_name != "default":
             return []
         return [AvailableTableType(name=source_id, comment=None)]
-
-    if t == "govdata":
-        return await _native_tables_govdata(source_id, schema_name, config_conn)
 
     # See native_schemas's snowflake/databricks/bigquery/fabric/synapse branches for why these
     # need their own path rather than falling through to _native_tables_rdbms's engine-catalog

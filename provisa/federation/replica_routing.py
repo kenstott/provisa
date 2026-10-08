@@ -49,13 +49,9 @@ _log = logging.getLogger(__name__)
 #: replica compared that shape to the registered columns, found a permanent mismatch and dropped
 #: and recreated the table on every pass, discarding every row ingest had written.
 #:
-#: ``govdata`` (REQ-1730): its reads are dispatched to the askamerica JDBC connection live on
-#: every request (``pgwire/_pipeline`` → ``_execute_govdata``) and never reach the engine. A
-#: replica of it would be one no query path reads, built by scanning a relation no engine has.
-#:
 #: ``data_profiler`` (REQ-1934): the same as ingest -- its runs append to its result relations in
 #: the org's control plane, which a replica pass would drop and recreate.
-NO_REPLICA_TYPES = frozenset({"ingest", "govdata", "data_profiler"})
+NO_REPLICA_TYPES = frozenset({"ingest", "data_profiler"})
 
 
 def _source_type(source: Any) -> str:

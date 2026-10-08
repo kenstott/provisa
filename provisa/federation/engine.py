@@ -558,6 +558,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
         DuckDBDuckdbConnector,
         DuckDBFilesConnector,
         DuckDBFirebirdConnector,
+        DuckDBGovdataConnector,
         DuckDBGsheetsConnector,
         DuckDBIcebergConnector,
         DuckDBMongoConnector,
@@ -597,6 +598,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
             DuckDBSharepointConnector(),
             DuckDBSalesforceConnector(),  # REQ-1946
             DuckDBCloudopsConnector(),  # REQ-1947
+            DuckDBGovdataConnector(),  # REQ-540: AskAmerica
             DuckDBSplunkConnector(),
             # REQ-1177: operator-declared custom ATTACH/SCAN extensions (config/custom_connectors.yaml).
             *load_custom_connectors("duckdb"),
@@ -686,6 +688,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         PgDuckdbSnowflakeIcebergConnector,
         PgCloudopsConnector,
         PgFilesConnector,
+        PgGovdataConnector,
         PgSalesforceConnector,
         PgSharepointConnector,
         PgSplunkConnector,
@@ -704,6 +707,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             PgSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
             PgSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)
             PgCloudopsConnector(),  # cloudops (pgwire bridge, live attach — REQ-1947)
+            PgGovdataConnector(),  # AskAmerica (pgwire bridge, live attach — REQ-540)
             PgSplunkConnector(),  # splunk (pgwire bridge, live attach — REQ-1730)
             PgDuckdbCsvConnector(),  # csv (preferred over file_fdw)
             FileFdwConnector(),  # csv (fallback)
@@ -767,6 +771,7 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
         ClickHouseCsvConnector,
         ClickHouseDeltaLakeConnector,
         ClickHouseFilesConnector,
+        ClickHouseGovdataConnector,
         ClickHouseIcebergConnector,
         ClickHouseMongoConnector,
         ClickHouseMysqlConnector,
@@ -792,6 +797,7 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
                 ClickHouseSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
                 ClickHouseSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)
                 ClickHouseCloudopsConnector(),  # cloudops (pgwire bridge, live attach — REQ-1947)
+                ClickHouseGovdataConnector(),  # AskAmerica (pgwire bridge, live attach — REQ-540)
                 ClickHouseSplunkConnector(),  # splunk (pgwire bridge, live attach — REQ-1730)
                 ClickHouseMysqlConnector(),  # mysql — CREATE DATABASE ENGINE=MySQL
                 ClickHouseSqliteConnector(),  # sqlite — CREATE DATABASE ENGINE=SQLite (file, REQ-1178)

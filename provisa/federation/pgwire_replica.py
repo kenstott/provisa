@@ -47,7 +47,13 @@ from provisa.runtime_deps import BundleResolver, BundleSpec, bundle_spec_for
 
 # The pgwire-replica source types (mirror of strategy._CONNECTOR_PGWIRE_REPLICA). A type here has a
 # bundled Calcite pgwire server and is landed through this module when no engine connector reaches it.
-PGWIRE_REPLICA_TYPES = frozenset({"files", "sharepoint", "splunk", "salesforce", "cloudops"})
+PGWIRE_REPLICA_TYPES = frozenset(
+    {"files", "sharepoint", "splunk", "salesforce", "cloudops", "govdata"}
+)
+# Types whose bundle carries its own model of SEVERAL schemas, of which a source serves the ones
+# it lists (AskAmerica: sec, econ, ...). Every other type's model is written from the source and
+# has ONE schema, named after the source id.
+BUNDLE_MODEL_TYPES = frozenset({"govdata"})
 
 # Default ports (REQ-955): the pgwire endpoint (--port) and the Calcite child JVM (--calcite-child).
 # Each source gets a UNIQUE pair allocated up from these bases so servers never collide.
@@ -86,11 +92,17 @@ class PortAllocationError(Exception):  # REQ-955
     """No free port was found scanning up from a base — a port-isolation failure, raised loud."""
 
 
-class ServerLifecycleError(Exception):  # REQ-955
+class ServerNotServing(Exception):  # REQ-955
+    """A source's pgwire server is not accepting connections: it is still starting, did not
+    start in time, or exited. The source's tables cannot be read through it now; nothing else
+    is affected."""
+
+
+class ServerLifecycleError(ServerNotServing):  # REQ-955
     """An invalid pgwire server lifecycle transition (start-when-running, health-before-start)."""
 
 
-class ServerExited(Exception):  # REQ-955
+class ServerExited(ServerNotServing):  # REQ-955
     """The pgwire server's process ended before it accepted connections: its start failed. Not
     "still starting" — nothing is booting any more — so a discovery call reports it, with the exit
     code and the end of the server's own log, instead of asking to be polled again."""
@@ -108,7 +120,7 @@ class ServerExited(Exception):  # REQ-955
 _LOG_TAIL_LINES = 20
 
 
-class SourceStillStartingError(Exception):  # REQ-1824
+class SourceStillStartingError(ServerNotServing):  # REQ-1824
     """A files/sharepoint/splunk source's bundled Calcite server hasn't finished starting yet —
     raised by a DISCOVERY call (schema/table/column introspection) that chose not to wait the full
     SERVER_READY_SECONDS a real query needs. Not a failure: the message is machine-parseable (a
@@ -135,6 +147,26 @@ def _rs(value: str | None) -> str:
 def schema_name(source: Any) -> str:
     """The Calcite schema the bundle exposes the source's tables under — the sql-normalized id."""
     return source.id.replace("-", "_")
+
+
+def serves_table_schemas(source: Any) -> bool:
+    """Whether the source's server exposes each table under the table's OWN schema (a bundle
+    model of several schemas, ``BUNDLE_MODEL_TYPES``) rather than under :func:`schema_name`."""
+    return _source_type(source) in BUNDLE_MODEL_TYPES
+
+
+def remote_schema(source: Any, table_schema: str | None) -> str:
+    """The schema of the source's server a table is read from: the table's own schema where the
+    server serves several (:func:`serves_table_schemas`), else the one :func:`schema_name`. A
+    table of a several-schema source that names no schema is a caller error, never a guess."""
+    if not serves_table_schemas(source):
+        return schema_name(source)
+    if not table_schema:
+        raise MissingConnectorConfig(
+            f"{_source_type(source)} source {source.id!r}: a table of it is read from its own "
+            "schema, and none was given"
+        )
+    return table_schema
 
 
 # -- model.json operand builders (REQ-955) -------------------------------------
@@ -381,15 +413,30 @@ _OPERAND_BUILDERS: dict[str, Callable[[Any], dict]] = {
 }
 
 
-def build_model_json(source: Any, *, state_dir: Path | None = None) -> dict:
+def build_model_json(
+    source: Any, *, state_dir: Path | None = None, bundle_dir: Path | None = None
+) -> dict:
     """The Calcite ``model.json`` for a pgwire-replica source (REQ-955): one custom schema whose
     operand carries the source-specific creds/paths. A non-replica source type is a caller error.
 
     ``state_dir`` is the directory the source's server runs in (:func:`server_state_dir`). A
     Salesforce model keeps its describe cache there (REQ-1946) — the adapter's own default is a
     directory under the user's home that every server on the machine would share — so a
-    Salesforce model built without one is refused."""
+    Salesforce model built without one is refused. ``bundle_dir`` is the resolved bundle, read
+    for a type whose model ships in it (``BUNDLE_MODEL_TYPES``)."""
     stype = _source_type(source)
+    if stype in BUNDLE_MODEL_TYPES:
+        # The bundle's own model, narrowed to the schemas the source serves. Its credentials
+        # are read from the server's environment (:func:`server_environment`), never written.
+        if bundle_dir is None:
+            raise MissingConnectorConfig(
+                f"{stype} source {source.id!r}: the model is the bundle's own, and no bundle "
+                "directory was given"
+            )
+        from provisa.federation.askamerica import narrow_model
+
+        bundled = json.loads((Path(bundle_dir) / "model" / "model.json").read_text())
+        return narrow_model(bundled, source)
     builder = _OPERAND_BUILDERS.get(stype)
     if builder is None:
         raise MissingConnectorConfig(f"source type {stype!r} is not a pgwire-replica connector")
@@ -525,7 +572,18 @@ class _ProcessGroup:
 SERVER_LOG_NAME = "pgwire-server.log"
 
 
-def _spawn_process(command: list[str], cwd: Path) -> Any:
+def server_environment(source: Any) -> dict[str, str] | None:
+    """What the source's server needs in its environment beyond this process's own, or None
+    when its model carries everything (every type but AskAmerica, whose bundled model reads its
+    credentials by name from the environment)."""
+    if _source_type(source) == "govdata":
+        from provisa.federation.askamerica import server_environment as _askamerica_environment
+
+        return _askamerica_environment(source)
+    return None
+
+
+def _spawn_process(command: list[str], cwd: Path, env: dict[str, str] | None = None) -> Any:
     """Launch the pgwire bundle launcher as a child process (the real spawn) in its own session,
     so stopping it stops the server child that actually listens.
 
@@ -548,6 +606,9 @@ def _spawn_process(command: list[str], cwd: Path) -> Any:
                 start_new_session=True,
                 stdout=log,
                 stderr=subprocess.STDOUT,
+                # ``env``: added to this process's own, for a server whose model reads names
+                # from its environment (:func:`server_environment`). None inherits unchanged.
+                env=None if env is None else {**os.environ, **env},
             )
         )
     finally:
@@ -605,14 +666,17 @@ class PgwireServer:  # REQ-955
         spec: BundleSpec,
         model: dict,
         ports: PortPair,
-        spawn: Callable[[list[str], Path], Any] | None = None,
+        spawn: Callable[..., Any] | None = None,
         health_check: Callable[[str, int], bool] | None = None,
         port_is_free: Callable[[int], bool] | None = None,
+        environment: dict[str, str] | None = None,
     ) -> None:
         self._bundle_dir = Path(bundle_dir)
         self._spec = spec
         self._model = model
         self._ports = ports
+        # Handed to the spawn only when the server needs one (:func:`server_environment`).
+        self._environment = environment
         self._spawn = spawn if spawn is not None else _spawn_process
         self._health = health_check if health_check is not None else _tcp_health
         # The port-release probe stop() waits on; injectable so a faked server never consults
@@ -654,7 +718,10 @@ class PgwireServer:  # REQ-955
                 f"pgwire server on port {self._ports.pgwire_port} already running"
             )
         self.write_model()
-        self._proc = self._spawn(self.command(), self._bundle_dir)
+        if self._environment is None:
+            self._proc = self._spawn(self.command(), self._bundle_dir)
+        else:
+            self._proc = self._spawn(self.command(), self._bundle_dir, self._environment)
 
     def health(self) -> bool:
         """Whether the started server's pgwire endpoint is accepting connections."""
@@ -786,7 +853,7 @@ class ConnectorReplica:  # REQ-954/955/956
         *,
         resolver: BundleResolver | None = None,
         allocator: PortAllocator | None = None,
-        spawn: Callable[[list[str], Path], Any] | None = None,
+        spawn: Callable[..., Any] | None = None,
         health_check: Callable[[str, int], bool] | None = None,
         connect: Callable[[str, int], Any] | None = None,
         version: str | None = None,
@@ -827,11 +894,14 @@ class ConnectorReplica:  # REQ-954/955/956
         server = PgwireServer(
             bundle_dir=state_dir,
             spec=self._spec,
-            model=build_model_json(self._source, state_dir=state_dir),  # REQ-955 (config)
+            model=build_model_json(  # REQ-955 (config)
+                self._source, state_dir=state_dir, bundle_dir=bundle_dir
+            ),
             ports=ports,
             spawn=self._spawn,
             health_check=self._health,
             port_is_free=self._port_is_free,
+            environment=server_environment(self._source),
         )
         server.start()  # REQ-955 (lifecycle)
         self._server = server
@@ -875,8 +945,12 @@ class ConnectorReplica:  # REQ-954/955/956
         ports = self.endpoint()
         table_name = getattr(table, "table_name", table)
         return await land_via_select(
-            ports, schema_name(self._source), table_name, connect=self._connect
+            ports, self._schema_of(table), table_name, connect=self._connect
         )
+
+    def _schema_of(self, table: Any) -> str:
+        """The server schema ``table`` is read from (:func:`remote_schema`)."""
+        return remote_schema(self._source, getattr(table, "schema_name", None))
 
     async def load_keys(
         self, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
@@ -886,7 +960,7 @@ class ConnectorReplica:  # REQ-954/955/956
         ports = self.endpoint()
         table_name = getattr(table, "table_name", table)
         return await land_via_select_keys(
-            ports, schema_name(self._source), table_name, pk_columns, keys, connect=self._connect
+            ports, self._schema_of(table), table_name, pk_columns, keys, connect=self._connect
         )
 
     def close(self) -> None:
@@ -927,6 +1001,48 @@ def start_endpoint(source: Any) -> None:
     _endpoint_replica(source).start()
 
 
+#: Types whose server takes minutes to first accept a connection (AskAmerica's mounts every
+#: schema it serves from object storage), so it is started when the source is saved rather than
+#: by the first discovery call or statement that needs it.
+STARTED_WHEN_SAVED = frozenset({"govdata"})
+
+
+def start_when_saved(source: Any) -> None:
+    """Start ``source``'s server in the background if its type is one started at save
+    (``STARTED_WHEN_SAVED``). A failure to start is logged under the task's name; the discovery
+    call or statement that needs the server reports it again."""
+    if _source_type(source) not in STARTED_WHEN_SAVED:
+        return
+    import asyncio
+
+    from provisa.core.connection_loop import spawn_background
+
+    spawn_background(asyncio.to_thread(start_endpoint, source), name=f"pgwire-server:{source.id}")
+
+
+def server_start_errors() -> tuple[type[BaseException], ...]:
+    """What starting a source's server, or waiting for it, raises when the source cannot be
+    read through it: the server is not serving, its bundle is not available for this host, its
+    configuration is incomplete, or (AskAmerica) its key is missing or refused. An engine's
+    attach treats each as "this table is not queryable now" — logged by name and skipped, so
+    one source's server never fails a statement that does not read it."""
+    from provisa.federation.askamerica import (
+        AskAmericaKeyMissing,
+        AskAmericaKeyRefused,
+        AskAmericaUnavailable,
+    )
+    from provisa.runtime_deps.pgwire_bundles import BundleUnavailable
+
+    return (
+        ServerNotServing,
+        BundleUnavailable,
+        MissingConnectorConfig,
+        AskAmericaKeyMissing,
+        AskAmericaKeyRefused,
+        AskAmericaUnavailable,
+    )
+
+
 #: Whether :func:`stop_all_servers` has been registered to run when this interpreter exits.
 #: Registered on the FIRST server start rather than at import, so a process that never attaches a
 #: replica registers nothing.
@@ -961,7 +1077,12 @@ def ensure_endpoint(source: Any, *, timeout: float | None = None) -> PortPair:
     """Start (once) the source's Calcite pgwire server and return the endpoint the engine attaches
     (REQ-1690). The server must be healthy before the ATTACH, so an unhealthy start is loud here.
 
-    ``timeout`` (REQ-1824): see ``ConnectorReplica.endpoint``."""
+    ``timeout`` (REQ-1824): see ``ConnectorReplica.endpoint``. A type whose server takes
+    minutes to start (``STARTED_WHEN_SAVED``) is not waited for by an attach: it was started
+    when its source was saved, and until it listens the attach is answered
+    ``SourceStillStartingError`` at once rather than holding its caller for the full wait."""
+    if timeout is None and _source_type(source) in STARTED_WHEN_SAVED:
+        return ensure_endpoint_for_discovery(source)
     return _endpoint_replica(source).endpoint(timeout=timeout)
 
 
@@ -1012,7 +1133,7 @@ def make_pgwire_loader(
     *,
     resolver: BundleResolver | None = None,
     allocator: PortAllocator | None = None,
-    spawn: Callable[[list[str], Path], Any] | None = None,
+    spawn: Callable[..., Any] | None = None,
     health_check: Callable[[str, int], bool] | None = None,
     connect: Callable[[str, int], Any] | None = None,
     port_is_free: Callable[[int], bool] | None = None,
@@ -1051,7 +1172,7 @@ def make_pgwire_keyed_loader(
     *,
     resolver: BundleResolver | None = None,
     allocator: PortAllocator | None = None,
-    spawn: Callable[[list[str], Path], Any] | None = None,
+    spawn: Callable[..., Any] | None = None,
     health_check: Callable[[str, int], bool] | None = None,
     connect: Callable[[str, int], Any] | None = None,
     port_is_free: Callable[[int], bool] | None = None,

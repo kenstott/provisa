@@ -516,6 +516,26 @@ sources:
 | `domain_id` | Yes | — | Domain this source belongs to |
 | `description` | No | `""` | Human-readable description |
 
+An AskAmerica source created in the admin takes one credential, the API key. Provisa presents
+the key to AskAmerica's API and receives the short-lived, read-only storage credentials the data
+is read with; the key is refused there by name if it is unknown or revoked. [tool-verified:
+`provisa/federation/askamerica.py`]
+
+The source is then a Postgres-wire source like the SharePoint, Salesforce and cloud inventory
+sources: Provisa starts the bundled `pgwire-govdata` server for it, with the key and those
+credentials in the server's environment, and each engine reaches that server the way it reaches a
+sibling's. DuckDB, Postgres and ClickHouse attach it and read its tables in place, so an
+AskAmerica table joins tables of other sources, sits under views and is delivered like any other.
+Trino has no connector for it and reads a replica landed through the server. A table is read from
+the adapter schema it names (`sec`, `econ`, and so on). [tool-verified:
+`provisa/federation/pgwire_replica.py`, `provisa/federation/connector_duckdb.py`,
+`provisa/federation/clickhouse_connectors.py`]
+
+The server mounts its schemas from object storage before it accepts a connection, which takes
+minutes on a first start. It is started when the source is saved; until it is ready the Register
+Table form reports that the source is still starting. [tool-verified:
+`provisa/federation/pgwire_replica.py` `start_when_saved`]
+
 ### Where a source's password lives
 
 A source's password is never stored beside the rest of its connection settings. The

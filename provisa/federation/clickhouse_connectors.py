@@ -100,15 +100,24 @@ class _ClickHousePgwireConnector(Connector):  # REQ-1730
         return Capability(predicate_pushdown=True)
 
     def details(self, source: Source) -> dict:
-        from provisa.federation.pgwire_replica import ensure_endpoint, schema_name
+        from provisa.federation.pgwire_replica import (
+            ensure_endpoint,
+            remote_schema,
+            serves_table_schemas,
+        )
 
         ports = ensure_endpoint(source)  # starts (once) the source's bundled Calcite pgwire server
         local_schema = engine_attach_name("ch_pgwire", attach_catalog(source))
+        schema = remote_schema(source, getattr(source, "schema_name", None))
+        if serves_table_schemas(source):
+            # A server of several schemas (AskAmerica): one ClickHouse database per server
+            # schema, since the PostgreSQL database engine mounts exactly one.
+            local_schema = f"{local_schema}_{schema}"
         return {
             "attach_ddl": [
                 f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = PostgreSQL('
                 f"'{ports.calcite_child_host}:{ports.pgwire_port}', 'provisa', 'provisa', '', "
-                f"'{schema_name(source)}')"
+                f"'{schema}')"
             ],
             "local_schema": local_schema,
         }
@@ -128,6 +137,10 @@ class ClickHouseCloudopsConnector(_ClickHousePgwireConnector):  # REQ-1947
 
 class ClickHouseSalesforceConnector(_ClickHousePgwireConnector):  # REQ-1946
     source_type = "salesforce"
+
+
+class ClickHouseGovdataConnector(_ClickHousePgwireConnector):  # REQ-540
+    source_type = "govdata"
 
 
 class ClickHouseSplunkConnector(_ClickHousePgwireConnector):  # REQ-1730

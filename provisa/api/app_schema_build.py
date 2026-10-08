@@ -160,8 +160,7 @@ def _synthesize_column_metadata(
     col_types_converted: dict[int, list[ColumnMetadata]],
     gql_remote_srcs: dict,
 ) -> None:
-    """Synthesize ColumnMetadata for ops, provisa-admin, graphql_remote, and govdata tables."""
-    from provisa.api.app import state
+    """Synthesize ColumnMetadata for ops, provisa-admin and graphql_remote tables."""
     from provisa.api.startup_seed import _OPS_VIEWS
 
     # Ops tables: static columns when the engine introspection returns empty
@@ -254,27 +253,3 @@ def _synthesize_column_metadata(
                         )
                         for c in _tbl.get("columns", [])
                     ]
-
-    # govdata tables from registered columns
-    for _tbl in tables:
-        if state.source_types.get(_tbl["source_id"]) != "govdata":
-            continue
-        _tid = _tbl["id"]
-        if col_types_converted.get(_tid):
-            continue
-        _cols = _tbl.get("columns", [])
-        if not _cols:
-            log.warning(
-                "govdata table %s.%s has no registered columns — skipping",
-                _tbl.get("schema_name", ""),
-                _tbl.get("table_name", ""),
-            )
-            continue
-        col_types_converted[_tid] = [
-            ColumnMetadata(
-                column_name=c["column_name"],
-                data_type=c.get("data_type") or "varchar",
-                is_nullable=True,
-            )
-            for c in _cols
-        ]

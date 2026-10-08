@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any
 
 from provisa.federation.backend import EngineBackend
 from provisa.federation.engine import UnreachableSource
+from provisa.federation.pgwire_replica import server_start_errors
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 
@@ -139,7 +140,11 @@ class NativeEngineBackend(EngineBackend):
     # here: a source whose connector has no attach face is decided up front from the connector's
     # reach (`reads_in_place`) and never reaches attach_source, so a missing details key is now a
     # real bug that propagates rather than a swallowed "not queryable" for every API table.
-    _attach_errors: tuple[type[BaseException], ...] = (UnreachableSource,)
+    #
+    # So do the failures of a source's own pgwire server (``pgwire_replica.server_start_errors``:
+    # still starting, exited, no bundle for this host, an incomplete configuration, a refused
+    # key): that source's tables are not queryable now, and no other statement is affected.
+    _attach_errors: tuple[type[BaseException], ...] = (UnreachableSource, *server_start_errors())
 
     # The marker the runtime connection's driver binds a value at, for the API-result cache
     # terminal (``isolated_sync``). None: the engine's subclass declares none, and the cache
