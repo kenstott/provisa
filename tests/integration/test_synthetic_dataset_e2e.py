@@ -862,6 +862,77 @@ def _generate_whole_model(boot, env: str, choices: dict) -> dict:
     return shown
 
 
+def test_prod_and_a_synthetic_environment_never_read_each_others_rows(profiled):
+    """REQ-1942, REQ-1529: a Test (synthetic) environment binds its own copy of each source to
+    the synthetic store; the parent is untouched. Every environment of an org shares one engine,
+    so the two are read in both orders, and again after each side builds its runtime anew: prod
+    never answers a generated row and the synthetic environment never answers a real one."""
+    boot = profiled
+    base = f"/admin/orgs/{boot.org_id}/environments"
+    status, body = _call(boot, "POST", base, {"name": "isolated", "data_mode": "test_synthetic"})
+    assert status == 200, body
+    engine = sa.create_engine(boot.url, isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        conn.execute(
+            sa.text(
+                f'UPDATE "org_{boot.org_id}_env_isolated".table_columns '
+                "SET fake = 'phone_number()' WHERE column_name = 'phone'"
+            )
+        )
+        real = sorted(r[0] for r in conn.execute(sa.text("SELECT region FROM public.orders")))
+    engine.dispose()
+    assert real and "mars" not in real, real
+    status, plan = _call(boot, "GET", f"{base}/isolated/synthetic/plan")
+    orders = next(t for t in plan["tables"] if t["tableName"] == "orders")
+    status, body = _call(
+        boot,
+        "POST",
+        f"/admin/tables/{orders['tableId']}/declared-profiles",
+        {
+            "profile": {
+                "rowCount": 12,
+                "columns": {
+                    "id": {"nullShare": 0, "distinctCount": 12, "range": {"min": 1, "max": 12}},
+                    "region": {"nullShare": 0, "values": [{"value": "mars", "weight": 1}]},
+                },
+            }
+        },
+        env="isolated",
+    )
+    assert status == 200, body
+    _generate_whole_model(boot, "isolated", {"seed": 4, "scale": 1})
+
+    regions = "SELECT region FROM sales.orders"
+
+    def prod() -> None:
+        status, rows = _sql(boot, regions)
+        assert status == 200 and sorted(r["region"] for r in rows) == real, ("prod", rows)
+
+    def synthetic() -> None:
+        status, rows = _sql(boot, regions, env="isolated")
+        assert status == 200 and [r["region"] for r in rows] == ["mars"] * 12, ("isolated", rows)
+
+    # Both orders, the environment's runtime the last one built.
+    synthetic(), prod(), synthetic(), prod()
+    # The environment builds its runtime anew (its sources are attached again).
+    status, body = _call(boot, "POST", f"{base}/isolated/mutations/reset")
+    assert status == 200 and body["refreshed"] in ("rebuilt", "uncached"), body
+    synthetic(), prod(), synthetic()
+    # prod builds its schemas anew, after the environment.
+    status, body = _call(
+        boot,
+        "POST",
+        "/admin/actions/webhooks",
+        {"name": "isolation_probe", "url": "http://127.0.0.1:9/never", "domainId": "sales"},
+    )
+    assert status == 200, body
+    prod(), synthetic(), prod()
+    # And the environment once more, after prod.
+    status, body = _call(boot, "POST", f"{base}/isolated/mutations/reset")
+    assert status == 200, body
+    prod(), synthetic(), prod(), synthetic()
+
+
 def test_generating_again_measures_the_parents_rows_never_the_generated_ones(profiled):
     """REQ-1942: what generation measures from a table is measured from its real rows. Once the
     environment's sources are bound to its synthetic store, a regeneration reads them where they
