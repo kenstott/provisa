@@ -68,10 +68,17 @@ def call(
     *,
     token: str | None = None,
     body: dict | None = None,
+    org: str | None = None,
 ) -> tuple[int, Any]:
+    """One HTTP call. ``org`` names the org the caller acts in (the ``X-Org-Provisa`` header):
+    in a multi-tenant deployment an org nobody named is refused, never chosen (REQ-1235), for
+    the break-glass account as for everyone (REQ-1935). Sign-in, the caller's own identity and
+    the org-administration paths act on the platform plane and need none."""
     headers = {"Content-Type": "application/json"}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
+    if org is not None:
+        headers["X-Org-Provisa"] = org
     request = urllib.request.Request(
         f"http://127.0.0.1:{boot.ports['http']}{path}",
         data=None if body is None else json.dumps(body).encode(),
@@ -114,6 +121,7 @@ def register(boot: WorkerBoot, operator: str, username: str, email: str) -> str:
         "/auth/register",
         token=operator,
         body={"username": username, "password": PASSWORD, "email": email},
+        org=boot.org_id,  # the break-glass account names the org it acts in
     )
     assert status == 200, said(boot, f"register {username}", status, body)
     return body["user_id"]
@@ -127,8 +135,10 @@ def sign_in(boot: WorkerBoot, username: str) -> str:
     return body["access_token"]
 
 
-def me(boot: WorkerBoot, token: str) -> dict:
-    status, body = call(boot, "GET", "/auth/me", token=token)
+def me(boot: WorkerBoot, token: str, *, org: str | None = None) -> dict:
+    """Who the caller is and which orgs they belong to. With ``org`` named (one they belong
+    to), ``assignments`` are their roles in that org; with none, their platform roles only."""
+    status, body = call(boot, "GET", "/auth/me", token=token, org=org)
     assert status == 200, said(boot, "/auth/me", status, body)
     return body
 
@@ -154,6 +164,7 @@ def let_matching_emails_join(boot: WorkerBoot, admin: str, org_id: str, domain: 
         "PATCH",
         f"/admin/orgs/{org_id}/settings",
         token=admin,
+        org=org_id,
         body={
             "email_rule": "@" + domain.replace(".", r"\.") + "$",
             "auto_join": True,
@@ -171,7 +182,7 @@ def org_admin(boot: WorkerBoot, operator: str, platform_admin: str, org_id: str)
     org's administrator does: a person the platform administrator grants org_admin (REQ-1303)."""
     user_id = register(boot, operator, f"admin-of-{org_id}", f"admin-of-{org_id}@hq.test")
     status, body = call(
-        boot, "POST", f"/admin/orgs/{org_id}/admins/{user_id}", token=platform_admin
+        boot, "POST", f"/admin/orgs/{org_id}/admins/{user_id}", token=platform_admin, org=org_id
     )
     assert status == 200, said(boot, "grant org_admin", status, body)
     return sign_in(boot, f"admin-of-{org_id}")
@@ -179,6 +190,8 @@ def org_admin(boot: WorkerBoot, operator: str, platform_admin: str, org_id: str)
 
 def member_ids(boot: WorkerBoot, org_admin_token: str, org_id: str) -> list[str]:
     """Who the org's own member list has (GET /admin/orgs/{org}/members answers a list of rows)."""
-    status, rows = call(boot, "GET", f"/admin/orgs/{org_id}/members", token=org_admin_token)
+    status, rows = call(
+        boot, "GET", f"/admin/orgs/{org_id}/members", token=org_admin_token, org=org_id
+    )
     assert status == 200, said(boot, "list members", status, rows)
     return [row["user_id"] for row in rows]

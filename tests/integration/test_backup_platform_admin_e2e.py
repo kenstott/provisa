@@ -59,6 +59,7 @@ def test_a_backup_platform_admin_comes_by_invitation_and_a_second_claim_is_refus
         "POST",
         "/admin/invites/",
         token=founder,
+        org=root,  # issuing an invitation is an act in the org it invites into
         body={"org_id": root, "role_id": _PLATFORM_ADMIN, "email": "backup@hq.test"},
     )
     assert status == 200, tenancy.said(server, "invite the backup", status, invite)
@@ -80,7 +81,7 @@ def test_a_backup_platform_admin_comes_by_invitation_and_a_second_claim_is_refus
     assert status == 200, tenancy.said(server, "redeem the invitation", status, registered)
 
     backup = tenancy.sign_in(server, "backup")
-    identity = tenancy.me(server, backup)
+    identity = tenancy.me(server, backup, org=root)
     assert identity["user_id"] == registered["user_id"]
     assert tenancy.member_of(identity) == [root], identity
     assert _PLATFORM_ADMIN in tenancy.roles_of(identity), identity

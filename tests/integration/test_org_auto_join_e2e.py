@@ -54,11 +54,14 @@ def test_a_matching_email_joins_with_the_default_role_and_another_does_not(serve
     tenancy.let_matching_emails_join(server, founder, org, "example.com")
 
     # Alice's next request finds her a member, holding the org's default role, uninvited.
-    alice = tenancy.me(server, tenancy.sign_in(server, "alice"))
+    alice_token = tenancy.sign_in(server, "alice")
+    alice = tenancy.me(server, alice_token)
     assert alice["user_id"] == alice_id
     assert tenancy.member_of(alice) == [org], alice
-    assert alice["active_org_id"] == org, alice
-    assert tenancy.MEMBER_ROLE in tenancy.roles_of(alice), alice
+    # Acting in the org she now belongs to, she holds its default role.
+    in_org = tenancy.me(server, alice_token, org=org)
+    assert in_org["active_org_id"] == org, in_org
+    assert tenancy.MEMBER_ROLE in tenancy.roles_of(in_org), in_org
 
     # The org's own member list, read by its administrator, says the same.
     admin = tenancy.org_admin(server, operator, founder, org)

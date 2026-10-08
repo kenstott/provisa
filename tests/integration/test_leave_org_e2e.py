@@ -48,7 +48,7 @@ def test_leaving_removes_the_person_and_their_next_sign_in_does_not_rejoin_them(
     alice = tenancy.sign_in(server, "alice")
     joined = tenancy.me(server, alice)
     assert tenancy.member_of(joined) == [org], joined
-    assert tenancy.MEMBER_ROLE in tenancy.roles_of(joined), joined
+    assert tenancy.MEMBER_ROLE in tenancy.roles_of(tenancy.me(server, alice, org=org))
     assert alice_id in tenancy.member_ids(server, admin, org)
 
     # She leaves, of her own accord.
@@ -61,6 +61,9 @@ def test_leaving_removes_the_person_and_their_next_sign_in_does_not_rejoin_them(
     after = tenancy.me(server, alice)
     assert tenancy.member_of(after) == [], after
     assert tenancy.MEMBER_ROLE not in tenancy.roles_of(after), after
+    # And the org no longer admits her: naming it is refused, not answered.
+    status, body = tenancy.call(server, "GET", "/auth/me", token=alice, org=org)
+    assert status == 403, tenancy.said(server, "act in the org she left", status, body)
     assert alice_id not in tenancy.member_ids(server, admin, org)
 
     # The org's rule still matches her email. A fresh sign-in does not undo the departure.
