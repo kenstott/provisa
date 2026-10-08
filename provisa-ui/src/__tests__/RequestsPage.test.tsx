@@ -38,6 +38,7 @@ const DECIDABLE = {
   domains: ["finance", "sales"],
   waiting_on: ["finance"],
   can_decide: true,
+  can_withdraw: false,
   approve_refusal: null,
 };
 
@@ -59,6 +60,7 @@ const ONE_SIDED = {
   domains: ["finance", "sales"],
   waiting_on: ["finance"],
   can_decide: true,
+  can_withdraw: false,
   approve_refusal: { code: "requests.already_approved", params: {}, detail: "server English" },
 };
 
@@ -70,6 +72,7 @@ const MINE = {
   domains: ["finance", "sales"],
   waiting_on: ["finance", "sales"],
   can_decide: false,
+  can_withdraw: false,
   approve_refusal: OWN_REFUSAL,
 };
 
@@ -86,6 +89,7 @@ const VIEW = {
   domains: [],
   waiting_on: [],
   can_decide: true,
+  can_withdraw: false,
   approve_refusal: null,
 };
 const VIEW_TO_RETRY = {
@@ -93,6 +97,16 @@ const VIEW_TO_RETRY = {
   id: 5,
   approvals: [{ approver: "me", approved_at: "now", domains: [] }],
   approve_refusal: { code: "requests.already_approved", params: {}, detail: "server English" },
+};
+
+// The user's own view request: not theirs to approve, theirs to take back.
+const MY_VIEW = {
+  ...VIEW,
+  id: 6,
+  requested_by: "me",
+  can_decide: false,
+  can_withdraw: true,
+  approve_refusal: OWN_REFUSAL,
 };
 
 function json(body: unknown, status = 200) {
@@ -108,7 +122,7 @@ function serve(approve: () => Response) {
     vi.fn(async (url: string) => {
       if (url.includes("/rejection-reasons")) return json({ relationship: ["duplicate"] });
       if (url.endsWith("/approve")) return approve();
-      return json([DECIDABLE, MINE, ONE_SIDED, VIEW, VIEW_TO_RETRY]);
+      return json([DECIDABLE, MINE, ONE_SIDED, VIEW, VIEW_TO_RETRY, MY_VIEW]);
     }),
   );
 }
@@ -199,6 +213,16 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
     const retry = await row(5);
     expect(within(retry).getByTestId("requests-execute-5")).toBeEnabled();
     expect(within(retry).getByTestId("requests-approve-5")).toBeDisabled();
+  });
+
+  it("lets the author take back their own request, where that is allowed", async () => {
+    serve(() => json(DECIDABLE));
+    page();
+    const mine = await row(6);
+    expect(within(mine).getByTestId("requests-withdraw-6")).toBeEnabled();
+    expect(within(mine).queryByTestId("requests-approve-6")).toBeNull();
+    // A relationship request is not its author's to reject.
+    expect(within(await row(2)).queryByTestId("requests-withdraw-2")).toBeNull();
   });
 
   it.each([

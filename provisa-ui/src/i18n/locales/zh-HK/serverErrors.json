@@ -359,7 +359,8 @@
       "table_released": "表 {{table}} 已發佈",
       "openapi_no_rows_field": "資料表 {{table}}：回應中沒有可用於讀取資料列的屬性 {{rows_field}}。",
       "paging_rows_field_fixed": "資料表 {{table}}：資料列所在的位置（{{rows_field}}）在註冊資料表時設定。如要從其他位置讀取資料列，請重新註冊該資料表。",
-      "relationship_request_queued": "已排入佇列為請求 #{{id}}。它需要 {{required}} 位有權建立關係的不同使用者核准，且每個涉及的網域至少有一位核准者的權限涵蓋。"
+      "relationship_request_queued": "已排入佇列為請求 #{{id}}。它需要 {{required}} 位有權建立關係的不同使用者核准，且每個涉及的網域至少有一位核准者的權限涵蓋。",
+      "request_approved": "已核准建立請求 #{{id}}"
     },
     "secrets": {
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"

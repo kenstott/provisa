@@ -359,7 +359,8 @@
       "table_released": "Table {{table}} publiée",
       "openapi_no_rows_field": "Table {{table}} : la réponse n'a aucune propriété {{rows_field}} où lire des lignes.",
       "paging_rows_field_fixed": "Table {{table}} : l'endroit où se trouvent ses lignes ({{rows_field}}) est défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs.",
-      "relationship_request_queued": "Mis en file comme demande n° {{id}}. Elle requiert les approbations de {{required}} utilisateurs différents autorisés à créer des relations, dont au moins un atteint chaque domaine concerné."
+      "relationship_request_queued": "Mis en file comme demande n° {{id}}. Elle requiert les approbations de {{required}} utilisateurs différents autorisés à créer des relations, dont au moins un atteint chaque domaine concerné.",
+      "request_approved": "Demande de création n° {{id}} approuvée"
     },
     "secrets": {
       "still_referenced": "{{secret}} est encore nommé par {{count}} valeur(s) stockée(s) dans cette organisation. Modifiez ou retirez chacune, puis supprimez-le de nouveau."

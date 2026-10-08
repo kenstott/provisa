@@ -359,7 +359,8 @@
       "table_released": "Tabelle {{table}} freigegeben",
       "openapi_no_rows_field": "Tabelle {{table}}: Die Antwort hat keine Eigenschaft {{rows_field}}, aus der Zeilen gelesen werden könnten.",
       "paging_rows_field_fixed": "Tabelle {{table}}: Wo ihre Zeilen liegen ({{rows_field}}), wird bei der Registrierung der Tabelle festgelegt. Registrieren Sie die Tabelle erneut, um ihre Zeilen von anderer Stelle zu lesen.",
-      "relationship_request_queued": "Als Antrag #{{id}} eingereiht. Er braucht Genehmigungen von {{required}} verschiedenen Benutzern, die Beziehungen anlegen dürfen, wobei mindestens einer jede berührte Domäne erreicht."
+      "relationship_request_queued": "Als Antrag #{{id}} eingereiht. Er braucht Genehmigungen von {{required}} verschiedenen Benutzern, die Beziehungen anlegen dürfen, wobei mindestens einer jede berührte Domäne erreicht.",
+      "request_approved": "Erstellungsanfrage #{{id}} genehmigt"
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."

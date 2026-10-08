@@ -350,6 +350,12 @@ async def list_requests(  # REQ-063, REQ-434, REQ-1948
             if not (decides or mine):
                 continue
             row["can_decide"] = decides
+            # Its author may take back a pending request of any type but a relationship's.
+            row["can_withdraw"] = row["status"] == "pending" and approvals_rule.is_withdrawal(
+                request_type=row["request_type"],
+                user_id=user_id,
+                requested_by=row["requested_by"],
+            )
             out.append(row)
     return out
 
@@ -455,7 +461,13 @@ async def reject_request(
                     tables=approvals_rule.tables_named(row["payload"]),
                 ),
             )
-        else:
+        withdrawn = approvals_rule.is_withdrawal(
+            request_type=row["request_type"],
+            user_id=_user_id(request),
+            requested_by=row["requested_by"],
+        )
+        if not _is_relationship(row) and not withdrawn:
+            # Its author may take a request back; anyone else needs the right it names.
             _require_capability(request, row["capability"])
         valid = _REJECTION_REASONS.get(row["request_type"], [])
         if body.reason not in valid:
@@ -480,8 +492,7 @@ async def reject_request(
         )
         if (result.rowcount or 0) != 1:
             raise HTTPException(status_code=409, detail="Could not reject request")
-        if _is_relationship(row):
-            await _audit(request, row, "reject", involved)
+        await _audit(request, row, "withdraw" if withdrawn else "reject", involved)
     return {"id": request_id, "status": "rejected", "reason": body.reason}
 
 

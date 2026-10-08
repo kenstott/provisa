@@ -359,7 +359,8 @@
       "table_released": "Tabela {{table}} liberada",
       "openapi_no_rows_field": "Tabela {{table}}: a resposta não tem nenhuma propriedade {{rows_field}} de onde ler linhas.",
       "paging_rows_field_fixed": "Tabela {{table}}: onde estão suas linhas ({{rows_field}}) é definido quando a tabela é registrada. Registre a tabela novamente para ler suas linhas de outro lugar.",
-      "relationship_request_queued": "Enfileirado como solicitação nº {{id}}. Ela precisa de aprovações de {{required}} usuários diferentes que possam criar relacionamentos, com pelo menos um alcançando cada domínio tocado."
+      "relationship_request_queued": "Enfileirado como solicitação nº {{id}}. Ela precisa de aprovações de {{required}} usuários diferentes que possam criar relacionamentos, com pelo menos um alcançando cada domínio tocado.",
+      "request_approved": "Solicitação de criação nº {{id}} aprovada"
     },
     "secrets": {
       "still_referenced": "{{secret}} ainda é nomeado por {{count}} valor(es) armazenado(s) nesta organização. Altere ou remova cada um e exclua novamente."

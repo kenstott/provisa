@@ -359,7 +359,8 @@
       "table_released": "表 {{table}} 已发布",
       "openapi_no_rows_field": "表 {{table}}：响应中没有可用于读取行的属性 {{rows_field}}。",
       "paging_rows_field_fixed": "表 {{table}}：行所在的位置（{{rows_field}}）在注册表时设置。要从其他位置读取行，请重新注册该表。",
-      "relationship_request_queued": "已排入请求 #{{id}}。它需要 {{required}} 位有权创建关系的不同用户批准，且每个涉及的域至少有一位批准者的权限覆盖。"
+      "relationship_request_queued": "已排入请求 #{{id}}。它需要 {{required}} 位有权创建关系的不同用户批准，且每个涉及的域至少有一位批准者的权限覆盖。",
+      "request_approved": "已批准创建请求 #{{id}}"
     },
     "secrets": {
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"

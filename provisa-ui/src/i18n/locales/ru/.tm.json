@@ -3343,6 +3343,7 @@
   "ru/serverErrors.json::serverErrors.schema.remigrated": "Re-migrated {{source}}.{{table}}",
   "ru/serverErrors.json::serverErrors.schema.replicate_contradicts_load_protected": "Load protection cannot be combined with Replicate = Never: a load-protected table is never read live",
   "ru/serverErrors.json::serverErrors.schema.replicate_invalid": "Replicate must be Default, Never, Always or a threshold above 0; got {{value}}",
+  "ru/serverErrors.json::serverErrors.schema.request_approved": "Approved creation request #{{id}}",
   "ru/serverErrors.json::serverErrors.schema.request_executed": "Executed creation request #{{id}}",
   "ru/serverErrors.json::serverErrors.schema.request_not_pending": "Request not found or already resolved",
   "ru/serverErrors.json::serverErrors.schema.request_rejected": "Rejected creation request #{{id}}",

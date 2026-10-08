@@ -359,7 +359,8 @@
       "table_released": "Table {{table}} released",
       "openapi_no_rows_field": "Table {{table}}: the response has no property {{rows_field}} to read rows from.",
       "paging_rows_field_fixed": "Table {{table}}: where its rows are ({{rows_field}}) is set when the table is registered. Register the table again to read its rows from elsewhere.",
-      "relationship_request_queued": "Queued as request #{{id}}. It needs approvals from {{required}} different users who may create relationships, at least one reaching each domain it touches."
+      "relationship_request_queued": "Queued as request #{{id}}. It needs approvals from {{required}} different users who may create relationships, at least one reaching each domain it touches.",
+      "request_approved": "Approved creation request #{{id}}"
     },
     "secrets": {
       "still_referenced": "{{secret}} is still named by {{count}} stored value(s) in this organization. Change or remove each one, then delete it again."

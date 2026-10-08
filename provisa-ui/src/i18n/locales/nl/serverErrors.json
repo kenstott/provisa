@@ -359,7 +359,8 @@
       "table_released": "Tabel {{table}} vrijgegeven",
       "openapi_no_rows_field": "Tabel {{table}}: het antwoord heeft geen eigenschap {{rows_field}} om rijen uit te lezen.",
       "paging_rows_field_fixed": "Tabel {{table}}: waar de rijen staan ({{rows_field}}) wordt ingesteld bij het registreren van de tabel. Registreer de tabel opnieuw om de rijen ergens anders te lezen.",
-      "relationship_request_queued": "In wachtrij geplaatst als verzoek #{{id}}. Het heeft goedkeuringen nodig van {{required}} verschillende gebruikers die relaties mogen aanmaken, van wie er minstens één tot elk geraakt domein reikt."
+      "relationship_request_queued": "In wachtrij geplaatst als verzoek #{{id}}. Het heeft goedkeuringen nodig van {{required}} verschillende gebruikers die relaties mogen aanmaken, van wie er minstens één tot elk geraakt domein reikt.",
+      "request_approved": "Aanmaakverzoek #{{id}} goedgekeurd"
     },
     "secrets": {
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."

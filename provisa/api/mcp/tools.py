@@ -1139,8 +1139,29 @@ async def jev_evaluate(state: Any, role: str, jev_state: Any, questions: list[di
     return await evaluate(await _jev_api_key(state), jev_state, questions)
 
 
+def _proposer(request: Any, requested_by: str | None) -> str:
+    """The USER a proposal is recorded as made by, so that the rule that nobody decides their own
+    request compares a user with a user. The in-app chat hands the authenticated request; the MCP
+    server, which has no request, names the user itself (the remote caller's validated identity,
+    or its stdio principal)."""
+    if requested_by:
+        return requested_by
+    identity = getattr(getattr(request, "state", None), "identity", None)
+    user_id = getattr(identity, "user_id", None)
+    if not user_id:
+        raise ValueError("a proposal needs the user who makes it: no identity on this call")
+    return user_id
+
+
 async def _queue_mcp_proposal(
-    state: Any, role: str, request_type: str, capability: str, reason: str, rebuilt_input: Any
+    state: Any,
+    role: str,
+    request_type: str,
+    capability: str,
+    reason: str,
+    rebuilt_input: Any,
+    request: Any,
+    requested_by: str | None,
 ) -> dict:
     """Shared REQ-1792 tail: persist a pending creation request from an MCP-side proposal.
 
@@ -1155,14 +1176,16 @@ async def _queue_mcp_proposal(
 
     from provisa.api.admin.schema_common import request_payload
 
+    proposer = _proposer(request, requested_by)
     payload = request_payload(rebuilt_input)
     payload["_proposed_reason"] = reason.strip()
     payload["_proposed_via"] = "mcp"
+    payload["_proposed_role"] = role
 
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as conn:
-        request_id = await cr_repo.create(conn, request_type, capability, payload, role)
+        request_id = await cr_repo.create(conn, request_type, capability, payload, proposer)
     return {
         "request_id": request_id,
         "status": "pending",
@@ -1197,7 +1220,13 @@ def _role_has_capability(state: Any, role: str, capability: str, *, request: Any
 
 
 async def propose_source(
-    state: Any, role: str, source: dict, reason: str, *, request: Any = None
+    state: Any,
+    role: str,
+    source: dict,
+    reason: str,
+    *,
+    request: Any = None,
+    requested_by: str | None = None,
 ) -> dict:  # REQ-1792, REQ-1799
     """Queue a discovered data source as a pending creation request for a human to approve —
     UNLESS `role` already carries `source_registration` and `request` (the real, authenticated
@@ -1234,12 +1263,25 @@ async def propose_source(
             ),
         }
     return await _queue_mcp_proposal(
-        state, role, "source", "source_registration", reason, source_input
+        state,
+        role,
+        "source",
+        "source_registration",
+        reason,
+        source_input,
+        request,
+        requested_by,
     )
 
 
 async def propose_table(
-    state: Any, role: str, table: dict, reason: str, *, request: Any = None
+    state: Any,
+    role: str,
+    table: dict,
+    reason: str,
+    *,
+    request: Any = None,
+    requested_by: str | None = None,
 ) -> dict:  # REQ-1792, REQ-1799
     """Queue a table to register from an already-registered source, for a human to approve —
     UNLESS `role` already carries `table_registration` and `request` is available, in which case
@@ -1273,7 +1315,14 @@ async def propose_table(
             ),
         }
     return await _queue_mcp_proposal(
-        state, role, "table", "table_registration", reason, table_input
+        state,
+        role,
+        "table",
+        "table_registration",
+        reason,
+        table_input,
+        request,
+        requested_by,
     )
 
 

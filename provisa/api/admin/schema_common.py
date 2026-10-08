@@ -82,6 +82,15 @@ class CreationRequestType:  # REQ-434, REQ-063
     payload_json: str
 
 
+#: What an MCP proposal stores beside the proposed input (REQ-1792): why it was proposed, through
+#: what, and as which role. They describe the request and are no part of the input it rebuilds.
+PROPOSAL_NOTES = ("_proposed_reason", "_proposed_via", "_proposed_role")
+
+
+def _proposed_input(payload: dict) -> dict:
+    return {k: v for k, v in payload.items() if k not in PROPOSAL_NOTES}
+
+
 def _rebuild_relationship_input(payload: dict):
     from provisa.api.admin.types import RelationshipInput
 
@@ -96,7 +105,7 @@ def _rebuild_table_input(payload: dict):
         UniqueConstraintInput,
     )
 
-    data = dict(payload)
+    data = _proposed_input(payload)
     data["columns"] = [ColumnInput(**c) for c in payload.get("columns", [])]
     data["column_presets"] = [ColumnPresetInput(**c) for c in payload.get("column_presets", [])]
     data["unique_constraints"] = [
@@ -108,7 +117,7 @@ def _rebuild_table_input(payload: dict):
 def _rebuild_source_input(payload: dict):  # REQ-1792
     from provisa.api.admin.types import SourceCdcConfigInput, SourceInput
 
-    data = dict(payload)
+    data = _proposed_input(payload)
     if data.get("cdc") is not None:
         data["cdc"] = SourceCdcConfigInput(**data["cdc"])
     return SourceInput(**data)

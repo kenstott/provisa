@@ -359,7 +359,8 @@
       "table_released": "Tabella {{table}} rilasciata",
       "openapi_no_rows_field": "Tabella {{table}}: la risposta non ha alcuna proprietà {{rows_field}} da cui leggere le righe.",
       "paging_rows_field_fixed": "Tabella {{table}}: la posizione delle sue righe ({{rows_field}}) è impostata alla registrazione della tabella. Registra di nuovo la tabella per leggere le sue righe da un'altra posizione.",
-      "relationship_request_queued": "Accodata come richiesta n. {{id}}. Richiede le approvazioni di {{required}} utenti diversi che possono creare relazioni, di cui almeno uno raggiunge ciascun dominio toccato."
+      "relationship_request_queued": "Accodata come richiesta n. {{id}}. Richiede le approvazioni di {{required}} utenti diversi che possono creare relazioni, di cui almeno uno raggiunge ciascun dominio toccato.",
+      "request_approved": "Richiesta di creazione n. {{id}} approvata"
     },
     "secrets": {
       "still_referenced": "{{secret}} è ancora nominato da {{count}} valore/i memorizzato/i in questa organizzazione. Modifica o rimuovi ciascuno, poi eliminalo di nuovo."

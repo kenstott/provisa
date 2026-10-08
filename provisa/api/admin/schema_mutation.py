@@ -3210,10 +3210,54 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
+    async def approve_creation_request(  # REQ-434, REQ-063, REQ-1948
+        self, info: StrawberryInfo, request_id: int
+    ) -> MutationResult:
+        """Approve a creation request: the REST queue's approve, asked over GraphQL.
+
+        One implementation, so the rule, the refusals and the admin-trail entries are the same
+        on both surfaces. The approval that completes the request's count creates what it asks
+        for; ``params.status`` says whether this one did."""
+        from fastapi import HTTPException
+
+        from provisa.api.admin.creation_requests_router import approve_request
+        from provisa.api.errors import ApiError
+
+        try:
+            row = await approve_request(request_id, info.context["request"])
+        except ApiError as refused:
+            return MutationResult(
+                success=False,
+                message=str(refused.detail),
+                code=refused.code,
+                params=refused.params,
+            )
+        except HTTPException as refused:
+            if refused.status_code in (404, 409):
+                return MutationResult(
+                    success=False,
+                    message="Request not found or already resolved",
+                    code="schema.request_not_pending",
+                )
+            return MutationResult(success=False, message=str(refused.detail))
+        return MutationResult(
+            success=True,
+            message=f"Approved creation request #{request_id}",
+            code="schema.request_approved",
+            params={
+                "id": request_id,
+                "status": row["status"],
+                "waitingOn": row.get("waiting_on", []),
+            },
+        )
+
+    @strawberry.mutation
     async def reject_creation_request(  # REQ-434, REQ-063, REQ-1948
         self, info: StrawberryInfo, request_id: int, reason: str
     ) -> MutationResult:
-        """REQ-434/063: a rights-holder rejects a queued request with an actionable reason."""
+        """REQ-434/063: a rights-holder rejects a queued request with an actionable reason; the
+        author of a request (any type but a relationship's) may take it back."""
+        from provisa.api.admin import relationship_approvals as _rule
         from provisa.api.admin.capabilities import _identity_from_info, require_capability
         from provisa.core.repositories import creation_request as cr_repo
 
@@ -3237,18 +3281,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 refusal = await _relationship_decision_refusal(info, req, executing=False)
                 if refusal is not None:
                     return refusal
-            else:
+            identity = _identity_from_info(info)
+            resolved_by = getattr(identity, "user_id", None) if identity is not None else None
+            # Its author may take a request back; anyone else needs the right it names.
+            withdrawn = _rule.is_withdrawal(
+                request_type=req["request_type"],
+                user_id=resolved_by,
+                requested_by=req["requested_by"],
+            )
+            if req["request_type"] != "relationship" and not withdrawn:
                 try:
                     require_capability(info, req["capability"])
                 except PermissionError as e:
                     return MutationResult(success=False, message=str(e))
-            identity = _identity_from_info(info)
-            resolved_by = getattr(identity, "user_id", None) if identity is not None else None
             await cr_repo.mark_rejected(
                 cast("Connection", conn), request_id, reason.strip(), resolved_by
             )
-        if req["request_type"] == "relationship":
-            await _record_request_decision(info, req, "reject")
+        await _record_request_decision(info, req, "withdraw" if withdrawn else "reject")
         return MutationResult(
             success=True,
             message=f"Rejected creation request #{request_id}",

@@ -59,6 +59,7 @@ class TestProposeSource:
                 "analyst",
                 {"id": "new_pg", "type": "postgresql", "host": "db.internal", "port": 5432},
                 "found via network scan",
+                requested_by="u-ann",
             )
             assert result["status"] == "pending"
             assert isinstance(result["request_id"], int)
@@ -72,7 +73,36 @@ class TestProposeSource:
             assert row["payload"]["id"] == "new_pg"
             assert row["payload"]["_proposed_reason"] == "found via network scan"
             assert row["payload"]["_proposed_via"] == "mcp"
-            assert row["requested_by"] == "analyst"
+            # The USER who proposed it, so nobody decides their own request; the role is a note.
+            assert row["requested_by"] == "u-ann"
+            assert row["payload"]["_proposed_role"] == "analyst"
+
+    async def test_the_in_app_caller_is_recorded_from_the_request(self, tmp_path):
+        from provisa.api.mcp import tools
+
+        async with _db(tmp_path) as db:
+            state = _state(db)
+            state.roles = {"analyst": {"capabilities": []}}
+            request = types.SimpleNamespace(
+                state=types.SimpleNamespace(identity=types.SimpleNamespace(user_id="u-bo"))
+            )
+            await tools.propose_source(
+                state, "analyst", {"id": "new_pg", "type": "postgresql"}, "why", request=request
+            )
+            async with db.acquire() as conn:
+                (row,) = await cr_repo.list_pending(conn)
+            assert row["requested_by"] == "u-bo"
+
+    async def test_a_proposal_nobody_made_is_refused(self, tmp_path):
+        from provisa.api.mcp import tools
+
+        async with _db(tmp_path) as db:
+            with pytest.raises(ValueError, match="needs the user who makes it"):
+                await tools.propose_source(
+                    _state(db), "analyst", {"id": "new_pg", "type": "postgresql"}, "why"
+                )
+            async with db.acquire() as conn:
+                assert await cr_repo.list_pending(conn) == []
 
     async def test_rejects_missing_required_fields(self, tmp_path):
         from provisa.api.mcp import tools
@@ -176,7 +206,11 @@ class TestProposeSource:
             state = _state(db)
             state.roles = {"analyst": {"capabilities": ["source_registration"]}}
             result = await tools.propose_source(
-                state, "analyst", {"id": "new_pg", "type": "postgresql"}, "found via network scan"
+                state,
+                "analyst",
+                {"id": "new_pg", "type": "postgresql"},
+                "found via network scan",
+                requested_by="mcp-stdio",
             )
             assert result["status"] == "pending"
 
@@ -191,7 +225,9 @@ class TestProposeSource:
                 "analyst",
                 {"id": "new_pg", "type": "postgresql"},
                 "found via network scan",
-                request=object(),
+                request=types.SimpleNamespace(
+                    state=types.SimpleNamespace(identity=types.SimpleNamespace(user_id="u-bo"))
+                ),
             )
             assert result["status"] == "pending"
 
@@ -277,6 +313,7 @@ class TestProposeTable:
                     "columns": [{"name": "id", "visible_to": ["admin"]}],
                 },
                 "discovered during crawl",
+                requested_by="u-ann",
             )
             assert result["status"] == "pending"
 

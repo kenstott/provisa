@@ -53,6 +53,8 @@ interface CreationRequest {
   can_decide: boolean;
   // Why this user's approval would be refused (the server's own refusal), or null when it counts.
   approve_refusal: ServerMessageShape | null;
+  // Its author may take a pending request back (not a relationship request's).
+  can_withdraw: boolean;
 }
 
 function errorText(e: unknown): string {
@@ -384,6 +386,20 @@ export function RequestsPage() {
                         <Text size="xs" c="dimmed" data-testid={`requests-cannot-${row.id}`}>
                           {serverMessage(row.approve_refusal, "")}
                         </Text>
+                      )}
+                      {row.status === "pending" && !row.can_decide && row.can_withdraw && (
+                        <Button
+                          size="compact-xs"
+                          variant="default"
+                          onClick={() => {
+                            setRejectingId(row.id);
+                            setRejectReason(null);
+                          }}
+                          disabled={busy}
+                          data-testid={`requests-withdraw-${row.id}`}
+                        >
+                          {t("requestsPage.reject")}
+                        </Button>
                       )}
                       {row.status === "pending" && row.can_decide && (
                         <Group gap="xs" wrap="nowrap">

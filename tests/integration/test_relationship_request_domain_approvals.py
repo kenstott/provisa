@@ -723,3 +723,163 @@ async def test_a_table_request_is_created_under_the_approvers_own_domain_gate(pl
             select(registered_tables.c.id).where(registered_tables.c.table_name == "leads")
         )
         assert found.fetchone() is None
+
+
+# --- the holes in the rule: requesters recorded, GraphQL approval, withdrawal -------------------
+
+
+async def test_a_webhook_request_records_who_registered_it(plane, monkeypatch):
+    from provisa.api.admin import actions_router
+    from provisa.core.repositories import creation_request as cr_repo
+
+    request = _info("tina").context["request"]
+    await actions_router.create_webhook(
+        request, actions_router.WebhookInput(name="notify", url="http://x", domainId="sales")
+    )
+    async with plane.db.acquire() as conn:
+        (row,) = await cr_repo.list_pending(conn)
+    assert row["request_type"] == "webhook" and row["requested_by"] == "tina"
+
+    own = await _post(plane, "tina", f"{row['id']}/approve")
+    assert own.status_code == 403 and own.json()["code"] == "requests.own_request"
+    other = await _post(plane, "tom", f"{row['id']}/approve")
+    assert other.status_code == 200 and other.json()["status"] == "executed"
+
+
+async def test_an_mcp_proposal_is_carried_out_without_its_notes(plane, other):
+    # What _queue_mcp_proposal stores: the proposed input, the notes beside it, the USER.
+    payload = {
+        **other.payload,
+        "_proposed_reason": "found in a scan",
+        "_proposed_via": "mcp",
+        "_proposed_role": "sales_reader",
+    }
+    rid = await _queue(plane, other.kind, other.capability, payload, "tina")
+    own = await _post(plane, "tina", f"{rid}/approve")
+    assert own.status_code == 403 and own.json()["code"] == "requests.own_request"
+    done = await _post(plane, "tom", f"{rid}/approve")
+    assert done.status_code == 200 and done.json()["status"] == "executed", done.text
+    made = other.creation.calls[0][1]
+    assert not any(hasattr(made, note) for note in ("_proposed_reason", "_proposed_via"))
+
+
+async def _gql(action: str, user: str, rid: int):
+    m = schema_mutation.Mutation()
+    if action == "approve":
+        return await m.approve_creation_request(_info(user), rid)  # pyright: ignore[reportCallIssue]
+    if action == "execute":
+        return await m.execute_creation_request(_info(user), rid)  # pyright: ignore[reportCallIssue]
+    return await m.reject_creation_request(  # pyright: ignore[reportCallIssue]
+        _info(user), rid, "duplicate"
+    )
+
+
+async def _rest(plane, action: str, user: str, rid: int) -> httpx.Response:
+    body = {"reason": "duplicate"} if action == "reject" else {}
+    return await _post(plane, user, f"{rid}/{action}", **body)
+
+
+async def test_graphql_and_rest_give_a_relationship_request_the_same_answers(plane):
+    """The same steps on two identical requests, one over each surface: the same refusals, the
+    same outcome, the same trail."""
+    over_rest = await _ask("asker", "orders_invoices", "orders", "invoices")
+    over_gql = await _ask("asker", "orders_invoices_2", "orders", "invoices")
+    steps = [
+        ("approve", "hal", "requests.approver_outside_domains"),
+        ("approve", "asker", "requests.approver_outside_domains"),
+        ("execute", "sam", "requests.waiting_on_domains"),
+        ("approve", "sam", None),
+        ("approve", "sam", "requests.already_approved"),
+        ("reject", "hal", "requests.approver_outside_domains"),
+        ("execute", "sam", "requests.waiting_on_domains"),
+        ("approve", "fay", None),
+    ]
+    for action, user, refusal in steps:
+        rest = await _rest(plane, action, user, over_rest)
+        gql = await _gql(action, user, over_gql)
+        if refusal is None:
+            assert rest.status_code == 200 and gql.success is True, (action, user, rest.text)
+        else:
+            assert rest.json()["code"] == refusal, (action, user, rest.text)
+            assert gql.success is False and gql.code == refusal, (action, user, gql.message)
+    # A GraphQL-only client completed the flow it could start.
+    assert isinstance(gql.params, dict) and gql.params["status"] == "executed"
+    assert await _stored(plane, "orders_invoices") is not None
+    assert await _stored(plane, "orders_invoices_2") is not None
+    assert (await _status(plane, over_gql))[0] == "executed"
+    late = await _gql("approve", "sue", over_gql)
+    assert late.success is False and late.code == "schema.request_not_pending"
+
+    trail = await _trail(plane)
+    per_request = {
+        rid: [
+            (a, who, d["outcome"], d.get("refusal"))
+            for a, who, d in trail
+            if d["request_id"] == rid
+        ]
+        for rid in (over_rest, over_gql)
+    }
+    assert per_request[over_rest] == per_request[over_gql]
+    assert len(per_request[over_gql]) == len(steps) + 1  # the completing creation
+
+
+async def test_graphql_and_rest_give_another_type_the_same_answers(plane, other):
+    over_rest = await _queue(plane, other.kind, other.capability, other.payload, "tina")
+    over_gql = await _queue(plane, other.kind, other.capability, other.payload, "tina")
+    steps = [
+        ("approve", "tina", "requests.own_request"),
+        ("execute", "tom", "requests.approvals_incomplete"),
+        ("approve", "tom", None),
+    ]
+    for action, user, refusal in steps:
+        rest = await _rest(plane, action, user, over_rest)
+        gql = await _gql(action, user, over_gql)
+        if refusal is None:
+            assert rest.status_code == 200 and gql.success is True, rest.text
+        else:
+            assert rest.json()["code"] == refusal
+            assert gql.success is False and gql.code == refusal
+    # A caller without the right is refused on both, by name.
+    again = await _queue(plane, other.kind, other.capability, other.payload, "asker")
+    assert (await _rest(plane, "approve", "sam", again)).status_code == 403
+    lacking = await _gql("approve", "sam", again)
+    assert lacking.success is False and "Missing capability" in lacking.message
+    assert [(await _status(plane, r))[0] for r in (over_rest, over_gql, again)] == [
+        "executed",
+        "executed",
+        "pending",
+    ]
+    assert [user for user, _ in other.creation.calls] == ["tom", "tom"]
+
+
+async def test_the_author_may_take_back_a_request_and_it_is_recorded_as_that(plane, other):
+    # asker holds none of the rights these requests name.
+    over_rest = await _queue(plane, other.kind, other.capability, other.payload, "asker")
+    over_gql = await _queue(plane, other.kind, other.capability, other.payload, "asker")
+    mine = (await _listed(plane, "asker"))[over_rest]
+    assert mine["can_decide"] is False and mine["can_withdraw"] is True
+
+    # Anyone else without the right is refused, as before.
+    assert (await _rest(plane, "reject", "sam", over_rest)).status_code == 403
+    assert (await _gql("reject", "sam", over_gql)).success is False
+
+    assert (await _rest(plane, "reject", "asker", over_rest)).json()["status"] == "rejected"
+    assert (await _gql("reject", "asker", over_gql)).success is True
+    assert [(await _status(plane, r))[0] for r in (over_rest, over_gql)] == ["rejected"] * 2
+    assert [(action, actor) for action, actor, _ in await _trail(plane)] == [
+        (f"{other.kind}_request.withdraw", "asker"),
+        (f"{other.kind}_request.withdraw", "asker"),
+    ]
+
+    # A holder's rejection of someone else's request is a rejection.
+    third = await _queue(plane, other.kind, other.capability, other.payload, "asker")
+    assert (await _rest(plane, "reject", "tina", third)).status_code == 200
+    assert (await _trail(plane))[-1][:2] == (f"{other.kind}_request.reject", "tina")
+
+
+async def test_a_relationship_request_is_not_its_authors_to_withdraw(plane):
+    rid = await _ask("fay", "orders_invoices", "orders", "invoices")
+    assert (await _listed(plane, "fay"))[rid]["can_withdraw"] is False
+    refused = await _rest(plane, "reject", "fay", rid)
+    assert refused.status_code == 403 and refused.json()["code"] == "requests.own_request"
+    assert (await _gql("reject", "fay", rid)).code == "requests.own_request"
