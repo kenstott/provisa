@@ -4911,7 +4911,13 @@
     The cache key and the rule that a mutation is never cached are unchanged. (Amended 2026-10-03, THE
     SCENARIO READS THE ENGINE''S STORE:) A repeated call with identical args within TTL is served from
     its cache table in the engine''s own store, with no upstream REST call. The acceptance scenario, which
-    read "cached in Trino Iceberg on S3 ... served from Trino directly", names the engine''s store.'
+    read "cached in Trino Iceberg on S3 ... served from Trino directly", names the engine''s store.
+    (Amended 2026-10-08, A LIVE FETCH IS STORED ONCE) When a statement reads an API table that is not
+    in the cache, the rows fetched are stored once, by the statement, under the columns it reads and
+    by name. The fetch itself writes nothing. Before this the fetch also wrote them, into the same
+    table and with the endpoint''s parameter columns, so a table with a parameter that is no response
+    field failed on its first read and one without held its rows twice. Columns promoted from JSON are
+    applied to the table the statement stored.'
   use_case: '[SUPERSEDED by REQ-845, 2026-10-03 -- the API cache is held in the engine''s own store on
     every engine, not in S3/Iceberg read through Trino. Kept here for history; do not implement against
     it.] S3/Iceberg materialization of GET operation results prevents repeated upstream REST calls and
@@ -4925,6 +4931,7 @@
   tests:
   - tests/unit/test_api_cache.py
   - tests/integration/test_openapi_source.py
+  - tests/unit/test_materialization_api.py
   since: 2026-01
   scenario: 'Given a GET operation result cached in the engine''s own store
 
@@ -72567,6 +72574,7 @@
   - tests/unit/test_graphql_remote_relay.py
   - tests/integration/test_graphql_remote_source.py
   - provisa-ui/src/__tests__/sourceBrand.test.ts
+  - provisa-ui/e2e/source-to-query-stripe.spec.ts
   related_reqs:
   - REQ-314
   - REQ-317
