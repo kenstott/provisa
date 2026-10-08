@@ -45760,7 +45760,7 @@
     on it. A per-org rebuild therefore ENSURES the system catalogs rather than re-registering them: it
     creates only what the coordinator is missing. `provisa_admin` is the exception and is still refreshed,
     because its JDBC URL names the org''s own schema and a stale one points the control plane at another
-    org.'
+    org. (Amended 2026-10-07, maintainer -- ONE SHARED CATALOG, CREATED ONCE; this supersedes any text above that has provisa_admin refreshed per org:) every system catalog, provisa_admin included, has a definition that is the same for every org and environment on a coordinator. A system catalog is created when the coordinator lacks it and re-created only when its definition differs from the one recorded for that coordinator in the platform''s own state; otherwise a boot or a runtime build issues no DROP and no CREATE. A statement that arrives while a system catalog is being re-created is answered as temporarily unavailable and retried within its deadline, never as a user error.'
   use_case: An org administrator switches the org's query engine and the other orgs on the shared coordinator
     keep working, rather than losing the telemetry catalog their reports read.
   code:
@@ -56571,7 +56571,11 @@
     A fourth site wrote org_<id> into the search_path the pgwire surface reports; that schema holds none
     of a pgwire client's tables - the catalog presents them under public and current_schema() answers
     public - and the value was a process global naming the boot org for every session, so it is removed
-    rather than routed.
+    rather than routed. (Amended 2026-10-07, maintainer -- the provisa_admin catalog has no default schema; this
+    supersedes the second seam above:) the provisa_admin catalog is one catalog per coordinator whose definition is
+    the same for every org and environment and names no default schema; every statement that reaches it names the
+    schema of the org and environment it serves, and a statement naming the catalog without a schema is a defect
+    a test refuses (REQ-1429).
   code:
   - provisa/core/db.py
   - provisa/api/app.py
