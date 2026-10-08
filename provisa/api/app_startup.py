@@ -492,7 +492,7 @@ async def _start_servers(_log: logging.Logger) -> None:
                 # acme.provisa.dev requests org 'acme' the way an HTTP Host header does.
                 install_sni_capture(_ssl_ctx)
 
-            start_pgwire_server(
+            state._pgwire_server = start_pgwire_server(
                 host="0.0.0.0",  # nosec B104 - pgwire server intentionally binds all interfaces
                 port=pgwire_port,
                 ssl_ctx=_ssl_ctx,
@@ -532,7 +532,7 @@ async def _start_servers(_log: logging.Logger) -> None:
                 # REQ-1234: the same hostname capture pgwire installs, on Bolt's listener.
                 install_sni_capture(_bolt_ssl_ctx)
 
-            start_bolt_server(
+            state._bolt_listener = start_bolt_server(
                 host="0.0.0.0",  # nosec B104 - bolt server intentionally binds all interfaces
                 port=bolt_port,
                 ssl_ctx=_bolt_ssl_ctx,
