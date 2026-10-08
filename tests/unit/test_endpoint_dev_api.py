@@ -421,9 +421,21 @@ class TestSqlEndpointRoleResolution:
 
 
 class TestProtoEndpoint:
-    async def test_no_proto_file_404(self, sql_client):
+    async def test_no_proto_file_404(self, sql_client, monkeypatch):
+        """A built model whose role is given no data surface answers 404; an unbuilt model, 503."""
+        import provisa.api.app as app_mod
+
+        monkeypatch.setattr(app_mod.state, "role_build_inputs", {"org_admin": object()})
+        monkeypatch.setattr(app_mod.state, "roles", {"org_admin": MagicMock()})
         resp = await sql_client.get("/data/proto/org_admin")
         assert resp.status_code == 404
+
+    async def test_proto_before_the_model_is_built_503(self, sql_client, monkeypatch):
+        import provisa.api.app as app_mod
+
+        monkeypatch.setattr(app_mod.state, "role_build_inputs", {})
+        resp = await sql_client.get("/data/proto/org_admin")
+        assert resp.status_code == 503
 
     async def test_static_proto_file_returned(self, sql_client):
         import provisa.api.app as app_mod
