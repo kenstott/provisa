@@ -406,6 +406,14 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "你建立關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",
+      "own_request": "你不能決定自己提出的請求",
+      "already_approved": "你已核准過此請求",
+      "approver_unidentified": "關係請求由已登入的使用者決定；此決定沒有對應的使用者",
+      "waiting_on_domains": "此請求仍在等待以下網域的核准：{{domains}}",
+      "approvals_incomplete": "此請求需要 {{required}} 位不同使用者的核准"
     }
   }
 }

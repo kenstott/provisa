@@ -17,6 +17,7 @@
     "colSubmitted": "Ingediend",
     "colPayload": "Payload",
     "colApprovals": "Goedkeuringen",
+    "colWaitingOn": "Wacht op",
     "colStatus": "Status",
     "colReason": "Reden",
     "colActions": "",

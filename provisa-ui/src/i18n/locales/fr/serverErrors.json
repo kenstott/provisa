@@ -406,6 +406,14 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "Votre droit de créer des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",
+      "own_request": "Vous ne pouvez pas décider d'une demande que vous avez faite",
+      "already_approved": "Vous avez déjà approuvé cette demande",
+      "approver_unidentified": "Une demande de relation est décidée par des utilisateurs connectés ; cette décision n'a pas d'utilisateur",
+      "waiting_on_domains": "Cette demande attend encore une approbation de : {{domains}}",
+      "approvals_incomplete": "Cette demande requiert les approbations de {{required}} utilisateurs différents"
     }
   }
 }

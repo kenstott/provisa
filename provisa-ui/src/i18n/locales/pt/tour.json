@@ -173,7 +173,7 @@
       },
       "stepRequests": {
         "title": "Solicitações de relacionamento",
-        "description": "✋ Esta solicitação vem de alguém que não pode criar relacionamentos por conta própria, muitas vezes de fora do seu domínio, e que quer relacionar suas tabelas às suas — em geral, o primeiro passo para pedir os seus dados. Os relacionamentos são governados, então aprovar um muda quais consultas são permitidas: um papel que só pode fazer joins ao longo de relacionamentos aprovados passa a poder fazê-los por este. Uma solicitação de relacionamento precisa de duas aprovações antes de poder ser executada. Aprove-a, execute-a ou rejeite-a com um motivo de uma lista fixa; as solicitações resolvidas vão para a aba Resolvidas."
+        "description": "✋ Esta solicitação vem de alguém que não pode criar relacionamentos por conta própria, muitas vezes de fora do seu domínio, e que quer relacionar suas tabelas às suas — em geral, o primeiro passo para pedir os seus dados. Os relacionamentos são governados, então aprovar um muda quais consultas são permitidas: um papel que só pode fazer joins ao longo de relacionamentos aprovados passa a poder fazê-los por este. Uma solicitação de relacionamento precisa de duas aprovações antes de poder ser executada. Um relacionamento entre dois domínios precisa de um sim de cada lado. Aprove-a, execute-a ou rejeite-a com um motivo de uma lista fixa; as solicitações resolvidas vão para a aba Resolvidas."
       },
       "stepQualityTable": {
         "title": "Um verificador de qualidade é apenas uma fonte",

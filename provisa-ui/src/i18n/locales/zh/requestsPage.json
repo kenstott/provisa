@@ -17,6 +17,7 @@
     "colSubmitted": "提交时间",
     "colPayload": "负载",
     "colApprovals": "审批",
+    "colWaitingOn": "等待",
     "colStatus": "状态",
     "colReason": "原因",
     "colActions": "",

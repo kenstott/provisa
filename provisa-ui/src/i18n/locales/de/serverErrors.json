@@ -406,6 +406,14 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "Ihr Recht, Beziehungen anzulegen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",
+      "own_request": "Sie können über einen eigenen Antrag nicht entscheiden",
+      "already_approved": "Sie haben diesen Antrag bereits genehmigt",
+      "approver_unidentified": "Über einen Beziehungsantrag entscheiden angemeldete Benutzer; dieser Entscheidung ist kein Benutzer zugeordnet",
+      "waiting_on_domains": "Dieser Antrag wartet noch auf eine Genehmigung aus: {{domains}}",
+      "approvals_incomplete": "Dieser Antrag braucht Genehmigungen von {{required}} verschiedenen Benutzern"
     }
   }
 }

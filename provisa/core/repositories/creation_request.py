@@ -24,7 +24,14 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
-async def create(  # REQ-063, REQ-434
+#: How many approvals a request of each type needs before it can be carried out. A type not
+#: named here takes the column's own default of one (schema_org.creation_requests).
+REQUIRED_APPROVALS: dict[str, int] = {
+    "relationship": 2,  # REQ-1948: two different users, neither the requester
+}
+
+
+async def create(  # REQ-063, REQ-434, REQ-1948
     conn: "Connection",
     request_type: str,
     capability: str,
@@ -32,16 +39,15 @@ async def create(  # REQ-063, REQ-434
     requested_by: str | None,
 ) -> int:
     """Persist a pending creation request; return its id."""
-    rid = await conn.insert_returning(
-        creation_requests,
-        {
-            "request_type": request_type,
-            "capability": capability,
-            "payload": payload,
-            "requested_by": requested_by,
-        },
-        returning="id",
-    )
+    values: dict = {
+        "request_type": request_type,
+        "capability": capability,
+        "payload": payload,
+        "requested_by": requested_by,
+    }
+    if request_type in REQUIRED_APPROVALS:
+        values["required_approvals"] = REQUIRED_APPROVALS[request_type]
+    rid = await conn.insert_returning(creation_requests, values, returning="id")
     assert rid is not None
     return int(rid)
 
@@ -140,21 +146,27 @@ async def mark_rejected(  # REQ-063, REQ-434
 
 
 async def add_approval(
-    conn: "Connection", request_id: int, approver: str
-) -> dict | None:  # REQ-480
-    """Append an approval entry. Returns updated row or None if not found/already resolved."""
-    entry = {"approver": approver, "approved_at": "now"}
+    conn: "Connection", request_id: int, approver: str, domains: list[str]
+) -> dict | None:  # REQ-480, REQ-1948
+    """Append an approval entry. Returns updated row or None if not found/already resolved.
+
+    ``domains`` are the domains of the request the approver's right reached when the approval
+    was given (REQ-1948): what the request has heard from is read off its approvals.
+    """
+    entry = {"approver": approver, "approved_at": "now", "domains": domains}
     async with conn.transaction():
         result = await conn.execute_core(
-            select(creation_requests).where(
+            select(creation_requests)
+            .where(
                 creation_requests.c.id == request_id,
                 creation_requests.c.status == "pending",
             )
+            .with_for_update()
         )
         row = result.fetchone()
         if row is None:
             return None
-        approvals = list(row._mapping["approvals"] or [])
+        approvals = _approvals(row._mapping["approvals"])
         approvals.append(entry)
         await conn.execute_core(
             update(creation_requests)
@@ -166,6 +178,13 @@ async def add_approval(
         )
         updated = result.fetchone()
     return _row_to_dict(updated) if updated is not None else None
+
+
+def _approvals(stored) -> list[dict]:
+    """The approvals column as a list: the SQLite control plane hands JSON back as text."""
+    import json
+
+    return list(json.loads(stored) if isinstance(stored, str) else stored)
 
 
 async def list_all(  # REQ-480

@@ -173,7 +173,7 @@
       },
       "stepRequests": {
         "title": "Relationship requests",
-        "description": "✋ This request comes from someone who may not create relationships themselves, often from outside your domain, wanting to relate their tables to yours — usually the first step toward asking for your data. Relationships are governed, so approving one changes which queries are legal: a role that may join only along approved relationships can now join across it. A relationship request needs two approvals before it can be executed. Approve it, execute it, or reject it with a reason from a fixed list; resolved requests move to the Resolved tab."
+        "description": "✋ This request comes from someone who may not create relationships themselves, often from outside your domain, wanting to relate their tables to yours — usually the first step toward asking for your data. Relationships are governed, so approving one changes which queries are legal: a role that may join only along approved relationships can now join across it. A relationship request needs two approvals before it can be executed. A relationship across two domains needs a yes from each side. Approve it, execute it, or reject it with a reason from a fixed list; resolved requests move to the Resolved tab."
       },
       "stepQualityTable": {
         "title": "A quality checker is just a source",

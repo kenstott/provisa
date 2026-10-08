@@ -17,6 +17,7 @@
     "colSubmitted": "Submitted",
     "colPayload": "Payload",
     "colApprovals": "Approvals",
+    "colWaitingOn": "Waiting on",
     "colStatus": "Status",
     "colReason": "Reason",
     "colActions": "",

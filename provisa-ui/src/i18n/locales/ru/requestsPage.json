@@ -17,6 +17,7 @@
     "colSubmitted": "Отправлено",
     "colPayload": "Данные",
     "colApprovals": "Согласования",
+    "colWaitingOn": "Ожидает",
     "colStatus": "Статус",
     "colReason": "Причина",
     "colActions": "",

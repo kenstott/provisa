@@ -406,6 +406,14 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "הזכות שלכם ליצור קשרים אינה מגיעה לאף דומיין שהבקשה הזו נוגעת בו ({{domains}})",
+      "own_request": "אי אפשר להחליט על בקשה שהגשתם בעצמכם",
+      "already_approved": "כבר אישרתם את הבקשה הזו",
+      "approver_unidentified": "על בקשת קשר מחליטים משתמשים מחוברים; להחלטה הזו אין משתמש",
+      "waiting_on_domains": "הבקשה הזו עדיין ממתינה לאישור מ: {{domains}}",
+      "approvals_incomplete": "הבקשה הזו דורשת אישורים מ-{{required}} משתמשים שונים"
     }
   }
 }

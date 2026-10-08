@@ -17,6 +17,7 @@
     "colSubmitted": "Soumise",
     "colPayload": "Charge utile",
     "colApprovals": "Approbations",
+    "colWaitingOn": "En attente de",
     "colStatus": "Statut",
     "colReason": "Motif",
     "colActions": "",

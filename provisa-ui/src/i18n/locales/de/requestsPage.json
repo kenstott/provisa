@@ -17,6 +17,7 @@
     "colSubmitted": "Eingereicht",
     "colPayload": "Payload",
     "colApprovals": "Genehmigungen",
+    "colWaitingOn": "Wartet auf",
     "colStatus": "Status",
     "colReason": "Grund",
     "colActions": "",

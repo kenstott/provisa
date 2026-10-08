@@ -370,19 +370,42 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def creation_requests(
         self, info: StrawberryInfo
-    ) -> list[CreationRequestType]:  # REQ-434, REQ-063
+    ) -> list[CreationRequestType]:  # REQ-434, REQ-063, REQ-1948
         """REQ-434/063: pending creation requests, for users holding a create capability.
 
         Each request names the capability its approval needs (the same one the REST approve/reject/
         execute routes check), and the caller sees only the requests whose capability they hold.
+        A relationship request is shown by the domains it touches instead (REQ-1948).
         """
         import json as _json
 
         from provisa.core.repositories import creation_request as cr_repo
 
+        from provisa.api.admin import relationship_approvals as rule
+        from provisa.api.admin.capabilities import _identity_from_info, right_reach
+        from provisa.api.app import state
+
+        identity = _identity_from_info(info)
+        user_id = getattr(identity, "user_id", None)
+        reach = right_reach(identity, state, rule.RIGHT)
+
         pool = await _get_pool()
+        decidable: set[int] = set()
         async with pool.acquire() as conn:
             rows = await cr_repo.list_pending(cast("Connection", conn))
+            for r in rows:
+                if r["request_type"] != rule.REQUEST_TYPE:
+                    if has_capability(info, r["capability"]):
+                        decidable.add(r["id"])
+                # REQ-1948: a relationship request is shown to the users who can decide it and
+                # to the one who made it.
+                elif rule.visible_to(
+                    user_id=user_id,
+                    requested_by=r.get("requested_by"),
+                    involved=await rule.domains_involved(cast("Connection", conn), r["payload"]),
+                    reach=reach,
+                ):
+                    decidable.add(r["id"])
         return [
             CreationRequestType(
                 id=r["id"],
@@ -394,7 +417,7 @@ class Query:  # REQ-021, REQ-042
                 payload_json=_json.dumps(r["payload"]),
             )
             for r in rows
-            if has_capability(info, r["capability"])
+            if r["id"] in decidable
         ]
 
     @strawberry.field

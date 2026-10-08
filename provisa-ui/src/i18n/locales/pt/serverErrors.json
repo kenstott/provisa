@@ -406,6 +406,14 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "Seu direito de criar relacionamentos não alcança nenhum domínio tocado por esta solicitação ({{domains}})",
+      "own_request": "Você não pode decidir uma solicitação que você fez",
+      "already_approved": "Você já aprovou esta solicitação",
+      "approver_unidentified": "Uma solicitação de relacionamento é decidida por usuários conectados; esta decisão não tem usuário",
+      "waiting_on_domains": "Esta solicitação ainda aguarda uma aprovação de: {{domains}}",
+      "approvals_incomplete": "Esta solicitação precisa de aprovações de {{required}} usuários diferentes"
     }
   }
 }

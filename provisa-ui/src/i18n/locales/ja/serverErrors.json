@@ -406,6 +406,14 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "リレーションシップを作成するあなたの権限は、このリクエストが関わるドメイン ({{domains}}) のいずれにも及びません",
+      "own_request": "自分が作成したリクエストは決定できません",
+      "already_approved": "このリクエストはすでに承認済みです",
+      "approver_unidentified": "リレーションシップのリクエストはサインインしたユーザーが決定します。この決定にはユーザーがありません",
+      "waiting_on_domains": "このリクエストは次のドメインからの承認を待っています: {{domains}}",
+      "approvals_incomplete": "このリクエストには {{required}} 人の異なるユーザーの承認が必要です"
     }
   }
 }

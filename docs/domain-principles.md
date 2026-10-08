@@ -77,9 +77,9 @@ A relationship is an approved traversal path between two assets. Domain boundari
 
 **Approval:**
 
-- Approval is required from every distinct steward who owns an asset involved in the relationship
-- If one steward owns both assets, one approval is required. If two stewards are involved, two approvals are required
-- There is no intradomain/cross-domain classification — ownership determines the approval burden naturally
+- A relationship request is decided by the domains it touches: the domain of its source table and the domain of its target table (REQ-1948)
+- An approval counts only from a user whose right to create relationships reaches one of those domains; a rejection may come from any such user
+- The request is carried out once two different users, neither of them the requester, have approved and every domain involved has an approver: a relationship across two domains needs a yes from each side, and a relationship inside one domain needs two approvers of that domain
 - Approving a relationship builds each steward's dependency graph, enabling proactive schema evolution notifications
 
 Relationships are created by demand, not speculatively. The first team with the business need does the work; subsequent teams inherit the infrastructure.

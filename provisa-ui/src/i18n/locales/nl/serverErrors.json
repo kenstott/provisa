@@ -406,6 +406,14 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "Uw recht om relaties aan te maken reikt niet tot een domein dat dit verzoek raakt ({{domains}})",
+      "own_request": "U kunt niet beslissen over een verzoek dat u zelf hebt gedaan",
+      "already_approved": "U hebt dit verzoek al goedgekeurd",
+      "approver_unidentified": "Over een relatieverzoek beslissen aangemelde gebruikers; deze beslissing heeft geen gebruiker",
+      "waiting_on_domains": "Dit verzoek wacht nog op een goedkeuring van: {{domains}}",
+      "approvals_incomplete": "Dit verzoek heeft goedkeuringen van {{required}} verschillende gebruikers nodig"
     }
   }
 }

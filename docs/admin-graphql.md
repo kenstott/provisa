@@ -330,7 +330,7 @@ Use the configured LLM to generate a one-sentence description for a single colum
 
 #### `creationRequests → [CreationRequestType!]!`
 
-Pending creation requests, visible to callers holding the relevant create capability. Used when a member without `create_relationship` or `create_view` submits a request that a rights-holder must approve. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_query.py:267-289`]
+Pending creation requests, visible to callers holding the relevant create capability. Used when a member without `create_relationship` or `create_view` submits a request that a rights-holder must approve. A relationship request is listed for the users whose `create_relationship` right reaches the domain of its source or target table, and for the user who made it. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_query.py:371-420`]
 
 ---
 
@@ -622,11 +622,11 @@ Rebuild the in-memory schema from database state. Useful after external database
 
 #### `executeCreationRequest(requestId: Int!) → MutationResult`
 
-A rights-holder executes a queued creation request — relationship, view, or webhook. Requires the capability the request is waiting on. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_mutation.py:2181-2255`]
+A rights-holder executes a queued creation request — relationship, view, or webhook. Requires the capability the request is waiting on. A relationship request is refused until two different users, neither the requester, have approved it and every domain it touches has an approver (`requests.waiting_on_domains`, `requests.approvals_incomplete`); approvals are given through `POST /admin/creation-requests/{id}/approve`, and the approval that completes the rule creates the relationship. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py:2977-3062`, `provisa/api/admin/creation_requests_router.py`]
 
 #### `rejectCreationRequest(requestId: Int!, reason: String!) → MutationResult`
 
-Reject a queued request with an actionable reason. `reason` is required. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_mutation.py:2258-2294`]
+Reject a queued request with an actionable reason. `reason` is required. A relationship request may be rejected by any user who could approve it. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py:3064-3106`]
 
 ---
 

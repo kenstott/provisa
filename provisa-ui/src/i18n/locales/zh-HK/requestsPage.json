@@ -17,6 +17,7 @@
     "colSubmitted": "提交時間",
     "colPayload": "承載內容",
     "colApprovals": "核准",
+    "colWaitingOn": "等待",
     "colStatus": "狀態",
     "colReason": "原因",
     "colActions": "",

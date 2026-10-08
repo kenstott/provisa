@@ -149,20 +149,11 @@ async def _upsert_relationship_impl(
     # REQ-434/366: a user lacking create_relationship queues a request instead of erroring.
     if not has_capability(info, "create_relationship"):
         return await _queue_creation_request(info, "relationship", "create_relationship", input)
-    from provisa.core.models import Relationship as RelModel, Cardinality
-    from provisa.core.repositories import relationship as rel_repo
     from provisa.api.admin.capabilities import _identity_from_info
 
-    pool = await _get_pool()
-    try:
-        Cardinality(input.cardinality)
-    except ValueError:
-        return MutationResult(
-            success=False,
-            message=f"Invalid cardinality: {input.cardinality!r}",
-            code="schema.invalid_cardinality",
-            params={"cardinality": input.cardinality},
-        )
+    _invalid = _cardinality_problem(input)
+    if _invalid is not None:
+        return _invalid
     # REQ-1531: A RELATIONSHIP IS OWNED BY ITS SOURCE. The row is source -> target and the unique
     # constraint is (source_table_id, alias), so the edge hangs off the source side and the source's
     # domain is the one being changed. The target is referenced, not altered — its own RLS and
@@ -194,7 +185,41 @@ async def _upsert_relationship_impl(
         # REQ-434/1531: out of domain queues a request, the same answer a missing right gets.
         return await _queue_creation_request(info, "relationship", "create_relationship", input)
     _cross_domain = _tgt_row is not None and _tgt_row["domain_id"] != _src_row["domain_id"]
+    # REQ-020: record the defining steward as owner.
+    _identity = _identity_from_info(info)
+    _owner = getattr(_identity, "user_id", None) if _identity is not None else None
+    return await save_relationship(input, owner=_owner, needs_review=_cross_domain)
 
+
+def _cardinality_problem(input: RelationshipInput) -> "MutationResult | None":
+    from provisa.core.models import Cardinality
+
+    try:
+        Cardinality(input.cardinality)
+    except ValueError:
+        return MutationResult(
+            success=False,
+            message=f"Invalid cardinality: {input.cardinality!r}",
+            code="schema.invalid_cardinality",
+            params={"cardinality": input.cardinality},
+        )
+    return None
+
+
+async def save_relationship(
+    input: RelationshipInput, *, owner: str | None, needs_review: bool
+) -> MutationResult:  # REQ-019, REQ-020, REQ-1948
+    """Store a relationship whose author has already been authorized: by holding the right in
+    the source table's domain (the mutation above), or by the approvals of the domains the
+    relationship touches (REQ-1948). ``needs_review`` flags an edge the target's domain has not
+    seen (REQ-1531)."""
+    from provisa.core.models import Relationship as RelModel, Cardinality
+    from provisa.core.repositories import relationship as rel_repo
+
+    _invalid = _cardinality_problem(input)
+    if _invalid is not None:
+        return _invalid
+    pool = await _get_pool()
     # REQ-1586: a junction end is an ordered column list paired positionally against the
     # relationship's own key, so the two lists must be the same length. Saving a mismatch would
     # produce an edge the compiler can only reject at query time.
@@ -214,9 +239,6 @@ async def _upsert_relationship_impl(
                 params={"relationship": input.id},
             )
 
-    # REQ-020: record the defining steward as owner.
-    _identity = _identity_from_info(info)
-    _owner = getattr(_identity, "user_id", None) if _identity is not None else None
     model = RelModel(
         id=input.id,
         source_table_id=input.source_table_id,
@@ -238,7 +260,7 @@ async def _upsert_relationship_impl(
         via_type_column=input.via_type_column or None,
         via_type_value=input.via_type_value or None,
         via_label_source=input.via_label_source,
-        owner=_owner,
+        owner=owner,
     )
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
@@ -252,7 +274,7 @@ async def _upsert_relationship_impl(
                 await relationship_fake_refusal(_conn, input.id)
         except _FakeRefusedSave as refused:
             return refused.result
-        if _cross_domain:
+        if needs_review:
             # REQ-1531: re-assert AFTER the upsert. rel_repo.upsert clears needs_review on conflict
             # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
             # source steward's to clear — the flag is the other domain's notice that its tables are
@@ -300,6 +322,33 @@ async def _upsert_relationship_impl(
         message=f"Relationship {input.id!r} saved",
         code="schema.relationship_saved",
         params={"relationship": input.id},
+    )
+
+
+async def _relationship_decision_refusal(
+    info: StrawberryInfo, req: dict, *, executing: bool
+) -> "MutationResult | None":  # REQ-1948
+    """Why the caller may not reject (or, ``executing``, carry out) a relationship request."""
+    from provisa.api.admin import relationship_approvals as rule
+    from provisa.api.admin.capabilities import _identity_from_info, right_reach
+    from provisa.api.app import state
+
+    identity = _identity_from_info(info)
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        involved = await rule.domains_involved(cast("Connection", conn), req["payload"])
+    refusal = rule.rejection_refusal(
+        user_id=getattr(identity, "user_id", None),
+        requested_by=req["requested_by"],
+        involved=involved,
+        reach=right_reach(identity, state, rule.RIGHT),
+    )
+    if refusal is None and executing:
+        refusal = rule.incomplete_refusal(involved, req["approvals"], req["requested_by"])
+    if refusal is None:
+        return None
+    return MutationResult(
+        success=False, message=refusal.message, code=refusal.code, params=refusal.params
     )
 
 
@@ -2925,7 +2974,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def execute_creation_request(  # REQ-434, REQ-063
+    async def execute_creation_request(  # REQ-434, REQ-063, REQ-1948
         self, info: StrawberryInfo, request_id: int
     ) -> MutationResult:
         """REQ-434: a rights-holder executes a queued creation request."""
@@ -2941,16 +2990,24 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message="Request not found or already resolved",
                 code="schema.request_not_pending",
             )
-        try:
-            require_capability(info, req["capability"])
-        except PermissionError as e:
-            return MutationResult(success=False, message=str(e))
+        if req["request_type"] != "relationship":
+            try:
+                require_capability(info, req["capability"])
+            except PermissionError as e:
+                return MutationResult(success=False, message=str(e))
 
         if req["request_type"] == "relationship":
-            # Same strawberry-decorator signature limitation as above.
-            result = await self.upsert_relationship(  # pyright: ignore[reportCallIssue]
-                info,
-                _rebuild_relationship_input(req["payload"]),  # pyright: ignore[reportCallIssue]
+            # REQ-1948: executing is not a way around the approvals. It is open to the users who
+            # may decide the request, only once it is fully approved, and it stores the
+            # relationship on the approvals' authority rather than the caller's own domain.
+            refusal = await _relationship_decision_refusal(info, req, executing=True)
+            if refusal is not None:
+                return refusal
+            _presser = _identity_from_info(info)
+            result = await save_relationship(
+                _rebuild_relationship_input(req["payload"]),
+                owner=getattr(_presser, "user_id", None),
+                needs_review=False,
             )
         elif req["request_type"] in ("view", "table"):  # REQ-1792: "table" is the MCP-proposal kind
             result = await self.register_table(info, _rebuild_table_input(req["payload"]))  # pyright: ignore[reportCallIssue]
@@ -3004,7 +3061,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def reject_creation_request(  # REQ-434, REQ-063
+    async def reject_creation_request(  # REQ-434, REQ-063, REQ-1948
         self, info: StrawberryInfo, request_id: int, reason: str
     ) -> MutationResult:
         """REQ-434/063: a rights-holder rejects a queued request with an actionable reason."""
@@ -3026,10 +3083,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     message="Request not found or already resolved",
                     code="schema.request_not_pending",
                 )
-            try:
-                require_capability(info, req["capability"])
-            except PermissionError as e:
-                return MutationResult(success=False, message=str(e))
+            if req["request_type"] == "relationship":
+                # REQ-1948: a rejection comes from any user who could approve.
+                refusal = await _relationship_decision_refusal(info, req, executing=False)
+                if refusal is not None:
+                    return refusal
+            else:
+                try:
+                    require_capability(info, req["capability"])
+                except PermissionError as e:
+                    return MutationResult(success=False, message=str(e))
             identity = _identity_from_info(info)
             resolved_by = getattr(identity, "user_id", None) if identity is not None else None
             await cr_repo.mark_rejected(

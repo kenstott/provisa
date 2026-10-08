@@ -173,7 +173,7 @@
       },
       "stepRequests": {
         "title": "Beziehungsanträge",
-        "description": "✋ Dieser Antrag kommt von jemandem, der selbst keine Beziehungen anlegen darf – oft von außerhalb Ihrer Domäne, der seine Tabellen mit Ihren verknüpfen möchte. Meist ist das der erste Schritt, um Ihre Daten anzufragen. Beziehungen unterliegen der Governance, daher ändert die Genehmigung, welche Abfragen zulässig sind: Eine Rolle, die nur entlang genehmigter Beziehungen joinen darf, kann nun darüber hinweg joinen. Ein Beziehungsantrag braucht zwei Genehmigungen, bevor er ausgeführt werden kann. Genehmigen Sie ihn, führen Sie ihn aus oder lehnen Sie ihn mit einem Grund aus einer festen Liste ab; erledigte Anträge wandern in den Tab „Erledigt“."
+        "description": "✋ Dieser Antrag kommt von jemandem, der selbst keine Beziehungen anlegen darf – oft von außerhalb Ihrer Domäne, der seine Tabellen mit Ihren verknüpfen möchte. Meist ist das der erste Schritt, um Ihre Daten anzufragen. Beziehungen unterliegen der Governance, daher ändert die Genehmigung, welche Abfragen zulässig sind: Eine Rolle, die nur entlang genehmigter Beziehungen joinen darf, kann nun darüber hinweg joinen. Ein Beziehungsantrag braucht zwei Genehmigungen, bevor er ausgeführt werden kann. Eine Beziehung über zwei Domänen hinweg braucht ein Ja von jeder Seite. Genehmigen Sie ihn, führen Sie ihn aus oder lehnen Sie ihn mit einem Grund aus einer festen Liste ab; erledigte Anträge wandern in den Tab „Erledigt“."
       },
       "stepQualityTable": {
         "title": "Ein Qualitäts-Checker ist einfach eine Quelle",

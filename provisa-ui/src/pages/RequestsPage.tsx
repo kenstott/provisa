@@ -45,6 +45,15 @@ interface CreationRequest {
   resolved_at: string | null;
   approvals: { approver: string; approved_at: string }[];
   required_approvals: number;
+  // REQ-1948: the domains a relationship request touches, the ones no approver has reached yet,
+  // and whether this user is one of those who may decide it.
+  domains: string[];
+  waiting_on: string[];
+  can_decide: boolean;
+}
+
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -111,14 +120,14 @@ export function RequestsPage() {
       .then((data) =>
         status === "resolved" ? setRows(data.filter((r) => r.status !== "pending")) : setRows(data),
       )
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(errorText(e)));
   };
 
   useEffect(() => {
     load(tab);
     fetchRejectionReasons()
       .then(setReasons)
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(errorText(e)));
   }, [tab]);
 
   const doApprove = async (id: number) => {
@@ -128,7 +137,7 @@ export function RequestsPage() {
       await apiApprove(id);
       load(tab);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -141,7 +150,7 @@ export function RequestsPage() {
       await apiExecute(id);
       load(tab);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -157,7 +166,7 @@ export function RequestsPage() {
       setRejectReason(null);
       load(tab);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -202,6 +211,11 @@ export function RequestsPage() {
       key: "approvals",
       label: t("requestsPage.colApprovals"),
       sortValue: (r) => r.approvals.length,
+    },
+    {
+      key: "waiting",
+      label: t("requestsPage.colWaitingOn"),
+      sortValue: (r) => r.waiting_on.join(", "),
     },
     {
       key: "status",
@@ -300,7 +314,7 @@ export function RequestsPage() {
         </Stack>
       </Modal>
 
-      <ListTable minWidth={900}>
+      <ListTable minWidth={1000}>
         <ListHead
           columns={[
             { col: "id" },
@@ -309,6 +323,7 @@ export function RequestsPage() {
             { col: "submitted" },
             t("requestsPage.colPayload"),
             { col: "approvals" },
+            { col: "waiting" },
             { col: "status" },
             { col: "reason" },
             t("requestsPage.colActions"),
@@ -317,7 +332,7 @@ export function RequestsPage() {
         />
         <Table.Tbody>
           {filtered.length === 0 && (
-            <ListEmpty colSpan={9}>
+            <ListEmpty colSpan={10}>
               {search
                 ? t("requestsPage.emptyFiltered", { tab })
                 : t("requestsPage.empty", { tab })}
@@ -327,7 +342,7 @@ export function RequestsPage() {
             <ListItems
               state={sortGroup}
               items={pageItems(sortGroup, safePage - 1, PAGE_SIZE)}
-              colSpan={9}
+              colSpan={10}
               rowKey={(row) => row.id}
               render={(row) => (
                   <ListRow>
@@ -350,6 +365,11 @@ export function RequestsPage() {
                     <Table.Td>
                       {row.approvals.length} / {row.required_approvals}
                     </Table.Td>
+                    <Table.Td data-testid={`requests-waiting-${row.id}`}>
+                      {row.waiting_on.length > 0
+                        ? row.waiting_on.join(", ")
+                        : t("requestsPage.none")}
+                    </Table.Td>
                     <Table.Td>
                       <Badge color={statusColor(row.status)} variant="light">
                         {row.status}
@@ -357,7 +377,7 @@ export function RequestsPage() {
                     </Table.Td>
                     <Table.Td>{row.rejection_reason ?? t("requestsPage.none")}</Table.Td>
                     <Table.Td style={{ whiteSpace: "nowrap" }}>
-                      {row.status === "pending" && (
+                      {row.status === "pending" && row.can_decide && (
                         <Group gap="xs" wrap="nowrap">
                           <Button
                             size="compact-xs"
@@ -370,7 +390,10 @@ export function RequestsPage() {
                               total: row.required_approvals,
                             })}
                           </Button>
-                          {row.required_approvals === 1 && (
+                          {(row.required_approvals === 1 ||
+                            (row.request_type === "relationship" &&
+                              row.approvals.length >= row.required_approvals &&
+                              row.waiting_on.length === 0)) && (
                             <Button
                               size="compact-xs"
                               onClick={() => doExecute(row.id)}

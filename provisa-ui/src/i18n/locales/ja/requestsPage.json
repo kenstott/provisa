@@ -17,6 +17,7 @@
     "colSubmitted": "送信日時",
     "colPayload": "ペイロード",
     "colApprovals": "承認",
+    "colWaitingOn": "承認待ち",
     "colStatus": "ステータス",
     "colReason": "理由",
     "colActions": "",
