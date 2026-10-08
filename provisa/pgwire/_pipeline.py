@@ -2417,6 +2417,8 @@ async def _warn_if_cut(plan: _Plan, result: QueryResult, state: Any) -> None:
     result reports its row count and is checked by its terminal."""
     if plan.row_limit is None or result.redirect is not None:
         return
+    if result.cache_entry is not None:
+        return  # served from the response cache: only a whole answer is ever kept there
     if len(result.rows) != plan.row_limit.limit:
         return
     from provisa.compiler.row_limit import cut_warning, unchecked_warning
@@ -2442,16 +2444,8 @@ async def _execute_plan_with_secrets(plan: _Plan, state: Any) -> QueryResult:
         from provisa.core.secrets_store import bound_to_request_org
 
         async with bound_to_request_org():
-            return await _answered(plan, state)
-    return await _answered(plan, state)
-
-
-async def _answered(plan: _Plan, state: Any) -> QueryResult:
-    """The plan's answer, and what it says about a row limit that cut it (REQ-1949) -- read
-    with the same secrets bound, since the check reads the same sources."""
-    result = await _execute_plan_in_org(plan, state)
-    await _warn_if_cut(plan, result, state)
-    return result
+            return await _execute_plan_in_org(plan, state)
+    return await _execute_plan_in_org(plan, state)
 
 
 async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-027, REQ-028
@@ -2551,6 +2545,10 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
         raise
     plan.row_count = len(result.rows)
     await finalize_audit(plan, 200, state)
+    # REQ-1949: whether the row limit cut this answer is settled before it is kept -- a warned
+    # answer is never stored as the statement's answer (_cache_tee), so every repeat of a cut
+    # read is read, checked and says so again; an answer that is stored was whole.
+    await _warn_if_cut(plan, result, state)
     # REQ-1897: the buffered chokepoint writes its row result to the raw-SQL namespace.
     await store_executed_result(plan, state, result)
     # REQ-1517: record this statement against the request's stats accumulator (opt-in via
@@ -2965,6 +2963,7 @@ async def serve_buffered_through_cache(  # REQ-1897
 
     with acquire_plan_permits(state, plan):  # REQ-1909: held for the whole buffered execution
         result = await execute()
+    await _warn_if_cut(plan, result, state)  # REQ-1949: before it is kept, as at the chokepoint
     await store_executed_result(plan, state, result)
     return result
 

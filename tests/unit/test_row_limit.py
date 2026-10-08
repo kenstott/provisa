@@ -244,32 +244,60 @@ def test_the_requests_deadline_ends_the_request_as_it_does_the_read(monkeypatch)
         asyncio.run(_pipeline._warn_if_cut(_plan(), _answer(3), _STATE))
 
 
-def test_a_temporary_table_filled_from_a_cut_read_carries_the_same_warning(monkeypatch):
-    """The read that fills a temporary table is the plan's own governed SELECT: it is checked
-    like any read, before the rows are landed (REQ-615) -- one warning, not one of its own."""
-    order = []
+def test_a_cut_answer_is_never_kept_and_a_kept_answer_is_not_checked_again(monkeypatch):
+    """The cut is settled before the answer is stored: a warned answer is not stored as the
+    statement's answer, so a repeat is read and says so again, and a hit is a whole answer."""
+    import inspect
 
-    async def read(plan, state):
-        return _answer(3)
+    stored = []
 
     async def were_cut(plan, state):
-        order.append("checked")
         return True
 
-    async def land(action, result, state, role_id):
-        order.append("landed")
-        return QueryResult(rows=[], column_names=[], rowcount=len(result.rows))
+    async def store(plan, state, result):
+        stored.append(list(plan.warnings))
 
-    monkeypatch.setattr(_pipeline, "_execute_plan_in_org", read)
-    monkeypatch.setattr(_pipeline, "_reads_an_org_secret", lambda plan, state: False)
+    async def no_hit(plan, state):
+        return None
+
     monkeypatch.setattr(_pipeline, "rows_were_cut", were_cut)
-    monkeypatch.setattr("provisa.pgwire.temp_exec.apply", land)
+    monkeypatch.setattr(_pipeline, "store_executed_result", store)
+    monkeypatch.setattr(_pipeline, "check_response_cache", no_hit)
+    monkeypatch.setattr(
+        "provisa.federation.live_concurrency.acquire_plan_permits",
+        lambda state, plan: __import__("contextlib").nullcontext(),
+    )
+
+    async def execute():
+        return _answer(3)
+
     plan = _plan()
-    plan.temp = SimpleNamespace(kind="create", name="t")
-    plan.role_id = "analyst"
-    result = asyncio.run(_pipeline._execute_plan_bound(plan, _STATE))
-    assert result.rowcount == 3 and order == ["checked", "landed"]
-    assert [w.code for w in plan.warnings] == ["statement.rows_cut"]
+    asyncio.run(_pipeline.serve_buffered_through_cache(plan, _STATE, execute))
+    assert [[w.code for w in at_store] for at_store in stored] == [["statement.rows_cut"]]
+    # ... and the tee refuses a plan that carries a warning.
+    assert _pipeline._cache_tee(plan, _STATE, None, None) is None
+    # The chokepoint settles it in the same order.
+    chokepoint = inspect.getsource(_pipeline._execute_plan_in_org)
+    assert chokepoint.index("_warn_if_cut(") < chokepoint.index("store_executed_result(")
+
+    async def never(plan, state):
+        raise AssertionError("a kept answer was whole when it was stored")
+
+    monkeypatch.setattr(_pipeline, "rows_were_cut", never)
+    hit = _answer(3, cache_entry=object())
+    asyncio.run(_pipeline._warn_if_cut(_plan(), hit, _STATE))
+
+
+def test_a_temporary_table_filled_from_a_cut_read_is_checked_as_any_read():
+    """The read that fills a temporary table is the plan's own governed SELECT, answered by
+    the chokepoint like any read (REQ-615): it carries the one warning, none of its own."""
+    import inspect
+
+    from provisa.pgwire import temp_exec
+
+    bound = inspect.getsource(_pipeline._execute_plan_bound)
+    assert bound.index("_execute_plan_with_secrets(") < bound.index("apply(plan.temp")
+    assert "rows_capped" not in inspect.getsource(temp_exec)
 
 
 def test_the_catalog_says_it_in_every_locale():
