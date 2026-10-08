@@ -42,6 +42,7 @@ import errno
 import logging
 import socket
 import threading
+import time
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +51,8 @@ _UPSTREAM_CONNECT_TIMEOUT = 5.0
 # How long the accept thread waits for a connection before it looks again at whether the relay
 # was closed: the longest close() waits for that thread.
 _ACCEPT_POLL_SECONDS = 0.5
+# How long a copy waits before sending again when the host has no buffer space (ENOBUFS).
+_NO_BUFFER_SPACE_WAIT = 0.005
 
 
 class FlightRelay:
@@ -162,6 +165,25 @@ def _shutdown(sock: socket.socket) -> None:
             raise
 
 
+def _send_all(sink: socket.socket, data: memoryview) -> None:
+    """Send all of ``data``, waiting out a host that has no buffer space for it at this moment.
+
+    ``send`` on macOS (and the BSDs) fails with ENOBUFS while the host's network buffers are
+    exhausted -- twelve large streams relayed at once over loopback do it. It is a condition that
+    passes, not the connection ending; treated as the end, as any other socket error is, the
+    relay dropped a healthy connection and the client saw "Socket closed". ``sendall`` cannot be
+    used: when it fails it does not say how much it sent, so the rest could not be resent. Each
+    ``send`` says what it took; nothing is sent twice and nothing is skipped."""
+    sent = 0
+    while sent < len(data):
+        try:
+            sent += sink.send(data[sent:])
+        except OSError as exc:
+            if exc.errno != errno.ENOBUFS:
+                raise
+            time.sleep(_NO_BUFFER_SPACE_WAIT)
+
+
 def _copy(source: socket.socket, sink: socket.socket) -> None:
     """Copy ``source`` to ``sink`` until ``source`` ends, then end both: gRPC connections do not
     half-close, so one side going away is the connection going away."""
@@ -169,7 +191,7 @@ def _copy(source: socket.socket, sink: socket.socket) -> None:
     view = memoryview(buffer)
     try:
         while received := source.recv_into(buffer):
-            sink.sendall(view[:received])
+            _send_all(sink, view[:received])
     except OSError as exc:
         # A peer reset, or the relay closing the socket under this thread: the connection is
         # over, which is this function's normal end, not a failure of the relay.

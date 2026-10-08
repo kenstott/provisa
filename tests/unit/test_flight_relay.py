@@ -203,3 +203,55 @@ def test_a_relay_closes_while_another_listener_shares_its_port(started):
         assert not relay._acceptor.is_alive()  # noqa: SLF001 - the property under test
     assert _get(port)["server"] == "w1"  # the listener that stayed still serves
     del other
+
+
+# --- a host with no buffer space at this moment (ENOBUFS) ----------------------------------------
+
+
+class _ShortOfBufferSpace:
+    """A socket whose host refuses some sends for want of buffer space, and takes only part of
+    what it is given when it does accept."""
+
+    def __init__(self, refusals: list[int], takes: int) -> None:
+        self.refusals = refusals  # the send calls (by number) refused with ENOBUFS
+        self.takes = takes
+        self.calls = 0
+        self.received = bytearray()
+
+    def send(self, data) -> int:
+        import errno
+
+        self.calls += 1
+        if self.calls in self.refusals:
+            raise OSError(errno.ENOBUFS, "No buffer space available")
+        taken = bytes(data[: self.takes])
+        self.received += taken
+        return len(taken)
+
+
+def test_a_host_short_of_buffer_space_is_waited_out_and_every_byte_arrives_once(monkeypatch):
+    """Twelve large streams relayed at once on macOS exhausted the host's network buffers:
+    ``send`` failed with ENOBUFS, the relay took that for the connection ending, dropped a
+    healthy connection, and the client saw "Socket closed". It is waited out, and what was not
+    yet sent is sent -- no byte twice, none skipped."""
+    from provisa.api.flight import relay
+
+    monkeypatch.setattr(relay, "_NO_BUFFER_SPACE_WAIT", 0.0)
+    payload = bytes(range(256)) * 40  # 10,240 bytes, every position distinguishable
+    sink = _ShortOfBufferSpace(refusals=[1, 4, 5, 9], takes=1000)
+    relay._send_all(sink, memoryview(payload))  # noqa: SLF001
+    assert bytes(sink.received) == payload
+    assert sink.calls == 11 + 4  # eleven partial sends, four refusals waited out
+
+
+def test_any_other_socket_error_still_ends_the_copy():
+    import errno
+
+    from provisa.api.flight import relay
+
+    class _Reset:
+        def send(self, data) -> int:
+            raise ConnectionResetError(errno.ECONNRESET, "Connection reset by peer")
+
+    with pytest.raises(ConnectionResetError):
+        relay._send_all(_Reset(), memoryview(b"abc"))  # noqa: SLF001
