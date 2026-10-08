@@ -46,8 +46,11 @@ _RETRYABLE_ERROR_NAMES: frozenset[str] = frozenset(
 def _is_retryable(exc: Exception) -> bool:
     if isinstance(exc, ConnectionError):
         return True
-    from provisa.executor.errors import FederationError
+    from provisa.executor.errors import FederationError, SystemCatalogUnavailable
 
+    if isinstance(exc, SystemCatalogUnavailable):
+        # One of Provisa's own catalogs is between its drop and its create: it is back in moments.
+        return True
     if isinstance(exc, FederationError):
         return exc.error_name in _RETRYABLE_ERROR_NAMES
     return False

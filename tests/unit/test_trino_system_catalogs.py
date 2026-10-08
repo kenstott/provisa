@@ -42,6 +42,8 @@ class _Cursor:
 
 
 class _Conn:
+    host, port = "trino", 8080  # the coordinator's address: what its catalogs are recorded under
+
     def __init__(self, drop_error: Exception | None = None):
         self.executed: list[str] = []
         self._drop_error = drop_error
@@ -81,24 +83,23 @@ def test_no_system_catalog_is_shipped_as_a_mounted_properties_file():
 
 
 def test_control_plane_spec_uses_the_live_control_plane_not_the_dev_postgres():
-    spec = tsc.control_plane_spec(_URL, "default")
+    spec = tsc.control_plane_spec(_URL)
     assert spec.connector == "postgresql"
-    assert (
-        spec.properties["connection-url"]
-        == "jdbc:postgresql://10.1.2.3:6543/provisa_cloud?currentSchema=org_default"
-    )
+    assert spec.properties["connection-url"] == "jdbc:postgresql://10.1.2.3:6543/provisa_cloud"
     assert spec.properties["connection-user"] == "cloud_user"
     assert spec.properties["connection-password"] == "cloud_pw"
 
 
-def test_control_plane_spec_scopes_the_search_path_to_the_org():
-    spec = tsc.control_plane_spec(_URL, "acme")
-    assert spec.properties["connection-url"].endswith("?currentSchema=org_acme")
+def test_control_plane_spec_names_no_default_schema():
+    """One ``provisa_admin`` serves every org and environment on a coordinator. With
+    ``currentSchema=org_<id>`` in its URL the catalog was the last builder's: each build dropped
+    and re-created it, and an unqualified name through it resolved in that builder's schema."""
+    assert "currentSchema" not in tsc.control_plane_spec(_URL).properties["connection-url"]
 
 
 def test_a_non_postgres_control_plane_is_rejected_rather_than_defaulted():
     with pytest.raises(ValueError, match="Postgres control plane"):
-        tsc.control_plane_spec(make_url("sqlite:///provisa.db"), "default")
+        tsc.control_plane_spec(make_url("sqlite:///provisa.db"))
 
 
 def test_iceberg_specs_track_the_control_plane_and_object_store(monkeypatch):
@@ -130,21 +131,39 @@ def test_iceberg_specs_track_the_control_plane_and_object_store(monkeypatch):
 
 
 def test_spec_for_rejects_a_catalog_provisa_does_not_own():
-    assert tsc.spec_for("otel", _URL, "default").name == "otel"
+    assert tsc.spec_for("otel", _URL).name == "otel"
     with pytest.raises(ValueError, match="not a Provisa system catalog"):
-        tsc.spec_for("sales_pg", _URL, "default")
+        tsc.spec_for("sales_pg", _URL)
 
 
 def test_register_catalog_drops_before_creating():
     conn = _Conn()
-    tsc.register_catalog(conn, tsc.control_plane_spec(_URL, "default"))
+    tsc.register_catalog(conn, tsc.control_plane_spec(_URL))
     assert conn.executed[0] == "DROP CATALOG IF EXISTS provisa_admin"
     create = conn.executed[1]
     assert create.startswith("CREATE CATALOG provisa_admin USING postgresql WITH (")
-    assert (
-        "\"connection-url\" = 'jdbc:postgresql://10.1.2.3:6543/provisa_cloud?currentSchema=org_default'"
-        in create
-    )
+    assert "\"connection-url\" = 'jdbc:postgresql://10.1.2.3:6543/provisa_cloud'" in create
+
+
+class _Record:
+    """The spec hashes a coordinator's catalogs were created from, held in memory."""
+
+    def __init__(self) -> None:
+        self.hashes: dict[tuple[str, str], str] = {}
+
+    def created_from(self, coordinator: str, name: str) -> str | None:
+        return self.hashes.get((coordinator, name))
+
+    def record(self, coordinator: str, name: str, spec_hash: str) -> None:
+        self.hashes[(coordinator, name)] = spec_hash
+
+
+@pytest.fixture
+def _record():
+    """The deployment's record of what each catalog was created from: one for the whole test, as
+    the platform state store's is one for every process of the deployment
+    (tests/unit/test_platform_state_catalogs.py covers the store itself)."""
+    return _Record()
 
 
 @pytest.fixture(autouse=True)
@@ -165,7 +184,7 @@ def _registrar(monkeypatch):
     return held
 
 
-def test_two_processes_register_the_catalogs_one_at_a_time(monkeypatch, _registrar):
+def test_two_processes_register_the_catalogs_one_at_a_time(monkeypatch, _registrar, _record):
     """``register_catalog`` drops then creates; two processes of one deployment doing it at once
     interleave and one fails to boot (ALREADY_EXISTS). Every registration is inside the lock."""
     from provisa.core import catalog as catalog_module
@@ -173,14 +192,16 @@ def test_two_processes_register_the_catalogs_one_at_a_time(monkeypatch, _registr
     monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn, timeout=None: None)
     monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url, timeout=None: None)
     monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: _registrar.append(spec.name))
-    tsc.register_system_catalogs(_Conn(), _URL, "default")
+    tsc.register_system_catalogs(_Conn(), _URL, _record)
     assert _registrar == ["lock", "provisa_admin", "otel", "results", "unlock"]
     _registrar.clear()
-    tsc.ensure_system_catalogs(_LiveConn({"results"}), _URL, "kstott")
+    tsc.ensure_system_catalogs(_LiveConn({"results"}), _URL, _record)
     assert _registrar == ["lock", "provisa_admin", "otel", "unlock"]
 
 
-def test_registration_ensures_the_iceberg_metastore_before_creating_any_catalog(monkeypatch):
+def test_registration_ensures_the_iceberg_metastore_before_creating_any_catalog(
+    monkeypatch, _record
+):
     # Trino's JDBC catalog factory never creates iceberg_tables; db/init.sql does, but only for the
     # BUNDLED Postgres via docker-entrypoint-initdb.d. On a managed control plane the tables were
     # absent, so CREATE CATALOG otel died with "Cannot check and eventually update SQL schema" and
@@ -197,7 +218,7 @@ def test_registration_ensures_the_iceberg_metastore_before_creating_any_catalog(
     )
     monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: order.append(spec.name))
 
-    tsc.register_system_catalogs(_Conn(), _URL, "default")
+    tsc.register_system_catalogs(_Conn(), _URL, _record)
     assert order == ["ensure:provisa_cloud", "provisa_admin", "otel", "results"]
 
 
@@ -265,30 +286,119 @@ class _LiveConn(_Conn):
         return _ShowCatalogsCursor(self.executed, self._live)
 
 
-def test_a_per_org_rebuild_leaves_the_deployment_scoped_catalogs_alone(monkeypatch):
-    # REQ-1429: `otel` and `results` take no org_id — one spec serves every org on the coordinator.
-    # Re-registering them for one org DROPS a catalog the others are querying, and the drop races
-    # the create: switching an org's engine on the SaaS node left the shared coordinator with no
-    # `otel` at all after its own CREATE failed CATALOG_NOT_FOUND.
+@pytest.fixture
+def _registered(monkeypatch):
+    """Registration with the engine and the metastore stubbed: the names (re)created, in order."""
     from provisa.core import catalog as catalog_module
 
     monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn, timeout=None: None)
     monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url, timeout=None: None)
     registered: list[str] = []
     monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: registered.append(spec.name))
-
-    tsc.ensure_system_catalogs(_LiveConn({"provisa_admin", "otel", "results"}), _URL, "kstott")
-    # provisa_admin names org_<id> in its JDBC URL, so it alone is refreshed per org.
-    assert registered == ["provisa_admin"]
+    return registered
 
 
-def test_a_missing_deployment_catalog_is_still_created(monkeypatch):
+_ALL = ["provisa_admin", "otel", "results"]
+
+
+def test_a_second_orgs_build_on_the_coordinator_issues_no_drop(_registered, _record):
+    """REQ-1429, and the same for ``provisa_admin``: one coordinator serves every org, environment
+    and worker, and each comes through registration when it boots or builds a runtime. Each used
+    to drop and re-create ``provisa_admin`` for itself; a statement naming the catalog between
+    the drop and the create failed CATALOG_NOT_FOUND (a view's refresh in the suite did), and on
+    the SaaS node the same race left the coordinator with no ``otel`` at all. A catalog that is
+    live and was created from the spec it should have is left alone."""
+    tsc.register_system_catalogs(
+        _Conn(), _URL, _record
+    )  # the first server boots on an empty coordinator
+    assert _registered == _ALL
+    _registered.clear()
+
+    live = _LiveConn(set(_ALL))
+    tsc.ensure_system_catalogs(live, _URL, _record)  # another org's runtime build
+    tsc.register_system_catalogs(live, _URL, _record)  # another worker's boot
+    assert _registered == []
+    assert not any(sql.startswith(("DROP CATALOG", "CREATE CATALOG")) for sql in live.executed)
+
+
+def test_a_catalog_whose_spec_changed_is_created_again(_registered, _record):
+    tsc.register_system_catalogs(_Conn(), _URL, _record)
+    _registered.clear()
+    moved = _URL.set(host="10.9.9.9")  # the control plane moved: every catalog's spec names it
+    tsc.ensure_system_catalogs(_LiveConn(set(_ALL)), moved, _record)
+    assert _registered == _ALL
+
+
+def test_a_catalog_the_coordinator_lost_is_created_again(_registered, _record):
+    """A restarted coordinator holds no dynamic catalog, whatever the record says."""
+    tsc.register_system_catalogs(_Conn(), _URL, _record)
+    _registered.clear()
+    tsc.ensure_system_catalogs(_LiveConn({"results"}), _URL, _record)
+    assert _registered == ["provisa_admin", "otel"]
+
+
+def test_a_live_catalog_nothing_recorded_is_brought_under_the_record(_registered, _record):
+    """Live, but not known to have been created from this spec: created from it, once."""
+    live = _LiveConn(set(_ALL))
+    tsc.ensure_system_catalogs(live, _URL, _record)
+    assert _registered == _ALL
+    _registered.clear()
+    tsc.ensure_system_catalogs(live, _URL, _record)
+    assert _registered == []
+    assert {name for (_coordinator, name) in _record.hashes} == set(_ALL)
+
+
+def test_each_coordinator_has_its_own_record(_registered, _record):
+    """An org with an engine of its own is on another coordinator, whose catalogs are its own."""
+
+    class _Other(_LiveConn):
+        host = "trino-acme"
+
+    tsc.register_system_catalogs(_Conn(), _URL, _record)
+    _registered.clear()
+    tsc.ensure_system_catalogs(_Other(set()), _URL, _record)
+    assert _registered == _ALL
+
+
+def test_a_catalog_reloaded_on_request_is_recorded_so_the_next_build_leaves_it(
+    monkeypatch, _registrar, _record
+):
+    """The admin reload re-creates a catalog whatever it was created from. Unrecorded, the next
+    build could not tell and re-created it once more, under whoever was reading it."""
     from provisa.core import catalog as catalog_module
 
     monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn, timeout=None: None)
     monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url, timeout=None: None)
-    registered: list[str] = []
-    monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: registered.append(spec.name))
+    reloading = _LiveConn(set(_ALL))
+    tsc.recreate_catalog(reloading, _URL, "provisa_admin", _record)
+    assert _registrar == ["lock", "unlock"]  # under the registration lock
+    assert [sql.split(" USING ")[0] for sql in reloading.executed] == [
+        "DROP CATALOG IF EXISTS provisa_admin",
+        "CREATE CATALOG provisa_admin",
+    ]
 
-    tsc.ensure_system_catalogs(_LiveConn({"results"}), _URL, "kstott")
-    assert registered == ["provisa_admin", "otel"]
+    building = _LiveConn(set(_ALL))
+    tsc.ensure_system_catalogs(building, _URL, _record)
+    issued = [sql for sql in building.executed if sql.startswith(("DROP", "CREATE"))]
+    assert not any("provisa_admin" in sql for sql in issued)
+
+
+def test_reloading_a_catalog_provisa_does_not_own_is_refused(_record):
+    with pytest.raises(ValueError, match="not a Provisa system catalog"):
+        tsc.recreate_catalog(_LiveConn(set(_ALL)), _URL, "sales_pg", _record)
+
+
+@pytest.mark.parametrize(
+    ("sql", "unqualified"),
+    [
+        ('SELECT MAX("updated_at") FROM provisa_admin.public.registered_tables', []),
+        ('SELECT * FROM "provisa_admin"."org_acme_mv_cache"."mv_orders"', []),
+        ("SELECT * FROM provisa_admin.orders", ["provisa_admin.orders"]),
+        (
+            'SELECT o.id FROM sales.public.orders o JOIN "provisa_admin"."t" x ON x.id = o.id',
+            ["provisa_admin.t"],
+        ),
+    ],
+)
+def test_a_statement_naming_provisa_admin_without_a_schema_is_found(sql, unqualified):
+    assert tsc.unqualified_admin_references(sql) == unqualified

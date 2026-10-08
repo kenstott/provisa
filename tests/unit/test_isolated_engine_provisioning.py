@@ -137,6 +137,8 @@ def test_the_ops_catalogs_reach_the_org_s_own_coordinator(backend, monkeypatch):
         engine_conn_kwargs={"host": "trino-kstott", "port": 8080},
         tenant_engine=types.SimpleNamespace(url="postgresql://cp/provisa"),
         org_id="kstott",
+        # The platform state store's handle: where the catalogs' record is kept.
+        platform_state_db=types.SimpleNamespace(engine=None),
     )
     opened = _Conn()
     monkeypatch.setattr("provisa.federation.trino_lifecycle.connect", lambda kwargs: opened)
@@ -145,7 +147,7 @@ def test_the_ops_catalogs_reach_the_org_s_own_coordinator(backend, monkeypatch):
     # deployment-scoped `otel`/`results` out from under every other org on a shared coordinator.
     monkeypatch.setattr(
         "provisa.core.trino_system_catalogs.ensure_system_catalogs",
-        lambda conn, url, org_id: calls.append(("catalogs", conn, url, org_id)),
+        lambda conn, url, record: calls.append(("catalogs", conn, url)),
     )
     monkeypatch.setattr(
         "provisa.observability.ops_trino.seed_ops_trino",
@@ -156,7 +158,7 @@ def test_the_ops_catalogs_reach_the_org_s_own_coordinator(backend, monkeypatch):
 
     # Catalogs first: the ops views are created inside `otel`.
     assert [c[0] for c in calls] == ["catalogs", "views"]
-    assert calls[0] == ("catalogs", opened, "postgresql://cp/provisa", "kstott")
+    assert calls[0] == ("catalogs", opened, "postgresql://cp/provisa")
     assert calls[1] == ("views", opened, ("traces",))
     assert opened.closed
     assert state.engine_conn is None

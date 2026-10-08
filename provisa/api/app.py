@@ -202,6 +202,11 @@ class AppState:
     _grpc_server: Any | None = None
     _flight_server: Any | None = None  # ProvisaFlightServer
     _flight_relay: Any | None = None  # FlightRelay: the advertised Flight port (REQ-1900)
+    # The other listeners this app starts and, at shutdown, stops (what an app starts, it stops).
+    _pgwire_server: Any | None = None  # ProvisaServer
+    _bolt_listener: Any | None = None  # BoltListener
+    _airport_server: Any | None = None  # ProvisaAirportServer
+    _airport_relay: Any | None = None  # FlightRelay: the advertised airport port (REQ-1900)
     _http_listener: Any | None = None  # WorkerHttpListener: this worker's own HTTP socket
     kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
     kafka_bootstrap: dict[str, str] = {}  # source_id → its brokers, secrets resolved (REQ-812)
@@ -2998,11 +3003,32 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     await stop_provisioned_shards(state)
 
-    # Stop Arrow Flight server
+    # The protocol listeners this app started stop accepting here, after the HTTP listener and
+    # before anything a request uses is closed below. Stopping one ends its accept thread and
+    # closes its listening socket; a connection it already accepted is not cut by this -- its
+    # request runs to its own deadline (provisa/core/request_deadline.py). Left running, each
+    # stayed bound to the shared port and kept accepting for an app that had shut down (four
+    # leftover Bolt accept threads in the e2e lane's process).
+    from provisa.pgwire.server import stop_pgwire_server
+
+    if state._bolt_listener is not None:
+        await asyncio.to_thread(state._bolt_listener.close)
+        state._bolt_listener = None
+    if state._pgwire_server is not None:
+        await asyncio.to_thread(stop_pgwire_server, state._pgwire_server)
+        state._pgwire_server = None
+
+    # Stop the Arrow Flight servers: each relay (the advertised port) before the server behind it.
     if state._flight_relay:
         state._flight_relay.close()
     if state._flight_server:
         state._flight_server.shutdown()
+    if state._airport_relay is not None:
+        await asyncio.to_thread(state._airport_relay.close)
+        state._airport_relay = None
+    if state._airport_server is not None:
+        await asyncio.to_thread(state._airport_server.shutdown)
+        state._airport_server = None
 
     # Stop gRPC server
     if state._grpc_server:
@@ -3223,6 +3249,25 @@ def create_app() -> FastAPI:
                 "code": "data.write_not_supported",
                 "params": {"table": exc.table, "operation": exc.operation.upper()},
             },
+        )
+
+    from provisa.executor.errors import SystemCatalogUnavailable as _SystemCatalogUnavailable
+
+    @app.exception_handler(_SystemCatalogUnavailable)
+    async def _system_catalog_handler(_req: _Request, exc: _SystemCatalogUnavailable):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # The engine lacks one of Provisa's own catalogs at this moment (being re-created after
+        # its spec changed) and still did when the statement's retries ran out: the deployment's
+        # state, not the caller's error -- 503, to be tried again, never the engine's USER_ERROR.
+        return _JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    f"the engine's {exc.catalog!r} catalog is being registered; try again shortly"
+                ),
+                "code": exc.code,
+                "params": exc.params,
+            },
+            headers={"Retry-After": "1"},
         )
 
     from provisa.compiler.definitions import TableIsDraft as _TableIsDraft

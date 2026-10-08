@@ -99,7 +99,8 @@
       "write_not_admitted": "Le rôle '{{role}}' ne peut pas effectuer cette écriture : une écriture exige le droit d'écriture, l'accès en écriture à chaque colonne écrite et des lignes admises par le filtre de lignes du rôle.",
       "write_not_supported": "'{{table}}' n'accepte pas {{operation}} : sa source ne peut pas l'exécuter",
       "table_is_draft": "{{table}} est un brouillon : hors service jusqu'à ce que les responsables de son domaine la publient",
-      "source_unbound": "La source '{{source}}' n'a pas de connexion dans l'environnement '{{env}}' : liez-la ou recopiez-la depuis l'environnement parent"
+      "source_unbound": "La source '{{source}}' n'a pas de connexion dans l'environnement '{{env}}' : liez-la ou recopiez-la depuis l'environnement parent",
+      "system_catalog_unavailable": "Le catalogue '{{catalog}}' du moteur est en cours d'enregistrement. Réessayez dans un instant."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",

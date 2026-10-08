@@ -42,7 +42,7 @@ def start_airport_server(state: AppState, log: logging.Logger) -> None:
     )
     thread = threading.Thread(target=server.serve, daemon=True)
     thread.start()
-    state._airport_server = server  # type: ignore[attr-defined]  # keep a reference alive
+    state._airport_server = server  # stopped by the lifespan at shutdown
     # REQ-1900: every worker process binds the advertised port (SO_REUSEPORT) and relays to its
     # own server. Before this, under `--workers N` every worker but the first failed to bind the
     # port and did not start. A client's connection stays with ONE worker for its whole life, and
@@ -50,7 +50,7 @@ def start_airport_server(state: AppState, log: logging.Logger) -> None:
     # transaction's RPCs over several connections is not supported.
     from provisa.api.flight.relay import FlightRelay
 
-    state._airport_relay = FlightRelay(  # type: ignore[attr-defined]  # keep a reference alive
+    state._airport_relay = FlightRelay(  # stopped by the lifespan at shutdown
         "0.0.0.0",  # nosec B104 - the airport endpoint intentionally binds all interfaces
         port,
         server.port,

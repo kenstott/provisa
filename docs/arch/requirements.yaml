@@ -45760,7 +45760,7 @@
     on it. A per-org rebuild therefore ENSURES the system catalogs rather than re-registering them: it
     creates only what the coordinator is missing. `provisa_admin` is the exception and is still refreshed,
     because its JDBC URL names the org''s own schema and a stale one points the control plane at another
-    org.'
+    org. (Amended 2026-10-07, maintainer -- ONE SHARED CATALOG, CREATED ONCE; this supersedes any text above that has provisa_admin refreshed per org:) every system catalog, provisa_admin included, has a definition that is the same for every org and environment on a coordinator. A system catalog is created when the coordinator lacks it and re-created only when its definition differs from the one recorded for that coordinator in the platform''s own state; otherwise a boot or a runtime build issues no DROP and no CREATE. A statement that arrives while a system catalog is being re-created is answered as temporarily unavailable and retried within its deadline, never as a user error.'
   use_case: An org administrator switches the org's query engine and the other orgs on the shared coordinator
     keep working, rather than losing the telemetry catalog their reports read.
   code:
@@ -56571,7 +56571,11 @@
     A fourth site wrote org_<id> into the search_path the pgwire surface reports; that schema holds none
     of a pgwire client's tables - the catalog presents them under public and current_schema() answers
     public - and the value was a process global naming the boot org for every session, so it is removed
-    rather than routed.
+    rather than routed. (Amended 2026-10-07, maintainer -- the provisa_admin catalog has no default schema; this
+    supersedes the second seam above:) the provisa_admin catalog is one catalog per coordinator whose definition is
+    the same for every org and environment and names no default schema; every statement that reaches it names the
+    schema of the org and environment it serves, and a statement naming the catalog without a schema is a defect
+    a test refuses (REQ-1429).
   code:
   - provisa/core/db.py
   - provisa/api/app.py
@@ -77098,6 +77102,22 @@
   description: 'A relationship request is decided by the domains it touches. The domains involved in a request are the domain of its source table and the domain of its target table. An approval of the request counts only from a user whose right to create relationships reaches at least one of those domains, as a governance right reaches only the domains of the roles carrying it (REQ-1944); an approval from anyone else is refused, naming the reason. The request is executable when it has two approvals from two different users, neither of them the requester, and every domain involved is reached by at least one of the approvers: a relationship across two domains needs a yes from each side, and a relationship inside one domain needs two approvers of that domain. A rejection may come from any user who could approve. The requests list shows a user only the requests they can decide and the ones they made, and shows for each request which domains it still waits on. No check tests a role name.'
   use_case: A sales modeler asks to relate sales orders to finance invoices. A sales steward and a finance steward
     each approve; two sales stewards alone cannot put a join into finance's tables.
+  code:
+  - provisa/api/admin/relationship_approvals.py
+  - provisa/api/admin/creation_requests_router.py
+  - provisa/api/admin/capabilities.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/admin/schema_query.py
+  - provisa/api/admin/schema_common.py
+  - provisa/core/repositories/creation_request.py
+  - provisa-ui/src/pages/RequestsPage.tsx
+  tests:
+  - tests/unit/test_relationship_approvals.py
+  - tests/unit/test_creation_requests.py
+  - tests/unit/test_admin_read_gates.py
+  - tests/unit/test_admin_routes_gated.py
+  - tests/integration/test_relationship_request_domain_approvals.py
+  - provisa-ui/src/__tests__/RequestsPage.test.tsx
   related_reqs:
   - REQ-1531
   - REQ-1944
@@ -77117,3 +77137,17 @@
   - REQ-1944
   - REQ-1942
   notes: 'Maintainer 2026-10-07: add a warning on reads cut by the row limit. Found while building session temporary tables: the only "answer cut" warning in the code was for API pagination (api.answer_cut); a role''s row cap cut any read with no warning at all.'
+- id: REQ-1950
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Approvals
+  priority: MUST
+  type: behavioral
+  description: 'A creation request of any type -- relationship, view, table, source or webhook -- is carried out only through its approvals, and carrying it out creates what it asks for. An approval counts from a user who holds the right the request names (for a relationship, whose right reaches a domain the request touches, REQ-1948), who is not the requester, and who has not approved it already; the requester is recorded as a user on every path that queues a request. The approval that completes the request''s required count (one; two for a relationship) performs the creation through the same code the direct mutation uses, and only then is the request marked executed. Executing is refused until the count is met and afterwards serves to retry a creation that failed; a failed creation leaves the request pending and answers with the failure''s own code. A request may be rejected by any user who could approve it, and the author of a request other than a relationship''s may withdraw it. The rule, its refusals and its admin-trail entries -- every approval, rejection, withdrawal, creation and refused attempt -- are the same over REST and GraphQL. A webhook declared in configuration is approved at load and is outside this rule (REQ-209).'
+  use_case: A modeler asks for a table to be registered; a steward approves it and the table exists, where before the
+    request was marked executed and nothing had been created.
+  related_reqs:
+  - REQ-1948
+  - REQ-209
+  notes: 'Found 2026-10-07 while building REQ-1948 (issues #149, #152): approving or executing a request over REST only changed its status; execute needed no approvals; product-queued requests needed one approval; a cross-domain execute re-queued and marked the original executed; webhook requests recorded no requester and MCP-proposed ones recorded a role; an MCP-proposed request could never be carried out; GraphQL had no approve mutation. Maintainer 2026-10-07: scope relationship approvals to the domains involved; lead ruling under the standing rule that a found defect is fixed: every type creates what it asks for.'
