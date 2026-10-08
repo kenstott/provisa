@@ -464,9 +464,11 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
 class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     id: int
     column_name: str
-    visible_to: list[str]
-    writable_by: list[str]
-    unmasked_to: list[str]
+    # Grant lists and mask settings are null for a caller without view_governance (REQ-1134,
+    # REQ-1958): null is "not shown to you", an empty list is "granted to nobody / everybody".
+    visible_to: list[str] | None
+    writable_by: list[str] | None
+    unmasked_to: list[str] | None
     mask_type: str | None
     mask_pattern: str | None
     mask_replace: str | None
@@ -1208,7 +1210,8 @@ class MetricType:  # REQ-1317: a governed, named aggregate definition (grain bou
     datatype: str | None = None
     description: str | None = None
     ai_context: str | None = None  # REQ-1319: definition text for AI consumers
-    visible_to: list[str] = strawberry.field(default_factory=lambda: ["*"])
+    # Null for a caller without view_governance (REQ-1134, REQ-1958).
+    visible_to: list[str] | None = strawberry.field(default_factory=lambda: ["*"])
     from_fact: str | None = None  # REQ-1320: set when auto-registered from a fact measure
 
 

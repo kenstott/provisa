@@ -177,9 +177,11 @@ export function domainGqlAlias(domain: Pick<Domain, "id" | "graphqlAlias">): str
 export interface TableColumn {
   id: number;
   columnName: string;
-  visibleTo: string[];
-  writableBy: string[];
-  unmaskedTo: string[];
+  // REQ-1958/REQ-1134: grant lists and mask settings are null for a caller without
+  // view_governance — "not shown to you", which is not the same as an empty list.
+  visibleTo: string[] | null;
+  writableBy: string[] | null;
+  unmaskedTo: string[] | null;
   maskType: string | null;
   maskPattern: string | null;
   maskReplace: string | null;
@@ -521,7 +523,8 @@ export interface Metric {
   datatype: string | null;
   description: string | null;
   aiContext: string | null;
-  visibleTo: string[];
+  // Null for a caller without view_governance (REQ-1958): who a metric is granted to is a grant list.
+  visibleTo: string[] | null;
   fromFact: string | null;
 }
 

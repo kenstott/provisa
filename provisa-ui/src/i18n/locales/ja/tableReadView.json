@@ -56,6 +56,8 @@
     "queryTemplate": "Cypher:",
     "writable": "書き込み可",
     "writableOps": "GraphQL・REST・SQL から {{ops}} を受け付けます",
-    "dataProductChip": "データプロダクト"
+    "dataProductChip": "データプロダクト",
+    "notShown": "非表示",
+    "editNeedsGovernance": "テーブルを編集すると、列の付与リストとマスクが置き換えられますが、それらは表示されていません。view_governance 権限が必要です。"
   }
 }

@@ -2604,8 +2604,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, input: TableInput
     ) -> MutationResult:  # REQ-016, REQ-020, REQ-155, REQ-156
         """Update an existing table's alias, description, and column metadata."""
-        from provisa.api.admin._hiding_guard import require_table_save
+        from provisa.api.admin._hiding_guard import (
+            governance_sets,
+            refuse_governance_sets,
+            require_table_save,
+        )
 
+        _governance_sets = governance_sets(info, input)  # REQ-1958: of the input as sent
         _editor, input = await require_table_save(info, input)  # REQ-1944
         from provisa.core.repositories import table as table_repo
 
@@ -2734,6 +2739,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             if _hiding_refusal is not None:
                 return _hiding_refusal
+            refuse_governance_sets(_governance_sets)  # REQ-1958
             try:
                 model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
                 table_id = await table_repo.upsert(_conn, model)

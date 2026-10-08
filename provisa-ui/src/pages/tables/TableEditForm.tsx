@@ -53,6 +53,7 @@ import { PagingField } from "./PagingField";
 import { tableTtlSignalError } from "./roleTtl";
 import { ReplicateSelect } from "../../components/admin/ReplicateSelect";
 import { ReplicaBuildLine } from "./ReplicaBuildLine";
+import { shownGrants } from "./helpers";
 
 interface CacheTtlEdit {
   value: string;
@@ -864,7 +865,7 @@ export function TableEditForm({
                       <Table.Td>
                         <MultiSelect
                           options={roleOptions}
-                          value={c.visibleTo}
+                          value={shownGrants(c.visibleTo)}
                           onChange={(selected) => updateEditCol(i, "visibleTo", selected)}
                           ariaLabel={t("tableEditForm.visibleToHeader")}
                         />
@@ -872,7 +873,7 @@ export function TableEditForm({
                       <Table.Td>
                         <MultiSelect
                           options={roleOptions}
-                          value={c.writableBy}
+                          value={shownGrants(c.writableBy)}
                           onChange={(selected) => updateEditCol(i, "writableBy", selected)}
                           ariaLabel={t("tableEditForm.writableByHeader")}
                           disabled={hidingOnly}
@@ -978,7 +979,7 @@ export function TableEditForm({
                         <Table.Td colSpan={2}>
                           <MultiSelect
                             options={roleOptions}
-                            value={c.unmaskedTo}
+                            value={shownGrants(c.unmaskedTo)}
                             onChange={(selected) => updateEditCol(i, "unmaskedTo", selected)}
                             label={t("tableEditForm.unmaskedToAria")}
                           />

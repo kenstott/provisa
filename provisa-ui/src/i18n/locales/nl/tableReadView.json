@@ -56,6 +56,8 @@
     "queryTemplate": "Cypher:",
     "writable": "Schrijfbaar",
     "writableOps": "Accepteert {{ops}} via GraphQL, REST en SQL",
-    "dataProductChip": "Dataproduct"
+    "dataProductChip": "Dataproduct",
+    "notShown": "niet getoond",
+    "editNeedsGovernance": "Bij het bewerken van een tabel worden de toekenningslijsten en maskers van de kolommen vervangen, die u niet te zien krijgt. Hiervoor is het recht view_governance nodig."
   }
 }

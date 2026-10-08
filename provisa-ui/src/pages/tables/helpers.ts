@@ -100,9 +100,9 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
       .map((u) => ({ name: u.name.trim(), columns: u.columns })),
     columns: t.columns.map((c) => ({
       name: c.columnName,
-      visibleTo: c.visibleTo,
-      writableBy: c.writableBy,
-      unmaskedTo: c.unmaskedTo,
+      visibleTo: shownGrants(c.visibleTo),
+      writableBy: shownGrants(c.writableBy),
+      unmaskedTo: shownGrants(c.unmaskedTo),
       maskType: c.maskType || undefined,
       maskPattern: c.maskPattern || undefined,
       maskReplace: c.maskReplace || undefined,
@@ -177,4 +177,23 @@ export function computeProfile(columns: string[], rows: Record<string, unknown>[
       topValues,
     };
   });
+}
+
+/**
+ * REQ-1958/REQ-1134: whether the table's grant lists and mask settings were withheld from this
+ * caller (it lacks view_governance) -- the server answers them as null, never as an empty list.
+ */
+export function governanceWithheld(table: { columns: { visibleTo: string[] | null }[] }): boolean {
+  return table.columns.some((c) => c.visibleTo === null);
+}
+
+/**
+ * A grant list the caller was shown. The table editor is offered only when they were
+ * (governanceWithheld), so a null here is a broken invariant, never a value to save as "nobody".
+ */
+export function shownGrants(list: string[] | null): string[] {
+  if (list === null) {
+    throw new Error("grant lists were withheld; the table editor is not offered without them");
+  }
+  return list;
 }

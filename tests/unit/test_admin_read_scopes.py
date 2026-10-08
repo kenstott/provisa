@@ -76,7 +76,17 @@ _SOURCE = {
 
 
 async def _read_sources(info):
-    with patch("provisa.api.admin.schema_query._get_pool", return_value=_Pool([_SOURCE])):
+    """The source as ``info``'s caller reads it. The caller is answered a table from it, which is
+    what names a source to someone who does not register sources (REQ-1958; who is answered which
+    table is tests/unit/test_admin_catalog_scope.py)."""
+
+    async def _named(conn, scope):  # noqa: ARG001
+        return {"pg"}
+
+    with (
+        patch("provisa.api.admin.schema_query._get_pool", return_value=_Pool([_SOURCE])),
+        patch("provisa.api.admin.schema_query._listed_sources", _named),
+    ):
         return (await Query().sources(info))[0], await Query().source(info, "pg")
 
 

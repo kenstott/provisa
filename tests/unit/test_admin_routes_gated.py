@@ -115,14 +115,14 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("*", "/admin/graphql"): "transport; per-resolver gates are checked in the GraphQL pass",
 }
 
-# Model metadata read by every role's pages; holds no connection details or security rules. Each
-# resolves through _get_pool(), the org-routed tenant pool (one schema per org), so it returns only
-# the acting org's rows; the ones that take info also require an org bound to the request.
-_MODEL_METADATA_READS = ("allRelationships metrics relationships domains tags").split()
-for _name in _MODEL_METADATA_READS:
-    EXEMPT[("graphql:query", _name)] = (
-        "model metadata read by every role's pages; holds no connection details or security rules"
-    )
+# The tag registry: the org's vocabulary of tags and their policies. It names no table, column,
+# source or role, so it is read by every member's pages; which objects carry a tag is
+# tagAssignments, trimmed below. (tables, relationships, allRelationships, domains, sources and
+# metrics are answered by the caller's rights and reach — admin/catalog_scope.py, REQ-1958 — so
+# they count as gated and need no entry.)
+EXEMPT[("graphql:query", "tags")] = (
+    "org tag vocabulary read by every role's pages; names no table, column, source or role"
+)
 # resolveOwners is answered per right (has_capability("user_management") decides whether the user id
 # and e-mail come back), so it counts as gated and needs no entry. tagAssignments is trimmed to the
 # caller's reachable domains (allowed_domains_request) rather than refused.

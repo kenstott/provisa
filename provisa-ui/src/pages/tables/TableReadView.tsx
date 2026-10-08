@@ -15,7 +15,7 @@ import { ActionIcon, Badge, Box, Button, Group, Table, Text, Tooltip } from "@ma
 import type { NavigateFunction } from "react-router-dom";
 import { requiredParamColumns } from "../../components/nativeParams";
 import type { RegisteredTable, DataProduct } from "../../types/admin";
-import { computeProfile } from "./helpers";
+import { computeProfile, governanceWithheld } from "./helpers";
 import { TagControl } from "../../components/TagControl";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { OwnerResolutionIcon } from "../../components/OwnerResolution";
@@ -161,23 +161,39 @@ export function TableReadView({
                   </Table.Td>
                   <Table.Td c={c.alias ? "white" : "dimmed"}>{c.computedSqlAlias}</Table.Td>
                   <Table.Td className="reasoning-cell">{c.description || ""}</Table.Td>
+                  {/* REQ-1958/REQ-1134: null grant lists are withheld (the caller lacks
+                      view_governance), which is said — never shown as "all" or "none". */}
                   <Table.Td>
-                    <Group gap={4} wrap="nowrap">
-                      <Text span size="sm">
-                        {c.visibleTo.length > 0 ? c.visibleTo.join(", ") : t("tableReadView.all")}
+                    {c.visibleTo === null ? (
+                      <Text span size="sm" c="dimmed" data-testid="grants-not-shown">
+                        {t("tableReadView.notShown")}
                       </Text>
-                      {c.visibleTo.length > 0 && (
-                        <OwnerResolutionIcon
-                          refs={c.visibleTo}
-                          ariaLabel={t("ownerResolution.columnIconLabel")}
-                        />
-                      )}
-                    </Group>
+                    ) : (
+                      <Group gap={4} wrap="nowrap">
+                        <Text span size="sm">
+                          {c.visibleTo.length > 0 ? c.visibleTo.join(", ") : t("tableReadView.all")}
+                        </Text>
+                        {c.visibleTo.length > 0 && (
+                          <OwnerResolutionIcon
+                            refs={c.visibleTo}
+                            ariaLabel={t("ownerResolution.columnIconLabel")}
+                          />
+                        )}
+                      </Group>
+                    )}
                   </Table.Td>
-                  <Table.Td>
-                    {c.writableBy.length > 0 ? c.writableBy.join(", ") : t("tableReadView.none")}
+                  <Table.Td c={c.writableBy === null ? "dimmed" : undefined}>
+                    {c.writableBy === null
+                      ? t("tableReadView.notShown")
+                      : c.writableBy.length > 0
+                        ? c.writableBy.join(", ")
+                        : t("tableReadView.none")}
                   </Table.Td>
-                  <Table.Td>{c.maskType || t("tableReadView.maskNone")}</Table.Td>
+                  <Table.Td c={c.visibleTo === null ? "dimmed" : undefined}>
+                    {c.visibleTo === null
+                      ? t("tableReadView.notShown")
+                      : c.maskType || t("tableReadView.maskNone")}
+                  </Table.Td>
                   <Table.Td>{c.scope || t("tableReadView.scopeDomain")}</Table.Td>
                 </Table.Tr>
                 {c.maskType && (
@@ -198,7 +214,7 @@ export function TableReadView({
                     <Table.Td colSpan={4} c="dimmed" fz="0.75rem">
                       {t("tableReadView.unmaskedTo", {
                         list:
-                          c.unmaskedTo.length > 0
+                          c.unmaskedTo !== null && c.unmaskedTo.length > 0
                             ? c.unmaskedTo.join(", ")
                             : t("tableReadView.none"),
                       })}
@@ -374,17 +390,25 @@ export function TableReadView({
         >
           {t("tableReadView.policiesButton")}
         </Button>
-        <ActionIcon
-          variant="subtle"
-          aria-label={t("tableReadView.editButtonLabel", { name: table.tableName })}
-          data-testid="table-read-view-edit"
-          onClick={(e) => {
-            e.stopPropagation();
-            startEditing(table);
-          }}
+        {/* A save replaces each column's grant lists and mask, so the editor is offered only to a
+            caller who is shown them (REQ-1958): it would otherwise overwrite what it cannot see. */}
+        <Tooltip
+          label={t("tableReadView.editNeedsGovernance")}
+          disabled={!governanceWithheld(table)}
         >
-          <Pencil size={14} />
-        </ActionIcon>
+          <ActionIcon
+            variant="subtle"
+            aria-label={t("tableReadView.editButtonLabel", { name: table.tableName })}
+            data-testid="table-read-view-edit"
+            disabled={governanceWithheld(table)}
+            onClick={(e) => {
+              e.stopPropagation();
+              startEditing(table);
+            }}
+          >
+            <Pencil size={14} />
+          </ActionIcon>
+        </Tooltip>
         {!hidingOnly && (
           <ActionIcon
             variant="subtle"

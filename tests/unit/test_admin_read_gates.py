@@ -83,3 +83,58 @@ async def test_creation_requests_lists_only_those_the_caller_may_act_on(monkeypa
         pool.return_value = AsyncMock(acquire=MagicMock(return_value=_Conn()))
         seen = await Query().creation_requests(info)
     assert [r.id for r in seen] == [1]
+
+
+# --- the plain catalog reads: answered by the caller's rights and reach (REQ-1958) ---------------
+
+# resolver, its arguments, and the rule it answers by. None of these refuses a signed-in caller;
+# each asks what the caller administers or is served (admin/catalog_scope.py) and answers that —
+# the cases are tests/unit/test_admin_catalog_scope.py.
+_CATALOG_READS = [
+    ("tables", {}, "tables it administers (its right's domains) or its acting role is served"),
+    ("relationships", {}, "relationships among the tables and columns it is answered"),
+    ("all_relationships", {}, "as relationships, system-generated ones included"),
+    ("domains", {}, "domains its roles reach, or holding a table it is answered"),
+    ("sources", {}, "sources holding a table it is answered; all for source_registration"),
+    ("source", {"id": "pg"}, "as sources"),
+    ("metrics", {}, "metrics its acting role is granted; all for table_registration"),
+]
+
+
+class _ScopeAsked(Exception):
+    pass
+
+
+@pytest.mark.parametrize("name,kwargs,rule", _CATALOG_READS)
+async def test_a_catalog_read_answers_by_the_callers_scope(monkeypatch, name, kwargs, rule):
+    """Each catalog read consults the one scope; none answers the whole catalog unasked."""
+    info, _ = grant(monkeypatch, "query_development")
+
+    def _asked(_info):
+        raise _ScopeAsked(rule)
+
+    row = MagicMock()
+    row.id = "pg"
+    rows = MagicMock(fetchall=MagicMock(return_value=[row]), fetchone=MagicMock(return_value=row))
+    conn = AsyncMock()
+    conn.execute_core = AsyncMock(return_value=rows)
+    acquired = MagicMock()
+    acquired.__aenter__ = AsyncMock(return_value=conn)
+    acquired.__aexit__ = AsyncMock(return_value=None)
+    with (
+        patch("provisa.api.admin.schema_query.catalog_scope", _asked),
+        patch("provisa.api.admin.schema_query._get_pool") as pool,
+        patch("provisa.api.admin.schema_query._resolve_admin_context"),
+        patch("provisa.api.admin.schema_query._rel_from_row"),
+        patch(
+            "provisa.api.admin.schema_query._has_table_synthetic_relationships",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "provisa.core.repositories.metric.list_all",
+            new=AsyncMock(return_value=[{"name": "m", "visible_to": ["*"]}]),
+        ),
+        pytest.raises(_ScopeAsked),
+    ):
+        pool.return_value = MagicMock(acquire=MagicMock(return_value=acquired))
+        await getattr(Query(), name)(info, **kwargs)

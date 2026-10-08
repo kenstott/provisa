@@ -5276,5 +5276,7 @@
   "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.registryToken": "Registry token",
   "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.registryUsername": "Registry username",
   "de/serverErrors.json::serverErrors.statement.rows_cut": "The answer was cut at {{limit}} rows, the row limit that applies to this read ({{kind}}): more rows match than were returned.",
-  "de/serverErrors.json::serverErrors.statement.rows_cut_unchecked": "The answer has {{limit}} rows, the row limit that applies to this read ({{kind}}). Whether more rows match could not be checked: {{reason}}"
+  "de/serverErrors.json::serverErrors.statement.rows_cut_unchecked": "The answer has {{limit}} rows, the row limit that applies to this read ({{kind}}). Whether more rows match could not be checked: {{reason}}",
+  "de/tableReadView.json::tableReadView.notShown": "not shown",
+  "de/tableReadView.json::tableReadView.editNeedsGovernance": "Editing a table replaces its columns' grant lists and masks, which you are not shown. It needs the view_governance right."
 }

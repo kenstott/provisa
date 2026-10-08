@@ -219,6 +219,88 @@ async def steward_input(input_: Any) -> tuple[Any, list[str]]:
     return current, changes
 
 
+# What ``view_governance`` shows (REQ-1134) and so what a save may set only with it (REQ-1958):
+# a column's grant lists and its mask.
+GOVERNANCE_FIELDS = (
+    "visible_to",
+    "writable_by",
+    "unmasked_to",
+    "mask_type",
+    "mask_pattern",
+    "mask_replace",
+    "mask_value",
+    "mask_precision",
+)
+
+
+def governance_sets(info: Any, input_: Any) -> list[str]:  # REQ-1958, REQ-1134
+    """The grant lists and mask fields ``input_`` SETS, for a caller without ``view_governance``.
+
+    Such a caller is answered null for them, so what it sends back is the empty value; anything
+    else is a value it chose without being shown what it replaces. Empty for a caller holding
+    the right. Read off the input as sent, before :func:`keep_governance` fills it in.
+    """
+    from provisa.api.admin.capabilities import has_capability
+
+    if has_capability(info, "view_governance"):
+        return []
+    return [
+        f"{column.name}.{field}"
+        for column in input_.columns
+        for field in GOVERNANCE_FIELDS
+        if getattr(column, field) not in (None, [], "")
+    ]
+
+
+def refuse_governance_sets(sets: list[str]) -> None:  # REQ-1958
+    """Refuse a save that :func:`governance_sets` found setting a field its caller is not shown.
+
+    Raised after the hiding rights are checked (:func:`table_hiding_refusal`), so a caller that
+    lacks the right to change a mask or a grant at all is told that, as before. An equal value
+    is refused too, or the refusal would tell a caller whether its guess of a hidden grant list
+    was right.
+    """
+    if sets:
+        raise PermissionError(
+            "Missing capability: 'view_governance' -- without it a table save may not set a "
+            "column's grant lists or mask, which it is not shown; this one sets " + ", ".join(sets)
+        )
+
+
+async def keep_governance(info: Any, input_: Any) -> Any:  # REQ-1958, REQ-1134
+    """``input_`` with every grant list and mask field it leaves empty taken from the STORED
+    table, for a caller without ``view_governance``.
+
+    Such a caller is answered null for those fields (admin/catalog_scope.py), and a table save
+    replaces each column's definition whole — so its save would write "nobody" and "no mask"
+    over grants it was never shown. Its save does not touch them. A field the save SETS is left
+    as sent for the rights checks to judge, and the save is then refused
+    (:func:`refuse_governance_sets`). A column the table does not have yet has no stored grants:
+    it is saved open to its domain and unmasked, as a column registered without any is.
+
+    A caller holding ``view_governance`` saves what it sends.
+    """
+    from provisa.api.admin.capabilities import has_capability
+    from provisa.api.admin.schema_helpers import _get_pool
+    from provisa.api.mcp.table_edit import read_table, table_input
+
+    if has_capability(info, "view_governance"):
+        return input_
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        stored = await stored_table(conn, input_)
+    if stored is None:
+        return input_
+    held = {c.name: c for c in table_input(await read_table(stored["id"])).columns}
+    for column in input_.columns:
+        if column.name not in held:
+            continue
+        for field in GOVERNANCE_FIELDS:
+            if getattr(column, field) in (None, [], ""):
+                setattr(column, field, getattr(held[column.name], field))
+    return input_
+
+
 async def require_table_save(info: Any, input_: Any) -> tuple[bool, Any]:  # REQ-1944
     """The gate on ``update_table``: whether the caller saves as the table's editor, and the input
     to save.
@@ -231,6 +313,9 @@ async def require_table_save(info: Any, input_: Any) -> tuple[bool, Any]:  # REQ
     """
     from provisa.api.admin.capabilities import has_capability, require_capability
 
+    # REQ-1958: first, so that whichever way the save goes on from here it carries the stored
+    # grant lists and masks of a caller who is not shown them.
+    input_ = await keep_governance(info, input_)
     if has_capability(info, "table_registration"):
         require_capability(info, "table_registration", domain_id=input_.domain_id)
         return True, input_

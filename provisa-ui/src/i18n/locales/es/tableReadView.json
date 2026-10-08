@@ -56,6 +56,8 @@
     "queryTemplate": "Cypher:",
     "writable": "Escribible",
     "writableOps": "Admite {{ops}} desde GraphQL, REST y SQL",
-    "dataProductChip": "Producto de datos"
+    "dataProductChip": "Producto de datos",
+    "notShown": "no se muestra",
+    "editNeedsGovernance": "Editar una tabla reemplaza las listas de concesión y las máscaras de sus columnas, que no se le muestran. Requiere el derecho view_governance."
   }
 }

@@ -37,7 +37,15 @@ export function MetricDetailPanel({ m, dependentViews, onEdit, onDelete }: Metri
     ["description", m.description || "—"],
     ["aiContext", m.aiContext || "—"],
     ["sourceFact", m.fromFact ?? t("metricsPage.detail.handAuthored")],
-    ["visibleTo", m.visibleTo.length ? m.visibleTo.join(", ") : "*"],
+    // REQ-1958: null is "not shown to you" (no view_governance), not "granted to everyone".
+    [
+      "visibleTo",
+      m.visibleTo === null
+        ? t("tableReadView.notShown")
+        : m.visibleTo.length
+          ? m.visibleTo.join(", ")
+          : "*",
+    ],
     [
       "dependentViews",
       dependentViews.length ? dependentViews.join(", ") : t("metricsPage.detail.noDependents"),

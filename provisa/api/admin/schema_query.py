@@ -18,6 +18,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, Optional, cast
 
+from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
 import strawberry
@@ -202,6 +203,84 @@ def _dq_kind(kind: dict) -> DqCheckKindType:  # REQ-1443 clause 7
         levels=kind["levels"],
         threshold_units=kind["threshold_units"],
     )
+
+
+async def _listed_tables(conn: Any, scope: CatalogScope) -> list[tuple[int, str]]:
+    """(table id, domain id) of every registered table the caller is answered (REQ-1958)."""
+    _res = await conn.execute_core(select(registered_tables.c.id, registered_tables.c.domain_id))
+    return [(r.id, r.domain_id) for r in _res.fetchall() if scope.lists_table(r.id, r.domain_id)]
+
+
+async def _listed_sources(conn: Any, scope: CatalogScope) -> set[str]:
+    """The sources holding a table the caller is answered (REQ-1958)."""
+    _res = await conn.execute_core(
+        select(registered_tables.c.id, registered_tables.c.domain_id, registered_tables.c.source_id)
+    )
+    return {r.source_id for r in _res.fetchall() if scope.lists_table(r.id, r.domain_id)}
+
+
+async def _listed_relationships(
+    conn: Any, scope: CatalogScope, rows: list[RelationshipType]
+) -> list[RelationshipType]:
+    """The relationships among what the caller is answered (REQ-1958): its source table and
+    column, its target table and column where it has one, and the table it goes through."""
+    if scope.whole:
+        return rows
+    _res = await conn.execute_core(select(registered_tables.c.id, registered_tables.c.domain_id))
+    domain_of = {r.id: r.domain_id for r in _res.fetchall()}
+
+    def _lists(table_id: int | None, column: str | None) -> bool:
+        if table_id is None:
+            return True  # no such end: a relationship to a function has no target table
+        if table_id not in domain_of:
+            return False
+        # A composite key lists its columns comma-separated (REQ-1586).
+        columns = [c.strip() for c in column.split(",")] if column else [None]
+        return all(scope.lists_column(table_id, domain_of[table_id], c) for c in columns)
+
+    return [
+        r
+        for r in rows
+        if _lists(r.source_table_id, r.source_column)
+        and _lists(r.target_table_id, r.target_column)
+        and _lists(r.via_table_id, None)
+    ]
+
+
+def _trim_table(scope: CatalogScope, table: RegisteredTableType) -> RegisteredTableType:
+    """``table`` as the caller is answered it (REQ-1958): the columns it administers or is
+    served, and grant lists, mask settings and the view's SQL only with ``view_governance``
+    (REQ-1134)."""
+    columns = scope.columns(table.id, table.domain_id)
+    if columns is not None:
+        table.columns = [c for c in table.columns if c.column_name in columns]
+    if not scope.governance:
+        table.view_sql = None
+        for column in table.columns:
+            column.visible_to = None
+            column.writable_by = None
+            column.unmasked_to = None
+            column.mask_type = None
+            column.mask_pattern = None
+            column.mask_replace = None
+            column.mask_value = None
+            column.mask_precision = None
+    return table
+
+
+def _sees_metric(info: StrawberryInfo, row: Any) -> bool:
+    """REQ-1958: a metric is listed to its administrator, and to a caller whose acting role it is
+    granted to."""
+    from provisa.api.app import state
+    from provisa.security.meta_role import acting_roles
+
+    scope = catalog_scope(info)
+    if scope.whole or has_capability(info, "table_registration"):
+        return True
+    granted = list(row["visible_to"])
+    if "*" in granted:
+        return scope.role is not None and scope.role in state.contexts
+    return scope.role is not None and any(r in granted for r in acting_roles(state, scope.role))
 
 
 async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType]:
@@ -389,14 +468,17 @@ class Query:  # REQ-021, REQ-042
         ]
 
     @strawberry.field
-    async def metrics(self) -> list["MetricType"]:  # REQ-1317
-        """Every governed metric definition — feeds the metric admin panel (REQ-1317); fact-derived
-        metrics carry ``from_fact`` (REQ-1320)."""
+    async def metrics(self, info: StrawberryInfo) -> list["MetricType"]:  # REQ-1317, REQ-1958
+        """The governed metric definitions the caller may see — feeds the metric admin panel
+        (REQ-1317); fact-derived metrics carry ``from_fact`` (REQ-1320). Their administrator
+        (``table_registration``, the right that saves one) sees every metric; anyone else the
+        metrics its acting role is granted (``visible_to``; a meta-role by any member)."""
         from provisa.core.repositories import metric as metric_repo
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await metric_repo.list_all(cast("Connection", conn))
+        rows = [r for r in rows if _sees_metric(info, r)]
         return [
             MetricType(
                 name=r["name"],
@@ -404,7 +486,7 @@ class Query:  # REQ-021, REQ-042
                 datatype=r["datatype"],
                 description=r["description"],
                 ai_context=r["ai_context"],
-                visible_to=list(r["visible_to"]),
+                visible_to=list(r["visible_to"]) if catalog_scope(info).governance else None,
                 from_fact=r["from_fact"],
             )
             for r in rows
@@ -505,8 +587,13 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _res = await conn.execute_core(select(sources).order_by(sources.c.id))
+            # REQ-1958: a source is named to its registrar, and to a caller answered a table
+            # from it.
+            named = None if connection else await _listed_sources(conn, catalog_scope(info))
             return [
-                _source_from_row(dict(r._mapping), connection=connection) for r in _res.fetchall()
+                _source_from_row(dict(r._mapping), connection=connection)
+                for r in _res.fetchall()
+                if named is None or r.id in named
             ]
 
     @strawberry.field
@@ -518,7 +605,12 @@ class Query:  # REQ-021, REQ-042
         async with pool.acquire() as conn:
             _res = await conn.execute_core(select(sources).where(sources.c.id == id))
             row = _res.fetchone()
-            return _source_from_row(dict(row._mapping), connection=connection) if row else None
+            if row is None:
+                return None
+            # REQ-1958: as in `sources` — unnamed to a caller answered no table from it.
+            if not connection and id not in await _listed_sources(conn, catalog_scope(info)):
+                return None
+            return _source_from_row(dict(row._mapping), connection=connection)
 
     @strawberry.field
     async def domains(self, info: StrawberryInfo) -> list[DomainType]:  # REQ-021, REQ-042
@@ -536,7 +628,15 @@ class Query:  # REQ-021, REQ-042
             _res = await conn.execute_core(
                 select(domains).where(domains.c.id != "").order_by(domains.c.id)
             )
-            return [_domain_from_row(dict(r._mapping)) for r in _res.fetchall()]
+            # REQ-1958: the domains the caller's roles reach, and any holding a table it is
+            # answered (a table reached through its own grant names its domain).
+            scope = catalog_scope(info)
+            holding = {d for _id, d in await _listed_tables(conn, scope)}
+            return [
+                _domain_from_row(dict(r._mapping))
+                for r in _res.fetchall()
+                if scope.lists_domain(r.id, r.id in holding)
+            ]
 
     @strawberry.field
     async def data_products(self, info: StrawberryInfo) -> list[DataProductType]:  # REQ-1634
@@ -724,13 +824,21 @@ class Query:  # REQ-021, REQ-042
                     ).where(registered_tables.c.source_id != DERIVED_SOURCE_ID)
                 )
                 all_tables = [dict(r._mapping) for r in _ares.fetchall()]
+                # REQ-1958: the caller is answered the tables it administers or is served.
+                scope = catalog_scope(info)
                 return [
-                    await _fetch_table_with_columns(conn, r, all_tables, user_can_deploy)
+                    _trim_table(
+                        scope,
+                        await _fetch_table_with_columns(conn, r, all_tables, user_can_deploy),
+                    )
                     for r in rows
+                    if scope.lists_table(r["id"], r["domain_id"])
                 ]
 
     @strawberry.field
-    async def relationships(self) -> list[RelationshipType]:  # REQ-019, REQ-020
+    async def relationships(
+        self, info: StrawberryInfo
+    ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
         from provisa.api.app import state
 
         convention = state.global_gql_naming_convention
@@ -760,10 +868,13 @@ class Query:  # REQ-021, REQ-042
                 )
                 .order_by(relationships.c.id)
             )
-            return [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
+            rows = [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
+            return await _listed_relationships(conn, catalog_scope(info), rows)
 
     @strawberry.field
-    async def all_relationships(self) -> list[RelationshipType]:  # REQ-019, REQ-020
+    async def all_relationships(
+        self, info: StrawberryInfo
+    ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
         """All relationships including system-generated meta:% entries (used by ERD)."""
         from provisa.api.app import state
 
@@ -792,7 +903,7 @@ class Query:  # REQ-021, REQ-042
             )
             rows = [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
             rows.extend(await _has_table_synthetic_relationships(conn))
-            return rows
+            return await _listed_relationships(conn, catalog_scope(info), rows)
 
     @strawberry.field
     async def roles(
