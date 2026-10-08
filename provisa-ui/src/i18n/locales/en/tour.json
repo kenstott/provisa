@@ -41,13 +41,17 @@
         "title": "Govern it",
         "summary": "Roles and domains, row rules, masks, sensitive data and the data steward."
       },
+      "quality": {
+        "title": "Data quality",
+        "summary": "Is my real data good? Quality checkers, contracts, profiler runs, drift, and the results that travel with a data product."
+      },
       "query": {
         "title": "Query it everywhere",
         "summary": "SQL, GraphQL, Cypher, REST and MCP through one governed pipeline."
       },
       "testdata": {
         "title": "Test data and environments",
-        "summary": "The profiler, fakes, synthetic data, environments and data modes."
+        "summary": "How to get safe, realistic data to build and test against: environments, the profiler, fakes and synthetic data."
       },
       "publish": {
         "title": "Publish it",
@@ -179,17 +183,25 @@
         "title": "Build a quality contract",
         "description": "✅ Write the contract by hand or build checks column by column — null rates, row counts, ranges, freshness — and <strong>dry-run</strong> it before saving. Every scan appends, so this table <em>is</em> the quality history: chart it, alert on it, join it to anything."
       },
-      "stepProfilerTable": {
+      "stepQualityProfile": {
         "title": "Profile a table",
-        "description": "📊 Edit any table to add it to a <strong>Data Profiler</strong>, a source that profiles its member tables on a schedule: column shapes, distributions, value frequencies and children per parent."
-      },
-      "stepProfilerPanel": {
-        "title": "Add it to a profiler",
-        "description": "Pick a profiler and save, then use <strong>Run Profile Now</strong> and <strong>View Profile Runs</strong>. Results land as tables you register and govern like any other. Until you register them, no reader sees a profile."
+        "description": "📊 A table joins a <strong>Data Profiler</strong> from its editor, a source that profiles its member tables on a schedule. A run measures each column's shape, distributions and value frequencies, and the children per parent. <strong>Run Profile Now</strong> starts one and <strong>View Profile Runs</strong> reads them. Results land as tables you register and govern like any other; until you register them, no reader sees a profile."
       },
       "stepProfilerChecks": {
         "title": "Drift and checks",
         "description": "Every run is compared with the table's recent runs, and a measure that drifts is flagged. A data-quality checker raises the exception. You can also accept constraints the profile proposes, and check runs against expectations from outside Provisa. A constraint can also be exported as a check in the contract of a <strong>Soda</strong> or <strong>Great Expectations</strong> checker."
+      },
+      "stepQualityProduct": {
+        "title": "Quality travels with the product",
+        "description": "✅ A product's <strong>Data Quality</strong> panel lists the checker tables whose contracts scan its output ports, so a consumer sees the evidence next to the product. It is empty until a checker scans one. Data products are published in the <strong>Publish it</strong> Deep Dive."
+      },
+      "stepTestDataMap": {
+        "title": "How the parts fit",
+        "description": "<p>Safe, realistic data to build and test against comes from four parts, each with one job:</p><ul><li><strong>Environment</strong>: a branch of the model. At creation it inherits its parent's connections or starts unbound, and you point its sources at your own databases.</li><li><strong>Profiler</strong>: measures real tables, giving the shapes everything else is built from.</li><li><strong>Fakes</strong>: in test data, a column's fake replaces its identifying values.</li><li><strong>Synthetic data</strong>: fills a non-production environment with generated rows shaped like the profiled tables.</li></ul>"
+      },
+      "stepTestDataProfiler": {
+        "title": "What fakes and synthetic data are built from",
+        "description": "📊 A <strong>Data Profiler</strong> measures the tables you add to it: column shapes, distributions, value frequencies and children per parent. <strong>Fill from profile</strong> turns those measures into fakes, and a synthetic dataset draws its rows from them. Watching the same runs for drift is covered in the <strong>Data quality</strong> Deep Dive."
       },
       "stepFakes": {
         "title": "Declare a fake",
@@ -200,12 +212,12 @@
         "description": "✨ <strong>Fill from profile</strong> proposes fakes for identifying columns, and synthetic rules for the rest, from the table's latest profile. Nothing saves until you save the form."
       },
       "stepEnvKinds": {
-        "title": "Read or read-write test environments",
-        "description": "A non-production environment is <strong>read</strong> or <strong>read-write</strong>. A read-write environment keeps its own changes, and a write never reaches a source. Turn on <strong>Test data</strong> and every column shows its fake, with unfaked personal data shown as NULL."
+        "title": "Environments and their connections",
+        "description": "An environment is a <strong>branch</strong> of your model, and the list shows which one each was made from. When you create one, <strong>Inherit connections</strong> reads that environment's source connections by reference, so a rotation there is picked up here. Leave it off, the default, to get the whole model with none of the connections, and point each source at your own database."
       },
       "stepSynthetic": {
         "title": "Generate synthetic data",
-        "description": "🧪 A <strong>synthetic dataset</strong> fills a non-production environment with rows shaped like your profiled tables, with the same relationships and fan-out, at any scale. A comparison report shows how close it came."
+        "description": "🧪 In the <strong>Synthetic data</strong> tab, define a dataset from the profile runs of the tables you name and press <strong>Generate</strong>. It fills a non-production environment with rows shaped like those tables, with the same relationships and fan-out, at the scale you choose. A comparison report shows how close it came."
       },
       "stepSyntheticPrivacy": {
         "title": "Private by design",
@@ -261,15 +273,15 @@
       },
       "stepGlossary": {
         "title": "A living business glossary",
-        "description": "📖 Every term links back to the columns that carry it — curate names, definitions, and typed relationships (kind-of, part-of, synonym-of) by hand, or let AI fill in the gaps: <strong>✨ Definitions</strong> drafts only the terms still missing one, and <strong>✨ Relationships</strong> proposes links across the whole glossary. Flag a term <strong>excluded from export</strong> to keep it out of published metadata."
+        "description": "📖 Every term links to the columns that carry it and to other terms — curate names, definitions, and typed relationships (kind-of, part-of, synonym-of) by hand, or let AI fill in the gaps: <strong>✨ Definitions</strong> drafts only the terms still missing one, and <strong>✨ Relationships</strong> proposes links across the whole glossary. Flag a term <strong>excluded from export</strong> to keep it out of published metadata."
       },
       "stepDataProducts": {
         "title": "Data products, published where consumers already look",
-        "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard) — owner, team, purpose, limitations, usage, SLA, support, custom properties — and Provisa auto-publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There's no separate export step to forget: the spec is <strong>derived from the live model</strong> — tables, lineage, tags, glossary terms — every time, so what's published can't drift out of date the way a hand-maintained ODPS file would.</p><p>✅ Each product also carries the <strong>glossary terms</strong> that define its columns and the <strong>data-quality results</strong> of the checkers that scan it.</p>"
+        "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard) — owner, team, purpose, limitations, usage, SLA, support, custom properties — and Provisa auto-publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There's no separate export step to forget: the spec is <strong>derived from the live model</strong> — tables, lineage, tags, glossary terms — every time, so what's published can't drift out of date the way a hand-maintained ODPS file would.</p><p>✅ Publishing also sends an <strong>ontology extract</strong>: the part of your glossary that bears on what is published — the terms that define its columns, the broader and related terms they connect to, and the typed relationships between them. The data-quality results of the checkers that scan it go with it. A product's <strong>Related Terms</strong> panel lists its terms.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Add a term",
-        "description": "📖 A term names one business concept, lists the columns that carry it and says what it means. Terms for real columns are derived for you; add one by hand for a concept no single column carries."
+        "description": "📖 A term names one business concept, lists the columns that carry it, links to the terms it relates to and says what it means. Terms for real columns are derived for you; add one by hand for a concept no single column carries."
       },
       "stepPublish": {
         "title": "Publish to the tools your org uses",

@@ -52,6 +52,7 @@ describe("tour scopes", () => {
       "relationships",
       "model",
       "govern",
+      "quality",
       "query",
       "testdata",
       "publish",

@@ -142,6 +142,16 @@ const DATA_PRODUCTS_EXPANDED_ROW =
 // a route is still changing it can be a row of the page being left.
 const QUALITY_ROW = '[data-table-row="dq-checker.pets_scan"]';
 const PROFILER_ROW = '[data-table-row="pet-store-sqlite.pets"]';
+// Opens the pets table's edit form from cold: expand the row unless it (or the form) is already
+// open, then click Edit unless the form is already there. Every card of the profiler/fakes run
+// names it so each can be entered directly (Back, resume) and never depends on its predecessor.
+const PETS_EDIT_OPEN = [
+  {
+    click: PROFILER_ROW,
+    unlessPresent: '[data-testid="table-read-view-edit"], [data-tour="profiler-panel"]',
+  },
+  { click: '[data-testid="table-read-view-edit"]', unlessPresent: '[data-tour="profiler-panel"]' },
+];
 
 export const TOUR_STEPS: TourStep[] = [
   // ─── SPINE: the five-minute core (register a source → expose tables → query it) ───
@@ -394,31 +404,67 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     // REQ-1934: a table joins a Data Profiler from its editor. The profiler panel is not shown on a
-    // checker's results table, so these steps open the demo's plain pet-store `pets` table.
+    // checker's results table, so the profiler cards open the demo's plain pet-store `pets` table.
+    // The quality topic's reading of the panel: what a run measures and where results land.
     route: "/tables?source=pet-store-sqlite",
     capability: "table_registration",
     prefetch: "settings",
-    element: '[data-testid="table-read-view-edit"]',
-    key: "stepProfilerTable",
-    clickBefore: PROFILER_ROW,
-  },
-  {
-    // The edit form opens as this step's clickBefore; the fill-from-profile step's Next collapses
-    // the row, which also cancels the edit.
+    ensureOpen: PETS_EDIT_OPEN,
     element: '[data-tour="profiler-panel"]',
-    key: "stepProfilerPanel",
-    clickBefore: '[data-testid="table-read-view-edit"]',
+    key: "stepQualityProfile",
   },
   {
     // REQ-1934: drift, checker exceptions, constraints and external expectations are surfaced from
-    // the profiler's runs; the panel is the nearest anchor that exists on every build.
+    // the profiler's runs; the panel is the nearest anchor that exists on every build. Next collapses
+    // the row, which also cancels the edit.
+    ensureOpen: PETS_EDIT_OPEN,
     element: '[data-tour="profiler-panel"]',
     key: "stepProfilerChecks",
+    clickAfterNext: PROFILER_ROW,
+  },
+  {
+    // REQ-1443 clause 10: a checker table whose contract scans a product's output ports is listed in
+    // the product's Data Quality panel. The panel mounts for every expanded product (an empty state
+    // when no checker scans it), so it is a stable anchor. Expand the first product, collapse it on
+    // Next; `prep` clears the page's persisted expansion so the click always expands.
+    route: "/data-products",
+    capability: "data_product_read",
+    prep: "collapseDataProducts",
+    clickBefore: DATA_PRODUCTS_COLLAPSED_ROW,
+    clickAfterNext: DATA_PRODUCTS_EXPANDED_ROW,
+    element: '[data-tour="data-product-dq"]',
+    readySelector: '[data-testid="data-product-detail"]',
+    key: "stepQualityProduct",
+  },
+  {
+    // REQ-1945: the test-data topic's opening map. Anchored on the pets table's edit control: the
+    // Tables surface needs only `table_registration` (or a hiding right), a right far more roles
+    // hold than the environments page's `environment_management`, so the map survives for most
+    // viewers. The row is expanded (not edited) so the control exists.
+    route: "/tables?source=pet-store-sqlite",
+    capability: "table_registration",
+    prefetch: "settings",
+    ensureOpen: [
+      {
+        click: PROFILER_ROW,
+        unlessPresent: '[data-testid="table-read-view-edit"], [data-tour="profiler-panel"]',
+      },
+    ],
+    element: '[data-testid="table-read-view-edit"]',
+    key: "stepTestDataMap",
+  },
+  {
+    // REQ-1934: the profiler, as what fakes and synthetic data are built from. The same panel as the
+    // quality topic's profiler card, with its own text.
+    ensureOpen: PETS_EDIT_OPEN,
+    element: '[data-tour="profiler-panel"]',
+    key: "stepTestDataProfiler",
   },
   {
     // REQ-1494: a column's kind of fake is declared in the column list's Test data mode, so the
     // step switches the column list to that mode and points at the test-data columns.
     ensureOpen: [
+      ...PETS_EDIT_OPEN,
       {
         click: '[data-tour="table-columns-mode"] input[value="testdata"]',
         unlessPresent: '[data-testid="testdata-columns"]',
@@ -429,13 +475,15 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     // REQ-1494: the fill-from-profile action sits with the column list's test-data mode.
+    ensureOpen: PETS_EDIT_OPEN,
     element: '[data-tour="table-columns-mode"]',
     key: "stepFakesFill",
     clickAfterNext: PROFILER_ROW,
   },
   {
-    // REQ-1493: an environment is read or read-write, and may be marked test data. Both are set on
-    // the Environments page; its root is the anchor.
+    // REQ-1493, REQ-1942: an environment is a branch of the model; at creation it inherits its
+    // parent's connections or starts unbound. Both are set on the Environments page; its root is
+    // the anchor.
     route: "/admin/environments",
     capability: "environment_management",
     element: '[data-testid="environments-tab"]',
@@ -584,6 +632,7 @@ export const TOPIC_IDS = [
   "relationships",
   "model",
   "govern",
+  "quality",
   "query",
   "testdata",
   "publish",
@@ -599,12 +648,16 @@ export const TOUR_SCOPES: Record<TourScope, readonly string[]> = {
   model: ["step20", "step21", "stepMetrics", "stepCommands", "step22"],
   govern: ["step18", "stepRoleInherit", "step19", "stepDomains", "stepTags", "stepRequests"],
   query: ["step6", "step7", "step8", "step9", "step10", "step11", "step12", "step13"],
-  testdata: [
+  quality: [
     "stepQualityTable",
     "stepQualityPanel",
-    "stepProfilerTable",
-    "stepProfilerPanel",
+    "stepQualityProfile",
     "stepProfilerChecks",
+    "stepQualityProduct",
+  ],
+  testdata: [
+    "stepTestDataMap",
+    "stepTestDataProfiler",
     "stepFakes",
     "stepFakesFill",
     "stepEnvKinds",

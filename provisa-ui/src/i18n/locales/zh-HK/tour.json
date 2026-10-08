@@ -41,13 +41,17 @@
         "title": "治理",
         "summary": "角色與領域、列規則、遮罩、敏感數據和數據管理員。"
       },
+      "quality": {
+        "title": "數據質素",
+        "summary": "我的真實數據好嗎？質素檢查器、合約、剖析執行、漂移，以及隨數據產品一併發布的結果。"
+      },
       "query": {
         "title": "隨處查詢",
         "summary": "透過同一條受管管道使用 SQL、GraphQL、Cypher、REST 和 MCP。"
       },
       "testdata": {
         "title": "測試數據與環境",
-        "summary": "分析器、虛構值、合成數據、環境和數據模式。"
+        "summary": "如何取得安全、真實的數據用於建構和測試：環境、剖析器、虛構值和合成數據。"
       },
       "publish": {
         "title": "發布",
@@ -179,17 +183,25 @@
         "title": "建立品質合約",
         "description": "✅ 手寫合約，或逐欄建立檢查——空值率、列數、範圍、新鮮度——並在儲存前<strong>試執行</strong>。每次掃描都會追加，因此這張表<em>就是</em>品質歷史：可以繪製圖表、設定警示，也可以與任何數據聯結。"
       },
-      "stepProfilerTable": {
+      "stepQualityProfile": {
         "title": "為表格做剖析",
-        "description": "📊 編輯任何一張表格，把它加入 <strong>Data Profiler</strong>。這是一種按排程為成員表格做剖析的來源，記錄欄位的形態、分布、數值頻率，以及每個父列的子列數目。"
-      },
-      "stepProfilerPanel": {
-        "title": "加入剖析器",
-        "description": "揀選一個剖析器並儲存，然後使用<strong>立即剖析</strong>和<strong>檢視剖析執行</strong>。結果會以表格形式落地，你可以像註冊其他表格一樣註冊並管治它們。在你註冊之前，沒有任何讀者看得到剖析。"
+        "description": "📊 表格透過自己的編輯器加入 <strong>Data Profiler</strong>，這是一種按排程為成員表格做剖析的來源。一次執行會量度每個欄位的形態、分布、數值頻率，以及每個父列的子列數目。<strong>立即剖析</strong>啟動一次執行，<strong>檢視剖析執行</strong>讀取執行記錄。結果以表格形式落地，您像登記其他表格一樣登記並管治它們；登記之前，沒有讀取者能看到剖析。"
       },
       "stepProfilerChecks": {
         "title": "漂移與檢查",
         "description": "每次執行都會與該表格最近的執行比較，漂移的度量會被標記。例外由數據質素檢查器拋出。你亦可以接受剖析提出的約束，並把執行結果與 Provisa 以外提供的預期對照檢查。亦可以把約束作為檢查匯出到 <strong>Soda</strong> 或 <strong>Great Expectations</strong> 檢查器的合約中。"
+      },
+      "stepQualityProduct": {
+        "title": "質素隨產品一併發布",
+        "description": "✅ 產品的<strong>數據質素</strong>面板列出其合約掃描該產品輸出埠的檢查器表格，讓使用者在產品旁邊就能看到憑據。檢查器掃描它之前，面板為空。數據產品在<strong>發布它</strong>深入探索中發布。"
+      },
+      "stepTestDataMap": {
+        "title": "各部分如何配合",
+        "description": "<p>建構和測試所需的安全、真實數據來自四個部分，各司其職：</p><ul><li><strong>環境</strong>: 模型的一個分支。建立時它繼承父環境的連線，或不綁定連線起步，由您把它的來源指向自己的資料庫。</li><li><strong>剖析器</strong>: 量度真實的表格，提供其餘一切所依據的形態。</li><li><strong>虛構值</strong>: 在測試數據中，欄位的虛構值取代其識別性的數值。</li><li><strong>合成數據</strong>: 用按已剖析表格的形態產生的列填滿非生產環境。</li></ul>"
+      },
+      "stepTestDataProfiler": {
+        "title": "虛構值和合成數據的建構依據",
+        "description": "📊 <strong>Data Profiler</strong> 量度您加入的表格：欄位形態、分布、數值頻率和每個父列的子列數目。<strong>根據剖析填入</strong>把這些量度值變成虛構值，合成數據集則從中抽取列。在同樣的執行上觀察漂移，見<strong>數據質素</strong>深入探索。"
       },
       "stepFakes": {
         "title": "宣告虛構值",
@@ -200,12 +212,12 @@
         "description": "✨ <strong>根據剖析填入</strong>會依據該表格最新的剖析，為識別性的欄位建議虛構值，為其餘欄位建議合成規則。在你儲存表單之前不會儲存任何內容。"
       },
       "stepEnvKinds": {
-        "title": "唯讀或可讀寫的測試環境",
-        "description": "非生產環境分為<strong>唯讀</strong>和<strong>可讀寫</strong>兩種。可讀寫環境保留自己的變更，寫入永遠不會去到數據來源。開啟<strong>測試數據</strong>後，每個欄位都顯示其虛構值，沒有虛構值的個人資料顯示為 NULL。"
+        "title": "環境及其連線",
+        "description": "環境是您模型的一個<strong>分支</strong>，清單會顯示每個環境由哪個環境建立。建立時，<strong>繼承連線</strong>按參照讀取該環境的來源連線，因此那邊的輪替會在這裡生效。保持關閉（預設）則取得不帶連線的完整模型，並把每個來源指向您自己的資料庫。"
       },
       "stepSynthetic": {
         "title": "產生合成數據",
-        "description": "🧪 <strong>合成數據集</strong>用與已剖析表格形態相同的列填滿非生產環境，關係和扇出保持一致，規模任意。比較報告會顯示它與原數據有幾接近。"
+        "description": "🧪 在<strong>合成數據</strong>分頁中，根據您指定的表格的剖析執行定義一個數據集，然後按<strong>生成</strong>。它按您選擇的規模，用與這些表格形態相同的列填滿非生產環境，關係和扇出保持一致。比較報告會顯示它有多接近。"
       },
       "stepSyntheticPrivacy": {
         "title": "以私隱為本的設計",
@@ -261,15 +273,15 @@
       },
       "stepGlossary": {
         "title": "一部鮮活的業務術語表",
-        "description": "📖 每個術語都會關聯回攜帶它的欄位——手動維護名稱、定義和類型化關係(是一種、是其一部分、同義詞),或者讓 AI 來補全空白:<strong>✨ 定義</strong>只為尚無定義的術語起草內容,<strong>✨ 關係</strong>在整個術語表範圍內提出關聯建議。將某個術語標記為<strong>從匯出中排除</strong>,即可使其不出現在已發佈的中繼資料中。"
+        "description": "📖 每個術語都會關聯到攜帶它的欄位以及其他術語——手動維護名稱、定義和類型化關係(是一種、是其一部分、同義詞),或者讓 AI 來補全空白:<strong>✨ 定義</strong>只為尚無定義的術語起草內容,<strong>✨ 關係</strong>在整個術語表範圍內提出關聯建議。將某個術語標記為<strong>從匯出中排除</strong>,即可使其不出現在已發佈的中繼資料中。"
       },
       "stepDataProducts": {
         "title": "數據產品，發佈在消費者已在使用的地方",
-        "description": "📦 這裡的每個產品都遵循 <strong>ODPS</strong>（Open Data Product Standard）— 擁有者、團隊、用途、限制、使用方式、SLA、支援、自訂屬性 — 而 Provisa 會把它直接自動發佈到 <strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong>，讓它成為消費者已在使用的目錄中的原生產品。<p>🔁 沒有需要記得去做的獨立匯出步驟：規格每次都<strong>由即時模型衍生</strong> — 數據表、血緣、標籤、詞彙表術語 — 所以已發佈的內容不會像人手維護的 ODPS 檔案那樣過時。</p><p>✅ 每個產品亦帶有定義其欄位的<strong>詞彙表術語</strong>，以及掃描它的檢查器所給出的<strong>數據質素結果</strong>。</p>"
+        "description": "📦 這裡的每個產品都遵循 <strong>ODPS</strong>（Open Data Product Standard）— 擁有者、團隊、用途、限制、使用方式、SLA、支援、自訂屬性 — 而 Provisa 會把它直接自動發佈到 <strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong>，讓它成為消費者已在使用的目錄中的原生產品。<p>🔁 沒有需要記得去做的獨立匯出步驟：規格每次都<strong>由即時模型衍生</strong> — 數據表、血緣、標籤、詞彙表術語 — 所以已發佈的內容不會像人手維護的 ODPS 檔案那樣過時。</p><p>✅ 發布亦會傳送一份<strong>本體摘錄</strong>：詞彙表中與所發布內容相關的部分——定義其欄位的術語、它們所連接的較廣泛和相關的術語，以及這些術語之間的類型化關係。掃描它的檢查器所給出的數據質素結果隨之一併傳送。產品的<strong>相關術語</strong>面板會列出它的術語。</p>"
       },
       "stepGlossaryTerm": {
         "title": "新增術語",
-        "description": "📖 術語為一個業務概念命名，列出承載它的欄位，並說明其含義。真實欄位的術語會自動為你衍生；對於沒有單一欄位能承載的概念，再手動新增。"
+        "description": "📖 術語為一個業務概念命名，列出攜帶它的欄位，連結到與之相關的術語，並說明其含義。真實欄位的術語會為您自動推導；對於沒有單一欄位能承載的概念，請手動新增。"
       },
       "stepPublish": {
         "title": "發布到你的機構所用的工具",

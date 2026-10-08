@@ -28,7 +28,7 @@ test("the core tour's Deep Dives button leaves for the menu", async ({ page }) =
   await page.locator(".driver-popover-deepdives-btn").click();
   await expect(page.locator('[data-testid="tour-menu"]')).toBeVisible();
   await expect(page.locator('[data-testid^="tour-topic-"]:not([data-testid*="done"])')).toHaveCount(
-    8,
+    9,
   );
 });
 

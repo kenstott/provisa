@@ -368,7 +368,7 @@ export function DataProductDetailPanel({
             )}
           </div>
         </div>
-        <div style={panelStyle}>
+        <div style={panelStyle} data-tour="data-product-dq">
           <Group gap={4} align="baseline">
             <Text c="dimmed" fw={500} size="sm">
               {t("dataProductsTab.detail.field.dataQuality")}

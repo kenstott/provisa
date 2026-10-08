@@ -41,13 +41,17 @@
         "title": "Governance",
         "summary": "Rollen und Domänen, Zeilenregeln, Maskierung, sensible Daten und der Data Steward."
       },
+      "quality": {
+        "title": "Datenqualität",
+        "summary": "Sind meine echten Daten gut? Qualitätsprüfer, Verträge, Profiler-Läufe, Drift und die Ergebnisse, die mit einem Datenprodukt mitreisen."
+      },
       "query": {
         "title": "Überall abfragen",
         "summary": "SQL, GraphQL, Cypher, REST und MCP über eine einzige kontrollierte Pipeline."
       },
       "testdata": {
         "title": "Testdaten und Umgebungen",
-        "summary": "Der Profiler, Fakes, synthetische Daten, Umgebungen und Datenmodi."
+        "summary": "So kommen Sie an sichere, realistische Daten zum Entwickeln und Testen: Umgebungen, der Profiler, Fakes und synthetische Daten."
       },
       "publish": {
         "title": "Veröffentlichen",
@@ -179,17 +183,25 @@
         "title": "Einen Qualitätsvertrag erstellen",
         "description": "✅ Schreiben Sie den Vertrag von Hand oder bauen Sie Prüfungen Spalte für Spalte auf — Null-Raten, Zeilenzahlen, Wertebereiche, Aktualität — und führen Sie vor dem Speichern einen <strong>Testlauf</strong> aus. Jeder Scan hängt an, daher <em>ist</em> diese Tabelle die Qualitätshistorie: stellen Sie sie dar, alarmieren Sie darauf, verknüpfen Sie sie mit allem."
       },
-      "stepProfilerTable": {
+      "stepQualityProfile": {
         "title": "Eine Tabelle profilieren",
-        "description": "📊 Bearbeiten Sie eine beliebige Tabelle, um sie einem <strong>Data Profiler</strong> hinzuzufügen, einer Quelle, die ihre Mitgliedstabellen nach Zeitplan profiliert: Spaltenformen, Verteilungen, Werthäufigkeiten und Kinder pro Elternzeile."
-      },
-      "stepProfilerPanel": {
-        "title": "Zu einem Profiler hinzufügen",
-        "description": "Wählen Sie einen Profiler und speichern Sie, dann nutzen Sie <strong>Profil jetzt erstellen</strong> und <strong>Profilläufe anzeigen</strong>. Die Ergebnisse landen als Tabellen, die Sie wie jede andere registrieren und steuern. Solange Sie sie nicht registrieren, sieht kein Leser ein Profil."
+        "description": "📊 Eine Tabelle wird in ihrem Editor einem <strong>Data Profiler</strong> hinzugefügt, einer Quelle, die ihre Mitgliedstabellen nach Zeitplan profiliert. Ein Lauf misst die Form jeder Spalte, Verteilungen und Werthäufigkeiten sowie die Kinder pro Elternzeile. <strong>Profil jetzt erstellen</strong> startet einen Lauf, <strong>Profilläufe anzeigen</strong> liest sie. Die Ergebnisse landen als Tabellen, die Sie wie jede andere registrieren und steuern; bis Sie sie registrieren, sieht kein Leser ein Profil."
       },
       "stepProfilerChecks": {
         "title": "Drift und Prüfungen",
         "description": "Jeder Lauf wird mit den letzten Läufen der Tabelle verglichen, und eine driftende Messgröße wird markiert. Eine Datenqualitätsprüfung löst die Ausnahme aus. Sie können auch vom Profil vorgeschlagene Constraints annehmen und Läufe gegen Erwartungen von außerhalb von Provisa prüfen. Ein Constraint lässt sich außerdem als Prüfung in den Vertrag eines <strong>Soda</strong>- oder <strong>Great-Expectations</strong>-Checkers exportieren."
+      },
+      "stepQualityProduct": {
+        "title": "Die Qualität reist mit dem Produkt",
+        "description": "✅ Das Feld <strong>Datenqualität</strong> eines Produkts listet die Prüfertabellen, deren Verträge seine Ausgabeports scannen, sodass ein Verbraucher die Belege neben dem Produkt sieht. Es bleibt leer, bis ein Prüfer eines scannt. Datenprodukte werden im Deep Dive <strong>Veröffentlichen</strong> publiziert."
+      },
+      "stepTestDataMap": {
+        "title": "Wie die Teile zusammenpassen",
+        "description": "<p>Sichere, realistische Daten zum Entwickeln und Testen entstehen aus vier Teilen, jedes mit einer Aufgabe:</p><ul><li><strong>Umgebung</strong>: ein Branch des Modells. Beim Anlegen erbt sie die Verbindungen ihrer übergeordneten Umgebung oder startet ungebunden, und Sie richten ihre Quellen auf Ihre eigenen Datenbanken.</li><li><strong>Profiler</strong>: misst echte Tabellen und liefert die Formen, aus denen alles andere gebaut wird.</li><li><strong>Fakes</strong>: in Testdaten ersetzt der Fake einer Spalte ihre identifizierenden Werte.</li><li><strong>Synthetische Daten</strong>: füllen eine Nicht-Produktionsumgebung mit erzeugten Zeilen in der Form der profilierten Tabellen.</li></ul>"
+      },
+      "stepTestDataProfiler": {
+        "title": "Woraus Fakes und synthetische Daten entstehen",
+        "description": "📊 Ein <strong>Data Profiler</strong> misst die Tabellen, die Sie ihm hinzufügen: Spaltenformen, Verteilungen, Werthäufigkeiten und Kinder pro Elternzeile. <strong>Aus Profil füllen</strong> macht aus diesen Messwerten Fakes, und ein synthetischer Datensatz zieht seine Zeilen daraus. Dieselben Läufe auf Drift zu beobachten, behandelt der Deep Dive <strong>Datenqualität</strong>."
       },
       "stepFakes": {
         "title": "Einen Fake-Wert deklarieren",
@@ -200,12 +212,12 @@
         "description": "✨ <strong>Aus Profil füllen</strong> schlägt aus dem neuesten Profil der Tabelle Fake-Werte für identifizierende Spalten und synthetische Regeln für die übrigen vor. Gespeichert wird erst, wenn Sie das Formular speichern."
       },
       "stepEnvKinds": {
-        "title": "Lese- oder Lese-/Schreib-Testumgebungen",
-        "description": "Eine Nicht-Produktionsumgebung ist <strong>lesend</strong> oder <strong>lesend und schreibend</strong>. Eine Umgebung mit Schreibzugriff behält ihre eigenen Änderungen, und ein Schreibvorgang erreicht nie eine Quelle. Schalten Sie <strong>Testdaten</strong> ein, und jede Spalte zeigt ihren Fake-Wert; nicht ersetzte personenbezogene Daten erscheinen als NULL."
+        "title": "Umgebungen und ihre Verbindungen",
+        "description": "Eine Umgebung ist ein <strong>Branch</strong> Ihres Modells, und die Liste zeigt, aus welcher jede entstand. Beim Anlegen liest <strong>Verbindungen erben</strong> die Quellverbindungen dieser Umgebung als Referenz, sodass eine dortige Rotation hier ankommt. Lassen Sie es aus, die Voreinstellung, erhalten Sie das ganze Modell ohne Verbindungen und richten jede Quelle auf Ihre eigene Datenbank."
       },
       "stepSynthetic": {
         "title": "Synthetische Daten erzeugen",
-        "description": "🧪 Ein <strong>synthetischer Datensatz</strong> füllt eine Nicht-Produktionsumgebung mit Zeilen in der Form Ihrer profilierten Tabellen, mit denselben Beziehungen und derselben Fächerung, in beliebigem Maßstab. Ein Vergleichsbericht zeigt, wie nah er herankam."
+        "description": "🧪 Definieren Sie im Tab <strong>Synthetische Daten</strong> einen Datensatz aus den Profilläufen der Tabellen, die Sie nennen, und drücken Sie <strong>Generieren</strong>. Er füllt eine Nicht-Produktionsumgebung mit Zeilen in der Form dieser Tabellen, mit denselben Beziehungen und derselben Fächerung, im gewählten Maßstab. Ein Vergleichsbericht zeigt, wie nah er herankam."
       },
       "stepSyntheticPrivacy": {
         "title": "Datenschutz von Anfang an",
@@ -261,15 +273,15 @@
       },
       "stepGlossary": {
         "title": "Ein lebendiges Fachglossar",
-        "description": "📖 Jeder Begriff verweist zurück auf die Spalten, die ihn tragen — pflegen Sie Namen, Definitionen und typisierte Beziehungen (Art von, Teil von, Synonym von) von Hand, oder lassen Sie die KI die Lücken füllen: <strong>✨ Definitionen</strong> entwirft nur Begriffe, denen noch eine fehlt, und <strong>✨ Beziehungen</strong> schlägt Verknüpfungen im gesamten Glossar vor. Markieren Sie einen Begriff als <strong>vom Export ausgeschlossen</strong>, damit er nicht in den veröffentlichten Metadaten erscheint."
+        "description": "📖 Jeder Begriff verweist auf die Spalten, die ihn tragen, und auf andere Begriffe — pflegen Sie Namen, Definitionen und typisierte Beziehungen (Art von, Teil von, Synonym von) von Hand, oder lassen Sie die KI die Lücken füllen: <strong>✨ Definitionen</strong> entwirft nur Begriffe, denen noch eine fehlt, und <strong>✨ Beziehungen</strong> schlägt Verknüpfungen im gesamten Glossar vor. Markieren Sie einen Begriff als <strong>vom Export ausgeschlossen</strong>, damit er nicht in den veröffentlichten Metadaten erscheint."
       },
       "stepDataProducts": {
         "title": "Datenprodukte, veröffentlicht dort, wo Konsumenten bereits suchen",
-        "description": "📦 Jedes Produkt hier spricht <strong>ODPS</strong> (den Open Data Product Standard) – Eigentümer, Team, Zweck, Einschränkungen, Nutzung, SLA, Support, benutzerdefinierte Eigenschaften – und Provisa veröffentlicht es automatisch direkt in <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong>, sodass es als natives Produkt in dem Katalog erscheint, den Ihre Konsumenten ohnehin nutzen.<p>🔁 Es gibt keinen separaten Exportschritt, den man vergessen könnte: Die Spezifikation wird jedes Mal <strong>aus dem Live-Modell abgeleitet</strong> – Tabellen, Lineage, Tags, Glossarbegriffe –, sodass das Veröffentlichte nicht veralten kann wie eine von Hand gepflegte ODPS-Datei.</p><p>✅ Jedes Produkt trägt außerdem die <strong>Glossarbegriffe</strong>, die seine Spalten definieren, und die <strong>Datenqualitätsergebnisse</strong> der Checker, die es prüfen.</p>"
+        "description": "📦 Jedes Produkt hier spricht <strong>ODPS</strong> (den Open Data Product Standard) – Eigentümer, Team, Zweck, Einschränkungen, Nutzung, SLA, Support, benutzerdefinierte Eigenschaften – und Provisa veröffentlicht es automatisch direkt in <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong>, sodass es als natives Produkt in dem Katalog erscheint, den Ihre Konsumenten ohnehin nutzen.<p>🔁 Es gibt keinen separaten Exportschritt, den man vergessen könnte: Die Spezifikation wird jedes Mal <strong>aus dem Live-Modell abgeleitet</strong> – Tabellen, Lineage, Tags, Glossarbegriffe –, sodass das Veröffentlichte nicht veralten kann wie eine von Hand gepflegte ODPS-Datei.</p><p>✅ Das Veröffentlichen sendet außerdem einen <strong>Ontologie-Auszug</strong>: den Teil Ihres Glossars, der für das Veröffentlichte relevant ist — die Begriffe, die seine Spalten definieren, die übergeordneten und verwandten Begriffe, mit denen sie verbunden sind, und die typisierten Beziehungen zwischen ihnen. Die Datenqualitätsergebnisse der Prüfer, die es scannen, gehen mit. Das Feld <strong>Verwandte Begriffe</strong> eines Produkts listet seine Begriffe.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Einen Begriff hinzufügen",
-        "description": "📖 Ein Begriff benennt ein fachliches Konzept, listet die Spalten auf, die es tragen, und sagt, was es bedeutet. Begriffe für reale Spalten werden für Sie abgeleitet; fügen Sie nur dann einen von Hand hinzu, wenn keine einzelne Spalte das Konzept trägt."
+        "description": "📖 Ein Begriff benennt ein fachliches Konzept, listet die Spalten auf, die ihn tragen, verweist auf die Begriffe, mit denen er zusammenhängt, und sagt, was er bedeutet. Begriffe für echte Spalten werden für Sie abgeleitet; legen Sie einen von Hand an für ein Konzept, das keine einzelne Spalte trägt."
       },
       "stepPublish": {
         "title": "In den Werkzeugen Ihrer Organisation veröffentlichen",

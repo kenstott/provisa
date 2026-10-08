@@ -41,13 +41,17 @@
         "title": "Gobernarlo",
         "summary": "Roles y dominios, reglas de fila, máscaras, datos sensibles y el responsable de datos."
       },
+      "quality": {
+        "title": "Calidad de datos",
+        "summary": "¿Son buenos mis datos reales? Verificadores de calidad, contratos, ejecuciones del perfilador, deriva y los resultados que viajan con un producto de datos."
+      },
       "query": {
         "title": "Consultarlo en todas partes",
         "summary": "SQL, GraphQL, Cypher, REST y MCP a través de una sola canalización gobernada."
       },
       "testdata": {
         "title": "Datos de prueba y entornos",
-        "summary": "El perfilador, datos ficticios, datos sintéticos, entornos y modos de datos."
+        "summary": "Cómo obtener datos seguros y realistas para construir y probar: entornos, el perfilador, valores ficticios y datos sintéticos."
       },
       "publish": {
         "title": "Publicarlo",
@@ -179,17 +183,25 @@
         "title": "Cree un contrato de calidad",
         "description": "✅ Escriba el contrato a mano o construya comprobaciones columna por columna —tasas de nulos, recuentos de filas, rangos, actualidad— y haga una <strong>ejecución de prueba</strong> antes de guardar. Cada escaneo se añade, así que esta tabla <em>es</em> el historial de calidad: represéntela, cree alertas sobre ella, únala con lo que quiera."
       },
-      "stepProfilerTable": {
+      "stepQualityProfile": {
         "title": "Perfilar una tabla",
-        "description": "📊 Edite cualquier tabla para añadirla a un <strong>Data Profiler</strong>, una fuente que perfila sus tablas miembro según un calendario: formas de columna, distribuciones, frecuencias de valores e hijos por padre."
-      },
-      "stepProfilerPanel": {
-        "title": "Añadirla a un perfilador",
-        "description": "Elija un perfilador y guarde; después use <strong>Perfilar ahora</strong> y <strong>Ver ejecuciones de perfil</strong>. Los resultados llegan como tablas que usted registra y gobierna como cualquier otra. Hasta que las registre, ningún lector ve un perfil."
+        "description": "📊 Una tabla se une a un <strong>Data Profiler</strong> desde su editor, una fuente que perfila sus tablas miembro según un calendario. Una ejecución mide la forma de cada columna, las distribuciones y las frecuencias de valores, y los hijos por padre. <strong>Perfilar ahora</strong> inicia una y <strong>Ver ejecuciones de perfil</strong> las lee. Los resultados llegan como tablas que registra y gobierna como cualquier otra; hasta que las registre, ningún lector ve un perfil."
       },
       "stepProfilerChecks": {
         "title": "Deriva y comprobaciones",
         "description": "Cada ejecución se compara con las recientes de la tabla, y una medida que deriva se marca. Un verificador de calidad de datos genera la excepción. También puede aceptar las restricciones que propone el perfil y comprobar las ejecuciones frente a expectativas externas a Provisa. Una restricción también se puede exportar como comprobación al contrato de un verificador <strong>Soda</strong> o <strong>Great Expectations</strong>."
+      },
+      "stepQualityProduct": {
+        "title": "La calidad viaja con el producto",
+        "description": "✅ El panel <strong>Calidad de datos</strong> de un producto lista las tablas verificadoras cuyos contratos escanean sus puertos de salida, de modo que un consumidor ve la evidencia junto al producto. Está vacío hasta que un verificador escanea alguno. Los productos de datos se publican en la inmersión <strong>Publicarlo</strong>."
+      },
+      "stepTestDataMap": {
+        "title": "Cómo encajan las piezas",
+        "description": "<p>Los datos seguros y realistas para construir y probar salen de cuatro piezas, cada una con una función:</p><ul><li><strong>Entorno</strong>: una rama del modelo. Al crearlo hereda las conexiones de su entorno de origen o empieza sin vincular, y usted apunta sus fuentes a sus propias bases de datos.</li><li><strong>Perfilador</strong>: mide tablas reales y aporta las formas con las que se construye todo lo demás.</li><li><strong>Valores ficticios</strong>: en los datos de prueba, el valor ficticio de una columna sustituye sus valores identificativos.</li><li><strong>Datos sintéticos</strong>: llenan un entorno que no es de producción con filas generadas con la forma de las tablas perfiladas.</li></ul>"
+      },
+      "stepTestDataProfiler": {
+        "title": "De qué se construyen los valores ficticios y los datos sintéticos",
+        "description": "📊 Un <strong>Data Profiler</strong> mide las tablas que le añade: formas de columna, distribuciones, frecuencias de valores e hijos por padre. <strong>Rellenar desde el perfil</strong> convierte esas medidas en valores ficticios, y un conjunto de datos sintético extrae de ellas sus filas. Vigilar la deriva en esas mismas ejecuciones se explica en la inmersión <strong>Calidad de datos</strong>."
       },
       "stepFakes": {
         "title": "Declarar un valor ficticio",
@@ -200,12 +212,12 @@
         "description": "✨ <strong>Rellenar desde el perfil</strong> propone, a partir del último perfil de la tabla, valores ficticios para las columnas identificativas y reglas sintéticas para el resto. No se guarda nada hasta que guarde el formulario."
       },
       "stepEnvKinds": {
-        "title": "Entornos de prueba de lectura o de lectura y escritura",
-        "description": "Un entorno que no es de producción es de <strong>lectura</strong> o de <strong>lectura y escritura</strong>. Uno de lectura y escritura conserva sus propios cambios, y una escritura nunca llega a una fuente. Active <strong>Datos de prueba</strong> y cada columna muestra su valor ficticio; los datos personales sin valor ficticio aparecen como NULL."
+        "title": "Entornos y sus conexiones",
+        "description": "Un entorno es una <strong>rama</strong> de su modelo, y la lista muestra de cuál se hizo cada uno. Al crear uno, <strong>Heredar conexiones</strong> lee por referencia las conexiones de fuente de ese entorno, de modo que una rotación allí se recoge aquí. Déjelo desactivado, el valor por defecto, para obtener todo el modelo sin las conexiones y apuntar cada fuente a su propia base de datos."
       },
       "stepSynthetic": {
         "title": "Generar datos sintéticos",
-        "description": "🧪 Un <strong>conjunto de datos sintético</strong> llena un entorno que no es de producción con filas con la forma de sus tablas perfiladas, con las mismas relaciones y la misma ramificación, a cualquier escala. Un informe comparativo muestra cuánto se acercó."
+        "description": "🧪 En la pestaña <strong>Datos sintéticos</strong>, defina un conjunto de datos a partir de las ejecuciones de perfil de las tablas que nombre y pulse <strong>Generar</strong>. Llena un entorno que no es de producción con filas con la forma de esas tablas, con las mismas relaciones y la misma ramificación, a la escala que elija. Un informe comparativo muestra cuánto se acercó."
       },
       "stepSyntheticPrivacy": {
         "title": "Privado por diseño",
@@ -261,15 +273,15 @@
       },
       "stepGlossary": {
         "title": "Un glosario de negocio vivo",
-        "description": "📖 Cada término remite a las columnas que lo contienen — cure nombres, definiciones y relaciones tipadas (tipo de, parte de, sinónimo de) a mano, o deje que la IA complete los huecos: <strong>✨ Definiciones</strong> redacta únicamente los términos que aún no tienen una, y <strong>✨ Relaciones</strong> propone enlaces en todo el glosario. Marque un término como <strong>excluido de la exportación</strong> para mantenerlo fuera de los metadatos publicados."
+        "description": "📖 Cada término remite a las columnas que lo contienen y a otros términos — cure nombres, definiciones y relaciones tipadas (tipo de, parte de, sinónimo de) a mano, o deje que la IA complete los huecos: <strong>✨ Definiciones</strong> redacta únicamente los términos que aún no tienen una, y <strong>✨ Relaciones</strong> propone enlaces en todo el glosario. Marque un término como <strong>excluido de la exportación</strong> para mantenerlo fuera de los metadatos publicados."
       },
       "stepDataProducts": {
         "title": "Productos de datos, publicados donde los consumidores ya buscan",
-        "description": "📦 Cada producto aquí habla <strong>ODPS</strong> (el Open Data Product Standard): propietario, equipo, propósito, limitaciones, uso, SLA, soporte, propiedades personalizadas, y Provisa lo publica automáticamente en <strong>Snowflake Horizon</strong> y <strong>BigQuery Dataplex</strong>, de modo que aparece como un producto nativo en el catálogo que sus consumidores ya usan.<p>🔁 No hay un paso de exportación aparte que olvidar: la especificación se <strong>deriva del modelo en vivo</strong> (tablas, linaje, etiquetas, términos del glosario) cada vez, así que lo publicado no puede quedar desactualizado como lo haría un archivo ODPS mantenido a mano.</p><p>✅ Cada producto lleva además los <strong>términos del glosario</strong> que definen sus columnas y los <strong>resultados de calidad de datos</strong> de los verificadores que lo analizan.</p>"
+        "description": "📦 Cada producto aquí habla <strong>ODPS</strong> (el Open Data Product Standard): propietario, equipo, propósito, limitaciones, uso, SLA, soporte, propiedades personalizadas, y Provisa lo publica automáticamente en <strong>Snowflake Horizon</strong> y <strong>BigQuery Dataplex</strong>, de modo que aparece como un producto nativo en el catálogo que sus consumidores ya usan.<p>🔁 No hay un paso de exportación aparte que olvidar: la especificación se <strong>deriva del modelo en vivo</strong> (tablas, linaje, etiquetas, términos del glosario) cada vez, así que lo publicado no puede quedar desactualizado como lo haría un archivo ODPS mantenido a mano.</p><p>✅ Publicar también envía un <strong>extracto de ontología</strong>: la parte de su glosario que afecta a lo publicado — los términos que definen sus columnas, los términos más amplios y relacionados con los que se conectan, y las relaciones tipadas entre ellos. Los resultados de calidad de datos de los verificadores que lo escanean van con él. El panel <strong>Términos relacionados</strong> de un producto lista sus términos.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Añadir un término",
-        "description": "📖 Un término nombra un concepto de negocio, enumera las columnas que lo llevan y dice qué significa. Los términos de columnas reales se derivan por usted; añada uno a mano para un concepto que ninguna columna lleva por sí sola."
+        "description": "📖 Un término nombra un concepto de negocio, lista las columnas que lo contienen, enlaza con los términos con los que se relaciona y dice qué significa. Los términos de las columnas reales se derivan por usted; añada uno a mano para un concepto que ninguna columna contiene por sí sola."
       },
       "stepPublish": {
         "title": "Publicar en las herramientas de su organización",
