@@ -48,7 +48,7 @@ def given_mutation_against_registered_table(shared_data):
 
     mock_producer = MagicMock()
 
-    def _capture_produce(topic, key, value):
+    def _capture_produce(topic, value, key=None):
         produced.append(
             {
                 "topic": topic,
@@ -59,9 +59,8 @@ def given_mutation_against_registered_table(shared_data):
             }
         )
 
-    mock_producer.produce.side_effect = _capture_produce
-    mock_producer.poll.return_value = 0
-    mock_producer.flush.return_value = 0
+    # The product's producer (provisa/kafka/producer.py): send(topic, value, key=...).
+    mock_producer.send.side_effect = _capture_produce
     shared_data["mock_producer"] = mock_producer
 
     # Configure a deterministic topic so the assertion is exact.
@@ -72,13 +71,12 @@ def given_mutation_against_registered_table(shared_data):
 def when_mutation_completes(shared_data):
     mock_producer = shared_data["mock_producer"]
     with patch.object(ce, "_producer", mock_producer):
-        with patch.object(ce, "_get_producer", return_value=mock_producer):
-            with patch.object(ce, "_get_topic", return_value=shared_data["topic"]):
-                ce.emit_change_event(
-                    shared_data["table"],
-                    shared_data["source"],
-                    shared_data["mutation_type"],
-                )
+        with patch.object(ce, "_get_topic", return_value=shared_data["topic"]):
+            ce.emit_change_event(
+                shared_data["table"],
+                shared_data["source"],
+                shared_data["mutation_type"],
+            )
 
 
 @then(
@@ -133,7 +131,7 @@ def given_mutation_hook_fires(shared_data):
 
     mock_producer = MagicMock()
 
-    def _capture_produce(topic, key, value):
+    def _capture_produce(topic, value, key=None):
         produced.append(
             {
                 "topic": topic,
@@ -144,9 +142,8 @@ def given_mutation_hook_fires(shared_data):
             }
         )
 
-    mock_producer.produce.side_effect = _capture_produce
-    mock_producer.poll.return_value = 0
-    mock_producer.flush.return_value = 0
+    # The product's producer (provisa/kafka/producer.py): send(topic, value, key=...).
+    mock_producer.send.side_effect = _capture_produce
     shared_data["mock_producer"] = mock_producer
 
     # Track the side effects that the single mutation hook must perform.
@@ -175,13 +172,12 @@ def when_hook_executes(shared_data):
     mock_producer = shared_data["mock_producer"]
     hook = shared_data["mutation_hook"]
     with patch.object(ce, "_producer", mock_producer):
-        with patch.object(ce, "_get_producer", return_value=mock_producer):
-            with patch.object(ce, "_get_topic", return_value=shared_data["topic"]):
-                hook(
-                    shared_data["source"],
-                    shared_data["table"],
-                    shared_data["mutation_type"],
-                )
+        with patch.object(ce, "_get_topic", return_value=shared_data["topic"]):
+            hook(
+                shared_data["source"],
+                shared_data["table"],
+                shared_data["mutation_type"],
+            )
 
 
 @then(
@@ -252,7 +248,7 @@ def given_external_etl_modified_source(shared_data):
 
     mock_producer = MagicMock()
 
-    def _capture_produce(topic, key, value):
+    def _capture_produce(topic, value, key=None):
         produced.append(
             {
                 "topic": topic,
@@ -263,9 +259,8 @@ def given_external_etl_modified_source(shared_data):
             }
         )
 
-    mock_producer.produce.side_effect = _capture_produce
-    mock_producer.poll.return_value = 0
-    mock_producer.flush.return_value = 0
+    # The product's producer (provisa/kafka/producer.py): send(topic, value, key=...).
+    mock_producer.send.side_effect = _capture_produce
     shared_data["mock_producer"] = mock_producer
 
     # Track that the same mutation hook side effects fire for a touch.
@@ -287,9 +282,8 @@ def when_etl_calls_touch_mutation(shared_data):
     mock_producer = shared_data["mock_producer"]
     touch = shared_data["touch_mutation"]
     with patch.object(ce, "_producer", mock_producer):
-        with patch.object(ce, "_get_producer", return_value=mock_producer):
-            with patch.object(ce, "_get_topic", return_value=shared_data["topic"]):
-                touch(shared_data["source"], shared_data["table"])
+        with patch.object(ce, "_get_topic", return_value=shared_data["topic"]):
+            touch(shared_data["source"], shared_data["table"])
 
 
 @then("Provisa fires the mutation hook and emits a change event as if data had changed directly")
