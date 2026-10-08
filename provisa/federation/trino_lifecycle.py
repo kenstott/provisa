@@ -450,7 +450,8 @@ async def reload_catalog(state: Any, catalog: str, ops_views: list) -> dict:
     read back from ``trino/catalog/*.properties`` — those files are dev fixtures whose values have
     nothing to do with the deployment doing the reload.
     """
-    from provisa.core.trino_system_catalogs import register_catalog, spec_for
+    from provisa.core.platform_state.catalogs import CatalogRecord
+    from provisa.core.trino_system_catalogs import recreate_catalog
 
     if not state.engine_conn_kwargs:
         return {"success": False, "errors": ["Query engine connection not configured"]}
@@ -460,8 +461,13 @@ async def reload_catalog(state: Any, catalog: str, ops_views: list) -> dict:
 
     errors: list[str] = []
     try:
-        spec = spec_for(catalog, state.tenant_engine.url)
-        await asyncio.to_thread(register_catalog, state.engine_conn, spec)
+        await asyncio.to_thread(
+            recreate_catalog,
+            state.engine_conn,
+            state.tenant_engine.url,
+            catalog,
+            CatalogRecord(state.platform_state_db),
+        )
     except (ValueError, RuntimeError, trino.exceptions.Error) as exc:
         return {"success": False, "errors": [str(exc)]}
 

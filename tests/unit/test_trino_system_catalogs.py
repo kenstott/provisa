@@ -360,6 +360,34 @@ def test_each_coordinator_has_its_own_record(_registered, _record):
     assert _registered == _ALL
 
 
+def test_a_catalog_reloaded_on_request_is_recorded_so_the_next_build_leaves_it(
+    monkeypatch, _registrar, _record
+):
+    """The admin reload re-creates a catalog whatever it was created from. Unrecorded, the next
+    build could not tell and re-created it once more, under whoever was reading it."""
+    from provisa.core import catalog as catalog_module
+
+    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn, timeout=None: None)
+    monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url, timeout=None: None)
+    reloading = _LiveConn(set(_ALL))
+    tsc.recreate_catalog(reloading, _URL, "provisa_admin", _record)
+    assert _registrar == ["lock", "unlock"]  # under the registration lock
+    assert [sql.split(" USING ")[0] for sql in reloading.executed] == [
+        "DROP CATALOG IF EXISTS provisa_admin",
+        "CREATE CATALOG provisa_admin",
+    ]
+
+    building = _LiveConn(set(_ALL))
+    tsc.ensure_system_catalogs(building, _URL, _record)
+    issued = [sql for sql in building.executed if sql.startswith(("DROP", "CREATE"))]
+    assert not any("provisa_admin" in sql for sql in issued)
+
+
+def test_reloading_a_catalog_provisa_does_not_own_is_refused(_record):
+    with pytest.raises(ValueError, match="not a Provisa system catalog"):
+        tsc.recreate_catalog(_LiveConn(set(_ALL)), _URL, "sales_pg", _record)
+
+
 @pytest.mark.parametrize(
     ("sql", "unqualified"),
     [

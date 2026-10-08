@@ -2393,6 +2393,17 @@ class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
         return True
 
 
+def stop_pgwire_server(server: ProvisaServer) -> None:
+    """Stop accepting pgwire connections: end the accept loop, then close the listening socket.
+
+    ``shutdown()`` sets the loop's flag and returns once ``serve_forever`` has (it looks every half
+    second), so the socket is closed with no thread in ``accept()`` on it. NOT ``server_close()``:
+    on a threading server that also waits for every connection's thread, and a connection already
+    accepted is the client's to end -- its request runs to its own deadline."""
+    server.shutdown()
+    server.socket.close()
+
+
 def start_pgwire_server(  # REQ-527
     host: str,
     port: int,

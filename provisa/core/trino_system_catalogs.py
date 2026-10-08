@@ -418,6 +418,17 @@ def _bring_in_line(conn: TrinoConnection, url: URL, record: "CatalogRecord") -> 
     return changed
 
 
+def recreate_catalog(conn: TrinoConnection, url: URL, name: str, record: "CatalogRecord") -> None:
+    """Drop and re-create one system catalog because an administrator asked (the reload action),
+    whatever it was last created from, and record what it now is: the next boot or runtime build
+    then finds it in line and leaves it alone. Under the registration lock, like every registrar.
+    Raises ``ValueError`` for a name that is no system catalog."""
+    spec = spec_for(name, url)
+    with one_registrar(url):
+        register_catalog(conn, spec)
+        record.record(f"{conn.host}:{conn.port}", spec.name, spec_hash(spec))
+
+
 def register_system_catalogs(
     conn: TrinoConnection, url: URL, record: "CatalogRecord", timeout: float | None = None
 ) -> None:
