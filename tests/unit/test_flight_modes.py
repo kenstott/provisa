@@ -107,6 +107,64 @@ class TestTrinoTypeToArrow:
     def test_timestamp(self):
         assert _physical_type_to_arrow("timestamp") == pa.timestamp("us")
 
+    def test_a_nested_type_is_listed_as_json(self):
+        """REQ-1965: semantic SQL has no array, struct or map type. A nested column is a JSON
+        column and the SQL catalogs list it as one — the type a ``json`` column has here —
+        never as a list, a map or a struct."""
+        json_type = _physical_type_to_arrow("json")
+        assert json_type == pa.utf8()
+        for nested in (
+            "array(varchar)",
+            "integer[]",
+            "array(array(bigint))",
+            "map(varchar, integer)",
+            "row(a integer, tags array(varchar))",
+            "struct(a int)",
+            "list(varchar)",
+            "ARRAY",
+            "map(varchar)",
+        ):
+            assert _physical_type_to_arrow(nested) == json_type, nested
+        assert _physical_type_to_arrow("jsonb") == json_type
+
+    def test_every_spelling_the_products_vocabulary_names_has_a_catalog_type(self):
+        """Stored types are what the introspecting engine printed: a Postgres
+        ``character varying`` or ``int4`` is as ordinary as ``varchar``."""
+        for spelling, expected in {
+            "character varying": pa.utf8(),
+            "character varying(40)": pa.utf8(),
+            "timestamp without time zone": pa.timestamp("us"),
+            "time without time zone": pa.time64("us"),
+            "int2": pa.int16(),
+            "int4": pa.int32(),
+            "int8": pa.int64(),
+            "float4": pa.float32(),
+            "float8": pa.float64(),
+            "bool": pa.bool_(),
+            "string": pa.utf8(),
+            "datetime": pa.timestamp("us"),
+            "blob": pa.binary(),
+        }.items():
+            assert _physical_type_to_arrow(spelling) == expected, spelling
+
+    def test_a_type_with_no_catalog_form_is_listed_as_text_and_says_so(self):
+        """It was listed as a string silently; one such column must not take the listing down."""
+        table = CatalogTable(
+            domain_id="geo",
+            table_name="parcels",
+            description="",
+            columns=[
+                CatalogColumn(name="id", data_type="integer", is_nullable=True, description=""),
+                CatalogColumn(
+                    name="shape", data_type="USER-DEFINED", is_nullable=True, description=""
+                ),
+            ],
+        )
+        schema = catalog_table_to_arrow_schema(table)
+        assert schema.field("shape").type == pa.utf8()
+        assert schema.field("shape").metadata == {b"type_unmapped": b"USER-DEFINED"}
+        assert not schema.field("id").metadata
+
     def test_unknown_raises(self):
         with pytest.raises(KeyError, match="Unmapped engine type"):
             _physical_type_to_arrow("unknown_fancy_type")

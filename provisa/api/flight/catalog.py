@@ -33,47 +33,7 @@ from provisa.core.modeling_tags import append_modeling_tag
 
 log = logging.getLogger(__name__)
 
-# the engine type -> Arrow type mapping
-_ARROW_TYPE_MAP: dict[str, pa.DataType] = {
-    "boolean": pa.bool_(),
-    "tinyint": pa.int8(),
-    "smallint": pa.int16(),
-    "integer": pa.int32(),
-    "int": pa.int32(),
-    "bigint": pa.int64(),
-    "real": pa.float32(),
-    "double": pa.float64(),
-    "double precision": pa.float64(),
-    "float": pa.float32(),
-    "decimal": pa.float64(),
-    "numeric": pa.float64(),
-    "varchar": pa.utf8(),
-    "char": pa.utf8(),
-    "text": pa.utf8(),
-    "varbinary": pa.binary(),
-    "bytea": pa.binary(),
-    "date": pa.date32(),
-    "time": pa.time64("us"),
-    "timestamp": pa.timestamp("us"),
-    "timestamptz": pa.timestamp("us", tz="UTC"),
-    "timestamp with time zone": pa.timestamp("us", tz="UTC"),
-    "interval": pa.utf8(),
-    "json": pa.utf8(),
-    "jsonb": pa.utf8(),
-    "uuid": pa.utf8(),
-    "array": pa.utf8(),
-    "map": pa.utf8(),
-    "row": pa.utf8(),
-}
-
-
-def _physical_type_to_arrow(column_type: str) -> pa.DataType:
-    """Map the engine data type string to an Arrow type."""
-    # Strip parameterized types: decimal(10,2) -> decimal
-    base = column_type.split("(")[0].strip().lower()
-    if base in _ARROW_TYPE_MAP:
-        return _ARROW_TYPE_MAP[base]
-    raise KeyError(f"Unmapped engine type: {column_type!r}")
+from provisa.core.catalog_types import _physical_type_to_arrow  # noqa: E402,F401  # the catalog's types live with the model
 
 
 @dataclass(frozen=True)
@@ -345,11 +305,16 @@ def catalog_table_to_arrow_schema(table: CatalogTable) -> pa.Schema:  # REQ-143
     """Convert a CatalogTable to an Arrow schema with metadata."""
     fields = []
     for col in table.columns:
+        metadata = {}
         try:
             arrow_type = _physical_type_to_arrow(col.data_type)
         except KeyError:
+            # A registered type neither the catalog nor the product's vocabulary names (a
+            # source's own type: an enum, a bare ARRAY). It is listed as text and SAYS so, in
+            # the field's metadata, with the type it was registered as; one column never takes
+            # the listing down.
             arrow_type = pa.utf8()
-        metadata = {}
+            metadata[b"type_unmapped"] = col.data_type.encode("utf-8")
         if col.description:
             metadata[b"description"] = col.description.encode("utf-8")
         if col.is_primary_key:
