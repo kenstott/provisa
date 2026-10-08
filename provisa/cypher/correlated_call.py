@@ -81,7 +81,10 @@ class CorrelatedCallMixin:  # REQ-573
     ) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Translate one correlated CALL body to a LATERAL subquery."""
         from provisa.cypher.translator import _Translator
-        from provisa.cypher.translator_types import CypherTranslateError
+        from provisa.cypher.translator_types import (
+            CypherTranslateError,
+            UnregisteredRelationshipType,
+        )
 
         # Build inner translator with outer _var_table pre-loaded for imported vars
         outer_bindings = {v: self._var_table[v] for v in call.imported_vars if v in self._var_table}
@@ -95,6 +98,8 @@ class CorrelatedCallMixin:  # REQ-573
 
         try:
             inner_select, inner_params, _ = inner_translator.translate()
+        except UnregisteredRelationshipType:
+            raise  # REQ-603: a refusal of the statement, not a body to run some other way
         except CypherTranslateError:
             return None
 

@@ -77,7 +77,6 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
 
     Returns (sql_ast, ordered_param_names, graph_vars).
     """
-    refuse_unregistered_relationship_types(ast, label_map)
     translator = _Translator(ast, label_map, params)
     return translator.translate()
 
@@ -87,8 +86,11 @@ def refuse_unregistered_relationship_types(ast: CypherAST, label_map: CypherLabe
 
     The translator lowers an unknown type to a predicate that is never true (best effort, no
     crash), which answers no rows where the statement should be refused; so the types are checked
-    on the AST, before anything is lowered. Here, in the one translation every Cypher surface
-    performs (HTTP, Bolt, Flight), so none checks it for itself and none goes without."""
+    on the AST, before anything is lowered. Called by ``_Translator.translate`` -- the one
+    translation every Cypher surface performs (HTTP, Bolt, Flight), and the one every statement
+    inside a statement goes through too (EXISTS { }, COUNT { }, COLLECT { }, CALL { }) -- so none
+    checks it for itself and none goes without. A pattern comprehension has no statement of its
+    own and is checked where it is lowered (``expr_context.resolve_pattern_comprehension``)."""
     from provisa.cypher.parser import PathFunction, PathPattern
     from provisa.cypher.translator_types import UnregisteredRelationshipType
 
@@ -468,6 +470,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 "Use cypher_calls_to_sql_list() instead."
             )
 
+        refuse_unregistered_relationship_types(self._ast, self._lm)
         segments = self._group_pipeline()
         cte_defs: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 

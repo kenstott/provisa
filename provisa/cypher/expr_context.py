@@ -400,6 +400,12 @@ class TranslatorExprContext:
         src_var, rel_type, tgt_var, tgt_label = m.group(1), m.group(2), m.group(3), m.group(4)
         t = self._t
         rel = t._lm.relationships.get(rel_type.upper()) if rel_type else None
+        if rel is None and rel_type and rel_type not in t._lm.aliases:
+            # REQ-603: a type that is not registered is refused, never read as some other
+            # relationship of the source.
+            from provisa.cypher.translator_types import UnregisteredRelationshipType
+
+            raise UnregisteredRelationshipType([rel_type])
         if rel is None:
             src_nm = (t._var_table.get(src_var) or (None, None))[1]
             if src_nm is not None:

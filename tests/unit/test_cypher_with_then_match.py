@@ -112,3 +112,24 @@ def test_each_with_in_a_chain_goes_on_from_the_one_before(engine):
         "WITH r, c.name AS name MATCH (p:Orders) WHERE p.region = r RETURN p.id, name"
     )
     assert _rows(engine, cypher) == [(1, "ann"), (1, "cy"), (2, "bo")]
+
+
+@pytest.mark.parametrize(
+    "cypher",
+    [
+        "MATCH (o:Orders) WHERE EXISTS { MATCH (o)-[:NOPE]->(c:Customers) } RETURN o.id",
+        "MATCH (o:Orders) WHERE COUNT { MATCH (o)-[:NOPE]->(c:Customers) } > 0 RETURN o.id",
+        "MATCH (o:Orders) RETURN o.id, COLLECT { MATCH (o)-[:NOPE]->(c:Customers) RETURN c.id }",
+        "MATCH (o:Orders) RETURN o.id, [(o)-[:NOPE]->(c:Customers) | c.id] AS ids",
+        "MATCH (o:Orders) CALL { WITH o MATCH (o)-[:NOPE]->(c:Customers) RETURN c.id AS cid } "
+        "RETURN o.id, cid",
+    ],
+)
+def test_an_unregistered_type_inside_a_statement_is_refused_as_in_its_match(cypher):
+    """REQ-603: a statement inside the statement and a pattern comprehension name relationship
+    types too; an unregistered one refuses the whole statement, never lowers to no rows or to
+    some other relationship."""
+    from provisa.cypher.translator_types import UnregisteredRelationshipType
+
+    with pytest.raises(UnregisteredRelationshipType, match=r"type\(s\): NOPE"):
+        cypher_to_sql(parse_cypher(cypher), _label_map(), {})

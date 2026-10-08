@@ -282,13 +282,31 @@ def test_a_variable_length_pattern_reads_the_same_rows_pointing_either_way(serve
     assert all(said in rows for said in ("ann", "bo", "10", "11", "12")), rows
 
 
+_UNREGISTERED_TYPE = {
+    "match": "MATCH (o:Orders)-[:NO_SUCH_REL]->(c:Customers) RETURN o.id",
+    "exists": (
+        "MATCH (o:Orders) WHERE EXISTS { MATCH (o)-[:NO_SUCH_REL]->(c:Customers) } RETURN o.id"
+    ),
+    "count": (
+        "MATCH (o:Orders) WHERE COUNT { MATCH (o)-[:NO_SUCH_REL]->(c:Customers) } > 0 RETURN o.id"
+    ),
+    "comprehension": "MATCH (o:Orders) RETURN o.id, [(o)-[:NO_SUCH_REL]->(c:Customers) | c.id]",
+    "call": (
+        "MATCH (o:Orders) CALL { WITH o MATCH (o)-[:NO_SUCH_REL]->(c:Customers) "
+        "RETURN c.id AS cid } RETURN o.id, cid"
+    ),
+}
+
+
 @pytest.mark.parametrize("surface", list(_CYPHER_SURFACES))
-def test_an_unregistered_cypher_relationship_type_is_refused(server, surface):
-    accepted, said = _CYPHER_SURFACES[surface](
-        server, "bound", "MATCH (o:Orders)-[:NO_SUCH_REL]->(c:Customers) RETURN o.id"
-    )
-    assert not accepted, said
-    assert "NO_SUCH_REL" in said, said
+@pytest.mark.parametrize("shape", list(_UNREGISTERED_TYPE))
+def test_an_unregistered_cypher_relationship_type_is_refused(server, surface, shape):
+    """Wherever the statement names it -- its own MATCH, a statement inside it, a pattern
+    comprehension -- and for a role exempt from the relationships too: the type does not exist."""
+    for role in ("bound", "free"):
+        accepted, said = _CYPHER_SURFACES[surface](server, role, _UNREGISTERED_TYPE[shape])
+        assert not accepted, (role, said)
+        assert "NO_SUCH_REL" in said, (role, said)
 
 
 @pytest.mark.parametrize("shape", list(_SQL_OUTSIDE))
