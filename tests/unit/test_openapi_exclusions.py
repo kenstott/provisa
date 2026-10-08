@@ -350,3 +350,69 @@ def test_the_vendors_published_specification_is_baked_unchanged():
     assert "post" in baked["paths"]["/v1/tokens"]
     again = copy.deepcopy(brand_spec("stripe"))
     assert "/v1/tokens" not in again["paths"]
+
+
+# --- what is already registered and now excluded is reported by name ----------------------------
+
+
+def test_a_registered_table_or_command_an_exclusion_covers_is_named_with_its_operation():
+    """A table registered from an operation is named for it; a command records its operation's
+    id. One registered before the exclusion is reported -- it is not silently dropped, and
+    nothing else is named."""
+    excluded = {"CreateToken": "POST /tokens", "ListCustomers": "GET /customers"}
+    reported = ex.covered_registrations(
+        excluded,
+        tables=["list_customers", "ListCustomers", "orders"],
+        commands=["CreateToken", "CreateCustomer"],
+    )
+    assert reported == [
+        "command CreateToken (POST /tokens)",
+        "table ListCustomers (GET /customers)",
+        "table list_customers (GET /customers)",
+    ]
+    assert ex.covered_registrations({}, tables=["orders"], commands=["CreateToken"]) == []
+
+
+def test_a_sources_excluded_operations_are_its_brands_and_the_operators():
+    own = {"exclusions": {"operations": [{"method": "POST", "path": "/v1/refunds"}]}}
+    excluded = ex.source_excluded_operations("brand:stripe", own, source_id="pay")
+    assert excluded["PostCharges"] == "POST /v1/charges"  # the brand's
+    assert excluded["PostCustomersCustomerSources"] == "POST /v1/customers/{customer}/sources"
+    assert excluded["PostRefunds"] == "POST /v1/refunds"  # the operator's
+    assert "PostPaymentIntents" not in excluded
+    brand_only = ex.source_excluded_operations("brand:stripe", None, source_id="pay")
+    assert "PostRefunds" not in brand_only and len(brand_only) == len(excluded) - 1
+
+
+def test_a_deployment_that_registered_stripes_legacy_commands_is_told_which(tmp_path):
+    """The case that prompted the mechanism: a command registered before the curation."""
+    excluded = ex.source_excluded_operations("brand:stripe", None, source_id="pay")
+    reported = ex.covered_registrations(
+        excluded,
+        tables=["GetCustomers"],
+        commands=["PostCustomersCustomerSources", "PostPaymentIntents"],
+    )
+    assert reported == [
+        "command PostCustomersCustomerSources (POST /v1/customers/{customer}/sources)"
+    ]
+
+
+def test_a_source_of_the_stewards_own_specification_has_only_its_own_exclusions(tmp_path):
+    path = tmp_path / "spec.json"
+    path.write_text(json.dumps(_spec()))
+    own = {"exclusions": {"operations": [{"method": "POST", "path": "/tokens"}]}}
+    assert ex.source_excluded_operations(str(path), own, source_id="shop") == {
+        "CreateToken": "POST /tokens"
+    }
+    assert ex.source_excluded_operations(str(path), {}, source_id="shop") == {}
+
+
+def test_the_boot_loader_reports_what_an_exclusion_covers():
+    """The by-name report is wired where a deployment's OpenAPI specifications are loaded."""
+    from pathlib import Path
+
+    import provisa.api.app_loaders as loaders
+
+    source = Path(loaders.__file__).read_text()
+    assert "covered_registrations(" in source and "source_excluded_operations(" in source
+    assert "no longer offers %s: it is excluded (REQ-1957)" in source

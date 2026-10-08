@@ -221,3 +221,44 @@ def load_source_spec(spec_path: str, mapping: dict | None, *, source_id: str) ->
     return apply(
         load_spec(spec_path), Exclusions.parse((mapping or {}).get("exclusions"), who=who), who=who
     )
+
+
+def _normal(operation_id: str) -> str:
+    """How an operation's id is compared with a registered name: a table registered from an
+    operation is named for it, give or take underscores, hyphens and case
+    (``provisa/api_source/openapi_endpoint.py``)."""
+    return operation_id.replace("_", "").replace("-", "").lower()
+
+
+def source_excluded_operations(
+    spec_path: str, mapping: dict | None, *, source_id: str
+) -> dict[str, str]:
+    """``operationId`` -> "METHOD path" for every operation the source of ``spec_path`` does not
+    offer: its brand's exclusions (read against the vendor's specification as published) and the
+    operator's own."""
+    from provisa.openapi.brands import brand_excluded_operations, spec_brand
+    from provisa.openapi.loader import load_spec
+
+    brand = spec_brand(spec_path)
+    found = dict(brand_excluded_operations(brand)) if brand is not None else {}
+    own = Exclusions.parse((mapping or {}).get("exclusions"), who=f"source {source_id}")
+    if own:
+        found.update(excluded_operation_ids(load_spec(spec_path), own))
+    return found
+
+
+def covered_registrations(
+    excluded: dict[str, str], *, tables: list[str], commands: list[str]
+) -> list[str]:
+    """What a deployment has registered that the source no longer offers, each by name with the
+    operation it was made from: a table (named for its operation) or a command (which records
+    its operation's id). Registered before the exclusion, it is reported, never silently
+    dropped: reading the table or running the command now finds no operation."""
+    by_normal = {_normal(operation_id): where for operation_id, where in excluded.items()}
+    reported = [
+        f"table {name} ({by_normal[_normal(name)]})"
+        for name in tables
+        if _normal(name) in by_normal
+    ]
+    reported += [f"command {name} ({excluded[name]})" for name in commands if name in excluded]
+    return sorted(reported)

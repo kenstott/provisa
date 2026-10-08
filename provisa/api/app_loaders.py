@@ -514,8 +514,29 @@ async def _load_openapi_specs() -> None:
                 )
             ).fetchall()
         ]
-    from provisa.openapi.exclusions import load_source_spec
+    from provisa.openapi.exclusions import (
+        covered_registrations,
+        load_source_spec,
+        source_excluded_operations,
+    )
     from provisa.core.secrets import resolve_secrets as _resolve_secrets
+
+    # REQ-1957: what is registered from each source, to name anything an exclusion now covers.
+    async with state.model_db.acquire() as conn:
+        _tables_of: dict[str, list[str]] = {}
+        for _r in (
+            await conn.execute_core(
+                select(_registered_tables_t.c.source_id, _registered_tables_t.c.table_name)
+            )
+        ).fetchall():
+            _tables_of.setdefault(_r.source_id, []).append(_r.table_name)
+        _commands_of: dict[str, list[str]] = {}
+        for _r in (
+            await conn.execute_core(
+                select(_tracked_functions_t.c.source_id, _tracked_functions_t.c.function_name)
+            )
+        ).fetchall():
+            _commands_of.setdefault(_r.source_id, []).append(_r.function_name)
 
     state.openapi_specs = {}
     for _row in openapi_rows:
@@ -524,6 +545,18 @@ async def _load_openapi_specs() -> None:
             _resolved_path = _resolve_secrets(_row["path"])
             # REQ-1957: without what the source's own exclusions name.
             _spec = load_source_spec(_resolved_path, _row["mapping"], source_id=_row["id"])
+            for _gone in covered_registrations(
+                source_excluded_operations(_resolved_path, _row["mapping"], source_id=_row["id"]),
+                tables=_tables_of.get(_row["id"], []),
+                commands=_commands_of.get(_row["id"], []),
+            ):
+                log.warning(
+                    "OpenAPI source %r no longer offers %s: it is excluded (REQ-1957). The "
+                    "registration is kept; it cannot be read or run until the exclusion is "
+                    "lifted or the registration removed",
+                    _row["id"],
+                    _gone,
+                )
             _servers = _spec.get("servers", [])
             _base_url = _servers[0].get("url", "") if _servers else ""
             if (

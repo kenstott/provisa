@@ -98,6 +98,21 @@ def brand_spec(brand_id: str) -> dict:
     return spec
 
 
+def brand_excluded_operations(brand_id: str) -> dict[str, str]:
+    """``operationId`` -> "METHOD path" for the operations ``brand_id`` excludes (REQ-1957), read
+    against the vendor's specification as published: what a deployment compares its registered
+    tables and commands with."""
+    excluded = _SPEC_DIR / f"{brand_id}.exclusions.json"
+    if not excluded.exists():
+        return {}
+    from provisa.openapi.exclusions import Exclusions, excluded_operation_ids
+
+    with gzip.open(_SPEC_DIR / f"{brand_id}.json.gz", "rb") as fh:
+        published = json.load(fh)
+    listed = Exclusions.parse(json.loads(excluded.read_text()), who=f"brand {brand_id}")
+    return excluded_operation_ids(published, listed)
+
+
 def _add_fields(brand_id: str, spec: dict, additions: dict) -> None:
     """Add to ``spec`` the fields the brand's remote answers and its published spec does not
     declare (REQ-1923): ``additions`` names, by schema, the properties to add. The vendor's file
