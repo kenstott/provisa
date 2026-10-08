@@ -255,3 +255,115 @@ def test_any_other_socket_error_still_ends_the_copy():
 
     with pytest.raises(ConnectionResetError):
         relay._send_all(_Reset(), memoryview(b"abc"))  # noqa: SLF001
+
+
+_H2_FRAMES = {0: "DATA", 1: "HEADERS", 2: "PRIORITY", 3: "RST_STREAM", 4: "SETTINGS", 5: "PUSH_PROMISE",
+              6: "PING", 7: "GOAWAY", 8: "WINDOW_UPDATE", 9: "CONTINUATION"}  # fmt: skip
+
+
+def _as_http2(raw: bytes) -> str:
+    """What a server-to-client byte stream holds, read as HTTP/2 frames from its first byte:
+    the frames by kind, the DATA bytes per stream, and the first place it stops being frames."""
+    offset, kinds, data, notes = 0, {}, {}, []
+    while offset + 9 <= len(raw):
+        length, kind = int.from_bytes(raw[offset : offset + 3], "big"), raw[offset + 3]
+        stream = int.from_bytes(raw[offset + 5 : offset + 9], "big") & 0x7FFFFFFF
+        if kind not in _H2_FRAMES:
+            notes.append(
+                f"not a frame at byte {offset}: length={length} type={kind} stream={stream} "
+                f"bytes={raw[offset : offset + 16].hex()}"
+            )
+            break
+        name = _H2_FRAMES[kind]
+        kinds[name] = kinds.get(name, 0) + 1
+        if name == "DATA":
+            data[stream] = data.get(stream, 0) + length
+        elif name in ("RST_STREAM", "GOAWAY"):
+            at = offset + 9 + (4 if name == "GOAWAY" else 0)
+            notes.append(f"{name} error={int.from_bytes(raw[at : at + 4], 'big')} at byte {offset}")
+        offset += 9 + length
+    return f"{len(raw)} bytes; frames {kinds}; DATA bytes by stream {data}; {'; '.join(notes)}"
+
+
+def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started, monkeypatch):
+    """Twelve 24 MB streams relayed at once, twice over. Each must arrive whole -- every row, in
+    order -- and the relay must have carried the same number of bytes towards each client.
+
+    On macOS, while the whole machine was under load, relayed streams have failed at the client
+    with "frame of size N overflows local window of M". It has not been reproduced on a quiet
+    machine in any arrangement, and what the relay does to bytes has been verified separately,
+    so where the stream goes wrong is not yet known. This test runs on Linux in CI, where the
+    product runs; and when a stream fails it says what the relay carried to each client, read as
+    HTTP/2 frames, so the failure names the place."""
+    import zlib
+
+    import pyarrow.compute as pc
+
+    from provisa.api.flight import relay
+
+    rows = 3_000_000
+    # One record per copy: what the relay carried in that direction of that connection.
+    copies: list[dict] = []
+    copies_lock = threading.Lock()
+    this_copy = threading.local()
+    real_copy, real_send_all = relay._copy, relay._send_all  # noqa: SLF001
+
+    def _copy(source, sink) -> None:
+        this_copy.record = {"bytes": 0, "packer": zlib.compressobj(1), "packed": []}
+        with copies_lock:
+            copies.append(this_copy.record)
+        real_copy(source, sink)
+
+    def _send_all(sink, data) -> None:
+        real_send_all(sink, data)
+        record = this_copy.record
+        record["bytes"] += len(data)
+        record["packed"].append(record["packer"].compress(data))  # sequential integers: small
+
+    monkeypatch.setattr(relay, "_copy", _copy)
+    monkeypatch.setattr(relay, "_send_all", _send_all)
+
+    class _Big(fl.FlightServerBase):
+        def do_get(self, context, ticket):  # noqa: ARG002 - Flight override signature
+            return fl.RecordBatchStream(pa.table({"n": pa.array(range(rows), pa.int64())}))
+
+    server = started(_Big("grpc://127.0.0.1:0"))
+    port = lease_port()
+    started(FlightRelay("127.0.0.1", port, server.port))
+    failures: list[str] = []
+
+    def _read() -> None:
+        client = fl.connect(f"grpc://127.0.0.1:{port}")
+        try:
+            table = client.do_get(fl.Ticket(b"x"), fl.FlightCallOptions(timeout=120)).read_all()
+            column = table["n"]
+            if table.num_rows != rows or pc.sum(column).as_py() != rows * (rows - 1) // 2:
+                failures.append(f"a stream arrived changed: {table.num_rows} rows")
+            elif column[0].as_py() != 0 or column[rows - 1].as_py() != rows - 1:
+                failures.append("a stream arrived out of order")
+        except Exception as exc:  # noqa: BLE001 - every failure is reported, by its text
+            failures.append(str(exc).splitlines()[0][:200])
+        finally:
+            client.close()
+
+    for _ in range(2):
+        readers = [threading.Thread(target=_read) for _ in range(12)]
+        for reader in readers:
+            reader.start()
+        for reader in readers:
+            reader.join()
+
+    # Towards the client each connection carries one whole stream: the same bytes, give or take
+    # HTTP/2's own framing. (The other direction of each connection is a few kilobytes.)
+    towards_clients = sorted(
+        (c for c in copies if c["bytes"] > 1_000_000), key=lambda c: c["bytes"]
+    )
+    carried = [c["bytes"] for c in towards_clients]
+    whole = carried[len(carried) // 2] if carried else 0
+    odd = [
+        _as_http2(zlib.decompress(b"".join(c["packed"]) + c["packer"].flush()))
+        for c in towards_clients
+        if abs(c["bytes"] - whole) > 8192
+    ]
+    assert failures == [], {"failures": failures, "carried": carried, "streams that differ": odd}
+    assert len(carried) == 24 and odd == [], {"carried": carried, "streams that differ": odd}
