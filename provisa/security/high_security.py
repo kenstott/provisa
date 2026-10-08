@@ -50,6 +50,7 @@ _METADATA_PREFIXES = (
     "/data/schema-version",
     "/data/domains",
     "/data/proto",  # protobuf descriptors for a role's schema
+    "/data/catalog",  # a role's tables and columns, as the Flight listing gives them
     "/data/compile",  # returns the generated SQL for a query, never its results
 )
 

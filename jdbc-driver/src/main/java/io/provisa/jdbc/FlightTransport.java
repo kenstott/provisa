@@ -122,6 +122,33 @@ class FlightTransport implements AutoCloseable {
         int sqlType) {}
 
     /**
+     * One catalog table from its Arrow schema, as the server lists it on either transport (the
+     * Flight listing, or {@code /data/catalog} over HTTP): the columns with their types, and
+     * the description and key metadata the fields carry.
+     */
+    static CatalogTable catalogTable(String domain, String table, Schema schema) {
+        List<CatalogColumn> columns = new ArrayList<>();
+        for (Field field : schema.getFields()) {
+            Map<String, String> meta = field.getMetadata();
+            String referencesTable = null;
+            String referencesColumn = null;
+            String references = meta.get("references");
+            if (references != null) {
+                JsonObject target = JsonParser.parseString(references).getAsJsonObject();
+                referencesTable = target.get("table").getAsString();
+                referencesColumn = target.get("column").getAsString();
+            }
+            columns.add(new CatalogColumn(
+                field.getName(), meta.get("description"),
+                "true".equals(meta.get("primary_key")), referencesTable, referencesColumn,
+                ArrowResultSetMetaData.jdbcType(field.getType())));
+        }
+        Map<String, String> tableMeta = schema.getCustomMetadata();
+        return new CatalogTable(
+            domain, table, tableMeta == null ? null : tableMeta.get("description"), columns);
+    }
+
+    /**
      * The tables the server's catalog lists for this credential and role (REQ-128).
      *
      * <p>{@code listFlights} carries no ticket, so the session token rides the call's
@@ -144,25 +171,7 @@ class FlightTransport implements AutoCloseable {
                 if (path.size() != 2) continue;
                 Schema schema = info.getSchemaOptional().orElseThrow(() -> new SQLException(
                     "The catalog entry " + path + " carries no schema"));
-                List<CatalogColumn> columns = new ArrayList<>();
-                for (Field field : schema.getFields()) {
-                    Map<String, String> meta = field.getMetadata();
-                    String referencesTable = null;
-                    String referencesColumn = null;
-                    String references = meta.get("references");
-                    if (references != null) {
-                        JsonObject target = JsonParser.parseString(references).getAsJsonObject();
-                        referencesTable = target.get("table").getAsString();
-                        referencesColumn = target.get("column").getAsString();
-                    }
-                    columns.add(new CatalogColumn(
-                        field.getName(), meta.get("description"),
-                        "true".equals(meta.get("primary_key")), referencesTable, referencesColumn,
-                        ArrowResultSetMetaData.jdbcType(field.getType())));
-                }
-                Map<String, String> tableMeta = schema.getCustomMetadata();
-                tables.add(new CatalogTable(
-                    path.get(0), path.get(1), tableMeta == null ? null : tableMeta.get("description"), columns));
+                tables.add(catalogTable(path.get(0), path.get(1), schema));
             }
         } catch (FlightRuntimeException e) {
             throw refusal("Reading the catalog failed", e);

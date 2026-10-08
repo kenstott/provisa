@@ -429,6 +429,16 @@ Return the current schema version string. Combines a per-boot nonce with a rebui
 
 ---
 
+### `GET /data/catalog`
+
+Return the catalog of the role the request runs as: the tables that role is served, as the Arrow Flight listing gives them. (REQ-128) [tool-verified: `provisa/api/data/endpoint_dev.py`]
+
+**Response:** `{"tables": [{"path": ["<domain>", "<table>"], "schema": "<base64>"}]}`. `schema` is the table's Arrow schema in the Arrow IPC encoding: each column under the name SQL reads it by, with its registered type, its description, and its key metadata (`primary_key`, `references`) in the field metadata. Commands and metrics are not listed.
+
+The role is the one the auth layer established (`X-Provisa-Role` may request a held role, or a comma-separated set). A deployment with no auth provider lists the whole catalog, as the Flight listing does. The JDBC driver reads this route when the Flight port is unreachable.
+
+---
+
 ### `GET /data/proto/{role_id}`
 
 Return the auto-generated `.proto` file for a role. [tool-verified: `provisa/api/data/endpoint_dev.py:49`]

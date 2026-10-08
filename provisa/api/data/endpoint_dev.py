@@ -70,6 +70,48 @@ def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, body: Bas
     return acting_role(raw_request, x_provisa_role, sent_role(body), "org_admin")
 
 
+@router.get("/catalog")
+async def catalog_endpoint(request: Request):  # REQ-128, REQ-1263
+    """The caller's catalog: what the Arrow Flight listing gives, over HTTP.
+
+    One builder, two transports (``flight.catalog``): the tables the acting role is served, each
+    as its path and its Arrow schema — columns under their SQL names with their registered
+    types, descriptions and key metadata — serialized as Flight serializes it. A client that
+    cannot reach the Flight port (the JDBC driver) reads the same catalog here, field for field.
+    As on Flight, a deployment that authenticates nobody has no role to narrow by and lists the
+    whole catalog. Commands and metrics are not catalog tables and are not listed.
+    """
+    import base64
+
+    from provisa.api.app import state
+    from provisa.api.flight.catalog import (
+        _build_catalog_tables_async,
+        catalog_table_to_arrow_schema,
+    )
+    from provisa.auth.bearer import auth_active
+
+    role = None
+    if auth_active(state, "http"):
+        role = getattr(request.state, "role", None)
+        if role is None:
+            raise ApiError(
+                422, "data.missing_x_provisa_role_header", "Missing X-Provisa-Role header"
+            )
+    if not state.model_db:
+        return {"tables": []}
+    return {
+        "tables": [
+            {
+                "path": [table.domain_id, table.table_name],
+                "schema": base64.b64encode(
+                    catalog_table_to_arrow_schema(table).serialize().to_pybytes()
+                ).decode("ascii"),
+            }
+            for table in await _build_catalog_tables_async(state, role)
+        ]
+    }
+
+
 @router.get("/proto/{role_id}")
 async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # REQ-525
     """Return the .proto file content for a role as text/plain.

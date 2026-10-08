@@ -6,6 +6,9 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.*;
+import org.apache.arrow.vector.ipc.ReadChannel;
+import org.apache.arrow.vector.ipc.message.MessageSerializer;
+import org.apache.arrow.vector.types.pojo.Schema;
 
 /**
  * Provisa JDBC Connection.
@@ -164,18 +167,17 @@ public class ProvisaConnection extends AbstractConnection {
     /**
      * The tables this connection's role is served, with their columns and keys (REQ-128).
      *
-     * <p>Read from the server's Arrow Flight catalog, which lists what the signed-in role may
-     * see and nothing else. On a connection whose Flight port was unreachable when it was opened
-     * the source is the role's own REST OpenAPI document ({@link #httpCatalog()}), which is
-     * narrowed to the role the same way. Never a source that is not narrowed to the role.
+     * <p>Read from the server's role-narrowed catalog, which lists what the signed-in role may
+     * see and nothing else: the Arrow Flight listing, or on a connection whose Flight port was
+     * unreachable when it was opened the same listing over HTTP ({@link #httpCatalog()}). Both
+     * are one catalog from one builder, so the metadata does not depend on which port answered.
      */
     List<RegisteredTable> fetchRegisteredTables() throws SQLException {
-        if (flightTransport == null) {
-            return httpCatalog();
-        }
+        List<FlightTransport.CatalogTable> listed =
+            flightTransport != null ? flightTransport.catalog(authToken, role) : httpCatalog();
         List<RegisteredTable> tables = new ArrayList<>();
         int id = 1;
-        for (FlightTransport.CatalogTable t : flightTransport.catalog(authToken, role)) {
+        for (FlightTransport.CatalogTable t : listed) {
             List<RegisteredColumn> cols = new ArrayList<>();
             for (FlightTransport.CatalogColumn col : t.columns()) {
                 cols.add(new RegisteredColumn(
@@ -188,18 +190,16 @@ public class ProvisaConnection extends AbstractConnection {
     }
 
     /**
-     * The role's catalog over HTTP: the tables and columns of its REST OpenAPI document
-     * ({@code /data/rest/openapi.json}), which the server builds from the role's own schema —
-     * one path {@code /{domain}/{table}} per table it is served, and that table's row schema.
-     *
-     * <p>Columns carry the names and types that document gives them. It declares no keys, so a
-     * connection on this source has no primary-key or foreign-key metadata.
+     * The role's catalog over HTTP ({@code /data/catalog}): the same listing the Flight port
+     * gives, each table as its path and its serialized Arrow schema, read by the one function
+     * that reads the Flight listing — so a connection shows the same names, types and keys
+     * whichever port answered.
      */
-    private List<RegisteredTable> httpCatalog() throws SQLException {
-        JsonObject spec;
+    private List<FlightTransport.CatalogTable> httpCatalog() throws SQLException {
+        JsonObject listing;
         try {
             HttpURLConnection conn =
-                (HttpURLConnection) URI.create(baseUrl + "/data/rest/openapi.json").toURL().openConnection();
+                (HttpURLConnection) URI.create(baseUrl + "/data/catalog").toURL().openConnection();
             conn.setRequestMethod("GET");
             identify(conn);
             int status = conn.getResponseCode();
@@ -210,55 +210,26 @@ public class ProvisaConnection extends AbstractConnection {
                     "Reading the catalog failed (HTTP " + status + "): " + serverReason(body),
                     status == 401 || status == 403 ? "28000" : null);
             }
-            spec = JsonParser.parseString(body).getAsJsonObject();
+            listing = JsonParser.parseString(body).getAsJsonObject();
         } catch (java.io.IOException e) {
             throw new SQLException("Reading the catalog failed: " + e.getMessage(), e);
         }
-
-        JsonObject schemas = spec.getAsJsonObject("components").getAsJsonObject("schemas");
-        List<RegisteredTable> tables = new ArrayList<>();
-        int id = 1;
-        for (Map.Entry<String, JsonElement> path : spec.getAsJsonObject("paths").entrySet()) {
-            String[] parts = path.getKey().split("/");
-            JsonObject get = path.getValue().getAsJsonObject().getAsJsonObject("get");
-            if (parts.length != 3 || get == null) continue; // "/{domain}/{table}" reads only
-            JsonObject row = schemas.getAsJsonObject(rowSchemaName(get));
-            List<RegisteredColumn> cols = new ArrayList<>();
-            for (Map.Entry<String, JsonElement> col : row.getAsJsonObject("properties").entrySet()) {
-                JsonObject type = col.getValue().getAsJsonObject();
-                cols.add(new RegisteredColumn(
-                    col.getKey(), null, text(type, "description"), false, null, null, sqlType(type)));
+        List<FlightTransport.CatalogTable> tables = new ArrayList<>();
+        for (JsonElement entry : listing.getAsJsonArray("tables")) {
+            JsonObject table = entry.getAsJsonObject();
+            JsonArray path = table.getAsJsonArray("path");
+            byte[] serialized = java.util.Base64.getDecoder().decode(table.get("schema").getAsString());
+            Schema schema;
+            try {
+                schema = MessageSerializer.deserializeSchema(new ReadChannel(
+                    java.nio.channels.Channels.newChannel(new java.io.ByteArrayInputStream(serialized))));
+            } catch (java.io.IOException e) {
+                throw new SQLException("The catalog entry " + path + " carries no readable schema", e);
             }
-            tables.add(new RegisteredTable(id++, parts[1], parts[2], null, text(row, "description"), cols));
+            tables.add(FlightTransport.catalogTable(
+                path.get(0).getAsString(), path.get(1).getAsString(), schema));
         }
         return tables;
-    }
-
-    /** The row schema a table's GET names: its {@code fields} parameter lists {@code <Row>Field}. */
-    private static String rowSchemaName(JsonObject get) throws SQLException {
-        for (JsonElement p : get.getAsJsonArray("parameters")) {
-            JsonObject param = p.getAsJsonObject();
-            if (!"fields".equals(text(param, "name"))) continue;
-            String ref = param.getAsJsonObject("schema").getAsJsonObject("items").get("$ref").getAsString();
-            String name = ref.substring(ref.lastIndexOf('/') + 1);
-            return name.substring(0, name.length() - "Field".length());
-        }
-        throw new SQLException("The catalog document names no row schema for a table");
-    }
-
-    private static String text(JsonObject object, String key) {
-        JsonElement value = object.get(key);
-        return value == null || value.isJsonNull() ? null : value.getAsString();
-    }
-
-    /** The JDBC type of an OpenAPI column schema. */
-    private static int sqlType(JsonObject type) {
-        String name = text(type, "type");
-        if ("integer".equals(name)) return Types.INTEGER;
-        if ("number".equals(name)) return Types.DOUBLE;
-        if ("boolean".equals(name)) return Types.BOOLEAN;
-        if ("array".equals(name)) return Types.ARRAY;
-        return Types.VARCHAR;
     }
 
     /**

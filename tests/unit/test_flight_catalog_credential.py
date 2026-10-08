@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import types
 
+import pyarrow as pa
 import pyarrow.flight as flight
 import pytest
 
@@ -368,7 +369,7 @@ def wire(monkeypatch):
     server = ProvisaFlightServer(probe._state, location="grpc://127.0.0.1:0")
     client = flight.connect(f"grpc://127.0.0.1:{server.port}")
     try:
-        yield types.SimpleNamespace(client=client, org_at_meta_role=bound)
+        yield types.SimpleNamespace(client=client, org_at_meta_role=bound, state=probe._state)
     finally:
         client.close()
         server.shutdown()
@@ -441,8 +442,6 @@ def test_over_the_wire_get_schema_refuses_with_the_reason(wire):
     """GetSchema is refused on the same terms. pyarrow's server binding does not carry a Flight
     error's kind for this one RPC (24.0: `_get_schema` reports any exception as 'Unknown
     error'), so the client sees an ArrowException — with the server's reason in it."""
-    import pyarrow as pa
-
     descriptor = flight.FlightDescriptor.for_path(*_STAFF)
     for options, reason in (
         (_options(), "a bearer credential is required"),
@@ -452,3 +451,77 @@ def test_over_the_wire_get_schema_refuses_with_the_reason(wire):
     ):
         with pytest.raises(pa.ArrowException, match=reason):
             wire.client.get_schema(descriptor, options)
+
+
+# --- the same catalog over HTTP (REQ-128) -----------------------------------------------------------
+
+
+async def _http_listing(monkeypatch, state, role: str | None) -> dict[tuple[str, ...], pa.Schema]:
+    """path → Arrow schema, as GET /data/catalog answers a request running as ``role``."""
+    import base64
+
+    import provisa.api.app as app_mod
+    from provisa.api.data.endpoint_dev import catalog_endpoint
+
+    monkeypatch.setattr(app_mod, "state", state)
+    request = types.SimpleNamespace(state=types.SimpleNamespace(role=role))
+    body = await catalog_endpoint(request)  # type: ignore[arg-type]
+    return {
+        tuple(entry["path"]): pa.ipc.read_schema(pa.py_buffer(base64.b64decode(entry["schema"])))
+        for entry in body["tables"]
+    }
+
+
+def _flight_tables(client, options) -> dict[tuple[str, ...], pa.Schema]:
+    """path → Arrow schema of the TABLES the Flight listing gives (commands and metrics, at
+    longer or prefixed paths, are not catalog tables)."""
+    listed = {
+        tuple(p.decode() if isinstance(p, bytes) else p for p in info.descriptor.path): info.schema
+        for info in client.list_flights(b"", options)
+    }
+    return {path: schema for path, schema in listed.items() if path in {_ORDERS, _STAFF}}
+
+
+@pytest.mark.parametrize(
+    "options, role",
+    [
+        (("sam", None), "seller"),
+        (("both", "hr_reader"), "hr_reader"),
+        (("both", "seller,hr_reader"), _META),
+    ],
+)
+async def test_the_http_catalog_is_the_flight_listing_field_for_field(
+    wire, monkeypatch, options, role
+):
+    """One builder, two transports: the same tables, and for each the same fields — names,
+    types, nullability and the description / key metadata they carry."""
+    over_flight = _flight_tables(wire.client, _options(*options))
+    over_http = await _http_listing(monkeypatch, wire.state, role)
+    assert over_flight, "the role is served something"
+    assert set(over_http) == set(over_flight)
+    for path, schema in over_flight.items():
+        assert over_http[path].equals(schema, check_metadata=True), path
+        assert [f.metadata for f in over_http[path]] == [f.metadata for f in schema], path
+
+
+async def test_the_http_catalog_lists_the_whole_catalog_when_nobody_is_authenticated(monkeypatch):
+    """As the Flight listing does: with no auth provider there is no role to narrow by."""
+    srv = _server(monkeypatch, auth=False)
+    listed = await _http_listing(monkeypatch, srv._state, "seller")
+    assert set(listed) == {_ORDERS, _STAFF}
+    assert [f.name for f in listed[_ORDERS]] == list(_TABLES[1][2])
+
+
+async def test_the_http_catalog_needs_the_role_the_request_runs_as(monkeypatch):
+    from provisa.api.errors import ApiError
+
+    srv = _server(monkeypatch)
+    with pytest.raises(ApiError) as refused:
+        await _http_listing(monkeypatch, srv._state, None)
+    assert refused.value.status_code == 422
+
+
+def test_the_catalog_route_is_schema_metadata_in_high_security_mode():
+    from provisa.security import high_security
+
+    assert "/data/catalog" in high_security._METADATA_PREFIXES

@@ -83,22 +83,28 @@ class FlightCatalogMetadataTest {
     private String specAuthorization;
     private String specRole;
 
-    /** The role's REST OpenAPI document, in the shape the server generates it. */
-    private static final String REST_SPEC = """
-        {"openapi": "3.1.0",
-         "paths": {
-           "/sales/orders": {"get": {"parameters": [
-             {"name": "limit", "in": "query", "schema": {"type": "integer"}},
-             {"name": "fields", "in": "query",
-              "schema": {"type": "array", "items": {"$ref": "#/components/schemas/OrdersField"}}}]}},
-           "/sales/orders/{id}": {"get": {"parameters": []}}},
-         "components": {"schemas": {
-           "Error": {"type": "object", "properties": {"detail": {"type": "string"}}},
-           "Orders": {"type": "object", "description": "Customer orders", "properties": {
-             "id": {"type": "integer", "description": "Order id"},
-             "region": {"type": "string"}}},
-           "OrdersField": {"type": "string", "enum": ["id", "region"]}}}}
-        """;
+    /** The catalog the server lists for a role, on either transport: hr_reader is served staff. */
+    private static List<FlightInfo> served(String role) {
+        return "hr_reader".equals(role) ? List.of(STAFF) : List.of(ORDERS, CUSTOMERS, COMMAND);
+    }
+
+    /** {@code /data/catalog}: the role's tables, each as its path and serialized Arrow schema. */
+    private static String httpListing(String role) throws IOException {
+        StringBuilder tables = new StringBuilder();
+        for (FlightInfo info : served(role)) {
+            List<String> path = info.getDescriptor().getPath();
+            if (path.size() != 2) continue; // commands are not catalog tables
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            org.apache.arrow.vector.ipc.message.MessageSerializer.serialize(
+                new org.apache.arrow.vector.ipc.WriteChannel(java.nio.channels.Channels.newChannel(bytes)),
+                info.getSchemaOptional().orElseThrow());
+            if (tables.length() > 0) tables.append(",");
+            tables.append("{\"path\": [\"").append(path.get(0)).append("\", \"").append(path.get(1))
+                .append("\"], \"schema\": \"")
+                .append(java.util.Base64.getEncoder().encodeToString(bytes.toByteArray())).append("\"}");
+        }
+        return "{\"tables\": [" + tables + "]}";
+    }
 
     /** Keeps the headers each call arrived with, for the producer to read. */
     private static final FlightServerMiddleware.Key<Headers> HEADERS = FlightServerMiddleware.Key.of("headers");
@@ -130,10 +136,7 @@ class FlightCatalogMetadataTest {
                     listener.onError(listError.toRuntimeException());
                     return;
                 }
-                // The catalog is the role's own: hr_reader is served staff, everyone else sales.
-                List<FlightInfo> served = "hr_reader".equals(role)
-                    ? List.of(STAFF) : List.of(ORDERS, CUSTOMERS, COMMAND);
-                served.forEach(listener::onNext);
+                served(role).forEach(listener::onNext);
                 listener.onCompleted();
             }
         }).middleware(HEADERS, (CallInfo info, CallHeaders incoming, RequestContext context) -> new Headers(incoming))
@@ -147,11 +150,12 @@ class FlightCatalogMetadataTest {
             exchange.getRequestBody().readAllBytes();
             String body = "{\"access_token\": \"tok-1\", \"token_type\": \"bearer\"}";
             int status = 200;
-            if (path.equals("/data/rest/openapi.json")) {
+            if (path.equals("/data/catalog")) {
                 specAuthorization = exchange.getRequestHeaders().getFirst("Authorization");
                 specRole = exchange.getRequestHeaders().getFirst("X-Provisa-Role");
                 status = specStatus;
-                body = status == 200 ? REST_SPEC : "{\"detail\": \"Role 'steward' is not assigned to this user\"}";
+                body = status == 200
+                    ? httpListing(specRole) : "{\"detail\": \"Role 'steward' is not assigned to this user\"}";
             }
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(status, bytes.length);
@@ -290,47 +294,76 @@ class FlightCatalogMetadataTest {
         assertEquals(List.of("/auth/login"), httpPaths, "it is not read from somewhere else instead");
     }
 
-    @Test
-    void withTheFlightPortUnreachableTheCatalogIsTheRolesRestDocument() throws SQLException {
-        try (Connection conn = connect("analyst", false)) {
-            DatabaseMetaData meta = conn.getMetaData();
-            try (ResultSet rs = meta.getTables(null, null, "%", null)) {
-                List<String> names = new ArrayList<>();
-                while (rs.next()) {
-                    names.add(rs.getString("TABLE_SCHEM") + "." + rs.getString("TABLE_NAME"));
-                    assertEquals("Customer orders", rs.getString("REMARKS"));
-                }
-                assertEquals(List.of("sales.orders"), names);
-            }
-            try (ResultSet rs = meta.getColumns(null, null, "orders", null)) {
-                assertTrue(rs.next());
-                assertEquals("id", rs.getString("COLUMN_NAME"));
-                assertEquals(java.sql.Types.INTEGER, rs.getInt("DATA_TYPE"));
-                assertEquals("INTEGER", rs.getString("TYPE_NAME"));
-                assertEquals("Order id", rs.getString("REMARKS"));
-                assertTrue(rs.next());
-                assertEquals("region", rs.getString("COLUMN_NAME"));
-                assertEquals(java.sql.Types.VARCHAR, rs.getInt("DATA_TYPE"));
-                assertFalse(rs.next());
-            }
-            // That document declares no keys: none are invented.
-            try (ResultSet pk = meta.getPrimaryKeys(null, null, "orders")) {
-                assertFalse(pk.next());
-            }
-            try (ResultSet fk = meta.getImportedKeys(null, null, "orders")) {
-                assertFalse(fk.next());
+    /** Everything the metadata calls answer, as text, for comparing two connections. */
+    private static List<String> metadata(Connection conn) throws SQLException {
+        DatabaseMetaData meta = conn.getMetaData();
+        List<String> out = new ArrayList<>();
+        List<String> tables = new ArrayList<>();
+        try (ResultSet rs = meta.getTables(null, null, "%", null)) {
+            while (rs.next()) {
+                tables.add(rs.getString("TABLE_NAME"));
+                out.add("table " + rs.getString("TABLE_SCHEM") + "." + rs.getString("TABLE_NAME")
+                    + " | " + rs.getString("REMARKS"));
             }
         }
+        for (String table : tables) {
+            try (ResultSet rs = meta.getColumns(null, null, table, null)) {
+                while (rs.next()) {
+                    out.add("column " + table + "." + rs.getString("COLUMN_NAME") + " " + rs.getInt("DATA_TYPE")
+                        + " " + rs.getString("TYPE_NAME") + " | " + rs.getString("REMARKS"));
+                }
+            }
+            try (ResultSet rs = meta.getPrimaryKeys(null, null, table)) {
+                while (rs.next()) out.add("pk " + table + "." + rs.getString("COLUMN_NAME"));
+            }
+            try (ResultSet rs = meta.getImportedKeys(null, null, table)) {
+                while (rs.next()) {
+                    out.add("fk " + table + "." + rs.getString("FKCOLUMN_NAME") + " -> "
+                        + rs.getString("PKTABLE_NAME") + "." + rs.getString("PKCOLUMN_NAME"));
+                }
+            }
+        }
+        return out;
+    }
+
+    @Test
+    void theMetadataIsTheSameWhicheverPortAnswered() throws SQLException {
+        for (String role : new String[]{"analyst", "hr_reader"}) {
+            List<String> overFlight;
+            List<String> overHttp;
+            try (Connection conn = connect(role, true)) {
+                overFlight = metadata(conn);
+            }
+            try (Connection conn = connect(role, false)) {
+                overHttp = metadata(conn);
+            }
+            assertFalse(overFlight.isEmpty());
+            assertEquals(overFlight, overHttp, role);
+        }
+        // Types and keys are in what was compared, not only names.
+        try (Connection conn = connect("analyst", false)) {
+            List<String> listed = metadata(conn);
+            assertTrue(listed.contains("column orders.customer_id " + java.sql.Types.BIGINT + " BIGINT | "), listed.toString());
+            assertTrue(listed.contains("pk orders.id"), listed.toString());
+            assertTrue(listed.contains("fk orders.customer_id -> customers.id"), listed.toString());
+        }
+    }
+
+    @Test
+    void withTheFlightPortUnreachableTheCatalogIsReadOverHttpAsTheConnectionsIdentity() throws SQLException {
+        try (Connection conn = connect("analyst", false)) {
+            assertFalse(metadata(conn).isEmpty());
+        }
         assertTrue(listCalls.isEmpty());
-        assertTrue(httpPaths.contains("/data/rest/openapi.json"));
-        assertTrue(httpPaths.stream().noneMatch(p -> p.startsWith("/admin")), "the admin API is never asked: " + httpPaths);
-        // The document is asked for as the connection's identity: its token and requested role.
+        assertTrue(httpPaths.contains("/data/catalog"));
+        assertTrue(httpPaths.stream().noneMatch(p -> p.startsWith("/admin") || p.startsWith("/data/rest")),
+            "no other source is asked: " + httpPaths);
         assertEquals("Bearer tok-1", specAuthorization);
         assertEquals("analyst", specRole);
     }
 
     @Test
-    void aRefusedRestDocumentIsRaisedWithTheServersReason() throws SQLException {
+    void aRefusedHttpCatalogIsRaisedWithTheServersReason() throws SQLException {
         specStatus = 403;
         try (Connection conn = connect("steward", false)) {
             SQLException refused = assertThrows(SQLException.class,
