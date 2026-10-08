@@ -335,3 +335,32 @@ def test_a_walk_along_a_self_relationship_and_another_is_one_statement_an_engine
     cypher = "MATCH (o:Orders)-[*1..2]->(r:Regions) RETURN DISTINCT o.id AS a, r.id AS b"
     sql_tree, _, _ = cypher_to_sql(parse_cypher(cypher), label_map, {})
     assert _pairs(con, sql_tree) == [(1, 1), (1, 2)], sql_tree.sql(dialect="postgres")
+
+
+def test_a_walk_of_a_relationship_of_a_table_to_itself_passes_the_guard_with_its_key(monkeypatch):
+    """#159: the recursive lowering re-reads each row it reaches by its primary key. With the
+    table's key registered that is the same row and the walk passes; with none it is refused."""
+    monkeypatch.setitem(
+        _RELATIONSHIPS, "plain", ("REPORTS_TO", "Customers", "Customers", "code", "name", {})
+    )
+    ctx, gov, label_map, _ = _model("plain")
+    cypher = "MATCH (a:Customers)-[:REPORTS_TO*1..3]->(b:Customers) RETURN a.id AS a, b.id AS b"
+    sql_tree, _, _ = cypher_to_sql(parse_cypher(cypher), label_map, {})
+    computed, constants = computed_joins(ctx)
+
+    def refusals(keys: dict[int, frozenset[str]]) -> list[str]:
+        return [
+            v.message
+            for v in tables_outside_relationships(
+                sql_tree,
+                gov,
+                approved_joins(ctx),
+                {m.table_id: m for m in ctx.tables.values()},
+                computed=computed,
+                constants=constants,
+                primary_keys=keys,
+            )
+        ]
+
+    assert refusals({2: frozenset({"id"})}) == [], sql_tree.sql(dialect="postgres")
+    assert any("customers.id = customers.id" in said for said in refusals({}))

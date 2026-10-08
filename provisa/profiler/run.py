@@ -245,7 +245,9 @@ async def _route(sql: str) -> Any:
     """The governed, routed plan of ``sql`` as the org admin -- the one pipeline's first half."""
     from provisa.pgwire._pipeline import _govern_and_route
 
-    return await _govern_and_route(sql, PROFILE_ROLE)
+    # REQ-603: the profile statement is the product's own -- it reads its table several times
+    # over (the sample, the measures over it), which is no role relating tables.
+    return await _govern_and_route(sql, PROFILE_ROLE, product_statement=True)
 
 
 async def _execute(plan: Any) -> tuple[list[str], list[tuple]]:

@@ -111,7 +111,35 @@ class _Resolver:
         self._table_id = resolve_table_id
         self._columns_of = columns_of
         self._instances: dict[int, list[frozenset[int]]] = {}
+        # first branch's query -> (that branch's scope, the union's scope), for every union
+        self._unions: dict[int, tuple[Scope, Scope]] = {}
         self.table_of: dict[int, int] = {}  # instance -> table id
+
+    def unions_of(self, scopes: list[Scope]) -> None:
+        """Note the statement's unions, so a recursive CTE's reading of itself is known."""
+        for scope in scopes:
+            if scope.union_scopes:
+                first = scope.union_scopes[0]
+                self._unions[id(first.expression)] = (first, scope)
+
+    def _rows_of(self, source: Any) -> Any:
+        """``source`` as the scope whose instances a reader of it combines with. A recursive CTE
+        read from inside itself is a scope of its own over the CTE's first branch: the rows it
+        goes on from start there, so that branch's instances are the ones combined with."""
+        if isinstance(source, Scope):
+            known = self._unions.get(id(source.expression))
+            if known is not None and source is not known[0]:
+                return known[0]
+        return source
+
+    def _columns_from(self, source: Any) -> Any:
+        """``source`` as the scope its columns are computed in: for a recursive CTE read from
+        inside itself, the whole CTE -- a column of it is any branch's."""
+        if isinstance(source, Scope):
+            known = self._unions.get(id(source.expression))
+            if known is not None and source is not known[0]:
+                return known[1]
+        return source
 
     def _base(self, table: exp.Table) -> _Base | None:
         table_id = self._table_id(table)
@@ -136,12 +164,13 @@ class _Resolver:
                     base = self._base(source)
                     per_source.append([frozenset({base.instance})] if base else [frozenset()])
                 elif isinstance(source, Scope):
-                    per_source.append(self.alternatives(source))
+                    per_source.append(self.alternatives(self._rows_of(source)))
             found = [frozenset().union(*choice) for choice in product(*per_source)]
         self._instances[key] = found
         return found
 
     def _has_column(self, source: Any, name: str) -> bool:
+        source = self._columns_from(source)
         if isinstance(source, exp.Table):
             table_id = self._table_id(source)
             return table_id is not None and name in self._columns_of(table_id)
@@ -171,7 +200,7 @@ class _Resolver:
                 for _node, source in scope.selected_sources.values()
                 if self._has_column(source, column.name)
             ]
-        sources = [s for s in sources if s is not None]
+        sources = [self._columns_from(s) for s in sources if s is not None]
         if not sources:
             # Not of this scope: a column of the statement around it (a correlated reference).
             return self.resolve(scope.parent, column, seen) if scope.parent is not None else set()
@@ -204,7 +233,7 @@ class _Resolver:
                 for _node, source in scope.selected_sources.values()
                 if self._has_column(source, column.name)
             ]
-        sources = [s for s in sources if s is not None]
+        sources = [self._columns_from(s) for s in sources if s is not None]
         if not sources:
             return self.touched(scope.parent, column, seen) if scope.parent is not None else set()
         out: set[int] = set()
@@ -243,6 +272,7 @@ def unrelated_tables(
     same_remote_source: Any,
     computed: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
     constants: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
+    primary_keys: dict[int, frozenset[str]] | None = None,
 ) -> list[Unrelated]:
     """The pairs of registered tables ``tree`` combines outside the ``registered`` relationships
     -- (table id, table id, column, column), both directions. ``computed``: the relationships
@@ -252,7 +282,14 @@ def unrelated_tables(
     target's rows matching the constant are related to every row of the source. ``exempt_table(table_id)``: a table
     any table may be read beside (the meta and ops domains). ``same_remote_source(a, b)``: two
     tables of one remote source, whose own model relates them, with no relationship registered
-    between them here."""
+    between them here.
+
+    A table paired with ITSELF needs no relationship in exactly two cases (REQ-603). The same
+    row: equality on the table's whole registered primary key (``primary_keys``) re-reads the
+    row and reaches no other; a table with no registered key has no such case. A filter only:
+    IN / NOT IN / EXISTS / NOT EXISTS over the same table decides which rows appear and brings
+    no second copy's columns out. Anything else that brings out a second copy of the table is a
+    pairing like any other, and needs a relationship registered from the table to itself."""
     queries = [tree] if isinstance(tree, exp.Query) else []
     if not queries:
         queries = [q for q in tree.find_all(exp.Query) if q.find_ancestor(exp.Query) is None]
@@ -269,8 +306,20 @@ def unrelated_tables(
                 same_remote_source,
                 computed,
                 constants,
+                primary_keys or {},
             )
     return found
+
+
+def _is_filter(query: exp.Expr) -> bool:
+    """Whether ``query`` is the subquery of an IN / NOT IN / EXISTS / NOT EXISTS: one that
+    decides which rows of the statement around it appear, and gives it none of its own."""
+    node, parent = query, query.parent
+    while isinstance(parent, (exp.Subquery, exp.Paren)):
+        node, parent = parent, parent.parent
+    if isinstance(parent, exp.Exists):
+        return True
+    return isinstance(parent, exp.In) and parent.args.get("query") is node
 
 
 def _conjuncts(condition: exp.Expr | None) -> list[exp.Expr]:
@@ -292,12 +341,23 @@ def _unrelated_in(
     same_remote_source: Any,
     computed: set[tuple[int, int, str, str]],
     constants: set[tuple[int, int, str, str]],
+    primary_keys: dict[int, frozenset[str]],
 ) -> list[Unrelated]:
     resolver = _Resolver(resolve_table_id, columns_of)
+    # (instance, instance) of one table -> the key columns the statement equates between them
+    same_row: dict[frozenset[int], set[str]] = {}
+    # instance -> the IN / EXISTS subquery it is read in, innermost (absent: in none)
+    filter_of: dict[int, int] = {}
     # instance -> the (side's form, constant) equalities the statement holds it to
     held_to: dict[int, set[tuple[str, str]]] = {}
     never_true: set[frozenset[int]] = set()
     scopes = list(root.traverse())
+    resolver.unions_of(scopes)
+    for scope in scopes:  # outermost last in traverse(): an inner filter's instances keep theirs
+        if _is_filter(scope.expression):
+            for alt in resolver.alternatives(scope):
+                for instance in alt:
+                    filter_of.setdefault(instance, id(scope))
     by_query = {id(s.expression): s for s in scopes}
     edges: set[frozenset[int]] = set()  # registered pairings, by instance pair
     groups: list[frozenset[int]] = []
@@ -317,6 +377,18 @@ def _unrelated_in(
             for b in right:
                 if a.instance == b.instance or exempt(a.instance) or exempt(b.instance):
                     continue
+                if a.table_id == b.table_id and filters_only(a.instance, b.instance):
+                    edges.add(frozenset({a.instance, b.instance}))
+                    continue
+                if (
+                    a.table_id == b.table_id
+                    and a.column == b.column
+                    and a.column in primary_keys.get(a.table_id, ())
+                    and (a.table_id, b.table_id, a.column, b.column) not in registered
+                ):
+                    # Settled once every condition is read: the same row only on the whole key.
+                    same_row.setdefault(frozenset({a.instance, b.instance}), set()).add(a.column)
+                    continue
                 if (a.table_id, b.table_id, a.column, b.column) in registered or same_remote_source(
                     a.table_id, b.table_id
                 ):
@@ -325,11 +397,19 @@ def _unrelated_in(
                     x, y = sorted((a, b), key=lambda c: (c.table_id, c.column))
                     refuse(Unrelated(x.table_id, y.table_id, UNREGISTERED, x.column, y.column))
 
+    def filters_only(a: int, b: int) -> bool:
+        """Whether one of two instances is read in an IN / EXISTS subquery the other is outside
+        of: the subquery filters the other's rows and none of its own come out."""
+        return filter_of.get(a) != filter_of.get(b)
+
     def other_matching(instances: set[int]) -> None:
         """Instances matched by something other than a column equality."""
         held = sorted(i for i in instances if not exempt(i))
         tables = sorted({table_of[i] for i in held})
-        if len(held) >= 2:
+        if len(tables) == 1 and all(filters_only(a, b) for a in held for b in held if a < b):
+            # One table filtered by its own rows, on whatever condition.
+            edges.update(frozenset({a, b}) for a in held for b in held if a < b)
+        elif len(held) >= 2:
             refuse(Unrelated(tables[0], tables[-1], NOT_EQUALITY))
 
     for scope in scopes:
@@ -468,6 +548,16 @@ def _unrelated_in(
                 for alt in own:
                     if alt:
                         groups.append(alt | {instance})
+
+    # A table joined to itself on its whole registered primary key is the same row read again;
+    # on part of the key it is a pairing of different rows, and no relationship registers it.
+    for instances, columns in same_row.items():
+        table_id = table_of[next(iter(instances))]
+        if columns == primary_keys[table_id]:
+            edges.add(instances)
+        else:
+            for column in sorted(columns):
+                refuse(Unrelated(table_id, table_id, UNREGISTERED, column, column))
 
     # Tables a statement combines must be connected by its registered pairings: one combined
     # with nothing relating it to the rest is a product of the two.

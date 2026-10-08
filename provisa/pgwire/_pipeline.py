@@ -1026,10 +1026,12 @@ async def _govern_and_route(
     serve_cached: bool = False,
     wire_formats: list[int] | None = None,
     route_hint: str | None = None,
+    product_statement: bool = False,
 ) -> _Plan:
     """The top of the ONE pipeline: govern, route, then bind the org's tier ceilings (REQ-1044).
 
-    ``serve_cached`` / ``wire_formats`` / ``route_hint``: see :func:`route_governed`."""
+    ``serve_cached`` / ``wire_formats`` / ``route_hint``: see :func:`route_governed`.
+    ``product_statement``: see :func:`govern_statement`."""
     from provisa.api.app import state
 
     from provisa.core.statement_warnings import collecting
@@ -1048,6 +1050,7 @@ async def _govern_and_route(
             serve_cached=serve_cached,
             wire_formats=wire_formats,
             route_hint=route_hint,
+            product_statement=product_statement,
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
@@ -1074,6 +1077,7 @@ async def _govern_and_route_planned(
     serve_cached: bool = False,
     wire_formats: list[int] | None = None,
     route_hint: str | None = None,
+    product_statement: bool = False,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     """Govern, then route: the two stages of the one pipeline, run back to back."""
     if explain is not None and opening_write_verb(sql) is not None:
@@ -1098,7 +1102,9 @@ async def _govern_and_route_planned(
         )
         plan.temp = _temp
         return plan
-    governed = await govern_statement(sql, role_id, session_vars=session_vars)
+    governed = await govern_statement(
+        sql, role_id, session_vars=session_vars, product_statement=product_statement
+    )
     return await route_governed(
         governed,
         params=params,
@@ -1185,8 +1191,15 @@ async def govern_statement(
     role_id: str,
     *,
     session_vars: dict[str, str] | None = None,
+    product_statement: bool = False,
 ) -> _Governed:
-    """Stage one of the one pipeline: parse, validate and apply governance. Value-independent."""
+    """Stage one of the one pipeline: parse, validate and apply governance. Value-independent.
+
+    ``product_statement`` (REQ-603): the statement is one the product wrote for its own work --
+    the profiler's read of a table, which pairs the table with itself -- not a role's query. The
+    relationship guard is about what a role's query may relate, so it is not held on it; every
+    other check is. Stated by the product's own call site, as a GraphQL-built statement states
+    ``sdl_joins``; no surface that carries a caller's SQL passes it."""
     import sqlglot
     import sqlglot.expressions as exp
 
@@ -1234,7 +1247,16 @@ async def govern_statement(
     # session alone, as its tables stand: the same words name another session's table, at
     # another address, or the same session's after it dropped and created one of that name.
     _slot = PlanSlot(
-        state, "sql", role_id, sql, [*sorted(_session_vars.items()), *temp_tables.slot_key()]
+        state,
+        "sql",
+        role_id,
+        sql,
+        [
+            *sorted(_session_vars.items()),
+            *temp_tables.slot_key(),
+            # A statement governed as the product's is never the one kept for a role's same words.
+            *([("provisa.product_statement", "1")] if product_statement else []),
+        ],
     )
     _kept = _slot.cached()
     if _kept is not None:
@@ -1283,7 +1305,9 @@ async def govern_statement(
     )
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
-    _bypass_guard = relationship_guard_bypassed(role, state, statement_opts_out=sql_opts_out)
+    _bypass_guard = product_statement or relationship_guard_bypassed(
+        role, state, statement_opts_out=sql_opts_out
+    )
 
     # REQ-1877: in-memory, TTL-evicted cache of the validate_sql + domain-access outcome — see
     # provisa/compiler/compiled_query_cache.py for the read-verified scope decision (routing/

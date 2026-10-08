@@ -565,3 +565,231 @@ def test_a_lowering_that_is_not_the_relationships_own_condition_is_refused():
     else:
         (said,) = _guard(sql_tree, ctx, gov)
         assert "orders.customer_code = customers.code" in said, said
+
+
+def _keyed(table_id: int, *key: str) -> dict:
+    """A registered table as the validator is handed it, with ``key`` its primary key."""
+    return {
+        "id": table_id,
+        "columns": [{"column_name": c, "is_primary_key": c in key} for c in _COLUMNS[table_id]],
+    }
+
+
+_KEYS = [_keyed(1, "id"), _keyed(2, "id"), _keyed(3, "id")]
+
+
+def _refused(
+    sql: str, *, tables: list[dict] | None = None, self_related: bool = False
+) -> list[str]:
+    """The guard's refusals of ``sql``. ``tables``: the registered tables with their keys (each
+    keyed on ``id`` unless given). ``self_related``: customers.region = customers.region is a
+    registered relationship of customers to itself."""
+    ctx, gov = _model()
+    gov.table_map.update({f"sales.{name}": tid for name, tid in list(gov.table_map.items())})
+    if self_related:
+        ctx.joins[("Customers", "same_region")] = JoinMeta(
+            source_column="region",
+            target_column="region",
+            source_column_type="integer",
+            target_column_type="integer",
+            target=ctx.tables["customers"],
+            cardinality="many-to-many",
+        )
+    given = _KEYS if tables is None else tables
+    return [v.message for v in validate_sql(sql, ctx, gov, _ROLE, given) if v.code == "V002"]
+
+
+# One statement shape over ``{a}`` and ``{b}``: the same table twice, or two tables.
+# A filter only: the subquery decides which rows of the statement appear and gives it none.
+_FILTERS = {
+    "in": "SELECT x.id FROM {a} x WHERE x.region IN (SELECT region FROM {b} WHERE id > 40)",
+    "not_in": "SELECT x.id FROM {a} x WHERE x.region NOT IN (SELECT region FROM {b})",
+    "exists": "SELECT x.id FROM {a} x WHERE EXISTS (SELECT 1 FROM {b} y WHERE y.region = x.region)",
+    "not_exists": (
+        "SELECT x.id FROM {a} x WHERE NOT EXISTS (SELECT 1 FROM {b} y WHERE y.region = x.region)"
+    ),
+    "exists_on_a_range": (
+        "SELECT x.id FROM {a} x WHERE EXISTS "
+        "(SELECT 1 FROM {b} y WHERE y.region = x.region AND y.id <> x.id)"
+    ),
+}
+# The same row: equality on the whole registered primary key.
+_SAME_ROW = {
+    "join": "SELECT x.name FROM {a} x JOIN {b} y ON x.id = y.id",
+    "where": "SELECT x.name FROM {a} x, {b} y WHERE x.id = y.id",
+    "cte": "WITH w AS (SELECT id FROM {b}) SELECT x.name FROM {a} x JOIN w ON w.id = x.id",
+    "recursive_walk_back_to_its_rows": (
+        "WITH RECURSIVE w AS (SELECT id FROM {a} "
+        "UNION ALL SELECT y.id FROM w JOIN {b} y ON y.id = w.id) SELECT id FROM w"
+    ),
+}
+# A second copy brought out on other columns: a pairing like any other.
+_SECOND_COPY = {
+    "on_equality": "SELECT x.id FROM {a} x JOIN {b} y ON x.region = y.region",
+    "where_equality": "SELECT x.id FROM {a} x, {b} y WHERE x.region = y.region",
+    "correlated_scalar": (
+        "SELECT x.id, (SELECT MAX(y.id) FROM {b} y WHERE y.region = x.region) AS n FROM {a} x"
+    ),
+    "cte": "WITH w AS (SELECT * FROM {b}) SELECT x.id FROM {a} x JOIN w ON w.region = x.region",
+    "derived_table": (
+        "SELECT x.id FROM {a} x JOIN (SELECT region FROM {b}) d ON d.region = x.region"
+    ),
+    "lateral": (
+        "SELECT x.id FROM {a} x CROSS JOIN LATERAL "
+        "(SELECT y.id FROM {b} y WHERE y.region = x.region) l"
+    ),
+    "recursive_walk": (
+        "WITH RECURSIVE w AS (SELECT id, region FROM {a} "
+        "UNION ALL SELECT y.id, y.region FROM w JOIN {b} y ON y.region = w.region) "
+        "SELECT id FROM w"
+    ),
+}
+# Matched by something no relationship can register: never a pairing, registered or not.
+_NEVER = {
+    "on_range": "SELECT x.id FROM {a} x JOIN {b} y ON x.id >= y.id AND x.id < y.id + 10",
+    "on_expression": "SELECT x.id FROM {a} x JOIN {b} y ON LOWER(x.region) = y.region",
+    "product": "SELECT x.id FROM {a} x CROSS JOIN {b} y",
+}
+_ONE = {"a": "customers", "b": "customers"}
+_TWO = {"a": "orders", "b": "customers"}
+
+
+@pytest.mark.parametrize("shape", list(_FILTERS))
+def test_a_table_filtered_by_its_own_rows_needs_no_relationship(shape):
+    """REQ-603: IN / NOT IN / EXISTS / NOT EXISTS over the same table decides which rows appear
+    and brings no second copy's columns out -- with or without a registered key."""
+    assert _refused(_FILTERS[shape].format(**_ONE)) == []
+    assert _refused(_FILTERS[shape].format(**_ONE), tables=[]) == []
+    refused = _refused(_FILTERS[shape].format(**_TWO))
+    assert refused and "customers" in refused[0] and "orders" in refused[0], refused
+
+
+@pytest.mark.parametrize("shape", list(_SAME_ROW))
+def test_a_table_joined_to_itself_on_its_whole_primary_key_is_the_same_row(shape):
+    """REQ-603: the join re-reads the row it started from and reaches no other -- with a
+    registered key only, and on the whole of it."""
+    sql = _SAME_ROW[shape].format(**_ONE)
+    assert _refused(sql) == []
+    assert any("customers.id = customers.id" in said for said in _refused(sql, tables=[]))
+    # A key registered on another column exempts nothing here, nor does part of a key.
+    assert _refused(sql, tables=[_keyed(2, "name")])
+    assert _refused(sql, tables=[_keyed(2, "id", "region")])
+    assert _refused(_SAME_ROW[shape].format(**_TWO))
+
+
+def test_the_whole_of_a_two_column_key_is_the_same_row():
+    whole = "SELECT x.name FROM customers x JOIN customers y ON x.id = y.id AND x.region = y.region"
+    assert _refused(whole, tables=[_keyed(2, "id", "region")]) == []
+
+
+@pytest.mark.parametrize("shape", list(_SECOND_COPY))
+def test_a_second_copy_of_a_table_brought_out_needs_a_relationship_to_itself(shape):
+    """REQ-603: a self-join on other columns, a CTE / derived table / LATERAL of the table
+    joined back, a correlated scalar returning the second copy's column: a pairing like any
+    other -- refused, and passing once the table has that relationship registered to itself."""
+    sql = _SECOND_COPY[shape].format(**_ONE)
+    refused = _refused(sql)
+    assert refused and "customers.region = customers.region" in refused[0], refused
+    assert _refused(sql, self_related=True) == []
+    assert _refused(_SECOND_COPY[shape].format(**_TWO), self_related=True)
+
+
+@pytest.mark.parametrize("shape", list(_NEVER))
+def test_what_no_relationship_registers_is_refused_of_one_table_as_of_two(shape):
+    for tables in (_ONE, _TWO):
+        assert _refused(_NEVER[shape].format(**tables), self_related=True), tables
+
+
+def test_the_second_copy_carries_no_relationship_to_a_third_table():
+    """What the lead's wider reading would have let through: each order beside every customer
+    of its customer's region -- an association no relationship registers."""
+    refused = _refused(
+        "SELECT v.id, c2.name FROM visits v JOIN customers c1 ON c1.id = v.customer_id "
+        "JOIN customers c2 ON c2.region = c1.region"
+    )
+    assert refused and "customers.region = customers.region" in refused[0], refused
+
+
+# The statements CI run 37764898016 found refused on main, as the guard reads them.
+_REFUSED_ON_MAIN = [
+    "SELECT COUNT(*) FROM sales.customers WHERE name IN "
+    "(SELECT name FROM sales.customers WHERE id > 40)",
+    "SELECT id, region FROM sales.orders WHERE id IN (SELECT id FROM sales.orders)",
+]
+
+
+@pytest.mark.parametrize("sql", _REFUSED_ON_MAIN)
+def test_a_statement_filtering_a_table_by_its_own_rows_passes(sql):
+    assert _refused(sql) == []
+    assert _refused(sql, tables=[]) == []
+
+
+def _profiler_statements() -> list[str]:
+    from provisa.profiler.statement import ColumnSpec, Sample, profile_sql
+
+    columns = [
+        ColumnSpec("id", "integer", "numeric", "id"),
+        ColumnSpec("name", "varchar", "text", "name"),
+        ColumnSpec("region", "varchar", "text", "region"),
+    ]
+    samples = [
+        Sample("whole"),
+        Sample("key_range", 0.1, "id", ((1, 10), (40, 50), (90, 99))),
+        Sample("random", 0.2),
+    ]
+    return [profile_sql("sales.customers", columns, [], s, 100, [], []) for s in samples]
+
+
+def test_the_profilers_statement_is_the_products_and_runs_outside_the_guard():
+    """The profile statement reads its table several times over. Sent as a role's query it is
+    a pairing of the table with itself and is refused where it is one; as the product's own
+    statement the relationship guard is not held on it, and every other check still is."""
+    as_a_role = [_refused(sql) for sql in _profiler_statements()]
+    assert any(as_a_role), "the key-range sample pairs the table with itself"
+    ctx, gov = _model()
+    gov.table_map.update({f"sales.{name}": tid for name, tid in list(gov.table_map.items())})
+    for sql in _profiler_statements():
+        assert validate_sql(sql, ctx, gov, _ROLE, _KEYS, bypass_relationship_guard=True) == []
+
+
+def test_only_the_profiler_states_a_product_statement():
+    """A role's own SQL cannot reach the product's path: no surface passes the flag, and the
+    one call that does is the profiler's, with the statement it built itself."""
+    import pathlib
+    import re
+
+    import provisa
+
+    root = pathlib.Path(provisa.__file__).parent
+    stating = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if re.search(r"product_statement\s*=\s*True", path.read_text())
+    )
+    assert stating == ["profiler/run.py"], stating
+    passing = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if "product_statement=" in path.read_text()
+    )
+    # The pipeline hands it down; nothing else names it.
+    assert passing == ["pgwire/_pipeline.py", "profiler/run.py"], passing
+
+
+def test_a_recursive_statement_relates_its_rows_along_relationships_only():
+    """A recursive CTE's own rows are rows of the tables its branches read: a branch that goes
+    on from them pairs its tables with those, and each pairing is a registered relationship
+    or refused -- as in any other statement."""
+    along = (
+        "WITH RECURSIVE w AS (SELECT c.id FROM customers c "
+        "UNION ALL SELECT v.customer_id FROM w JOIN visits v ON v.customer_id = w.id) "
+        "SELECT id FROM w"
+    )
+    assert _refused(along) == []
+    outside = (
+        "WITH RECURSIVE w AS (SELECT o.id, o.region FROM orders o "
+        "UNION ALL SELECT c.id, c.region FROM w JOIN customers c ON c.region = w.region) "
+        "SELECT id FROM w"
+    )
+    refused = _refused(outside)
+    assert refused and "customers" in refused[0] and "orders" in refused[0], refused

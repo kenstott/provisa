@@ -65,7 +65,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     ctx: CompilationContext,
     gov_ctx: GovernanceContext,
     role: dict,
-    _raw_tables: list[dict],  # pyright: ignore[reportUnusedParameter]
+    raw_tables: list[dict],
     *,
     bypass_relationship_guard: bool = False,
     bypass_uncovered_relationships: bool = False,
@@ -105,6 +105,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
             bypass_uncovered=bypass_uncovered_relationships,
             computed=computed,
             constants=constants,
+            primary_keys=registered_primary_keys(raw_tables),
         )
     violations += _check_column_visibility(tree, gov_ctx, cte_names_set)
     violations += _check_dag(tree, gov_ctx, cte_names_set)
@@ -372,6 +373,17 @@ def computed_joins(
     return computed, constants
 
 
+def registered_primary_keys(raw_tables: list[dict]) -> dict[int, frozenset[str]]:
+    """Each registered table's whole primary key, as registered -- not as a role sees it: a key
+    the role sees part of is still the whole key (REQ-603). A table with none has no entry."""
+    keys: dict[int, frozenset[str]] = {}
+    for table in raw_tables:
+        key = frozenset(c["column_name"] for c in table["columns"] if c.get("is_primary_key"))
+        if key:
+            keys[table["id"]] = key
+    return keys
+
+
 def tables_outside_relationships(  # REQ-603
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
@@ -381,6 +393,7 @@ def tables_outside_relationships(  # REQ-603
     bypass_uncovered: bool = False,
     computed: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
     constants: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
+    primary_keys: dict[int, frozenset[str]] | None = None,
 ) -> list[ValidationViolation]:
     """V002 for each pair of registered tables ``tree`` combines outside the registered
     relationships, however the statement is written (provisa.compiler.join_guard)."""
@@ -426,6 +439,7 @@ def tables_outside_relationships(  # REQ-603
         same_remote_source=same_remote_source,
         computed=computed,
         constants=constants,
+        primary_keys=primary_keys,
     ):
         left, right = name(pair.left_table), name(pair.right_table)
         if pair.reason == UNREGISTERED:
