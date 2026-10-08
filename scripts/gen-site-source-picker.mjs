@@ -30,6 +30,8 @@ export const SUB_ITEMS = {
   files: {
     from: "docs/sources.md (File Crawler formats table)",
     items: ["CSV", "TSV", "JSON", "YAML", "Excel (XLS, XLSX)", "Parquet", "Arrow", "HTML", "Markdown", "DOCX", "PPTX"],
+    // Formats that are also tiles of their own, so they are not counted twice.
+    alsoTiles: ["CSV", "Parquet"],
   },
 };
 
@@ -92,6 +94,7 @@ export async function renderPicker() {
   const sprite = spriteFor(used);
   const out = [];
   let total = 0;
+  let extra = 0; // kinds of source shown under a tile that are not connectors of their own
   for (const cat of cats) {
     const rows = [];
     for (const s of types.filter((t) => t.category === cat)) {
@@ -102,12 +105,18 @@ export async function renderPicker() {
         ? `<svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/${sprite.name}#m-${mark.slug}"/></svg>`
         : `<span class="picker-tile" style="background:${tones[cat] ?? "#6b7280"}" aria-hidden="true">${esc(initials(s.label))}</span>`;
       const subs = s.managed ? s.managed.split(/,\s*/) : (SUB_ITEMS[s.value]?.items ?? []);
+      extra += s.managed ? subs.length : subs.filter((x) => !(SUB_ITEMS[s.value]?.alsoTiles ?? []).includes(x)).length;
       const sub = subs.length ? `<ul class="picker-sub">${subs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
       rows.push(`<li class="picker-row">${logo}<span class="picker-name">${esc(name)}</span>${sub}</li>`);
     }
     out.push(`<section class="picker-cat" data-category="${esc(cat)}"><h3>${esc(cat)}</h3><ul>${rows.join("")}</ul></section>`);
   }
-  return { html: `<div class="picker" data-count="${total}">${out.join("")}</div>`, total, sprite };
+  // The larger number is a floor to the nearest five: connectors plus the kinds shown under tiles.
+  const kinds = Math.floor((total + extra) / 5) * 5;
+  const caption =
+    `<p class="picker-caption">${total} connectors reaching ${kinds}+ kinds of source. The larger number ` +
+    `counts the hosted PostgreSQL services and the File Crawler's file formats shown under their tiles.</p>`;
+  return { html: `${caption}<div class="picker" data-count="${total}" data-kinds="${kinds}">${out.join("")}</div>`, total, kinds, sprite };
 }
 
 const PAGES = ["site/index.html", "site/why/sources.html"];
@@ -138,7 +147,7 @@ export async function stalePages() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { html, total, sprite } = await renderPicker();
+  const { html, total, kinds, sprite } = await renderPicker();
   if (process.argv.includes("--check")) {
     const stale = await stalePages();
     if (stale.length) {
@@ -153,6 +162,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       const file = path.join(ROOT, p);
       fs.writeFileSync(file, splice(fs.readFileSync(file, "utf8"), html));
     }
-    console.log(`wrote ${total} tiles into ${PAGES.join(", ")}`);
+    console.log(`wrote ${total} tiles (${kinds}+ kinds) into ${PAGES.join(", ")}`);
   }
 }
