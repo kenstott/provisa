@@ -46,7 +46,7 @@ runs:
           UserKnownHostsFile /dev/null
           LogLevel ERROR
           ServerAliveInterval 30
-          SendEnv SPLUNKBASE_USERNAME SPLUNKBASE_PASSWORD
+          SendEnv SPLUNKBASE_USERNAME SPLUNKBASE_PASSWORD FREE_ASKAMERICA_KEY
         EOF
         echo "PROVISA_VM_SSH_CONFIG=$RUNNER_TEMP/vm_ssh_config" >> "$GITHUB_ENV"
 

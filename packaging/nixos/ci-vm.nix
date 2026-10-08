@@ -14,7 +14,7 @@
   # this file before the build.
   services.openssh = {
     enable = true;
-    extraConfig = "AcceptEnv SPLUNKBASE_USERNAME SPLUNKBASE_PASSWORD";
+    extraConfig = "AcceptEnv SPLUNKBASE_USERNAME SPLUNKBASE_PASSWORD FREE_ASKAMERICA_KEY";
   };
   users.users.provisa.openssh.authorizedKeys.keyFiles = [ ./ci_authorized_key.pub ];
 

@@ -3,7 +3,7 @@ name: NixOS
 # What NixOS does differently from the Ubuntu runners every other workflow tests on. Linux itself
 # is covered there; this covers the host side that depends on the distro: the uv environment and
 # its prebuilt wheels, the embedded PostgreSQL, the native tier run as a systemd service,
-# Playwright's Chromium, the ODBC driver and the JDK. The container-backed lanes' images are the
+# Playwright's Chromium, the ODBC driver, the JDK, and AskAmerica's in-process JVM. The container-backed lanes' images are the
 # same on any distro, so only the core lane is repeated here, for the host processes it starts.
 #
 # A hosted runner is Ubuntu, so NixOS is a QEMU guest on it (.github/actions/nixos-vm, the system
@@ -57,7 +57,7 @@ jobs:
         id: deps
         run: |
           packaging/nixos/vm-run '
-            uv sync --frozen --extra dev --extra embedded
+            uv sync --frozen --extra dev --extra embedded --extra govdata
             uv pip install -e "provisa-client/[dev]" -q
             cd provisa-ui && npm ci
           '
@@ -106,6 +106,21 @@ jobs:
                 await browser.close();
               })().catch((e) => { console.error(e); process.exit(1); });
             "
+          '
+
+      # The govdata case of the UI suite, against the service above: a live source (AskAmerica, US
+      # government open data) whose engine is a JVM inside the server process.
+      - name: AskAmerica through the deployed UI (add a source, register a table, query it)
+        if: ${{ !cancelled() && steps.service.outcome == 'success' }}
+        env:
+          FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+        run: |
+          # The spec skips itself without the key, and a skip would read here as a pass.
+          test -n "$FREE_ASKAMERICA_KEY"
+          packaging/nixos/vm-run '
+            cd provisa-ui
+            npx playwright install chromium
+            PROVISA_E2E_DEPLOYED_URL=http://127.0.0.1:3000 npx playwright test -c playwright.deployed.config.ts --reporter=list
           '
 
       - name: Service log
